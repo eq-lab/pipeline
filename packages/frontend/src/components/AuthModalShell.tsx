@@ -139,6 +139,8 @@ export interface AuthModalShellProps {
   onBack?: () => void;
   align?: "start" | "center";
   stepLabel?: { current: number; total: number };
+  icon?: React.ReactNode;
+  headingAlign?: "start" | "center";
 }
 
 // ── Shell component ───────────────────────────────────────────────────────────
@@ -156,6 +158,8 @@ export function AuthModalShell({
   onBack,
   align = "start",
   stepLabel,
+  icon,
+  headingAlign = "start",
 }: AuthModalShellProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -227,7 +231,16 @@ export function AuthModalShell({
               align === "center" ? "my-auto" : "",
             ].join(" ")}
           >
-            <div className="flex flex-col gap-2">
+            {icon ? (
+              <div className="mb-2 flex w-full justify-center">{icon}</div>
+            ) : null}
+
+            <div
+              className={[
+                "flex flex-col gap-2",
+                headingAlign === "center" ? "text-center" : "",
+              ].join(" ")}
+            >
               <h2
                 id={headingId}
                 className={[

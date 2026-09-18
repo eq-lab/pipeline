@@ -209,3 +209,65 @@ describe("AuthModalShell — stepLabel prop (#1251)", () => {
     expect(screen.getByText("/2")).toBeInTheDocument();
   });
 });
+
+describe("AuthModalShell — new optional props (#1253)", () => {
+  afterEach(() => {
+    document.body.style.overflow = "";
+  });
+
+  it("omitting icon renders no icon wrapper, omitting headingAlign leaves no text-center", () => {
+    renderShell();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector(".mb-2")).not.toBeInTheDocument();
+
+    const headingWrapper = screen.getByRole("heading", {
+      name: "Sign in",
+    }).parentElement;
+    expect(headingWrapper?.className).not.toContain("text-center");
+  });
+
+  it("icon renders above the heading, inside a mb-2 wrapper", () => {
+    render(
+      <AuthModalShell
+        open
+        onDismiss={vi.fn()}
+        heading="Your account is under review"
+        headingId="account-in-review-modal-heading"
+        testId="account-in-review-modal"
+        icon={<span data-testid="shell-icon">icon</span>}
+      >
+        <p>Content</p>
+      </AuthModalShell>,
+    );
+    const icon = screen.getByTestId("shell-icon");
+    const heading = screen.getByRole("heading", {
+      name: "Your account is under review",
+    });
+    expect(icon.parentElement?.className).toContain("mb-2");
+    expect(
+      icon.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("headingAlign=center adds text-center to the heading wrapper and nothing else", () => {
+    render(
+      <AuthModalShell
+        open
+        onDismiss={vi.fn()}
+        heading="Your account is under review"
+        headingId="account-in-review-modal-heading"
+        testId="account-in-review-modal"
+        headingAlign="center"
+      >
+        <p>Content</p>
+      </AuthModalShell>,
+    );
+    const headingWrapper = screen.getByRole("heading", {
+      name: "Your account is under review",
+    }).parentElement;
+    expect(headingWrapper?.className).toContain("text-center");
+
+    const column = headingWrapper?.parentElement;
+    expect(column?.className).not.toContain("my-auto");
+  });
+});

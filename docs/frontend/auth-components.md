@@ -6,6 +6,10 @@ area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds fiv
 and #1250 (OTP), all documented below — same reasoning as `wallet-flows.md` /
 `trustee-flows.md`.
 
+#1253's Issue body also named a "review banner" deliverable. It does not exist in the
+source-of-truth Figma section — see `### AccountInReviewModal` below and TD-69
+(`docs/exec-plans/tech-debt-tracker.md`). Nothing is built for it here.
+
 **No production entry point changes in this epic yet.** These modals are reachable only from the
 `/test?tab=auth` diagnostics route (see `dashboard-components.md#diagnostics-route`). `TopBar`'s
 "Connect Wallet" button keeps opening `ConnectWalletModal` unchanged. The LP header will get
@@ -55,6 +59,8 @@ so `SignInModal` renders byte-identical without passing any of them:
 | `onBack?: () => void` | `undefined` | When set, renders a back `<button aria-label="Back">` (24×24 arrow-left icon, Figma node `6486:81678`) at `top-4 left-4` (glyph lands at (20, 20)) — the mirror of the close button. Rendered **after** `{children}` and `<RightImagePanel />` in DOM order, so the shell's auto-focus-first-descendant effect still lands on content, not the back button. |
 | `align?: "start" \| "center"` | `"start"` | `"center"` appends `my-auto` to the content column (vertical centering via margin, not `justify-center` on the parent, so `overflow-y-auto` stays scroll-safe on short viewports). |
 | `stepLabel?: { current: number; total: number }` | `undefined` | Added by #1251. Renders a non-focusable `Step {current}` (ink) + `/{total}` (ink-muted) badge at `top-4 left-4` — a step indicator, not navigation (no progress bar, no logo, no back arrow). `CompanyDocsModal` uses `{ current: 1, total: 2 }`; #1252's Owners screen reuses it verbatim at `{ current: 2, total: 2 }`. **Mutually exclusive with `onBack`** — both occupy `top-4 left-4` and no Figma frame in this epic shows both together; passing both is undefined layout, not validated at runtime. |
+| `icon?: React.ReactNode` | `undefined` | Added by #1253. Renders as the **first** child of the content column, above the heading block, wrapped in `<div className="mb-2 flex w-full justify-center">`. The `mb-2` turns the column's 24px `gap-6` into the frame's 32px icon-to-heading gap — the same technique `CompanyDocsModal`/`OwnersModal` use with `mt-2` on their children wrapper. `AccountInReviewModal` is the only consumer so far. |
+| `headingAlign?: "start" \| "center"` | `"start"` | Added by #1253. `"center"` appends `text-center` to the heading wrapper (both the `<h2>` and the description `<p>`) — **horizontal** text alignment, orthogonal to `align`'s *vertical* `my-auto` centering of the whole column. Named `headingAlign` rather than `align` because that name is already taken. |
 
 The OTP screen (`OtpModal`, below) hides both the image pane and the close button and uses the
 back arrow as its only dismiss affordance, since Figma hides the shell's Close Icon instance for
@@ -510,18 +516,104 @@ name; drop-zone and file-row rejection/remove states reuse `DocumentUploadRow`'s
 (`role="alert"`, `aria-label="Remove {file.name}"`); the tooltip uses `role="tooltip"` +
 `aria-describedby` and is deliberately not wired to Escape (see above).
 
+### AccountInReviewModal
+
+`packages/frontend/src/components/AccountInReviewModal.tsx`. The KYB post-submission
+Account-in-review screen — presentational only, **no network call, no persistence**. The
+"notified" confirmation lives in React state for the lifetime of the open modal; closing/reopening
+resets it (TD-70). `onNotifyMe`/`onGoToApp` are seams for #1254 (both default to a no-op).
+
+**One screen, two states, not two screens.** The two Figma frames share an identical node tree —
+circle → heading → two buttons, full stop — with the only delta being the first button's
+treatment before/after being pressed. `AccountInReviewModal` models this as a single `notified`
+boolean rather than two components.
+
+Visual specs (Figma, file `A43rjYYjSwdTmiwwf5cx5n`):
+
+- Default (`Notify me` / `Go to app`): node `6486-81745`.
+- Notified (`We’ll notify you` / `Go to app`): node `6486-81764`.
+
+Composition inside `AuthModalShell` (heading "Your account is under review", description
+"It can take up to 2 weeks. We can notify you when it’s ready.", `headingId`
+`account-in-review-modal-heading`, `testId` `account-in-review-modal`, `showImagePanel={false}`,
+`align="center"`, `headingAlign="center"`, `icon` set to the 72px circle tile, default close
+button, no `stepLabel`, no `onBack`):
+
+1. **72px circle tile** — a fully round `--color-pipeline-fill-muted` badge containing a 36×36
+   `ShieldCheckIcon`, `--color-pipeline-ink-subtle`. Passed via the shell's new `icon` prop.
+2. **`Notify me` / `We’ll notify you`** — a single `<Button>` element whose `variant`, `className`,
+   and children are computed from `notified`, so React reuses the same underlying DOM node and
+   the user's focus survives the flip:
+   - Default: `variant="primary-dark"`, label `Notify me`, `onClick` sets `notified` and fires
+     `onNotifyMe?.()`.
+   - Notified: `variant="secondary"` with a `!bg-[--color-pipeline-positive-secondary]` /
+     `!text-[--color-pipeline-positive-strong]` override, `aria-disabled="true"` (**not**
+     `disabled`, which would drop focus out of the trapped modal and pull in `secondary`'s
+     `disabled:opacity-[0.32]`, absent from the frame), no `onClick`, and a
+     `<span className="flex items-center gap-2"><CheckIcon />We’ll notify you</span>` child (24px
+     check glyph left of the label).
+   - The wrapping `<div aria-live="polite">` announces the label change to a screen reader after
+     the flip, since the button element itself is reused rather than replaced.
+3. **`Go to app`** — a real `<Button variant="secondary">` (unlike the inert *text* affordances
+   "Forgot password?"/"Resend"/"Back" elsewhere in this epic — this one is a designed 48px button
+   with its own fill), `!bg-[--color-pipeline-fill-muted]` override. `onClick` calls
+   `onGoToApp?.()`, independent of `notified` — it renders and behaves identically in both states.
+
+**Figma → token mapping** (confirmed via `get_variable_defs` + `get_design_context`, not
+estimated):
+
+| Element | Figma | Repo token |
+| --- | --- | --- |
+| Circle tile fill | `fill-test/primary` `rgba(191,189,187,0.12)` | `--color-pipeline-fill-muted` |
+| Circle tile radius | `radius/radius-full` on a 72px box | `--radius-pipeline-pill` |
+| Shield-check glyph | `#323837` @ 0.3 (one-channel-order artifact, already resolved this way elsewhere in the epic) | `--color-pipeline-ink-subtle` — no new token |
+| Title / description | Besley 48/56 / Graphik LC 16/22, both `content-test/primary`, both centered | shell defaults + `headingAlign="center"` |
+| `Notify me` fill / label | `fill-test/primary` `#262524` / `content-test/primary-on-invert` | `Button variant="primary-dark"` (defaults) |
+| `We’ll notify you` fill | `fill/positive-secondary` `#20800029` | `--color-pipeline-positive-secondary` |
+| `We’ll notify you` label + check glyph | `content-test/positive` `#208000` | **new** `--color-pipeline-positive-strong` (TD-68) |
+| `Go to app` fill / label | `fill-test/primary` `rgba(191,189,187,0.12)` / `content-test/primary` | `--color-pipeline-fill-muted` / `--color-pipeline-ink` (`Button variant="secondary"` + `!bg-…` override, the #1248 `ContinueWithWalletButton` technique) |
+
+**Icon sourcing.** `ShieldCheckIcon` (36×36) and `CheckIcon` (24×24) are exact Figma-exported SVG
+paths, both new glyphs in this repo — `fillRule`/`clipRule` are load-bearing on the shield (the
+check is knocked out of the shield body). `get_design_context`'s export of the 24px check carries
+a stale `fill="#34C759"` (iOS green) — the rendered instance is the same dark green as its label,
+confirmed by sampling the `6486-81764` screenshot. Shipped on `currentColor` at
+`--color-pipeline-positive-strong` rather than the exported hex — the same class of stale-export
+artifact as #1251's leading-tile fill.
+
+**The "review banner" named in the Issue does not exist here.** Node `6486:81744` (the Issue's
+cited node) is a byte-identical loose duplicate of the Owners step's info banner (already shipped
+as `KybInfoBanner` in #1252), parked on the canvas inside the Owners column — not a child of
+either Account-in-review frame. Neither frame contains a banner node; their whole content column
+is icon → heading → two buttons. `KybInfoBanner` is **not** used by this screen. See TD-69 for the
+full evidence trail and the only other "under review" candidate found (a superseded draft
+dashboard card, out of scope here).
+
+**Out of scope.** Any real "notify me" subscription, polling, or review-status fetch (TD-70);
+wiring Owners → Account-in-review as a sequence, and `Go to app`'s destination (both #1254's flow
+orchestration — the `/test` seam keeps this trigger independent of Owners, same reasoning as the
+other pairs in this epic); the LP header entry point (a future Figma); the review banner (TD-69);
+`@pipeline/ui` promotion (LP-only, following `AuthModalShell`'s placement).
+
+**Accessibility:** the icon is `aria-hidden`; the notify button carries `aria-disabled="true"`
+(not `disabled`) once notified, keeping it focusable and in the tab order; its wrapper carries
+`aria-live="polite"` so the label swap is announced; `Go to app` is a normal focusable button in
+both states.
+
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders five
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders six
 trigger buttons opening `SignInModal` (#1248), `CreateAccountModal` (#1249), `OtpModal` (#1250),
-`CompanyDocsModal` (#1251), and `OwnersModal` (#1252), each with every seam left at its no-op
-default except `OtpModal.onVerified`, `CompanyDocsModal.onSubmit`, and `OwnersModal.onSubmit`,
-which show stand-in confirmation lines. Every trigger is independent of the others — entering a
-valid OTP code shows "OTP verified — open the Company Docs step from the button above." rather
-than auto-opening it, and submitting Company Docs shows "Company documents submitted — open the
-Owners step from the button above." rather than auto-opening Owners — since the shell's
-body-scroll-lock and capture-phase Escape are not stack-safe (see the shell caveats above) and
-stacking two of these modals is exactly the untested path a chained transition would exercise.
-Submitting at least one Owners file shows "Owners submitted — the #1253 Account-in-review screen
-opens here once it exists." This does not touch `TopBar`, `ConnectModalProvider`, or any of the
-six production `openConnectModal` call sites.
+`CompanyDocsModal` (#1251), `OwnersModal` (#1252), and `AccountInReviewModal` (#1253), each with
+every seam left at its no-op default except `OtpModal.onVerified`, `CompanyDocsModal.onSubmit`,
+`OwnersModal.onSubmit`, and `AccountInReviewModal.onGoToApp`, which show stand-in confirmation
+lines. Every trigger is independent of the others — entering a valid OTP code shows "OTP verified
+— open the Company Docs step from the button above." rather than auto-opening it, submitting
+Company Docs shows "Company documents submitted — open the Owners step from the button above."
+rather than auto-opening Owners, and submitting at least one Owners file shows "Owners submitted —
+open the Account-in-review screen from the button above." rather than auto-opening it — since the
+shell's body-scroll-lock and capture-phase Escape are not stack-safe (see the shell caveats above)
+and stacking two of these modals is exactly the untested path a chained transition would exercise.
+Clicking `Go to app` on the Account-in-review screen shows "Go to app — #1254 wires this to the LP
+dashboard." This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
+`openConnectModal` call sites.

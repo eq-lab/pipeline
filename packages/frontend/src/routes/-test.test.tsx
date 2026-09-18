@@ -421,7 +421,7 @@ describe("TestPage — tab param routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(screen.getByTestId("auth-owners-submitted")).toHaveTextContent(
-      "Owners submitted — the #1253 Account-in-review screen opens here once it exists.",
+      "Owners submitted — open the Account-in-review screen from the button above.",
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

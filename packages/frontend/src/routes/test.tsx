@@ -10,6 +10,7 @@ import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { OtpModal } from "@/components/OtpModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
 import { OwnersModal } from "@/components/OwnersModal";
+import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -698,13 +699,16 @@ function AuthTab(): React.JSX.Element {
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
   const [ownersOpen, setOwnersOpen] = React.useState(false);
   const [ownersSubmitted, setOwnersSubmitted] = React.useState(false);
+  const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
+  const [wentToApp, setWentToApp] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
         Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
-        #1249), OTP (issue #1250), Company Docs (issue #1251), and Owners (issue
-        #1252) modals. Not wired to any production entry point.
+        #1249), OTP (issue #1250), Company Docs (issue #1251), Owners (issue
+        #1252), and Account-in-review (issue #1253) modals. Not wired to any
+        production entry point.
       </p>
       <div className="flex gap-2">
         <Button
@@ -742,6 +746,13 @@ function AuthTab(): React.JSX.Element {
         >
           Open Owners step
         </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setAccountInReviewOpen(true)}
+        >
+          Open Account-in-review screen
+        </Button>
       </div>
       {otpVerified && (
         <p
@@ -765,8 +776,16 @@ function AuthTab(): React.JSX.Element {
           data-testid="auth-owners-submitted"
           className="text-sm text-[color:var(--color-pipeline-positive)]"
         >
-          Owners submitted — the #1253 Account-in-review screen opens here once
-          it exists.
+          Owners submitted — open the Account-in-review screen from the button
+          above.
+        </p>
+      )}
+      {wentToApp && (
+        <p
+          data-testid="auth-account-in-review-go-to-app"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Go to app — #1254 wires this to the LP dashboard.
         </p>
       )}
       <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
@@ -796,6 +815,14 @@ function AuthTab(): React.JSX.Element {
         onSubmit={() => {
           setOwnersSubmitted(true);
           setOwnersOpen(false);
+        }}
+      />
+      <AccountInReviewModal
+        open={accountInReviewOpen}
+        onDismiss={() => setAccountInReviewOpen(false)}
+        onGoToApp={() => {
+          setWentToApp(true);
+          setAccountInReviewOpen(false);
         }}
       />
     </div>
