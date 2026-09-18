@@ -1016,6 +1016,62 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add a PDF-page-thumbnail renderer (e.g. `pdf.js`) if pixel-fidelity for this
   state becomes a priority; until then this is an accepted, documented subset.
 
+### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
+- **Gap:** The drop-zone subtitle ("pdf, jpg, png files up to 10MB") binds in Figma to
+  `text-tertairy` (`#7d7d7d`) — a misspelled, non-namespaced legacy variable. Every other color
+  on both Owners frames resolves through `content-test/*`, `fill-test/*`, or `border-test/*`.
+  Shipped as `--color-pipeline-ink-muted`, the same order of channel-difference (≤8/255 per
+  channel) that #1248 and #1251 both resolved by reusing an existing token, rather than adding a
+  fourth ink token named after a typo.
+- **Impact:** None visually (the composite difference is imperceptible); a future design-token
+  reconciliation pass should rebind the Figma variable, not the code.
+- **Suggested fix:** Ask design to rebind `text-tertairy` to `content-test/secondary` in the
+  Figma library.
+
+### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/KybInfoBanner.tsx`.
+- **Gap:** The hint tooltip (Figma node `6486:82392`) is a loose canvas instance, not a child of
+  either Owners frame — it specifies only the tooltip's copy and dimensions, not how it is
+  triggered, how far it sits from the glyph, or whether it has an arrow/caret.
+- **Impact:** Shipped as hover/focus (`mouseenter`/`focus` show, `mouseleave`/`blur` hide), 8px
+  above the glyph (`mb-2`), no arrow, and with no Escape handler (the shell owns Escape in the
+  capture phase and would close the modal instead of just the tooltip).
+- **Suggested fix:** A designer pass should attach the tooltip node to the Owners frame directly
+  and specify trigger/offset/arrow explicitly.
+
+### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/useOwnersModal.ts`.
+- **Gap:** Neither Owners Figma frame provides an owner-count input, per-owner grouping, or a
+  required-document list — the default frame (0 files) renders Submit disabled and the enabled
+  frame (2 files) renders it solid, which is the only non-arbitrary rule consistent with both:
+  Submit enables once at least one file is present.
+- **Impact:** The real product requirement (e.g. "at least one document per declared owner") is
+  unknown; the current rule may under- or over-collect documents relative to what compliance
+  actually needs.
+- **Suggested fix:** A designer/PM pass should specify the real completion requirement for this
+  step, likely tied to a future owner-count or owner-list input.
+
+### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
+- **Gap:** Neither Owners Figma frame designs a drag-over state or a file-rejection state for the
+  drop zone. Both reuse existing tokens on existing copy — the same resolution shape as TD-62:
+  drag-over recolors the dashed border `--color-pipeline-ink-subtle` → `--color-pipeline-ink`
+  with no new copy or layout; rejection recolors the zone's existing subtitle to
+  `--color-pipeline-negative-strong` with `role="alert"`.
+- **Impact:** Both states are stand-ins, not verified designs — a designer may want distinct
+  copy, an icon, or a different layout.
+- **Suggested fix:** A designer pass specifies real drag-over and rejection treatments; the QA
+  Figma comparison should not file this as a bug against the current stand-ins.
+
 ---
 
 ## Post-MVP

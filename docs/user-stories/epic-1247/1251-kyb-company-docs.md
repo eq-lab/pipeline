@@ -108,9 +108,8 @@ intentional.
 **Expected outcomes:**
 
 - The modal closes.
-- The preview page shows the stand-in confirmation line "Company documents submitted — the
-  #1252 Owners step opens here once it exists." This is not a bug to file — #1252 does not exist
-  yet.
+- The preview page shows the stand-in confirmation line "Company documents submitted — open the
+  Owners step from the button above."
 - No HTTP request is made — this issue ships no upload endpoint call (deferred to #1254).
 
 ---
