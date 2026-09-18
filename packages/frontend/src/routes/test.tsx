@@ -8,6 +8,7 @@ import { ENV } from "@/lib/env";
 import { SignInModal } from "@/components/SignInModal";
 import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { OtpModal } from "@/components/OtpModal";
+import { CompanyDocsModal } from "@/components/CompanyDocsModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -692,13 +693,15 @@ function AuthTab(): React.JSX.Element {
   const [createAccountOpen, setCreateAccountOpen] = React.useState(false);
   const [otpOpen, setOtpOpen] = React.useState(false);
   const [otpVerified, setOtpVerified] = React.useState(false);
+  const [companyDocsOpen, setCompanyDocsOpen] = React.useState(false);
+  const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
         Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
-        #1249), and OTP (issue #1250) modals. Not wired to any production entry
-        point.
+        #1249), OTP (issue #1250), and Company Docs (issue #1251) modals. Not
+        wired to any production entry point.
       </p>
       <div className="flex gap-2">
         <Button
@@ -722,13 +725,29 @@ function AuthTab(): React.JSX.Element {
         >
           Open OTP screen
         </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setCompanyDocsOpen(true)}
+        >
+          Open Company Docs step
+        </Button>
       </div>
       {otpVerified && (
         <p
           data-testid="auth-otp-verified"
           className="text-sm text-[color:var(--color-pipeline-positive)]"
         >
-          OTP verified — the #1251 Company Docs step opens here once it exists.
+          OTP verified — open the Company Docs step from the button above.
+        </p>
+      )}
+      {companyDocsSubmitted && (
+        <p
+          data-testid="auth-company-docs-submitted"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Company documents submitted — the #1252 Owners step opens here once it
+          exists.
         </p>
       )}
       <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
@@ -742,6 +761,14 @@ function AuthTab(): React.JSX.Element {
         onVerified={() => {
           setOtpVerified(true);
           setOtpOpen(false);
+        }}
+      />
+      <CompanyDocsModal
+        open={companyDocsOpen}
+        onDismiss={() => setCompanyDocsOpen(false)}
+        onSubmit={() => {
+          setCompanyDocsSubmitted(true);
+          setCompanyDocsOpen(false);
         }}
       />
     </div>

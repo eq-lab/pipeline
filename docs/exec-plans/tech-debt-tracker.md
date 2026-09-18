@@ -988,6 +988,34 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `align="center"`; if so, flip their default or pass the prop explicitly, then consider whether
   `align` should default to `"center"` repo-wide once no consumer relies on `"start"`.
 
+### TD-62: `CompanyDocsModal` rejected-file feedback has no Figma treatment
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/DocumentUploadRow.tsx`.
+- **Gap:** Neither #1251 Figma frame (`6486-81679` empty, `6486-81817` uploaded) designs a
+  rejection state for an oversize or wrong-type file pick. The implementation reuses the row's
+  existing caption copy (`pdf, jpg, png files up to 10MB`) recolored to
+  `--color-pipeline-negative-strong` with `role="alert"`, rather than inventing new copy or
+  layout.
+- **Impact:** The rejection treatment is a stand-in, not a verified design — a designer may want
+  distinct copy, an icon, or a different layout for this state.
+- **Suggested fix:** A designer pass specifies a real rejection treatment; the QA Figma
+  comparison should not file this as a bug against the current stand-in.
+
+### TD-63: `CompanyDocsModal` uploaded-row thumbnail is not a PDF-page preview
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/DocumentUploadRow.tsx`.
+- **Gap:** Figma's uploaded frame (`6486-81817`) shows a rendered PDF-page thumbnail (a mock PNG
+  asset) for the uploaded document tile. This repo has no PDF renderer, so `application/pdf`
+  uploads (and any upload when `URL.createObjectURL` is unavailable) keep the same brand-tint
+  glyph tile as the empty state; only `image/jpeg`/`image/png` uploads get a real `<img>`
+  preview via `URL.createObjectURL`.
+- **Impact:** The uploaded state for PDF documents (the majority of the five expected slots)
+  visually diverges from the Figma mock.
+- **Suggested fix:** Add a PDF-page-thumbnail renderer (e.g. `pdf.js`) if pixel-fidelity for this
+  state becomes a priority; until then this is an accepted, documented subset.
+
 ---
 
 ## Post-MVP

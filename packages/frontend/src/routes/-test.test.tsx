@@ -339,6 +339,61 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
+  it("?tab=auth shows an Open Company Docs step button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens CompanyDocsModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Finish account setup" }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth shows the reworded OTP-verified stand-in copy after verifying", async () => {
+    const user = userEvent.setup();
+    renderTestPage("auth");
+    fireEvent.click(screen.getByRole("button", { name: /open otp screen/i }));
+    const input = screen.getByLabelText("Verification code");
+    await user.click(input);
+    await user.paste("123456");
+    expect(
+      await screen.findByTestId("auth-otp-verified", {}, { timeout: 2000 }),
+    ).toHaveTextContent(
+      "OTP verified — open the Company Docs step from the button above.",
+    );
+  });
+
+  it("?tab=auth shows the company-docs-submitted line after submitting all five documents", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    );
+
+    const inputs = screen.getAllByTestId(/-file-input$/);
+    expect(inputs).toHaveLength(5);
+    inputs.forEach((input, i) => {
+      const file = new File(["x"], `doc-${i}.pdf`, {
+        type: "application/pdf",
+      });
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByTestId("auth-company-docs-submitted")).toHaveTextContent(
+      "Company documents submitted — the #1252 Owners step opens here once it exists.",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("?tab=foo (invalid) falls back to Status tab", () => {
     renderTestPage("foo");
     // Status sections visible

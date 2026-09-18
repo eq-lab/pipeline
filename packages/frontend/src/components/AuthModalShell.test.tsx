@@ -164,3 +164,48 @@ describe("AuthModalShell — new optional props (#1250)", () => {
     expect(column?.className).toContain("my-auto");
   });
 });
+
+describe("AuthModalShell — stepLabel prop (#1251)", () => {
+  afterEach(() => {
+    document.body.style.overflow = "";
+  });
+
+  it("omitting stepLabel renders no badge", () => {
+    renderShell();
+    expect(screen.queryByText(/^Step /)).not.toBeInTheDocument();
+  });
+
+  it("stepLabel renders the two-tone Step N/total badge", () => {
+    render(
+      <AuthModalShell
+        open
+        onDismiss={vi.fn()}
+        heading="Finish account setup"
+        headingId="company-docs-modal-heading"
+        testId="company-docs-modal"
+        stepLabel={{ current: 1, total: 2 }}
+      >
+        <p>Content</p>
+      </AuthModalShell>,
+    );
+    expect(screen.getByText("Step 1")).toBeInTheDocument();
+    expect(screen.getByText("/2")).toBeInTheDocument();
+  });
+
+  it("stepLabel renders with a different run (Step 2/2)", () => {
+    render(
+      <AuthModalShell
+        open
+        onDismiss={vi.fn()}
+        heading="Owners"
+        headingId="owners-modal-heading"
+        testId="owners-modal"
+        stepLabel={{ current: 2, total: 2 }}
+      >
+        <p>Content</p>
+      </AuthModalShell>,
+    );
+    expect(screen.getByText("Step 2")).toBeInTheDocument();
+    expect(screen.getByText("/2")).toBeInTheDocument();
+  });
+});

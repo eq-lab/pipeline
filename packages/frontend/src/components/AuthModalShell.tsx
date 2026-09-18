@@ -138,6 +138,7 @@ export interface AuthModalShellProps {
   showCloseButton?: boolean;
   onBack?: () => void;
   align?: "start" | "center";
+  stepLabel?: { current: number; total: number };
 }
 
 // ── Shell component ───────────────────────────────────────────────────────────
@@ -154,6 +155,7 @@ export function AuthModalShell({
   showCloseButton = true,
   onBack,
   align = "start",
+  stepLabel,
 }: AuthModalShellProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -295,6 +297,17 @@ export function AuthModalShell({
           >
             <ArrowLeftIcon />
           </button>
+        ) : null}
+
+        {stepLabel ? (
+          <div className="absolute top-4 left-4 z-10 flex h-10 items-center px-4 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] font-[var(--font-weight-emphasized)] text-[color:var(--color-pipeline-ink)]">
+            <span>
+              Step {stepLabel.current}
+              <span className="text-[color:var(--color-pipeline-ink-muted)]">
+                /{stepLabel.total}
+              </span>
+            </span>
+          </div>
         ) : null}
       </div>
     </div>

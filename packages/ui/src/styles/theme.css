@@ -76,6 +76,7 @@
   --color-pipeline-surface: #ffffff;
   --color-pipeline-promo: #f8fce9; /* pale yellow — connect-wallet banner; solid equivalent of rgb(211 235 117 / 0.16) on white */
   --color-pipeline-brand: #000080;
+  --color-pipeline-brand-secondary: rgb(0 0 128 / 0.08);
   --color-pipeline-cta: #262524;
   --color-pipeline-ink: #262524;
   --color-pipeline-ink-muted: rgb(56 55 53 / 0.6);
@@ -154,6 +155,9 @@
   --color-pipeline-surface: #ffffff; /* fill-test/on-primary — node 1497:94565 */
   --color-pipeline-promo: #f8fce9; /* fill/warning-secondary — node 1497:94566 — solid #F8FCE9 per Figma (issue #606) */
   --color-pipeline-brand: #000080; /* fill/brand — node 1497:94689 Convert button */
+  --color-pipeline-brand-secondary: rgb(
+    0 0 128 / 0.08
+  ); /* KYB company-docs leading tile — sampled from Figma node 6486:81679 (issue #1251); no variable binding in the file's codegen */
   --color-pipeline-cta: #262524; /* fill-test/primary — node 1497:94725 */
   --color-pipeline-ink: #262524; /* content-test/primary — node 1497:94685 */
   --color-pipeline-ink-muted: rgb(
