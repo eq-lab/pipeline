@@ -1074,6 +1074,50 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** A designer pass specifies real drag-over and rejection treatments; the QA
   Figma comparison should not file this as a bug against the current stand-ins.
 
+### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive`
+
+- **Date:** 2026-09-18
+- **Location:** `packages/ui/src/styles/theme.css`.
+- **Gap:** The KYB Account-in-review "notified" state (Figma node `6486:81764`) binds
+  `content-test/positive` = `#208000` — a different Figma variable namespace than the repo's
+  existing `--color-pipeline-positive: #1a6600` and a visibly different green. Resolved
+  token-exact with a new `--color-pipeline-positive-strong` token, the same resolution shape as
+  TD-59 (`--color-pipeline-negative-strong`).
+- **Impact:** Two "positive" content tokens now exist with different values; a future consumer
+  must pick the right one deliberately.
+- **Suggested fix:** A designer reconciliation pass should confirm whether the legacy
+  `--color-pipeline-positive` should be retired in favor of the `-strong` value, or whether both
+  are intentionally distinct semantics.
+
+### TD-69: The KYB epic's "review banner" deliverable has no node in the source-of-truth Figma
+
+- **Date:** 2026-09-18
+- **Location:** `docs/frontend/auth-components.md#accountinreviewmodal`, issue #1253.
+- **Gap:** Issue #1253 asked for "the review banner (node 6486:81744)". That node is a
+  byte-identical loose duplicate of the Owners step's info banner (already shipped as
+  `KybInfoBanner` in #1252), parked on the canvas inside the Owners column — not a child of
+  either Account-in-review frame. A document-wide name sweep for "banner"/"under review" turns up
+  no other candidate in the source-of-truth "KYB Onboarding" section; the only account-under-review
+  affordance anywhere in the file is a dashboard card (`6590:86947`, "Account under review" +
+  `View Status`) in the superseded "Draft 14 Sept" section — a production LP-dashboard change
+  gated on real auth state, out of this epic's current scope.
+- **Impact:** #1253 ships the two-state review screen with no banner. If a review banner is still
+  wanted, it needs a promoted, non-draft Figma frame before it can be built.
+- **Suggested fix:** A designer promotes `6590:86947` (or a new frame) out of draft status; a
+  future sub-issue (likely alongside #1254's dashboard/auth-state work) builds it then.
+
+### TD-70: `AccountInReviewModal`'s "notify me" flip is a local, non-persistent mock
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/AccountInReviewModal.tsx`.
+- **Gap:** Clicking "Notify me" only flips local React state to the "We'll notify you"
+  confirmation — there is no subscription endpoint, no polling, and no reviewed-status source.
+  Reopening the modal resets it. The same shape as TD-60 (`OtpModal`'s mocked verification).
+- **Impact:** The confirmation is presentational only; a real notify-me subscription and a real
+  review-status fetch are both unbuilt.
+- **Suggested fix:** #1254 replaces `onNotifyMe`/the local flip with a real subscription call and
+  a real account-status source once the backend endpoint exists.
+
 ---
 
 ## Post-MVP
