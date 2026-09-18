@@ -2,8 +2,9 @@
 
 LP-facing email+password authentication modals for epic #1247 (KYB login flow). This is a new
 area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds five more screens
-(#1250 OTP, #1251 Company Docs, #1252 Owners, #1253 Account-in-review) that will all land here,
-same reasoning as `wallet-flows.md` / `trustee-flows.md`.
+(#1251 Company Docs, #1252 Owners, #1253 Account-in-review) beyond #1249 (Create-account)
+and #1250 (OTP), both documented below — same reasoning as `wallet-flows.md` /
+`trustee-flows.md`.
 
 **No production entry point changes in this epic yet.** These modals are reachable only from the
 `/test?tab=auth` diagnostics route (see `dashboard-components.md#diagnostics-route`). `TopBar`'s
@@ -42,6 +43,23 @@ Known shell caveats it inherits unchanged (both pre-existing, not introduced by 
 element's id; focus trap (Tab/Shift+Tab cycle among non-`aria-hidden` focusable descendants);
 Escape and the × button both dismiss; no scrim click (the panel is full-viewport, matching
 `ConnectWalletModal`).
+
+**Optional props (added by #1250, backward-compatible)** — all five default to today's behaviour,
+so `SignInModal` renders byte-identical without passing any of them:
+
+| Prop | Default | Effect |
+| --- | --- | --- |
+| `description?: string` | `undefined` | Renders a `<p>` (`--text-pipeline-body` / full ink) below the `<h2>`, in a `flex flex-col gap-2` wrapper so the two sit 8px apart while the heading block keeps the column's 24px gap above `children`. |
+| `showImagePanel?: boolean` | `true` | `false` omits `<RightImagePanel />` entirely (no hero photo/logo/headline). |
+| `showCloseButton?: boolean` | `true` | `false` omits the `×` close button. |
+| `onBack?: () => void` | `undefined` | When set, renders a back `<button aria-label="Back">` (24×24 arrow-left icon, Figma node `6486:81678`) at `top-4 left-4` (glyph lands at (20, 20)) — the mirror of the close button. Rendered **after** `{children}` and `<RightImagePanel />` in DOM order, so the shell's auto-focus-first-descendant effect still lands on content, not the back button. |
+| `align?: "start" \| "center"` | `"start"` | `"center"` appends `my-auto` to the content column (vertical centering via margin, not `justify-center` on the parent, so `overflow-y-auto` stays scroll-safe on short viewports). |
+
+The OTP screen (`OtpModal`, below) hides both the image pane and the close button and uses the
+back arrow as its only dismiss affordance, since Figma hides the shell's Close Icon instance for
+that frame. See tech debt **TD-61** for the vertical-centering divergence: every KYB Figma frame
+centres its content column, but `SignInModal`/`CreateAccountModal` still top-align pending a
+design decision — only `OtpModal` opts into `align="center"` so far.
 
 ### Shared form parts
 
@@ -196,10 +214,65 @@ no new tokens, no new glyphs.
 **Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
 `TextField`, inert footer text (not focusable).
 
+### OtpModal
+
+`packages/frontend/src/components/OtpModal.tsx` + `useOtpModal.ts`. The OTP email-verification
+screen — presentational only, **no network call**; `onSubmit` is a seam for #1254 (defaults to a
+no-op).
+
+Visual specs (Figma):
+
+- Default (empty code, caret in box 1, countdown running): node `6486:81665`.
+- Enabled (six digits entered, verifying): node `6486:81848`.
+- Error (invalid code, countdown stopped): node `6486:81863`.
+- Back arrow affordance: node `6486:81678`.
+
+Composition inside `AuthModalShell` (heading "Check your inbox", description
+`` `We’ve sent a passcode to ${email}` ``, `headingId` `otp-modal-heading`, `testId` `otp-modal`,
+`showImagePanel={false}`, `showCloseButton={false}`, `align="center"`, `onBack` wired as **both**
+`onBack` and `onDismiss` so Escape and the arrow are the same action):
+
+1. **`OtpInput`** (`@pipeline/ui`, see `ui-components.md#otpinput`) — six digits, `invalid` while
+   `status === "error"`.
+2. **Resend line** — inert `<p>` (Caption 12/16, `--color-pipeline-ink-muted`), never a button
+   (same treatment as "Forgot password?" in #1248 — no resend endpoint, no sub-issue owns the
+   action; deferred to #1254). Renders `Resend in MM:SS` while counting down, `Resend` once
+   elapsed or in the error state.
+3. **State-specific tail** — nothing while `idle`; a `role="status"` spinner (24×24 loader icon,
+   `animate-spin`) while `verifying`; a `role="alert"` caption ("Enter the correct code", new
+   `--text-pipeline-body-s` token, `--color-pipeline-negative-strong`) while `error`.
+
+**State machine** (`useOtpModal`, modelled on `useSignInModal`) — `idle` → `verifying` →
+`error`:
+
+- Typing/pasting into `OtpInput` sanitises to digits and caps at `OTP_LENGTH` (6).
+- Any edit while `verifying` or `error` cancels the pending mock timer and returns to `idle`
+  (the countdown does not restart).
+- Reaching 6 digits sets `verifying`, fires `onSubmit?.(code)`, and after
+  `MOCK_VERIFY_DELAY_MS` (800ms) resolves the mock: `MOCK_VALID_CODE` (`123456`) returns to
+  `idle` and fires `onVerified?.(code)` — the seam the next step (#1251 destination, #1254
+  orchestration) attaches to; any other code transitions to `error`. The mock verification
+  itself is placeholder logic (TD-60); #1254 replaces it with the real call. There is no
+  success frame in #1250's Figma — the `/test` preview renders a stand-in confirmation line.
+- The 59-second resend countdown (`RESEND_COUNTDOWN_SECONDS`) starts on open, ticks once per
+  second, and runs **independently of the error state** (change request 2026-09-18): the error
+  frame's bare `Resend` label is the post-countdown moment, not an error side-effect.
+- All state (code, status, countdown) resets whenever `open` flips `false → true`.
+
+**Copy** (verbatim, do not paraphrase): title "Check your inbox"; description "We’ve sent a
+passcode to user@email.io" (U+2019 apostrophe — not `'` or `&rsquo;`); countdown "Resend in
+00:59"; elapsed/error "Resend"; error caption "Enter the correct code".
+
+**Accessibility:** the back arrow is the only dismiss (Figma hides the Close Icon instance for
+this frame — a non-interactive arrow would trap the preview); on open, focus lands on the OTP
+input (rendered before the back button in DOM order), not the back button; the loader and error
+caption use `role="status"`/`role="alert"` respectively.
+
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders two
-trigger buttons, "Open Sign In modal" and "Open Create Account modal", each opening its modal
-with every seam left at its no-op default. The two modals are independent (`open` state, never
-stacked). This is the only reachable entry point for #1248/#1249; it does not touch `TopBar`,
-`ConnectModalProvider`, or any of the six production `openConnectModal` call sites.
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders three
+trigger buttons opening `SignInModal` (#1248), `CreateAccountModal` (#1249), and `OtpModal`
+(#1250), each with every seam left at its no-op default except `OtpModal.onVerified`, which shows
+the stand-in confirmation line. The screens are never stacked — the shell's body-scroll-lock and
+capture-phase Escape are not stack-safe (see the shell caveats above). This does not touch
+`TopBar`, `ConnectModalProvider`, or any of the six production `openConnectModal` call sites.

@@ -17,6 +17,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-19: `packages/ui` `tsc --noEmit` fails on `TextField.stories.tsx` — CSF3 args typing gap
+- **Date:** 2026-09-17
+- **Location:** `packages/ui/src/components/TextField/TextField.stories.tsx` lines 47, 52, 57 (each `Story`'s `args`).
+- **Symptom:** `yarn workspace @pipeline/ui exec tsc --noEmit` fails with `TS2322` on each story: `type: "email"; placeholder: string` etc. is "missing the following properties ... value, onChange". Confirmed pre-existing on `main` (commit `9eeef7ca`, #1256) — not introduced by #1250.
+- **Root cause:** `meta.args` only sets `type`/`placeholder`/`invalid` defaults, not `value`/`onChange`. Under `@storybook/react-vite`'s CSF3 typing, any `ComponentProps` key not defaulted at the meta level stays *required* (not `Partial`) on every individual `Story`'s `args`, even though the actual render is supplied by the file's `Controlled` wrapper (which injects `value`/`onChange` itself, bypassing `args` entirely at runtime). The type only fails statically; Storybook itself renders fine.
+- **Workaround:** #1250's `OtpInput.stories.tsx` avoided the same trap by defaulting `value: ""` and `onChange: () => {}` in `meta.args`, so per-story `args` can freely omit or override them. Applying the same default pair to `TextField.stories.tsx`'s `meta.args` would fix this without changing runtime behavior (the `Controlled` wrapper's own `value`/`onChange` still win at render time). Not fixed inline — out of scope for #1250, which didn't touch `TextField`.
+- **Impact:** `yarn workspace @pipeline/ui lint` (eslint + prettier) passes regardless — this is a `tsc`-only gap, so it doesn't block CI unless a `tsc --noEmit` step is added to it.
+
 ### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
 - **Date:** 2026-08-19
 - **Location:** `packages/trustee/src/routes/-origination-new-page.test.tsx` lines 9, 106, 274 (shipped with #1101, commit `069c4e2`).

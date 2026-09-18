@@ -955,6 +955,39 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   the existing `--color-pipeline-negative`, or the existing negative/danger tokens should be
   updated to `#b20000` repo-wide, in a dedicated design-system pass.
 
+### TD-60: `OtpModal`'s verification is a hardcoded mock (`MOCK_VALID_CODE`)
+
+- **Date:** 2026-09-17 (revised 2026-09-18 per the change request on #1250)
+- **Location:** `packages/frontend/src/components/useOtpModal.ts`.
+- **Gap:** Issue #1250's Figma has no success frame for the OTP screen. Per the 2026-09-18
+  change request, `useOtpModal` mocks verification by showing the loader for
+  `MOCK_VERIFY_DELAY_MS` (800ms) and then accepting exactly `MOCK_VALID_CODE` (`123456`,
+  firing `onVerified?.(code)`) and rejecting every other code into the error state.
+  `onSubmit?.(code)` / `onVerified?.(code)` are the seams #1254 replaces the mock with. There
+  is no OTP issuance/verification endpoint yet (#1240's Sumsub `/v1/kyc/*` routes are
+  wallet-keyed, not email-account auth).
+- **Impact:** Anyone testing `/test?tab=auth` → "Open OTP screen" will see every code rejected,
+  which reads like a bug unless this doc/tracker entry is read first.
+- **Suggested fix:** #1254 (auth session/orchestration/wiring) replaces the mock timer with a
+  real verification call once the backend endpoint exists.
+
+### TD-61: `AuthModalShell` top-aligns while every KYB Figma frame centres its content column
+
+- **Date:** 2026-09-17
+- **Location:** `packages/frontend/src/components/AuthModalShell.tsx`.
+- **Gap:** Every KYB Figma frame (sign-in `6486:81615` y=186/h=544, OTP, company-docs `6486:81679`
+  y=140/h=636, account-in-review `6486:81745` y=224/h=468) vertically centres its 400px content
+  column. `AuthModalShell` top-aligns it (`items-center justify-start` on the flex parent) because
+  the shell was lifted verbatim from `ConnectWalletModal`. Issue #1250 added an opt-in
+  `align?: "start" | "center"` prop (default `"start"`) rather than silently re-laying-out the
+  already-reviewed `SignInModal`/`CreateAccountModal` screens, and uses `align="center"` only for
+  `OtpModal`.
+- **Impact:** `SignInModal`/`CreateAccountModal` remain slightly off from their Figma frames'
+  vertical centering pending a design decision on whether to follow OTP's opt-in.
+- **Suggested fix:** A designer/QA pass decides whether #1248/#1249 should also set
+  `align="center"`; if so, flip their default or pass the prop explicitly, then consider whether
+  `align` should default to `"center"` repo-wide once no consumer relies on `"start"`.
+
 ---
 
 ## Post-MVP

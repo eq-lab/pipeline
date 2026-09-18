@@ -123,6 +123,8 @@
   --text-pipeline-body--line-height: 22px;
   --text-pipeline-caption: 12px;
   --text-pipeline-caption--line-height: 16px;
+  --text-pipeline-body-s: 14px;
+  --text-pipeline-body-s--line-height: 18px;
 
   /* Weights and tracking */
   --font-weight-regular: 400;
@@ -215,6 +217,8 @@
   --text-pipeline-body--line-height: 22px; /* font/line-height/body */
   --text-pipeline-caption: 12px; /* font/font-size/caption */
   --text-pipeline-caption--line-height: 16px; /* font/line-height/caption */
+  --text-pipeline-body-s: 14px; /* font style "Body S" — KYB OTP error caption; Figma node 6486:81875 (issue #1250) */
+  --text-pipeline-body-s--line-height: 18px; /* font/line-height/body-s */
 
   /* --- Typography: weights and tracking --- */
 

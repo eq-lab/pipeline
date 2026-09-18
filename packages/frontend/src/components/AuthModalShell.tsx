@@ -57,6 +57,28 @@ function CloseIcon() {
   );
 }
 
+// ── Back-arrow icon ───────────────────────────────────────────────────────────
+
+function ArrowLeftIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      width={24}
+      height={24}
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M3.46967 11.4697C3.17678 11.7626 3.17678 12.2374 3.46967 12.5303L9.46967 18.5303C9.76256 18.8232 10.2374 18.8232 10.5303 18.5303C10.8232 18.2374 10.8232 17.7626 10.5303 17.4697L5.81066 12.75H20C20.4142 12.75 20.75 12.4142 20.75 12C20.75 11.5858 20.4142 11.25 20 11.25H5.81066L10.5303 6.53033C10.8232 6.23744 10.8232 5.76256 10.5303 5.46967C10.2374 5.17678 9.76256 5.17678 9.46967 5.46967L3.46967 11.4697Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 // ── Right image panel (desktop only) ─────────────────────────────────────────
 
 function RightImagePanel() {
@@ -111,6 +133,11 @@ export interface AuthModalShellProps {
   headingId: string;
   testId: string;
   children: React.ReactNode;
+  description?: string;
+  showImagePanel?: boolean;
+  showCloseButton?: boolean;
+  onBack?: () => void;
+  align?: "start" | "center";
 }
 
 // ── Shell component ───────────────────────────────────────────────────────────
@@ -122,6 +149,11 @@ export function AuthModalShell({
   headingId,
   testId,
   children,
+  description,
+  showImagePanel = true,
+  showCloseButton = true,
+  onBack,
+  align = "start",
 }: AuthModalShellProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -187,42 +219,83 @@ export function AuthModalShell({
         data-testid={testId}
       >
         <div className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-6 py-10 lg:px-8 lg:py-12">
-          <div className="flex w-full max-w-[400px] flex-col gap-6">
-            <h2
-              id={headingId}
-              className={[
-                "m-0",
-                "font-[family-name:var(--font-display)]",
-                "text-[length:var(--text-pipeline-heading-l)]",
-                "leading-[var(--text-pipeline-heading-l--line-height)]",
-                "font-[var(--font-weight-regular)]",
-                "text-[color:var(--color-pipeline-ink)]",
-              ].join(" ")}
-            >
-              {heading}
-            </h2>
+          <div
+            className={[
+              "flex w-full max-w-[400px] flex-col gap-6",
+              align === "center" ? "my-auto" : "",
+            ].join(" ")}
+          >
+            <div className="flex flex-col gap-2">
+              <h2
+                id={headingId}
+                className={[
+                  "m-0",
+                  "font-[family-name:var(--font-display)]",
+                  "text-[length:var(--text-pipeline-heading-l)]",
+                  "leading-[var(--text-pipeline-heading-l--line-height)]",
+                  "font-[var(--font-weight-regular)]",
+                  "text-[color:var(--color-pipeline-ink)]",
+                ].join(" ")}
+              >
+                {heading}
+              </h2>
+
+              {description ? (
+                <p
+                  className={[
+                    "m-0",
+                    "font-[family-name:var(--font-body)]",
+                    "text-[length:var(--text-pipeline-body)]",
+                    "leading-[var(--text-pipeline-body--line-height)]",
+                    "text-[color:var(--color-pipeline-ink)]",
+                  ].join(" ")}
+                >
+                  {description}
+                </p>
+              ) : null}
+            </div>
 
             {children}
           </div>
         </div>
 
-        <RightImagePanel />
+        {showImagePanel !== false ? <RightImagePanel /> : null}
 
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onDismiss}
-          className={[
-            "absolute top-4 right-4 z-10",
-            "flex h-8 w-8 items-center justify-center",
-            "rounded-[var(--radius-pipeline-card)]",
-            "text-[color:var(--color-pipeline-ink)]",
-            "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
-            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
-          ].join(" ")}
-        >
-          <CloseIcon />
-        </button>
+        {showCloseButton !== false ? (
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onDismiss}
+            className={[
+              "absolute top-4 right-4 z-10",
+              "flex h-8 w-8 items-center justify-center",
+              "rounded-[var(--radius-pipeline-card)]",
+              "text-[color:var(--color-pipeline-ink)]",
+              "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
+            ].join(" ")}
+          >
+            <CloseIcon />
+          </button>
+        ) : null}
+
+        {onBack ? (
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={onBack}
+            className={[
+              "absolute top-4 left-4 z-10",
+              "flex h-8 w-8 items-center justify-center",
+              "rounded-[var(--radius-pipeline-card)]",
+              "text-[color:var(--color-pipeline-ink)]",
+              "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
+            ].join(" ")}
+          >
+            <ArrowLeftIcon />
+          </button>
+        ) : null}
       </div>
     </div>
   );
