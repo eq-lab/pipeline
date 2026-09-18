@@ -423,7 +423,10 @@ subtitle container is hidden on both frames, and the explanatory line lives in t
    copy reproduces the 76px), containing the banner copy
    "Upload ID and proof of address documents for each owner" and a 20px hint glyph. The glyph is
    a `<button aria-label="More information" aria-describedby={tooltipId}>` that shows a
-   `role="tooltip"` on `mouseenter`/`focus` (hidden on `mouseleave`/`blur`), positioned
+   `role="tooltip"` on `mouseenter` only (hidden on `mouseleave`; hover-only per the 2026-09-18
+   user direction — focus deliberately does not trigger it, since the shell's open-time
+   auto-focus lands on this button and showed the tooltip on open; keyboard access is part of
+   the TD-65 design pass), positioned
    `absolute bottom-full` above the glyph, copy verbatim from node `6486:82392`:
 
    > You could upload a passport, ID card, or driver’s licence, plus a recent (no older than 90

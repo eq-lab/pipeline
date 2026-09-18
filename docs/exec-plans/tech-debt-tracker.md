@@ -1038,9 +1038,11 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Gap:** The hint tooltip (Figma node `6486:82392`) is a loose canvas instance, not a child of
   either Owners frame — it specifies only the tooltip's copy and dimensions, not how it is
   triggered, how far it sits from the glyph, or whether it has an arrow/caret.
-- **Impact:** Shipped as hover/focus (`mouseenter`/`focus` show, `mouseleave`/`blur` hide), 8px
-  above the glyph (`mb-2`), no arrow, and with no Escape handler (the shell owns Escape in the
-  capture phase and would close the modal instead of just the tooltip).
+- **Impact:** Shipped as hover-only (`mouseenter` show, `mouseleave` hide; focus deliberately
+  not a trigger — the shell's open-time auto-focus lands on this button and showed the tooltip
+  on open, per user direction 2026-09-18 — so keyboard users currently cannot reach the tooltip
+  content), 8px above the glyph (`mb-2`), no arrow, and with no Escape handler (the shell owns
+  Escape in the capture phase and would close the modal instead of just the tooltip).
 - **Suggested fix:** A designer pass should attach the tooltip node to the Owners frame directly
   and specify trigger/offset/arrow explicitly.
 

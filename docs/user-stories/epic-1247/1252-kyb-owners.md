@@ -18,7 +18,7 @@ visual fidelity is verified separately by the QA agent's Figma comparison.
 - TD-64: the drop-zone subtitle binds to a misspelled, non-namespaced legacy Figma variable;
   shipped with the existing muted-ink token — not a bug to file.
 - TD-65: the banner's hint tooltip is a loose canvas instance with no specified trigger, offset,
-  or arrow; shipped as hover/focus, no arrow — not a bug to file.
+  or arrow; shipped as hover-only, no arrow — not a bug to file.
 - TD-66: Submit enables at ≥1 file because the design provides no owner count or per-owner
   grouping — not a bug to file.
 - TD-67: the drop zone's drag-over and rejection states have no Figma treatment; both reuse
@@ -118,7 +118,7 @@ See `docs/exec-plans/tech-debt-tracker.md` for full detail on each entry.
 
 **Steps:**
 
-1. Hover over (or tab-focus) the info glyph in the banner.
+1. Hover over the info glyph in the banner (tab-focus deliberately does not show it — TD-65).
 
 **Expected outcomes:**
 

@@ -1,4 +1,4 @@
-// spec: docs/frontend/auth-components.md#ownersmodal (banner + hover/focus
+// spec: docs/frontend/auth-components.md#ownersmodal (banner + hover-only
 // tooltip, copy verbatim; Figma nodes 6486:81710, 6486:82392)
 import { useId, useState } from "react";
 
@@ -64,8 +64,6 @@ export function KybInfoBanner({ children, tooltip }: KybInfoBannerProps) {
             aria-describedby={tooltipId}
             onMouseEnter={() => setVisible(true)}
             onMouseLeave={() => setVisible(false)}
-            onFocus={() => setVisible(true)}
-            onBlur={() => setVisible(false)}
             className="flex items-center justify-center text-[color:var(--color-pipeline-ink-subtle)]"
           >
             <InfoIcon />

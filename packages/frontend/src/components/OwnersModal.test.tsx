@@ -202,7 +202,7 @@ describe("OwnersModal — reopen resets everything", () => {
 });
 
 describe("OwnersModal — tooltip", () => {
-  it("shows on hover/focus, hides on leave/blur, and is aria-describedby linked", () => {
+  it("is hidden on open, shows on hover only, and is aria-describedby linked", () => {
     renderModal();
     const hint = screen.getByRole("button", { name: "More information" });
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
@@ -218,8 +218,6 @@ describe("OwnersModal — tooltip", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 
     fireEvent.focus(hint);
-    expect(screen.getByRole("tooltip")).toBeInTheDocument();
-    fireEvent.blur(hint);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });
