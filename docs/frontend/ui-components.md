@@ -594,6 +594,55 @@ All path data is lifted verbatim from the SVG assets in `packages/ui/src/assets/
 <IconButton icon={<NavIcon name="home" />} label="Home" active />
 ```
 
+## OtpInput
+
+**Source:** `packages/ui/src/components/OtpInput/OtpInput.tsx` + `useOtpInput.ts`.
+**Figma:** `input-otp` component, nodes `8926:9304`–`8926:9309`. **Consumer:**
+`packages/frontend/src/components/OtpModal.tsx` (issue #1250).
+
+A six-box one-time-code input. Reproduces Figma's caret-in-the-active-box behaviour with **one
+real `<input>` absolutely positioned over six presentational boxes**, not six separate inputs —
+this gets paste, mobile SMS autofill (`autocomplete="one-time-code"`), and backspace for free, and
+keeps a modal's focus trap down to a single focusable element. The real input is
+`opacity-0` (not `hidden`/`sr-only`), so clicking any box still focuses it; the native caret stays
+invisible and the visible caret is a hand-drawn element in the active box instead.
+
+### Props
+
+```ts
+export interface OtpInputProps {
+  value: string;
+  onChange: (next: string) => void;
+  length?: number; // default 6
+  invalid?: boolean;
+  "aria-label"?: string; // default "Verification code"
+}
+```
+
+`onChange` receives the sanitised string, not the event — the sanitiser
+(`value.replace(/\D/g, "").slice(0, length)`) drops non-digits and truncates to `length`, so
+`123456`, `12 34 56`, `123-456`, and `1234567` (pasted) all resolve to `123456`.
+
+### Figma → token mapping
+
+| Element | Value | Figma binding |
+| --- | --- | --- |
+| Box | `h-16` (64px), `flex-1 min-w-0`, `rounded-[var(--radius-pipeline-card)]` (4px), `px-3`, `gap-2` (8px) between boxes | `radius-16` → 4px; `gap-xs` |
+| Box fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
+| Box fill, invalid | `--color-pipeline-negative-secondary` | `fill/negative-secondary` |
+| Active-box border | `border border-solid border-[color:var(--color-pipeline-ink-subtle)]` (only the box at `index === value.length`, and only while focused and not `invalid`) | `border-test/primary` |
+| Digit | `text-[24px] leading-[28px]` (raw literal, not a named Figma variable), `--font-display`, `--font-weight-regular` | 24/28 |
+| Digit, invalid | `--color-pipeline-negative-strong` | `content-test/negative` |
+| Caret | 28×1 (`h-7 w-px rounded-[1px]`), `--color-pipeline-ink`, static (no blink animation — the frame shows it static) | `.cursor` |
+
+### Accessibility
+
+The active-box border and caret are the only visible focus indicator, since the real `<input>` is
+invisible; `aria-label` defaults to `"Verification code"`; `aria-invalid` is set on the `<input>`
+when `invalid`. Component tests live in the LP app at
+`packages/frontend/src/components/OtpInput.dom.test.tsx`, following the `TextField.dom.test.tsx`
+precedent — `@pipeline/ui` has no test runner of its own.
+
 ## QuickAmountChip
 
 **Source:** `packages/ui/src/components/QuickAmountChip/QuickAmountChip.tsx`.

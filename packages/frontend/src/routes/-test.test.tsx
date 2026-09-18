@@ -323,6 +323,22 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
+  it("?tab=auth shows an Open OTP screen button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open otp screen/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens the OTP screen on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /open otp screen/i }));
+    expect(
+      screen.getByRole("dialog", { name: "Check your inbox" }),
+    ).toBeInTheDocument();
+  });
+
   it("?tab=foo (invalid) falls back to Status tab", () => {
     renderTestPage("foo");
     // Status sections visible

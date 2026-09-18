@@ -7,6 +7,7 @@ import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
 import { SignInModal } from "@/components/SignInModal";
 import { CreateAccountModal } from "@/components/CreateAccountModal";
+import { OtpModal } from "@/components/OtpModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -689,12 +690,15 @@ function ToastsTab(): React.JSX.Element {
 function AuthTab(): React.JSX.Element {
   const [signInOpen, setSignInOpen] = React.useState(false);
   const [createAccountOpen, setCreateAccountOpen] = React.useState(false);
+  const [otpOpen, setOtpOpen] = React.useState(false);
+  const [otpVerified, setOtpVerified] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
-        Preview seam for the KYB Sign-in (issue #1248) and Create-account (issue
-        #1249) modals. Not wired to any production entry point.
+        Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
+        #1249), and OTP (issue #1250) modals. Not wired to any production entry
+        point.
       </p>
       <div className="flex gap-2">
         <Button
@@ -711,11 +715,34 @@ function AuthTab(): React.JSX.Element {
         >
           Open Create Account modal
         </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setOtpOpen(true)}
+        >
+          Open OTP screen
+        </Button>
       </div>
+      {otpVerified && (
+        <p
+          data-testid="auth-otp-verified"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          OTP verified — the #1251 Company Docs step opens here once it exists.
+        </p>
+      )}
       <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
       <CreateAccountModal
         open={createAccountOpen}
         onDismiss={() => setCreateAccountOpen(false)}
+      />
+      <OtpModal
+        open={otpOpen}
+        onBack={() => setOtpOpen(false)}
+        onVerified={() => {
+          setOtpVerified(true);
+          setOtpOpen(false);
+        }}
       />
     </div>
   );
