@@ -1,7 +1,7 @@
 // spec: docs/frontend/dashboard-components.md#diagnostics-route
 // (tab layout, mocks activation flow, scope).
 import React from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
 import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
@@ -40,6 +40,9 @@ const TABS = [
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/test")({
+  beforeLoad: () => {
+    if (!ENV.IS_DEV) throw redirect({ to: "/" });
+  },
   validateSearch: (raw): { tab: TestTab } => {
     const t = raw.tab;
     const tab: TestTab =

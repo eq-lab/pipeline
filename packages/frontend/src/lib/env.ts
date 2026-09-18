@@ -216,6 +216,9 @@ export const ENV = Object.freeze({
    * static network label with no menu (see docs/frontend/wallet-flows.md).
    */
   NETWORK_LINKS: readString("VITE_NETWORK_LINKS", ""),
+
+  /** True only under the local Vite dev server — gates `/test` (#1259). */
+  IS_DEV: import.meta.env.DEV === true,
 });
 
 /**
