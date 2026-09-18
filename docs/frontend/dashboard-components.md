@@ -1563,6 +1563,10 @@ passphrases load the route normally.
 
 `/test` is a developer/manual-QA-only diagnostic page — intentionally **not** linked from `TopBar`.
 
+**Dev-only guard (#1259):** the route exists only under the local Vite dev server — `beforeLoad`
+redirects to `/` whenever `ENV.IS_DEV` is false, so the URL is dead on staging and prod builds.
+Manual QA and the ux-tester run against a local dev server, which is unaffected.
+
 **Three-tab layout**, driven by a TanStack Router search param (`?tab=status|mocks|toasts`; invalid values fall back to `"status"`; the active tab is reflected in the URL and survives reload):
 
 - **Status** (default) — read-only sections surfacing runtime state: ENV, Wallet, DepositManager, USDC balance, ERC-20 approval. No buttons; pure observability.
