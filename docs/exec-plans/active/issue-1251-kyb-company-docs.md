@@ -191,23 +191,25 @@ M11 1.83333C16.0626 1.83333 20.1667 5.93739 20.1667 11C20.1667 16.0626 16.0626 2
 
 ## Implementation Steps
 
-> **Status (2026-09-18): all steps implemented.** Gates green (ui+frontend lint, build,
-> 1715/1715 frontend tests, docs linter 0 errors). Step 9's Figma re-verification was cut short
-> by a machine-sleep interrupt — the extracted values in this plan were already double-sourced
-> (codegen + pixel sampling), and the visual pass falls to the live review and the epic #1255 QA.
+> **Status (2026-09-18): all 9 steps implemented and verified — [DONE].** Gates green (ui lint,
+> frontend lint, frontend build, 1715/1715 frontend tests, docs linter 0 errors). Step 9's Figma
+> re-verification (re-fetched via local Dev Mode MCP after a machine-sleep interrupt) confirmed
+> the plan's extracted values hold against both live frames — see the step-9 note below. The
+> full-app live-render comparison still falls to epic #1255's QA pass, which has DevTools/browser
+> access this coder run does not exercise.
 
 Reminder before writing any file: **comment-minimal is a hard rule** — at most one 2–3-line
 spec-pointer header per file (`// spec: docs/frontend/auth-components.md#… (Figma nodes …)`),
 nothing else. No field/function JSDoc, no body comments, no test comments.
 
-1. **Token.** `packages/ui/src/styles/theme.css` — add
+1. **Token — [DONE].** `packages/ui/src/styles/theme.css` — add
    `--color-pipeline-brand-secondary: rgb(0 0 128 / 0.08);` to **both** the `:root` block (~line
    78, beside `--color-pipeline-brand`) and the `@theme` block (~line 156), matching how
    `--color-pipeline-negative-secondary` is declared twice. In the `@theme` copy, append the
    inline provenance comment the file's other tokens carry:
    `/* KYB company-docs leading tile — sampled from Figma node 6486:81679 (issue #1251); no variable binding in the file's codegen */`.
 
-2. **Shell prop.** `packages/frontend/src/components/AuthModalShell.tsx` —
+2. **Shell prop — [DONE].** `packages/frontend/src/components/AuthModalShell.tsx` —
    add `stepLabel?: { current: number; total: number }` to `AuthModalShellProps`, defaulting to
    `undefined`. Render it last in the panel (after the close/back buttons), non-focusable:
 
@@ -225,7 +227,7 @@ nothing else. No field/function JSDoc, no body comments, no test comments.
    Every existing caller must render byte-identically without passing it. Do not touch any other
    shell behaviour.
 
-3. **State hook.** New `packages/frontend/src/components/useCompanyDocsModal.ts`:
+3. **State hook — [DONE].** New `packages/frontend/src/components/useCompanyDocsModal.ts`:
 
    - Export `COMPANY_DOCUMENT_SLOTS` as a `readonly` tuple of `{ id, label }`, ids
      `certificate-of-incorporation`, `registry-of-legal-entities`,
@@ -242,7 +244,7 @@ nothing else. No field/function JSDoc, no body comments, no test comments.
      `isComplete`, then calls `onSubmit?.(files as Record<CompanyDocumentSlotId, File>)`.
    - Reset all state on `open` `false → true`, matching `useAuthCredentialsForm`/`useOtpModal`.
 
-4. **Row component.** New `packages/frontend/src/components/DocumentUploadRow.tsx` — both glyphs
+4. **Row component — [DONE].** New `packages/frontend/src/components/DocumentUploadRow.tsx` — both glyphs
    (paths above, `fill="currentColor"`) plus the row:
 
    - `<li className="flex h-10 items-center gap-3">`.
@@ -260,7 +262,7 @@ nothing else. No field/function JSDoc, no body comments, no test comments.
    - Reset `input.value = ""` after each change so re-picking the same file after a removal still
      fires `change`.
 
-5. **Modal.** New `packages/frontend/src/components/CompanyDocsModal.tsx`:
+5. **Modal — [DONE].** New `packages/frontend/src/components/CompanyDocsModal.tsx`:
 
    ```tsx
    export interface CompanyDocsModalProps {
@@ -279,12 +281,12 @@ nothing else. No field/function JSDoc, no body comments, no test comments.
    `<ul role="list" className="flex w-full flex-col gap-6">` of five `DocumentUploadRow`s, then
    `<Button variant="primary-dark" disabled={!isComplete} onClick={handleSubmit} className="!w-full !min-w-0 disabled:opacity-[0.32]">Continue</Button>`.
 
-6. **Test-setup stub.** `packages/frontend/src/test-setup.ts` — define
+6. **Test-setup stub — [DONE].** `packages/frontend/src/test-setup.ts` — define
    `URL.createObjectURL`/`URL.revokeObjectURL` only when absent (jsdom ships neither), following
    the file's existing "probe, then install a stand-in" shape. Keep it minimal: a counter-based
    `blob:` string and a no-op revoke.
 
-7. **`/test` seam.** `packages/frontend/src/routes/test.tsx`, `AuthTab`:
+7. **`/test` seam — [DONE].** `packages/frontend/src/routes/test.tsx`, `AuthTab`:
 
    - Add `companyDocsOpen` state and a fourth `Button variant="secondary"` labelled
      `Open Company Docs step`, and render `<CompanyDocsModal open={companyDocsOpen} onDismiss={() => setCompanyDocsOpen(false)} onSubmit={() => { setCompanyDocsSubmitted(true); setCompanyDocsOpen(false); }} />`.
@@ -294,16 +296,26 @@ nothing else. No field/function JSDoc, no body comments, no test comments.
      `OTP verified — open the Company Docs step from the button above.`
    - Update the tab's intro `<p>` to name #1251 alongside #1248/#1249/#1250.
 
-8. **Lint/build gate.** `yarn workspace @pipeline/frontend exec tsc --noEmit`, eslint + prettier
-   on both touched packages, the full frontend vitest suite, the frontend build, and
-   `npx tsx scripts/lint-docs.ts`. `packages/ui` `tsc --noEmit` still fails on BUG-19 — confirm
-   the failure set is unchanged, do not fix it here.
+8. **Lint/build gate — [DONE].** `yarn workspace @pipeline/frontend exec tsc --noEmit`, eslint +
+   prettier on both touched packages, the full frontend vitest suite, the frontend build, and
+   `npx tsx scripts/lint-docs.ts`. `packages/ui` `tsc --noEmit` still fails on BUG-19 (same three
+   `TextField.stories.tsx` errors, confirmed unchanged) — not fixed here, as directed.
 
-9. **Figma re-verification.** Re-open `6486-81679` and `6486-81817` in Dev Mode and compare the
-   rendered `/test?tab=auth` screen against both: the five labels and captions, the step badge's
-   two-tone `Step 1/2`, the 40/12/24/32/64px rhythm, the leading tile tint, the `Upload` button's
-   border and 32px box, the remove glyph, and the Continue fill in both enabled and disabled
-   states. Record any divergence in the spec rather than silently deviating.
+9. **Figma re-verification — [DONE].** Re-fetched `get_screenshot` for `6486-81679` and
+   `6486-81817` via the local Dev Mode MCP (session re-established after the machine-sleep
+   interrupt). Confirmed against the fresh screenshots: both frames render the identical × close
+   button top-right (a prior eyeball pass over a small crop wrongly suspected it was hidden on
+   the uploaded frame — a 4x zoomed crop of both top-right corners shows the glyph present and
+   pixel-identical in both); the two-tone `Step 1/2` badge top-left; all five row labels and the
+   `pdf, jpg, png files up to 10MB` caption verbatim on every empty row; the navy-tinted leading
+   tile (consistent with the sampled `--color-pipeline-brand-secondary`); the bordered compact
+   `Upload` button; the uploaded rows' file-name titles + `Uploaded` captions + circular remove
+   glyph; and the Continue button's disabled-gray vs. filled-dark states. No new divergences
+   beyond the two already tracked (TD-62 rejection styling, TD-63 PDF-thumbnail vs. glyph tile)
+   and the already-documented stale-codegen tile-fill note. This was a static screenshot
+   comparison against the two named Figma nodes, not a live `/test?tab=auth` render — the coder
+   role does not drive a browser against the dev server; the full live-render pass is epic
+   #1255's QA agent (Chrome DevTools MCP).
 
 ## Test Strategy
 
