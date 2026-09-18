@@ -9,6 +9,7 @@ import { SignInModal } from "@/components/SignInModal";
 import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { OtpModal } from "@/components/OtpModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
+import { OwnersModal } from "@/components/OwnersModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -695,13 +696,15 @@ function AuthTab(): React.JSX.Element {
   const [otpVerified, setOtpVerified] = React.useState(false);
   const [companyDocsOpen, setCompanyDocsOpen] = React.useState(false);
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
+  const [ownersOpen, setOwnersOpen] = React.useState(false);
+  const [ownersSubmitted, setOwnersSubmitted] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
         Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
-        #1249), OTP (issue #1250), and Company Docs (issue #1251) modals. Not
-        wired to any production entry point.
+        #1249), OTP (issue #1250), Company Docs (issue #1251), and Owners (issue
+        #1252) modals. Not wired to any production entry point.
       </p>
       <div className="flex gap-2">
         <Button
@@ -732,6 +735,13 @@ function AuthTab(): React.JSX.Element {
         >
           Open Company Docs step
         </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setOwnersOpen(true)}
+        >
+          Open Owners step
+        </Button>
       </div>
       {otpVerified && (
         <p
@@ -746,8 +756,17 @@ function AuthTab(): React.JSX.Element {
           data-testid="auth-company-docs-submitted"
           className="text-sm text-[color:var(--color-pipeline-positive)]"
         >
-          Company documents submitted — the #1252 Owners step opens here once it
-          exists.
+          Company documents submitted — open the Owners step from the button
+          above.
+        </p>
+      )}
+      {ownersSubmitted && (
+        <p
+          data-testid="auth-owners-submitted"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Owners submitted — the #1253 Account-in-review screen opens here once
+          it exists.
         </p>
       )}
       <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
@@ -769,6 +788,14 @@ function AuthTab(): React.JSX.Element {
         onSubmit={() => {
           setCompanyDocsSubmitted(true);
           setCompanyDocsOpen(false);
+        }}
+      />
+      <OwnersModal
+        open={ownersOpen}
+        onDismiss={() => setOwnersOpen(false)}
+        onSubmit={() => {
+          setOwnersSubmitted(true);
+          setOwnersOpen(false);
         }}
       />
     </div>

@@ -138,6 +138,7 @@
   --radius-pipeline-card: 4px;
   --radius-pipeline-card-sm: 6px; /* radius/radius-xl — segmented tab container; Figma node 3283:14480 */
   --radius-pipeline-card-lg: 16px;
+  --radius-pipeline-card-xs: 2px;
   --radius-pipeline-button: 4px;
   --radius-pipeline-pill: 9999px;
 }
@@ -237,6 +238,7 @@
   --radius-pipeline-card: 4px; /* radius/radius-s — card outer; node 1497:94556 */
   --radius-pipeline-card-sm: 6px; /* radius/radius-xl — segmented tab container; Figma node 3283:14480 */
   --radius-pipeline-card-lg: 16px; /* radius/radius-l — input-section outer card; Figma 1498:100136 */
+  --radius-pipeline-card-xs: 2px; /* radius/radius-xxs — KYB owners drop zone; Figma node 6486:81710 (issue #1252) */
   --radius-pipeline-button: 4px; /* radius/radius-s — button radius */
   --radius-pipeline-pill: 9999px; /* round Staking Button — node 1497:94713 */
 }

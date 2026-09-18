@@ -1,6 +1,13 @@
 // spec: docs/frontend/auth-components.md#companydocsmodal (five fixed slots,
 // validation, no-op onSubmit seam; Figma nodes 6486:81679 / 6486:81817)
 import { useEffect, useState } from "react";
+import {
+  isAcceptedFile,
+  MAX_FILE_BYTES,
+  ACCEPTED_FILE_TYPES,
+} from "@/components/kybFileValidation";
+
+export { ACCEPTED_FILE_TYPES, MAX_FILE_BYTES };
 
 export const COMPANY_DOCUMENT_SLOTS = [
   { id: "certificate-of-incorporation", label: "Certificate of Incorporation" },
@@ -12,14 +19,6 @@ export const COMPANY_DOCUMENT_SLOTS = [
 
 export type CompanyDocumentSlotId =
   (typeof COMPANY_DOCUMENT_SLOTS)[number]["id"];
-
-export const ACCEPTED_FILE_TYPES = [
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-] as const;
-
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export interface UseCompanyDocsModalOptions {
   open: boolean;
@@ -33,26 +32,6 @@ export interface UseCompanyDocsModalResult {
   clearFile: (id: CompanyDocumentSlotId) => void;
   isComplete: boolean;
   handleSubmit: () => void;
-}
-
-function isAcceptedFile(file: File): boolean {
-  const type = file.type || inferTypeFromName(file.name);
-  return (ACCEPTED_FILE_TYPES as readonly string[]).includes(type);
-}
-
-function inferTypeFromName(name: string): string {
-  const ext = name.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf":
-      return "application/pdf";
-    case "jpg":
-    case "jpeg":
-      return "image/jpeg";
-    case "png":
-      return "image/png";
-    default:
-      return "";
-  }
 }
 
 export function useCompanyDocsModal({
