@@ -105,8 +105,8 @@ intentional, not a bug to file.
 - The resend line keeps counting down; once the 59 seconds elapse it reads "Resend".
 
 Entering `123456` instead succeeds (TD-60 mock): the modal closes and the preview page shows the
-stand-in confirmation line ("OTP verified — the #1251 Company Docs step opens here once it
-exists"). Neither behavior is a bug to file.
+stand-in confirmation line ("OTP verified — open the Company Docs step from the button above.").
+Neither behavior is a bug to file.
 
 ---
 

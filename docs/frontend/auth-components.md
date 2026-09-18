@@ -3,7 +3,7 @@
 LP-facing email+password authentication modals for epic #1247 (KYB login flow). This is a new
 area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds five more screens
 (#1251 Company Docs, #1252 Owners, #1253 Account-in-review) beyond #1249 (Create-account)
-and #1250 (OTP), both documented below — same reasoning as `wallet-flows.md` /
+and #1250 (OTP), all documented below — same reasoning as `wallet-flows.md` /
 `trustee-flows.md`.
 
 **No production entry point changes in this epic yet.** These modals are reachable only from the
@@ -54,6 +54,7 @@ so `SignInModal` renders byte-identical without passing any of them:
 | `showCloseButton?: boolean` | `true` | `false` omits the `×` close button. |
 | `onBack?: () => void` | `undefined` | When set, renders a back `<button aria-label="Back">` (24×24 arrow-left icon, Figma node `6486:81678`) at `top-4 left-4` (glyph lands at (20, 20)) — the mirror of the close button. Rendered **after** `{children}` and `<RightImagePanel />` in DOM order, so the shell's auto-focus-first-descendant effect still lands on content, not the back button. |
 | `align?: "start" \| "center"` | `"start"` | `"center"` appends `my-auto` to the content column (vertical centering via margin, not `justify-center` on the parent, so `overflow-y-auto` stays scroll-safe on short viewports). |
+| `stepLabel?: { current: number; total: number }` | `undefined` | Added by #1251. Renders a non-focusable `Step {current}` (ink) + `/{total}` (ink-muted) badge at `top-4 left-4` — a step indicator, not navigation (no progress bar, no logo, no back arrow). `CompanyDocsModal` uses `{ current: 1, total: 2 }`; #1252's Owners screen reuses it verbatim at `{ current: 2, total: 2 }`. **Mutually exclusive with `onBack`** — both occupy `top-4 left-4` and no Figma frame in this epic shows both together; passing both is undefined layout, not validated at runtime. |
 
 The OTP screen (`OtpModal`, below) hides both the image pane and the close button and uses the
 back arrow as its only dismiss affordance, since Figma hides the shell's Close Icon instance for
@@ -268,11 +269,120 @@ this frame — a non-interactive arrow would trap the preview); on open, focus l
 input (rendered before the back button in DOM order), not the back button; the loader and error
 caption use `role="status"`/`role="alert"` respectively.
 
+### CompanyDocsModal
+
+`packages/frontend/src/components/CompanyDocsModal.tsx` +
+`packages/frontend/src/components/useCompanyDocsModal.ts` +
+`packages/frontend/src/components/DocumentUploadRow.tsx`. The KYB Company Docs upload step —
+presentational only, **no network call, no persistence**. Files live in React state as `File`
+objects for the lifetime of the open modal; closing/reopening discards them. `onSubmit` is a seam
+for #1254 (defaults to a no-op).
+
+Visual specs (Figma, file `A43rjYYjSwdTmiwwf5cx5n`):
+
+- Empty: node `6486-81679`.
+- Uploaded: node `6486-81817`.
+- Step-badge chrome: `6486:81697` (empty) / `6486:81835` (uploaded).
+
+Both frames wrap the same `Sign In` component (`8550:10210` content pane / `8550:10546` image
+pane) as `SignInModal`/`CreateAccountModal`, with the image pane hidden and the "header/
+Navigation/Buttons" chrome reduced to just the `Step 1/2` label — the `Navigation` and `Buttons`
+frames it contains are empty and its logo/button-icon instances are hidden.
+
+Composition inside `AuthModalShell` (heading "Finish account setup", description "Upload your
+company documents so we can verify your account.", `headingId` `company-docs-modal-heading`,
+`testId` `company-docs-modal`, `showImagePanel={false}`, `align="center"`,
+`stepLabel={{ current: 1, total: 2 }}`, default close button, no `onBack`):
+
+1. **Five fixed upload rows** (`<ul role="list">`), verbatim labels and order:
+   `Certificate of Incorporation`, `Registry of Legal Entities`, `Certificate of Good Standing`,
+   `Legal Address`, `Shareholder Register`. Empty-row caption, identical on all five:
+   `pdf, jpg, png files up to 10MB`. Uploaded-row caption: `Uploaded`.
+2. **Continue** — `Button variant="primary-dark"` (fill `#262524`, **not** `primary-blue` — the
+   sign-in submit is navy, this one is not), full width, disabled at `opacity-[0.32]` until all
+   five slots hold a file. Removing any file re-disables it. `onClick` calls
+   `onSubmit?.(documents)` where `documents` is `Record<CompanyDocumentSlotId, File>` — a no-op
+   seam exactly like `SignInModal.onSubmit`/`OtpModal.onSubmit`.
+
+**Upload affordance — per-row file picker, no drag-and-drop.** Neither Figma frame contains a
+drop zone or "drag files here" copy. Each row carries its own visually hidden, single-file
+`<input type="file" accept="application/pdf,image/jpeg,image/png">` triggered by a
+`Button variant="secondary" size="compact"` labelled "Upload" (`border` override using
+`--color-pipeline-line` — the shared `secondary`/`compact` combination already matches the
+frame's 32px box and border token with no other overrides needed).
+
+**Uploaded-row visual, per file type:**
+
+- `image/jpeg` / `image/png`: a 40×40 `object-cover` `<img>` from `URL.createObjectURL(file)`,
+  revoked on replace/remove/unmount (`useEffect` in `DocumentUploadRow`, guarded on
+  `typeof URL.createObjectURL === "function"` so SSR/jsdom never throws).
+- `application/pdf` (and whenever `URL.createObjectURL` is unavailable): the same brand-tint
+  glyph tile as the empty state. Figma's uploaded frame shows a rendered PDF-page thumbnail (a
+  mock PNG asset) that this repo cannot reproduce without a PDF renderer — divergence tracked as
+  **TD-63**.
+- The empty-state glyph tile is `size-10 rounded-[var(--radius-pipeline-card)]`, filled with the
+  new `--color-pipeline-brand-secondary` token and the 20px `file-upload` glyph in
+  `--color-pipeline-brand`.
+- The uploaded row's leading empty→filled transition also swaps the trailing `Upload` button for
+  a 32×32 remove `<button>` carrying the 22px `cross-circle` glyph in `--color-pipeline-ink-muted`.
+
+**Validation** (enforced, not decorative):
+
+- Reject when the MIME type is outside `{application/pdf, image/jpeg, image/png}` (falling back
+  to the filename extension when `file.type` is empty) or when `file.size` exceeds
+  `MAX_FILE_BYTES` (10MB).
+- On rejection the slot stays empty and its caption — the same string,
+  `pdf, jpg, png files up to 10MB` — recolors to `--color-pipeline-negative-strong` with
+  `role="alert"`. It reverts to `ink-muted` on the next accepted file for that slot, or when the
+  modal reopens. Neither Figma frame designs a rejection state; this reuses the row's existing
+  caption copy rather than inventing new copy or layout — tracked as **TD-62**.
+
+**Figma → token mapping** (confirmed via `get_design_context` + node geometry, not estimated):
+
+| Element | Figma | Repo token |
+| --- | --- | --- |
+| Row title | Body 16/22, `content-test/primary`, `truncate` | `--color-pipeline-ink` |
+| Row caption | Caption 12/16, `content-test/secondary` | `--color-pipeline-ink-muted` |
+| Leading tile fill | sampled `rgb(0 0 128 / 0.08)` (Figma codegen is stale here — it emits a `#262524` fill with an `#8FB3A4` glyph, but the rendered frame is navy-tinted; the sampled value matches the screenshot exactly composited over `--color-pipeline-paper`) | **new** `--color-pipeline-brand-secondary` |
+| Leading glyph | `content-test/brand` `#000080` | `--color-pipeline-brand` |
+| Leading tile radius | `radius/radius-s` 4px | `--radius-pipeline-card` |
+| `Upload` button | 32px box, 1px `border-test/secondary` `rgba(56,55,53,0.18)`, radius 4, Body Emphasized ink | `Button variant="secondary" size="compact"` + `border border-[color:var(--color-pipeline-line)]` |
+| Remove glyph | 22px `cross-circle`, `#323837` @ 0.6 | `--color-pipeline-ink-muted` (no new token — same one-channel-order artifact #1248 already resolved this way) |
+| Continue fill | `fill-test/primary` `#262524` | `Button variant="primary-dark"` |
+| Continue label | `content-test/primary-on-invert` | `--color-pipeline-on-dark` (variant default) |
+| Continue disabled | `opacity-32` | `disabled:opacity-[0.32]`, same as `SignInModal`/`CreateAccountModal` |
+| Step badge | Body Emphasized 16/22; `Step 1` `content-test/primary`, `/2` `rgba(56,55,53,0.6)` | `--color-pipeline-ink` / `--color-pipeline-ink-muted` |
+
+The `--color-pipeline-brand-secondary` token has no Figma variable binding in the file's codegen
+— it is sampled from the rendered screenshot, not name-bound. Risk noted here for the next QA
+Figma comparison pass.
+
+**Icons.** `file-upload` (20×20) and `cross-circle` (22×22, `fillRule="evenodd" clipRule="evenodd"`
+— load-bearing, it knocks the × out of the filled disc) are the exact Figma-exported SVG paths, no
+hand-authored vectors.
+
+**Out of scope.** Any real upload, storage, progress, or retry; wiring OTP → Company Docs → Owners
+as a sequence (that is #1254's flow orchestration — the `/test` seam deliberately keeps this and
+the OTP trigger independent, since the shell's scroll-lock/Escape handling is not stack-safe); the
+LP header entry point (a future Figma, per epic #1247 decision 2026-09-17); promoting
+`DocumentUploadRow` to `@pipeline/ui` (the Owners frame uses a different `uploader` component, so
+there is no second consumer).
+
+**Accessibility:** `<ul role="list">` of five rows; hidden file inputs each paired with a labelled
+`Upload {label}`/`Remove {file.name}` button so the picker and remove affordances stay operable
+via the accessibility tree; rejection captions carry `role="alert"`.
+
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders three
-trigger buttons opening `SignInModal` (#1248), `CreateAccountModal` (#1249), and `OtpModal`
-(#1250), each with every seam left at its no-op default except `OtpModal.onVerified`, which shows
-the stand-in confirmation line. The screens are never stacked — the shell's body-scroll-lock and
-capture-phase Escape are not stack-safe (see the shell caveats above). This does not touch
-`TopBar`, `ConnectModalProvider`, or any of the six production `openConnectModal` call sites.
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders four
+trigger buttons opening `SignInModal` (#1248), `CreateAccountModal` (#1249), `OtpModal` (#1250),
+and `CompanyDocsModal` (#1251), each with every seam left at its no-op default except
+`OtpModal.onVerified` and `CompanyDocsModal.onSubmit`, which show stand-in confirmation lines.
+The OTP trigger is independent of the Company Docs trigger — entering a valid code shows
+"OTP verified — open the Company Docs step from the button above." rather than auto-opening it,
+since the shell's body-scroll-lock and capture-phase Escape are not stack-safe (see the shell
+caveats above) and stacking two of these modals is exactly the untested path a chained transition
+would exercise. Submitting all five Company Docs uploads shows
+"Company documents submitted — the #1252 Owners step opens here once it exists." This does not
+touch `TopBar`, `ConnectModalProvider`, or any of the six production `openConnectModal` call
+sites.
