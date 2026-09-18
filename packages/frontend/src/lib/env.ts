@@ -217,10 +217,7 @@ export const ENV = Object.freeze({
    */
   NETWORK_LINKS: readString("VITE_NETWORK_LINKS", ""),
 
-  /**
-   * True only under the local Vite dev server. Gates the `/test` diagnostics
-   * route (#1259) — false in every production build (staging and prod).
-   */
+  /** True only under the local Vite dev server — gates `/test` (#1259). */
   IS_DEV: import.meta.env.DEV === true,
 });
 
