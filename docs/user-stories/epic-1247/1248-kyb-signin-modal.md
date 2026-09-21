@@ -160,21 +160,23 @@ out of scope here — visual fidelity is verified separately by the QA agent's F
 
 ---
 
-## Story 9: "Continue with wallet", "Forgot password?", and "Create account" are inert
+## Story 9: "Continue with wallet" and "Forgot password?" are real buttons; "Create account" stays inert
 
-**Persona:** Developer verifying the "presentational only" scope of #1248.
+**Persona:** Developer verifying the "presentational only" scope of #1248, updated for #1280.
 
-**Pre-conditions:** Sign In modal open.
+**Pre-conditions:** Sign In modal open, reachable via `/test?tab=auth`.
 
 **Steps:**
 
 1. Click "Continue with wallet".
-2. Click "Forgot password?" text.
+2. Click "Forgot password?".
 3. Click "Create account" text.
 
 **Expected outcomes:**
 
 - "Continue with wallet" is a real button but its default handler is a no-op (the wallet
   chooser wiring belongs to #1254).
-- "Forgot password?" and "Create account" render as plain, non-interactive text — clicking them
-  does nothing (no sub-issue owns "Forgot password?" in this epic; "Create account" is #1249).
+- "Forgot password?" is a real button: on the `/test` preview it closes the Sign in screen and
+  opens the Forgot Password screen (#1280) in its place — never both at once.
+- "Create account" still renders as plain, non-interactive text — clicking it does nothing (that
+  cross-link is #1265's job).

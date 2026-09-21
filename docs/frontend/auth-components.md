@@ -2,9 +2,9 @@
 
 LP-facing email+password authentication modals for epic #1247 (KYB login flow). This is a new
 area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds four more screens
-(#1251 Company Docs, #1253 Account-in-review) beyond #1249 (Create-account) and #1250 (OTP), all
-documented below — same reasoning as `wallet-flows.md` / `trustee-flows.md`. #1252 (Owners) shipped
-and was later retired — see `### OwnersModal` below.
+(#1251 Company Docs, #1253 Account-in-review) beyond #1249 (Create-account), #1250 (OTP), and
+#1280 (Forgot Password), all documented below — same reasoning as `wallet-flows.md` /
+`trustee-flows.md`. #1252 (Owners) shipped and was later retired — see `### OwnersModal` below.
 
 #1253's Issue body also named a "review banner" deliverable. It does not exist in the
 source-of-truth Figma section — see `### AccountInReviewModal` below and TD-69
@@ -66,7 +66,8 @@ The OTP screen (`OtpModal`, below) hides both the image pane and the close butto
 back arrow as its only dismiss affordance, since Figma hides the shell's Close Icon instance for
 that frame. See tech debt **TD-61** for the vertical-centering divergence: every KYB Figma frame
 centres its content column, but `SignInModal`/`CreateAccountModal` still top-align pending a
-design decision — only `OtpModal` opts into `align="center"` so far.
+design decision — `OtpModal`, `AccountInReviewModal`, and `ForgotPasswordModal` all opt into
+`align="center"`.
 
 ### Shared form parts
 
@@ -111,8 +112,11 @@ Composition inside `AuthModalShell` (heading "Sign in", `headingId`
    frames render "Sign In"). Disabled fill is the brand color at `opacity-[0.32]`, confirmed by
    `get_design_context` (`opacity-32` class on the Figma-exported node) rather than a separately
    sampled color.
-5. **"Forgot password?"** — renders as inert text (no `<button>`, no handler) — it has no
-   destination frame in the "KYB Onboarding" file and no sub-issue.
+5. **"Forgot password?"** — a real `<button type="button" onClick={onForgotPassword}>` since
+   #1280: that screen now exists and is the button's destination. #1248 shipped this as inert
+   text specifically because "it has no destination frame … and no sub-issue" — both conditions
+   are now false. `onForgotPassword` defaults to a no-op (undefined ⇒ harmless click); the
+   `/test` preview wires it to open `ForgotPasswordModal` (see "ForgotPasswordModal" below).
 6. **"New here? Create account"** — also inert text in #1248 and unwired in #1249's
    `CreateAccountModal` counterpart ("Already have an account? Log in") — the cross-link between
    the two modals is #1254's job.
@@ -163,8 +167,9 @@ SVG paths (via `get_design_context`, which recovered on retry after initially ha
 exec plan's Figma-access note) — no hand-authored vector paths.
 
 **Accessibility:** first `<form>` element in the repo. `aria-invalid` on `TextField`'s `<input>`
-(also a repo first — see `ui-components.md#textfield`). "Forgot password?"/"Create account" are
-plain text, not focusable, since they are inert in this issue.
+(also a repo first — see `ui-components.md#textfield`). Since #1280, "Forgot password?" is a
+focusable `<button>`; "Create account" remains plain text, not focusable, since it is still inert
+(that cross-link is #1265's job).
 
 ### CreateAccountModal
 
@@ -220,6 +225,74 @@ no new tokens, no new glyphs.
 
 **Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
 `TextField`, inert footer text (not focusable).
+
+### ForgotPasswordModal
+
+`packages/frontend/src/components/ForgotPasswordModal.tsx` + `useForgotPasswordForm.ts`. The
+email-only password-reset request screen — presentational only, **no network call**; `onSubmit`
+is a no-op seam for #1265, matching the pattern every other screen in this epic uses.
+
+**One frame, one state.** Figma (`6704-107100`, section `6486:81556` "V1.0 — KYB & Wire
+transfers") has no `— Enable` and no `— Validation error` companion for this screen, and no
+confirmation / "check your email" / "set a new password" frame exists anywhere in the section (a
+full child enumeration was done during planning). A flow connector (`6704:107291`) runs
+Sign in → Forgot Password; nothing leaves Forgot Password in the design.
+
+Composition inside `AuthModalShell` (heading "Reset your password", `headingId`
+`forgot-password-modal-heading`, `testId` `forgot-password-modal`, `align="center"` — the only
+non-default shell prop), top to bottom:
+
+1. **Email field** — one `TextField` (`type="email"`, placeholder "Enter corporate email"), no
+   label, no helper text, no password field.
+2. **Submit** — `Button variant="primary-blue" type="submit"`, full width, label "Send Reset
+   Link", disabled at `opacity-[0.32]` until the email is well-formed — same treatment as
+   `SignInModal`'s submit.
+3. **Footer** — one caption line, centered: `"Remembered it? "` (`--color-pipeline-ink-muted`,
+   trailing space is part of the string) + an inline `<button type="button"
+   onClick={onBackToSignIn}>Back to sign in</button>` (`--color-pipeline-ink`, **regular**
+   weight — Figma renders it without `--font-weight-emphasized`, unlike `SignInModal`'s "Create
+   account" span).
+
+**No wallet button and no OR divider.** `AuthModalParts` is not imported — both parts
+`SignInModal`/`CreateAccountModal` share are absent from this frame.
+
+**Figma → token mapping.** Every value on the frame maps onto tokens already in
+`packages/ui/src/styles/theme.css` (`--color-pipeline-paper`, `--color-pipeline-surface`,
+`--color-pipeline-brand`, `--color-pipeline-ink`, `--color-pipeline-ink-muted`,
+`--color-pipeline-on-dark`, `--text-pipeline-heading-l`, `--text-pipeline-body`,
+`--text-pipeline-caption`, `--radius-pipeline-card`, `--radius-pipeline-button`) — the first
+screen in the epic that adds neither a new token nor a new `AuthModalShell` prop.
+
+**Vertical rhythm.** 400px column, centered on both axes in the shell's left half; 32px
+heading → field, 32px field → button, 32px button → footer link, 64px below the link (the
+column's `padding-bottom`).
+
+**Validation** — identical rule to `useAuthCredentialsForm`'s email check, reused via the shared
+`EMAIL_PATTERN`/`EMAIL_ERROR_MESSAGE` exports: format-checked on blur or on submit attempt, no
+error while the field is empty, error copy verbatim "Enter the correct email address". All local
+state resets when the modal reopens.
+
+**Undesigned states are derived, not invented (TD-72).** The enabled submit is the same button
+at full opacity (from Sign in's `— Enable` frame `6486:81576`); the validation-error treatment is
+`TextField`'s shipped `invalid`/`error` styling (from Sign in's `— Validation error` frame
+`6486:81595`); hover/focus on the two un-inerted links (`SignInModal`'s "Forgot password?" and
+this screen's "Back to sign in") have no Figma state and use `hover:underline` plus the shell's
+existing focus-visible outline token.
+
+**Out of scope — no designed post-submit state (TD-71).** No confirmation, no reset-link landing
+screen, and no "set a new password" screen exist anywhere in the V1.0 Figma section, and no
+connector leaves `6704:107100`. The `/test` preview shows a stand-in line and closes the modal —
+the same treatment #1250 used for the missing OTP success frame. #1265 cannot wire a real reset
+flow until a designer supplies those screens.
+
+**Copy is verbatim** — heading "Reset your password" (note: the component/file name and the
+Issue are "Forgot Password"; the rendered heading differs — this is intentional, not a copy
+defect), placeholder "Enter corporate email", submit "Send Reset Link", footer "Remembered it? "
++ "Back to sign in".
+
+**Accessibility:** same contract as `SignInModal` — `aria-invalid` on `TextField`'s `<input>`;
+both "Back to sign in" and (since #1280) `SignInModal`'s "Forgot password?" are focusable
+buttons with the shell's `focus-visible` outline treatment.
 
 ### OtpModal
 
@@ -503,17 +576,34 @@ both states.
 
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders five
-trigger buttons opening `SignInModal` (#1248), `CreateAccountModal` (#1249), `OtpModal` (#1250),
-`CompanyDocsModal` (#1251), and `AccountInReviewModal` (#1253) — the sixth, `OwnersModal`
-(#1252), was retired 2026-09-21 (see `### OwnersModal` above) — each with every seam left at its
-no-op default except `OtpModal.onVerified`, `CompanyDocsModal.onSubmit`, and
-`AccountInReviewModal.onGoToApp`, which show stand-in confirmation lines. Every trigger is
-independent of the others — entering a valid OTP code shows "OTP verified — open the Company Docs
-step from the button above." rather than auto-opening it, and submitting Company Docs shows
-"Company documents submitted — open the Account-in-review screen from the button above." rather
-than auto-opening it — since the shell's body-scroll-lock and capture-phase Escape are not
-stack-safe (see the shell caveats above) and stacking two of these modals is exactly the untested
-path a chained transition would exercise. Clicking `Go to app` on the Account-in-review screen
-shows "Go to app — #1254 wires this to the LP dashboard." This does not touch `TopBar`,
-`ConnectModalProvider`, or any of the six production `openConnectModal` call sites.
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders six trigger
+buttons opening `SignInModal` (#1248), `ForgotPasswordModal` (#1280), `CreateAccountModal`
+(#1249), `OtpModal` (#1250), `CompanyDocsModal` (#1251), and `AccountInReviewModal` (#1253) — a
+seventh, `OwnersModal` (#1252), was retired 2026-09-21 (see `### OwnersModal` above) — each with
+every seam left at its no-op default except `OtpModal.onVerified`,
+`ForgotPasswordModal.onSubmit`, `CompanyDocsModal.onSubmit`, and `AccountInReviewModal.onGoToApp`,
+which show stand-in confirmation lines. Every trigger is independent of the others — entering a
+valid OTP code shows "OTP verified — open the Company Docs step from the button above." rather
+than auto-opening it, and submitting Company Docs shows "Company documents submitted — open the
+Account-in-review screen from the button above." rather than auto-opening it — since the shell's
+body-scroll-lock and capture-phase Escape are not stack-safe (see the shell caveats above) and
+stacking two of these modals is exactly the untested path a chained transition would exercise.
+Clicking `Go to app` on the Account-in-review screen shows "Go to app — #1254 wires this to the
+LP dashboard." This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
+`openConnectModal` call sites.
+
+**Sign in ↔ Forgot Password is the one exception — a swap, never a stack (#1280).** Both screens
+share one union-typed `authScreen: "none" | "sign-in" | "forgot-password"` state instead of two
+independent booleans, so "both open" is unrepresentable. Clicking "Forgot password?" on Sign in
+closes it and opens Forgot Password in the same handler; "Back to sign in" reverses it. This
+departs from the independent-triggers convention above, but safely: that convention's stated
+reason is stacking (the un-refcounted body-scroll-lock and the capture-phase Escape collision),
+and a swap never stacks two shells — React runs the outgoing tree's effect cleanups before the
+incoming tree's effect creates within a single commit, so `document.body.style.overflow` lands on
+`"hidden"` throughout and exactly one Escape listener is registered at any moment. The convention
+was also about auto-advancing a wizard (OTP → Company Docs), which is flow orchestration owned by
+#1254/#1265; a link whose entire purpose is navigating to a screen this issue ships is a
+different thing. `-test.test.tsx` asserts the invariant directly (exactly one `dialog` role after
+the swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit on Forgot
+Password shows `auth-forgot-password-submitted`: "Reset link requested — #1265 wires this to the
+real password-reset endpoint."

@@ -2,7 +2,7 @@
 // node 6486:81595 error copy) — shared by SignInModal and CreateAccountModal.
 import { useEffect, useState } from "react";
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const EMAIL_ERROR_MESSAGE = "Enter the correct email address";
 export const PASSWORD_ERROR_MESSAGE = "Enter the correct password";
