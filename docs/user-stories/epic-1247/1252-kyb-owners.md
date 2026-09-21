@@ -1,5 +1,11 @@
 # User Stories: #1252 — KYB: Owners step
 
+**Superseded 2026-09-21.** The Owners step was removed from the V1.0 Figma design (epic #1247)
+and `OwnersModal` was retired per the resolution on issue #1279 — raw upload / classify-at-review,
+no owner-document-typing UI on the LP side. The stories below describe a screen that no longer
+exists; kept for history only. See `docs/frontend/auth-components.md#ownersmodal` for the
+retirement note and what was kept vs. deleted.
+
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1252](https://github.com/eq-lab/pipeline/issues/1252)
 Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md)

@@ -1018,6 +1018,10 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable
 
+- **Status (2026-09-21):** Dormant, not resolved. `OwnersModal` — the consumer this gap was filed
+  against — was retired (issue #1279). `FileDropZone.tsx` itself is unchanged and retained (no
+  current consumer; kept for #1278/#1284 reuse), so the gap re-applies verbatim to whichever of
+  those picks it up.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
 - **Gap:** The drop-zone subtitle ("pdf, jpg, png files up to 10MB") binds in Figma to
@@ -1033,6 +1037,10 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow
 
+- **Status (2026-09-21):** Dormant, not resolved. `OwnersModal` — the consumer this gap was filed
+  against — was retired (issue #1279). `KybInfoBanner.tsx` itself is unchanged and retained (no
+  current consumer; kept for #1278/#1284 reuse), so the gap re-applies verbatim to whichever of
+  those picks it up.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/KybInfoBanner.tsx`.
 - **Gap:** The hint tooltip (Figma node `6486:82392`) is a loose canvas instance, not a child of
@@ -1048,6 +1056,9 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement
 
+- **Status (2026-09-21):** Resolved by retirement. `OwnersModal` and `useOwnersModal.ts` — the
+  file this entry is about — were deleted (issue #1279); the Owners step, and its Submit
+  threshold, no longer exist.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/useOwnersModal.ts`.
 - **Gap:** Neither Owners Figma frame provides an owner-count input, per-owner grouping, or a
@@ -1062,6 +1073,10 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment
 
+- **Status (2026-09-21):** Dormant, not resolved. `OwnersModal` — the consumer this gap was filed
+  against — was retired (issue #1279). `FileDropZone.tsx` itself is unchanged and retained (no
+  current consumer; kept for #1278/#1284 reuse), so the gap re-applies verbatim to whichever of
+  those picks it up.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
 - **Gap:** Neither Owners Figma frame designs a drag-over state or a file-rejection state for the
