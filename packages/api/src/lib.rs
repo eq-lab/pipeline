@@ -21,6 +21,7 @@ use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
+use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
@@ -86,6 +87,9 @@ pub struct AppState {
     pub loan_capital_transfers_repo: LoanCapitalTransfersRepo,
     /// LP (business entity) registry for the custom KYB service (`lps`).
     pub lp_repo: LpRepo,
+    /// Append-only ledger of every movement of an LP's claim (`lp_ledger`),
+    /// backing `GET /v1/lp-ledger` and `POST /v1/lp-ledger/deposits`.
+    pub lp_ledger_repo: LpLedgerRepo,
     /// Versioned KYB supporting documents (`kyb_documents`).
     pub kyb_document_repo: KybDocumentRepo,
 }
