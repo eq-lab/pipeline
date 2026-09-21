@@ -105,9 +105,11 @@ export function AccountStatusBanner({
       </div>
 
       {action && (
-        <Button variant="secondary" size="compact" onClick={action.onClick}>
-          {action.label}
-        </Button>
+        <div className="flex shrink-0 items-center justify-center p-1">
+          <Button variant="secondary" size="compact" onClick={action.onClick}>
+            {action.label}
+          </Button>
+        </div>
       )}
     </div>
   );

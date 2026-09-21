@@ -240,7 +240,11 @@ size="compact"`** — confirmed at both `6701:98157` (verify) and `6701:98195` (
 shipped it borderless. This is the same override `DocumentUploadRow.tsx` already uses for its own
 `Upload` button. The banner's own inline `Upload` action (the `missing` state,
 `AccountStatusBanner`'s `action` prop) has **no** border — confirmed at `6701:98040` — so that one
-stays as `Button variant="secondary" size="compact"` with no extra className.
+stays as `Button variant="secondary" size="compact"` with no extra className. **That same button
+does carry the touch-target wrapper** — `get_metadata` at `6701:98040` shows `ButtonCont` (node
+`I6701:98040;8926:10405`) at `x=351 w=83 h=40` containing the 75×32 `button` at a 4px inset,
+identical geometry to `AccountUploadRow`'s own wrapper — so `AccountStatusBanner` wraps its
+`action` button in the same `flex items-center justify-center p-1` container (issue #1294).
 
 **The 40×40 leading tiles (wallet row, email row, upload row) render a pale navy tint, not
 `#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen

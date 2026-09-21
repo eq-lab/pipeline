@@ -119,7 +119,10 @@ describe("AccountDocumentsCard — missing state", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("required")).toBeInTheDocument();
     expect(screen.getByText("Please upload the document.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
+    const uploadAction = screen.getByRole("button", { name: "Upload" });
+    expect(uploadAction).toBeInTheDocument();
+    expect(uploadAction).not.toHaveClass("border");
+    expect(uploadAction.parentElement).toHaveClass("p-1");
     expect(screen.getAllByText("Verified")).toHaveLength(6);
     expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
     expect(
@@ -128,6 +131,12 @@ describe("AccountDocumentsCard — missing state", () => {
     expect(screen.getByRole("status")).toHaveClass(
       "bg-[color:var(--color-pipeline-negative-secondary)]",
     );
+    expect(screen.getByTestId("account-documents-card")).toHaveClass(
+      "gap-2",
+      "pt-4",
+      "pb-2",
+    );
+    expect(screen.getByRole("list")).toHaveClass("gap-2");
   });
 });
 
