@@ -709,6 +709,12 @@ Entry point: called from `TopBar` (replaces `ConnectChooserModal`).
 Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss, body-scroll lock.
 Dismissal is via the × button and Escape only — no scrim click (unlike `ConnectChooserModal`).
 
+**KYB sign-in (#1248):** `SignInModal` (see [`auth-components.md`](./auth-components.md)) reuses
+this modal's two-pane shell — extracted verbatim into `AuthModalShell` — but is a separate
+component reachable only from `/test?tab=auth`. `ConnectWalletModal`'s own entry point (this
+section) is unchanged by #1248; see `auth-components.md` for the epic's open question on whether
+the LP header eventually gets a dedicated "Sign in" CTA.
+
 ### FirstConnectionModal
 
 "Before you continue" jurisdiction self-attestation modal that gates wallet connect. Shown the
@@ -1556,6 +1562,10 @@ passphrases load the route normally.
 **Source:** `packages/frontend/src/routes/test.tsx`, `packages/frontend/src/routes/test/-scenarios.ts`
 
 `/test` is a developer/manual-QA-only diagnostic page — intentionally **not** linked from `TopBar`.
+
+**Dev-only guard (#1259):** the route exists only under the local Vite dev server — `beforeLoad`
+redirects to `/` whenever `ENV.IS_DEV` is false, so the URL is dead on staging and prod builds.
+Manual QA and the ux-tester run against a local dev server, which is unaffected.
 
 **Three-tab layout**, driven by a TanStack Router search param (`?tab=status|mocks|toasts`; invalid values fall back to `"status"`; the active tab is reflected in the URL and survives reload):
 

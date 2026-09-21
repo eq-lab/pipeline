@@ -1,10 +1,16 @@
 // spec: docs/frontend/dashboard-components.md#diagnostics-route
 // (tab layout, mocks activation flow, scope).
 import React from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
 import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
+import { SignInModal } from "@/components/SignInModal";
+import { CreateAccountModal } from "@/components/CreateAccountModal";
+import { OtpModal } from "@/components/OtpModal";
+import { CompanyDocsModal } from "@/components/CompanyDocsModal";
+import { OwnersModal } from "@/components/OwnersModal";
+import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -26,21 +32,31 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type TestTab = "status" | "mocks" | "toasts";
+type TestTab = "status" | "mocks" | "toasts" | "auth";
 
 const TABS = [
   { id: "status", label: "Status" },
   { id: "mocks", label: "Mocks" },
   { id: "toasts", label: "Toasts" },
+  { id: "auth", label: "Auth" },
 ];
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/test")({
+  beforeLoad: () => {
+    if (!ENV.IS_DEV) throw redirect({ to: "/" });
+  },
   validateSearch: (raw): { tab: TestTab } => {
     const t = raw.tab;
     const tab: TestTab =
-      t === "mocks" ? "mocks" : t === "toasts" ? "toasts" : "status";
+      t === "mocks"
+        ? "mocks"
+        : t === "toasts"
+          ? "toasts"
+          : t === "auth"
+            ? "auth"
+            : "status";
     return { tab };
   },
   component: TestPage,
@@ -672,6 +688,147 @@ function ToastsTab(): React.JSX.Element {
   );
 }
 
+// ── AuthTab ───────────────────────────────────────────────────────────────────
+
+function AuthTab(): React.JSX.Element {
+  const [signInOpen, setSignInOpen] = React.useState(false);
+  const [createAccountOpen, setCreateAccountOpen] = React.useState(false);
+  const [otpOpen, setOtpOpen] = React.useState(false);
+  const [otpVerified, setOtpVerified] = React.useState(false);
+  const [companyDocsOpen, setCompanyDocsOpen] = React.useState(false);
+  const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
+  const [ownersOpen, setOwnersOpen] = React.useState(false);
+  const [ownersSubmitted, setOwnersSubmitted] = React.useState(false);
+  const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
+  const [wentToApp, setWentToApp] = React.useState(false);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
+        Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
+        #1249), OTP (issue #1250), Company Docs (issue #1251), Owners (issue
+        #1252), and Account-in-review (issue #1253) modals. Not wired to any
+        production entry point.
+      </p>
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setSignInOpen(true)}
+        >
+          Open Sign In modal
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setCreateAccountOpen(true)}
+        >
+          Open Create Account modal
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setOtpOpen(true)}
+        >
+          Open OTP screen
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setCompanyDocsOpen(true)}
+        >
+          Open Company Docs step
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setOwnersOpen(true)}
+        >
+          Open Owners step
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setAccountInReviewOpen(true)}
+        >
+          Open Account-in-review screen
+        </Button>
+      </div>
+      {otpVerified && (
+        <p
+          data-testid="auth-otp-verified"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          OTP verified — open the Company Docs step from the button above.
+        </p>
+      )}
+      {companyDocsSubmitted && (
+        <p
+          data-testid="auth-company-docs-submitted"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Company documents submitted — open the Owners step from the button
+          above.
+        </p>
+      )}
+      {ownersSubmitted && (
+        <p
+          data-testid="auth-owners-submitted"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Owners submitted — open the Account-in-review screen from the button
+          above.
+        </p>
+      )}
+      {wentToApp && (
+        <p
+          data-testid="auth-account-in-review-go-to-app"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Go to app — #1254 wires this to the LP dashboard.
+        </p>
+      )}
+      <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
+      <CreateAccountModal
+        open={createAccountOpen}
+        onDismiss={() => setCreateAccountOpen(false)}
+      />
+      <OtpModal
+        open={otpOpen}
+        onBack={() => setOtpOpen(false)}
+        onVerified={() => {
+          setOtpVerified(true);
+          setOtpOpen(false);
+        }}
+      />
+      <CompanyDocsModal
+        open={companyDocsOpen}
+        onDismiss={() => setCompanyDocsOpen(false)}
+        onSubmit={() => {
+          setCompanyDocsSubmitted(true);
+          setCompanyDocsOpen(false);
+        }}
+      />
+      <OwnersModal
+        open={ownersOpen}
+        onDismiss={() => setOwnersOpen(false)}
+        onSubmit={() => {
+          setOwnersSubmitted(true);
+          setOwnersOpen(false);
+        }}
+      />
+      <AccountInReviewModal
+        open={accountInReviewOpen}
+        onDismiss={() => setAccountInReviewOpen(false)}
+        onGoToApp={() => {
+          setWentToApp(true);
+          setAccountInReviewOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
 // ── Page component ────────────────────────────────────────────────────────────
 
 function TestPage(): React.JSX.Element {
@@ -693,8 +850,10 @@ function TestPage(): React.JSX.Element {
           <StatusTab />
         ) : tab === "mocks" ? (
           <MocksTab />
-        ) : (
+        ) : tab === "toasts" ? (
           <ToastsTab />
+        ) : (
+          <AuthTab />
         )}
       </main>
     </div>

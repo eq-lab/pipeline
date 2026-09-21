@@ -920,7 +920,205 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `POST /v1/auth/verify`), but scoped to proving ownership of `stellar_address` specifically rather than
   issuing a session JWT.
 
-### TD-58: No unidentified-wire matching queue — `lp_id` is required at deposit-entry time
+### TD-58: `ConnectWalletModal` still carries its own copy of the two-pane modal shell
+
+- **Date:** 2026-09-17
+- **Location:** `packages/frontend/src/components/ConnectWalletModal.tsx` lines 9–39
+  (`FOCUSABLE`/`trapFocus`), 442–490 (`RightImagePanel`), 524–564 (the four modal effects), and
+  594–714 (overlay + panel + close button + `createPortal`).
+- **Gap:** Issue #1248 extracted this exact shell into
+  `packages/frontend/src/components/AuthModalShell.tsx` for the new KYB modals
+  (`SignInModal`, and #1249/#1250 downstream). `ConnectWalletModal` was left untouched — it is
+  merged, QA-verified, and on the critical connect path — so the repo now carries two copies of
+  the focus trap, the capture-phase Escape handler, the body-scroll-lock effect, and the
+  right-image hero panel.
+- **Impact:** A future fix to any of those four effects (e.g. the unguarded body-scroll-lock
+  counter, or the Escape-key capture-phase collision noted in `auth-components.md`) has to be
+  applied twice, and the two modals can silently drift apart visually.
+- **Suggested fix:** Refactor `ConnectWalletModal` to render through `AuthModalShell` once the
+  KYB modals (#1248–#1253) have shipped and stabilized, then delete the duplicated block.
+
+### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative`
+
+- **Date:** 2026-09-17
+- **Location:** `packages/ui/src/styles/theme.css`.
+- **Gap:** The KYB sign-in error frame (Figma node 6486:81595) binds `content-test/negative` =
+  `#b20000` and `fill/negative-secondary` = `#b2000029` (`rgba(178,0,0,0.16)`) — a different
+  Figma variable namespace than the repo's existing `--color-pipeline-negative: #c0392b`
+  (`content/negative`, used for status text like "Rejected"). Issue #1248 added the two new
+  tokens (`--color-pipeline-negative-strong`, `--color-pipeline-negative-secondary`) token-exact
+  to the KYB frame rather than reusing or reconciling with the existing red.
+- **Impact:** The repo now ships two visually distinct "error red" tokens
+  (`#c0392b` vs `#b20000`) with overlapping intent and no documented rule for which a new
+  feature should reach for.
+- **Suggested fix:** Designer reconciliation — either the KYB frames should be restyled onto
+  the existing `--color-pipeline-negative`, or the existing negative/danger tokens should be
+  updated to `#b20000` repo-wide, in a dedicated design-system pass.
+
+### TD-60: `OtpModal`'s verification is a hardcoded mock (`MOCK_VALID_CODE`)
+
+- **Date:** 2026-09-17 (revised 2026-09-18 per the change request on #1250)
+- **Location:** `packages/frontend/src/components/useOtpModal.ts`.
+- **Gap:** Issue #1250's Figma has no success frame for the OTP screen. Per the 2026-09-18
+  change request, `useOtpModal` mocks verification by showing the loader for
+  `MOCK_VERIFY_DELAY_MS` (800ms) and then accepting exactly `MOCK_VALID_CODE` (`123456`,
+  firing `onVerified?.(code)`) and rejecting every other code into the error state.
+  `onSubmit?.(code)` / `onVerified?.(code)` are the seams #1254 replaces the mock with. There
+  is no OTP issuance/verification endpoint yet (#1240's Sumsub `/v1/kyc/*` routes are
+  wallet-keyed, not email-account auth).
+- **Impact:** Anyone testing `/test?tab=auth` → "Open OTP screen" will see every code rejected,
+  which reads like a bug unless this doc/tracker entry is read first.
+- **Suggested fix:** #1254 (auth session/orchestration/wiring) replaces the mock timer with a
+  real verification call once the backend endpoint exists.
+
+### TD-61: `AuthModalShell` top-aligns while every KYB Figma frame centres its content column
+
+- **Date:** 2026-09-17
+- **Location:** `packages/frontend/src/components/AuthModalShell.tsx`.
+- **Gap:** Every KYB Figma frame (sign-in `6486:81615` y=186/h=544, OTP, company-docs `6486:81679`
+  y=140/h=636, account-in-review `6486:81745` y=224/h=468) vertically centres its 400px content
+  column. `AuthModalShell` top-aligns it (`items-center justify-start` on the flex parent) because
+  the shell was lifted verbatim from `ConnectWalletModal`. Issue #1250 added an opt-in
+  `align?: "start" | "center"` prop (default `"start"`) rather than silently re-laying-out the
+  already-reviewed `SignInModal`/`CreateAccountModal` screens, and uses `align="center"` only for
+  `OtpModal`.
+- **Impact:** `SignInModal`/`CreateAccountModal` remain slightly off from their Figma frames'
+  vertical centering pending a design decision on whether to follow OTP's opt-in.
+- **Suggested fix:** A designer/QA pass decides whether #1248/#1249 should also set
+  `align="center"`; if so, flip their default or pass the prop explicitly, then consider whether
+  `align` should default to `"center"` repo-wide once no consumer relies on `"start"`.
+
+### TD-62: `CompanyDocsModal` rejected-file feedback has no Figma treatment
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/DocumentUploadRow.tsx`.
+- **Gap:** Neither #1251 Figma frame (`6486-81679` empty, `6486-81817` uploaded) designs a
+  rejection state for an oversize or wrong-type file pick. The implementation reuses the row's
+  existing caption copy (`pdf, jpg, png files up to 10MB`) recolored to
+  `--color-pipeline-negative-strong` with `role="alert"`, rather than inventing new copy or
+  layout.
+- **Impact:** The rejection treatment is a stand-in, not a verified design — a designer may want
+  distinct copy, an icon, or a different layout for this state.
+- **Suggested fix:** A designer pass specifies a real rejection treatment; the QA Figma
+  comparison should not file this as a bug against the current stand-in.
+
+### TD-63: `CompanyDocsModal` uploaded-row thumbnail is not a PDF-page preview
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/DocumentUploadRow.tsx`.
+- **Gap:** Figma's uploaded frame (`6486-81817`) shows a rendered PDF-page thumbnail (a mock PNG
+  asset) for the uploaded document tile. This repo has no PDF renderer, so `application/pdf`
+  uploads (and any upload when `URL.createObjectURL` is unavailable) keep the same brand-tint
+  glyph tile as the empty state; only `image/jpeg`/`image/png` uploads get a real `<img>`
+  preview via `URL.createObjectURL`.
+- **Impact:** The uploaded state for PDF documents (the majority of the five expected slots)
+  visually diverges from the Figma mock.
+- **Suggested fix:** Add a PDF-page-thumbnail renderer (e.g. `pdf.js`) if pixel-fidelity for this
+  state becomes a priority; until then this is an accepted, documented subset.
+
+### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
+- **Gap:** The drop-zone subtitle ("pdf, jpg, png files up to 10MB") binds in Figma to
+  `text-tertairy` (`#7d7d7d`) — a misspelled, non-namespaced legacy variable. Every other color
+  on both Owners frames resolves through `content-test/*`, `fill-test/*`, or `border-test/*`.
+  Shipped as `--color-pipeline-ink-muted`, the same order of channel-difference (≤8/255 per
+  channel) that #1248 and #1251 both resolved by reusing an existing token, rather than adding a
+  fourth ink token named after a typo.
+- **Impact:** None visually (the composite difference is imperceptible); a future design-token
+  reconciliation pass should rebind the Figma variable, not the code.
+- **Suggested fix:** Ask design to rebind `text-tertairy` to `content-test/secondary` in the
+  Figma library.
+
+### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/KybInfoBanner.tsx`.
+- **Gap:** The hint tooltip (Figma node `6486:82392`) is a loose canvas instance, not a child of
+  either Owners frame — it specifies only the tooltip's copy and dimensions, not how it is
+  triggered, how far it sits from the glyph, or whether it has an arrow/caret.
+- **Impact:** Shipped as hover-only (`mouseenter` show, `mouseleave` hide; focus deliberately
+  not a trigger — the shell's open-time auto-focus lands on this button and showed the tooltip
+  on open, per user direction 2026-09-18 — so keyboard users currently cannot reach the tooltip
+  content), 8px above the glyph (`mb-2`), no arrow, and with no Escape handler (the shell owns
+  Escape in the capture phase and would close the modal instead of just the tooltip).
+- **Suggested fix:** A designer pass should attach the tooltip node to the Owners frame directly
+  and specify trigger/offset/arrow explicitly.
+
+### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/useOwnersModal.ts`.
+- **Gap:** Neither Owners Figma frame provides an owner-count input, per-owner grouping, or a
+  required-document list — the default frame (0 files) renders Submit disabled and the enabled
+  frame (2 files) renders it solid, which is the only non-arbitrary rule consistent with both:
+  Submit enables once at least one file is present.
+- **Impact:** The real product requirement (e.g. "at least one document per declared owner") is
+  unknown; the current rule may under- or over-collect documents relative to what compliance
+  actually needs.
+- **Suggested fix:** A designer/PM pass should specify the real completion requirement for this
+  step, likely tied to a future owner-count or owner-list input.
+
+### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
+- **Gap:** Neither Owners Figma frame designs a drag-over state or a file-rejection state for the
+  drop zone. Both reuse existing tokens on existing copy — the same resolution shape as TD-62:
+  drag-over recolors the dashed border `--color-pipeline-ink-subtle` → `--color-pipeline-ink`
+  with no new copy or layout; rejection recolors the zone's existing subtitle to
+  `--color-pipeline-negative-strong` with `role="alert"`.
+- **Impact:** Both states are stand-ins, not verified designs — a designer may want distinct
+  copy, an icon, or a different layout.
+- **Suggested fix:** A designer pass specifies real drag-over and rejection treatments; the QA
+  Figma comparison should not file this as a bug against the current stand-ins.
+
+### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive`
+
+- **Date:** 2026-09-18
+- **Location:** `packages/ui/src/styles/theme.css`.
+- **Gap:** The KYB Account-in-review "notified" state (Figma node `6486:81764`) binds
+  `content-test/positive` = `#208000` — a different Figma variable namespace than the repo's
+  existing `--color-pipeline-positive: #1a6600` and a visibly different green. Resolved
+  token-exact with a new `--color-pipeline-positive-strong` token, the same resolution shape as
+  TD-59 (`--color-pipeline-negative-strong`).
+- **Impact:** Two "positive" content tokens now exist with different values; a future consumer
+  must pick the right one deliberately.
+- **Suggested fix:** A designer reconciliation pass should confirm whether the legacy
+  `--color-pipeline-positive` should be retired in favor of the `-strong` value, or whether both
+  are intentionally distinct semantics.
+
+### TD-69: The KYB epic's "review banner" deliverable has no node in the source-of-truth Figma
+
+- **Date:** 2026-09-18
+- **Location:** `docs/frontend/auth-components.md#accountinreviewmodal`, issue #1253.
+- **Gap:** Issue #1253 asked for "the review banner (node 6486:81744)". That node is a
+  byte-identical loose duplicate of the Owners step's info banner (already shipped as
+  `KybInfoBanner` in #1252), parked on the canvas inside the Owners column — not a child of
+  either Account-in-review frame. A document-wide name sweep for "banner"/"under review" turns up
+  no other candidate in the source-of-truth "KYB Onboarding" section; the only account-under-review
+  affordance anywhere in the file is a dashboard card (`6590:86947`, "Account under review" +
+  `View Status`) in the superseded "Draft 14 Sept" section — a production LP-dashboard change
+  gated on real auth state, out of this epic's current scope.
+- **Impact:** #1253 ships the two-state review screen with no banner. If a review banner is still
+  wanted, it needs a promoted, non-draft Figma frame before it can be built.
+- **Suggested fix:** A designer promotes `6590:86947` (or a new frame) out of draft status; a
+  future sub-issue (likely alongside #1254's dashboard/auth-state work) builds it then.
+
+### TD-70: `AccountInReviewModal`'s "notify me" flip is a local, non-persistent mock
+
+- **Date:** 2026-09-18
+- **Location:** `packages/frontend/src/components/AccountInReviewModal.tsx`.
+- **Gap:** Clicking "Notify me" only flips local React state to the "We'll notify you"
+  confirmation — there is no subscription endpoint, no polling, and no reviewed-status source.
+  Reopening the modal resets it. The same shape as TD-60 (`OtpModal`'s mocked verification).
+- **Impact:** The confirmation is presentational only; a real notify-me subscription and a real
+  review-status fetch are both unbuilt.
+- **Suggested fix:** #1254 replaces `onNotifyMe`/the local flip with a real subscription call and
+  a real account-status source once the backend endpoint exists.
+
+### TD-71: No unidentified-wire matching queue — `lp_id` is required at deposit-entry time
 
 - **Date:** 2026-09-18
 - **Location:** `packages/api/src/routes/lp_ledger.rs` — `record_deposit` (`POST /v1/lp-ledger/deposits`);

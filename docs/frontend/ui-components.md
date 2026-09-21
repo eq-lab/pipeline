@@ -594,6 +594,55 @@ All path data is lifted verbatim from the SVG assets in `packages/ui/src/assets/
 <IconButton icon={<NavIcon name="home" />} label="Home" active />
 ```
 
+## OtpInput
+
+**Source:** `packages/ui/src/components/OtpInput/OtpInput.tsx` + `useOtpInput.ts`.
+**Figma:** `input-otp` component, nodes `8926:9304`–`8926:9309`. **Consumer:**
+`packages/frontend/src/components/OtpModal.tsx` (issue #1250).
+
+A six-box one-time-code input. Reproduces Figma's caret-in-the-active-box behaviour with **one
+real `<input>` absolutely positioned over six presentational boxes**, not six separate inputs —
+this gets paste, mobile SMS autofill (`autocomplete="one-time-code"`), and backspace for free, and
+keeps a modal's focus trap down to a single focusable element. The real input is
+`opacity-0` (not `hidden`/`sr-only`), so clicking any box still focuses it; the native caret stays
+invisible and the visible caret is a hand-drawn element in the active box instead.
+
+### Props
+
+```ts
+export interface OtpInputProps {
+  value: string;
+  onChange: (next: string) => void;
+  length?: number; // default 6
+  invalid?: boolean;
+  "aria-label"?: string; // default "Verification code"
+}
+```
+
+`onChange` receives the sanitised string, not the event — the sanitiser
+(`value.replace(/\D/g, "").slice(0, length)`) drops non-digits and truncates to `length`, so
+`123456`, `12 34 56`, `123-456`, and `1234567` (pasted) all resolve to `123456`.
+
+### Figma → token mapping
+
+| Element | Value | Figma binding |
+| --- | --- | --- |
+| Box | `h-16` (64px), `flex-1 min-w-0`, `rounded-[var(--radius-pipeline-card)]` (4px), `px-3`, `gap-2` (8px) between boxes | `radius-16` → 4px; `gap-xs` |
+| Box fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
+| Box fill, invalid | `--color-pipeline-negative-secondary` | `fill/negative-secondary` |
+| Active-box border | `border border-solid border-[color:var(--color-pipeline-ink-subtle)]` (only the box at `index === value.length`, and only while focused and not `invalid`) | `border-test/primary` |
+| Digit | `text-[24px] leading-[28px]` (raw literal, not a named Figma variable), `--font-display`, `--font-weight-regular` | 24/28 |
+| Digit, invalid | `--color-pipeline-negative-strong` | `content-test/negative` |
+| Caret | 28×1 (`h-7 w-px rounded-[1px]`), `--color-pipeline-ink`, static (no blink animation — the frame shows it static) | `.cursor` |
+
+### Accessibility
+
+The active-box border and caret are the only visible focus indicator, since the real `<input>` is
+invisible; `aria-label` defaults to `"Verification code"`; `aria-invalid` is set on the `<input>`
+when `invalid`. Component tests live in the LP app at
+`packages/frontend/src/components/OtpInput.dom.test.tsx`, following the `TextField.dom.test.tsx`
+precedent — `@pipeline/ui` has no test runner of its own.
+
 ## QuickAmountChip
 
 **Source:** `packages/ui/src/components/QuickAmountChip/QuickAmountChip.tsx`.
@@ -812,6 +861,62 @@ derived from the array index (1-based). Minimum two items expected (Approve + Co
 component accepts any number. Each item forwards `label`, `actionLabel`, `disabled`, `onAction`,
 `loading`, `state`, `errorMessage`, and `errorDetails` to `StepRow` (see [StepRow](#steprow) for
 their semantics; the error slot is specified in [`error-handling.md`](./error-handling.md)).
+
+## TextField
+
+**Source:** `packages/ui/src/components/TextField/TextField.tsx` + `useTextField.ts`.
+**Figma:** node `6486:81613` (`input` component), plus the detached password variant
+`6486:81628`–`6486:81635`. **Consumer:** `packages/frontend/src/components/SignInModal.tsx`
+(issue #1248) and `CreateAccountModal.tsx` (issue #1249) — the first text/email/password input
+primitive in `@pipeline/ui` (the kit's only prior input was `TokenInput`, an amount widget).
+
+A 56px-tall, 4px-radius single-line field with an optional password show/hide toggle and an
+error caption that never shifts layout.
+
+### Figma → token mapping
+
+| Property | Value | Figma binding |
+| --- | --- | --- |
+| Box | `h-14` (56px), `rounded-[var(--radius-pipeline-card)]` (4px) | `radius/radius-s` |
+| Focus ring | `border` transparent at rest, `focus-within:border-[color:var(--color-pipeline-ink-subtle)]` (1px) — border sits on the field row, not the `<input>` (which keeps `outline-none`); border-box sizing so gaining focus never shifts the 56px height or 12px padding | `border-test/primary` = `#3835384d` (issue #1249, confirmed via the create-account enabled frame `6486:81640`) |
+| Fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
+| Fill, invalid | `--color-pipeline-negative-secondary` (new token) | `fill/negative-secondary` = `#b2000029` |
+| Text padding | 12px each side (`px-3` on the field row) | `Field` frame padding |
+| Text | `--text-pipeline-body` 16/22, `--font-weight-regular`, `--color-pipeline-ink` | `Body` / `content-test/primary` |
+| Text, invalid | `--color-pipeline-negative-strong` (new token) | `content-test/negative` = `#b20000` |
+| Placeholder | `--color-pipeline-ink-muted` | `content-test/secondary` |
+| Eye button | 32×32, right-aligned inside the field row | `button-icon` |
+| Eye glyph | 20×20, exact Figma-exported SVG (`eye` / `eye-slashed`) | via `get_design_context` |
+| Error line | `--text-pipeline-caption` 12/16, `--color-pipeline-negative-strong`, right-aligned, `absolute top-full` | `Caption` |
+
+The two new negative tokens are documented in full at
+[`auth-components.md#signinmodal`](./auth-components.md#signinmodal) and in
+`docs/exec-plans/tech-debt-tracker.md` (TD-59).
+
+### Variants
+
+`type`: `"text"` | `"email"` | `"password"` (default `"text"`). Only `"password"` renders the eye
+toggle button, which flips the rendered `<input>` between `type="password"` and `type="text"`
+(the field's outward `type` prop never changes) and its own icon between `eye` (show) and
+`eye-slashed` (hide). Non-trivial state (`showPassword`, the derived input `type`, the error
+element id) lives in the co-located `useTextField` hook per `docs/FRONTEND.md` → Code structure
+rules, rule 2.
+
+`invalid` paints the error fill/text tokens and sets `aria-invalid`, independent of `error` — a
+consumer can flag a field invalid without necessarily rendering a message yet. `error`, when set,
+renders the caption and wires `aria-describedby`.
+
+### Accessibility
+
+Two repo firsts, introduced by this component (#1248): `aria-invalid={invalid || undefined}` on
+the `<input>` (previously, invalid state was only ever signalled by a sibling error `<p>` or a
+`role="alert"` banner), and `aria-describedby` pointing at the error `<p>`'s generated id when
+`error` is set. The error `<p>` itself carries `role="alert"`. The eye toggle is a real
+`<button type="button">` with `aria-label` flipping between `"Show password"` / `"Hide password"`
+and `aria-pressed` reflecting `showPassword`. **Focus-visible (issue #1249):** the field row
+gains a 1px `--color-pipeline-ink-subtle` border on `:focus-within` (WCAG 2.4.7) — before #1249
+the component had no visible focus indicator in any state; the create-account enabled frame
+(`6486:81640`) is the first frame in the epic to document the treatment.
 
 ## Toast
 

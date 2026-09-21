@@ -76,6 +76,7 @@
   --color-pipeline-surface: #ffffff;
   --color-pipeline-promo: #f8fce9; /* pale yellow — connect-wallet banner; solid equivalent of rgb(211 235 117 / 0.16) on white */
   --color-pipeline-brand: #000080;
+  --color-pipeline-brand-secondary: rgb(0 0 128 / 0.08);
   --color-pipeline-cta: #262524;
   --color-pipeline-ink: #262524;
   --color-pipeline-ink-muted: rgb(56 55 53 / 0.6);
@@ -98,7 +99,12 @@
     32 128 0 / 0.16
   ); /* fill/positive-secondary — step done pill bg (restored by #1217, Figma 1498:100812; was ink per LP review #43/#1189) */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check color (restored by #1217; was on-dark per LP review #43/#1189) */
+  --color-pipeline-positive-strong: #208000; /* content-test/positive — KYB account-in-review notified label/glyph; Figma node 6486:81764 (issue #1253; diverges from --color-pipeline-positive, tech debt TD-68) */
   --color-pipeline-negative: #c0392b; /* content/negative — status text (e.g. Rejected); mirrors fill/danger */
+  --color-pipeline-negative-strong: #b20000; /* content-test/negative — KYB sign-in error text/border; Figma node 6486:81595 (issue #1248; diverges from --color-pipeline-negative, tech debt TD-59) */
+  --color-pipeline-negative-secondary: rgb(
+    178 0 0 / 0.16
+  ); /* fill/negative-secondary — KYB sign-in error field fill; Figma node 6486:81595 (issue #1248) */
   --color-pipeline-pending: #b58a00; /* content/pending — status text (e.g. In Review); mirrors fill/warning */
   --color-pipeline-chart-positive: #208000; /* chart bar fill — portfolio balance chart; Figma 1497:95197 (= fill/positive-primary) */
 
@@ -119,6 +125,8 @@
   --text-pipeline-body--line-height: 22px;
   --text-pipeline-caption: 12px;
   --text-pipeline-caption--line-height: 16px;
+  --text-pipeline-body-s: 14px;
+  --text-pipeline-body-s--line-height: 18px;
 
   /* Weights and tracking */
   --font-weight-regular: 400;
@@ -131,6 +139,7 @@
   --radius-pipeline-card: 4px;
   --radius-pipeline-card-sm: 6px; /* radius/radius-xl — segmented tab container; Figma node 3283:14480 */
   --radius-pipeline-card-lg: 16px;
+  --radius-pipeline-card-xs: 2px;
   --radius-pipeline-button: 4px;
   --radius-pipeline-pill: 9999px;
 }
@@ -148,6 +157,9 @@
   --color-pipeline-surface: #ffffff; /* fill-test/on-primary — node 1497:94565 */
   --color-pipeline-promo: #f8fce9; /* fill/warning-secondary — node 1497:94566 — solid #F8FCE9 per Figma (issue #606) */
   --color-pipeline-brand: #000080; /* fill/brand — node 1497:94689 Convert button */
+  --color-pipeline-brand-secondary: rgb(
+    0 0 128 / 0.08
+  ); /* KYB company-docs leading tile — sampled from Figma node 6486:81679 (issue #1251); no variable binding in the file's codegen */
   --color-pipeline-cta: #262524; /* fill-test/primary — node 1497:94725 */
   --color-pipeline-ink: #262524; /* content-test/primary — node 1497:94685 */
   --color-pipeline-ink-muted: rgb(
@@ -178,7 +190,12 @@
     32 128 0 / 0.16
   ); /* fill/positive-secondary — step done pill bg (restored by #1217, Figma 1498:100812; was ink per LP review #43/#1189) */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check color (restored by #1217; was on-dark per LP review #43/#1189) */
+  --color-pipeline-positive-strong: #208000; /* content-test/positive — KYB account-in-review notified label/glyph; Figma node 6486:81764 (issue #1253; diverges from --color-pipeline-positive, tech debt TD-68) */
   --color-pipeline-negative: #c0392b; /* content/negative — status text (e.g. Rejected); mirrors fill/danger */
+  --color-pipeline-negative-strong: #b20000; /* content-test/negative — KYB sign-in error text/border; Figma node 6486:81595 (issue #1248; diverges from --color-pipeline-negative, tech debt TD-59) */
+  --color-pipeline-negative-secondary: rgb(
+    178 0 0 / 0.16
+  ); /* fill/negative-secondary — KYB sign-in error field fill; Figma node 6486:81595 (issue #1248) */
   --color-pipeline-pending: #b58a00; /* content/pending — status text (e.g. In Review); mirrors fill/warning */
   --color-pipeline-chart-positive: #208000; /* chart bar fill — portfolio balance chart; Figma 1497:95197 (= fill/positive-primary) */
 
@@ -207,6 +224,8 @@
   --text-pipeline-body--line-height: 22px; /* font/line-height/body */
   --text-pipeline-caption: 12px; /* font/font-size/caption */
   --text-pipeline-caption--line-height: 16px; /* font/line-height/caption */
+  --text-pipeline-body-s: 14px; /* font style "Body S" — KYB OTP error caption; Figma node 6486:81875 (issue #1250) */
+  --text-pipeline-body-s--line-height: 18px; /* font/line-height/body-s */
 
   /* --- Typography: weights and tracking --- */
 
@@ -221,6 +240,7 @@
   --radius-pipeline-card: 4px; /* radius/radius-s — card outer; node 1497:94556 */
   --radius-pipeline-card-sm: 6px; /* radius/radius-xl — segmented tab container; Figma node 3283:14480 */
   --radius-pipeline-card-lg: 16px; /* radius/radius-l — input-section outer card; Figma 1498:100136 */
+  --radius-pipeline-card-xs: 2px; /* radius/radius-xxs — KYB owners drop zone; Figma node 6486:81710 (issue #1252) */
   --radius-pipeline-button: 4px; /* radius/radius-s — button radius */
   --radius-pipeline-pill: 9999px; /* round Staking Button — node 1497:94713 */
 }

@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 
@@ -162,11 +162,20 @@ import { SCENARIOS } from "./test/-scenarios";
  * `useSearch` method directly on the Route object so each test can choose its
  * starting tab.
  */
-function renderTestPage(tab: "status" | "mocks" | string = "status") {
+function renderTestPage(
+  tab: "status" | "mocks" | "toasts" | "auth" | string = "status",
+) {
   // Patch Route.useSearch to return the requested tab value.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Route as any).useSearch = () => ({
-    tab: tab === "mocks" ? "mocks" : "status",
+    tab:
+      tab === "mocks"
+        ? "mocks"
+        : tab === "toasts"
+          ? "toasts"
+          : tab === "auth"
+            ? "auth"
+            : "status",
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Route as any).useNavigate = () => mockNavigate;
@@ -226,12 +235,8 @@ describe("TestPage — default Status tab", () => {
 
   it("Status tab has no content buttons (read-only — regression for #252)", () => {
     const { container } = renderTestPage("status");
-    // The SegmentedTabs renders one button per tab (Status + Mocks + Toasts);
-    // only those should be present on the Status tab. No action buttons (Clear
-    // mocks / Enable) should appear.
     const buttons = container.querySelectorAll("button");
-    // The SegmentedTabs always renders exactly 3 buttons (Status + Mocks + Toasts).
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(4);
   });
 
   it("does not render the Write hooks section", () => {
@@ -282,6 +287,143 @@ describe("TestPage — tab param routing", () => {
     renderTestPage("mocks");
     const enableButtons = screen.getAllByRole("button", { name: /enable/i });
     expect(enableButtons.length).toBe(SCENARIOS.length);
+  });
+
+  it("?tab=auth shows the Auth tab with an Open Sign In modal button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens SignInModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("?tab=auth shows an Open Create Account modal button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open create account modal/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens CreateAccountModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open create account modal/i }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Create account" }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth shows an Open OTP screen button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open otp screen/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens the OTP screen on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /open otp screen/i }));
+    expect(
+      screen.getByRole("dialog", { name: "Check your inbox" }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth shows an Open Company Docs step button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens CompanyDocsModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Finish account setup" }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth shows the reworded OTP-verified stand-in copy after verifying", async () => {
+    const user = userEvent.setup();
+    renderTestPage("auth");
+    fireEvent.click(screen.getByRole("button", { name: /open otp screen/i }));
+    const input = screen.getByLabelText("Verification code");
+    await user.click(input);
+    await user.paste("123456");
+    expect(
+      await screen.findByTestId("auth-otp-verified", {}, { timeout: 2000 }),
+    ).toHaveTextContent(
+      "OTP verified — open the Company Docs step from the button above.",
+    );
+  });
+
+  it("?tab=auth shows the company-docs-submitted line after submitting all five documents", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    );
+
+    const inputs = screen.getAllByTestId(/-file-input$/);
+    expect(inputs).toHaveLength(5);
+    inputs.forEach((input, i) => {
+      const file = new File(["x"], `doc-${i}.pdf`, {
+        type: "application/pdf",
+      });
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByTestId("auth-company-docs-submitted")).toHaveTextContent(
+      "Company documents submitted — open the Owners step from the button above.",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("?tab=auth shows an Open Owners step button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open owners step/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens OwnersModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /open owners step/i }));
+    expect(
+      screen.getByRole("dialog", { name: "Add company owners" }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth shows the owners-submitted line after submitting a file", () => {
+    renderTestPage("auth");
+    fireEvent.click(screen.getByRole("button", { name: /open owners step/i }));
+
+    const file = new File(["x"], "id.pdf", { type: "application/pdf" });
+    const input = document.querySelector('input[type="file"]');
+    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(screen.getByTestId("auth-owners-submitted")).toHaveTextContent(
+      "Owners submitted — open the Account-in-review screen from the button above.",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("?tab=foo (invalid) falls back to Status tab", () => {

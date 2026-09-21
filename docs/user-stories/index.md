@@ -165,3 +165,16 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#874 Trustee loan detail: wire summary tiles to real data, audit remaining mocks](https://github.com/eq-lab/pipeline/issues/874) | [874-loan-detail-summary-tiles.md](./epic-775/874-loan-detail-summary-tiles.md) | Initial |
 | [#892 Trustee: normalize submission statuses in Origination](https://github.com/eq-lab/pipeline/issues/892) | [892-origination-submission-status-normalization.md](./epic-775/892-origination-submission-status-normalization.md) | Initial |
 | [#896 Trustee: show pointer cursor for active buttons](https://github.com/eq-lab/pipeline/issues/896) | [896-trustee-active-button-cursors.md](./epic-775/896-trustee-active-button-cursors.md) | Initial |
+
+---
+
+## Epic #1247 — KYB login flow
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1248 KYB: Sign-in modal (email + password)](https://github.com/eq-lab/pipeline/issues/1248) | [1248-kyb-signin-modal.md](./epic-1247/1248-kyb-signin-modal.md) | Initial |
+| [#1249 KYB: Create-account modal](https://github.com/eq-lab/pipeline/issues/1249) | [1249-kyb-create-account.md](./epic-1247/1249-kyb-create-account.md) | Initial |
+| [#1250 KYB: OTP email-verification screen](https://github.com/eq-lab/pipeline/issues/1250) | [1250-kyb-otp.md](./epic-1247/1250-kyb-otp.md) | Initial |
+| [#1251 KYB: Company Docs upload step](https://github.com/eq-lab/pipeline/issues/1251) | [1251-kyb-company-docs.md](./epic-1247/1251-kyb-company-docs.md) | Initial |
+| [#1252 KYB: Owners step](https://github.com/eq-lab/pipeline/issues/1252) | [1252-kyb-owners.md](./epic-1247/1252-kyb-owners.md) | Initial |
+| [#1253 KYB: Account-in-review screen](https://github.com/eq-lab/pipeline/issues/1253) | [1253-kyb-account-in-review.md](./epic-1247/1253-kyb-account-in-review.md) | Initial |

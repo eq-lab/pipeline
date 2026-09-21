@@ -87,3 +87,7 @@ export type { InlineErrorProps } from "./components/InlineError/InlineError";
 export { Switch } from "./components/Switch";
 export type { SwitchProps } from "./components/Switch";
 export { RiskBanner, RISK_BANNER_TEXT } from "./components/RiskBanner";
+export { TextField } from "./components/TextField";
+export type { TextFieldProps } from "./components/TextField";
+export { OtpInput } from "./components/OtpInput";
+export type { OtpInputProps } from "./components/OtpInput";

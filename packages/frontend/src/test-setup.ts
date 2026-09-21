@@ -54,3 +54,20 @@ for (const name of ["localStorage", "sessionStorage"] as const) {
     writable: true,
   });
 }
+
+if (typeof URL.createObjectURL !== "function") {
+  let counter = 0;
+  Object.defineProperty(URL, "createObjectURL", {
+    value: () => `blob:mock-${++counter}`,
+    configurable: true,
+    writable: true,
+  });
+}
+
+if (typeof URL.revokeObjectURL !== "function") {
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: () => {},
+    configurable: true,
+    writable: true,
+  });
+}
