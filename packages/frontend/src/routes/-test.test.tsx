@@ -389,41 +389,16 @@ describe("TestPage — tab param routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(screen.getByTestId("auth-company-docs-submitted")).toHaveTextContent(
-      "Company documents submitted — open the Owners step from the button above.",
+      "Company documents submitted — open the Account-in-review screen from the button above.",
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("?tab=auth shows an Open Owners step button", () => {
+  it("?tab=auth has no Open Owners step trigger (retired)", () => {
     renderTestPage("auth");
     expect(
-      screen.getByRole("button", { name: /open owners step/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("?tab=auth opens OwnersModal on click, closed by default", () => {
-    renderTestPage("auth");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /open owners step/i }));
-    expect(
-      screen.getByRole("dialog", { name: "Add company owners" }),
-    ).toBeInTheDocument();
-  });
-
-  it("?tab=auth shows the owners-submitted line after submitting a file", () => {
-    renderTestPage("auth");
-    fireEvent.click(screen.getByRole("button", { name: /open owners step/i }));
-
-    const file = new File(["x"], "id.pdf", { type: "application/pdf" });
-    const input = document.querySelector('input[type="file"]');
-    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
-
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-
-    expect(screen.getByTestId("auth-owners-submitted")).toHaveTextContent(
-      "Owners submitted — open the Account-in-review screen from the button above.",
-    );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      screen.queryByRole("button", { name: /open owners step/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("?tab=foo (invalid) falls back to Status tab", () => {

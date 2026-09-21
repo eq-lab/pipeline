@@ -1,5 +1,5 @@
-// spec: docs/frontend/auth-components.md#ownersmodal (banner + hover-only
-// tooltip, copy verbatim; Figma nodes 6486:81710, 6486:82392)
+// spec: docs/frontend/auth-components.md#ownersmodal (component retained, no
+// current consumer since the 2026-09-21 OwnersModal retirement — kept for #1278/#1284 reuse)
 import { useId, useState } from "react";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────

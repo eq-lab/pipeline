@@ -9,7 +9,6 @@ import { SignInModal } from "@/components/SignInModal";
 import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { OtpModal } from "@/components/OtpModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
-import { OwnersModal } from "@/components/OwnersModal";
 import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import {
   useEvmWallet,
@@ -697,8 +696,6 @@ function AuthTab(): React.JSX.Element {
   const [otpVerified, setOtpVerified] = React.useState(false);
   const [companyDocsOpen, setCompanyDocsOpen] = React.useState(false);
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
-  const [ownersOpen, setOwnersOpen] = React.useState(false);
-  const [ownersSubmitted, setOwnersSubmitted] = React.useState(false);
   const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
   const [wentToApp, setWentToApp] = React.useState(false);
 
@@ -706,9 +703,9 @@ function AuthTab(): React.JSX.Element {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
         Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
-        #1249), OTP (issue #1250), Company Docs (issue #1251), Owners (issue
-        #1252), and Account-in-review (issue #1253) modals. Not wired to any
-        production entry point.
+        #1249), OTP (issue #1250), Company Docs (issue #1251), and
+        Account-in-review (issue #1253) modals. Not wired to any production
+        entry point.
       </p>
       <div className="flex gap-2">
         <Button
@@ -742,13 +739,6 @@ function AuthTab(): React.JSX.Element {
         <Button
           variant="secondary"
           className="w-fit"
-          onClick={() => setOwnersOpen(true)}
-        >
-          Open Owners step
-        </Button>
-        <Button
-          variant="secondary"
-          className="w-fit"
           onClick={() => setAccountInReviewOpen(true)}
         >
           Open Account-in-review screen
@@ -767,17 +757,8 @@ function AuthTab(): React.JSX.Element {
           data-testid="auth-company-docs-submitted"
           className="text-sm text-[color:var(--color-pipeline-positive)]"
         >
-          Company documents submitted — open the Owners step from the button
-          above.
-        </p>
-      )}
-      {ownersSubmitted && (
-        <p
-          data-testid="auth-owners-submitted"
-          className="text-sm text-[color:var(--color-pipeline-positive)]"
-        >
-          Owners submitted — open the Account-in-review screen from the button
-          above.
+          Company documents submitted — open the Account-in-review screen from
+          the button above.
         </p>
       )}
       {wentToApp && (
@@ -807,14 +788,6 @@ function AuthTab(): React.JSX.Element {
         onSubmit={() => {
           setCompanyDocsSubmitted(true);
           setCompanyDocsOpen(false);
-        }}
-      />
-      <OwnersModal
-        open={ownersOpen}
-        onDismiss={() => setOwnersOpen(false)}
-        onSubmit={() => {
-          setOwnersSubmitted(true);
-          setOwnersOpen(false);
         }}
       />
       <AccountInReviewModal
