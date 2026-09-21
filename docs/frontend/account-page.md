@@ -71,7 +71,25 @@ balance); disconnected shows a 72px `--color-pipeline-fill-muted` circle with a 
 glyph and a full-width 48px `Button variant="primary-dark"` labelled `Connect Wallet`. A missing
 balance renders `—`, never a computed or placeholder number.
 
-## Documents state machine
+**The wallet row's leading icon in the frame is a literal MetaMask fox logo** (`get_design_context`
+emits it as an `imgMetamask` asset on node `I6701:98146;8905:4082`) — scratch/placeholder art from
+whoever mocked the frame, the same category of design-file artifact as the "Verify your
+identity"/"Verify your account" inconsistency below. This row renders for **either** namespace tab
+(`Ethereum` or `Stellar`), so a brand-locked browser-extension logo would be product-wrong; the
+generic ink-colored `WalletGlyph` (`AccountWalletCard.tsx`) is intentional and unchanged. Logged as
+a designer ask, not a defect.
+
+**The wallet card's copy button and the upload row's `Upload` button each sit inside an invisible
+40×40 touch-target wrapper, not flush against the row's own padding** — confirmed via
+`get_metadata` at `6701:98146` (`ButtonCont` node `I6701:98146;8902:3635`: `x=416 w=40 h=40`,
+containing the 32×32 visible control at a 4px inset) and `6701:98157` (`ButtonCont` node
+`I6701:98157;8902:3622`: `x=373 w=83 h=40`, containing the 75×32 `Upload` button at the same 4px
+inset). Both rows are `p-[8px]` with a `gap-[12px]` between content and this wrapper — matching the
+existing `AccountListRow`/`AccountUploadRow` padding — but a prior pass placed the compact control
+directly in that gap with no wrapper, landing it 4px closer to the card edge than the frame. Fixed
+by wrapping each control in a `p-1` (4px) container (`size-10` for the copy button, matching its
+`size-8` control; unsized for the `Upload` button, whose own `size="compact"` height already
+matches the wrapper's content height) — issue #1292.
 
 `packages/frontend/src/components/account/accountPageState.ts` — pure data and pure functions, no
 React.
@@ -209,11 +227,15 @@ stays as `Button variant="secondary" size="compact"` with no extra className.
 `#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen
 is stale here (same class as #1251's `content-test/primary` finding), literally emitting
 `bg-[var(--fill-test/primary,#262524)]` for all three tiles, but only the email tile's *icon*
-(hardcoded SVG fill `black`) reads as dark; the tile background itself, and the upload tile's icon
-(`currentColor`, exactly `UploadedFileRow`'s `FileUploadIcon` export), are the same
+(hardcoded SVG fill `black`) reads as dark; the tile background itself is the same
 `--color-pipeline-brand-secondary` pale tint `UploadedFileRow` already ships (TD-63). `AccountIconTile`
-uses that fill uniformly; only the icon's own color varies (ink for envelope/wallet, brand for the
-upload glyph).
+uses that fill uniformly; only the icon's own color varies — ink for envelope/wallet, solid
+`--color-pipeline-brand` navy for the upload glyph (`AccountUploadRow.tsx`'s `FileUploadIcon`,
+`currentColor`). The upload icon is a second stale-codegen spot (issue #1292): the raw exported
+`file-upload` SVG asset hardcodes `fill="#8FB3A4"` (sage green) with no `currentColor`, but
+`get_variable_defs` on this frame resolves a bound `content-test/brand: #000080` variable — exactly
+`--color-pipeline-brand` — and the screenshot shows a solid navy icon, not sage; the asset's baked
+fill is stale, not the target.
 
 ## Reuse verdicts
 

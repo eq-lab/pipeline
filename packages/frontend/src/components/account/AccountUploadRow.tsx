@@ -65,14 +65,16 @@ export function AccountUploadRow({ rejected, onFiles }: AccountUploadRowProps) {
         data-testid="account-upload-input"
         onChange={handleChange}
       />
-      <Button
-        variant="secondary"
-        size="compact"
-        className="border border-[color:var(--color-pipeline-line)]"
-        onClick={() => inputRef.current?.click()}
-      >
-        Upload
-      </Button>
+      <div className="flex shrink-0 items-center justify-center p-1">
+        <Button
+          variant="secondary"
+          size="compact"
+          className="border border-[color:var(--color-pipeline-line)]"
+          onClick={() => inputRef.current?.click()}
+        >
+          Upload
+        </Button>
+      </div>
     </div>
   );
 }

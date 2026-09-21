@@ -36,6 +36,11 @@ describe("AccountWalletCard — connected", () => {
     expect(
       screen.queryByRole("button", { name: "Connect Wallet" }),
     ).not.toBeInTheDocument();
+    const copyButton = screen.getByRole("button", {
+      name: "Copy wallet address",
+    });
+    expect(copyButton).toHaveClass("size-8");
+    expect(copyButton.parentElement).toHaveClass("size-10", "p-1");
   });
 
   it("renders — when the balance is missing", () => {

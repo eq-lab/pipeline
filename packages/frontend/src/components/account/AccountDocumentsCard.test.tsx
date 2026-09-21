@@ -35,10 +35,12 @@ describe("AccountDocumentsCard — verify state", () => {
       "bg-[color:var(--color-pipeline-promo)]",
     );
     expect(screen.getByTestId("account-documents-card")).toHaveClass("py-4");
-    expect(screen.getByRole("button", { name: "Upload" })).toHaveClass(
+    const uploadButton = screen.getByRole("button", { name: "Upload" });
+    expect(uploadButton).toHaveClass(
       "border",
       "border-[color:var(--color-pipeline-line)]",
     );
+    expect(uploadButton.parentElement).toHaveClass("p-1");
   });
 });
 
