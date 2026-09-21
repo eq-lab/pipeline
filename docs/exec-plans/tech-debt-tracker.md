@@ -1202,6 +1202,103 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   the server's regex exactly or by moving complexity validation server-side only and using the
   client-side rule purely as an early, best-effort hint.
 
+### TD-74: `/account`'s dev-only guard must be removed when #1282 wires the header account icon
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/routes/account.tsx` (`beforeLoad`).
+- **Gap:** The route redirects to `/` when `ENV.IS_DEV` is false, mirroring `/test`'s guard
+  (#1259/#1260), because #1284 must not create a reachable-but-unwired production entry point
+  before #1282 links the header's account icon to it.
+- **Impact:** Until #1282 lands, `/account` is unreachable outside the dev server, and `?state=`
+  preview links are dev-only as a side effect of the same guard.
+- **Suggested fix:** #1282 removes the guard in the same change that adds the header link.
+
+### TD-75: Account-page Save has no real transition; needs #1267 + #1273, wired by #1254
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/useAccountDocuments.ts` (`handleSave`).
+- **Gap:** `onSave` is a pure no-op-by-default seam. Clicking Save never moves
+  `AccountDocumentsState` to `under-review` — that requires a real upload (#1267) and read-back
+  (#1273) round trip.
+- **Impact:** None today (presentational-only issue); #1254 must wire `onSave` to the real
+  submission flow and re-derive state from the server response, not from local staged state.
+- **Suggested fix:** #1254 composes #1267's upload call with #1273's read-back and feeds the
+  result into `deriveDocumentsState`.
+
+### TD-76: Account panel has no designed "under review" frame — shipped as a stand-in
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/AccountDocumentsCard.tsx`
+  (`"under-review"` branch).
+- **Gap:** None of the six Account-page Figma frames design an "under review" state; the copy and
+  chrome are assembled from the warning banner (`6701-98137`) and the home dashboard's card
+  (`6701-98417`), correcting its "Veryfying" typo.
+- **Impact:** A designer pass may specify different treatment once a real frame exists; QA's Figma
+  comparison should not file the stand-in as a defect.
+- **Suggested fix:** Designer ask: an Account-panel "under review" frame.
+
+### TD-77: "Verify your account" vs "Verify your identity" — design-file inconsistency
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/AccountDocumentsCard.tsx` (banner title
+  by state).
+- **Gap:** `6701-98137` (no staged files) reads "Verify your account"; `6701-98175` (staged files
+  present) reads "Verify your identity", with an identical caption and identical styling — nothing
+  about the user's situation changes between the two frames.
+- **Impact:** Cosmetic only; shipped verbatim per-frame rather than silently normalized.
+- **Suggested fix:** Designer ask: reconcile the two titles into one.
+
+### TD-78: Verified-row chevron has no destination — shipped decorative
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/AccountDocumentRow.tsx`.
+- **Gap:** Every Verified row carries a `.drill-in` chevron-right in the Figma frames, but no
+  document-detail frame exists anywhere in V1.0.
+- **Impact:** None — rendered `aria-hidden`, not a button, so it has no dead-end click target.
+- **Suggested fix:** Designer ask: a document-detail frame, or drop the chevron.
+
+### TD-79: `useActiveWalletAccount` duplicates `TopBar`'s inline wallet derivation
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/wallet/useActiveWalletAccount.ts` vs.
+  `packages/frontend/src/components/TopBar.tsx`.
+- **Gap:** The hook was extracted from the exact derivation `TopBar.tsx` already performs inline,
+  but `TopBar` itself was left untouched (touching it would collide with #1282's header rewrite).
+- **Impact:** Two copies of the same logic until #1282 lands.
+- **Suggested fix:** #1282 adopts `useActiveWalletAccount` when it rewrites the header.
+
+### TD-80: Wallet-namespace labels diverge three ways across the app
+
+- **Date:** 2026-09-21
+- **Location:** `ConnectWalletModal` ("EVM"/"Soroban"), `AccountDropdown` ("EVM"/"Stellar"),
+  `AccountWalletCard` ("Ethereum"/"Stellar", per the Account Figma frames).
+- **Gap:** Three different label pairs for the same two namespaces, each locally correct for its
+  own Figma frame.
+- **Impact:** Cosmetic inconsistency across surfaces.
+- **Suggested fix:** One designer decision on canonical namespace labels, applied everywhere at
+  once rather than guessed per-surface.
+
+### TD-81: Account-page wallet row ships a generic glyph, not the frame's MetaMask branding
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/AccountWalletCard.tsx`.
+- **Gap:** The connected wallet row's leading tile shows a MetaMask mark in the Figma frame.
+  Connector-specific branding is not derivable presentationally (the active wallet's actual
+  connector isn't known at this layer), so a generic wallet glyph ships instead.
+- **Impact:** Visual divergence from the frame for MetaMask-connected users; cosmetic only.
+- **Suggested fix:** Thread the actual connector id through if/when it becomes available, and swap
+  in per-connector marks.
+
+### TD-82: No mobile frames for the Account page
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/AccountPage.tsx`.
+- **Gap:** V1.0 Account frames are desktop-only. The 480px content column already behaves as a
+  reasonable single-column mobile layout; page padding is reduced below `md` as a best-effort
+  adaptation, not a designed mobile treatment.
+- **Impact:** Untested against any mobile Figma reference, because none exists.
+- **Suggested fix:** Designer ask: mobile Account-page frames.
+
 ---
 
 ## Post-MVP

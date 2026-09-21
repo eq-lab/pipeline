@@ -30,6 +30,16 @@ import type { TestScenario } from "./test/-scenarios";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+const ACCOUNT_PAGE_PREVIEW_LINKS: ReadonlyArray<{ id: string; label: string }> =
+  [
+    { id: "verify", label: "Account: Verify" },
+    { id: "staged", label: "Account: Staged" },
+    { id: "under-review", label: "Account: Under review" },
+    { id: "missing", label: "Account: Missing document" },
+    { id: "invalid", label: "Account: Invalid document" },
+    { id: "verified", label: "Account: Verified" },
+  ];
+
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
 type TestTab = "status" | "mocks" | "toasts" | "auth";
@@ -711,6 +721,23 @@ function AuthTab(): React.JSX.Element {
         (issue #1251), and Account-in-review (issue #1253) modals. Not wired to
         any production entry point.
       </p>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
+          Preview seam for the Account page (issue #1284) — dev-only, one link
+          per designed documents state.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {ACCOUNT_PAGE_PREVIEW_LINKS.map(({ id, label }) => (
+            <a
+              key={id}
+              href={`/account?state=${id}`}
+              className="text-sm text-[color:var(--color-pipeline-ink)] underline underline-offset-2"
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      </div>
       <div className="flex gap-2">
         <Button
           variant="secondary"

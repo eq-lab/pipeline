@@ -165,6 +165,10 @@ export type {
   WalletViewContextValue,
 } from "./WalletViewContext";
 
+// ── Active-namespace wallet derivation (issue #1284) ──────────────────────────
+export { useActiveWalletAccount } from "./useActiveWalletAccount";
+export type { UseActiveWalletAccountResult } from "./useActiveWalletAccount";
+
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";
