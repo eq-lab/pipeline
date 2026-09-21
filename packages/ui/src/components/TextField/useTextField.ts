@@ -1,9 +1,6 @@
 import { useId, useState } from "react";
 
-/**
- * useTextField — co-located hook for `TextField`.
- * spec: docs/frontend/ui-components.md#textfield
- */
+// spec: docs/frontend/ui-components.md#textfield
 export interface UseTextFieldOptions {
   type: "text" | "email" | "password";
 }

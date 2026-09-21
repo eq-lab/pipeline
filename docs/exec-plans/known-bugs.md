@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-20: `SignInModal`/`CreateAccountModal` submit-attempt validation path is unreachable in a real browser
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/SignInModal.tsx`, `CreateAccountModal.tsx` (both via `useAuthCredentialsForm.ts`'s `handleSubmit`/`submitAttempted`). Found during #1281 planning.
+- **Symptom:** Both modals' `Sign In`/`Sign Up` `<button type="submit">` is `disabled` exactly when the form is invalid (`disabled={!isValid}`). HTML's implicit form submission (pressing Enter in a field) is a no-op when the form's only submit button is disabled, so a user can never trigger `handleSubmit`'s `submitAttempted = true` path with invalid data in a real browser — the two fields' errors can only ever be revealed by blur, never by a submit attempt. The `docs/user-stories/epic-1247/1248-kyb-signin-modal.md` and `1249-kyb-create-account.md` stories that describe "trigger the form's submit" with invalid data (e.g. 1249's Story 4) are therefore unexecutable by a human or the QA agent's Chrome DevTools MCP flow.
+- **Root cause:** Unit tests reach the `submitAttempted` branch only because they call `fireEvent.submit(form)` directly, bypassing the browser's disabled-button gating entirely — so the code path has real test coverage but no real user-reachable trigger. The two validation-reveal timings (blur vs. submit-attempt) were designed as complementary, but submit-attempt is dead in practice given the disabled-until-valid submit button.
+- **Workaround:** Blur-triggered validation (`handleEmailBlur`/`handlePasswordBlur`) is the only path a real user exercises; #1281's own user-stories doc (`docs/user-stories/epic-1247/1281-create-account-error.md`) exercises the blur path only for this reason. Not fixed here — a real fix would mean either enabling the submit button unconditionally (and validating in the handler) or removing the submit-attempt reveal branch as dead code; both are behavior changes outside #1281's scope.
+
 ### BUG-19: `packages/ui` `tsc --noEmit` fails on `TextField.stories.tsx` — CSF3 args typing gap
 - **Date:** 2026-09-17
 - **Location:** `packages/ui/src/components/TextField/TextField.stories.tsx` lines 47, 52, 57 (each `Story`'s `args`).

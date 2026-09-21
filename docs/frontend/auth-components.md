@@ -77,8 +77,11 @@ design decision — `OtpModal`, `AccountInReviewModal`, and `ForgotPasswordModal
 `CreateAccountModal` — confirmed byte-identical instances across both frames during #1249
 planning. `packages/frontend/src/components/useAuthCredentialsForm.ts` (renamed from
 `useSignInModal.ts` in #1249) is the shared credential-form state/validation hook consumed by
-both modals — see the validation rules under "SignInModal" below, which apply unchanged to
-`CreateAccountModal`.
+both modals. Email validation and the field-reveal timing are shared unchanged; the **password
+rule now diverges** via an opt-in `passwordRule?: "non-empty" | "policy"` option (added by
+#1281), defaulting to `"non-empty"` so `SignInModal` renders byte-identical without passing it.
+See "SignInModal" → **Validation** and "CreateAccountModal" → **Validation error** below for the
+two rules.
 
 ### SignInModal
 
@@ -150,7 +153,9 @@ fields, the submit button, "Forgot password?", and "New here?" are each spaced 3
 error caption is absolutely positioned (`top-full`, right-aligned) below its field so it never
 shifts the 32px field-to-field rhythm.
 
-**Validation** (presentational only — no complexity rule, free-mail domains allowed):
+**Validation** (presentational only — **sign-in specifically** has no password-complexity rule,
+free-mail domains allowed; `CreateAccountModal` diverges — see its own **Validation error**
+section below):
 
 - Email: format-checked against `local@domain.tld` on blur or on submit attempt. No error while
   the field is empty.
@@ -208,10 +213,11 @@ Composition inside `AuthModalShell` (heading "Create account", `headingId`
 **Field set — exactly two inputs.** The Figma frame's `6486:81626` metadata lists a third
 `hidden="true"` `input` layer sitting underneath the submit button; it renders in neither
 screenshot and is intentionally **not** built. There is no confirm-password, company, or
-checkbox field anywhere in the frame, and no validation-error frame was designed for this
-screen (error styling is inherited from `TextField`/the shared hook, unverified against Figma).
+checkbox field anywhere in the frame. A validation-error frame **was** designed for this screen —
+node `6585:75897` (#1281) — see **Validation error** below; it carries the same hidden third
+`input` artifact (node `6585:75919`).
 
-**Delta against SignInModal** (the only four differences between the two frames):
+**Delta against SignInModal** (five differences between the two frames):
 
 | | SignInModal (#1248) | CreateAccountModal (#1249) |
 | --- | --- | --- |
@@ -219,9 +225,38 @@ screen (error styling is inherited from `TextField`/the shared hook, unverified 
 | Submit label | `Sign In` | `Sign Up` |
 | Footer line 1 | `Forgot password?` | absent |
 | Footer line 2 | `New here? Create account` | `Already have an account? Log in` |
+| Password rule | `non-empty` | `≥8 chars + digit + special` (#1281) |
 
-Token bindings, validation rules, and icon sourcing are identical to `SignInModal` (see above) —
-no new tokens, no new glyphs.
+Token bindings and icon sourcing are identical to `SignInModal` (see above) — no new tokens, no
+new glyphs. **Validation rules are no longer identical** — see **Validation error** below.
+
+**Validation error** (#1281). Visual spec (Figma): node
+[`6585:75897`](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=6585-75897&m=dev).
+Every pixel of this state is the existing `TextField` invalid rendering (invalid fill
+`--color-pipeline-negative-secondary`, invalid value text `--color-pipeline-negative-strong`, the
+eye toggle, the absolutely-positioned right-aligned caption) — no new token, no new glyph, no
+markup change beyond wiring `onBlur`.
+
+`CreateAccountModal` passes `passwordRule: "policy"` to `useAuthCredentialsForm`. The policy:
+
+```
+meetsPasswordPolicy(p) = p.length >= 8 && /\d/.test(p) && /[^A-Za-z0-9]/.test(p)
+```
+
+"Special character" is read as "not `[A-Za-z0-9]`" — punctuation, symbols, whitespace, and
+non-ASCII all count. There is **deliberately no letter requirement** — the verbatim Figma copy
+does not mention one (see TD-73 for the backend-reconciliation risk this creates once real auth
+endpoints land). Error copy (verbatim, replaces `SignInModal`'s "Enter the correct password" in
+this modal — a signup form has no "correct" password yet):
+
+> At least 8 characters, including a number and a special character
+
+**Reveal timing** mirrors the email field for repo consistency (not specified by the frame):
+no error while the password field is empty and untouched; the error appears on blur and then
+updates live as the user keeps typing; a submit attempt also reveals it (including for an empty
+password). `isValid` (and therefore the disabled `Sign Up` submit) requires the policy to pass,
+matching both the error frame (weak password → disabled) and the enabled frame `6486:81640`
+(10-char password → enabled).
 
 **Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
 `TextField`, inert footer text (not focusable).

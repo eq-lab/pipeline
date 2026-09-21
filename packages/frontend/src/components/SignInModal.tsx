@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#signinmodal (Figma nodes 6486:81557 /
-// 6486:81576 / 6486:81595 — default / enabled / validation-error states).
+// spec: docs/frontend/auth-components.md#signinmodal
 import { Button, TextField } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import {

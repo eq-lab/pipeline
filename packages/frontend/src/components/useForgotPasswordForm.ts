@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#forgotpasswordmodal (validation rules,
-// reuses EMAIL_PATTERN / EMAIL_ERROR_MESSAGE from useAuthCredentialsForm).
+// spec: docs/frontend/auth-components.md#forgotpasswordmodal
 import { useEffect, useState } from "react";
 import {
   EMAIL_PATTERN,

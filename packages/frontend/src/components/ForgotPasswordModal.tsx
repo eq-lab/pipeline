@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#forgotpasswordmodal (Figma node
-// 6704:107100 — one frame, no enabled/error/success variants in the design).
+// spec: docs/frontend/auth-components.md#forgotpasswordmodal
 import { Button, TextField } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { useForgotPasswordForm } from "@/components/useForgotPasswordForm";

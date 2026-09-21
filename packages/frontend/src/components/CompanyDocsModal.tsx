@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#companydocsmodal (Figma nodes
-// 6486:81679 / 6486:81817 — empty / uploaded states)
+// spec: docs/frontend/auth-components.md#companydocsmodal
 import { Button } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { DocumentUploadRow } from "@/components/DocumentUploadRow";

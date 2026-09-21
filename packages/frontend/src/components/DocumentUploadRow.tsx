@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#companydocsmodal (row composition,
-// rejection recolor; Figma nodes 6486:81679 / 6486:81817)
+// spec: docs/frontend/auth-components.md#companydocsmodal
 import { useRef } from "react";
 import { Button } from "@pipeline/ui";
 import { FileUploadIcon, UploadedFileRow } from "@/components/UploadedFileRow";

@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#companydocsmodal (five fixed slots,
-// validation, no-op onSubmit seam; Figma nodes 6486:81679 / 6486:81817)
+// spec: docs/frontend/auth-components.md#companydocsmodal
 import { useEffect, useState } from "react";
 import {
   isAcceptedFile,

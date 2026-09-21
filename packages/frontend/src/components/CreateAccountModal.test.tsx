@@ -31,12 +31,14 @@ function renderModal(
   };
 }
 
+const VALID_PASSWORD = "P@ssw0rd!";
+
 async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.type(
     screen.getByPlaceholderText("Enter corporate email"),
     "lp@example.com",
   );
-  await user.type(screen.getByPlaceholderText("Password"), "hunter2");
+  await user.type(screen.getByPlaceholderText("Password"), VALID_PASSWORD);
 }
 
 describe("CreateAccountModal (#1249)", () => {
@@ -97,9 +99,133 @@ describe("CreateAccountModal (#1249)", () => {
     expect(
       screen.getByText("Enter the correct email address"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Enter the correct password")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Enter the correct password"),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
   });
+
+  it("the old sign-in password copy is never rendered by CreateAccountModal", () => {
+    renderModal();
+    const form = document.querySelector("form") as HTMLFormElement;
+    fireEvent.submit(form);
+
+    expect(screen.queryByText("Enter the correct password")).toBeNull();
+    expect(
+      screen.getByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("a submit attempt with a valid email and an empty password renders the policy copy and keeps submit disabled", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    const form = document.querySelector("form") as HTMLFormElement;
+    fireEvent.submit(form);
+
+    expect(
+      screen.getByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
+  });
+
+  it("renders no password error while the field is empty and has never been blurred", () => {
+    renderModal();
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("blurring an empty password field shows no error", () => {
+    renderModal();
+    fireEvent.blur(screen.getByPlaceholderText("Password"));
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("a weak password plus blur renders the exact policy copy", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.type(screen.getByPlaceholderText("Password"), "weak");
+    fireEvent.blur(screen.getByPlaceholderText("Password"));
+
+    expect(
+      screen.getByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("the error clears live once the value satisfies the policy after being blurred once", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    const passwordField = screen.getByPlaceholderText("Password");
+    await user.type(passwordField, "weak");
+    fireEvent.blur(passwordField);
+    expect(
+      screen.getByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).toBeInTheDocument();
+
+    await user.type(passwordField, VALID_PASSWORD);
+
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["P@ssw0r", false],
+    ["Password!", false],
+    ["Password1", false],
+    ["12345678!", true],
+    [VALID_PASSWORD, true],
+  ])(
+    "password %s is valid=%s per the policy (submit disabled state + error presence)",
+    async (password, valid) => {
+      const user = userEvent.setup();
+      renderModal();
+      await user.type(
+        screen.getByPlaceholderText("Enter corporate email"),
+        "lp@example.com",
+      );
+      const passwordField = screen.getByPlaceholderText("Password");
+      await user.type(passwordField, password);
+      fireEvent.blur(passwordField);
+
+      const submit = screen.getByRole("button", { name: "Sign Up" });
+      const error = screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      );
+      if (valid) {
+        expect(submit).not.toBeDisabled();
+        expect(error).not.toBeInTheDocument();
+      } else {
+        expect(submit).toBeDisabled();
+        expect(error).toBeInTheDocument();
+      }
+    },
+  );
 
   it("clicking submit with valid input calls onSubmit once with { email, password }", async () => {
     const user = userEvent.setup();
@@ -112,7 +238,7 @@ describe("CreateAccountModal (#1249)", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit).toHaveBeenCalledWith({
       email: "lp@example.com",
-      password: "hunter2",
+      password: VALID_PASSWORD,
     });
   });
 
@@ -150,6 +276,35 @@ describe("CreateAccountModal (#1249)", () => {
     expect(
       (screen.getByPlaceholderText("Password") as HTMLInputElement).value,
     ).toBe("");
+  });
+
+  it("reopening the modal clears the password error and passwordTouched", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderModal();
+    const passwordField = screen.getByPlaceholderText("Password");
+    await user.type(passwordField, "weak");
+    fireEvent.blur(passwordField);
+    expect(
+      screen.getByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).toBeInTheDocument();
+
+    rerender({ open: false });
+    rerender({ open: true });
+
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
+
+    fireEvent.blur(screen.getByPlaceholderText("Password"));
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("Escape calls onDismiss", () => {

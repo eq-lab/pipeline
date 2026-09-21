@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#shared-file-validation (shared by
-// CompanyDocsModal; OwnersModal's 2026-09-21 retirement removed the second consumer)
+// spec: docs/frontend/auth-components.md#shared-file-validation
 
 export const ACCEPTED_FILE_TYPES = [
   "application/pdf",

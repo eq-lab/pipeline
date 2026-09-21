@@ -1,10 +1,7 @@
 import React from "react";
 import { useTextField } from "./useTextField";
 
-/**
- * TextField — Pipeline UI text/email/password input primitive.
- * spec: docs/frontend/ui-components.md#textfield (Figma → token mapping, Figma node 6486:81613).
- */
+// spec: docs/frontend/ui-components.md#textfield
 export interface TextFieldProps extends Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "onChange"
