@@ -516,13 +516,18 @@ stand-in confirmation line, and the corresponding user-stories doc
 match.
 
 `KybInfoBanner.tsx` and `FileDropZone.tsx` — the two presentational pieces this screen introduced
-— are **retained with no current consumer**: the #1284 Account-page documents hub and the #1278
-modal redesign are both expected to reuse them, so deleting them would just mean rebuilding the
-same drop-zone/banner behavior later. `UploadedFileRow.tsx` and `kybFileValidation.ts`, the other
-two shared parts this screen used, keep their existing consumer (`DocumentUploadRow` /
-`CompanyDocsModal`) unchanged. See TD-64 through TD-67 in
-`docs/exec-plans/tech-debt-tracker.md` for what happened to the Owners-specific tech debt this
-screen carried.
+— were retained on the expectation that #1284's Account-page documents hub would consume them.
+**It does not**: the V1.0 Account frames need a tinted, bordered, 72px two-line banner with a 32px
+status icon and an optional trailing button (`AccountStatusBanner.tsx`,
+[`account-page.md`](./account-page.md#reuse-verdicts)), and a plain list-item upload row
+(`AccountUploadRow.tsx`) rather than a dashed drop zone — extending `KybInfoBanner`/`FileDropZone`
+into that shape would be a rewrite, not a variant. Both components end epic #1247's V1.0 slice
+with **no consumer**; #1278's modal redesign now owns the decision to reuse or delete them
+(tech debt). `UploadedFileRow.tsx` and `kybFileValidation.ts`, the other two shared parts this
+screen used, keep their existing consumer (`DocumentUploadRow` / `CompanyDocsModal`) **and** gained
+a second one (`AccountDocumentsCard`'s staged rows, `useAccountDocuments`). See TD-64 through
+TD-67 in `docs/exec-plans/tech-debt-tracker.md` for what happened to the Owners-specific tech debt
+this screen carried.
 
 ### AccountInReviewModal
 
@@ -642,3 +647,9 @@ different thing. `-test.test.tsx` asserts the invariant directly (exactly one `d
 the swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit on Forgot
 Password shows `auth-forgot-password-submitted`: "Reset link requested — #1265 wires this to the
 real password-reset endpoint."
+
+**Account-page preview links (#1284).** The same `AuthTab` also renders six plain links, one per
+`AccountDocumentsState` id, to `/account?state=<id>` — the dev-only preview seam for
+[`account-page.md`](./account-page.md#state-preview-contract). This does not add a new `/test` tab:
+the auth tab remains this epic's established discovery surface, and the Account page itself is the
+preview surface for its own states.
