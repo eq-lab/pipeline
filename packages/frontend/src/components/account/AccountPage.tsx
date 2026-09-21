@@ -55,7 +55,7 @@ export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
 
   return (
     <div
-      className="flex w-full flex-col items-center gap-8 px-4 md:px-32"
+      className="flex w-full flex-col items-center gap-8 p-4 md:p-32"
       data-testid="account-page"
     >
       <div
@@ -111,7 +111,7 @@ export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
 
         <Button
           variant="secondary"
-          className="w-full bg-[color:var(--color-pipeline-surface)]"
+          className="w-full !bg-[color:var(--color-pipeline-surface)]"
           onClick={() => onLogOut?.()}
         >
           Log Out

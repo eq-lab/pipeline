@@ -32,6 +32,14 @@ This also makes `?state=` inherently dev-only — one guard, not two.
 column at `gap-8` (32px), below the fixed header. A 72×72 `--color-pipeline-fill-muted` circle with
 a user glyph sits above the centered Besley 28/36 `Account` heading.
 
+The page container itself carries **uniform 128px padding on all four sides** (`p-4 md:p-32`,
+matching the Figma frame's `p-[128px]` — confirmed at the node, not just the horizontal half the
+component previously implemented) below `md`, dropping to 16px per [No mobile
+frames](#no-mobile-frames). `Log Out` is `Button variant="secondary"` with a `!bg-[color:var(--color-pipeline-surface)]`
+override — the `!` is required: `secondary`'s own `bg-transparent` and an unprefixed override are
+the same Tailwind specificity, so the surface fill is not guaranteed to win without it (the
+established precedent is `AccountInReviewModal.tsx`'s `!bg-[...]` override of the same variant).
+
 ## Wallet card
 
 `AccountWalletCard.tsx` is a *view switch* over the existing `useWalletView()` (`kind: "evm" |
@@ -92,9 +100,11 @@ puts classification in the trustee's review screen (#1267); this page's requirem
 | `invalid` | `6701-97982` | negative, no tile, "Re-upload your document" | no | no | 1 Rejected ("Invalid document" + Re-upload) + Verified | absent |
 | `verified` | `6701-98061` | none | no | no | all Verified (decorative chevron) | absent |
 
-Container padding flips with the state (`AccountDocumentsCard.tsx`): `pt-4 pb-2 px-2 gap-4` for the
-two upload states, `pt-4 pb-2 px-2 gap-2` for the banner-over-list states, `p-2 gap-2` for the
-list-only `verified` state.
+Container padding flips with the state (`AccountDocumentsCard.tsx`): `py-4 px-2 gap-4` for the two
+upload states (`verify`/`staged` — confirmed uniform top/bottom at the node; a prior pass had this
+as asymmetric `pt-4 pb-2`, which was wrong), `pt-4 pb-2 px-2 gap-2` for the banner-over-list states
+(`missing`/`invalid`, and the `under-review` stand-in), `p-2 gap-2` for the list-only `verified`
+state.
 
 ### The "under review" stand-in (no designed frame)
 
@@ -173,6 +183,14 @@ used instead (e.g. `certificate-of-incorporation.pdf`).
 calls it "green"; `--color-pipeline-promo` (`#f8fce9`, itself documented as "solid equivalent of
 `rgb(211 235 117 / 0.16)` on white") matches exactly, since the banner sits on a white card. QA
 should not file this as a colour defect.
+
+**The flat upload row's trailing `Upload` button (`AccountUploadRow.tsx`) carries a
+`border border-[color:var(--color-pipeline-line)]` override on `Button variant="secondary"
+size="compact"`** — confirmed at both `6701:98157` (verify) and `6701:98195` (staged); a prior pass
+shipped it borderless. This is the same override `DocumentUploadRow.tsx` already uses for its own
+`Upload` button. The banner's own inline `Upload` action (the `missing` state,
+`AccountStatusBanner`'s `action` prop) has **no** border — confirmed at `6701:98040` — so that one
+stays as `Button variant="secondary" size="compact"` with no extra className.
 
 **The 40×40 leading tiles (wallet row, email row, upload row) render a pale navy tint, not
 `#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen

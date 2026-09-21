@@ -35,7 +35,13 @@ describe("AccountPage", () => {
     const button = screen.getByRole("button", { name: "Log Out" });
     button.focus();
     expect(button).toHaveFocus();
+    expect(button).toHaveClass("!bg-[color:var(--color-pipeline-surface)]");
     await expect(userEvent.click(button)).resolves.not.toThrow();
+  });
+
+  it("pads the page uniformly (matches the Figma p-128 frame token)", () => {
+    render(<AccountPage />);
+    expect(screen.getByTestId("account-page")).toHaveClass("p-4", "md:p-32");
   });
 
   it("with no preview state, renders the honest default: — email and the verify documents state", () => {

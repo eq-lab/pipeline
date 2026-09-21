@@ -29,8 +29,8 @@ export interface AccountDocumentsCardProps {
 }
 
 const CONTAINER_CLASS_BY_STATE: Record<AccountDocumentsState, string> = {
-  verify: "gap-4 px-2 pt-4 pb-2",
-  staged: "gap-4 px-2 pt-4 pb-2",
+  verify: "gap-4 px-2 py-4",
+  staged: "gap-4 px-2 py-4",
   "under-review": "gap-2 px-2 pt-4 pb-2",
   missing: "gap-2 px-2 pt-4 pb-2",
   invalid: "gap-2 px-2 pt-4 pb-2",

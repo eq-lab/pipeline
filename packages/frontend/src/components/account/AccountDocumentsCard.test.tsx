@@ -34,6 +34,11 @@ describe("AccountDocumentsCard — verify state", () => {
     expect(screen.getByRole("status")).toHaveClass(
       "bg-[color:var(--color-pipeline-promo)]",
     );
+    expect(screen.getByTestId("account-documents-card")).toHaveClass("py-4");
+    expect(screen.getByRole("button", { name: "Upload" })).toHaveClass(
+      "border",
+      "border-[color:var(--color-pipeline-line)]",
+    );
   });
 });
 
@@ -58,6 +63,7 @@ describe("AccountDocumentsCard — staged state", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.getByTestId("account-documents-card")).toHaveClass("py-4");
   });
 });
 
