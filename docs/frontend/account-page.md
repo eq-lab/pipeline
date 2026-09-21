@@ -246,6 +246,19 @@ does carry the touch-target wrapper** — `get_metadata` at `6701:98040` shows `
 identical geometry to `AccountUploadRow`'s own wrapper — so `AccountStatusBanner` wraps its
 `action` button in the same `flex items-center justify-center p-1` container (issue #1294).
 
+**The `invalid` state's per-row `Re-upload` action (`AccountDocumentRow.tsx`) is a borderless,
+text-only `Button variant="secondary" size="compact"`, wrapped in the same `p-1` touch-target
+convention** — confirmed via `get_metadata` at `6701:98001` (the `dfvfv.pdf` row): `ButtonCont`
+(node `I6701:98001;8902:3622`) at `x=349 w=107 h=40` containing the 32-tall `button` at a 4px inset
+on every side, and `get_design_context` shows no `bg-*`/`border` class on that `button` node —
+`secondary`'s own `bg-transparent` with no border already matches. Text color is
+`content-test/secondary` (ink-muted), not `secondary`'s default ink, so the row overrides with
+`!text-[color:var(--color-pipeline-ink-muted)]` — the `!` is required for the same specificity
+reason as `Log Out`'s `!bg-` override above. A prior pass rendered this as a bare unstyled `<button
+px-1>` with no touch-target wrapper (issue #1295). The `invalid` banner itself (`6701:98000`) has
+**no** trailing action — confirmed no `ButtonCont`/button node in its subtree, unlike the `missing`
+banner's inline `Upload`.
+
 **The 40×40 leading tiles (wallet row, email row, upload row) render a pale navy tint, not
 `#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen
 is stale here (same class as #1251's `content-test/primary` finding), literally emitting

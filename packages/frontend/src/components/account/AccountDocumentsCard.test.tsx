@@ -153,9 +153,15 @@ describe("AccountDocumentsCard — invalid state", () => {
       screen.getByText("Some information may be missing or incorrect"),
     ).toBeInTheDocument();
     expect(screen.getByText("Invalid document")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Re-upload" }),
-    ).toBeInTheDocument();
+    const reuploadButton = screen.getByRole("button", { name: "Re-upload" });
+    expect(reuploadButton).toBeInTheDocument();
+    expect(reuploadButton).toHaveClass(
+      "!h-8",
+      "!text-[color:var(--color-pipeline-ink-muted)]",
+    );
+    expect(reuploadButton).not.toHaveClass("border");
+    expect(reuploadButton.parentElement).toHaveClass("p-1");
+    expect(screen.queryByRole("status")?.querySelector("button")).toBeNull();
     expect(screen.getAllByText("Verified")).toHaveLength(6);
     expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
     expect(
