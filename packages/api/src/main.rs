@@ -15,6 +15,7 @@ use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::HttpLoanMetadataFetcher;
+use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
 use shared::metadata_fetcher::MetadataFetcher;
 use shared::position_repo::PositionRepo;
@@ -60,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
     let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
     let loan_capital_transfers_repo = LoanCapitalTransfersRepo::new(pool.clone());
     let lp_repo = LpRepo::new(pool.clone());
+    let lp_ledger_repo = LpLedgerRepo::new(pool.clone());
     let kyb_document_repo = KybDocumentRepo::new(pool.clone());
 
     // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
@@ -136,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
         jwt_keys,
         loan_capital_transfers_repo,
         lp_repo,
+        lp_ledger_repo,
         kyb_document_repo,
     });
 
@@ -160,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());
     api_docs.merge(pipeline_api::routes::audit_log::AuditLogDoc::openapi());
     api_docs.merge(pipeline_api::routes::lps::LpsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::lp_ledger::LpLedgerDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -183,6 +187,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::ramp::router())
         .nest("/v1", pipeline_api::routes::audit_log::router())
         .nest("/v1", pipeline_api::routes::lps::router())
+        .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

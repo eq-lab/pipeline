@@ -1163,6 +1163,23 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   this screen; the QA Figma comparison should not file this as a bug against the current
   derivation.
 
+### TD-73: No unidentified-wire matching queue — `lp_id` is required at deposit-entry time
+
+- **Date:** 2026-09-18
+- **Location:** `packages/api/src/routes/lp_ledger.rs` — `record_deposit` (`POST /v1/lp-ledger/deposits`);
+  `packages/shared/migrations/20260917000001_bank_transactions_lp_ledger.sql`
+- **Gap:** The `bank_transactions` migration's own module comment describes `lp_id = NULL` as "unidentified,
+  goes to the queue in task 11" — i.e. a wire can land before anyone knows which LP it belongs to, and gets
+  matched later. `record_deposit` doesn't implement that: it always requires `lp_id` up front and inserts
+  `bank_transactions` and `lp_ledger` together in one call, so there is currently no way to create an
+  unidentified `bank_transactions` row, list the matching queue, or match one after the fact.
+- **Impact:** Fine for the manual-entry flow (an operator who already knows whose wire it is), but any real
+  "unidentified wire" (e.g. an automated bank feed with no reference match) has nowhere to go yet.
+- **Suggested fix:** When task 11's queue is built, add a separate ingest path that can insert
+  `bank_transactions` with `lp_id = NULL`, plus a `GET` for the queue and a `POST .../match` (or similar)
+  that sets `lp_id` and appends the paired `lp_ledger` row — reusing `LpLedgerRepo::insert_deposit`'s
+  transaction shape but decoupled from `BankTransactionRepo::insert_deposit`'s single-call insert.
+
 ---
 
 ## Post-MVP

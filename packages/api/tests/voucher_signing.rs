@@ -92,6 +92,7 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         loan_capital_transfers_repo:
             shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo::new(pool.clone()),
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
+        lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
         kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool),
     }
 }
