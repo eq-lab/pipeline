@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#createaccountmodal (Figma nodes
-// 6486:81615 / 6486:81640 / 6585:75897 — default / enabled / error states).
+// spec: docs/frontend/auth-components.md#createaccountmodal
 import { Button, TextField } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import {

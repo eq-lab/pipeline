@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#ownersmodal (component retained, no
-// current consumer since the 2026-09-21 OwnersModal retirement — kept for #1278/#1284 reuse)
+// spec: docs/frontend/auth-components.md#ownersmodal
 import { useId, useState } from "react";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────

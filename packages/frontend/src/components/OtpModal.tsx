@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#otpmodal (Figma nodes 6486:81665 / 6486:81848 /
-// 6486:81863 — default / enabled / error states).
+// spec: docs/frontend/auth-components.md#otpmodal
 import { OtpInput } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { useOtpModal } from "@/components/useOtpModal";

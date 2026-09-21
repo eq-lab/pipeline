@@ -1,4 +1,4 @@
-// spec: docs/frontend/ui-components.md#otpinput (Figma node 8926:9304-8926:9309, issue #1250)
+// spec: docs/frontend/ui-components.md#otpinput
 import { useRef } from "react";
 import { useOtpInput } from "./useOtpInput";
 

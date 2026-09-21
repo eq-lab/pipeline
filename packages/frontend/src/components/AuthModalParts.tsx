@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#shared-form-parts (shared between
-// SignInModal and CreateAccountModal — Figma nodes 6486:81624 / 6486:81625).
+// spec: docs/frontend/auth-components.md#shared-form-parts
 import { Button } from "@pipeline/ui";
 
 function WalletIcon() {

@@ -1,6 +1,4 @@
-// spec: docs/frontend/auth-components.md#signinmodal and #createaccountmodal
-// (validation rules; Figma nodes 6486:81595 sign-in error, 6585:75897
-// create-account error) — shared by SignInModal and CreateAccountModal.
+// spec: docs/frontend/auth-components.md#signinmodal
 import { useEffect, useState } from "react";
 
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

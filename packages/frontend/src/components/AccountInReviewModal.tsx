@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#accountinreviewmodal (Figma nodes
-// 6486:81745 / 6486:81764 — default / notified states)
+// spec: docs/frontend/auth-components.md#accountinreviewmodal
 import { useEffect, useState } from "react";
 import { Button } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";

@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#authmodalshell (two-pane layout lifted
-// verbatim from ConnectWalletModal; Figma nodes 8550:10210 / 8550:10546).
+// spec: docs/frontend/auth-components.md#authmodalshell
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Logo } from "@pipeline/ui";

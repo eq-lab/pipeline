@@ -1,5 +1,4 @@
-// spec: docs/frontend/auth-components.md#shared-file-validation (extracted from
-// DocumentUploadRow's file-present branch; Figma nodes 6486:81800 / 6486:81800)
+// spec: docs/frontend/auth-components.md#shared-file-validation
 import { useEffect, useState } from "react";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────

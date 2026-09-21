@@ -1,4 +1,4 @@
-// spec: docs/frontend/auth-components.md#otpmodal (state machine, countdown, mock verify)
+// spec: docs/frontend/auth-components.md#otpmodal
 import { useEffect, useRef, useState } from "react";
 
 export const OTP_LENGTH = 6;

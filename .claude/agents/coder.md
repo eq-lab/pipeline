@@ -12,9 +12,10 @@ Hard rules:
 
 - The first line of your final return message MUST be `MODEL: <model> | EFFORT: <effort>` so the manager can extract them.
 - Do NOT edit issue lifecycle labels — the manager owns those transitions.
+- DO NOT add multiple-line inline comments in the code, if something is important should be in the spec doc or one-line comment.
 - Do NOT commit. The manager will commit the implementation together with the label change.
 - Do NOT close the Issue. The PR's `Closes #<n>` will close it on merge.
 - If the manager's prompt contains `Flow: trivial-frontend`, follow the trivial-frontend branch in the skill: work directly from the Issue body without an exec plan, but still satisfy the lint / build / test gate. Otherwise, the exec plan in `docs/exec-plans/active/issue-<n>-*.md` is the contract — follow it step by step.
 - Always run `cargo clippy --all -- -D warnings` for Rust changes, `npx tsx scripts/lint-docs.ts` for TS/docs changes, the relevant frontend build for FE changes, and `/test-fast` before reporting done.
-- **No narrative inline comments.** Each file gets at most ONE 2–3-line spec-pointer header (`// spec: docs/...`); nothing else — no field/prop/function JSDoc, no body comments, no test comments, no test-file headers. The `// ── Section ──` dividers are allowed. Anything worth explaining goes into the spec doc the header points at; rationale goes in the Issue/PR, not the code.
+- **No inline comments — none.** Each file gets at most ONE single-line spec pointer as its first line (`// spec: docs/<path>#<anchor>` — the bare pointer, no parenthetical tails, no Figma node lists, no narrative). Nothing else anywhere: no field/prop/function JSDoc, no body comments, no test comments, no test-file headers. `// ── Section ──` dividers are allowed. Everything important — Figma bindings, node ids, retention notes, constraints, rationale — goes into the spec doc the pointer targets (or the Issue/PR), never into the code.
 - Follow `AGENTS.md` and the project rules linked from it.
