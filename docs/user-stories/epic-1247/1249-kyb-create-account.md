@@ -34,6 +34,11 @@ Figma comparison.
 
 ## Story 2: Filling both fields with a well-formed email enables submit
 
+**Superseded by #1281.** Create-account now enforces a password policy (≥8 characters, a digit,
+and a special character) — "any non-empty value" no longer enables submit. See
+[1281-create-account-error.md](./1281-create-account-error.md) Story 5 for the current boundary
+behavior.
+
 **Persona:** LP filling out the create-account form.
 
 **Pre-conditions:** Create Account modal open, both fields empty.
@@ -70,6 +75,12 @@ Figma comparison.
 ---
 
 ## Story 4: An attempted submit with an empty password shows its error
+
+**Superseded by #1281.** Create-account now shows the password-policy copy ("At least 8
+characters, including a number and a special character"), not "Enter the correct password" —
+that copy is sign-in only. Also see **BUG-20** (`docs/exec-plans/known-bugs.md`): the
+submit-attempt path below is not reachable in a real browser, since the default submit button is
+disabled whenever the form is invalid; the test suite reaches it only via `fireEvent.submit`.
 
 **Persona:** LP who submits before filling the password.
 
@@ -144,10 +155,13 @@ Figma comparison.
 
 ## Story 8: Submitting valid credentials performs no network call and does not navigate
 
+**Amended by #1281.** "Any non-empty password" no longer suffices — use a policy-passing password
+(e.g. `P@ssw0rd!`).
+
 **Persona:** Developer verifying the "presentational only" contract of #1249.
 
-**Pre-conditions:** Create Account modal open, a well-formed email and any non-empty password
-entered.
+**Pre-conditions:** Create Account modal open, a well-formed email and a policy-passing password
+(e.g. `P@ssw0rd!`) entered.
 
 **Steps:**
 

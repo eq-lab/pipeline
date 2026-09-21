@@ -1180,6 +1180,28 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   that sets `lp_id` and appends the paired `lp_ledger` row — reusing `LpLedgerRepo::insert_deposit`'s
   transaction shape but decoupled from `BankTransactionRepo::insert_deposit`'s single-call insert.
 
+### TD-73: Create-account password policy is derived from Figma copy only, no backend counterpart
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/useAuthCredentialsForm.ts`
+  (`meetsPasswordPolicy`), consumed by `CreateAccountModal.tsx`.
+- **Gap:** Email/password auth endpoints do not exist yet (epic #1247's auth-wiring slice is
+  blocked), so `meetsPasswordPolicy` (`length >= 8 && /\d/.test(p) && /[^A-Za-z0-9]/.test(p)`) is
+  derived purely from the Figma error frame's copy ("At least 8 characters, including a number
+  and a special character") — nothing in the design or a backend spec defines the exact character
+  classes. Two readings were made without a source of truth to check against: (1) there is
+  **deliberately no letter requirement**, because the copy does not mention one — pinned by a unit
+  test asserting `12345678!` is valid; (2) "special character" is implemented as "not
+  `[A-Za-z0-9]`", so punctuation, symbols, whitespace, and non-ASCII all count.
+- **Impact:** When the real signup endpoint lands, the frontend's policy and the server's policy
+  could disagree (e.g. the server might require a letter, or restrict the special-character set),
+  producing a client-accepted / server-rejected password with no client-side warning ahead of
+  time.
+- **Suggested fix:** When #1254 (or the auth-wiring epic slice) adds the real signup endpoint,
+  reconcile `meetsPasswordPolicy` against the server's actual validation rule — either by mirroring
+  the server's regex exactly or by moving complexity validation server-side only and using the
+  client-side rule purely as an early, best-effort hint.
+
 ---
 
 ## Post-MVP

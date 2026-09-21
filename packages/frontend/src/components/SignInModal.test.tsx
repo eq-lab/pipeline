@@ -99,6 +99,23 @@ describe("SignInModal (#1248)", () => {
     expect(screen.getByRole("button", { name: "Sign In" })).toBeDisabled();
   });
 
+  it("blurring an invalid password renders no error (sign-in has no password-complexity rule)", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    const passwordField = screen.getByPlaceholderText("Password");
+    await user.type(passwordField, "hunter2");
+    fireEvent.blur(passwordField);
+
+    expect(
+      screen.queryByText("Enter the correct password"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("clicking submit with valid input calls onSubmit once with { email, password }", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
