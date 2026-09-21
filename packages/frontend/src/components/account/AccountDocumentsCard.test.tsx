@@ -59,12 +59,20 @@ describe("AccountDocumentsCard — staged state", () => {
     expect(
       screen.getByText("certificate-of-incorporation.pdf"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Remove certificate-of-incorporation.pdf",
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    const removeButton = screen.getByRole("button", {
+      name: "Remove certificate-of-incorporation.pdf",
+    });
+    expect(removeButton).toBeInTheDocument();
+    expect(removeButton).toHaveClass("size-8");
+    expect(removeButton.parentElement).toHaveClass("size-10", "p-1");
+    expect(removeButton.closest("li")).toHaveClass("p-2");
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeEnabled();
+    expect(saveButton).toHaveClass(
+      "h-12",
+      "bg-[var(--color-pipeline-cta)]",
+      "text-[color:var(--color-pipeline-on-dark)]",
+    );
     expect(screen.getByTestId("account-documents-card")).toHaveClass("py-4");
   });
 });

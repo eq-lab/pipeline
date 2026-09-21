@@ -147,6 +147,7 @@ export function AccountDocumentsCard({
               key={`${file.name}-${index}`}
               file={file}
               onRemove={() => onRemoveStagedFile(index)}
+              className="p-2"
             />
           ))}
         </ul>

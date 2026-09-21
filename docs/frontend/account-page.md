@@ -91,6 +91,25 @@ by wrapping each control in a `p-1` (4px) container (`size-10` for the copy butt
 `size-8` control; unsized for the `Upload` button, whose own `size="compact"` height already
 matches the wrapper's content height) — issue #1292.
 
+**The staged uploaded-file rows (`6701:98198`–`6701:98203`) carry the same 40×40 touch-target
+convention on their remove control, plus their own `p-[8px]` row padding** — confirmed via
+`get_metadata` at `6701:98197` (six `list-item` children, each `464×56`, `y` stepping by 60px —
+i.e. a 4px gap between 56px-tall rows) and at `6701:98198` (leading tile at `x=8 y=8` 40×40,
+`ButtonCont` at `x=416 y=8` 40×40 containing a 32×32 control at a 4px inset — identical geometry to
+the `CompanyDocsModal` uploaded frame's own remove button, confirmed at `6486:81826`). `56 = 40
+(icon) + 2×8 (row padding)`; the `4px` gap between rows plus each row's own `8px` top/bottom padding
+reproduces the frame's 20px dead space between consecutive rows.
+
+`UploadedFileRow.tsx` (shared with `CompanyDocsModal`'s `DocumentUploadRow`) now always wraps its
+remove `<button>` in a `flex size-10 shrink-0 items-center justify-center p-1` touch target — safe
+for both consumers since `CompanyDocsModal`'s own frame confirms the identical 40×40/4px-inset
+geometry, and the row's overall height was already governed by its 40×40 leading tile (removing the
+now-redundant `h-10` on the `<li>` changes nothing rendered). The row's own `p-[8px]` padding is
+**not** shared — `CompanyDocsModal`'s frame uses a plain `h-[40px]` row with the modal's `<ul
+gap-6>` doing the spacing, a genuinely different spec — so `UploadedFileRow` gained an additive
+`className` prop instead, and `AccountDocumentsCard`'s staged-rows `<ul>` passes `className="p-2"`
+as a local override; the `<ul>`'s own `gap-1` (4px) is unchanged and already matched the frame.
+
 `packages/frontend/src/components/account/accountPageState.ts` — pure data and pure functions, no
 React.
 
@@ -242,7 +261,7 @@ fill is stale, not the target.
 | Piece | Verdict |
 | --- | --- |
 | `kybFileValidation.ts` (`isAcceptedFile`, `MAX_FILE_BYTES`) | **Reused verbatim.** `{pdf, jpeg, png}` + 10 MB is exactly the frame's rule. |
-| `UploadedFileRow.tsx` | **Reused verbatim** for staged rows — 40×40 leading tile, title/caption order, 32×32 cross-circle remove is exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). |
+| `UploadedFileRow.tsx` | **Reused, with an additive `className` prop** (issue #1293) — 40×40 leading tile, title/caption order, and the 32×32 cross-circle remove control are exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). |
 | `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Reused** — anatomy matches the frame's wallet tabs exactly. |
 | `COMPANY_DOCUMENT_SLOTS` | **Reused** for the first five requirements-list entries. |
 | `FileDropZone.tsx` | **Not used.** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. Retains no consumer after this issue — #1278 decides its fate. |
