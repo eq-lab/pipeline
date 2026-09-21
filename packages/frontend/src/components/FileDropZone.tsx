@@ -1,5 +1,5 @@
-// spec: docs/frontend/auth-components.md#ownersmodal (drag-and-drop + picker,
-// drag-over/rejection recolor; Figma node 6486:81710)
+// spec: docs/frontend/auth-components.md#ownersmodal (component retained, no
+// current consumer since the 2026-09-21 OwnersModal retirement — kept for #1278/#1284 reuse)
 import { useRef, useState } from "react";
 import { Button } from "@pipeline/ui";
 

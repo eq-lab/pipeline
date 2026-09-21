@@ -15,6 +15,7 @@ export interface SignInModalProps {
   onDismiss: () => void;
   onSubmit?: (credentials: { email: string; password: string }) => void;
   onContinueWithWallet?: () => void;
+  onForgotPassword?: () => void;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ export function SignInModal({
   onDismiss,
   onSubmit,
   onContinueWithWallet,
+  onForgotPassword,
 }: SignInModalProps) {
   const headingId = "sign-in-modal-heading";
   const {
@@ -87,17 +89,24 @@ export function SignInModal({
             Sign In
           </Button>
 
-          <p
+          <button
+            type="button"
+            onClick={onForgotPassword}
             className={[
               "w-full text-center",
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",
               "text-[color:var(--color-pipeline-ink)]",
+              "cursor-pointer bg-transparent",
+              "hover:underline",
+              "focus-visible:outline focus-visible:outline-2",
+              "focus-visible:outline-offset-2",
+              "focus-visible:outline-[color:var(--color-pipeline-ink)]",
             ].join(" ")}
           >
             Forgot password?
-          </p>
+          </button>
 
           <p
             className={[

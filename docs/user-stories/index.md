@@ -176,5 +176,6 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1249 KYB: Create-account modal](https://github.com/eq-lab/pipeline/issues/1249) | [1249-kyb-create-account.md](./epic-1247/1249-kyb-create-account.md) | Initial |
 | [#1250 KYB: OTP email-verification screen](https://github.com/eq-lab/pipeline/issues/1250) | [1250-kyb-otp.md](./epic-1247/1250-kyb-otp.md) | Initial |
 | [#1251 KYB: Company Docs upload step](https://github.com/eq-lab/pipeline/issues/1251) | [1251-kyb-company-docs.md](./epic-1247/1251-kyb-company-docs.md) | Initial |
-| [#1252 KYB: Owners step](https://github.com/eq-lab/pipeline/issues/1252) | [1252-kyb-owners.md](./epic-1247/1252-kyb-owners.md) | Initial |
+| [#1252 KYB: Owners step](https://github.com/eq-lab/pipeline/issues/1252) | [1252-kyb-owners.md](./epic-1247/1252-kyb-owners.md) | Superseded (retired 2026-09-21, #1279) |
 | [#1253 KYB: Account-in-review screen](https://github.com/eq-lab/pipeline/issues/1253) | [1253-kyb-account-in-review.md](./epic-1247/1253-kyb-account-in-review.md) | Initial |
+| [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Initial |

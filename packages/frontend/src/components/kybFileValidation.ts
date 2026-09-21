@@ -1,5 +1,5 @@
 // spec: docs/frontend/auth-components.md#shared-file-validation (shared by
-// CompanyDocsModal and OwnersModal; Figma nodes 6486:81679 / 6486:81710)
+// CompanyDocsModal; OwnersModal's 2026-09-21 retirement removed the second consumer)
 
 export const ACCEPTED_FILE_TYPES = [
   "application/pdf",

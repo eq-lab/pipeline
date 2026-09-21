@@ -1,10 +1,10 @@
 # KYB auth components
 
 LP-facing email+password authentication modals for epic #1247 (KYB login flow). This is a new
-area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds five more screens
-(#1251 Company Docs, #1252 Owners, #1253 Account-in-review) beyond #1249 (Create-account)
-and #1250 (OTP), all documented below — same reasoning as `wallet-flows.md` /
-`trustee-flows.md`.
+area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds four more screens
+(#1251 Company Docs, #1253 Account-in-review) beyond #1249 (Create-account), #1250 (OTP), and
+#1280 (Forgot Password), all documented below — same reasoning as `wallet-flows.md` /
+`trustee-flows.md`. #1252 (Owners) shipped and was later retired — see `### OwnersModal` below.
 
 #1253's Issue body also named a "review banner" deliverable. It does not exist in the
 source-of-truth Figma section — see `### AccountInReviewModal` below and TD-69
@@ -66,7 +66,8 @@ The OTP screen (`OtpModal`, below) hides both the image pane and the close butto
 back arrow as its only dismiss affordance, since Figma hides the shell's Close Icon instance for
 that frame. See tech debt **TD-61** for the vertical-centering divergence: every KYB Figma frame
 centres its content column, but `SignInModal`/`CreateAccountModal` still top-align pending a
-design decision — only `OtpModal` opts into `align="center"` so far.
+design decision — `OtpModal`, `AccountInReviewModal`, and `ForgotPasswordModal` all opt into
+`align="center"`.
 
 ### Shared form parts
 
@@ -111,8 +112,11 @@ Composition inside `AuthModalShell` (heading "Sign in", `headingId`
    frames render "Sign In"). Disabled fill is the brand color at `opacity-[0.32]`, confirmed by
    `get_design_context` (`opacity-32` class on the Figma-exported node) rather than a separately
    sampled color.
-5. **"Forgot password?"** — renders as inert text (no `<button>`, no handler) — it has no
-   destination frame in the "KYB Onboarding" file and no sub-issue.
+5. **"Forgot password?"** — a real `<button type="button" onClick={onForgotPassword}>` since
+   #1280: that screen now exists and is the button's destination. #1248 shipped this as inert
+   text specifically because "it has no destination frame … and no sub-issue" — both conditions
+   are now false. `onForgotPassword` defaults to a no-op (undefined ⇒ harmless click); the
+   `/test` preview wires it to open `ForgotPasswordModal` (see "ForgotPasswordModal" below).
 6. **"New here? Create account"** — also inert text in #1248 and unwired in #1249's
    `CreateAccountModal` counterpart ("Already have an account? Log in") — the cross-link between
    the two modals is #1254's job.
@@ -163,8 +167,9 @@ SVG paths (via `get_design_context`, which recovered on retry after initially ha
 exec plan's Figma-access note) — no hand-authored vector paths.
 
 **Accessibility:** first `<form>` element in the repo. `aria-invalid` on `TextField`'s `<input>`
-(also a repo first — see `ui-components.md#textfield`). "Forgot password?"/"Create account" are
-plain text, not focusable, since they are inert in this issue.
+(also a repo first — see `ui-components.md#textfield`). Since #1280, "Forgot password?" is a
+focusable `<button>`; "Create account" remains plain text, not focusable, since it is still inert
+(that cross-link is #1265's job).
 
 ### CreateAccountModal
 
@@ -220,6 +225,74 @@ no new tokens, no new glyphs.
 
 **Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
 `TextField`, inert footer text (not focusable).
+
+### ForgotPasswordModal
+
+`packages/frontend/src/components/ForgotPasswordModal.tsx` + `useForgotPasswordForm.ts`. The
+email-only password-reset request screen — presentational only, **no network call**; `onSubmit`
+is a no-op seam for #1265, matching the pattern every other screen in this epic uses.
+
+**One frame, one state.** Figma (`6704-107100`, section `6486:81556` "V1.0 — KYB & Wire
+transfers") has no `— Enable` and no `— Validation error` companion for this screen, and no
+confirmation / "check your email" / "set a new password" frame exists anywhere in the section (a
+full child enumeration was done during planning). A flow connector (`6704:107291`) runs
+Sign in → Forgot Password; nothing leaves Forgot Password in the design.
+
+Composition inside `AuthModalShell` (heading "Reset your password", `headingId`
+`forgot-password-modal-heading`, `testId` `forgot-password-modal`, `align="center"` — the only
+non-default shell prop), top to bottom:
+
+1. **Email field** — one `TextField` (`type="email"`, placeholder "Enter corporate email"), no
+   label, no helper text, no password field.
+2. **Submit** — `Button variant="primary-blue" type="submit"`, full width, label "Send Reset
+   Link", disabled at `opacity-[0.32]` until the email is well-formed — same treatment as
+   `SignInModal`'s submit.
+3. **Footer** — one caption line, centered: `"Remembered it? "` (`--color-pipeline-ink-muted`,
+   trailing space is part of the string) + an inline `<button type="button"
+   onClick={onBackToSignIn}>Back to sign in</button>` (`--color-pipeline-ink`, **regular**
+   weight — Figma renders it without `--font-weight-emphasized`, unlike `SignInModal`'s "Create
+   account" span).
+
+**No wallet button and no OR divider.** `AuthModalParts` is not imported — both parts
+`SignInModal`/`CreateAccountModal` share are absent from this frame.
+
+**Figma → token mapping.** Every value on the frame maps onto tokens already in
+`packages/ui/src/styles/theme.css` (`--color-pipeline-paper`, `--color-pipeline-surface`,
+`--color-pipeline-brand`, `--color-pipeline-ink`, `--color-pipeline-ink-muted`,
+`--color-pipeline-on-dark`, `--text-pipeline-heading-l`, `--text-pipeline-body`,
+`--text-pipeline-caption`, `--radius-pipeline-card`, `--radius-pipeline-button`) — the first
+screen in the epic that adds neither a new token nor a new `AuthModalShell` prop.
+
+**Vertical rhythm.** 400px column, centered on both axes in the shell's left half; 32px
+heading → field, 32px field → button, 32px button → footer link, 64px below the link (the
+column's `padding-bottom`).
+
+**Validation** — identical rule to `useAuthCredentialsForm`'s email check, reused via the shared
+`EMAIL_PATTERN`/`EMAIL_ERROR_MESSAGE` exports: format-checked on blur or on submit attempt, no
+error while the field is empty, error copy verbatim "Enter the correct email address". All local
+state resets when the modal reopens.
+
+**Undesigned states are derived, not invented (TD-72).** The enabled submit is the same button
+at full opacity (from Sign in's `— Enable` frame `6486:81576`); the validation-error treatment is
+`TextField`'s shipped `invalid`/`error` styling (from Sign in's `— Validation error` frame
+`6486:81595`); hover/focus on the two un-inerted links (`SignInModal`'s "Forgot password?" and
+this screen's "Back to sign in") have no Figma state and use `hover:underline` plus the shell's
+existing focus-visible outline token.
+
+**Out of scope — no designed post-submit state (TD-71).** No confirmation, no reset-link landing
+screen, and no "set a new password" screen exist anywhere in the V1.0 Figma section, and no
+connector leaves `6704:107100`. The `/test` preview shows a stand-in line and closes the modal —
+the same treatment #1250 used for the missing OTP success frame. #1265 cannot wire a real reset
+flow until a designer supplies those screens.
+
+**Copy is verbatim** — heading "Reset your password" (note: the component/file name and the
+Issue are "Forgot Password"; the rendered heading differs — this is intentional, not a copy
+defect), placeholder "Enter corporate email", submit "Send Reset Link", footer "Remembered it? "
++ "Back to sign in".
+
+**Accessibility:** same contract as `SignInModal` — `aria-invalid` on `TextField`'s `<input>`;
+both "Back to sign in" and (since #1280) `SignInModal`'s "Forgot password?" are focusable
+buttons with the shell's `focus-visible` outline treatment.
 
 ### OtpModal
 
@@ -318,7 +391,7 @@ drop zone or "drag files here" copy. Each row carries its own visually hidden, s
 frame's 32px box and border token with no other overrides needed).
 
 **Uploaded-row visual, per file type**, rendered via `UploadedFileRow` (see "Shared file
-validation" below — extracted here, second consumer is `OwnersModal`):
+validation" below — extracted here; its second consumer was `OwnersModal`, retired 2026-09-21):
 
 - `image/jpeg` / `image/png`: a 40×40 `object-cover` `<img>` from `URL.createObjectURL(file)`,
   revoked on replace/remove/unmount (`useEffect` in `UploadedFileRow`, guarded on
@@ -368,10 +441,11 @@ Figma comparison pass.
 — load-bearing, it knocks the × out of the filled disc) are the exact Figma-exported SVG paths, no
 hand-authored vectors.
 
-**Out of scope.** Any real upload, storage, progress, or retry; wiring OTP → Company Docs → Owners
-as a sequence (that is #1254's flow orchestration — the `/test` seam deliberately keeps this and
-the OTP trigger independent, since the shell's scroll-lock/Escape handling is not stack-safe); the
-LP header entry point (a future Figma, per epic #1247 decision 2026-09-17); promoting
+**Out of scope.** Any real upload, storage, progress, or retry; wiring OTP → Company Docs →
+Account-in-review as a sequence (that is #1254's flow orchestration — the `/test` seam
+deliberately keeps this and the OTP trigger independent, since the shell's scroll-lock/Escape
+handling is not stack-safe); the LP header entry point (a future Figma, per epic #1247 decision
+2026-09-17); promoting
 `DocumentUploadRow`/`UploadedFileRow` to `@pipeline/ui` (both are LP-only, following
 `AuthModalShell`'s placement in `packages/frontend`).
 
@@ -392,129 +466,28 @@ public surface is unchanged.
 preview-or-glyph-tile leading element, name/`Uploaded` caption text block, 32×32 remove button
 with the 22px `cross-circle` glyph), extracted verbatim out of `DocumentUploadRow`'s
 file-present branch (byte-identical rendered DOM — `CompanyDocsModal.test.tsx` is the regression
-guard). Two consumers: `DocumentUploadRow` (`CompanyDocsModal`, #1251) and `OwnersModal` (#1252).
+guard). One current consumer: `DocumentUploadRow` (`CompanyDocsModal`, #1251) — its second
+consumer, `OwnersModal` (#1252), was retired 2026-09-21; see `### OwnersModal` below.
 
 ### OwnersModal
 
-`packages/frontend/src/components/OwnersModal.tsx` +
-`packages/frontend/src/components/useOwnersModal.ts` +
-`packages/frontend/src/components/KybInfoBanner.tsx` +
-`packages/frontend/src/components/FileDropZone.tsx`. The KYB Owners step — presentational only,
-**no network call, no persistence**. Files live in React state as `File` objects for the lifetime
-of the open modal; closing/reopening discards them. `onSubmit` is a seam for #1254 (defaults to a
-no-op).
+**Retired 2026-09-21.** The Owners step (#1252) had no counterpart in the V1.0 Figma design
+update (epic #1247) — see the 2026-09-21 resolution comment on issue #1279: the design settled on
+raw upload / classify-at-review with no owner-document-typing UI on the LP side, so the standalone
+Owners screen is gone rather than merged into the Company Docs step. `OwnersModal.tsx`,
+`useOwnersModal.ts`, and `OwnersModal.test.tsx` are deleted; the `/test?tab=auth` trigger, its
+stand-in confirmation line, and the corresponding user-stories doc
+(`docs/user-stories/epic-1247/1252-kyb-owners.md`, now marked superseded) are removed/updated to
+match.
 
-**This is a drag-and-drop file uploader, not an owner-details form.** Both Figma frames were read
-node-by-node: there is no name field, no role field, no ownership-percentage input, no select, no
-"add owner" button, and no per-owner grouping. The entire step is heading → info banner → one
-dashed drop zone → a flat list of uploaded files → Submit → Back. The "owners" framing lives only
-in the heading and the banner copy.
-
-Visual specs (Figma, file `A43rjYYjSwdTmiwwf5cx5n`):
-
-- Default (no files, Submit disabled): node `6486-81710`.
-- Enabled (two files uploaded, Submit enabled): node `6486-81783`.
-- Step-badge chrome: `6486:81731` (default) / `6486:81805` (enabled) — both render `Step 2/2`.
-- Uploaded-file row (`list-item`): `6486:81799` / `6486:81800`.
-- Banner hint tooltip: `6486:82392` — a loose canvas instance parked on the canvas, not a child
-  of either frame (see below).
-
-Composition inside `AuthModalShell` (heading "Add company owners", **no** `description`,
-`headingId` `owners-modal-heading`, `testId` `owners-modal`, `showImagePanel={false}`,
-`align="center"`, `stepLabel={{ current: 2, total: 2 }}`, default close button, no `onBack`).
-Unlike `OtpModal`/`CompanyDocsModal`, this screen passes no `description` — the heading instance's
-subtitle container is hidden on both frames, and the explanatory line lives in the banner instead.
-
-1. **`KybInfoBanner`** — a white 400×76 card (`min-h-[56px]` plus the natural two-line wrap of its
-   copy reproduces the 76px), containing the banner copy
-   "Upload ID and proof of address documents for each owner" and a 20px hint glyph. The glyph is
-   a `<button aria-label="More information" aria-describedby={tooltipId}>` that shows a
-   `role="tooltip"` on `mouseenter` only (hidden on `mouseleave`; hover-only per the 2026-09-18
-   user direction — focus deliberately does not trigger it, since the shell's open-time
-   auto-focus lands on this button and showed the tooltip on open; keyboard access is part of
-   the TD-65 design pass), positioned
-   `absolute bottom-full` above the glyph, copy verbatim from node `6486:82392`:
-
-   > You could upload a passport, ID card, or driver’s licence, plus a recent (no older than 90
-   > days) utility bill or bank statement as proof of address.
-
-   No arrow/caret (the node has none), and Escape is deliberately **not** wired to close the
-   tooltip — the shell owns Escape in the capture phase and would close the modal instead. Node
-   `6486:82392` sits loose on the canvas, horizontally centred on the banner's hint glyph but not
-   parented to either Owners frame — trigger, offset, and the missing arrow are undesigned,
-   tracked as **TD-65**. With no `tooltip` prop, `KybInfoBanner` renders the hint as an inert
-   `aria-hidden` glyph (so a future consumer can reuse the banner without a tooltip).
-2. **`FileDropZone`** — a dashed drop target: the 24px `file-upload` glyph (a different SVG export
-   from the 20px glyph `DocumentUploadRow` ships — do not conflate the two), "Drag and drop your
-   files" over "pdf, jpg, png files up to 10MB", and `Button variant="secondary" size="m"`
-   labelled "Select files". Implements both drag-and-drop (`onDragEnter`/`onDragOver`/`onDrop`,
-   each `preventDefault()`-ing) and a visually hidden
-   `<input type="file" multiple accept="application/pdf,image/jpeg,image/png">` behind the
-   button — `multiple` is required here, unlike `DocumentUploadRow`'s single-file inputs, since
-   the enabled frame shows two files with no per-slot structure.
-   - *Drag-over*: the dashed border recolors `--color-pipeline-ink-subtle` → `--color-pipeline-ink`
-     while a drag is over the zone. Undesigned (no Figma treatment for this state) — **TD-67**.
-   - *Rejection*: same rule as `CompanyDocsModal` — MIME type outside
-     `{application/pdf, image/jpeg, image/png}` (falling back to the filename extension) or
-     `file.size > MAX_FILE_BYTES`. The rejected file is not added; the subtitle — same string —
-     recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
-     accepted file or modal reopen. A mixed drop adds the accepted files **and** shows the alert.
-     Also undesigned — **TD-67**.
-3. **File list** — an ordered `{ id: number; file: File }[]` (not a keyed record, since the
-   design has no slots and nothing prevents two files sharing a name), rendered as
-   `UploadedFileRow` instances inside a conditional `<ul role="list">` (omitted entirely when
-   empty, so it contributes no stray gap). Unbounded — no maximum file count.
-4. **Submit** — `Button variant="primary-dark"` (not "Continue"), full width, enabled once **at
-   least one file is present** (the default frame shows 0 files/disabled, the enabled frame shows
-   2 files/solid — with no owner-count input anywhere in the design, this is the only
-   non-arbitrary threshold). Removing the last file re-disables it. `onClick` calls
-   `onSubmit?.(files)` where `files` is `File[]` — a no-op seam exactly like
-   `CompanyDocsModal.onSubmit`. Threshold tracked as **TD-66** for a designer/PM to set a real
-   requirement.
-5. **`Back`** — plain centered Caption text (12/16, full ink, not muted), not a button. The frame
-   already carries the shell's × close affordance top-right; `Back`'s destination (Company Docs,
-   Step 1/2) is cross-screen sequencing assigned to #1254, so it ships inert with no handler and
-   no unused `onBack` seam prop — the same treatment as "Forgot password?" (#1248) and "Resend"
-   (#1250).
-
-**Figma → token mapping** (confirmed via `get_design_context` + `get_variable_defs`, not
-estimated):
-
-| Element | Figma | Repo token |
-| --- | --- | --- |
-| Banner fill | `fill-test/on-primary` `#ffffff` | `--color-pipeline-surface` |
-| Banner radius | `radius-16` = 4 (resolved; codegen's `4px`/`16px` fallbacks are unreliable) | `--radius-pipeline-card` |
-| Banner text | Body 16/22, `content-test/primary` | `--color-pipeline-ink` |
-| Hint glyph | 20px `info`, `#323837` @ 0.3 (one-channel-order artifact #1248/#1251 already resolved) | `--color-pipeline-ink-subtle` — no new token |
-| Tooltip fill / text | `fill-test/primary` `#262524` / `content-test/primary-on-invert` | `--color-pipeline-cta` / `--color-pipeline-on-dark` |
-| Tooltip radius / pad / width | `radius/radius-m` = 4 / `size-8` / 240 | `--radius-pipeline-card` / `p-2` / `w-60` |
-| Drop-zone border | 1px dashed `border-test/primary` `#3835384d` | `--color-pipeline-ink-subtle` |
-| Drop-zone radius | `radius/radius-xxs` = 2 | **new** `--radius-pipeline-card-xs` |
-| Drop-zone glyph | 24px `file-upload`, `#323837` @ 0.6 | `--color-pipeline-ink-muted` |
-| Drop-zone title | Body 16/22, `content-test/primary` | `--color-pipeline-ink` |
-| Drop-zone subtitle | Body S 14/18, `text-tertairy` `#7d7d7d` — a misspelled, non-namespaced legacy Figma variable, unlike every other color on both frames | `--color-pipeline-ink-muted` (not a new token — **TD-64**) |
-| `Select files` button | 40px box, 1px `border-test/secondary` `rgba(56,55,53,0.18)`, radius 4, Body Emphasized ink | `Button variant="secondary" size="m"` + `border border-[color:var(--color-pipeline-line)]` |
-| File-row thumbnail / title / caption / remove glyph | same as `CompanyDocsModal`'s uploaded row | `UploadedFileRow` (shared) |
-| Submit fill / label / disabled | `fill-test/primary` `#262524` / `content-test/primary-on-invert` / `opacity-32` | `Button variant="primary-dark"` + `disabled:opacity-[0.32]` |
-| `Back` | Caption 12/16, `content-test/primary` (full ink, not muted) | `--color-pipeline-ink` |
-| Step badge | Body Emphasized 16/22; `Step 2` ink, `/2` `rgba(56,55,53,0.6)` | shell `stepLabel` (unchanged) |
-
-**Icons.** `info` (20×20) and `file-upload` (24×24 — a different export from the 20×20
-`file-upload` glyph `DocumentUploadRow` ships, do not rescale one into the other) are the exact
-Figma-exported SVG paths.
-
-**Out of scope.** Any real upload, storage, progress, or retry; wiring Company Docs → Owners →
-Account-in-review as a sequence (#1254's flow orchestration — the `/test` seam keeps this trigger
-independent of Company Docs, same reasoning as the OTP/Company-Docs pair); the LP header entry
-point (a future Figma); promoting any of `OwnersModal`/`KybInfoBanner`/`FileDropZone` to
-`@pipeline/ui` (LP-only, following `AuthModalShell`'s placement); associating uploaded files with
-individual owners (the design provides no affordance for this — see TD-66).
-
-**Accessibility:** `<ul role="list">` (conditional on `entries.length > 0`); the hidden multi-file
-input is unlabelled since its trigger button's visible text ("Select files") is its accessible
-name; drop-zone and file-row rejection/remove states reuse `DocumentUploadRow`'s patterns
-(`role="alert"`, `aria-label="Remove {file.name}"`); the tooltip uses `role="tooltip"` +
-`aria-describedby` and is deliberately not wired to Escape (see above).
+`KybInfoBanner.tsx` and `FileDropZone.tsx` — the two presentational pieces this screen introduced
+— are **retained with no current consumer**: the #1284 Account-page documents hub and the #1278
+modal redesign are both expected to reuse them, so deleting them would just mean rebuilding the
+same drop-zone/banner behavior later. `UploadedFileRow.tsx` and `kybFileValidation.ts`, the other
+two shared parts this screen used, keep their existing consumer (`DocumentUploadRow` /
+`CompanyDocsModal`) unchanged. See TD-64 through TD-67 in
+`docs/exec-plans/tech-debt-tracker.md` for what happened to the Owners-specific tech debt this
+screen carried.
 
 ### AccountInReviewModal
 
@@ -590,10 +563,11 @@ full evidence trail and the only other "under review" candidate found (a superse
 dashboard card, out of scope here).
 
 **Out of scope.** Any real "notify me" subscription, polling, or review-status fetch (TD-70);
-wiring Owners → Account-in-review as a sequence, and `Go to app`'s destination (both #1254's flow
-orchestration — the `/test` seam keeps this trigger independent of Owners, same reasoning as the
-other pairs in this epic); the LP header entry point (a future Figma); the review banner (TD-69);
-`@pipeline/ui` promotion (LP-only, following `AuthModalShell`'s placement).
+wiring Company Docs → Account-in-review as a sequence (Owners, the step that used to sit between
+them, was retired 2026-09-21), and `Go to app`'s destination (both #1254's flow orchestration —
+the `/test` seam keeps this trigger independent, same reasoning as the other pairs in this epic);
+the LP header entry point (a future Figma); the review banner (TD-69); `@pipeline/ui` promotion
+(LP-only, following `AuthModalShell`'s placement).
 
 **Accessibility:** the icon is `aria-hidden`; the notify button carries `aria-disabled="true"`
 (not `disabled`) once notified, keeping it focusable and in the tab order; its wrapper carries
@@ -602,18 +576,34 @@ both states.
 
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders six
-trigger buttons opening `SignInModal` (#1248), `CreateAccountModal` (#1249), `OtpModal` (#1250),
-`CompanyDocsModal` (#1251), `OwnersModal` (#1252), and `AccountInReviewModal` (#1253), each with
-every seam left at its no-op default except `OtpModal.onVerified`, `CompanyDocsModal.onSubmit`,
-`OwnersModal.onSubmit`, and `AccountInReviewModal.onGoToApp`, which show stand-in confirmation
-lines. Every trigger is independent of the others — entering a valid OTP code shows "OTP verified
-— open the Company Docs step from the button above." rather than auto-opening it, submitting
-Company Docs shows "Company documents submitted — open the Owners step from the button above."
-rather than auto-opening Owners, and submitting at least one Owners file shows "Owners submitted —
-open the Account-in-review screen from the button above." rather than auto-opening it — since the
-shell's body-scroll-lock and capture-phase Escape are not stack-safe (see the shell caveats above)
-and stacking two of these modals is exactly the untested path a chained transition would exercise.
-Clicking `Go to app` on the Account-in-review screen shows "Go to app — #1254 wires this to the LP
-dashboard." This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders six trigger
+buttons opening `SignInModal` (#1248), `ForgotPasswordModal` (#1280), `CreateAccountModal`
+(#1249), `OtpModal` (#1250), `CompanyDocsModal` (#1251), and `AccountInReviewModal` (#1253) — a
+seventh, `OwnersModal` (#1252), was retired 2026-09-21 (see `### OwnersModal` above) — each with
+every seam left at its no-op default except `OtpModal.onVerified`,
+`ForgotPasswordModal.onSubmit`, `CompanyDocsModal.onSubmit`, and `AccountInReviewModal.onGoToApp`,
+which show stand-in confirmation lines. Every trigger is independent of the others — entering a
+valid OTP code shows "OTP verified — open the Company Docs step from the button above." rather
+than auto-opening it, and submitting Company Docs shows "Company documents submitted — open the
+Account-in-review screen from the button above." rather than auto-opening it — since the shell's
+body-scroll-lock and capture-phase Escape are not stack-safe (see the shell caveats above) and
+stacking two of these modals is exactly the untested path a chained transition would exercise.
+Clicking `Go to app` on the Account-in-review screen shows "Go to app — #1254 wires this to the
+LP dashboard." This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
 `openConnectModal` call sites.
+
+**Sign in ↔ Forgot Password is the one exception — a swap, never a stack (#1280).** Both screens
+share one union-typed `authScreen: "none" | "sign-in" | "forgot-password"` state instead of two
+independent booleans, so "both open" is unrepresentable. Clicking "Forgot password?" on Sign in
+closes it and opens Forgot Password in the same handler; "Back to sign in" reverses it. This
+departs from the independent-triggers convention above, but safely: that convention's stated
+reason is stacking (the un-refcounted body-scroll-lock and the capture-phase Escape collision),
+and a swap never stacks two shells — React runs the outgoing tree's effect cleanups before the
+incoming tree's effect creates within a single commit, so `document.body.style.overflow` lands on
+`"hidden"` throughout and exactly one Escape listener is registered at any moment. The convention
+was also about auto-advancing a wizard (OTP → Company Docs), which is flow orchestration owned by
+#1254/#1265; a link whose entire purpose is navigating to a screen this issue ships is a
+different thing. `-test.test.tsx` asserts the invariant directly (exactly one `dialog` role after
+the swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit on Forgot
+Password shows `auth-forgot-password-submitted`: "Reset link requested — #1265 wires this to the
+real password-reset endpoint."

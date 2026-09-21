@@ -305,6 +305,76 @@ describe("TestPage — tab param routing", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("?tab=auth shows an Open Forgot Password screen trigger, closed by default", () => {
+    renderTestPage("auth");
+    expect(
+      screen.queryByRole("dialog", { name: "Reset your password" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open forgot password screen/i }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Reset your password" }),
+    ).toBeInTheDocument();
+  });
+
+  it("swaps Sign In for Forgot Password instead of stacking them", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /forgot password\?/i }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "Reset your password" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Sign in" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("body scroll-lock survives the Sign In -> Forgot Password swap", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /forgot password\?/i }));
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(document.body.style.overflow).toBe("");
+  });
+
+  it('"Back to sign in" returns from Forgot Password to exactly one Sign in dialog', () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open forgot password screen/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back to sign in" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
+  });
+
+  it("submitting a valid email on Forgot Password closes it and shows the stand-in line", async () => {
+    const user = userEvent.setup();
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open forgot password screen/i }),
+    );
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
+    expect(
+      screen.getByTestId("auth-forgot-password-submitted"),
+    ).toHaveTextContent(
+      "Reset link requested — #1265 wires this to the real password-reset endpoint.",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("?tab=auth shows an Open Create Account modal button", () => {
     renderTestPage("auth");
     expect(
@@ -389,41 +459,16 @@ describe("TestPage — tab param routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(screen.getByTestId("auth-company-docs-submitted")).toHaveTextContent(
-      "Company documents submitted — open the Owners step from the button above.",
+      "Company documents submitted — open the Account-in-review screen from the button above.",
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("?tab=auth shows an Open Owners step button", () => {
+  it("?tab=auth has no Open Owners step trigger (retired)", () => {
     renderTestPage("auth");
     expect(
-      screen.getByRole("button", { name: /open owners step/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("?tab=auth opens OwnersModal on click, closed by default", () => {
-    renderTestPage("auth");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /open owners step/i }));
-    expect(
-      screen.getByRole("dialog", { name: "Add company owners" }),
-    ).toBeInTheDocument();
-  });
-
-  it("?tab=auth shows the owners-submitted line after submitting a file", () => {
-    renderTestPage("auth");
-    fireEvent.click(screen.getByRole("button", { name: /open owners step/i }));
-
-    const file = new File(["x"], "id.pdf", { type: "application/pdf" });
-    const input = document.querySelector('input[type="file"]');
-    fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
-
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-
-    expect(screen.getByTestId("auth-owners-submitted")).toHaveTextContent(
-      "Owners submitted — open the Account-in-review screen from the button above.",
-    );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      screen.queryByRole("button", { name: /open owners step/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("?tab=foo (invalid) falls back to Status tab", () => {
