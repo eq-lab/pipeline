@@ -44,6 +44,15 @@ describe("AccountPage", () => {
     expect(screen.getByTestId("account-page")).toHaveClass("p-4", "md:p-32");
   });
 
+  it("paints the page root with the Figma frame's paper fill, matching sibling routes", () => {
+    render(<AccountPage />);
+    expect(screen.getByTestId("account-page")).toHaveClass(
+      "min-h-screen",
+      "bg-[color:var(--color-pipeline-paper)]",
+      "text-[color:var(--color-pipeline-ink)]",
+    );
+  });
+
   it("with no preview state, renders the honest default: — email and the verify documents state", () => {
     render(<AccountPage />);
     expect(screen.getByText("—")).toBeInTheDocument();

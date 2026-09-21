@@ -168,5 +168,6 @@ describe("AccountDocumentsCard — verified state", () => {
     expect(
       screen.queryByRole("button", { name: "Re-upload" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("list")).toHaveClass("gap-2");
   });
 });

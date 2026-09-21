@@ -40,6 +40,14 @@ override — the `!` is required: `secondary`'s own `bg-transparent` and an unpr
 the same Tailwind specificity, so the surface fill is not guaranteed to win without it (the
 established precedent is `AccountInReviewModal.tsx`'s `!bg-[...]` override of the same variant).
 
+The page root itself carries `min-h-screen bg-[color:var(--color-pipeline-paper)]
+text-[color:var(--color-pipeline-ink)]` — the frame's own root fill (`bg/primary`, `#f8f7f6`) and
+the same convention every other route (`dashboard.tsx`, `deposit.tsx`, `stake.tsx`,
+`transactions.tsx`, `index.tsx`, `test.tsx`) already applies to its page root; a prior pass left
+this off `AccountPage.tsx`, so the page rendered on the default (white) canvas instead of the
+paper tone (issue #1291, no `?state=` fixture exercises the root div's own background so this
+was invisible to state-scoped snapshots).
+
 ## Wallet card
 
 `AccountWalletCard.tsx` is a *view switch* over the existing `useWalletView()` (`kind: "evm" |
@@ -105,6 +113,11 @@ upload states (`verify`/`staged` — confirmed uniform top/bottom at the node; a
 as asymmetric `pt-4 pb-2`, which was wrong), `pt-4 pb-2 px-2 gap-2` for the banner-over-list states
 (`missing`/`invalid`, and the `under-review` stand-in), `p-2 gap-2` for the list-only `verified`
 state.
+
+The `<ul>` of `AccountDocumentRow`s (`under-review`/`missing`/`invalid`/`verified`) itself carries
+`gap-2` (8px) — confirmed at `6701-98099` (verified frame): each row's own `p-2` plus this 8px gap
+reproduces the frame's ~24px dead space between consecutive rows. A prior pass left the `<ul>`
+without a gap, which under-spaced rows to 16px (issue #1291).
 
 ### The "under review" stand-in (no designed frame)
 
