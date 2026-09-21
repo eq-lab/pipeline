@@ -197,4 +197,30 @@ describe("SignInModal (#1248)", () => {
     fireEvent.keyDown(document, { key: "Tab" });
     expect(document.activeElement).toBe(first);
   });
+
+  it('"Forgot password?" is a button and calls onForgotPassword exactly once when clicked', async () => {
+    const user = userEvent.setup();
+    const onForgotPassword = vi.fn();
+    renderModal({ onForgotPassword });
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(onForgotPassword).toHaveBeenCalledTimes(1);
+  });
+
+  it("with no onForgotPassword prop, clicking it does not throw and does not call onSubmit", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderModal({ onSubmit });
+    await expect(
+      user.click(screen.getByRole("button", { name: "Forgot password?" })),
+    ).resolves.not.toThrow();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('"New here? Create account" is still non-interactive text', () => {
+    renderModal();
+    expect(
+      screen.queryByRole("button", { name: /create account/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Create account")).toBeInTheDocument();
+  });
 });

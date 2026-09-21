@@ -6,6 +6,7 @@ import { SegmentedTabs, Button } from "@pipeline/ui";
 import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
 import { SignInModal } from "@/components/SignInModal";
+import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { OtpModal } from "@/components/OtpModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
@@ -689,8 +690,10 @@ function ToastsTab(): React.JSX.Element {
 
 // ── AuthTab ───────────────────────────────────────────────────────────────────
 
+type AuthScreen = "none" | "sign-in" | "forgot-password";
+
 function AuthTab(): React.JSX.Element {
-  const [signInOpen, setSignInOpen] = React.useState(false);
+  const [authScreen, setAuthScreen] = React.useState<AuthScreen>("none");
   const [createAccountOpen, setCreateAccountOpen] = React.useState(false);
   const [otpOpen, setOtpOpen] = React.useState(false);
   const [otpVerified, setOtpVerified] = React.useState(false);
@@ -698,22 +701,30 @@ function AuthTab(): React.JSX.Element {
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
   const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
   const [wentToApp, setWentToApp] = React.useState(false);
+  const [resetLinkRequested, setResetLinkRequested] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
-        Preview seam for the KYB Sign-in (issue #1248), Create-account (issue
-        #1249), OTP (issue #1250), Company Docs (issue #1251), and
-        Account-in-review (issue #1253) modals. Not wired to any production
-        entry point.
+        Preview seam for the KYB Sign-in (issue #1248), Forgot-password (issue
+        #1280), Create-account (issue #1249), OTP (issue #1250), Company Docs
+        (issue #1251), and Account-in-review (issue #1253) modals. Not wired to
+        any production entry point.
       </p>
       <div className="flex gap-2">
         <Button
           variant="secondary"
           className="w-fit"
-          onClick={() => setSignInOpen(true)}
+          onClick={() => setAuthScreen("sign-in")}
         >
           Open Sign In modal
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setAuthScreen("forgot-password")}
+        >
+          Open Forgot Password screen
         </Button>
         <Button
           variant="secondary"
@@ -744,6 +755,15 @@ function AuthTab(): React.JSX.Element {
           Open Account-in-review screen
         </Button>
       </div>
+      {resetLinkRequested && (
+        <p
+          data-testid="auth-forgot-password-submitted"
+          className="text-sm text-[color:var(--color-pipeline-positive)]"
+        >
+          Reset link requested — #1265 wires this to the real password-reset
+          endpoint.
+        </p>
+      )}
       {otpVerified && (
         <p
           data-testid="auth-otp-verified"
@@ -769,7 +789,20 @@ function AuthTab(): React.JSX.Element {
           Go to app — #1254 wires this to the LP dashboard.
         </p>
       )}
-      <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
+      <SignInModal
+        open={authScreen === "sign-in"}
+        onDismiss={() => setAuthScreen("none")}
+        onForgotPassword={() => setAuthScreen("forgot-password")}
+      />
+      <ForgotPasswordModal
+        open={authScreen === "forgot-password"}
+        onDismiss={() => setAuthScreen("none")}
+        onBackToSignIn={() => setAuthScreen("sign-in")}
+        onSubmit={() => {
+          setResetLinkRequested(true);
+          setAuthScreen("none");
+        }}
+      />
       <CreateAccountModal
         open={createAccountOpen}
         onDismiss={() => setCreateAccountOpen(false)}

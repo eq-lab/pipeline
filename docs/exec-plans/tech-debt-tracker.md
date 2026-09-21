@@ -980,10 +980,11 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   column. `AuthModalShell` top-aligns it (`items-center justify-start` on the flex parent) because
   the shell was lifted verbatim from `ConnectWalletModal`. Issue #1250 added an opt-in
   `align?: "start" | "center"` prop (default `"start"`) rather than silently re-laying-out the
-  already-reviewed `SignInModal`/`CreateAccountModal` screens, and uses `align="center"` only for
-  `OtpModal`.
+  already-reviewed `SignInModal`/`CreateAccountModal` screens. `OtpModal`, `AccountInReviewModal`
+  (#1253), and `ForgotPasswordModal` (#1280) all opt into `align="center"`; `SignInModal` and
+  `CreateAccountModal` are the remaining top-aligned hold-outs.
 - **Impact:** `SignInModal`/`CreateAccountModal` remain slightly off from their Figma frames'
-  vertical centering pending a design decision on whether to follow OTP's opt-in.
+  vertical centering pending a design decision on whether to follow the other screens' opt-in.
 - **Suggested fix:** A designer/QA pass decides whether #1248/#1249 should also set
   `align="center"`; if so, flip their default or pass the prop explicitly, then consider whether
   `align` should default to `"center"` repo-wide once no consumer relies on `"start"`.
@@ -1132,6 +1133,35 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   review-status fetch are both unbuilt.
 - **Suggested fix:** #1254 replaces `onNotifyMe`/the local flip with a real subscription call and
   a real account-status source once the backend endpoint exists.
+
+### TD-71: `ForgotPasswordModal` has no designed post-submit state
+
+- **Date:** 2026-09-21.
+- **Location:** `packages/frontend/src/components/ForgotPasswordModal.tsx`.
+- **Gap:** No confirmation, no "check your email" screen, and no "set a new password" screen
+  exists anywhere in the V1.0 Figma section `6486:81556`, and no connector leaves the Forgot
+  Password frame (`6704:107100`). Submitting on `/test` shows a stand-in confirmation line and
+  closes the modal instead — the same treatment #1250 used for the missing OTP success frame,
+  approved 2026-09-18. Same shape as TD-60.
+- **Impact:** #1265 cannot wire a real password-reset flow until a designer supplies the missing
+  screens; the current preview is a dead end by design.
+- **Suggested fix:** Raise a design request / follow-up sub-issue on epic #1247 for the missing
+  screens before #1265 attempts the real wiring.
+
+### TD-72: `ForgotPasswordModal` enabled/error/hover states are derived, not designed
+
+- **Date:** 2026-09-21.
+- **Location:** `packages/frontend/src/components/ForgotPasswordModal.tsx`.
+- **Gap:** Figma has no `— Enable` and no `— Validation error` companion frame for Forgot
+  Password, and no hover/focus state for its two un-inerted links. The implementation derives the
+  enabled-submit treatment from Sign in's `— Enable` frame (`6486:81576`), the validation-error
+  treatment from Sign in's `— Validation error` frame (`6486:81595`), and hover/focus from repo
+  convention (`hover:underline` + the shell's existing focus-visible outline token).
+- **Impact:** These three states are stand-ins, not verified designs — a designer may specify
+  different treatment once a Forgot-Password-specific frame exists.
+- **Suggested fix:** A designer pass adds `— Enable`/`— Validation error` companion frames for
+  this screen; the QA Figma comparison should not file this as a bug against the current
+  derivation.
 
 ---
 
