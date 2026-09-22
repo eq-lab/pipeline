@@ -33,6 +33,42 @@ beforeEach(() => {
   mockGetSessionToken.mockReturnValue(undefined);
 });
 
+describe("apiFetch — mock-key seam (#1306)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("returns the parsed mock value without a network call when the exact key is set", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/lps",
+      JSON.stringify({ lps: [{ id: 1 }] }),
+    );
+    const result = await apiFetch<{ lps: { id: number }[] }>("/v1/lps");
+    expect(result.lps[0]!.id).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    localStorage.clear();
+  });
+
+  it("falls back to the without-query alias key", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/lps",
+      JSON.stringify({ lps: [] }),
+    );
+    const result = await apiFetch<{ lps: unknown[] }>("/v1/lps?lp_id=3");
+    expect(result.lps).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    localStorage.clear();
+  });
+
+  it("uses the real fetch when no mock key is present", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    await apiFetch("/v1/lps");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("apiFetch — bearer token injection", () => {
   it("attaches Authorization: Bearer <token> when a session token is present", async () => {
     mockGetSessionToken.mockReturnValue("jwt-token");
