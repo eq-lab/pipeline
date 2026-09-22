@@ -47,6 +47,16 @@ export class ApiUnauthorizedError extends ApiError {
   }
 }
 
+function readMock<T>(key: string): T | undefined {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw == null) return undefined;
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Fetches `${ENV.API_BASE_URL}${path}` and returns the parsed JSON body.
  *
@@ -70,6 +80,17 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const mock1 = readMock<T>(`pipeline.mock.api.${method}.${path}`);
+  if (mock1 !== undefined) return mock1;
+  const pathWithoutQuery = path.split("?")[0]!;
+  if (pathWithoutQuery !== path) {
+    const mock2 = readMock<T>(
+      `pipeline.mock.api.${method}.${pathWithoutQuery}`,
+    );
+    if (mock2 !== undefined) return mock2;
+  }
+
   const url = `${ENV.API_BASE_URL}${path}`;
   const token = getSessionToken();
 

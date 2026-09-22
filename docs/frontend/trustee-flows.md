@@ -712,6 +712,16 @@ doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding
 "This amount is too high for this loan. Enter a smaller amount." Anything else gets a generic
 retry message. The date input is fixed to today and not editable (#916) — no calendar/date picker.
 
+## Mock keys (manual QA)
+
+The trustee `apiFetch` (issue #1306) checks localStorage before fetching, mirroring the LP
+client's seam: `pipeline.mock.api.<METHOD>.<path>` (exact, query string included), then
+`pipeline.mock.api.<METHOD>.<path-without-query>`. A present key's value is parsed as JSON and
+returned with no network call; unparseable or absent keys fall through to the real fetch. Keys
+live only in the developer's own browser — production paths are unaffected. Primary use: preview
+states the backend cannot serve yet (e.g. LP Counterparties rows across all four Account Status
+chips while `kyb_status` is monotone, #1274).
+
 ## LP Counterparties
 
 **Sources:** `packages/trustee/src/api/useLps.ts` (data hook),
