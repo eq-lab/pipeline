@@ -39,9 +39,14 @@ describe("AccountPage", () => {
     await expect(userEvent.click(button)).resolves.not.toThrow();
   });
 
-  it("pads the page uniformly (matches the Figma p-128 frame token)", () => {
+  it("pads the page with the reduced sibling-route rhythm (#1309)", () => {
     render(<AccountPage />);
-    expect(screen.getByTestId("account-page")).toHaveClass("p-4", "md:p-32");
+    expect(screen.getByTestId("account-page")).toHaveClass(
+      "px-4",
+      "py-8",
+      "md:px-8",
+      "md:py-16",
+    );
   });
 
   it("paints the page root with the Figma frame's paper fill, matching sibling routes", () => {
