@@ -181,6 +181,14 @@ describe("TrusteeSidebar", () => {
     );
   });
 
+  it("renders the LP Counterparties link pointing at /lp-counterparties with a glyph", async () => {
+    renderSidebar();
+    await screen.findByRole("img", { name: "Pipeline" });
+    const link = screen.getByRole("link", { name: "LP Counterparties" });
+    expect(link).toHaveAttribute("href", "/lp-counterparties");
+    expect(link.querySelector("svg")).not.toBeNull();
+  });
+
   it("does not render a badge for any nav item (no backend count source)", async () => {
     renderSidebar();
     await screen.findByRole("img", { name: "Pipeline" });

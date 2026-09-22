@@ -182,3 +182,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1281 KYB: create-account validation-error state](https://github.com/eq-lab/pipeline/issues/1281) | [1281-create-account-error.md](./epic-1247/1281-create-account-error.md) | Initial |
 | [#1284 LP: Account page — wallet, corporate email, KYB documents hub](https://github.com/eq-lab/pipeline/issues/1284) | [1284-lp-account-page.md](./epic-1247/1284-lp-account-page.md) | Initial |
 | [#1278 KYB: Company Docs step V1.0 redesign](https://github.com/eq-lab/pipeline/issues/1278) | [1278-kyb-company-docs-v1.md](./epic-1247/1278-kyb-company-docs-v1.md) | Initial |
+
+---
+
+## Epic #1269 — Trustee LP Counterparties
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1270 Trustee: LP Counterparties menu item + list table](https://github.com/eq-lab/pipeline/issues/1270) | [1270-trustee-lp-counterparties.md](./epic-1269/1270-trustee-lp-counterparties.md) | Initial |

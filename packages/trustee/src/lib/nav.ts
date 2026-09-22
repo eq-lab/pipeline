@@ -48,6 +48,12 @@ export const TRUSTEE_NAV_ITEMS: readonly TrusteeNavItem[] = [
       "Capital Wallet MPC co-signature flows (Type 2 — T-Bill allocation swap, Withdrawal Queue Wallet top-up). Content lands in a later sub-issue of epic #775.",
   },
   {
+    path: "/lp-counterparties",
+    navLabel: "LP Counterparties",
+    heading: "LP Counterparties",
+    description: "Registered LP counterparties and their KYB status.",
+  },
+  {
     path: "/risk-council",
     navLabel: "Risk Council",
     heading: "Risk Council",

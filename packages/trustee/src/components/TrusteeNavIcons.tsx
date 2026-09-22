@@ -98,6 +98,17 @@ export function AuditLogIcon(props: IconProps) {
   );
 }
 
+export function LpCounterpartiesIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(20, props)}>
+      <path
+        d="M11.9 6A2.1 2.1 0 1 0 16.1 6A2.1 2.1 0 1 0 11.9 6ZM4.9 7A2.6 2.6 0 1 0 10.1 7A2.6 2.6 0 1 0 4.9 7ZM10.5 17C10.5 13.96 12.06 11.5 14 11.5C15.94 11.5 17.5 13.96 17.5 17ZM2 17.5C2 13.91 4.462 11 7.5 11C10.538 11 13 13.91 13 17.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 /** Account chip avatar glyph (viewBox 0 0 15 15). */
 export function AvatarIcon(props: IconProps) {
   return (
