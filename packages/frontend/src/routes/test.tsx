@@ -11,6 +11,10 @@ import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { OtpModal } from "@/components/OtpModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
 import { AccountInReviewModal } from "@/components/AccountInReviewModal";
+import { FundingDetailsModal } from "@/components/FundingDetailsModal";
+import { AddUsdCard } from "@/components/AddUsdCard";
+import { FUNDING_DETAILS_PLACEHOLDER } from "@/components/fundingDetails";
+import { ADD_USD_CARD_VARIANTS } from "@/components/addUsdCardState";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -712,6 +716,10 @@ function AuthTab(): React.JSX.Element {
   const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
   const [wentToApp, setWentToApp] = React.useState(false);
   const [resetLinkRequested, setResetLinkRequested] = React.useState(false);
+  const [fundingDetailsOpen, setFundingDetailsOpen] = React.useState(false);
+  const [wireStandIn, setWireStandIn] = React.useState<
+    "withdraw" | "start-verification" | "view-status" | null
+  >(null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -737,6 +745,63 @@ function AuthTab(): React.JSX.Element {
             </a>
           ))}
         </div>
+      </div>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
+          Wire transfers (#1283) — the Funding details modal and the five
+          AddUsdCard variants. Not mounted on any production entry point; the
+          home-state derivation is #1282's, the real trust-account balance and
+          Withdraw are #1285's.
+        </p>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setFundingDetailsOpen(true)}
+        >
+          Open Funding details modal
+        </Button>
+        <div className="flex flex-wrap gap-4">
+          {ADD_USD_CARD_VARIANTS.map((variant) => (
+            <div key={variant} className="flex w-[313px] flex-col gap-2">
+              <p className="text-xs text-[color:var(--color-pipeline-ink-muted)]">
+                {variant}
+              </p>
+              <AddUsdCard
+                variant={variant}
+                usdBalanceLabel={variant === "funded" ? "$1,000.00" : undefined}
+                onAddFunds={() => setFundingDetailsOpen(true)}
+                onWithdraw={() => setWireStandIn("withdraw")}
+                onStartVerification={() => setWireStandIn("start-verification")}
+                onViewStatus={() => setWireStandIn("view-status")}
+              />
+            </div>
+          ))}
+        </div>
+        {wireStandIn === "withdraw" && (
+          <p
+            data-testid="wire-withdraw-clicked"
+            className="text-sm text-[color:var(--color-pipeline-positive)]"
+          >
+            Withdraw clicked — #1285 wires this to the real trust-account
+            withdraw flow.
+          </p>
+        )}
+        {wireStandIn === "start-verification" && (
+          <p
+            data-testid="wire-start-verification-clicked"
+            className="text-sm text-[color:var(--color-pipeline-positive)]"
+          >
+            Start Verification clicked — #1282 wires this to the Account page.
+          </p>
+        )}
+        {wireStandIn === "view-status" && (
+          <p
+            data-testid="wire-view-status-clicked"
+            className="text-sm text-[color:var(--color-pipeline-positive)]"
+          >
+            View Status clicked — #1282 wires this to the Account page.
+          </p>
+        )}
       </div>
       <div className="flex gap-2">
         <Button
@@ -857,6 +922,11 @@ function AuthTab(): React.JSX.Element {
           setWentToApp(true);
           setAccountInReviewOpen(false);
         }}
+      />
+      <FundingDetailsModal
+        open={fundingDetailsOpen}
+        onDismiss={() => setFundingDetailsOpen(false)}
+        details={FUNDING_DETAILS_PLACEHOLDER}
       />
     </div>
   );

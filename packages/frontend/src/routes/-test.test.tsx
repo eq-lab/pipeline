@@ -495,6 +495,62 @@ describe("TestPage — tab param routing", () => {
   });
 });
 
+describe("TestPage — Wire transfers (#1283) preview seam", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("?tab=auth renders five AddUsdCards, one per ADD_USD_CARD_VARIANTS entry", () => {
+    renderTestPage("auth");
+    expect(screen.getAllByRole("region")).toHaveLength(5);
+  });
+
+  it("no dialog is present initially", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("Open Funding details modal opens exactly one dialog; Escape closes it", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open funding details modal/i }),
+    );
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.keyDown(document, { key: "Escape", bubbles: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("clicking unlocked's Add Funds opens the same single dialog (no stacking)", () => {
+    renderTestPage("auth");
+    const addFundsButtons = screen
+      .getAllByRole("button", { name: "Add Funds" })
+      .filter((btn) => !(btn as HTMLButtonElement).disabled);
+    fireEvent.click(addFundsButtons[0]!);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("Withdraw reveals its stand-in line", () => {
+    renderTestPage("auth");
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw" }));
+    expect(screen.getByTestId("wire-withdraw-clicked")).toBeInTheDocument();
+  });
+
+  it("Start Verification reveals its stand-in line", () => {
+    renderTestPage("auth");
+    fireEvent.click(screen.getByRole("button", { name: "Start Verification" }));
+    expect(
+      screen.getByTestId("wire-start-verification-clicked"),
+    ).toBeInTheDocument();
+  });
+
+  it("View Status reveals its stand-in line", () => {
+    renderTestPage("auth");
+    fireEvent.click(screen.getByRole("button", { name: "View Status" }));
+    expect(screen.getByTestId("wire-view-status-clicked")).toBeInTheDocument();
+  });
+});
+
 describe("TestPage — Clear mocks button", () => {
   beforeEach(() => {
     localStorage.clear();

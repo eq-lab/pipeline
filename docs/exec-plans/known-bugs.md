@@ -17,6 +17,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-21: Tech-debt tracker has two entries both numbered TD-73
+- **Date:** 2026-09-22
+- **Location:** `docs/exec-plans/tech-debt-tracker.md` — the unidentified-wire-matching-queue
+  entry ("No unidentified-wire matching queue — `lp_id` is required at deposit-entry time",
+  2026-09-18) and the create-account password-policy entry ("Create-account password policy is
+  derived from Figma copy only, no backend counterpart", 2026-09-21) both carry the id `TD-73`.
+  Found while logging new tech debt for issue #1283.
+- **Symptom:** Any cross-reference to "TD-73" is ambiguous between two unrelated gaps (a backend
+  wire-matching gap and a frontend password-policy gap).
+- **Root cause:** A numbering collision when the second entry was added — not renumbered here per
+  the exec plan's instruction to log the duplicate rather than fix it inline.
+- **Workaround:** New entries from #1283 onward start at TD-87, skipping the ambiguous range. A
+  future pass should renumber one of the two TD-73 entries and update any inbound references.
+
 ### BUG-20: `SignInModal`/`CreateAccountModal` submit-attempt validation path is unreachable in a real browser
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/components/SignInModal.tsx`, `CreateAccountModal.tsx` (both via `useAuthCredentialsForm.ts`'s `handleSubmit`/`submitAttempted`). Found during #1281 planning.

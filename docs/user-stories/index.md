@@ -181,6 +181,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Initial |
 | [#1281 KYB: create-account validation-error state](https://github.com/eq-lab/pipeline/issues/1281) | [1281-create-account-error.md](./epic-1247/1281-create-account-error.md) | Initial |
 | [#1284 LP: Account page — wallet, corporate email, KYB documents hub](https://github.com/eq-lab/pipeline/issues/1284) | [1284-lp-account-page.md](./epic-1247/1284-lp-account-page.md) | Initial |
+| [#1283 LP: Add Funds wire-transfer modal + bank-transfer home states](https://github.com/eq-lab/pipeline/issues/1283) | [1283-lp-add-funds.md](./epic-1247/1283-lp-add-funds.md) | Initial |
 | [#1278 KYB: Company Docs step V1.0 redesign](https://github.com/eq-lab/pipeline/issues/1278) | [1278-kyb-company-docs-v1.md](./epic-1247/1278-kyb-company-docs-v1.md) | Initial |
 
 ---

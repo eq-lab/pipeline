@@ -17,6 +17,9 @@ Architecture and behavior specs extracted from source comments per [`docs/FRONTE
 - [Account page](./account-page.md) — the LP `/account` route for epic #1247 (issue #1284): wallet
   card, corporate email, and the KYB documents state machine (`packages/frontend/src/routes/account.tsx`,
   `packages/frontend/src/components/account/**`).
+- [Bank transfers](./bank-transfers.md) — the LP wire-transfer feature for epic #1247 (issue
+  #1283): the `FundingDetailsModal` and the `AddUsdCard` home-card variants
+  (`packages/frontend/src/components/FundingDetailsModal.tsx`, `AddUsdCard.tsx`).
 - [Trustee flows](./trustee-flows.md) — Trustee admin panel modules (`packages/trustee/src/**`).
 - [UI components](./ui-components.md) — shared component library (`packages/ui/src/**`): surface primitives, Figma bindings, design-decision records.
 - [Error handling](./error-handling.md) — the generic-message + details-dialog error UX pattern, the `toUserError` mapping table, and the adopted-surface inventory.
