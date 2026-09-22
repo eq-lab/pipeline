@@ -712,6 +712,109 @@ doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding
 "This amount is too high for this loan. Enter a smaller amount." Anything else gets a generic
 retry message. The date input is fixed to today and not editable (#916) — no calendar/date picker.
 
+## LP Counterparties
+
+**Sources:** `packages/trustee/src/api/useLps.ts` (data hook),
+`packages/trustee/src/routes/-useLpCounterpartiesTable.ts` (presenter),
+`packages/trustee/src/routes/lp-counterparties.index.tsx` (list view),
+`packages/trustee/src/routes/lp-counterparties.$id.tsx` (placeholder detail view).
+**Consumer route:** `/lp-counterparties` (detail at `/lp-counterparties/$id`). Issue #1270, epic
+#1269 — **no Figma**: the epic has no LP-counterparties frame, so styling is derived from the
+shipped `/loans` page (the design system, not a specific screen, is the source).
+
+### Architecture
+
+View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-rules): the two
+`.tsx` route files are JSX/styling only; `useLpCounterpartiesTable` owns the `useLps` call, the
+403 pre-check, and the per-row mapping.
+
+- `useLps` (`api/`) — React Query hook over `GET /v1/lps` (trustee-role-gated), 30 s poll, no query
+  params. A hand-mirror of `packages/api/src/routes/lps.rs`'s `LpResponse`/`LpsResponse` (TD-42
+  convention — the trustee app does not depend on `@pipeline/frontend`).
+- `useLpCounterpartiesTable` (`routes/`) — presenter: `mapKybStatus`, `mapLpToRow`, and the
+  `loading | error | empty | ready` state machine.
+
+### Column mapping
+
+| # | Header | Source | Rendering |
+|---|---|---|---|
+| 1 | Legal Entity Name | `legal_name` | verbatim; non-empty-string guard → `—` |
+| 2 | Jurisdiction | `country` (nullable) | **verbatim**, no code→name mapping; `null`/empty → `—` |
+| 3 | First Registration Date | `created_at` (ISO-8601 UTC) | `formatIsoDateUtc` → `"18 Jun 2026"` |
+| 4 | Account Status | `kyb_status` | chip, mapping below |
+| 5 | Blockchain Address Available | `stellar_address` | `Yes` when a non-empty string, else `No` |
+| 6 | Bank Info Available | *(none)* | always `—` until #1275 lands — **never** `No` |
+| 7 | *(unlabeled)* | — | 34px trailing `›` chevron, `aria-hidden`, Loan Book precedent |
+
+Rows are consumed in served order — `lp_repo::list()` is `ORDER BY created_at DESC, id DESC`. No
+client-side sort, no search, no pagination, no ledger column (`GET /v1/lp-ledger` belongs to the
+detail page's scope, not this list).
+
+### Account Status mapping
+
+| served `kyb_status` | chip label | band |
+|---|---|---|
+| `NotStarted` | New | neutral |
+| `InProgress` | KYB Pending | attention |
+| `UnderReview` | KYB Pending | attention |
+| `Passed` | Approved | positive |
+| `Failed` | **Rejected** | negative |
+| anything else | the raw string, verbatim | neutral |
+
+`Failed → "Rejected"` is a proposed resolution for the epic's open question 1 (not yet
+human-confirmed): the requirements enumerate the happy path (New / KYB Pending / Approved) and are
+silent on `Failed`; folding a failed KYB into any of those three would misinform the trustee.
+"Rejected" already exists in this app's chip vocabulary with a negative band (the Origination
+table's `OriginationRowStatus` `rejected` kind). The unknown → verbatim/neutral fallback mirrors
+the loan `statusToChip` rule (see "Origination & review" below).
+
+Band → colour, matching the Loans/Loan-detail chip literals: neutral
+`var(--color-pipeline-ink-muted)`, attention `#6e6400`, positive
+`var(--color-pipeline-positive-primary)`, negative `#b20000`.
+
+### Never-fabricate notes
+
+- **Bank Info Available renders `—`, never `No`, until #1275.** No backend field exists yet for
+  bank-requisites; `No` would fabricate a fact about the counterparty ("has not supplied bank
+  details") that the absence of a field does not establish.
+- **Every row reads "New" on today's data — expected, not a bug.** `kyb_status` has no transition
+  path yet (that lands with #1274); until then every registered LP is `NotStarted`, so Account
+  Status and Bank Info are both correct-but-monotone. Logged as a known backend gap tracked by
+  issue #1274 — the QA agent should not file this as a defect.
+- **`country` is rendered verbatim, never normalised.** It is an optional free-text field with no
+  validation and no frontend writer yet — rows may show `"CH"`, `"Switzerland"`, or anything else.
+
+### Row click & the #1271 seam
+
+Rows are fully clickable (pointer cursor, `tabIndex={0}`, Enter/Space, descriptive `aria-label`,
+trailing chevron) and navigate to `/lp-counterparties/$id` — a structural copy of `LoanRow` in
+`loans.index.tsx`. `/lp-counterparties/$id` ships here as a thin placeholder (reads the same
+`useLps` cache, shows the LP's `legal_name` — or `LP {id}` when not found — and a
+"Document review and KYB confirmation land in issue #1271." line) so the row-click affordance is
+never a dead link before #1271 replaces the body with the real detail page.
+
+### States & error copy
+
+Loading (three `animate-pulse` skeleton bars), error (`InlineError` in the negative-bordered
+wrapper), and empty ("No registered LP counterparties.") states mirror the Loan Book page exactly,
+including `data-testid`s prefixed `lp-counterparties-`.
+
+**403 pre-check (tech debt, see `docs/exec-plans/tech-debt-tracker.md`):** the shared
+`toUserError`'s `matchApiStatus` maps every `403` to *"You are not authorized to review
+submissions."* — copy hardcoded for the Origination review flow. `useLpCounterpartiesTable` checks
+`error instanceof ApiError && error.status === 403` **before** calling `toUserError` and returns
+page-specific copy ("Your trustee account is not authorized to view LP counterparties.") instead.
+
+### Sidebar placement
+
+**LP Counterparties** is the last item of the middle operational group — after **Cash
+Management**, before the divider that precedes Risk Council / Audit Log — because it is a working
+queue like Origination and Loans, and its detail page will host LP bank-transfer recording (#1272).
+`DIVIDER_AFTER_PATHS` in `TrusteeSidebar.tsx` moved from `"/cash-management"` to
+`"/lp-counterparties"` to keep the two-divider grouping. The nav glyph (`LpCounterpartiesIcon`) is
+hand-authored — no Figma export exists for it, unlike the other six nav glyphs — a documented
+deviation pending a future Figma delivery.
+
 ## Origination & review
 
 **Sources:** `packages/trustee/src/api/useLoanSubmissions.ts` (data hook),

@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatAuditTimestamp,
   formatEpochDate,
+  formatIsoDateUtc,
   formatMaturityDate,
   formatSubmittedDate,
 } from "./formatDate";
@@ -62,6 +63,26 @@ describe("formatEpochDate", () => {
     expect(formatEpochDate(null)).toBe("—");
     expect(formatEpochDate(undefined)).toBe("—");
     expect(formatEpochDate("not-a-date")).toBe("—");
+  });
+});
+
+describe("formatIsoDateUtc", () => {
+  it("formats an ISO-8601 UTC timestamp as day + short month + year (#1270)", () => {
+    expect(formatIsoDateUtc("2026-06-18T10:00:00Z")).toBe("18 Jun 2026");
+  });
+
+  it("returns em-dash for null/undefined", () => {
+    expect(formatIsoDateUtc(null)).toBe("—");
+    expect(formatIsoDateUtc(undefined)).toBe("—");
+  });
+
+  it("returns em-dash for an unparseable string", () => {
+    expect(formatIsoDateUtc("not-a-date")).toBe("—");
+  });
+
+  it("forces the UTC calendar day regardless of a non-UTC offset in the input", () => {
+    // 2026-06-18T23:40:00+02:00 is 2026-06-18T21:40:00Z — same UTC day.
+    expect(formatIsoDateUtc("2026-06-18T23:40:00+02:00")).toBe("18 Jun 2026");
   });
 });
 

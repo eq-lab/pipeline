@@ -1340,6 +1340,22 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Needs #1267 (upload transport) + #1273 (read-back), wired by #1254. Companion
   to TD-75 (the Account page's `Save` has no real transition either).
 
+### TD-86: Trustee `toUserError`'s 403 copy is hardcoded to the Origination-review wording
+
+- **Date:** 2026-09-22.
+- **Location:** `packages/trustee/src/utils/userError.ts` (`matchApiStatus`), first worked around by
+  `packages/trustee/src/routes/-useLpCounterpartiesTable.ts`.
+- **Gap:** `matchApiStatus`'s `403` branch always returns *"You are not authorized to review
+  submissions."* — copy specific to the Origination review flow, seeded from
+  `-useOriginationReview.ts`'s `mapReviewError`. A non-trustee staff JWT hitting any other
+  trustee-role-gated endpoint (e.g. `GET /v1/lps`, issue #1270) would show that misleading
+  sentence via the shared mapper.
+- **Impact:** Every new page that can 403 for a different reason than "not authorized to review
+  submissions" must pre-check `error instanceof ApiError && error.status === 403` itself, before
+  calling `toUserError`, to override the copy — a per-page workaround rather than a shared fix.
+- **Suggested fix:** Make the 403 copy caller-suppliable (e.g. a second parameter alongside
+  `fallback`), or move it out of the generic status table into a per-page map.
+
 ---
 
 ## Post-MVP

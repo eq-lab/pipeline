@@ -12,15 +12,18 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RiskCouncilRouteImport } from './routes/risk-council'
 import { Route as OriginationRouteImport } from './routes/origination'
+import { Route as LpCounterpartiesRouteImport } from './routes/lp-counterparties'
 import { Route as LoansRouteImport } from './routes/loans'
 import { Route as CashManagementRouteImport } from './routes/cash-management'
 import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RiskCouncilIndexRouteImport } from './routes/risk-council.index'
 import { Route as OriginationIndexRouteImport } from './routes/origination.index'
+import { Route as LpCounterpartiesIndexRouteImport } from './routes/lp-counterparties.index'
 import { Route as LoansIndexRouteImport } from './routes/loans.index'
 import { Route as OriginationNewRouteImport } from './routes/origination.new'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
+import { Route as LpCounterpartiesIdRouteImport } from './routes/lp-counterparties.$id'
 import { Route as LoansIdRouteImport } from './routes/loans.$id'
 import { Route as RiskCouncilWritedownIdRouteImport } from './routes/risk-council.writedown.$id'
 import { Route as RiskCouncilRetermIdRouteImport } from './routes/risk-council.reterm.$id'
@@ -41,6 +44,11 @@ const RiskCouncilRoute = RiskCouncilRouteImport.update({
 const OriginationRoute = OriginationRouteImport.update({
   id: '/origination',
   path: '/origination',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LpCounterpartiesRoute = LpCounterpartiesRouteImport.update({
+  id: '/lp-counterparties',
+  path: '/lp-counterparties',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoansRoute = LoansRouteImport.update({
@@ -73,6 +81,11 @@ const OriginationIndexRoute = OriginationIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OriginationRoute,
 } as any)
+const LpCounterpartiesIndexRoute = LpCounterpartiesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LpCounterpartiesRoute,
+} as any)
 const LoansIndexRoute = LoansIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -87,6 +100,11 @@ const OriginationIdRoute = OriginationIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => OriginationRoute,
+} as any)
+const LpCounterpartiesIdRoute = LpCounterpartiesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => LpCounterpartiesRoute,
 } as any)
 const LoansIdRoute = LoansIdRouteImport.update({
   id: '/$id',
@@ -124,13 +142,16 @@ export interface FileRoutesByFullPath {
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRouteWithChildren
+  '/lp-counterparties': typeof LpCounterpartiesRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
+  '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/new': typeof OriginationNewRoute
   '/loans/': typeof LoansIndexRoute
+  '/lp-counterparties/': typeof LpCounterpartiesIndexRoute
   '/origination/': typeof OriginationIndexRoute
   '/risk-council/': typeof RiskCouncilIndexRoute
   '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
@@ -145,9 +166,11 @@ export interface FileRoutesByTo {
   '/cash-management': typeof CashManagementRoute
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
+  '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/new': typeof OriginationNewRoute
   '/loans': typeof LoansIndexRoute
+  '/lp-counterparties': typeof LpCounterpartiesIndexRoute
   '/origination': typeof OriginationIndexRoute
   '/risk-council': typeof RiskCouncilIndexRoute
   '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
@@ -162,13 +185,16 @@ export interface FileRoutesById {
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRouteWithChildren
+  '/lp-counterparties': typeof LpCounterpartiesRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
+  '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/new': typeof OriginationNewRoute
   '/loans/': typeof LoansIndexRoute
+  '/lp-counterparties/': typeof LpCounterpartiesIndexRoute
   '/origination/': typeof OriginationIndexRoute
   '/risk-council/': typeof RiskCouncilIndexRoute
   '/loans/$id_/record-coupon': typeof LoansIdRecordCouponRoute
@@ -184,13 +210,16 @@ export interface FileRouteTypes {
     | '/audit-log'
     | '/cash-management'
     | '/loans'
+    | '/lp-counterparties'
     | '/origination'
     | '/risk-council'
     | '/sign-in'
     | '/loans/$id'
+    | '/lp-counterparties/$id'
     | '/origination/$id'
     | '/origination/new'
     | '/loans/'
+    | '/lp-counterparties/'
     | '/origination/'
     | '/risk-council/'
     | '/loans/$id/record-coupon'
@@ -205,9 +234,11 @@ export interface FileRouteTypes {
     | '/cash-management'
     | '/sign-in'
     | '/loans/$id'
+    | '/lp-counterparties/$id'
     | '/origination/$id'
     | '/origination/new'
     | '/loans'
+    | '/lp-counterparties'
     | '/origination'
     | '/risk-council'
     | '/loans/$id/record-coupon'
@@ -221,13 +252,16 @@ export interface FileRouteTypes {
     | '/audit-log'
     | '/cash-management'
     | '/loans'
+    | '/lp-counterparties'
     | '/origination'
     | '/risk-council'
     | '/sign-in'
     | '/loans/$id'
+    | '/lp-counterparties/$id'
     | '/origination/$id'
     | '/origination/new'
     | '/loans/'
+    | '/lp-counterparties/'
     | '/origination/'
     | '/risk-council/'
     | '/loans/$id_/record-coupon'
@@ -242,6 +276,7 @@ export interface RootRouteChildren {
   AuditLogRoute: typeof AuditLogRoute
   CashManagementRoute: typeof CashManagementRoute
   LoansRoute: typeof LoansRouteWithChildren
+  LpCounterpartiesRoute: typeof LpCounterpartiesRouteWithChildren
   OriginationRoute: typeof OriginationRouteWithChildren
   RiskCouncilRoute: typeof RiskCouncilRouteWithChildren
   SignInRoute: typeof SignInRoute
@@ -268,6 +303,13 @@ declare module '@tanstack/react-router' {
       path: '/origination'
       fullPath: '/origination'
       preLoaderRoute: typeof OriginationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lp-counterparties': {
+      id: '/lp-counterparties'
+      path: '/lp-counterparties'
+      fullPath: '/lp-counterparties'
+      preLoaderRoute: typeof LpCounterpartiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/loans': {
@@ -312,6 +354,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OriginationIndexRouteImport
       parentRoute: typeof OriginationRoute
     }
+    '/lp-counterparties/': {
+      id: '/lp-counterparties/'
+      path: '/'
+      fullPath: '/lp-counterparties/'
+      preLoaderRoute: typeof LpCounterpartiesIndexRouteImport
+      parentRoute: typeof LpCounterpartiesRoute
+    }
     '/loans/': {
       id: '/loans/'
       path: '/'
@@ -332,6 +381,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/origination/$id'
       preLoaderRoute: typeof OriginationIdRouteImport
       parentRoute: typeof OriginationRoute
+    }
+    '/lp-counterparties/$id': {
+      id: '/lp-counterparties/$id'
+      path: '/$id'
+      fullPath: '/lp-counterparties/$id'
+      preLoaderRoute: typeof LpCounterpartiesIdRouteImport
+      parentRoute: typeof LpCounterpartiesRoute
     }
     '/loans/$id': {
       id: '/loans/$id'
@@ -394,6 +450,19 @@ const LoansRouteChildren: LoansRouteChildren = {
 
 const LoansRouteWithChildren = LoansRoute._addFileChildren(LoansRouteChildren)
 
+interface LpCounterpartiesRouteChildren {
+  LpCounterpartiesIdRoute: typeof LpCounterpartiesIdRoute
+  LpCounterpartiesIndexRoute: typeof LpCounterpartiesIndexRoute
+}
+
+const LpCounterpartiesRouteChildren: LpCounterpartiesRouteChildren = {
+  LpCounterpartiesIdRoute: LpCounterpartiesIdRoute,
+  LpCounterpartiesIndexRoute: LpCounterpartiesIndexRoute,
+}
+
+const LpCounterpartiesRouteWithChildren =
+  LpCounterpartiesRoute._addFileChildren(LpCounterpartiesRouteChildren)
+
 interface OriginationRouteChildren {
   OriginationIdRoute: typeof OriginationIdRoute
   OriginationNewRoute: typeof OriginationNewRoute
@@ -433,6 +502,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditLogRoute: AuditLogRoute,
   CashManagementRoute: CashManagementRoute,
   LoansRoute: LoansRouteWithChildren,
+  LpCounterpartiesRoute: LpCounterpartiesRouteWithChildren,
   OriginationRoute: OriginationRouteWithChildren,
   RiskCouncilRoute: RiskCouncilRouteWithChildren,
   SignInRoute: SignInRoute,

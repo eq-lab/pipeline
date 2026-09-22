@@ -23,6 +23,7 @@ import {
   OriginationIcon,
   LoansIcon,
   CashManagementIcon,
+  LpCounterpartiesIcon,
   RiskCouncilIcon,
   AuditLogIcon,
   AvatarIcon,
@@ -40,13 +41,15 @@ const NAV_ICONS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
   "/origination": OriginationIcon,
   "/loans": LoansIcon,
   "/cash-management": CashManagementIcon,
+  "/lp-counterparties": LpCounterpartiesIcon,
   "/risk-council": RiskCouncilIcon,
   "/audit-log": AuditLogIcon,
 };
 
 // Divider placement, per the Figma frame: after Overview, and before the
-// Risk Council / Audit Log group.
-const DIVIDER_AFTER_PATHS = new Set(["/", "/cash-management"]);
+// Risk Council / Audit Log group. LP Counterparties (#1270, no Figma) is the
+// last item of the middle group, so the second divider moved to follow it.
+const DIVIDER_AFTER_PATHS = new Set(["/", "/lp-counterparties"]);
 
 function NavBadge({ count }: { count: number | undefined }) {
   if (count === undefined) return null;

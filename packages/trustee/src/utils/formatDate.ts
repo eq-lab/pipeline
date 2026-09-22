@@ -78,6 +78,16 @@ export function formatEpochDate(rfc3339: string | null | undefined): string {
   return new Intl.DateTimeFormat("en-GB", DAY_MONTH_YEAR).format(date);
 }
 
+export function formatIsoDateUtc(rfc3339: string | null | undefined): string {
+  if (rfc3339 == null) return "—";
+  const date = new Date(rfc3339);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    ...DAY_MONTH_YEAR,
+    timeZone: "UTC",
+  }).format(date);
+}
+
 /**
  * Formats an ISO-8601 timestamp as `"24 Jun 07:12"` (day + short month + 24h,
  * UTC) for the Audit Log Time column (#1004); `"—"` for missing/unparseable.
