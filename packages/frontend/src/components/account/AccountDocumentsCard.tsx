@@ -147,6 +147,7 @@ export function AccountDocumentsCard({
               key={`${file.name}-${index}`}
               file={file}
               onRemove={() => onRemoveStagedFile(index)}
+              className="p-2"
             />
           ))}
         </ul>
@@ -157,7 +158,7 @@ export function AccountDocumentsCard({
         state === "invalid" ||
         state === "verified") &&
         visibleDocuments.length > 0 && (
-          <ul role="list" className="flex w-full flex-col">
+          <ul role="list" className="flex w-full flex-col gap-2">
             {visibleDocuments.map((document) => (
               <AccountDocumentRow
                 key={document.name}

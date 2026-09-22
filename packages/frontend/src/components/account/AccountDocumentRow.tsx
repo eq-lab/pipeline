@@ -1,4 +1,5 @@
 // spec: docs/frontend/account-page.md#accountdocumentrow
+import { Button } from "@pipeline/ui";
 import { FileUploadIcon } from "@/components/UploadedFileRow";
 import type { AccountDocumentRecord } from "./accountPageState";
 
@@ -129,13 +130,16 @@ export function AccountDocumentRow({
         </span>
       )}
       {document.status === "Rejected" && (
-        <button
-          type="button"
-          onClick={() => onReupload?.(document.name)}
-          className="shrink-0 px-1 text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] font-[var(--font-weight-emphasized)] text-[color:var(--color-pipeline-ink-muted)]"
-        >
-          Re-upload
-        </button>
+        <div className="flex shrink-0 items-center justify-center p-1">
+          <Button
+            variant="secondary"
+            size="compact"
+            onClick={() => onReupload?.(document.name)}
+            className="!text-[color:var(--color-pipeline-ink-muted)]"
+          >
+            Re-upload
+          </Button>
+        </div>
       )}
     </div>
   );

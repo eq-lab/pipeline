@@ -73,9 +73,10 @@ describe("CompanyDocsModal — accepting a file", () => {
 
     expect(screen.getByText("doc.pdf")).toBeInTheDocument();
     expect(screen.getByText("Uploaded")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Remove doc.pdf" }),
-    ).toBeInTheDocument();
+    const removeButton = screen.getByRole("button", { name: "Remove doc.pdf" });
+    expect(removeButton).toBeInTheDocument();
+    expect(removeButton).toHaveClass("size-8");
+    expect(removeButton.parentElement).toHaveClass("size-10", "p-1");
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
   });
 });

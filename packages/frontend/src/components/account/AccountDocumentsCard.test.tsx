@@ -35,10 +35,12 @@ describe("AccountDocumentsCard — verify state", () => {
       "bg-[color:var(--color-pipeline-promo)]",
     );
     expect(screen.getByTestId("account-documents-card")).toHaveClass("py-4");
-    expect(screen.getByRole("button", { name: "Upload" })).toHaveClass(
+    const uploadButton = screen.getByRole("button", { name: "Upload" });
+    expect(uploadButton).toHaveClass(
       "border",
       "border-[color:var(--color-pipeline-line)]",
     );
+    expect(uploadButton.parentElement).toHaveClass("p-1");
   });
 });
 
@@ -57,12 +59,20 @@ describe("AccountDocumentsCard — staged state", () => {
     expect(
       screen.getByText("certificate-of-incorporation.pdf"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Remove certificate-of-incorporation.pdf",
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    const removeButton = screen.getByRole("button", {
+      name: "Remove certificate-of-incorporation.pdf",
+    });
+    expect(removeButton).toBeInTheDocument();
+    expect(removeButton).toHaveClass("size-8");
+    expect(removeButton.parentElement).toHaveClass("size-10", "p-1");
+    expect(removeButton.closest("li")).toHaveClass("p-2");
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeEnabled();
+    expect(saveButton).toHaveClass(
+      "h-12",
+      "bg-[var(--color-pipeline-cta)]",
+      "text-[color:var(--color-pipeline-on-dark)]",
+    );
     expect(screen.getByTestId("account-documents-card")).toHaveClass("py-4");
   });
 });
@@ -109,7 +119,10 @@ describe("AccountDocumentsCard — missing state", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("required")).toBeInTheDocument();
     expect(screen.getByText("Please upload the document.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
+    const uploadAction = screen.getByRole("button", { name: "Upload" });
+    expect(uploadAction).toBeInTheDocument();
+    expect(uploadAction).not.toHaveClass("border");
+    expect(uploadAction.parentElement).toHaveClass("p-1");
     expect(screen.getAllByText("Verified")).toHaveLength(6);
     expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
     expect(
@@ -118,6 +131,12 @@ describe("AccountDocumentsCard — missing state", () => {
     expect(screen.getByRole("status")).toHaveClass(
       "bg-[color:var(--color-pipeline-negative-secondary)]",
     );
+    expect(screen.getByTestId("account-documents-card")).toHaveClass(
+      "gap-2",
+      "pt-4",
+      "pb-2",
+    );
+    expect(screen.getByRole("list")).toHaveClass("gap-2");
   });
 });
 
@@ -134,9 +153,15 @@ describe("AccountDocumentsCard — invalid state", () => {
       screen.getByText("Some information may be missing or incorrect"),
     ).toBeInTheDocument();
     expect(screen.getByText("Invalid document")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Re-upload" }),
-    ).toBeInTheDocument();
+    const reuploadButton = screen.getByRole("button", { name: "Re-upload" });
+    expect(reuploadButton).toBeInTheDocument();
+    expect(reuploadButton).toHaveClass(
+      "!h-8",
+      "!text-[color:var(--color-pipeline-ink-muted)]",
+    );
+    expect(reuploadButton).not.toHaveClass("border");
+    expect(reuploadButton.parentElement).toHaveClass("p-1");
+    expect(screen.queryByRole("status")?.querySelector("button")).toBeNull();
     expect(screen.getAllByText("Verified")).toHaveLength(6);
     expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
     expect(
@@ -168,5 +193,6 @@ describe("AccountDocumentsCard — verified state", () => {
     expect(
       screen.queryByRole("button", { name: "Re-upload" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("list")).toHaveClass("gap-2");
   });
 });

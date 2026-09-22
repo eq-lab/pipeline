@@ -40,6 +40,14 @@ override — the `!` is required: `secondary`'s own `bg-transparent` and an unpr
 the same Tailwind specificity, so the surface fill is not guaranteed to win without it (the
 established precedent is `AccountInReviewModal.tsx`'s `!bg-[...]` override of the same variant).
 
+The page root itself carries `min-h-screen bg-[color:var(--color-pipeline-paper)]
+text-[color:var(--color-pipeline-ink)]` — the frame's own root fill (`bg/primary`, `#f8f7f6`) and
+the same convention every other route (`dashboard.tsx`, `deposit.tsx`, `stake.tsx`,
+`transactions.tsx`, `index.tsx`, `test.tsx`) already applies to its page root; a prior pass left
+this off `AccountPage.tsx`, so the page rendered on the default (white) canvas instead of the
+paper tone (issue #1291, no `?state=` fixture exercises the root div's own background so this
+was invisible to state-scoped snapshots).
+
 ## Wallet card
 
 `AccountWalletCard.tsx` is a *view switch* over the existing `useWalletView()` (`kind: "evm" |
@@ -63,7 +71,44 @@ balance); disconnected shows a 72px `--color-pipeline-fill-muted` circle with a 
 glyph and a full-width 48px `Button variant="primary-dark"` labelled `Connect Wallet`. A missing
 balance renders `—`, never a computed or placeholder number.
 
-## Documents state machine
+**The wallet row's leading icon in the frame is a literal MetaMask fox logo** (`get_design_context`
+emits it as an `imgMetamask` asset on node `I6701:98146;8905:4082`) — scratch/placeholder art from
+whoever mocked the frame, the same category of design-file artifact as the "Verify your
+identity"/"Verify your account" inconsistency below. This row renders for **either** namespace tab
+(`Ethereum` or `Stellar`), so a brand-locked browser-extension logo would be product-wrong; the
+generic ink-colored `WalletGlyph` (`AccountWalletCard.tsx`) is intentional and unchanged. Logged as
+a designer ask, not a defect.
+
+**The wallet card's copy button and the upload row's `Upload` button each sit inside an invisible
+40×40 touch-target wrapper, not flush against the row's own padding** — confirmed via
+`get_metadata` at `6701:98146` (`ButtonCont` node `I6701:98146;8902:3635`: `x=416 w=40 h=40`,
+containing the 32×32 visible control at a 4px inset) and `6701:98157` (`ButtonCont` node
+`I6701:98157;8902:3622`: `x=373 w=83 h=40`, containing the 75×32 `Upload` button at the same 4px
+inset). Both rows are `p-[8px]` with a `gap-[12px]` between content and this wrapper — matching the
+existing `AccountListRow`/`AccountUploadRow` padding — but a prior pass placed the compact control
+directly in that gap with no wrapper, landing it 4px closer to the card edge than the frame. Fixed
+by wrapping each control in a `p-1` (4px) container (`size-10` for the copy button, matching its
+`size-8` control; unsized for the `Upload` button, whose own `size="compact"` height already
+matches the wrapper's content height) — issue #1292.
+
+**The staged uploaded-file rows (`6701:98198`–`6701:98203`) carry the same 40×40 touch-target
+convention on their remove control, plus their own `p-[8px]` row padding** — confirmed via
+`get_metadata` at `6701:98197` (six `list-item` children, each `464×56`, `y` stepping by 60px —
+i.e. a 4px gap between 56px-tall rows) and at `6701:98198` (leading tile at `x=8 y=8` 40×40,
+`ButtonCont` at `x=416 y=8` 40×40 containing a 32×32 control at a 4px inset — identical geometry to
+the `CompanyDocsModal` uploaded frame's own remove button, confirmed at `6486:81826`). `56 = 40
+(icon) + 2×8 (row padding)`; the `4px` gap between rows plus each row's own `8px` top/bottom padding
+reproduces the frame's 20px dead space between consecutive rows.
+
+`UploadedFileRow.tsx` (shared with `CompanyDocsModal`'s `DocumentUploadRow`) now always wraps its
+remove `<button>` in a `flex size-10 shrink-0 items-center justify-center p-1` touch target — safe
+for both consumers since `CompanyDocsModal`'s own frame confirms the identical 40×40/4px-inset
+geometry, and the row's overall height was already governed by its 40×40 leading tile (removing the
+now-redundant `h-10` on the `<li>` changes nothing rendered). The row's own `p-[8px]` padding is
+**not** shared — `CompanyDocsModal`'s frame uses a plain `h-[40px]` row with the modal's `<ul
+gap-6>` doing the spacing, a genuinely different spec — so `UploadedFileRow` gained an additive
+`className` prop instead, and `AccountDocumentsCard`'s staged-rows `<ul>` passes `className="p-2"`
+as a local override; the `<ul>`'s own `gap-1` (4px) is unchanged and already matched the frame.
 
 `packages/frontend/src/components/account/accountPageState.ts` — pure data and pure functions, no
 React.
@@ -105,6 +150,11 @@ upload states (`verify`/`staged` — confirmed uniform top/bottom at the node; a
 as asymmetric `pt-4 pb-2`, which was wrong), `pt-4 pb-2 px-2 gap-2` for the banner-over-list states
 (`missing`/`invalid`, and the `under-review` stand-in), `p-2 gap-2` for the list-only `verified`
 state.
+
+The `<ul>` of `AccountDocumentRow`s (`under-review`/`missing`/`invalid`/`verified`) itself carries
+`gap-2` (8px) — confirmed at `6701-98099` (verified frame): each row's own `p-2` plus this 8px gap
+reproduces the frame's ~24px dead space between consecutive rows. A prior pass left the `<ul>`
+without a gap, which under-spaced rows to 16px (issue #1291).
 
 ### The "under review" stand-in (no designed frame)
 
@@ -190,24 +240,45 @@ size="compact"`** — confirmed at both `6701:98157` (verify) and `6701:98195` (
 shipped it borderless. This is the same override `DocumentUploadRow.tsx` already uses for its own
 `Upload` button. The banner's own inline `Upload` action (the `missing` state,
 `AccountStatusBanner`'s `action` prop) has **no** border — confirmed at `6701:98040` — so that one
-stays as `Button variant="secondary" size="compact"` with no extra className.
+stays as `Button variant="secondary" size="compact"` with no extra className. **That same button
+does carry the touch-target wrapper** — `get_metadata` at `6701:98040` shows `ButtonCont` (node
+`I6701:98040;8926:10405`) at `x=351 w=83 h=40` containing the 75×32 `button` at a 4px inset,
+identical geometry to `AccountUploadRow`'s own wrapper — so `AccountStatusBanner` wraps its
+`action` button in the same `flex items-center justify-center p-1` container (issue #1294).
+
+**The `invalid` state's per-row `Re-upload` action (`AccountDocumentRow.tsx`) is a borderless,
+text-only `Button variant="secondary" size="compact"`, wrapped in the same `p-1` touch-target
+convention** — confirmed via `get_metadata` at `6701:98001` (the `dfvfv.pdf` row): `ButtonCont`
+(node `I6701:98001;8902:3622`) at `x=349 w=107 h=40` containing the 32-tall `button` at a 4px inset
+on every side, and `get_design_context` shows no `bg-*`/`border` class on that `button` node —
+`secondary`'s own `bg-transparent` with no border already matches. Text color is
+`content-test/secondary` (ink-muted), not `secondary`'s default ink, so the row overrides with
+`!text-[color:var(--color-pipeline-ink-muted)]` — the `!` is required for the same specificity
+reason as `Log Out`'s `!bg-` override above. A prior pass rendered this as a bare unstyled `<button
+px-1>` with no touch-target wrapper (issue #1295). The `invalid` banner itself (`6701:98000`) has
+**no** trailing action — confirmed no `ButtonCont`/button node in its subtree, unlike the `missing`
+banner's inline `Upload`.
 
 **The 40×40 leading tiles (wallet row, email row, upload row) render a pale navy tint, not
 `#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen
 is stale here (same class as #1251's `content-test/primary` finding), literally emitting
 `bg-[var(--fill-test/primary,#262524)]` for all three tiles, but only the email tile's *icon*
-(hardcoded SVG fill `black`) reads as dark; the tile background itself, and the upload tile's icon
-(`currentColor`, exactly `UploadedFileRow`'s `FileUploadIcon` export), are the same
+(hardcoded SVG fill `black`) reads as dark; the tile background itself is the same
 `--color-pipeline-brand-secondary` pale tint `UploadedFileRow` already ships (TD-63). `AccountIconTile`
-uses that fill uniformly; only the icon's own color varies (ink for envelope/wallet, brand for the
-upload glyph).
+uses that fill uniformly; only the icon's own color varies — ink for envelope/wallet, solid
+`--color-pipeline-brand` navy for the upload glyph (`AccountUploadRow.tsx`'s `FileUploadIcon`,
+`currentColor`). The upload icon is a second stale-codegen spot (issue #1292): the raw exported
+`file-upload` SVG asset hardcodes `fill="#8FB3A4"` (sage green) with no `currentColor`, but
+`get_variable_defs` on this frame resolves a bound `content-test/brand: #000080` variable — exactly
+`--color-pipeline-brand` — and the screenshot shows a solid navy icon, not sage; the asset's baked
+fill is stale, not the target.
 
 ## Reuse verdicts
 
 | Piece | Verdict |
 | --- | --- |
 | `kybFileValidation.ts` (`isAcceptedFile`, `MAX_FILE_BYTES`) | **Reused verbatim.** `{pdf, jpeg, png}` + 10 MB is exactly the frame's rule. |
-| `UploadedFileRow.tsx` | **Reused verbatim** for staged rows — 40×40 leading tile, title/caption order, 32×32 cross-circle remove is exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). |
+| `UploadedFileRow.tsx` | **Reused, with an additive `className` prop** (issue #1293) — 40×40 leading tile, title/caption order, and the 32×32 cross-circle remove control are exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). |
 | `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Reused** — anatomy matches the frame's wallet tabs exactly. |
 | `COMPANY_DOCUMENT_SLOTS` | **Reused** for the first five requirements-list entries. |
 | `FileDropZone.tsx` | **Not used.** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. Retains no consumer after this issue — #1278 decides its fate. |

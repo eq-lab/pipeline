@@ -40,11 +40,16 @@ function CrossCircleIcon() {
 export interface UploadedFileRowProps {
   file: File;
   onRemove: () => void;
+  className?: string;
 }
 
 // ── Row component ─────────────────────────────────────────────────────────────
 
-export function UploadedFileRow({ file, onRemove }: UploadedFileRowProps) {
+export function UploadedFileRow({
+  file,
+  onRemove,
+  className,
+}: UploadedFileRowProps) {
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -64,7 +69,11 @@ export function UploadedFileRow({ file, onRemove }: UploadedFileRowProps) {
   }, [file]);
 
   return (
-    <li className="flex h-10 items-center gap-3">
+    <li
+      className={["flex items-center gap-3", className]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {previewUrl ? (
         <img
           src={previewUrl}
@@ -102,14 +111,16 @@ export function UploadedFileRow({ file, onRemove }: UploadedFileRowProps) {
         </p>
       </div>
 
-      <button
-        type="button"
-        aria-label={`Remove ${file.name}`}
-        onClick={onRemove}
-        className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-button)] text-[color:var(--color-pipeline-ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]"
-      >
-        <CrossCircleIcon />
-      </button>
+      <div className="flex size-10 shrink-0 items-center justify-center p-1">
+        <button
+          type="button"
+          aria-label={`Remove ${file.name}`}
+          onClick={onRemove}
+          className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-button)] text-[color:var(--color-pipeline-ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]"
+        >
+          <CrossCircleIcon />
+        </button>
+      </div>
     </li>
   );
 }

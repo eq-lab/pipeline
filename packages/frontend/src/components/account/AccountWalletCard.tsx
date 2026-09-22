@@ -97,14 +97,16 @@ export function AccountWalletCard() {
             caption="Wallet"
             title={truncatedAddress ?? "—"}
             trailing={
-              <button
-                type="button"
-                aria-label="Copy wallet address"
-                onClick={handleCopy}
-                className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-pill)] text-[color:var(--color-pipeline-ink)]"
-              >
-                <CopyIcon />
-              </button>
+              <div className="flex size-10 shrink-0 items-center justify-center p-1">
+                <button
+                  type="button"
+                  aria-label="Copy wallet address"
+                  onClick={handleCopy}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-pill)] text-[color:var(--color-pipeline-ink)]"
+                >
+                  <CopyIcon />
+                </button>
+              </div>
             }
             data-node-id="6701:98146"
           />

@@ -439,7 +439,11 @@ validation" below — extracted here; its second consumer was `OwnersModal`, ret
   new `--color-pipeline-brand-secondary` token and the 20px `file-upload` glyph in
   `--color-pipeline-brand`.
 - The uploaded row's leading empty→filled transition also swaps the trailing `Upload` button for
-  a 32×32 remove `<button>` carrying the 22px `cross-circle` glyph in `--color-pipeline-ink-muted`.
+  a 32×32 remove `<button>` carrying the 22px `cross-circle` glyph in `--color-pipeline-ink-muted`,
+  itself sitting inside a `flex size-10 shrink-0 items-center justify-center p-1` touch-target
+  wrapper — confirmed at `6486:81826` (`ButtonCont` `x=416 w=40 h=40` around the 32×32 control at a
+  4px inset), the same convention as the Account page's copy/upload buttons (#1292) and staged file
+  rows (#1293).
 
 **Validation** (enforced, not decorative):
 
@@ -499,9 +503,12 @@ public surface is unchanged.
 
 `packages/frontend/src/components/UploadedFileRow.tsx` — the uploaded-file row (40×40
 preview-or-glyph-tile leading element, name/`Uploaded` caption text block, 32×32 remove button
-with the 22px `cross-circle` glyph), extracted verbatim out of `DocumentUploadRow`'s
-file-present branch (byte-identical rendered DOM — `CompanyDocsModal.test.tsx` is the regression
-guard). One current consumer: `DocumentUploadRow` (`CompanyDocsModal`, #1251) — its second
+in a 40×40 touch-target wrapper with the 22px `cross-circle` glyph), extracted verbatim out of
+`DocumentUploadRow`'s file-present branch (byte-identical rendered DOM — `CompanyDocsModal.test.tsx`
+is the regression guard). Takes an optional `className` appended to its root `<li>` — used by
+`AccountDocumentsCard`'s staged rows (`p-2`, #1293) since that frame's own per-row padding differs
+from this modal's plain `h-[40px]`/`<ul gap-6>` spacing; `DocumentUploadRow` passes nothing and is
+unaffected. One current consumer: `DocumentUploadRow` (`CompanyDocsModal`, #1251) — its second
 consumer, `OwnersModal` (#1252), was retired 2026-09-21; see `### OwnersModal` below.
 
 ### OwnersModal
