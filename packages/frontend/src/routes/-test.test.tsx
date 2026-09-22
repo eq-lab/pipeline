@@ -393,6 +393,46 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
+  it("swaps Sign In for Create Account instead of stacking them", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "Create account" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Sign in" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('"Log in" returns from Create Account to exactly one Sign in dialog', () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open create account modal/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
+  });
+
+  it("swaps Create Account for Forgot Password instead of stacking them", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open create account modal/i }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: /forgot password\?/i }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "Reset your password" }),
+    ).toBeInTheDocument();
+  });
+
   it("?tab=auth shows an Open OTP screen button", () => {
     renderTestPage("auth");
     expect(

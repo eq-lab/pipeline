@@ -367,14 +367,31 @@ describe("CreateAccountModal (#1249)", () => {
     expect(screen.queryByText(/New here\?/)).not.toBeInTheDocument();
   });
 
-  it("footer reads 'Already have an account?' + 'Log in' and is not interactive", () => {
+  it("footer reads 'Already have an account?' + 'Log in' as a real button, no link", () => {
     renderModal();
     const footer = screen.getByText(/Already have an account\?/).closest("p");
     expect(footer).not.toBeNull();
-    expect(within(footer!).getByText("Log in")).toBeInTheDocument();
     expect(within(footer!).queryByRole("link")).not.toBeInTheDocument();
     expect(
-      within(footer!).queryByRole("button", { name: "Log in" }),
-    ).not.toBeInTheDocument();
+      within(footer!).getByRole("button", { name: "Log in" }),
+    ).toBeInTheDocument();
+  });
+
+  it('"Log in" calls onSignIn exactly once when clicked', async () => {
+    const user = userEvent.setup();
+    const onSignIn = vi.fn();
+    renderModal({ onSignIn });
+    await user.click(screen.getByRole("button", { name: "Log in" }));
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("with no onSignIn prop, clicking it does not throw and does not call onSubmit", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderModal({ onSubmit });
+    await expect(
+      user.click(screen.getByRole("button", { name: "Log in" })),
+    ).resolves.not.toThrow();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

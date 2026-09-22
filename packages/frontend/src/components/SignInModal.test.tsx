@@ -233,11 +233,21 @@ describe("SignInModal (#1248)", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('"New here? Create account" is still non-interactive text', () => {
-    renderModal();
-    expect(
-      screen.queryByRole("button", { name: /create account/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText("Create account")).toBeInTheDocument();
+  it('"Create account" is a button and calls onCreateAccount exactly once when clicked', async () => {
+    const user = userEvent.setup();
+    const onCreateAccount = vi.fn();
+    renderModal({ onCreateAccount });
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(onCreateAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("with no onCreateAccount prop, clicking it does not throw and does not call onSubmit", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderModal({ onSubmit });
+    await expect(
+      user.click(screen.getByRole("button", { name: "Create account" })),
+    ).resolves.not.toThrow();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

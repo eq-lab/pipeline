@@ -14,6 +14,7 @@ export interface CreateAccountModalProps {
   onDismiss: () => void;
   onSubmit?: (credentials: { email: string; password: string }) => void;
   onContinueWithWallet?: () => void;
+  onSignIn?: () => void;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -23,6 +24,7 @@ export function CreateAccountModal({
   onDismiss,
   onSubmit,
   onContinueWithWallet,
+  onSignIn,
 }: CreateAccountModalProps) {
   const headingId = "create-account-modal-heading";
   const {
@@ -97,9 +99,20 @@ export function CreateAccountModal({
             <span className="text-[color:var(--color-pipeline-ink-muted)]">
               Already have an account?{" "}
             </span>
-            <span className="text-[color:var(--color-pipeline-ink)]">
+            <button
+              type="button"
+              onClick={onSignIn}
+              className={[
+                "text-[color:var(--color-pipeline-ink)]",
+                "cursor-pointer bg-transparent",
+                "hover:underline",
+                "focus-visible:outline focus-visible:outline-2",
+                "focus-visible:outline-offset-2",
+                "focus-visible:outline-[color:var(--color-pipeline-ink)]",
+              ].join(" ")}
+            >
               Log in
-            </span>
+            </button>
           </p>
         </div>
       </form>
