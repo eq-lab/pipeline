@@ -13,7 +13,7 @@ Architecture and behavior specs extracted from source comments per [`docs/FRONTE
 - [Dashboard & LP components](./dashboard-components.md) — LP-facing components and routes (`packages/frontend/src/components|routes/**`).
 - [KYB auth components](./auth-components.md) — the LP email+password sign-in/create-account/OTP
   modal family for epic #1247 (`AuthModalShell`, `SignInModal`, `ForgotPasswordModal`,
-  `CreateAccountModal`, `OtpModal`/`OtpInput`).
+  `CreateAccountModal`, `OtpModal`/`OtpInput`, `CompanyDocsModal`, `AccountInReviewModal`).
 - [Account page](./account-page.md) — the LP `/account` route for epic #1247 (issue #1284): wallet
   card, corporate email, and the KYB documents state machine (`packages/frontend/src/routes/account.tsx`,
   `packages/frontend/src/components/account/**`).

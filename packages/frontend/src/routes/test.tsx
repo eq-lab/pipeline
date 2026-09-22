@@ -718,7 +718,7 @@ function AuthTab(): React.JSX.Element {
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
         Preview seam for the KYB Sign-in (issue #1248), Forgot-password (issue
         #1280), Create-account (issue #1249), OTP (issue #1250), Company Docs
-        (issue #1251), and Account-in-review (issue #1253) modals. Not wired to
+        (issue #1278), and Account-in-review (issue #1253) modals. Not wired to
         any production entry point.
       </p>
       <div className="flex flex-col gap-1">

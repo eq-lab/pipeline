@@ -100,13 +100,13 @@ the `CompanyDocsModal` uploaded frame's own remove button, confirmed at `6486:81
 (icon) + 2×8 (row padding)`; the `4px` gap between rows plus each row's own `8px` top/bottom padding
 reproduces the frame's 20px dead space between consecutive rows.
 
-`UploadedFileRow.tsx` (shared with `CompanyDocsModal`'s `DocumentUploadRow`) now always wraps its
+`UploadedFileRow.tsx` (shared with `CompanyDocsModal`, #1278) now always wraps its
 remove `<button>` in a `flex size-10 shrink-0 items-center justify-center p-1` touch target — safe
 for both consumers since `CompanyDocsModal`'s own frame confirms the identical 40×40/4px-inset
 geometry, and the row's overall height was already governed by its 40×40 leading tile (removing the
 now-redundant `h-10` on the `<li>` changes nothing rendered). The row's own `p-[8px]` padding is
 **not** shared — `CompanyDocsModal`'s frame uses a plain `h-[40px]` row with the modal's `<ul
-gap-6>` doing the spacing, a genuinely different spec — so `UploadedFileRow` gained an additive
+gap-3>` doing the spacing, a genuinely different spec — so `UploadedFileRow` gained an additive
 `className` prop instead, and `AccountDocumentsCard`'s staged-rows `<ul>` passes `className="p-2"`
 as a local override; the `<ul>`'s own `gap-1` (4px) is unchanged and already matched the frame.
 
@@ -193,8 +193,10 @@ Personal KYC for each shareholder / UBO:
     b. Proof of Address (bill, bank or credit card statements)
 ```
 
-The first five are exactly `COMPANY_DOCUMENT_SLOTS` (`useCompanyDocsModal.ts`), imported rather
-than retyped. Per-file captions: `Verified` · `Uploaded` · `Invalid document` · `Re-upload`.
+The first five are the five company-document labels inlined directly into
+`KYB_DOCUMENT_REQUIREMENTS` (`kybDocumentRequirements.ts`, #1278 — previously imported from the
+now-deleted `useCompanyDocsModal.ts`'s `COMPANY_DOCUMENT_SLOTS`). Per-file captions: `Verified` ·
+`Uploaded` · `Invalid document` · `Re-upload`.
 
 **`6701-98137` says "Verify your account"; `6701-98175` says "Verify your identity"**, with an
 identical caption and identical styling — nothing about the user's situation changes between the
@@ -278,11 +280,13 @@ fill is stale, not the target.
 | Piece | Verdict |
 | --- | --- |
 | `kybFileValidation.ts` (`isAcceptedFile`, `MAX_FILE_BYTES`) | **Reused verbatim.** `{pdf, jpeg, png}` + 10 MB is exactly the frame's rule. |
-| `UploadedFileRow.tsx` | **Reused, with an additive `className` prop** (issue #1293) — 40×40 leading tile, title/caption order, and the 32×32 cross-circle remove control are exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). |
+| `UploadedFileRow.tsx` | **Reused, with an additive `className` prop** (issue #1293) — 40×40 leading tile, title/caption order, and the 32×32 cross-circle remove control are exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). Second consumer: `CompanyDocsModal` (#1278, no `className`). |
 | `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Reused** — anatomy matches the frame's wallet tabs exactly. |
-| `COMPANY_DOCUMENT_SLOTS` | **Reused** for the first five requirements-list entries. |
-| `FileDropZone.tsx` | **Not used.** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. Retains no consumer after this issue — #1278 decides its fate. |
-| `KybInfoBanner.tsx` | **Not used.** It is a neutral white surface with centred single-line text and a tooltip; the frames need a tinted, bordered, 72px two-line banner with a 32px status icon and an optional trailing button (`AccountStatusBanner.tsx`) — a rewrite, not a variant. Retains no consumer after this issue. |
+| `COMPANY_DOCUMENT_SLOTS` | **Retired (#1278).** The five labels are now inlined directly into `KYB_DOCUMENT_REQUIREMENTS` (`kybDocumentRequirements.ts`); the `{ id, label }` tuple and `CompanyDocumentSlotId` type had no other purpose once the raw-upload model dropped per-slot structure everywhere. |
+| `FileDropZone.tsx` | **Deleted (#1278).** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. No sub-issue of epic #1247 gained a consumer for it. |
+| `KybInfoBanner.tsx` | **Deleted (#1278).** It is a neutral white surface with centred single-line text and a tooltip; the frames need a tinted, bordered, 72px two-line banner with a 32px status icon and an optional trailing button (`AccountStatusBanner.tsx`) — a rewrite, not a variant. No sub-issue of epic #1247 gained a consumer for it. |
+| `AccountUploadRow.tsx` / `AccountRequirementsList.tsx` | **Second consumer added (#1278).** Both gained additive optional `dataNodeId`/`testId` props (and `AccountRequirementsList` gained `className`, default `"px-2 pb-6"`) whose defaults reproduce this page's DOM byte-for-byte — `AccountDocumentsCard.test.tsx` is the regression guard. `CompanyDocsModal` passes its own node ids and, for the requirements list, `className="px-2"` (no bottom padding — its card supplies the gap instead). |
+| `useAccountDocuments` | **Second consumer added (#1278).** `CompanyDocsModal` calls it as `useAccountDocuments({ onSave: onSubmit })` — the same `{ files, rejected, addFiles, removeFile, canSave, handleSave }` surface this page uses. |
 
 ## Seams and who wires them
 
@@ -332,8 +336,11 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Add Funds wire-transfer modal | #1283 |
 | Reconciling the flat upload with the backend's typed `(doc_type, subject)` model | #1267 (classify-at-review) |
 
-`TopBar.tsx`, `MobileNavMenu.tsx`, `ConnectModalProvider`, `CompanyDocsModal.tsx` and
-`useCompanyDocsModal.ts` are not modified by this issue.
+`TopBar.tsx`, `MobileNavMenu.tsx`, and `ConnectModalProvider` are not modified by this issue.
+**Update (#1278):** the onboarding-time `CompanyDocsModal` was redesigned to compose
+`AccountUploadRow`, `AccountRequirementsList`, and `useAccountDocuments` directly (see
+[`auth-components.md#companydocsmodal`](./auth-components.md#companydocsmodal)); `useCompanyDocsModal.ts`
+was deleted as part of that redesign.
 
 ## Accessibility
 

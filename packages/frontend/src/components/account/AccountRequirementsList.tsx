@@ -5,7 +5,17 @@ import {
   REQUIREMENTS_LEAD_LINE,
 } from "@/components/kybDocumentRequirements";
 
-export function AccountRequirementsList() {
+export interface AccountRequirementsListProps {
+  dataNodeId?: string;
+  testId?: string;
+  className?: string;
+}
+
+export function AccountRequirementsList({
+  dataNodeId = "6701:98158",
+  testId = "account-requirements-list",
+  className = "px-2 pb-6",
+}: AccountRequirementsListProps = {}) {
   const topLevel = KYB_DOCUMENT_REQUIREMENTS.slice(0, -1);
   const uboHeading =
     KYB_DOCUMENT_REQUIREMENTS[KYB_DOCUMENT_REQUIREMENTS.length - 1];
@@ -13,14 +23,15 @@ export function AccountRequirementsList() {
   return (
     <div
       className={[
-        "w-full px-2 pb-6",
+        "w-full",
+        className,
         "font-[family-name:var(--font-body)]",
         "text-[length:var(--text-pipeline-body-s)]",
         "leading-[var(--text-pipeline-body-s--line-height)]",
         "text-[color:var(--color-pipeline-ink-muted)]",
       ].join(" ")}
-      data-testid="account-requirements-list"
-      data-node-id="6701:98158"
+      data-testid={testId}
+      data-node-id={dataNodeId}
     >
       <p>{REQUIREMENTS_LEAD_LINE}</p>
       <ul className="list-disc pl-[21px]">

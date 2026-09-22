@@ -7,9 +7,16 @@ import { AccountIconTile } from "./AccountIconTile";
 export interface AccountUploadRowProps {
   rejected: boolean;
   onFiles: (files: File[]) => void;
+  dataNodeId?: string;
+  testId?: string;
 }
 
-export function AccountUploadRow({ rejected, onFiles }: AccountUploadRowProps) {
+export function AccountUploadRow({
+  rejected,
+  onFiles,
+  dataNodeId = "6701:98157",
+  testId = "account-upload-row",
+}: AccountUploadRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -21,8 +28,8 @@ export function AccountUploadRow({ rejected, onFiles }: AccountUploadRowProps) {
   return (
     <div
       className="flex w-full items-center gap-3 p-2"
-      data-testid="account-upload-row"
-      data-node-id="6701:98157"
+      data-testid={testId}
+      data-node-id={dataNodeId}
     >
       <AccountIconTile className="bg-[color:var(--color-pipeline-brand-secondary)] text-[color:var(--color-pipeline-brand)]">
         <FileUploadIcon />
