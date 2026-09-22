@@ -15,6 +15,7 @@ export interface SignInModalProps {
   onSubmit?: (credentials: { email: string; password: string }) => void;
   onContinueWithWallet?: () => void;
   onForgotPassword?: () => void;
+  onCreateAccount?: () => void;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ export function SignInModal({
   onSubmit,
   onContinueWithWallet,
   onForgotPassword,
+  onCreateAccount,
 }: SignInModalProps) {
   const headingId = "sign-in-modal-heading";
   const {
@@ -118,9 +120,21 @@ export function SignInModal({
             <span className="text-[color:var(--color-pipeline-ink-muted)]">
               New here?{" "}
             </span>
-            <span className="font-[var(--font-weight-emphasized)] text-[color:var(--color-pipeline-ink)]">
+            <button
+              type="button"
+              onClick={onCreateAccount}
+              className={[
+                "font-[var(--font-weight-emphasized)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "cursor-pointer bg-transparent",
+                "hover:underline",
+                "focus-visible:outline focus-visible:outline-2",
+                "focus-visible:outline-offset-2",
+                "focus-visible:outline-[color:var(--color-pipeline-ink)]",
+              ].join(" ")}
+            >
               Create account
-            </span>
+            </button>
           </p>
         </div>
       </form>

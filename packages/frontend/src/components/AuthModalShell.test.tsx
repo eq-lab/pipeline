@@ -210,6 +210,45 @@ describe("AuthModalShell — stepLabel prop (#1251)", () => {
   });
 });
 
+describe("AuthModalShell — close icon color (#1315)", () => {
+  afterEach(() => {
+    document.body.style.overflow = "";
+  });
+
+  it("close button is on-dark (white) over the image pane by default", () => {
+    renderShell();
+    const closeButton = screen.getByRole("button", { name: "Close" });
+    expect(closeButton.className).toContain(
+      "text-[color:var(--color-pipeline-on-dark)]",
+    );
+    expect(closeButton.className).not.toContain(
+      "text-[color:var(--color-pipeline-ink)]",
+    );
+  });
+
+  it("close button is ink when showImagePanel={false}", () => {
+    render(
+      <AuthModalShell
+        open
+        onDismiss={vi.fn()}
+        heading="Check your inbox"
+        headingId="otp-modal-heading"
+        testId="otp-modal"
+        showImagePanel={false}
+      >
+        <p>Content</p>
+      </AuthModalShell>,
+    );
+    const closeButton = screen.getByRole("button", { name: "Close" });
+    expect(closeButton.className).toContain(
+      "text-[color:var(--color-pipeline-ink)]",
+    );
+    expect(closeButton.className).not.toContain(
+      "text-[color:var(--color-pipeline-on-dark)]",
+    );
+  });
+});
+
 describe("AuthModalShell — new optional props (#1253)", () => {
   afterEach(() => {
     document.body.style.overflow = "";

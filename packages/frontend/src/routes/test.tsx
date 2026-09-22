@@ -700,11 +700,10 @@ function ToastsTab(): React.JSX.Element {
 
 // ── AuthTab ───────────────────────────────────────────────────────────────────
 
-type AuthScreen = "none" | "sign-in" | "forgot-password";
+type AuthScreen = "none" | "sign-in" | "forgot-password" | "create-account";
 
 function AuthTab(): React.JSX.Element {
   const [authScreen, setAuthScreen] = React.useState<AuthScreen>("none");
-  const [createAccountOpen, setCreateAccountOpen] = React.useState(false);
   const [otpOpen, setOtpOpen] = React.useState(false);
   const [otpVerified, setOtpVerified] = React.useState(false);
   const [companyDocsOpen, setCompanyDocsOpen] = React.useState(false);
@@ -756,7 +755,7 @@ function AuthTab(): React.JSX.Element {
         <Button
           variant="secondary"
           className="w-fit"
-          onClick={() => setCreateAccountOpen(true)}
+          onClick={() => setAuthScreen("create-account")}
         >
           Open Create Account modal
         </Button>
@@ -820,6 +819,7 @@ function AuthTab(): React.JSX.Element {
         open={authScreen === "sign-in"}
         onDismiss={() => setAuthScreen("none")}
         onForgotPassword={() => setAuthScreen("forgot-password")}
+        onCreateAccount={() => setAuthScreen("create-account")}
       />
       <ForgotPasswordModal
         open={authScreen === "forgot-password"}
@@ -831,8 +831,9 @@ function AuthTab(): React.JSX.Element {
         }}
       />
       <CreateAccountModal
-        open={createAccountOpen}
-        onDismiss={() => setCreateAccountOpen(false)}
+        open={authScreen === "create-account"}
+        onDismiss={() => setAuthScreen("none")}
+        onSignIn={() => setAuthScreen("sign-in")}
       />
       <OtpModal
         open={otpOpen}

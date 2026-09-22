@@ -48,6 +48,14 @@ element's id; focus trap (Tab/Shift+Tab cycle among non-`aria-hidden` focusable 
 Escape and the × button both dismiss; no scrim click (the panel is full-viewport, matching
 `ConnectWalletModal`).
 
+**Close-icon color (#1315).** The × renders `--color-pipeline-on-dark` (white) whenever
+`showImagePanel` is not explicitly `false` — it otherwise sat over `RightImagePanel`'s dark hero
+photo as `--color-pipeline-ink` (dark), nearly invisible on the two-pane modals (`SignInModal`,
+`CreateAccountModal`, `ForgotPasswordModal`). The hover background swaps to a white-alpha
+`rgba(255,255,255,0.16)` to suit the dark ground. When `showImagePanel={false}` (`OtpModal`,
+`CompanyDocsModal`, `AccountInReviewModal` — the close button renders over the light content pane
+in all three), the × keeps the original ink color and `rgba(56,55,53,0.08)` hover unchanged.
+
 **Optional props (added by #1250, backward-compatible)** — all five default to today's behaviour,
 so `SignInModal` renders byte-identical without passing any of them:
 
@@ -120,9 +128,13 @@ Composition inside `AuthModalShell` (heading "Sign in", `headingId`
    text specifically because "it has no destination frame … and no sub-issue" — both conditions
    are now false. `onForgotPassword` defaults to a no-op (undefined ⇒ harmless click); the
    `/test` preview wires it to open `ForgotPasswordModal` (see "ForgotPasswordModal" below).
-6. **"New here? Create account"** — also inert text in #1248 and unwired in #1249's
-   `CreateAccountModal` counterpart ("Already have an account? Log in") — the cross-link between
-   the two modals is #1254's job.
+6. **"New here? Create account"** — inert text in #1248; since #1315, "Create account" is a real
+   `<button type="button" onClick={onCreateAccount}>` mirroring the `onForgotPassword` pattern
+   (same inline-text-button styling, `onCreateAccount` defaults to a no-op). `CreateAccountModal`'s
+   "Already have an account? Log in" got the mirror-image `onSignIn` seam in the same issue. Both
+   seams are diagnostics-only — the `/test?tab=auth` preview swaps `SignInModal` for
+   `CreateAccountModal` (and back) the same way it already swapped Sign In for Forgot Password
+   (#1280); wiring a production entry point remains #1265's job.
 
 **Figma → token mapping** (confirmed via `get_variable_defs` + `get_design_context`, not
 estimated from pixel sampling):
@@ -173,8 +185,7 @@ exec plan's Figma-access note) — no hand-authored vector paths.
 
 **Accessibility:** first `<form>` element in the repo. `aria-invalid` on `TextField`'s `<input>`
 (also a repo first — see `ui-components.md#textfield`). Since #1280, "Forgot password?" is a
-focusable `<button>`; "Create account" remains plain text, not focusable, since it is still inert
-(that cross-link is #1265's job).
+focusable `<button>`; since #1315, "Create account" is a focusable `<button>` too.
 
 ### CreateAccountModal
 
@@ -202,13 +213,16 @@ Composition inside `AuthModalShell` (heading "Create account", `headingId`
    (`gap-8` directly), matching the Figma frame's flat `6486:81626` node — both render
    identically since the nesting was cosmetic in #1248.
 4. **Submit** — `Button variant="primary-blue" type="submit"`, label "Sign Up".
-5. **"Already have an account? Log in"** — renders as inert text (no `<a>`, no `href`, no
-   handler). The Figma-exported code emits `Log in` as `Inter:Regular` (an unstyled link run, not
-   a real font switch) and carries a stray `href="https://rive.app/login/?redirect=…"` pointing
-   at the design tool's own vendor — both are design-file artifacts, not rendered. `Log in`'s
-   weight is shipped **regular** (token-exact to the codegen), even though the sibling "Create
-   account" link in the sign-in frame is Body Emphasized — flagged here in case the designer
-   intended emphasis and the QA Figma comparison should catch the divergence.
+5. **"Already have an account? Log in"** — inert text through #1249; since #1315, "Log in" is a
+   real `<button type="button" onClick={onSignIn}>` (`onSignIn` defaults to a no-op), mirroring
+   `SignInModal`'s "Create account" seam. The Figma-exported code emitted `Log in` as
+   `Inter:Regular` (an unstyled link run, not a real font switch) and carried a stray
+   `href="https://rive.app/login/?redirect=…"` pointing at the design tool's own vendor — both
+   were design-file artifacts, never rendered. `Log in`'s weight ships **regular** (token-exact to
+   the codegen), even though the sibling "Create account" button in the sign-in frame is Body
+   Emphasized — #1315 kept this divergence (not asked to change styling, only to wire the seam);
+   flagged here in case the designer intended emphasis and the QA Figma comparison should catch
+   it.
 
 **Field set — exactly two inputs.** The Figma frame's `6486:81626` metadata lists a third
 `hidden="true"` `input` layer sitting underneath the submit button; it renders in neither
@@ -259,7 +273,7 @@ matching both the error frame (weak password → disabled) and the enabled frame
 (10-char password → enabled).
 
 **Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
-`TextField`, inert footer text (not focusable).
+`TextField`; since #1315, "Log in" is a focusable `<button>` (see composition step 5 above).
 
 ### ForgotPasswordModal
 
@@ -614,8 +628,11 @@ buttons opening `SignInModal` (#1248), `ForgotPasswordModal` (#1280), `CreateAcc
 `AccountInReviewModal` (#1253) — a seventh, `OwnersModal` (#1252), was retired 2026-09-21 (see
 `### OwnersModal` above) — each with
 every seam left at its no-op default except `OtpModal.onVerified`,
-`ForgotPasswordModal.onSubmit`, `CompanyDocsModal.onSubmit`, and `AccountInReviewModal.onGoToApp`,
-which show stand-in confirmation lines. Every trigger is independent of the others — entering a
+`ForgotPasswordModal.onSubmit`, `CompanyDocsModal.onSubmit`, `AccountInReviewModal.onGoToApp`
+(stand-in confirmation lines), and the three-way `SignInModal`/`ForgotPasswordModal`/
+`CreateAccountModal` cross-link seams (`onForgotPassword`, `onBackToSignIn`, `onCreateAccount`,
+`onSignIn`), which swap between those screens per the union-typed state below rather than no-op.
+Every other trigger is independent of the rest — entering a
 valid OTP code shows "OTP verified — open the Company Docs step from the button above." rather
 than auto-opening it, and submitting Company Docs shows "Company documents submitted — open the
 Account-in-review screen from the button above." rather than auto-opening it — since the shell's
@@ -625,11 +642,14 @@ Clicking `Go to app` on the Account-in-review screen shows "Go to app — #1254 
 LP dashboard." This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
 `openConnectModal` call sites.
 
-**Sign in ↔ Forgot Password is the one exception — a swap, never a stack (#1280).** Both screens
-share one union-typed `authScreen: "none" | "sign-in" | "forgot-password"` state instead of two
-independent booleans, so "both open" is unrepresentable. Clicking "Forgot password?" on Sign in
-closes it and opens Forgot Password in the same handler; "Back to sign in" reverses it. This
-departs from the independent-triggers convention above, but safely: that convention's stated
+**Sign in ↔ Forgot Password ↔ Create Account is the one exception — a swap, never a stack
+(#1280, extended #1315).** All three screens share one union-typed
+`authScreen: "none" | "sign-in" | "forgot-password" | "create-account"` state instead of
+independent booleans, so "two of these open at once" is unrepresentable. Clicking "Forgot
+password?" or "Create account" on Sign in closes it and opens the target screen in the same
+handler; "Back to sign in" and "Log in" reverse those transitions (and "Create account" ↔ "Log in"
+round-trips directly between the two credential screens without passing through Sign in twice).
+This departs from the independent-triggers convention above, but safely: that convention's stated
 reason is stacking (the un-refcounted body-scroll-lock and the capture-phase Escape collision),
 and a swap never stacks two shells — React runs the outgoing tree's effect cleanups before the
 incoming tree's effect creates within a single commit, so `document.body.style.overflow` lands on
@@ -637,7 +657,7 @@ incoming tree's effect creates within a single commit, so `document.body.style.o
 was also about auto-advancing a wizard (OTP → Company Docs), which is flow orchestration owned by
 #1254/#1265; a link whose entire purpose is navigating to a screen this issue ships is a
 different thing. `-test.test.tsx` asserts the invariant directly (exactly one `dialog` role after
-the swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit on Forgot
+each swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit on Forgot
 Password shows `auth-forgot-password-submitted`: "Reset link requested — #1265 wires this to the
 real password-reset endpoint."
 
