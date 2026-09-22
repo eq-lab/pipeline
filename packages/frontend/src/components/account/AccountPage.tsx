@@ -55,7 +55,7 @@ export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
 
   return (
     <div
-      className="flex min-h-screen w-full flex-col items-center gap-8 bg-[color:var(--color-pipeline-paper)] p-4 text-[color:var(--color-pipeline-ink)] md:p-32"
+      className="flex min-h-screen w-full flex-col items-center gap-8 bg-[color:var(--color-pipeline-paper)] px-4 py-8 text-[color:var(--color-pipeline-ink)] md:px-8 md:py-16"
       data-testid="account-page"
     >
       <div

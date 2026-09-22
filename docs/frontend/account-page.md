@@ -32,10 +32,12 @@ This also makes `?state=` inherently dev-only — one guard, not two.
 column at `gap-8` (32px), below the fixed header. A 72×72 `--color-pipeline-fill-muted` circle with
 a user glyph sits above the centered Besley 28/36 `Account` heading.
 
-The page container itself carries **uniform 128px padding on all four sides** (`p-4 md:p-32`,
-matching the Figma frame's `p-[128px]` — confirmed at the node, not just the horizontal half the
-component previously implemented) below `md`, dropping to 16px per [No mobile
-frames](#no-mobile-frames). `Log Out` is `Button variant="secondary"` with a `!bg-[color:var(--color-pipeline-surface)]`
+The page container uses the sibling LP routes' padding rhythm (`px-4 py-8 md:px-8 md:py-16`) —
+`dashboard.tsx` / `index.tsx` style — **a deliberate deviation from the Figma frame's `p-[128px]`**
+(#1309, user direction 2026-09-22): the 128px page padding the earlier fidelity pass adopted read
+as too much wasted space in the real app. The content is a centered `max-w-[480px]` column, so
+horizontal padding beyond the gutter is moot; the QA Figma comparison should expect this reduced
+padding, not the frame value. `Log Out` is `Button variant="secondary"` with a `!bg-[color:var(--color-pipeline-surface)]`
 override — the `!` is required: `secondary`'s own `bg-transparent` and an unprefixed override are
 the same Tailwind specificity, so the surface fill is not guaranteed to win without it (the
 established precedent is `AccountInReviewModal.tsx`'s `!bg-[...]` override of the same variant).
@@ -353,4 +355,4 @@ focusable and clickable with no throw even with no handler wired (the inert-seam
 ## No mobile frames
 
 V1.0 Account frames are desktop-only; the 480px column already behaves as a mobile-friendly single
-column. Page padding drops from 128px to 16px below `md`. Logged as tech debt.
+column. Page padding is `px-4 py-8` below `md`, `md:px-8 md:py-16` above (#1309). Logged as tech debt.
