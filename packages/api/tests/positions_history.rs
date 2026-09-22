@@ -60,9 +60,20 @@ fn empty_history_stays_empty_and_names_no_vault() {
 
 #[test]
 fn empty_history_zero_stats() {
-    let (shares, pnl) = compute_position_history_stats(&[], Interval::Daily, Some(ts(0)), ts(10 * DAY));
-    assert_eq!((shares.max.as_str(), shares.min.as_str(), shares.average.as_str()), ("0", "0", "0"));
-    assert_eq!((pnl.max.as_str(), pnl.min.as_str(), pnl.average.as_str()), ("0", "0", "0"));
+    let (shares, pnl) =
+        compute_position_history_stats(&[], Interval::Daily, Some(ts(0)), ts(10 * DAY));
+    assert_eq!(
+        (
+            shares.max.as_str(),
+            shares.min.as_str(),
+            shares.average.as_str()
+        ),
+        ("0", "0", "0")
+    );
+    assert_eq!(
+        (pnl.max.as_str(), pnl.min.as_str(), pnl.average.as_str()),
+        ("0", "0", "0")
+    );
 }
 
 // ── Stats (max/min/time-weighted-average) ───────────────────────────────────
@@ -104,9 +115,19 @@ fn stats_agree_with_the_rendered_history_series() {
     let (shares, pnl) = compute_position_history_stats(&rows, interval, window_start, now);
 
     assert!(history.iter().all(|i| i.shares_balance == "60"));
-    assert_eq!((shares.max.as_str(), shares.min.as_str(), shares.average.as_str()), ("60", "60", "60"));
+    assert_eq!(
+        (
+            shares.max.as_str(),
+            shares.min.as_str(),
+            shares.average.as_str()
+        ),
+        ("60", "60", "60")
+    );
     assert!(history.iter().all(|i| i.cumulative_realized_pnl == "8"));
-    assert_eq!((pnl.max.as_str(), pnl.min.as_str(), pnl.average.as_str()), ("8", "8", "8"));
+    assert_eq!(
+        (pnl.max.as_str(), pnl.min.as_str(), pnl.average.as_str()),
+        ("8", "8", "8")
+    );
 }
 
 // ── Gap fill ─────────────────────────────────────────────────────────────────

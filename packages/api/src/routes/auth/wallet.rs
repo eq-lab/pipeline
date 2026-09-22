@@ -5,7 +5,7 @@
 //!      fresh single-use nonce, persist it, and return the exact message to sign.
 //!   2. `POST /v1/auth/verify` — verify the signature over the *stored* challenge,
 //!      clear the nonce (single-use), and return a 24h JWT carrying the address'
-//!      roles.
+//!      roles and the account the address belongs to.
 //!
 //! Protected endpoints live in their own route modules and gate access with the
 //! `AuthClaims` extractor (see e.g. `routes::loan_book`).
@@ -20,13 +20,13 @@ use axum::extract::{Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, OpenApi, ToSchema};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use shared::chains::{parse_chain_type, ChainKind};
 use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 
-use crate::auth::{Claims, SecurityAddon, TOKEN_TTL_SECS};
+use crate::auth::TOKEN_TTL_SECS;
 use crate::error::ApiError;
 use crate::routes::common::resolve_chain;
 use crate::AppState;
@@ -73,16 +73,6 @@ pub struct VerifyResponse {
     /// Token lifetime in seconds.
     pub expires_in: i64,
 }
-
-/// OpenAPI doc bundle for the auth routes.
-#[derive(OpenApi)]
-#[openapi(
-    paths(challenge, verify),
-    components(schemas(ChallengeResponse, VerifyRequest, VerifyResponse, Claims)),
-    modifiers(&SecurityAddon),
-    tags((name = "Auth", description = "Signature-based authorization"))
-)]
-pub struct AuthDoc;
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
@@ -133,7 +123,7 @@ fn normalize_address(chain_kind: ChainKind, address: &str) -> String {
     ),
     tag = "Auth"
 )]
-async fn challenge(
+pub async fn challenge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ChallengeQuery>,
 ) -> Result<Json<ChallengeResponse>, ApiError> {
@@ -174,7 +164,7 @@ async fn challenge(
     ),
     tag = "Auth"
 )]
-async fn verify(
+pub async fn verify(
     State(state): State<Arc<AppState>>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
@@ -208,7 +198,7 @@ async fn verify(
         .as_ref()
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("JWT keys not configured")))?;
     let token = keys
-        .issue_token(&address, chain_id, user.roles)
+        .issue_wallet_token(&address, chain_id, user.account_id, user.roles)
         .map_err(ApiError::Internal)?;
 
     Ok(Json(VerifyResponse {

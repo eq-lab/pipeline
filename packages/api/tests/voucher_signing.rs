@@ -93,7 +93,12 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
             shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo::new(pool.clone()),
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
         lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
-        kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool),
+        kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool.clone()),
+        account_repo: shared::account_repo::AccountRepo::new(pool.clone()),
+        otp_repo: shared::otp_repo::OtpRepo::new(pool.clone()),
+        captcha: Box::new(pipeline_api::captcha::DisabledCaptcha),
+        email_sender: std::sync::Arc::new(shared::email::LoggingEmailSender),
+        login_attempt_repo: shared::login_attempt_repo::LoginAttemptRepo::new(pool),
     }
 }
 

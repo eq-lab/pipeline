@@ -1309,3 +1309,96 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - Multiple Loan Originators
 - Public bug bounty programme
 - GenTwo MTN issuance
+
+### TD-80: Email/password sessions cannot be revoked
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/auth.rs`, `packages/api/src/routes/auth/password.rs`
+- **Gap:** Email logins issue the same stateless 24h ES256 JWT as wallet logins. There is no refresh token, no `sessions` table, and no logout endpoint, so nothing invalidates an issued token before it expires.
+- **Impact:** A password reset does not end an attacker's existing session — the single most common reason a user resets a password. Suspending an account (`accounts.status = 'Suspended'`, and the operator suspension flow in `lp-onboarding.md`) likewise takes up to 24h to bite, because `AuthClaims` never reads the account row.
+- **Suggested fix:** Either a 15-minute access token plus a rotating opaque refresh token in a `sessions` table (also buys logout and "sign out everywhere"), or the lighter `accounts.sessions_valid_after` epoch checked in the `AuthClaims` extractor, which costs one indexed read per authenticated request and revokes all of an account's sessions at once. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
+
+### TD-81: No rate limiting on signup / resend-otp
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/routes/auth/password.rs`
+- **Gap:** `POST /v1/auth/login` is now bounded (3 attempts per 60s per address and per client, `login_attempts`), but `signup` and `resend-otp` still have only the Turnstile captcha plus the per-account OTP cooldown. There is no per-client or global limit on either.
+- **Impact:** Signup floods are bounded only by the captcha — and when `TURNSTILE_SECRET_KEY` is unset the captcha is a no-op, so both endpoints are entirely open. Once email delivery is real, a flood also burns send quota and sender reputation. The per-account OTP cooldown caps mail *per address*, not the rate at which an attacker walks new addresses.
+- **Suggested fix:** Reuse `LoginAttemptRepo` — it is already scope-keyed and replica-safe. Add an `ip` counter on `signup`/`resend-otp` with a looser limit than login's. Note the same `X-Forwarded-For` dependency: with no proxy in front there is no client address to key on.
+
+### TD-82: No mobile frames for the Account page
+
+- **Date:** 2026-09-21
+- **Location:** `packages/frontend/src/components/account/AccountPage.tsx`.
+- **Gap:** V1.0 Account frames are desktop-only. The 480px content column already behaves as a
+  reasonable single-column mobile layout; page padding is reduced below `md` as a best-effort
+  adaptation, not a designed mobile treatment.
+- **Impact:** Untested against any mobile Figma reference, because none exists.
+- **Suggested fix:** Designer ask: mobile Account-page frames.
+
+---
+
+## Post-MVP
+
+- Automated bank integration (repayment identification currently manual)
+- On-chain LTV oracle writes and automated enforcement triggers
+- Withdrawal queue 4-tier mechanism (MVP is simple FIFO)
+- Multiple Loan Originators
+- Public bug bounty programme
+- GenTwo MTN issuance
+
+### TD-80: Email/password sessions cannot be revoked
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/auth.rs`, `packages/api/src/routes/auth/password.rs`
+- **Gap:** Email logins issue the same stateless 24h ES256 JWT as wallet logins. There is no refresh token, no `sessions` table, and no logout endpoint, so nothing invalidates an issued token before it expires.
+- **Impact:** A password reset does not end an attacker's existing session — the single most common reason a user resets a password. Suspending an account (`accounts.status = 'Suspended'`, and the operator suspension flow in `lp-onboarding.md`) likewise takes up to 24h to bite, because `AuthClaims` never reads the account row.
+- **Suggested fix:** Either a 15-minute access token plus a rotating opaque refresh token in a `sessions` table (also buys logout and "sign out everywhere"), or the lighter `accounts.sessions_valid_after` epoch checked in the `AuthClaims` extractor, which costs one indexed read per authenticated request and revokes all of an account's sessions at once. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
+
+### TD-81: No rate limiting on the unauthenticated auth endpoints
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/routes/auth/password.rs`
+- **Gap:** Only two controls exist on `POST /v1/auth/signup` / `/resend-otp` / `/login`: the Turnstile captcha, and the per-account OTP resend cooldown derived from `otp_codes.created_at`. There is no per-IP limit and no global limit, and `login` has neither captcha nor cooldown.
+- **Impact:** Credential stuffing against `login` is unthrottled. Signup floods are bounded only by the captcha — and when `TURNSTILE_SECRET_KEY` is unset the captcha is a no-op, so the endpoints are entirely open. Once email delivery is real, a flood also burns send quota and sender reputation.
+- **Suggested fix:** Per-IP and per-email limits. An in-process `governor` limiter is one line but is per-replica, so it bounds nothing if the API runs more than one instance; a Postgres- or Redis-backed counter is the version that actually holds. The per-account OTP cooldown is already replica-safe because it reads from the table.
+
+### TD-82: `lps.owner_chain_id` / `owner_address` are dead authorization columns
+
+- **Date:** 2026-09-22
+- **Location:** `packages/shared/src/lp_repo.rs`, `packages/shared/migrations/20260922000001_accounts_email_password_auth.sql`
+- **Gap:** `lp_owner_guard` now authorizes on `owner_account_id`. The original owner pair is still written on wallet registration and still exposed in `LpResponse`, but nothing reads it for a decision, and it is `NULL` for every email signup.
+- **Impact:** Two columns that look like authorization state and are not. A future reader may reintroduce a check against them, which would silently fail open for email-registered LPs (both columns `NULL`).
+- **Suggested fix:** Once no consumer reads them, drop both columns and the `lps_owner_fk` constraint. Until then they are history only — the migration comment and the module doc both say so.
+
+### TD-83: A fresh signup passcode resets the OTP attempt cap
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/routes/auth/password.rs`, `packages/shared/src/otp_repo.rs`
+- **Gap:** `attempts` is per code, not per account. Issuing a new passcode supersedes the old row and starts a fresh row at `attempts = 0`, so the 5-attempt cap resets. There is no ceiling on how many codes an account may be issued in total. (The cap itself is no longer racy — `OtpRepo::claim_attempt` spends an attempt and checks the ceiling in one statement, verified at 5 grants out of 20 parallel claims.)
+- **Impact:** Both issue paths share a 60-second cooldown enforced under a row lock, so an attacker is bounded to ~5 guesses per minute (~7,200/day, roughly a 0.7% daily chance of landing a given code) — a real bound, but weaker than "5 attempts" reads. The captcha raises the cost further, and is a no-op when `TURNSTILE_SECRET_KEY` is unset.
+- **Suggested fix:** A per-account ceiling on codes issued per rolling hour (the `otp_codes` rows already carry `created_at`, so this is a `count(*)` inside the existing locked transaction — no new state, replica-safe). Pairs naturally with the rate-limiting work in TD-81.
+
+### TD-84: Roles hang off the wallet credential, not the account
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/routes/auth/password.rs`, `packages/api/src/routes/auth/wallet.rs`, `packages/shared/migrations/20260626000001_auth_users.sql`
+- **Gap:** `accounts` is now the principal, but `roles` still lives on `auth_users` — a *credential* table. Wallet login issues `user.roles`; email login issues `Vec::new()` unconditionally. The same account therefore carries different privileges depending on which credential it authenticated with.
+- **Impact:** Harmless today, because every role-holder (trustee, originator) signs in by wallet and no role-holder has a password. It stops being harmless the moment one of them sets one: they would authenticate successfully and then be silently unauthorized, which reads as a broken permission system rather than a missing role. It also means "grant this person the trustee role" has no answer for an email-only account.
+- **Suggested fix:** Move `roles` to `accounts` and have both paths read it from there, leaving `auth_users` as pure credential material. The migration is mechanical (`accounts.roles TEXT[]`, backfilled as the union of the account's `auth_users` rows); the work is auditing the `has_role` call sites. Do this before issuing a password to anyone holding a role.
+
+### TD-85: A verified account's password can never be changed
+
+- **Date:** 2026-09-22
+- **Location:** `packages/api/src/routes/auth/password.rs`, `packages/shared/src/account_repo.rs`
+- **Gap:** `#1266` shipped without password reset (descoped) and without change-password. `AccountRepo::set_password_hash` has exactly one caller — signup's re-issue path, which is reachable only while the account is still unverified. After verification the stored hash is immutable.
+- **Impact:** Three concrete dead ends. A user who forgets their password has no recovery at all. A user who mistyped it at signup recovers only by re-running signup *before* verifying. And because that same path lets anyone who solves the captcha overwrite a *pending* password, an attacker can leave a real owner verified into an account whose password they never chose — the owner cannot log in and cannot reset. `ForgotPasswordModal` (#1280) is already built and inert, so the UI implies a recovery that does not exist.
+- **Suggested fix:** `POST /v1/auth/forgot-password` + `/reset-password`, reusing the `otp_codes` table (the `purpose` column exists for exactly this) and the same captcha and always-202 rules as signup. Add change-password for authenticated callers at the same time. This should land before self-serve signup is exposed to real users, not after.
+
+### TD-86: `login_attempts` rows are never collected
+
+- **Date:** 2026-09-22
+- **Location:** `packages/shared/migrations/20260922000002_login_attempts.sql`, `packages/shared/src/login_attempt_repo.rs`
+- **Gap:** The table is keyed rather than appended, so it holds one row per distinct `(scope, key)` — but a key is only removed when that caller later signs in successfully. An address or client that fails and never returns leaves its row behind for good.
+- **Impact:** Unbounded growth proportional to distinct addresses and client addresses attempted, which under a credential-stuffing run is exactly the set an attacker controls. No correctness impact (an expired window restarts in place), purely storage and index bloat.
+- **Suggested fix:** A periodic `DELETE FROM login_attempts WHERE window_start < now() - interval '1 hour'` — `idx_login_attempts_window` already supports it. Either a worker job or an opportunistic sweep on a small fraction of calls; do not run it on every request.

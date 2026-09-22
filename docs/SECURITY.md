@@ -4,7 +4,7 @@
 
 | Actor | Method |
 |-------|--------|
-| LP | Wallet signature (WalletConnect v2 / RainbowKit) — the connected wallet IS the account |
+| LP | Wallet signature (WalletConnect v2 / RainbowKit / Freighter), **or** self-serve email + password with mandatory email verification (Argon2id, no 2FA). Both are credentials of one `accounts` row — the account, not the wallet, is the identity |
 | Trustee | Email + password + TOTP (Google Authenticator/Authy) or WebAuthn/FIDO2 hardware key |
 | Loan Originator | Email + password + TOTP or WebAuthn/FIDO2 |
 | Pipeline Team | Email + password + TOTP or WebAuthn/FIDO2 |

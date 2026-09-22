@@ -30,9 +30,25 @@ pub enum ApiError {
     /// references cannot be processed — e.g. a repayment whose loan carries a corrupt
     /// economics epoch (see `routes::waterfall`). The String is the user-visible message.
     UnprocessableEntity(String),
+    /// 429 Too Many Requests. The caller is rate-limited. No handler returns it
+    /// yet — the auth endpoints deliberately answer `202` and skip the work
+    /// instead, so that a refusal cannot be used to probe which addresses exist.
+    /// Reserved for the per-IP limiting in TD-81, which has no such constraint.
+    TooManyRequests(String),
     /// 500 Internal Server Error. The wrapped `anyhow::Error` is logged but never
     /// returned to the caller — the response body is a generic `"internal error"`.
     Internal(anyhow::Error),
+    /// 503 Service Unavailable. A dependency the request cannot proceed without
+    /// is down. Used by the captcha check, which fails closed rather than waving
+    /// callers through when the provider cannot be reached.
+    ServiceUnavailable(String),
+}
+
+/// Whether a database error is a unique-constraint violation (SQLSTATE 23505).
+/// Lets a handler answer `409` for a collision the caller can act on, instead of
+/// letting it fall through `From<sqlx::Error>` into an opaque `500`.
+pub fn is_unique_violation(e: &sqlx::Error) -> bool {
+    matches!(e, sqlx::Error::Database(db) if db.code().as_deref() == Some("23505"))
 }
 
 impl From<anyhow::Error> for ApiError {
@@ -77,6 +93,16 @@ impl IntoResponse for ApiError {
                 .into_response(),
             Self::UnprocessableEntity(msg) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::TooManyRequests(msg) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::ServiceUnavailable(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({"error": msg})),
             )
                 .into_response(),

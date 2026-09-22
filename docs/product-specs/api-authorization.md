@@ -2,15 +2,22 @@
 
 ## Overview
 
-The Pipeline API authenticates callers by **wallet signature** and authorizes
-them with a short-lived **JWT**. There are no passwords. Only addresses on a
-manually-curated allow-list (`auth_users`) may obtain a token, and each token
-carries the roles assigned to that address. Protected endpoints require a valid
-bearer token.
+The Pipeline API authorizes callers with a short-lived **JWT**. A caller proves
+who they are with one of two credentials: a **wallet signature** over a
+server-issued challenge, from an address on the manually-curated `auth_users`
+allow-list (this spec); or **email and password**, LP self-serve and open to
+anyone (see [api-authorization-email.md](./api-authorization-email.md)). The
+wallet flow supports **EVM** chains (EIP-191 `personal_sign`, secp256k1) and
+**Stellar** chains (SEP-0053, ed25519), resolved from `chain_id` and defaulting
+to the server's `DEFAULT_CHAIN_ID`.
 
-The flow supports both **EVM** chains (EIP-191 `personal_sign`, secp256k1) and
-**Stellar** chains (SEP-0053 message signing, ed25519). The chain is resolved
-from `chain_id`; when omitted it defaults to the server's `DEFAULT_CHAIN_ID`.
+Both resolve to the same principal: a row in **`accounts`**. A wallet is a
+credential *of* an account, not an identity in its own right, and one human may
+hold both credentials on one account. Every issued token carries `account_id`,
+and **authorization keys off that claim** — never off the wallet pair.
+
+Roles remain manually assigned in `auth_users`. Nothing self-serve can grant a
+role, so registering an account confers no privilege beyond starting KYB.
 
 ## Behavior
 
@@ -49,14 +56,27 @@ Welcome to Pipeline! Sign this message to authenticate. This request will not tr
 |--------|------|------|-------------|
 | `GET`  | `/v1/auth/challenge?chain_id&address` | none | Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
 | `POST` | `/v1/auth/verify` | none | Body `{ chain_id?, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. |
+| `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
+| `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
+| `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
+| `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403` for a suspended one, `429` past the attempt limit. |
 | `POST` | `/v1/loan-book/loan` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](#loan-submission)). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
 | `GET`  | `/v1/loan-book/submissions?status` | bearer + `trustee` role | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. `400` on an unknown status value. |
 | `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
 | `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`. `200 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |
 
 Tokens are **ES256** (P-256) signed, expire **24 hours** after issuance
-(`expires_in = 86400`), and contain the claims `sub` (address), `chain_id`,
-`roles`, `iat`, and `exp`.
+(`expires_in = 86400`), and carry `sub`, `chain_id`, `account_id`, `roles`,
+`iat`, `exp`. A wallet token's `sub` is the normalized address and `chain_id`
+the chain, exactly as before — `account_id` is purely additive, so existing
+clients are unaffected. An email token's `sub` is the account id and its
+`chain_id` is `null`.
+
+Tokens cannot be revoked — no refresh token, no session table, no logout. A
+password reset does not end a live session, and suspending an account takes up
+to 24 hours to bite. See TD-80. Because `account_id` is required rather than
+optional, tokens issued before it existed fail to decode: deploying the accounts
+migration signs every active session out, and each user signs in again once.
 
 To protect a new endpoint, take the `AuthClaims` extractor as a handler
 argument; a request without a valid token is rejected with `401` before the
@@ -65,7 +85,19 @@ and return `403 Forbidden` when it is absent (see `routes::loan_book::submit_loa
 
 ## Data Model
 
-`auth_users` — manually populated allow-list, keyed by `(chain_id, address)`:
+`accounts` — the principal, keyed by a uuid:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `UUID` | primary key; the `account_id` JWT claim |
+| `email` | `TEXT` | unique, lowercase (enforced by check constraint); `NULL` for a wallet-only account |
+| `password_hash` | `TEXT` | Argon2id PHC string; `NULL` until a password is set |
+| `email_verified_at` | `TIMESTAMPTZ` | `NULL` until the passcode is verified; login is refused while it is |
+| `status` | `TEXT` | `Active` \| `Suspended` |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` | bookkeeping |
+
+`auth_users` — manually populated allow-list of wallet credentials, keyed by
+`(chain_id, address)`, each pointing at an account via `account_id`:
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -73,10 +105,16 @@ and return `403 Forbidden` when it is absent (see `routes::loan_book::submit_loa
 | `address` | `TEXT` | part of the primary key; EVM lowercased `0x…`, Stellar `G…` Strkey verbatim |
 | `roles` | `TEXT[]` | granted roles, copied into the JWT `roles` claim |
 | `nonce` | `TEXT` | current outstanding challenge GUID; `NULL` until first challenge and after each successful verify |
+| `account_id` | `UUID` | the account this wallet credential belongs to |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` | bookkeeping |
 
 Rows are inserted manually (there is no admin endpoint). Address normalization
 must follow the convention above so lookups match.
+
+`lps.owner_account_id` is the LP-ownership key and is **UNIQUE** — one account
+owns at most one LP, which is what keeps self-serve signup from making
+`POST /v1/lps` unbounded. `owner_chain_id`/`owner_address` are history only,
+`NULL` for email registrations, and read by nothing (TD-82).
 
 ## Loan submission
 

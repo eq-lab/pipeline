@@ -1,19 +1,24 @@
 pub mod auth;
+pub mod captcha;
 pub mod config;
 pub mod error;
 pub mod formatting;
 pub mod intervals;
 mod middleware;
+pub mod otp;
+pub mod password;
 pub mod routes;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use alloy::signers::local::PrivateKeySigner;
+use shared::account_repo::AccountRepo;
 use shared::auth_user_repo::AuthUserRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
+use shared::email::EmailSender;
 use shared::kyb_document_repo::KybDocumentRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
@@ -21,14 +26,17 @@ use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
+use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
+use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 
 use crate::auth::JwtKeys;
+use crate::captcha::CaptchaVerifier;
 use crate::config::{StellarVoucherChainConfig, TransferAddressSets};
 
 pub struct AppState {
@@ -92,4 +100,19 @@ pub struct AppState {
     pub lp_ledger_repo: LpLedgerRepo,
     /// Versioned KYB supporting documents (`kyb_documents`).
     pub kyb_document_repo: KybDocumentRepo,
+    /// The API's principals (`accounts`) — what both the wallet and the
+    /// email/password credential resolve to.
+    pub account_repo: AccountRepo,
+    /// Outstanding email-verification passcodes (`otp_codes`).
+    pub otp_repo: OtpRepo,
+    /// Bot defense on the unauthenticated auth endpoints. Trait object so
+    /// handlers can be exercised without a network round-trip, and so the
+    /// provider is a one-impl swap.
+    pub captcha: Box<dyn CaptchaVerifier>,
+    /// Transactional email. Currently a logging stand-in — real delivery is
+    /// tracked as its own blocking issue (see `shared::email`).
+    pub email_sender: Arc<dyn EmailSender>,
+    /// Failed sign-in counters (`login_attempts`) — `login`'s only bound, since
+    /// it carries no captcha.
+    pub login_attempt_repo: LoginAttemptRepo,
 }
