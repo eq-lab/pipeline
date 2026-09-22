@@ -991,38 +991,40 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-62: `CompanyDocsModal` rejected-file feedback has no Figma treatment
 
+- **Status (2026-09-22):** Still open, retargeted by #1278's V1.0 redesign.
 - **Date:** 2026-09-18
-- **Location:** `packages/frontend/src/components/DocumentUploadRow.tsx`.
-- **Gap:** Neither #1251 Figma frame (`6486-81679` empty, `6486-81817` uploaded) designs a
-  rejection state for an oversize or wrong-type file pick. The implementation reuses the row's
-  existing caption copy (`pdf, jpg, png files up to 10MB`) recolored to
-  `--color-pipeline-negative-strong` with `role="alert"`, rather than inventing new copy or
-  layout.
+- **Location:** `packages/frontend/src/components/account/AccountUploadRow.tsx` (rejection
+  caption; previously `DocumentUploadRow.tsx`, deleted by #1278).
+- **Gap:** Neither V1.0 Figma frame (`6701-96852` empty, `6701-96881` uploaded — previously
+  `6486-81679`/`6486-81817`) designs a rejection state for an oversize or wrong-type file pick.
+  The implementation reuses the row's existing caption copy (`pdf, jpg, png files up to 10MB`)
+  recolored to `--color-pipeline-negative-strong` with `role="alert"`, rather than inventing new
+  copy or layout.
 - **Impact:** The rejection treatment is a stand-in, not a verified design — a designer may want
   distinct copy, an icon, or a different layout for this state.
 - **Suggested fix:** A designer pass specifies a real rejection treatment; the QA Figma
   comparison should not file this as a bug against the current stand-in.
 
-### TD-63: `CompanyDocsModal` uploaded-row thumbnail is not a PDF-page preview
+### TD-63: `CompanyDocsModal`/`AccountDocumentsCard` uploaded-row thumbnail is not a PDF-page preview
 
+- **Status (2026-09-22):** Still open, retargeted by #1278's V1.0 redesign.
 - **Date:** 2026-09-18
-- **Location:** `packages/frontend/src/components/DocumentUploadRow.tsx`.
-- **Gap:** Figma's uploaded frame (`6486-81817`) shows a rendered PDF-page thumbnail (a mock PNG
-  asset) for the uploaded document tile. This repo has no PDF renderer, so `application/pdf`
-  uploads (and any upload when `URL.createObjectURL` is unavailable) keep the same brand-tint
-  glyph tile as the empty state; only `image/jpeg`/`image/png` uploads get a real `<img>`
-  preview via `URL.createObjectURL`.
-- **Impact:** The uploaded state for PDF documents (the majority of the five expected slots)
-  visually diverges from the Figma mock.
+- **Location:** `packages/frontend/src/components/UploadedFileRow.tsx` (previously
+  `DocumentUploadRow.tsx`, deleted by #1278).
+- **Gap:** Figma's uploaded frame (`6701-96881`, previously `6486-81817`) shows a rendered
+  PDF-page thumbnail (a mock PNG asset) for the uploaded document tile. This repo has no PDF
+  renderer, so `application/pdf` uploads (and any upload when `URL.createObjectURL` is
+  unavailable) keep the same brand-tint glyph tile as the empty state; only
+  `image/jpeg`/`image/png` uploads get a real `<img>` preview via `URL.createObjectURL`.
+- **Impact:** The uploaded state for PDF documents (the majority of expected uploads) visually
+  diverges from the Figma mock, on both `CompanyDocsModal` and the Account page.
 - **Suggested fix:** Add a PDF-page-thumbnail renderer (e.g. `pdf.js`) if pixel-fidelity for this
   state becomes a priority; until then this is an accepted, documented subset.
 
 ### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable
 
-- **Status (2026-09-21):** Dormant, not resolved. `OwnersModal` — the consumer this gap was filed
-  against — was retired (issue #1279). `FileDropZone.tsx` itself is unchanged and retained (no
-  current consumer; kept for #1278/#1284 reuse), so the gap re-applies verbatim to whichever of
-  those picks it up.
+- **Status (2026-09-22):** Resolved by deletion. `FileDropZone.tsx` was deleted by #1278 — neither
+  it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
 - **Gap:** The drop-zone subtitle ("pdf, jpg, png files up to 10MB") binds in Figma to
@@ -1038,10 +1040,8 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow
 
-- **Status (2026-09-21):** Dormant, not resolved. `OwnersModal` — the consumer this gap was filed
-  against — was retired (issue #1279). `KybInfoBanner.tsx` itself is unchanged and retained (no
-  current consumer; kept for #1278/#1284 reuse), so the gap re-applies verbatim to whichever of
-  those picks it up.
+- **Status (2026-09-22):** Resolved by deletion. `KybInfoBanner.tsx` was deleted by #1278 — neither
+  it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/KybInfoBanner.tsx`.
 - **Gap:** The hint tooltip (Figma node `6486:82392`) is a loose canvas instance, not a child of
@@ -1074,10 +1074,8 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment
 
-- **Status (2026-09-21):** Dormant, not resolved. `OwnersModal` — the consumer this gap was filed
-  against — was retired (issue #1279). `FileDropZone.tsx` itself is unchanged and retained (no
-  current consumer; kept for #1278/#1284 reuse), so the gap re-applies verbatim to whichever of
-  those picks it up.
+- **Status (2026-09-22):** Resolved by deletion. `FileDropZone.tsx` was deleted by #1278 — neither
+  it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/FileDropZone.tsx`.
 - **Gap:** Neither Owners Figma frame designs a drag-over state or a file-rejection state for the
@@ -1298,6 +1296,49 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   adaptation, not a designed mobile treatment.
 - **Impact:** Untested against any mobile Figma reference, because none exists.
 - **Suggested fix:** Designer ask: mobile Account-page frames.
+
+### TD-83: Submit/Save enables at ≥ 1 file on both KYB upload surfaces, no designed threshold
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/account/useAccountDocuments.ts` (`canSave`).
+- **Gap:** Neither `CompanyDocsModal`'s nor the Account page's Figma frames provide a per-document
+  completeness rule — the raw-upload model gives the LP no way to signal "I'm done." The empty
+  frame shows the button disabled, the many-files frame shows it solid, which is the only
+  non-arbitrary rule consistent with both: enable once at least one file is staged. Successor to
+  the retired TD-66 (`OwnersModal`'s identical gap, resolved by that screen's retirement).
+- **Impact:** The real product requirement (e.g. "one file per required document") is unknown; the
+  current rule may under- or over-collect documents relative to what compliance actually needs.
+- **Suggested fix:** A designer/PM pass should specify the real completion requirement for both
+  surfaces.
+
+### TD-84: Shared KYB upload primitives live under `components/account/` but have a second, non-Account consumer
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/account/AccountUploadRow.tsx`,
+  `AccountRequirementsList.tsx`, `useAccountDocuments.ts`, and `AccountIconTile.tsx`.
+- **Gap:** #1278 makes `CompanyDocsModal` — an onboarding-time modal, not part of the Account page
+  — a second consumer of these four files. Their `Account*`-prefixed names now describe only one
+  of their two call sites, a naming smell rather than a correctness issue.
+- **Impact:** None functional; a future reader may be misled into thinking these are Account-page
+  internals.
+- **Suggested fix:** Promote and rename them to `components/Kyb*` (e.g. `KybUploadRow`,
+  `KybRequirementsList`, `useKybDocumentUpload`) in a dedicated PR — it touches four shipped
+  components, four consumers, three test files, and two docs, so it is deliberately not bundled
+  into #1278's redesign.
+
+### TD-85: `CompanyDocsModal`'s "closing keeps progress" is local state, not persistence
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx`.
+- **Gap:** Per the epic's 2026-09-21 flow-semantics decision, dismissing the modal must not
+  discard staged files. With no reset-on-open effect, `useAccountDocuments` holds the files for
+  the lifetime of the mounted component — but that is presentational only. A future consumer that
+  unmounts `CompanyDocsModal` on close (rather than just hiding it) would still lose the staged
+  files.
+- **Impact:** The "resumable onboarding" behaviour is not real yet; it only survives within a
+  single mounted session of the component.
+- **Suggested fix:** Needs #1267 (upload transport) + #1273 (read-back), wired by #1254. Companion
+  to TD-75 (the Account page's `Save` has no real transition either).
 
 ---
 

@@ -441,22 +441,27 @@ describe("TestPage — tab param routing", () => {
     );
   });
 
-  it("?tab=auth shows the company-docs-submitted line after submitting all five documents", () => {
+  it("?tab=auth opens CompanyDocsModal with no Step 1/2 badge", () => {
     renderTestPage("auth");
     fireEvent.click(
       screen.getByRole("button", { name: /open company docs step/i }),
     );
 
-    const inputs = screen.getAllByTestId(/-file-input$/);
-    expect(inputs).toHaveLength(5);
-    inputs.forEach((input, i) => {
-      const file = new File(["x"], `doc-${i}.pdf`, {
-        type: "application/pdf",
-      });
-      fireEvent.change(input, { target: { files: [file] } });
-    });
+    expect(screen.getByText("Upload documents")).toBeInTheDocument();
+    expect(screen.queryByText(/Step 1/)).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  it("?tab=auth shows the company-docs-submitted line after submitting staged documents", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open company docs step/i }),
+    );
+
+    const fileInput = screen.getByTestId("account-upload-input");
+    const file = new File(["x"], "doc.pdf", { type: "application/pdf" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(screen.getByTestId("auth-company-docs-submitted")).toHaveTextContent(
       "Company documents submitted — open the Account-in-review screen from the button above.",

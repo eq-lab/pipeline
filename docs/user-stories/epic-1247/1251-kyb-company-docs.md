@@ -1,5 +1,11 @@
 # User Stories: #1251 — KYB: Company Docs upload step
 
+**Superseded 2026-09-22 by #1278.** The five-slot Company Docs step was replaced by the V1.0
+flat-upload redesign. Kept for history. See
+[1278-kyb-company-docs-v1.md](./1278-kyb-company-docs-v1.md) for the current stories and
+[`docs/frontend/auth-components.md#companydocsmodal`](../../frontend/auth-components.md#companydocsmodal)
+for the spec.
+
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1251](https://github.com/eq-lab/pipeline/issues/1251)
 Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md)

@@ -1,10 +1,13 @@
 // spec: docs/frontend/account-page.md#kybdocumentrequirements
-import { COMPANY_DOCUMENT_SLOTS } from "@/components/useCompanyDocsModal";
 
 export const REQUIREMENTS_LEAD_LINE = "Requirement documents:";
 
 export const KYB_DOCUMENT_REQUIREMENTS: readonly string[] = [
-  ...COMPANY_DOCUMENT_SLOTS.map((slot) => slot.label),
+  "Certificate of Incorporation",
+  "Registry of Legal Entities",
+  "Certificate of Good Standing",
+  "Legal Address",
+  "Shareholder Register",
   "Personal KYC for each shareholder / UBO:",
 ];
 

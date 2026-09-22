@@ -1,19 +1,17 @@
 // spec: docs/frontend/auth-components.md#companydocsmodal
 import { Button } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
-import { DocumentUploadRow } from "@/components/DocumentUploadRow";
-import {
-  COMPANY_DOCUMENT_SLOTS,
-  useCompanyDocsModal,
-  type CompanyDocumentSlotId,
-} from "@/components/useCompanyDocsModal";
+import { UploadedFileRow } from "@/components/UploadedFileRow";
+import { AccountUploadRow } from "@/components/account/AccountUploadRow";
+import { AccountRequirementsList } from "@/components/account/AccountRequirementsList";
+import { useAccountDocuments } from "@/components/account/useAccountDocuments";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface CompanyDocsModalProps {
   open: boolean;
   onDismiss: () => void;
-  onSubmit?: (documents: Record<CompanyDocumentSlotId, File>) => void;
+  onSubmit?: (files: File[]) => void;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -24,46 +22,60 @@ export function CompanyDocsModal({
   onSubmit,
 }: CompanyDocsModalProps) {
   const headingId = "company-docs-modal-heading";
-  const { files, rejected, selectFile, clearFile, isComplete, handleSubmit } =
-    useCompanyDocsModal({ open, onSubmit });
+  const { files, rejected, addFiles, removeFile, canSave, handleSave } =
+    useAccountDocuments({ onSave: onSubmit });
 
   return (
     <AuthModalShell
       open={open}
       onDismiss={onDismiss}
       heading="Finish account setup"
-      description="Upload your company documents so we can verify your account."
+      description="Upload your company documents and personal KYC for each shareholder so we can verify your account."
       headingId={headingId}
       testId="company-docs-modal"
       showImagePanel={false}
       align="center"
-      stepLabel={{ current: 1, total: 2 }}
     >
-      <div
-        data-node-id="6486:81679"
-        className="mt-2 flex w-full flex-col gap-8 pb-16"
-      >
-        <ul role="list" className="flex w-full flex-col gap-6">
-          {COMPANY_DOCUMENT_SLOTS.map((slot) => (
-            <DocumentUploadRow
-              key={slot.id}
-              slotId={slot.id}
-              label={slot.label}
-              file={files[slot.id]}
-              rejected={Boolean(rejected[slot.id])}
-              onSelect={(file) => selectFile(slot.id, file)}
-              onRemove={() => clearFile(slot.id)}
-            />
-          ))}
-        </ul>
+      <div className="mt-2 flex w-full flex-col gap-8 pb-16">
+        <div
+          data-node-id="6701:96889"
+          className="flex w-full flex-col gap-4 rounded-[var(--radius-pipeline-card)] bg-[color:var(--color-pipeline-surface)] px-2 pt-2 pb-4"
+        >
+          <AccountUploadRow
+            rejected={rejected}
+            onFiles={addFiles}
+            dataNodeId="6701:96891"
+            testId="company-docs-upload-row"
+          />
+          <AccountRequirementsList
+            dataNodeId="6701:96892"
+            testId="company-docs-requirements-list"
+            className="px-2"
+          />
+          {files.length > 0 && (
+            <ul
+              role="list"
+              data-node-id="6701:96893"
+              className="flex w-full flex-col gap-3"
+            >
+              {files.map((file, index) => (
+                <UploadedFileRow
+                  key={`${file.name}-${index}`}
+                  file={file}
+                  onRemove={() => removeFile(index)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
 
         <Button
           variant="primary-dark"
-          disabled={!isComplete}
-          onClick={handleSubmit}
+          disabled={!canSave}
+          onClick={handleSave}
           className="!w-full !min-w-0 disabled:opacity-[0.32]"
         >
-          Continue
+          Submit
         </Button>
       </div>
     </AuthModalShell>

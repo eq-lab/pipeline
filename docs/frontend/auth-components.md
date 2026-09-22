@@ -58,7 +58,7 @@ so `SignInModal` renders byte-identical without passing any of them:
 | `showCloseButton?: boolean` | `true` | `false` omits the `×` close button. |
 | `onBack?: () => void` | `undefined` | When set, renders a back `<button aria-label="Back">` (24×24 arrow-left icon, Figma node `6486:81678`) at `top-4 left-4` (glyph lands at (20, 20)) — the mirror of the close button. Rendered **after** `{children}` and `<RightImagePanel />` in DOM order, so the shell's auto-focus-first-descendant effect still lands on content, not the back button. |
 | `align?: "start" \| "center"` | `"start"` | `"center"` appends `my-auto` to the content column (vertical centering via margin, not `justify-center` on the parent, so `overflow-y-auto` stays scroll-safe on short viewports). |
-| `stepLabel?: { current: number; total: number }` | `undefined` | Added by #1251. Renders a non-focusable `Step {current}` (ink) + `/{total}` (ink-muted) badge at `top-4 left-4` — a step indicator, not navigation (no progress bar, no logo, no back arrow). `CompanyDocsModal` uses `{ current: 1, total: 2 }`; #1252's Owners screen reuses it verbatim at `{ current: 2, total: 2 }`. **Mutually exclusive with `onBack`** — both occupy `top-4 left-4` and no Figma frame in this epic shows both together; passing both is undefined layout, not validated at runtime. |
+| `stepLabel?: { current: number; total: number }` | `undefined` | Added by #1251. Renders a non-focusable `Step {current}` (ink) + `/{total}` (ink-muted) badge at `top-4 left-4` — a step indicator, not navigation (no progress bar, no logo, no back arrow). **Currently unused** — `CompanyDocsModal` was its only consumer, at `{ current: 1, total: 2 }`, alongside #1252's retired Owners screen at `{ current: 2, total: 2 }`; the V1.0 redesign (#1278) found the `Step` group `hidden="true"` in both of `CompanyDocsModal`'s frames (a leftover from the retired two-step Company Docs + Owners flow) and dropped the prop rather than render a stale badge. The prop itself stays on the shell for a future step-based flow. **Mutually exclusive with `onBack`** — both occupy `top-4 left-4` and no Figma frame in this epic shows both together; passing both is undefined layout, not validated at runtime. |
 | `icon?: React.ReactNode` | `undefined` | Added by #1253. Renders as the **first** child of the content column, above the heading block, wrapped in `<div className="mb-2 flex w-full justify-center">`. The `mb-2` turns the column's 24px `gap-6` into the frame's 32px icon-to-heading gap — the same technique `CompanyDocsModal`/`OwnersModal` use with `mt-2` on their children wrapper. `AccountInReviewModal` is the only consumer so far. |
 | `headingAlign?: "start" \| "center"` | `"start"` | Added by #1253. `"center"` appends `text-center` to the heading wrapper (both the `<h2>` and the description `<p>`) — **horizontal** text alignment, orthogonal to `align`'s *vertical* `my-auto` centering of the whole column. Named `headingAlign` rather than `align` because that name is already taken. |
 
@@ -385,112 +385,98 @@ caption use `role="status"`/`role="alert"` respectively.
 
 ### CompanyDocsModal
 
-`packages/frontend/src/components/CompanyDocsModal.tsx` +
-`packages/frontend/src/components/useCompanyDocsModal.ts` +
-`packages/frontend/src/components/DocumentUploadRow.tsx`. The KYB Company Docs upload step —
-presentational only, **no network call, no persistence**. Files live in React state as `File`
-objects for the lifetime of the open modal; closing/reopening discards them. `onSubmit` is a seam
-for #1254 (defaults to a no-op).
+**Redesigned 2026-09-22 (#1278) — V1.0 flat upload.** `packages/frontend/src/components/CompanyDocsModal.tsx`
+now composes three pieces promoted for #1284's Account-page documents hub rather than owning any
+upload machinery itself: `AccountUploadRow`, `AccountRequirementsList`, and `useAccountDocuments`
+(all under `@/components/account/`), plus the already-shared `UploadedFileRow` and
+`kybFileValidation`. The KYB Company Docs upload step — presentational only, **no network call, no
+persistence**. Files live in React state as `File` objects for the lifetime of the mounted
+component; `onSubmit` is a seam for #1254 (defaults to a no-op).
 
 Visual specs (Figma, file `A43rjYYjSwdTmiwwf5cx5n`):
 
-- Empty: node `6486-81679`.
-- Uploaded: node `6486-81817`.
-- Step-badge chrome: `6486:81697` (empty) / `6486:81835` (uploaded).
+- Empty: node `6701-96852`.
+- Uploaded: node `6701-96881`.
+- Content instance inside the empty frame: `6701:96867`.
 
 Both frames wrap the same `Sign In` component (`8550:10210` content pane / `8550:10546` image
-pane) as `SignInModal`/`CreateAccountModal`, with the image pane hidden and the "header/
-Navigation/Buttons" chrome reduced to just the `Step 1/2` label — the `Navigation` and `Buttons`
-frames it contains are empty and its logo/button-icon instances are hidden.
+pane) as `SignInModal`/`CreateAccountModal`, with the image pane hidden and the header chrome
+empty.
+
+**Designer note — stale `Step 1/2` badge.** The `Step` group (`6701:96870` empty / `6701:96906`
+uploaded) is `hidden="true"` in **both** frames — a leftover from the retired two-step Company
+Docs + Owners flow (Owners was removed, #1279). A hidden node does not render, so this modal ships
+**without** `stepLabel` (see the `AuthModalShell` props table above — the prop is now unused).
+Flagged for a designer pass, not treated as a code decision.
+
+**Flat upload, no slots, no typing UI.** Per the epic's 2026-09-21 decision (raw upload,
+classify-at-review), the LP picks untyped files; the five company documents and the per-UBO
+personal KYC appear only as the bullet requirements list. There is no per-slot structure and no
+doc-type or UBO selector anywhere in either frame — this is the same flat-upload pattern #1284's
+Account page ships, which is why the two screens now share components.
 
 Composition inside `AuthModalShell` (heading "Finish account setup", description "Upload your
-company documents so we can verify your account.", `headingId` `company-docs-modal-heading`,
-`testId` `company-docs-modal`, `showImagePanel={false}`, `align="center"`,
-`stepLabel={{ current: 1, total: 2 }}`, default close button, no `onBack`):
+company documents and personal KYC for each shareholder so we can verify your account." —
+**changed** from the five-slot modal's "Upload your company documents so we can verify your
+account.", `headingId` `company-docs-modal-heading`, `testId` `company-docs-modal`,
+`showImagePanel={false}`, `align="center"`, no `stepLabel`, default close button, no `onBack`):
 
-1. **Five fixed upload rows** (`<ul role="list">`), verbatim labels and order:
-   `Certificate of Incorporation`, `Registry of Legal Entities`, `Certificate of Good Standing`,
-   `Legal Address`, `Shareholder Register`. Empty-row caption, identical on all five:
-   `pdf, jpg, png files up to 10MB`. Uploaded-row caption: `Uploaded`.
-2. **Continue** — `Button variant="primary-dark"` (fill `#262524`, **not** `primary-blue` — the
-   sign-in submit is navy, this one is not), full width, disabled at `opacity-[0.32]` until all
-   five slots hold a file. Removing any file re-disables it. `onClick` calls
-   `onSubmit?.(documents)` where `documents` is `Record<CompanyDocumentSlotId, File>` — a no-op
-   seam exactly like `SignInModal.onSubmit`/`OtpModal.onSubmit`.
+1. A single surface card (`data-node-id="6701:96889"`, `flex flex-col gap-4`,
+   `rounded-[var(--radius-pipeline-card)]`, `bg-[color:var(--color-pipeline-surface)]`,
+   `px-2 pt-2 pb-4` — confirmed via `get_design_context`, the same fill/radius pair as the
+   Account-page card), containing:
+   - `<AccountUploadRow>` (`dataNodeId="6701:96891"`) — "Upload documents" /
+     "pdf, jpg, png files up to 10MB" / `Upload` button, identical to the Account page's row.
+   - `<AccountRequirementsList>` (`dataNodeId="6701:96892"`, `className="px-2"`) — the
+     `AccountRequirementsList`'s bottom padding (`pb-6`) is dropped here: `get_design_context` on
+     `6701:96892` shows the requirements node itself carries only horizontal `px-2` inset, with the
+     card's own `gap-4` supplying the vertical space to the next row, unlike the Account page's
+     `AccountDocumentsCard` where the extra `pb-6` is load-bearing (see
+     [`account-page.md`](./account-page.md#reuse-verdicts)).
+   - When `files.length > 0`, a staged-file `<ul role="list" data-node-id="6701:96893">` of
+     `UploadedFileRow`s with **no** `className` override (plain 40px rows, `gap-3` list) — the
+     Account page's staged rows pass `p-2` (56px rows, `gap-1` list) instead; `UploadedFileRow`'s
+     existing `className` prop already covers this delta with no new prop needed.
+2. **Submit** — `Button variant="primary-dark"`, full width, disabled at `opacity-[0.32]` until at
+   least one file is staged (**changed** from the five-slot modal's "Continue" label and
+   all-five-required rule). `onClick` calls `useAccountDocuments`'s `handleSave`, which invokes
+   `onSubmit?.(files)` where `files` is `File[]` — a **breaking prop change** from the retired
+   `Record<CompanyDocumentSlotId, File>` shape; the only consumer was `/test?tab=auth`.
+
+**Dismissal keeps staged files.** The × is present and not hidden. Per the epic's 2026-09-21
+flow-semantics decision ("closing the docs step means *exit onboarding, keep progress*"), this is
+a deliberate reversal of the retired five-slot modal's reset-on-open behaviour: there is no
+reset-on-open effect, so `useAccountDocuments` holds the files for the lifetime of the mounted
+component — closing and reopening the preview shows them still staged. This is presentational
+only (TD-85); real server-side progress needs #1267 + #1273, wired by #1254.
+
+**Submit enables at ≥ 1 file (TD-83).** `useAccountDocuments.canSave` encodes this — the only
+non-arbitrary rule the raw-upload model permits, same gap the retired TD-66 described for the
+Owners step.
 
 **Upload affordance — per-row file picker, no drag-and-drop.** Neither Figma frame contains a
-drop zone or "drag files here" copy. Each row carries its own visually hidden, single-file
-`<input type="file" accept="application/pdf,image/jpeg,image/png">` triggered by a
-`Button variant="secondary" size="compact"` labelled "Upload" (`border` override using
-`--color-pipeline-line` — the shared `secondary`/`compact` combination already matches the
-frame's 32px box and border token with no other overrides needed).
+drop zone or "drag files here" copy; `AccountUploadRow`'s single hidden multi-file
+`<input type="file" accept="application/pdf,image/jpeg,image/png" multiple>` triggered by a
+`Button variant="secondary" size="compact"` labelled "Upload" is exactly this frame's affordance.
 
-**Uploaded-row visual, per file type**, rendered via `UploadedFileRow` (see "Shared file
-validation" below — extracted here; its second consumer was `OwnersModal`, retired 2026-09-21):
+**Validation** (enforced, not decorative, via `kybFileValidation`): reject when the MIME type is
+outside `{application/pdf, image/jpeg, image/png}` (falling back to the filename extension when
+`file.type` is empty) or when `file.size` exceeds `MAX_FILE_BYTES` (10MB). On rejection the row's
+caption recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
+accepted pick. Neither Figma frame designs a rejection state — tracked as **TD-62**.
 
-- `image/jpeg` / `image/png`: a 40×40 `object-cover` `<img>` from `URL.createObjectURL(file)`,
-  revoked on replace/remove/unmount (`useEffect` in `UploadedFileRow`, guarded on
-  `typeof URL.createObjectURL === "function"` so SSR/jsdom never throws).
-- `application/pdf` (and whenever `URL.createObjectURL` is unavailable): the same brand-tint
-  glyph tile as the empty state. Figma's uploaded frame shows a rendered PDF-page thumbnail (a
-  mock PNG asset) that this repo cannot reproduce without a PDF renderer — divergence tracked as
-  **TD-63**.
-- The empty-state glyph tile is `size-10 rounded-[var(--radius-pipeline-card)]`, filled with the
-  new `--color-pipeline-brand-secondary` token and the 20px `file-upload` glyph in
-  `--color-pipeline-brand`.
-- The uploaded row's leading empty→filled transition also swaps the trailing `Upload` button for
-  a 32×32 remove `<button>` carrying the 22px `cross-circle` glyph in `--color-pipeline-ink-muted`,
-  itself sitting inside a `flex size-10 shrink-0 items-center justify-center p-1` touch-target
-  wrapper — confirmed at `6486:81826` (`ButtonCont` `x=416 w=40 h=40` around the 32×32 control at a
-  4px inset), the same convention as the Account page's copy/upload buttons (#1292) and staged file
-  rows (#1293).
+**Out of scope.** Any real upload, storage, progress, or retry; the Verified/Invalid/under-review
+document states (the Account page owns those); wiring OTP → Company Docs → Account-in-review as a
+sequence (#1254's flow orchestration); the LP header entry point (a future Figma); promoting the
+shared upload primitives to `@pipeline/ui` (LP-only, following `AuthModalShell`'s placement) or out
+of `components/account/` (naming-only cleanup, filed as **TD-84**).
 
-**Validation** (enforced, not decorative):
+**Accessibility:** `<ul role="list">` for the staged files; the hidden file input is paired with a
+labelled `Upload`/`Remove {file.name}` button so the picker and remove affordances stay operable
+via the accessibility tree; the rejection caption carries `role="alert"`.
 
-- Reject when the MIME type is outside `{application/pdf, image/jpeg, image/png}` (falling back
-  to the filename extension when `file.type` is empty) or when `file.size` exceeds
-  `MAX_FILE_BYTES` (10MB).
-- On rejection the slot stays empty and its caption — the same string,
-  `pdf, jpg, png files up to 10MB` — recolors to `--color-pipeline-negative-strong` with
-  `role="alert"`. It reverts to `ink-muted` on the next accepted file for that slot, or when the
-  modal reopens. Neither Figma frame designs a rejection state; this reuses the row's existing
-  caption copy rather than inventing new copy or layout — tracked as **TD-62**.
-
-**Figma → token mapping** (confirmed via `get_design_context` + node geometry, not estimated):
-
-| Element | Figma | Repo token |
-| --- | --- | --- |
-| Row title | Body 16/22, `content-test/primary`, `truncate` | `--color-pipeline-ink` |
-| Row caption | Caption 12/16, `content-test/secondary` | `--color-pipeline-ink-muted` |
-| Leading tile fill | sampled `rgb(0 0 128 / 0.08)` (Figma codegen is stale here — it emits a `#262524` fill with an `#8FB3A4` glyph, but the rendered frame is navy-tinted; the sampled value matches the screenshot exactly composited over `--color-pipeline-paper`) | **new** `--color-pipeline-brand-secondary` |
-| Leading glyph | `content-test/brand` `#000080` | `--color-pipeline-brand` |
-| Leading tile radius | `radius/radius-s` 4px | `--radius-pipeline-card` |
-| `Upload` button | 32px box, 1px `border-test/secondary` `rgba(56,55,53,0.18)`, radius 4, Body Emphasized ink | `Button variant="secondary" size="compact"` + `border border-[color:var(--color-pipeline-line)]` |
-| Remove glyph | 22px `cross-circle`, `#323837` @ 0.6 | `--color-pipeline-ink-muted` (no new token — same one-channel-order artifact #1248 already resolved this way) |
-| Continue fill | `fill-test/primary` `#262524` | `Button variant="primary-dark"` |
-| Continue label | `content-test/primary-on-invert` | `--color-pipeline-on-dark` (variant default) |
-| Continue disabled | `opacity-32` | `disabled:opacity-[0.32]`, same as `SignInModal`/`CreateAccountModal` |
-| Step badge | Body Emphasized 16/22; `Step 1` `content-test/primary`, `/2` `rgba(56,55,53,0.6)` | `--color-pipeline-ink` / `--color-pipeline-ink-muted` |
-
-The `--color-pipeline-brand-secondary` token has no Figma variable binding in the file's codegen
-— it is sampled from the rendered screenshot, not name-bound. Risk noted here for the next QA
-Figma comparison pass.
-
-**Icons.** `file-upload` (20×20) and `cross-circle` (22×22, `fillRule="evenodd" clipRule="evenodd"`
-— load-bearing, it knocks the × out of the filled disc) are the exact Figma-exported SVG paths, no
-hand-authored vectors.
-
-**Out of scope.** Any real upload, storage, progress, or retry; wiring OTP → Company Docs →
-Account-in-review as a sequence (that is #1254's flow orchestration — the `/test` seam
-deliberately keeps this and the OTP trigger independent, since the shell's scroll-lock/Escape
-handling is not stack-safe); the LP header entry point (a future Figma, per epic #1247 decision
-2026-09-17); promoting
-`DocumentUploadRow`/`UploadedFileRow` to `@pipeline/ui` (both are LP-only, following
-`AuthModalShell`'s placement in `packages/frontend`).
-
-**Accessibility:** `<ul role="list">` of five rows; hidden file inputs each paired with a labelled
-`Upload {label}`/`Remove {file.name}` button so the picker and remove affordances stay operable
-via the accessibility tree; rejection captions carry `role="alert"`.
+See [`account-page.md`](./account-page.md#reuse-verdicts) for the full Figma → token mapping
+(shared with this modal) and the icon sourcing notes.
 
 ### Shared file validation
 
@@ -504,12 +490,11 @@ public surface is unchanged.
 `packages/frontend/src/components/UploadedFileRow.tsx` — the uploaded-file row (40×40
 preview-or-glyph-tile leading element, name/`Uploaded` caption text block, 32×32 remove button
 in a 40×40 touch-target wrapper with the 22px `cross-circle` glyph), extracted verbatim out of
-`DocumentUploadRow`'s file-present branch (byte-identical rendered DOM — `CompanyDocsModal.test.tsx`
-is the regression guard). Takes an optional `className` appended to its root `<li>` — used by
-`AccountDocumentsCard`'s staged rows (`p-2`, #1293) since that frame's own per-row padding differs
-from this modal's plain `h-[40px]`/`<ul gap-6>` spacing; `DocumentUploadRow` passes nothing and is
-unaffected. One current consumer: `DocumentUploadRow` (`CompanyDocsModal`, #1251) — its second
-consumer, `OwnersModal` (#1252), was retired 2026-09-21; see `### OwnersModal` below.
+`DocumentUploadRow`'s file-present branch (its 2026-09-18 origin; `DocumentUploadRow` itself was
+deleted by #1278). Takes an optional `className` appended to its root `<li>`. Two current
+consumers: `AccountDocumentsCard`'s staged rows (`p-2`, #1293) and `CompanyDocsModal`'s staged rows
+(no `className`, plain 40px rows in a `gap-3` list) — `CompanyDocsModal.test.tsx` is the regression
+guard for the latter's byte-identical rendered DOM.
 
 ### OwnersModal
 
@@ -523,18 +508,18 @@ stand-in confirmation line, and the corresponding user-stories doc
 match.
 
 `KybInfoBanner.tsx` and `FileDropZone.tsx` — the two presentational pieces this screen introduced
-— were retained on the expectation that #1284's Account-page documents hub would consume them.
-**It does not**: the V1.0 Account frames need a tinted, bordered, 72px two-line banner with a 32px
-status icon and an optional trailing button (`AccountStatusBanner.tsx`,
+— were retained past #1279's retirement on the expectation that #1284's Account-page documents hub
+would consume them. **It did not**: the V1.0 Account frames need a tinted, bordered, 72px two-line
+banner with a 32px status icon and an optional trailing button (`AccountStatusBanner.tsx`,
 [`account-page.md`](./account-page.md#reuse-verdicts)), and a plain list-item upload row
-(`AccountUploadRow.tsx`) rather than a dashed drop zone — extending `KybInfoBanner`/`FileDropZone`
-into that shape would be a rewrite, not a variant. Both components end epic #1247's V1.0 slice
-with **no consumer**; #1278's modal redesign now owns the decision to reuse or delete them
-(tech debt). `UploadedFileRow.tsx` and `kybFileValidation.ts`, the other two shared parts this
-screen used, keep their existing consumer (`DocumentUploadRow` / `CompanyDocsModal`) **and** gained
-a second one (`AccountDocumentsCard`'s staged rows, `useAccountDocuments`). See TD-64 through
-TD-67 in `docs/exec-plans/tech-debt-tracker.md` for what happened to the Owners-specific tech debt
-this screen carried.
+(`AccountUploadRow.tsx`) rather than a dashed drop zone. **Deleted 2026-09-22 (#1278)** — neither
+component gained a consumer across epic #1247's V1.0 slice; #1278 verified no open sub-issue needs
+a dashed drop zone or a tooltip info banner and removed both files. `UploadedFileRow.tsx` and
+`kybFileValidation.ts`, the other two shared parts this screen used, kept their existing consumer
+(`DocumentUploadRow`, later `CompanyDocsModal`) and gained a second one (`AccountDocumentsCard`'s
+staged rows, `useAccountDocuments`). See TD-64 through TD-67 in
+`docs/exec-plans/tech-debt-tracker.md` for what happened to the Owners-specific tech debt this
+screen carried — TD-64/65/67 are resolved by deletion, TD-66 was already resolved by retirement.
 
 ### AccountInReviewModal
 
@@ -625,8 +610,9 @@ both states.
 
 `packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders six trigger
 buttons opening `SignInModal` (#1248), `ForgotPasswordModal` (#1280), `CreateAccountModal`
-(#1249), `OtpModal` (#1250), `CompanyDocsModal` (#1251), and `AccountInReviewModal` (#1253) — a
-seventh, `OwnersModal` (#1252), was retired 2026-09-21 (see `### OwnersModal` above) — each with
+(#1249), `OtpModal` (#1250), `CompanyDocsModal` (#1278, redesigned from #1251), and
+`AccountInReviewModal` (#1253) — a seventh, `OwnersModal` (#1252), was retired 2026-09-21 (see
+`### OwnersModal` above) — each with
 every seam left at its no-op default except `OtpModal.onVerified`,
 `ForgotPasswordModal.onSubmit`, `CompanyDocsModal.onSubmit`, and `AccountInReviewModal.onGoToApp`,
 which show stand-in confirmation lines. Every trigger is independent of the others — entering a
