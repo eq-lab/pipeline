@@ -1356,6 +1356,74 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Make the 403 copy caller-suppliable (e.g. a second parameter alongside
   `fallback`), or move it out of the generic status table into a per-page map.
 
+### TD-87: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways
+
+- **Date:** 2026-09-22
+- **Location:** `packages/ui/src/components/ErrorDetailsDialog/useErrorDetailsDialog.ts`,
+  `packages/frontend/src/components/useAccountDropdown.ts`,
+  `packages/frontend/src/components/XlmFundingBanner.tsx`,
+  `packages/frontend/src/routes/deposit.tsx`,
+  `packages/frontend/src/components/account/AccountWalletCard.tsx`, and now
+  `packages/frontend/src/components/useFundingDetailsModal.ts` (issue #1283).
+- **Gap:** Each site reimplements the same feature-detected `navigator.clipboard.writeText` +
+  silently-no-op-on-rejection + `copied` state with a 1500 ms reset, rather than sharing one hook.
+- **Impact:** None functional — behavior is identical across all six sites — but any future change
+  to the copy-feedback contract (timing, a toast instead of a label flip, etc.) means editing six
+  files.
+- **Suggested fix:** Extract a shared `useCopyToClipboard(text: string)` hook, most naturally in
+  `@pipeline/ui` since three of the six call sites already live in `packages/frontend` and one in
+  `packages/ui`.
+
+### TD-88: No backend source for LP trust-account wire details
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/fundingDetails.ts` (`FUNDING_DETAILS_PLACEHOLDER`),
+  consumed by `FundingDetailsModal.tsx` (issue #1283).
+- **Gap:** No endpoint serves the LP-facing trust-account bank details (company name, bank
+  name/address, account number, IBAN, SWIFT/BIC). `FundingDetailsModal` ships an honest `—`
+  default per row plus a `/test`-only fixture; there is no way to populate it in production yet.
+- **Impact:** #1282 must not mount `FundingDetailsModal` against real users until this is
+  resolved — see Open Question 2 on issue #1283.
+- **Suggested fix:** Fold the read into #1285 (which already owns the LP-visible trust-account
+  surface), raise a dedicated backend sub-issue, or accept the details as a hardcoded product
+  constant — a designer/PM + backend decision, not a frontend one.
+
+### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/FundingDetailsModal.tsx`.
+- **Gap:** The Figma frame shows a `Contact Support` link with no linked destination anywhere in
+  the V1.0 file (same shape as TD-78's decorative chevron). Shipped as an inert seam
+  (`onContactSupport?`, no-op default).
+- **Impact:** None today — the surface isn't mounted in production yet.
+- **Suggested fix:** Designer ask: define the real destination (mailto, support page, chat widget)
+  before #1282 mounts the modal.
+
+### TD-90: `AddUsdCard`'s "Verifying account…" typo-correction diverges from its home-card source
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/AddUsdCard.tsx` (`verifying` variant).
+- **Gap:** The Figma frame reads "Veryfying account…". `account-page.md`'s `under-review`
+  stand-in already ships the corrected spelling for the same caption (citing the #1248
+  design-file-artifact precedent); this issue does the same on the home card that stand-in
+  borrows the copy from, so the two surfaces continue to agree. The typo itself is unresolved in
+  the source Figma file.
+- **Impact:** None functional — purely a documented divergence from the literal frame text.
+- **Suggested fix:** Designer ask: fix the typo at the source so future exports don't reintroduce
+  it.
+
+### TD-91: No mobile frames for the Bank transfers surfaces
+
+- **Date:** 2026-09-22
+- **Location:** `packages/frontend/src/components/FundingDetailsModal.tsx`,
+  `packages/frontend/src/components/AddUsdCard.tsx`.
+- **Gap:** No mobile frames exist for either surface — the whole V1.0 family is desktop-only (same
+  call as TD-82). `AddUsdCard` is width-driven by its grid slot and the modal already caps at
+  `calc(100vw - 32px)`.
+- **Impact:** None today, since neither surface is mounted in production.
+- **Suggested fix:** No invented mobile layout; revisit once #1282 mounts the card into a real
+  responsive grid.
+
 ---
 
 ## Post-MVP

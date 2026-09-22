@@ -666,3 +666,12 @@ real password-reset endpoint."
 [`account-page.md`](./account-page.md#state-preview-contract). This does not add a new `/test` tab:
 the auth tab remains this epic's established discovery surface, and the Account page itself is the
 preview surface for its own states.
+
+**Wire transfers (#1283).** The same `AuthTab` also renders a `Wire transfers (#1283)` block: one
+`Open Funding details modal` trigger (populated with `FUNDING_DETAILS_PLACEHOLDER` so QA can
+Figma-compare a fully populated modal) and the five `AddUsdCard` variants rendered inline, each in
+a fixed `w-[313px]` box captioned with its variant id. `onAddFunds` on every card variant opens the
+same single `FundingDetailsModal` (no stacking); `onWithdraw`, `onStartVerification`, and
+`onViewStatus` each reveal a stand-in confirmation line by `data-testid`, naming #1285 and #1282
+respectively as the real owners. Neither surface is mounted anywhere else — see
+[`bank-transfers.md`](./bank-transfers.md#test?tab=auth-preview-seam).

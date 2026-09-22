@@ -50,6 +50,28 @@ Striped square silhouette for the Recent-activity empty state — Figma node `14
 - **Reuse points:** Recent activity empty state (Figma node `1497:94570`) — muted tone,
   width 240.
 
+## CheckIllustration
+
+**Source:** `packages/ui/src/components/CheckIllustration/CheckIllustration.tsx`.
+
+Striped-check illustration clipped into the `AddUsdCard` `verify`/`verifying` variants (issue
+#1283) — Figma node `6701:97696` (file `A43rjYYjSwdTmiwwf5cx5n`). The artwork ships as
+`packages/ui/src/assets/illustrations/striped-check.svg`, exported once and reused across both
+variants (the `verifying` frame's own Union node resolves to the identical asset hash, just offset
+differently).
+
+- **Rendering technique:** the exact `ActivityEmptyIllustration` CSS-mask recipe — the SVG paints
+  as a `mask-image` over a `currentColor` background, so `tone` swaps the fill without duplicating
+  paths.
+- **Sizing:** intrinsic aspect ratio `291 / 193.66` (not square, unlike `ActivityEmptyIllustration`
+  and `WalletIllustration`). Default `width` 291 matches the Figma export.
+- **Tone semantics:** `muted` (default, ink-muted) — the production use inside `AddUsdCard`;
+  `primary` available for a future high-contrast surface.
+- **Accessibility:** purely decorative — `aria-hidden="true"`; meaning is conveyed by the card's
+  own heading/description text.
+- **Reuse points:** `AddUsdCard`'s `verify` and `verifying` variants (`docs/frontend/bank-transfers.md#checkillustration`),
+  each positioning the illustration absolutely in the card's bottom-right corner via `className`.
+
 ## ActivityHeader
 
 **Source:** `packages/ui/src/components/ActivityHeader/ActivityHeader.tsx`.

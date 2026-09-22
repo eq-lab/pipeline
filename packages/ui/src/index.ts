@@ -20,6 +20,11 @@ export type {
   ActivityEmptyIllustrationProps,
   ActivityEmptyIllustrationTone,
 } from "./components/ActivityEmptyIllustration";
+export { CheckIllustration } from "./components/CheckIllustration";
+export type {
+  CheckIllustrationProps,
+  CheckIllustrationTone,
+} from "./components/CheckIllustration";
 export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";
 export { NetworkSwitchDialog } from "./components/NetworkSwitchDialog/NetworkSwitchDialog";
