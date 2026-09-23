@@ -10,12 +10,16 @@
 
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 /// One row of the `auth_users` allow-list.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AuthUser {
     pub chain_id: i64,
     pub address: String,
+    /// The account this wallet credential belongs to. Every row has one — the
+    /// accounts migration backfilled pre-existing rows.
+    pub account_id: Uuid,
     /// Roles copied into the issued JWT's `roles` claim.
     pub roles: Vec<String>,
     /// GUID of the current outstanding challenge; `None` until the first
@@ -42,7 +46,7 @@ impl AuthUserRepo {
         address: &str,
     ) -> Result<Option<AuthUser>, sqlx::Error> {
         sqlx::query_as::<_, AuthUser>(
-            "SELECT chain_id, address, roles, nonce, created_at, updated_at \
+            "SELECT chain_id, address, account_id, roles, nonce, created_at, updated_at \
              FROM auth_users WHERE chain_id = $1 AND address = $2",
         )
         .bind(chain_id)

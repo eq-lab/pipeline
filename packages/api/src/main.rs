@@ -3,11 +3,14 @@ use std::sync::Arc;
 
 use axum::Router;
 use pipeline_api::auth::JwtKeys;
+use pipeline_api::captcha::TurnstileVerifier;
 use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig};
 use pipeline_api::AppState;
+use shared::account_repo::AccountRepo;
 use shared::auth_user_repo::AuthUserRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
+use shared::email::{EmailSender, LoggingEmailSender};
 use shared::kyb_document_repo::KybDocumentRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
@@ -15,9 +18,11 @@ use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::HttpLoanMetadataFetcher;
+use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
 use shared::metadata_fetcher::MetadataFetcher;
+use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
@@ -63,6 +68,11 @@ async fn main() -> anyhow::Result<()> {
     let lp_repo = LpRepo::new(pool.clone());
     let lp_ledger_repo = LpLedgerRepo::new(pool.clone());
     let kyb_document_repo = KybDocumentRepo::new(pool.clone());
+    let account_repo = AccountRepo::new(pool.clone());
+    let otp_repo = OtpRepo::new(pool.clone());
+    let login_attempt_repo = LoginAttemptRepo::new(pool.clone());
+    let captcha = TurnstileVerifier::from_env();
+    let email_sender: Arc<dyn EmailSender> = Arc::new(LoggingEmailSender);
 
     // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
     // attempt (no retry backoff) — this is a synchronous write path, so a dead URI
@@ -140,6 +150,11 @@ async fn main() -> anyhow::Result<()> {
         lp_repo,
         lp_ledger_repo,
         kyb_document_repo,
+        account_repo,
+        otp_repo,
+        captcha,
+        email_sender,
+        login_attempt_repo,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();

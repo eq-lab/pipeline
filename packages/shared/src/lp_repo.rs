@@ -7,15 +7,19 @@
 //! from the wallet-keyed `lp_profiles`/`kyc_outbox` (individual KYC via
 //! Sumsub) — see `packages/shared/migrations/20260915000001_kyb_lps_and_documents.sql`.
 //!
-//! `owner_chain_id`/`owner_address` (the registering caller's JWT identity, an
-//! `auth_users` entry) are distinct from `stellar_address` (the eventual
-//! settlement identity) — see the migration's module comment.
+//! `owner_account_id` (the registering caller's account — the authorization key,
+//! UNIQUE, so one account owns at most one LP) is distinct from
+//! `stellar_address` (the eventual settlement identity) — see the migration's
+//! module comment. `owner_chain_id`/`owner_address` record the wallet a
+//! wallet-registered LP came in on and are `NULL` for an email registration;
+//! they are history, not authorization (TD-82).
 
 use std::fmt;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 /// KYB lifecycle state of an LP. Stored as TEXT (with a CHECK constraint) in
 /// `lps.kyb_status`. `stellar_address` may only be set once this reaches `Passed`
@@ -77,10 +81,15 @@ pub struct LpRow {
     pub address_linked_at: Option<DateTime<Utc>>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `Passed` | `Failed`.
     pub kyb_status: String,
-    /// The `auth_users` chain_id that registered this LP — see the module doc.
-    pub owner_chain_id: i64,
-    /// The `auth_users` address that registered this LP — see the module doc.
-    pub owner_address: String,
+    /// The account that registered this LP — the authorization key. See the
+    /// module doc.
+    pub owner_account_id: Uuid,
+    /// The `auth_users` chain_id that registered this LP, when it registered by
+    /// wallet. `None` for an email signup — history only, never authorization.
+    pub owner_chain_id: Option<i64>,
+    /// The `auth_users` address that registered this LP, when it registered by
+    /// wallet. `None` for an email signup — history only, never authorization.
+    pub owner_address: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -94,25 +103,32 @@ impl LpRepo {
         Self { pool }
     }
 
-    /// Register a new LP, owned by `(owner_chain_id, owner_address)` — the
-    /// registering caller's JWT identity, which must already be on the
-    /// `auth_users` allow-list (enforced by `lps_owner_fk`). `kyb_status` starts
+    /// Register a new LP owned by `owner_account_id` — the registering caller's
+    /// account, which is the authorization key. `owner_chain_id`/`owner_address`
+    /// record the wallet the registration came in on and are `None` for an email
+    /// signup; they are history, not authorization (TD-82). `kyb_status` starts
     /// at `NotStarted` (the column default). Returns the new LP's `id`.
+    ///
+    /// Errors with a unique violation on `lps_owner_account_unique` when the
+    /// account already owns an LP; `routes::lps` maps that to `409`.
     pub async fn insert(
         &self,
         legal_name: &str,
         country: Option<&str>,
         contact_email: &str,
-        owner_chain_id: i64,
-        owner_address: &str,
+        owner_account_id: Uuid,
+        owner_chain_id: Option<i64>,
+        owner_address: Option<&str>,
     ) -> Result<i64, sqlx::Error> {
         sqlx::query_scalar(
-            "INSERT INTO lps (legal_name, country, contact_email, owner_chain_id, owner_address) \
-             VALUES ($1, $2, $3, $4, $5) RETURNING id",
+            "INSERT INTO lps (legal_name, country, contact_email, owner_account_id, \
+             owner_chain_id, owner_address) \
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
         )
         .bind(legal_name)
         .bind(country)
         .bind(contact_email)
+        .bind(owner_account_id)
         .bind(owner_chain_id)
         .bind(owner_address)
         .fetch_one(&self.pool)
@@ -123,7 +139,8 @@ impl LpRepo {
     pub async fn list(&self) -> Result<Vec<LpRow>, sqlx::Error> {
         sqlx::query_as::<_, LpRow>(
             "SELECT id, legal_name, country, contact_email, stellar_address, \
-             address_linked_at, kyb_status, owner_chain_id, owner_address, created_at, updated_at \
+             address_linked_at, kyb_status, owner_account_id, owner_chain_id, owner_address, \
+             created_at, updated_at \
              FROM lps ORDER BY created_at DESC, id DESC",
         )
         .fetch_all(&self.pool)
@@ -134,7 +151,8 @@ impl LpRepo {
     pub async fn find(&self, id: i64) -> Result<Option<LpRow>, sqlx::Error> {
         sqlx::query_as::<_, LpRow>(
             "SELECT id, legal_name, country, contact_email, stellar_address, \
-             address_linked_at, kyb_status, owner_chain_id, owner_address, created_at, updated_at \
+             address_linked_at, kyb_status, owner_account_id, owner_chain_id, owner_address, \
+             created_at, updated_at \
              FROM lps WHERE id = $1",
         )
         .bind(id)

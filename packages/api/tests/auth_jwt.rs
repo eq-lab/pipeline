@@ -7,6 +7,7 @@
 
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use pipeline_api::auth::{Claims, JwtKeys, TOKEN_TTL_SECS};
+use uuid::Uuid;
 
 const PRIVATE_PEM: &str = "-----BEGIN PRIVATE KEY-----\n\
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgi0+E/b6oW/STTwTb\n\
@@ -23,19 +24,50 @@ fn test_keys() -> JwtKeys {
     JwtKeys::from_pem(PRIVATE_PEM, PUBLIC_PEM).expect("test keys parse")
 }
 
+fn account() -> Uuid {
+    Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap()
+}
+
 #[test]
 fn issue_then_decode_round_trip() {
     let keys = test_keys();
     let roles = vec!["admin".to_owned(), "operator".to_owned()];
     let token = keys
-        .issue_token("0xabc", 1, roles.clone())
+        .issue_wallet_token("0xabc", 1, account(), roles.clone())
         .expect("issue token");
 
     let claims = keys.decode_token(&token).expect("decode token");
     assert_eq!(claims.sub, "0xabc");
-    assert_eq!(claims.chain_id, 1);
+    assert_eq!(claims.chain_id, Some(1));
     assert_eq!(claims.roles, roles);
     assert_eq!(claims.exp as i64 - claims.iat as i64, TOKEN_TTL_SECS);
+}
+
+#[test]
+fn a_wallet_token_carries_the_account_it_belongs_to() {
+    let keys = test_keys();
+    let token = keys
+        .issue_wallet_token("0xabc", 1, account(), vec![])
+        .expect("issue token");
+
+    let claims = keys.decode_token(&token).expect("decode token");
+    assert_eq!(claims.account_id, account());
+}
+
+#[test]
+fn an_email_token_is_subject_to_its_account_and_carries_no_chain() {
+    let keys = test_keys();
+    let token = keys
+        .issue_email_token(account(), vec![])
+        .expect("issue token");
+
+    let claims = keys.decode_token(&token).expect("decode token");
+    assert_eq!(claims.account_id, account());
+    assert_eq!(claims.sub, account().to_string());
+    assert_eq!(
+        claims.chain_id, None,
+        "an email identity is not bound to a chain"
+    );
 }
 
 #[test]
@@ -45,7 +77,8 @@ fn decode_rejects_expired_token() {
     let encoding = EncodingKey::from_ec_pem(PRIVATE_PEM.as_bytes()).unwrap();
     let claims = Claims {
         sub: "0xabc".to_owned(),
-        chain_id: 1,
+        chain_id: Some(1),
+        account_id: account(),
         roles: vec![],
         iat: 1_000,
         exp: 2_000, // long in the past (1970)
@@ -58,7 +91,9 @@ fn decode_rejects_expired_token() {
 #[test]
 fn decode_rejects_tampered_token() {
     let keys = test_keys();
-    let token = keys.issue_token("0xabc", 1, vec![]).expect("issue token");
+    let token = keys
+        .issue_wallet_token("0xabc", 1, account(), vec![])
+        .expect("issue token");
     // Flip a character in the signature segment.
     let mut bad = token.clone();
     let last = bad.pop().unwrap();

@@ -9,17 +9,26 @@
 //!
 //! `review_document` is `trustee`-only (mirrors `routes::loan_book`'s and
 //! `routes::ramp`'s review endpoints). `register_lp`, `upload_document`, and
-//! `link_address` require only an authenticated `auth_users` entry (any role) —
-//! any "registered user" may register an LP, but `upload_document`/
-//! `link_address` additionally require the caller's JWT `(chain_id, sub)` to
-//! match the target LP's `(owner_chain_id, owner_address)` (recorded at
+//! `link_address` require only an authenticated account (any role, whether it
+//! authenticated by wallet or by email) — any registered user may register an
+//! LP, but `upload_document`/`link_address` additionally require the caller's
+//! JWT `account_id` to match the target LP's `owner_account_id` (recorded at
 //! registration): a registered user acts on their own LP only
 //! ([`lp_owner_guard`]). `get_lp` uses the same guard but adds a trustee
 //! bypass — read-only, it does not extend to the two write endpoints.
-//! `stellar_address` is a separate identity from the login/`owner_address`
-//! one — see the migration's module comment. `link_address` still trusts the
-//! client-supplied `stellar_address` with no proof of key ownership over
-//! *that* address; see `docs/exec-plans/tech-debt-tracker.md` TD-57.
+//!
+//! Ownership is keyed on the **account**, not the wallet pair: signup is
+//! self-serve (see `docs/product-specs/api-authorization.md`), and an LP
+//! registered by email has no `(chain_id, address)` at all. `owner_chain_id`/
+//! `owner_address` are still recorded for a wallet registration, but purely as
+//! history — TD-82. `owner_account_id` is UNIQUE, so one account owns at most
+//! one LP; that bound is what keeps open registration from making
+//! `POST /v1/lps` unlimited.
+//!
+//! `stellar_address` is a separate identity from the login one — see the
+//! migration's module comment. `link_address` still trusts the client-supplied
+//! `stellar_address` with no proof of key ownership over *that* address; see
+//! `docs/exec-plans/tech-debt-tracker.md` TD-57.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -30,13 +39,14 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
+use uuid::Uuid;
 
 use shared::chains::validate_stellar_address;
 use shared::kyb_document_repo::{DocType, DocumentStatus, KybDocumentRepo, KybDocumentRow};
 use shared::lp_repo::LpRow;
 
 use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
-use crate::error::ApiError;
+use crate::error::{is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
 use crate::AppState;
 
@@ -55,9 +65,13 @@ pub struct LpResponse {
     pub address_linked_at: Option<String>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `Passed` | `Failed`.
     pub kyb_status: String,
-    /// The registering caller's JWT identity — see the module doc.
-    pub owner_chain_id: i64,
-    pub owner_address: String,
+    /// The account that registered this LP — the authorization key.
+    #[schema(value_type = String)]
+    pub owner_account_id: Uuid,
+    /// The registering caller's wallet identity, when it registered by wallet.
+    /// Both are `null` for an email signup — see the module doc.
+    pub owner_chain_id: Option<i64>,
+    pub owner_address: Option<String>,
     /// ISO-8601 UTC.
     pub created_at: String,
 }
@@ -72,6 +86,7 @@ impl From<LpRow> for LpResponse {
             stellar_address: row.stellar_address,
             address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
+            owner_account_id: row.owner_account_id,
             owner_chain_id: row.owner_chain_id,
             owner_address: row.owner_address,
             created_at: iso_utc(&row.created_at),
@@ -284,6 +299,7 @@ async fn get_lp(
         (status = 201, description = "LP registered, owned by the caller", body = RegisterLpResponse),
         (status = 400, description = "legal_name or contact_email is empty"),
         (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 409, description = "This account already has a registered LP"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -311,16 +327,29 @@ async fn register_lp(
         .map(str::trim)
         .filter(|c| !c.is_empty());
 
-    let id = state
+    let id = match state
         .lp_repo
         .insert(
             legal_name,
             country,
             contact_email,
+            claims.account_id,
             claims.chain_id,
-            &claims.sub,
+            claims.chain_id.map(|_| claims.sub.as_str()),
         )
-        .await?;
+        .await
+    {
+        Ok(id) => id,
+        // `lps_owner_account_unique` — one account owns at most one LP. Without
+        // this arm the constraint renders as an opaque 500 for anyone who
+        // double-submits the form or already has an LP.
+        Err(e) if is_unique_violation(&e) => {
+            return Err(ApiError::Conflict(
+                "this account already has a registered LP".to_owned(),
+            ))
+        }
+        Err(e) => return Err(e.into()),
+    };
     Ok((StatusCode::CREATED, Json(RegisterLpResponse { id })))
 }
 
@@ -497,17 +526,20 @@ async fn link_address(
 // ── Guards ───────────────────────────────────────────────────────────────────
 
 /// Shared guard for LP-facing writes on `/v1/lps/{id}/…`: the caller's JWT
-/// `(chain_id, sub)` must match the target LP's `(owner_chain_id, owner_address)`
-/// — the `auth_users` entry that registered it. 404 when the LP doesn't exist,
-/// 403 on an owner mismatch. Used by [`upload_document`] and [`link_address`] so
-/// "own LP only" cannot drift between them.
+/// `account_id` must match the target LP's `owner_account_id`. 404 when the LP
+/// doesn't exist, 403 on an owner mismatch. Used by [`upload_document`] and
+/// [`link_address`] so "own LP only" cannot drift between them.
+///
+/// Deliberately not the `(chain_id, sub)` wallet pair this used to compare: an
+/// email-registered LP has neither column set, so a pair check would fail open
+/// for exactly the accounts self-serve signup creates. See TD-82.
 async fn lp_owner_guard(claims: &Claims, state: &AppState, id: i64) -> Result<LpRow, ApiError> {
     let lp = state
         .lp_repo
         .find(id)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
-    if lp.owner_chain_id != claims.chain_id || lp.owner_address != claims.sub {
+    if lp.owner_account_id != claims.account_id {
         return Err(ApiError::Forbidden(
             "this LP is registered to a different user".to_owned(),
         ));

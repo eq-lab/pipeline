@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pipeline has two onboarding paths. Lenders authenticate by wallet and earn whitelist eligibility through compliance screening on transactions or addresses. Operators (Trustees, Originators, Pipeline team) authenticate by email with 2FA and require two-person consensus to activate. Both paths converge on the Operations Console backend.
+Pipeline has two onboarding paths. Lenders authenticate by wallet **or** by self-serve email and password, and earn whitelist eligibility through compliance screening on transactions or addresses. Operators (Trustees, Originators, Pipeline team) authenticate by email with 2FA and require two-person consensus to activate — their email path is invitation-gated, unlike the lender one. Both paths converge on the Operations Console backend.
 
 Lender onboarding does not require KYC, KYB, or accreditation declarations. Compliance is enforced by KYT screening on deposit transactions (per `deposits.md`), on standalone address enrolments, and on PLUSD transfers via the `WhitelistRegistry` `_update` gate. The legal framework that governs this approach is `[Framework: TBD]`.
 
@@ -14,7 +14,15 @@ The Relayer never writes whitelist enrolments to `WhitelistRegistry` directly. I
 
 ### Lender Wallet Authentication
 
-The lender connects an Ethereum wallet via WalletConnect v2 or RainbowKit. The connected address is the lender's account identifier. There is no email or password registration. The lender signs a one-time message to bind the wallet to a Pipeline session. The wallet's own security model is the sole authentication factor. Pipeline does not require 2FA for lender accounts.
+An LP reaches a Pipeline account by either of two credentials, and both resolve to the same principal — an `accounts` row (see `api-authorization.md`).
+
+**Wallet.** The lender connects an Ethereum or Stellar wallet via WalletConnect v2 / RainbowKit / Freighter. The lender signs a one-time server-issued message to bind the wallet to a Pipeline session. The wallet's own security model is the sole authentication factor; Pipeline does not require 2FA for wallet-authenticated lenders.
+
+**Email and password (self-serve).** The LP registers a corporate email and a password, verifies the address with a six-digit passcode, and is then signed in. Registration is open — there is no invitation and no allow-list, which is the deliberate difference from operator accounts below. Verification is mandatory: an account whose address is unverified cannot log in. Passwords are stored as Argon2id hashes; the policy is at least 8 characters including a digit and a special character.
+
+These are credentials of one account, not two accounts. An LP that signed up by email and later links a wallet is one identity throughout, and the LP record it owns follows the account rather than either credential. KYB, not the credential type, is what gates an LP's ability to transact — a freshly verified email account holds no roles.
+
+Lender authentication remains outside the operator model: no 2FA, no two-person activation. Those apply only to Trustees, Originators, and the Pipeline team (see below).
 
 ### Three Paths to the Transfer Whitelist
 
@@ -163,7 +171,11 @@ The compliance review queue, KYT reason codes, and audit log live in the Operati
 
 - **Relayer retains direct `revokeAccess`.** This is a defensive action with a fast-response requirement. Holding a `WHITELIST_REVOKER` role rather than relying on the attestation flow ensures sanctions hits land in seconds, not in the time it takes the address holder to submit an off-chain attestation themselves. The role is GUARDIAN-revocable in case of Relayer compromise.
 
-- **Lender authentication is wallet-only.** A compromised lender wallet grants the attacker the ability to deposit and (after a Relayer-signed claim attestation) claim PLUSD to that address, and to initiate withdrawals from it. The withdrawal claim still re-checks `isAllowed`, so a wallet compromise during a sanctions event does not unlock funds.
+- **A compromised lender wallet** grants the attacker the ability to deposit and (after a Relayer-signed claim attestation) claim PLUSD to that address, and to initiate withdrawals from it. The withdrawal claim still re-checks `isAllowed`, so a wallet compromise during a sanctions event does not unlock funds.
+
+- **Self-serve email registration is open by design, so the account is not a trust signal.** Anyone can create and verify one; it grants no roles and confers nothing beyond the ability to start KYB. Every privileged action stays gated on roles assigned manually in `auth_users` or on KYB status. Abuse of the endpoint itself (signup floods burning email quota, address enumeration) is handled at the API — see `api-authorization.md`.
+
+- **Email sessions cannot currently be revoked.** Tokens are stateless and live 24 hours, so a password reset does not end an attacker's existing session and suspending an account does not take effect immediately. Tracked as TD-80.
 
 - **Operator accounts require 2FA.** Two-person consensus activation prevents a single compromised team account from introducing a rogue operator.
 

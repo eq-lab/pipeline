@@ -21,6 +21,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, ToSchema};
+use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::AppState;
@@ -41,11 +42,17 @@ pub const TRUSTEE_ROLE: &str = "trustee";
 /// Claims embedded in an issued JWT.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Claims {
-    /// Subject — the authenticated wallet address (normalized form).
+    /// Subject — the normalized wallet address for a wallet login, or the
+    /// account id for an email login.
     pub sub: String,
-    /// Chain the address authenticated on.
-    pub chain_id: i64,
-    /// Roles granted to the address, copied from the `auth_users` allow-list.
+    /// Chain the address authenticated on. `None` for an email login, which is
+    /// not bound to a chain.
+    pub chain_id: Option<i64>,
+    /// The account this token authenticates, whichever credential proved it.
+    /// Authorization keys off this — see `routes::lps::lp_owner_guard`.
+    #[schema(value_type = String)]
+    pub account_id: Uuid,
+    /// Roles granted to the account, copied from the `auth_users` allow-list.
     pub roles: Vec<String>,
     /// Expiry (Unix seconds).
     pub exp: usize,
@@ -128,18 +135,41 @@ impl JwtKeys {
         Ok(Self { encoding, decoding })
     }
 
-    /// Issue a signed token for `address` on `chain_id` carrying `roles`,
-    /// expiring [`TOKEN_TTL_SECS`] from now.
-    pub fn issue_token(
+    /// Issue a token for a wallet login: subject is the normalized address, and
+    /// `chain_id` is carried as before so existing clients see an unchanged
+    /// token shape apart from the added `account_id`.
+    pub fn issue_wallet_token(
         &self,
         address: &str,
         chain_id: i64,
+        account_id: Uuid,
+        roles: Vec<String>,
+    ) -> anyhow::Result<String> {
+        self.encode(address.to_owned(), Some(chain_id), account_id, roles)
+    }
+
+    /// Issue a token for an email login. There is no address and no chain, so the
+    /// subject is the account id itself.
+    pub fn issue_email_token(
+        &self,
+        account_id: Uuid,
+        roles: Vec<String>,
+    ) -> anyhow::Result<String> {
+        self.encode(account_id.to_string(), None, account_id, roles)
+    }
+
+    fn encode(
+        &self,
+        sub: String,
+        chain_id: Option<i64>,
+        account_id: Uuid,
         roles: Vec<String>,
     ) -> anyhow::Result<String> {
         let now = Utc::now().timestamp();
         let claims = Claims {
-            sub: address.to_owned(),
+            sub,
             chain_id,
+            account_id,
             roles,
             iat: now as usize,
             exp: (now + TOKEN_TTL_SECS) as usize,
