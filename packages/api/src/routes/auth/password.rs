@@ -32,7 +32,7 @@ use crate::auth::TOKEN_TTL_SECS;
 use crate::captcha::CaptchaError;
 use crate::error::ApiError;
 use crate::otp::{
-    generate_code, hash_code, MAX_OTP_ATTEMPTS, OTP_RESEND_COOLDOWN_SECS, OTP_TTL_MINUTES,
+    generate_code, hash_code, MAX_OTP_ATTEMPTS, OTP_RESEND_COOLDOWN_SECS, OTP_TTL_SECS,
 };
 use crate::password::{
     dummy_password_hash, hash_password, validate_password_policy, verify_password,
@@ -280,6 +280,9 @@ pub async fn verify_otp(
         .ok_or_else(rejected)?;
 
     if hash_code(account.id, req.code.trim()) != stored.code_hash {
+        // One guess per code. The attempt budget already refuses any further
+        // try; burning the row as well keeps the table honest about it.
+        state.otp_repo.invalidate(stored.id).await?;
         return Err(rejected());
     }
     if gate_token_issue(&account, false).is_some() {
@@ -497,7 +500,7 @@ async fn issue_and_send_passcode(
             account_id,
             &hash_code(account_id, &code),
             pending_password_hash,
-            OTP_TTL_MINUTES,
+            OTP_TTL_SECS,
             OTP_RESEND_COOLDOWN_SECS,
         )
         .await?;

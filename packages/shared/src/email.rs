@@ -31,7 +31,7 @@ pub fn render_verification_email(to: &str, code: &str) -> OutboundEmail {
         subject: "Your Pipeline verification code".to_owned(),
         body: format!(
             "Your Pipeline verification code is {code}.\n\n\
-             It expires in 10 minutes. If you did not request it, ignore this email."
+             It expires in 1 minute. If you did not request it, ignore this email."
         ),
     }
 }

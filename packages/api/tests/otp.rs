@@ -12,7 +12,7 @@
 
 use uuid::Uuid;
 
-use pipeline_api::otp::{generate_code, hash_code, OTP_LEN};
+use pipeline_api::otp::{generate_code, hash_code, MAX_OTP_ATTEMPTS, OTP_LEN, OTP_TTL_SECS};
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
@@ -60,4 +60,16 @@ fn hashes_the_same_code_and_account_reproducibly() {
 #[test]
 fn does_not_store_the_code_in_the_clear() {
     assert!(!hash_code(account(), "123456").contains("123456"));
+}
+
+// ── Lifetime ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn expires_a_passcode_one_minute_after_it_is_issued() {
+    assert_eq!(OTP_TTL_SECS, 60);
+}
+
+#[test]
+fn allows_a_single_guess_before_the_passcode_is_burned() {
+    assert_eq!(MAX_OTP_ATTEMPTS, 1);
 }

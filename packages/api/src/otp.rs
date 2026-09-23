@@ -15,13 +15,21 @@ use uuid::Uuid;
 /// Digits in a passcode. Matches `OTP_LENGTH` in the frontend's `useOtpModal`.
 pub const OTP_LEN: usize = 6;
 
-/// How long an issued passcode stays usable.
-pub const OTP_TTL_MINUTES: i32 = 10;
+/// How long an issued passcode stays usable. Must not fall below
+/// [`OTP_RESEND_COOLDOWN_SECS`], or a caller would be left holding a dead code
+/// while still being refused a new one.
+pub const OTP_TTL_SECS: i32 = 60;
 
-/// Verification attempts allowed against a single passcode before it is burned.
-/// The real brute-force control: a 6-digit space is trivially searchable, so the
-/// attempt cap and the TTL — not the stored hash — are what protect the code.
-pub const MAX_OTP_ATTEMPTS: i32 = 5;
+/// Verification attempts allowed against a single passcode. One: a wrong code
+/// burns it, and the caller needs a fresh one. A 6-digit space is trivially
+/// searchable, so nothing about the stored hash protects the code — the guess
+/// budget and the TTL do.
+pub const MAX_OTP_ATTEMPTS: i32 = 1;
+
+/// A passcode must outlive the gap before another can be requested. Shorter, and
+/// a caller is left holding a dead code while still being refused a new one —
+/// checked here so the build fails rather than the behaviour degrading quietly.
+const _: () = assert!(OTP_TTL_SECS >= OTP_RESEND_COOLDOWN_SECS);
 
 /// Minimum gap between sends to one address. The frontend's 59-second countdown
 /// is an affordance; this is the control, enforced server-side from the stored

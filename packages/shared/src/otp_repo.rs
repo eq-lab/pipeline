@@ -9,7 +9,8 @@
 //! enforced **in SQL under a row lock**, not by reading a row and deciding in
 //! Rust. Read-then-write loses the race the controls exist to stop: concurrent
 //! requests all observe the same pre-write state and all proceed, which turns
-//! "5 attempts" and "one code per 60s" into "as many as you can send at once".
+//! "one guess per code" and "one code per 60s" into "as many as you can send
+//! at once".
 //!
 //! Burning a code on successful verification lives on
 //! `AccountRepo::verify_email_consuming_code`, not here: it has to happen in the
@@ -61,7 +62,7 @@ impl OtpRepo {
         account_id: Uuid,
         code_hash: &str,
         pending_password_hash: &str,
-        ttl_minutes: i32,
+        ttl_secs: i32,
         cooldown_secs: i32,
     ) -> Result<bool, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
@@ -102,18 +103,32 @@ impl OtpRepo {
         sqlx::query(
             "INSERT INTO otp_codes \
                (account_id, code_hash, pending_password_hash, purpose, expires_at) \
-             VALUES ($1, $2, $3, $4, now() + make_interval(mins => $5::int))",
+             VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5::double precision))",
         )
         .bind(account_id)
         .bind(code_hash)
         .bind(pending_password_hash)
         .bind(PURPOSE_EMAIL_VERIFICATION)
-        .bind(ttl_minutes)
+        .bind(ttl_secs)
         .execute(&mut *tx)
         .await?;
 
         tx.commit().await?;
         Ok(true)
+    }
+
+    /// Burn a passcode outright. Called when a supplied code does not match: the
+    /// attempt budget already makes the row unusable, but leaving `consumed_at`
+    /// NULL means the table says "still outstanding" about something that is
+    /// dead, which anyone reading it — a query, a support tool — would believe.
+    pub async fn invalidate(&self, id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// The password riding on the account's newest code, so a resend can carry it

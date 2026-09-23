@@ -1375,8 +1375,8 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/routes/auth/password.rs`, `packages/shared/src/otp_repo.rs`
-- **Gap:** `attempts` is per code, not per account. Issuing a new passcode supersedes the old row and starts a fresh row at `attempts = 0`, so the 5-attempt cap resets. There is no ceiling on how many codes an account may be issued in total. (The cap itself is no longer racy — `OtpRepo::claim_attempt` spends an attempt and checks the ceiling in one statement, verified at 5 grants out of 20 parallel claims.)
-- **Impact:** Both issue paths share a 60-second cooldown enforced under a row lock, so an attacker is bounded to ~5 guesses per minute (~7,200/day, roughly a 0.7% daily chance of landing a given code) — a real bound, but weaker than "5 attempts" reads. The captcha raises the cost further, and is a no-op when `TURNSTILE_SECRET_KEY` is unset.
+- **Gap:** `attempts` is per code, not per account. Issuing a new passcode supersedes the old row and starts a fresh row at `attempts = 0`, so the guess budget resets. There is no ceiling on how many codes an account may be issued in total. (The budget itself is not racy — `OtpRepo::claim_attempt` spends the attempt and checks the ceiling in one statement.)
+- **Impact:** Much reduced now that the budget is one guess per code: both issue paths share a 60-second cooldown under a row lock, so an attacker gets ~1 guess per minute (~1,440/day, roughly a 0.14% daily chance of landing a given code). Still unbounded in total, so it remains worth closing. The captcha raises the cost further, and is a no-op when `TURNSTILE_SECRET_KEY` is unset.
 - **Suggested fix:** A per-account ceiling on codes issued per rolling hour (the `otp_codes` rows already carry `created_at`, so this is a `count(*)` inside the existing locked transaction — no new state, replica-safe). Pairs naturally with the rate-limiting work in TD-81.
 
 ### TD-84: Roles hang off the wallet credential, not the account
@@ -1402,3 +1402,11 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Gap:** The table is keyed rather than appended, so it holds one row per distinct `(scope, key)` — but a key is only removed when that caller later signs in successfully. An address or client that fails and never returns leaves its row behind for good.
 - **Impact:** Unbounded growth proportional to distinct addresses and client addresses attempted, which under a credential-stuffing run is exactly the set an attacker controls. No correctness impact (an expired window restarts in place), purely storage and index bloat.
 - **Suggested fix:** A periodic `DELETE FROM login_attempts WHERE window_start < now() - interval '1 hour'` — `idx_login_attempts_window` already supports it. Either a worker job or an opportunistic sweep on a small fraction of calls; do not run it on every request.
+
+### TD-87: A single mistyped digit strands the user for up to a minute, silently
+
+- **Date:** 2026-09-23
+- **Location:** `packages/api/src/routes/auth/password.rs`, `packages/api/src/otp.rs`
+- **Gap:** A passcode allows one guess, lives 60s, and cannot be re-sent until 60s after the previous send. A user who fumbles a digit therefore has a dead code and no way to get another until the cooldown elapses — and `resend-otp` answers `202` throughout, mailing nothing, because any other status would reveal that the address holds an unverified account.
+- **Impact:** The most common user error in the flow now produces a dead end with no feedback: the screen says "check your inbox", no email arrives, and nothing explains why. Expect support load and drop-off at exactly the step where a new LP is being onboarded. The window is worst immediately after a send (a typo at t+5s means ~55s of silence).
+- **Suggested fix:** No security-preserving message exists for the anonymous caller, so fix it in the UI instead: the frontend knows when it last triggered a send, so it can render the remaining cooldown on the OTP screen and disable Resend until it elapses (`useOtpModal` already runs a 59s countdown — wire it to the burn, not just to the initial send). Alternatively reconsider the 1-guess/60s TTL pairing: three guesses with a 10-minute TTL gave the same practical security once the cooldown is the binding control, and far more slack.

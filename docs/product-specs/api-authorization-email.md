@@ -25,9 +25,9 @@ mandatory 2FA and two-person activation. An account created here holds no roles.
    cases (the second being the resume path for someone who closed the OTP
    screen), and for the third a notice to the address's *owner* that someone
    tried to register it. The caller learns nothing either way.
-2. **Verify.** The LP posts the passcode. Codes live **10 minutes**, allow
-   **5 attempts**, and are single-use; issuing a new one supersedes any
-   outstanding one. On success the address is marked verified, **the password
+2. **Verify.** The LP posts the passcode. Codes live **60 seconds** and allow
+   **one guess** — a wrong code burns it, and the caller needs a fresh one.
+   Issuing a new code supersedes any outstanding one. On success the address is marked verified, **the password
    that was submitted alongside this code is installed**, and a JWT is issued —
    all in one transaction. Every failure — unknown address, no outstanding code,
    wrong code, expired, used, out of attempts — returns the same `401` and the
@@ -115,5 +115,19 @@ Adds `otp_codes` to the `accounts` model in
 [api-authorization.md](./api-authorization.md): the outstanding
 email-verification passcodes, stored as `sha256(account_id ‖ ":" ‖ code)`. The
 hash stops a casual DB read from handing over live codes; it is *not*
-brute-force resistant over a six-digit space, so the 10-minute expiry and the
-5-attempt cap are the real controls.
+brute-force resistant over a six-digit space, so the 60-second expiry and the
+single-guess budget are the real controls. Together with the resend cooldown
+they bound an attacker to one guess per minute against a 10⁶ space.
+
+The cost lands on real users: a single mistyped digit kills the code, and the
+replacement cannot be sent until the cooldown elapses — up to 60 seconds during
+which `resend-otp` answers `202` and mails nothing. That silence is deliberate
+(saying otherwise would reveal that the address has a pending account), but it
+means a fumbled digit looks like a broken product. See TD-87.
+
+The TTL deliberately equals the resend cooldown. Shorter, and a caller would be
+holding a dead code while still being refused a new one; the invariant is
+asserted in `packages/api/tests/otp.rs`. It is a tight window for a user who has
+to switch to an inbox and back — if delivery latency makes it unusable in
+practice, raise the TTL rather than lowering the cooldown, since the cooldown is
+what bounds outbound mail.
