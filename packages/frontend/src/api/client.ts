@@ -33,6 +33,16 @@
 import { ENV } from "@/lib/env";
 import { readMock, parseJson } from "@/wallet";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 /**
  * Fetches `${ENV.API_BASE_URL}${path}` and returns the parsed JSON body.
  *
@@ -40,8 +50,10 @@ import { readMock, parseJson } from "@/wallet";
  *   1. `pipeline.mock.api.<METHOD>.<path>` (path includes query string)
  *   2. `pipeline.mock.api.<METHOD>.<path-without-query>` (alias without `?…`)
  *
- * Throws an `Error` on non-2xx responses. The error message is the `error`
- * field from the JSON body when available, otherwise `response.statusText`.
+ * Throws an `ApiError` (status + message) on non-2xx responses. The message is
+ * the `error` field from the JSON body when available, otherwise
+ * `response.statusText`. A 202/204 or otherwise empty body resolves to
+ * `undefined` rather than attempting `response.json()`.
  *
  * @param path  Path + optional query string, e.g. `"/v1/requests?wallet=0x…"`.
  * @param init  Optional `RequestInit` options (method, headers, body, …).
@@ -80,8 +92,12 @@ export async function apiFetch<T>(
     } catch {
       // JSON parse failed — fall back to statusText
     }
-    throw new Error(message);
+    throw new ApiError(response.status, message);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204 || response.status === 202) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

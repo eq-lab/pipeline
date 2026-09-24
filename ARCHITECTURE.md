@@ -34,7 +34,9 @@ Two logical views served from the same app, gated by authenticated role:
 - **Operations Console** — role-gated back-office interface for Trustee, Team, and Originator operators.
 
 **Entry point:** `packages/frontend/main.ts`
-**Auth:** wagmi + viem + Reown AppKit (WalletConnect v2) for LPs; email + password + 2FA for operators.
+**Auth:** wagmi + viem + Reown AppKit (WalletConnect v2) for LPs, plus a self-serve email +
+password + OTP credential (`packages/frontend/src/auth/`, `docs/frontend/auth-components.md#emailauthflow`)
+that resolves to the same `accounts` JWT — LP header entry point pending #1282; email + password + 2FA for operators.
 **Web3:** wagmi + viem for contract interactions; Reown AppKit for the WalletConnect modal. All blockchain access goes through `packages/frontend/src/wallet/`.
 **Port:** 3000 (dev)
 
@@ -108,7 +110,7 @@ frontend (TypeScript)
 
 | Concern | Owner |
 |---------|-------|
-| Authentication (LP) | frontend (wallet signature via wagmi + viem + Reown AppKit / WalletConnect v2) |
+| Authentication (LP) | frontend (wallet signature via wagmi + viem + Reown AppKit / WalletConnect v2, or self-serve email + password + OTP) |
 | Authentication (operators) | api (email + password + TOTP/WebAuthn) |
 | MPC signing | worker (via MPC vendor SDK — Fireblocks or BitGo, pending) |
 | KYC/screening | worker (Sumsub + Chainalysis webhooks/API) |

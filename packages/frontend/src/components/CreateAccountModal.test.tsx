@@ -394,4 +394,40 @@ describe("CreateAccountModal (#1249)", () => {
     ).resolves.not.toThrow();
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("an async onSubmit disables Sign Up while pending, then re-enables it", async () => {
+    const user = userEvent.setup();
+    let resolveSubmit!: () => void;
+    const onSubmit = vi.fn(
+      () => new Promise<void>((resolve) => (resolveSubmit = resolve)),
+    );
+    renderModal({ onSubmit });
+    await fillValid(user);
+
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+    expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
+
+    resolveSubmit();
+    await screen.findByRole("button", { name: "Sign Up" });
+    expect(screen.getByRole("button", { name: "Sign Up" })).not.toBeDisabled();
+  });
+
+  it("captchaReady=false keeps Sign Up disabled even with valid input", async () => {
+    const user = userEvent.setup();
+    renderModal({ captchaReady: false });
+    await fillValid(user);
+    expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
+  });
+
+  it("renders the turnstileSlot when provided", () => {
+    renderModal({ turnstileSlot: <div data-testid="turnstile-stub" /> });
+    expect(screen.getByTestId("turnstile-stub")).toBeInTheDocument();
+  });
+
+  it("formError renders as a form-level alert", () => {
+    renderModal({ formError: "Something went wrong — try again." });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Something went wrong — try again.",
+    );
+  });
 });

@@ -38,11 +38,52 @@ import type {
 
 Low-level fetch wrapper. Resolves the URL as `${ENV.API_BASE_URL}${path}`,
 consults the localStorage mock layer before issuing a real request, and throws
-on non-2xx responses.
+an `ApiError` on non-2xx responses. A `202`/`204`/empty-body response resolves
+to `undefined` instead of attempting `response.json()`.
 
 ```ts
 const data = await apiFetch<MyType>("/v1/some-endpoint");
 ```
+
+### `ApiError`
+
+Thrown by `apiFetch` on a non-2xx response. Extends `Error` — existing
+`catch (e) { e.message }` callers are unaffected — and adds `status: number` so
+callers can branch on the HTTP status (401/403/429/…) without parsing the
+message string.
+
+```ts
+try {
+  await login({ email, password });
+} catch (e) {
+  if (e instanceof ApiError && e.status === 401) {
+    // "Incorrect email or password"
+  }
+}
+```
+
+### Auth module (`src/api/auth.ts`)
+
+Typed wrappers over the email/password auth endpoints
+(`packages/api/src/routes/auth/password.rs`; see
+`docs/product-specs/api-authorization-email.md`). All four map camelCase params
+to the backend's snake_case JSON body.
+
+```ts
+import { signup, verifyOtp, resendOtp, login } from "@/api";
+import type { TokenResponse } from "@/api";
+
+await signup({ email, password, captchaToken }); // always 202, no body
+const { token, expires_in }: TokenResponse = await verifyOtp({ email, code });
+await resendOtp({ email, captchaToken }); // always 202, no body
+const session: TokenResponse = await login({ email, password });
+```
+
+`login` rejects with `ApiError` on `401` (bad credentials), `403` (suspended,
+or `email_not_verified` — the frontend routes this one back to the OTP
+screen), and `429` (lockout). `verifyOtp` rejects with `401` on any invalid,
+expired, used, or out-of-attempts code. See `src/auth/session.ts` for storing
+the returned token.
 
 ### `useRequests()`
 

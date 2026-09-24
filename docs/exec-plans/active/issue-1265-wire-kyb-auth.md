@@ -37,16 +37,33 @@ Out of scope:
 
 ## Open Questions
 
-- Entry point: epic decision (2026-09-17) keeps production entry via `/test` only until #1282. Confirm this issue wires the flow only in the `/test` AuthTab and #1282 mounts it in the header, rather than this issue adding production entry.
-- Post-auth destination: after successful login/verify, where does the user land (close modal and stay; go to `/`; open Company Docs for new signups)? #1282 owns state-based routing — confirm this issue just closes the modal and sets the session.
-- Session storage: `localStorage` (survives reloads, supports "resume later" per the 2026-09-21 flow clarification) vs `sessionStorage`/memory. Recommend `localStorage` with expiry from `expires_in`; confirm. No refresh endpoint exists, so the user re-logs in after expiry.
-- Forgot password: the #1280 scope note says this issue owns the real reset request and reset-link landing, but no backend reset endpoint exists and those screens are undesigned. Propose splitting into a new backend issue + frontend follow-up; `onSubmit` in ForgotPasswordModal stays a stand-in here. Confirm.
-- Unverified login path: on `403 email_not_verified`, the plan calls `resend-otp` (needs a Turnstile token, so a captcha widget in the sign-in modal or an interstitial) and opens OTP. Does a resent passcode install a password (the one from original signup)? If not, what is the intended recovery for a user who never finished verifying?
-- Copy for states not in Figma: login `401` ("Incorrect email or password"?), `429` lockout, OTP expired/burned, network error. Need wording or approval of proposed strings.
-- Turnstile placement: visible widget vs invisible/managed mode, and where it sits in the Create account / OTP layouts (not in Figma).
-- Should "Continue with wallet" also close the auth modal before opening `ConnectWalletModal` (assumed yes)?
+All answered by @equilibrium-de on 2026-09-24 (issue comment "Answers from @equilibrium-de"):
+
+1. **Entry point** — yes: `/test` AuthTab only; production header entry stays with #1282.
+2. **Post-auth destination** — yes: close modal + set session; routing owned by #1282.
+3. **Session storage** — yes: `localStorage` with expiry from `expires_in`.
+4. **Forgot password** — split: backend #1358, frontend #1359. `ForgotPasswordModal.onSubmit` stays a stand-in here.
+5. **Unverified login** — activate: on `403 email_not_verified` call `resend-otp` and open OTP; a successful verify installs the pending password. Backend already supports this (`resend_otp` re-issues with `latest_pending_password_hash`, `verify-otp` installs it) — no backend change needed.
+6. **Copy for non-Figma states** — implementer picks sensible wording; tuned later. Implemented: login 401 → "Incorrect email or password"; login 403 (suspended) → account-suspended message; login 429 → lockout message; OTP verify failure → "Code is incorrect or expired. Request a new one."; network/unexpected errors → generic retry copy.
+7. **Turnstile** — site key `0x4AAAAAAFAYwDE0-EKHrVz7` (public), read from `VITE_TURNSTILE_SITE_KEY`, explicit render, invisible size, token sent as `captcha_token`, widget reset after each submit (tokens are single-use), `siteverify` never called from the browser. Site key set in `.env.example` (replacing the "NOT read by any code yet" note) and in the local `.env`. The frontend Docker image injects `VITE_*` vars at container start (`docker/frontend/entrypoint.sh` writes `window.__ENV__`, no build-time `ARG`) — `VITE_TURNSTILE_SITE_KEY` was added there.
+8. **Continue with wallet** — yes: close auth modal first.
 
 ## Implementation Steps
+
+All 9 steps below are implemented. Deviations from the plan text, noted inline: step 4 used a
+hand-written ~90-line `Turnstile.tsx` wrapper (`@marsidev/react-turnstile` was not added as a
+dependency — the wrapper's surface is small enough not to need it) and also wired
+`VITE_TURNSTILE_SITE_KEY` into `docker/frontend/entrypoint.sh` (runtime env injection, not a
+build-time `ARG`) since the frontend Docker image has no build-time `VITE_*` vars at all; step 5
+fully removed `MOCK_VALID_CODE`/`MOCK_VERIFY_DELAY_MS` rather than keeping them as a no-`verify`
+default, since `/test` no longer mounts `OtpModal` standalone (step 8 replaces it with
+`EmailAuthFlow`); step 6 implemented the server-error prop as two props
+(`passwordServerError`/`formError` on `SignInModal`, `formError` on `CreateAccountModal`) rather
+than one generic `serverError`, since the two cases render in different slots; step 7's screen
+union omits `"none"` (`EmailAuthFlow`'s own `open` prop is the on/off axis; `screen` is only the
+four in-flow screens) and resolved the "403 email_not_verified -> trigger resend" open question
+via a deferred auto-resend (no Turnstile token exists yet at the moment of the `403` — see
+`useEmailAuthFlow.ts`'s effect on `[otpCaptchaToken, pendingEmail]`).
 
 1. **Typed API errors** — `packages/frontend/src/api/client.ts`: add `export class ApiError extends Error { status: number }`; throw it in `apiFetch` on non-OK responses (keep `message` from `payload.error`). Handle `202` / empty bodies: return `undefined` when `response.status === 204 || 202` or content-length is 0, instead of `response.json()`. Export from `api/index.ts`. Update `client.test.ts`.
 2. **Auth API module** — new `packages/frontend/src/api/auth.ts`: `signup({ email, password, captchaToken })`, `verifyOtp({ email, code })` -> `TokenResponse`, `resendOtp({ email, captchaToken })`, `login({ email, password })` -> `TokenResponse`. Map to snake_case bodies (`captcha_token`), JSON headers, `POST`. Export `TokenResponse` type. Mock-key support comes free via `apiFetch`.

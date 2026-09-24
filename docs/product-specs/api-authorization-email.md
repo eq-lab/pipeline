@@ -131,3 +131,53 @@ asserted in `packages/api/tests/otp.rs`. It is a tight window for a user who has
 to switch to an inbox and back — if delivery latency makes it unusable in
 practice, raise the TTL rather than lowering the cooldown, since the cooldown is
 what bounds outbound mail.
+
+## Frontend
+
+Issue #1265 wires `SignInModal`, `CreateAccountModal`, and `OtpModal` (see
+`docs/frontend/auth-components.md`) to the four endpoints above, mounted only
+in the `/test?tab=auth` `AuthTab` diagnostics route (production entry is
+#1282's). `packages/frontend/src/api/auth.ts` provides typed wrappers; see
+`packages/frontend/src/api/README.md` for the request/response shapes.
+
+**Session storage.** A successful `login`/`verify-otp` response is stored via
+`packages/frontend/src/auth/session.ts` under the `pipeline.auth.session`
+`localStorage` key as `{ token, expiresAt }`, with `expiresAt` computed from
+`expires_in` at save time. `readSession()` returns `null` (and clears the key)
+once `expiresAt` has passed. There is no refresh endpoint, so an expired
+session requires a fresh login. `useAuthSession()` (`useSyncExternalStore`)
+exposes `{ token, isAuthenticated, signOut }` reactively within the tab that
+made the change; it does not listen for cross-tab `storage` events. This is
+the LP app's first email-account session — the pattern is designed for reuse
+by #1282 (production entry) and #1254 (`/v1/lps/*` KYB data wiring).
+
+**403 `email_not_verified` routing.** On `login`'s `403 email_not_verified`,
+the frontend calls `resend-otp` (reusing the pending signup passcode's
+password per the backend behavior above) and opens the OTP screen — the user
+verifies with the code just re-issued, which installs the original password.
+
+**Error copy** (none of these states are in Figma): login `401` → "Incorrect
+email or password"; login `403` (suspended) → "This account is suspended.
+Contact support."; login `429` → "Too many attempts. Try again in a minute.";
+OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
+"Code is incorrect or expired. Request a new one."; network/unexpected errors
+→ "Network error — check your connection and try again."
+
+**Turnstile.** `packages/frontend/src/components/Turnstile.tsx` wraps the
+Cloudflare script (`challenges.cloudflare.com/turnstile/v0/api.js`), loaded
+once, rendered explicitly (not via a `data-sitekey` auto-render attribute) at
+`size: "invisible"` so it needs no layout accommodation in either the
+Create-account or OTP screens (neither has a Figma-designed widget slot). The
+site key is `VITE_TURNSTILE_SITE_KEY` (see `.env.example`); the widget renders
+nothing and never yields a token when the key is empty, which keeps `signup`
+and OTP resend inert in an unconfigured environment rather than erroring. The
+token is sent as `captcha_token`; the widget is reset (`turnstile.reset`)
+after every signup submit and every OTP resend, since Cloudflare tokens are
+single-use. `siteverify` is never called from the browser — only the API
+verifies the token, server-side, as described above.
+
+The frontend Docker image injects `VITE_*` variables at container start
+(`docker/frontend/entrypoint.sh` writes `window.__ENV__` from the process
+environment; there is no build-time `ARG` for any `VITE_*` var in `Dockerfile`)
+— `VITE_TURNSTILE_SITE_KEY` was added to that script's `jq` object alongside
+the existing variables.

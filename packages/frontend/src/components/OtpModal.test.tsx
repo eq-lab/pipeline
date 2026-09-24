@@ -24,7 +24,17 @@ async function typeCode(
   await user.paste(code);
 }
 
-describe("OtpModal (#1250)", () => {
+function pendingVerify() {
+  let resolve!: () => void;
+  let reject!: () => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("OtpModal (#1250, #1265)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
@@ -58,14 +68,15 @@ describe("OtpModal (#1250)", () => {
     ).toBeInTheDocument();
   });
 
-  it("default state shows Resend in 00:59, no loader, no alert", () => {
+  it("default state shows Resend in 00:59 as plain text (not a button), no loader, no alert", () => {
     renderModal();
-    expect(screen.getByText("Resend in 00:59")).toBeInTheDocument();
+    const resend = screen.getByText("Resend in 00:59");
+    expect(resend.tagName).toBe("P");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("countdown ticks down and stops at Resend", () => {
+  it("countdown ticks down and becomes a clickable Resend button at zero", () => {
     renderModal();
     act(() => {
       vi.advanceTimersByTime(10_000);
@@ -75,38 +86,36 @@ describe("OtpModal (#1250)", () => {
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
-    expect(screen.getByText("Resend")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resend" })).toBeInTheDocument();
     expect(screen.queryByText(/Resend in/)).not.toBeInTheDocument();
   });
 
-  it("entering six digits fires onSubmit and shows the loader", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
-    });
-    const onSubmit = vi.fn();
-    renderModal({ onSubmit });
+  it("entering six digits calls verify and shows the loader", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const verify = vi.fn().mockReturnValue(new Promise<void>(() => {}));
+    renderModal({ verify });
 
     await typeCode(user);
 
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledWith("111111");
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify).toHaveBeenCalledWith("111111");
     expect(screen.getByRole("status")).toBeInTheDocument();
-    expect(screen.getByText(/Resend in 00:5\d/)).toBeInTheDocument();
   });
 
-  it("a wrong code shows the error alert and aria-invalid after the mock delay", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
-    });
-    renderModal();
+  it("a rejected verify shows the error alert and aria-invalid", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
 
     await typeCode(user);
-    act(() => {
-      vi.advanceTimersByTime(800);
+    await act(async () => {
+      reject();
+      await promise.catch(() => {});
     });
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Enter the correct code",
+      "Code is incorrect or expired. Request a new one.",
     );
     expect(screen.getByLabelText("Verification code")).toHaveAttribute(
       "aria-invalid",
@@ -114,16 +123,17 @@ describe("OtpModal (#1250)", () => {
     );
   });
 
-  it("the valid code 123456 fires onVerified and shows no error", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
-    });
+  it("a resolved verify fires onVerified and shows no error", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, resolve } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
     const onVerified = vi.fn();
-    renderModal({ onVerified });
+    renderModal({ verify, onVerified });
 
     await typeCode(user, "123456");
-    act(() => {
-      vi.advanceTimersByTime(800);
+    await act(async () => {
+      resolve();
+      await promise;
     });
 
     expect(onVerified).toHaveBeenCalledTimes(1);
@@ -132,34 +142,40 @@ describe("OtpModal (#1250)", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("the countdown keeps ticking through the error state", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
-    });
+  it("with no verify prop, entering a code rejects silently into the error state", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderModal();
 
     await typeCode(user);
-    act(() => {
-      vi.advanceTimersByTime(800);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText(/Resend in 00:5\d/)).toBeInTheDocument();
 
-    act(() => {
-      vi.advanceTimersByTime(60_000);
-    });
-    expect(screen.getByText("Resend")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("does not call verify again while a verify is already in flight (no double-submit)", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const verify = vi.fn().mockReturnValue(new Promise<void>(() => {}));
+    renderModal({ verify });
+
+    await typeCode(user);
+    await typeCode(user);
+
+    expect(verify).toHaveBeenCalledTimes(1);
   });
 
   it("editing the code from the error state clears the alert and aria-invalid", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
-    });
-    renderModal();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
 
     await typeCode(user);
-    act(() => {
-      vi.advanceTimersByTime(800);
+    await act(async () => {
+      reject();
+      await promise.catch(() => {});
     });
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
@@ -171,10 +187,26 @@ describe("OtpModal (#1250)", () => {
     );
   });
 
-  it("the back arrow calls onBack; Escape calls onBack; no close button", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
+  it("clicking Resend once enabled calls resend and restarts the countdown", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const resend = vi.fn().mockResolvedValue(undefined);
+    renderModal({ resend });
+
+    act(() => {
+      vi.advanceTimersByTime(59_000);
     });
+    const resendButton = screen.getByRole("button", { name: "Resend" });
+    await user.click(resendButton);
+
+    expect(resend).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Resend in 00:59")).toBeInTheDocument();
+  });
+
+  it("the back arrow calls onBack; Escape calls onBack; no close button", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onBack = vi.fn();
     renderModal({ onBack });
 
@@ -198,15 +230,16 @@ describe("OtpModal (#1250)", () => {
   });
 
   it("reopening resets code, status and countdown", async () => {
-    const user = userEvent.setup({
-      advanceTimers: vi.advanceTimersByTime,
-    });
-    const { rerender } = renderModal({ open: false });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    const { rerender } = renderModal({ open: false, verify });
 
-    rerender(<OtpModal open onBack={vi.fn()} />);
+    rerender(<OtpModal open onBack={vi.fn()} verify={verify} />);
     await typeCode(user);
-    act(() => {
-      vi.advanceTimersByTime(800);
+    await act(async () => {
+      reject();
+      await promise.catch(() => {});
     });
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
@@ -216,6 +249,11 @@ describe("OtpModal (#1250)", () => {
     expect(screen.getByLabelText("Verification code")).toHaveValue("");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("Resend in 00:59")).toBeInTheDocument();
+  });
+
+  it("renders a turnstileSlot when provided", () => {
+    renderModal({ turnstileSlot: <div data-testid="turnstile-stub" /> });
+    expect(screen.getByTestId("turnstile-stub")).toBeInTheDocument();
   });
 
   it("renders no image pane", () => {

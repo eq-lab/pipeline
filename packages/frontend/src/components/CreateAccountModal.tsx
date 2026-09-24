@@ -1,4 +1,5 @@
 // spec: docs/frontend/auth-components.md#createaccountmodal
+import type { ReactNode } from "react";
 import { Button, TextField } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import {
@@ -12,9 +13,15 @@ import { useAuthCredentialsForm } from "@/components/useAuthCredentialsForm";
 export interface CreateAccountModalProps {
   open: boolean;
   onDismiss: () => void;
-  onSubmit?: (credentials: { email: string; password: string }) => void;
+  onSubmit?: (credentials: {
+    email: string;
+    password: string;
+  }) => void | Promise<void>;
   onContinueWithWallet?: () => void;
   onSignIn?: () => void;
+  formError?: string;
+  captchaReady?: boolean;
+  turnstileSlot?: ReactNode;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -25,6 +32,9 @@ export function CreateAccountModal({
   onSubmit,
   onContinueWithWallet,
   onSignIn,
+  formError,
+  captchaReady = true,
+  turnstileSlot,
 }: CreateAccountModalProps) {
   const headingId = "create-account-modal-heading";
   const {
@@ -33,6 +43,7 @@ export function CreateAccountModal({
     password,
     setPassword,
     isValid,
+    isSubmitting,
     emailError,
     passwordError,
     handleEmailBlur,
@@ -79,10 +90,27 @@ export function CreateAccountModal({
             error={passwordError}
           />
 
+          {turnstileSlot}
+
+          {formError ? (
+            <p
+              role="alert"
+              className={[
+                "w-full text-center",
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body-s)]",
+                "leading-[var(--text-pipeline-body-s--line-height)]",
+                "text-[color:var(--color-pipeline-negative-strong)]",
+              ].join(" ")}
+            >
+              {formError}
+            </p>
+          ) : null}
+
           <Button
             type="submit"
             variant="primary-blue"
-            disabled={!isValid}
+            disabled={!isValid || isSubmitting || !captchaReady}
             className="!w-full !min-w-0 disabled:opacity-[0.32]"
           >
             Sign Up

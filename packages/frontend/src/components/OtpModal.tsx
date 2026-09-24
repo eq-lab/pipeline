@@ -1,4 +1,5 @@
 // spec: docs/frontend/auth-components.md#otpmodal
+import type { ReactNode } from "react";
 import { OtpInput } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { useOtpModal } from "@/components/useOtpModal";
@@ -29,8 +30,10 @@ export interface OtpModalProps {
   open: boolean;
   onBack: () => void;
   email?: string;
-  onSubmit?: (code: string) => void;
+  verify?: (code: string) => Promise<void>;
+  resend?: () => Promise<void>;
   onVerified?: (code: string) => void;
+  turnstileSlot?: ReactNode;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -39,15 +42,21 @@ export function OtpModal({
   open,
   onBack,
   email = "user@email.io",
-  onSubmit,
+  verify,
+  resend,
   onVerified,
+  turnstileSlot,
 }: OtpModalProps) {
   const headingId = "otp-modal-heading";
-  const { code, setCode, status, errorMessage, resendLabel } = useOtpModal({
-    open,
-    onSubmit,
-    onVerified,
-  });
+  const {
+    code,
+    setCode,
+    status,
+    errorMessage,
+    resendLabel,
+    resendEnabled,
+    onResend,
+  } = useOtpModal({ open, verify, resend, onVerified });
 
   return (
     <AuthModalShell
@@ -73,17 +82,39 @@ export function OtpModal({
           aria-label="Verification code"
         />
 
-        <p
-          className={[
-            "text-center",
-            "font-[family-name:var(--font-body)]",
-            "text-[length:var(--text-pipeline-caption)]",
-            "leading-[var(--text-pipeline-caption--line-height)]",
-            "text-[color:var(--color-pipeline-ink-muted)]",
-          ].join(" ")}
-        >
-          {resendLabel}
-        </p>
+        {resendEnabled ? (
+          <button
+            type="button"
+            onClick={onResend}
+            className={[
+              "text-center",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-caption)]",
+              "leading-[var(--text-pipeline-caption--line-height)]",
+              "text-[color:var(--color-pipeline-ink)]",
+              "cursor-pointer bg-transparent",
+              "hover:underline",
+              "focus-visible:outline focus-visible:outline-2",
+              "focus-visible:outline-offset-2",
+              "focus-visible:outline-[color:var(--color-pipeline-ink)]",
+            ].join(" ")}
+          >
+            {resendLabel}
+          </button>
+        ) : (
+          <p
+            className={[
+              "text-center",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-caption)]",
+              "leading-[var(--text-pipeline-caption--line-height)]",
+              "text-[color:var(--color-pipeline-ink-muted)]",
+            ].join(" ")}
+          >
+            {resendLabel}
+          </p>
+        )}
+        {turnstileSlot}
 
         {status === "verifying" ? (
           <span

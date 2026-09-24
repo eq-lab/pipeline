@@ -9,7 +9,7 @@
  *   - Non-2xx with non-JSON body falls back to `response.statusText`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { apiFetch } from "./client";
+import { apiFetch, ApiError } from "./client";
 
 // ── Mock @/lib/env ────────────────────────────────────────────────────────────
 
@@ -137,9 +137,37 @@ describe("apiFetch — real fetch (no mock keys)", () => {
   });
 });
 
+// ── Empty-body responses ────────────────────────────────────────────────────────
+
+describe("apiFetch — empty-body responses", () => {
+  it("returns undefined for a 202 with no body", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 202 }));
+    await expect(apiFetch("/v1/auth/signup")).resolves.toBeUndefined();
+  });
+
+  it("returns undefined for a 204 with no body", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await expect(apiFetch("/v1/auth/resend-otp")).resolves.toBeUndefined();
+  });
+});
+
 // ── Error handling ────────────────────────────────────────────────────────────
 
 describe("apiFetch — non-2xx responses", () => {
+  it("throws an ApiError carrying the HTTP status and the JSON error message", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid credentials" }), {
+        status: 401,
+        statusText: "Unauthorized",
+      }),
+    );
+
+    const error = await apiFetch("/v1/auth/login").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(401);
+    expect((error as ApiError).message).toBe("invalid credentials");
+  });
+
   it("throws with the JSON error message on non-2xx with { error } body", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "boom" }), {

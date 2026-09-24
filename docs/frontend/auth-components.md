@@ -5,6 +5,9 @@ area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds fou
 (#1251 Company Docs, #1253 Account-in-review) beyond #1249 (Create-account), #1250 (OTP), and
 #1280 (Forgot Password), all documented below — same reasoning as `wallet-flows.md` /
 `trustee-flows.md`. #1252 (Owners) shipped and was later retired — see `### OwnersModal` below.
+#1265 wired `SignInModal`/`CreateAccountModal`/`OtpModal` to the real backend auth endpoints via
+a new orchestrator, `EmailAuthFlow` — see `### EmailAuthFlow`, `### Turnstile`, and `### Session
+module` below.
 
 #1253's Issue body also named a "review banner" deliverable. It does not exist in the
 source-of-truth Figma section — see `### AccountInReviewModal` below and TD-69
@@ -94,8 +97,14 @@ two rules.
 ### SignInModal
 
 `packages/frontend/src/components/SignInModal.tsx` + `useAuthCredentialsForm.ts`. The
-email+password sign-in screen — a presentational component with **no network call**; `onSubmit`
-is a seam for #1254 (defaults to a no-op).
+email+password sign-in screen. **Wired to `POST /v1/auth/login` by #1265** via `EmailAuthFlow`
+(below) — `SignInModal` itself stays presentational: `onSubmit` may return `void | Promise<void>`
+and, while that promise is pending, `useAuthCredentialsForm` reports `isSubmitting` and the
+submit button is disabled (in addition to the existing validity gate). Two additional optional
+props surface server-side rejection without any new markup: `passwordServerError?: string`
+(rendered in the password field's existing error slot — used for login `401`) and `formError?:
+string` (a `role="alert"` caption above the submit button — used for `429` lockout and any other
+non-field-specific failure). No captcha — `login` carries none server-side.
 
 Visual specs (Figma):
 
@@ -190,8 +199,13 @@ focusable `<button>`; since #1315, "Create account" is a focusable `<button>` to
 ### CreateAccountModal
 
 `packages/frontend/src/components/CreateAccountModal.tsx` + `useAuthCredentialsForm.ts`. The
-email+password create-account screen — a presentational component with **no network call**;
-`onSubmit` is a seam for #1254 (defaults to a no-op). This is a thin delta on `SignInModal`, not
+email+password create-account screen. **Wired to `POST /v1/auth/signup` by #1265** via
+`EmailAuthFlow` (below) — `CreateAccountModal` stays presentational, gaining the same
+`isSubmitting`/`formError` seams as `SignInModal` (no password-field server error here — signup
+never returns a credential-specific rejection) plus two captcha-related props: `turnstileSlot?:
+ReactNode` (rendered below the password field) and `captchaReady?: boolean` (default `true`;
+`false` keeps Sign Up disabled even once the fields validate, matching the fact that `signup`
+requires a `captcha_token`). This is a thin delta on `SignInModal`, not
 a new screen family: the Figma frame is an instance of the same `Sign In` component with four
 slot overrides, and every other element (`ContinueWithWalletButton`, `OrDivider`, both
 `TextField`s, the disabled-submit treatment, the right-hand image pane) is reused verbatim via
@@ -346,8 +360,11 @@ buttons with the shell's `focus-visible` outline treatment.
 ### OtpModal
 
 `packages/frontend/src/components/OtpModal.tsx` + `useOtpModal.ts`. The OTP email-verification
-screen — presentational only, **no network call**; `onSubmit` is a seam for #1254 (defaults to a
-no-op).
+screen. **Wired to the real `verify-otp`/`resend-otp` endpoints by #1265** — see "EmailAuthFlow"
+below for the orchestration; `OtpModal` itself stays presentational, taking `verify?: (code) =>
+Promise<void>` and `resend?: () => Promise<void>` seams (no default mock — an unwired `verify`
+rejects immediately, landing in the error state) plus an optional `turnstileSlot` node for the
+resend captcha widget.
 
 Visual specs (Figma):
 
@@ -363,34 +380,36 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
 
 1. **`OtpInput`** (`@pipeline/ui`, see `ui-components.md#otpinput`) — six digits, `invalid` while
    `status === "error"`.
-2. **Resend line** — inert `<p>` (Caption 12/16, `--color-pipeline-ink-muted`), never a button
-   (same treatment as "Forgot password?" in #1248 — no resend endpoint, no sub-issue owns the
-   action; deferred to #1254). Renders `Resend in MM:SS` while counting down, `Resend` once
-   elapsed or in the error state.
-3. **State-specific tail** — nothing while `idle`; a `role="status"` spinner (24×24 loader icon,
-   `animate-spin`) while `verifying`; a `role="alert"` caption ("Enter the correct code", new
-   `--text-pipeline-body-s` token, `--color-pipeline-negative-strong`) while `error`.
+2. **Resend line** — `<p>` (Caption 12/16, `--color-pipeline-ink-muted`) while counting down
+   (`Resend in MM:SS`); becomes a real `<button type="button" onClick={onResend}>` (ink color,
+   underline on hover) once the countdown reaches zero and no resend is in flight.
+3. **`turnstileSlot`** — rendered after the resend line; `EmailAuthFlow` supplies an invisible
+   `Turnstile` widget here (see "Turnstile" below) so a resend click always has a fresh captcha
+   token.
+4. **State-specific tail** — nothing while `idle`; a `role="status"` spinner (24×24 loader icon,
+   `animate-spin`) while `verifying`; a `role="alert"` caption ("Code is incorrect or expired.
+   Request a new one.", new `--text-pipeline-body-s` token, `--color-pipeline-negative-strong`)
+   while `error`.
 
-**State machine** (`useOtpModal`, modelled on `useSignInModal`) — `idle` → `verifying` →
-`error`:
+**State machine** (`useOtpModal`) — `idle` → `verifying` → `error`:
 
 - Typing/pasting into `OtpInput` sanitises to digits and caps at `OTP_LENGTH` (6).
-- Any edit while `verifying` or `error` cancels the pending mock timer and returns to `idle`
-  (the countdown does not restart).
-- Reaching 6 digits sets `verifying`, fires `onSubmit?.(code)`, and after
-  `MOCK_VERIFY_DELAY_MS` (800ms) resolves the mock: `MOCK_VALID_CODE` (`123456`) returns to
-  `idle` and fires `onVerified?.(code)` — the seam the next step (#1251 destination, #1254
-  orchestration) attaches to; any other code transitions to `error`. The mock verification
-  itself is placeholder logic (TD-60); #1254 replaces it with the real call. There is no
-  success frame in #1250's Figma — the `/test` preview renders a stand-in confirmation line.
-- The 59-second resend countdown (`RESEND_COUNTDOWN_SECONDS`) starts on open, ticks once per
-  second, and runs **independently of the error state** (change request 2026-09-18): the error
-  frame's bare `Resend` label is the post-countdown moment, not an error side-effect.
-- All state (code, status, countdown) resets whenever `open` flips `false → true`.
+- Any edit clears an `error` back to `idle`. A duplicate resubmission of the exact code already
+  being verified (`OtpInput` can re-fire `onChange` with the same value on paste) is ignored —
+  it does not call `verify` a second time.
+- Reaching 6 digits sets `verifying` and awaits `verify(code)`: resolve → `idle` +
+  `onVerified?.(code)`; reject → `error`. A stale response (superseded by a later 6-digit entry)
+  is dropped via a request-id guard, never overwriting a newer attempt's state.
+- The 59-second resend countdown (`RESEND_COUNTDOWN_SECONDS`) starts on open and ticks once per
+  second, independently of the verify/error state. Clicking `Resend` once enabled awaits
+  `resend()` and restarts the countdown to 59s regardless of success/failure (a resend failure
+  is silent, matching the backend's own silent-inside-cooldown behavior).
+- All state (code, status, countdown, resend-in-flight) resets whenever `open` flips
+  `false → true`.
 
 **Copy** (verbatim, do not paraphrase): title "Check your inbox"; description "We’ve sent a
 passcode to user@email.io" (U+2019 apostrophe — not `'` or `&rsquo;`); countdown "Resend in
-00:59"; elapsed/error "Resend"; error caption "Enter the correct code".
+00:59"; elapsed "Resend"; error caption "Code is incorrect or expired. Request a new one."
 
 **Accessibility:** the back arrow is the only dismiss (Figma hides the Close Icon instance for
 this frame — a non-interactive arrow would trap the preview); on open, focus lands on the OTP
@@ -620,46 +639,123 @@ the LP header entry point (a future Figma); the review banner (TD-69); `@pipelin
 `aria-live="polite"` so the label swap is announced; `Go to app` is a normal focusable button in
 both states.
 
+### EmailAuthFlow
+
+`packages/frontend/src/components/EmailAuthFlow.tsx` + `useEmailAuthFlow.ts` (#1265). The
+orchestrator that turns `SignInModal`, `CreateAccountModal`, `OtpModal`, and `ForgotPasswordModal`
+into one wired flow against `packages/api/src/routes/auth/password.rs`. It is the only consumer
+of the four modals' `onSubmit`/`verify`/`resend` network seams; the modals themselves stay
+presentational (see their individual sections above).
+
+Props: `open`, `initialScreen?: EmailAuthScreen` (`"sign-in" | "create-account" |
+"forgot-password" | "otp"`, default `"sign-in"`), `onClose`, `onAuthenticated?`,
+`onConnectWallet?`, `onForgotPasswordSubmit?: (payload: { email: string }) => void`. Internal
+`screen` state resets to `initialScreen` whenever `open` transitions `false → true` **or**
+`initialScreen` itself changes while already open (a caller re-pointing an already-open flow at a
+different screen) — never on the modals' own internal cross-link navigation, which only updates
+`screen`, not the `initialScreen` prop.
+
+Wiring, screen by screen:
+
+- **Sign in submit** → `login`. Success saves the session (see "Session module" below), closes
+  the flow (`onClose`), and calls `onAuthenticated?.()`. `401` → `passwordServerError`
+  "Incorrect email or password". `403 email_not_verified` → screen jumps to `otp`, remembers the
+  submitted email as `pendingEmail`, and marks an auto-resend pending (see OTP below). `403`
+  (any other reason, i.e. suspended) → `formError` "This account is suspended. Contact support."
+  `429` → `formError` "Too many attempts. Try again in a minute." Anything else (including a
+  non-`ApiError`, i.e. a network failure) → `formError` from the error's own message, or "Network
+  error — check your connection and try again." for a non-`ApiError`.
+- **Create account submit** → `signup`, using whatever captcha token `CreateAccountModal`'s
+  `Turnstile` slot currently holds (`captchaReady` gates the button so a submit without a token
+  cannot happen through the UI; the handler also guards it directly). Success sets `pendingEmail`
+  and jumps to `otp` — signup always answers `202`, so there is no "email taken" branch to handle
+  (see the backend doc's enumeration-resistance rationale). Any failure sets `formError` from the
+  error message and, either way, the Turnstile widget is reset and its token cleared (tokens are
+  single-use).
+- **OTP verify** → `verifyOtp({ email: pendingEmail, code })`. Success saves the session, closes
+  the flow, and calls `onAuthenticated?.()` — `OtpModal`'s own `onVerified` seam is unused here
+  since `verify` itself performs the side effects. Failure simply rejects; `useOtpModal` renders
+  the generic error caption (see "OtpModal" above) since `verify-otp` gives no finer-grained
+  reason.
+- **OTP resend** (manual, via the `Resend` button) → `resendOtp` with the OTP screen's own
+  Turnstile token, then resets that widget. **Auto-resend**: on the `403 email_not_verified` path
+  above, a pending-auto-resend flag is set instead of calling `resendOtp` immediately (no token
+  exists yet at that point — the OTP screen, and its `Turnstile` slot, have not mounted). An
+  effect watches the OTP screen's captcha token and, once the widget yields one, fires the
+  deferred `resendOtp` exactly once and clears the flag. Cloudflare's invisible widget normally
+  resolves near-instantly on mount, so in practice the user sees the OTP screen open with the
+  fresh code already on its way; the countdown that starts on open (see "OtpModal") correctly
+  reflects that a send just happened.
+- **Continue with wallet** (from either `SignInModal` or `CreateAccountModal`) → closes the auth
+  flow (`onClose`) then calls `onConnectWallet?.()`. The `/test` preview wires this to
+  `ConnectWalletModal`.
+- **Forgot password submit** → calls `onForgotPasswordSubmit?.(payload)` then closes the flow.
+  `ForgotPasswordModal.onSubmit` has no real backend yet (see "ForgotPasswordModal" above; #1358
+  ships the backend, #1359 the frontend wiring) — this stays a stand-in, same as before #1265.
+- **Cross-links** (`onForgotPassword`, `onCreateAccount`, `onSignIn`, `onBackToSignIn`, OTP's
+  `onBack`) all just move `screen` between the four values; OTP's back arrow returns to `sign-in`.
+
+### Turnstile
+
+`packages/frontend/src/components/Turnstile.tsx` (#1265). A ~90-line wrapper around Cloudflare's
+Turnstile script (`https://challenges.cloudflare.com/turnstile/v0/api.js`, loaded once and
+memoized module-wide) rather than the `@marsidev/react-turnstile` package — the wrapper's surface
+is small enough (explicit `render`/`reset`/`remove`, one `invisible`-sized widget, one callback)
+that a dependency did not pay for itself. Props: `onToken: (token: string) => void`; ref handle:
+`{ reset: () => void }`. Renders a widget at `size: "invisible"` — Cloudflare runs its challenge
+without any visible UI, calling `onToken` once it has one (normally near-instant, occasionally an
+interactive challenge if Cloudflare's heuristics flag the client). Renders nothing (`null`) and
+never calls `onToken` when `ENV.TURNSTILE_SITE_KEY` is empty, so an unconfigured environment
+degrades to "captcha-gated actions stay disabled" rather than throwing. `siteverify` is never
+called client-side — only the token is sent to the API, which verifies it server-side (see the
+product spec's "Bot defense" section).
+
+### Session module
+
+`packages/frontend/src/auth/session.ts` + `useAuthSession.ts` (#1265). `saveSession({ token,
+expires_in })` stores `{ token, expiresAt: Date.now() + expires_in * 1000 }` as JSON under the
+`pipeline.auth.session` `localStorage` key and notifies subscribers; `readSession()` returns
+`null` (clearing the key) once `expiresAt` has passed, or on any parse/shape failure;
+`clearSession()` removes the key. `authHeaders()` returns `{ Authorization: "Bearer <token>" }`
+when a live session exists, `{}` otherwise — exported for future `#1282`/`#1254` call sites, not
+yet wired into any existing `apiFetch` call. `useAuthSession()` is a `useSyncExternalStore` hook
+exposing `{ token, expiresAt, isAuthenticated, signOut }`; reactivity is same-tab only (mirrors
+the wallet module's `connectionStore.ts` pattern) — it does not listen for cross-tab `storage`
+events, so a sign-out in one tab does not live-update another tab's `isAuthenticated` until that
+tab next re-reads the store.
+
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders six trigger
-buttons opening `SignInModal` (#1248), `ForgotPasswordModal` (#1280), `CreateAccountModal`
-(#1249), `OtpModal` (#1250), `CompanyDocsModal` (#1278, redesigned from #1251), and
-`AccountInReviewModal` (#1253) — a seventh, `OwnersModal` (#1252), was retired 2026-09-21 (see
-`### OwnersModal` above) — each with
-every seam left at its no-op default except `OtpModal.onVerified`,
-`ForgotPasswordModal.onSubmit`, `CompanyDocsModal.onSubmit`, `AccountInReviewModal.onGoToApp`
-(stand-in confirmation lines), and the three-way `SignInModal`/`ForgotPasswordModal`/
-`CreateAccountModal` cross-link seams (`onForgotPassword`, `onBackToSignIn`, `onCreateAccount`,
-`onSignIn`), which swap between those screens per the union-typed state below rather than no-op.
-Every other trigger is independent of the rest — entering a
-valid OTP code shows "OTP verified — open the Company Docs step from the button above." rather
-than auto-opening it, and submitting Company Docs shows "Company documents submitted — open the
-Account-in-review screen from the button above." rather than auto-opening it — since the shell's
-body-scroll-lock and capture-phase Escape are not stack-safe (see the shell caveats above) and
-stacking two of these modals is exactly the untested path a chained transition would exercise.
-Clicking `Go to app` on the Account-in-review screen shows "Go to app — #1254 wires this to the
-LP dashboard." This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
-`openConnectModal` call sites.
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders a session
+status line (`useAuthSession`, `data-testid="auth-session-status"`, plus a `Sign out` button once
+authenticated), three trigger buttons that open `EmailAuthFlow` on its `sign-in` /
+`forgot-password` / `create-account` screen (`openAuthFlow(screen)`, which sets both the
+`authFlowScreen` and `authFlowOpen` state read by the flow's `initialScreen`/`open` props), and
+two further triggers opening `CompanyDocsModal` (#1278, redesigned from #1251) and
+`AccountInReviewModal` (#1253) independently — a sixth trigger, `OwnersModal` (#1252), was retired
+2026-09-21 (see `### OwnersModal` above), and there is **no standalone "Open OTP screen" trigger**
+any more: the OTP screen is reachable only through `EmailAuthFlow` itself (a successful Create
+Account submit, or a Sign In that returns `403 email_not_verified`), both of which need a real
+backend round-trip. `CompanyDocsModal.onSubmit` and `AccountInReviewModal.onGoToApp` keep their
+stand-in confirmation lines ("Company documents submitted — …", "Go to app — #1254 wires this to
+the LP dashboard.") — the shell's body-scroll-lock and capture-phase Escape are not stack-safe
+(see the shell caveats above), so these two stay independent of `EmailAuthFlow` and of each other.
+This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
+`openConnectModal` call sites; `EmailAuthFlow`'s `onConnectWallet` opens `ConnectWalletModal`
+directly (a `/test`-local `connectWalletOpen` boolean), independent of those production sites too.
 
-**Sign in ↔ Forgot Password ↔ Create Account is the one exception — a swap, never a stack
-(#1280, extended #1315).** All three screens share one union-typed
-`authScreen: "none" | "sign-in" | "forgot-password" | "create-account"` state instead of
-independent booleans, so "two of these open at once" is unrepresentable. Clicking "Forgot
-password?" or "Create account" on Sign in closes it and opens the target screen in the same
-handler; "Back to sign in" and "Log in" reverse those transitions (and "Create account" ↔ "Log in"
-round-trips directly between the two credential screens without passing through Sign in twice).
-This departs from the independent-triggers convention above, but safely: that convention's stated
-reason is stacking (the un-refcounted body-scroll-lock and the capture-phase Escape collision),
-and a swap never stacks two shells — React runs the outgoing tree's effect cleanups before the
+**Sign in ↔ Forgot Password ↔ Create Account ↔ OTP swap, never stack (#1280, extended #1315,
+folded into `EmailAuthFlow` by #1265).** All four screens are `EmailAuthFlow`'s single
+`screen: EmailAuthScreen` state (see "EmailAuthFlow" above), so "two of these open at once" is
+unrepresentable — only one of the four modals ever has `open={true}`. This is safe against the
+shell's stacking hazards (the un-refcounted body-scroll-lock, the capture-phase Escape collision)
+because a swap never stacks two shells: React runs the outgoing tree's effect cleanups before the
 incoming tree's effect creates within a single commit, so `document.body.style.overflow` lands on
-`"hidden"` throughout and exactly one Escape listener is registered at any moment. The convention
-was also about auto-advancing a wizard (OTP → Company Docs), which is flow orchestration owned by
-#1254/#1265; a link whose entire purpose is navigating to a screen this issue ships is a
-different thing. `-test.test.tsx` asserts the invariant directly (exactly one `dialog` role after
-each swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit on Forgot
-Password shows `auth-forgot-password-submitted`: "Reset link requested — #1265 wires this to the
-real password-reset endpoint."
+`"hidden"` throughout and exactly one Escape listener is registered at any moment.
+`-test.test.tsx` and `EmailAuthFlow.test.tsx` assert the invariant directly (exactly one `dialog`
+role after each swap, scroll-lock survives it) rather than trusting the mechanism. A valid submit
+on Forgot Password shows `auth-forgot-password-submitted`: "Reset link requested — #1358/#1359
+wire this to a real password-reset endpoint."
 
 **Account-page preview links (#1284).** The same `AuthTab` also renders six plain links, one per
 `AccountDocumentsState` id, to `/account?state=<id>` — the dev-only preview seam for

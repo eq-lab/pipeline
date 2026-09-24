@@ -5,13 +5,13 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
 import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
-import { SignInModal } from "@/components/SignInModal";
-import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
-import { CreateAccountModal } from "@/components/CreateAccountModal";
-import { OtpModal } from "@/components/OtpModal";
+import { EmailAuthFlow } from "@/components/EmailAuthFlow";
+import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
+import { ConnectWalletModal } from "@/components/ConnectWalletModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
 import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import { FundingDetailsModal } from "@/components/FundingDetailsModal";
+import { useAuthSession } from "@/auth/useAuthSession";
 import { AddUsdCard } from "@/components/AddUsdCard";
 import { FUNDING_DETAILS_PLACEHOLDER } from "@/components/fundingDetails";
 import { ADD_USD_CARD_VARIANTS } from "@/components/addUsdCardState";
@@ -704,12 +704,11 @@ function ToastsTab(): React.JSX.Element {
 
 // ── AuthTab ───────────────────────────────────────────────────────────────────
 
-type AuthScreen = "none" | "sign-in" | "forgot-password" | "create-account";
-
 function AuthTab(): React.JSX.Element {
-  const [authScreen, setAuthScreen] = React.useState<AuthScreen>("none");
-  const [otpOpen, setOtpOpen] = React.useState(false);
-  const [otpVerified, setOtpVerified] = React.useState(false);
+  const [authFlowOpen, setAuthFlowOpen] = React.useState(false);
+  const [authFlowScreen, setAuthFlowScreen] =
+    React.useState<EmailAuthScreen>("sign-in");
+  const [connectWalletOpen, setConnectWalletOpen] = React.useState(false);
   const [companyDocsOpen, setCompanyDocsOpen] = React.useState(false);
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
   const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
@@ -719,15 +718,44 @@ function AuthTab(): React.JSX.Element {
   const [wireStandIn, setWireStandIn] = React.useState<
     "withdraw" | "start-verification" | "view-status" | null
   >(null);
+  const session = useAuthSession();
+
+  function openAuthFlow(screen: EmailAuthScreen) {
+    setAuthFlowScreen(screen);
+    setAuthFlowOpen(true);
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
-        Preview seam for the KYB Sign-in (issue #1248), Forgot-password (issue
-        #1280), Create-account (issue #1249), OTP (issue #1250), Company Docs
-        (issue #1278), and Account-in-review (issue #1253) modals. Not wired to
-        any production entry point.
+        Preview seam for the KYB Sign-in / Create-account / OTP flow, now wired
+        to the real backend auth endpoints (issue #1265) via `EmailAuthFlow`,
+        plus the Company Docs (issue #1278) and Account-in-review (issue #1253)
+        modals. Not mounted on any production entry point — see #1282.
       </p>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
+          Session status (`useAuthSession`) — reflects the `localStorage`
+          session set by a successful login/verify.
+        </p>
+        <p
+          data-testid="auth-session-status"
+          className="text-sm text-[color:var(--color-pipeline-ink)]"
+        >
+          {session.isAuthenticated
+            ? `Authenticated — expires ${new Date(session.expiresAt ?? 0).toLocaleString()}`
+            : "Not authenticated"}
+        </p>
+        {session.isAuthenticated && (
+          <Button
+            variant="secondary"
+            className="w-fit"
+            onClick={session.signOut}
+          >
+            Sign out
+          </Button>
+        )}
+      </div>
       <div className="flex flex-col gap-1">
         <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
           Preview seam for the Account page (issue #1284) — dev-only, one link
@@ -806,30 +834,23 @@ function AuthTab(): React.JSX.Element {
         <Button
           variant="secondary"
           className="w-fit"
-          onClick={() => setAuthScreen("sign-in")}
+          onClick={() => openAuthFlow("sign-in")}
         >
           Open Sign In modal
         </Button>
         <Button
           variant="secondary"
           className="w-fit"
-          onClick={() => setAuthScreen("forgot-password")}
+          onClick={() => openAuthFlow("forgot-password")}
         >
           Open Forgot Password screen
         </Button>
         <Button
           variant="secondary"
           className="w-fit"
-          onClick={() => setAuthScreen("create-account")}
+          onClick={() => openAuthFlow("create-account")}
         >
           Open Create Account modal
-        </Button>
-        <Button
-          variant="secondary"
-          className="w-fit"
-          onClick={() => setOtpOpen(true)}
-        >
-          Open OTP screen
         </Button>
         <Button
           variant="secondary"
@@ -851,16 +872,8 @@ function AuthTab(): React.JSX.Element {
           data-testid="auth-forgot-password-submitted"
           className="text-sm text-[color:var(--color-pipeline-positive)]"
         >
-          Reset link requested — #1265 wires this to the real password-reset
+          Reset link requested — #1358/#1359 wire this to a real password-reset
           endpoint.
-        </p>
-      )}
-      {otpVerified && (
-        <p
-          data-testid="auth-otp-verified"
-          className="text-sm text-[color:var(--color-pipeline-positive)]"
-        >
-          OTP verified — open the Company Docs step from the button above.
         </p>
       )}
       {companyDocsSubmitted && (
@@ -880,34 +893,19 @@ function AuthTab(): React.JSX.Element {
           Go to app — #1254 wires this to the LP dashboard.
         </p>
       )}
-      <SignInModal
-        open={authScreen === "sign-in"}
-        onDismiss={() => setAuthScreen("none")}
-        onForgotPassword={() => setAuthScreen("forgot-password")}
-        onCreateAccount={() => setAuthScreen("create-account")}
+      <EmailAuthFlow
+        open={authFlowOpen}
+        initialScreen={authFlowScreen}
+        onClose={() => setAuthFlowOpen(false)}
+        onConnectWallet={() => setConnectWalletOpen(true)}
+        onForgotPasswordSubmit={() => setResetLinkRequested(true)}
       />
-      <ForgotPasswordModal
-        open={authScreen === "forgot-password"}
-        onDismiss={() => setAuthScreen("none")}
-        onBackToSignIn={() => setAuthScreen("sign-in")}
-        onSubmit={() => {
-          setResetLinkRequested(true);
-          setAuthScreen("none");
-        }}
-      />
-      <CreateAccountModal
-        open={authScreen === "create-account"}
-        onDismiss={() => setAuthScreen("none")}
-        onSignIn={() => setAuthScreen("sign-in")}
-      />
-      <OtpModal
-        open={otpOpen}
-        onBack={() => setOtpOpen(false)}
-        onVerified={() => {
-          setOtpVerified(true);
-          setOtpOpen(false);
-        }}
-      />
+      {connectWalletOpen && (
+        <ConnectWalletModal
+          open={connectWalletOpen}
+          onDismiss={() => setConnectWalletOpen(false)}
+        />
+      )}
       <CompanyDocsModal
         open={companyDocsOpen}
         onDismiss={() => setCompanyDocsOpen(false)}

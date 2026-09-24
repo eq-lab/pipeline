@@ -250,4 +250,44 @@ describe("SignInModal (#1248)", () => {
     ).resolves.not.toThrow();
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("an async onSubmit disables the submit button while pending, then re-enables it", async () => {
+    const user = userEvent.setup();
+    let resolveSubmit!: () => void;
+    const onSubmit = vi.fn(
+      () => new Promise<void>((resolve) => (resolveSubmit = resolve)),
+    );
+    renderModal({ onSubmit });
+    await fillValid(user);
+
+    await user.click(screen.getByRole("button", { name: "Sign In" }));
+    expect(screen.getByRole("button", { name: "Sign In" })).toBeDisabled();
+
+    resolveSubmit();
+    await screen.findByRole("button", { name: "Sign In" });
+    expect(screen.getByRole("button", { name: "Sign In" })).not.toBeDisabled();
+  });
+
+  it("a rejected onSubmit re-enables the submit button and does not throw", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockRejectedValue(new Error("boom"));
+    renderModal({ onSubmit });
+    await fillValid(user);
+
+    await user.click(screen.getByRole("button", { name: "Sign In" }));
+
+    expect(screen.getByRole("button", { name: "Sign In" })).not.toBeDisabled();
+  });
+
+  it("passwordServerError renders in the password field's error slot", async () => {
+    renderModal({ passwordServerError: "Incorrect email or password" });
+    expect(screen.getByText("Incorrect email or password")).toBeInTheDocument();
+  });
+
+  it("formError renders as a form-level alert", () => {
+    renderModal({ formError: "Too many attempts — try again shortly" });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Too many attempts — try again shortly",
+    );
+  });
 });

@@ -12,10 +12,15 @@ import { useAuthCredentialsForm } from "@/components/useAuthCredentialsForm";
 export interface SignInModalProps {
   open: boolean;
   onDismiss: () => void;
-  onSubmit?: (credentials: { email: string; password: string }) => void;
+  onSubmit?: (credentials: {
+    email: string;
+    password: string;
+  }) => void | Promise<void>;
   onContinueWithWallet?: () => void;
   onForgotPassword?: () => void;
   onCreateAccount?: () => void;
+  passwordServerError?: string;
+  formError?: string;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -27,6 +32,8 @@ export function SignInModal({
   onContinueWithWallet,
   onForgotPassword,
   onCreateAccount,
+  passwordServerError,
+  formError,
 }: SignInModalProps) {
   const headingId = "sign-in-modal-heading";
   const {
@@ -35,6 +42,7 @@ export function SignInModal({
     password,
     setPassword,
     isValid,
+    isSubmitting,
     emailError,
     passwordError,
     handleEmailBlur,
@@ -76,15 +84,30 @@ export function SignInModal({
               placeholder="Password"
               value={password}
               onChange={setPassword}
-              invalid={Boolean(passwordError)}
-              error={passwordError}
+              invalid={Boolean(passwordError || passwordServerError)}
+              error={passwordError ?? passwordServerError}
             />
           </div>
+
+          {formError ? (
+            <p
+              role="alert"
+              className={[
+                "w-full text-center",
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body-s)]",
+                "leading-[var(--text-pipeline-body-s--line-height)]",
+                "text-[color:var(--color-pipeline-negative-strong)]",
+              ].join(" ")}
+            >
+              {formError}
+            </p>
+          ) : null}
 
           <Button
             type="submit"
             variant="primary-blue"
-            disabled={!isValid}
+            disabled={!isValid || isSubmitting}
             className="!w-full !min-w-0 disabled:opacity-[0.32]"
           >
             Sign In
