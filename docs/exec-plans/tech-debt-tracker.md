@@ -1424,6 +1424,39 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** No invented mobile layout; revisit once #1282 mounts the card into a real
   responsive grid.
 
+### TD-92: No UI control to disconnect a wallet after #1362
+
+- **Date:** 2026-09-24
+- **Location:** `packages/frontend/src/components/TopBar.tsx`,
+  `packages/frontend/src/components/MobileNavMenu.tsx`,
+  `packages/frontend/src/components/account/AccountWalletCard.tsx`.
+- **Gap:** #1362 removed the header's `WalletPill` + `AccountDropdown` (desktop) and the wallet
+  address/balance/Disconnect rows (mobile) — the only two "Disconnect" affordances anywhere in the
+  app — because neither Figma frame for the new header (`6701:98403` / `6701:97929`) shows any
+  wallet UI. `AccountWalletCard` (`/account`, per #1284) has a `Connect Wallet` action but no
+  disconnect one; `useActiveWalletAccount` only exposes `connect`.
+- **Impact:** Once a wallet is connected there is no in-app way to disconnect it short of using the
+  wallet extension itself (e.g., MetaMask's own site-permissions UI) or clearing site data. Low
+  severity (wallet connection is a read/sign convenience, not a security boundary the app needs to
+  revoke), but a real, user-facing gap worth closing.
+- **Suggested fix:** Add a disconnect action to `AccountWalletCard`'s connected state — no Figma
+  disconnect control exists there either, so this needs a design decision, not just an
+  implementation. Out of scope for #1362 (header auth entry only).
+
+### TD-93: `AccountDropdown` is orphaned dead code after #1362
+
+- **Date:** 2026-09-24
+- **Location:** `packages/frontend/src/components/AccountDropdown.tsx`,
+  `AccountDropdown.test.tsx`, `useAccountDropdown.ts`.
+- **Gap:** `TopBar` was the component's only production caller; #1362 stopped rendering it (see
+  TD-92 and `dashboard-components.md#accountdropdown`). The files remain in the tree with their
+  tests passing, but nothing imports them outside their own test file any more.
+- **Impact:** None functionally — dead code that still compiles and tests green. Reduces signal for
+  future readers who may assume it is still wired.
+- **Suggested fix:** Either delete it, or repurpose its namespace-toggle/disconnect UI as the base
+  for TD-92's `AccountWalletCard` disconnect action (its `kind`/`onKindChange` and
+  `onDisconnect` props are close to what that would need).
+
 ---
 
 ## Post-MVP

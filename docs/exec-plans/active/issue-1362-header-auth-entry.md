@@ -24,42 +24,123 @@ Out of scope (stays in #1282): home-page card state machine, composite Total Bal
 - Expired sessions: `readSession()` clears on read; header flips to unauthenticated only on next store read. Acceptable; no timer added.
 - `TopBar.test.tsx` (1107 lines) asserts right-slot contents; new buttons will require updating wallet-slot assertions.
 
-## Open Questions
+## Open Questions — RESOLVED (2026-09-24, coder pass)
 
-- Which controls show per auth x wallet state? Issue says "follow Figma", but Figma was not readable during planning. Specifically: (a) unauthenticated + no wallet — are Sign In/Sign Up shown alongside or instead of "Connect Wallet"? (b) authenticated + no wallet — is "Connect Wallet" still shown next to the account icon? (c) wallet connected + unauthenticated — WalletPill plus Sign In/Sign Up? Coder should resolve from frames; if frames don't cover a combination, ask the user rather than guess.
-- Account icon menu contents: just "Sign out", or also email / account link (e.g. `/account`, which is dev-only guarded today)? Figma may show a dropdown; not verifiable at planning time.
-- Should `/test?tab=auth` switch to the app-wide `useAuthFlow()` instead of its local `EmailAuthFlow` instance? Plan default: keep local (issue only asks it to keep working).
-- Should successful sign-in (`onAuthenticated`) navigate anywhere or show a toast? Plan default: no navigation (post-login routing is #1282/#1274).
+Answers came from the #1362 Issue comment (2026-09-24) after Figma MCP access was restored, and
+from `get_design_context` pulls on the two given nodes during implementation:
 
-## Implementation Steps
+- **Which controls show per auth x wallet state?** No Connect Wallet button and no WalletPill in
+  the header in *either* auth state — confirmed by `get_design_context` on both frames (neither
+  emits any wallet-related node). Signed out (`6701:98403`): "Sign In" (`Button variant="secondary"`)
+  + "Sign Up" (`Button variant="primary-dark"`). Signed in (`6701:97929`): a single 48×48 account
+  icon button (`6701:97941`), no wallet pill alongside it. Wallet connection moved entirely to
+  `/account`'s `AccountWalletCard` (already wired per #1284).
+- **Account icon menu contents:** no menu at all — the Issue comment overrides the plan's default;
+  the icon navigates directly to `/account`. Sign-out is not a header concern any more; it is
+  `/account`'s existing "Log Out" button (previously an unwired seam from #1284/#1265), now wired
+  to `useAuthSession().signOut()` + navigate to `/`.
+- **`/test?tab=auth`:** kept its own local `EmailAuthFlow` instance, as planned (plan default
+  confirmed).
+- **Successful sign-in:** no navigation, no toast (plan default confirmed) — only the header
+  re-renders via `useAuthSession()`'s reactive session store.
 
-1. Figma pass (before code): load `figma:figma-design-to-code`, pull design context + screenshots for header nodes `6701-98220`, `6701-97538`, `6701-98137` and the other #1282 frames (desktop and mobile). Record per-state control matrix, button variants/labels, account-icon glyph (export exact SVG), menu layout, and Figma node ids. Resolve Open Questions from this; escalate anything uncovered.
-2. New `packages/frontend/src/auth/AuthFlowContext.ts` + `packages/frontend/src/auth/AuthFlowProvider.tsx`:
-   - Context value `{ open: (screen?: EmailAuthScreen) => void; close: () => void }`; hook `useAuthFlow()` throwing outside provider (mirror `wallet/ConnectModalContext.ts`).
-   - Provider holds `open` + `screen` state and renders `<EmailAuthFlow open initialScreen={screen} onClose onConnectWallet={openConnectModal} />`, where `openConnectModal` is `useConnectModal().open`.
-   - Export from an `auth/index.ts` barrel (create if absent) alongside `useAuthSession`.
-3. `packages/frontend/src/main.tsx`: wrap `<WalletViewProvider>` children with `<AuthFlowProvider>` inside `ConnectModalProvider` (needs `useConnectModal`) and above `RouterProvider`.
-4. `packages/frontend/src/components/TopBar.tsx` (desktop right slot `topbar-wallet-slot`):
-   - Read `useAuthSession()` and `useAuthFlow()`.
-   - Unauthenticated: render `Button` "Sign In" (`data-testid="topbar-sign-in-button"`, -> `open("sign-in")`) and "Sign Up" (`topbar-sign-up-button`, -> `open("create-account")`), variants per Figma; `data-node-id` attributes per Figma.
-   - Authenticated: account icon `<button aria-label="Account" aria-haspopup="menu" aria-expanded>` (`topbar-account-button`) toggling a small menu (`topbar-account-menu`) with "Sign out" (`topbar-sign-out`) -> `signOut()` then close menu. Close on Escape / outside click (reuse `AccountDropdown` / `useAccountDropdown` dismissal pattern if it fits, otherwise a new `AuthAccountMenu.tsx` + `useAuthAccountMenu.ts` per the component/hook split convention).
-   - Keep NetworkSwitcher / Connect Wallet / WalletPill per the matrix from step 1.
-5. `packages/frontend/src/components/MobileNavMenu.tsx`: add props `isAuthenticated`, `onSignIn`, `onSignUp`, `onSignOut`; render auth controls per mobile Figma frame; closing the menu before opening the auth flow (avoid menu portal + modal overlap). Wire from `TopBar`.
-6. `packages/frontend/src/routes/test.tsx`: no behavior change; verify it still renders its own `EmailAuthFlow` and tests pass.
-7. Run `pnpm` lint, typecheck, unit tests for frontend (see `test-fast` skill).
+**Additional decisions made during implementation, beyond the plan/Issue comment's explicit scope**
+(documented in `dashboard-components.md#topbar` and `docs/exec-plans/tech-debt-tracker.md`):
 
-## Test Strategy
+- No Figma frame exists for a mobile header/menu variant in this epic (confirmed via
+  `get_metadata` — every `header` frame in the file is 1728px wide). `MobileNavMenu`'s auth section
+  (Sign In/Sign Up stacked, or an Account row) mirrors the desktop matrix by judgment, not a Figma
+  trace — flagged as a design gap, not treated as a blocker.
+  `NetworkSwitcher` was kept in both the desktop and mobile auth slots — it is a separate,
+  unrelated feature (#1032 mainnet/testnet indicator), not part of the "no wallet UI" removal.
+- Removing the header's `WalletPill`/`AccountDropdown`/`MobileNavMenu` wallet rows leaves no UI
+  control anywhere to *disconnect* a wallet (`AccountWalletCard` only has `Connect Wallet`) —
+  logged as TD-92. `AccountDropdown.tsx` itself is now orphaned (TD-93), left in the tree rather
+  than deleted.
+- `/account`'s route guard changed from `ENV.IS_DEV`-only to `!ENV.IS_DEV && readSession() === null`;
+  `?state=` preview overrides were additionally gated behind `ENV.IS_DEV` explicitly in
+  `validateSearch` (previously inherited dev-only-ness transitively from the route guard, which no
+  longer holds now that authenticated production users can reach the route).
+- Audited existing wallet-connect entry points: the Home/Deposit/Stake/Transactions pages each
+  already have their own `useConnectModal()` CTA independent of the header, so removing the
+  header's redundant global button does not strand unauthenticated wallet connection.
 
-- `auth/AuthFlowProvider.test.tsx`: `open("sign-in")` / `open("create-account")` renders the matching modal; `close` hides it; "Continue with wallet" closes the flow then calls the connect-modal `open` (mock `useConnectModal`); `useAuthFlow` outside provider throws.
-- `TopBar.test.tsx`: unauthenticated shows Sign In/Sign Up (and the Figma-decided wallet controls); clicking each opens the right screen (exactly one `dialog`); authenticated (seed via `saveSession`) shows account icon, no Sign In/Up; menu opens, Sign out calls `clearSession` and header reverts; Escape/outside click closes menu; session expiry case (expired `expiresAt`) renders unauthenticated. Update existing wallet-slot assertions for the new matrix.
-- `MobileNavMenu.test.tsx` (or TopBar mobile cases): auth controls render per state; Sign In closes menu and opens flow.
-- Stacking invariant: after "Continue with wallet", only `ConnectWalletModal` dialog is present and body scroll-lock remains.
-- `-test.test.tsx` passes unchanged.
-- Figma verification: compare rendered header (desktop >= md and mobile) in each auth x wallet state against the frames from step 1 via Chrome DevTools screenshots.
+## Implementation Steps — ALL COMPLETE (2026-09-24)
 
-## Docs to Update
+1. **DONE.** Figma pass: loaded `figma:figma-design-to-code`, pulled `get_design_context` for
+   `6701:98403` (signed out) and `6701:97929` (signed in), plus a `get_metadata` sweep confirming
+   no mobile header frame exists in the file. Resolved the Open Questions above from this.
+2. **DONE.** `packages/frontend/src/auth/AuthFlowContext.ts` + `AuthFlowProvider.tsx` — as
+   planned, except `useAuthFlow()` **throws** outside the provider (matching the Test Strategy
+   section below) rather than the no-op-fallback pattern `ConnectModalContext.ts` uses; noted as a
+   deliberate deviation, not an oversight — TopBar/MobileNavMenu are always inside the provider in
+   production. `auth/index.ts` barrel created.
+3. **DONE.** `main.tsx`: `AuthFlowProvider` wraps `WalletViewProvider`/`ToastProvider`/
+   `RouterProvider`, inside `ConnectModalProvider`.
+4. **DONE, simplified vs. plan.** `TopBar.tsx`'s right slot (`topbar-wallet-slot`, name kept):
+   unauthenticated → `Button variant="secondary"` "Sign In" (`topbar-sign-in-button`) +
+   `Button variant="primary-dark"` "Sign Up" (`topbar-sign-up-button`), both `data-node-id`-tagged.
+   Authenticated → one 48×48 `AccountGlyph` icon button (`topbar-account-button`) that navigates to
+   `/account` — **no menu**, per the Issue comment override (plan step 4 assumed a menu with
+   "Sign out"; superseded). `NetworkSwitcher` kept; `WalletPill`/`AccountDropdown`/Connect Wallet
+   button removed entirely (not "kept per the matrix" — the matrix turned out to have none).
+5. **DONE, simplified vs. plan.** `MobileNavMenu.tsx`: props are `isAuthenticated`, `onSignIn`,
+   `onSignUp` (no `onSignOut` — sign-out is `/account`'s Log Out button, not a header control).
+   Signed-out: stacked full-width Sign In/Sign Up buttons. Signed-in: one Account row navigating to
+   `/account` via the existing `onNavigate`. The previous wallet address/balance/Connect/Disconnect
+   rows were removed (see Open Questions above).
+6. **DONE.** `routes/test.tsx`: unchanged, still renders its own local `EmailAuthFlow`; its tests
+   pass unmodified.
+7. **DONE, expanded beyond plan.** Also touched: `routes/account.tsx` (auth guard +
+   `onLogOut` wiring + `?state=` dev-only gating), `AccountGlyph.tsx` (new shared 24px icon),
+   `TopBar.test.tsx` / `MobileNavMenu.test.tsx` (rewritten for the auth matrix, dropped all
+   wagmi/Stellar scaffolding no longer needed), `AccountDropdown.test.tsx` (rewritten against a
+   local harness instead of the real `TopBar`, since `TopBar` no longer renders it),
+   `AuthFlowProvider.test.tsx` (new), `-account.test.tsx` / `-account-route-dev-only.test.tsx`
+   (updated for the new guard). Lint, build, and the full frontend test suite (1934 tests) are
+   green.
 
-- `docs/frontend/auth-components.md`: replace the "No production entry point changes in this epic yet" paragraph; add `### AuthFlowProvider` section; note the `/test` preview keeps its own instance.
-- `docs/frontend/dashboard-components.md` `### TopBar` (and mobile menu section): auth controls, state matrix, Figma node ids, test ids.
-- `docs/frontend/dashboard-components.md` `### Root layout` / provider tree note for `AuthFlowProvider`.
-- Relevant product spec for LP auth entry in `docs/product-specs/` (header now exposes sign-in/sign-up) — update the section describing KYB login entry.
+## Test Strategy — DONE (adjusted for "no menu")
+
+- `auth/AuthFlowProvider.test.tsx` (new): `open("sign-in")` / `open("create-account")` / `open()`
+  default all render `EmailAuthFlow` (mocked) on the right screen; `close()` (context) and the
+  flow's own `onClose` both hide it; `onConnectWallet` wired to the mocked `useConnectModal().open`;
+  `useAuthFlow()` outside the provider throws. Matches the plan as written.
+- `TopBar.test.tsx`: rewritten — unauthenticated shows Sign In/Sign Up, no account button;
+  authenticated (mocked `useAuthSession`) shows the account button, no Sign In/Up, and clicking it
+  navigates to `/account` (asserted via the in-test router's `location.pathname`). No "menu opens /
+  Sign out" tests — there is no menu (plan superseded by the Issue comment). `@/auth` is mocked at
+  module level rather than seeding real `localStorage` sessions, since `TopBar` no longer needs any
+  wallet provider tree at all once the wallet UI was removed — this let the whole file drop its
+  wagmi/AppKit/Stellar-wallets-kit scaffolding.
+- `MobileNavMenu.test.tsx`: rewritten similarly — signed-out shows Sign In/Sign Up (each closes the
+  menu then calls its callback); signed-in shows the Account row (closes the menu, calls
+  `onNavigate("/account")`).
+- Stacking invariant: covered by `AuthFlowProvider.test.tsx`'s "Continue with wallet" test at the
+  provider level (no header-level mock-EmailAuthFlow stacking test was needed since the header
+  itself renders no modal directly).
+- `-test.test.tsx` passes unchanged, confirmed.
+- Figma verification: `get_design_context` screenshots for both frames compared against the
+  implementation during the coder pass (no mobile frame exists to compare against — see Open
+  Questions). A full rendered-app Chrome DevTools comparison is the `ux-tester` phase's job, not
+  the coder's.
+
+## Docs to Update — ALL DONE
+
+- `docs/frontend/auth-components.md`: replaced the "No production entry point changes" paragraph;
+  added `### AuthFlowProvider`; updated the "Diagnostics preview seam" cross-reference; updated the
+  `KYB sign-in (#1248)` note in `dashboard-components.md`'s `ConnectWalletModal` section.
+- `docs/frontend/dashboard-components.md` `### TopBar`: rewritten for the no-wallet-UI matrix,
+  including a "Where wallet-connect entry points still live" audit. `### AccountDropdown`: marked
+  orphaned. `### MobileNavMenu`: rewritten auth section.
+- `docs/frontend/dashboard-components.md` `### Root layout`: added the `main.tsx` provider-tree
+  note for `AuthFlowProvider` (no pre-existing provider-tree doc existed to extend).
+- `docs/product-specs/api-authorization-email.md` `## Frontend`: updated to describe the #1362
+  production entry point and the `/account` guard change.
+- `docs/frontend/account-page.md`: updated the route guard section, the `?state=` preview
+  contract, the seams table (`onLogOut` now wired), the out-of-scope table, and the
+  `AccountWalletCard`/`TopBar.tsx` cross-references.
+- `docs/exec-plans/tech-debt-tracker.md`: logged TD-92 (no wallet disconnect UI) and TD-93
+  (`AccountDropdown` orphaned).
+- `docs/user-stories/epic-1247/1362-header-auth-entry.md` (new) + linked from
+  `docs/user-stories/index.md`.

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Logo, NavIcon, CoinIcon } from "@pipeline/ui";
+import { Button, Logo, NavIcon } from "@pipeline/ui";
 import type { NavIconName } from "@pipeline/ui";
 import { NetworkSwitcher } from "./NetworkSwitcher";
+import { AccountGlyph } from "./AccountGlyph";
 import { isMainnetDeployment } from "@/wallet/networkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#mobilenavmenu (disconnected/connected states, Figma nodes 1989:9231 / 1993:6527).
@@ -73,62 +74,6 @@ export function HamburgerGlyph() {
     >
       <path
         d="M3 12h18M3 6h18M3 18h18"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-/** Wallet glyph — rendered inline so it paints with currentColor. */
-function WalletGlyph() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      width={20}
-      height={20}
-      aria-hidden="true"
-    >
-      <rect
-        x="2"
-        y="5"
-        width="20"
-        height="14"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path d="M2 10h20" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="17" cy="15" r="1.5" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** Copy glyph. */
-function CopyGlyph() {
-  return (
-    <svg
-      viewBox="0 0 22 22"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      width={18}
-      height={18}
-      aria-hidden="true"
-    >
-      <rect
-        x="8"
-        y="8"
-        width="11"
-        height="11"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M6 14H4.5C3.67 14 3 13.33 3 12.5V4.5C3 3.67 3.67 3 4.5 3H12.5C13.33 3 14 3.67 14 4.5V6"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
@@ -269,21 +214,12 @@ export interface MobileNavMenuProps {
   pathname: string;
   /** Navigate to a route. */
   onNavigate: (to: string) => void;
-  /** Whether any wallet is connected. */
-  anyConnected: boolean;
-  /** Connected wallet address (EVM or Stellar). */
-  address?: string;
-  /** Formatted USDC balance, e.g. "$1,000.00". */
-  formattedBalance?: string;
-  /**
-   * Called when the user clicks "Connect Wallet" (disconnected state).
-   * Opens the shared ConnectWalletModal via ConnectModalProvider.
-   */
-  onConnect?: () => void;
-  /**
-   * Called when the user clicks "Disconnect" (connected state).
-   */
-  onDisconnect?: () => void;
+  /** Whether the LP has an active auth session (issue #1362). */
+  isAuthenticated: boolean;
+  /** Opens the shared auth flow on the sign-in screen. */
+  onSignIn: () => void;
+  /** Opens the shared auth flow on the create-account screen. */
+  onSignUp: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -293,11 +229,9 @@ export function MobileNavMenu({
   onClose,
   pathname,
   onNavigate,
-  anyConnected,
-  address,
-  formattedBalance,
-  onConnect,
-  onDisconnect,
+  isAuthenticated,
+  onSignIn,
+  onSignUp,
 }: MobileNavMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "mobile-nav-menu-heading";
@@ -343,27 +277,15 @@ export function MobileNavMenu({
     [onNavigate, onClose],
   );
 
-  const handleConnectClick = useCallback(() => {
-    onConnect?.();
+  const handleSignInClick = useCallback(() => {
+    onSignIn();
     onClose();
-  }, [onConnect, onClose]);
+  }, [onSignIn, onClose]);
 
-  const handleDisconnectClick = useCallback(() => {
-    onDisconnect?.();
+  const handleSignUpClick = useCallback(() => {
+    onSignUp();
     onClose();
-  }, [onDisconnect, onClose]);
-
-  const handleCopyAddress = useCallback(() => {
-    if (address) {
-      void navigator.clipboard.writeText(address);
-    }
-  }, [address]);
-
-  // Shorten address: 0x8493...3b92
-  const shortAddress =
-    address && address.length > 10
-      ? `${address.slice(0, 6)}...${address.slice(-4)}`
-      : (address ?? "");
+  }, [onSignUp, onClose]);
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -512,155 +434,60 @@ export function MobileNavMenu({
             <NetworkSwitcher />
           </div>
 
-          {anyConnected ? (
-            <>
-              {/* Wallet address row */}
-              {address && (
-                <div
-                  className="flex w-full items-center gap-3 rounded-[var(--radius-pipeline-button)] p-2"
-                  data-testid="mobile-wallet-address"
-                  data-node-id="1993:6627"
-                >
-                  <div
-                    className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-button)] bg-[var(--color-pipeline-ink)] text-white"
-                    aria-hidden="true"
-                  >
-                    <WalletGlyph />
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span
-                      className={[
-                        "font-[family-name:var(--font-body)]",
-                        "text-[length:var(--text-pipeline-caption)]",
-                        "leading-[var(--text-pipeline-caption--line-height)]",
-                        "text-[color:var(--color-pipeline-ink-muted)]",
-                        "truncate",
-                      ].join(" ")}
-                    >
-                      Wallet
-                    </span>
-                    <span
-                      className={[
-                        "font-[family-name:var(--font-body)]",
-                        "text-[length:var(--text-pipeline-body)]",
-                        "leading-[var(--text-pipeline-body--line-height)]",
-                        "text-[color:var(--color-pipeline-ink)]",
-                        "truncate",
-                      ].join(" ")}
-                    >
-                      {shortAddress}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Copy address"
-                    onClick={handleCopyAddress}
-                    className={[
-                      "flex size-8 shrink-0 items-center justify-center",
-                      "rounded-[var(--radius-pipeline-button)]",
-                      "text-[color:var(--color-pipeline-ink-muted)]",
-                      "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
-                      "focus:outline-none focus-visible:ring-2",
-                      "focus-visible:ring-[var(--color-pipeline-brand)]",
-                    ].join(" ")}
-                  >
-                    <CopyGlyph />
-                  </button>
-                </div>
-              )}
-
-              {/* USDC balance row */}
-              {formattedBalance && (
-                <div
-                  className="flex w-full items-center gap-3 rounded-[var(--radius-pipeline-button)] p-2"
-                  data-testid="mobile-usdc-balance"
-                  data-node-id="1993:6744"
-                >
-                  <div
-                    className="flex size-10 shrink-0 items-center justify-center"
-                    aria-hidden="true"
-                  >
-                    <CoinIcon token="usdc" size="lg" />
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span
-                      className={[
-                        "font-[family-name:var(--font-body)]",
-                        "text-[length:var(--text-pipeline-caption)]",
-                        "leading-[var(--text-pipeline-caption--line-height)]",
-                        "text-[color:var(--color-pipeline-ink-muted)]",
-                        "truncate",
-                      ].join(" ")}
-                    >
-                      USDC balance
-                    </span>
-                    <span
-                      className={[
-                        "font-[family-name:var(--font-body)]",
-                        "text-[length:var(--text-pipeline-body)]",
-                        "leading-[var(--text-pipeline-body--line-height)]",
-                        "text-[color:var(--color-pipeline-ink)]",
-                        "truncate",
-                      ].join(" ")}
-                    >
-                      {formattedBalance}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Divider before Disconnect */}
-              <div className="flex w-full items-center justify-center py-3">
-                <MenuDivider />
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={() => handleNavClick("/account")}
+              className={[
+                "flex w-full items-center gap-3",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+                "focus-visible:ring-[var(--color-pipeline-brand)]",
+                "focus-visible:ring-offset-[var(--color-pipeline-paper)]",
+                "rounded-[var(--radius-pipeline-button)]",
+              ].join(" ")}
+              data-testid="mobile-account-button"
+              data-node-id="6701:97941"
+            >
+              <div
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-pipeline-ink)] text-white"
+                aria-hidden="true"
+              >
+                <AccountGlyph size={20} />
               </div>
-
-              {/* Disconnect button */}
-              <button
-                type="button"
-                onClick={handleDisconnectClick}
+              <span
                 className={[
-                  "flex w-full items-center justify-center",
-                  "h-12 min-h-12 overflow-hidden px-3",
-                  "rounded-[var(--radius-pipeline-button)]",
                   "font-[family-name:var(--font-body)]",
                   "text-[length:var(--text-pipeline-body)]",
                   "leading-[var(--text-pipeline-body--line-height)]",
-                  "font-[var(--font-weight-emphasized)]",
-                  "text-[color:#b20000]",
-                  "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-                  "focus-visible:ring-[var(--color-pipeline-brand)]",
+                  "font-[var(--font-weight-regular)]",
+                  "text-[color:var(--color-pipeline-ink-muted)]",
+                  "truncate",
                 ].join(" ")}
-                data-testid="mobile-disconnect-button"
-                data-node-id="1993:6920"
               >
-                Disconnect
-              </button>
-            </>
-          ) : (
-            /* Connect Wallet full-width CTA */
-            <button
-              type="button"
-              onClick={handleConnectClick}
-              className={[
-                "flex w-full items-center justify-center",
-                "h-12 min-h-12 overflow-hidden px-3",
-                "rounded-[var(--radius-pipeline-button)]",
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-body)]",
-                "leading-[var(--text-pipeline-body--line-height)]",
-                "font-[var(--font-weight-emphasized)]",
-                "bg-[var(--color-pipeline-cta)]",
-                "text-[color:var(--color-pipeline-on-dark)]",
-                "transition-colors hover:bg-[color-mix(in_oklab,var(--color-pipeline-cta)_88%,white)]",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-                "focus-visible:ring-[var(--color-pipeline-brand)]",
-              ].join(" ")}
-              data-testid="mobile-connect-button"
-              data-node-id="1993:6600"
-            >
-              Connect Wallet
+                Account
+              </span>
             </button>
+          ) : (
+            <div className="flex w-full flex-col gap-2">
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={handleSignInClick}
+                data-testid="mobile-sign-in-button"
+                data-node-id="6701:98415"
+              >
+                Sign In
+              </Button>
+              <Button
+                variant="primary-dark"
+                className="w-full"
+                onClick={handleSignUpClick}
+                data-testid="mobile-sign-up-button"
+                data-node-id="6701:98416"
+              >
+                Sign Up
+              </Button>
+            </div>
           )}
         </div>
       </div>
