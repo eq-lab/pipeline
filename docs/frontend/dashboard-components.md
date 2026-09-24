@@ -505,41 +505,65 @@ rendering branch (`href="#"` → `aria-disabled`, default cursor) remains for th
 
 ### TopBar
 
-Global page header (self-contained, no external props for wallet). Mounted in the root layout
-(`__root.tsx`) so every page renders it automatically; all wallet state is read internally.
+Global page header (self-contained — no external props). Mounted in the root layout
+(`__root.tsx`) so every page renders it automatically; auth state (`useAuthSession`) and the
+shared auth flow (`useAuthFlow`) are read/opened internally.
 
 **Sticky (#1238):** the header is `sticky top-0 z-40` at every breakpoint (desktop and the mobile
 hamburger variant share the one `<header>`). The `RiskBanner` above it stays non-sticky: it
 scrolls away in normal flow, and the header pins once it reaches the viewport top. `z-40` sits
-above page content but below the fixed `z-[9999]` portals (mobile nav menu, connect modals); the
-`AccountDropdown` anchors to the header itself (`z-50` inside its stacking context), so it pins
-along with the pinned header.
+above page content but below the fixed `z-[9999]` portals (mobile nav menu, the auth flow's own
+modal shells).
 
-**Connected state:**
+**No wallet UI in the header (#1362).** Figma frames `6701:98403` (signed out) and `6701:97929`
+(signed in) show neither a `WalletPill` nor a "Connect Wallet" button in either auth state — wallet
+connection lives entirely on `/account` (`AccountWalletCard`, see `account-page.md`) now that the
+account page is reachable from the header. `TopBar.tsx` no longer reads any wallet hook
+(`useEvmWallet`/`useStellarWallet`/etc.) — see "Where wallet-connect entry points still live" below
+for what replaces the removed header CTA.
 
-- Renders a `WalletPill` wrapped in a trigger button.
-- Clicking the pill opens the `AccountDropdown` panel (address copy, USDC balance, namespace
-  toggle, disconnect).
-- When the active namespace is Stellar, the dropdown additionally shows non-zero PLUSD and sPLUSD
-  balances (Issue #675).
-- The wallet pill's balance shows the active namespace's balance, or "—" when the active namespace
-  is disconnected or still loading (#456 — the former cross-namespace fallback was never a product
-  decision, only a code comment canonized by the #1022 comments→specs migration; it contradicted
-  the app-wide active-namespace convention where a disconnected active view renders connect CTAs).
+**Signed-out state** (Figma node `6701:98403`): renders `Button variant="secondary"` "Sign In"
+(`topbar-sign-in-button`) and `Button variant="primary-dark"` "Sign Up" (`topbar-sign-up-button`).
+Both call `useAuthFlow().open(screen)` — `"sign-in"` / `"create-account"` respectively — opening
+the app-wide `EmailAuthFlow` instance (see `auth-components.md#authflowprovider`). No navigation
+and no menu; the header itself flips to the signed-in state once `useAuthSession().isAuthenticated`
+turns true (same-tab reactive via the session store).
 
-**Disconnected state** (neither namespace connected): renders a "Connect Wallet" `<Button>` that
-opens `ConnectWalletModal` (Issue #558 — per-wallet selection with EVM / Soroban tabs).
+**Signed-in state** (Figma node `6701:97929`): renders a single 48×48 icon button (`AccountGlyph`,
+Figma node `6701:97941`), `aria-label="Account"`, `data-testid="topbar-account-button"`. Clicking
+it navigates to `/account` directly — there is no dropdown/menu (per the #1362 Issue comment
+resolving the plan's open question). Sign-out lives on `/account` itself (`Log Out` button — see
+`account-page.md#seams-and-who-wires-them`).
 
-**Wallet slot** (`topbar-wallet-slot`, #1125): `min-w-40 justify-end gap-2` and contains the
-`NetworkSwitcher` pill followed by the wallet pill / Connect button — the network↔wallet gap is
-a fixed 8px instead of varying with the balance width (previously the switcher sat outside the
-fixed `w-40` slot). Desktop-only (`hidden md:flex`); the mobile mount is the `MobileNavMenu`
-Network row.
+**Wallet slot** (`topbar-wallet-slot`, #1125 — name kept for continuity even though it no longer
+renders wallet UI): `min-w-40 justify-end gap-2`, contains the `NetworkSwitcher` pill (unrelated
+mainnet/testnet indicator, #1032 — kept; not part of the #1362 removal) followed by the auth
+controls. Desktop-only (`hidden md:flex`); the mobile mount is the `MobileNavMenu` auth section.
 
-**Figma references:** frame `1497:94715` (TopBar frame); WalletPill `1498:100168`; account dropdown
-`1506:104728` inside `Header / Connected` (`1497:94752`); logo slot `1497:94716` (fixed 160px wide
-so the centred nav reads symmetrically — Logo intrinsic width 116px). Mobile height: `p-2` (8px)
-totaling 56px tall (8 + 40 + 8), Figma node `1989:9052`; restored to `p-4` (16px) at `md+`.
+**Figma references:** frame `1497:94715` (TopBar frame); signed-out right slot `6701:98403`;
+signed-in right slot `6701:97929`; account icon `6701:97941`; logo slot `1497:94716` (fixed 160px
+wide so the centred nav reads symmetrically — Logo intrinsic width 116px). Mobile height: `p-2`
+(8px) totaling 56px tall (8 + 40 + 8), Figma node `1989:9052`; restored to `p-4` (16px) at `md+`.
+No mobile header frame exists in the epic's Figma file (confirmed via `get_metadata` — every
+`header` frame in the file is 1728px wide); the mobile menu's auth section (below) is judgment,
+not a Figma trace.
+
+**Where wallet-connect entry points still live (post-#1362 audit).** Before this issue, `TopBar`
+was the only always-visible "Connect Wallet" entry point. After removing it:
+
+- Unauthenticated visitors still reach it from the Home promo card, the Deposit banner, the Stake
+  banner, and the Transactions empty state (`ConnectWalletPromoCard` / page-level
+  `useConnectModal()` call sites — unaffected by this issue) — the header's button was redundant
+  with these.
+- Authenticated LPs reach it from `/account`'s `AccountWalletCard` (`Connect Wallet` button,
+  already wired per #1284 — see `account-page.md#wallet-card`).
+- **Left unreachable:** there is no UI control to *disconnect* a wallet any more. The only
+  disconnect affordance was `AccountDropdown`'s "Disconnect" button (desktop) and
+  `MobileNavMenu`'s "Disconnect" button (mobile), both removed with the header's wallet UI;
+  `AccountWalletCard` has no disconnect action (`useActiveWalletAccount` exposes `connect` only).
+  Logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`) — likely resolved by adding a
+  disconnect action to `AccountWalletCard` in a follow-up, but that is a design decision (no Figma
+  disconnect control exists there either) outside #1362's scope.
 
 **Active nav** is derived from the current URL:
 
@@ -584,11 +608,21 @@ page, not pinned: the banner is **non-sticky** and scrolls away in normal flow w
 
 ### AccountDropdown
 
+**Status: orphaned by #1362, no longer composed anywhere.** `TopBar` stopped rendering the
+`WalletPill` trigger + this dropdown when the header's right slot switched to the auth-state
+matrix (Sign In/Sign Up ↔ account icon) — see `### TopBar` above. The component and its test file
+are left in the tree (not deleted, to keep this change reviewable) rather than removed outright;
+logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`), a candidate either for deletion or
+for its namespace-toggle/disconnect pattern to be reused by `AccountWalletCard` (which currently
+has no disconnect affordance — see the "Where wallet-connect entry points still live" note above).
+The rest of this section documents the component as it existed before #1362, for that eventual
+reuse.
+
 **Source:** `AccountDropdown.tsx` + `useAccountDropdown.ts`.
 
-The panel that opens when the user clicks the `WalletPill`. Anchored under the pill (absolute,
+The panel that opened when the user clicked the `WalletPill`. Anchored under the pill (absolute,
 right-aligned), dark surface. Figma node `1506:104728` inside `Header / Connected` (`1497:94752`).
-Composed inside `TopBar`; not exported from `@pipeline/ui` (single-component-owner rule per
+Was composed inside `TopBar`; not exported from `@pipeline/ui` (single-component-owner rule per
 FRONTEND.md rule 2).
 
 **Props contract:**
@@ -621,23 +655,28 @@ effects.
 Full-screen slide-in nav panel for mobile viewports. Shown when the user taps the hamburger
 (`menu-2`) icon in `TopBar` at viewport widths below the `md` (768px) breakpoint.
 
-**Disconnected state** (Figma node `1989:9231`):
+**Nav + network rows** (Figma node `1989:9231`, unchanged by #1362):
 
 - Logo + close (×) button.
 - Four nav items: Home / Convert / Earn / Activity.
 - Pipeline Overview item (divider-separated) — navigates to the Protocol Dashboard at
   `/dashboard` and closes the menu (#1125); no nav row is marked active on `/dashboard`.
 - Network row (`mobile-network-switcher`, #1125): "Network" label + the `NetworkSwitcher`
-  pill (the mobile mount — see wallet-flows.md#network-switcher-cross-deployment-links),
-  between the Pipeline Overview divider block and the wallet section.
-- "Connect Wallet" full-width dark CTA.
+  pill (the mobile mount — see wallet-flows.md#network-switcher-cross-deployment-links).
 
-**Connected state** (Figma node `1993:6527`):
+**Auth section (#1362, no mobile Figma frame — judgment, mirrors the desktop TopBar matrix):**
 
-- Same nav items.
-- Wallet address row (icon + truncated address + copy).
-- USDC balance row (coin icon + balance).
-- "Disconnect" button (red text, borderless).
+- Signed out: two full-width buttons, `Button variant="secondary"` "Sign In"
+  (`mobile-sign-in-button`) above `Button variant="primary-dark"` "Sign Up"
+  (`mobile-sign-up-button`) — same order as the desktop right slot, stacked instead of inline.
+  Each closes the menu then calls `onSignIn`/`onSignUp` (→ `useAuthFlow().open(...)` from `TopBar`).
+- Signed in: one row, dark-circle `AccountGlyph` + "Account" label (`mobile-account-button`),
+  closes the menu and navigates to `/account` — the mobile equivalent of the desktop account icon.
+- The previous connected/disconnected wallet section (address row, USDC balance row, Connect/
+  Disconnect buttons) was removed along with `TopBar`'s wallet UI — see `### TopBar`'s "Where
+  wallet-connect entry points still live" note; the same reasoning applies to mobile (the
+  in-page promo/banner CTAs and `/account`'s `AccountWalletCard` are unaffected and still work on
+  mobile viewports).
 
 **Accessibility:** `role="dialog" aria-modal="true"` (announces as a modal); focus moves to the
 first focusable element on open; focus is trapped inside while open; Escape closes (handled by
@@ -648,9 +687,10 @@ deployment (`isMainnetDeployment()`, `@/wallet/networkSwitcher`), same derivatio
 Testnet and unknown passphrases are unaffected.
 
 **`useMobileNavMenu` hook** is intentionally narrow: it owns only the open/close boolean toggle and
-its side effects (body-scroll lock, Escape-to-close). The host component (`TopBar`) holds the
-wallet state and passes action handlers into `MobileNavMenu` as props. Extracted per FRONTEND.md
-rule 2 (separate view from logic via a co-located hook).
+its side effects (body-scroll lock, Escape-to-close). The host component (`TopBar`) holds the auth
+state and passes action handlers into `MobileNavMenu` as props (`isAuthenticated`, `onSignIn`,
+`onSignUp`; account/nav navigation goes through the shared `onNavigate`). Extracted per
+FRONTEND.md rule 2 (separate view from logic via a co-located hook).
 
 ### ConnectChooserModal
 
@@ -710,10 +750,12 @@ Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss, bo
 Dismissal is via the × button and Escape only — no scrim click (unlike `ConnectChooserModal`).
 
 **KYB sign-in (#1248):** `SignInModal` (see [`auth-components.md`](./auth-components.md)) reuses
-this modal's two-pane shell — extracted verbatim into `AuthModalShell` — but is a separate
-component reachable only from `/test?tab=auth`. `ConnectWalletModal`'s own entry point (this
-section) is unchanged by #1248; see `auth-components.md` for the epic's open question on whether
-the LP header eventually gets a dedicated "Sign in" CTA.
+this modal's two-pane shell — extracted verbatim into `AuthModalShell` — and, as of #1362, is also
+reachable from the production `TopBar`'s "Sign In" button (via the app-wide `AuthFlowProvider`),
+not only `/test?tab=auth`. `ConnectWalletModal`'s own entry point (this section) is unchanged by
+#1248/#1362 — the LP header now opens *both* modals, from different controls: "Sign In"/"Sign Up"
+open `SignInModal`/`CreateAccountModal`, and wallet connection happens on `/account`
+(`AccountWalletCard`), not from the header. See `auth-components.md#authflowprovider`.
 
 ### FirstConnectionModal
 
@@ -1376,6 +1418,12 @@ SAC scale.
 **Source:** `packages/frontend/src/routes/__root.tsx`
 
 Wraps every route with the global `TopBar` and `Footer`. `Footer` sits below/outside each route's `<Outlet>` content so it renders on the page background (`--color-pipeline-paper`) on all routes, matching Figma `3283-13463` (Issue #746, epic #712).
+
+**Provider tree (`packages/frontend/src/main.tsx`, above the router — not part of `__root.tsx`
+itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` >
+`ConnectModalProvider` > `AuthFlowProvider` (#1362) > `WalletViewProvider` > `ToastProvider` >
+`RouterProvider`. `AuthFlowProvider` sits inside `ConnectModalProvider` because it needs
+`useConnectModal()` for "Continue with wallet" — see `auth-components.md#authflowprovider`.
 
 ### Home route
 

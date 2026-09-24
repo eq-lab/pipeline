@@ -13,11 +13,15 @@ module` below.
 source-of-truth Figma section — see `### AccountInReviewModal` below and TD-69
 (`docs/exec-plans/tech-debt-tracker.md`). Nothing is built for it here.
 
-**No production entry point changes in this epic yet.** These modals are reachable only from the
-`/test?tab=auth` diagnostics route (see `dashboard-components.md#diagnostics-route`). `TopBar`'s
-"Connect Wallet" button keeps opening `ConnectWalletModal` unchanged. The LP header will get
-separate entry buttons once a dedicated Figma for that change ships — tracked on epic #1247, not
-this issue.
+**Production entry point shipped by #1362.** `TopBar`'s right slot now opens these modals
+directly — "Sign In" / "Sign Up" (signed out) via the app-wide `AuthFlowProvider`, see
+`### AuthFlowProvider` below and `dashboard-components.md#topbar`. The modals are also still
+reachable from the `/test?tab=auth` diagnostics route (see
+`dashboard-components.md#diagnostics-route`), which keeps its own independent `EmailAuthFlow`
+instance (decision recorded in `### Diagnostics preview seam` below) — the two never share state.
+`ConnectWalletModal`'s own entry point is unchanged: wallet connection is not in the header at
+all as of #1362 — see `dashboard-components.md#topbar` ("Where wallet-connect entry points still
+live").
 
 ### AuthModalShell
 
@@ -709,6 +713,32 @@ Wiring, screen by screen:
 - **Cross-links** (`onForgotPassword`, `onCreateAccount`, `onSignIn`, `onBackToSignIn`, OTP's
   `onBack`) all just move `screen` between the four values; OTP's back arrow returns to `sign-in`.
 
+### AuthFlowProvider
+
+`packages/frontend/src/auth/AuthFlowContext.ts` + `AuthFlowProvider.tsx` (#1362), exported from
+the `auth/index.ts` barrel alongside `useAuthSession`. The single app-wide `EmailAuthFlow`
+instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern for
+`ConnectWalletModal`. Mounted in `main.tsx` inside `ConnectModalProvider` (needs
+`useConnectModal()` for "Continue with wallet") and above `WalletViewProvider`/`RouterProvider`,
+so every route renders under it.
+
+`useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close() }`. `open()` defaults to the
+`"sign-in"` screen when called with no argument. Unlike `useConnectModal()` (no-op fallback for
+partial test trees), `useAuthFlow()` **throws** when called outside the provider — callers
+(`TopBar`, `MobileNavMenu`) are always inside it in production, so a missing provider in a test
+tree is a setup bug worth surfacing loudly rather than silently swallowing.
+
+The provider owns `isOpen`/`screen` state and renders one `<EmailAuthFlow open initialScreen={screen}
+onClose={close} onConnectWallet={openConnectModal} />`. `onAuthenticated` is intentionally omitted
+— per the #1362 Issue comment, a successful sign-in only flips the header's own state (`TopBar`
+re-renders from `useAuthSession()`'s reactive session store); there is no navigation or toast.
+
+**Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (signed out) call `open("sign-in")` /
+`open("create-account")`; `TopBar`'s account icon (signed in) does not call it at all — it
+navigates to `/account`. `MobileNavMenu` mirrors both via `onSignIn`/`onSignUp` props threaded from
+`TopBar`. `/test?tab=auth` does **not** use this provider — see `### Diagnostics preview seam`
+below.
+
 ### Turnstile
 
 `packages/frontend/src/components/Turnstile.tsx` (#1265). A ~90-line wrapper around Cloudflare's
@@ -755,9 +785,12 @@ backend round-trip. `CompanyDocsModal.onSubmit` and `AccountInReviewModal.onGoTo
 stand-in confirmation lines ("Company documents submitted — …", "Go to app — #1254 wires this to
 the LP dashboard.") — the shell's body-scroll-lock and capture-phase Escape are not stack-safe
 (see the shell caveats above), so these two stay independent of `EmailAuthFlow` and of each other.
-This does not touch `TopBar`, `ConnectModalProvider`, or any of the six production
+This does not touch `TopBar`, `AuthFlowProvider`, `ConnectModalProvider`, or any of the production
 `openConnectModal` call sites; `EmailAuthFlow`'s `onConnectWallet` opens `ConnectWalletModal`
 directly (a `/test`-local `connectWalletOpen` boolean), independent of those production sites too.
+This was an explicit #1362 decision (plan default, confirmed in the Issue comment): `/test`
+keeps its own `EmailAuthFlow` instance rather than switching to `useAuthFlow()`, so its tests stay
+undisturbed by the production entry point's addition.
 
 **Sign in ↔ Forgot Password ↔ Create Account ↔ OTP swap, never stack (#1280, extended #1315,
 folded into `EmailAuthFlow` by #1265).** All four screens are `EmailAuthFlow`'s single

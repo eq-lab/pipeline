@@ -2,7 +2,7 @@
  * MobileNavMenu — unit tests.
  *
  * Tests open/close lifecycle, Escape-to-close, nav item click → navigate,
- * and the wallet connect entry point (disconnected + connected states).
+ * and the auth entry section (Sign In/Sign Up vs. Account row — issue #1362).
  *
  * The component renders through a portal into `document.body`. All DOM
  * assertions use `@testing-library/react` query methods which search the
@@ -40,11 +40,9 @@ function renderMenu(
     onClose: noop,
     pathname: "/",
     onNavigate: noop,
-    anyConnected: false,
-    address: undefined,
-    formattedBalance: undefined,
-    onConnect: noop,
-    onDisconnect: noop,
+    isAuthenticated: false,
+    onSignIn: noop,
+    onSignUp: noop,
   };
   return render(<MobileNavMenu {...defaults} {...overrides} />);
 }
@@ -243,80 +241,69 @@ describe("MobileNavMenu — navigation", () => {
   });
 });
 
-// ── Tests: disconnected wallet state ─────────────────────────────────────────
+// ── Tests: auth section, signed-out state (issue #1362) ─────────────────────
 
-describe("MobileNavMenu — disconnected state", () => {
-  it("shows a Connect Wallet CTA when anyConnected=false", () => {
-    renderMenu({ open: true, anyConnected: false });
-    expect(screen.getByText("Connect Wallet")).toBeInTheDocument();
-    expect(screen.queryByText("Disconnect")).not.toBeInTheDocument();
+describe("MobileNavMenu — signed-out auth state (#1362)", () => {
+  it("shows Sign In and Sign Up when isAuthenticated=false", () => {
+    renderMenu({ open: true, isAuthenticated: false });
+    expect(screen.getByTestId("mobile-sign-in-button")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-sign-up-button")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mobile-account-button"),
+    ).not.toBeInTheDocument();
   });
 
-  it("calls onConnect and onClose when Connect Wallet is clicked", async () => {
+  it("calls onSignIn and onClose when Sign In is clicked", async () => {
     const user = userEvent.setup();
-    const onConnect = vi.fn();
+    const onSignIn = vi.fn();
     const onClose = vi.fn();
 
-    renderMenu({ open: true, anyConnected: false, onConnect, onClose });
+    renderMenu({ open: true, isAuthenticated: false, onSignIn, onClose });
 
-    await user.click(screen.getByText("Connect Wallet"));
+    await user.click(screen.getByTestId("mobile-sign-in-button"));
 
-    expect(onConnect).toHaveBeenCalledOnce();
+    expect(onSignIn).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("calls onSignUp and onClose when Sign Up is clicked", async () => {
+    const user = userEvent.setup();
+    const onSignUp = vi.fn();
+    const onClose = vi.fn();
+
+    renderMenu({ open: true, isAuthenticated: false, onSignUp, onClose });
+
+    await user.click(screen.getByTestId("mobile-sign-up-button"));
+
+    expect(onSignUp).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
 
-// ── Tests: connected wallet state ────────────────────────────────────────────
+// ── Tests: auth section, signed-in state (issue #1362) ──────────────────────
 
-describe("MobileNavMenu — connected state", () => {
-  const MOCK_ADDRESS = "0x8493000000000000000000000000000000003b92";
-  const SHORT_ADDRESS = "0x8493...3b92";
-
-  it("shows the truncated address when connected", () => {
-    renderMenu({
-      open: true,
-      anyConnected: true,
-      address: MOCK_ADDRESS,
-    });
-    expect(screen.getByText(SHORT_ADDRESS)).toBeInTheDocument();
+describe("MobileNavMenu — signed-in auth state (#1362)", () => {
+  it("shows an Account row and no Sign In/Sign Up when isAuthenticated=true", () => {
+    renderMenu({ open: true, isAuthenticated: true });
+    expect(screen.getByTestId("mobile-account-button")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mobile-sign-in-button"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mobile-sign-up-button"),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows the formatted balance when provided", () => {
-    renderMenu({
-      open: true,
-      anyConnected: true,
-      address: MOCK_ADDRESS,
-      formattedBalance: "$1,000.00",
-    });
-    expect(screen.getByText("$1,000.00")).toBeInTheDocument();
-  });
-
-  it("shows a Disconnect button when connected", () => {
-    renderMenu({
-      open: true,
-      anyConnected: true,
-      address: MOCK_ADDRESS,
-    });
-    expect(screen.getByText("Disconnect")).toBeInTheDocument();
-    expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-  });
-
-  it("calls onDisconnect and onClose when Disconnect is clicked", async () => {
+  it("calls onNavigate('/account') and onClose when the Account row is clicked", async () => {
     const user = userEvent.setup();
-    const onDisconnect = vi.fn();
+    const onNavigate = vi.fn();
     const onClose = vi.fn();
 
-    renderMenu({
-      open: true,
-      anyConnected: true,
-      address: MOCK_ADDRESS,
-      onDisconnect,
-      onClose,
-    });
+    renderMenu({ open: true, isAuthenticated: true, onNavigate, onClose });
 
-    await user.click(screen.getByText("Disconnect"));
+    await user.click(screen.getByTestId("mobile-account-button"));
 
-    expect(onDisconnect).toHaveBeenCalledOnce();
+    expect(onNavigate).toHaveBeenCalledWith("/account");
     expect(onClose).toHaveBeenCalledOnce();
   });
 });

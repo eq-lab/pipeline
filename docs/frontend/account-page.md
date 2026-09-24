@@ -19,11 +19,14 @@ belongs to #1282, not this issue.
 ## Route and dev-only guard
 
 `packages/frontend/src/routes/account.tsx`. `beforeLoad` throws `redirect({ to: "/" })` when
-`ENV.IS_DEV` is false — the same shape as `routes/test.tsx` (#1259/#1260). The epic's standing
-rule is that **no sub-issue in #1247 changes a production entry point**; the frames confirm the
-real entry point is the header's account icon, which #1282 owns, so #1282 removes this guard in
-the same change that wires the icon (tracked as tech debt, `docs/exec-plans/tech-debt-tracker.md`).
-This also makes `?state=` inherently dev-only — one guard, not two.
+`ENV.IS_DEV` is false **and** no auth session exists (`readSession() === null`) — updated by
+#1362, which wires the header's account icon as the real production entry point (split out of
+#1282). An authenticated LP, in any environment, reaches `/account`; an unauthenticated visitor
+outside the dev server is redirected to `/`. Access and the `?state=` preview override are no
+longer the same guard: an authenticated production user can reach the route without `ENV.IS_DEV`,
+so `validateSearch` now gates `state` behind `ENV.IS_DEV` explicitly (`parseAccountStatePreview`
+only runs when `ENV.IS_DEV`) — otherwise a real LP could append `?state=verified` in production
+and see fixture data instead of their own documents.
 
 ## Page composition
 
@@ -62,8 +65,10 @@ unconditionally, branched only in the derivation — the shape `TopBar.tsx` alre
 `useStellarToken`, and `connect` = `useConnectModal().open` (routes through the shared
 first-connection terms gate, same as `TopBar`, the home promo card, and the deposit/stake
 banners). Selecting a namespace tab is a *view* switch only — it never disconnects the other
-namespace. `TopBar.tsx` itself is untouched by this issue; #1282 should adopt the extracted hook
-when it rewrites the header (tech debt).
+namespace. `TopBar.tsx` was untouched by this issue at the time; #1362 later removed all wallet
+balance/pill UI from the header entirely (Figma showed neither in the signed-in nor signed-out
+state), so the "adopt the extracted hook in TopBar" tech debt this paragraph used to flag no
+longer applies — there is no wallet UI left in `TopBar.tsx` to adopt it into.
 
 `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) renders the `Ethereum`/`Stellar` tabs —
 its documented anatomy (2px-padded `--color-pipeline-fill-muted` track at radius 6, equal-width
@@ -299,7 +304,7 @@ fill is stale, not the target.
 | `AccountDocumentsCard.onSave` (`useAccountDocuments().handleSave`) | calls `onSave?.(files)`, default no-op — **does not transition `AccountDocumentsState`** | #1267 (upload) + #1273 (read-back), composed by #1254 |
 | `AccountDocumentsCard.onUploadMissingDocument` | no-op | #1254/#1267 |
 | `AccountDocumentsCard.onReuploadDocument` | no-op | #1254/#1267 |
-| `AccountPage.onLogOut` | no-op | #1265 |
+| `AccountPage.onLogOut` | calls `useAuthSession().signOut()` then navigates to `/` — header reverts to signed-out on the next render | #1362 |
 | Reading `kyb_status` / documents / corporate email | always the honest default (`NotStarted`, `[]`, `—`) | #1254 (register/documents/link-address wiring) |
 
 **Save is a pure seam and never fakes a state transition.** Clicking it does not move the page to
@@ -317,9 +322,10 @@ output and feeds `AccountDocumentsCard` from `ACCOUNT_STATE_PREVIEWS[state]` (a 
 documents, missingDocumentName? }` fixture with clean filenames); for `state=staged` specifically,
 `createPreviewStagedFiles()` also seeds `useAccountDocuments`'s local staging state with a handful
 of empty-content `File` objects so the real removable-row / enabled-Save behavior renders exactly
-as it would live. With no `state` param the page renders the honest default described above. Since
-the guard makes the whole route dev-only, `?state=` is inherently dev-only too — one guard, not
-two.
+as it would live. With no `state` param the page renders the honest default described above.
+`validateSearch` only calls `parseAccountStatePreview` when `ENV.IS_DEV` (#1362) — the route guard
+itself now admits authenticated production LPs too, so the preview override needs its own explicit
+`ENV.IS_DEV` check rather than inheriting dev-only-ness from route access.
 
 Preview links live in the existing `/test?tab=auth` block (`routes/test.tsx` → `AuthTab`) — one
 link per state, alongside the six existing modal triggers. See [Diagnostics preview
@@ -332,13 +338,16 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Uploading file bytes anywhere | #1267 |
 | Reading documents back (resume, statuses) | #1273 |
 | Wiring register / documents / `kyb_status` / link-address | #1254 |
-| Wiring sign-in / create-account / OTP / Log Out to real auth | #1265 |
-| Header auth buttons, the account icon, the home card states | #1282 |
+| Wiring sign-in / create-account / OTP to real auth | #1265 |
+| Header auth buttons, the account icon | #1362 (shipped — this doc's [Route and dev-only guard](#route-and-dev-only-guard)) |
+| The home card states, composite Total Balance, merged activity feed | #1282 |
 | The redesigned onboarding-time Company Docs modal | #1278 |
 | Add Funds wire-transfer modal | #1283 |
 | Reconciling the flat upload with the backend's typed `(doc_type, subject)` model | #1267 (classify-at-review) |
 
-`TopBar.tsx`, `MobileNavMenu.tsx`, and `ConnectModalProvider` are not modified by this issue.
+`TopBar.tsx`, `MobileNavMenu.tsx`, and `ConnectModalProvider` were not modified by #1284 — #1362
+later changed `TopBar.tsx`/`MobileNavMenu.tsx` to add the header auth entry point (see
+`dashboard-components.md#topbar`); `ConnectModalProvider` itself is still untouched.
 **Update (#1278):** the onboarding-time `CompanyDocsModal` was redesigned to compose
 `AccountUploadRow`, `AccountRequirementsList`, and `useAccountDocuments` directly (see
 [`auth-components.md#companydocsmodal`](./auth-components.md#companydocsmodal)); `useCompanyDocsModal.ts`
