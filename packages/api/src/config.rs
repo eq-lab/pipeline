@@ -449,12 +449,20 @@ pub const DEFAULT_KYB_MAX_FILES_PER_REQUEST: usize = 10;
 pub const DEFAULT_KYB_MAX_DOCUMENTS_PER_LP: i64 = 20;
 
 impl KybLimits {
-    /// The request body ceiling implied by these limits: the largest legitimate
-    /// upload is every allowed file at its full size. Applied per-route, never
-    /// globally — axum's default is 2MB and the rest of the API wants to keep it.
+    /// Headroom over the raw file total, for multipart framing: the boundary
+    /// between every part, each part's headers, and the three text fields all
+    /// count toward the body limit. Without it, ten files of exactly
+    /// `max_document_bytes` — every one of them legal — would overflow the
+    /// ceiling by a few hundred bytes and be refused.
+    const MULTIPART_OVERHEAD_BYTES: usize = 1024 * 1024;
+
+    /// The request body ceiling implied by these limits: every allowed file at
+    /// its full size, plus framing. Applied per-route, never globally — axum's
+    /// default is 2MB and the rest of the API wants to keep it.
     pub fn max_request_bytes(&self) -> usize {
         self.max_document_bytes
             .saturating_mul(self.max_files_per_request)
+            .saturating_add(Self::MULTIPART_OVERHEAD_BYTES)
     }
 
     fn from_env() -> Result<Self> {

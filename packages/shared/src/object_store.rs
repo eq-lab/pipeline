@@ -19,7 +19,9 @@ use std::fmt::Write as _;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use aws_sdk_s3::config::{Credentials, Region};
+use aws_sdk_s3::config::{
+    Credentials, Region, RequestChecksumCalculation, ResponseChecksumValidation,
+};
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
@@ -146,6 +148,15 @@ impl ObjectStore {
             .region(Region::new(region.to_owned()))
             .endpoint_url(endpoint)
             .credentials_provider(credentials)
+            // The SDK defaults both of these to `WhenSupported`, which puts an
+            // `x-amz-checksum-crc32` header on every PutObject. S3-compatible
+            // backends that are not AWS — Spaces among them — reject it, so the
+            // default would fail every upload against a real bucket. The usual
+            // `AWS_REQUEST_CHECKSUM_CALCULATION` escape hatch does not apply
+            // either: it is read by `aws-config`, and this builds a `Config`
+            // directly, so the only place to set it is here.
+            .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
+            .response_checksum_validation(ResponseChecksumValidation::WhenRequired)
             .build();
 
         Self {

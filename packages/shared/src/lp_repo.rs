@@ -133,6 +133,15 @@ impl LpRepo {
     /// They are history, not authorization (TD-82), so a later edit must not
     /// rewrite them.
     ///
+    /// The `WHERE` on the update path is the freeze ([`KybStatus::allows_owner_writes`])
+    /// expressed in SQL rather than trusted from a prior read. The handler
+    /// reads the LP, then drains a multipart body that may be a hundred
+    /// megabytes, and only then writes — a trustee moving the record to
+    /// `UnderReview` inside that window would otherwise have it changed
+    /// underneath them, which is exactly what the freeze exists to prevent.
+    /// `None` means the row existed but was frozen; `delete` closes the same
+    /// race the same way.
+    ///
     /// Returns the LP's `id` and whether this call created it.
     pub async fn upsert_by_owner_account_id(
         &self,
@@ -142,7 +151,7 @@ impl LpRepo {
         owner_account_id: Uuid,
         owner_chain_id: Option<i64>,
         owner_address: Option<&str>,
-    ) -> Result<(i64, bool), sqlx::Error> {
+    ) -> Result<Option<(i64, bool)>, sqlx::Error> {
         sqlx::query_as::<_, (i64, bool)>(
             "INSERT INTO lps (legal_name, country, contact_email, owner_account_id, \
              owner_chain_id, owner_address) \
@@ -150,6 +159,7 @@ impl LpRepo {
              ON CONFLICT (owner_account_id) DO UPDATE SET \
              legal_name = EXCLUDED.legal_name, country = EXCLUDED.country, \
              contact_email = EXCLUDED.contact_email, updated_at = now() \
+             WHERE lps.kyb_status IN ('NotStarted', 'InProgress', 'Failed') \
              RETURNING id, (xmax = 0) AS created",
         )
         .bind(legal_name)
@@ -158,7 +168,7 @@ impl LpRepo {
         .bind(owner_account_id)
         .bind(owner_chain_id)
         .bind(owner_address)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
     }
 

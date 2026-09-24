@@ -4,9 +4,11 @@
 
 use axum::http::StatusCode;
 
+use pipeline_api::config::KybLimits;
 use pipeline_api::routes::lps::{
     check_document_cap, resolve_document_review, upsert_status, validate_profile,
     DocumentReviewDecision, DocumentReviewRequest, FileResult, LpProfileForm, LpsDoc,
+    MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN, MAX_LEGAL_NAME_LEN,
 };
 use shared::kyb_document_repo::DocumentStatus;
 
@@ -255,5 +257,48 @@ fn only_the_entity_fields_are_required() {
     assert!(
         !required.iter().any(|f| f == "files"),
         "files must be optional — a body with no file parts is a profile-only edit"
+    );
+}
+
+// ── Profile field bounds ─────────────────────────────────────────────────────
+
+#[test]
+fn an_over_long_legal_name_is_refused() {
+    // `lps.legal_name` is unbounded TEXT and this route's body limit is 100MB,
+    // so without a cap a caller could push megabytes straight into the column.
+    let long = "A".repeat(MAX_LEGAL_NAME_LEN + 1);
+    assert!(validate_profile(&form(&long, None, "ops@acme.example")).is_err());
+
+    let at_limit = "A".repeat(MAX_LEGAL_NAME_LEN);
+    assert!(validate_profile(&form(&at_limit, None, "ops@acme.example")).is_ok());
+}
+
+#[test]
+fn an_over_long_contact_email_is_refused() {
+    let long = format!("{}@acme.example", "a".repeat(MAX_CONTACT_EMAIL_LEN));
+    assert!(validate_profile(&form("Acme", None, &long)).is_err());
+}
+
+#[test]
+fn an_over_long_country_is_refused() {
+    let long = "A".repeat(MAX_COUNTRY_LEN + 1);
+    assert!(validate_profile(&form("Acme", Some(&long), "ops@acme.example")).is_err());
+}
+
+// ── Body limit ───────────────────────────────────────────────────────────────
+
+#[test]
+fn the_body_limit_leaves_room_for_multipart_framing() {
+    let limits = KybLimits {
+        max_document_bytes: 10 * 1024 * 1024,
+        max_files_per_request: 10,
+        max_documents_per_lp: 20,
+    };
+    let raw_files = limits.max_document_bytes * limits.max_files_per_request;
+    assert!(
+        limits.max_request_bytes() > raw_files,
+        "a maximal legitimate upload must still fit once boundaries and part \
+         headers are counted, or ten files of exactly the per-file limit would \
+         be refused"
     );
 }

@@ -55,7 +55,7 @@ use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPT
 
 use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
 use crate::config::KybLimits;
-use crate::error::ApiError;
+use crate::error::{is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
 use crate::AppState;
 
@@ -491,7 +491,6 @@ async fn upsert_my_lp(
 ) -> Result<Response, ApiError> {
     let limits = state.kyb_limits;
 
-    // Read the whole request before touching anything: the cap check below has
     // Refuse a frozen LP before reading the body, not after. Draining first
     // would buffer up to max_files × max_document_bytes only to discard it, so
     // a frozen record would be the cheapest way to tie up API memory.
@@ -517,6 +516,10 @@ async fn upsert_my_lp(
     };
     check_document_cap(held, incoming, limits.max_documents_per_lp)?;
 
+    // `None` means the row was frozen between the guard above and this write —
+    // the window is wide, since the whole body is read inside it. The DB
+    // predicate is what actually enforces the freeze; the earlier guard only
+    // saves us from draining a body we would discard.
     let (lp_id, created) = state
         .lp_repo
         .upsert_by_owner_account_id(
@@ -527,7 +530,13 @@ async fn upsert_my_lp(
             claims.chain_id,
             claims.chain_id.map(|_| claims.sub.as_str()),
         )
-        .await?;
+        .await?
+        .ok_or_else(|| {
+            ApiError::Conflict(
+                "this LP entered review while the request was being uploaded and can no longer be changed"
+                    .to_owned(),
+            )
+        })?;
 
     let mut results = Vec::with_capacity(files.len());
     for file in files {
@@ -592,10 +601,12 @@ async fn delete_my_document(
     // 'Verified'` predicate is what closes the race against a concurrent
     // review. A failure to remove the object afterwards leaves an unreferenced
     // blob, which is wasted storage rather than a correctness problem.
+    // The `Verified` case was already ruled out above, so a miss here means the
+    // row went away concurrently — a double-click or a retried request. Saying
+    // "it has been verified" would be wrong and would send a client down the
+    // wrong branch.
     if !state.kyb_document_repo.delete(doc).await? {
-        return Err(ApiError::Conflict(format!(
-            "document {doc} has been verified and can no longer be deleted"
-        )));
+        return Err(ApiError::NotFound(format!("no document {doc} for this LP")));
     }
     if let Err(e) = state.object_store.delete(&row.file_ref).await {
         tracing::warn!(
@@ -642,13 +653,13 @@ async fn link_address(
         .lp_repo
         .link_address(lp.id, &stellar_address)
         .await
-        .map_err(|e| match e {
-            sqlx::Error::Database(ref db) if db.code().as_deref() == Some("23505") => {
-                ApiError::Conflict(format!(
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                return ApiError::Conflict(format!(
                     "stellar_address `{stellar_address}` is already linked to another LP"
-                ))
+                ));
             }
-            other => ApiError::from(other),
+            ApiError::from(e)
         })?;
     if !linked {
         return Err(ApiError::Conflict(format!(
@@ -713,11 +724,12 @@ async fn read_upload(
         let name = field.name().unwrap_or_default().to_owned();
         let filename = field.file_name().map(str::to_owned);
 
+        // A part with no filename is a text field. `Field::text` buffers the
+        // whole part, and this route's body limit is 100MB, so an unbounded
+        // read here — including of a part we do not even recognise — would let
+        // one request pin that much heap.
         let Some(filename) = filename else {
-            let value = field
-                .text()
-                .await
-                .map_err(|e| multipart_error(&format!("unreadable `{name}` field"), &e))?;
+            let value = read_text_field(&mut field, &name).await?;
             match name.as_str() {
                 "legal_name" => form.legal_name = value,
                 "country" => form.country = Some(value),
@@ -726,6 +738,29 @@ async fn read_upload(
             }
             continue;
         };
+
+        // An unfilled `<input type="file">` is still submitted, as a part with
+        // an empty filename and no body. Treating it as a document would put a
+        // bogus "file is empty" rejection in `files[]` and downgrade an
+        // otherwise clean profile edit to 207.
+        if filename.trim().is_empty() {
+            let mut empty = true;
+            while let Some(chunk) = field
+                .chunk()
+                .await
+                .map_err(|e| multipart_error("unreadable file part", &e))?
+            {
+                if !chunk.is_empty() {
+                    empty = false;
+                }
+            }
+            if empty {
+                continue;
+            }
+            return Err(ApiError::BadRequest(
+                "a file part carries no filename".to_owned(),
+            ));
+        }
 
         if files.len() >= limits.max_files_per_request {
             return Err(ApiError::PayloadTooLarge(format!(
@@ -738,6 +773,31 @@ async fn read_upload(
     }
 
     Ok((form, files))
+}
+
+/// Read a text part, refusing one larger than [`MAX_TEXT_FIELD_BYTES`].
+///
+/// Chunked for the same reason files are: `Field::text` would buffer the whole
+/// part before its size could be judged, and the limit that admitted it is the
+/// whole-request one.
+async fn read_text_field(
+    field: &mut axum::extract::multipart::Field<'_>,
+    name: &str,
+) -> Result<String, ApiError> {
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|e| multipart_error(&format!("unreadable `{name}` field"), &e))?
+    {
+        if buf.len().saturating_add(chunk.len()) > MAX_TEXT_FIELD_BYTES {
+            return Err(ApiError::PayloadTooLarge(format!(
+                "`{name}` exceeds {MAX_TEXT_FIELD_BYTES} bytes"
+            )));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    String::from_utf8(buf).map_err(|_| ApiError::BadRequest(format!("`{name}` is not valid UTF-8")))
 }
 
 /// Drain one file part, refusing to hold more than the per-file limit.
@@ -954,6 +1014,21 @@ async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiEr
 
 // ── Compute (pure) ───────────────────────────────────────────────────────────
 
+/// Ceilings on the profile's text fields.
+///
+/// `lps` stores them as unbounded `TEXT`, and this route's body limit is 100MB
+/// — a hundred times axum's default — so without these a caller could push a
+/// 100MB `legal_name` straight into the table. Generous enough that no real
+/// entity name, address or country hits them.
+pub const MAX_LEGAL_NAME_LEN: usize = 200;
+pub const MAX_CONTACT_EMAIL_LEN: usize = 320;
+pub const MAX_COUNTRY_LEN: usize = 100;
+
+/// The most a single text part may carry before it is refused unread-in-full.
+/// Bounds the unrecognised parts too, which are otherwise buffered whole only
+/// to be discarded.
+const MAX_TEXT_FIELD_BYTES: usize = 64 * 1024;
+
 /// Validated, trimmed profile fields borrowed from the submitted form.
 pub struct ValidatedProfile<'a> {
     pub legal_name: &'a str,
@@ -968,17 +1043,32 @@ pub struct ValidatedProfile<'a> {
 /// Public so the unit tests in `packages/api/tests/lps.rs` can exercise it
 /// without the HTTP/DB layers.
 pub fn validate_profile(form: &LpProfileForm) -> Result<ValidatedProfile<'_>, ApiError> {
+    let bounded = |label: &str, value: &str, max: usize| -> Result<(), ApiError> {
+        if value.len() > max {
+            return Err(ApiError::BadRequest(format!(
+                "{label} must be at most {max} characters"
+            )));
+        }
+        Ok(())
+    };
+
     let legal_name = form.legal_name.trim();
     if legal_name.is_empty() {
         return Err(ApiError::BadRequest(
             "legal_name must not be empty".to_owned(),
         ));
     }
+    bounded("legal_name", legal_name, MAX_LEGAL_NAME_LEN)?;
+
     let contact_email = form.contact_email.trim();
     if contact_email.is_empty() {
         return Err(ApiError::BadRequest(
             "contact_email must not be empty".to_owned(),
         ));
+    }
+    bounded("contact_email", contact_email, MAX_CONTACT_EMAIL_LEN)?;
+    if let Some(country) = form.country.as_deref() {
+        bounded("country", country.trim(), MAX_COUNTRY_LEN)?;
     }
     Ok(ValidatedProfile {
         legal_name,
