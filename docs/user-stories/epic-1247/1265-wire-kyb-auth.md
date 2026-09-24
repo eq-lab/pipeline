@@ -34,13 +34,13 @@ throwaway test address.
 
 1. Click "Open Create Account modal".
 2. Enter the test email and a policy-valid password (e.g. `Test1234!`).
-3. Wait briefly for the Turnstile widget to acquire a token (invisible — no UI to interact with).
+3. Wait briefly for the Turnstile widget to acquire a token (what shows, if anything, depends on the widget mode in the Cloudflare dashboard).
 4. Click "Sign Up".
 
 **Expected outcomes:**
 
 - The button is disabled until both fields validate; it may additionally stay disabled for a
-  moment while the invisible Turnstile widget is still acquiring its first token.
+  moment while the Turnstile widget is still acquiring its first token.
 - On click, the modal transitions directly to the OTP screen ("Check your inbox — We've sent a
   passcode to `<the typed email>`") — `signup` always answers `202`, so there is no "email taken"
   branch to observe here.

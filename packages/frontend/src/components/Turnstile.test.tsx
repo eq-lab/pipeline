@@ -31,14 +31,16 @@ describe("Turnstile", () => {
     delete window.turnstile;
   });
 
-  it("renders an invisible widget and forwards the token via onToken", async () => {
+  it("renders a flexible-size widget and forwards the token via onToken", async () => {
     const onToken = vi.fn();
     render(<Turnstile onToken={onToken} />);
 
     await vi.waitFor(() => expect(renderMock).toHaveBeenCalledTimes(1));
     const options = renderMock.mock.calls[0]![1] as {
+      size: string;
       callback: (t: string) => void;
     };
+    expect(options.size).toBe("flexible");
     options.callback("tok-123");
 
     expect(onToken).toHaveBeenCalledWith("tok-123");

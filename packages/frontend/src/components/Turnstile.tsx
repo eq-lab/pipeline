@@ -7,7 +7,7 @@ const SCRIPT_SRC =
 
 interface TurnstileRenderOptions {
   sitekey: string;
-  size: "invisible";
+  size: "flexible";
   callback: (token: string) => void;
   "expired-callback"?: () => void;
 }
@@ -68,7 +68,9 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(
         if (cancelled || !containerRef.current || !window.turnstile) return;
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: ENV.TURNSTILE_SITE_KEY,
-          size: "invisible",
+          // Visibility is set by the widget mode in the Cloudflare dashboard, not
+          // here — "invisible" is not a valid `size` and makes render() throw.
+          size: "flexible",
           callback: (token) => onTokenRef.current(token),
         });
       });

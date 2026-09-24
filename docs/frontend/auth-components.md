@@ -386,7 +386,7 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
 2. **Resend line** — `<p>` (Caption 12/16, `--color-pipeline-ink-muted`) while counting down
    (`Resend in MM:SS`); becomes a real `<button type="button" onClick={onResend}>` (ink color,
    underline on hover) once the countdown reaches zero and no resend is in flight.
-3. **`turnstileSlot`** — rendered after the resend line; `EmailAuthFlow` supplies an invisible
+3. **`turnstileSlot`** — rendered after the resend line; `EmailAuthFlow` supplies a
    `Turnstile` widget here (see "Turnstile" below) so a resend click always has a fresh captcha
    token.
 4. **State-specific tail** — nothing while `idle`; a `role="status"` spinner (24×24 loader icon,
@@ -696,7 +696,7 @@ Wiring, screen by screen:
   above, a pending-auto-resend flag is set instead of calling `resendOtp` immediately (no token
   exists yet at that point — the OTP screen, and its `Turnstile` slot, have not mounted). An
   effect watches the OTP screen's captcha token and, once the widget yields one, fires the
-  deferred `resendOtp` exactly once and clears the flag. Cloudflare's invisible widget normally
+  deferred `resendOtp` exactly once and clears the flag. The Turnstile widget normally
   resolves near-instantly on mount, so in practice the user sees the OTP screen open with the
   fresh code already on its way; the countdown that starts on open (see "OtpModal") correctly
   reflects that a send just happened.
@@ -714,10 +714,11 @@ Wiring, screen by screen:
 `packages/frontend/src/components/Turnstile.tsx` (#1265). A ~90-line wrapper around Cloudflare's
 Turnstile script (`https://challenges.cloudflare.com/turnstile/v0/api.js`, loaded once and
 memoized module-wide) rather than the `@marsidev/react-turnstile` package — the wrapper's surface
-is small enough (explicit `render`/`reset`/`remove`, one `invisible`-sized widget, one callback)
+is small enough (explicit `render`/`reset`/`remove`, one `flexible`-sized widget, one callback)
 that a dependency did not pay for itself. Props: `onToken: (token: string) => void`; ref handle:
-`{ reset: () => void }`. Renders a widget at `size: "invisible"` — Cloudflare runs its challenge
-without any visible UI, calling `onToken` once it has one (normally near-instant, occasionally an
+`{ reset: () => void }`. Renders a widget at `size: "flexible"` (fills the slot width). Whether any UI shows is set by the
+widget mode in the Cloudflare dashboard (Managed / Non-interactive / Invisible) — `"invisible"` is
+not a valid `size` value and makes `turnstile.render` throw. Cloudflare runs its challenge, calling `onToken` once it has one (normally near-instant, occasionally an
 interactive challenge if Cloudflare's heuristics flag the client). Renders nothing (`null`) and
 never calls `onToken` when `ENV.TURNSTILE_SITE_KEY` is empty, so an unconfigured environment
 degrades to "captcha-gated actions stay disabled" rather than throwing. `siteverify` is never
