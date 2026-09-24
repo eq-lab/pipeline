@@ -104,7 +104,10 @@ submit button is disabled (in addition to the existing validity gate). Two addit
 props surface server-side rejection without any new markup: `passwordServerError?: string`
 (rendered in the password field's existing error slot — used for login `401`) and `formError?:
 string` (a `role="alert"` caption above the submit button — used for `429` lockout and any other
-non-field-specific failure). No captcha — `login` carries none server-side.
+non-field-specific failure). No captcha — `login` carries none server-side. Both errors are owned
+by `EmailAuthFlow`, which clears them whenever the fields are edited (an `onCredentialsEdit?: () =>
+void` prop that `SignInModal` fires on every email/password keystroke) or the screen navigates away
+from and back to sign-in, so a stale rejection from a previous attempt never lingers.
 
 Visual specs (Figma):
 
@@ -389,7 +392,8 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
 4. **State-specific tail** — nothing while `idle`; a `role="status"` spinner (24×24 loader icon,
    `animate-spin`) while `verifying`; a `role="alert"` caption ("Code is incorrect or expired.
    Request a new one.", new `--text-pipeline-body-s` token, `--color-pipeline-negative-strong`)
-   while `error`.
+   while `error`; the same slot instead shows "Couldn't resend the code. Try again." when a resend
+   attempt rejects and no verify error is active (verify errors take priority over a resend error).
 
 **State machine** (`useOtpModal`) — `idle` → `verifying` → `error`:
 
@@ -398,18 +402,21 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
   being verified (`OtpInput` can re-fire `onChange` with the same value on paste) is ignored —
   it does not call `verify` a second time.
 - Reaching 6 digits sets `verifying` and awaits `verify(code)`: resolve → `idle` +
-  `onVerified?.(code)`; reject → `error`. A stale response (superseded by a later 6-digit entry)
-  is dropped via a request-id guard, never overwriting a newer attempt's state.
+  `onVerified?.(code)`; reject → `error`. Editing the code at all while a verify is in flight —
+  even without reaching 6 digits again — bumps the internal request id, so the outstanding
+  response is dropped via that guard when it eventually settles: no error, no `onVerified`, never
+  overwriting the current (edited) state.
 - The 59-second resend countdown (`RESEND_COUNTDOWN_SECONDS`) starts on open and ticks once per
   second, independently of the verify/error state. Clicking `Resend` once enabled awaits
-  `resend()` and restarts the countdown to 59s regardless of success/failure (a resend failure
-  is silent, matching the backend's own silent-inside-cooldown behavior).
-- All state (code, status, countdown, resend-in-flight) resets whenever `open` flips
+  `resend()`: success restarts the countdown to 59s; failure surfaces the resend-error caption and
+  leaves the countdown at zero, so `Resend` stays clickable for an immediate retry.
+- All state (code, status, countdown, resend-in-flight, resend error) resets whenever `open` flips
   `false → true`.
 
 **Copy** (verbatim, do not paraphrase): title "Check your inbox"; description "We’ve sent a
 passcode to user@email.io" (U+2019 apostrophe — not `'` or `&rsquo;`); countdown "Resend in
-00:59"; elapsed "Resend"; error caption "Code is incorrect or expired. Request a new one."
+00:59"; elapsed "Resend"; error caption "Code is incorrect or expired. Request a new one."; resend
+error caption "Couldn't resend the code. Try again."
 
 **Accessibility:** the back arrow is the only dismiss (Figma hides the Close Icon instance for
 this frame — a non-interactive arrow would trap the preview); on open, focus lands on the OTP
@@ -653,7 +660,10 @@ Props: `open`, `initialScreen?: EmailAuthScreen` (`"sign-in" | "create-account" 
 `screen` state resets to `initialScreen` whenever `open` transitions `false → true` **or**
 `initialScreen` itself changes while already open (a caller re-pointing an already-open flow at a
 different screen) — never on the modals' own internal cross-link navigation, which only updates
-`screen`, not the `initialScreen` prop.
+`screen`, not the `initialScreen` prop. Whenever the flow closes (`open` transitions `true →
+false`), `signupCaptchaToken`/`otpCaptchaToken` are cleared and both Turnstile widgets reset —
+Turnstile tokens are single-use, so a reopened flow always waits for a fresh token rather than
+risking a spent or stale one reaching the backend.
 
 Wiring, screen by screen:
 
@@ -678,7 +688,11 @@ Wiring, screen by screen:
   the generic error caption (see "OtpModal" above) since `verify-otp` gives no finer-grained
   reason.
 - **OTP resend** (manual, via the `Resend` button) → `resendOtp` with the OTP screen's own
-  Turnstile token, then resets that widget. **Auto-resend**: on the `403 email_not_verified` path
+  Turnstile token, then resets that widget. If no token is available yet (the widget hasn't
+  yielded one, or the flow was closed and reopened before it did), the handler rejects with the
+  same "Verification is still loading — please try again in a moment." message
+  `CreateAccountModal` uses, which `OtpModal` surfaces as its resend-error caption rather than
+  silently no-opping. **Auto-resend**: on the `403 email_not_verified` path
   above, a pending-auto-resend flag is set instead of calling `resendOtp` immediately (no token
   exists yet at that point — the OTP screen, and its `Turnstile` slot, have not mounted). An
   effect watches the OTP screen's captcha token and, once the widget yields one, fires the

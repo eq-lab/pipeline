@@ -290,4 +290,17 @@ describe("SignInModal (#1248)", () => {
       "Too many attempts — try again shortly",
     );
   });
+
+  it("editing the email or password field calls onCredentialsEdit", async () => {
+    const user = userEvent.setup();
+    const onCredentialsEdit = vi.fn();
+    renderModal({ onCredentialsEdit });
+
+    await user.type(screen.getByPlaceholderText("Enter corporate email"), "a");
+    expect(onCredentialsEdit).toHaveBeenCalled();
+
+    onCredentialsEdit.mockClear();
+    await user.type(screen.getByPlaceholderText("Password"), "b");
+    expect(onCredentialsEdit).toHaveBeenCalled();
+  });
 });

@@ -163,6 +163,41 @@ describe("EmailAuthFlow — sign-in error branches", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("a password-field error clears when navigating away from sign-in and back", async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValue(new ApiError(401, "invalid credentials"));
+    render(<EmailAuthFlow open onClose={vi.fn()} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Sign In" }));
+    expect(
+      await screen.findByText("Incorrect email or password"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    await user.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(
+      screen.queryByText("Incorrect email or password"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("a lockout form error clears when the password field is edited", async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValue(new ApiError(429, "too many sign-in attempts"));
+    render(<EmailAuthFlow open onClose={vi.fn()} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Sign In" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Too many attempts. Try again in a minute.",
+    );
+
+    await user.type(screen.getByPlaceholderText("Password"), "!");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("a successful login saves the session and closes the modal", async () => {
     const user = userEvent.setup();
     mockLogin.mockResolvedValue({ token: "jwt", expires_in: 86400 });

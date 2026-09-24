@@ -43,6 +43,7 @@ export function EmailAuthFlow({
         onContinueWithWallet={flow.handleContinueWithWallet}
         onForgotPassword={flow.goToForgotPassword}
         onCreateAccount={flow.goToCreateAccount}
+        onCredentialsEdit={flow.clearSignInErrors}
         passwordServerError={flow.passwordServerError}
         formError={flow.signInFormError}
       />

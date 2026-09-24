@@ -50,15 +50,27 @@ export function useEmailAuthFlow({
   const signupTurnstileRef = useRef<TurnstileHandle>(null);
   const otpTurnstileRef = useRef<TurnstileHandle>(null);
 
+  function clearSignInErrors() {
+    setPasswordServerError(undefined);
+    setSignInFormError(undefined);
+  }
+
   useEffect(() => {
     if (!open) return;
     setScreen(initialScreen);
     setPendingEmail("");
-    setPasswordServerError(undefined);
-    setSignInFormError(undefined);
+    clearSignInErrors();
     setCreateAccountFormError(undefined);
     autoResendPendingRef.current = false;
   }, [open, initialScreen]);
+
+  useEffect(() => {
+    if (open) return;
+    setSignupCaptchaToken(undefined);
+    setOtpCaptchaToken(undefined);
+    signupTurnstileRef.current?.reset();
+    otpTurnstileRef.current?.reset();
+  }, [open]);
 
   useEffect(() => {
     if (!autoResendPendingRef.current || !otpCaptchaToken) return;
@@ -149,7 +161,9 @@ export function useEmailAuthFlow({
 
   async function handleOtpResend() {
     const captchaToken = otpCaptchaToken;
-    if (!captchaToken) return;
+    if (!captchaToken) {
+      throw new Error(CAPTCHA_NOT_READY_MESSAGE);
+    }
     try {
       await resendOtp({ email: pendingEmail, captchaToken });
     } finally {
@@ -175,8 +189,18 @@ export function useEmailAuthFlow({
     handleOtpResend,
     handleContinueWithWallet,
     dismiss,
-    goToSignIn: () => setScreen("sign-in"),
-    goToCreateAccount: () => setScreen("create-account"),
-    goToForgotPassword: () => setScreen("forgot-password"),
+    clearSignInErrors,
+    goToSignIn: () => {
+      clearSignInErrors();
+      setScreen("sign-in");
+    },
+    goToCreateAccount: () => {
+      clearSignInErrors();
+      setScreen("create-account");
+    },
+    goToForgotPassword: () => {
+      clearSignInErrors();
+      setScreen("forgot-password");
+    },
   };
 }

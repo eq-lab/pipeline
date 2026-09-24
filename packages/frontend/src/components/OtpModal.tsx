@@ -55,6 +55,7 @@ export function OtpModal({
     errorMessage,
     resendLabel,
     resendEnabled,
+    resendError,
     onResend,
   } = useOtpModal({ open, verify, resend, onVerified });
 
@@ -136,6 +137,19 @@ export function OtpModal({
             ].join(" ")}
           >
             {errorMessage}
+          </p>
+        ) : resendError ? (
+          <p
+            role="alert"
+            className={[
+              "text-center",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body-s)]",
+              "leading-[var(--text-pipeline-body-s--line-height)]",
+              "text-[color:var(--color-pipeline-negative-strong)]",
+            ].join(" ")}
+          >
+            {resendError}
           </p>
         ) : null}
       </div>

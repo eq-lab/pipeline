@@ -19,6 +19,7 @@ export interface SignInModalProps {
   onContinueWithWallet?: () => void;
   onForgotPassword?: () => void;
   onCreateAccount?: () => void;
+  onCredentialsEdit?: () => void;
   passwordServerError?: string;
   formError?: string;
 }
@@ -32,6 +33,7 @@ export function SignInModal({
   onContinueWithWallet,
   onForgotPassword,
   onCreateAccount,
+  onCredentialsEdit,
   passwordServerError,
   formError,
 }: SignInModalProps) {
@@ -73,7 +75,10 @@ export function SignInModal({
               autoComplete="email"
               placeholder="Enter corporate email"
               value={email}
-              onChange={setEmail}
+              onChange={(next) => {
+                setEmail(next);
+                onCredentialsEdit?.();
+              }}
               onBlur={handleEmailBlur}
               invalid={Boolean(emailError)}
               error={emailError}
@@ -83,7 +88,10 @@ export function SignInModal({
               autoComplete="current-password"
               placeholder="Password"
               value={password}
-              onChange={setPassword}
+              onChange={(next) => {
+                setPassword(next);
+                onCredentialsEdit?.();
+              }}
               invalid={Boolean(passwordError || passwordServerError)}
               error={passwordError ?? passwordServerError}
             />

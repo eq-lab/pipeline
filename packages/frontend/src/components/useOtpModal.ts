@@ -5,6 +5,7 @@ export const OTP_LENGTH = 6;
 export const OTP_ERROR_MESSAGE =
   "Code is incorrect or expired. Request a new one.";
 export const RESEND_COUNTDOWN_SECONDS = 59;
+export const RESEND_ERROR_MESSAGE = "Couldn't resend the code. Try again.";
 
 export type OtpStatus = "idle" | "verifying" | "error";
 
@@ -22,6 +23,7 @@ export interface UseOtpModalResult {
   errorMessage: string | undefined;
   resendLabel: string;
   resendEnabled: boolean;
+  resendError: string | undefined;
   onResend: () => void;
 }
 
@@ -41,6 +43,7 @@ export function useOtpModal({
   const [status, setStatus] = useState<OtpStatus>("idle");
   const [remaining, setRemaining] = useState(RESEND_COUNTDOWN_SECONDS);
   const [isResending, setIsResending] = useState(false);
+  const [resendError, setResendError] = useState<string>();
   const requestIdRef = useRef(0);
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export function useOtpModal({
       setStatus("idle");
       setRemaining(RESEND_COUNTDOWN_SECONDS);
       setIsResending(false);
+      setResendError(undefined);
       requestIdRef.current += 1;
     }
   }, [open]);
@@ -64,11 +68,11 @@ export function useOtpModal({
   function setCode(next: string) {
     if (status === "verifying" && next === code) return;
 
+    const requestId = ++requestIdRef.current;
     setCodeState(next);
     if (status !== "idle") setStatus("idle");
 
     if (next.length === OTP_LENGTH) {
-      const requestId = ++requestIdRef.current;
       setStatus("verifying");
       const verifyFn =
         verify ?? (() => Promise.reject(new Error("no verify wired")));
@@ -88,14 +92,19 @@ export function useOtpModal({
 
   function onResend() {
     if (remaining > 0 || isResending) return;
+    setResendError(undefined);
     setIsResending(true);
     const resendFn = resend ?? (() => Promise.resolve());
-    resendFn()
-      .catch(() => {})
-      .finally(() => {
+    resendFn().then(
+      () => {
         setIsResending(false);
         setRemaining(RESEND_COUNTDOWN_SECONDS);
-      });
+      },
+      () => {
+        setIsResending(false);
+        setResendError(RESEND_ERROR_MESSAGE);
+      },
+    );
   }
 
   return {
@@ -105,6 +114,7 @@ export function useOtpModal({
     errorMessage: status === "error" ? OTP_ERROR_MESSAGE : undefined,
     resendLabel: remaining > 0 ? formatCountdown(remaining) : "Resend",
     resendEnabled: remaining === 0 && !isResending,
+    resendError,
     onResend,
   };
 }

@@ -187,6 +187,48 @@ describe("OtpModal (#1250, #1265)", () => {
     );
   });
 
+  it("editing the code while a verify is in flight discards the stale result", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, resolve } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    const onVerified = vi.fn();
+    renderModal({ verify, onVerified });
+
+    await typeCode(user, "111111");
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Verification code"), "{backspace}");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolve();
+      await promise;
+    });
+
+    expect(onVerified).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("a rejected resend shows an alert and does not restart the countdown", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const resend = vi.fn().mockRejectedValue(new Error("boom"));
+    renderModal({ resend });
+
+    act(() => {
+      vi.advanceTimersByTime(59_000);
+    });
+    const resendButton = screen.getByRole("button", { name: "Resend" });
+    await user.click(resendButton);
+
+    expect(resend).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't resend the code. Try again.",
+    );
+    expect(screen.queryByText(/Resend in/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resend" })).toBeInTheDocument();
+  });
+
   it("clicking Resend once enabled calls resend and restarts the countdown", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const resend = vi.fn().mockResolvedValue(undefined);
