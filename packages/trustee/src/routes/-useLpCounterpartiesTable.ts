@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties.
-import { useLps, type LpResponse } from "@/api/useLps";
+import { useLps, type LpSummary } from "@/api/useLps";
 import { formatIsoDateUtc } from "@/utils/formatDate";
 import { ApiError } from "@/api/client";
 import { toUserError } from "@/utils/userError";
@@ -56,7 +56,7 @@ export function mapKybStatus(kybStatus: string): AccountStatusChip {
   }
 }
 
-export function mapLpToRow(lp: LpResponse): LpCounterpartyRow {
+export function mapLpToRow(lp: LpSummary): LpCounterpartyRow {
   return {
     key: String(lp.id),
     lpId: String(lp.id),

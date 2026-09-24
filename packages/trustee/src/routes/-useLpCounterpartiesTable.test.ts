@@ -1,17 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { mapKybStatus, mapLpToRow } from "./-useLpCounterpartiesTable";
-import type { LpResponse } from "@/api/useLps";
+import type { LpSummary } from "@/api/useLps";
 
-const BASE_LP: LpResponse = {
+const BASE_LP: LpSummary = {
   id: 42,
   legal_name: "Acme Capital LP",
   country: "CH",
   contact_email: "ops@acme.example",
   stellar_address: null,
-  address_linked_at: null,
   kyb_status: "NotStarted",
-  owner_chain_id: 99_000_001,
-  owner_address: "GABC",
+  owner_account_id: "00000000-0000-0000-0000-0000000000aa",
   created_at: "2026-06-18T23:40:00Z",
 };
 
@@ -86,7 +84,7 @@ describe("mapLpToRow", () => {
     const withExtraField = {
       ...BASE_LP,
       bank_info_available: true,
-    } as LpResponse & { bank_info_available: boolean };
+    } as LpSummary & { bank_info_available: boolean };
     expect(mapLpToRow(withExtraField).bankInfo).toBe("—");
     expect(mapLpToRow(BASE_LP).bankInfo).toBe("—");
   });

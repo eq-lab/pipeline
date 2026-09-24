@@ -32,6 +32,20 @@
 --   CREATE UNIQUE INDEX idx_kyb_documents_current
 --       ON kyb_documents (lp_id, doc_type, COALESCE(subject, '')) WHERE is_current;
 
+-- Existing rows cannot survive this change, so they go first.
+--
+-- The old `POST /v1/lps/{id}/documents` did insert rows — it recorded a
+-- caller-supplied `file_ref` to a file no upload transport ever produced. Those
+-- rows point at nothing: there was no bucket, so there are no bytes, and the
+-- backfilled `original_filename`/`content_type` would be empty, which would make
+-- `GET /v1/lps/me` presign objects that do not exist. Keeping them would also
+-- abort this migration outright — `size_bytes` backfills to 0 and the CHECK
+-- below is validated against existing rows, so the deploy would roll back.
+--
+-- Safe because no such row can be real: a document is only meaningful once its
+-- bytes are in Spaces, and nothing could put them there before this migration.
+DELETE FROM kyb_documents;
+
 DROP INDEX IF EXISTS idx_kyb_documents_current;
 DROP INDEX IF EXISTS idx_kyb_documents_pending_review;
 

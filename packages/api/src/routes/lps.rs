@@ -242,11 +242,45 @@ pub struct DocumentReviewRequest {
 /// The profile half of `POST /v1/lps/me`, read from the multipart text parts.
 /// A full replace: every field is taken as sent, and an absent `country` is
 /// stored as `NULL`.
-#[derive(Debug, Default, ToSchema)]
+///
+/// Internal to the parse — [`UpsertLpForm`] is what documents the wire format.
+#[derive(Debug, Default)]
 pub struct LpProfileForm {
     pub legal_name: String,
     pub country: Option<String>,
     pub contact_email: String,
+}
+
+/// The `multipart/form-data` body of `POST /v1/lps/me`.
+///
+/// Documentation only — the handler takes an [`Multipart`] extractor and never
+/// deserializes this type. It exists so the OpenAPI document describes the real
+/// wire format: without it Swagger UI renders the body as a single text box,
+/// with no field inputs and no file picker.
+///
+/// `files` is declared as an array of binary strings, which is what makes
+/// Swagger UI show a multi-file selector. The handler identifies a file by the
+/// part carrying a `filename`, not by its name, so any part name works on the
+/// wire — `files` is simply what this schema tells clients to send.
+#[derive(ToSchema)]
+pub struct UpsertLpForm {
+    /// Registered legal name of the entity. Required, trimmed, must not be blank.
+    #[schema(example = "Acme Trading Ltd")]
+    pub legal_name: String,
+    /// Country of registration. Optional — omit it or send it blank to clear
+    /// the stored value, since the profile is a full replace.
+    #[schema(example = "NL", nullable)]
+    pub country: Option<String>,
+    /// Contact address for KYB correspondence. Required, trimmed, must not be
+    /// blank. Independent of the account's login email.
+    #[schema(example = "ops@acme.example")]
+    pub contact_email: String,
+    /// Supporting documents, appended to the LP's existing set — never
+    /// replacing it. PDF, JPEG or PNG, decided by content rather than by the
+    /// declared type or the file extension. Optional: a body with no file parts
+    /// is a profile-only edit.
+    #[schema(value_type = Option<Vec<String>>, format = Binary)]
+    pub files: Option<Vec<Vec<u8>>>,
 }
 
 /// OpenAPI doc bundle for the LP routes.
@@ -260,6 +294,7 @@ pub struct LpProfileForm {
         DocumentResponse,
         FileResult,
         UpsertLpResponse,
+        UpsertLpForm,
         LinkAddressRequest,
         DocumentReviewDecision,
         DocumentReviewRequest,
@@ -436,7 +471,7 @@ async fn get_my_lp(
 #[utoipa::path(
     post,
     path = "/v1/lps/me",
-    request_body(content = String, description = "multipart/form-data: legal_name, country, contact_email, plus zero or more file parts", content_type = "multipart/form-data"),
+    request_body(content = UpsertLpForm, content_type = "multipart/form-data"),
     responses(
         (status = 200, description = "LP updated; every file stored", body = UpsertLpResponse),
         (status = 201, description = "LP registered; every file stored", body = UpsertLpResponse),
@@ -457,11 +492,9 @@ async fn upsert_my_lp(
     let limits = state.kyb_limits;
 
     // Read the whole request before touching anything: the cap check below has
-    // to know the file count up front, and the profile must not be written if
-    // the request turns out to be unacceptable as a whole.
-    let (form, files) = read_upload(multipart, limits).await?;
-    let profile = validate_profile(&form)?;
-
+    // Refuse a frozen LP before reading the body, not after. Draining first
+    // would buffer up to max_files × max_document_bytes only to discard it, so
+    // a frozen record would be the cheapest way to tie up API memory.
     let existing = state
         .lp_repo
         .find_by_owner_account_id(claims.account_id)
@@ -470,11 +503,19 @@ async fn upsert_my_lp(
         guard_writable(lp)?;
     }
 
+    let (form, files) = read_upload(multipart, limits).await?;
+    let profile = validate_profile(&form)?;
+
+    // Only files that would actually be stored count against the cap. Counting
+    // the rejected ones too would let a single unsupported attachment turn a
+    // request that fits into a 409 that writes nothing — not the valid
+    // documents beside it, and not the profile edit carrying them.
+    let incoming = files.iter().filter(|f| f.verdict.is_ok()).count();
     let held = match &existing {
         Some(lp) => state.kyb_document_repo.count_for_lp(lp.id).await?,
         None => 0,
     };
-    check_document_cap(held, files.len(), limits.max_documents_per_lp)?;
+    check_document_cap(held, incoming, limits.max_documents_per_lp)?;
 
     let (lp_id, created) = state
         .lp_repo
@@ -636,6 +677,20 @@ struct UploadedFile {
     verdict: Result<&'static str, String>,
 }
 
+/// Map a multipart parsing failure to the right status.
+///
+/// axum reports "the body exceeded the configured limit" and "this body is not
+/// valid multipart" through the same error type, and its own `status()` is what
+/// tells them apart. Without this both answer `400`, so a caller whose upload is
+/// simply too large is told its encoding is broken — and the `413` this
+/// endpoint documents would never be returned.
+fn multipart_error(context: &str, e: &axum::extract::multipart::MultipartError) -> ApiError {
+    if e.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        return ApiError::PayloadTooLarge(format!("{context} exceeds the upload size limit"));
+    }
+    ApiError::BadRequest(format!("{context}: {e}"))
+}
+
 /// Drain the multipart body into the profile fields and the file parts.
 ///
 /// Rejects the whole request only for things that make it unprocessable — a
@@ -653,7 +708,7 @@ async fn read_upload(
     while let Some(mut field) = multipart
         .next_field()
         .await
-        .map_err(|e| ApiError::BadRequest(format!("malformed multipart body: {e}")))?
+        .map_err(|e| multipart_error("malformed multipart body", &e))?
     {
         let name = field.name().unwrap_or_default().to_owned();
         let filename = field.file_name().map(str::to_owned);
@@ -662,7 +717,7 @@ async fn read_upload(
             let value = field
                 .text()
                 .await
-                .map_err(|e| ApiError::BadRequest(format!("unreadable `{name}` field: {e}")))?;
+                .map_err(|e| multipart_error(&format!("unreadable `{name}` field"), &e))?;
             match name.as_str() {
                 "legal_name" => form.legal_name = value,
                 "country" => form.country = Some(value),
@@ -705,7 +760,7 @@ async fn read_file(
     while let Some(chunk) = field
         .chunk()
         .await
-        .map_err(|e| ApiError::BadRequest(format!("unreadable file `{filename}`: {e}")))?
+        .map_err(|e| multipart_error(&format!("unreadable file `{filename}`"), &e))?
     {
         total = total.saturating_add(chunk.len());
         if total > limits.max_document_bytes {
@@ -942,7 +997,9 @@ pub fn validate_profile(form: &LpProfileForm) -> Result<ValidatedProfile<'_>, Ap
 /// file by file, so a request either fits or is refused outright — an LP is
 /// never left with a half-applied upload sitting against its quota.
 pub fn check_document_cap(held: i64, incoming: usize, max: i64) -> Result<(), ApiError> {
-    let total = held.saturating_add(incoming as i64);
+    // `as i64` would wrap rather than saturate — usize::MAX becomes -1, which
+    // compares below every cap and waves the request through.
+    let total = held.saturating_add(i64::try_from(incoming).unwrap_or(i64::MAX));
     if total > max {
         return Err(ApiError::Conflict(format!(
             "this LP holds {held} documents and may hold at most {max}; \
