@@ -2,16 +2,17 @@
 import { useEffect, useRef, useState } from "react";
 
 export const OTP_LENGTH = 6;
-export const OTP_ERROR_MESSAGE = "Enter the correct code";
+export const OTP_ERROR_MESSAGE =
+  "Code is incorrect or expired. Request a new one.";
 export const RESEND_COUNTDOWN_SECONDS = 59;
-export const MOCK_VERIFY_DELAY_MS = 800;
-export const MOCK_VALID_CODE = "123456";
+export const RESEND_ERROR_MESSAGE = "Couldn't resend the code. Try again.";
 
 export type OtpStatus = "idle" | "verifying" | "error";
 
 export interface UseOtpModalOptions {
   open: boolean;
-  onSubmit?: (code: string) => void;
+  verify?: (code: string) => Promise<void>;
+  resend?: () => Promise<void>;
   onVerified?: (code: string) => void;
 }
 
@@ -21,6 +22,9 @@ export interface UseOtpModalResult {
   status: OtpStatus;
   errorMessage: string | undefined;
   resendLabel: string;
+  resendEnabled: boolean;
+  resendError: string | undefined;
+  onResend: () => void;
 }
 
 function formatCountdown(seconds: number): string {
@@ -31,25 +35,25 @@ function formatCountdown(seconds: number): string {
 
 export function useOtpModal({
   open,
-  onSubmit,
+  verify,
+  resend,
   onVerified,
 }: UseOtpModalOptions): UseOtpModalResult {
   const [code, setCodeState] = useState("");
   const [status, setStatus] = useState<OtpStatus>("idle");
   const [remaining, setRemaining] = useState(RESEND_COUNTDOWN_SECONDS);
-  const verifyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
+  const [isResending, setIsResending] = useState(false);
+  const [resendError, setResendError] = useState<string>();
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (open) {
       setCodeState("");
       setStatus("idle");
       setRemaining(RESEND_COUNTDOWN_SECONDS);
-      if (verifyTimerRef.current !== undefined) {
-        clearTimeout(verifyTimerRef.current);
-        verifyTimerRef.current = undefined;
-      }
+      setIsResending(false);
+      setResendError(undefined);
+      requestIdRef.current += 1;
     }
   }, [open]);
 
@@ -61,47 +65,56 @@ export function useOtpModal({
     return () => clearInterval(id);
   }, [open]);
 
-  useEffect(() => {
-    return () => {
-      if (verifyTimerRef.current !== undefined) {
-        clearTimeout(verifyTimerRef.current);
-      }
-    };
-  }, []);
-
   function setCode(next: string) {
-    setCodeState(next);
+    if (status === "verifying" && next === code) return;
 
-    if (status !== "idle") {
-      if (verifyTimerRef.current !== undefined) {
-        clearTimeout(verifyTimerRef.current);
-        verifyTimerRef.current = undefined;
-      }
-      setStatus("idle");
-    }
+    const requestId = ++requestIdRef.current;
+    setCodeState(next);
+    if (status !== "idle") setStatus("idle");
 
     if (next.length === OTP_LENGTH) {
       setStatus("verifying");
-      onSubmit?.(next);
-      verifyTimerRef.current = setTimeout(() => {
-        verifyTimerRef.current = undefined;
-        if (next === MOCK_VALID_CODE) {
+      const verifyFn =
+        verify ?? (() => Promise.reject(new Error("no verify wired")));
+      verifyFn(next).then(
+        () => {
+          if (requestIdRef.current !== requestId) return;
           setStatus("idle");
           onVerified?.(next);
-        } else {
+        },
+        () => {
+          if (requestIdRef.current !== requestId) return;
           setStatus("error");
-        }
-      }, MOCK_VERIFY_DELAY_MS);
+        },
+      );
     }
   }
 
-  const resendLabel = remaining > 0 ? formatCountdown(remaining) : "Resend";
+  function onResend() {
+    if (remaining > 0 || isResending) return;
+    setResendError(undefined);
+    setIsResending(true);
+    const resendFn = resend ?? (() => Promise.resolve());
+    resendFn().then(
+      () => {
+        setIsResending(false);
+        setRemaining(RESEND_COUNTDOWN_SECONDS);
+      },
+      () => {
+        setIsResending(false);
+        setResendError(RESEND_ERROR_MESSAGE);
+      },
+    );
+  }
 
   return {
     code,
     setCode,
     status,
     errorMessage: status === "error" ? OTP_ERROR_MESSAGE : undefined,
-    resendLabel,
+    resendLabel: remaining > 0 ? formatCountdown(remaining) : "Resend",
+    resendEnabled: remaining === 0 && !isResending,
+    resendError,
+    onResend,
   };
 }

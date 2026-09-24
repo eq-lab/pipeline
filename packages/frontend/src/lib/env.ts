@@ -219,6 +219,13 @@ export const ENV = Object.freeze({
 
   /** True only under the local Vite dev server — gates `/test` (#1259). */
   IS_DEV: import.meta.env.DEV === true,
+
+  /**
+   * Cloudflare Turnstile site key (public half of the server's
+   * `TURNSTILE_SECRET_KEY`) — gates signup and OTP resend. Defaults to empty,
+   * in which case `Turnstile` renders nothing and those actions stay blocked.
+   */
+  TURNSTILE_SITE_KEY: readString("VITE_TURNSTILE_SITE_KEY", ""),
 });
 
 /**

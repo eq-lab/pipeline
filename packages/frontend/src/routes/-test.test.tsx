@@ -370,7 +370,7 @@ describe("TestPage — tab param routing", () => {
     expect(
       screen.getByTestId("auth-forgot-password-submitted"),
     ).toHaveTextContent(
-      "Reset link requested — #1265 wires this to the real password-reset endpoint.",
+      "Reset link requested — #1358/#1359 wire this to a real password-reset endpoint.",
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -433,20 +433,11 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("?tab=auth shows an Open OTP screen button", () => {
+  it("?tab=auth has no standalone Open OTP screen trigger (only reachable via signup/login)", () => {
     renderTestPage("auth");
     expect(
-      screen.getByRole("button", { name: /open otp screen/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("?tab=auth opens the OTP screen on click, closed by default", () => {
-    renderTestPage("auth");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /open otp screen/i }));
-    expect(
-      screen.getByRole("dialog", { name: "Check your inbox" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /open otp screen/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("?tab=auth shows an Open Company Docs step button", () => {
@@ -467,18 +458,14 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("?tab=auth shows the reworded OTP-verified stand-in copy after verifying", async () => {
-    const user = userEvent.setup();
+  it("?tab=auth shows the session status line, not authenticated by default", () => {
     renderTestPage("auth");
-    fireEvent.click(screen.getByRole("button", { name: /open otp screen/i }));
-    const input = screen.getByLabelText("Verification code");
-    await user.click(input);
-    await user.paste("123456");
-    expect(
-      await screen.findByTestId("auth-otp-verified", {}, { timeout: 2000 }),
-    ).toHaveTextContent(
-      "OTP verified — open the Company Docs step from the button above.",
+    expect(screen.getByTestId("auth-session-status")).toHaveTextContent(
+      "Not authenticated",
     );
+    expect(
+      screen.queryByRole("button", { name: "Sign out" }),
+    ).not.toBeInTheDocument();
   });
 
   it("?tab=auth opens CompanyDocsModal with no Step 1/2 badge", () => {

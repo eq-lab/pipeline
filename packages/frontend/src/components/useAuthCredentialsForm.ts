@@ -16,7 +16,10 @@ function meetsPasswordPolicy(password: string): boolean {
 
 export interface UseAuthCredentialsFormOptions {
   open: boolean;
-  onSubmit?: (credentials: { email: string; password: string }) => void;
+  onSubmit?: (credentials: {
+    email: string;
+    password: string;
+  }) => void | Promise<void>;
   passwordRule?: "non-empty" | "policy";
 }
 
@@ -26,6 +29,7 @@ export interface UseAuthCredentialsFormResult {
   password: string;
   setPassword: (next: string) => void;
   isValid: boolean;
+  isSubmitting: boolean;
   emailError: string | undefined;
   passwordError: string | undefined;
   handleEmailBlur: () => void;
@@ -43,6 +47,7 @@ export function useAuthCredentialsForm({
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -51,6 +56,7 @@ export function useAuthCredentialsForm({
       setEmailTouched(false);
       setPasswordTouched(false);
       setSubmitAttempted(false);
+      setIsSubmitting(false);
     }
   }, [open]);
 
@@ -80,8 +86,12 @@ export function useAuthCredentialsForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
-    if (isValid) {
-      onSubmit?.({ email, password });
+    if (!isValid || isSubmitting) return;
+
+    const result = onSubmit?.({ email, password });
+    if (result && typeof result.then === "function") {
+      setIsSubmitting(true);
+      result.catch(() => {}).finally(() => setIsSubmitting(false));
     }
   }
 
@@ -91,6 +101,7 @@ export function useAuthCredentialsForm({
     password,
     setPassword,
     isValid,
+    isSubmitting,
     emailError: showEmailError ? EMAIL_ERROR_MESSAGE : undefined,
     passwordError: showPasswordError
       ? passwordRule === "policy"

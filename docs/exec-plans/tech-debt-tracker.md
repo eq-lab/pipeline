@@ -1528,6 +1528,14 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Unbounded growth proportional to distinct addresses and client addresses attempted, which under a credential-stuffing run is exactly the set an attacker controls. No correctness impact (an expired window restarts in place), purely storage and index bloat.
 - **Suggested fix:** A periodic `DELETE FROM login_attempts WHERE window_start < now() - interval '1 hour'` — `idx_login_attempts_window` already supports it. Either a worker job or an opportunistic sweep on a small fraction of calls; do not run it on every request.
 
+### TD-88: OTP resend restarts the countdown even when no captcha token was available
+
+- **Date:** 2026-09-24
+- **Location:** `packages/frontend/src/components/useOtpModal.ts` (`onResend`), `packages/frontend/src/components/useEmailAuthFlow.ts` (`handleOtpResend`). Found while implementing #1265.
+- **Gap:** `useOtpModal`'s `onResend` always restarts the 59s countdown once its `resend()` promise settles, whether it resolved or rejected. `useEmailAuthFlow.handleOtpResend` returns immediately (a no-op resolve) when no Turnstile token is currently held, e.g. a click that lands in the narrow window right after a previous resend reset the widget and before its next token has arrived. That click restarts the countdown without ever calling `resend-otp`.
+- **Impact:** Rare (the invisible widget usually yields a token near-instantly), but when hit, the user sees the countdown restart and believes a fresh code is on its way when none was sent — indistinguishable from the backend's own deliberate cooldown-window silence (see TD-87), but here even the *cooldown* accounting is wrong, not just the mail.
+- **Suggested fix:** `handleOtpResend` should signal "not ready yet" distinctly from "sent" (e.g. reject instead of silently resolving), and `useOtpModal.onResend` should only restart the countdown on a genuine send — or simpler, disable the `Resend` button (not just gate the handler) whenever no captcha token is currently held.
+
 ### TD-87: A single mistyped digit strands the user for up to a minute, silently
 
 - **Date:** 2026-09-23

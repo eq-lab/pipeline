@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-22: `cargo clippy --all -- -D warnings` fails on `main` — unknown lint `clippy::duration_suboptimal_units`
+- **Date:** 2026-09-24
+- **Location:** `packages/worker/src/asset_price_collector/mod.rs:42` (`#[allow(clippy::duration_suboptimal_units)]`, added by #1023). Found while running the `test-fast` gate for #1265, a frontend-only change with zero Rust files touched.
+- **Symptom:** `cargo clippy --all -- -D warnings` fails workspace-wide with `error: unknown lint: clippy::duration_suboptimal_units` / `-D unknown-lints` implied by `-D warnings`, before reaching any of #1265's (nonexistent) Rust changes. Confirmed pre-existing: `git log` shows the `#[allow(...)]` line landed in #1023, long before this branch; `git stash` back to the base commit reproduces the same failure.
+- **Root cause:** The local toolchain is `clippy 0.1.94 (e408947bfd 2026-03-25)`, which has no lint named `duration_suboptimal_units` — likely a lint that never shipped on stable, or was renamed/removed since #1023 was authored against a different clippy version. `-D warnings` promotes clippy's own `unknown-lints` warning to a hard error, so a stale `#[allow(...)]` for a nonexistent lint now fails the whole workspace build.
+- **Workaround:** None applied — not this issue's file to touch. A fix would replace or drop that `#[allow(clippy::duration_suboptimal_units)]` attribute (check what lint, if any, the current clippy actually flags for that duration expression) in a follow-up unrelated to #1265.
+
 ### BUG-21: Tech-debt tracker has two entries both numbered TD-73
 - **Date:** 2026-09-22
 - **Location:** `docs/exec-plans/tech-debt-tracker.md` — the unidentified-wire-matching-queue

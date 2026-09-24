@@ -12,10 +12,16 @@ import { useAuthCredentialsForm } from "@/components/useAuthCredentialsForm";
 export interface SignInModalProps {
   open: boolean;
   onDismiss: () => void;
-  onSubmit?: (credentials: { email: string; password: string }) => void;
+  onSubmit?: (credentials: {
+    email: string;
+    password: string;
+  }) => void | Promise<void>;
   onContinueWithWallet?: () => void;
   onForgotPassword?: () => void;
   onCreateAccount?: () => void;
+  onCredentialsEdit?: () => void;
+  passwordServerError?: string;
+  formError?: string;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -27,6 +33,9 @@ export function SignInModal({
   onContinueWithWallet,
   onForgotPassword,
   onCreateAccount,
+  onCredentialsEdit,
+  passwordServerError,
+  formError,
 }: SignInModalProps) {
   const headingId = "sign-in-modal-heading";
   const {
@@ -35,6 +44,7 @@ export function SignInModal({
     password,
     setPassword,
     isValid,
+    isSubmitting,
     emailError,
     passwordError,
     handleEmailBlur,
@@ -65,7 +75,10 @@ export function SignInModal({
               autoComplete="email"
               placeholder="Enter corporate email"
               value={email}
-              onChange={setEmail}
+              onChange={(next) => {
+                setEmail(next);
+                onCredentialsEdit?.();
+              }}
               onBlur={handleEmailBlur}
               invalid={Boolean(emailError)}
               error={emailError}
@@ -75,16 +88,34 @@ export function SignInModal({
               autoComplete="current-password"
               placeholder="Password"
               value={password}
-              onChange={setPassword}
-              invalid={Boolean(passwordError)}
-              error={passwordError}
+              onChange={(next) => {
+                setPassword(next);
+                onCredentialsEdit?.();
+              }}
+              invalid={Boolean(passwordError || passwordServerError)}
+              error={passwordError ?? passwordServerError}
             />
           </div>
+
+          {formError ? (
+            <p
+              role="alert"
+              className={[
+                "w-full text-center",
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body-s)]",
+                "leading-[var(--text-pipeline-body-s--line-height)]",
+                "text-[color:var(--color-pipeline-negative-strong)]",
+              ].join(" ")}
+            >
+              {formError}
+            </p>
+          ) : null}
 
           <Button
             type="submit"
             variant="primary-blue"
-            disabled={!isValid}
+            disabled={!isValid || isSubmitting}
             className="!w-full !min-w-0 disabled:opacity-[0.32]"
           >
             Sign In
