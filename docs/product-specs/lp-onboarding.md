@@ -24,6 +24,14 @@ These are credentials of one account, not two accounts. An LP that signed up by 
 
 Lender authentication remains outside the operator model: no 2FA, no two-person activation. Those apply only to Trustees, Originators, and the Pipeline team (see below).
 
+### LP Entity Registration and KYB Documents
+
+Once an account is verified it registers the legal entity it acts for and attaches the documents supporting it. One account owns at most one LP, so the account itself identifies the record — the LP-facing endpoints are keyed on the caller's session, never on an id the client must carry. Registration and upload are one request: an upsert carrying the entity's fields and zero or more files, so the same call registers an entity, corrects a typo in it, and adds documents later on. Its two halves differ on purpose — profile fields are a **full replace** (an omitted country clears it), while files are **additive**, since a profile edit that silently discarded previously uploaded documents would be a trap.
+
+Documents are untyped: Pipeline does not model them as a fixed checklist of document kinds, and nothing distinguishes a certificate of incorporation from a shareholder register except the filename it was uploaded under. Whether a submission is sufficient is a reviewer's judgement, not a computed condition. There is likewise no replace operation — correcting a document means deleting it and uploading the correction, which is also the only way to withdraw something submitted in error, a case re-upload cannot address since a second file simply sits beside the first. Uploaded bytes live in a private S3-compatible bucket, never in Postgres and never publicly readable; a document reaches a reader only through a short-lived presigned URL issued with the record. A maximum size per file and a maximum number of documents per LP bound what may be stored, both deployment configuration.
+
+An LP may change its record — profile and documents alike — while KYB is `NotStarted`, `InProgress`, or `Failed`, and may not while `UnderReview` or `Passed`. The freeze exists so a decision always refers to what was decided on: could an LP swap files during review, a reviewer might approve a set that had changed since they read it; could it rename the entity after approval, the approval would attach to a company that no longer matched. `Failed` stays open deliberately, because an applicant frozen out of a failed record could neither fix it nor start again. An individually verified document is frozen on its own terms even while the LP is otherwise open — which is what makes `Failed` workable, the LP reopening with some documents approved and only the rejected ones needing replacement.
+
 ### Three Paths to the Transfer Whitelist
 
 `WhitelistRegistry` gates PLUSD transfers via `PLUSD._update`. A lender (or any address that wants to hold PLUSD) must be on the whitelist to send or receive. There are three paths to enrolment.

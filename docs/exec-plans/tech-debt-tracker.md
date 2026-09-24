@@ -1535,3 +1535,19 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Gap:** A passcode allows one guess, lives 60s, and cannot be re-sent until 60s after the previous send. A user who fumbles a digit therefore has a dead code and no way to get another until the cooldown elapses — and `resend-otp` answers `202` throughout, mailing nothing, because any other status would reveal that the address holds an unverified account.
 - **Impact:** The most common user error in the flow now produces a dead end with no feedback: the screen says "check your inbox", no email arrives, and nothing explains why. Expect support load and drop-off at exactly the step where a new LP is being onboarded. The window is worst immediately after a send (a typo at t+5s means ~55s of silence).
 - **Suggested fix:** No security-preserving message exists for the anonymous caller, so fix it in the UI instead: the frontend knows when it last triggered a send, so it can render the remaining cooldown on the OTP screen and disable Resend until it elapses (`useOtpModal` already runs a 59s countdown — wire it to the burn, not just to the initial send). Alternatively reconsider the 1-guess/60s TTL pairing: three guesses with a 10-minute TTL gave the same practical security once the cooldown is the binding control, and far more slack.
+
+### TD-88: Deleting a KYB document is unbounded, so the per-LP cap can be cycled
+
+- **Date:** 2026-09-24
+- **Location:** `packages/api/src/routes/lps.rs` (`delete_my_document`), `packages/shared/src/kyb_document_repo.rs` (`delete`, `count_for_lp`)
+- **Gap:** `DELETE /v1/lps/me/documents/{doc}` removes the row outright rather than tombstoning it (decided deliberately in #1267). `KYB_MAX_DOCUMENTS_PER_LP` can therefore only count live rows, so `upload ×20 → delete ×20 → repeat` never trips the cap.
+- **Impact:** No correctness or storage-footprint problem — every object is removed with its row, so nothing accumulates. The cost is request volume: an authenticated LP can drive unlimited Spaces PUT/DELETE calls and API bandwidth at will. Bounded by the per-file size limit and by the account having to exist and be verified, so this is an abuse ceiling rather than an open door.
+- **Suggested fix:** A per-LP upload rate limit (N uploads per hour, tracked like `login_attempts`) rather than reinstating tombstone rows, which were rejected on purpose. Only worth building if the pattern is actually observed.
+
+### TD-89: A rejected KYB document can be erased along with the reason it was rejected
+
+- **Date:** 2026-09-24
+- **Location:** `packages/api/src/routes/lps.rs` (`delete_my_document`), `packages/shared/migrations/20260924000001_kyb_documents_untyped_and_storage.sql`
+- **Gap:** Because delete is a hard delete, an LP removing a `Rejected` document also removes `reject_reason`, `reviewed_by`, and `reviewed_at`. Nothing records that the document was ever submitted or refused.
+- **Impact:** An applicant can erase evidence that staff already reviewed and turned down. Bounded by the `Verified` freeze — a document staff *approved* can never be deleted — so a passed KYB always still refers to the bytes that earned it. The exposure is the rejection trail, not the approval trail, and there is no regulatory requirement pinned to it today.
+- **Suggested fix:** If a rejection trail is ever required, append review decisions to the existing audit log (`docs/product-specs/audit-logging.md`) at the moment `review_document` runs, rather than depending on the document row surviving. That keeps the history independent of what the LP can delete.

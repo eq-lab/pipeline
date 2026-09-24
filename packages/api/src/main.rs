@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::Router;
 use pipeline_api::auth::JwtKeys;
 use pipeline_api::captcha::TurnstileVerifier;
-use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig};
+use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig, KybStorageConfig};
 use pipeline_api::AppState;
 use shared::account_repo::AccountRepo;
 use shared::auth_user_repo::AuthUserRepo;
@@ -68,6 +68,13 @@ async fn main() -> anyhow::Result<()> {
     let lp_repo = LpRepo::new(pool.clone());
     let lp_ledger_repo = LpLedgerRepo::new(pool.clone());
     let kyb_document_repo = KybDocumentRepo::new(pool.clone());
+
+    // Required, not optional: an API that booted without storage would accept
+    // signups and LP registrations and only fail at the upload step, long after
+    // the misconfiguration shipped.
+    let kyb_storage = KybStorageConfig::from_env()?;
+    let kyb_limits = kyb_storage.limits;
+    let object_store = kyb_storage.object_store();
     let account_repo = AccountRepo::new(pool.clone());
     let otp_repo = OtpRepo::new(pool.clone());
     let login_attempt_repo = LoginAttemptRepo::new(pool.clone());
@@ -150,6 +157,8 @@ async fn main() -> anyhow::Result<()> {
         lp_repo,
         lp_ledger_repo,
         kyb_document_repo,
+        object_store,
+        kyb_limits,
         account_repo,
         otp_repo,
         captcha,
@@ -201,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::loan_transfers::router())
         .nest("/v1", pipeline_api::routes::ramp::router())
         .nest("/v1", pipeline_api::routes::audit_log::router())
-        .nest("/v1", pipeline_api::routes::lps::router())
+        .nest("/v1", pipeline_api::routes::lps::router(kyb_limits))
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())

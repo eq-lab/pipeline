@@ -1,29 +1,35 @@
 //! LP (KYB) API group (`/v1/lps/*`).
 //!
-//! Backs the custom KYB workflow: an LP registers (`POST /v1/lps`), uploads its
-//! supporting documents (`POST /v1/lps/{id}/documents`), staff reviews each one
-//! (`POST /v1/lps/{id}/documents/{doc}/review`), and once `kyb_status` reaches
-//! `Passed` the LP ties a Stellar account (`POST /v1/lps/{id}/link-address`).
-//! `GET /v1/lps` is the staff-facing listing; `GET /v1/lps/{id}` is how an LP
-//! reads back its own record — a trustee may also read any LP by id there.
+//! Backs the custom KYB workflow (Issue #1267). The surface is split by
+//! audience rather than by resource:
 //!
-//! `review_document` is `trustee`-only (mirrors `routes::loan_book`'s and
-//! `routes::ramp`'s review endpoints). `register_lp`, `upload_document`, and
-//! `link_address` require only an authenticated account (any role, whether it
-//! authenticated by wallet or by email) — any registered user may register an
-//! LP, but `upload_document`/`link_address` additionally require the caller's
-//! JWT `account_id` to match the target LP's `owner_account_id` (recorded at
-//! registration): a registered user acts on their own LP only
-//! ([`lp_owner_guard`]). `get_lp` uses the same guard but adds a trustee
-//! bypass — read-only, it does not extend to the two write endpoints.
+//! **Owner** — `lps.owner_account_id` is UNIQUE, so the caller's JWT already
+//! names exactly one LP and no id ever crosses the wire. `GET /v1/lps/me`
+//! returns the record with its documents inline (each carrying a presigned
+//! download URL); `POST /v1/lps/me` is an upsert that registers the entity and
+//! uploads files in one `multipart/form-data` request;
+//! `DELETE /v1/lps/me/documents/{doc}` removes one file; `POST
+//! /v1/lps/me/link-address` ties a Stellar account once KYB passes.
 //!
-//! Ownership is keyed on the **account**, not the wallet pair: signup is
-//! self-serve (see `docs/product-specs/api-authorization.md`), and an LP
-//! registered by email has no `(chain_id, address)` at all. `owner_chain_id`/
-//! `owner_address` are still recorded for a wallet registration, but purely as
-//! history — TD-82. `owner_account_id` is UNIQUE, so one account owns at most
-//! one LP; that bound is what keeps open registration from making
-//! `POST /v1/lps` unlimited.
+//! **Trustee** — `GET /v1/lps` lists, `GET /v1/lps/{id}` reads one (documents
+//! inline, same as `/me`), and `POST /v1/lps/{id}/documents/{doc}/review`
+//! records a decision.
+//!
+//! Two rules govern every owner write, and both exist so that a decision can
+//! never be detached from what it was made about:
+//!
+//! 1. [`KybStatus::allows_owner_writes`] freezes the whole record while
+//!    `UnderReview` or `Passed`. It reads `kyb_status` and never writes it —
+//!    transitions are #1274's job, so this gate is inert until that lands.
+//! 2. A `Verified` document cannot be deleted, even when the LP as a whole is
+//!    writable. That matters in `Failed`, where the LP reopens with some
+//!    documents approved and others rejected.
+//!
+//! Documents are **untyped**: no `doc_type`, no `subject`, no slots, no
+//! versioning. Replacing a document is delete-then-upload, and `POST
+//! /v1/lps/me`'s files are *additive* — they append to the set, they never
+//! replace it, or every profile edit would wipe the LP's uploads. Profile
+//! fields, by contrast, are a full replace.
 //!
 //! `stellar_address` is a separate identity from the login one — see the
 //! migration's module comment. `link_address` still trusts the client-supplied
@@ -33,26 +39,32 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
 
 use shared::chains::validate_stellar_address;
-use shared::kyb_document_repo::{DocType, DocumentStatus, KybDocumentRepo, KybDocumentRow};
-use shared::lp_repo::LpRow;
+use shared::kyb_document_repo::{DocumentStatus, KybDocumentRepo, KybDocumentRow};
+use shared::lp_repo::{KybStatus, LpRow};
+use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPTED_CONTENT_TYPES};
 
 use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
-use crate::error::{is_unique_violation, ApiError};
+use crate::config::KybLimits;
+use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
-/// One LP.
+/// One LP, with its documents inline. The documents ride along because every
+/// caller that reads an LP wants them: the owner renders its onboarding state
+/// from them, the trustee reviews them. A separate listing route would be one
+/// round trip for no benefit.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LpResponse {
     pub id: i64,
@@ -65,6 +77,10 @@ pub struct LpResponse {
     pub address_linked_at: Option<String>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `Passed` | `Failed`.
     pub kyb_status: String,
+    /// Whether the owner may still edit this record — the rendered form of
+    /// [`KybStatus::allows_owner_writes`], so a client need not re-derive the
+    /// rule to know whether to disable its form.
+    pub writable: bool,
     /// The account that registered this LP — the authorization key.
     #[schema(value_type = String)]
     pub owner_account_id: Uuid,
@@ -74,10 +90,12 @@ pub struct LpResponse {
     pub owner_address: Option<String>,
     /// ISO-8601 UTC.
     pub created_at: String,
+    pub documents: Vec<DocumentResponse>,
 }
 
-impl From<LpRow> for LpResponse {
-    fn from(row: LpRow) -> Self {
+impl LpResponse {
+    fn new(row: LpRow, documents: Vec<DocumentResponse>) -> Self {
+        let writable = KybStatus::from_str(&row.kyb_status).is_ok_and(|s| s.allows_owner_writes());
         Self {
             id: row.id,
             legal_name: row.legal_name,
@@ -86,87 +104,122 @@ impl From<LpRow> for LpResponse {
             stellar_address: row.stellar_address,
             address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
+            writable,
             owner_account_id: row.owner_account_id,
             owner_chain_id: row.owner_chain_id,
             owner_address: row.owner_address,
+            created_at: iso_utc(&row.created_at),
+            documents,
+        }
+    }
+}
+
+/// Response for `GET /v1/lps`. The listing carries no documents — it is a
+/// staff overview, and presigning every document of every LP would be wasted
+/// work.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LpsResponse {
+    pub lps: Vec<LpSummary>,
+}
+
+/// One LP without its documents, for the staff listing.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LpSummary {
+    pub id: i64,
+    pub legal_name: String,
+    pub country: Option<String>,
+    pub contact_email: String,
+    pub stellar_address: Option<String>,
+    pub kyb_status: String,
+    #[schema(value_type = String)]
+    pub owner_account_id: Uuid,
+    /// ISO-8601 UTC.
+    pub created_at: String,
+}
+
+impl From<LpRow> for LpSummary {
+    fn from(row: LpRow) -> Self {
+        Self {
+            id: row.id,
+            legal_name: row.legal_name,
+            country: row.country,
+            contact_email: row.contact_email,
+            stellar_address: row.stellar_address,
+            kyb_status: row.kyb_status,
+            owner_account_id: row.owner_account_id,
             created_at: iso_utc(&row.created_at),
         }
     }
 }
 
-/// Response for `GET /v1/lps`.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct LpsResponse {
-    pub lps: Vec<LpResponse>,
-}
-
-/// Request body for `POST /v1/lps`.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct RegisterLpRequest {
-    pub legal_name: String,
-    #[serde(default)]
-    pub country: Option<String>,
-    pub contact_email: String,
-}
-
-/// Response for `POST /v1/lps`.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct RegisterLpResponse {
-    pub id: i64,
-}
-
-/// One KYB document.
+/// One KYB document. Untyped — `original_filename` is what identifies it.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentResponse {
     pub id: i64,
     pub lp_id: i64,
-    /// One of [`DocType`]'s variants.
-    pub doc_type: String,
-    pub subject: Option<String>,
-    pub file_ref: String,
-    /// `NotProvided` | `Provided` | `Verified` | `Rejected`.
+    pub original_filename: String,
+    pub size_bytes: i64,
+    pub content_type: String,
+    /// `Provided` | `Verified` | `Rejected`.
     pub status: String,
     pub reject_reason: Option<String>,
     pub reviewed_by: Option<String>,
     /// ISO-8601 UTC.
     pub reviewed_at: Option<String>,
     /// ISO-8601 UTC.
-    pub expires_at: Option<String>,
-    /// ISO-8601 UTC.
     pub created_at: String,
+    /// Presigned GET, valid for `shared::object_store::DOWNLOAD_URL_TTL`.
+    /// `None` only if presigning failed, which is logged — a broken link on one
+    /// document must not fail the whole read.
+    pub download_url: Option<String>,
 }
 
-impl From<KybDocumentRow> for DocumentResponse {
-    fn from(row: KybDocumentRow) -> Self {
+impl DocumentResponse {
+    fn new(row: KybDocumentRow, download_url: Option<String>) -> Self {
         Self {
             id: row.id,
             lp_id: row.lp_id,
-            doc_type: row.doc_type,
-            subject: row.subject,
-            file_ref: row.file_ref,
+            original_filename: row.original_filename,
+            size_bytes: row.size_bytes,
+            content_type: row.content_type,
             status: row.status,
             reject_reason: row.reject_reason,
             reviewed_by: row.reviewed_by,
             reviewed_at: row.reviewed_at.as_ref().map(iso_utc),
-            expires_at: row.expires_at.as_ref().map(iso_utc),
             created_at: iso_utc(&row.created_at),
+            download_url,
         }
     }
 }
 
-/// Request body for `POST /v1/lps/{id}/documents`.
+/// The outcome of one file in a multi-file upload. A batch reports per file
+/// rather than failing whole: the files that stored are stored, and re-sending
+/// them would duplicate them.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FileResult {
+    pub filename: String,
+    /// `201` when stored, `400` when rejected.
+    pub status: u16,
+    /// The document's id, when it stored.
+    pub id: Option<i64>,
+    /// Why it was rejected, when it was.
+    pub error: Option<String>,
+}
+
+/// Response for `POST /v1/lps/me`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UpsertLpResponse {
+    pub lp: LpResponse,
+    /// One entry per file part in the request, in order. Empty when the request
+    /// carried no files.
+    pub files: Vec<FileResult>,
+}
+
+/// Request body for `POST /v1/lps/me/link-address`.
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UploadDocumentRequest {
-    /// CertificateOfIncorporation | RegistryRecord | GoodStanding | LegalAddress |
-    /// ShareholderRegister | UboId | UboProofOfAddress.
-    pub doc_type: String,
-    /// Which shareholder/UBO, for the personal document types (`UboId`,
-    /// `UboProofOfAddress`). Omit for entity-level documents.
-    #[serde(default)]
-    pub subject: Option<String>,
-    /// Where the uploaded file is stored (no upload transport is implemented
-    /// yet — the caller supplies an already-stored file reference).
-    pub file_ref: String,
+pub struct LinkAddressRequest {
+    /// A Stellar account (`G…`) or contract (`C…`) Strkey.
+    pub stellar_address: String,
 }
 
 /// The staff decision in `POST /v1/lps/{id}/documents/{doc}/review`.
@@ -186,27 +239,30 @@ pub struct DocumentReviewRequest {
     pub reason: Option<String>,
 }
 
-/// Request body for `POST /v1/lps/{id}/link-address`.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct LinkAddressRequest {
-    /// A Stellar account (`G…`) or contract (`C…`) Strkey.
-    pub stellar_address: String,
+/// The profile half of `POST /v1/lps/me`, read from the multipart text parts.
+/// A full replace: every field is taken as sent, and an absent `country` is
+/// stored as `NULL`.
+#[derive(Debug, Default, ToSchema)]
+pub struct LpProfileForm {
+    pub legal_name: String,
+    pub country: Option<String>,
+    pub contact_email: String,
 }
 
 /// OpenAPI doc bundle for the LP routes.
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_lps, get_lp, register_lp, upload_document, review_document, link_address),
+    paths(list_lps, get_lp, get_my_lp, upsert_my_lp, delete_my_document, review_document, link_address),
     components(schemas(
         LpResponse,
+        LpSummary,
         LpsResponse,
-        RegisterLpRequest,
-        RegisterLpResponse,
         DocumentResponse,
-        UploadDocumentRequest,
+        FileResult,
+        UpsertLpResponse,
+        LinkAddressRequest,
         DocumentReviewDecision,
         DocumentReviewRequest,
-        LinkAddressRequest
     )),
     modifiers(&SecurityAddon),
     tags((name = "Lps", description = "KYB: LP registration, documents, and Stellar address linking"))
@@ -215,16 +271,24 @@ pub struct LpsDoc;
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
-pub fn router() -> Router<Arc<AppState>> {
+/// `max_request_bytes` raises the body limit for the upload route **only**.
+/// axum's default is 2MB, which every other route should keep — a 100MB
+/// ceiling applied globally would turn any endpoint into a memory sink.
+pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
     Router::new()
-        .route("/lps", get(list_lps).post(register_lp))
+        .route("/lps", get(list_lps))
+        .route("/lps/me", get(get_my_lp))
+        .route(
+            "/lps/me",
+            post(upsert_my_lp).layer(DefaultBodyLimit::max(limits.max_request_bytes())),
+        )
+        .route("/lps/me/documents/{doc}", delete(delete_my_document))
+        .route("/lps/me/link-address", post(link_address))
         .route("/lps/{id}", get(get_lp))
-        .route("/lps/{id}/documents", post(upload_document))
         .route("/lps/{id}/documents/{doc}/review", post(review_document))
-        .route("/lps/{id}/link-address", post(link_address))
 }
 
-// ── Handlers ─────────────────────────────────────────────────────────────────
+// ── Handlers: trustee ────────────────────────────────────────────────────────
 
 #[utoipa::path(
     get,
@@ -241,31 +305,23 @@ async fn list_lps(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LpsResponse>, ApiError> {
-    if !claims.has_role(TRUSTEE_ROLE) {
-        return Err(ApiError::Forbidden(format!(
-            "this endpoint requires the `{TRUSTEE_ROLE}` role"
-        )));
-    }
+    require_trustee(&claims)?;
     let lps = state.lp_repo.list().await?;
     Ok(Json(LpsResponse {
-        lps: lps.into_iter().map(LpResponse::from).collect(),
+        lps: lps.into_iter().map(LpSummary::from).collect(),
     }))
 }
 
-/// Fetch a single LP: its own registered owner, or a trustee, may read any LP
-/// by id ([`lp_owner_guard`]). How an LP checks its own `kyb_status` /
-/// `stellar_address` after registering; the trustee case gives staff a
-/// single-record complement to `list_lps`. The trustee bypass is read-only —
-/// it does not extend to `upload_document`/`link_address`, which always
-/// require exact ownership.
+/// Read one LP by id, with its documents and their download URLs. Trustee-only
+/// — an owner reads its own record through [`get_my_lp`], which needs no id.
 #[utoipa::path(
     get,
     path = "/v1/lps/{id}",
     params(("id" = i64, Path, description = "LP id")),
     responses(
-        (status = 200, description = "The LP (caller's own, or any LP for a trustee)", body = LpResponse),
+        (status = 200, description = "The LP and its documents", body = LpResponse),
         (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 403, description = "Caller does not own this LP and lacks the `trustee` role"),
+        (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No LP with this id"),
     ),
     security(("bearer_auth" = [])),
@@ -276,140 +332,19 @@ async fn get_lp(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Json<LpResponse>, ApiError> {
-    if claims.has_role(TRUSTEE_ROLE) {
-        let lp = state
-            .lp_repo
-            .find(id)
-            .await?
-            .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
-        return Ok(Json(LpResponse::from(lp)));
-    }
-    let lp = lp_owner_guard(&claims, &state, id).await?;
-    Ok(Json(LpResponse::from(lp)))
-}
-
-/// Register a new LP, owned by the caller's JWT identity. `kyb_status` starts
-/// at `NotStarted`. Any authenticated `auth_users` entry may register — no
-/// specific role is required.
-#[utoipa::path(
-    post,
-    path = "/v1/lps",
-    request_body = RegisterLpRequest,
-    responses(
-        (status = 201, description = "LP registered, owned by the caller", body = RegisterLpResponse),
-        (status = 400, description = "legal_name or contact_email is empty"),
-        (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 409, description = "This account already has a registered LP"),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "Lps"
-)]
-async fn register_lp(
-    AuthClaims(claims): AuthClaims,
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<RegisterLpRequest>,
-) -> Result<(StatusCode, Json<RegisterLpResponse>), ApiError> {
-    let legal_name = req.legal_name.trim();
-    if legal_name.is_empty() {
-        return Err(ApiError::BadRequest(
-            "legal_name must not be empty".to_owned(),
-        ));
-    }
-    let contact_email = req.contact_email.trim();
-    if contact_email.is_empty() {
-        return Err(ApiError::BadRequest(
-            "contact_email must not be empty".to_owned(),
-        ));
-    }
-    let country = req
-        .country
-        .as_deref()
-        .map(str::trim)
-        .filter(|c| !c.is_empty());
-
-    let id = match state
+    require_trustee(&claims)?;
+    let lp = state
         .lp_repo
-        .insert(
-            legal_name,
-            country,
-            contact_email,
-            claims.account_id,
-            claims.chain_id,
-            claims.chain_id.map(|_| claims.sub.as_str()),
-        )
-        .await
-    {
-        Ok(id) => id,
-        // `lps_owner_account_unique` — one account owns at most one LP. Without
-        // this arm the constraint renders as an opaque 500 for anyone who
-        // double-submits the form or already has an LP.
-        Err(e) if is_unique_violation(&e) => {
-            return Err(ApiError::Conflict(
-                "this account already has a registered LP".to_owned(),
-            ))
-        }
-        Err(e) => return Err(e.into()),
-    };
-    Ok((StatusCode::CREATED, Json(RegisterLpResponse { id })))
-}
-
-/// Upload a KYB document for an LP. Supersedes the current submission (if any)
-/// for the same `(doc_type, subject)` — the prior version is kept for history,
-/// not deleted. The caller must be the LP's registered owner ([`lp_owner_guard`]).
-#[utoipa::path(
-    post,
-    path = "/v1/lps/{id}/documents",
-    params(("id" = i64, Path, description = "LP id")),
-    request_body = UploadDocumentRequest,
-    responses(
-        (status = 201, description = "Document recorded as Provided, awaiting staff review", body = DocumentResponse),
-        (status = 400, description = "Invalid doc_type or empty file_ref"),
-        (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 403, description = "Caller does not own this LP"),
-        (status = 404, description = "No LP with this id"),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "Lps"
-)]
-async fn upload_document(
-    AuthClaims(claims): AuthClaims,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-    Json(req): Json<UploadDocumentRequest>,
-) -> Result<(StatusCode, Json<DocumentResponse>), ApiError> {
-    let doc_type = DocType::from_str(req.doc_type.trim()).map_err(ApiError::BadRequest)?;
-    let file_ref = req.file_ref.trim();
-    if file_ref.is_empty() {
-        return Err(ApiError::BadRequest(
-            "file_ref must not be empty".to_owned(),
-        ));
-    }
-    let subject = req
-        .subject
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-
-    lp_owner_guard(&claims, &state, id).await?;
-
-    // Supersede-then-insert must be atomic: idx_kyb_documents_current would
-    // otherwise reject the new row while the old one is still current.
-    let mut tx = state.pool.begin().await?;
-    let doc_id = KybDocumentRepo::upload(&mut tx, id, doc_type, subject, file_ref).await?;
-    tx.commit().await?;
-
-    let row = state.kyb_document_repo.find(doc_id).await?.ok_or_else(|| {
-        ApiError::Internal(anyhow::anyhow!(
-            "document {doc_id} vanished immediately after insert"
-        ))
-    })?;
-    Ok((StatusCode::CREATED, Json(DocumentResponse::from(row))))
+        .find(id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
+    Ok(Json(with_documents(&state, lp).await?))
 }
 
 /// Approve or reject an LP's document. Trustee-only. A rejection must carry a
 /// non-empty `reason`; a verification must not. Only a document currently
-/// `Provided` can be reviewed — reviewing an already-decided or superseded
-/// document returns `409 Conflict`. Mirrors `routes::ramp::review_ramp_event`.
+/// `Provided` can be reviewed — reviewing an already-decided one returns
+/// `409 Conflict`. Mirrors `routes::ramp::review_ramp_event`.
 #[utoipa::path(
     post,
     path = "/v1/lps/{id}/documents/{doc}/review",
@@ -424,7 +359,7 @@ async fn upload_document(
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No such document for this LP"),
-        (status = 409, description = "Document is not awaiting review (already decided, or superseded by a later upload)"),
+        (status = 409, description = "Document is not awaiting review"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -435,11 +370,7 @@ async fn review_document(
     Path((id, doc)): Path<(i64, i64)>,
     Json(req): Json<DocumentReviewRequest>,
 ) -> Result<StatusCode, ApiError> {
-    if !claims.has_role(TRUSTEE_ROLE) {
-        return Err(ApiError::Forbidden(format!(
-            "this endpoint requires the `{TRUSTEE_ROLE}` role"
-        )));
-    }
+    require_trustee(&claims)?;
 
     let (status, reason) = resolve_document_review(&req).map_err(ApiError::BadRequest)?;
 
@@ -465,23 +396,193 @@ async fn review_document(
     Ok(StatusCode::OK)
 }
 
-/// LP ties a Stellar account after KYB passes. One-shot: only an LP with
-/// `kyb_status = Passed` and no address linked yet is eligible. The caller must
-/// be the LP's registered owner ([`lp_owner_guard`]) — this is a separate check
-/// from `stellar_address` itself, which is not verified against the caller's
-/// login identity (see the module doc / TD-57).
+// ── Handlers: owner ──────────────────────────────────────────────────────────
+
+/// The caller's own LP, with its documents and their download URLs.
+///
+/// `404` is meaningful here rather than an error: it is how a freshly verified
+/// account (no LP yet) is told apart from one mid-KYB, which is what lets the
+/// frontend route between "register your entity" and "account in review".
+#[utoipa::path(
+    get,
+    path = "/v1/lps/me",
+    responses(
+        (status = 200, description = "The caller's LP and its documents", body = LpResponse),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 404, description = "This account has not registered an LP yet"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Lps"
+)]
+async fn get_my_lp(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<LpResponse>, ApiError> {
+    let lp = my_lp(&claims, &state).await?;
+    Ok(Json(with_documents(&state, lp).await?))
+}
+
+/// Register or update the caller's LP, and upload documents, in one request.
+///
+/// `multipart/form-data`: text parts `legal_name`, `country`, `contact_email`
+/// carry the profile (a full replace — an absent `country` clears it); every
+/// part with a filename is treated as a document and **appended** to the LP's
+/// set. Sending no file parts is a profile-only edit.
+///
+/// The profile is written first and stands on its own: a file that fails
+/// validation is reported in `files` and does not undo it. Files are then
+/// stored one at a time so a bad one cannot orphan an object or roll back the
+/// files already stored.
 #[utoipa::path(
     post,
-    path = "/v1/lps/{id}/link-address",
-    params(("id" = i64, Path, description = "LP id")),
+    path = "/v1/lps/me",
+    request_body(content = String, description = "multipart/form-data: legal_name, country, contact_email, plus zero or more file parts", content_type = "multipart/form-data"),
+    responses(
+        (status = 200, description = "LP updated; every file stored", body = UpsertLpResponse),
+        (status = 201, description = "LP registered; every file stored", body = UpsertLpResponse),
+        (status = 207, description = "LP written, but at least one file was rejected — see `files`", body = UpsertLpResponse),
+        (status = 400, description = "Malformed multipart, or legal_name/contact_email empty"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 409, description = "KYB is UnderReview or Passed, or the request would exceed the per-LP document cap"),
+        (status = 413, description = "A file exceeds KYB_MAX_DOCUMENT_BYTES, or the request carries too many files"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Lps"
+)]
+async fn upsert_my_lp(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    multipart: Multipart,
+) -> Result<Response, ApiError> {
+    let limits = state.kyb_limits;
+
+    // Read the whole request before touching anything: the cap check below has
+    // to know the file count up front, and the profile must not be written if
+    // the request turns out to be unacceptable as a whole.
+    let (form, files) = read_upload(multipart, limits).await?;
+    let profile = validate_profile(&form)?;
+
+    let existing = state
+        .lp_repo
+        .find_by_owner_account_id(claims.account_id)
+        .await?;
+    if let Some(lp) = &existing {
+        guard_writable(lp)?;
+    }
+
+    let held = match &existing {
+        Some(lp) => state.kyb_document_repo.count_for_lp(lp.id).await?,
+        None => 0,
+    };
+    check_document_cap(held, files.len(), limits.max_documents_per_lp)?;
+
+    let (lp_id, created) = state
+        .lp_repo
+        .upsert_by_owner_account_id(
+            profile.legal_name,
+            profile.country,
+            profile.contact_email,
+            claims.account_id,
+            claims.chain_id,
+            claims.chain_id.map(|_| claims.sub.as_str()),
+        )
+        .await?;
+
+    let mut results = Vec::with_capacity(files.len());
+    for file in files {
+        results.push(store_one(&state, lp_id, file).await);
+    }
+
+    let lp = state.lp_repo.find(lp_id).await?.ok_or_else(|| {
+        ApiError::Internal(anyhow::anyhow!(
+            "LP {lp_id} vanished immediately after upsert"
+        ))
+    })?;
+    let body = UpsertLpResponse {
+        lp: with_documents(&state, lp).await?,
+        files: results,
+    };
+
+    Ok((upsert_status(created, &body.files), Json(body)).into_response())
+}
+
+/// Remove one of the caller's documents — the object in Spaces and the row.
+///
+/// This is also how a document is replaced: with no types and no slots, there
+/// is nothing to supersede, so a correction is delete-then-upload.
+///
+/// A `Verified` document is refused even while the LP is writable, so a passed
+/// KYB always refers to the bytes that earned it.
+#[utoipa::path(
+    delete,
+    path = "/v1/lps/me/documents/{doc}",
+    params(("doc" = i64, Path, description = "kyb_documents.id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 404, description = "No such document for the caller's LP"),
+        (status = 409, description = "KYB is UnderReview or Passed, or the document is Verified"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Lps"
+)]
+async fn delete_my_document(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    Path(doc): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let lp = my_lp(&claims, &state).await?;
+    guard_writable(&lp)?;
+
+    let row = state
+        .kyb_document_repo
+        .find(doc)
+        .await?
+        .filter(|d| d.lp_id == lp.id)
+        .ok_or_else(|| ApiError::NotFound(format!("no document {doc} for this LP")))?;
+
+    if row.is_verified() {
+        return Err(ApiError::Conflict(format!(
+            "document {doc} has been verified and can no longer be deleted"
+        )));
+    }
+
+    // The row goes first: it is the source of truth, and its `status <>
+    // 'Verified'` predicate is what closes the race against a concurrent
+    // review. A failure to remove the object afterwards leaves an unreferenced
+    // blob, which is wasted storage rather than a correctness problem.
+    if !state.kyb_document_repo.delete(doc).await? {
+        return Err(ApiError::Conflict(format!(
+            "document {doc} has been verified and can no longer be deleted"
+        )));
+    }
+    if let Err(e) = state.object_store.delete(&row.file_ref).await {
+        tracing::warn!(
+            document = doc,
+            key = %row.file_ref,
+            error = %e,
+            "deleted kyb_documents row but could not remove its object"
+        );
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// LP ties a Stellar account after KYB passes. One-shot: only an LP with
+/// `kyb_status = Passed` and no address linked yet is eligible.
+///
+/// Deliberately not folded into [`upsert_my_lp`]: it requires `Passed`, which
+/// is exactly when the upsert is frozen.
+#[utoipa::path(
+    post,
+    path = "/v1/lps/me/link-address",
     request_body = LinkAddressRequest,
     responses(
         (status = 200, description = "Address linked", body = LpResponse),
         (status = 400, description = "stellar_address is not a valid Strkey"),
         (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 403, description = "Caller does not own this LP"),
-        (status = 404, description = "No LP with this id"),
-        (status = 409, description = "KYB has not passed, an address is already linked, or stellar_address is already linked to another LP"),
+        (status = 404, description = "This account has not registered an LP yet"),
+        (status = 409, description = "KYB has not passed, an address is already linked, or stellar_address belongs to another LP"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -489,17 +590,16 @@ async fn review_document(
 async fn link_address(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
     Json(req): Json<LinkAddressRequest>,
 ) -> Result<Json<LpResponse>, ApiError> {
     let stellar_address = validate_stellar_address("stellar_address", req.stellar_address)
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    lp_owner_guard(&claims, &state, id).await?;
+    let lp = my_lp(&claims, &state).await?;
 
     let linked = state
         .lp_repo
-        .link_address(id, &stellar_address)
+        .link_address(lp.id, &stellar_address)
         .await
         .map_err(|e| match e {
             sqlx::Error::Database(ref db) if db.code().as_deref() == Some("23505") => {
@@ -511,51 +611,370 @@ async fn link_address(
         })?;
     if !linked {
         return Err(ApiError::Conflict(format!(
-            "LP {id} has not passed KYB, or already has an address linked"
+            "LP {} has not passed KYB, or already has an address linked",
+            lp.id
         )));
     }
 
-    let row = state.lp_repo.find(id).await?.ok_or_else(|| {
+    let row = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
         ApiError::Internal(anyhow::anyhow!(
-            "LP {id} vanished immediately after linking"
+            "LP {} vanished immediately after linking",
+            lp.id
         ))
     })?;
-    Ok(Json(LpResponse::from(row)))
+    Ok(Json(with_documents(&state, row).await?))
 }
 
-// ── Guards ───────────────────────────────────────────────────────────────────
+// ── Upload plumbing ──────────────────────────────────────────────────────────
 
-/// Shared guard for LP-facing writes on `/v1/lps/{id}/…`: the caller's JWT
-/// `account_id` must match the target LP's `owner_account_id`. 404 when the LP
-/// doesn't exist, 403 on an owner mismatch. Used by [`upload_document`] and
-/// [`link_address`] so "own LP only" cannot drift between them.
+/// One accepted file part, held in memory between parsing and storage.
+struct UploadedFile {
+    filename: String,
+    bytes: Vec<u8>,
+    /// `Err` carries why the file was rejected; the part is still reported so
+    /// the caller learns which of its files failed and why.
+    verdict: Result<&'static str, String>,
+}
+
+/// Drain the multipart body into the profile fields and the file parts.
 ///
-/// Deliberately not the `(chain_id, sub)` wallet pair this used to compare: an
-/// email-registered LP has neither column set, so a pair check would fail open
-/// for exactly the accounts self-serve signup creates. See TD-82.
-async fn lp_owner_guard(claims: &Claims, state: &AppState, id: i64) -> Result<LpRow, ApiError> {
-    let lp = state
-        .lp_repo
-        .find(id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
-    if lp.owner_account_id != claims.account_id {
-        return Err(ApiError::Forbidden(
-            "this LP is registered to a different user".to_owned(),
-        ));
+/// Rejects the whole request only for things that make it unprocessable — a
+/// malformed body, or more file parts than `max_files_per_request`. A single
+/// unacceptable file (wrong type, too large) is recorded as a per-file verdict
+/// instead, so one bad attachment cannot discard a valid profile edit and the
+/// files beside it.
+async fn read_upload(
+    mut multipart: Multipart,
+    limits: KybLimits,
+) -> Result<(LpProfileForm, Vec<UploadedFile>), ApiError> {
+    let mut form = LpProfileForm::default();
+    let mut files: Vec<UploadedFile> = Vec::new();
+
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("malformed multipart body: {e}")))?
+    {
+        let name = field.name().unwrap_or_default().to_owned();
+        let filename = field.file_name().map(str::to_owned);
+
+        let Some(filename) = filename else {
+            let value = field
+                .text()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("unreadable `{name}` field: {e}")))?;
+            match name.as_str() {
+                "legal_name" => form.legal_name = value,
+                "country" => form.country = Some(value),
+                "contact_email" => form.contact_email = value,
+                _ => {}
+            }
+            continue;
+        };
+
+        if files.len() >= limits.max_files_per_request {
+            return Err(ApiError::PayloadTooLarge(format!(
+                "at most {} files may be uploaded per request",
+                limits.max_files_per_request
+            )));
+        }
+
+        files.push(read_file(&mut field, filename, limits).await?);
     }
-    Ok(lp)
+
+    Ok((form, files))
+}
+
+/// Drain one file part, refusing to hold more than the per-file limit.
+///
+/// Read in chunks rather than via `Field::bytes` because that would buffer the
+/// whole part before the size could be checked — and the body limit that
+/// admitted the request is the *batch* ceiling, so a single part is allowed to
+/// arrive far larger than any one file may be. Once the limit is passed the
+/// remainder is drained and discarded: the verdict is already decided, but the
+/// connection still has to be read to reach the parts that follow.
+async fn read_file(
+    field: &mut axum::extract::multipart::Field<'_>,
+    filename: String,
+    limits: KybLimits,
+) -> Result<UploadedFile, ApiError> {
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut total: usize = 0;
+    let mut oversized = false;
+
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("unreadable file `{filename}`: {e}")))?
+    {
+        total = total.saturating_add(chunk.len());
+        if total > limits.max_document_bytes {
+            oversized = true;
+            bytes = Vec::new();
+            continue;
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+
+    if oversized {
+        return Ok(UploadedFile {
+            filename,
+            bytes: Vec::new(),
+            verdict: Err(format!(
+                "file is {total} bytes; the limit is {}",
+                limits.max_document_bytes
+            )),
+        });
+    }
+
+    Ok(inspect_file(filename, bytes, limits))
+}
+
+/// Decide whether one uploaded part is acceptable.
+///
+/// The declared `Content-Type` is ignored entirely: it is attacker-controlled,
+/// so the leading bytes are what decide. Size is checked here rather than in
+/// the extractor because the per-file limit is smaller than the per-request
+/// body limit that admitted it.
+fn inspect_file(filename: String, bytes: Vec<u8>, limits: KybLimits) -> UploadedFile {
+    let verdict = if bytes.is_empty() {
+        Err("file is empty".to_owned())
+    } else if bytes.len() > limits.max_document_bytes {
+        Err(format!(
+            "file is {} bytes; the limit is {}",
+            bytes.len(),
+            limits.max_document_bytes
+        ))
+    } else {
+        sniff_content_type(&bytes).ok_or_else(|| {
+            format!(
+                "unsupported file type — accepted types are {}",
+                ACCEPTED_CONTENT_TYPES.join(", ")
+            )
+        })
+    };
+
+    UploadedFile {
+        filename,
+        bytes,
+        verdict,
+    }
+}
+
+/// Store one accepted file and record it, or report why it was refused.
+///
+/// The object goes to Spaces before the row is written: a row pointing at an
+/// object that does not exist would render as a broken download, whereas an
+/// object with no row is invisible and merely wasted.
+///
+/// A storage or database failure is reported against *this file* rather than
+/// raised, because by the time it happens earlier files in the batch are
+/// already stored. Failing the request would answer `500` while silently having
+/// committed half the upload; a `500` entry in `files` tells the caller exactly
+/// which files to retry.
+async fn store_one(state: &AppState, lp_id: i64, file: UploadedFile) -> FileResult {
+    let refused = |status: StatusCode, error: String| FileResult {
+        filename: file.filename.clone(),
+        status: status.as_u16(),
+        id: None,
+        error: Some(error),
+    };
+
+    let content_type = match file.verdict {
+        Ok(content_type) => content_type,
+        Err(ref error) => return refused(StatusCode::BAD_REQUEST, error.clone()),
+    };
+
+    let extension = extension_for(content_type).unwrap_or("bin");
+    let key = object_key(lp_id, Uuid::new_v4(), extension);
+    let size_bytes = file.bytes.len() as i64;
+
+    if let Err(e) = state.object_store.put(&key, content_type, file.bytes).await {
+        tracing::error!(lp = lp_id, key = %key, error = %e, "could not store a KYB document");
+        return refused(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not be stored — try uploading it again".to_owned(),
+        );
+    }
+
+    let insert = async {
+        let mut conn = state.pool.acquire().await?;
+        KybDocumentRepo::insert(
+            &mut conn,
+            lp_id,
+            &key,
+            &file.filename,
+            size_bytes,
+            content_type,
+        )
+        .await
+    }
+    .await;
+
+    match insert {
+        Ok(id) => FileResult {
+            filename: file.filename,
+            status: StatusCode::CREATED.as_u16(),
+            id: Some(id),
+            error: None,
+        },
+        Err(e) => {
+            // The object is already in the bucket with nothing pointing at it.
+            // Unreferenced, so invisible to every reader — a storage leak, not a
+            // correctness problem. Best-effort removal keeps it from accruing.
+            tracing::error!(lp = lp_id, key = %key, error = %e, "could not record a stored KYB document");
+            if let Err(cleanup) = state.object_store.delete(&key).await {
+                tracing::warn!(key = %key, error = %cleanup, "could not clean up an unreferenced object");
+            }
+            refused(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not be recorded — try uploading it again".to_owned(),
+            )
+        }
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
+    if claims.has_role(TRUSTEE_ROLE) {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden(format!(
+        "this endpoint requires the `{TRUSTEE_ROLE}` role"
+    )))
+}
+
+/// The caller's LP, or `404`. Replaces the old `lp_owner_guard`: with the owner
+/// routes keyed on `/me`, ownership is not something to check after the fact —
+/// the lookup is by `owner_account_id`, so a caller can only ever reach its own.
+async fn my_lp(claims: &Claims, state: &AppState) -> Result<LpRow, ApiError> {
+    state
+        .lp_repo
+        .find_by_owner_account_id(claims.account_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("this account has not registered an LP yet".to_owned()))
+}
+
+fn guard_writable(lp: &LpRow) -> Result<(), ApiError> {
+    let status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    if status.allows_owner_writes() {
+        return Ok(());
+    }
+    Err(ApiError::Conflict(format!(
+        "this LP is {status} and can no longer be changed"
+    )))
+}
+
+/// Load an LP's documents and attach a presigned download URL to each.
+///
+/// A presigning failure degrades that one document to `download_url: null`
+/// rather than failing the read — the rest of the record is still useful, and
+/// the client can retry.
+async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiError> {
+    let rows = state.kyb_document_repo.list_for_lp(lp.id).await?;
+    let mut documents = Vec::with_capacity(rows.len());
+    for row in rows {
+        let url = match state
+            .object_store
+            .presigned_get(&row.file_ref, &row.original_filename)
+            .await
+        {
+            Ok(url) => Some(url),
+            Err(e) => {
+                tracing::warn!(
+                    document = row.id,
+                    key = %row.file_ref,
+                    error = %e,
+                    "could not presign a KYB document"
+                );
+                None
+            }
+        };
+        documents.push(DocumentResponse::new(row, url));
+    }
+    Ok(LpResponse::new(lp, documents))
 }
 
 // ── Compute (pure) ───────────────────────────────────────────────────────────
+
+/// Validated, trimmed profile fields borrowed from the submitted form.
+pub struct ValidatedProfile<'a> {
+    pub legal_name: &'a str,
+    pub country: Option<&'a str>,
+    pub contact_email: &'a str,
+}
+
+/// Check the profile half of an upsert. `country` collapses blank to `None`, so
+/// a form that submits an empty select clears the column rather than storing
+/// `""`.
+///
+/// Public so the unit tests in `packages/api/tests/lps.rs` can exercise it
+/// without the HTTP/DB layers.
+pub fn validate_profile(form: &LpProfileForm) -> Result<ValidatedProfile<'_>, ApiError> {
+    let legal_name = form.legal_name.trim();
+    if legal_name.is_empty() {
+        return Err(ApiError::BadRequest(
+            "legal_name must not be empty".to_owned(),
+        ));
+    }
+    let contact_email = form.contact_email.trim();
+    if contact_email.is_empty() {
+        return Err(ApiError::BadRequest(
+            "contact_email must not be empty".to_owned(),
+        ));
+    }
+    Ok(ValidatedProfile {
+        legal_name,
+        country: form
+            .country
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty()),
+        contact_email,
+    })
+}
+
+/// Refuse an upload that would carry an LP past the per-LP document cap.
+///
+/// Checked before anything is stored, and against the whole batch rather than
+/// file by file, so a request either fits or is refused outright — an LP is
+/// never left with a half-applied upload sitting against its quota.
+pub fn check_document_cap(held: i64, incoming: usize, max: i64) -> Result<(), ApiError> {
+    let total = held.saturating_add(incoming as i64);
+    if total > max {
+        return Err(ApiError::Conflict(format!(
+            "this LP holds {held} documents and may hold at most {max}; \
+             this request would add {incoming}"
+        )));
+    }
+    Ok(())
+}
+
+/// The status a completed upsert answers with.
+///
+/// `207` whenever any file was refused — the profile still wrote and the other
+/// files still stored, so neither a flat success nor a flat failure would be
+/// honest about what happened.
+pub fn upsert_status(created: bool, files: &[FileResult]) -> StatusCode {
+    if files
+        .iter()
+        .any(|f| f.status != StatusCode::CREATED.as_u16())
+    {
+        return StatusCode::MULTI_STATUS;
+    }
+    if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    }
+}
 
 /// Validate a document review request and map it to the `(status, reason)` the
 /// repo expects. Pure (no I/O) so it is unit-testable. Reject ⇒ a non-empty
 /// `reason` is required; Verify ⇒ no reason may be supplied. Mirrors
 /// `routes::ramp::resolve_ramp_review`.
-///
-/// Public so the unit test in `packages/api/tests/lps.rs` can exercise it
-/// without the HTTP/DB layers.
 pub fn resolve_document_review(
     req: &DocumentReviewRequest,
 ) -> Result<(DocumentStatus, Option<&str>), String> {
