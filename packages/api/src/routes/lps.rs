@@ -276,10 +276,14 @@ pub struct UpsertLpRequest {
 pub struct UploadDocumentsForm {
     /// Supporting documents, appended to the LP's existing set — never
     /// replacing it. PDF, JPEG or PNG, decided by content rather than by the
-    /// declared type or the file extension. Optional: a body with no file parts
-    /// is a profile-only edit.
-    #[schema(value_type = Option<Vec<String>>, format = Binary)]
-    pub files: Option<Vec<Vec<u8>>>,
+    /// declared type or the file extension.
+    ///
+    /// Not optional, and deliberately a plain `Vec`: an `Option` renders as
+    /// OpenAPI 3.1's `type: ["array", "null"]`, and Swagger UI does not reliably
+    /// recognise that union as an array of files — which is what decides whether
+    /// it shows a file picker or an unusable text box.
+    #[schema(value_type = Vec<String>, format = Binary)]
+    pub files: Vec<Vec<u8>>,
 }
 
 /// OpenAPI doc bundle for the LP routes.

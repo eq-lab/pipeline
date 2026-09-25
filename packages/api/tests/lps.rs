@@ -248,9 +248,12 @@ fn the_profile_request_exposes_the_entity_fields() {
 fn the_upload_form_exposes_a_multi_file_picker() {
     let doc = openapi_json();
     let files = &doc["components"]["schemas"]["UploadDocumentsForm"]["properties"]["files"];
-    assert!(
-        has_type(files, "array"),
-        "files must accept several documents, got {}",
+    // The plain string form, not 3.1's ["array","null"] union: Swagger UI keys
+    // its file-picker rendering off this, and does not reliably handle the
+    // union. A text box here instead of a Browse button is the failure.
+    assert_eq!(
+        files["type"], "array",
+        "files must be a plain array type, got {}",
         files["type"]
     );
     assert_eq!(
@@ -277,6 +280,15 @@ fn only_the_entity_fields_are_required() {
     assert!(
         !required.iter().any(|f| f == "files"),
         "the profile request carries no files at all"
+    );
+
+    let upload_required = doc["components"]["schemas"]["UploadDocumentsForm"]["required"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        upload_required.iter().any(|f| f == "files"),
+        "an upload with no files is a pointless request — files is required"
     );
 }
 
