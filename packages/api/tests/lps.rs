@@ -6,8 +6,8 @@ use axum::http::StatusCode;
 
 use pipeline_api::config::KybLimits;
 use pipeline_api::routes::lps::{
-    check_document_cap, resolve_document_review, upsert_status, validate_profile,
-    DocumentReviewDecision, DocumentReviewRequest, FileResult, LpProfileForm, LpsDoc,
+    check_document_cap, resolve_document_review, upload_status, validate_profile,
+    DocumentReviewDecision, DocumentReviewRequest, FileResult, LpsDoc, UpsertLpRequest,
     MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN, MAX_LEGAL_NAME_LEN,
 };
 use shared::kyb_document_repo::DocumentStatus;
@@ -62,8 +62,8 @@ fn verify_without_a_reason_succeeds() {
 
 // ── Profile validation ───────────────────────────────────────────────────────
 
-fn form(legal_name: &str, country: Option<&str>, contact_email: &str) -> LpProfileForm {
-    LpProfileForm {
+fn form(legal_name: &str, country: Option<&str>, contact_email: &str) -> UpsertLpRequest {
+    UpsertLpRequest {
         legal_name: legal_name.to_owned(),
         country: country.map(str::to_owned),
         contact_email: contact_email.to_owned(),
@@ -158,29 +158,34 @@ fn refused(filename: &str) -> FileResult {
 }
 
 #[test]
-fn a_clean_registration_is_created() {
-    assert_eq!(upsert_status(true, &[]), StatusCode::CREATED);
+fn an_upload_where_every_file_stored_is_created() {
+    assert_eq!(upload_status(&[]), StatusCode::CREATED);
     assert_eq!(
-        upsert_status(true, &[stored("cert.pdf"), stored("registry.pdf")]),
+        upload_status(&[stored("cert.pdf"), stored("registry.pdf")]),
         StatusCode::CREATED
     );
 }
 
 #[test]
-fn a_clean_edit_is_ok() {
-    assert_eq!(upsert_status(false, &[]), StatusCode::OK);
-    assert_eq!(upsert_status(false, &[stored("cert.pdf")]), StatusCode::OK);
+fn a_partial_upload_is_multi_status() {
+    assert_eq!(
+        upload_status(&[stored("cert.pdf"), refused("virus.exe")]),
+        StatusCode::MULTI_STATUS
+    );
 }
 
 #[test]
-fn any_refused_file_downgrades_the_response_to_multi_status() {
+fn an_upload_where_nothing_stored_is_a_plain_failure() {
+    // Nothing changed, so 207 would overstate it. This is the case the old
+    // combined endpoint could not answer honestly, because a profile write
+    // always survived alongside the files.
     assert_eq!(
-        upsert_status(true, &[stored("cert.pdf"), refused("virus.exe")]),
-        StatusCode::MULTI_STATUS
+        upload_status(&[refused("virus.exe")]),
+        StatusCode::BAD_REQUEST
     );
     assert_eq!(
-        upsert_status(false, &[refused("virus.exe")]),
-        StatusCode::MULTI_STATUS
+        upload_status(&[refused("a.exe"), refused("b.exe")]),
+        StatusCode::BAD_REQUEST
     );
 }
 
@@ -191,12 +196,12 @@ fn openapi_json() -> serde_json::Value {
 }
 
 #[test]
-fn the_upsert_body_is_documented_as_multipart_form_data() {
+fn the_upload_body_is_documented_as_multipart_form_data() {
     let doc = openapi_json();
-    let body = &doc["paths"]["/v1/lps/me"]["post"]["requestBody"]["content"];
+    let body = &doc["paths"]["/v1/lps/me/documents"]["post"]["requestBody"]["content"];
     assert!(
         body.get("multipart/form-data").is_some(),
-        "the upsert must advertise multipart/form-data, got {body}"
+        "the upload must advertise multipart/form-data, got {body}"
     );
 }
 
@@ -212,9 +217,24 @@ fn has_type(schema: &serde_json::Value, wanted: &str) -> bool {
 }
 
 #[test]
-fn the_upsert_form_exposes_the_entity_fields() {
+fn the_profile_endpoint_takes_json_not_multipart() {
     let doc = openapi_json();
-    let props = &doc["components"]["schemas"]["UpsertLpForm"]["properties"];
+    let content = &doc["paths"]["/v1/lps/me"]["post"]["requestBody"]["content"];
+    assert!(
+        content.get("application/json").is_some(),
+        "the profile endpoint must be plain JSON, got {content}"
+    );
+    assert!(
+        content.get("multipart/form-data").is_none(),
+        "the profile endpoint must not accept files — uploading rewrote the \
+         profile when it did"
+    );
+}
+
+#[test]
+fn the_profile_request_exposes_the_entity_fields() {
+    let doc = openapi_json();
+    let props = &doc["components"]["schemas"]["UpsertLpRequest"]["properties"];
     for field in ["legal_name", "country", "contact_email"] {
         assert!(
             has_type(&props[field], "string"),
@@ -225,9 +245,9 @@ fn the_upsert_form_exposes_the_entity_fields() {
 }
 
 #[test]
-fn the_upsert_form_exposes_a_multi_file_picker() {
+fn the_upload_form_exposes_a_multi_file_picker() {
     let doc = openapi_json();
-    let files = &doc["components"]["schemas"]["UpsertLpForm"]["properties"]["files"];
+    let files = &doc["components"]["schemas"]["UploadDocumentsForm"]["properties"]["files"];
     assert!(
         has_type(files, "array"),
         "files must accept several documents, got {}",
@@ -244,7 +264,7 @@ fn the_upsert_form_exposes_a_multi_file_picker() {
 #[test]
 fn only_the_entity_fields_are_required() {
     let doc = openapi_json();
-    let required = doc["components"]["schemas"]["UpsertLpForm"]["required"]
+    let required = doc["components"]["schemas"]["UpsertLpRequest"]["required"]
         .as_array()
         .cloned()
         .unwrap_or_default();
@@ -256,7 +276,7 @@ fn only_the_entity_fields_are_required() {
     );
     assert!(
         !required.iter().any(|f| f == "files"),
-        "files must be optional — a body with no file parts is a profile-only edit"
+        "the profile request carries no files at all"
     );
 }
 

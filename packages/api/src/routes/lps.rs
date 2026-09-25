@@ -6,10 +6,17 @@
 //! **Owner** — `lps.owner_account_id` is UNIQUE, so the caller's JWT already
 //! names exactly one LP and no id ever crosses the wire. `GET /v1/lps/me`
 //! returns the record with its documents inline (each carrying a presigned
-//! download URL); `POST /v1/lps/me` is an upsert that registers the entity and
-//! uploads files in one `multipart/form-data` request;
-//! `DELETE /v1/lps/me/documents/{doc}` removes one file; `POST
+//! download URL); `POST /v1/lps/me` upserts the profile as JSON;
+//! `POST /v1/lps/me/documents` appends files as `multipart/form-data`;
+//! `DELETE /v1/lps/me/documents/{doc}` removes one; `POST
 //! /v1/lps/me/link-address` ties a Stellar account once KYB passes.
+//!
+//! Profile and documents are separate endpoints on purpose. They were one
+//! request at first, which read as the smaller surface — but the profile is a
+//! full replace and files are additive, so every upload also rewrote the
+//! profile from whatever the client was holding. A second tab uploading a file
+//! would silently revert an email change made in the first. Splitting them also
+//! keeps the 100MB body limit off the endpoint used to correct a typo.
 //!
 //! **Trustee** — `GET /v1/lps` lists, `GET /v1/lps/{id}` reads one (documents
 //! inline, same as `/me`), and `POST /v1/lps/{id}/documents/{doc}/review`
@@ -26,10 +33,7 @@
 //!    documents approved and others rejected.
 //!
 //! Documents are **untyped**: no `doc_type`, no `subject`, no slots, no
-//! versioning. Replacing a document is delete-then-upload, and `POST
-//! /v1/lps/me`'s files are *additive* — they append to the set, they never
-//! replace it, or every profile edit would wipe the LP's uploads. Profile
-//! fields, by contrast, are a full replace.
+//! versioning. Replacing a document is delete-then-upload.
 //!
 //! `stellar_address` is a separate identity from the login one — see the
 //! migration's module comment. `link_address` still trusts the client-supplied
@@ -206,12 +210,12 @@ pub struct FileResult {
     pub error: Option<String>,
 }
 
-/// Response for `POST /v1/lps/me`.
+/// Response for `POST /v1/lps/me/documents`. Carries the refreshed LP so a
+/// client can render the new document set without a second round trip.
 #[derive(Debug, Serialize, ToSchema)]
-pub struct UpsertLpResponse {
+pub struct UploadDocumentsResponse {
     pub lp: LpResponse,
-    /// One entry per file part in the request, in order. Empty when the request
-    /// carried no files.
+    /// One entry per file part in the request, in order.
     pub files: Vec<FileResult>,
 }
 
@@ -239,19 +243,24 @@ pub struct DocumentReviewRequest {
     pub reason: Option<String>,
 }
 
-/// The profile half of `POST /v1/lps/me`, read from the multipart text parts.
-/// A full replace: every field is taken as sent, and an absent `country` is
-/// stored as `NULL`.
+/// Request body for `POST /v1/lps/me`.
 ///
-/// Internal to the parse — [`UpsertLpForm`] is what documents the wire format.
-#[derive(Debug, Default)]
-pub struct LpProfileForm {
+/// A full replace: every field is taken as sent, and an absent `country` is
+/// stored as `NULL`. That is unambiguous only because this endpoint carries
+/// nothing but the profile — when it also carried files, every upload became a
+/// profile write from whatever the client was holding.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct UpsertLpRequest {
+    #[schema(example = "Acme Trading Ltd")]
     pub legal_name: String,
+    #[serde(default)]
+    #[schema(example = "NL", nullable)]
     pub country: Option<String>,
+    #[schema(example = "ops@acme.example")]
     pub contact_email: String,
 }
 
-/// The `multipart/form-data` body of `POST /v1/lps/me`.
+/// The `multipart/form-data` body of `POST /v1/lps/me/documents`.
 ///
 /// Documentation only — the handler takes an [`Multipart`] extractor and never
 /// deserializes this type. It exists so the OpenAPI document describes the real
@@ -261,20 +270,10 @@ pub struct LpProfileForm {
 /// `files` is declared as an array of binary strings, which is what makes
 /// Swagger UI show a multi-file selector. The handler identifies a file by the
 /// part carrying a `filename`, not by its name, so any part name works on the
-/// wire — `files` is simply what this schema tells clients to send.
+/// wire — `files` is simply what this schema tells clients to send. Profile
+/// fields do not belong here; they go to `POST /v1/lps/me` as JSON.
 #[derive(ToSchema)]
-pub struct UpsertLpForm {
-    /// Registered legal name of the entity. Required, trimmed, must not be blank.
-    #[schema(example = "Acme Trading Ltd")]
-    pub legal_name: String,
-    /// Country of registration. Optional — omit it or send it blank to clear
-    /// the stored value, since the profile is a full replace.
-    #[schema(example = "NL", nullable)]
-    pub country: Option<String>,
-    /// Contact address for KYB correspondence. Required, trimmed, must not be
-    /// blank. Independent of the account's login email.
-    #[schema(example = "ops@acme.example")]
-    pub contact_email: String,
+pub struct UploadDocumentsForm {
     /// Supporting documents, appended to the LP's existing set — never
     /// replacing it. PDF, JPEG or PNG, decided by content rather than by the
     /// declared type or the file extension. Optional: a body with no file parts
@@ -286,15 +285,25 @@ pub struct UpsertLpForm {
 /// OpenAPI doc bundle for the LP routes.
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_lps, get_lp, get_my_lp, upsert_my_lp, delete_my_document, review_document, link_address),
+    paths(
+        list_lps,
+        get_lp,
+        get_my_lp,
+        upsert_my_lp,
+        upload_my_documents,
+        delete_my_document,
+        review_document,
+        link_address
+    ),
     components(schemas(
         LpResponse,
         LpSummary,
         LpsResponse,
         DocumentResponse,
         FileResult,
-        UpsertLpResponse,
-        UpsertLpForm,
+        UpsertLpRequest,
+        UploadDocumentsResponse,
+        UploadDocumentsForm,
         LinkAddressRequest,
         DocumentReviewDecision,
         DocumentReviewRequest,
@@ -306,16 +315,17 @@ pub struct LpsDoc;
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
-/// `max_request_bytes` raises the body limit for the upload route **only**.
-/// axum's default is 2MB, which every other route should keep — a 100MB
-/// ceiling applied globally would turn any endpoint into a memory sink.
+/// `max_request_bytes` raises the body limit for the upload route **only** —
+/// not even for the profile route beside it. axum's default is 2MB, which
+/// everything else keeps; a 100MB ceiling anywhere it is not needed is just a
+/// memory sink with a door on it.
 pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
     Router::new()
         .route("/lps", get(list_lps))
-        .route("/lps/me", get(get_my_lp))
+        .route("/lps/me", get(get_my_lp).post(upsert_my_lp))
         .route(
-            "/lps/me",
-            post(upsert_my_lp).layer(DefaultBodyLimit::max(limits.max_request_bytes())),
+            "/lps/me/documents",
+            post(upload_my_documents).layer(DefaultBodyLimit::max(limits.max_request_bytes())),
         )
         .route("/lps/me/documents/{doc}", delete(delete_my_document))
         .route("/lps/me/link-address", post(link_address))
@@ -457,29 +467,23 @@ async fn get_my_lp(
     Ok(Json(with_documents(&state, lp).await?))
 }
 
-/// Register or update the caller's LP, and upload documents, in one request.
+/// Register or update the caller's LP.
 ///
-/// `multipart/form-data`: text parts `legal_name`, `country`, `contact_email`
-/// carry the profile (a full replace — an absent `country` clears it); every
-/// part with a filename is treated as a document and **appended** to the LP's
-/// set. Sending no file parts is a profile-only edit.
-///
-/// The profile is written first and stands on its own: a file that fails
-/// validation is reported in `files` and does not undo it. Files are then
-/// stored one at a time so a bad one cannot orphan an object or roll back the
-/// files already stored.
+/// JSON, profile only — documents go to [`upload_my_documents`]. A full
+/// replace: every field is taken as sent, and an absent `country` clears the
+/// column. Deliberately separate from uploading, because combining them made
+/// every upload also rewrite the profile from whatever the client happened to
+/// be holding, which silently reverted edits made elsewhere.
 #[utoipa::path(
     post,
     path = "/v1/lps/me",
-    request_body(content = UpsertLpForm, content_type = "multipart/form-data"),
+    request_body = UpsertLpRequest,
     responses(
-        (status = 200, description = "LP updated; every file stored", body = UpsertLpResponse),
-        (status = 201, description = "LP registered; every file stored", body = UpsertLpResponse),
-        (status = 207, description = "LP written, but at least one file was rejected — see `files`", body = UpsertLpResponse),
-        (status = 400, description = "Malformed multipart, or legal_name/contact_email empty"),
+        (status = 200, description = "LP updated", body = LpResponse),
+        (status = 201, description = "LP registered", body = LpResponse),
+        (status = 400, description = "legal_name or contact_email empty, or a field over its length limit"),
         (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 409, description = "KYB is UnderReview or Passed, or the request would exceed the per-LP document cap"),
-        (status = 413, description = "A file exceeds KYB_MAX_DOCUMENT_BYTES, or the request carries too many files"),
+        (status = 409, description = "KYB is UnderReview or Passed"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -487,39 +491,20 @@ async fn get_my_lp(
 async fn upsert_my_lp(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
-    multipart: Multipart,
+    Json(req): Json<UpsertLpRequest>,
 ) -> Result<Response, ApiError> {
-    let limits = state.kyb_limits;
+    let profile = validate_profile(&req)?;
 
-    // Refuse a frozen LP before reading the body, not after. Draining first
-    // would buffer up to max_files × max_document_bytes only to discard it, so
-    // a frozen record would be the cheapest way to tie up API memory.
-    let existing = state
+    // The guard is an early exit for a clear refusal; the DB predicate below is
+    // what actually enforces the freeze.
+    if let Some(lp) = state
         .lp_repo
         .find_by_owner_account_id(claims.account_id)
-        .await?;
-    if let Some(lp) = &existing {
-        guard_writable(lp)?;
+        .await?
+    {
+        guard_writable(&lp)?;
     }
 
-    let (form, files) = read_upload(multipart, limits).await?;
-    let profile = validate_profile(&form)?;
-
-    // Only files that would actually be stored count against the cap. Counting
-    // the rejected ones too would let a single unsupported attachment turn a
-    // request that fits into a 409 that writes nothing — not the valid
-    // documents beside it, and not the profile edit carrying them.
-    let incoming = files.iter().filter(|f| f.verdict.is_ok()).count();
-    let held = match &existing {
-        Some(lp) => state.kyb_document_repo.count_for_lp(lp.id).await?,
-        None => 0,
-    };
-    check_document_cap(held, incoming, limits.max_documents_per_lp)?;
-
-    // `None` means the row was frozen between the guard above and this write —
-    // the window is wide, since the whole body is read inside it. The DB
-    // predicate is what actually enforces the freeze; the earlier guard only
-    // saves us from draining a body we would discard.
     let (lp_id, created) = state
         .lp_repo
         .upsert_by_owner_account_id(
@@ -532,28 +517,84 @@ async fn upsert_my_lp(
         )
         .await?
         .ok_or_else(|| {
-            ApiError::Conflict(
-                "this LP entered review while the request was being uploaded and can no longer be changed"
-                    .to_owned(),
-            )
+            ApiError::Conflict("this LP is under review and can no longer be changed".to_owned())
         })?;
-
-    let mut results = Vec::with_capacity(files.len());
-    for file in files {
-        results.push(store_one(&state, lp_id, file).await);
-    }
 
     let lp = state.lp_repo.find(lp_id).await?.ok_or_else(|| {
         ApiError::Internal(anyhow::anyhow!(
             "LP {lp_id} vanished immediately after upsert"
         ))
     })?;
-    let body = UpsertLpResponse {
-        lp: with_documents(&state, lp).await?,
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(with_documents(&state, lp).await?)).into_response())
+}
+
+/// Append documents to the caller's LP.
+///
+/// `multipart/form-data`, files only — every part carrying a filename is a
+/// document. **Additive**: files append to the LP's set and never replace it,
+/// so this can be called as many times as the per-LP cap allows. Removing one
+/// is [`delete_my_document`]; there is no replace.
+///
+/// Files are stored one at a time, so a file that fails validation is reported
+/// against itself in `files` and cannot roll back the ones already stored or
+/// orphan an object.
+#[utoipa::path(
+    post,
+    path = "/v1/lps/me/documents",
+    request_body(content = UploadDocumentsForm, content_type = "multipart/form-data"),
+    responses(
+        (status = 201, description = "Every file stored", body = UploadDocumentsResponse),
+        (status = 207, description = "At least one file was rejected — see `files`", body = UploadDocumentsResponse),
+        (status = 400, description = "Malformed multipart, or every file was rejected"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 404, description = "This account has not registered an LP yet"),
+        (status = 409, description = "KYB is UnderReview or Passed, or the request would exceed the per-LP document cap"),
+        (status = 413, description = "A file exceeds KYB_MAX_DOCUMENT_BYTES, or the request carries too many files"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Lps"
+)]
+async fn upload_my_documents(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    multipart: Multipart,
+) -> Result<Response, ApiError> {
+    let limits = state.kyb_limits;
+
+    // Refuse a frozen LP before reading the body, not after. Draining first
+    // would buffer up to max_files × max_document_bytes only to discard it, so
+    // a frozen record would be the cheapest way to tie up API memory.
+    let lp = my_lp(&claims, &state).await?;
+    guard_writable(&lp)?;
+
+    let files = read_files(multipart, limits).await?;
+
+    // Only files that would actually be stored count against the cap. Counting
+    // the rejected ones too would let a single unsupported attachment turn a
+    // request that fits into a 409 that stores nothing.
+    let incoming = files.iter().filter(|f| f.verdict.is_ok()).count();
+    let held = state.kyb_document_repo.count_for_lp(lp.id).await?;
+    check_document_cap(held, incoming, limits.max_documents_per_lp)?;
+
+    let mut results = Vec::with_capacity(files.len());
+    for file in files {
+        results.push(store_one(&state, lp.id, file).await);
+    }
+
+    let refreshed = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
+        ApiError::Internal(anyhow::anyhow!("LP {} vanished during upload", lp.id))
+    })?;
+    let body = UploadDocumentsResponse {
+        lp: with_documents(&state, refreshed).await?,
         files: results,
     };
 
-    Ok((upsert_status(created, &body.files), Json(body)).into_response())
+    Ok((upload_status(&body.files), Json(body)).into_response())
 }
 
 /// Remove one of the caller's documents — the object in Spaces and the row.
@@ -702,18 +743,16 @@ fn multipart_error(context: &str, e: &axum::extract::multipart::MultipartError) 
     ApiError::BadRequest(format!("{context}: {e}"))
 }
 
-/// Drain the multipart body into the profile fields and the file parts.
+/// Drain the multipart body into file parts.
 ///
 /// Rejects the whole request only for things that make it unprocessable — a
 /// malformed body, or more file parts than `max_files_per_request`. A single
 /// unacceptable file (wrong type, too large) is recorded as a per-file verdict
-/// instead, so one bad attachment cannot discard a valid profile edit and the
-/// files beside it.
-async fn read_upload(
+/// instead, so one bad attachment cannot discard the files beside it.
+async fn read_files(
     mut multipart: Multipart,
     limits: KybLimits,
-) -> Result<(LpProfileForm, Vec<UploadedFile>), ApiError> {
-    let mut form = LpProfileForm::default();
+) -> Result<Vec<UploadedFile>, ApiError> {
     let mut files: Vec<UploadedFile> = Vec::new();
 
     while let Some(mut field) = multipart
@@ -724,18 +763,14 @@ async fn read_upload(
         let name = field.name().unwrap_or_default().to_owned();
         let filename = field.file_name().map(str::to_owned);
 
-        // A part with no filename is a text field. `Field::text` buffers the
-        // whole part, and this route's body limit is 100MB, so an unbounded
-        // read here — including of a part we do not even recognise — would let
-        // one request pin that much heap.
+        // This endpoint carries no text fields — the profile lives on
+        // `POST /v1/lps/me`. A stray text part is tolerated rather than
+        // rejected, but still drained against a ceiling: `Field::text` buffers
+        // the whole part, and this route's body limit is 100MB, so an unbounded
+        // read of a part we then discard would let one request pin that much
+        // heap.
         let Some(filename) = filename else {
-            let value = read_text_field(&mut field, &name).await?;
-            match name.as_str() {
-                "legal_name" => form.legal_name = value,
-                "country" => form.country = Some(value),
-                "contact_email" => form.contact_email = value,
-                _ => {}
-            }
+            drop(read_text_field(&mut field, &name).await?);
             continue;
         };
 
@@ -772,7 +807,7 @@ async fn read_upload(
         files.push(read_file(&mut field, filename, limits).await?);
     }
 
-    Ok((form, files))
+    Ok(files)
 }
 
 /// Read a text part, refusing one larger than [`MAX_TEXT_FIELD_BYTES`].
@@ -1071,7 +1106,7 @@ pub struct ValidatedProfile<'a> {
 ///
 /// Public so the unit tests in `packages/api/tests/lps.rs` can exercise it
 /// without the HTTP/DB layers.
-pub fn validate_profile(form: &LpProfileForm) -> Result<ValidatedProfile<'_>, ApiError> {
+pub fn validate_profile(form: &UpsertLpRequest) -> Result<ValidatedProfile<'_>, ApiError> {
     // Characters, not bytes. `str::len` would make these limits shrink with
     // script: 200 bytes is only ~66 characters of Cyrillic or CJK, so a
     // legitimate non-Latin entity name would be refused by an error claiming a
@@ -1132,23 +1167,21 @@ pub fn check_document_cap(held: i64, incoming: usize, max: i64) -> Result<(), Ap
     Ok(())
 }
 
-/// The status a completed upsert answers with.
+/// The status a completed upload answers with.
 ///
-/// `207` whenever any file was refused — the profile still wrote and the other
-/// files still stored, so neither a flat success nor a flat failure would be
-/// honest about what happened.
-pub fn upsert_status(created: bool, files: &[FileResult]) -> StatusCode {
-    if files
-        .iter()
-        .any(|f| f.status != StatusCode::CREATED.as_u16())
-    {
+/// `207` whenever any file was refused but at least one stored: neither a flat
+/// success nor a flat failure would be honest. When every file was refused
+/// nothing changed, so `400` is the truthful answer — unlike the combined
+/// endpoint this replaced, where a profile write always survived.
+pub fn upload_status(files: &[FileResult]) -> StatusCode {
+    let stored = |f: &FileResult| f.status == StatusCode::CREATED.as_u16();
+    if files.iter().all(stored) {
+        return StatusCode::CREATED;
+    }
+    if files.iter().any(stored) {
         return StatusCode::MULTI_STATUS;
     }
-    if created {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
-    }
+    StatusCode::BAD_REQUEST
 }
 
 /// Validate a document review request and map it to the `(status, reason)` the
