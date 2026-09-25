@@ -63,10 +63,15 @@ ALTER TABLE kyb_documents
     DROP COLUMN IF EXISTS subject,
     DROP COLUMN IF EXISTS is_current;
 
+-- Every statement here is written to survive a re-run. A migration must not be
+-- edited once applied — sqlx checksums the file and refuses to start on a
+-- mismatch — but while this branch is unmerged a developer may need to reset
+-- the row in `_sqlx_migrations` and apply it again, and that must not fail
+-- halfway on "column already exists".
 ALTER TABLE kyb_documents
-    ADD COLUMN original_filename TEXT   NOT NULL DEFAULT '',
-    ADD COLUMN size_bytes        BIGINT NOT NULL DEFAULT 0,
-    ADD COLUMN content_type      TEXT   NOT NULL DEFAULT '';
+    ADD COLUMN IF NOT EXISTS original_filename TEXT   NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS size_bytes        BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS content_type      TEXT   NOT NULL DEFAULT '';
 
 ALTER TABLE kyb_documents
     ALTER COLUMN original_filename DROP DEFAULT,
@@ -74,10 +79,13 @@ ALTER TABLE kyb_documents
     ALTER COLUMN content_type      DROP DEFAULT;
 
 ALTER TABLE kyb_documents
+    DROP CONSTRAINT IF EXISTS kyb_documents_size_bytes_positive_ck;
+
+ALTER TABLE kyb_documents
     ADD CONSTRAINT kyb_documents_size_bytes_positive_ck CHECK (size_bytes > 0);
 
 -- Rebuilt without the `is_current` predicate: every row is now live until it is
 -- deleted outright, so "awaiting review" is `status = 'Provided'` alone.
-CREATE INDEX idx_kyb_documents_pending_review
+CREATE INDEX IF NOT EXISTS idx_kyb_documents_pending_review
     ON kyb_documents (created_at)
     WHERE status = 'Provided';
