@@ -45,3 +45,35 @@ fn the_gate_is_total_over_every_stored_status() {
         assert_eq!(parsed.as_str(), stored);
     }
 }
+
+#[test]
+fn the_writable_set_is_exactly_the_three_open_statuses() {
+    // `OWNER_WRITABLE` is bound into the SQL predicate that actually enforces
+    // the freeze, so this pins the policy against the literal expected set
+    // rather than against `allows_owner_writes` — which now answers *from*
+    // this const, and would agree with any mistake made here.
+    assert_eq!(
+        KybStatus::OWNER_WRITABLE,
+        [
+            KybStatus::NotStarted,
+            KybStatus::InProgress,
+            KybStatus::Failed
+        ],
+        "changing which statuses accept owner writes changes what a reviewer \
+         can rely on mid-review — make that change deliberately"
+    );
+}
+
+#[test]
+fn the_writable_strings_are_exactly_the_writable_statuses() {
+    let strs = KybStatus::owner_writable_strs();
+    assert_eq!(strs.len(), KybStatus::OWNER_WRITABLE.len());
+    for status in KybStatus::OWNER_WRITABLE {
+        assert!(
+            strs.contains(&status.as_str()),
+            "{status} missing from the strings bound into SQL"
+        );
+    }
+    assert!(!strs.contains(&KybStatus::UnderReview.as_str()));
+    assert!(!strs.contains(&KybStatus::Passed.as_str()));
+}

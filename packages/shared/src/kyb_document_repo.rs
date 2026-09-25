@@ -16,6 +16,18 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
 
+use crate::lp_repo::KybStatus;
+
+/// The stored `kyb_status` values in which an LP's owner may still change its
+/// documents, as bound into the queries below. Derived from
+/// [`KybStatus::OWNER_WRITABLE`] so the freeze has one definition.
+fn writable_statuses() -> Vec<String> {
+    KybStatus::owner_writable_strs()
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Review state of a `kyb_documents` row. Stored as TEXT (with a CHECK
 /// constraint) in `kyb_documents.status`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +104,13 @@ impl KybDocumentRepo {
     /// Record an uploaded document. Runs on the caller's connection so a batch
     /// upload can insert each file as its own unit — one bad file in a batch
     /// must not roll back the ones already stored in Spaces.
+    ///
+    /// The insert is conditional on the LP still being writable, so a trustee
+    /// moving it to `UnderReview` mid-upload cannot have documents appended to
+    /// a record they are already reading. The handler checks the freeze before
+    /// draining the body, but that check is several awaits old by the time the
+    /// files land — this is what actually enforces it. `None` means the LP was
+    /// frozen in between.
     pub async fn insert(
         conn: &mut PgConnection,
         lp_id: i64,
@@ -99,18 +118,21 @@ impl KybDocumentRepo {
         original_filename: &str,
         size_bytes: i64,
         content_type: &str,
-    ) -> Result<i64, sqlx::Error> {
+    ) -> Result<Option<i64>, sqlx::Error> {
         sqlx::query_scalar(
             "INSERT INTO kyb_documents \
              (lp_id, file_ref, original_filename, size_bytes, content_type) \
-             VALUES ($1, $2, $3, $4, $5) RETURNING id",
+             SELECT $1, $2, $3, $4, $5 \
+             WHERE EXISTS (SELECT 1 FROM lps WHERE lps.id = $1 AND lps.kyb_status = ANY($6)) \
+             RETURNING id",
         )
         .bind(lp_id)
         .bind(file_ref)
         .bind(original_filename)
         .bind(size_bytes)
         .bind(content_type)
-        .fetch_one(&mut *conn)
+        .bind(writable_statuses())
+        .fetch_optional(&mut *conn)
         .await
     }
 
@@ -144,17 +166,23 @@ impl KybDocumentRepo {
         .await
     }
 
-    /// Remove a document that is not `Verified`. The status is part of the
-    /// `WHERE` rather than a prior read so a concurrent review cannot slip
-    /// between the check and the delete; the returned bool lets the caller
-    /// distinguish "already gone" from "verified, refused".
+    /// Remove a document, provided it is not `Verified` **and** its LP is still
+    /// writable. Both predicates live in the `WHERE` rather than in a prior
+    /// read, so neither a concurrent review of the document nor a trustee
+    /// moving the LP into `UnderReview` can slip between the check and the
+    /// delete. The returned bool lets the caller distinguish "removed" from
+    /// "refused or already gone".
     pub async fn delete(&self, id: i64) -> Result<bool, sqlx::Error> {
-        let affected =
-            sqlx::query("DELETE FROM kyb_documents WHERE id = $1 AND status <> 'Verified'")
-                .bind(id)
-                .execute(&self.pool)
-                .await?
-                .rows_affected();
+        let affected = sqlx::query(
+            "DELETE FROM kyb_documents WHERE id = $1 AND status <> 'Verified' \
+             AND EXISTS (SELECT 1 FROM lps \
+                         WHERE lps.id = kyb_documents.lp_id AND lps.kyb_status = ANY($2))",
+        )
+        .bind(id)
+        .bind(writable_statuses())
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
         Ok(affected > 0)
     }
 

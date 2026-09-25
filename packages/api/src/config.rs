@@ -466,7 +466,7 @@ impl KybLimits {
     }
 
     fn from_env() -> Result<Self> {
-        Ok(Self {
+        let limits = Self {
             max_document_bytes: parse_env_or(
                 "KYB_MAX_DOCUMENT_BYTES",
                 DEFAULT_KYB_MAX_DOCUMENT_BYTES,
@@ -479,7 +479,31 @@ impl KybLimits {
                 "KYB_MAX_DOCUMENTS_PER_LP",
                 DEFAULT_KYB_MAX_DOCUMENTS_PER_LP,
             )?,
-        })
+        };
+        limits.validate()?;
+        Ok(limits)
+    }
+
+    /// Reject a limit of zero or less.
+    ///
+    /// Each one silently disables uploading rather than failing loudly:
+    /// `KYB_MAX_FILES_PER_REQUEST=0` drops the route's body limit to the
+    /// framing allowance so every upload `413`s, and
+    /// `KYB_MAX_DOCUMENTS_PER_LP=0` (or a negative, which `i64` parses happily)
+    /// makes every upload `409` forever. The five `SPACES_*` variables beside
+    /// these are already rejected when blank; a typo in a number deserves the
+    /// same treatment.
+    fn validate(&self) -> Result<()> {
+        if self.max_document_bytes == 0 {
+            anyhow::bail!("KYB_MAX_DOCUMENT_BYTES must be greater than zero");
+        }
+        if self.max_files_per_request == 0 {
+            anyhow::bail!("KYB_MAX_FILES_PER_REQUEST must be greater than zero");
+        }
+        if self.max_documents_per_lp <= 0 {
+            anyhow::bail!("KYB_MAX_DOCUMENTS_PER_LP must be greater than zero");
+        }
+        Ok(())
     }
 }
 

@@ -44,6 +44,14 @@
 --
 -- Safe because no such row can be real: a document is only meaningful once its
 -- bytes are in Spaces, and nothing could put them there before this migration.
+--
+-- One caveat before running this anywhere with history: the review endpoint
+-- (`POST /v1/lps/{id}/documents/{doc}/review`) did ship, so a row may carry a
+-- `status`/`reject_reason`/`reviewed_by` that somebody actually entered during
+-- QA. The bytes behind it never existed, so the row is not recoverable in any
+-- useful sense — but migrations here are forward-only, so run
+-- `SELECT count(*) FROM kyb_documents` on each target first if that review
+-- history is worth capturing before it goes.
 DELETE FROM kyb_documents;
 
 DROP INDEX IF EXISTS idx_kyb_documents_current;

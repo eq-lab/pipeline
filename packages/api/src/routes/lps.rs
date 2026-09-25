@@ -800,6 +800,20 @@ async fn read_text_field(
     String::from_utf8(buf).map_err(|_| ApiError::BadRequest(format!("`{name}` is not valid UTF-8")))
 }
 
+/// Trim a client-supplied filename to something storable.
+///
+/// Counts characters rather than bytes, like the profile bounds, so a non-Latin
+/// name is not cut to a third of the advertised length. Truncating rather than
+/// rejecting: an over-long filename is cosmetic, and refusing an otherwise valid
+/// document over it would be a worse trade.
+fn truncate_filename(filename: &str) -> String {
+    let trimmed = filename.trim();
+    if trimmed.chars().count() <= MAX_FILENAME_LEN {
+        return trimmed.to_owned();
+    }
+    trimmed.chars().take(MAX_FILENAME_LEN).collect()
+}
+
 /// Drain one file part, refusing to hold more than the per-file limit.
 ///
 /// Read in chunks rather than via `Field::bytes` because that would buffer the
@@ -813,6 +827,10 @@ async fn read_file(
     filename: String,
     limits: KybLimits,
 ) -> Result<UploadedFile, ApiError> {
+    // `original_filename` is unbounded TEXT, is echoed back in every read of
+    // the LP, and arrives in a multipart part header — which multer does not
+    // bound — so it needs the same ceiling the profile fields got.
+    let filename = truncate_filename(&filename);
     let mut bytes: Vec<u8> = Vec::new();
     let mut total: usize = 0;
     let mut oversized = false;
@@ -842,7 +860,7 @@ async fn read_file(
         });
     }
 
-    Ok(inspect_file(filename, bytes, limits))
+    Ok(inspect_file(filename, bytes))
 }
 
 /// Decide whether one uploaded part is acceptable.
@@ -851,15 +869,11 @@ async fn read_file(
 /// so the leading bytes are what decide. Size is checked here rather than in
 /// the extractor because the per-file limit is smaller than the per-request
 /// body limit that admitted it.
-fn inspect_file(filename: String, bytes: Vec<u8>, limits: KybLimits) -> UploadedFile {
+fn inspect_file(filename: String, bytes: Vec<u8>) -> UploadedFile {
+    // Size is not re-checked here: `read_file` aborts past the limit while
+    // draining and never reaches this, which is the only caller.
     let verdict = if bytes.is_empty() {
         Err("file is empty".to_owned())
-    } else if bytes.len() > limits.max_document_bytes {
-        Err(format!(
-            "file is {} bytes; the limit is {}",
-            bytes.len(),
-            limits.max_document_bytes
-        ))
     } else {
         sniff_content_type(&bytes).ok_or_else(|| {
             format!(
@@ -927,7 +941,19 @@ async fn store_one(state: &AppState, lp_id: i64, file: UploadedFile) -> FileResu
     .await;
 
     match insert {
-        Ok(id) => FileResult {
+        // The LP was frozen between the profile write and this file landing.
+        // The object is already in the bucket with nothing pointing at it, so
+        // clean it up as in the error arm below.
+        Ok(None) => {
+            if let Err(cleanup) = state.object_store.delete(&key).await {
+                tracing::warn!(key = %key, error = %cleanup, "could not clean up an unreferenced object");
+            }
+            refused(
+                StatusCode::CONFLICT,
+                "this LP entered review before the file was recorded".to_owned(),
+            )
+        }
+        Ok(Some(id)) => FileResult {
             filename: file.filename,
             status: StatusCode::CREATED.as_u16(),
             id: Some(id),
@@ -1023,6 +1049,9 @@ async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiEr
 pub const MAX_LEGAL_NAME_LEN: usize = 200;
 pub const MAX_CONTACT_EMAIL_LEN: usize = 320;
 pub const MAX_COUNTRY_LEN: usize = 100;
+/// Ceiling on a stored `original_filename`. Over-long names are truncated
+/// rather than refused — see [`truncate_filename`].
+pub const MAX_FILENAME_LEN: usize = 255;
 
 /// The most a single text part may carry before it is refused unread-in-full.
 /// Bounds the unrecognised parts too, which are otherwise buffered whole only
@@ -1043,8 +1072,12 @@ pub struct ValidatedProfile<'a> {
 /// Public so the unit tests in `packages/api/tests/lps.rs` can exercise it
 /// without the HTTP/DB layers.
 pub fn validate_profile(form: &LpProfileForm) -> Result<ValidatedProfile<'_>, ApiError> {
+    // Characters, not bytes. `str::len` would make these limits shrink with
+    // script: 200 bytes is only ~66 characters of Cyrillic or CJK, so a
+    // legitimate non-Latin entity name would be refused by an error claiming a
+    // 200-character limit.
     let bounded = |label: &str, value: &str, max: usize| -> Result<(), ApiError> {
-        if value.len() > max {
+        if value.chars().count() > max {
             return Err(ApiError::BadRequest(format!(
                 "{label} must be at most {max} characters"
             )));

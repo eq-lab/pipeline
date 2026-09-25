@@ -302,3 +302,22 @@ fn the_body_limit_leaves_room_for_multipart_framing() {
          be refused"
     );
 }
+
+#[test]
+fn the_length_limits_count_characters_not_bytes() {
+    // Every character here is two bytes, so a byte-counted limit would refuse
+    // this at half the advertised length — and the error message promises
+    // characters.
+    let cyrillic = "Я".repeat(MAX_LEGAL_NAME_LEN);
+    assert!(
+        cyrillic.len() > MAX_LEGAL_NAME_LEN,
+        "fixture must be multi-byte"
+    );
+    assert!(
+        validate_profile(&form(&cyrillic, None, "ops@acme.example")).is_ok(),
+        "a non-Latin name of exactly the limit must be accepted"
+    );
+
+    let over = "Я".repeat(MAX_LEGAL_NAME_LEN + 1);
+    assert!(validate_profile(&form(&over, None, "ops@acme.example")).is_err());
+}

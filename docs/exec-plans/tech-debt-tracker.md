@@ -1551,3 +1551,19 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Gap:** Because delete is a hard delete, an LP removing a `Rejected` document also removes `reject_reason`, `reviewed_by`, and `reviewed_at`. Nothing records that the document was ever submitted or refused.
 - **Impact:** An applicant can erase evidence that staff already reviewed and turned down. Bounded by the `Verified` freeze — a document staff *approved* can never be deleted — so a passed KYB always still refers to the bytes that earned it. The exposure is the rejection trail, not the approval trail, and there is no regulatory requirement pinned to it today.
 - **Suggested fix:** If a rejection trail is ever required, append review decisions to the existing audit log (`docs/product-specs/audit-logging.md`) at the moment `review_document` runs, rather than depending on the document row surviving. That keeps the history independent of what the LP can delete.
+
+### TD-90: A KYB upload can pin 100MB of API heap, and nothing bounds concurrency
+
+- **Date:** 2026-09-25
+- **Location:** `packages/api/src/routes/lps.rs` (`read_upload`, `upsert_my_lp`), `packages/api/src/config.rs` (`KybLimits::max_request_bytes`)
+- **Gap:** Every accepted file is held in `Vec<UploadedFile>` until after the profile upsert, because the content sniff must see the bytes before they are streamed to Spaces. One request can therefore hold `KYB_MAX_FILES_PER_REQUEST × KYB_MAX_DOCUMENT_BYTES` (100MB at the defaults), and no concurrency limit applies to the route.
+- **Impact:** Ten concurrent uploads from verified accounts is roughly 1GB RSS. Signup is self-serve, so any verified account can reach it. Not a correctness problem and bounded per request, but it is an availability ceiling that scales with attacker concurrency rather than with anything we control.
+- **Suggested fix:** Either stream each file to Spaces as it is drained — sniffing the first chunk rather than the whole buffer, which would hold one file rather than the batch — or put a `tower::limit::ConcurrencyLimitLayer` on this route alone. Streaming is the better fix and the larger change; the limiter is a one-line stopgap. Ingress-level request limits would also cover it, which is the conventional answer and why this is logged rather than built.
+
+### TD-91: The per-LP document cap is not atomic with the inserts
+
+- **Date:** 2026-09-25
+- **Location:** `packages/api/src/routes/lps.rs` (`upsert_my_lp`), `packages/shared/src/kyb_document_repo.rs` (`count_for_lp`)
+- **Gap:** `count_for_lp` and the per-file inserts run on separate connections with no lock or constraint between them. Two concurrent `POST /v1/lps/me` from the same account can both read `held = 19`, both pass `check_document_cap`, and leave the LP above `KYB_MAX_DOCUMENTS_PER_LP`.
+- **Impact:** An LP can exceed its cap by roughly the number of requests it runs in parallel. Distinct from TD-88, which is about cycling the cap with deletes rather than racing it. Storage impact only — the cap is an abuse ceiling, not a correctness invariant, and every document still passes type and size validation.
+- **Suggested fix:** `SELECT ... FOR UPDATE` on the `lps` row for the duration of the upload, or a trigger enforcing the count. Both serialise an LP's concurrent uploads, which is the point; neither is worth doing unless the overshoot turns out to matter.

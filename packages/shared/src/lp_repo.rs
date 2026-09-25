@@ -34,6 +34,27 @@ pub enum KybStatus {
 }
 
 impl KybStatus {
+    /// The statuses in which an LP's owner may still change the record.
+    ///
+    /// Single source of truth for the freeze: [`allows_owner_writes`] answers
+    /// from it, and `upsert_by_owner_account_id` binds it as the update's
+    /// predicate rather than repeating the list in SQL. A hardcoded `IN (…)`
+    /// would silently diverge the moment this policy changed, and the freeze is
+    /// exactly the rule that must not drift.
+    ///
+    /// [`allows_owner_writes`]: KybStatus::allows_owner_writes
+    pub const OWNER_WRITABLE: [KybStatus; 3] = [
+        KybStatus::NotStarted,
+        KybStatus::InProgress,
+        KybStatus::Failed,
+    ];
+
+    /// The stored spellings of [`OWNER_WRITABLE`](Self::OWNER_WRITABLE), for
+    /// binding into a query.
+    pub fn owner_writable_strs() -> Vec<&'static str> {
+        Self::OWNER_WRITABLE.iter().map(KybStatus::as_str).collect()
+    }
+
     /// Whether the LP's owner may still change the record — both its profile
     /// fields and its documents (Issue #1267).
     ///
@@ -44,10 +65,7 @@ impl KybStatus {
     /// so an account whose LP is frozen at `Failed` could neither fix it nor
     /// register another — the record would be permanently dead.
     pub fn allows_owner_writes(&self) -> bool {
-        match self {
-            KybStatus::NotStarted | KybStatus::InProgress | KybStatus::Failed => true,
-            KybStatus::UnderReview | KybStatus::Passed => false,
-        }
+        Self::OWNER_WRITABLE.contains(self)
     }
 
     /// The exact string stored in the DB.
@@ -119,6 +137,13 @@ impl LpRepo {
         Self { pool }
     }
 
+    fn writable_statuses() -> Vec<String> {
+        KybStatus::owner_writable_strs()
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    }
+
     /// Create or update the LP owned by `owner_account_id` (Issue #1267).
     ///
     /// The account is the key: `lps_owner_account_unique` already guarantees one
@@ -139,8 +164,9 @@ impl LpRepo {
     /// megabytes, and only then writes — a trustee moving the record to
     /// `UnderReview` inside that window would otherwise have it changed
     /// underneath them, which is exactly what the freeze exists to prevent.
-    /// `None` means the row existed but was frozen; `delete` closes the same
-    /// race the same way.
+    /// `None` means the row existed but was frozen. `KybDocumentRepo`'s
+    /// `insert` and `delete` carry the same predicate, so every owner write —
+    /// profile, upload, removal — is gated in SQL rather than on a prior read.
     ///
     /// Returns the LP's `id` and whether this call created it.
     pub async fn upsert_by_owner_account_id(
@@ -159,7 +185,7 @@ impl LpRepo {
              ON CONFLICT (owner_account_id) DO UPDATE SET \
              legal_name = EXCLUDED.legal_name, country = EXCLUDED.country, \
              contact_email = EXCLUDED.contact_email, updated_at = now() \
-             WHERE lps.kyb_status IN ('NotStarted', 'InProgress', 'Failed') \
+             WHERE lps.kyb_status = ANY($7) \
              RETURNING id, (xmax = 0) AS created",
         )
         .bind(legal_name)
@@ -168,6 +194,7 @@ impl LpRepo {
         .bind(owner_account_id)
         .bind(owner_chain_id)
         .bind(owner_address)
+        .bind(Self::writable_statuses())
         .fetch_optional(&self.pool)
         .await
     }
