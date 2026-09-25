@@ -29,6 +29,7 @@ use shared::loan_metadata::LoanMetadataFetcher;
 use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
+use shared::object_store::ObjectStore;
 use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
@@ -37,7 +38,7 @@ use shared::sumsub::config::SumsubSettings;
 
 use crate::auth::JwtKeys;
 use crate::captcha::CaptchaVerifier;
-use crate::config::{StellarVoucherChainConfig, TransferAddressSets};
+use crate::config::{KybLimits, StellarVoucherChainConfig, TransferAddressSets};
 
 pub struct AppState {
     pub pool: sqlx::PgPool,
@@ -98,8 +99,14 @@ pub struct AppState {
     /// Append-only ledger of every movement of an LP's claim (`lp_ledger`),
     /// backing `GET /v1/lp-ledger` and `POST /v1/lp-ledger/deposits`.
     pub lp_ledger_repo: LpLedgerRepo,
-    /// Versioned KYB supporting documents (`kyb_documents`).
+    /// KYB supporting documents (`kyb_documents`) — untyped files per LP.
     pub kyb_document_repo: KybDocumentRepo,
+    /// Private Spaces bucket holding the bytes behind `kyb_documents.file_ref`.
+    pub object_store: ObjectStore,
+    /// Size and count ceilings on KYB uploads. Carried on the state (not just
+    /// applied at the router) because the per-file and per-LP limits are
+    /// enforced inside the handler, where the body limit cannot reach.
+    pub kyb_limits: KybLimits,
     /// The API's principals (`accounts`) — what both the wallet and the
     /// email/password credential resolve to.
     pub account_repo: AccountRepo,

@@ -158,7 +158,6 @@ fn build_response_computes_ccr_series_for_standard_goods() {
         Some(&senior),
         &grid,
     )
-    .ok()
     .expect("build_response should succeed");
 
     assert_eq!(resp.loan_id, "42");
@@ -186,7 +185,6 @@ fn build_response_skips_points_without_a_price() {
         Some(&senior),
         &grid,
     )
-    .ok()
     .expect("build_response should succeed");
 
     // Only the priced point is emitted.
@@ -212,7 +210,6 @@ fn build_response_empty_when_structural_inputs_missing() {
         None, // senior_usd
         &grid,
     )
-    .ok()
     .expect("build_response should succeed");
 
     assert!(resp.points.is_empty());

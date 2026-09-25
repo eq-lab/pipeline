@@ -70,7 +70,28 @@ pass "cargo-nextest installed"
 # in environments that have already advanced past that version.
 step "migration versions"
 new_migrations=$(git diff --cached --name-only --diff-filter=A \
-    | grep -E '^crates/shared/migrations/[0-9]+_.*\.sql$' || true)
+    | grep -E '^packages/shared/migrations/[0-9]+_.*\.sql$' || true)
+
+# A migration that already exists on origin/main has been applied somewhere, and
+# sqlx checksums the file: editing it makes every database that ran it refuse to
+# start with "was previously applied but has been modified". Adding a new
+# migration is the only safe way to change an applied one.
+modified_migrations=$(git diff --cached --name-only --diff-filter=M \
+    | grep -E '^packages/shared/migrations/[0-9]+_.*\.sql$' || true)
+if [ -n "$modified_migrations" ] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+    already_on_main=""
+    while IFS= read -r f; do
+        if git cat-file -e "origin/main:$f" 2>/dev/null; then
+            already_on_main="${already_on_main}    $f\n"
+        fi
+    done <<< "$modified_migrations"
+    if [ -n "$already_on_main" ]; then
+        printf "  these migrations exist on origin/main and must not be edited:\n"
+        printf "%b" "$already_on_main"
+        printf "  fix: revert them and put the change in a new migration\n"
+        mark "modified applied migrations"
+    fi
+fi
 
 if [ -z "$new_migrations" ]; then
     pass "no new migrations staged"
@@ -80,16 +101,16 @@ else
     # The grep below may exit 1 when origin/main has no migrations yet; || true
     # prevents sh -e (used by Husky) from propagating SHELLOPTS=errexit into bash
     # and killing the script on a non-matching pipeline.
-    main_max=$(git ls-tree -r --name-only origin/main -- crates/shared/migrations/ \
-        | grep -E '^crates/shared/migrations/[0-9]+_.*\.sql$' \
-        | sed -E 's|^crates/shared/migrations/([0-9]+)_.*|\1|' \
+    main_max=$(git ls-tree -r --name-only origin/main -- packages/shared/migrations/ \
+        | grep -E '^packages/shared/migrations/[0-9]+_.*\.sql$' \
+        | sed -E 's|^packages/shared/migrations/([0-9]+)_.*|\1|' \
         | sort -n | tail -1) || true
     if [ -z "$main_max" ]; then
         pass "origin/main has no migrations yet"
     else
         bad=""
         while IFS= read -r f; do
-            ver=$(echo "$f" | sed -E 's|^crates/shared/migrations/([0-9]+)_.*|\1|')
+            ver=$(echo "$f" | sed -E 's|^packages/shared/migrations/([0-9]+)_.*|\1|')
             if [ "$ver" -le "$main_max" ]; then
                 bad="${bad}    $f (version $ver <= origin/main max $main_max)\n"
             fi

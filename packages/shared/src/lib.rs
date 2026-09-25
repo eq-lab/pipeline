@@ -29,6 +29,7 @@ pub mod lp_ledger_repo;
 pub mod lp_repo;
 pub mod metadata_fetcher;
 pub mod metal_price;
+pub mod object_store;
 pub mod otp_repo;
 pub mod position_repo;
 pub mod price_provider;

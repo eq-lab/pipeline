@@ -112,9 +112,9 @@ Rows are inserted manually (there is no admin endpoint). Address normalization
 must follow the convention above so lookups match.
 
 `lps.owner_account_id` is the LP-ownership key and is **UNIQUE** — one account
-owns at most one LP, which is what keeps self-serve signup from making
-`POST /v1/lps` unbounded. `owner_chain_id`/`owner_address` are history only,
-`NULL` for email registrations, and read by nothing (TD-82).
+owns at most one LP, which is why the LP-facing routes are keyed on the session:
+`POST /v1/lps/me` upserts the caller's own record. `owner_chain_id`/`owner_address`
+are history only, `NULL` for email registrations, and read by nothing (TD-82).
 
 ## Loan submission
 

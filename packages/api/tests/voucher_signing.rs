@@ -94,6 +94,21 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
         lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
         kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool.clone()),
+        // Constructing an `ObjectStore` performs no I/O, so placeholder
+        // credentials are enough to build the struct; the helpers under test
+        // never touch it.
+        object_store: shared::object_store::ObjectStore::new(
+            "test-key",
+            "test-secret",
+            "https://test.digitaloceanspaces.com",
+            "test",
+            "test-bucket",
+        ),
+        kyb_limits: pipeline_api::config::KybLimits {
+            max_document_bytes: pipeline_api::config::DEFAULT_KYB_MAX_DOCUMENT_BYTES,
+            max_files_per_request: pipeline_api::config::DEFAULT_KYB_MAX_FILES_PER_REQUEST,
+            max_documents_per_lp: pipeline_api::config::DEFAULT_KYB_MAX_DOCUMENTS_PER_LP,
+        },
         account_repo: shared::account_repo::AccountRepo::new(pool.clone()),
         otp_repo: shared::otp_repo::OtpRepo::new(pool.clone()),
         captcha: Box::new(pipeline_api::captcha::DisabledCaptcha),

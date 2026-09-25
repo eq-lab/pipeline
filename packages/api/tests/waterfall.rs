@@ -135,7 +135,6 @@ fn full_repayment_one_year_with_fees() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
@@ -165,7 +164,6 @@ fn principal_capped_at_outstanding() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("600000"));
@@ -190,7 +188,6 @@ fn coupon_and_fees_paid_in_full_before_principal_on_shortfall() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("88000"));
@@ -219,7 +216,6 @@ fn interest_tier_shortfall_splits_coupon_and_fees_proportionally() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("44000"));
@@ -251,7 +247,6 @@ fn interest_tier_shortfall_dust_flows_to_the_next_tier_not_lost() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("44"));
@@ -279,7 +274,6 @@ fn principal_shrinks_last_when_amount_falls_short() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("88000"));
@@ -312,7 +306,6 @@ fn principal_reduced_to_zero_when_amount_exactly_covers_coupon_and_fees() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("88000"));
@@ -338,7 +331,6 @@ fn fractional_amount_principal_truncated_to_whole_base_unit() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("375000"));
@@ -358,7 +350,6 @@ fn zero_fee_schedule_routes_all_interest_to_coupon() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("120000"));
@@ -380,7 +371,6 @@ fn zero_tenor_accrues_no_interest_or_fees() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("0"));
@@ -456,7 +446,6 @@ fn rollover_mid_tenor_applies_each_epoch_own_rate() {
         &events,
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
@@ -483,7 +472,6 @@ fn as_of_within_first_epoch_ignores_a_later_rollover() {
         &events,
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("58300"));
@@ -509,7 +497,6 @@ fn fees_compound_too_at_fractional_tenor() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.management_fee, dec("9950"));
@@ -538,7 +525,6 @@ fn exact_result_is_not_lost_to_float_truncation_noise() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.oet_allocation, dec("5000"));
@@ -561,7 +547,6 @@ fn past_maturity_without_rollover_stops_accruing() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("120000"));
@@ -605,7 +590,6 @@ fn second_repayment_nets_out_amounts_already_recorded() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("700000"));
@@ -643,7 +627,6 @@ fn already_recorded_amount_exceeding_the_target_clamps_to_zero() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.management_fee, dec("0"));
@@ -670,7 +653,6 @@ fn equity_absorbs_the_remainder_after_principal() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
@@ -704,7 +686,6 @@ fn equity_is_zero_when_amount_exactly_covers_every_other_bucket() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.equity_distributed, dec("0"));
@@ -894,7 +875,6 @@ fn quotational_accepts_a_qp_repriced_final_settlement() {
         &[],
         PricingBasis::Quotational,
     )
-    .ok()
     .expect("quotational settlement above the genesis price must be accepted");
     assert!(
         b.offtaker_overpaid,
@@ -938,7 +918,6 @@ fn quotational_within_contract_price_is_not_flagged() {
         &[],
         PricingBasis::Quotational,
     )
-    .ok()
     .unwrap();
     assert!(!b.offtaker_overpaid);
     assert!(b.offtaker_fully_received); // exactly reaches the contracted price
@@ -976,7 +955,6 @@ fn principal_ceiling_holds_even_against_a_wildly_oversized_amount() {
         &[],
         PricingBasis::Fixed,
     )
-    .ok()
     .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("100000"));
@@ -994,9 +972,7 @@ fn response_maps_the_components() {
     };
     let amount = dec("1125000");
     let f = fees(100, 2000, 50);
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[], PricingBasis::Fixed)
-        .ok()
-        .unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[], PricingBasis::Fixed).unwrap();
     let resp = build_response(&b);
 
     assert_eq!(resp.senior_principal_returned, "1000000");

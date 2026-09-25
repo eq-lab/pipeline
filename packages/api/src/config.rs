@@ -8,6 +8,7 @@ use shared::chains::{
     parse_chain_type, parse_chains_env, parse_default_chain_id, validate_stellar_address, ChainKind,
 };
 use shared::eip712::Eip712Domain;
+use shared::object_store::ObjectStore;
 use shared::stellar_voucher::{StellarVoucherDomain, StellarVoucherSigner};
 
 /// Per-chain EVM voucher signing config. Only present for chains that have
@@ -399,4 +400,155 @@ fn load_stellar_voucher_config(
         },
     );
     Ok(())
+}
+
+/// KYB document storage: a private S3-compatible bucket (DigitalOcean Spaces)
+/// plus the limits that bound what may be put in it (Issue #1267).
+///
+/// Environment variables:
+/// ```text
+/// SPACES_ACCESS_KEY_ID=...
+/// SPACES_SECRET_ACCESS_KEY=...
+/// SPACES_ENDPOINT=https://fra1.digitaloceanspaces.com
+/// SPACES_REGION=fra1
+/// SPACES_BUCKET=pipeline-kyb
+/// KYB_MAX_DOCUMENT_BYTES=10485760     # per file; default 10MB, matches the frontend
+/// KYB_MAX_FILES_PER_REQUEST=10        # per upload request
+/// KYB_MAX_DOCUMENTS_PER_LP=20         # per LP, across all requests
+/// ```
+///
+/// The five `SPACES_*` variables are **required**: an API that boots without
+/// them would accept signups and registrations and only fail at the upload
+/// step, long after the misconfiguration was deployed. The three limits have
+/// defaults.
+pub struct KybStorageConfig {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub endpoint: String,
+    pub region: String,
+    pub bucket: String,
+    pub limits: KybLimits,
+}
+
+/// Bounds on KYB uploads. Separated from the credentials so handlers can carry
+/// the limits without the secrets.
+#[derive(Debug, Clone, Copy)]
+pub struct KybLimits {
+    /// Largest single document, in bytes.
+    pub max_document_bytes: usize,
+    /// Most files one upload request may carry.
+    pub max_files_per_request: usize,
+    /// Most documents one LP may hold at once.
+    pub max_documents_per_lp: i64,
+}
+
+/// Default per-file ceiling — 10MB, mirroring `MAX_FILE_BYTES` in
+/// `packages/frontend/src/components/kybFileValidation.ts`.
+pub const DEFAULT_KYB_MAX_DOCUMENT_BYTES: usize = 10 * 1024 * 1024;
+pub const DEFAULT_KYB_MAX_FILES_PER_REQUEST: usize = 10;
+pub const DEFAULT_KYB_MAX_DOCUMENTS_PER_LP: i64 = 20;
+
+impl KybLimits {
+    /// Headroom over the raw file total, for multipart framing: the boundary
+    /// between every part, each part's headers, and the three text fields all
+    /// count toward the body limit. Without it, ten files of exactly
+    /// `max_document_bytes` — every one of them legal — would overflow the
+    /// ceiling by a few hundred bytes and be refused.
+    const MULTIPART_OVERHEAD_BYTES: usize = 1024 * 1024;
+
+    /// The request body ceiling implied by these limits: every allowed file at
+    /// its full size, plus framing. Applied per-route, never globally — axum's
+    /// default is 2MB and the rest of the API wants to keep it.
+    pub fn max_request_bytes(&self) -> usize {
+        self.max_document_bytes
+            .saturating_mul(self.max_files_per_request)
+            .saturating_add(Self::MULTIPART_OVERHEAD_BYTES)
+    }
+
+    fn from_env() -> Result<Self> {
+        let limits = Self {
+            max_document_bytes: parse_env_or(
+                "KYB_MAX_DOCUMENT_BYTES",
+                DEFAULT_KYB_MAX_DOCUMENT_BYTES,
+            )?,
+            max_files_per_request: parse_env_or(
+                "KYB_MAX_FILES_PER_REQUEST",
+                DEFAULT_KYB_MAX_FILES_PER_REQUEST,
+            )?,
+            max_documents_per_lp: parse_env_or(
+                "KYB_MAX_DOCUMENTS_PER_LP",
+                DEFAULT_KYB_MAX_DOCUMENTS_PER_LP,
+            )?,
+        };
+        limits.validate()?;
+        Ok(limits)
+    }
+
+    /// Reject a limit of zero or less.
+    ///
+    /// Each one silently disables uploading rather than failing loudly:
+    /// `KYB_MAX_FILES_PER_REQUEST=0` drops the route's body limit to the
+    /// framing allowance so every upload `413`s, and
+    /// `KYB_MAX_DOCUMENTS_PER_LP=0` (or a negative, which `i64` parses happily)
+    /// makes every upload `409` forever. The five `SPACES_*` variables beside
+    /// these are already rejected when blank; a typo in a number deserves the
+    /// same treatment.
+    fn validate(&self) -> Result<()> {
+        if self.max_document_bytes == 0 {
+            anyhow::bail!("KYB_MAX_DOCUMENT_BYTES must be greater than zero");
+        }
+        if self.max_files_per_request == 0 {
+            anyhow::bail!("KYB_MAX_FILES_PER_REQUEST must be greater than zero");
+        }
+        if self.max_documents_per_lp <= 0 {
+            anyhow::bail!("KYB_MAX_DOCUMENTS_PER_LP must be greater than zero");
+        }
+        Ok(())
+    }
+}
+
+fn parse_env_or<T>(key: &str, default: T) -> Result<T>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    match env::var(key) {
+        Err(_) => Ok(default),
+        Ok(raw) => raw
+            .trim()
+            .parse()
+            .map_err(|e| anyhow::anyhow!("{key} is not a valid number: {e}")),
+    }
+}
+
+impl KybStorageConfig {
+    pub fn from_env() -> Result<Self> {
+        let required = |key: &str| -> Result<String> {
+            let value = env::var(key)
+                .with_context(|| format!("{key} is required for KYB document storage"))?;
+            if value.trim().is_empty() {
+                anyhow::bail!("{key} is required for KYB document storage but is empty");
+            }
+            Ok(value)
+        };
+
+        Ok(Self {
+            access_key_id: required("SPACES_ACCESS_KEY_ID")?,
+            secret_access_key: required("SPACES_SECRET_ACCESS_KEY")?,
+            endpoint: required("SPACES_ENDPOINT")?,
+            region: required("SPACES_REGION")?,
+            bucket: required("SPACES_BUCKET")?,
+            limits: KybLimits::from_env()?,
+        })
+    }
+
+    pub fn object_store(&self) -> ObjectStore {
+        ObjectStore::new(
+            &self.access_key_id,
+            &self.secret_access_key,
+            &self.endpoint,
+            &self.region,
+            &self.bucket,
+        )
+    }
 }
