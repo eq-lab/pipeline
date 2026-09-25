@@ -71,15 +71,20 @@ use crate::AppState;
 /// round trip for no benefit.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LpResponse {
+    #[schema(example = 42)]
     pub id: i64,
+    #[schema(example = "Acme Trading Ltd")]
     pub legal_name: String,
+    #[schema(example = "NL")]
     pub country: Option<String>,
+    #[schema(example = "ops@acme.example")]
     pub contact_email: String,
     /// Set only once `kyb_status` is `Passed`.
     pub stellar_address: Option<String>,
     /// ISO-8601 UTC.
     pub address_linked_at: Option<String>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `Passed` | `Failed`.
+    #[schema(example = "InProgress")]
     pub kyb_status: String,
     /// Whether the owner may still edit this record — the rendered form of
     /// [`KybStatus::allows_owner_writes`], so a client need not re-derive the
@@ -159,12 +164,18 @@ impl From<LpRow> for LpSummary {
 /// One KYB document. Untyped — `original_filename` is what identifies it.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentResponse {
+    #[schema(example = 118)]
     pub id: i64,
+    #[schema(example = 42)]
     pub lp_id: i64,
+    #[schema(example = "certificate-of-incorporation.pdf")]
     pub original_filename: String,
+    #[schema(example = 284_512)]
     pub size_bytes: i64,
+    #[schema(example = "application/pdf")]
     pub content_type: String,
     /// `Provided` | `Verified` | `Rejected`.
+    #[schema(example = "Provided")]
     pub status: String,
     pub reject_reason: Option<String>,
     pub reviewed_by: Option<String>,
@@ -199,14 +210,23 @@ impl DocumentResponse {
 /// The outcome of one file in a multi-file upload. A batch reports per file
 /// rather than failing whole: the files that stored are stored, and re-sending
 /// them would duplicate them.
+///
+/// `id` and `error` are mutually exclusive — a stored file carries an id and no
+/// error, a refused one the reverse. The rendered example shows both populated
+/// because the generator fills every field; no real response does.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FileResult {
+    #[schema(example = "certificate-of-incorporation.pdf")]
     pub filename: String,
-    /// `201` when stored, `400` when rejected.
+    /// `201` when stored, `400` when the file was rejected, `409` when the LP
+    /// entered review before it landed, `500` when storage failed.
+    #[schema(example = 201, minimum = 100, maximum = 599)]
     pub status: u16,
-    /// The document's id, when it stored.
+    /// The document's id, when it stored. `null` otherwise.
+    #[schema(example = 118)]
     pub id: Option<i64>,
-    /// Why it was rejected, when it was.
+    /// Why it was rejected, when it was. `null` otherwise.
+    #[schema(example = json!(null))]
     pub error: Option<String>,
 }
 
