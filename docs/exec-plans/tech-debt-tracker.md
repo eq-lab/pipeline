@@ -1536,7 +1536,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** The most common user error in the flow now produces a dead end with no feedback: the screen says "check your inbox", no email arrives, and nothing explains why. Expect support load and drop-off at exactly the step where a new LP is being onboarded. The window is worst immediately after a send (a typo at t+5s means ~55s of silence).
 - **Suggested fix:** No security-preserving message exists for the anonymous caller, so fix it in the UI instead: the frontend knows when it last triggered a send, so it can render the remaining cooldown on the OTP screen and disable Resend until it elapses (`useOtpModal` already runs a 59s countdown — wire it to the burn, not just to the initial send). Alternatively reconsider the 1-guess/60s TTL pairing: three guesses with a 10-minute TTL gave the same practical security once the cooldown is the binding control, and far more slack.
 
-### TD-88: Deleting a KYB document is unbounded, so the per-LP cap can be cycled
+### TD-92: Deleting a KYB document is unbounded, so the per-LP cap can be cycled
 
 - **Date:** 2026-09-24
 - **Location:** `packages/api/src/routes/lps.rs` (`delete_my_document`), `packages/shared/src/kyb_document_repo.rs` (`delete`, `count_for_lp`)
@@ -1544,7 +1544,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** No correctness or storage-footprint problem — every object is removed with its row, so nothing accumulates. The cost is request volume: an authenticated LP can drive unlimited Spaces PUT/DELETE calls and API bandwidth at will. Bounded by the per-file size limit and by the account having to exist and be verified, so this is an abuse ceiling rather than an open door.
 - **Suggested fix:** A per-LP upload rate limit (N uploads per hour, tracked like `login_attempts`) rather than reinstating tombstone rows, which were rejected on purpose. Only worth building if the pattern is actually observed.
 
-### TD-89: A rejected KYB document can be erased along with the reason it was rejected
+### TD-93: A rejected KYB document can be erased along with the reason it was rejected
 
 - **Date:** 2026-09-24
 - **Location:** `packages/api/src/routes/lps.rs` (`delete_my_document`), `packages/shared/migrations/20260924000001_kyb_documents_untyped_and_storage.sql`
@@ -1552,18 +1552,18 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** An applicant can erase evidence that staff already reviewed and turned down. Bounded by the `Verified` freeze — a document staff *approved* can never be deleted — so a passed KYB always still refers to the bytes that earned it. The exposure is the rejection trail, not the approval trail, and there is no regulatory requirement pinned to it today.
 - **Suggested fix:** If a rejection trail is ever required, append review decisions to the existing audit log (`docs/product-specs/audit-logging.md`) at the moment `review_document` runs, rather than depending on the document row surviving. That keeps the history independent of what the LP can delete.
 
-### TD-90: A KYB upload can pin 100MB of API heap, and nothing bounds concurrency
+### TD-94: A KYB upload can pin 100MB of API heap, and nothing bounds concurrency
 
 - **Date:** 2026-09-25
-- **Location:** `packages/api/src/routes/lps.rs` (`read_upload`, `upsert_my_lp`), `packages/api/src/config.rs` (`KybLimits::max_request_bytes`)
-- **Gap:** Every accepted file is held in `Vec<UploadedFile>` until after the profile upsert, because the content sniff must see the bytes before they are streamed to Spaces. One request can therefore hold `KYB_MAX_FILES_PER_REQUEST × KYB_MAX_DOCUMENT_BYTES` (100MB at the defaults), and no concurrency limit applies to the route.
+- **Location:** `packages/api/src/routes/lps.rs` (`read_files`, `upload_my_documents`), `packages/api/src/config.rs` (`KybLimits::max_request_bytes`)
+- **Gap:** Every accepted file is held in `Vec<UploadedFile>` until it is stored, because the content sniff must see the bytes before they go to Spaces. One request can therefore hold `KYB_MAX_FILES_PER_REQUEST × KYB_MAX_DOCUMENT_BYTES` (100MB at the defaults), and no concurrency limit applies to the route. Splitting the profile onto its own endpoint confined this to `POST /v1/lps/me/documents` — editing an entity no longer passes through a route that admits 100MB — but did not reduce the ceiling for uploads themselves.
 - **Impact:** Ten concurrent uploads from verified accounts is roughly 1GB RSS. Signup is self-serve, so any verified account can reach it. Not a correctness problem and bounded per request, but it is an availability ceiling that scales with attacker concurrency rather than with anything we control.
 - **Suggested fix:** Either stream each file to Spaces as it is drained — sniffing the first chunk rather than the whole buffer, which would hold one file rather than the batch — or put a `tower::limit::ConcurrencyLimitLayer` on this route alone. Streaming is the better fix and the larger change; the limiter is a one-line stopgap. Ingress-level request limits would also cover it, which is the conventional answer and why this is logged rather than built.
 
-### TD-91: The per-LP document cap is not atomic with the inserts
+### TD-95: The per-LP document cap is not atomic with the inserts
 
 - **Date:** 2026-09-25
 - **Location:** `packages/api/src/routes/lps.rs` (`upsert_my_lp`), `packages/shared/src/kyb_document_repo.rs` (`count_for_lp`)
 - **Gap:** `count_for_lp` and the per-file inserts run on separate connections with no lock or constraint between them. Two concurrent `POST /v1/lps/me` from the same account can both read `held = 19`, both pass `check_document_cap`, and leave the LP above `KYB_MAX_DOCUMENTS_PER_LP`.
-- **Impact:** An LP can exceed its cap by roughly the number of requests it runs in parallel. Distinct from TD-88, which is about cycling the cap with deletes rather than racing it. Storage impact only — the cap is an abuse ceiling, not a correctness invariant, and every document still passes type and size validation.
+- **Impact:** An LP can exceed its cap by roughly the number of requests it runs in parallel. Distinct from TD-92, which is about cycling the cap with deletes rather than racing it. Storage impact only — the cap is an abuse ceiling, not a correctness invariant, and every document still passes type and size validation.
 - **Suggested fix:** `SELECT ... FOR UPDATE` on the `lps` row for the duration of the upload, or a trigger enforcing the count. Both serialise an LP's concurrent uploads, which is the point; neither is worth doing unless the overshoot turns out to matter.
