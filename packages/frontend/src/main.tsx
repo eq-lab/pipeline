@@ -11,6 +11,7 @@ import {
   WalletViewProvider,
 } from "@/wallet";
 import { ToastProvider } from "@/lib/toast";
+import { AuthFlowProvider } from "@/auth";
 
 const router = createRouter({ routeTree });
 
@@ -29,11 +30,13 @@ createRoot(rootElement).render(
       <EvmWalletProvider>
         <StellarWalletProvider>
           <ConnectModalProvider>
-            <WalletViewProvider>
-              <ToastProvider>
-                <RouterProvider router={router} />
-              </ToastProvider>
-            </WalletViewProvider>
+            <AuthFlowProvider>
+              <WalletViewProvider>
+                <ToastProvider>
+                  <RouterProvider router={router} />
+                </ToastProvider>
+              </WalletViewProvider>
+            </AuthFlowProvider>
           </ConnectModalProvider>
         </StellarWalletProvider>
       </EvmWalletProvider>

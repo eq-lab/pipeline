@@ -24,6 +24,15 @@ vi.mock("@/wallet", async (importOriginal) => {
   };
 });
 
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...original,
+    useNavigate: vi.fn(() => vi.fn()),
+  };
+});
+
 import { Route } from "./account";
 import type { AccountDocumentsState } from "@/components/account/accountPageState";
 

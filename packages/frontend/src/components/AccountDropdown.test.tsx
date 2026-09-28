@@ -2,10 +2,10 @@
  * AccountDropdown — unit tests.
  *
  * Covers:
- *   - Opens on pill click; closes on outside click, Escape, and route change.
+ *   - Opens on trigger click; closes on outside click and Escape.
  *   - Address renders truncated; copy button writes full address to clipboard
  *     and shows/hides "Copied" affordance.
- *   - Disconnect button calls useWallet().disconnect() and closes the dropdown.
+ *   - Disconnect button calls onDisconnect and closes the dropdown.
  *   - Panel has role="menu"; copy + disconnect have role="menuitem".
  *   - Trigger has aria-expanded toggling.
  *   - Namespace toggle (EVM ↔ Stellar) switches the rendered address/balance.
@@ -13,101 +13,27 @@
  *   - Network switcher row (issue #1032): current network always shown;
  *     other-network rows only when `VITE_NETWORK_LINKS` supplies siblings;
  *     mainnet row click asks for confirmation before navigating.
+ *
+ * AccountDropdown itself is a pure presentational component (all wallet state
+ * comes in as props — see `AccountDropdownProps`) that is no longer composed
+ * by `TopBar` as of issue #1362 (see `docs/exec-plans/tech-debt-tracker.md`
+ * TD-93). These tests exercise it directly through a small local harness
+ * instead of rendering the full `TopBar`/wallet-provider tree, so none of the
+ * wagmi/AppKit/Stellar-wallets-kit scaffolding that used to live here is
+ * needed any more — only a router (the hook reads `useRouterState`).
  */
+import { useState } from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createRouter,
-  createRoute,
   createRootRoute,
   RouterProvider,
   createMemoryHistory,
 } from "@tanstack/react-router";
-import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
-import { WalletViewProvider } from "@/wallet/WalletViewContext";
-import { TopBar } from "./TopBar";
-
-// ── Stellar hook mocks ────────────────────────────────────────────────────────
-// Mock useStellarWallet and useStellarToken at the module level so TopBar
-// can call them without needing a real StellarWalletsKit or QueryClient.
-
-const {
-  mockStellarConnect,
-  mockStellarDisconnect,
-  mockStellarWalletState,
-  mockStellarTokenState,
-} = vi.hoisted(() => ({
-  mockStellarConnect: vi.fn(),
-  mockStellarDisconnect: vi.fn(),
-  mockStellarWalletState: {
-    address: undefined as string | undefined,
-    isConnected: false,
-  },
-  mockStellarTokenState: {
-    balance: undefined as string | undefined,
-    formattedBalance: undefined as string | undefined,
-    refetchBalance: vi.fn(),
-    isLoading: false,
-    error: null,
-  },
-}));
-
-vi.mock("@/wallet/stellar/useStellarWallet", () => ({
-  useStellarWallet: () => ({
-    ...mockStellarWalletState,
-    connect: mockStellarConnect,
-    disconnect: mockStellarDisconnect,
-  }),
-}));
-
-vi.mock("@/wallet/stellar/useStellarToken", () => ({
-  useStellarToken: () => ({ ...mockStellarTokenState }),
-  formatUsdcDisplay: (s: string) => `$${s}`,
-}));
-
-// Mock the new Stellar balance hooks added in Issue #675.
-vi.mock("@/wallet/stellar/useStellarDepositManagerAddresses", () => ({
-  useStellarDepositManagerAddresses: () => ({
-    addresses: undefined,
-    isLoading: false,
-    error: null,
-  }),
-}));
-
-vi.mock("@/wallet/stellar/useStellarSacToken", () => ({
-  useStellarSacToken: () => ({
-    balance: undefined,
-    hasTrustline: false,
-    isAuthorized: false,
-    decimals: 7,
-    refetchBalance: vi.fn(),
-    isLoading: false,
-    error: null,
-  }),
-  sacRawToDisplay: (raw: bigint) => String(Number(raw) / 1e7),
-  SAC_DECIMALS: 7,
-  sacDisplayToRaw: (s: string) => BigInt(Math.round(Number(s) * 1e7)),
-}));
-
-vi.mock("@/wallet/stellar/useStellarStakedPlusd", () => ({
-  useStellarStakedPlusdBalance: () => ({
-    balance: undefined,
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-}));
-
-// StellarWalletProvider uses ./config, mock that too.
-vi.mock("@/wallet/stellar/config", () => ({
-  StellarWalletsKit: {
-    authModal: vi.fn(),
-    getAddress: vi.fn().mockResolvedValue({ address: undefined }),
-    disconnect: vi.fn(),
-    init: vi.fn(),
-  },
-}));
+import { AccountDropdown } from "./AccountDropdown";
+import type { WalletViewKind } from "@/wallet";
 
 // ── Network switcher mock (issue #1032) ───────────────────────────────────────
 // Only `getNetworkSwitcherState` is stubbed (controllable per test); the real
@@ -154,71 +80,6 @@ function restoreWindowLocation() {
   });
 }
 
-// ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
-
-const mockDisconnect = vi.fn();
-
-vi.mock("wagmi", async (importOriginal) => {
-  const original = await importOriginal<typeof import("wagmi")>();
-  return {
-    ...original,
-    WagmiProvider: ({ children }: { children: React.ReactNode }) => (
-      <>{children}</>
-    ),
-    useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
-    useChainId: vi.fn(() => 560048),
-    useDisconnect: vi.fn(() => ({ disconnect: mockDisconnect })),
-    useReadContract: vi.fn(() => ({
-      data: undefined,
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    })),
-    useWriteContract: vi.fn(() => ({
-      writeContract: vi.fn(),
-      data: undefined,
-      isPending: false,
-      isSuccess: false,
-      error: null,
-      reset: vi.fn(),
-    })),
-    usePublicClient: vi.fn(() => ({
-      estimateContractGas: vi.fn(async () => 1_000_000n),
-    })),
-    useWaitForTransactionReceipt: vi.fn(() => ({
-      data: undefined,
-      isLoading: false,
-      isSuccess: false,
-      isError: false,
-      error: null,
-    })),
-  };
-});
-
-vi.mock("@reown/appkit/react", () => ({
-  createAppKit: vi.fn(),
-  useAppKit: vi.fn(() => ({ open: vi.fn() })),
-}));
-
-vi.mock("@tanstack/react-query", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("@tanstack/react-query")>();
-  return {
-    ...original,
-    QueryClientProvider: ({
-      children,
-    }: {
-      children: React.ReactNode;
-      client: unknown;
-    }) => <>{children}</>,
-  };
-});
-
-vi.mock("@/wallet/config", () => ({
-  wagmiConfig: {},
-  wagmiAdapter: {},
-}));
-
 // ── Clipboard mock ────────────────────────────────────────────────────────────
 
 const mockWriteText = vi.fn().mockResolvedValue(undefined);
@@ -232,98 +93,95 @@ Object.defineProperty(navigator, "clipboard", {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const USDC_ADDRESS = "0x2222000000000000000000000000000000000002";
 const MOCK_EVM_ADDRESS = "0x8493000000000000000000000000000000003b92";
 const MOCK_STELLAR_ADDRESS =
   "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Harness ───────────────────────────────────────────────────────────────────
+// AccountDropdown takes all wallet state as plain props (see
+// `AccountDropdownProps`) — the harness owns the toggle-button + open state
+// that `TopBar` used to own, and the namespace switch, so each test can drive
+// exactly the state it needs without a real wallet provider tree.
 
-function setEvmConnectedMock() {
-  localStorage.setItem("pipeline.mock.wallet.address", MOCK_EVM_ADDRESS);
-  localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
-  localStorage.setItem(
-    "pipeline.mock.wallet.contract.depositManager.usdc",
-    USDC_ADDRESS,
-  );
-  localStorage.setItem(
-    `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.decimals`,
-    "6",
-  );
-  localStorage.setItem(
-    `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.symbol`,
-    "USDC",
-  );
-  localStorage.setItem(
-    `pipeline.mock.wallet.balance.${USDC_ADDRESS.toLowerCase()}`,
-    "1000000000",
+interface HarnessProps {
+  initialKind?: WalletViewKind;
+  evmAddress?: string;
+  evmFormattedBalance?: string;
+  stellarAddress?: string;
+  stellarFormattedBalance?: string;
+  stellarPlusdBalance?: string;
+  stellarSplusdBalance?: string;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+}
+
+function Harness({
+  initialKind = "evm",
+  evmAddress,
+  evmFormattedBalance,
+  stellarAddress,
+  stellarFormattedBalance,
+  stellarPlusdBalance,
+  stellarSplusdBalance,
+  onConnect = () => {},
+  onDisconnect = () => {},
+}: HarnessProps) {
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<WalletViewKind>(initialKind);
+  const address = kind === "evm" ? evmAddress : stellarAddress;
+  const formattedBalance =
+    kind === "evm" ? evmFormattedBalance : stellarFormattedBalance;
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        data-testid="dropdown-trigger"
+      >
+        {formattedBalance ?? "—"}
+      </button>
+      {open && (
+        <AccountDropdown
+          kind={kind}
+          onKindChange={setKind}
+          address={address}
+          formattedBalance={formattedBalance}
+          stellarPlusdBalance={
+            kind === "stellar" ? stellarPlusdBalance : undefined
+          }
+          stellarSplusdBalance={
+            kind === "stellar" ? stellarSplusdBalance : undefined
+          }
+          onConnect={onConnect}
+          onClose={() => setOpen(false)}
+          onDisconnect={() => {
+            onDisconnect();
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }
 
-function clearEvmMocks() {
-  [
-    "pipeline.mock.wallet.address",
-    "pipeline.mock.wallet.isConnected",
-    "pipeline.mock.wallet.contract.depositManager.usdc",
-    `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.decimals`,
-    `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.symbol`,
-    `pipeline.mock.wallet.balance.${USDC_ADDRESS.toLowerCase()}`,
-  ].forEach((k) => localStorage.removeItem(k));
-}
-
-function setStellarHookMockConnected() {
-  mockStellarWalletState.address = MOCK_STELLAR_ADDRESS;
-  mockStellarWalletState.isConnected = true;
-  mockStellarTokenState.balance = "2000.00";
-  mockStellarTokenState.formattedBalance = "$2,000.00";
-}
-
-function clearStellarHookMock() {
-  mockStellarWalletState.address = undefined;
-  mockStellarWalletState.isConnected = false;
-  mockStellarTokenState.balance = undefined;
-  mockStellarTokenState.formattedBalance = undefined;
-}
-
-/** Builds a router with TopBar in the root layout. */
-function buildRouter(initialPath = "/") {
-  const rootRoute = createRootRoute({ component: () => <TopBar /> });
-  const indexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/",
-    component: () => null,
+function renderHarness(props: HarnessProps = {}) {
+  const rootRoute = createRootRoute({
+    component: () => <Harness {...props} />,
   });
-  const depositRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/deposit",
-    component: () => null,
-  });
-  const routeTree = rootRoute.addChildren([indexRoute, depositRoute]);
-  return createRouter({
+  const routeTree = rootRoute.addChildren([]);
+  const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: [initialPath] }),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
   });
+  return render(<RouterProvider router={router} />);
 }
 
-function renderWithWallet(initialPath = "/") {
-  const router = buildRouter(initialPath);
-  return {
-    router,
-    ...render(
-      <EvmWalletProvider>
-        <WalletViewProvider>
-          <RouterProvider router={router} />
-        </WalletViewProvider>
-      </EvmWalletProvider>,
-    ),
-  };
-}
-
-/** Clicks the WalletPill trigger to open the dropdown and waits for it. */
+/** Clicks the trigger to open the dropdown and waits for it. */
 async function openDropdown(user: ReturnType<typeof userEvent.setup>) {
-  const trigger = await screen.findByRole("button", {
-    name: /\$1,000\.00|\$2,000\.00|—/,
-  });
+  const trigger = await screen.findByTestId("dropdown-trigger");
   await user.click(trigger);
   await waitFor(() =>
     expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
@@ -334,27 +192,26 @@ async function openDropdown(user: ReturnType<typeof userEvent.setup>) {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("AccountDropdown — open / close", () => {
-  beforeEach(() => {
-    setEvmConnectedMock();
-  });
-
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
-  it("opens when the WalletPill trigger is clicked", async () => {
+  it("opens when the trigger is clicked", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
     expect(screen.getByRole("menu", { name: "Account" })).toBeVisible();
   });
 
   it("closes when outside is clicked (mousedown)", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     await act(async () => {
@@ -370,7 +227,10 @@ describe("AccountDropdown — open / close", () => {
 
   it("closes when Escape is pressed", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     await user.keyboard("{Escape}");
@@ -384,11 +244,12 @@ describe("AccountDropdown — open / close", () => {
 
   it("sets aria-expanded to true when open, false when closed", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
-
-    const trigger = await screen.findByRole("button", {
-      name: /\$1,000\.00|—/,
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
     });
+
+    const trigger = await screen.findByTestId("dropdown-trigger");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.click(trigger);
@@ -402,20 +263,16 @@ describe("AccountDropdown — open / close", () => {
 });
 
 describe("AccountDropdown — address display and copy", () => {
-  beforeEach(() => {
-    setEvmConnectedMock();
-  });
-
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
   it("renders the EVM address truncated to 0x8493…3b92", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     expect(screen.getByText("0x8493…3b92")).toBeInTheDocument();
@@ -424,7 +281,10 @@ describe("AccountDropdown — address display and copy", () => {
 
   it("copy button writes full address to clipboard", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     const copyBtn = screen.getByRole("menuitem", {
@@ -439,10 +299,11 @@ describe("AccountDropdown — address display and copy", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const user = userEvent.setup({ delay: null });
-      renderWithWallet();
-      const trigger = await waitFor(() =>
-        screen.getByRole("button", { name: /\$1,000\.00|—/ }),
-      );
+      renderHarness({
+        evmAddress: MOCK_EVM_ADDRESS,
+        evmFormattedBalance: "$1,000.00",
+      });
+      const trigger = await screen.findByTestId("dropdown-trigger");
       await act(async () => {
         await user.click(trigger);
       });
@@ -477,20 +338,16 @@ describe("AccountDropdown — address display and copy", () => {
 });
 
 describe("AccountDropdown — disconnect", () => {
-  beforeEach(() => {
-    setEvmConnectedMock();
-  });
-
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
   it("Disconnect button closes the dropdown", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     const disconnectBtn = screen.getByRole("menuitem", { name: "Disconnect" });
@@ -505,19 +362,16 @@ describe("AccountDropdown — disconnect", () => {
 });
 
 describe("AccountDropdown — a11y roles", () => {
-  beforeEach(() => {
-    setEvmConnectedMock();
-  });
-
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
+    vi.clearAllMocks();
   });
 
   it("panel has role=menu, copy and disconnect have role=menuitem", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument();
@@ -531,21 +385,18 @@ describe("AccountDropdown — a11y roles", () => {
 });
 
 describe("AccountDropdown — namespace toggle", () => {
-  beforeEach(() => {
-    setEvmConnectedMock();
-    setStellarHookMockConnected();
-  });
-
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
   it("EVM tab is selected by default and shows EVM address", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+      stellarAddress: MOCK_STELLAR_ADDRESS,
+      stellarFormattedBalance: "$2,000.00",
+    });
     await openDropdown(user);
 
     const evmTab = screen.getByRole("tab", { name: "EVM" });
@@ -555,7 +406,12 @@ describe("AccountDropdown — namespace toggle", () => {
 
   it("clicking Stellar tab shows Stellar truncated address", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+      stellarAddress: MOCK_STELLAR_ADDRESS,
+      stellarFormattedBalance: "$2,000.00",
+    });
     await openDropdown(user);
 
     const stellarTab = screen.getByRole("tab", { name: "Stellar" });
@@ -563,11 +419,7 @@ describe("AccountDropdown — namespace toggle", () => {
 
     await waitFor(() => {
       // Stellar GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
-      // truncated: first 6 chars = "GBBD47", last 4 = "LA5" → "GBBD47…LA5"
-      // Actually last 4 of the 56-char string:
-      // "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
-      // slice(-4) = "LA5" but that's only 3 chars — let me check:
-      // len=56, slice(-4) = chars at 52,53,54,55 = "FLA5"
+      // truncated: first 6 chars = "GBBD47", last 4 chars = "FLA5".
       expect(screen.getByText("GBBD47…FLA5")).toBeInTheDocument();
     });
     expect(stellarTab).toHaveAttribute("aria-selected", "true");
@@ -575,7 +427,12 @@ describe("AccountDropdown — namespace toggle", () => {
 
   it("clicking EVM tab after Stellar restores EVM address", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+      stellarAddress: MOCK_STELLAR_ADDRESS,
+      stellarFormattedBalance: "$2,000.00",
+    });
     await openDropdown(user);
 
     await user.click(screen.getByRole("tab", { name: "Stellar" }));
@@ -592,17 +449,16 @@ describe("AccountDropdown — namespace toggle", () => {
 
 describe("AccountDropdown — not-connected-tab state", () => {
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
   it("shows 'Connect Stellar' action when EVM connected but Stellar tab selected", async () => {
-    setEvmConnectedMock();
-    // Stellar is NOT connected (clearStellarHookMock defaults are disconnected).
     const user = userEvent.setup();
-    renderWithWallet();
+    // Stellar is NOT connected (no stellarAddress passed).
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     await user.click(screen.getByRole("tab", { name: "Stellar" }));
@@ -623,13 +479,14 @@ describe("AccountDropdown — not-connected-tab state", () => {
 
 describe("AccountDropdown — network switcher row", () => {
   beforeEach(() => {
-    setEvmConnectedMock();
+    mockNetworkSwitcherState.currentNetwork = {
+      id: "testnet",
+      label: "Testnet",
+    };
+    mockNetworkSwitcherState.otherNetworks = [];
   });
 
   afterEach(() => {
-    clearEvmMocks();
-    clearStellarHookMock();
-    localStorage.clear();
     vi.clearAllMocks();
     restoreWindowLocation();
     mockNetworkSwitcherState.currentNetwork = {
@@ -641,7 +498,10 @@ describe("AccountDropdown — network switcher row", () => {
 
   it("always shows the current network label, with no switch-network group when unconfigured", async () => {
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     expect(screen.getByTestId("topbar-network-current")).toHaveTextContent(
@@ -661,7 +521,10 @@ describe("AccountDropdown — network switcher row", () => {
       },
     ];
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     expect(
@@ -683,7 +546,10 @@ describe("AccountDropdown — network switcher row", () => {
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     await user.click(screen.getByTestId("topbar-network-link-futurenet"));
@@ -705,7 +571,10 @@ describe("AccountDropdown — network switcher row", () => {
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     await user.click(screen.getByTestId("topbar-network-link-mainnet"));
@@ -732,7 +601,10 @@ describe("AccountDropdown — network switcher row", () => {
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
-    renderWithWallet();
+    renderHarness({
+      evmAddress: MOCK_EVM_ADDRESS,
+      evmFormattedBalance: "$1,000.00",
+    });
     await openDropdown(user);
 
     await user.click(screen.getByTestId("topbar-network-link-mainnet"));

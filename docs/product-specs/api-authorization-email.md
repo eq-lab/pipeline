@@ -135,10 +135,14 @@ what bounds outbound mail.
 ## Frontend
 
 Issue #1265 wires `SignInModal`, `CreateAccountModal`, and `OtpModal` (see
-`docs/frontend/auth-components.md`) to the four endpoints above, mounted only
-in the `/test?tab=auth` `AuthTab` diagnostics route (production entry is
-#1282's). `packages/frontend/src/api/auth.ts` provides typed wrappers; see
-`packages/frontend/src/api/README.md` for the request/response shapes.
+`docs/frontend/auth-components.md`) to the four endpoints above. Issue #1362
+adds the production entry point: the LP header's "Sign In"/"Sign Up" buttons
+open the same flow app-wide via `AuthFlowProvider`, and the signed-in header
+shows an account icon linking to `/account` (now open to authenticated LPs,
+not only `ENV.IS_DEV`). The `/test?tab=auth` `AuthTab` diagnostics route keeps
+its own independent `EmailAuthFlow` instance. `packages/frontend/src/api/auth.ts`
+provides typed wrappers; see `packages/frontend/src/api/README.md` for the
+request/response shapes.
 
 **Session storage.** A successful `login`/`verify-otp` response is stored via
 `packages/frontend/src/auth/session.ts` under the `pipeline.auth.session`
@@ -148,8 +152,9 @@ once `expiresAt` has passed. There is no refresh endpoint, so an expired
 session requires a fresh login. `useAuthSession()` (`useSyncExternalStore`)
 exposes `{ token, isAuthenticated, signOut }` reactively within the tab that
 made the change; it does not listen for cross-tab `storage` events. This is
-the LP app's first email-account session — the pattern is designed for reuse
-by #1282 (production entry) and #1254 (`/v1/lps/*` KYB data wiring).
+the LP app's first email-account session — #1362 reused it for the production
+header entry (`TopBar` reads `isAuthenticated` directly); #1254 (`/v1/lps/*`
+KYB data wiring) is the remaining reuse.
 
 **403 `email_not_verified` routing.** On `login`'s `403 email_not_verified`,
 the frontend calls `resend-otp` (reusing the pending signup passcode's

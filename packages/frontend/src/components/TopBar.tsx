@@ -1,22 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Button, IconButton, Logo, NavIcon, WalletPill } from "@pipeline/ui";
-import {
-  useEvmWallet,
-  useEvmToken,
-  useDepositManagerAddresses,
-  useStellarWallet,
-  useStellarToken,
-  useStellarSacToken,
-  useStellarDepositManagerAddresses,
-  useStellarStakedPlusdBalance,
-  sacRawToDisplay,
-  formatUsdcDisplay,
-  useWalletView,
-  useConnectModal,
-} from "@/wallet";
+import { Button, IconButton, Logo, NavIcon } from "@pipeline/ui";
+import { useAuthFlow, useAuthSession } from "@/auth";
 import { NetworkSwitcher } from "./NetworkSwitcher";
-import { AccountDropdown } from "./AccountDropdown";
+import { AccountGlyph } from "./AccountGlyph";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
 import { isMainnetDeployment } from "@/wallet/networkSwitcher";
@@ -47,21 +34,6 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   }, // 5915:77655
 ];
 
-/**
- * Format an sPLUSD balance bigint (raw, 7-decimal scale) as a locale token
- * count string, e.g. `"1,234.56"`.  Returns `undefined` when the balance is
- * undefined or zero (zero-balance rows are hidden per Issue #675 resolution).
- */
-function formatSplusdDisplay(raw: bigint | undefined): string | undefined {
-  if (raw === undefined || raw === 0n) return undefined;
-  const decimalStr = sacRawToDisplay(raw);
-  const num = Number(decimalStr);
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-
 export type TopBarProps = React.HTMLAttributes<HTMLElement>;
 
 export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
@@ -74,75 +46,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
       ? NAV_ITEMS.filter((item) => item.key !== "overview")
       : NAV_ITEMS;
 
-    // ── Wallet state — all hooks called unconditionally ───────────────────
-    const evm = useEvmWallet();
-    const { usdc: usdcAddress } = useDepositManagerAddresses();
-    const evmToken = useEvmToken({
-      token:
-        usdcAddress ??
-        ("0x0000000000000000000000000000000000000000" as `0x${string}`),
-    });
-    const stellar = useStellarWallet();
-    const stellarToken = useStellarToken();
-
-    // ── Stellar PLUSD + sPLUSD (Issue #675) ──────────────────────────────
-    // Hooks are called unconditionally (rules-of-hooks); results are gated
-    // behind stellar.isConnected in the render section.
-    const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
-    const stellarPlusd = useStellarSacToken({
-      assetCode: "PLUSD",
-      assetIssuer: stellarAddresses?.plusdAsset.issuer ?? "",
-      contractId: stellarAddresses?.plusd ?? "",
-    });
-    const stellarSplusd = useStellarStakedPlusdBalance();
-
-    // Derive formatted display strings for the dropdown.
-    // PLUSD: formatted as "$X.XX" (1:1 with USD); hidden when no trustline or zero.
-    const plusdFormatted: string | undefined =
-      stellarPlusd.hasTrustline && stellarPlusd.balance != null
-        ? formatUsdcDisplay(stellarPlusd.balance)
-        : undefined;
-    // Zero-balance PLUSD rows are hidden per the Issue #675 resolution.
-    const plusdDisplay: string | undefined =
-      plusdFormatted === "$0.00" ? undefined : plusdFormatted;
-
-    // sPLUSD: formatted as "X.XX" token count; hidden when zero or undefined.
-    const splusdDisplay: string | undefined = formatSplusdDisplay(
-      stellarSplusd.balance,
-    );
-
-    // ── View selection ────────────────────────────────────────────────────
-    const { kind, setKind } = useWalletView();
-
-    // ── Derived state ─────────────────────────────────────────────────────
-    const anyConnected = evm.isConnected || stellar.isConnected;
-
-    // Active namespace data.
-    const activeAddress =
-      kind === "evm"
-        ? evm.isConnected
-          ? evm.address
-          : undefined
-        : stellar.isConnected
-          ? stellar.address
-          : undefined;
-
-    const activeFormattedBalance =
-      kind === "evm"
-        ? evmToken.formattedBalance
-        : stellarToken.formattedBalance;
-
-    const activeDisconnect =
-      kind === "evm" ? evm.disconnect : stellar.disconnect;
-
-    // spec: docs/frontend/dashboard-components.md#topbar (pill balance rule, #456).
-    const pillBalance = activeFormattedBalance ?? "—";
-
-    // ── Dropdown state ────────────────────────────────────────────────────
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-
-    // ── Connect modal (shared single instance via ConnectModalProvider) ───
-    const { open: openConnectModal } = useConnectModal();
+    // ── Auth state (issue #1362 — header sign-in/sign-up/account entry) ───
+    const { isAuthenticated } = useAuthSession();
+    const { open: openAuthFlow } = useAuthFlow();
 
     // ── Mobile nav menu state ─────────────────────────────────────────────
     const mobileMenu = useMobileNavMenu();
@@ -224,67 +130,52 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ))}
         </nav>
 
-        {/* Right slot — desktop wallet controls (md and above). */}
+        {/* Right slot — desktop auth controls (md and above), Figma nodes 6701:98403 (signed out) / 6701:97929 (signed in). */}
         <div
           className="relative hidden min-w-40 shrink-0 items-center justify-end gap-2 md:flex"
           data-testid="topbar-wallet-slot"
           data-node-id="1497:94724"
         >
           <NetworkSwitcher />
-          {anyConnected ? (
-            <>
-              {/* Trigger button wrapping the WalletPill */}
-              <button
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={dropdownOpen}
-                onClick={() => setDropdownOpen((o) => !o)}
-                className={[
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                  "focus-visible:outline-[var(--color-pipeline-ink)]",
-                  "rounded-[var(--radius-pipeline-pill)]",
-                ].join(" ")}
-                data-testid="topbar-wallet-pill-trigger"
-                data-node-id="1498:100168"
-              >
-                <WalletPill token="usdc" balance={pillBalance} />
-              </button>
-
-              {/* Account dropdown panel */}
-              {dropdownOpen && (
-                <AccountDropdown
-                  kind={kind}
-                  onKindChange={setKind}
-                  address={activeAddress}
-                  formattedBalance={activeFormattedBalance}
-                  stellarPlusdBalance={
-                    kind === "stellar" && stellar.isConnected
-                      ? plusdDisplay
-                      : undefined
-                  }
-                  stellarSplusdBalance={
-                    kind === "stellar" && stellar.isConnected
-                      ? splusdDisplay
-                      : undefined
-                  }
-                  onConnect={kind === "evm" ? evm.connect : stellar.connect}
-                  onClose={() => setDropdownOpen(false)}
-                  onDisconnect={() => {
-                    activeDisconnect();
-                    setDropdownOpen(false);
-                  }}
-                />
-              )}
-            </>
-          ) : (
-            <Button
-              variant="primary-dark"
-              onClick={openConnectModal}
-              data-testid="topbar-connect-button"
-              data-node-id="1497:94725"
+          {isAuthenticated ? (
+            <button
+              type="button"
+              aria-label="Account"
+              onClick={() =>
+                void navigate({ to: "/account", search: { state: undefined } })
+              }
+              className={[
+                "flex size-12 shrink-0 items-center justify-center",
+                "rounded-[var(--radius-pipeline-button)]",
+                "text-[color:var(--color-pipeline-ink-muted)]",
+                "transition-colors hover:bg-[color-mix(in_oklab,var(--color-pipeline-ink)_8%,transparent)]",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+                "focus-visible:ring-[var(--color-pipeline-brand)]",
+              ].join(" ")}
+              data-testid="topbar-account-button"
+              data-node-id="6701:97941"
             >
-              Connect Wallet
-            </Button>
+              <AccountGlyph />
+            </button>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => openAuthFlow("sign-in")}
+                data-testid="topbar-sign-in-button"
+                data-node-id="6701:98415"
+              >
+                Sign In
+              </Button>
+              <Button
+                variant="primary-dark"
+                onClick={() => openAuthFlow("create-account")}
+                data-testid="topbar-sign-up-button"
+                data-node-id="6701:98416"
+              >
+                Sign Up
+              </Button>
+            </>
           )}
         </div>
 
@@ -320,13 +211,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           onClose={mobileMenu.close}
           pathname={pathname}
           onNavigate={(to) => void navigate({ to })}
-          anyConnected={anyConnected}
-          address={activeAddress}
-          formattedBalance={activeFormattedBalance}
-          onConnect={openConnectModal}
-          onDisconnect={() => {
-            activeDisconnect();
-          }}
+          isAuthenticated={isAuthenticated}
+          onSignIn={() => openAuthFlow("sign-in")}
+          onSignUp={() => openAuthFlow("create-account")}
         />
       </header>
     );
