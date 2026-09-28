@@ -6,7 +6,7 @@ page is the **resume surface** for dismissible onboarding: a returning unverifie
 continue instead of being pushed back into a linear wizard. A new area doc rather than a section
 in `auth-components.md` (whose own scope is "LP-facing email+password authentication **modals**",
 not a route) or `dashboard-components.md` (already 1580+ lines) — this surface keeps growing
-through #1254, #1265, #1267, #1273 and #1282.
+through #1254, #1265, #1267 and #1282.
 
 **Presentational only.** No network calls, no persistence, no auth. Every side-effecting action is
 a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who-wires-them).
@@ -296,7 +296,7 @@ fill is stale, not the target.
 | --- | --- | --- |
 | `AccountWalletCard`'s `Connect Wallet` | opens the shared connect modal (real behavior, not a stub) | already wired — no follow-up |
 | `AccountDocumentsCard.onAddFiles` / staged `removeFile` | stages/unstages `File` objects in local component state only | already wired (client-only); #1267 adds the upload transport |
-| `AccountDocumentsCard.onSave` (`useAccountDocuments().handleSave`) | calls `onSave?.(files)`, default no-op — **does not transition `AccountDocumentsState`** | #1267 (upload) + #1273 (read-back), composed by #1254 |
+| `AccountDocumentsCard.onSave` (`useAccountDocuments().handleSave`) | calls `onSave?.(files)`, default no-op — **does not transition `AccountDocumentsState`** | #1267 (upload + read-back), composed by #1254 |
 | `AccountDocumentsCard.onUploadMissingDocument` | no-op | #1254/#1267 |
 | `AccountDocumentsCard.onReuploadDocument` | no-op | #1254/#1267 |
 | `AccountPage.onLogOut` | no-op | #1265 |
@@ -330,13 +330,12 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Concern | Owner |
 | --- | --- |
 | Uploading file bytes anywhere | #1267 |
-| Reading documents back (resume, statuses) | #1273 |
+| Reading documents back (resume, statuses) | #1267 (absorbed #1273) |
 | Wiring register / documents / `kyb_status` / link-address | #1254 |
 | Wiring sign-in / create-account / OTP / Log Out to real auth | #1265 |
 | Header auth buttons, the account icon, the home card states | #1282 |
 | The redesigned onboarding-time Company Docs modal | #1278 |
 | Add Funds wire-transfer modal | #1283 |
-| Reconciling the flat upload with the backend's typed `(doc_type, subject)` model | #1267 (classify-at-review) |
 
 `TopBar.tsx`, `MobileNavMenu.tsx`, and `ConnectModalProvider` are not modified by this issue.
 **Update (#1278):** the onboarding-time `CompanyDocsModal` was redesigned to compose

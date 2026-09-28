@@ -2,21 +2,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
-export interface LpResponse {
+export interface LpSummary {
   id: number;
   legal_name: string;
   country: string | null;
   contact_email: string;
   stellar_address: string | null;
-  address_linked_at: string | null;
   kyb_status: string;
-  owner_chain_id: number;
-  owner_address: string;
+  owner_account_id: string;
   created_at: string;
 }
 
 export interface LpsResponse {
-  lps: LpResponse[];
+  lps: LpSummary[];
 }
 
 export interface UseLpsResult {

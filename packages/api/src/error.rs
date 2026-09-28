@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 
+#[derive(Debug)]
 pub enum ApiError {
     /// 400 Bad Request. The String is the user-visible error message.
     BadRequest(String),
@@ -30,6 +31,11 @@ pub enum ApiError {
     /// references cannot be processed — e.g. a repayment whose loan carries a corrupt
     /// economics epoch (see `routes::waterfall`). The String is the user-visible message.
     UnprocessableEntity(String),
+    /// 413 Payload Too Large. The request carries more than an endpoint's own
+    /// ceiling allows — used by the KYB upload route, whose per-file and
+    /// per-request file-count limits are tighter than the body limit that
+    /// admitted the request.
+    PayloadTooLarge(String),
     /// 429 Too Many Requests. The caller is rate-limited. No handler returns it
     /// yet — the auth endpoints deliberately answer `202` and skip the work
     /// instead, so that a refusal cannot be used to probe which addresses exist.
@@ -93,6 +99,11 @@ impl IntoResponse for ApiError {
                 .into_response(),
             Self::UnprocessableEntity(msg) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::PayloadTooLarge(msg) => (
+                StatusCode::PAYLOAD_TOO_LARGE,
                 Json(serde_json::json!({"error": msg})),
             )
                 .into_response(),
