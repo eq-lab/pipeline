@@ -1,5 +1,5 @@
 # Build stage — compiles the entire workspace
-FROM rust:1.88-slim AS build
+FROM rust:1.96-slim-bookworm AS build
 WORKDIR /sln
 
 # Install system deps needed by sqlx (OpenSSL, pkg-config)
