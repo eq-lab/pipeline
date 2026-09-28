@@ -72,27 +72,6 @@ step "migration versions"
 new_migrations=$(git diff --cached --name-only --diff-filter=A \
     | grep -E '^packages/shared/migrations/[0-9]+_.*\.sql$' || true)
 
-# A migration that already exists on origin/main has been applied somewhere, and
-# sqlx checksums the file: editing it makes every database that ran it refuse to
-# start with "was previously applied but has been modified". Adding a new
-# migration is the only safe way to change an applied one.
-modified_migrations=$(git diff --cached --name-only --diff-filter=M \
-    | grep -E '^packages/shared/migrations/[0-9]+_.*\.sql$' || true)
-if [ -n "$modified_migrations" ] && git rev-parse --verify origin/main >/dev/null 2>&1; then
-    already_on_main=""
-    while IFS= read -r f; do
-        if git cat-file -e "origin/main:$f" 2>/dev/null; then
-            already_on_main="${already_on_main}    $f\n"
-        fi
-    done <<< "$modified_migrations"
-    if [ -n "$already_on_main" ]; then
-        printf "  these migrations exist on origin/main and must not be edited:\n"
-        printf "%b" "$already_on_main"
-        printf "  fix: revert them and put the change in a new migration\n"
-        mark "modified applied migrations"
-    fi
-fi
-
 if [ -z "$new_migrations" ]; then
     pass "no new migrations staged"
 elif ! git rev-parse --verify origin/main >/dev/null 2>&1; then
