@@ -24,8 +24,12 @@ export interface AccountDocumentsCardProps {
   onRemoveStagedFile: (index: number) => void;
   canSave: boolean;
   onSave: () => void;
+  production?: boolean;
+  writable?: boolean;
+  busy?: boolean;
+  onRemoveDocument?: (id: number) => void;
   onUploadMissingDocument?: () => void;
-  onReuploadDocument?: (documentName: string) => void;
+  onReuploadDocument?: (id: number) => void;
 }
 
 const CONTAINER_CLASS_BY_STATE: Record<AccountDocumentsState, string> = {
@@ -56,10 +60,25 @@ export function AccountDocumentsCard({
   onRemoveStagedFile,
   canSave,
   onSave,
+  production = false,
+  writable = true,
+  busy = false,
+  onRemoveDocument,
   onUploadMissingDocument,
   onReuploadDocument,
 }: AccountDocumentsCardProps) {
   const visibleDocuments = documents.filter((d) => d.status !== "NotProvided");
+  const uploadVisible =
+    writable &&
+    (state === "verify" ||
+      state === "staged" ||
+      (production && state === "invalid"));
+  const showRows =
+    production ||
+    state === "under-review" ||
+    state === "missing" ||
+    state === "invalid" ||
+    state === "verified";
 
   const composed = [
     "flex w-full flex-col items-start justify-center",
@@ -132,48 +151,49 @@ export function AccountDocumentsCard({
         </div>
       )}
 
-      {(state === "verify" || state === "staged") && (
-        <AccountUploadRow rejected={rejected} onFiles={onAddFiles} />
+      {uploadVisible && (
+        <AccountUploadRow
+          rejected={rejected}
+          onFiles={onAddFiles}
+          disabled={busy}
+        />
       )}
 
-      {(state === "verify" || state === "staged") && (
-        <AccountRequirementsList />
-      )}
+      {uploadVisible && <AccountRequirementsList />}
 
-      {state === "staged" && stagedFiles.length > 0 && (
+      {uploadVisible && stagedFiles.length > 0 && (
         <ul role="list" className="flex w-full flex-col gap-1">
           {stagedFiles.map((file, index) => (
             <UploadedFileRow
               key={`${file.name}-${index}`}
               file={file}
               onRemove={() => onRemoveStagedFile(index)}
+              disabled={busy}
               className="p-2"
             />
           ))}
         </ul>
       )}
 
-      {(state === "under-review" ||
-        state === "missing" ||
-        state === "invalid" ||
-        state === "verified") &&
-        visibleDocuments.length > 0 && (
-          <ul role="list" className="flex w-full flex-col gap-2">
-            {visibleDocuments.map((document) => (
-              <AccountDocumentRow
-                key={document.name}
-                document={document}
-                onReupload={onReuploadDocument}
-              />
-            ))}
-          </ul>
-        )}
+      {showRows && visibleDocuments.length > 0 && (
+        <ul role="list" className="flex w-full flex-col gap-2">
+          {visibleDocuments.map((document) => (
+            <AccountDocumentRow
+              key={document.id ?? document.name}
+              document={document}
+              onReupload={writable ? onReuploadDocument : undefined}
+              onRemove={writable ? onRemoveDocument : undefined}
+              disabled={busy}
+            />
+          ))}
+        </ul>
+      )}
 
-      {(state === "verify" || state === "staged") && (
+      {uploadVisible && (
         <div className="w-full px-2">
           <Button
             variant="primary-dark"
-            disabled={!canSave}
+            disabled={!canSave || busy}
             onClick={onSave}
             className="w-full disabled:opacity-[0.32]"
           >

@@ -21,7 +21,7 @@ vi.mock("@/wallet", async (importOriginal) => {
 
 describe("AccountPage", () => {
   it("composes the heading, wallet, email, and documents sections", () => {
-    render(<AccountPage />);
+    render(<AccountPage previewState="verify" />);
     expect(
       screen.getByRole("heading", { name: "Account" }),
     ).toBeInTheDocument();
@@ -58,8 +58,8 @@ describe("AccountPage", () => {
     );
   });
 
-  it("with no preview state, renders the honest default: — email and the verify documents state", () => {
-    render(<AccountPage />);
+  it("the verify preview renders the original fixture without an account session", () => {
+    render(<AccountPage previewState="verify" />);
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.getByText("Verify your account")).toBeInTheDocument();
   });

@@ -70,12 +70,16 @@ const CAPTION_BY_STATUS: Record<
 
 export interface AccountDocumentRowProps {
   document: AccountDocumentRecord;
-  onReupload?: (documentName: string) => void;
+  onReupload?: (id: number) => void;
+  onRemove?: (id: number) => void;
+  disabled?: boolean;
 }
 
 export function AccountDocumentRow({
   document,
   onReupload,
+  onRemove,
+  disabled,
 }: AccountDocumentRowProps) {
   const caption =
     CAPTION_BY_STATUS[
@@ -129,18 +133,37 @@ export function AccountDocumentRow({
           <ChevronRightIcon />
         </span>
       )}
-      {document.status === "Rejected" && (
-        <div className="flex shrink-0 items-center justify-center p-1">
-          <Button
-            variant="secondary"
-            size="compact"
-            onClick={() => onReupload?.(document.name)}
-            className="!text-[color:var(--color-pipeline-ink-muted)]"
-          >
-            Re-upload
-          </Button>
-        </div>
-      )}
+      {document.status === "Provided" &&
+        document.id !== undefined &&
+        onRemove && (
+          <div className="flex shrink-0 items-center justify-center p-1">
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={disabled}
+              aria-label={`Remove ${document.name}`}
+              onClick={() => onRemove(document.id!)}
+            >
+              ×
+            </Button>
+          </div>
+        )}
+      {document.status === "Rejected" &&
+        (document.id === undefined || onReupload) && (
+          <div className="flex shrink-0 items-center justify-center p-1">
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={disabled}
+              onClick={() =>
+                document.id !== undefined && onReupload?.(document.id)
+              }
+              className="!text-[color:var(--color-pipeline-ink-muted)]"
+            >
+              Re-upload
+            </Button>
+          </div>
+        )}
     </div>
   );
 }

@@ -8,9 +8,8 @@ in `auth-components.md` (whose own scope is "LP-facing email+password authentica
 not a route) or `dashboard-components.md` (already 1580+ lines) — this surface keeps growing
 through #1254, #1265, #1267 and #1282.
 
-**Current code before #1373 is presentational.** Its upload and read-back seams are listed in
-[Seams and who wires them](#seams-and-who-wires-them). The production contract for #1373 is below;
-the implementation must replace the stale no-network description and seam table when it lands.
+The page reads and edits the LP profile and documents through the LP API. The original six visual
+fixtures remain development-only previews.
 
 ## Production LP data contract (#1373)
 
@@ -61,7 +60,7 @@ and see fixture data instead of their own documents.
 ## Page composition
 
 `AccountPage.tsx` (shell) → `AccountWalletCard.tsx`, `AccountEmailCard.tsx`,
-`AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
+`AccountProfileCard.tsx`, `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
 column at `gap-8` (32px), below the fixed header. A 72×72 `--color-pipeline-fill-muted` circle with
 a user glyph sits above the centered Besley 28/36 `Account` heading.
 
@@ -156,16 +155,17 @@ export type AccountDocumentsState =
 
 export type KybStatus = "NotStarted" | "InProgress" | "UnderReview" | "Passed" | "Failed";
 export type KybDocumentStatus = "NotProvided" | "Provided" | "Verified" | "Rejected";
-export interface AccountDocumentRecord { name: string; status: KybDocumentStatus }
+export interface AccountDocumentRecord { id?: number; name: string; status: KybDocumentStatus }
 ```
 
-These names mirror the backend vocabulary so #1254 is a drop-in: `deriveDocumentsState({
+These names mirror the backend vocabulary: `deriveDocumentsState({
 kybStatus, documents, stagedCount })` maps a `(KybStatus, AccountDocumentRecord[], stagedCount)`
 triple onto one `AccountDocumentsState`, with an explicit precedence — `Passed` → `verified`; any
 `Rejected` → `invalid`; a `NotProvided` document → `missing`; `UnderReview` → `under-review`;
-`stagedCount > 0` → `staged`; otherwise `verify`. #1254 feeds it real data; today `AccountPage`
-calls it with `kybStatus: "NotStarted"`, `documents: []`, `stagedCount` from the live staging hook
-— the honest default is always `verify` until a backend exists.
+`stagedCount > 0` → `staged`; otherwise `verify`. Production uses
+`deriveProductionDocumentsState` with the server's `kyb_status`, persisted document statuses,
+and `writable` flag. Writable LPs retain upload controls and all persisted rows, including
+Provided rows. The `missing` state and named required document remain fixture-only.
 
 There is **no doc-type or subject selector anywhere in this UI** — the epic's 2026-09-21 decision
 puts classification in the trustee's review screen (#1267); this page's requirements list
@@ -325,23 +325,21 @@ fill is stale, not the target.
 | `AccountUploadRow.tsx` / `AccountRequirementsList.tsx` | **Second consumer added (#1278).** Both gained additive optional `dataNodeId`/`testId` props (and `AccountRequirementsList` gained `className`, default `"px-2 pb-6"`) whose defaults reproduce this page's DOM byte-for-byte — `AccountDocumentsCard.test.tsx` is the regression guard. `CompanyDocsModal` passes its own node ids and, for the requirements list, `className="px-2"` (no bottom padding — its card supplies the gap instead). |
 | `useAccountDocuments` | **Second consumer added (#1278).** `CompanyDocsModal` calls it as `useAccountDocuments({ onSave: onSubmit })` — the same `{ files, rejected, addFiles, removeFile, canSave, handleSave }` surface this page uses. |
 
-## Seams and who wires them
+## Production actions and remaining seams
 
-| Seam | Default | Wired by |
-| --- | --- | --- |
-| `AccountWalletCard`'s `Connect Wallet` | opens the shared connect modal (real behavior, not a stub) | already wired — no follow-up |
-| `AccountDocumentsCard.onAddFiles` / staged `removeFile` | stages/unstages `File` objects in local component state only | already wired (client-only); #1267 adds the upload transport |
-| `AccountDocumentsCard.onSave` (`useAccountDocuments().handleSave`) | calls `onSave?.(files)`, default no-op — **does not transition `AccountDocumentsState`** | #1267 (upload + read-back), composed by #1254 |
-| `AccountDocumentsCard.onUploadMissingDocument` | no-op | #1254/#1267 |
-| `AccountDocumentsCard.onReuploadDocument` | no-op | #1254/#1267 |
-| `AccountPage.onLogOut` | calls `useAuthSession().signOut()` then navigates to `/` — header reverts to signed-out on the next render | #1362 |
-| Reading `kyb_status` / documents / corporate email | always the honest default (`NotStarted`, `[]`, `—`) | #1254 (register/documents/link-address wiring) |
+`useAccountPage` fetches the LP, keeps the saved profile baseline separate from the input draft,
+and coordinates full-replace profile writes, ordered file uploads, and id-based deletion. A
+document Save uploads staged files and does not save an existing LP's unsaved profile draft. For a
+404 LP it first creates the valid profile using the session email. A failed network upload is
+reconciled against newly returned document ids before retry; if reconciliation fails, retry is
+blocked until Check uploads succeeds. Rejected rows use Re-upload to delete the rejected original,
+then the visible upload controls accept the correction. Provided rows on writable LPs have a
+remove button; Verified and frozen rows do not.
 
-**Save is a pure seam and never fakes a state transition.** Clicking it does not move the page to
-`under-review` — that transition is a server round-trip (upload + read-back), and synthesizing it
-client-side is exactly the fabricated-state antipattern the project bans (show only backend-served
-values; render `—` for what is missing). `under-review` is reachable in this issue only through the
-dev `?state=` override.
+`AccountWalletCard`'s Connect Wallet and the route's Log Out remain wired to the shared wallet
+and auth flows. `AccountDocumentsCard.onUploadMissingDocument` exists only for the synthetic
+`missing` preview. No Account action synthesizes a KYB transition; the server response determines
+the status displayed after Save.
 
 ## `?state=` preview contract
 
@@ -352,7 +350,7 @@ output and feeds `AccountDocumentsCard` from `ACCOUNT_STATE_PREVIEWS[state]` (a 
 documents, missingDocumentName? }` fixture with clean filenames); for `state=staged` specifically,
 `createPreviewStagedFiles()` also seeds `useAccountDocuments`'s local staging state with a handful
 of empty-content `File` objects so the real removable-row / enabled-Save behavior renders exactly
-as it would live. With no `state` param the page renders the honest default described above.
+as it would live. With no `state` param the page reads the LP API.
 `validateSearch` only calls `parseAccountStatePreview` when `ENV.IS_DEV` (#1362) — the route guard
 itself now admits authenticated production LPs too, so the preview override needs its own explicit
 `ENV.IS_DEV` check rather than inheriting dev-only-ness from route access.
@@ -365,9 +363,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 
 | Concern | Owner |
 | --- | --- |
-| Uploading file bytes anywhere | #1267 |
-| Reading documents back (resume, statuses) | #1267 (absorbed #1273) |
-| Wiring register / documents / `kyb_status` / link-address | #1254 |
+| Home page KYB orchestration and wallet linking | #1254 |
 | Wiring sign-in / create-account / OTP to real auth | #1265 |
 | Header auth buttons, the account icon | #1362 (shipped — this doc's [Route and dev-only guard](#route-and-dev-only-guard)) |
 | The home card states, composite Total Balance, merged activity feed | #1282 |

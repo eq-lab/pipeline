@@ -1,13 +1,18 @@
 // spec: docs/frontend/account-page.md#accountpage
 import { Button } from "@pipeline/ui";
+import { useAuthSession } from "@/auth";
 import { AccountWalletCard } from "./AccountWalletCard";
 import { AccountEmailCard } from "./AccountEmailCard";
 import { AccountDocumentsCard } from "./AccountDocumentsCard";
+import { AccountProfileCard } from "./AccountProfileCard";
 import { useAccountDocuments } from "./useAccountDocuments";
+import { useAccountPage } from "./useAccountPage";
 import {
   ACCOUNT_STATE_PREVIEWS,
   createPreviewStagedFiles,
   deriveDocumentsState,
+  deriveProductionDocumentsState,
+  documentsFromLp,
   type AccountDocumentsState,
 } from "./accountPageState";
 
@@ -36,6 +41,26 @@ export interface AccountPageProps {
 }
 
 export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
+  const { token } = useAuthSession();
+  return previewState ? (
+    <AccountPageContent previewState={previewState} onLogOut={onLogOut} />
+  ) : (
+    <ProductionAccountPage key={token ?? "signed-out"} onLogOut={onLogOut} />
+  );
+}
+
+function ProductionAccountPage({
+  onLogOut,
+}: Pick<AccountPageProps, "onLogOut">) {
+  const account = useAccountPage();
+  return <AccountPageContent account={account} onLogOut={onLogOut} />;
+}
+
+function AccountPageContent({
+  previewState,
+  onLogOut,
+  account,
+}: AccountPageProps & { account?: ReturnType<typeof useAccountPage> }) {
   const preview = previewState
     ? ACCOUNT_STATE_PREVIEWS[previewState]
     : undefined;
@@ -43,15 +68,36 @@ export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
   const documents = preview?.documents ?? [];
   const missingDocumentName = preview?.missingDocumentName;
 
+  const previewDocuments = useAccountDocuments({
+    initialFiles:
+      previewState === "staged" ? createPreviewStagedFiles() : undefined,
+  });
+  const staging = account?.documents ?? previewDocuments;
   const { files, rejected, addFiles, removeFile, canSave, handleSave } =
-    useAccountDocuments({
-      initialFiles:
-        previewState === "staged" ? createPreviewStagedFiles() : undefined,
-    });
+    staging;
 
   const documentsState: AccountDocumentsState =
     previewState ??
-    deriveDocumentsState({ kybStatus, documents, stagedCount: files.length });
+    (account?.lp
+      ? deriveProductionDocumentsState({
+          kybStatus: account.lp.kyb_status as typeof kybStatus,
+          documents: documentsFromLp(account.lp.documents),
+          stagedCount: files.length,
+          writable: account.lp.writable,
+        })
+      : deriveDocumentsState({
+          kybStatus,
+          documents,
+          stagedCount: files.length,
+        }));
+  const visibleDocuments = account?.lp
+    ? documentsFromLp(account.lp.documents)
+    : documents;
+  const ready = Boolean(
+    previewState ||
+    account?.readState === "loaded" ||
+    account?.readState === "absent",
+  );
 
   return (
     <div
@@ -83,31 +129,100 @@ export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
 
         <AccountWalletCard />
 
-        <AccountEmailCard email={undefined} />
+        {account?.readState === "loading" && (
+          <p role="status">Loading account…</p>
+        )}
+        {account?.readState === "error" && (
+          <div className="flex w-full flex-col gap-3" role="alert">
+            <p>{account.actionError ?? "Could not load your account."}</p>
+            <Button variant="secondary" onClick={account.retry}>
+              Retry
+            </Button>
+          </div>
+        )}
 
-        <div className="flex w-full flex-col items-start gap-3">
-          <p
-            className={[
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-body)]",
-              "leading-[var(--text-pipeline-body--line-height)]",
-              "text-[color:var(--color-pipeline-ink)]",
-            ].join(" ")}
-          >
-            Documents
-          </p>
-          <AccountDocumentsCard
-            state={documentsState}
-            documents={documents}
-            missingDocumentName={missingDocumentName}
-            stagedFiles={files}
-            rejected={rejected}
-            onAddFiles={addFiles}
-            onRemoveStagedFile={removeFile}
-            canSave={canSave}
-            onSave={handleSave}
+        {ready && <AccountEmailCard email={account?.email} />}
+
+        {ready && account && (
+          <AccountProfileCard
+            legalName={account.legalName}
+            country={account.country}
+            onLegalNameChange={account.setLegalName}
+            onCountryChange={account.setCountry}
+            onSave={() => void account.saveProfile()}
+            canSave={account.canSaveProfile}
+            disabled={!account.writable || account.busy || !account.email}
+            busy={account.busy}
           />
-        </div>
+        )}
+
+        {ready && account?.readState === "absent" && (
+          <p role="status">
+            Complete your company profile and upload documents to set up your
+            account.
+          </p>
+        )}
+        {ready && account?.readState === "loaded" && !account.writable && (
+          <p role="status">
+            Your account is under review or approved. Profile and document
+            changes are unavailable.
+          </p>
+        )}
+        {ready && account?.readState === "absent" && !account.email && (
+          <p role="alert">Sign out and sign in again to complete setup.</p>
+        )}
+        {ready && account?.actionError && (
+          <p
+            role="alert"
+            className="text-[color:var(--color-pipeline-negative-strong)]"
+          >
+            {account.actionError}
+          </p>
+        )}
+        {ready && account?.uncertainIds && (
+          <Button
+            variant="secondary"
+            disabled={account.busy}
+            onClick={account.checkUploads}
+          >
+            Check uploads
+          </Button>
+        )}
+
+        {ready && (
+          <div className="flex w-full flex-col items-start gap-3">
+            <p
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body)]",
+                "leading-[var(--text-pipeline-body--line-height)]",
+                "text-[color:var(--color-pipeline-ink)]",
+              ].join(" ")}
+            >
+              Documents
+            </p>
+            <AccountDocumentsCard
+              state={documentsState}
+              documents={visibleDocuments}
+              missingDocumentName={missingDocumentName}
+              stagedFiles={files}
+              rejected={rejected}
+              onAddFiles={addFiles}
+              onRemoveStagedFile={removeFile}
+              canSave={account ? account.canUpload : canSave}
+              onSave={account ? () => void account.saveDocuments() : handleSave}
+              production={Boolean(account)}
+              writable={account?.writable ?? true}
+              busy={account?.busy}
+              onRemoveDocument={
+                account ? (id) => void account.removeDocument(id) : undefined
+              }
+              onReuploadDocument={
+                account ? (id) => void account.removeDocument(id) : undefined
+              }
+            />
+          </div>
+        )}
 
         <Button
           variant="secondary"

@@ -44,6 +44,54 @@ describe("AccountDocumentsCard — verify state", () => {
   });
 });
 
+describe("AccountDocumentsCard — production rows", () => {
+  it("keeps persisted Provided rows visible beside upload and keys removal by id", () => {
+    const onRemoveDocument = vi.fn();
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          production: true,
+          writable: true,
+          documents: [
+            { id: 1, name: "duplicate.pdf", status: "Provided" },
+            { id: 2, name: "duplicate.pdf", status: "Provided" },
+            { id: 3, name: "verified.pdf", status: "Verified" },
+          ],
+          onRemoveDocument,
+        })}
+      />,
+    );
+    expect(screen.getAllByText("duplicate.pdf")).toHaveLength(2);
+    expect(screen.getByTestId("account-upload-row")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Remove duplicate.pdf" }),
+    ).toHaveLength(2);
+    expect(
+      screen.queryByRole("button", { name: "Remove verified.pdf" }),
+    ).not.toBeInTheDocument();
+    screen.getAllByRole("button", { name: "Remove duplicate.pdf" })[1]!.click();
+    expect(onRemoveDocument).toHaveBeenCalledWith(2);
+  });
+
+  it("freezes upload and removal when the LP is not writable", () => {
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          production: true,
+          writable: false,
+          state: "under-review",
+          documents: [{ id: 1, name: "company.pdf", status: "Provided" }],
+        })}
+      />,
+    );
+    expect(screen.getByText("company.pdf")).toBeInTheDocument();
+    expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Remove/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("AccountDocumentsCard — staged state", () => {
   const files = [new File([], "certificate-of-incorporation.pdf")];
 
