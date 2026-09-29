@@ -22,6 +22,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | Spec | Domain | Description |
 |------|--------|-------------|
 | [lp-onboarding.md](./lp-onboarding.md) | LP Onboarding & Compliance | KYT screening, three whitelist enrolment paths, freshness window, manual review |
+| [kyb-lp-verification.md](./kyb-lp-verification.md) | LP Onboarding & Compliance | KYB entity registration, document review lifecycle, notifications, settlement address |
 | [deposits.md](./deposits.md) | Deposits & PLUSD Minting | Two-step deposit (Intake Wallet, KYT-gated claim), ticket book, refund paths |
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
