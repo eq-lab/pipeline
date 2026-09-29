@@ -154,6 +154,34 @@ describe("apiFetch — empty-body responses", () => {
 // ── Error handling ────────────────────────────────────────────────────────────
 
 describe("apiFetch — non-2xx responses", () => {
+  it("retains a structured error body for callers that need per-item results", async () => {
+    const payload = {
+      lp: { documents: [] },
+      files: [
+        {
+          filename: "bad.pdf",
+          status: 400,
+          id: null,
+          error: "invalid PDF bytes",
+        },
+      ],
+    };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(payload), {
+        status: 400,
+        statusText: "Bad Request",
+      }),
+    );
+
+    const error = await apiFetch("/v1/lps/me/documents").catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(400);
+    expect((error as ApiError).payload).toEqual(payload);
+    expect((error as ApiError).message).toBe("Bad Request");
+  });
+
   it("throws an ApiError carrying the HTTP status and the JSON error message", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "invalid credentials" }), {

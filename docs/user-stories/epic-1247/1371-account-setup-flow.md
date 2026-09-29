@@ -12,15 +12,15 @@ Sign in to a verified email account with no LP, then reload. After each complete
 
 ## Story 2: Profile and files are saved in order
 
-Enter Name and optional Country; stage a PDF, JPEG, or PNG of at most 10MB. Remove one staged file with its X and stage it again. Submit. The JSON profile request contains `legal_name`, `country`, and the authenticated `contact_email`; the multipart request follows it with file parts only. The files appear by server filename after confirmation and remain after reload. Submit does not claim a KYB review transition. An empty Name or no staged file prevents Submit.
+Enter Name and optional Country; stage a PDF, JPEG, or PNG of at most 10MB. Remove one staged file with its X and stage it again. Submit. The JSON profile request contains `legal_name`, `country`, and the authenticated `contact_email`; the multipart request follows it with file parts only. The files appear by server filename after confirmation and remain after reload. Submit does not claim a KYB review transition. An empty Name prevents Submit. A new LP without a staged file cannot Submit.
 
 ## Story 3: Existing profile data survives an edit
 
-With an existing writable LP and no documents, inspect prefilled Name and Country, edit Name, and upload a file. The profile request retains the LP's original `contact_email` and Country. With a nonwritable LP, profile fields, upload, Submit, and deletion are disabled. A Verified document has no remove action even if the LP is otherwise writable.
+With an existing writable LP and no documents, inspect prefilled Name and Country, edit Name, and upload a file. The profile request retains the LP's original `contact_email` and Country. Change Name or Country again with no staged file and submit; only the JSON profile request occurs. Edit both fields without submitting, then delete a persisted document and let the LP prop refresh; the drafts remain. Opening a different LP identity initializes the fields from that LP. With a nonwritable LP, profile fields, upload, Submit, and deletion are disabled. A Verified document has no remove action even if the LP is otherwise writable.
 
 ## Story 4: Partial upload and recovery
 
-Stage two files with the same filename and arrange for one to be accepted and one to be rejected. After a 207 response, one persisted row appears and only the failed staged file remains with an error. Retry and verify the successful file is not sent again. If the connection fails after upload, the UI checks the server before retrying; if that check also fails, it blocks retry until Check uploads succeeds.
+Stage two files with the same filename and arrange for one to be accepted and one to be rejected. After a 207 response, one persisted row appears and only the failed staged file remains with an error. Retry and verify the successful file is not sent again. Arrange for both duplicate-name files to be rejected with HTTP 400; both per-file reasons appear in request order and both files remain staged. If the connection fails after upload, the UI checks the server before retrying; if that check also fails, it blocks retry until Check uploads succeeds.
 
 ## Story 5: Persisted deletion and error handling
 

@@ -1,5 +1,5 @@
 // spec: docs/frontend/auth-components.md#companydocsmodal
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, TextField } from "@pipeline/ui";
 import {
   ApiError,
@@ -8,7 +8,7 @@ import {
   upsertMyLp,
   uploadMyDocuments,
 } from "@/api";
-import type { LpResponse } from "@/api";
+import type { LpResponse, UploadDocumentsResponse } from "@/api";
 import { readSession } from "@/auth/session";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { UploadedFileRow } from "@/components/UploadedFileRow";
@@ -44,6 +44,15 @@ function errorMessage(error: unknown): string {
   }
 }
 
+function uploadErrorResponse(error: ApiError): UploadDocumentsResponse | null {
+  const payload = error.payload;
+  if (!payload || typeof payload !== "object") return null;
+  if (!("files" in payload) || !Array.isArray(payload.files)) return null;
+  if (!("lp" in payload) || !payload.lp || typeof payload.lp !== "object")
+    return null;
+  return payload as UploadDocumentsResponse;
+}
+
 export function CompanyDocsModal({
   open,
   onDismiss,
@@ -56,6 +65,11 @@ export function CompanyDocsModal({
   const [serverLp, setServerLp] = useState<LpResponse | null>(lp ?? null);
   const [legalName, setLegalName] = useState(lp?.legal_name ?? "");
   const [country, setCountry] = useState(lp?.country ?? "");
+  const [profileBaseline, setProfileBaseline] = useState({
+    legalName: lp?.legal_name ?? "",
+    country: lp?.country ?? "",
+  });
+  const lpIdentity = useRef(lp?.id ?? null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [uncertainIds, setUncertainIds] = useState<number[] | null>(null);
@@ -72,14 +86,25 @@ export function CompanyDocsModal({
   useEffect(() => {
     if (lp === undefined) return;
     setServerLp(lp);
-    setLegalName(lp?.legal_name ?? "");
-    setCountry(lp?.country ?? "");
+    if ((lp?.id ?? null) !== lpIdentity.current) {
+      setLegalName(lp?.legal_name ?? "");
+      setCountry(lp?.country ?? "");
+      setProfileBaseline({
+        legalName: lp?.legal_name ?? "",
+        country: lp?.country ?? "",
+      });
+    }
+    lpIdentity.current = lp?.id ?? null;
   }, [lp]);
 
   const writable = preview || (serverLp?.writable ?? true);
   const email = serverLp?.contact_email || sessionEmail;
+  const profileChanged =
+    serverLp !== null &&
+    (legalName.trim() !== profileBaseline.legalName.trim() ||
+      (country.trim() || null) !== (profileBaseline.country.trim() || null));
   const canSubmit =
-    canSave &&
+    (canSave || (!preview && profileChanged)) &&
     legalName.trim().length > 0 &&
     writable &&
     !busy &&
@@ -127,12 +152,26 @@ export function CompanyDocsModal({
       });
       if (readSession()?.token !== token) return;
       setServerLp(saved);
+      lpIdentity.current = saved.id;
+      setProfileBaseline({
+        legalName: saved.legal_name,
+        country: saved.country ?? "",
+      });
       onLpChange?.(saved);
+      if (files.length === 0) return;
       const idsBefore = saved.documents.map((document) => document.id);
-      let response;
+      let response: UploadDocumentsResponse;
       try {
         response = await uploadMyDocuments(files);
       } catch (uploadError) {
+        if (uploadError instanceof ApiError && uploadError.status === 400) {
+          const rejected = uploadErrorResponse(uploadError);
+          if (rejected) {
+            if (readSession()?.token !== token) return;
+            applyUploadResult(rejected);
+            return;
+          }
+        }
         if (!(uploadError instanceof ApiError)) {
           setUncertainIds(idsBefore);
           try {
@@ -155,24 +194,27 @@ export function CompanyDocsModal({
         return;
       }
       if (readSession()?.token !== token) return;
-      setServerLp(response.lp);
-      onLpChange?.(response.lp);
-      const successful: number[] = [];
-      const failures: string[] = [];
-      files.forEach((file, index) => {
-        const result = response.files[index];
-        if (result?.status === 201 && result.id !== null)
-          successful.push(index);
-        else failures.push(`${file.name}: ${result?.error ?? "Upload failed"}`);
-      });
-      removeFilesAt(successful);
-      if (failures.length)
-        setError(`Some files were not uploaded. ${failures.join("; ")}`);
+      applyUploadResult(response);
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
       setBusy(false);
     }
+  }
+
+  function applyUploadResult(response: UploadDocumentsResponse) {
+    setServerLp(response.lp);
+    onLpChange?.(response.lp);
+    const successful: number[] = [];
+    const failures: string[] = [];
+    files.forEach((file, index) => {
+      const result = response.files[index];
+      if (result?.status === 201 && result.id !== null) successful.push(index);
+      else failures.push(`${file.name}: ${result?.error ?? "Upload failed"}`);
+    });
+    removeFilesAt(successful);
+    if (failures.length)
+      setError(`Some files were not uploaded. ${failures.join("; ")}`);
   }
 
   async function removeDocument(id: number) {

@@ -295,6 +295,33 @@ function makeDocument(
 }
 
 describe("CompanyDocsModal — production requests", () => {
+  it("saves changed profile fields on an existing LP without uploading files", async () => {
+    const existing = lp([makeDocument(5)]);
+    const saved = { ...existing, legal_name: "Changed Name", country: "US" };
+    mockUpsert.mockResolvedValueOnce(saved);
+    renderModal({ lp: existing });
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Changed Name" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Country" }), {
+      target: { value: "US" },
+    });
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() =>
+      expect(mockUpsert).toHaveBeenCalledWith({
+        legal_name: "Changed Name",
+        country: "US",
+        contact_email: "existing@example.com",
+      }),
+    );
+    expect(mockUpload).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled(),
+    );
+  });
+
   it("prefills profile and sends full replace before upload", async () => {
     const saved = lp();
     mockUpsert.mockResolvedValueOnce(saved);
@@ -355,6 +382,84 @@ describe("CompanyDocsModal — production requests", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2));
     expect(mockUpload.mock.calls[1]?.[0]).toHaveLength(1);
+  });
+
+  it("shows ordered file errors from an all-rejected HTTP 400 upload", async () => {
+    const existing = lp();
+    mockUpsert.mockResolvedValueOnce(existing);
+    mockUpload.mockRejectedValueOnce(
+      new ApiError(400, "Bad Request", {
+        lp: existing,
+        files: [
+          {
+            filename: "same.pdf",
+            status: 400,
+            id: null,
+            error: "invalid PDF bytes",
+          },
+          {
+            filename: "same.pdf",
+            status: 400,
+            id: null,
+            error: "unsupported image data",
+          },
+        ],
+      }),
+    );
+    renderModal({ lp: existing });
+    upload([
+      makeFile("same.pdf", "application/pdf"),
+      makeFile("same.pdf", "application/pdf"),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "same.pdf: invalid PDF bytes; same.pdf: unsupported image data",
+      ),
+    );
+    expect(screen.getAllByText("same.pdf")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+  });
+
+  it("keeps unsaved Name and Country drafts through deletion and same-LP prop refresh", async () => {
+    const existing = lp([makeDocument(9)]);
+    const onLpChange = vi.fn();
+    const onDismiss = vi.fn();
+    mockDelete.mockResolvedValueOnce(undefined);
+    const { rerender } = renderModal({ lp: existing, onLpChange, onDismiss });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Draft Name" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Country" }), {
+      target: { value: "FR" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved.pdf" }));
+    await waitFor(() => expect(onLpChange).toHaveBeenCalledOnce());
+    rerender(
+      <CompanyDocsModal
+        open
+        onDismiss={onDismiss}
+        lp={onLpChange.mock.calls[0]![0]}
+        onLpChange={onLpChange}
+      />,
+    );
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
+      "Draft Name",
+    );
+    expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("FR");
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    rerender(
+      <CompanyDocsModal
+        open
+        onDismiss={onDismiss}
+        lp={{ ...existing, id: 8, legal_name: "Other LP", country: "GB" }}
+        onLpChange={onLpChange}
+      />,
+    );
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
+      "Other LP",
+    );
+    expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("GB");
   });
 
   it("deletes a persisted file by id after success and protects Verified files", async () => {
