@@ -1,0 +1,4 @@
+interface:
+  display_name: "Harness Init"
+  short_description: "Bootstrap a new Codex-ready project harness"
+  default_prompt: "Use $harness-init to bootstrap a new project from a PRD."

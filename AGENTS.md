@@ -43,14 +43,14 @@ Reference:
 
 ## Workflow
 
-Every piece of dev work is a **sub-issue of an epic**, tracked per [`docs/ISSUE_PROTOCOL.md`](./docs/ISSUE_PROTOCOL.md) — issue types, labels, statuses, and claiming all live there. The [`manager`](./.claude/skills/manager/SKILL.md) skill drives tasks end-to-end and parks anything that needs a human (`needs-feedback` label) without stalling.
+Every piece of dev work is a **sub-issue of an epic**, tracked per [`docs/ISSUE_PROTOCOL.md`](./docs/ISSUE_PROTOCOL.md) — issue types, labels, statuses, and claiming all live there. The manager skill ([Codex](./.codex/skills/manager/SKILL.md) · [Claude](./.claude/skills/manager/SKILL.md)) drives tasks end-to-end and parks anything that needs a human (`needs-feedback` label) without stalling.
 
 - **Backend** (`backend` label) — plan → park for human plan feedback → implement → PR.
 - **Frontend** (`frontend` label) — plan (gate only on planner Open Questions) → implement → PR. **No testing phase.**
 - **Trivial frontend** (`frontend` + `trivial`) — implement → PR → manager admin-merge after explicitly green CI.
 - **QA** (`qa` label) — one issue per epic; runs when a human flips it to `backlog`, or automatically as the **final pass** once all other sub-issues of the epic are closed. The QA agent executes the epic's user-stories docs, verifies against the epic's Figma references, and files bugs.
 
-When uncertain about frontend vs. backend, label it `backend`. Per-flow specifics live in [`.claude/skills/manager/SKILL.md`](./.claude/skills/manager/SKILL.md).
+When uncertain about frontend vs. backend, label it `backend`. Per-flow specifics live in the manager skill ([Codex](./.codex/skills/manager/SKILL.md) · [Claude](./.claude/skills/manager/SKILL.md)).
 
 ## Rules
 
@@ -59,7 +59,7 @@ When uncertain about frontend vs. backend, label it `backend`. Per-flow specific
 - NEVER commit or push directly to `main`. All changes reach `main` only through a PR from a feature branch.
 - Create a feature branch for every task: `feat/`, `fix/`, `docs/`, `chore/` prefixes.
 - Push the branch, open a PR, and wait for review before merging.
-- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. The `manager` skill is authorized to admin-merge in two cases: its own trivial-frontend (Flow C) PRs, and the docs-only QA PR raised at the end of the QA flow. In both, it uses `gh pr merge --admin --squash --delete-branch` — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the procedure). Outside those two cases, never admin-merge or otherwise bypass branch protection without explicit human direction.
+- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. The `manager` skill is authorized to admin-merge in two cases: its own trivial-frontend (Flow C) PRs, and the docs-only QA PR raised at the end of the QA flow. In both, it uses `gh pr merge --admin --squash --delete-branch` — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see the manager skill for [Codex](./.codex/skills/manager/SKILL.md) or [Claude](./.claude/skills/manager/SKILL.md)). Outside those two cases, never admin-merge or otherwise bypass branch protection without explicit human direction.
 
 ### Worktrees
 

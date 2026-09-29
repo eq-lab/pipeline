@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Suite"
+  short_description: "Run the full available Pipeline test suite"
+  default_prompt: "Use $test to run the full Pipeline test suite."

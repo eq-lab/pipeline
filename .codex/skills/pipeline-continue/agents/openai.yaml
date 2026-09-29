@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pipeline Continue"
+  short_description: "Resume unfinished Pipeline repository work"
+  default_prompt: "Use $pipeline-continue to resume the current Pipeline task."

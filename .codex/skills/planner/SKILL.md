@@ -1,90 +1,108 @@
 ---
 name: planner
-description: Create an execution plan for a Pipeline GitHub Issue by number. Use when Codex is asked to plan an Issue, write docs/exec-plans/active/issue-number-slug.md, research the relevant code/docs/Figma context, identify open questions, and prepare work for the coder without editing issue labels or committing.
+description: Create an execution plan for a GitHub Issue by its number. Takes an issue number as argument. Creates the active execution plan only — does not edit issue labels and does not commit.
 ---
 
 # Planner
 
-Plan exactly one GitHub Issue. Produce an active execution plan only; do not implement code, edit lifecycle labels, assign or close the Issue, commit, or push.
+Use this skill when the user (or the manager subagent) asks to plan a GitHub Issue.
 
-Start and finish with:
+The user must provide an Issue number as argument. If none is provided, ask for one.
 
-```text
-MODEL: <model> | EFFORT: <effort>
-```
+
 
 ## Required Context
 
-1. Read `AGENTS.md`.
-2. Read the Issue body and every comment:
+Read these before taking action:
 
-   ```bash
-   gh issue view <number> -c
-   gh issue view <number> --json title,body,labels,assignees,milestone,url
-   ```
+1. `AGENTS.md`
+2. The Issue itself: `gh issue view <number> -c`. Read the body and **every comment** — decisions, scope clarifications, or blockers may live there.
+3. The `issue` skill: `.codex/skills/issue/SKILL.md` — for label/lifecycle conventions.
 
-3. Read `.codex/skills/issue/SKILL.md` for labels and lifecycle rules.
-4. Read `ARCHITECTURE.md` and only the relevant docs/code needed for the Issue.
+Read additional docs as needed to understand the task scope:
 
-If the Issue references a Figma URL, extract the file key and node id, call Figma MCP for design context, and include Figma-based verification in the plan.
+- `ARCHITECTURE.md`
+- Relevant entries in `docs/product-specs/`, `docs/design-docs/`, `docs/references/`
+- Existing code that will be affected
+
+## Reading the Issue
+
+```bash
+gh issue view <number> -c           # body + comments
+gh issue view <number> --json title,body,labels,assignees,milestone,url
+```
+
+Treat the body as the authoritative "what". Comments add scope changes / decisions since creation. Labels carry the current lifecycle state.
+
+If the Issue references a Figma URL in its body or comments, extract it — the plan must include a Figma-driven verification step.
 
 ## Workflow
 
-1. Confirm the user supplied an Issue number. Ask for one if missing.
-2. Research the existing implementation, tests, docs, and architecture boundaries affected by the Issue.
-3. Decide whether docs must change. User-facing or agent-facing behavior changes usually require updates in `docs/product-specs/`, `docs/design-docs/`, `ARCHITECTURE.md`, or generated docs.
-4. Create `docs/exec-plans/active/issue-<number>-<short-slug>.md`.
-5. Include every required section below. `## Open Questions` must be present. Use `_None_` only when there are genuinely no unresolved decisions.
-6. Report the plan path, summary, open question status, and blockers.
+1. Read the Issue with `gh issue view <number> -c`.
+2. Research thoroughly:
+   - Read relevant existing code, tests, and documentation.
+   - Understand the current architecture and patterns (`ARCHITECTURE.md` + relevant `docs/`).
+   - Identify dependencies and constraints.
+   - If a Figma link is referenced, review it with available Figma tooling. If unavailable, record the verification dependency in the plan rather than assuming design details.
+3. Decide whether a product spec update is required. If the change is user- or agent-facing behavior, draft the spec change in `docs/product-specs/` (or note the exact section to update). For pure `chore/` or `fix/` work that does not change behavior, the exec plan alone is sufficient.
+4. Create a new execution plan in `docs/exec-plans/active/`.
+   - Filename: `issue-<number>-<short-slug>.md`.
+5. The execution plan must cover every section in the format below, including an explicit **Open Questions** section. The `manager` reads `Open Questions` on the frontend flow to decide whether to pause for human input — leave it as `_None_` only when you genuinely have nothing to ask. Do not paper over uncertainty by guessing.
+6. Every plan must include a dedicated testing step covered by **Test Strategy**.
+7. Report the plan summary to the caller, including a one-line note on whether `Open Questions` is empty.
 
-## Plan Format
+## Rules
+
+- Do **not** edit issue labels. The manager owns lifecycle transitions.
+- Do **not** assign or close the Issue.
+- Do **not** commit. The manager commits the plan together with the label change.
+- Do **not** implement any code. Planning only.
+- Do **not** skip research. Read the relevant code and docs before writing the plan.
+- Be concrete: include file paths, function/module names, and specific changes where possible.
+- Keep each step actionable enough for a coder to execute without ambiguity.
+- Follow `AGENTS.md` and any relevant project docs.
+- Respect dependency order. If the Issue depends on unfinished work (another open Issue, an unmerged PR), note it in assumptions and risks.
+- If a Figma link is referenced, include Figma-based verification in the plan.
+
+## Execution Plan Format
 
 ```markdown
-# Issue #<number>: <title>
+# Issue #{n}: {title}
 
-Source: <GitHub issue URL>
+Source: {gh issue URL}
 
 ## Scope
 
-<what will change and what is out of scope>
+{what will change and what is out of scope}
 
 ## Assumptions and Risks
 
-<risks, dependencies, constraints, and likely failure modes>
+{what could go wrong or block progress}
 
 ## Open Questions
 
-<one unresolved question per line, or `_None_`>
+{one line per unresolved decision the planner could not make alone — or `_None_` if everything is clear. Do NOT guess to keep this empty; if you are unsure, list the question.}
 
 ## Implementation Steps
 
-1. <concrete step with file paths, modules, functions, and expected behavior>
+1. {concrete step with file paths}
 2. ...
 
 ## Test Strategy
 
-<tests to add/update, commands to run, edge cases, and manual checks>
+{what tests to add or update, edge cases}
 
 ## Docs to Update
 
-<specific docs/specs/generated references, or `_None_`>
+{product specs, design docs, generated docs}
 ```
-
-## Rules
-
-- Treat the Issue body as the authoritative "what"; comments may add later decisions.
-- Be concrete enough for a coder to execute without rediscovering the task.
-- Respect dependency direction from `ARCHITECTURE.md`.
-- Do not skip research. Name the files and modules involved.
-- If dependencies are unfinished or blocked, document them under assumptions and risks.
-- Do not hide uncertainty to avoid an approval gate; list real open questions.
 
 ## Output
 
-Report:
+When done, report:
 
 - Issue number and title
-- Plan summary
-- Plan file path
-- Whether `## Open Questions` is empty
-- Blocking dependencies or risks
+- Plan summary (key decisions and approach)
+- Path to the execution plan file
+- Whether `## Open Questions` is empty (so the manager knows whether to pause for human input on the frontend flow)
+- Any blocking dependencies discovered

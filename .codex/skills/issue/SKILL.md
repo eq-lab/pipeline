@@ -1,113 +1,26 @@
 ---
 name: issue
-description: Create, inspect, and manage GitHub Issues for the Pipeline repository. Use when Codex needs to create a tracked task, check duplicate issues before work, start or transition issue lifecycle labels, comment on scope decisions or blockers, or understand Pipeline issue labels and manager flow selection.
+description: Create and manage Pipeline GitHub Issues using the current issue protocol. Use for duplicate checks, epic sub-issues, claiming, labels, comments, and lifecycle changes.
 ---
 
 # Issue
 
-GitHub Issues are the canonical task tracker for Pipeline. Every implementation task should have an Issue, and each open Issue has exactly one status label that describes its lifecycle state.
+Read `docs/ISSUE_PROTOCOL.md` before changing an Issue. It is the source of truth for types, statuses, epic grouping, claiming, QA scheduling, and user-story artifacts. Read `AGENTS.md` for repo workflow rules.
 
-## Required Context
+## Before acting
 
-Read `AGENTS.md` before making lifecycle changes. Check existing Issues before creating new ones:
+1. Search open and closed Issues for duplicates with `gh issue list --state all --search '<keywords>'`.
+2. Read the Issue and every comment with `gh issue view <number> -c`. Check its labels and assignees.
+3. For a work sub-issue, read its parent epic for scope and links. Use the GraphQL `issue.parent` field or the epic's REST `sub_issues` endpoint in the protocol.
+4. Do not take an Issue assigned to someone else without an explicit handoff. Skip `needs-feedback` until the human answers and removes that modifier.
 
-```bash
-gh issue list --state open --search "<keywords>"
-gh issue view <number> -c
-```
+## Create and update
 
-## Create An Issue
+- Give each open Issue exactly one protocol type label and, except for epics, one status label. New work enters `backlog` or `blocked`.
+- Attach work to its epic as a native GitHub sub-issue. A standalone bug is allowed when no epic applies.
+- Claim work by assigning yourself and replacing its status in one `gh issue edit` call. Explain blockers in a comment before moving to `blocked`.
+- Keep the body current for scope; record decisions, handoffs, and results in comments.
+- Let `Closes #<number>` in a merged PR close implementation, bug, or docs Issues. Never close an epic.
+- Follow the QA scheduling rules in protocol §5.3; implementing agents do not edit the epic's `qa` Issue.
 
-1. Check for duplicates in open Issues.
-2. Write the body with the problem, why it matters, affected areas, and blockers. For bugs, include observed and expected behavior.
-3. Create it with at least one type label, exactly one status label, and exactly one flow label when it is development work.
-
-Use `backlog` when ready to work, or `blocked` when it cannot proceed:
-
-```bash
-gh issue create --title "<title>" --label "<type>,<flow>,backlog" --body "<body>"
-gh issue create --title "<title>" --label "<type>,<flow>,blocked" --body "<body explaining the blocker>"
-```
-
-Discussion, tracking, and question Issues may omit the flow label. Development Issues must use exactly one of `backend` or `frontend`.
-
-## Start Existing Work
-
-1. Read the Issue and all comments:
-
-   ```bash
-   gh issue view <number> -c
-   gh issue view <number> --json title,body,labels,assignees,url
-   ```
-
-2. If it is assigned to someone else and has an in-flight status label, stop and ask the user before taking over.
-3. If it has `blocked`, stop until the blocker is resolved.
-4. Assign yourself:
-
-   ```bash
-   gh issue edit <number> --add-assignee @me
-   ```
-
-5. Move `backlog` to the correct first in-flight state:
-
-   ```bash
-   gh issue edit <number> --remove-label backlog --add-label planning
-   ```
-
-Use `executing` instead of `planning` only for trivial frontend work that intentionally skips planning.
-
-## Lifecycle Labels
-
-Status labels are mutually exclusive:
-
-| Label | Meaning |
-| --- | --- |
-| `backlog` | Ready, not started |
-| `blocked` | Waiting on an external dependency or decision |
-| `planning` | Execution plan is being produced |
-| `planned` | Plan exists, awaiting implementation or approval |
-| `executing` | Implementation in progress |
-| `executed` | Implementation complete, awaiting testing or completion |
-| `testing` | Manual or UX testing in progress |
-| `tested` | Tested, awaiting final PR/merge handling |
-
-Transitions are always remove-then-add:
-
-```bash
-gh issue edit <number> --remove-label <old> --add-label <new>
-```
-
-The `manager` skill owns lifecycle transitions during full workflows. Planner, coder, and UX tester skills must not edit parent Issue labels.
-
-## Flow Labels
-
-| Label combination | Manager flow |
-| --- | --- |
-| `backend` | Backend flow: plan, hard approval gate, implement, complete PR for human merge |
-| `frontend` | Frontend flow: plan, pause only for open questions, implement, UX test if Figma applies |
-| `frontend` + `trivial` | Trivial frontend flow: no plan, implement directly, manager may admin-merge after CI is green |
-
-Any dev Issue must carry exactly one of `backend` or `frontend`. If unsure, use `backend`.
-
-## Type And Modifier Labels
-
-Common labels:
-
-| Label | Use |
-| --- | --- |
-| `bug` | Broken or incorrect behavior |
-| `enhancement` | New feature or improvement |
-| `documentation` | Docs-only work |
-| `question` | Needs discussion |
-| `priority` | Higher priority |
-| `trivial` | Modifier for self-contained frontend-only fixes |
-
-## Comments
-
-Use comments for decisions, scope changes, blockers, and links to bugs discovered during testing:
-
-```bash
-gh issue comment <number> --body "<comment>"
-```
-
-Do not close a development Issue manually when a PR body contains `Closes #<number>`; GitHub closes it on merge.
+The `manager` skill owns lifecycle transitions during managed work. Planner and coder do not edit labels; `ux-tester` owns only its QA Issue and bugs it files.
