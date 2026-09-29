@@ -1608,3 +1608,19 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Gap:** `count_for_lp` and the per-file inserts run on separate connections with no lock or constraint between them. Two concurrent `POST /v1/lps/me` from the same account can both read `held = 19`, both pass `check_document_cap`, and leave the LP above `KYB_MAX_DOCUMENTS_PER_LP`.
 - **Impact:** An LP can exceed its cap by roughly the number of requests it runs in parallel. Distinct from TD-92, which is about cycling the cap with deletes rather than racing it. Storage impact only — the cap is an abuse ceiling, not a correctness invariant, and every document still passes type and size validation.
 - **Suggested fix:** `SELECT ... FOR UPDATE` on the `lps` row for the duration of the upload, or a trigger enforcing the count. Both serialise an LP's concurrent uploads, which is the point; neither is worth doing unless the overshoot turns out to matter.
+
+### TD-96: A SendGrid send failure re-opens the signup enumeration oracle
+
+- **Date:** 2026-09-28
+- **Location:** `packages/api/src/routes/auth/password.rs:237` (the `NotifyExistingOwner` arm)
+- **Gap:** That arm runs only for addresses holding a *verified* account, and the send is propagated with `?` (accepted trade-off, #1368). The `?` was dead code until #1368 wired a real provider; it is reachable now.
+- **Impact:** A SendGrid rejection of that one recipient (suppression list, prior hard bounce) returns `500` where an unregistered address returns `202` — the exact "is this address a Pipeline customer?" signal the always-`202` contract exists to suppress. Also sharpens TD-81/TD-86: unlimited `signup` now burns send quota and sender reputation, not just CPU.
+- **Suggested fix:** Swallow-and-log on this arm, or a durable outbox. One fix covers this and TD-97 — see there.
+
+### TD-97: A failed send burns the passcode and the cooldown
+
+- **Date:** 2026-09-28
+- **Location:** `packages/api/src/routes/auth/password.rs:511` (`issue_and_send_passcode`)
+- **Gap:** The `otp_codes` row is written — starting the 60s cooldown — *before* the send, and the send is propagated with `?` (accepted trade-off, #1368).
+- **Impact:** If the send fails, the code exists, the cooldown runs, no mail arrives, and `resend-otp` answers `202` and mails nothing for the next minute — a user with no working passcode for up to a minute per failed send. That is TD-87's dead end, now provider-triggerable. Also sharpens TD-81/TD-86: unlimited `signup` / `resend-otp` now burns send quota and sender reputation, not just CPU.
+- **Suggested fix:** Void the OTP row on send failure and swallow-and-log, or a durable outbox. One fix covers this and TD-96 — a durable outbox (or swallow-and-log plus a void) removes both the enumeration leak and the burned cooldown in one change.
