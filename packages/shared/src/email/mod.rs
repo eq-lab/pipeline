@@ -1,17 +1,13 @@
-//! Transactional email seam.
-//!
-//! No delivery provider is wired up yet — that is tracked as its own blocking
-//! issue. Everything downstream of this trait (signup, resend, the OTP lifecycle)
-//! is complete and tested against the seam; swapping [`LoggingEmailSender`] for a
-//! real provider is a one-impl change with no caller edits.
-//!
-//! Until then `POST /v1/auth/signup` writes the passcode to the log at INFO.
-//! That is a development affordance and a production data leak — the provider
-//! must land before this reaches real users.
+// spec: docs/product-specs/api-authorization-email.md#email-delivery, Issue #1368
+
+mod config;
+mod sendgrid;
+
+pub use config::EmailConfig;
+pub use sendgrid::SendGridEmailSender;
 
 use async_trait::async_trait;
 
-/// A rendered message ready for delivery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboundEmail {
     pub to: String,
@@ -24,7 +20,6 @@ pub trait EmailSender: Send + Sync {
     async fn send(&self, email: &OutboundEmail) -> anyhow::Result<()>;
 }
 
-/// Render the signup passcode message. Pure, so the copy is unit-testable.
 pub fn render_verification_email(to: &str, code: &str) -> OutboundEmail {
     OutboundEmail {
         to: to.to_owned(),
@@ -36,10 +31,6 @@ pub fn render_verification_email(to: &str, code: &str) -> OutboundEmail {
     }
 }
 
-/// Render the notice sent when somebody attempts to sign up with an address that
-/// already has a verified account. The signup response is identical either way,
-/// so this message is what distinguishes the two cases — for the address owner
-/// only, never for the caller.
 pub fn render_duplicate_signup_email(to: &str) -> OutboundEmail {
     OutboundEmail {
         to: to.to_owned(),
@@ -51,7 +42,6 @@ pub fn render_duplicate_signup_email(to: &str) -> OutboundEmail {
     }
 }
 
-/// Development sender: logs instead of delivering.
 pub struct LoggingEmailSender;
 
 #[async_trait]
