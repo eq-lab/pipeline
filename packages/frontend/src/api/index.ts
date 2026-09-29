@@ -11,6 +11,13 @@
 export { apiFetch, ApiError } from "./client";
 export { signup, verifyOtp, resendOtp, login } from "./auth";
 export type { TokenResponse } from "./auth";
+export {
+  getMyLp,
+  upsertMyLp,
+  uploadMyDocuments,
+  deleteMyDocument,
+} from "./lps";
+export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
 export { useRequests } from "./useRequests";
 export type {
   RequestItem,

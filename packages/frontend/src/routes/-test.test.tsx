@@ -487,6 +487,9 @@ describe("TestPage — tab param routing", () => {
     const fileInput = screen.getByTestId("account-upload-input");
     const file = new File(["x"], "doc.pdf", { type: "application/pdf" });
     fireEvent.change(fileInput, { target: { files: [file] } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Preview Company" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 

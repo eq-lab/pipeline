@@ -103,7 +103,7 @@ export function useEmailAuthFlow({
     setSignInFormError(undefined);
     try {
       const session = await login({ email, password });
-      saveSession(session);
+      saveSession({ ...session, email });
       onClose();
       onAuthenticated?.();
     } catch (error) {
@@ -154,7 +154,7 @@ export function useEmailAuthFlow({
 
   async function handleOtpVerify(code: string) {
     const session = await verifyOtp({ email: pendingEmail, code });
-    saveSession(session);
+    saveSession({ ...session, email: pendingEmail });
     onClose();
     onAuthenticated?.();
   }

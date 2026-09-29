@@ -38,8 +38,11 @@ function CrossCircleIcon() {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface UploadedFileRowProps {
-  file: File;
-  onRemove: () => void;
+  file?: File;
+  filename?: string;
+  status?: string;
+  onRemove?: () => void;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -47,7 +50,10 @@ export interface UploadedFileRowProps {
 
 export function UploadedFileRow({
   file,
+  filename,
+  status,
   onRemove,
+  disabled,
   className,
 }: UploadedFileRowProps) {
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
@@ -96,7 +102,7 @@ export function UploadedFileRow({
             "text-[color:var(--color-pipeline-ink)]",
           ].join(" ")}
         >
-          {file.name}
+          {file?.name ?? filename}
         </p>
         <p
           className={[
@@ -107,20 +113,23 @@ export function UploadedFileRow({
             "text-[color:var(--color-pipeline-ink-muted)]",
           ].join(" ")}
         >
-          Uploaded
+          {status ?? "Uploaded"}
         </p>
       </div>
 
-      <div className="flex size-10 shrink-0 items-center justify-center p-1">
-        <button
-          type="button"
-          aria-label={`Remove ${file.name}`}
-          onClick={onRemove}
-          className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-button)] text-[color:var(--color-pipeline-ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]"
-        >
-          <CrossCircleIcon />
-        </button>
-      </div>
+      {onRemove && (
+        <div className="flex size-10 shrink-0 items-center justify-center p-1">
+          <button
+            type="button"
+            aria-label={`Remove ${file?.name ?? filename}`}
+            onClick={onRemove}
+            disabled={disabled}
+            className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-button)] text-[color:var(--color-pipeline-ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]"
+          >
+            <CrossCircleIcon />
+          </button>
+        </div>
+      )}
     </li>
   );
 }

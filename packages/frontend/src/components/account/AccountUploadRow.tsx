@@ -9,6 +9,7 @@ export interface AccountUploadRowProps {
   onFiles: (files: File[]) => void;
   dataNodeId?: string;
   testId?: string;
+  disabled?: boolean;
 }
 
 export function AccountUploadRow({
@@ -16,6 +17,7 @@ export function AccountUploadRow({
   onFiles,
   dataNodeId = "6701:98157",
   testId = "account-upload-row",
+  disabled = false,
 }: AccountUploadRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +73,7 @@ export function AccountUploadRow({
         aria-hidden="true"
         data-testid="account-upload-input"
         onChange={handleChange}
+        disabled={disabled}
       />
       <div className="flex shrink-0 items-center justify-center p-1">
         <Button
@@ -78,6 +81,7 @@ export function AccountUploadRow({
           size="compact"
           className="border border-[color:var(--color-pipeline-line)]"
           onClick={() => inputRef.current?.click()}
+          disabled={disabled}
         >
           Upload
         </Button>

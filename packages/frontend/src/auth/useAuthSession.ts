@@ -4,6 +4,7 @@ import { clearSession, readSession, subscribeSession } from "./session";
 
 export interface UseAuthSessionResult {
   token: string | undefined;
+  email: string | undefined;
   expiresAt: number | undefined;
   isAuthenticated: boolean;
   signOut: () => void;
@@ -24,6 +25,7 @@ export function useAuthSession(): UseAuthSessionResult {
 
   return {
     token: token ?? undefined,
+    email: token !== null ? readSession()?.email : undefined,
     expiresAt,
     isAuthenticated: token !== null,
     signOut: clearSession,

@@ -1,20 +1,53 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CompanyDocsModal } from "./CompanyDocsModal";
+import { ApiError } from "@/api";
+import type { LpResponse } from "@/api";
+import { saveSession, clearSession } from "@/auth/session";
+
+const mockUpsert = vi.fn();
+const mockUpload = vi.fn();
+const mockDelete = vi.fn();
+const mockGet = vi.fn();
+
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  return {
+    ...actual,
+    upsertMyLp: (...args: unknown[]) => mockUpsert(...args),
+    uploadMyDocuments: (...args: unknown[]) => mockUpload(...args),
+    deleteMyDocument: (...args: unknown[]) => mockDelete(...args),
+    getMyLp: (...args: unknown[]) => mockGet(...args),
+  };
+});
+
+beforeEach(() => {
+  mockUpsert.mockReset();
+  mockUpload.mockReset();
+  mockDelete.mockReset();
+  mockGet.mockReset();
+  clearSession();
+});
 
 function renderModal(
   props: Partial<React.ComponentProps<typeof CompanyDocsModal>> = {},
 ) {
   const onDismiss = props.onDismiss ?? vi.fn();
+  const rendered = render(
+    <CompanyDocsModal
+      open={props.open ?? true}
+      onDismiss={onDismiss}
+      {...props}
+    />,
+  );
+  if (props.lp === undefined) {
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Preview Corp" },
+    });
+  }
   return {
     onDismiss,
-    ...render(
-      <CompanyDocsModal
-        open={props.open ?? true}
-        onDismiss={onDismiss}
-        {...props}
-      />,
-    ),
+    ...rendered,
   };
 }
 
@@ -75,6 +108,15 @@ describe("CompanyDocsModal — empty state", () => {
     );
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
   });
+
+  it("requires a nonblank name as well as a staged file", () => {
+    renderModal();
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "   " },
+    });
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+  });
 });
 
 describe("CompanyDocsModal — shell composition", () => {
@@ -97,7 +139,7 @@ describe("CompanyDocsModal — staging a file", () => {
     upload([makeFile("doc.pdf", "application/pdf")]);
 
     expect(screen.getByText("doc.pdf")).toBeInTheDocument();
-    expect(screen.getByText("Uploaded")).toBeInTheDocument();
+    expect(screen.getByText("Ready to upload")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Remove doc.pdf" }),
     ).toBeInTheDocument();
@@ -208,5 +250,214 @@ describe("CompanyDocsModal — image preview", () => {
     ]);
 
     expect(document.querySelectorAll("img")).toHaveLength(1);
+  });
+});
+
+function lp(
+  documents: LpResponse["documents"] = [],
+  overrides: Partial<LpResponse> = {},
+): LpResponse {
+  return {
+    id: 7,
+    legal_name: "Existing Name",
+    country: "NL",
+    contact_email: "existing@example.com",
+    stellar_address: null,
+    address_linked_at: null,
+    kyb_status: "InProgress",
+    writable: true,
+    owner_account_id: "owner",
+    owner_chain_id: null,
+    owner_address: null,
+    created_at: "2026-09-29T00:00:00Z",
+    documents,
+    ...overrides,
+  };
+}
+
+function makeDocument(
+  id: number,
+  status: "Provided" | "Verified" = "Provided",
+): LpResponse["documents"][number] {
+  return {
+    id,
+    lp_id: 7,
+    original_filename: "saved.pdf",
+    size_bytes: 1,
+    content_type: "application/pdf",
+    status,
+    reject_reason: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    created_at: "2026-09-29T00:00:00Z",
+    download_url: null,
+  };
+}
+
+describe("CompanyDocsModal — production requests", () => {
+  it("prefills profile and sends full replace before upload", async () => {
+    const saved = lp();
+    mockUpsert.mockResolvedValueOnce(saved);
+    mockUpload.mockResolvedValueOnce({
+      lp: lp([makeDocument(2)]),
+      files: [{ filename: "doc.pdf", status: 201, id: 2, error: null }],
+    });
+    renderModal({ lp: saved });
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
+      "Existing Name",
+    );
+    expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("NL");
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Changed" },
+    });
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledOnce());
+    expect(mockUpsert).toHaveBeenCalledWith({
+      legal_name: "Changed",
+      country: "NL",
+      contact_email: "existing@example.com",
+    });
+    expect(mockUpsert.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockUpload.mock.invocationCallOrder[0]!,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("saved.pdf")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("doc.pdf")).not.toBeInTheDocument();
+  });
+
+  it("keeps only failed duplicate-name files after a partial upload", async () => {
+    const saved = lp();
+    mockUpsert.mockResolvedValue(saved);
+    mockUpload.mockResolvedValueOnce({
+      lp: lp([makeDocument(3)]),
+      files: [
+        { filename: "same.pdf", status: 201, id: 3, error: null },
+        { filename: "same.pdf", status: 400, id: null, error: "invalid bytes" },
+      ],
+    });
+    renderModal({ lp: saved });
+    upload([
+      makeFile("same.pdf", "application/pdf"),
+      makeFile("same.pdf", "application/pdf"),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("invalid bytes"),
+    );
+    expect(screen.getAllByText("same.pdf")).toHaveLength(1);
+    expect(mockUpload.mock.calls[0]?.[0]).toHaveLength(2);
+    mockUpload.mockResolvedValueOnce({
+      lp: lp([makeDocument(3), makeDocument(4)]),
+      files: [{ filename: "same.pdf", status: 201, id: 4, error: null }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledTimes(2));
+    expect(mockUpload.mock.calls[1]?.[0]).toHaveLength(1);
+  });
+
+  it("deletes a persisted file by id after success and protects Verified files", async () => {
+    mockDelete.mockResolvedValueOnce(undefined);
+    renderModal({ lp: lp([makeDocument(9), makeDocument(10, "Verified")]) });
+    expect(screen.getAllByText("saved.pdf")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Remove saved.pdf" }),
+    ).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved.pdf" }));
+    expect(mockDelete).toHaveBeenCalledWith(9);
+    await waitFor(() =>
+      expect(screen.getAllByText("saved.pdf")).toHaveLength(1),
+    );
+  });
+
+  it("disables editing when the LP is frozen and requires a known email for a new LP", () => {
+    const { unmount } = renderModal({ lp: lp([], { writable: false }) });
+    expect(screen.getByRole("textbox", { name: "Name" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
+    unmount();
+    renderModal({ lp: null });
+    expect(
+      screen.getByText("Sign out and sign in again to complete setup."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+  });
+
+  it("uses the authenticated email for a new LP", async () => {
+    saveSession({ token: "jwt", expires_in: 3600, email: "new@example.com" });
+    mockUpsert.mockResolvedValueOnce(
+      lp([], { contact_email: "new@example.com" }),
+    );
+    mockUpload.mockResolvedValueOnce({
+      lp: lp([makeDocument(1)]),
+      files: [{ filename: "doc.pdf", status: 201, id: 1, error: null }],
+    });
+    renderModal({ lp: null, sessionEmail: "new@example.com" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "New LP" },
+    });
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() =>
+      expect(mockUpsert).toHaveBeenCalledWith({
+        legal_name: "New LP",
+        country: null,
+        contact_email: "new@example.com",
+      }),
+    );
+  });
+
+  it("keeps staged files when upload fails after profile save", async () => {
+    mockUpsert.mockResolvedValueOnce(lp());
+    mockUpload.mockRejectedValueOnce(new ApiError(413, "too large"));
+    renderModal({ lp: lp() });
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("too large"),
+    );
+    expect(screen.getByText("doc.pdf")).toBeInTheDocument();
+  });
+
+  it("reconciles a conflicted delete without hiding an unchanged server row", async () => {
+    mockDelete.mockRejectedValueOnce(new ApiError(409, "verified"));
+    mockGet.mockResolvedValueOnce(lp([makeDocument(9, "Verified")]));
+    renderModal({ lp: lp([makeDocument(9)]) });
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved.pdf" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "can no longer be changed",
+      ),
+    );
+    expect(screen.getByText("saved.pdf")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove saved.pdf" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reconciles an uncertain upload before allowing another submission", async () => {
+    mockUpsert.mockResolvedValueOnce(lp());
+    mockUpload.mockRejectedValueOnce(new TypeError("Connection lost"));
+    mockGet
+      .mockRejectedValueOnce(new TypeError("Still offline"))
+      .mockResolvedValueOnce(lp([makeDocument(11)]));
+    renderModal({ lp: lp() });
+    upload([makeFile("saved.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Check uploads" }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Check uploads" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Check uploads" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("saved.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    expect(mockUpload).toHaveBeenCalledTimes(1);
   });
 });
