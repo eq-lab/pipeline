@@ -8,8 +8,38 @@ in `auth-components.md` (whose own scope is "LP-facing email+password authentica
 not a route) or `dashboard-components.md` (already 1580+ lines) — this surface keeps growing
 through #1254, #1265, #1267 and #1282.
 
-**Presentational only.** No network calls, no persistence, no auth. Every side-effecting action is
-a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who-wires-them).
+**Current code before #1373 is presentational.** Its upload and read-back seams are listed in
+[Seams and who wires them](#seams-and-who-wires-them). The production contract for #1373 is below;
+the implementation must replace the stale no-network description and seam table when it lands.
+
+## Production LP data contract (#1373)
+
+The authenticated page reads `GET /v1/lps/me` before displaying profile or document state. It
+distinguishes loading, 404 (a new LP), and request error; an error offers retry and never becomes
+an empty LP. `AccountEmailCard` displays `contact_email` from a returned LP, or the authenticated
+session email on 404. A legacy session without email cannot create an LP until the user signs in
+again. The wallet card, logout button, and centered 480px column remain.
+
+A new profile card sits above the document card and uses the shared `TextField` for labelled Name
+(`legal_name`) and Country (`country`). The form preloads returned values, requires a nonblank Name,
+and sends the complete profile, including the stored `contact_email` and unchanged country, in
+JSON to `POST /v1/lps/me`. Profile-only edits save without another file. Draft text survives a
+same-LP document upload, deletion, or refetch; a successful profile save refreshes its baseline.
+The API's `writable` flag disables profile and document writes for `UnderReview` and `Passed`.
+
+The document card displays all persisted `original_filename` values and Provided/Verified/Rejected
+statuses from the LP response after reload. Writable LPs can stage more files and upload them by
+multipart `POST /v1/lps/me/documents`. A new LP is created from a valid profile before its first
+upload. The returned per-file results are matched by request order, so duplicate filenames do
+not confuse partial success; confirmed successes leave the retry batch, failures stay staged with
+their reasons. A persisted row uses its server id for `DELETE /v1/lps/me/documents/{doc}` and
+stays visible until deletion succeeds. Verified files cannot be removed. A Rejected file on a
+writable LP offers deletion followed by replacement upload. The server response alone determines
+KYB state; the page never infers a review transition from Save.
+
+The existing `missing` preview contains a synthetic `NotProvided` row and a named required file;
+the API supplies neither field. That content remains a development fixture, never production
+data. All `?state=` fixtures stay dev-only and do not fetch or mutate LP data.
 
 `6702-104071` ("Error Verification" in the home-frame column) is **not** part of this page —
 despite sharing a name with one of the Account frames it is the **home dashboard**'s failure card
