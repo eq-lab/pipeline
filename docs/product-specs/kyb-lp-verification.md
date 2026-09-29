@@ -32,7 +32,7 @@ The modal collects the legal name and optional country alongside raw supporting 
 | `UnderReview` | `ChangesRequested` | Trustee decides |
 | `UnderReview` | `Failed` | Trustee decides |
 
-Every other transition is refused. `InProgress` stays a legal value of the column for records written before this model, but nothing produces it and nothing transitions out of it; it is treated as writable, like `NotStarted`.
+Every other transition is refused. `InProgress` remains a legal value of the column and is treated as writable, like `NotStarted`, but nothing produces it and nothing transitions out of it — it is unreachable. It is kept because removing a value from a `CHECK` constraint is a migration that buys nothing; it is **not** kept for backward compatibility, since no row has ever held it. Until this model, `kyb_status` was never written at all: the column only ever took its `NotStarted` default.
 
 Submitting is refused unless the LP holds at least one document and none of its documents is `Rejected`, and the refusal names the offending ids. The second condition is what makes a correction cycle converge: a rejected file must be deleted and replaced before the LP can ask for another look, so a trustee never reopens a record to find the same refused document still sitting in it.
 
@@ -48,6 +48,8 @@ The trustee reads every LP with its current status, submission time, and decisio
 
 An LP carries a notification preference, **off by default**, which its owner may switch at any point — including while the record is frozen. Freezing it would be perverse: it would leave an LP unable to opt in during the very review it wants to hear the outcome of.
 
+That exemption decides the contract of the profile endpoint, which carries the preference. The freeze there is on a profile *change*, not on the request: when the LP is frozen, a request whose profile fields match what is stored is accepted and writes the preference alone, while a request that would alter any profile field is refused and writes nothing — the preference included. Rejecting the whole request would make the toggle unreachable exactly when it matters; accepting the profile fields silently would edit a frozen record.
+
 When it is on, each trustee decision — `Passed`, `ChangesRequested`, or `Failed` — sends one email to the LP's contact address. A `ChangesRequested` message carries the decision's reason together with the rejected documents and their individual reasons, so the LP can act on the email alone.
 
 Nothing else notifies. Individual document reviews deliberately do not: a trustee working through a set produces a decision per file within minutes, and the LP can act on none of them until the record reopens.
@@ -57,6 +59,8 @@ Delivery is best-effort. The decision is recorded first and a delivery failure i
 ### Settlement Address
 
 An LP settles to a blockchain address held on the LP record — a separate identity from whatever credential its owner signs in with. The owner sets it through its own endpoint rather than through the profile upsert. It may be set at any KYB status, and replaced freely until KYB passes; once `Passed` the address is fixed, because from that point downstream systems treat it as the account money moves to. An address is unique across all LPs.
+
+“Any KYB status” is a statement about the KYB freeze only, and it does not reprieve a terminally refused LP. `Failed` suspends the account, and a suspended account is refused at authorization before any of this is reached — so the address endpoint is closed to it along with everything else. The exemption is from the record freeze, never from the account gate.
 
 Authorization is the only control. The endpoint is keyed on the caller's session, so only the account owning an LP can set that LP's address. Pipeline does not require the LP to prove it controls the address it names — an open gap, because a wrong or hostile entry both misdirects settlement and, through the uniqueness constraint, permanently denies that address to the LP that really holds it.
 
