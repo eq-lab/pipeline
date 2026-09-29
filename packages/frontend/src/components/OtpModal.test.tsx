@@ -156,6 +156,9 @@ describe("OtpModal (#1250, #1265)", () => {
     await user.click(screen.getByRole("button", { name: "Resend" }));
     expect(resend).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Resend in 00:59")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Request accepted. If no code arrives, retry after the countdown.",
+    );
   });
 
   it("a resolved verify fires onVerified and shows no error", async () => {

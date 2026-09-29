@@ -68,6 +68,11 @@ export function useEmailAuthFlow({
     setSignInFormError(undefined);
   }
 
+  function clearOtpCaptcha() {
+    setOtpCaptchaToken(undefined);
+    setOtpCaptchaStatus("loading");
+  }
+
   useEffect(() => {
     if (!open) return;
     setScreen(initialScreen);
@@ -75,6 +80,8 @@ export function useEmailAuthFlow({
     clearSignInErrors();
     setCreateAccountFormError(undefined);
     setAutoResendResult(undefined);
+    setOtpCaptchaToken(undefined);
+    setOtpCaptchaStatus("loading");
     autoResendPendingRef.current = false;
   }, [open, initialScreen]);
 
@@ -154,6 +161,7 @@ export function useEmailAuthFlow({
       } else if (error instanceof ApiError && error.status === 403) {
         if (error.message === "email_not_verified") {
           flowGenerationRef.current += 1;
+          clearOtpCaptcha();
           setPendingEmail(email);
           setAutoResendResult(undefined);
           autoResendPendingRef.current = true;
@@ -191,17 +199,25 @@ export function useEmailAuthFlow({
       );
       return;
     }
+    const generation = flowGenerationRef.current;
     try {
       await signup({ email, password, captchaToken });
+      if (generation !== flowGenerationRef.current) return;
+      signupTurnstileRef.current?.reset();
+      setSignupCaptchaToken(undefined);
       flowGenerationRef.current += 1;
+      clearOtpCaptcha();
       setPendingEmail(email);
       setScreen("otp");
     } catch (error) {
+      if (generation !== flowGenerationRef.current) return;
       setCreateAccountFormError(describeApiError(error));
       throw error;
     } finally {
-      signupTurnstileRef.current?.reset();
-      setSignupCaptchaToken(undefined);
+      if (generation === flowGenerationRef.current) {
+        signupTurnstileRef.current?.reset();
+        setSignupCaptchaToken(undefined);
+      }
     }
   }
 
@@ -277,6 +293,7 @@ export function useEmailAuthFlow({
       flowGenerationRef.current += 1;
       autoResendPendingRef.current = false;
       setAutoResendResult(undefined);
+      clearOtpCaptcha();
       clearSignInErrors();
       setScreen("sign-in");
     },

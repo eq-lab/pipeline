@@ -14,8 +14,12 @@ Block the Turnstile script or make widget rendering fail. The form shows a failu
 
 ## Story 3: OTP auto-resend fails
 
-Sign in to an unverified account and make the automatic resend return an error. The OTP screen says the code was not sent and offers Resend immediately, even while the initial countdown would otherwise be running. A failed retry stays actionable; a successful retry restores the countdown. If its CAPTCHA is still loading or unavailable, the screen explains that state rather than silently doing nothing. Closing or leaving OTP ignores late auto-resend results.
+Sign in to an unverified account and make the automatic resend return an error. The OTP screen says the code was not sent and offers Resend immediately, even while the initial countdown would otherwise be running. A failed retry stays actionable. A `202` retry restores the countdown and says the request was accepted; it tells the user to retry after the countdown if no code arrives, since a failed send may have burned the server cooldown. If CAPTCHA is still loading or unavailable, the screen explains that state rather than silently doing nothing. Closing or leaving OTP ignores late auto-resend results.
 
-## Story 4: OTP verification errors
+## Story 4: New flows cannot use an old CAPTCHA or signup result
+
+From OTP, return to Sign In after the widget has produced a token. Sign in to an unverified account again. Before the new OTP widget produces a token, no automatic resend request is made; when it does, the request uses only that new token. Start signup, close the flow while its request is pending, then reopen Create account. A late success from the old request neither opens OTP nor resets the newly mounted widget.
+
+## Story 5: OTP verification errors
 
 Enter six digits and make verification return `401`. The screen says the code is incorrect or expired. Repeat with a network error and a server `5xx`; the screen shows the network error copy in each case and preserves the entered digits so the user can retry.

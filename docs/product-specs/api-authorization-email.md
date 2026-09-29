@@ -176,17 +176,17 @@ whether verification is still loading, failed, or unavailable, and makes no API
 request. If the challenge requires user interaction, the widget remains available
 to complete it. A script, widget, or challenge failure surfaces an error and a
 retry action. An expired token also shows a retry action. Retrying loads or
-renders a fresh challenge without requiring a page reload. An absent site key
-is an unavailable configuration state with a
-visible explanation. None of these states bypasses the API's captcha verification.
+renders a fresh challenge without reloading. An absent site key shows an unavailable
+state. None of these states bypasses the API's captcha verification.
 
 After login returns `403 email_not_verified`, the OTP screen attempts one
 captcha-gated resend when its token is ready. If that attempt fails, the OTP
-screen says that the code was not sent and offers an immediate manual retry,
-even during the normal resend countdown. A successful resend starts the
-countdown again. Wrong or expired OTP responses use the OTP error copy above;
-network and server failures use the network error copy, so they do not imply
-that the entered code was bad.
+screen says the code was not sent and offers an immediate retry during the normal
+countdown. A `202` retry only means the request was accepted: the backend may still
+be in its cooldown after a failed send and skip delivery. The screen says to retry
+after the restarted countdown if no code arrives. Leaving OTP discards the old
+captcha token before another auto-resend. Wrong or expired OTP responses use the
+OTP error copy above; network and server failures use the network error copy.
 
 **Turnstile.** `Turnstile.tsx` loads Cloudflare's script once and renders the
 widget explicitly at `size: "flexible"`; the widget's configured mode determines

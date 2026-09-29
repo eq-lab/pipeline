@@ -401,6 +401,8 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
    `animate-spin`) while `verifying`; a `role="alert"` caption for invalid/expired codes or a
    network/server failure while `error`; the same slot shows that a code was not sent after a
    failed auto-resend, or "Couldn't resend the code. Try again." after a manual resend failure.
+   After a `202` manual retry, it shows "Request accepted. If no code arrives, retry after the
+   countdown." because acceptance does not prove delivery during the backend cooldown.
    Verify errors take priority over resend errors.
 
 **State machine** (`useOtpModal`) — `idle` → `verifying` → `error`:
@@ -417,8 +419,9 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
   overwriting the current (edited) state.
 - The 59-second resend countdown (`RESEND_COUNTDOWN_SECONDS`) starts on open and ticks once per
   second, independently of the verify/error state. Clicking `Resend` once enabled awaits
-  `resend()`: success restarts the countdown to 59s; failure surfaces the resend-error caption and
-  leaves `Resend` clickable for an immediate retry. A failed auto-resend also unlocks it during
+  `resend()`: `202` acceptance restarts the countdown to 59s and shows the accepted-request
+  notice; failure surfaces the resend-error caption and leaves `Resend` clickable for an
+  immediate retry. A failed auto-resend also unlocks it during
   the initial countdown.
 - All state (code, status, countdown, resend-in-flight, resend error) resets whenever `open` flips
   `false → true`.
@@ -705,9 +708,12 @@ Wiring, screen by screen:
   above, a pending-auto-resend flag is set instead of calling `resendOtp` immediately (no token
   exists yet at that point — the OTP screen, and its `Turnstile` slot, have not mounted). An
   effect watches the OTP screen's captcha token and, once the widget yields one, fires the
-  deferred `resendOtp` exactly once and clears the flag. If that call fails, the OTP screen
+  deferred `resendOtp` exactly once and clears the flag. Leaving OTP clears its captcha token,
+  and every new OTP entry waits for a token from the newly mounted widget. If that call fails,
+  the OTP screen
   reports that the code was not sent and enables a manual retry immediately, even if the initial
-  59-second countdown has time left. A successful resend restarts that countdown. The Turnstile
+  59-second countdown has time left. A `202` manual retry restarts that countdown and explains
+  that the request may still have fallen inside the backend cooldown. The Turnstile
   widget normally resolves near-instantly on mount, so in practice the user sees the OTP screen
   open with the fresh code already on its way.
 - **Continue with wallet** (from either `SignInModal` or `CreateAccountModal`) → closes the auth

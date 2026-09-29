@@ -63,6 +63,7 @@ export function OtpModal({
     resendLabel,
     resendEnabled,
     resendError,
+    resendNotice,
     onResend,
   } = useOtpModal({ open, verify, resend, onVerified, autoResendResult });
 
@@ -182,6 +183,13 @@ export function OtpModal({
             ].join(" ")}
           >
             {resendError}
+          </p>
+        ) : resendNotice ? (
+          <p
+            role="status"
+            className="text-center text-[length:var(--text-pipeline-body-s)] text-[color:var(--color-pipeline-ink-muted)]"
+          >
+            {resendNotice}
           </p>
         ) : null}
       </div>

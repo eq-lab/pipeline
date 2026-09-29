@@ -8,6 +8,8 @@ export const OTP_ERROR_MESSAGE =
 export const RESEND_COUNTDOWN_SECONDS = 59;
 export const RESEND_ERROR_MESSAGE = "Couldn't resend the code. Try again.";
 export const AUTO_RESEND_ERROR_MESSAGE = "The code was not sent. Try again.";
+export const RESEND_ACCEPTED_MESSAGE =
+  "Request accepted. If no code arrives, retry after the countdown.";
 export const OTP_NETWORK_ERROR_MESSAGE =
   "Network error — check your connection and try again.";
 
@@ -29,6 +31,7 @@ export interface UseOtpModalResult {
   resendLabel: string;
   resendEnabled: boolean;
   resendError: string | undefined;
+  resendNotice: string | undefined;
   onResend: () => void;
 }
 
@@ -51,6 +54,7 @@ export function useOtpModal({
   const [remaining, setRemaining] = useState(RESEND_COUNTDOWN_SECONDS);
   const [isResending, setIsResending] = useState(false);
   const [resendError, setResendError] = useState<string>();
+  const [resendNotice, setResendNotice] = useState<string>();
   const [allowImmediateResend, setAllowImmediateResend] = useState(false);
   const requestIdRef = useRef(0);
   const resendRequestIdRef = useRef(0);
@@ -63,6 +67,7 @@ export function useOtpModal({
       setRemaining(RESEND_COUNTDOWN_SECONDS);
       setIsResending(false);
       setResendError(undefined);
+      setResendNotice(undefined);
       setAllowImmediateResend(false);
       requestIdRef.current += 1;
       resendRequestIdRef.current += 1;
@@ -76,10 +81,12 @@ export function useOtpModal({
     if (!open || !autoResendResult) return;
     if (autoResendResult.status === "success") {
       setResendError(undefined);
+      setResendNotice(undefined);
       setAllowImmediateResend(false);
       setRemaining(RESEND_COUNTDOWN_SECONDS);
     } else {
       setResendError(AUTO_RESEND_ERROR_MESSAGE);
+      setResendNotice(undefined);
       setAllowImmediateResend(true);
     }
   }, [open, autoResendResult]);
@@ -126,6 +133,7 @@ export function useOtpModal({
   function onResend() {
     if ((remaining > 0 && !allowImmediateResend) || isResending) return;
     setResendError(undefined);
+    setResendNotice(undefined);
     setIsResending(true);
     const requestId = ++resendRequestIdRef.current;
     const resendFn = resend ?? (() => Promise.resolve());
@@ -135,6 +143,7 @@ export function useOtpModal({
         setIsResending(false);
         setRemaining(RESEND_COUNTDOWN_SECONDS);
         setAllowImmediateResend(false);
+        setResendNotice(RESEND_ACCEPTED_MESSAGE);
       },
       (error: unknown) => {
         if (resendRequestIdRef.current !== requestId) return;
@@ -160,6 +169,7 @@ export function useOtpModal({
         : "Resend",
     resendEnabled: (remaining === 0 || allowImmediateResend) && !isResending,
     resendError,
+    resendNotice,
     onResend,
   };
 }
