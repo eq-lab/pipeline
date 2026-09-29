@@ -12,6 +12,7 @@ export interface UseAccountDocumentsResult {
   rejected: boolean;
   addFiles: (files: File[]) => void;
   removeFile: (index: number) => void;
+  removeFilesAt: (indices: number[]) => void;
   canSave: boolean;
   handleSave: () => void;
 }
@@ -45,6 +46,11 @@ export function useAccountDocuments({
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function removeFilesAt(indices: number[]) {
+    const removed = new Set(indices);
+    setFiles((prev) => prev.filter((_, i) => !removed.has(i)));
+  }
+
   const canSave = files.length > 0;
 
   function handleSave() {
@@ -52,5 +58,13 @@ export function useAccountDocuments({
     onSave?.(files);
   }
 
-  return { files, rejected, addFiles, removeFile, canSave, handleSave };
+  return {
+    files,
+    rejected,
+    addFiles,
+    removeFile,
+    removeFilesAt,
+    canSave,
+    handleSave,
+  };
 }

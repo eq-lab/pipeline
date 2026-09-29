@@ -4,11 +4,13 @@ const SESSION_KEY = "pipeline.auth.session";
 export interface Session {
   token: string;
   expiresAt: number;
+  email?: string;
 }
 
 interface StoredSession {
   token: string;
   expiresAt: number;
+  email?: string;
 }
 
 const listeners = new Set<() => void>();
@@ -20,13 +22,16 @@ function notify(): void {
 export function saveSession({
   token,
   expires_in,
+  email,
 }: {
   token: string;
   expires_in: number;
+  email?: string;
 }): void {
   const stored: StoredSession = {
     token,
     expiresAt: Date.now() + expires_in * 1000,
+    ...(email ? { email: email.trim().toLowerCase() } : {}),
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
   notify();
@@ -40,19 +45,27 @@ export function readSession(): Session | null {
   try {
     parsed = JSON.parse(raw) as Partial<StoredSession>;
   } catch {
+    localStorage.removeItem(SESSION_KEY);
     return null;
   }
   if (
     typeof parsed.token !== "string" ||
     typeof parsed.expiresAt !== "number"
   ) {
+    localStorage.removeItem(SESSION_KEY);
     return null;
   }
   if (parsed.expiresAt <= Date.now()) {
     localStorage.removeItem(SESSION_KEY);
     return null;
   }
-  return { token: parsed.token, expiresAt: parsed.expiresAt };
+  return {
+    token: parsed.token,
+    expiresAt: parsed.expiresAt,
+    ...(typeof parsed.email === "string" && parsed.email.trim()
+      ? { email: parsed.email.trim().toLowerCase() }
+      : {}),
+  };
 }
 
 export function clearSession(): void {

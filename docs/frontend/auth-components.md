@@ -429,13 +429,17 @@ caption use `role="status"`/`role="alert"` respectively.
 
 ### CompanyDocsModal
 
+**Account-setup wiring (#1371).** The app-wide auth flow reads the authenticated LP after sign-in, OTP verification, and session restoration. Only a 404 or a 200 response with zero `documents` auto-opens this modal; loading, 401, and other errors do not. The close button dismisses this prompt for the current authenticated session without signing out or reopening on rerender. A later sign-in may prompt again if the server still has no documents. The `/test?tab=auth` trigger remains an isolated visual preview.
+
+A profile card above the upload card contains labelled Name (`legal_name`) and Country (`country`) fields using shared `TextField`s. Existing values are populated from `GET /v1/lps/me`; an existing LP's `contact_email` is retained on the full-replace JSON `POST /v1/lps/me`, and a new LP uses the email captured at successful authentication. The session stores that email with its token so the new-LP form remains usable after reload. The fields and upload actions are available only when the server says `writable`; a verified document cannot be removed even on a writable LP. Submit requires a nonblank name and a staged document for a new LP; an existing writable LP may submit changed Name or Country alone. With files staged, it saves the profile before uploading. The upload response's ordered per-file results distinguish stored files from failed files, including HTTP 400 when all files are rejected: only failures stay staged, and the refreshed LP supplies persisted filenames. Same-LP document refreshes preserve unsaved Name and Country drafts; a new LP identity resets the fields. Deletion calls `DELETE /v1/lps/me/documents/{doc}` and removes a row only after success. Neither save nor upload presents KYB as `UnderReview` without a server response saying so.
+
+The paragraphs below record the original #1278 layout and preview behavior. The production behavior is described above.
+
 **Redesigned 2026-09-22 (#1278) — V1.0 flat upload.** `packages/frontend/src/components/CompanyDocsModal.tsx`
 now composes three pieces promoted for #1284's Account-page documents hub rather than owning any
 upload machinery itself: `AccountUploadRow`, `AccountRequirementsList`, and `useAccountDocuments`
 (all under `@/components/account/`), plus the already-shared `UploadedFileRow` and
-`kybFileValidation`. The KYB Company Docs upload step — presentational only, **no network call, no
-persistence**. Files live in React state as `File` objects for the lifetime of the mounted
-component; `onSubmit` is a seam for #1254 (defaults to a no-op).
+`kybFileValidation`. The `/test` preview remains presentational. In production, profile and file requests use the authenticated LP API. Staged `File` objects remain in React state while the modal stays mounted; persisted documents render from the server response.
 
 Visual specs (Figma, file `A43rjYYjSwdTmiwwf5cx5n`):
 
@@ -491,8 +495,7 @@ account.", `headingId` `company-docs-modal-heading`, `testId` `company-docs-moda
 flow-semantics decision ("closing the docs step means *exit onboarding, keep progress*"), this is
 a deliberate reversal of the retired five-slot modal's reset-on-open behaviour: there is no
 reset-on-open effect, so `useAccountDocuments` holds the files for the lifetime of the mounted
-component — closing and reopening the preview shows them still staged. This is presentational
-only (TD-85); real server-side progress needs #1267 + #1273, wired by #1254.
+component — closing and reopening the preview shows them still staged. Production progress is read back from the LP API; staged files are local until confirmed uploaded.
 
 **Submit enables at ≥ 1 file (TD-83).** `useAccountDocuments.canSave` encodes this — the only
 non-arbitrary rule the raw-upload model permits, same gap the retired TD-66 described for the
@@ -509,11 +512,7 @@ outside `{application/pdf, image/jpeg, image/png}` (falling back to the filename
 caption recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
 accepted pick. Neither Figma frame designs a rejection state — tracked as **TD-62**.
 
-**Out of scope.** Any real upload, storage, progress, or retry; the Verified/Invalid/under-review
-document states (the Account page owns those); wiring OTP → Company Docs → Account-in-review as a
-sequence (#1254's flow orchestration); the LP header entry point (a future Figma); promoting the
-shared upload primitives to `@pipeline/ui` (LP-only, following `AuthModalShell`'s placement) or out
-of `components/account/` (naming-only cleanup, filed as **TD-84**).
+**Out of scope for #1371.** Account-page document hub, wallet linking, home-page state matrix, and KYB review submission or status transitions.
 
 **Accessibility:** `<ul role="list">` for the staged files; the hidden file input is paired with a
 labelled `Upload`/`Remove {file.name}` button so the picker and remove affordances stay operable
@@ -729,9 +728,9 @@ partial test trees), `useAuthFlow()` **throws** when called outside the provider
 tree is a setup bug worth surfacing loudly rather than silently swallowing.
 
 The provider owns `isOpen`/`screen` state and renders one `<EmailAuthFlow open initialScreen={screen}
-onClose={close} onConnectWallet={openConnectModal} />`. `onAuthenticated` is intentionally omitted
-— per the #1362 Issue comment, a successful sign-in only flips the header's own state (`TopBar`
-re-renders from `useAuthSession()`'s reactive session store); there is no navigation or toast.
+onClose={close} onConnectWallet={openConnectModal} />`. A successful sign-in flips the reactive
+session store; the provider fetches the LP and offers the account-setup modal for a missing LP or
+empty document list. There is no navigation or toast.
 
 **Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (signed out) call `open("sign-in")` /
 `open("create-account")`; `TopBar`'s account icon (signed in) does not call it at all — it
@@ -757,14 +756,13 @@ product spec's "Bot defense" section).
 
 ### Session module
 
-`packages/frontend/src/auth/session.ts` + `useAuthSession.ts` (#1265). `saveSession({ token,
-expires_in })` stores `{ token, expiresAt: Date.now() + expires_in * 1000 }` as JSON under the
+`packages/frontend/src/auth/session.ts` + `useAuthSession.ts` (#1265, extended by #1371). `saveSession({ token,
+expires_in, email })` stores the token, expiry, and normalized authenticated email as JSON under the
 `pipeline.auth.session` `localStorage` key and notifies subscribers; `readSession()` returns
 `null` (clearing the key) once `expiresAt` has passed, or on any parse/shape failure;
 `clearSession()` removes the key. `authHeaders()` returns `{ Authorization: "Bearer <token>" }`
-when a live session exists, `{}` otherwise — exported for future `#1282`/`#1254` call sites, not
-yet wired into any existing `apiFetch` call. `useAuthSession()` is a `useSyncExternalStore` hook
-exposing `{ token, expiresAt, isAuthenticated, signOut }`; reactivity is same-tab only (mirrors
+when a live session exists, `{}` otherwise. `useAuthSession()` is a `useSyncExternalStore` hook
+exposing `{ token, email, expiresAt, isAuthenticated, signOut }`; reactivity is same-tab only (mirrors
 the wallet module's `connectionStore.ts` pattern) — it does not listen for cross-tab `storage`
 events, so a sign-out in one tab does not live-update another tab's `isAuthenticated` until that
 tab next re-reads the store.
@@ -782,11 +780,11 @@ two further triggers opening `CompanyDocsModal` (#1278, redesigned from #1251) a
 any more: the OTP screen is reachable only through `EmailAuthFlow` itself (a successful Create
 Account submit, or a Sign In that returns `403 email_not_verified`), both of which need a real
 backend round-trip. `CompanyDocsModal.onSubmit` and `AccountInReviewModal.onGoToApp` keep their
-stand-in confirmation lines ("Company documents submitted — …", "Go to app — #1254 wires this to
+stand-in confirmation lines for the preview ("Company documents submitted — …", "Go to app — #1254 wires this to
 the LP dashboard.") — the shell's body-scroll-lock and capture-phase Escape are not stack-safe
 (see the shell caveats above), so these two stay independent of `EmailAuthFlow` and of each other.
-This does not touch `TopBar`, `AuthFlowProvider`, `ConnectModalProvider`, or any of the production
-`openConnectModal` call sites; `EmailAuthFlow`'s `onConnectWallet` opens `ConnectWalletModal`
+The preview modal is independent of the production `AuthFlowProvider` setup instance and of
+`ConnectModalProvider`/`openConnectModal` call sites; `EmailAuthFlow`'s `onConnectWallet` opens `ConnectWalletModal`
 directly (a `/test`-local `connectWalletOpen` boolean), independent of those production sites too.
 This was an explicit #1362 decision (plan default, confirmed in the Issue comment): `/test`
 keeps its own `EmailAuthFlow` instance rather than switching to `useAuthFlow()`, so its tests stay

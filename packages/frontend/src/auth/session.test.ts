@@ -28,6 +28,24 @@ describe("saveSession / readSession", () => {
     expect(readSession()).toBeNull();
   });
 
+  it("retains a normalized email through storage and clears it on logout", () => {
+    saveSession({ token: "jwt", expires_in: 3600, email: "  LP@Example.COM " });
+    expect(readSession()?.email).toBe("lp@example.com");
+    expect(
+      JSON.parse(localStorage.getItem("pipeline.auth.session") ?? "{}").email,
+    ).toBe("lp@example.com");
+    clearSession();
+    expect(readSession()).toBeNull();
+  });
+
+  it("reads an old token-only session without guessing an email", () => {
+    localStorage.setItem(
+      "pipeline.auth.session",
+      JSON.stringify({ token: "legacy", expiresAt: Date.now() + 1000 }),
+    );
+    expect(readSession()?.email).toBeUndefined();
+  });
+
   it("returns null and clears storage once expiresAt has passed", () => {
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now);

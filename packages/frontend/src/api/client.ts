@@ -35,11 +35,13 @@ import { readMock, parseJson } from "@/wallet";
 
 export class ApiError extends Error {
   status: number;
+  payload?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, payload?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.payload = payload;
   }
 }
 
@@ -86,13 +88,21 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     let message = response.statusText;
+    let payload: unknown;
     try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload?.error) message = payload.error;
+      payload = await response.json();
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "error" in payload &&
+        typeof payload.error === "string"
+      ) {
+        message = payload.error;
+      }
     } catch {
       // JSON parse failed — fall back to statusText
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, payload);
   }
 
   if (response.status === 204 || response.status === 202) {

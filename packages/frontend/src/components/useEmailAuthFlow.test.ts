@@ -3,19 +3,60 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useEmailAuthFlow } from "./useEmailAuthFlow";
 import { ApiError } from "@/api";
+import { clearSession, readSession } from "@/auth/session";
 
 const mockLogin = vi.fn();
+const mockVerifyOtp = vi.fn();
+const mockSignup = vi.fn();
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
     login: (...args: unknown[]) => mockLogin(...args),
+    verifyOtp: (...args: unknown[]) => mockVerifyOtp(...args),
+    signup: (...args: unknown[]) => mockSignup(...args),
   };
 });
 
 beforeEach(() => {
   mockLogin.mockReset();
+  mockVerifyOtp.mockReset();
+  mockSignup.mockReset();
+  clearSession();
+});
+
+describe("useEmailAuthFlow — authenticated identity", () => {
+  it("saves the submitted login email with the token", async () => {
+    mockLogin.mockResolvedValue({ token: "login-jwt", expires_in: 3600 });
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+    await act(async () =>
+      result.current.handleSignInSubmit({
+        email: " LP@Example.COM ",
+        password: "password",
+      }),
+    );
+    expect(readSession()?.email).toBe("lp@example.com");
+  });
+
+  it("saves the OTP email with the token", async () => {
+    mockSignup.mockResolvedValue(undefined);
+    mockVerifyOtp.mockResolvedValue({ token: "otp-jwt", expires_in: 3600 });
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+    act(() => result.current.onSignupToken("captcha"));
+    await act(async () =>
+      result.current.handleCreateAccountSubmit({
+        email: " LP@Example.COM ",
+        password: "password",
+      }),
+    );
+    await act(async () => result.current.handleOtpVerify("123456"));
+    expect(readSession()?.email).toBe("lp@example.com");
+  });
 });
 
 describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
