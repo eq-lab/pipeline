@@ -429,6 +429,12 @@ caption use `role="status"`/`role="alert"` respectively.
 
 ### CompanyDocsModal
 
+**Account-setup wiring (#1371).** The app-wide auth flow reads the authenticated LP after sign-in, OTP verification, and session restoration. Only a 404 or a 200 response with zero `documents` auto-opens this modal; loading, 401, and other errors do not. The close button dismisses this prompt for the current authenticated session without signing out or reopening on rerender. A later sign-in may prompt again if the server still has no documents. The `/test?tab=auth` trigger remains an isolated visual preview.
+
+A profile card above the upload card contains labelled Name (`legal_name`) and Country (`country`) fields using shared `TextField`s. Existing values are populated from `GET /v1/lps/me`; an existing LP's `contact_email` is retained on the full-replace JSON `POST /v1/lps/me`, and a new LP uses the email captured at successful authentication. The session stores that email with its token so the new-LP form remains usable after reload. The fields and upload actions are available only when the server says `writable`; a verified document cannot be removed even on a writable LP. Submit requires a nonblank name and at least one staged document, saves the profile, then uploads files separately. The upload response's ordered per-file results distinguish stored files from failed files: only failures stay staged, and the refreshed LP supplies persisted filenames. Deletion calls `DELETE /v1/lps/me/documents/{doc}` and removes a row only after success. Neither save nor upload presents KYB as `UnderReview` without a server response saying so.
+
+The paragraphs below describe the original #1278 presentational implementation and its Figma geometry; #1371 extends that composition and replaces its no-network seam in production.
+
 **Redesigned 2026-09-22 (#1278) — V1.0 flat upload.** `packages/frontend/src/components/CompanyDocsModal.tsx`
 now composes three pieces promoted for #1284's Account-page documents hub rather than owning any
 upload machinery itself: `AccountUploadRow`, `AccountRequirementsList`, and `useAccountDocuments`
