@@ -45,6 +45,28 @@ describe("AccountDocumentsCard — verify state", () => {
 });
 
 describe("AccountDocumentsCard — production rows", () => {
+  it("disables file selection and staged removal during reconciliation", () => {
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          production: true,
+          busy: true,
+          state: "staged",
+          stagedFiles: [
+            new File(["x"], "pending.pdf", { type: "application/pdf" }),
+          ],
+          canSave: true,
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
+    expect(screen.getByTestId("account-upload-input")).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Remove pending.pdf" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
   it("keeps persisted Provided rows visible beside upload and keys removal by id", () => {
     const onRemoveDocument = vi.fn();
     render(

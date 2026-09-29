@@ -332,7 +332,10 @@ and coordinates full-replace profile writes, ordered file uploads, and id-based 
 document Save uploads staged files and does not save an existing LP's unsaved profile draft. For a
 404 LP it first creates the valid profile using the session email. A failed network upload is
 reconciled against newly returned document ids before retry; if reconciliation fails, retry is
-blocked until Check uploads succeeds. Rejected rows use Re-upload to delete the rejected original,
+blocked until Check uploads succeeds. During that read, file selection and staged removal are
+locked. If new server documents and staged files share a duplicate filename, the page keeps all
+ambiguous staged copies and blocks retry. The LP must explicitly discard those staged copies,
+review the returned documents, and select any missing files again. Rejected rows use Re-upload to delete the rejected original,
 then the visible upload controls accept the correction. Provided rows on writable LPs have a
 remove button; Verified and frozen rows do not.
 

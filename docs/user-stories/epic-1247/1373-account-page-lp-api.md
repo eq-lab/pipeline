@@ -20,7 +20,7 @@ Stage two valid files, save, and reload. Each filename and Provided/Verified/Rej
 
 ## Story 4: Retry partial or uncertain uploads
 
-Upload duplicate filenames with one success and one rejected per-file result. Only the confirmed success leaves the staged list; the rejected file remains with its reason and is the only file sent on retry. Repeat with an all-rejected HTTP 400 response and verify every ordered reason is shown. If the network fails after upload, the page reads back new document ids before enabling a retry. If read-back fails, Check uploads must succeed before retry. An existing LP's unsaved Name or Country draft remains intact through uploads, deletion, and read-back.
+Upload duplicate filenames with one success and one rejected per-file result. Only the confirmed success leaves the staged list; the rejected file remains with its reason and is the only file sent on retry. Repeat with an all-rejected HTTP 400 response and verify every ordered reason is shown. If the network fails after upload, the page reads back new document ids before enabling a retry. If read-back fails, Check uploads must succeed before retry. While Check uploads is pending, Upload, staged removal, and Save are disabled. If read-back finds a new document matching duplicate staged filenames, no ambiguous staged copy is silently removed or sent again. Choose Discard uncertain staged files, review the server list, and select any missing files again. An existing LP's unsaved Name or Country draft remains intact through uploads, deletion, and read-back.
 
 ## Story 5: Preserve account navigation and previews
 

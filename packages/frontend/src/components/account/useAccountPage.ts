@@ -56,6 +56,7 @@ export function useAccountPage(enabled = true) {
   const [actionError, setActionError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [uncertainIds, setUncertainIds] = useState<number[] | null>(null);
+  const [ambiguousNames, setAmbiguousNames] = useState<string[]>([]);
   const identity = useRef<string | undefined>(undefined);
   const request = useRef(0);
   const documents = useAccountDocuments();
@@ -116,6 +117,7 @@ export function useAccountPage(enabled = true) {
     setBaseline({ legalName: "", country: "" });
     setActionError(undefined);
     setUncertainIds(null);
+    setAmbiguousNames([]);
     setBusy(false);
     if (!enabled) return;
     if (!token) {
@@ -212,8 +214,25 @@ export function useAccountPage(enabled = true) {
     const added = refreshed.documents.filter(
       (document) => !idsBefore.includes(document.id),
     );
+    const stagedCounts = new Map<string, number>();
+    const addedCounts = new Map<string, number>();
+    files.forEach((file) =>
+      stagedCounts.set(file.name, (stagedCounts.get(file.name) ?? 0) + 1),
+    );
+    added.forEach((document) =>
+      addedCounts.set(
+        document.original_filename,
+        (addedCounts.get(document.original_filename) ?? 0) + 1,
+      ),
+    );
+    const ambiguous = [...stagedCounts.keys()].filter(
+      (name) =>
+        (addedCounts.get(name) ?? 0) > 0 &&
+        ((stagedCounts.get(name) ?? 0) > 1 || (addedCounts.get(name) ?? 0) > 1),
+    );
     const matched: number[] = [];
     for (const document of added) {
+      if (ambiguous.includes(document.original_filename)) continue;
       const index = files.findIndex(
         (file, i) =>
           !matched.includes(i) && file.name === document.original_filename,
@@ -222,11 +241,14 @@ export function useAccountPage(enabled = true) {
     }
     documents.removeFilesAt(matched);
     adopt(refreshed, expected);
-    setUncertainIds(null);
+    setAmbiguousNames(ambiguous);
+    if (ambiguous.length === 0) setUncertainIds(null);
     setActionError(
-      matched.length
-        ? "Some files were uploaded before the connection failed. Review the remaining files and save again."
-        : "No new files were found. You can retry the upload.",
+      ambiguous.length
+        ? "New uploaded documents match staged files with duplicate names. We cannot tell which copy uploaded. Discard the uncertain staged files, review the uploaded list, then select any missing files again."
+        : matched.length
+          ? "Some files were uploaded before the connection failed. Review the remaining files and save again."
+          : "No new files were found. You can retry the upload.",
     );
   }
 
@@ -342,6 +364,7 @@ export function useAccountPage(enabled = true) {
     busy,
     actionError,
     uncertainIds,
+    ambiguousNames,
     documents,
     canSaveProfile,
     canUpload,
@@ -355,11 +378,29 @@ export function useAccountPage(enabled = true) {
         void refresh(token);
       }
     },
-    checkUploads: () => {
-      if (token && uncertainIds)
-        void reconcile(uncertainIds, token, documents.files).catch((error) => {
-          if (current(token)) setActionError(message(error));
-        });
+    checkUploads: async () => {
+      if (!token || !uncertainIds || busy) return;
+      setBusy(true);
+      try {
+        await reconcile(uncertainIds, token, documents.files);
+      } catch (error) {
+        if (current(token)) setActionError(message(error));
+      } finally {
+        if (current(token)) setBusy(false);
+      }
+    },
+    discardAmbiguous: () => {
+      if (busy || ambiguousNames.length === 0) return;
+      documents.removeFilesAt(
+        documents.files.flatMap((file, index) =>
+          ambiguousNames.includes(file.name) ? [index] : [],
+        ),
+      );
+      setAmbiguousNames([]);
+      setUncertainIds(null);
+      setActionError(
+        "Uncertain staged files were discarded. Review uploaded documents and select any missing files again.",
+      );
     },
   };
 }

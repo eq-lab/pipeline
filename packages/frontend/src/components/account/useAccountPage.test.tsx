@@ -275,6 +275,72 @@ describe("useAccountPage", () => {
     );
   });
 
+  it("keeps duplicate-name files staged until the user discards the ambiguous batch", async () => {
+    signIn("session@example.com");
+    mockGet
+      .mockResolvedValueOnce(lp({ documents: [] }))
+      .mockResolvedValueOnce(lp({ documents: [doc(7, "duplicate.pdf")] }));
+    mockUpload.mockRejectedValue(new Error("connection lost"));
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("loaded"));
+    act(() =>
+      result.current.documents.addFiles([
+        new File(["first"], "duplicate.pdf", { type: "application/pdf" }),
+        new File(["second"], "duplicate.pdf", { type: "application/pdf" }),
+      ]),
+    );
+    await act(async () => result.current.saveDocuments());
+    expect(result.current.lp?.documents.map((document) => document.id)).toEqual(
+      [7],
+    );
+    expect(result.current.documents.files).toHaveLength(2);
+    expect(result.current.ambiguousNames).toEqual(["duplicate.pdf"]);
+    expect(result.current.canUpload).toBe(false);
+    expect(result.current.actionError).toContain(
+      "cannot tell which copy uploaded",
+    );
+    act(() => result.current.discardAmbiguous());
+    expect(result.current.documents.files).toHaveLength(0);
+    expect(result.current.uncertainIds).toBeNull();
+    act(() =>
+      result.current.documents.addFiles([
+        new File(["replacement"], "missing.pdf", { type: "application/pdf" }),
+      ]),
+    );
+    expect(result.current.canUpload).toBe(true);
+    expect(mockUpload).toHaveBeenCalledOnce();
+  });
+
+  it("locks actions while Check uploads is reading the server", async () => {
+    signIn("session@example.com");
+    let resolve!: (value: LpResponse) => void;
+    mockGet
+      .mockResolvedValueOnce(lp({ documents: [] }))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockReturnValueOnce(
+        new Promise((done) => {
+          resolve = done;
+        }),
+      );
+    mockUpload.mockRejectedValue(new Error("connection lost"));
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("loaded"));
+    act(() =>
+      result.current.documents.addFiles([
+        new File(["a"], "company.pdf", { type: "application/pdf" }),
+      ]),
+    );
+    await act(async () => result.current.saveDocuments());
+    act(() => {
+      void result.current.checkUploads();
+    });
+    expect(result.current.busy).toBe(true);
+    expect(result.current.canUpload).toBe(false);
+    await act(async () => resolve(lp({ documents: [doc(7)] })));
+    expect(result.current.busy).toBe(false);
+    expect(result.current.documents.files).toHaveLength(0);
+  });
+
   it("refuses profile and document mutation for a frozen LP", async () => {
     signIn("session@example.com");
     mockGet.mockResolvedValue(

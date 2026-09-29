@@ -188,6 +188,15 @@ function AccountPageContent({
             Check uploads
           </Button>
         )}
+        {ready && account && account.ambiguousNames.length > 0 && (
+          <Button
+            variant="secondary"
+            disabled={account.busy}
+            onClick={account.discardAmbiguous}
+          >
+            Discard uncertain staged files
+          </Button>
+        )}
 
         {ready && (
           <div className="flex w-full flex-col items-start gap-3">
@@ -207,13 +216,29 @@ function AccountPageContent({
               missingDocumentName={missingDocumentName}
               stagedFiles={files}
               rejected={rejected}
-              onAddFiles={addFiles}
-              onRemoveStagedFile={removeFile}
+              onAddFiles={
+                account
+                  ? (picked) => {
+                      if (!account.busy && !account.uncertainIds)
+                        addFiles(picked);
+                    }
+                  : addFiles
+              }
+              onRemoveStagedFile={
+                account
+                  ? (index) => {
+                      if (!account.busy && !account.uncertainIds)
+                        removeFile(index);
+                    }
+                  : removeFile
+              }
               canSave={account ? account.canUpload : canSave}
               onSave={account ? () => void account.saveDocuments() : handleSave}
               production={Boolean(account)}
               writable={account?.writable ?? true}
-              busy={account?.busy}
+              busy={
+                account ? account.busy || Boolean(account.uncertainIds) : false
+              }
               onRemoveDocument={
                 account ? (id) => void account.removeDocument(id) : undefined
               }
