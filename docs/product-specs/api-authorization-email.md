@@ -109,6 +109,17 @@ stuffing against `login`, which carries no captcha, and it does not bound a
 distributed signup flood. Per-IP and global rate limiting is not yet
 implemented — see TD-81.
 
+## Email delivery
+
+SendGrid v3 `mail/send`: one recipient per call, `text/plain` only, 10s timeout, no retry.
+`SENDGRID_API_KEY` is required and, unlike `TURNSTILE_SECRET_KEY` above, does not degrade
+gracefully — absent (with `EMAIL_DEV_LOG` unset), the API refuses to boot, since silently
+logging live passcodes in production is worse than refusing to start. `EMAIL_DEV_LOG=true`
+is the dev/test escape hatch; `SENDGRID_FROM` is required alongside the key (no default);
+`SENDGRID_BASE_URL` (EU residency) is config, not code. Also requires Domain
+Authentication/DMARC on `pipeline.one`, or mail is spam-foldered. A send failure surfaces
+as `500`; see **TD-96** / **TD-97** for the accepted consequences of not swallowing it.
+
 ## Data Model
 
 Adds `otp_codes` to the `accounts` model in

@@ -10,7 +10,7 @@ use shared::account_repo::AccountRepo;
 use shared::auth_user_repo::AuthUserRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
-use shared::email::{EmailSender, LoggingEmailSender};
+use shared::email::EmailConfig;
 use shared::kyb_document_repo::KybDocumentRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
@@ -75,11 +75,12 @@ async fn main() -> anyhow::Result<()> {
     let kyb_storage = KybStorageConfig::from_env()?;
     let kyb_limits = kyb_storage.limits;
     let object_store = kyb_storage.object_store();
+    // Same required-not-optional pattern as kyb_storage above (docs/product-specs/api-authorization-email.md#email-delivery).
+    let email_sender = EmailConfig::from_env()?.sender();
     let account_repo = AccountRepo::new(pool.clone());
     let otp_repo = OtpRepo::new(pool.clone());
     let login_attempt_repo = LoginAttemptRepo::new(pool.clone());
     let captcha = TurnstileVerifier::from_env();
-    let email_sender: Arc<dyn EmailSender> = Arc::new(LoggingEmailSender);
 
     // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
     // attempt (no retry backoff) — this is a synchronous write path, so a dead URI
