@@ -60,6 +60,26 @@ describe("useEmailAuthFlow — authenticated identity", () => {
 });
 
 describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
+  it("does not submit with an expired signup token", async () => {
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+    act(() => result.current.onSignupToken("stale-token"));
+    expect(result.current.signupCaptchaReady).toBe(true);
+    act(() => result.current.onSignupCaptchaStatus("loading"));
+    expect(result.current.signupCaptchaReady).toBe(false);
+    await act(async () => {
+      await result.current.handleCreateAccountSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      });
+    });
+    expect(mockSignup).not.toHaveBeenCalled();
+    expect(result.current.createAccountFormError).toContain(
+      "Verification is still loading",
+    );
+  });
+
   it("closing the flow clears the signup captcha token and resets the widget", () => {
     const resetSignup = vi.fn();
     const { result, rerender } = renderHook(
@@ -69,7 +89,10 @@ describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
     );
 
     act(() => {
-      result.current.signupTurnstileRef.current = { reset: resetSignup };
+      result.current.signupTurnstileRef.current = {
+        reset: resetSignup,
+        retry: vi.fn(),
+      };
       result.current.onSignupToken("stale-signup-token");
     });
     expect(result.current.signupCaptchaReady).toBe(true);
@@ -89,7 +112,10 @@ describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
     );
 
     act(() => {
-      result.current.otpTurnstileRef.current = { reset: resetOtp };
+      result.current.otpTurnstileRef.current = {
+        reset: resetOtp,
+        retry: vi.fn(),
+      };
       result.current.onOtpToken("stale-otp-token");
     });
 

@@ -4,7 +4,7 @@ Source: https://github.com/eq-lab/pipeline/issues/1361
 
 ## Scope
 
-Make the Create account screen explain why Sign Up remains disabled after valid credentials when Turnstile has not supplied a token, and let the user retry a failed challenge without reloading. Surface failures in the OTP auto-resend path and allow an immediate manual retry when no code was sent. Distinguish an invalid OTP from a network or server failure. Preserve captcha gating and the existing email/password policy. The invalid `size: "invisible"` option mentioned in the issue was already fixed in #1357; keep the current `size: "flexible"`.
+Make Sign Up actionable after valid credentials while blocking the API request until Turnstile supplies a fresh token. Explain a missing token and let the user retry a failed challenge without reloading. Surface failures in the OTP auto-resend path and allow an immediate manual retry when no code was sent. Distinguish an invalid OTP from a network or server failure. Preserve captcha gating and the existing email/password policy. The invalid `size: "invisible"` option mentioned in the issue was already fixed in #1357; keep the current `size: "flexible"`.
 
 ## Assumptions and Risks
 
@@ -19,11 +19,20 @@ _None_
 
 ## Implementation Steps
 
-1. Extend `packages/frontend/src/components/Turnstile.tsx` with explicit loading, ready, and error reporting, plus token-expiry handling. Reject script errors and a finite load timeout, clear the failed module promise and script element, and catch `render` failures. Add a retry path that starts a fresh script/widget attempt and preserves `reset`/`remove` cleanup.
-2. In `packages/frontend/src/components/EmailAuthFlow.tsx` and `useEmailAuthFlow.ts`, track the signup and OTP captcha states separately. Clear stale tokens when a challenge expires or fails. Show an accessible loading caption, error, and retry control in the Create account slot through `CreateAccountModal.tsx`; show a visible unavailable state when the site key is absent. Keep Sign Up disabled until both credential rules and a fresh token pass. Provide analogous OTP captcha feedback so Resend does not silently stall.
-3. Replace the `403 email_not_verified` auto-resend `.catch(() => {})` in `useEmailAuthFlow.ts` with error state passed to `OtpModal.tsx`/`useOtpModal.ts`. On failure, say the code was not sent and permit immediate manual retry even during the initial countdown; after a successful resend, restore the countdown. Clear this state on screen close/change and avoid stale async results changing a reopened flow.
-4. In `useOtpModal.ts`, map `verifyOtp` `401` to the invalid/expired code copy and network or `5xx` failures to the existing network error copy. Preserve the entered code for a retry and keep the verify error separate from resend and captcha errors.
-5. Add `docs/user-stories/epic-1247/1361-kyb-auth-captcha-errors.md` with steps for valid credentials awaiting captcha, script/widget failure and retry, absent site key, auto-resend failure and immediate retry, and OTP `401` versus network errors. Link it from `docs/user-stories/index.md`.
+1. **Completed.** Extend `packages/frontend/src/components/Turnstile.tsx` with explicit loading, ready, and error reporting, plus token-expiry handling. Reject script errors and a finite load timeout, clear the failed module promise and script element, and catch `render` failures. Add a retry path that starts a fresh script/widget attempt and preserves `reset`/`remove` cleanup.
+2. **Completed, with updated behavior.** In `packages/frontend/src/components/EmailAuthFlow.tsx` and `useEmailAuthFlow.ts`, track the signup and OTP captcha states separately. Clear stale tokens when a challenge expires or fails. Show an accessible loading caption, error, and retry control in the Create account slot through `CreateAccountModal.tsx`; show a visible unavailable state when the site key is absent. Sign Up becomes actionable after valid credentials, while the submit handler still requires a fresh token and shows why no request was sent. Provide analogous OTP captcha feedback so Resend does not silently stall.
+3. **Completed.** Replace the `403 email_not_verified` auto-resend `.catch(() => {})` in `useEmailAuthFlow.ts` with error state passed to `OtpModal.tsx`/`useOtpModal.ts`. On failure, say the code was not sent and permit immediate manual retry even during the initial countdown; after a successful resend, restore the countdown. Clear this state on screen close/change and avoid stale async results changing a reopened flow.
+4. **Completed.** In `useOtpModal.ts`, map `verifyOtp` `401` to the invalid/expired code copy and network or `5xx` failures to the existing network error copy. Preserve the entered code for a retry and keep the verify error separate from resend and captcha errors.
+5. **Completed.** Add `docs/user-stories/epic-1247/1361-kyb-auth-captcha-errors.md` with steps for valid credentials awaiting captcha, script/widget failure and retry, absent site key, auto-resend failure and immediate retry, and OTP `401` versus network errors. Link it from `docs/user-stories/index.md`.
+
+## Verification Results
+
+- Focused auth tests: 87 passed.
+- Full frontend tests: 136 files, 1988 tests passed.
+- Frontend lint and production build/typecheck: passed.
+- Documentation lint: 0 errors; informational warnings remain.
+- `cargo clippy --all -- -D warnings`: blocked by missing system `pkg-config` and OpenSSL development headers before checking repository Rust code. No Rust files changed. Cargo tests were not run after that blocked gate.
+- Stage browser verification remains for deployment QA: the stage gateway returned HTTP 401 to this runner, so its runtime site key and configured widget could not be inspected here.
 
 ## Test Strategy
 

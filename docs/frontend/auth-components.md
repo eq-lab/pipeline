@@ -209,13 +209,13 @@ focusable `<button>`; since #1315, "Create account" is a focusable `<button>` to
 email+password create-account screen. **Wired to `POST /v1/auth/signup` by #1265** via
 `EmailAuthFlow` (below) — `CreateAccountModal` stays presentational, gaining the same
 `isSubmitting`/`formError` seams as `SignInModal` (no password-field server error here — signup
-never returns a credential-specific rejection) plus two captcha-related props: `turnstileSlot?:
-ReactNode` (rendered below the password field) and `captchaReady?: boolean` (default `true`;
-`false` keeps Sign Up disabled even once the fields validate, matching the fact that `signup`
-requires a `captcha_token`). The modal shows verification status below the password field while
+never returns a credential-specific rejection) plus a captcha widget slot, status, and retry
+action. Sign Up enables once the fields validate; the flow refuses submission without a fresh
+captcha token and explains why no request was sent. The modal shows verification status below
+the password field while
 waiting for a token, then a visible failure with a retry action if Turnstile cannot load or
 render. An absent site key shows an unavailable message. These messages explain why an otherwise
-valid form still has a disabled Sign Up button. This is a thin delta on `SignInModal`, not
+valid form cannot yet submit. This is a thin delta on `SignInModal`, not
 a new screen family: the Figma frame is an instance of the same `Sign In` component with four
 slot overrides, and every other element (`ContinueWithWalletButton`, `OrDivider`, both
 `TextField`s, the disabled-submit treatment, the right-hand image pane) is reused verbatim via
@@ -751,13 +751,15 @@ below.
 Turnstile script (`https://challenges.cloudflare.com/turnstile/v0/api.js`, loaded once and
 memoized module-wide) rather than the `@marsidev/react-turnstile` package — the wrapper's surface
 is small enough (explicit `render`/`reset`/`remove`, one `flexible`-sized widget, one callback)
-that a dependency did not pay for itself. Props: `onToken: (token: string) => void`; ref handle:
-`{ reset: () => void }`. Renders a widget at `size: "flexible"` (fills the slot width). Whether any UI shows is set by the
+that a dependency did not pay for itself. Props: `onToken: (token: string) => void` and
+`onStatusChange`; ref handle: `{ reset: () => void; retry: () => void }`. Renders a widget at
+`size: "flexible"` (fills the slot width). Whether any UI shows is set by the
 widget mode in the Cloudflare dashboard (Managed / Non-interactive / Invisible) — `"invisible"` is
 not a valid `size` value and makes `turnstile.render` throw. Cloudflare runs its challenge, calling `onToken` once it has one (normally near-instant, occasionally an
 interactive challenge if Cloudflare's heuristics flag the client). The wrapper reports loading,
-ready, and failure states to its host; it also reports token expiry so the host can disable the
-action until a fresh token arrives. Script load and render failures clear the cached load attempt,
+ready, and failure states to its host; it also reports token expiry with a retry action so the
+host can prevent submission until a fresh token arrives. Script load and render failures clear
+the cached load attempt,
 allowing a retry to reinsert and render the widget without reloading the page. If
 `ENV.TURNSTILE_SITE_KEY` is empty, it reports an unavailable configuration state. A failed or
 unconfigured challenge is never treated as a valid captcha token. `siteverify` is never

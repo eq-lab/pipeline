@@ -146,15 +146,17 @@ what bounds outbound mail.
 ## Frontend
 
 Issue #1265 wires the auth modals to these endpoints (see
-`docs/frontend/auth-components.md`); #1362 opens the flow from the LP header
-and links signed-in users to `/account`. `/test?tab=auth` keeps an independent
-flow. Typed request wrappers live in `packages/frontend/src/api/auth.ts`.
+`docs/frontend/auth-components.md`). Issue #1362 adds the LP header's
+"Sign In"/"Sign Up" entry via `AuthFlowProvider` and an authenticated account
+link. `/test?tab=auth` keeps an independent flow. Typed wrappers are in
+`packages/frontend/src/api/auth.ts`; see its README for request shapes.
 
-**Session storage.** Successful `login`/`verify-otp` saves `{ token, expiresAt }`
-under `pipeline.auth.session`, deriving expiry from `expires_in`. `readSession()`
-clears expired sessions; there is no refresh endpoint. `useAuthSession()` exposes
-`{ token, isAuthenticated, signOut }` reactively within the current tab, without
-cross-tab `storage` event support.
+**Session storage.** `login`/`verify-otp` saves `{ token, expiresAt }` under
+`pipeline.auth.session`, deriving expiry from `expires_in`. `readSession()`
+clears expired sessions; there is no refresh endpoint. `useAuthSession()`
+(`useSyncExternalStore`) exposes `{ token, isAuthenticated, signOut }` within
+the current tab, without cross-tab `storage` support. The LP header (#1362)
+and account data flows (#1371, #1373) reuse this session.
 
 **403 `email_not_verified` routing.** On `login`'s `403 email_not_verified`,
 the frontend calls `resend-otp` (reusing the pending signup passcode's
@@ -168,15 +170,15 @@ OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
 "Code is incorrect or expired. Request a new one."; network/unexpected errors
 → "Network error — check your connection and try again."
 
-**Captcha availability.** Sign Up remains disabled until the email and password
-meet their rules and Turnstile supplies a token. While the token is pending,
-the form explains that verification is loading; if the challenge requires user
-interaction, the widget remains available to complete it. A script, widget, or
-challenge failure surfaces an error and a retry action. Retrying loads or
+**Captcha availability.** Sign Up becomes actionable once the email and password
+meet their rules. Submitting without a Turnstile token stays on the form, explains
+whether verification is still loading, failed, or unavailable, and makes no API
+request. If the challenge requires user interaction, the widget remains available
+to complete it. A script, widget, or challenge failure surfaces an error and a
+retry action. An expired token also shows a retry action. Retrying loads or
 renders a fresh challenge without requiring a page reload. An absent site key
-is an unavailable configuration state with a visible explanation; it never
-silently leaves Sign Up disabled. None of these states bypasses the API's
-captcha verification.
+is an unavailable configuration state with a
+visible explanation. None of these states bypasses the API's captcha verification.
 
 After login returns `403 email_not_verified`, the OTP screen attempts one
 captcha-gated resend when its token is ready. If that attempt fails, the OTP
@@ -192,5 +194,5 @@ visibility. `VITE_TURNSTILE_SITE_KEY` supplies the public key. The token goes to
 the API as `captcha_token`; the widget resets after signup and resend because
 tokens are single-use. Only the API calls `siteverify`.
 
-The frontend Docker entrypoint injects `VITE_TURNSTILE_SITE_KEY` through runtime
+The frontend Docker entrypoint injects `VITE_TURNSTILE_SITE_KEY` into runtime
 `window.__ENV__`, not a build-time Docker argument.
