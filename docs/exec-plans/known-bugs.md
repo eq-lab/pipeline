@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
+- **Date:** 2026-09-29
+- **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx` (`reconcile`, introduced by #1371).
+- **Symptom:** After a network failure during an upload of two different files with the same filename, server read-back may remove the wrong staged file, leaving the accepted one queued for a duplicate retry and losing the failed one from the draft. The modal also permits staged-file removal while its `Check uploads` read is pending, so stale index removal can drop a different file.
+- **Root cause:** Reconciliation matches returned documents to staged files by filename and then removes staged entries by array index, without locking staging or resolving duplicate-name ambiguity.
+- **Workaround:** Avoid selecting duplicate filenames in one batch. After an uncertain upload, inspect the saved document list before retrying and reselect any missing files. Fix the modal reconciliation separately from Account page issue #1373.
+
 ### BUG-22: `cargo clippy --all -- -D warnings` fails on `main` — unknown lint `clippy::duration_suboptimal_units`
 - **Date:** 2026-09-24
 - **Location:** `packages/worker/src/asset_price_collector/mod.rs:42` (`#[allow(clippy::duration_suboptimal_units)]`, added by #1023). Found while running the `test-fast` gate for #1265, a frontend-only change with zero Rust files touched.

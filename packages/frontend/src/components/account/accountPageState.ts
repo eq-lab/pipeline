@@ -21,8 +21,23 @@ export type KybDocumentStatus =
   | "Rejected";
 
 export interface AccountDocumentRecord {
+  id?: number;
   name: string;
   status: KybDocumentStatus;
+}
+
+export function documentsFromLp(
+  documents: {
+    id: number;
+    original_filename: string;
+    status: "Provided" | "Verified" | "Rejected";
+  }[],
+): AccountDocumentRecord[] {
+  return documents.map((document) => ({
+    id: document.id,
+    name: document.original_filename,
+    status: document.status,
+  }));
 }
 
 export interface DeriveDocumentsStateInput {
@@ -42,6 +57,20 @@ export function deriveDocumentsState({
   if (kybStatus === "UnderReview") return "under-review";
   if (stagedCount > 0) return "staged";
   return "verify";
+}
+
+export function deriveProductionDocumentsState({
+  kybStatus,
+  documents,
+  stagedCount,
+  writable,
+}: DeriveDocumentsStateInput & { writable: boolean }): AccountDocumentsState {
+  if (kybStatus === "Passed") return "verified";
+  if (kybStatus === "UnderReview") return "under-review";
+  if (documents.some((document) => document.status === "Rejected"))
+    return "invalid";
+  if (writable) return stagedCount > 0 ? "staged" : "verify";
+  return "under-review";
 }
 
 export interface AccountStatePreview {
