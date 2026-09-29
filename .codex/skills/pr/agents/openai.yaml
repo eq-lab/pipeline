@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pull Request"
+  short_description: "Create or update a Pipeline pull request"
+  default_prompt: "Use $pr to prepare a pull request for the current branch."

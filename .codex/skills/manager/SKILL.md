@@ -1,201 +1,195 @@
 ---
 name: manager
-description: Orchestrate Pipeline GitHub Issues end-to-end. Use when Codex is asked to run the manager workflow for one Issue or the trivial frontend backlog, claim the Issue, choose backend/frontend/trivial flow from labels, create or reuse a branch and draft PR, delegate planning/coding/UX testing/review, manage lifecycle labels, commits, pushes, and completion rules.
+description: Orchestrate the task lifecycle per ISSUE_PROTOCOL — pick epic sub-issues, delegate planning to planner, implementation to coder, QA passes to ux-tester, automated review to reviewer, park tasks awaiting user feedback, and drive PRs to ready/merge.
 ---
 
 # Manager
 
-Drive GitHub Issues through the Pipeline workflow. The manager owns lifecycle labels, branch/PR setup, commits, pushes, and final workflow reporting. Invoking this skill explicitly authorizes the manager to delegate phase work to Codex subagents when available.
+Use this skill to drive GitHub Issues end-to-end: a single Issue, or a continuous loop over the epic backlog.
 
-Start with:
-
-```text
-MODEL: <model> | EFFORT: <effort>
-```
-
-## Arguments
-
-Single Issue mode:
-
-- `<number>`
-- `issue <number>`
-- optional free text such as `and review it`
-
-Trivial loop mode:
-
-- `trivial`
-- `trivial <max-tasks>`
-
-If the argument cannot be parsed, ask for clarification.
 
 ## Required Context
 
-Read before taking action:
+Read these before taking action:
 
-1. `AGENTS.md`
-2. `.codex/skills/issue/SKILL.md`
-3. The target Issue: `gh issue view <number> -c`
+1. [`docs/ISSUE_PROTOCOL.md`](../../../docs/ISSUE_PROTOCOL.md) — the canonical contract this skill implements: issue types, labels, statuses, claiming, epics, artifacts.
+2. `AGENTS.md` — repo-wide rules (git, lint, merge policy).
+3. The target Issue itself (`gh issue view <number> -c`) **and its parent epic** — the epic body carries context (scope, Figma links, spec links) the sub-issue may not repeat.
 
-## Claim And Classify
+## Status model (from the protocol)
 
-1. Assign the Issue to yourself:
+`backlog` → [`planning` → `planned`] → `in-progress` → `review` → *(closed)*, plus `blocked` and the `needs-feedback` modifier. Exactly one status label per open issue; transitions are remove-then-add pairs. The manager is the **only** agent that mutates labels — planner, coder, and reviewer never do. Single exception: **ux-tester owns the epic's `qa` issue** (claim → results → `blocked`/closed) and the labels of the bug Issues it creates, per its skill contract.
 
-   ```bash
-   gh issue edit <number> --add-assignee @me
-   ```
+## Modes & Arguments
 
-2. Verify it is not assigned to someone else.
-3. Read labels:
+### Single-issue mode
 
-   ```bash
-   gh issue view <number> --json labels --jq '.labels[].name'
-   ```
+Drive exactly one Issue, then stop. Triggered by `/manager <n>` or `/manager issue <n>`. Optional trailing free text is a user-direction signal (e.g. "and review it" → run the reviewer phase regardless of heuristics).
 
-4. Choose the flow:
-   - `frontend` + `trivial`: Flow C, trivial frontend.
-   - `frontend` without `trivial`: Flow B, frontend.
-   - `backend`: Flow A, backend.
-   - neither `backend` nor `frontend`: stop; not dev work.
-   - both `backend` and `frontend`: stop, comment on the conflict, and ask the user.
+### Loop mode (default)
 
-## Common Prelude
+Triggered by `/manager` with no Issue number. Pick tasks from open epics and run them back-to-back, without pausing between tasks, until the cap is reached or no candidates remain.
 
-For a fresh Issue:
+- `/manager` or `/manager all` — all task types. Default cap **20** tasks.
+- `/manager frontend` — only `frontend` sub-issues (including `trivial`).
+- `/manager backend` — only `backend` sub-issues.
+- `/manager trivial` — only `frontend` + `trivial` sub-issues.
+- A trailing number caps the session: `/manager frontend 5`, `/manager all 30`.
 
-```bash
-git fetch origin
-git checkout main
-git pull --ff-only origin main
-git checkout -b <prefix>/<slug>
-git commit --allow-empty -m "chore: start work on #<number>"
-git push -u origin <branch>
-gh pr create --draft --title "<issue title>" --body "Closes #<number>"
-```
+Anything that parses as none of the above: ask the user to clarify before doing anything. Do not guess.
 
-If resuming an existing branch/PR, check it out and pull it fast-forward only. Never force-reset `main`.
+## Epic-only rule
 
-## Delegation
+The manager works **only on sub-issues of an epic** (`epic`-labelled Issue, native GitHub sub-issues).
 
-Prefer Codex `spawn_agent` with `agent_type: "worker"` for planner, coder, UX tester, and reviewer phases. Use `fork_context: true` when the subagent needs the same repo and issue context. Give each subagent a bounded prompt:
+- Loop mode: candidates are enumerated *from* open epics, so this holds by construction.
+- Single-issue mode: verify the Issue has a parent epic before claiming:
 
-```text
-Use $planner to plan issue <number>.
-```
+  ```bash
+  gh api graphql -f query='query($num:Int!){repository(owner:"eq-lab",name:"pipeline"){issue(number:$num){parent{number state}}}}' -F num=<number> --jq '.data.repository.issue.parent'
+  ```
 
-```text
-Use $coder to implement issue <number>.
-```
+  If `parent` is null, stop and tell the user — either attach the Issue to an epic first or handle it outside the manager.
 
-```text
-Use $ux-tester to test issue:<number>.
-```
+## Issue Selection (loop mode)
 
-For automated PR review, ask a worker to review the PR in code-review stance, post a PR comment, and not approve or merge.
-
-If subagents are unavailable, run the phase locally while preserving the same boundaries: planner does not implement, coder does not edit labels or commit, UX tester files bugs and updates quality docs, manager commits and pushes.
-
-## Flow A: Backend
-
-Use for Rust crates, contracts, workers, scripts, docs-only work, and anything uncertain.
-
-Planning:
-
-1. `backlog` to `planning`.
-2. Run `$planner <number>`.
-3. `planning` to `planned`.
-4. Commit and push planning artifacts: `Plan #<number>: <short title>`.
-5. Comment with plan summary and stop for human approval.
-
-Implementation after approval:
-
-1. `planned` to `executing`.
-2. Run `$coder <number>`.
-3. `executing` to `executed`.
-4. Commit and push: `Implement #<number>: <short title>`.
-
-Completion:
-
-1. Move the plan from `docs/exec-plans/active/` to `docs/exec-plans/completed/`.
-2. Mark the draft PR ready.
-3. Commit and push: `Complete #<number>: <short title>`.
-4. Remove the final status label.
-5. Do not merge. Backend PRs are human-merge only.
-
-Automated review is optional after completion when the Issue is an enhancement, the diff is significant, or the user explicitly asked for review. If review finds a blocker, comment and stop.
-
-## Flow B: Frontend
-
-Planning:
-
-1. `backlog` to `planning`.
-2. Run `$planner <number>`.
-3. Read `## Open Questions` in the plan.
-4. `planning` to `planned`.
-5. Commit and push planning artifacts.
-6. If open questions are not `_None_`, comment with them and stop. Otherwise continue.
-
-Implementation:
-
-1. `planned` to `executing`.
-2. Run `$coder <number>`.
-3. `executing` to `executed`.
-4. Commit and push implementation.
-
-UX testing:
-
-Run `$ux-tester issue:<number>` only when the Issue or plan references Figma and the diff touches frontend code. Transition `executed` to `testing`, then `testing` to `tested`, and commit testing artifacts. Critical bug Issues must be addressed before completion.
-
-Completion:
-
-Move the plan to completed, mark the PR ready, commit/push the plan move, remove the current status label, and stop. Frontend PRs are human-merge only.
-
-## Flow C: Trivial Frontend
-
-Use only for `frontend` + `trivial`.
-
-1. `backlog` to `executing`.
-2. Run `$coder <number>` with this prompt included:
-
-   ```text
-   Flow: trivial-frontend.
-   There is no execution plan. Work from the Issue body and comments directly. Verify lint, frontend build, and relevant tests are green.
-   ```
-
-3. From the manager, rerun frontend lint/build/test checks appropriate for the diff.
-4. If checks fail, comment on the Issue and stop.
-5. `executing` to `executed`.
-6. Commit and push: `Implement #<number>: <short title>`.
-7. Mark PR ready and remove `executed`.
-8. Poll PR checks until every check is `SUCCESS`. Red checks, conflicts, or unresolved checks within the cap stop the flow.
-9. Only after checks are green, admin-merge with squash and branch deletion:
+1. **Resume in-flight work first**: any sub-issue assigned to `@me` with status `planning` or `in-progress` and **no** `needs-feedback` label (matching the session filter). Resume the furthest-along one.
+2. Otherwise enumerate candidates from open epics:
 
    ```bash
-   gh pr merge <pr-number> --admin --squash --delete-branch
+   # open epics
+   gh issue list --state open --label epic --json number --jq '.[].number'
+   # sub-issues of each epic
+   gh api repos/eq-lab/pipeline/issues/<epic>/sub_issues --jq '.[] | select(.state == "open") | {number, title, labels: [.labels[].name], assignees: [.assignees[].login]}'
    ```
 
-Flow C is the only manager-owned merge path. Do not admin-merge backend or non-trivial frontend PRs.
+   A sub-issue is a candidate when **all** hold:
+   - status is `backlog`, or `planned` (plan exists and feedback — if any was requested — has been answered);
+   - no `needs-feedback` label (a parked task is the user's to release);
+   - no `blocked` label;
+   - unassigned or assigned to `@me`;
+   - matches the session filter (`frontend` / `backend` / `trivial`); `qa` and `docs` sub-issues are picked only by `all` (no filter).
+   **Epic-complete QA trigger** — special case that bypasses the rules above: while enumerating an epic's sub-issues, if **all non-`qa` sub-issues are closed** and the epic's `qa` issue is still **open** (typically `blocked` — `blocked` does not disqualify it here) and unassigned, the `qa` issue is a candidate for the **QA flow** regardless of its status label and session filter. This is the epic's final QA pass.
+3. Order: `priority` first, then by issue number ascending.
+4. Proceed with the chosen Issue immediately — no confirmation pause.
+5. No candidates and nothing to resume → the loop is done. Report and stop.
 
-## Trivial Loop
+## Claim the Issue (mandatory first step)
 
-When invoked as `trivial [max-tasks]`, repeatedly pick open `backlog,frontend,trivial` Issues that are unassigned or assigned to you. Prefer `priority`, then lower issue number. Stop when the cap is reached, no candidates remain, or a task fails verification.
+1. If `gh issue view <number> --json assignees` shows a non-`@me` assignee: skip the Issue (loop) or stop and ask (single-issue).
+2. Claim atomically: `gh issue edit <number> --add-assignee @me --remove-label <current-status> --add-label <next-status>` (next status per the flow below).
+
+Exception: **`qa` issues are not claimed by the manager** — the ux-tester subagent claims them itself (QA flow below). The manager only performs check 1 (skip if assigned to someone else).
+
+## Parking a task (`needs-feedback`)
+
+Whenever a task needs a human's input (plan review, open questions, ambiguous scope, conflicting labels):
+
+1. Post a comment on the Issue stating exactly what input is needed.
+2. Add the `needs-feedback` label. Keep the current status label and assignee as they are.
+3. **Loop mode: move on to the next task.** Single-issue mode: report and stop.
+
+The human answers in a comment and removes `needs-feedback`; a later manager run picks the Issue up again (selection rule 2). Never work on an Issue that carries `needs-feedback`.
+
+For **failures** (red tests, lint gate, subagent error) use `blocked` instead: post the failure summary as a comment, strip the in-flight status, add `blocked`, and continue to the next task. Environment-level failures (diverged `main`, broken toolchain) stop the session — they would poison every task.
+
+## Flow Detection
+
+Pick the flow from the claimed Issue's labels:
+
+- `qa` → **QA flow**
+- `frontend` + `trivial` → **Trivial-frontend flow**
+- `frontend` → **Frontend flow**
+- `backend` → **Backend flow**
+- `docs` → **Docs flow**
+- Both `frontend` and `backend` → inconsistent: comment on the Issue, park with `needs-feedback`, continue (loop) / stop (single).
+- None of the above → not dev work: skip it (loop) or stop and tell the user (single-issue).
+
+## Phase execution
+
+Invoking this skill authorizes phase delegation. When Codex subagents are available, use `spawn_agent` with a bounded task prompt such as `Use $planner to plan Issue #<n>` or `Use $coder to implement Issue #<n> on the current branch`. Wait for each phase to finish before changing labels or committing. Use the actual tool schema; Claude `Agent`, `Skill`, `subagent_type`, and model names are not Codex parameters. When delegation is unavailable, run the phase locally with the same ownership boundaries. For review, inspect the PR diff and post a PR comment; do not approve or merge.
+
+## Common Prelude (all flows except QA)
+
+1. **Sync `main` and branch off it**: `git fetch origin && git checkout main && git pull --ff-only origin main`, then create the feature branch (`feat/`, `fix/`, `docs/`, `chore/` prefix) or, when resuming, check out the existing branch and `git pull --ff-only`. If `main` has diverged locally, stop the session — do not force-reset.
+2. Ensure a draft PR exists: empty commit, push, `gh pr create --draft` with `Closes #<number>` in the body.
+3. Resume from the current status label — skip phases already passed.
+
+---
+
+## Backend flow
+
+Plan, park for human plan review, implement, PR ready. No manual testing phase.
+
+1. **Planning** (`backlog` → `planning`): launch the planner. It writes the exec plan into `docs/exec-plans/active/` and updates the product spec (`docs/product-specs/`) if user/agent-facing behavior changes. Commit `Plan #<n>: <title>`, push.
+2. **Park for plan review** (`planning` → `planned` + `needs-feedback`): post a comment summarising the plan and docs touched. Loop: next task. The human reviews, answers, and removes `needs-feedback`.
+3. **Implementation** (entry `planned` without `needs-feedback`; → `in-progress`): run the coder. The coder follows the plan, adds tests and the protocol §6 user-stories doc, runs `cargo clippy --all -- -D warnings`, `npx tsx scripts/lint-docs.ts` if TS changed, and `$test-fast`. Commit `Implement #<n>: <title>`, push.
+4. **Completion** (`in-progress` → `review`): move the exec plan to `docs/exec-plans/completed/`, commit `Complete #<n>: <title>`, push, mark the PR ready (`gh pr ready`). **Do not merge** — human-merge only; the Issue closes when the PR merges.
+5. **Automated PR review** (conditional): run the reviewer when the Issue introduces a new feature (per body/title), the diff is large (~300+ lines or ~10+ files), or the user explicitly asked. A **blocking** finding → comment on the Issue, park with `needs-feedback`. Otherwise continue.
+
+## Frontend flow
+
+Plan, gate only on open questions, implement, PR ready. **No testing phase of any kind** — no ux-tester, no Figma-triggered checks; QA happens later via the epic's `qa` issue (human-requested, or the automatic final pass once the epic's other sub-issues are closed).
+
+1. **Planning** (`backlog` → `planning`): launch the planner; the plan **must** include an `## Open Questions` section (`_None_` when clear). Commit, push, transition to `planned`.
+2. **Conditional gate**: if Open Questions lists items — post them as a comment, add `needs-feedback`, move on (loop) / stop (single). If `_None_` — proceed immediately.
+3. **Implementation** (`planned` → `in-progress`): launch the coder (prompt above, user-stories doc required). Commit, push.
+4. **Completion** (`in-progress` → `review`): archive the exec plan, mark the PR ready. Human-merge only.
+
+## Trivial-frontend flow
+
+No planning, no gates, no testing. Quality bar: lint clean, build clean, tests green.
+
+1. **Implementation** (`backlog` → `in-progress`, skipping the planning pair): use the coder with `Flow: trivial-frontend. There is no execution plan — work from the Issue body, its comments, and the parent epic.` Include the user-stories requirement from protocol §6. After it returns, verify from the manager: `npx tsx scripts/lint-docs.ts` if TS/docs changed, and the frontend lint + build (`yarn workspace @pipeline/frontend lint` / `build`). On failure: comment, `blocked`, next task.
+2. **Completion & admin merge** (`in-progress` → `review`): mark the PR ready. This is the **only** flow where the manager merges its own PR:
+   - Wait 3 minutes (`sleep 180`), then poll `gh pr view <pr> --json state,mergeable,mergeStateStatus,statusCheckRollup` every 3 minutes, capped at **20 minutes total**.
+   - All checks `SUCCESS` → `gh pr merge <pr> --admin --squash --delete-branch` (`--admin` bypasses only the approval-required branch protection — `BLOCKED` mergeStateStatus is expected; red or unfinished checks are **never** bypassed).
+   - Any check failed / `DIRTY` (conflicts) / cap exceeded → comment on the Issue, `blocked`, next task.
+   - After merging, sync local `main`.
+
+## Docs flow
+
+`backlog` → `in-progress`: launch the coder (no plan; work from the Issue body and parent epic; no user-stories doc needed). Verify `npx tsx scripts/lint-docs.ts`. Commit, push, PR ready, → `review`. Human-merge only.
+
+## QA flow
+
+Entry — either of:
+
+- **Human-requested**: a `qa` sub-issue in `backlog` (ISSUE_PROTOCOL §5.3). The manager never flips a `qa` issue to `backlog` itself.
+- **Epic-complete trigger**: all non-`qa` sub-issues of the epic are closed and the `qa` issue is still open — even if `blocked`. This is the epic's final QA pass, so the manager runs it without waiting for a human. (The epic itself is never closed — see Rules.)
+
+Steps:
+
+1. Run `$ux-tester` with the **epic** number. The ux-tester owns the `qa` issue end-to-end: it claims it (`in-progress`), executes the user-stories docs under `docs/user-stories/epic-<N>/`, verifies against the epic's Figma references, files defects as `bug` sub-issues of the epic, posts the results comment, and finishes with the `qa` issue back to `blocked` — or closed (the epic stays open) when all siblings are closed and the pass is green. The manager does **not** touch the `qa` issue's labels.
+2. After it returns, verify: the results comment exists on the `qa` issue; the `qa` issue ended `blocked` or closed; filed bugs are attached as sub-issues of the epic. Repair any gap (e.g. attach a missed bug via `POST .../issues/<epic>/sub_issues`).
+3. **Commit and admin-merge the QA PR — mandatory, not conditional.** The ux-tester **never commits**: it updates `docs/QUALITY_SCORE.md` (and the results history) in the working tree and leaves committing to the manager (ux-tester SKILL §"Do not commit"). So a QA pass almost always leaves an **uncommitted change** — confirm with `git status --short`. Whenever any file changed, you **must** carry it through to a merged PR before this task ends:
+   - branch (`chore/qa-epic-<N>`), `git add -A`, commit `QA pass for epic #<N>`, push, `gh pr create` then `gh pr ready` (no `Closes #` — QA PRs are docs-only and close no Issue);
+   - **admin-merge** it using the same procedure as the trivial-frontend flow (Flow C, step 2): wait 3 minutes (`sleep 180`), poll `gh pr view <pr> --json state,mergeable,mergeStateStatus,statusCheckRollup` every 3 minutes (cap 20 minutes); all checks `SUCCESS` → `gh pr merge <pr> --admin --squash --delete-branch`, then sync local `main`.
+   - **Only** on a check failure / `DIRTY` (conflicts) / cap exceeded: comment the reason on the `qa` issue and leave the PR open for human merge. A red or unfinished check is never bypassed.
+
+   This is one of the two PRs the manager merges itself (see Rules). **Do not end the QA task — and in loop mode do not advance to the next candidate — while a QA working-tree change is uncommitted or its PR is left open for any reason other than failing checks.** `git status --short` must be clean before you move on. If the only thing the pass changed is nothing at all (rare — `git status` truly clean), there is no PR to merge; otherwise there always is.
+4. Loop mode: bugs the pass filed are new `backlog` candidates — continue the loop as usual (only after step 3 has merged the QA PR or parked it on a failing check).
+
+---
+
+## Task Loop
+
+- **Single-issue mode**: drive the Issue's flow as far as it goes without a human (parking included), report, stop.
+- **Loop mode**: after each task ends (PR ready / merged / parked / blocked), pick the next candidate. Stop when the session cap is reached, no candidates remain, or an environment-level failure occurs. Then report:
+  - tasks completed (PRs ready or merged),
+  - tasks parked `needs-feedback` (with what each is waiting for),
+  - tasks moved to `blocked` (with failure summaries),
+  - remaining candidates per epic.
 
 ## Rules
 
-- Only one lifecycle status label may be present at a time.
-- The manager is the only phase owner that edits lifecycle labels.
-- The manager commits phase artifacts after subagents return.
-- Do not close Issues manually when the PR body contains `Closes #<number>`.
-- Do not merge Flow A or Flow B PRs.
-- Never bypass red CI checks or merge conflicts.
-- If a subagent fails or work is blocked, comment on the Issue and ask the user how to proceed.
+- Delegate phase work when Codex subagents are available; otherwise run the phase locally before resuming manager duties.
+- The manager is the only label mutator; it claims before acting and verifies the status label after every subagent returns. Exception: the epic's `qa` issue and QA-filed bug Issues belong to ux-tester (QA flow) — the manager only verifies and repairs afterwards.
+- The manager owns all lifecycle commits and pushes (plan, implementation, archive).
+- Never close Issues manually — `Closes #<n>` in the PR body does it on merge. The `qa` issue is closed by ux-tester when the final pass is green (no PR carries it); the manager only repairs a gap ux-tester left. **Epics are never closed by any agent — they stay open permanently, even once every sub-issue is closed and the final pass is green.**
+- Merge policy per `AGENTS.md`: the manager admin-merges after explicit green checks in two cases — trivial-frontend PRs (Flow C) and the QA docs PR (QA flow, step 3); everything else is human-merge. The QA docs PR merge is **mandatory**: a QA pass leaves uncommitted artifacts (the ux-tester never commits), and the manager must commit, push, and admin-merge them. Never finish a QA task — or, in loop mode, advance to the next candidate — with a QA working-tree change left uncommitted; the only allowed non-merge outcome is a PR parked on a failing check.
+- A task that needs a human never stalls the loop: park it (`needs-feedback`) or block it (`blocked`) with a comment, and continue.
 
 ## Output
 
-Report:
-
-- Issue number, title, branch, and PR URL
-- Flow and phases completed
-- Commits pushed
-- Tests/checks run and results
-- Bugs filed or blockers found
-- Whether merge was left to a human or completed under Flow C
+Per task: Issue number, title, flow, phases run, PR URL and state, tests run, parked/blocked reason if any. Per session (loop mode): the four-part summary from **Task Loop**.

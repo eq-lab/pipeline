@@ -1,100 +1,119 @@
 ---
 name: ux-tester
-description: Manually UX-test Pipeline with browser MCP tooling. Use for issue-scoped UI testing, regression passes, updating docs/STORIES.md test cases, filing bug Issues from manual QA, and updating docs/QUALITY_SCORE.md after exercising the app in Chrome/Playwright/DevTools.
+description: Run story-based browser QA for a Pipeline epic, compare its Figma designs, file bug sub-issues, and update quality results. Use when an epic QA pass is requested or due as the final pass.
 ---
 
-# UX Tester
+# UX-Tester
 
-Manually validate Pipeline UI behavior with a real browser. Do not edit lifecycle labels, close parent Issues, commit, or push.
+Use this skill when the user (or the manager subagent) requests a QA pass for an epic: manual story-based testing of the epic's shipped work plus a visual check against the epic's Figma designs.
 
-Start and finish with:
 
-```text
-MODEL: <model> | EFFORT: <effort>
-```
 
-## Modes
+## Arguments
 
-- `update cases`: refresh `docs/STORIES.md` from completed Issues and plans.
-- `issue:<number>`: test one completed or in-flight Issue.
-- `regression`: run a practical regression pass across documented stories.
-
-Ask for clarification if no mode is clear.
+The argument is an **epic Issue number** (e.g. `463` or `epic:463`). The Issue must exist and carry the `epic` label — verify with `gh issue view <number> --json labels`. If no argument is provided, ask the user which epic to test.
 
 ## Required Context
 
-Read:
+Read these first:
 
 1. `AGENTS.md`
-2. `.codex/skills/issue/SKILL.md`
-3. `docs/STORIES.md` (create it if missing)
-4. `docs/QUALITY_SCORE.md`
+2. `docs/ISSUE_PROTOCOL.md` — §2 (`qa` lifecycle), §5 (claiming, QA scheduling), §6 (user-stories docs).
+3. `docs/QUALITY_SCORE.md`
+4. The `issue` skill: `.codex/skills/issue/SKILL.md` — for label conventions when filing bugs.
+5. The relevant product spec before executing stories or comparing rendered behavior.
 
-For `issue:<number>`, also read:
+Read additional context only as needed:
 
-```bash
-gh issue view <number> -c
-gh issue view <number> --json title,body,labels,assignees,url
-```
+- Relevant design docs (`docs/design-docs/`) when a story or acceptance check is unclear.
+- Completed plans in `docs/exec-plans/completed/` for traceability when a story doc is ambiguous.
 
-Open the matching plan from `docs/exec-plans/completed/` or `docs/exec-plans/active/`.
+## Workflow
 
-## Browser Workflow
-
-Always drive the browser for UI behavior. Prefer Chrome DevTools MCP when available; Playwright MCP is acceptable when it is the active browser tool.
-
-1. Resolve the app URL from README, `package.json`, package docs, or `docs/user-docs/_config.yml`. Pipeline frontend is typically `http://localhost:3000`.
-2. Start or reuse the dev server when needed.
-3. Navigate to target routes.
-4. Interact like a user: click, fill, hover, submit, navigate, resize.
-5. Use accessibility snapshots for structure and screenshots for visual evidence.
-6. Inspect console and network messages when diagnosing failures.
-
-## Update Cases
-
-1. Read recent closed Issues:
-
-   ```bash
-   gh issue list --state closed --limit 50 --json number,title,labels,closedAt
-   ```
-
-2. Inspect completed plans for shipped user-facing behavior.
-3. Add missing story coverage to `docs/STORIES.md`.
-4. Include traceability: Issue number, Issue URL, and completed plan path.
-5. Keep cases concrete: actor, setup, steps, expected result.
-
-Do not add speculative coverage for backlog or incomplete work unless explicitly asked.
-
-## Issue-Scoped Testing
-
-1. Resolve scope from Issue comments, labels, plan, and related stories.
-2. Build a focused checklist.
-3. Exercise each flow in the browser.
-4. Record pass, fail, and blocked results.
-5. File new defects as GitHub Issues.
-6. Update `docs/QUALITY_SCORE.md`.
-
-## Regression Testing
-
-1. Read all testable stories from `docs/STORIES.md`.
-2. Group by auth/access, shell/navigation, and feature flows.
-3. Exercise meaningful acceptance checks, not just route loads.
-4. File new defects and update `docs/QUALITY_SCORE.md`.
-
-## Bug Logging
-
-File defects as new Issues. Include the right flow label so the manager can pick them up. For frontend UX bugs, use `bug,frontend,backlog` by default; add `trivial` only for clearly mechanical fixes.
+### 1. Resolve the epic and its `qa` issue
 
 ```bash
-gh issue create --title "<short imperative>" --label "bug,frontend,backlog" --body "<body>"
+gh issue view <epic> -c                                   # epic body + comments — contains the Figma URL tables
+gh api repos/eq-lab/pipeline/issues/<epic>/sub_issues \
+  --jq '.[] | select(.labels[].name == "qa") | .number'   # the epic's qa sub-issue
 ```
 
-Issue body should include:
+- If the epic has no `qa` sub-issue, stop and report — the epic was not set up per `ISSUE_PROTOCOL.md`.
+- Read the `qa` issue and **all its comments** (`gh issue view <qa> -c`). The latest results comment tells you which stories are already verified green.
 
-```markdown
-**Linked issue:** #<parent-number>
-**Source story:** <story id, if any>
-**Plan:** <docs/exec-plans/... path, if any>
+### 2. Claim the `qa` issue
+
+- If the `qa` issue is assigned to someone else, **stop** — do not touch it (ISSUE_PROTOCOL §5.1).
+- If it is `backlog`, claim it atomically:
+
+  ```bash
+  gh issue edit <qa> --add-assignee @me --remove-label backlog --add-label in-progress
+  ```
+
+- If it is still `blocked` but a human invoked this skill directly, treat the invocation as the pass request: claim it the same way, removing `blocked` instead of `backlog`.
+
+### 3. Gather test inputs
+
+1. **Figma references** — extract every Figma URL from the epic body (typically tables keyed by state and viewport: desktop / mobile, wallet states, etc.). For each, note the `fileKey`, `nodeId`, and which state/viewport it represents.
+2. **User stories** — list `docs/user-stories/epic-<epic>/*.md`. Every doc in that directory is in scope. At minimum, execute the docs **not yet verified** per the latest results comment on the `qa` issue; rerun previously-green docs when the epic gained new merged work since that pass.
+3. If the directory is missing or empty, stop, report it, and return the `qa` issue to its prior status with an explanatory comment.
+
+### 4. Verify environment readiness
+
+Start or reuse the local app/dev server. Find the app URL from the project README or `package.json` scripts — typically `http://localhost:3000`. Pipeline is a Rust + TS monorepo; look in `scripts/` and `packages/` for seed/fixture commands. Use any seeding instructions embedded in the user-stories docs (e.g. `pipeline.mock.wallet.*` localStorage keys) to reproduce each story's preconditions.
+
+### 5. Execute the user stories
+
+For each user-stories doc, for each story:
+
+1. Set up the story's preconditions (seeding, viewport size, wallet state) exactly as the doc specifies.
+2. Drive the flow with an available browser tool (see "Browser workflow" below) — follow the doc's steps as a user would.
+3. Check every expected outcome the doc lists. A story passes only if all its expected outcomes hold.
+4. Record pass/fail/blocked per story as you go, with a one-line reason for every fail/blocked.
+
+### 6. Verify against Figma
+
+For each Figma reference from the epic body whose state/viewport you can reproduce, run a structured visual comparison while that state is set up (do it together with the matching story to reuse the seeded state):
+
+1. **Load the design:** use an available Figma tool with the `fileKey` and `nodeId`. Ignore generated React/Tailwind code; use the layout and reference screenshot. If no Figma tool is available, mark visual checks blocked with that reason.
+2. **Enumerate sections:** use available design metadata (or inspect the design context) to list the **direct child nodes** of the frame — these are the sections to compare. If there are more than ~8 children, group them into logical sections. This list is the comparison checklist — every entry must be checked.
+3. **Align the viewport:** resize the browser to the Figma frame's width. Mismatched viewports cause false proportion differences.
+4. **Pairwise section comparison — one section at a time.** For every child node:
+   1. Figma side: capture a focused screenshot for the child `nodeId`.
+   2. App side: find the corresponding element from the browser snapshot and capture an element screenshot. If it is missing, record that finding and continue.
+   3. Compare against this checklist, answering each line before moving on:
+      - [ ] Is the section present in the app at all?
+      - [ ] Is it in the same position relative to other sections (order)?
+      - [ ] Heading: same text? same size/weight? present at all?
+      - [ ] Body copy: same content? same paragraph splitting?
+      - [ ] Typography: font family, size, weight, alignment, line height
+      - [ ] Colors: text, background, borders, shadows
+      - [ ] Container styling: card vs plain, border radius, padding
+      - [ ] Layout: grid/column count, gap, item alignment
+      - [ ] Images: present? aspect ratio? position?
+      - [ ] Are there elements in the **app** that do **not** appear in Figma?
+      - [ ] Are there elements in **Figma** that do **not** appear in the app? (most commonly missed — bias yourself to look for absences)
+   4. Record findings as you go — one line per mismatch: `section <label>: <what differs>`.
+5. After the loop, do one final full-page scan (full-page screenshot pair) to catch differences in section *ordering* and *spacing between sections* that per-section screenshots miss. **Never rely on the full-page comparison alone** — it is for overview and ordering only.
+
+### 7. File bugs
+
+File every defect (failed story outcome or Figma mismatch) as a **new GitHub Issue** and attach it as a **sub-issue of the epic** (ISSUE_PROTOCOL §2: bugs found while testing an epic are sub-issues of that epic). One Issue per independent problem — do not batch unrelated defects.
+
+Labels — a flow label is **not optional**; without one the `manager` skill will skip the Issue:
+
+- `bug,frontend,backlog` — default for UX findings (visual / styling / copy / behavior on a frontend page).
+- `bug,frontend,trivial,backlog` — add `trivial` only when the fix is mechanical and self-contained: a CSS tweak, a prop default, a string change, a single-component visual fix with no data-flow or logic change.
+- Use `backend` instead of `frontend` when the defect is clearly server-side.
+
+```bash
+gh issue create \
+  --title "<short imperative>" \
+  --label "bug,frontend,backlog" \
+  --body "$(cat <<'EOF'
+**Epic:** #<epic-number>
+**Source story:** docs/user-stories/epic-<N>/<doc>.md — Story <n> (or "Figma comparison" with the node-id)
+**Figma:** <figma-url including node-id, if applicable>
 
 **Severity:** critical | high | medium | low
 
@@ -109,39 +128,82 @@ Issue body should include:
 
 **Environment**
 - App URL:
-- Browser:
+- Viewport:
 - Date:
+EOF
+)"
+
+# attach as sub-issue of the epic
+CHILD_ID=$(gh api repos/eq-lab/pipeline/issues/<new-number> --jq .id)
+gh api repos/eq-lab/pipeline/issues/<epic>/sub_issues -F sub_issue_id="$CHILD_ID"
 ```
 
-Comment on the parent Issue with the new bug number.
+Severity guidance:
 
-Severity:
+- **critical** — blocks the feature shipping; mismatches against contract / spec; data loss or security risk.
+- **high** — significantly degrades UX or wrong content on a primary surface.
+- **medium** — incorrect styling, minor copy mismatches, edge-case errors.
+- **low** — polish, cosmetic.
 
-- `critical`: blocks shipping, security/data loss, or spec contract violation.
-- `high`: primary UX or content is materially wrong.
-- `medium`: minor UX, copy, styling, or edge case.
-- `low`: polish.
+### 8. Post results and release the `qa` issue
 
-## Quality Score
+1. Post a **results comment on the `qa` issue**: stories run (per doc), pass/fail/blocked per story, Figma frames compared, bugs filed (numbers + severity). This comment is the verification history the next pass builds on — make per-story status machine-greppable (e.g. a table or `- [x] doc.md Story 1 — PASS`).
+2. Transition the `qa` issue per ISSUE_PROTOCOL §2:
+   - **Default:** back to `blocked` and unassign yourself (the next pass is again human-requested):
 
-After meaningful issue or regression testing, update `docs/QUALITY_SCORE.md` with:
+     ```bash
+     gh issue edit <qa> --remove-label in-progress --add-label blocked --remove-assignee @me
+     ```
 
-- date
-- scope
-- story coverage
-- pass/fail/blocked summary
-- bugs filed or confirmed
-- score and short reasoning
+   - **If all sibling sub-issues are closed and this pass is fully green:** close the `qa` issue. **Never close the epic** — epics stay open permanently, even when every sub-issue is closed and the final pass is green.
+3. Update `docs/QUALITY_SCORE.md` (see below). Do **not** commit — the manager/human commits testing artifacts.
 
-Score conservatively when evidence is incomplete.
+## Quality Score Updates
 
-## Output
+After each pass, update `docs/QUALITY_SCORE.md` with:
 
-Report:
+- test date
+- scope tested (epic number + `qa` issue number)
+- story coverage summary (docs run / stories passed / failed / blocked)
+- Figma frames compared
+- bugs filed (Issue numbers) or confirmed
+- a short numeric quality score (0–10 unless the document already establishes a different scale)
+- brief reasoning for the score
 
-- scope tested
-- cases executed
-- passes, failures, blocked items
-- bug Issues filed with severity
-- quality score updates
-- setup notes or blockers
+If there is not enough information for a confident score, say so explicitly and score conservatively.
+
+## Browser workflow
+
+Use available Chrome DevTools or Playwright browser tooling. Actually drive the browser; code inspection alone is not evidence of manual testing. If no browser tool is available, report the affected stories as blocked instead of claiming a pass.
+
+1. Navigate to the target flow and interact as a user would: click, fill, scroll, submit, and resize.
+2. Use accessibility or DOM snapshots for text and structure; screenshots for visual evidence.
+3. Inspect console and network events when diagnosing a failure.
+
+When setup is required, prefer existing scripts/fixtures from the repo over manual setup. Document any non-obvious setup in your final report.
+
+## Rules
+
+- **Label edits are limited to the epic's `qa` issue** (claim → results → `blocked`/close) and the status labels of bugs you create. Never relabel **or close** the epic itself, and never relabel its other sub-issues — the manager owns those transitions. Epics stay open permanently.
+- Do **not** implement fixes. Testing and filing only.
+- Do **not** commit. The manager/human commits testing artifacts (`docs/QUALITY_SCORE.md`) — your results comment on the `qa` issue is the durable record.
+- Bugs are filed as **new GitHub Issues** attached as sub-issues of the epic — never as comments-only.
+- Empty/unrealistic pages are not valid test targets — seed the state the story doc specifies before testing or comparing.
+- **Do not read the React/Tailwind code returned by `get_design_context`** — it biases the comparison.
+- **Bias toward finding absences.** After each section comparison, explicitly ask: "what is in the Figma screenshot that I cannot point to in the app screenshot?"
+- Align the browser viewport width to the Figma frame width before screenshotting.
+- Respect the 7-day Figma asset URL TTL — download assets locally before referencing them anywhere durable.
+
+## Output Expectations
+
+Your final message should include:
+
+- epic number and `qa` issue number
+- user-stories docs executed, with per-story pass/fail/blocked
+- Figma frames compared (node-ids) and findings
+- bug Issues filed (numbers + severity)
+- the `qa` issue's final status (`blocked` / closed)
+- quality score update
+- any blockers or stories that could not be executed, with reasons
+
+If testing could not be completed, explain the blocker clearly, return the `qa` issue to an honest status with a comment, and update docs only if there is a justified partial result.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pipeline Audit"
+  short_description: "Audit repo docs, issues, boundaries, and debt"
+  default_prompt: "Use $pipeline-audit to review Pipeline repository health."

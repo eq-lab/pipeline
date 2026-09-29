@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Fast"
+  short_description: "Run Pipeline lint, type checks, and unit tests"
+  default_prompt: "Use $test-fast to run the fast Pipeline verification suite."
