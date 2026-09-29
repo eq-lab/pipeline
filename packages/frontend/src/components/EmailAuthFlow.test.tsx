@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { forwardRef, useEffect, useImperativeHandle } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EmailAuthFlow } from "./EmailAuthFlow";
 import { ApiError } from "@/api";
@@ -10,6 +10,10 @@ const mockSignup = vi.fn();
 const mockVerifyOtp = vi.fn();
 const mockResendOtp = vi.fn();
 const mockLogin = vi.fn();
+const captchaControl = vi.hoisted(() => ({
+  autoToken: true,
+  onToken: undefined as undefined | ((token: string) => void),
+}));
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
@@ -28,9 +32,13 @@ vi.mock("@/components/Turnstile", () => ({
     ref,
   ) {
     useEffect(() => {
-      onToken("test-captcha-token");
+      captchaControl.onToken = onToken;
+      if (captchaControl.autoToken) onToken("test-captcha-token");
     }, [onToken]);
-    useImperativeHandle(ref, () => ({ reset: () => {} }));
+    useImperativeHandle(ref, () => ({
+      reset: () => queueMicrotask(() => onToken("retry-token")),
+      retry: () => onToken("retry-token"),
+    }));
     return null;
   }),
 }));
@@ -50,6 +58,8 @@ beforeEach(() => {
   mockVerifyOtp.mockReset();
   mockResendOtp.mockReset();
   mockLogin.mockReset();
+  captchaControl.autoToken = true;
+  captchaControl.onToken = undefined;
 });
 
 afterEach(() => {
@@ -57,6 +67,36 @@ afterEach(() => {
 });
 
 describe("EmailAuthFlow — signup happy path", () => {
+  it("allows a valid form while captcha is pending but sends no request until a token arrives", async () => {
+    captchaControl.autoToken = false;
+    const user = userEvent.setup();
+    mockSignup.mockResolvedValue(undefined);
+    render(
+      <EmailAuthFlow open initialScreen="create-account" onClose={vi.fn()} />,
+    );
+    await fillCredentials(user);
+    const signupButton = screen.getByRole("button", { name: "Sign Up" });
+    expect(signupButton).toBeEnabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Verification is loading",
+    );
+    await user.click(signupButton);
+    expect(mockSignup).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verification is still loading",
+    );
+    act(() => captchaControl.onToken?.("fresh-token"));
+    await waitFor(() =>
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+    );
+    await user.click(signupButton);
+    expect(mockSignup).toHaveBeenCalledWith({
+      email: "lp@example.com",
+      password: "P@ssw0rd!",
+      captchaToken: "fresh-token",
+    });
+  });
+
   it("signup -> OTP -> verify -> session saved and modal closes", async () => {
     const user = userEvent.setup();
     mockSignup.mockResolvedValue(undefined);
@@ -145,6 +185,25 @@ describe("EmailAuthFlow — sign-in error branches", () => {
         captchaToken: "test-captcha-token",
       }),
     );
+  });
+
+  it("failed auto-resend explains the missing code and allows an immediate retry", async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValue(new ApiError(403, "email_not_verified"));
+    mockResendOtp.mockRejectedValueOnce(
+      new ApiError(503, "provider unavailable"),
+    );
+    mockResendOtp.mockResolvedValueOnce(undefined);
+    render(<EmailAuthFlow open onClose={vi.fn()} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Sign In" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The code was not sent",
+    );
+    await user.click(screen.getByRole("button", { name: "Resend" }));
+    await waitFor(() => expect(mockResendOtp).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Resend in 00:59")).toBeInTheDocument();
   });
 
   it("403 suspended renders a form-level error, not the OTP screen", async () => {

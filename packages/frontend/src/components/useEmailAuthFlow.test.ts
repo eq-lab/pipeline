@@ -8,6 +8,7 @@ import { clearSession, readSession } from "@/auth/session";
 const mockLogin = vi.fn();
 const mockVerifyOtp = vi.fn();
 const mockSignup = vi.fn();
+const mockResendOtp = vi.fn();
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
@@ -16,6 +17,7 @@ vi.mock("@/api", async () => {
     login: (...args: unknown[]) => mockLogin(...args),
     verifyOtp: (...args: unknown[]) => mockVerifyOtp(...args),
     signup: (...args: unknown[]) => mockSignup(...args),
+    resendOtp: (...args: unknown[]) => mockResendOtp(...args),
   };
 });
 
@@ -23,6 +25,7 @@ beforeEach(() => {
   mockLogin.mockReset();
   mockVerifyOtp.mockReset();
   mockSignup.mockReset();
+  mockResendOtp.mockReset();
   clearSession();
 });
 
@@ -60,6 +63,98 @@ describe("useEmailAuthFlow — authenticated identity", () => {
 });
 
 describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
+  it("uses only a new OTP token after returning to Sign In and entering OTP again", async () => {
+    mockLogin.mockRejectedValue(new ApiError(403, "email_not_verified"));
+    mockResendOtp.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, initialScreen: "otp", onClose: vi.fn() }),
+    );
+    act(() => result.current.onOtpToken("old-token"));
+    act(() => result.current.goToSignIn());
+    await act(async () => {
+      await result.current
+        .handleSignInSubmit({
+          email: "lp@example.com",
+          password: "Test1234!",
+        })
+        .catch(() => {});
+    });
+    expect(result.current.screen).toBe("otp");
+    expect(mockResendOtp).not.toHaveBeenCalled();
+
+    act(() => result.current.onOtpToken("new-token"));
+    await waitFor(() =>
+      expect(mockResendOtp).toHaveBeenCalledWith({
+        email: "lp@example.com",
+        captchaToken: "new-token",
+      }),
+    );
+    expect(mockResendOtp).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores an old signup success after the flow closes and reopens", async () => {
+    let resolveSignup!: () => void;
+    mockSignup.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveSignup = resolve;
+      }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { open: boolean }) =>
+        useEmailAuthFlow({
+          open: props.open,
+          initialScreen: "create-account",
+          onClose: vi.fn(),
+        }),
+      { initialProps: { open: true } },
+    );
+    act(() => result.current.onSignupToken("old-token"));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.handleCreateAccountSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      });
+    });
+    rerender({ open: false });
+    rerender({ open: true });
+    const newWidgetReset = vi.fn();
+    act(() => {
+      result.current.signupTurnstileRef.current = {
+        reset: newWidgetReset,
+        retry: vi.fn(),
+      };
+      result.current.onSignupToken("new-token");
+    });
+    await act(async () => {
+      resolveSignup();
+      await pending;
+    });
+    expect(result.current.screen).toBe("create-account");
+    expect(result.current.signupCaptchaReady).toBe(true);
+    expect(newWidgetReset).not.toHaveBeenCalled();
+  });
+
+  it("does not submit with an expired signup token", async () => {
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+    act(() => result.current.onSignupToken("stale-token"));
+    expect(result.current.signupCaptchaReady).toBe(true);
+    act(() => result.current.onSignupCaptchaStatus("loading"));
+    expect(result.current.signupCaptchaReady).toBe(false);
+    await act(async () => {
+      await result.current.handleCreateAccountSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      });
+    });
+    expect(mockSignup).not.toHaveBeenCalled();
+    expect(result.current.createAccountFormError).toContain(
+      "Verification is still loading",
+    );
+  });
+
   it("closing the flow clears the signup captcha token and resets the widget", () => {
     const resetSignup = vi.fn();
     const { result, rerender } = renderHook(
@@ -69,7 +164,10 @@ describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
     );
 
     act(() => {
-      result.current.signupTurnstileRef.current = { reset: resetSignup };
+      result.current.signupTurnstileRef.current = {
+        reset: resetSignup,
+        retry: vi.fn(),
+      };
       result.current.onSignupToken("stale-signup-token");
     });
     expect(result.current.signupCaptchaReady).toBe(true);
@@ -89,7 +187,10 @@ describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
     );
 
     act(() => {
-      result.current.otpTurnstileRef.current = { reset: resetOtp };
+      result.current.otpTurnstileRef.current = {
+        reset: resetOtp,
+        retry: vi.fn(),
+      };
       result.current.onOtpToken("stale-otp-token");
     });
 

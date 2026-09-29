@@ -209,10 +209,13 @@ focusable `<button>`; since #1315, "Create account" is a focusable `<button>` to
 email+password create-account screen. **Wired to `POST /v1/auth/signup` by #1265** via
 `EmailAuthFlow` (below) — `CreateAccountModal` stays presentational, gaining the same
 `isSubmitting`/`formError` seams as `SignInModal` (no password-field server error here — signup
-never returns a credential-specific rejection) plus two captcha-related props: `turnstileSlot?:
-ReactNode` (rendered below the password field) and `captchaReady?: boolean` (default `true`;
-`false` keeps Sign Up disabled even once the fields validate, matching the fact that `signup`
-requires a `captcha_token`). This is a thin delta on `SignInModal`, not
+never returns a credential-specific rejection) plus a captcha widget slot, status, and retry
+action. Sign Up enables once the fields validate; the flow refuses submission without a fresh
+captcha token and explains why no request was sent. The modal shows verification status below
+the password field while
+waiting for a token, then a visible failure with a retry action if Turnstile cannot load or
+render. An absent site key shows an unavailable message. These messages explain why an otherwise
+valid form cannot yet submit. This is a thin delta on `SignInModal`, not
 a new screen family: the Figma frame is an instance of the same `Sign In` component with four
 slot overrides, and every other element (`ContinueWithWalletButton`, `OrDivider`, both
 `TextField`s, the disabled-submit treatment, the right-hand image pane) is reused verbatim via
@@ -386,18 +389,21 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
 `onBack` and `onDismiss` so Escape and the arrow are the same action):
 
 1. **`OtpInput`** (`@pipeline/ui`, see `ui-components.md#otpinput`) — six digits, `invalid` while
-   `status === "error"`.
+   `status === "error"` for an invalid or expired code.
 2. **Resend line** — `<p>` (Caption 12/16, `--color-pipeline-ink-muted`) while counting down
    (`Resend in MM:SS`); becomes a real `<button type="button" onClick={onResend}>` (ink color,
-   underline on hover) once the countdown reaches zero and no resend is in flight.
+   underline on hover) once the countdown reaches zero and no resend is in flight, or immediately
+   after a failed auto-resend so the user can retry a code that was not sent.
 3. **`turnstileSlot`** — rendered after the resend line; `EmailAuthFlow` supplies a
    `Turnstile` widget here (see "Turnstile" below) so a resend click always has a fresh captcha
-   token.
+   token. Loading, failure, and retry feedback also appears in this slot.
 4. **State-specific tail** — nothing while `idle`; a `role="status"` spinner (24×24 loader icon,
-   `animate-spin`) while `verifying`; a `role="alert"` caption ("Code is incorrect or expired.
-   Request a new one.", new `--text-pipeline-body-s` token, `--color-pipeline-negative-strong`)
-   while `error`; the same slot instead shows "Couldn't resend the code. Try again." when a resend
-   attempt rejects and no verify error is active (verify errors take priority over a resend error).
+   `animate-spin`) while `verifying`; a `role="alert"` caption for invalid/expired codes or a
+   network/server failure while `error`; the same slot shows that a code was not sent after a
+   failed auto-resend, or "Couldn't resend the code. Try again." after a manual resend failure.
+   After a `202` manual retry, it shows "Request accepted. If no code arrives, retry after the
+   countdown." because acceptance does not prove delivery during the backend cooldown.
+   Verify errors take priority over resend errors.
 
 **State machine** (`useOtpModal`) — `idle` → `verifying` → `error`:
 
@@ -406,14 +412,17 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
   being verified (`OtpInput` can re-fire `onChange` with the same value on paste) is ignored —
   it does not call `verify` a second time.
 - Reaching 6 digits sets `verifying` and awaits `verify(code)`: resolve → `idle` +
-  `onVerified?.(code)`; reject → `error`. Editing the code at all while a verify is in flight —
+  `onVerified?.(code)`; `401` reject → invalid/expired code error; network/`5xx` reject → network
+  error. Editing the code at all while a verify is in flight —
   even without reaching 6 digits again — bumps the internal request id, so the outstanding
   response is dropped via that guard when it eventually settles: no error, no `onVerified`, never
   overwriting the current (edited) state.
 - The 59-second resend countdown (`RESEND_COUNTDOWN_SECONDS`) starts on open and ticks once per
   second, independently of the verify/error state. Clicking `Resend` once enabled awaits
-  `resend()`: success restarts the countdown to 59s; failure surfaces the resend-error caption and
-  leaves the countdown at zero, so `Resend` stays clickable for an immediate retry.
+  `resend()`: `202` acceptance restarts the countdown to 59s and shows the accepted-request
+  notice; failure surfaces the resend-error caption and leaves `Resend` clickable for an
+  immediate retry. A failed auto-resend also unlocks it during
+  the initial countdown.
 - All state (code, status, countdown, resend-in-flight, resend error) resets whenever `open` flips
   `false → true`.
 
@@ -687,9 +696,9 @@ Wiring, screen by screen:
   single-use).
 - **OTP verify** → `verifyOtp({ email: pendingEmail, code })`. Success saves the session, closes
   the flow, and calls `onAuthenticated?.()` — `OtpModal`'s own `onVerified` seam is unused here
-  since `verify` itself performs the side effects. Failure simply rejects; `useOtpModal` renders
-  the generic error caption (see "OtpModal" above) since `verify-otp` gives no finer-grained
-  reason.
+  since `verify` itself performs the side effects. A `401` rejection shows the generic invalid or
+  expired code caption (see "OtpModal" above); a network error or server error shows the network
+  error caption instead.
 - **OTP resend** (manual, via the `Resend` button) → `resendOtp` with the OTP screen's own
   Turnstile token, then resets that widget. If no token is available yet (the widget hasn't
   yielded one, or the flow was closed and reopened before it did), the handler rejects with the
@@ -699,10 +708,14 @@ Wiring, screen by screen:
   above, a pending-auto-resend flag is set instead of calling `resendOtp` immediately (no token
   exists yet at that point — the OTP screen, and its `Turnstile` slot, have not mounted). An
   effect watches the OTP screen's captcha token and, once the widget yields one, fires the
-  deferred `resendOtp` exactly once and clears the flag. The Turnstile widget normally
-  resolves near-instantly on mount, so in practice the user sees the OTP screen open with the
-  fresh code already on its way; the countdown that starts on open (see "OtpModal") correctly
-  reflects that a send just happened.
+  deferred `resendOtp` exactly once and clears the flag. Leaving OTP clears its captcha token,
+  and every new OTP entry waits for a token from the newly mounted widget. If that call fails,
+  the OTP screen
+  reports that the code was not sent and enables a manual retry immediately, even if the initial
+  59-second countdown has time left. A `202` manual retry restarts that countdown and explains
+  that the request may still have fallen inside the backend cooldown. The Turnstile
+  widget normally resolves near-instantly on mount, so in practice the user sees the OTP screen
+  open with the fresh code already on its way.
 - **Continue with wallet** (from either `SignInModal` or `CreateAccountModal`) → closes the auth
   flow (`onClose`) then calls `onConnectWallet?.()`. The `/test` preview wires this to
   `ConnectWalletModal`.
@@ -744,13 +757,18 @@ below.
 Turnstile script (`https://challenges.cloudflare.com/turnstile/v0/api.js`, loaded once and
 memoized module-wide) rather than the `@marsidev/react-turnstile` package — the wrapper's surface
 is small enough (explicit `render`/`reset`/`remove`, one `flexible`-sized widget, one callback)
-that a dependency did not pay for itself. Props: `onToken: (token: string) => void`; ref handle:
-`{ reset: () => void }`. Renders a widget at `size: "flexible"` (fills the slot width). Whether any UI shows is set by the
+that a dependency did not pay for itself. Props: `onToken: (token: string) => void` and
+`onStatusChange`; ref handle: `{ reset: () => void; retry: () => void }`. Renders a widget at
+`size: "flexible"` (fills the slot width). Whether any UI shows is set by the
 widget mode in the Cloudflare dashboard (Managed / Non-interactive / Invisible) — `"invisible"` is
 not a valid `size` value and makes `turnstile.render` throw. Cloudflare runs its challenge, calling `onToken` once it has one (normally near-instant, occasionally an
-interactive challenge if Cloudflare's heuristics flag the client). Renders nothing (`null`) and
-never calls `onToken` when `ENV.TURNSTILE_SITE_KEY` is empty, so an unconfigured environment
-degrades to "captcha-gated actions stay disabled" rather than throwing. `siteverify` is never
+interactive challenge if Cloudflare's heuristics flag the client). The wrapper reports loading,
+ready, and failure states to its host; it also reports token expiry with a retry action so the
+host can prevent submission until a fresh token arrives. Script load and render failures clear
+the cached load attempt,
+allowing a retry to reinsert and render the widget without reloading the page. If
+`ENV.TURNSTILE_SITE_KEY` is empty, it reports an unavailable configuration state. A failed or
+unconfigured challenge is never treated as a valid captcha token. `siteverify` is never
 called client-side — only the token is sent to the API, which verifies it server-side (see the
 product spec's "Bot defense" section).
 

@@ -145,27 +145,18 @@ what bounds outbound mail.
 
 ## Frontend
 
-Issue #1265 wires `SignInModal`, `CreateAccountModal`, and `OtpModal` (see
-`docs/frontend/auth-components.md`) to the four endpoints above. Issue #1362
-adds the production entry point: the LP header's "Sign In"/"Sign Up" buttons
-open the same flow app-wide via `AuthFlowProvider`, and the signed-in header
-shows an account icon linking to `/account` (now open to authenticated LPs,
-not only `ENV.IS_DEV`). The `/test?tab=auth` `AuthTab` diagnostics route keeps
-its own independent `EmailAuthFlow` instance. `packages/frontend/src/api/auth.ts`
-provides typed wrappers; see `packages/frontend/src/api/README.md` for the
-request/response shapes.
+Issue #1265 wires the auth modals to these endpoints (see
+`docs/frontend/auth-components.md`). Issue #1362 adds the LP header's
+"Sign In"/"Sign Up" entry via `AuthFlowProvider` and an authenticated account
+link. `/test?tab=auth` keeps an independent flow. Typed wrappers are in
+`packages/frontend/src/api/auth.ts`; see its README for request shapes.
 
-**Session storage.** A successful `login`/`verify-otp` response is stored via
-`packages/frontend/src/auth/session.ts` under the `pipeline.auth.session`
-`localStorage` key as `{ token, expiresAt }`, with `expiresAt` computed from
-`expires_in` at save time. `readSession()` returns `null` (and clears the key)
-once `expiresAt` has passed. There is no refresh endpoint, so an expired
-session requires a fresh login. `useAuthSession()` (`useSyncExternalStore`)
-exposes `{ token, isAuthenticated, signOut }` reactively within the tab that
-made the change; it does not listen for cross-tab `storage` events. This is
-the LP app's first email-account session — #1362 reused it for the production
-header entry (`TopBar` reads `isAuthenticated` directly); #1254 (`/v1/lps/*`
-KYB data wiring) is the remaining reuse.
+**Session storage.** `login`/`verify-otp` saves `{ token, expiresAt }` under
+`pipeline.auth.session`, deriving expiry from `expires_in`. `readSession()`
+clears expired sessions; there is no refresh endpoint. `useAuthSession()`
+(`useSyncExternalStore`) exposes `{ token, isAuthenticated, signOut }` within
+the current tab, without cross-tab `storage` support. The LP header (#1362)
+and account data flows (#1371, #1373) reuse this session.
 
 **403 `email_not_verified` routing.** On `login`'s `403 email_not_verified`,
 the frontend calls `resend-otp` (reusing the pending signup passcode's
@@ -179,21 +170,29 @@ OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
 "Code is incorrect or expired. Request a new one."; network/unexpected errors
 → "Network error — check your connection and try again."
 
-**Turnstile.** `packages/frontend/src/components/Turnstile.tsx` wraps the
-Cloudflare script (`challenges.cloudflare.com/turnstile/v0/api.js`), loaded
-once, rendered explicitly (not via a `data-sitekey` auto-render attribute) at
-`size: "invisible"` so it needs no layout accommodation in either the
-Create-account or OTP screens (neither has a Figma-designed widget slot). The
-site key is `VITE_TURNSTILE_SITE_KEY` (see `.env.example`); the widget renders
-nothing and never yields a token when the key is empty, which keeps `signup`
-and OTP resend inert in an unconfigured environment rather than erroring. The
-token is sent as `captcha_token`; the widget is reset (`turnstile.reset`)
-after every signup submit and every OTP resend, since Cloudflare tokens are
-single-use. `siteverify` is never called from the browser — only the API
-verifies the token, server-side, as described above.
+**Captcha availability.** Sign Up becomes actionable once the email and password
+meet their rules. Submitting without a Turnstile token stays on the form, explains
+whether verification is still loading, failed, or unavailable, and makes no API
+request. If the challenge requires user interaction, the widget remains available
+to complete it. A script, widget, or challenge failure surfaces an error and a
+retry action. An expired token also shows a retry action. Retrying loads or
+renders a fresh challenge without reloading. An absent site key shows an unavailable
+state. None of these states bypasses the API's captcha verification.
 
-The frontend Docker image injects `VITE_*` variables at container start
-(`docker/frontend/entrypoint.sh` writes `window.__ENV__` from the process
-environment; there is no build-time `ARG` for any `VITE_*` var in `Dockerfile`)
-— `VITE_TURNSTILE_SITE_KEY` was added to that script's `jq` object alongside
-the existing variables.
+After login returns `403 email_not_verified`, the OTP screen attempts one
+captcha-gated resend when its token is ready. If that attempt fails, the OTP
+screen says the code was not sent and offers an immediate retry during the normal
+countdown. A `202` retry only means the request was accepted: the backend may still
+be in its cooldown after a failed send and skip delivery. The screen says to retry
+after the restarted countdown if no code arrives. Leaving OTP discards the old
+captcha token before another auto-resend. Wrong or expired OTP responses use the
+OTP error copy above; network and server failures use the network error copy.
+
+**Turnstile.** `Turnstile.tsx` loads Cloudflare's script once and renders the
+widget explicitly at `size: "flexible"`; the widget's configured mode determines
+visibility. `VITE_TURNSTILE_SITE_KEY` supplies the public key. The token goes to
+the API as `captcha_token`; the widget resets after signup and resend because
+tokens are single-use. Only the API calls `siteverify`.
+
+The frontend Docker entrypoint injects `VITE_TURNSTILE_SITE_KEY` into runtime
+`window.__ENV__`, not a build-time Docker argument.

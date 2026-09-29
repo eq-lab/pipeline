@@ -39,8 +39,9 @@ throwaway test address.
 
 **Expected outcomes:**
 
-- The button is disabled until both fields validate; it may additionally stay disabled for a
-  moment while the Turnstile widget is still acquiring its first token.
+- The button is disabled until both fields validate. While the Turnstile widget is still
+  acquiring its first token, it is enabled, but clicking shows a verification message and
+  makes no signup request until the challenge succeeds.
 - On click, the modal transitions directly to the OTP screen ("Check your inbox — We've sent a
   passcode to `<the typed email>`") — `signup` always answers `202`, so there is no "email taken"
   branch to observe here.

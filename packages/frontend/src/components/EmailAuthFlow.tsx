@@ -54,12 +54,14 @@ export function EmailAuthFlow({
         onContinueWithWallet={flow.handleContinueWithWallet}
         onSignIn={flow.goToSignIn}
         formError={flow.createAccountFormError}
-        captchaReady={flow.signupCaptchaReady}
+        captchaStatus={flow.signupCaptchaStatus}
+        onCaptchaRetry={flow.retrySignupCaptcha}
         turnstileSlot={
           open && flow.screen === "create-account" ? (
             <Turnstile
               ref={flow.signupTurnstileRef}
               onToken={flow.onSignupToken}
+              onStatusChange={flow.onSignupCaptchaStatus}
             />
           ) : null
         }
@@ -70,9 +72,16 @@ export function EmailAuthFlow({
         email={flow.pendingEmail}
         verify={flow.handleOtpVerify}
         resend={flow.handleOtpResend}
+        autoResendResult={flow.autoResendResult}
+        captchaStatus={flow.otpCaptchaStatus}
+        onCaptchaRetry={flow.retryOtpCaptcha}
         turnstileSlot={
           open && flow.screen === "otp" ? (
-            <Turnstile ref={flow.otpTurnstileRef} onToken={flow.onOtpToken} />
+            <Turnstile
+              ref={flow.otpTurnstileRef}
+              onToken={flow.onOtpToken}
+              onStatusChange={flow.onOtpCaptchaStatus}
+            />
           ) : null
         }
       />

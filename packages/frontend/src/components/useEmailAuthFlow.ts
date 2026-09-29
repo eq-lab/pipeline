@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, login, resendOtp, signup, verifyOtp } from "@/api";
 import { saveSession } from "@/auth/session";
-import type { TurnstileHandle } from "@/components/Turnstile";
+import type { TurnstileHandle, TurnstileStatus } from "@/components/Turnstile";
 
 export type EmailAuthScreen =
   | "sign-in"
@@ -25,6 +25,12 @@ const SUSPENDED_ERROR_MESSAGE = "This account is suspended. Contact support.";
 const INVALID_CREDENTIALS_MESSAGE = "Incorrect email or password";
 const CAPTCHA_NOT_READY_MESSAGE =
   "Verification is still loading — please try again in a moment.";
+const CAPTCHA_FAILED_MESSAGE = "Verification failed to load. Try again.";
+const CAPTCHA_EXPIRED_MESSAGE = "Verification expired. Try again.";
+const CAPTCHA_UNAVAILABLE_MESSAGE =
+  "Verification is unavailable. Please contact support.";
+
+type AutoResendResult = { id: number; status: "success" | "error" };
 
 function describeApiError(error: unknown): string {
   if (error instanceof ApiError) return error.message || NETWORK_ERROR_MESSAGE;
@@ -46,7 +52,14 @@ export function useEmailAuthFlow({
     useState<string>();
   const [signupCaptchaToken, setSignupCaptchaToken] = useState<string>();
   const [otpCaptchaToken, setOtpCaptchaToken] = useState<string>();
+  const [signupCaptchaStatus, setSignupCaptchaStatus] =
+    useState<TurnstileStatus>("loading");
+  const [otpCaptchaStatus, setOtpCaptchaStatus] =
+    useState<TurnstileStatus>("loading");
+  const [autoResendResult, setAutoResendResult] = useState<AutoResendResult>();
   const autoResendPendingRef = useRef(false);
+  const flowGenerationRef = useRef(0);
+  const autoResendIdRef = useRef(0);
   const signupTurnstileRef = useRef<TurnstileHandle>(null);
   const otpTurnstileRef = useRef<TurnstileHandle>(null);
 
@@ -55,12 +68,20 @@ export function useEmailAuthFlow({
     setSignInFormError(undefined);
   }
 
+  function clearOtpCaptcha() {
+    setOtpCaptchaToken(undefined);
+    setOtpCaptchaStatus("loading");
+  }
+
   useEffect(() => {
     if (!open) return;
     setScreen(initialScreen);
     setPendingEmail("");
     clearSignInErrors();
     setCreateAccountFormError(undefined);
+    setAutoResendResult(undefined);
+    setOtpCaptchaToken(undefined);
+    setOtpCaptchaStatus("loading");
     autoResendPendingRef.current = false;
   }, [open, initialScreen]);
 
@@ -68,20 +89,48 @@ export function useEmailAuthFlow({
     if (open) return;
     setSignupCaptchaToken(undefined);
     setOtpCaptchaToken(undefined);
+    setSignupCaptchaStatus("loading");
+    setOtpCaptchaStatus("loading");
+    setAutoResendResult(undefined);
+    autoResendPendingRef.current = false;
+    flowGenerationRef.current += 1;
     signupTurnstileRef.current?.reset();
     otpTurnstileRef.current?.reset();
   }, [open]);
 
   useEffect(() => {
-    if (!autoResendPendingRef.current || !otpCaptchaToken) return;
+    if (
+      !open ||
+      screen !== "otp" ||
+      !autoResendPendingRef.current ||
+      !otpCaptchaToken
+    )
+      return;
     autoResendPendingRef.current = false;
+    const generation = flowGenerationRef.current;
     resendOtp({ email: pendingEmail, captchaToken: otpCaptchaToken })
-      .catch(() => {})
+      .then(
+        () => {
+          if (generation !== flowGenerationRef.current) return;
+          setAutoResendResult({
+            id: ++autoResendIdRef.current,
+            status: "success",
+          });
+        },
+        () => {
+          if (generation !== flowGenerationRef.current) return;
+          setAutoResendResult({
+            id: ++autoResendIdRef.current,
+            status: "error",
+          });
+        },
+      )
       .finally(() => {
+        if (generation !== flowGenerationRef.current) return;
         otpTurnstileRef.current?.reset();
         setOtpCaptchaToken(undefined);
       });
-  }, [otpCaptchaToken, pendingEmail]);
+  }, [open, screen, otpCaptchaToken, pendingEmail]);
 
   function dismiss() {
     onClose();
@@ -111,7 +160,10 @@ export function useEmailAuthFlow({
         setPasswordServerError(INVALID_CREDENTIALS_MESSAGE);
       } else if (error instanceof ApiError && error.status === 403) {
         if (error.message === "email_not_verified") {
+          flowGenerationRef.current += 1;
+          clearOtpCaptcha();
           setPendingEmail(email);
+          setAutoResendResult(undefined);
           autoResendPendingRef.current = true;
           setScreen("otp");
         } else {
@@ -136,19 +188,36 @@ export function useEmailAuthFlow({
     setCreateAccountFormError(undefined);
     const captchaToken = signupCaptchaToken;
     if (!captchaToken) {
-      setCreateAccountFormError(CAPTCHA_NOT_READY_MESSAGE);
+      setCreateAccountFormError(
+        signupCaptchaStatus === "error"
+          ? undefined
+          : signupCaptchaStatus === "expired"
+            ? undefined
+            : signupCaptchaStatus === "unavailable"
+              ? undefined
+              : CAPTCHA_NOT_READY_MESSAGE,
+      );
       return;
     }
+    const generation = flowGenerationRef.current;
     try {
       await signup({ email, password, captchaToken });
+      if (generation !== flowGenerationRef.current) return;
+      signupTurnstileRef.current?.reset();
+      setSignupCaptchaToken(undefined);
+      flowGenerationRef.current += 1;
+      clearOtpCaptcha();
       setPendingEmail(email);
       setScreen("otp");
     } catch (error) {
+      if (generation !== flowGenerationRef.current) return;
       setCreateAccountFormError(describeApiError(error));
       throw error;
     } finally {
-      signupTurnstileRef.current?.reset();
-      setSignupCaptchaToken(undefined);
+      if (generation === flowGenerationRef.current) {
+        signupTurnstileRef.current?.reset();
+        setSignupCaptchaToken(undefined);
+      }
     }
   }
 
@@ -162,7 +231,15 @@ export function useEmailAuthFlow({
   async function handleOtpResend() {
     const captchaToken = otpCaptchaToken;
     if (!captchaToken) {
-      throw new Error(CAPTCHA_NOT_READY_MESSAGE);
+      throw new Error(
+        otpCaptchaStatus === "error"
+          ? CAPTCHA_FAILED_MESSAGE
+          : otpCaptchaStatus === "expired"
+            ? CAPTCHA_EXPIRED_MESSAGE
+            : otpCaptchaStatus === "unavailable"
+              ? CAPTCHA_UNAVAILABLE_MESSAGE
+              : CAPTCHA_NOT_READY_MESSAGE,
+      );
     }
     try {
       await resendOtp({ email: pendingEmail, captchaToken });
@@ -179,10 +256,32 @@ export function useEmailAuthFlow({
     signInFormError,
     createAccountFormError,
     signupCaptchaReady: signupCaptchaToken !== undefined,
+    signupCaptchaStatus,
+    otpCaptchaStatus,
+    autoResendResult,
     signupTurnstileRef,
     otpTurnstileRef,
-    onSignupToken: setSignupCaptchaToken,
-    onOtpToken: setOtpCaptchaToken,
+    onSignupToken: (token: string) => {
+      setSignupCaptchaToken(token || undefined);
+      if (token) {
+        setSignupCaptchaStatus("ready");
+        setCreateAccountFormError(undefined);
+      }
+    },
+    onOtpToken: (token: string) => {
+      setOtpCaptchaToken(token || undefined);
+      if (token) setOtpCaptchaStatus("ready");
+    },
+    onSignupCaptchaStatus: (status: TurnstileStatus) => {
+      setSignupCaptchaStatus(status);
+      if (status !== "ready") setSignupCaptchaToken(undefined);
+    },
+    onOtpCaptchaStatus: (status: TurnstileStatus) => {
+      setOtpCaptchaStatus(status);
+      if (status !== "ready") setOtpCaptchaToken(undefined);
+    },
+    retrySignupCaptcha: () => signupTurnstileRef.current?.retry(),
+    retryOtpCaptcha: () => otpTurnstileRef.current?.retry(),
     handleSignInSubmit,
     handleCreateAccountSubmit,
     handleOtpVerify,
@@ -191,14 +290,20 @@ export function useEmailAuthFlow({
     dismiss,
     clearSignInErrors,
     goToSignIn: () => {
+      flowGenerationRef.current += 1;
+      autoResendPendingRef.current = false;
+      setAutoResendResult(undefined);
+      clearOtpCaptcha();
       clearSignInErrors();
       setScreen("sign-in");
     },
     goToCreateAccount: () => {
+      flowGenerationRef.current += 1;
       clearSignInErrors();
       setScreen("create-account");
     },
     goToForgotPassword: () => {
+      flowGenerationRef.current += 1;
       clearSignInErrors();
       setScreen("forgot-password");
     },

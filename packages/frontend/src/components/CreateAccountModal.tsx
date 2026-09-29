@@ -7,6 +7,7 @@ import {
   OrDivider,
 } from "@/components/AuthModalParts";
 import { useAuthCredentialsForm } from "@/components/useAuthCredentialsForm";
+import type { TurnstileStatus } from "@/components/Turnstile";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,8 @@ export interface CreateAccountModalProps {
   onContinueWithWallet?: () => void;
   onSignIn?: () => void;
   formError?: string;
-  captchaReady?: boolean;
+  captchaStatus?: TurnstileStatus;
+  onCaptchaRetry?: () => void;
   turnstileSlot?: ReactNode;
 }
 
@@ -33,7 +35,8 @@ export function CreateAccountModal({
   onContinueWithWallet,
   onSignIn,
   formError,
-  captchaReady = true,
+  captchaStatus = "ready",
+  onCaptchaRetry,
   turnstileSlot,
 }: CreateAccountModalProps) {
   const headingId = "create-account-modal-heading";
@@ -92,6 +95,39 @@ export function CreateAccountModal({
 
           {turnstileSlot}
 
+          {captchaStatus !== "ready" ? (
+            <div className="flex w-full flex-col items-center gap-2 text-center">
+              <p
+                role={captchaStatus === "loading" ? "status" : "alert"}
+                className={[
+                  "font-[family-name:var(--font-body)]",
+                  "text-[length:var(--text-pipeline-caption)]",
+                  "leading-[var(--text-pipeline-caption--line-height)]",
+                  captchaStatus === "loading"
+                    ? "text-[color:var(--color-pipeline-ink-muted)]"
+                    : "text-[color:var(--color-pipeline-negative-strong)]",
+                ].join(" ")}
+              >
+                {captchaStatus === "loading"
+                  ? "Verification is loading. You can complete it before signing up."
+                  : captchaStatus === "unavailable"
+                    ? "Verification is unavailable. Please contact support."
+                    : captchaStatus === "expired"
+                      ? "Verification expired. Try again."
+                      : "Verification failed to load. Try again."}
+              </p>
+              {captchaStatus === "error" || captchaStatus === "expired" ? (
+                <button
+                  type="button"
+                  onClick={onCaptchaRetry}
+                  className="cursor-pointer text-[color:var(--color-pipeline-ink)] underline"
+                >
+                  Retry verification
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           {formError ? (
             <p
               role="alert"
@@ -110,7 +146,7 @@ export function CreateAccountModal({
           <Button
             type="submit"
             variant="primary-blue"
-            disabled={!isValid || isSubmitting || !captchaReady}
+            disabled={!isValid || isSubmitting}
             className="!w-full !min-w-0 disabled:opacity-[0.32]"
           >
             Sign Up

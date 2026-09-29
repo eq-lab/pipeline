@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OtpModal } from "./OtpModal";
+import { ApiError } from "@/api";
 
 function renderModal(
   props: Partial<React.ComponentProps<typeof OtpModal>> = {},
@@ -26,7 +27,7 @@ async function typeCode(
 
 function pendingVerify() {
   let resolve!: () => void;
-  let reject!: () => void;
+  let reject!: (reason?: unknown) => void;
   const promise = new Promise<void>((res, rej) => {
     resolve = res;
     reject = rej;
@@ -110,7 +111,7 @@ describe("OtpModal (#1250, #1265)", () => {
 
     await typeCode(user);
     await act(async () => {
-      reject();
+      reject(new ApiError(401, "invalid code"));
       await promise.catch(() => {});
     });
 
@@ -120,6 +121,43 @@ describe("OtpModal (#1250, #1265)", () => {
     expect(screen.getByLabelText("Verification code")).toHaveAttribute(
       "aria-invalid",
       "true",
+    );
+  });
+
+  it.each([new Error("offline"), new ApiError(503, "unavailable")])(
+    "shows a network error for a non-401 verification failure",
+    async (error) => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const verify = vi.fn().mockRejectedValue(error);
+      renderModal({ verify });
+      await typeCode(user);
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Network error",
+      );
+      expect(screen.getByLabelText("Verification code")).toHaveValue("111111");
+    },
+  );
+
+  it("auto-resend failure unlocks Resend during the countdown", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const resend = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderModal({ resend });
+    rerender(
+      <OtpModal
+        open
+        onBack={vi.fn()}
+        resend={resend}
+        autoResendResult={{ id: 1, status: "error" }}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The code was not sent",
+    );
+    await user.click(screen.getByRole("button", { name: "Resend" }));
+    expect(resend).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Resend in 00:59")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Request accepted. If no code arrives, retry after the countdown.",
     );
   });
 

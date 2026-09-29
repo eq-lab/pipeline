@@ -1,11 +1,17 @@
 // spec: docs/frontend/auth-components.md#otpmodal
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "@/api";
 
 export const OTP_LENGTH = 6;
 export const OTP_ERROR_MESSAGE =
   "Code is incorrect or expired. Request a new one.";
 export const RESEND_COUNTDOWN_SECONDS = 59;
 export const RESEND_ERROR_MESSAGE = "Couldn't resend the code. Try again.";
+export const AUTO_RESEND_ERROR_MESSAGE = "The code was not sent. Try again.";
+export const RESEND_ACCEPTED_MESSAGE =
+  "Request accepted. If no code arrives, retry after the countdown.";
+export const OTP_NETWORK_ERROR_MESSAGE =
+  "Network error — check your connection and try again.";
 
 export type OtpStatus = "idle" | "verifying" | "error";
 
@@ -14,6 +20,7 @@ export interface UseOtpModalOptions {
   verify?: (code: string) => Promise<void>;
   resend?: () => Promise<void>;
   onVerified?: (code: string) => void;
+  autoResendResult?: { id: number; status: "success" | "error" };
 }
 
 export interface UseOtpModalResult {
@@ -24,6 +31,7 @@ export interface UseOtpModalResult {
   resendLabel: string;
   resendEnabled: boolean;
   resendError: string | undefined;
+  resendNotice: string | undefined;
   onResend: () => void;
 }
 
@@ -38,24 +46,50 @@ export function useOtpModal({
   verify,
   resend,
   onVerified,
+  autoResendResult,
 }: UseOtpModalOptions): UseOtpModalResult {
   const [code, setCodeState] = useState("");
   const [status, setStatus] = useState<OtpStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string>();
   const [remaining, setRemaining] = useState(RESEND_COUNTDOWN_SECONDS);
   const [isResending, setIsResending] = useState(false);
   const [resendError, setResendError] = useState<string>();
+  const [resendNotice, setResendNotice] = useState<string>();
+  const [allowImmediateResend, setAllowImmediateResend] = useState(false);
   const requestIdRef = useRef(0);
+  const resendRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (open) {
       setCodeState("");
       setStatus("idle");
+      setErrorMessage(undefined);
       setRemaining(RESEND_COUNTDOWN_SECONDS);
       setIsResending(false);
       setResendError(undefined);
+      setResendNotice(undefined);
+      setAllowImmediateResend(false);
       requestIdRef.current += 1;
+      resendRequestIdRef.current += 1;
+    } else {
+      requestIdRef.current += 1;
+      resendRequestIdRef.current += 1;
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !autoResendResult) return;
+    if (autoResendResult.status === "success") {
+      setResendError(undefined);
+      setResendNotice(undefined);
+      setAllowImmediateResend(false);
+      setRemaining(RESEND_COUNTDOWN_SECONDS);
+    } else {
+      setResendError(AUTO_RESEND_ERROR_MESSAGE);
+      setResendNotice(undefined);
+      setAllowImmediateResend(true);
+    }
+  }, [open, autoResendResult]);
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +105,7 @@ export function useOtpModal({
     const requestId = ++requestIdRef.current;
     setCodeState(next);
     if (status !== "idle") setStatus("idle");
+    setErrorMessage(undefined);
 
     if (next.length === OTP_LENGTH) {
       setStatus("verifying");
@@ -82,27 +117,43 @@ export function useOtpModal({
           setStatus("idle");
           onVerified?.(next);
         },
-        () => {
+        (error: unknown) => {
           if (requestIdRef.current !== requestId) return;
           setStatus("error");
+          setErrorMessage(
+            error instanceof ApiError && error.status === 401
+              ? OTP_ERROR_MESSAGE
+              : OTP_NETWORK_ERROR_MESSAGE,
+          );
         },
       );
     }
   }
 
   function onResend() {
-    if (remaining > 0 || isResending) return;
+    if ((remaining > 0 && !allowImmediateResend) || isResending) return;
     setResendError(undefined);
+    setResendNotice(undefined);
     setIsResending(true);
+    const requestId = ++resendRequestIdRef.current;
     const resendFn = resend ?? (() => Promise.resolve());
     resendFn().then(
       () => {
+        if (resendRequestIdRef.current !== requestId) return;
         setIsResending(false);
         setRemaining(RESEND_COUNTDOWN_SECONDS);
+        setAllowImmediateResend(false);
+        setResendNotice(RESEND_ACCEPTED_MESSAGE);
       },
-      () => {
+      (error: unknown) => {
+        if (resendRequestIdRef.current !== requestId) return;
         setIsResending(false);
-        setResendError(RESEND_ERROR_MESSAGE);
+        setResendError(
+          error instanceof Error && error.message.startsWith("Verification")
+            ? error.message
+            : RESEND_ERROR_MESSAGE,
+        );
+        setAllowImmediateResend(true);
       },
     );
   }
@@ -111,10 +162,14 @@ export function useOtpModal({
     code,
     setCode,
     status,
-    errorMessage: status === "error" ? OTP_ERROR_MESSAGE : undefined,
-    resendLabel: remaining > 0 ? formatCountdown(remaining) : "Resend",
-    resendEnabled: remaining === 0 && !isResending,
+    errorMessage: status === "error" ? errorMessage : undefined,
+    resendLabel:
+      remaining > 0 && !allowImmediateResend
+        ? formatCountdown(remaining)
+        : "Resend",
+    resendEnabled: (remaining === 0 || allowImmediateResend) && !isResending,
     resendError,
+    resendNotice,
     onResend,
   };
 }

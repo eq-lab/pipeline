@@ -412,11 +412,45 @@ describe("CreateAccountModal (#1249)", () => {
     expect(screen.getByRole("button", { name: "Sign Up" })).not.toBeDisabled();
   });
 
-  it("captchaReady=false keeps Sign Up disabled even with valid input", async () => {
+  it("valid credentials enable Sign Up while verification is loading", async () => {
     const user = userEvent.setup();
-    renderModal({ captchaReady: false });
+    renderModal({ captchaStatus: "loading" });
     await fillValid(user);
-    expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sign Up" })).toBeEnabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Verification is loading",
+    );
+  });
+
+  it("a failed verification shows a retry control", async () => {
+    const user = userEvent.setup();
+    const onCaptchaRetry = vi.fn();
+    renderModal({ captchaStatus: "error", onCaptchaRetry });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verification failed to load",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Retry verification" }),
+    );
+    expect(onCaptchaRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("an absent site key has a visible unavailable state", () => {
+    renderModal({ captchaStatus: "unavailable" });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verification is unavailable",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Retry verification" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("an expired challenge has a retry control", () => {
+    renderModal({ captchaStatus: "expired", onCaptchaRetry: vi.fn() });
+    expect(screen.getByRole("alert")).toHaveTextContent("Verification expired");
+    expect(
+      screen.getByRole("button", { name: "Retry verification" }),
+    ).toBeInTheDocument();
   });
 
   it("renders the turnstileSlot when provided", () => {

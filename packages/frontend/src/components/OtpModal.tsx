@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { OtpInput } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { useOtpModal } from "@/components/useOtpModal";
+import type { TurnstileStatus } from "@/components/Turnstile";
 
 // ── Loader icon ───────────────────────────────────────────────────────────────
 
@@ -34,6 +35,9 @@ export interface OtpModalProps {
   resend?: () => Promise<void>;
   onVerified?: (code: string) => void;
   turnstileSlot?: ReactNode;
+  captchaStatus?: TurnstileStatus;
+  onCaptchaRetry?: () => void;
+  autoResendResult?: { id: number; status: "success" | "error" };
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -46,6 +50,9 @@ export function OtpModal({
   resend,
   onVerified,
   turnstileSlot,
+  captchaStatus = "ready",
+  onCaptchaRetry,
+  autoResendResult,
 }: OtpModalProps) {
   const headingId = "otp-modal-heading";
   const {
@@ -56,8 +63,9 @@ export function OtpModal({
     resendLabel,
     resendEnabled,
     resendError,
+    resendNotice,
     onResend,
-  } = useOtpModal({ open, verify, resend, onVerified });
+  } = useOtpModal({ open, verify, resend, onVerified, autoResendResult });
 
   return (
     <AuthModalShell
@@ -116,6 +124,31 @@ export function OtpModal({
           </p>
         )}
         {turnstileSlot}
+        {captchaStatus !== "ready" ? (
+          <div className="flex flex-col items-center gap-2 text-center">
+            <p
+              role={captchaStatus === "loading" ? "status" : "alert"}
+              className="text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
+            >
+              {captchaStatus === "loading"
+                ? "Verification is loading for resend."
+                : captchaStatus === "unavailable"
+                  ? "Verification is unavailable. Please contact support."
+                  : captchaStatus === "expired"
+                    ? "Verification expired. Try again."
+                    : "Verification failed to load. Try again."}
+            </p>
+            {captchaStatus === "error" || captchaStatus === "expired" ? (
+              <button
+                type="button"
+                onClick={onCaptchaRetry}
+                className="cursor-pointer text-[color:var(--color-pipeline-ink)] underline"
+              >
+                Retry verification
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {status === "verifying" ? (
           <span
@@ -150,6 +183,13 @@ export function OtpModal({
             ].join(" ")}
           >
             {resendError}
+          </p>
+        ) : resendNotice ? (
+          <p
+            role="status"
+            className="text-center text-[length:var(--text-pipeline-body-s)] text-[color:var(--color-pipeline-ink-muted)]"
+          >
+            {resendNotice}
           </p>
         ) : null}
       </div>
