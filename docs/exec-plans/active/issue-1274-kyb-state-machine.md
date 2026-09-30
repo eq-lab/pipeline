@@ -9,14 +9,28 @@ Notifications", "Settlement Address" — **merged to `main`** (PR #1382, commit
 is gone, so the earlier `git show origin/docs/kyb-review-lifecycle:…` instruction
 in this plan is dead; ignore any surviving trace of it.
 
-**Revised 2026-09-30**, after the review of #1382 and after #1379 landed on its own
-branch. Three things changed and are folded in below:
+**Revised 2026-09-30** (first revision), after the review of #1382 and after #1379
+landed on its own branch: `review_document` gains an `UnderReview` precondition
+(scope item 7, step 7), and `InProgress` was corrected out of the submittable set.
 
-- This branch **rebases on top of #1379** (PR #1386, in review, merges first). Read
-  "Rebasing over #1379" under Assumptions and Risks before touching
-  `packages/shared/src/lp_repo.rs` or `packages/api/src/routes/lps.rs`.
-- `review_document` gains an `UnderReview` precondition — scope item 7, step 7.
-- The trustee verdict must reach the audit log — scope item 8, step 8.
+**Revised again 2026-09-30** (second revision), after the user answered both open
+questions. Three things changed:
+
+- **#1379 has merged** (`167caf5`) and this branch is rebased onto it. Its code is
+  in the working tree, so the section below — renamed "Composing with #1379
+  (merged)" — now describes **what is in the files**, not a pending merge. It has been re-verified line by line against
+  `packages/shared/src/lp_repo.rs`, `packages/api/src/routes/lps.rs` and
+  `packages/shared/tests/settlement_address.rs` as they now stand.
+- **`kyb_decided_by` stays out of the API entirely** — written to the column, never
+  returned, by `/v1/lps/me` or the trustee-only `/v1/lps/{id}`. Open Question 1
+  closed.
+- **No audit record at all.** The `tracing::info!` step the first revision proposed
+  is **deleted**, for `decide_kyb` and for `review_document`, and no tech-debt entry
+  is filed about the gap. The verdict has **no history** anywhere. Step 8 is now the
+  spec correction this decision forces. Open Question 2 closed.
+
+Both open questions are answered; the Open Questions section below is `_None_` and
+records the answers.
 
 ## Scope
 
@@ -53,9 +67,9 @@ In scope:
    the set itself moving.
 6. Rewrite the now-false doc comments that justify `Failed` staying writable
    (`lp_repo.rs` module + `allows_owner_writes`, `routes/lps.rs` module header
-   points 1–2, and the "#1274's job, so this gate is inert" sentence). After the
-   rebase this also covers the sentences #1379 added, which assert the opposite
-   half of the same rule — see "Rebasing over #1379".
+   points 1–2, and the "#1274's job, so this gate is inert" sentence). Now that
+   #1379 is merged this also covers the three sentences it left behind, which assert
+   the opposite half of the same rule — see "Composing with #1379 (merged)".
 7. **`review_document` gains a precondition: the LP must be `UnderReview`.**
    Today the handler enforces only `require_trustee` — there is no LP-status check
    at all. Combined with "a `Verified` document can never be deleted", a trustee
@@ -67,43 +81,48 @@ In scope:
    read (spec § KYB Review Lifecycle, ¶2: "Review runs only while the LP is
    `UnderReview`"). This lands here rather than in a sibling because it is a
    transition-adjacent invariant and this issue owns `routes/lps.rs`'s status rules.
-8. **The trustee verdict reaches the audit log.** "Only the latest decision is
-   retained; there is no review history" is a statement about the `lps` row, not an
-   exemption from `docs/product-specs/audit-logging.md` § Scope, which requires an
-   operator action in the Operations Console to be recorded with the actor, the
-   target resource, and the outcome. See step 8 — the honest finding is that no
-   such store exists in this repo, so the step proposes the smallest thing that is
-   not a lie, and Open Question 2 asks whether that is acceptable.
+8. **The verdict has no history, and the merged spec must be corrected to say so.**
+   Decided by the user (Issue comment, 2026-09-30): **no audit record is written at
+   all** — not a row, not a log line. The verdict lives only in the `lps` row, in
+   `kyb_decided_by` / `kyb_decided_at` / `kyb_decision_reason`. A second verdict
+   **overwrites the first with no trace anywhere**: no previous reason, no previous
+   decider, no previous time, in any store, on or off this box. That is accepted
+   deliberately, not overlooked — write it into the PR description in those words.
+   It makes one sentence of the merged spec false (it promises an append-only audit
+   store that does not exist and that nothing will now write), so this issue
+   corrects that sentence — step 8.
 
 Out of scope — each is a sibling sub-issue of #1376, do not touch:
 
 - `notify_on_review` and the narrowed write freeze on `POST /v1/lps/me` → **#1377**
 - Decision emails → **#1378**
-- Ungating `POST /v1/lps/me/link-address` from `kyb_status` → **#1379**, which has
-  **already landed** on `feat/1379-ungate-link-address` (PR #1386) and merges before
-  this branch. Do not re-do, re-litigate, or revert any of it; do not add a
-  `guard_writable` call to `link_address`. Only reconcile it — see "Rebasing over
-  #1379".
+- Ungating `POST /v1/lps/me/link-address` from `kyb_status` → **#1379**, **merged to
+  `main`** as `167caf5` (PR #1386) and already in this branch's history. Do not
+  re-do, re-litigate, or revert any of it; do not add a `guard_writable` call to
+  `link_address`. Only reconcile it — see "Composing with #1379 (merged)".
 - Making `accounts.status = 'Suspended'` actually gate requests → **#1380**
   (this issue owns the *write*, not the enforcement)
 - LP-app and Trustee-dashboard UI (trustee verdict buttons are #1271 under #1269)
-- Review **history** — no per-decision table on the `lps` side, no endpoint to read
-  past decisions, and no backfill; pagination or a status filter on `GET /v1/lps`
-  (the review queue is that listing filtered client-side). Scope item 8 adds an
-  audit record of the verdict, which is a different thing: an operator-action trail,
-  not a queryable review history. Building the append-only operator-action store
-  itself (a table, plus mirroring to the third-party sink) is **out of scope** and
-  stays a follow-up of `audit-logging.md`.
+- Review **history and any audit record of the verdict** — no per-decision table, no
+  endpoint to read past decisions, no backfill, no log line, no entry in an
+  operator-action store; pagination or a status filter on `GET /v1/lps` (the review
+  queue is that listing filtered client-side). Building the append-only
+  operator-action store `audit-logging.md` describes stays a follow-up of that spec
+  and is not this issue's, nor is a tech-debt entry about its absence — see scope
+  item 8 and step 8: the decision is that the verdict is simply not recorded
+  anywhere beyond the `lps` row, and the spec is corrected to match.
 
 ## Assumptions and Risks
 
 - **Spec is merged** (PR #1382, `d509486`) and is the authority. Re-read it from
   the working tree, not from a branch ref. Do not re-litigate its decisions — they
-  were settled with the user. Two places where this plan as first written drifted
-  from the merged text, both corrected below: `InProgress` is **not** a submit
-  source (§ KYB Review Lifecycle: "nothing transitions out of it"), and the verdict
-  **is** an audited operator action (same §, last ¶ of the decision-retention
-  paragraph).
+  were settled with the user. One place where this plan as first written drifted
+  from the merged text, corrected below: `InProgress` is **not** a submit source
+  (§ KYB Review Lifecycle: "nothing transitions out of it"). One place where the
+  **merged spec itself is wrong** and this issue corrects it: the same §'s
+  decision-retention paragraph promises the verdict is written to an append-only
+  audit store. There is no such store, and after the user's decision nothing will
+  write one — step 8.
 - **`Failed` becomes terminal and frozen.** `lps.owner_account_id` is UNIQUE, so a
   `Failed` LP is permanently dead by design; the account is suspended alongside it
   and reversal is manual DB intervention. #1267 documented the opposite rule, so
@@ -114,20 +133,18 @@ Out of scope — each is a sibling sub-issue of #1376, do not touch:
   `KybDocumentRepo::delete` all bind `owner_writable_strs()` into SQL. That is the
   intended behaviour (a failed LP freezes wholesale) but it is a behaviour change
   reached indirectly — call it out in the PR description.
-- **`lps_stellar_address_passed_ck` is already gone.** #1379's migration
-  `20260929000003_drop_lps_stellar_address_passed_ck.sql` drops it, and that
-  migration is on the branch this one rebases onto. So the constraint is not a
-  consideration here any more: do **not** re-add it, do not reason about it, and do
-  not touch that file. The settlement-address rule now lives only in
-  `LpRepo::link_address`'s `WHERE` predicate.
-- **Ordering against #1379 — settled: #1379 first, then #1274.** Recorded on the
-  Issue: #1379's predicate (`kyb_status <> 'Failed' AND (stellar_address IS NULL OR
-  kyb_status <> 'Passed')`) is vacuously permissive while `Passed` is unreachable,
-  so taking it first leaves a zero-width window. The reverse order has an
-  irreversible cost: the old predicate was one-shot (`stellar_address IS NULL`), so
-  an address typo'd during the window could never be corrected through the API once
-  the LP reached `Passed`. This branch therefore assumes #1379 is in its history and
-  must not be merged before it.
+- **`lps_stellar_address_passed_ck` is gone from `main`.** #1379's migration
+  `packages/shared/migrations/20260929000003_drop_lps_stellar_address_passed_ck.sql`
+  drops it and is now the newest migration in the directory (verified). So the
+  constraint is not a consideration here any more: do **not** re-add it, do not
+  reason about it, and do not touch that file. The settlement-address rule now lives
+  only in `LpRepo::link_address`'s `WHERE` predicate.
+- **Ordering against #1379 — resolved by the merge.** #1379 is in `main` (`167caf5`)
+  and in this branch's history, which is the order the Issue settled on and the one
+  with no window: its predicate (`kyb_status <> 'Failed' AND (stellar_address IS NULL
+  OR kyb_status <> 'Passed')`) was vacuously permissive while `Passed` was
+  unreachable, and this issue is what makes `Passed` reachable. Nothing is left to
+  sequence; what remains is composition, covered below.
 - **No integration coverage.** Repo rules forbid tests that reach a real Postgres,
   so the SQL predicates (the actual enforcement) are not test-covered. Everything
   test-covered here must therefore be a pure function, and the SQL must be a
@@ -137,113 +154,175 @@ Out of scope — each is a sibling sub-issue of #1376, do not touch:
   carries axum's default 2MB body limit (only the upload route is raised), so the
   blast radius is small — but bound it anyway, mirroring `MAX_LEGAL_NAME_LEN`.
 
-### Rebasing over #1379
+### Composing with #1379 (merged)
 
-#1379 (`feat/1379-ungate-link-address`, PR #1386) edits the same two files this
-issue edits and merges first. Read it before writing any code:
+**#1379 is merged** — `167caf5`, PR #1386, on `main`. This branch is rebased onto it,
+so **its code is already in the working tree**. Nothing below is a pending merge or a
+prediction; every claim here was re-verified against the files as they now stand, and
+the line numbers are from that reading. Read the code itself first:
 
 ```bash
-git diff main...origin/feat/1379-ungate-link-address --stat
-git diff main...origin/feat/1379-ungate-link-address -- \
-    packages/shared/src/lp_repo.rs packages/api/src/routes/lps.rs
+git show 167caf5 --stat
+git show 167caf5 -- packages/shared/src/lp_repo.rs packages/api/src/routes/lps.rs
 ```
 
-What it added: `KybStatus::allows_address_write(has_address)`; a three-clause
-`WHERE` in `LpRepo::link_address`; a status pre-check at the top of the
-`link_address` handler; migration `20260929000003_drop_lps_stellar_address_passed_ck.sql`;
-`packages/shared/tests/settlement_address.rs`; four tests in
-`packages/api/tests/lps.rs`; a widened TD-57 in the tech-debt tracker; a
-user-stories doc under `docs/user-stories/epic-1376/` plus its index row.
+What it put on `main`: `KybStatus::allows_address_write(has_address)`
+(`packages/shared/src/lp_repo.rs:92-98`); the
+`kyb_status <> 'Failed' AND (stellar_address IS NULL OR kyb_status <> 'Passed')`
+predicate in `LpRepo::link_address`; a status pre-check at the top of the
+`link_address` handler (`packages/api/src/routes/lps.rs:721-744`); migration
+`20260929000003_drop_lps_stellar_address_passed_ck.sql`;
+`packages/shared/tests/settlement_address.rs` (five tests); four tests in
+`packages/api/tests/lps.rs`; a widened TD-57; a user-stories doc under
+`docs/user-stories/epic-1376/` plus its index row.
 
-**Overlapping hunks, and what the rebase must preserve:**
+**Where this issue meets it, and what each contact requires:**
 
-1. `packages/shared/src/lp_repo.rs` module header — #1379 rewrote ¶1 ("`link_address`
-   … is not gated on reaching `Passed`"). This issue rewrites the *same paragraph
-   region* for the `Failed`-is-terminal rule. Keep both facts; do not drop #1379's
-   sentence while rewriting around it.
-2. `KybStatus` enum body — this issue inserts the `ChangesRequested` variant.
-   #1379's `allows_address_write` matches the variants exhaustively
-   (`NotStarted | InProgress | UnderReview => true`), so **adding the variant breaks
-   the build until `ChangesRequested` is classified there**. Classify it `true`: it
-   is a non-terminal status, and the spec says the address is settable "at any
-   status short of a terminal verdict". Do not collapse the arm to a `_` wildcard —
-   #1379's own test asserts that a new status must stop the match from compiling
-   until it is classified on purpose.
-3. `KybStatus::OWNER_WRITABLE` / `allows_owner_writes` — this issue removes `Failed`.
-   That is one half of the crossing #1379 documented, so its `allows_address_write`
-   doc comment ("the two policies cross at `UnderReview` and again, in the opposite
-   direction, at `Failed`") becomes **false** and must be rewritten in the same PR,
-   not left standing. After this issue the true statement is: the two policies still
-   cross at `UnderReview` (address open, profile frozen) and at `Passed` with no
-   address yet (one address write allowed, profile frozen), but `Failed` now closes
-   **both** — for independent reasons, which is the point worth keeping: the address
-   closure rests on `stellar_address` being UNIQUE across LPs and must not be
-   restated as "because the record is frozen", and the freeze must not be restated
-   as "because the address is closed". Owner-writable now *implies*
-   address-writable; they are still two policies because they answer different
-   questions and #1377 narrows the freeze again. The two doc comments must end up
-   agreeing.
-4. **`packages/shared/tests/settlement_address.rs` will fail** after the
-   `OWNER_WRITABLE` change — `the_policy_is_independent_of_the_write_freeze` asserts
-   `KybStatus::Failed.allows_owner_writes()` is **true**, and
-   `the_policy_is_total_and_classifies_every_status_deliberately` hard-lists the five
-   statuses and matches them exhaustively in its local `expected` helper. Update both
-   (add `ChangesRequested` to the list and to `expected`; replace the `Failed`
-   "reverse crossing" assertion with the `Passed`-with-no-address crossing, which is
-   the one that survives and still proves the two policies are independent). Rewrite,
-   do not delete — the same rule this plan already applies to
-   `kyb_status.rs::a_failed_lp_reopens`.
+1. `packages/shared/src/lp_repo.rs` module header — #1379 owns ¶1, lines 5–6:
+   "The LP links a Stellar account via `link_address`, which is not gated on reaching
+   `Passed` (see [`KybStatus::allows_address_write`])." This issue rewrites the *same
+   paragraph region* for the `Failed`-is-terminal rule. Keep that sentence; keep
+   likewise the `KybStatus` enum doc at lines 25–28 ("there is no longer a DB
+   constraint backing it (Issue #1379)"). Do not drop either while rewriting around
+   them.
+2. `KybStatus` enum body — this issue inserts the `ChangesRequested` variant, and
+   **that genuinely breaks the build. Verified**: `allows_address_write`'s match
+   (lines 93–97) is
+
+   ```rust
+   match self {
+       KybStatus::Failed => false,
+       KybStatus::Passed => !has_address,
+       KybStatus::NotStarted | KybStatus::InProgress | KybStatus::UnderReview => true,
+   }
+   ```
+
+   — no `_` arm, so a sixth variant is `E0004: non-exhaustive patterns`. Classify
+   `ChangesRequested` into the `=> true` arm: it is a non-terminal status, and the
+   spec says the address is settable "at any status short of a terminal verdict".
+   **Do not collapse the arm to a `_` wildcard.** That exhaustiveness is the design:
+   `settlement_address.rs`'s local `expected` helper (below, point 4) is a second
+   exhaustive match of the same shape, written so that a new status stops the code
+   compiling until someone classifies it on purpose. A `_` in either place silently
+   admits every future status and destroys the guarantee.
+3. `KybStatus::OWNER_WRITABLE` / `allows_owner_writes` — this issue removes `Failed`,
+   and that makes the "crossing" prose #1379 left behind false in **three** places,
+   not one. All three must be rewritten in this PR. Verified quotes:
+   - `packages/shared/src/lp_repo.rs:88-91`, `allows_address_write`'s doc comment:
+     "Deliberately not folded into [`allows_owner_writes`](Self::allows_owner_writes)
+     — the two policies cross at `UnderReview` and again, **in the opposite
+     direction, at `Failed`**, so neither is expressible in terms of the other."
+   - `packages/api/src/routes/lps.rs:33-36`, module header point 1: the address is
+     "open at `UnderReview`, where the freeze bites, and **closed at `Failed`, where
+     the freeze lifts**."
+   - `packages/api/src/routes/lps.rs:700-706`, the `link_address` handler doc
+     comment: "…it stays settable while the profile is frozen (e.g. `UnderReview`),
+     and in the other direction it stops being settable at `Failed` **exactly where
+     the profile reopens**."
+
+   Each says the freeze lifts at `Failed`. After this issue it does not. The true
+   statement, and what all three must end up saying: the two policies still cross at
+   `UnderReview` (address open, profile frozen) and at `Passed` with no address yet
+   (one address write allowed, profile frozen), but `Failed` now closes **both** —
+   for independent reasons, which is the point worth keeping. The address closure
+   rests on `stellar_address` being UNIQUE across LPs and must not be restated as
+   "because the record is frozen"; the freeze must not be restated as "because the
+   address is closed". Owner-writable now *implies* address-writable; they are still
+   two policies because they answer different questions and #1377 narrows the freeze
+   again.
+4. **`packages/shared/tests/settlement_address.rs` — it stops compiling before any
+   assertion runs, and then one assertion fails.** Verified, in that order:
+   - **Compile break.** `the_policy_is_total_and_classifies_every_status_deliberately`
+     (line 59) holds a local `fn expected(status, has_address) -> bool` whose match
+     (lines 61–65) is exhaustive over the five variants — the same `E0004` as point 2.
+     Add a `ChangesRequested` arm (→ `true`), *and* add `KybStatus::ChangesRequested`
+     to the hard-listed status array at lines 68–74, which the compiler cannot catch.
+     The break is the test working, not the test being in the way.
+   - **Assertion failure.** `the_policy_is_independent_of_the_write_freeze` (line 89),
+     its second assertion, lines 95–99:
+
+     ```rust
+     assert!(
+         !KybStatus::Failed.allows_address_write(true) && KybStatus::Failed.allows_owner_writes(),
+         "Failed is the reverse crossing: the profile reopens while the \
+          address stays closed"
+     );
+     ```
+
+     `Failed.allows_owner_writes()` turns `false` the moment `Failed` leaves
+     `OWNER_WRITABLE`, so the conjunction fails. This is the exact half this issue
+     removes. **Rewrite, do not delete** — the crossing that survives is `Passed` with
+     no address linked (profile frozen, one address write still allowed). Keep the
+     first assertion (line 90–94, `UnderReview`) untouched, and keep the test's point
+     — that neither policy is expressible in terms of the other — recording in the new
+     assertion message that after this issue owner-writable *implies* address-writable,
+     so the containment is one-directional rather than a two-way crossing. Same rule as
+     `kyb_status.rs::a_failed_lp_reopens`: rewrite the claim, never quietly drop it.
+   - **Missed by the previous revision of this plan, and silent:** the file-level
+     `const NON_TERMINAL: [KybStatus; 3]` (lines 8–12) lists `NotStarted`,
+     `InProgress`, `UnderReview`. It keeps compiling with a sixth variant — which is
+     the problem. `an_unlinked_lp_may_set_an_address_at_any_non_terminal_status`
+     (line 15) and `a_linked_address_may_be_replaced_until_the_decision_is_final`
+     (line 25) both iterate it, so `ChangesRequested` would go uncovered by both with
+     nothing to say so. Widen it to `[KybStatus; 4]` and add the variant.
+   - `the_two_terminal_statuses_close_the_address_differently` (line 35) is
+     **unaffected** and still true — `Passed` and `Failed` remain the only two
+     terminal statuses. Leave it alone.
+   - The module comment (lines 1–4) names Issue #1379 only; add this issue alongside,
+     since the file now also pins this issue's half of the rule.
 5. `packages/api/src/routes/lps.rs` module header ¶ "Two rules govern every owner
-   write" — #1379 appended a sentence to point 1 and left the "transitions are
-   #1274's job, so this gate is inert until that lands" clause in place. This issue
-   deletes that clause and rewrites point 2. Keep #1379's settlement-address
-   sentences.
-6. `link_address` handler and its doc comment — **do not touch**. #1379 documented in
-   the doc comment that `link_address` must not gain a `guard_writable` call, because
-   the address is exempt from the freeze at `UnderReview` and closed at `Failed` on
-   its own rule. Removing `Failed` from `OWNER_WRITABLE` does not change that: the
-   exemption is still load-bearing at `UnderReview`, and the `Failed` closure is
-   still the predicate's own, not the freeze's.
-7. Migration stamp — `20260929000003` is taken by #1379. See step 1.
-8. `docs/exec-plans/tech-debt-tracker.md` TD-57 — #1379 widened it and already says
-   "#1274 is what will make `kyb_status` reachable at all, so the gap goes live once
-   both have landed". That sentence becomes true when this merges; it needs no edit.
-9. `docs/user-stories/index.md` — #1379 created the `## Epic #1376` table and one row.
-   Append this issue's row below it (step 11).
+   write" (lines 27–39) — #1379 appended the settlement-address sentences to point 1
+   and left the "transitions are #1274's job, so this gate is inert until that lands"
+   clause standing. This issue deletes that clause and rewrites point 2. Keep #1379's
+   settlement-address sentences — **except** their closing clause "closed at `Failed`,
+   where the freeze lifts", which point 3 above requires rewriting.
+6. `link_address` handler — **body unchanged; its doc comment is not.** The previous
+   revision of this plan said "do not touch" without qualification; that is right
+   about the code and wrong about the prose, which carries the third copy of the false
+   crossing (lines 700–706, quoted in point 3). Correct that clause, and keep #1379's
+   "Do not add a `guard_writable` call here; that would remove the exemption the rule
+   depends on" **verbatim** — it is still load-bearing, because the exemption it
+   protects is the `UnderReview` one, which this issue does not change, and the
+   `Failed` closure is still the address predicate's own rather than the freeze's.
+   The handler body (lines 721–744) needs no edit: `ChangesRequested` lands in
+   `allows_address_write`'s `true` arm, so the pre-check passes, and the two-branch
+   `409` message match (lines 736–745) is only reachable for `Failed` or
+   `Passed`-with-an-address — its `_ =>` "has passed KYB" wording never sees the new
+   status.
+7. Migration stamp — **re-verified**: `20260929000003` is #1379's and is now the
+   newest file in `packages/shared/migrations/` on `main`; `20260930000001`, which
+   step 1 reserves, is unused on every branch (`git log --all --diff-filter=A`,
+   checked 2026-09-30). Re-run that check in step 1 anyway, since siblings move.
+8. `docs/exec-plans/tech-debt-tracker.md` TD-57 (line 901) — #1379 widened it, and its
+   Impact ¶ already reads "#1274 is what will make `kyb_status` reachable at all, so
+   the gap goes live once both have landed". That sentence becomes true when this
+   merges. **It needs no edit** — do not re-widen or restate it.
+9. `docs/user-stories/index.md` — #1379 created `## Epic #1376 — KYB review lifecycle`
+   (line 203) with its own row (line 207) as the table's only entry. Append this
+   issue's row below it (step 11).
 
 ## Open Questions
 
-1. **Should the trustee-only `GET /v1/lps/{id}` carry `kyb_decided_by`?** It is
-   deliberately absent from `LpResponse` for now, and that part is settled: the same
-   DTO is served to the LP owner through `GET /v1/lps/me`, so putting it there would
-   hand the applicant the individual operator's identity on every refusal. What is
-   still open is whether the trustee read should surface it — which needs either a
-   second DTO or a conditional field, i.e. real design, not a one-line addition.
-   Awaiting the user. **The column is not in doubt**: `kyb_decided_by` is written and
-   stored either way (steps 1, 4, 6), so this question blocks nothing in the plan and
-   the answer is an additive change whenever it arrives. Related: the trustee
-   dashboard #1271 is the consumer that would need it.
-2. **Is a structured log line an acceptable audit record for the verdict, for now?**
-   `audit-logging.md` § Scope requires operator actions to be written to the
-   append-only store with actor, target, and outcome. **That store does not exist in
-   this repo**: there is no audit table in `packages/shared/migrations/`, no writer
-   anywhere in `packages/`, no sink integration, and `audit_log.rs` serves an
-   unrelated substrate (indexed on-chain `contract_logs`) — its own module comment
-   says operator actions "are not persisted in a queryable store today". Building the
-   store is a multi-issue piece of work and plainly outside this issue. Step 8
-   therefore proposes the smallest thing that is not a lie — one `tracing::info!`
-   event carrying actor, target, outcome, and reason-presence — plus a tech-debt
-   entry saying the verdict is not in an append-only store. Confirm that is the right
-   trade for now, or say the audit store must be built first and this issue blocks
-   on it. Note the honest caveat, which is why this is a question and not a decision:
-   `packages/api/src/main.rs` uses a bare `tracing_subscriber::fmt::init()`, so the
-   line lands in plaintext stdout with no JSON encoding and no mirroring — it is a
-   trail only to the extent the deployment's log shipping is one.
+_None._ Both questions that parked this plan were answered by the user on the Issue
+(2026-09-30, "Both open questions answered. Releasing the park."). The answers are
+recorded below with the rest of the settled decisions so none of them is reopened.
 
-Settled since the first draft, recorded here so they are not reopened:
-
-- **Merge ordering with #1379** — resolved on the Issue: #1379 first, then #1274,
-  never the reverse. See Assumptions and Risks.
+- **`kyb_decided_by` in the API — answered: it stays out entirely.** The column is
+  written (steps 1, 4), and **neither** `GET /v1/lps/me` **nor** the trustee-only
+  `GET /v1/lps/{id}` returns it. No step may expose it in `LpResponse`, in
+  `LpSummary`, or in a second DTO. Reason: adding a field later is cheap, removing one
+  a client already reads is not, and the trustee UI that might want it (#1271) does
+  not exist yet. `/me` is served from the same DTO, so exposing it there would also
+  hand an applicant the individual operator's identity on every refusal.
+- **An audit record for the verdict — answered: none at all.** Not the
+  `tracing::info!` line the previous revision proposed, not a store, and not a
+  tech-debt entry about the absence. The verdict is recorded only in the `lps` row,
+  and a second verdict overwrites the first with no trace anywhere. Accepted
+  deliberately. Step 8 is now the spec correction this forces; the previous step 8
+  (the log line, for `decide_kyb` and for `review_document` alike) is deleted, along
+  with its tech-debt entry and its manual-verification item.
+- **Merge ordering with #1379** — resolved, and now moot: #1379 merged first
+  (`167caf5`) and is in this branch's history. See Assumptions and Risks.
 - **`409` vs `422` for a failed invariant** — resolved on the Issue: `409` throughout
   for state conflicts, `400` for a malformed body. House convention (`ApiError::Conflict`
   used 12 times for state conflicts, `UnprocessableEntity` once, for a refused
@@ -255,15 +334,16 @@ Settled since the first draft, recorded here so they are not reopened:
 
 Add `packages/shared/migrations/20260930000001_kyb_review_lifecycle.sql`.
 
-**Re-stamped.** The plan originally reserved `20260929000001`; #1379's branch now
-holds `20260929000003`, and since #1379 merges first, a `…0929000001` file would sort
-*before* a migration already applied in any environment that took #1379. That is not
+**Re-stamped.** The plan originally reserved `20260929000001`; `20260929000003` is
+#1379's and is now **on `main`** and the newest file in the directory (re-verified
+2026-09-30), so a `…0929000001` file would sort *before* a migration already applied
+in every environment that has taken `main`. That is not
 a breakage — `sqlx` 0.8.6's `Migrator::run` applies any version absent from
 `_sqlx_migrations` regardless of order, and only errors when an *applied* migration
 is missing from the source (`validate_applied_migrations` → `VersionMissing`) — but
 it makes the directory stop reflecting apply order, which is the only thing the file
-name is for. Use `20260930000001`. Re-check before writing the file, since the
-sibling branches move:
+name is for. Use `20260930000001` — free on every branch as of 2026-09-30. Re-check
+before writing the file anyway, since the sibling branches move:
 
 ```bash
 git log --all --diff-filter=A --name-only --pretty=format: -- \
@@ -343,7 +423,7 @@ In `packages/shared/src/lp_repo.rs`:
   a test rather than deriving one from the other, so a future edit to either is
   caught.
 - Add the `ChangesRequested` arm to #1379's `allows_address_write` (→ `true`) and
-  reconcile its doc comment with `allows_owner_writes`' — see "Rebasing over #1379",
+  reconcile its doc comment with `allows_owner_writes`' — see "Composing with #1379 (merged)",
   points 2 and 3. This is compulsory: the match is exhaustive over the variants, so
   the crate does not build until the new variant is classified.
 - Extend `LpRow` with `kyb_submitted_at: Option<DateTime<Utc>>`,
@@ -533,9 +613,11 @@ Place `/lps/{id}/kyb` beside the existing `/lps/{id}/documents/{doc}/review`, an
 6. `lp_repo.decide_kyb(id, decision, reason, &claims.sub)` → `false` ⇒ `409`
    ("this LP is no longer awaiting review"). `claims.sub` is the deciding
    operator, matching what `review_document` records in `reviewed_by`.
-7. Emit the audit log line — step 8. After the repo returned `true`, before the
-   re-read.
-8. Re-read and answer `Json(with_documents(...))`, same as above.
+7. Re-read and answer `Json(with_documents(...))`, same as above.
+
+Nothing else happens on success. **No log line, no audit write** — see scope item 8:
+`kyb_decided_by` / `kyb_decided_at` / `kyb_decision_reason` on the row are the whole
+record of the verdict, and a later verdict overwrites them.
 
 Both handlers get `#[utoipa::path(...)]` annotations documenting 200/400/401/403/
 404/409 as applicable, `security(("bearer_auth" = []))`, `tag = "Lps"`; add both
@@ -566,7 +648,7 @@ would silently admit each new status. Its doc comment carries the *reason* (a
 `Verified` document can never be deleted, so verifying early permanently pins a file
 into a record its owner is still assembling), because that is what makes the rule
 non-obvious. Place it after `allows_owner_writes` and before `allows_address_write`,
-and keep all three doc comments mutually consistent (see "Rebasing over #1379").
+and keep all three doc comments mutually consistent (see "Composing with #1379 (merged)").
 
 **Handler guard** — in `review_document` (`packages/api/src/routes/lps.rs`), after
 `require_trustee` and the existing ownership check. The handler today reads the
@@ -601,69 +683,76 @@ Widen the `!reviewed` refusal message accordingly — it can now mean either cau
 Update the `review_document` doc comment and its `#[utoipa::path]` `409` description
 to name the new cause.
 
-### 8. The verdict reaches the audit log
+### 8. Correct the merged spec: the verdict keeps no audit record
 
-**Finding first, because it changes what this step can honestly be.**
-`docs/product-specs/audit-logging.md` § Scope requires an Operations Console operator
-action to be recorded in the append-only store with the actor's authenticated session
-identifier, the target resource, and the outcome. **There is no such store in this
-repo.** Verified:
+**What this step replaces.** The previous revision of this plan proposed a
+`tracing::info!` audit line here, for `decide_kyb` and for `review_document`. The user
+answered on the Issue: **no audit record at all** — no log line, no store, and no
+tech-debt entry about the gap. Write nothing of the kind, in either handler. The only
+work left in this step is a documentation correction, because the merged spec promises
+the opposite.
 
-- No audit table in `packages/shared/migrations/` — nothing creates one.
-- No writer: no repo in `packages/shared/src/` writes an operator-action row, and no
-  third-party sink or SIEM integration exists in `packages/` or the workspace manifests.
+**Why the correction is required.** `docs/product-specs/kyb-lp-verification.md` § "KYB
+Review Lifecycle" states that the verdict "is written to the append-only audit store
+like any other". No such store exists, and nothing will now write one. Verified in the
+working tree on 2026-09-30:
+
+- No audit table anywhere in `packages/shared/migrations/` — nothing creates one
+  (the only match for "audit" in that directory is a comment in
+  `20260728000001_submitted_loans_changes_requested.sql` saying "no audit trail in
+  scope").
+- No operator-action writer anywhere in `packages/`, and no third-party sink or SIEM
+  integration in the workspace.
 - `packages/api/src/routes/audit_log.rs` is **not** it: `GET /v1/audit-log` reads
-  indexed on-chain events from `contract_logs` via
-  `ContractLogsRepo::list_audit_log`. Its own module comment says the off-chain
-  relayer/operator half is "not persisted in a queryable store today", and the spec's
-  § "Trustee dashboard feed" says the same, calling a queryable operator-action table
-  a follow-up.
-- Logging is `tracing_subscriber::fmt::init()` in `packages/api/src/main.rs` — plain
-  text to stdout, no JSON layer, no exporter.
+  indexed on-chain events from `contract_logs` via `ContractLogsRepo::list_audit_log`
+  — a different substrate.
+- `docs/product-specs/audit-logging.md:68` § "Trustee dashboard feed" says it itself:
+  Operations Console operator actions "are **not** included in v1, because they live
+  only in the non-queryable audit store", and serving them is a follow-up.
 
-So the machinery cannot carry this, and building it (a migration, a repo, a DTO, sink
-mirroring, and a decision about who may read it) is several issues of work with no
-spec for the table shape. **Do not invent one here.** The smallest honest option, and
-what to implement:
+So the sentence describes a mechanism that does not exist and that this issue is
+deliberately not building. Leaving it would be a spec claim no code satisfies — the
+thing the repo's docs-first rule exists to prevent.
 
-1. Emit exactly one `tracing::info!` from `decide_kyb`'s handler, after the repo
-   returns `true` and before the re-read, with the fields the spec names:
+**The edit.** One paragraph in `docs/product-specs/kyb-lp-verification.md`, § "KYB
+Review Lifecycle" — the single-sentence-pair paragraph beginning "Only the latest
+decision is retained on the LP" (line 43 as of `167caf5`; **find it by its opening
+words, not by line number**, since #1379 also touched that file). Replace exactly this:
 
-   ```rust
-   tracing::info!(
-       action = "kyb_decision",
-       actor = %claims.sub,
-       lp_id = id,
-       decision = %decision,
-       has_reason = reason.is_some(),
-       "recorded a KYB verdict"
-   );
-   ```
+> Only the latest decision is retained on the LP; there is no review history. That is
+> about the record, not about the audit trail — a trustee's verdict on a legal entity
+> is an operator action in the Operations Console and is written to the append-only
+> audit store like any other (`audit-logging.md`).
 
-   Fields, not an interpolated sentence, so a later JSON layer or log-shipping rule
-   picks them up without re-parsing. `has_reason` rather than the reason text: the
-   reason is already durable in `lps.kyb_decision_reason`, and a trustee's stated
-   grounds for refusing a legal entity do not belong in a plaintext stdout stream
-   that nothing governs. `actor` is `claims.sub`, the same value written to
-   `kyb_decided_by` and the same one `review_document` writes to `reviewed_by`.
-   Log after success only — a refused verdict changed nothing.
-2. Log the same way from `review_document` (`action = "kyb_document_review"`, plus
-   `document = doc`) — it is the other operator action in this file and is equally
-   unrecorded today. Keep it to these two; do not sweep the rest of the codebase.
-3. File the gap as a tech-debt entry (step 11), pointing at `audit-logging.md`
-   § Scope, and state plainly in the PR description that the verdict is **not** in an
-   append-only store and that the log line is not a substitute for one.
+with exactly this:
 
-`kyb_decided_by` / `kyb_decided_at` in the `lps` row remain the durable record of who
-decided and when; they are a current-state column, not an audit trail, which is
-exactly why the gap is worth filing rather than papering over. **Open Question 2 asks
-the user to confirm this trade** — if the answer is that the audit store must exist
-first, this issue blocks on that work and only parts 1–2 above are wasted.
+> Only the latest decision is retained on the LP; there is no review history. Nor is
+> one kept anywhere else: no audit record of the verdict is written, so a second
+> decision overwrites the first — its reason, its time, and the operator who made it —
+> leaving nothing behind to reconstruct what was decided before. That is a deliberate
+> choice rather than a gap to be filled later.
 
-Two comment-budget notes: AGENTS.md § Lint & style forbids new inline comments, so the
-reasoning above lives here and in the PR description, not in the source; and these are
-`tracing` calls, which the file already uses (`with_documents`, `store_one`), so no new
-dependency or import is involved.
+Rules for this edit:
+
+- **Do not restructure the section.** One paragraph is replaced in place; every other
+  paragraph, the transition table, and the section's heading stay exactly as merged.
+- Keep the document's voice: declarative present tense, the decision stated and then
+  justified in the same breath, no bullet lists, no "TODO", no issue references.
+- The first sentence is kept **verbatim** — "only the latest decision is retained" is
+  still true and is still the sentence the rest of the section leans on.
+- The `audit-logging.md` mention goes with the clause. It is a bare backtick mention,
+  not a Markdown link, so removing it cannot orphan that spec — it stays reachable
+  from `docs/product-specs/index.md` and `docs/product-specs/trustee-dashboard.md`
+  (verified). Do **not** add a replacement pointer to it.
+- Do not touch `docs/product-specs/audit-logging.md`. Its § Scope describes a store
+  this repo has not built; correcting that is its own spec's problem, not this
+  issue's, and the user ruled out filing tech debt for it here.
+- `npx tsx scripts/lint-docs.ts` must stay at **0 errors** after the edit.
+
+The PR description must say plainly, in the same words as scope item 8, that the
+verdict has no history: it lives only in `lps.kyb_decided_by` / `kyb_decided_at` /
+`kyb_decision_reason`, a second verdict overwrites the first with no trace anywhere,
+and that is accepted deliberately.
 
 ### 9. DTOs
 
@@ -689,12 +778,19 @@ matters, it now matters in `ChangesRequested`, and after step 7 it is *also* wha
 new review precondition exists to protect. Add the `/me/submit` and `/{id}/kyb`
 routes to the audience lists in ¶¶ 1–3 of the header.
 
-Post-rebase, this step also covers the sentences #1379 added — see "Rebasing over
-#1379", points 1, 3 and 5. #1379's own additions stay; what must change is the
-half-sentence in its `allows_address_write` doc comment that calls `Failed` the
-"opposite direction" crossing. Both files' comments must end up telling the same
-story about `Failed`: it closes the profile *and* the address, for two independent
-reasons, neither expressed in terms of the other.
+This step also covers the sentences #1379 left on `main` — see "Composing with #1379
+(merged)", points 1, 3, 5 and 6. #1379's own additions stay; what must change is the
+"opposite direction" crossing at `Failed`, which it states in **three** places, all of
+which this issue falsifies and all of which must be fixed together:
+`packages/shared/src/lp_repo.rs:88-91` (`allows_address_write`'s doc comment),
+`packages/api/src/routes/lps.rs:33-36` (module header point 1), and
+`packages/api/src/routes/lps.rs:700-706` (the `link_address` handler's doc comment —
+prose only; its body stays exactly as merged, and #1379's "Do not add a
+`guard_writable` call here" sentence is kept verbatim). All three must end up telling
+the same story about `Failed`: it closes the profile *and* the address, for two
+independent reasons, neither expressed in terms of the other. Leaving any one of them
+behind is the failure mode this step exists to prevent — a reader who finds the stale
+copy first has no way to tell which is current.
 
 Keep within the repo's comment budget (AGENTS.md § Lint & style: at most one 2–3-line
 spec-pointer header per file, plus the existing doc comments on public items — add no
@@ -708,9 +804,10 @@ tech-debt tracker needs.
 ### 12. Lint
 
 `cargo clippy --all -- -D warnings` must pass, and `cargo fmt` must leave the tree
-clean. Step 11 touches `docs/`, so `npx tsx scripts/lint-docs.ts` must also pass —
-it enforces the reachability of the new user-stories doc from
-`docs/user-stories/index.md`.
+clean. Steps 8 and 11 both touch `docs/`, so `npx tsx scripts/lint-docs.ts` must also
+run at **0 errors** — it enforces the reachability of the new user-stories doc from
+`docs/user-stories/index.md`, and step 8 edits a product spec. Run it once before
+step 8's edit and once after, so any error it reports is attributable.
 
 ## Test Strategy
 
@@ -768,24 +865,35 @@ comment's "(Issue #1267)" framing needs updating to name this issue too):
 - New (`packages/shared/tests/` — same file or alongside):
   `DocumentStatus::from_str` round-trips every stored spelling and rejects junk.
 
-**`packages/shared/tests/settlement_address.rs`** (#1379's file — it **will not
-compile or pass** after the `OWNER_WRITABLE` change; see "Rebasing over #1379",
-point 4):
+**`packages/shared/tests/settlement_address.rs`** (#1379's file, now on `main` — it
+**stops compiling, and then one assertion fails**; see "Composing with #1379 (merged)",
+point 4, which quotes the exact lines):
 
-- `the_policy_is_total_and_classifies_every_status_deliberately` — add
-  `KybStatus::ChangesRequested` to the hard-listed status array *and* to the local
-  `expected` helper's match (→ `true`). The helper matches exhaustively on purpose,
-  so it stops compiling until the new status is classified; that is the test working,
-  not the test being in the way.
-- `the_policy_is_independent_of_the_write_freeze` — its second assertion
-  (`!Failed.allows_address_write(true) && Failed.allows_owner_writes()`, "Failed is
-  the reverse crossing") is now **false** and must be rewritten, not deleted. The
-  crossing that survives is `Passed` with no address linked: the profile is frozen
-  while one address write is still allowed. Keep the `UnderReview` assertion as is,
-  and keep the test's point — that neither policy is expressible in terms of the
-  other — while recording in the assertion message that after this issue
-  owner-writable *implies* address-writable, so the containment is one-directional
-  rather than a two-way crossing.
+- `the_policy_is_total_and_classifies_every_status_deliberately` (line 59) — add
+  `KybStatus::ChangesRequested` to the hard-listed status array (lines 68–74) *and*
+  to the local `expected` helper's match (lines 61–65, → `true`). The helper matches
+  exhaustively on purpose, so it stops compiling until the new status is classified;
+  that is the test working, not the test being in the way. The array, by contrast,
+  compiles either way — adding the variant there is what the compiler cannot force.
+- `the_policy_is_independent_of_the_write_freeze` (line 89) — its second assertion
+  (lines 95–99, `!Failed.allows_address_write(true) && Failed.allows_owner_writes()`,
+  "Failed is the reverse crossing") is now **false** and must be rewritten, not
+  deleted. The crossing that survives is `Passed` with no address linked: the profile
+  is frozen while one address write is still allowed. Keep the `UnderReview`
+  assertion (lines 90–94) as is, and keep the test's point — that neither policy is
+  expressible in terms of the other — while recording in the assertion message that
+  after this issue owner-writable *implies* address-writable, so the containment is
+  one-directional rather than a two-way crossing.
+- `const NON_TERMINAL` (lines 8–12) — widen from `[KybStatus; 3]` to `[KybStatus; 4]`
+  and add `ChangesRequested`. Nothing forces this: the array compiles unchanged, and
+  `an_unlinked_lp_may_set_an_address_at_any_non_terminal_status` (line 15) and
+  `a_linked_address_may_be_replaced_until_the_decision_is_final` (line 25) would both
+  simply stop covering the new status, silently.
+- `the_two_terminal_statuses_close_the_address_differently` (line 35) — **leave it
+  alone.** `Passed` and `Failed` are still the only terminal statuses, so it is
+  unaffected and still true.
+- The module comment (lines 1–4) names Issue #1379 only; add this issue to it, since
+  the file now pins this issue's half of the rule as well.
 
 **`packages/api/tests/lps.rs`** (extend):
 
@@ -826,7 +934,7 @@ point 4):
 
 Not covered, by rule and stated as such in the PR: the SQL predicates in
 `submit_for_review` / `decide_kyb` / `KybDocumentRepo::review`, the
-`Failed` → `Suspended` transaction, the audit log line, and the migration itself.
+`Failed` → `Suspended` transaction, and the migration itself.
 Verify those by hand against a local DB before marking the PR ready — at minimum:
 
 - submit from each of the six statuses (only `NotStarted` and `ChangesRequested`
@@ -840,20 +948,26 @@ Verify those by hand against a local DB before marking the PR ready — at minim
   `UnderReview` (step 7, both the handler guard and the SQL clause — force the SQL
   path by moving the LP out of `UnderReview` with a direct `UPDATE` between the two
   requests);
-- one `kyb_decision` log line present in the API's stdout after a verdict, carrying
-  the actor and the decision (step 8).
+- after a second verdict on the same LP (`ChangesRequested`, resubmit, then `Passed`),
+  the row carries only the second one and the first is gone — confirming step 8's
+  "no history" statement is what actually ships, and that nothing was left writing an
+  audit record.
 
 ## Docs to Update
 
-- **`docs/product-specs/kyb-lp-verification.md`** — **no change.** The spec merged
-  with PR #1382 and already specifies this lifecycle, the review precondition, and
-  the audit obligation. Read it; do not edit it, and do not duplicate it into this
-  branch. (#1379 also touched one line of it, which the rebase carries in.)
+- **`docs/product-specs/kyb-lp-verification.md`** — **one paragraph corrected, and
+  nothing else.** The spec merged with PR #1382 and already specifies this lifecycle
+  and the review precondition; do not re-litigate or duplicate any of that. The one
+  edit is step 8's: § "KYB Review Lifecycle", the paragraph beginning "Only the latest
+  decision is retained on the LP", whose audit-store promise no code satisfies and
+  none now will. Step 8 quotes the sentences to remove and gives the replacement in
+  full. Do not restructure the section, and do not touch
+  `docs/product-specs/audit-logging.md`.
 - **`docs/user-stories/epic-1376/1274-kyb-state-machine.md`** — **new, and required**:
   ISSUE_PROTOCOL § 6 makes a user-stories doc part of "done" for an implementation
   issue, committed in the same PR. This was missing from the first draft of the plan.
-  Follow `docs/user-stories/epic-1376/1379-ungate-link-address.md` (#1379's, on its
-  branch) for structure — persona, steps, expected outcome, concrete enough for an
+  Follow `docs/user-stories/epic-1376/1379-ungate-link-address.md` (#1379's, now on
+  `main` — read it there) for structure — persona, steps, expected outcome, concrete enough for an
   agent to execute against the running app. Stories to cover: an owner submits a
   complete set and sees the record freeze; a submit refused for a rejected document,
   naming it; a trustee verdict of each of the three kinds; `ChangesRequested`
@@ -864,8 +978,8 @@ Verify those by hand against a local DB before marking the PR ready — at minim
   doc without the row fails lint.
 - **`docs/exec-plans/active/issue-1274-kyb-state-machine.md`** — this plan; append a
   decision-log entry for anything decided during implementation that differs from it.
-- **`docs/exec-plans/tech-debt-tracker.md`** — two entries, and **read this whole
-  bullet before editing the file**:
+- **`docs/exec-plans/tech-debt-tracker.md`** — **at most one entry**, and **read this
+  whole bullet before editing the file**:
   - The file has a **duplicated `## Post-MVP` section** (filed as **#1390**), so
     `### TD-80` and `### TD-82` each name three different entries and `### TD-81`
     likewise. **Anchor every edit on a unique neighbouring subtitle**, never on a
@@ -877,22 +991,17 @@ Verify those by hand against a local DB before marking the PR ready — at minim
     `TD-80`s are "Email/password sessions cannot be revoked", whose *Impact* merely
     mentions suspension taking up to 24h to bite. Enforcement of suspension is
     **#1380**, an open issue — not tech debt — so do not file an entry for it.
-  - **New entry: the verdict is not written to an append-only audit store** (step 8).
-    Location `packages/api/src/routes/lps.rs` — `decide_kyb`, `review_document`.
-    Gap: `audit-logging.md` § Scope requires operator actions to be recorded with
-    actor, target, and outcome in the append-only store; no such store exists in the
-    repo (no table, no writer, no sink), and `GET /v1/audit-log` serves only indexed
-    on-chain `contract_logs`. This issue ships a `tracing::info!` line instead, which
-    a plaintext stdout subscriber neither structures nor mirrors. Impact: a trustee's
-    verdict on a legal entity is reconstructable only from `lps`' current-state
-    columns, which the next decision overwrites. Suggested fix: persist the
-    operator-action half of the audit log to a queryable table and mirror it, the
-    follow-up `audit-logging.md` § "Trustee dashboard feed" already names.
-  - **New entry: the SQL predicates carrying this issue's policy are untested**, if
+  - **No entry about the missing audit record.** The previous revision of this plan
+    told the coder to file one. The user ruled it out (Issue comment, 2026-09-30):
+    the decision is that the verdict is simply not recorded anywhere beyond the `lps`
+    row, and that is not a debt to be paid down later — it is the behaviour, stated in
+    the spec by step 8. Do not file it, and do not smuggle it into another entry's
+    Impact paragraph.
+  - **Possible entry: the SQL predicates carrying this issue's policy are untested**, if
     the coder judges the gap worth tracking (the repo's no-DB-in-tests rule is the
     cause, so it may be better stated once, elsewhere, than per issue).
-  - Numbering: the highest existing entry is `### TD-97`, so new entries start at
-    **TD-98**. Verify with
+  - Numbering (only if that one entry is filed): the highest existing entry is
+    `### TD-97`, so a new entry is **TD-98**. Re-verified 2026-09-30. Check again with
     `grep -o '^### TD-[0-9]*' docs/exec-plans/tech-debt-tracker.md | grep -o '[0-9]*' | sort -n | tail -1`
     before writing, since the number moves as siblings land.
 - **No frontend or user-docs changes.** `packages/frontend/src/api/lps.ts` gains
