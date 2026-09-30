@@ -4,15 +4,21 @@
 
 use axum::http::StatusCode;
 
+use chrono::Utc;
+
 use pipeline_api::config::KybLimits;
 use pipeline_api::routes::lps::{
-    check_document_cap, decide_upsert, pass_blockers, profile_is_unchanged,
-    resolve_document_review, resolve_kyb_decision, submit_blockers, upload_status,
-    validate_profile, DocumentReviewDecision, DocumentReviewRequest, FileResult, KybDecision,
-    KybDecisionRequest, LpsDoc, StoredProfile, UpsertLpRequest, UpsertOutcome, ValidatedProfile,
-    MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN, MAX_DECISION_REASON_LEN, MAX_LEGAL_NAME_LEN,
+    check_document_cap, decide_upsert, decision_recipient, kyb_decision_email, pass_blockers,
+    profile_is_unchanged, rejected_documents, resolve_document_review, resolve_kyb_decision,
+    submit_blockers, upload_status, validate_profile, DocumentReviewDecision,
+    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpsDoc, StoredProfile,
+    UpsertLpRequest, UpsertOutcome, ValidatedProfile, MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN,
+    MAX_DECISION_REASON_LEN, MAX_LEGAL_NAME_LEN,
 };
-use shared::kyb_document_repo::DocumentStatus;
+use shared::email::{
+    render_kyb_changes_requested_email, render_kyb_failed_email, render_kyb_passed_email,
+};
+use shared::kyb_document_repo::{DocumentStatus, KybDocumentRow};
 use shared::lp_repo::KybStatus;
 
 // ── Document review ──────────────────────────────────────────────────────────
@@ -805,4 +811,222 @@ fn document_review_409_names_the_not_under_review_cause() {
         description.to_lowercase().contains("underreview") || description.contains("under review"),
         "the 409 description must name the not-under-review cause, got {description:?}"
     );
+}
+
+// ── Decision email (Issue #1378) ─────────────────────────────────────────────
+
+const LP_ID: i64 = 42;
+const ACCOUNT_EMAIL: &str = "verified@account.example";
+const CONTACT_EMAIL: &str = "ops@acme.example";
+const LEGAL_NAME: &str = "Acme Capital Ltd";
+
+fn kyb_doc(
+    id: i64,
+    filename: &str,
+    status: DocumentStatus,
+    reject_reason: Option<&str>,
+) -> KybDocumentRow {
+    KybDocumentRow {
+        id,
+        lp_id: LP_ID,
+        file_ref: format!("lps/{LP_ID}/{id}.pdf"),
+        original_filename: filename.to_owned(),
+        size_bytes: 1_024,
+        content_type: "application/pdf".to_owned(),
+        status: status.as_str().to_owned(),
+        reject_reason: reject_reason.map(str::to_owned),
+        reviewed_by: None,
+        reviewed_at: None,
+        expires_at: None,
+        created_at: Utc::now(),
+    }
+}
+
+#[test]
+fn rejected_documents_of_an_empty_set_is_empty() {
+    assert!(rejected_documents(&[]).is_empty());
+}
+
+#[test]
+fn rejected_documents_ignores_every_other_status() {
+    let docs = [
+        kyb_doc(1, "verified.pdf", DocumentStatus::Verified, None),
+        kyb_doc(2, "provided.pdf", DocumentStatus::Provided, None),
+        kyb_doc(3, "absent.pdf", DocumentStatus::NotProvided, None),
+    ];
+    assert!(rejected_documents(&docs).is_empty());
+}
+
+#[test]
+fn rejected_documents_keeps_only_the_rejected_ones() {
+    let docs = [
+        kyb_doc(1, "provided.pdf", DocumentStatus::Provided, None),
+        kyb_doc(2, "bad.pdf", DocumentStatus::Rejected, Some("unreadable")),
+        kyb_doc(3, "verified.pdf", DocumentStatus::Verified, None),
+        kyb_doc(4, "absent.pdf", DocumentStatus::NotProvided, None),
+        kyb_doc(5, "stale.pdf", DocumentStatus::Rejected, Some("expired")),
+    ];
+    let rejected = rejected_documents(&docs);
+    let names: Vec<&str> = rejected.iter().map(|d| d.filename).collect();
+    assert_eq!(names, vec!["bad.pdf", "stale.pdf"]);
+    for absent in ["provided.pdf", "verified.pdf", "absent.pdf"] {
+        assert!(!names.contains(&absent), "{absent} must not be listed");
+    }
+}
+
+#[test]
+fn rejected_documents_reorders_newest_first_input_to_oldest_first() {
+    let docs = [
+        kyb_doc(9, "newest.pdf", DocumentStatus::Rejected, Some("c")),
+        kyb_doc(5, "middle.pdf", DocumentStatus::Rejected, Some("b")),
+        kyb_doc(1, "oldest.pdf", DocumentStatus::Rejected, Some("a")),
+    ];
+    let names: Vec<&str> = rejected_documents(&docs)
+        .iter()
+        .map(|d| d.filename)
+        .collect();
+    assert_eq!(names, vec!["oldest.pdf", "middle.pdf", "newest.pdf"]);
+}
+
+#[test]
+fn a_rejected_document_with_no_stored_reason_carries_none() {
+    let docs = [kyb_doc(1, "bad.pdf", DocumentStatus::Rejected, None)];
+    assert_eq!(rejected_documents(&docs)[0].reason, None);
+}
+
+#[test]
+fn a_rejected_documents_filename_is_the_stored_name_verbatim() {
+    let docs = [
+        kyb_doc(1, "board minutes.pdf", DocumentStatus::Rejected, Some("x")),
+        kyb_doc(2, "устав.pdf", DocumentStatus::Rejected, Some("y")),
+    ];
+    let names: Vec<&str> = rejected_documents(&docs)
+        .iter()
+        .map(|d| d.filename)
+        .collect();
+    assert_eq!(names, vec!["board minutes.pdf", "устав.pdf"]);
+}
+
+#[test]
+fn passed_selects_the_passed_renderer_and_ignores_the_rejected_documents() {
+    let docs = [kyb_doc(1, "bad.pdf", DocumentStatus::Rejected, Some("x"))];
+    let rejected = rejected_documents(&docs);
+    let reason = Some("Registry filing matched.");
+    let email = kyb_decision_email(
+        ACCOUNT_EMAIL,
+        LEGAL_NAME,
+        KybDecision::Passed,
+        reason,
+        &rejected,
+    );
+    assert_eq!(
+        email,
+        render_kyb_passed_email(ACCOUNT_EMAIL, LEGAL_NAME, reason)
+    );
+    assert!(email.body.contains("Registry filing matched."));
+    assert!(!email.body.contains("bad.pdf"));
+}
+
+#[test]
+fn changes_requested_selects_the_changes_requested_renderer() {
+    let docs = [kyb_doc(1, "bad.pdf", DocumentStatus::Rejected, Some("x"))];
+    let rejected = rejected_documents(&docs);
+    let reason = Some("Replace the certificate.");
+    let email = kyb_decision_email(
+        ACCOUNT_EMAIL,
+        LEGAL_NAME,
+        KybDecision::ChangesRequested,
+        reason,
+        &rejected,
+    );
+    assert_eq!(
+        email,
+        render_kyb_changes_requested_email(ACCOUNT_EMAIL, LEGAL_NAME, reason, &rejected)
+    );
+    assert!(email.body.contains("bad.pdf"));
+}
+
+#[test]
+fn failed_selects_the_failed_renderer_and_ignores_the_rejected_documents() {
+    let docs = [kyb_doc(1, "bad.pdf", DocumentStatus::Rejected, Some("x"))];
+    let rejected = rejected_documents(&docs);
+    let reason = Some("No registry entry.");
+    let email = kyb_decision_email(
+        ACCOUNT_EMAIL,
+        LEGAL_NAME,
+        KybDecision::Failed,
+        reason,
+        &rejected,
+    );
+    assert_eq!(
+        email,
+        render_kyb_failed_email(ACCOUNT_EMAIL, LEGAL_NAME, reason)
+    );
+    assert!(email.body.contains("No registry entry."));
+    assert!(!email.body.contains("bad.pdf"));
+}
+
+#[test]
+fn every_decision_renders_a_deliverable_email() {
+    for decision in [
+        KybDecision::Passed,
+        KybDecision::ChangesRequested,
+        KybDecision::Failed,
+    ] {
+        let email = kyb_decision_email(ACCOUNT_EMAIL, LEGAL_NAME, decision, None, &[]);
+        assert!(!email.to.is_empty());
+        assert!(!email.subject.is_empty());
+        assert!(!email.body.is_empty());
+    }
+}
+
+#[test]
+fn the_verified_account_address_is_preferred_over_the_contact_address() {
+    let to = decision_recipient(Some(ACCOUNT_EMAIL), CONTACT_EMAIL);
+    assert_eq!(to, ACCOUNT_EMAIL);
+    assert_ne!(to, CONTACT_EMAIL);
+}
+
+#[test]
+fn a_wallet_registered_owner_with_no_account_address_falls_back_to_the_contact_address() {
+    assert_eq!(decision_recipient(None, CONTACT_EMAIL), CONTACT_EMAIL);
+}
+
+#[test]
+fn a_blank_account_address_is_treated_as_absent() {
+    for blank in ["", "   ", "\t\n"] {
+        assert_eq!(
+            decision_recipient(Some(blank), CONTACT_EMAIL),
+            CONTACT_EMAIL
+        );
+    }
+}
+
+#[test]
+fn the_chosen_address_is_returned_unmodified() {
+    let padded = "  Mixed.Case@Account.Example  ";
+    assert_eq!(decision_recipient(Some(padded), CONTACT_EMAIL), padded);
+    let contact = " Ops@Acme.Example ";
+    assert_eq!(decision_recipient(None, contact), contact);
+}
+
+#[test]
+fn the_chosen_address_reaches_the_rendered_email() {
+    let email = kyb_decision_email(
+        decision_recipient(None, CONTACT_EMAIL),
+        LEGAL_NAME,
+        KybDecision::Passed,
+        None,
+        &[],
+    );
+    assert_eq!(email.to, CONTACT_EMAIL);
+
+    let email = kyb_decision_email(
+        decision_recipient(Some(ACCOUNT_EMAIL), CONTACT_EMAIL),
+        LEGAL_NAME,
+        KybDecision::Failed,
+        None,
+        &[],
+    );
+    assert_eq!(email.to, ACCOUNT_EMAIL);
 }

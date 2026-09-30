@@ -23,7 +23,14 @@
 //! **Trustee** — `GET /v1/lps` lists, `GET /v1/lps/{id}` reads one (documents
 //! inline, same as `/me`), `POST /v1/lps/{id}/documents/{doc}/review` records
 //! a document decision, and `POST /v1/lps/{id}/kyb` records the verdict on
-//! the LP itself.
+//! the LP itself. A verdict mails the LP when its `notify_on_review` is set
+//! (Issue #1378): best-effort after the decision is committed, addressed to
+//! the owning account's verified email and falling back to
+//! `lps.contact_email` only when that account has none — the LP row carries a
+//! contact address that nothing verifies, so it is the fallback and never the
+//! preference, and a failed account read skips the send rather than
+//! retargeting it. `POST /v1/lps/{id}/documents/{doc}/review` deliberately
+//! does not notify.
 //!
 //! Two rules govern every owner write, and both exist so that a decision can
 //! never be detached from what it was made about:
@@ -74,6 +81,10 @@ use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
 
 use shared::chains::validate_stellar_address;
+use shared::email::{
+    render_kyb_changes_requested_email, render_kyb_failed_email, render_kyb_passed_email,
+    OutboundEmail, RejectedDocument,
+};
 use shared::kyb_document_repo::{DocumentStatus, KybDocumentRepo, KybDocumentRow};
 use shared::lp_repo::{KybStatus, LpRow};
 use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPTED_CONTENT_TYPES};
@@ -612,7 +623,40 @@ async fn decide_kyb(
             "LP {id} vanished immediately after decide_kyb"
         ))
     })?;
-    Ok(Json(with_documents(&state, row).await?))
+    let docs = state.kyb_document_repo.list_for_lp(id).await?;
+
+    if row.notify_on_review {
+        match state.account_repo.find(row.owner_account_id).await {
+            Ok(Some(account)) => {
+                let account_email = account
+                    .email
+                    .as_deref()
+                    .filter(|_| account.is_email_verified());
+                let rejected = rejected_documents(&docs);
+                let email = kyb_decision_email(
+                    decision_recipient(account_email, &row.contact_email),
+                    &row.legal_name,
+                    req.decision,
+                    row.kyb_decision_reason.as_deref(),
+                    &rejected,
+                );
+                if let Err(e) = state.email_sender.send(&email).await {
+                    tracing::warn!(lp = id, error = %e, "could not send the KYB decision email");
+                }
+            }
+            Ok(None) => tracing::warn!(
+                lp = id,
+                "no account for this LP's owner — KYB decision email not sent"
+            ),
+            Err(e) => tracing::warn!(
+                lp = id,
+                error = %e,
+                "could not read the owning account — KYB decision email not sent"
+            ),
+        }
+    }
+
+    Ok(Json(with_documents_rows(&state, row, docs).await?))
 }
 
 // ── Handlers: owner ──────────────────────────────────────────────────────────
@@ -1320,6 +1364,14 @@ fn guard_writable(lp: &LpRow) -> Result<(), ApiError> {
 /// the client can retry.
 async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiError> {
     let rows = state.kyb_document_repo.list_for_lp(lp.id).await?;
+    with_documents_rows(state, lp, rows).await
+}
+
+async fn with_documents_rows(
+    state: &AppState,
+    lp: LpRow,
+    rows: Vec<KybDocumentRow>,
+) -> Result<LpResponse, ApiError> {
     let mut documents = Vec::with_capacity(rows.len());
     for row in rows {
         let url = match state
@@ -1615,6 +1667,44 @@ pub fn resolve_kyb_decision(req: &KybDecisionRequest) -> Result<(KybStatus, Opti
         KybDecision::Failed => KybStatus::Failed,
     };
     Ok((status, reason))
+}
+
+// ── Decision email (pure) ───────────────────────────────────────────────────
+
+pub fn rejected_documents(docs: &[KybDocumentRow]) -> Vec<RejectedDocument<'_>> {
+    let mut rows: Vec<&KybDocumentRow> = docs
+        .iter()
+        .filter(|row| row.status == DocumentStatus::Rejected.as_str())
+        .collect();
+    rows.sort_by_key(|row| row.id);
+    rows.into_iter()
+        .map(|row| RejectedDocument {
+            filename: &row.original_filename,
+            reason: row.reject_reason.as_deref(),
+        })
+        .collect()
+}
+
+pub fn kyb_decision_email(
+    to: &str,
+    legal_name: &str,
+    decision: KybDecision,
+    reason: Option<&str>,
+    rejected: &[RejectedDocument<'_>],
+) -> OutboundEmail {
+    match decision {
+        KybDecision::Passed => render_kyb_passed_email(to, legal_name, reason),
+        KybDecision::ChangesRequested => {
+            render_kyb_changes_requested_email(to, legal_name, reason, rejected)
+        }
+        KybDecision::Failed => render_kyb_failed_email(to, legal_name, reason),
+    }
+}
+
+pub fn decision_recipient<'a>(account_email: Option<&'a str>, contact_email: &'a str) -> &'a str {
+    account_email
+        .filter(|email| !email.trim().is_empty())
+        .unwrap_or(contact_email)
 }
 
 /// List `ids` ascending, comma-separated, for a refusal message naming

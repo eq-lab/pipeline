@@ -209,4 +209,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
 | [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |
 | [#1377 Backend: notify_on_review flag on POST /v1/lps/me + narrowed write freeze](https://github.com/eq-lab/pipeline/issues/1377) | [1377-notify-on-review.md](./epic-1376/1377-notify-on-review.md) | Initial |
+| [#1378 Backend: KYB decision emails to the LP](https://github.com/eq-lab/pipeline/issues/1378) | [1378-kyb-decision-emails.md](./epic-1376/1378-kyb-decision-emails.md) | Initial |
 | [Epic #1376 KYB review lifecycle](https://github.com/eq-lab/pipeline/issues/1376) | [verification-runbook.md](./epic-1376/verification-runbook.md) | Initial |

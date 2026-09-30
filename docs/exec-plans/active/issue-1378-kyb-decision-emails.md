@@ -332,7 +332,7 @@ resolutions are not re-litigated, and each is pinned by a test:
 
 ## Implementation Steps
 
-### 0. Rebase first
+### 0. Rebase first — done
 
 ```bash
 git fetch origin
@@ -358,7 +358,7 @@ Everything else this issue touches is already on `main` and needs no rebase to r
 `account_repo` and `email_sender`, `AccountRepo::find`, `LpRow.owner_account_id`, `with_documents`,
 and `KybDocumentRepo::list_for_lp`.
 
-### 1. `packages/shared/src/email/mod.rs` — the borrowed input
+### 1. `packages/shared/src/email/mod.rs` — the borrowed input — done
 
 Add above the renderers:
 
@@ -381,7 +381,7 @@ rows. This mirrors #1377's `StoredProfile<'a>`, and for the same reason.
 reason — the column is nullable, a row could predate that rule, and a renderer that panics or
 prints `None` on it would be worse than one that says so.
 
-### 2. `packages/shared/src/email/mod.rs` — the three renderers
+### 2. `packages/shared/src/email/mod.rs` — the three renderers — done
 
 Same shape as the two existing ones: free `pub fn`, owned `OutboundEmail` out, `format!` body, no
 `async`, no I/O, no config.
@@ -500,7 +500,7 @@ comment currently reads `// spec: docs/product-specs/api-authorization-email.md#
 Issue #1368`. Extend it to also point at `docs/product-specs/kyb-lp-verification.md#review-notifications,
 Issue #1378`. Add doc comments on the new public items and **no** inline comments.
 
-### 3. `packages/api/src/routes/lps.rs` — pure compute
+### 3. `packages/api/src/routes/lps.rs` — pure compute — done
 
 In the `// ── Compute (pure) ──` section, both `pub`:
 
@@ -569,7 +569,7 @@ Three things about this signature are load-bearing:
 
 Add `use shared::email::{OutboundEmail, RejectedDocument};` to the imports.
 
-### 4. `packages/api/src/routes/lps.rs` — split `with_documents`
+### 4. `packages/api/src/routes/lps.rs` — split `with_documents` — done
 
 `with_documents` currently reads the rows itself and then presigns. Split the read off so the rows
 read for the email are reused:
@@ -594,7 +594,7 @@ both handlers #1274 adds — compiles untouched. Move the existing body (the pre
 `tracing::warn!` degrade) into `with_documents_rows` verbatim; do not restate its doc comment in
 both places.
 
-### 5. `packages/api/src/routes/lps.rs` — the handler tail
+### 5. `packages/api/src/routes/lps.rs` — the handler tail — done
 
 In #1274's `decide_kyb`, after `lp_repo.decide_kyb(...)` returned `true` and after the re-read:
 
@@ -667,7 +667,7 @@ particular, **no audit record is written here** — #1274's revised plan removed
 verdict line it once proposed, and this issue must not reintroduce one under another name. The two
 `warn!`s above are delivery diagnostics, nothing more.
 
-### 6. Module header
+### 6. Module header — done
 
 `routes/lps.rs`'s header lists the rules governing the group. Add the notification in one or two
 sentences to the **Trustee** paragraph (currently `lps.rs:23-25`, "`GET /v1/lps` lists, …"): a
@@ -683,7 +683,7 @@ Do **not** touch the two numbered freeze rules — #1274 rewrites rule 1 and #13
 #1379 has already rewritten the surrounding address prose; editing any of it here creates a conflict
 for no benefit. Rewrite existing comments only, add no new inline ones (AGENTS.md § Lint & style).
 
-### 7. Tech debt
+### 7. Tech debt — done, as TD-99
 
 **TD-98 is still the right entry and still the right number** — re-verified against the tracker in
 the working tree. The highest number in the file is **TD-97**, unchanged since this plan was
@@ -733,7 +733,7 @@ Re-check `grep -c '^### TD-98' docs/exec-plans/tech-debt-tracker.md` before writ
 If another branch has since claimed 98, take the next free number; the entry, not the number, is the
 point. Do not renumber anything that is already there.
 
-### 8. Lint
+### 8. Lint — done
 
 `cargo clippy --all -- -D warnings` must pass. No TypeScript change; run `npx tsx scripts/lint-docs.ts`
 because `docs/exec-plans/tech-debt-tracker.md` is touched.
@@ -951,3 +951,42 @@ selection is reachable from a unit test beyond `decision_recipient` itself, so r
 - **No frontend change and no generated docs.** `packages/frontend/src/api/lps.ts` gains nothing —
   no DTO field is added.
 - Run `npx tsx scripts/lint-docs.ts` (the tech-debt tracker is under `docs/`).
+
+---
+
+## Decision Log (implementation, 2026-10-01)
+
+- **The tech-debt entry landed as TD-99, not TD-98.** #1274 merged first and took `### TD-98`
+  ("The KYB transition and review SQL predicates are not integration-tested"). Re-verified at
+  implementation time: `grep -c '^### TD-98'` was `1`, `'^### TD-99'` was `0`. Appended at the end
+  of the file after the TD-98 block, beside TD-96/TD-97. The tracker's duplicated `## Post-MVP`
+  sections and repeated TD-80/TD-82 headings were left untouched (#1390).
+- **`kyb_decision_email` is fed `req.decision`, not the handler's `decision` local.**
+  `resolve_kyb_decision` returns `(KybStatus, Option<&str>)` — the plan's step 5 snippet assumed
+  `decision` was the `KybDecision`. `req.decision` is the three-variant `KybDecision` the plan's
+  totality argument depends on, it is `Copy`, and `req` is still in scope, so the `match` stays
+  total with no signature change.
+- **`ChangesRequested` with a reason and no rejected document closes on "Sign in to review your
+  submission and send it back for review."** The plan's template put "Delete each of them, upload a
+  corrected file, and submit for review again." outside the omitted-when-empty block, which would
+  have told the LP to delete a list it was never shown. The closing line now varies with the list:
+  the delete-and-replace instruction when there are rejected documents, the sign-in instruction
+  when there are none. The neither-reason-nor-document fallback is unchanged — one paragraph
+  joining the opening sentence and the sign-in instruction, so the reason-absent case still reads
+  as finished prose.
+- **A blank `RejectedDocument.reason` is treated as unrecorded,** the same as `None`, by the same
+  trim the decision reason gets. The column is nullable with no non-empty `CHECK`.
+- **No doc comments on the new items.** `AGENTS.md` § Lint & style allows one spec-pointer header
+  per file and nothing else, so the rationale the plan wanted as `///` prose lives in the module
+  header's Trustee paragraph (recipient rule, best-effort delivery, "`review_document`
+  deliberately does not notify"), in the spec, and here.
+- **`packages/shared/src/email/mod.rs`'s spec pointer now names both specs** on one line and drops
+  the `Issue #…` tails, per the bare-pointer rule.
+- **No spec change.** `docs/product-specs/kyb-lp-verification.md` § "Review Notifications" ¶3 and
+  § "Security Considerations" bullet 2 were re-read in the working tree and carry both halves of the
+  recipient decision verbatim. Nothing had drifted; nothing was appended.
+- **`cargo nextest` deadlocks in the implementation shell.** Compilation finishes, then every
+  `--list --format terse` child hangs and the run never reaches the test phase (reproduced four
+  times, sandboxed and not; a lister invoked directly returns instantly). The suite was run with
+  `cargo test --workspace` instead. Worth a look if it recurs, but it is an environment problem,
+  not a repo one, so nothing was filed.
