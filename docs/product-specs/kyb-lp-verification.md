@@ -40,7 +40,7 @@ Submitting is refused unless the LP holds at least one document and none of its 
 
 `Passed` is refused unless every document is `Verified`. Whether the set is *sufficient* is the trustee's judgement — documents are untyped, so nothing else could decide it — but the server does hold the invariant that the trustee went through all of them before approving. Every decision carries an optional free-text reason, recorded with the deciding operator and the decision time. Optional deliberately, and the looser choice: a `ChangesRequested` with neither a reason nor a single rejected document is therefore accepted, and the LP may resubmit the identical set, so the cycle can turn without either side learning anything. Telling a trustee what a useful refusal looks like is left to the review UI rather than enforced by the endpoint.
 
-Only the latest decision is retained on the LP; there is no review history. That is about the record, not about the audit trail — a trustee's verdict on a legal entity is an operator action in the Operations Console and is written to the append-only audit store like any other (`audit-logging.md`).
+Only the latest decision is retained on the LP; there is no review history. Nor is one kept anywhere else: no audit record of the verdict is written, so a second decision overwrites the first — its reason, its time, and the operator who made it — leaving nothing behind to reconstruct what was decided before. That is a deliberate choice rather than a gap to be filled later.
 
 `ChangesRequested` hands the record back: the profile and the unverified documents unfreeze, the LP corrects what the reason and the per-document rejections point at, and submits again. The cycle may repeat without limit.
 

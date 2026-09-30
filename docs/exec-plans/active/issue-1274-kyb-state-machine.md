@@ -1010,3 +1010,54 @@ Verify those by hand against a local DB before marking the PR ready — at minim
   and that `ChangesRequested` needs a rendering — that is a note for its planner, not
   a change here.
 - `docs/` is touched, so `npx tsx scripts/lint-docs.ts` must pass.
+
+## Implementation Log
+
+- **2026-09-30 — implemented, no deviations.** All 12 steps landed as written:
+  migration `20260930000001_kyb_review_lifecycle.sql` (stamp re-checked free);
+  `KybStatus::ChangesRequested` added with `ALL`, `SUBMITTABLE`/`submittable_strs`,
+  `may_transition_to`, and `allows_document_review`; `OWNER_WRITABLE` moved to
+  `[NotStarted, InProgress, ChangesRequested]`; `allows_address_write` given the
+  `ChangesRequested` arm without a `_` wildcard; `LpRow`/`COLUMNS`/all three
+  `SELECT`s extended with the four new columns; `LpRepo::submit_for_review` and
+  `LpRepo::decide_kyb` added exactly as specified, including the `Failed` →
+  `accounts.status = 'Suspended'` write inside `decide_kyb`'s own transaction;
+  `DocumentStatus::FromStr` added; `KybDocumentRepo::review`'s `WHERE` gained the
+  `lps.kyb_status = 'UnderReview'` `EXISTS` clause; `resolve_kyb_decision`,
+  `submit_blockers`, `pass_blockers`, `KybDecision`, `KybDecisionRequest`,
+  `MAX_DECISION_REASON_LEN` added to the compute section; `submit_my_lp` and
+  `decide_kyb` handlers and routes added; `review_document` gained the
+  `UnderReview` precondition (LP read after the document-ownership check,
+  `ApiError::Internal` on a missing LP, `ApiError::Conflict` on a wrong status);
+  `LpResponse`/`LpSummary` gained the new fields, `kyb_decided_by` exposed by
+  neither; all three copies of the "crosses in the opposite direction at
+  `Failed`" prose (`lp_repo.rs`, `routes/lps.rs` module header, `link_address`
+  doc comment) rewritten to say `Failed` now closes both policies, keeping
+  #1379's "do not add a `guard_writable` call here" sentence verbatim; the
+  module header's inert-gate clause replaced; the merged spec's one paragraph
+  replaced verbatim as step 8 specifies, with no `audit-logging.md` pointer
+  added.
+- **Tests.** `packages/shared/tests/kyb_status.rs` rewritten per the Test
+  Strategy — `a_failed_lp_reopens` became `a_failed_lp_is_terminal_and_frozen`
+  asserting the opposite, plus every new test the plan named (`ALL`-driven
+  totality, `SUBMITTABLE` agreement, the six-row transition table, the
+  independence-of-three-policies test, `DocumentStatus::from_str` round-trip).
+  `packages/shared/tests/settlement_address.rs` fixed at both breaks the plan
+  predicted (the exhaustive `expected` helper and the hard-listed array), and
+  `the_policy_is_independent_of_the_write_freeze`'s second assertion rewritten
+  to the `Passed`-with-no-address crossing rather than deleted; `NON_TERMINAL`
+  widened to 4. `packages/api/tests/lps.rs` gained the `resolve_kyb_decision` /
+  `submit_blockers` / `pass_blockers` unit tests and the OpenAPI assertions the
+  plan listed (decision enum excludes `UnderReview`, `LpResponse`/`LpSummary`
+  expose the new fields and not `kyb_decided_by`, the review `409` names the
+  new cause). One test ordering fix not anticipated by the plan: the
+  transition-table literal had to list `UnderReview -> ChangesRequested` before
+  `UnderReview -> Passed` to match `ALL`'s iteration order — a test artifact,
+  not a policy change.
+- **Verification.** `cargo fmt --all --check`, `cargo clippy --all -- -D
+  warnings`, `cargo nextest run --workspace --no-tests=pass`, and `npx tsx
+  scripts/lint-docs.ts` (0 errors) all pass; see the PR description for the
+  actual command output. Manual DB verification of the SQL predicates (Test
+  Strategy's unchecked list) was not performed in this session — tracked as
+  new tech-debt entry **TD-98** (the pure predicates are unit-tested, the SQL
+  restating them is not) rather than left silent.

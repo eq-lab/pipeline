@@ -1633,3 +1633,11 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Gap:** The `otp_codes` row is written — starting the 60s cooldown — *before* the send, and the send is propagated with `?` (accepted trade-off, #1368).
 - **Impact:** If the send fails, the code exists, the cooldown runs, no mail arrives, and `resend-otp` answers `202` and mails nothing for the next minute — a user with no working passcode for up to a minute per failed send. That is TD-87's dead end, now provider-triggerable. Also sharpens TD-81/TD-86: unlimited `signup` / `resend-otp` now burns send quota and sender reputation, not just CPU.
 - **Suggested fix:** Void the OTP row on send failure and swallow-and-log, or a durable outbox. One fix covers this and TD-96 — a durable outbox (or swallow-and-log plus a void) removes both the enumeration leak and the burned cooldown in one change.
+
+### TD-98: The KYB transition and review SQL predicates are not integration-tested
+
+- **Date:** 2026-09-30
+- **Location:** `packages/shared/src/lp_repo.rs` (`submit_for_review`, `decide_kyb`, `link_address`), `packages/shared/src/kyb_document_repo.rs` (`review`) — Issue #1274.
+- **Gap:** The repo's test rule forbids any test that reaches a real Postgres, so every pure predicate that states these rules (`KybStatus::may_transition_to`, `submit_blockers`, `pass_blockers`, `allows_document_review`) is unit-tested, but the SQL `WHERE`/`EXISTS` clauses that actually enforce them — including the `Failed` → `accounts.status = 'Suspended'` transaction and the race-closing `EXISTS` in document review — are not exercised by any automated test.
+- **Impact:** A future edit to one of these queries can silently diverge from the pure function beside it (which is exactly the duplication the exec plan for #1274 accepted deliberately) with nothing but manual verification to catch it.
+- **Suggested fix:** A DB-backed integration test tier, gated behind an explicit opt-in (not `DATABASE_URL`/`POSTGRES_URL`, per the repo's test rule) and run in CI against a throwaway Postgres — likely worth doing once, for every repo bound into SQL this way, rather than per issue.

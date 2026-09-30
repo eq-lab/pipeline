@@ -1,14 +1,15 @@
-//! The settlement-address write gate (Issue #1379; spec §"Settlement
+//! The settlement-address write gate (Issues #1379, #1274; spec §"Settlement
 //! Address"): which `kyb_status` values leave `stellar_address` writable. Pure
 //! — no DB, and the SQL predicate in `LpRepo::link_address` is not exercised
 //! here; see the exec plan's manual checklist for that.
 
 use shared::lp_repo::KybStatus;
 
-const NON_TERMINAL: [KybStatus; 3] = [
+const NON_TERMINAL: [KybStatus; 4] = [
     KybStatus::NotStarted,
     KybStatus::InProgress,
     KybStatus::UnderReview,
+    KybStatus::ChangesRequested,
 ];
 
 #[test]
@@ -61,17 +62,14 @@ fn the_policy_is_total_and_classifies_every_status_deliberately() {
         match status {
             KybStatus::Failed => false,
             KybStatus::Passed => !has_address,
-            KybStatus::NotStarted | KybStatus::InProgress | KybStatus::UnderReview => true,
+            KybStatus::NotStarted
+            | KybStatus::InProgress
+            | KybStatus::UnderReview
+            | KybStatus::ChangesRequested => true,
         }
     }
 
-    for status in [
-        KybStatus::NotStarted,
-        KybStatus::InProgress,
-        KybStatus::UnderReview,
-        KybStatus::Passed,
-        KybStatus::Failed,
-    ] {
+    for status in KybStatus::ALL {
         for has_address in [false, true] {
             assert_eq!(
                 status.allows_address_write(has_address),
@@ -93,8 +91,15 @@ fn the_policy_is_independent_of_the_write_freeze() {
         "the settlement address is exempt from the freeze at UnderReview"
     );
     assert!(
-        !KybStatus::Failed.allows_address_write(true) && KybStatus::Failed.allows_owner_writes(),
-        "Failed is the reverse crossing: the profile reopens while the \
-         address stays closed"
+        KybStatus::Passed.allows_address_write(false) && !KybStatus::Passed.allows_owner_writes(),
+        "the crossing that survives Issue #1274: Passed with no address yet \
+         still allows one address write while the profile stays frozen"
+    );
+    assert!(
+        !KybStatus::Failed.allows_address_write(true) && !KybStatus::Failed.allows_owner_writes(),
+        "Failed now closes both policies, for independent reasons — after \
+         Issue #1274 owner-writable implies address-writable, so the \
+         containment between the two policies is one-directional rather than \
+         a two-way crossing"
     );
 }
