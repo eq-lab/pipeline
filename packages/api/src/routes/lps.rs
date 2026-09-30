@@ -9,7 +9,9 @@
 //! download URL); `POST /v1/lps/me` upserts the profile as JSON;
 //! `POST /v1/lps/me/documents` appends files as `multipart/form-data`;
 //! `DELETE /v1/lps/me/documents/{doc}` removes one; `POST
-//! /v1/lps/me/link-address` ties a Stellar account once KYB passes.
+//! /v1/lps/me/link-address` sets or replaces the settlement account at any
+//! status short of a terminal verdict; fixed once `Passed` holds one, refused
+//! outright at `Failed`.
 //!
 //! Profile and documents are separate endpoints on purpose. They were one
 //! request at first, which read as the smaller surface — but the profile is a
@@ -27,7 +29,11 @@
 //!
 //! 1. [`KybStatus::allows_owner_writes`] freezes the whole record while
 //!    `UnderReview` or `Passed`. It reads `kyb_status` and never writes it —
-//!    transitions are #1274's job, so this gate is inert until that lands.
+//!    transitions are #1274's job, so this gate is inert until that lands. The
+//!    settlement address sits outside this freeze: it is not evidence a
+//!    decision was made about, so it follows its own rule
+//!    ([`KybStatus::allows_address_write`]) — open at `UnderReview`, where the
+//!    freeze bites, and closed at `Failed`, where the freeze lifts.
 //! 2. A `Verified` document cannot be deleted, even when the LP as a whole is
 //!    writable. That matters in `Failed`, where the LP reopens with some
 //!    documents approved and others rejected.
@@ -38,7 +44,9 @@
 //! `stellar_address` is a separate identity from the login one — see the
 //! migration's module comment. `link_address` still trusts the client-supplied
 //! `stellar_address` with no proof of key ownership over *that* address; see
-//! `docs/exec-plans/tech-debt-tracker.md` TD-57.
+//! `docs/exec-plans/tech-debt-tracker.md` TD-57. Since Issue #1379 removed the
+//! `kyb_status` gate on this endpoint, authorization (`/me` +
+//! `owner_account_id`) is the *only* remaining control.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -79,7 +87,8 @@ pub struct LpResponse {
     pub country: Option<String>,
     #[schema(example = "ops@acme.example")]
     pub contact_email: String,
-    /// Set only once `kyb_status` is `Passed`.
+    /// Settable at any status short of a terminal verdict, fixed once
+    /// `Passed` holds one, never settable at `Failed`.
     pub stellar_address: Option<String>,
     /// ISO-8601 UTC.
     pub address_linked_at: Option<String>,
@@ -685,11 +694,16 @@ async fn delete_my_document(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// LP ties a Stellar account after KYB passes. One-shot: only an LP with
-/// `kyb_status = Passed` and no address linked yet is eligible.
+/// Sets or replaces the LP's settlement address; refused outright at `Failed`,
+/// and at `Passed` only when the LP already holds an address (see
+/// [`KybStatus::allows_address_write`]).
 ///
-/// Deliberately not folded into [`upsert_my_lp`]: it requires `Passed`, which
-/// is exactly when the upsert is frozen.
+/// Deliberately not folded into [`upsert_my_lp`]: this endpoint is exempt from
+/// [`guard_writable`]'s freeze — the address is not evidence a review decision
+/// was made about, so it stays settable while the profile is frozen (e.g.
+/// `UnderReview`), and in the other direction it stops being settable at
+/// `Failed` exactly where the profile reopens. Do not add a `guard_writable`
+/// call here; that would remove the exemption the rule depends on.
 #[utoipa::path(
     post,
     path = "/v1/lps/me/link-address",
@@ -699,7 +713,7 @@ async fn delete_my_document(
         (status = 400, description = "stellar_address is not a valid Strkey"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
-        (status = 409, description = "KYB has not passed, an address is already linked, or stellar_address belongs to another LP"),
+        (status = 409, description = "This LP was refused at KYB, or has passed and its address is fixed, or stellar_address belongs to another LP"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -713,6 +727,21 @@ async fn link_address(
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     let lp = my_lp(&claims, &state).await?;
+
+    let status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    if !status.allows_address_write(lp.stellar_address.is_some()) {
+        return Err(ApiError::Conflict(match status {
+            KybStatus::Failed => format!(
+                "LP {} was refused at KYB and cannot set a settlement address",
+                lp.id
+            ),
+            _ => format!(
+                "LP {} has passed KYB; its settlement address is fixed",
+                lp.id
+            ),
+        }));
+    }
 
     let linked = state
         .lp_repo
@@ -728,7 +757,7 @@ async fn link_address(
         })?;
     if !linked {
         return Err(ApiError::Conflict(format!(
-            "LP {} has not passed KYB, or already has an address linked",
+            "LP {} is no longer eligible to set a settlement address",
             lp.id
         )));
     }

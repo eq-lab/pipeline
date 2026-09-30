@@ -1,8 +1,9 @@
 //! LP (business entity) registry for the custom KYB service.
 //!
 //! Backs `routes::lps`. An `lps` row is created at registration — `kyb_status`
-//! defaults to `NotStarted` — and identified internally by `id`, not by wallet,
-//! until KYB passes and the LP links a Stellar account via `link_address`.
+//! defaults to `NotStarted` — and identified internally by `id`, not by wallet.
+//! The LP links a Stellar account via `link_address`, which is not gated on
+//! reaching `Passed` (see [`KybStatus::allows_address_write`]).
 //! `lps.stellar_address` is a separate, deliberately unrelated identity space
 //! from the wallet-keyed `lp_profiles`/`kyc_outbox` (individual KYC via
 //! Sumsub) — see `packages/shared/migrations/20260915000001_kyb_lps_and_documents.sql`.
@@ -22,8 +23,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// KYB lifecycle state of an LP. Stored as TEXT (with a CHECK constraint) in
-/// `lps.kyb_status`. `stellar_address` may only be set once this reaches `Passed`
-/// (enforced by the `lps_stellar_address_passed_ck` DB constraint).
+/// `lps.kyb_status`. Whether `stellar_address` may be written at a given status
+/// is [`allows_address_write`](Self::allows_address_write); there is no longer
+/// a DB constraint backing it (Issue #1379).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KybStatus {
     NotStarted,
@@ -68,6 +70,33 @@ impl KybStatus {
         Self::OWNER_WRITABLE.contains(self)
     }
 
+    /// Whether the settlement address may be written now — `has_address` is
+    /// whether one is already linked (spec § Settlement Address).
+    ///
+    /// It may be set at any status short of a terminal verdict, and replaced
+    /// freely until the decision is final. `Passed` fixes the address already
+    /// held — downstream systems treat it from then on as the account money
+    /// moves to — but an LP that passed before naming one may still name it
+    /// once. `Failed` refuses outright: the column is UNIQUE across LPs, so a
+    /// refused applicant left writable could burn real LPs' addresses, and a
+    /// refused LP will never settle, so even a first write buys nothing. That
+    /// does not lean on the suspension `Failed` also sets (#1380), which is
+    /// enforced nowhere yet. Mirrored by the
+    /// `kyb_status <> 'Failed' AND (stellar_address IS NULL OR kyb_status <> 'Passed')`
+    /// predicate in [`LpRepo::link_address`], which is what actually enforces
+    /// it — this is where the rule is *stated*, and the SQL must keep
+    /// restating it faithfully. Deliberately not folded into
+    /// [`allows_owner_writes`](Self::allows_owner_writes) — the two policies
+    /// cross at `UnderReview` and again, in the opposite direction, at
+    /// `Failed`, so neither is expressible in terms of the other.
+    pub fn allows_address_write(&self, has_address: bool) -> bool {
+        match self {
+            KybStatus::Failed => false,
+            KybStatus::Passed => !has_address,
+            KybStatus::NotStarted | KybStatus::InProgress | KybStatus::UnderReview => true,
+        }
+    }
+
     /// The exact string stored in the DB.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -110,7 +139,9 @@ pub struct LpRow {
     pub legal_name: String,
     pub country: Option<String>,
     pub contact_email: String,
-    /// Set only once `kyb_status` is `Passed` (see [`KybStatus`]).
+    /// Settable at any status short of a terminal verdict; fixed once `Passed`
+    /// holds one, never settable at `Failed` (see
+    /// [`KybStatus::allows_address_write`]).
     pub stellar_address: Option<String>,
     pub address_linked_at: Option<DateTime<Utc>>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `Passed` | `Failed`.
@@ -244,17 +275,19 @@ impl LpRepo {
         .await
     }
 
-    /// Link a Stellar address to an LP whose KYB has passed. Only rows with
-    /// `kyb_status = 'Passed'` and no address linked yet are updated — the
-    /// returned bool lets the caller distinguish "not eligible" (KYB not
-    /// passed, or already linked) from success, the same pattern as
-    /// `SubmittedLoanRepo::review`. A unique violation on `stellar_address`
-    /// (another LP already linked this address) surfaces as a DB error for the
-    /// caller to map to `409`.
+    /// Sets or replaces an LP's settlement address. Refused outright at
+    /// `Failed`, and at `Passed` only when the LP already holds an address —
+    /// see [`KybStatus::allows_address_write`], which this predicate restates
+    /// in SQL. `address_linked_at` is rewritten on every successful set. The
+    /// returned bool distinguishes "not eligible" from success, the same
+    /// pattern as `SubmittedLoanRepo::review`. A unique violation on
+    /// `stellar_address` (another LP already linked this address) surfaces as
+    /// a DB error for the caller to map to `409`.
     pub async fn link_address(&self, id: i64, stellar_address: &str) -> Result<bool, sqlx::Error> {
         let affected = sqlx::query(
             "UPDATE lps SET stellar_address = $2, address_linked_at = now(), updated_at = now() \
-             WHERE id = $1 AND kyb_status = 'Passed' AND stellar_address IS NULL",
+             WHERE id = $1 AND kyb_status <> 'Failed' \
+               AND (stellar_address IS NULL OR kyb_status <> 'Passed')",
         )
         .bind(id)
         .bind(stellar_address)

@@ -353,3 +353,67 @@ fn the_length_limits_count_characters_not_bytes() {
     let over = "Я".repeat(MAX_LEGAL_NAME_LEN + 1);
     assert!(validate_profile(&form(&over, None, "ops@acme.example")).is_err());
 }
+
+// ── Settlement address (Issue #1379) ─────────────────────────────────────────
+
+#[test]
+fn link_address_is_documented_with_every_response_status() {
+    let doc = openapi_json();
+    let responses = &doc["paths"]["/v1/lps/me/link-address"]["post"]["responses"];
+    for status in ["200", "400", "401", "404", "409"] {
+        assert!(
+            responses.get(status).is_some(),
+            "link-address must still document {status}, got {responses}"
+        );
+    }
+}
+
+#[test]
+fn link_address_request_requires_a_stellar_address_string() {
+    let doc = openapi_json();
+    let schema = &doc["components"]["schemas"]["LinkAddressRequest"];
+    assert!(
+        has_type(&schema["properties"]["stellar_address"], "string"),
+        "stellar_address must be a string field, got {}",
+        schema["properties"]["stellar_address"]
+    );
+    let required = schema["required"].as_array().cloned().unwrap_or_default();
+    assert!(
+        required.iter().any(|f| f == "stellar_address"),
+        "stellar_address must be required"
+    );
+}
+
+#[test]
+fn link_address_409_no_longer_requires_passed_kyb() {
+    let doc = openapi_json();
+    let description = doc["paths"]["/v1/lps/me/link-address"]["post"]["responses"]["409"]
+        ["description"]
+        .as_str()
+        .expect("a 409 description")
+        .to_owned();
+    assert!(
+        !description.contains("has not passed"),
+        "the 409 description must not claim KYB must have passed first, got {description:?}"
+    );
+    assert!(
+        description.contains("refused"),
+        "the 409 description must mention the Failed refusal case, got {description:?}"
+    );
+}
+
+#[test]
+fn lp_response_stellar_address_no_longer_claims_passed_only() {
+    let doc = openapi_json();
+    let description = doc["components"]["schemas"]["LpResponse"]["properties"]["stellar_address"]
+        ["description"]
+        .as_str()
+        .expect("a stellar_address description")
+        .to_owned();
+    assert!(
+        !description.contains("Set only once"),
+        "LpResponse.stellar_address is rendered into the public OpenAPI \
+         document — it must not claim it is settable only once Passed, got \
+         {description:?}"
+    );
+}
