@@ -28,6 +28,7 @@ use shared::account_repo::Account;
 use shared::email::{render_duplicate_signup_email, render_verification_email};
 use shared::login_attempt_repo::AttemptScope;
 
+use crate::account_status::gate_token_issue;
 use crate::auth::TOKEN_TTL_SECS;
 use crate::captcha::CaptchaError;
 use crate::error::ApiError;
@@ -145,26 +146,6 @@ pub const LOGIN_ATTEMPT_WINDOW_SECS: i32 = 60;
 /// current window **including this one**.
 pub fn within_login_limit(attempts_including_this: i32) -> bool {
     attempts_including_this <= MAX_LOGIN_ATTEMPTS
-}
-
-/// Why an account may not be handed a token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenRefusal {
-    Suspended,
-    EmailNotVerified,
-}
-
-/// Gate an account before issuing a token. `require_verified_email` is `false`
-/// on the verify-otp path, which is itself the step that performs verification;
-/// suspension is checked on both paths.
-pub fn gate_token_issue(account: &Account, require_verified_email: bool) -> Option<TokenRefusal> {
-    if !account.is_active() {
-        return Some(TokenRefusal::Suspended);
-    }
-    if require_verified_email && !account.is_email_verified() {
-        return Some(TokenRefusal::EmailNotVerified);
-    }
-    None
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -356,7 +337,7 @@ pub async fn resend_otp(
         (status = 200, description = "Credentials accepted; JWT issued", body = TokenResponse),
         (status = 400, description = "Malformed email"),
         (status = 401, description = "Unknown address or wrong password"),
-        (status = 403, description = "Address not yet verified, or the account is suspended"),
+        (status = 403, description = "email_not_verified for an unverified address, or account_suspended for a suspended one"),
     ),
     tag = "Auth"
 )]
@@ -422,14 +403,8 @@ pub async fn login(
     // A distinct `email_not_verified` code is not a leak: the caller proved the
     // password, so it reveals nothing they do not already know — and the
     // frontend needs it to route back into the OTP screen.
-    match gate_token_issue(&account, true) {
-        None => {}
-        Some(TokenRefusal::Suspended) => {
-            return Err(ApiError::Forbidden("account is suspended".to_owned()))
-        }
-        Some(TokenRefusal::EmailNotVerified) => {
-            return Err(ApiError::Forbidden("email_not_verified".to_owned()))
-        }
+    if let Some(refusal) = gate_token_issue(&account, true) {
+        return Err(refusal.into());
     }
 
     // Only failures should accumulate: a caller who mistypes twice and then

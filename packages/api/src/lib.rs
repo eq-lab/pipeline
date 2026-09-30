@@ -1,3 +1,4 @@
+pub mod account_status;
 pub mod auth;
 pub mod captcha;
 pub mod config;

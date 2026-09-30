@@ -26,6 +26,7 @@ use uuid::Uuid;
 use shared::chains::{parse_chain_type, ChainKind};
 use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 
+use crate::account_status::gate_request;
 use crate::auth::TOKEN_TTL_SECS;
 use crate::error::ApiError;
 use crate::routes::common::resolve_chain;
@@ -160,6 +161,7 @@ pub async fn challenge(
     responses(
         (status = 200, description = "Signature verified; JWT issued", body = VerifyResponse),
         (status = 401, description = "Unknown address, no outstanding challenge, or bad signature"),
+        (status = 403, description = "The account behind this wallet is suspended (account_suspended)"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Auth"
@@ -192,6 +194,11 @@ pub async fn verify(
 
     // Single-use: clear the nonce so the same signature cannot be replayed.
     state.auth_user_repo.clear_nonce(chain_id, &address).await?;
+
+    let status = state.account_repo.find_status(user.account_id).await?;
+    if let Some(refusal) = gate_request(status.as_deref()) {
+        return Err(refusal.into());
+    }
 
     let keys = state
         .jwt_keys

@@ -10,8 +10,8 @@ use chrono::{DateTime, TimeZone, Utc};
 use uuid::Uuid;
 
 use pipeline_api::routes::auth::password::{
-    classify_signup, gate_token_issue, normalize_email, within_login_limit, SignupOutcome,
-    TokenRefusal, LOGIN_ATTEMPT_WINDOW_SECS, MAX_LOGIN_ATTEMPTS,
+    classify_signup, normalize_email, within_login_limit, SignupOutcome, LOGIN_ATTEMPT_WINDOW_SECS,
+    MAX_LOGIN_ATTEMPTS,
 };
 use shared::account_repo::Account;
 
@@ -31,13 +31,6 @@ fn account(email_verified_at: Option<DateTime<Utc>>) -> Account {
         status: "Active".to_owned(),
         created_at: now(),
         updated_at: now(),
-    }
-}
-
-fn suspended(email_verified_at: Option<DateTime<Utc>>) -> Account {
-    Account {
-        status: "Suspended".to_owned(),
-        ..account(email_verified_at)
     }
 }
 
@@ -97,43 +90,6 @@ fn a_verified_address_notifies_its_owner_and_creates_nothing() {
         classify_signup(Some(&account(Some(now())))),
         SignupOutcome::NotifyExistingOwner
     );
-}
-
-// ── Token-issue gate ───────────────────────────────────────────────────────────
-
-#[test]
-fn issues_a_token_to_an_active_verified_account() {
-    assert_eq!(gate_token_issue(&account(Some(now())), true), None);
-}
-
-#[test]
-fn refuses_a_token_to_a_suspended_account_on_login() {
-    assert_eq!(
-        gate_token_issue(&suspended(Some(now())), true),
-        Some(TokenRefusal::Suspended)
-    );
-}
-
-#[test]
-fn refuses_a_token_to_a_suspended_account_on_otp_verification() {
-    assert_eq!(
-        gate_token_issue(&suspended(None), false),
-        Some(TokenRefusal::Suspended),
-        "verifying a passcode must not hand a token to a suspended account"
-    );
-}
-
-#[test]
-fn refuses_a_token_to_an_unverified_account_on_login() {
-    assert_eq!(
-        gate_token_issue(&account(None), true),
-        Some(TokenRefusal::EmailNotVerified)
-    );
-}
-
-#[test]
-fn allows_an_unverified_account_through_the_otp_path_that_verifies_it() {
-    assert_eq!(gate_token_issue(&account(None), false), None);
 }
 
 // ── Login rate limit ───────────────────────────────────────────────────────────

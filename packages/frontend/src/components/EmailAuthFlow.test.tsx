@@ -208,7 +208,7 @@ describe("EmailAuthFlow — sign-in error branches", () => {
 
   it("403 suspended renders a form-level error, not the OTP screen", async () => {
     const user = userEvent.setup();
-    mockLogin.mockRejectedValue(new ApiError(403, "account is suspended"));
+    mockLogin.mockRejectedValue(new ApiError(403, "account_suspended"));
     render(<EmailAuthFlow open onClose={vi.fn()} />);
 
     await fillCredentials(user);
