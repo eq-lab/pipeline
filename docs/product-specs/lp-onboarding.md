@@ -26,7 +26,7 @@ Lender authentication remains outside the operator model: no 2FA, no two-person 
 
 ### LP Entity Registration and KYB Documents
 
-A verified account registers the legal entity it acts for, attaches supporting documents, and has them reviewed by a Trustee. That whole flow — the record, the document set, the review lifecycle, notifications, and the settlement address — is specified in [`kyb-lp-verification.md`](./kyb-lp-verification.md). KYB gates an LP's ability to transact; it is independent of the whitelist paths below, which screen addresses rather than entities.
+A verified account registers the legal entity it acts for, attaches supporting documents, and has them reviewed by a Trustee. That whole flow — the record, the document set, the review lifecycle, notifications, and the settlement address — is specified in [`kyb-lp-verification.md`](./kyb-lp-verification.md). It is independent of the whitelist paths below, and the division is worth stating plainly because it is easy to get backwards: the whitelist screens *addresses* and is what actually gates PLUSD transfers, while KYB verifies the *entity* and today gates nothing but the LP's own record and its settlement address.
 
 ### Three Paths to the Transfer Whitelist
 
