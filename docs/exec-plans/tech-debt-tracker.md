@@ -900,21 +900,30 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership
 
-- **Date:** 2026-09-15 (narrowed 2026-09-15 — see below)
+- **Date:** 2026-09-15 (narrowed 2026-09-15, widened 2026-09-30 — see below)
 - **Location:** `packages/api/src/routes/lps.rs` — `link_address`
-- **Gap:** `register_lp`/`upload_document`/`link_address` now require `AuthClaims`, and
-  `upload_document`/`link_address` are additionally scoped to the caller's own LP via
-  `lp_owner_guard` (caller's JWT `(chain_id, sub)` must match `lps.(owner_chain_id, owner_address)`,
-  the `auth_users` entry that registered the LP — `lps_owner_fk` enforces the pair is a real allow-list
-  entry). That closes the original "anyone can act on any LP" gap. What's still open: `link_address`
-  authenticates *who is calling* but not that they hold the key for the `stellar_address` in the request
-  body — a registered owner can type in any Strkey and it gets recorded as the LP's settlement address,
-  with no signature proving they control it. `owner_address` (the login identity) and `stellar_address`
-  (the settlement identity) are deliberately decoupled, so the existing `AuthClaims.sub` can't double as
-  that proof.
-- **Impact:** A malicious or careless owner can link a `stellar_address` they don't control (typo, or a
-  counterparty's address); nothing downstream currently signs a challenge to verify possession before
-  the address is recorded as authoritative for that LP.
+- **Gap:** `link_address` is `/me`-keyed: it requires `AuthClaims` and looks the LP up by
+  `owner_account_id` (`my_lp`), so a caller can only ever reach the LP its own account registered —
+  there is no separate ownership check to bypass. That closes the original "anyone can act on any LP"
+  gap. What's still open: `link_address` authenticates *who is calling* but not that they hold the key
+  for the `stellar_address` in the request body — a registered owner can type in any Strkey and it gets
+  recorded as the LP's settlement address, with no signature proving they control it. `owner_address`
+  (the wallet-registration identity, `NULL` for an email signup) and `stellar_address` (the settlement
+  identity) are deliberately decoupled, so neither it nor `owner_chain_id` can double as that proof —
+  both are history, not authorization (TD-82: "`lps.owner_chain_id` / `owner_address` are dead
+  authorization columns").
+- **Impact:** Widened 2026-09-30 (#1379). Previously theoretical: the endpoint's predicate required
+  `kyb_status = 'Passed'`, and nothing anywhere wrote `kyb_status`, so every call returned `409` and this
+  gap could never be exercised. #1379 removes that status gate — the address may now be set at any
+  non-terminal status, before any reviewer has looked at the entity — and #1274 is what will make
+  `kyb_status` reachable at all, so the gap goes live once both have landed. With the status gate gone,
+  authorization (`/me` + `owner_account_id`) is the *only* remaining control on this endpoint. The
+  exposure has a bound, though, which keeps this from being unbounded: the address is fixed once the KYB
+  decision is final, and a refused (`Failed`) LP cannot set one at all, so a malicious or careless owner
+  gets at most one address burned per LP that reaches `Passed`, and none via one that is refused. That
+  bound is a property of the write predicate alone and does not rely on `accounts.status = 'Suspended'`
+  (also set at `Failed`), which is enforced nowhere until #1380. This is a bound on the blast radius, not
+  a fix — the underlying gap (no proof of key ownership) is untouched and stays open.
 - **Suggested fix:** Require a signed challenge over the *intended* `stellar_address` at `link_address`
   time — mirror `routes::auth`'s existing challenge/verify flow (`GET /v1/auth/challenge`,
   `POST /v1/auth/verify`), but scoped to proving ownership of `stellar_address` specifically rather than

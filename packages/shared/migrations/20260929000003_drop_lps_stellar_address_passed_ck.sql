@@ -1,0 +1,26 @@
+-- Migration: drop `lps_stellar_address_passed_ck` (Issue #1379).
+--
+-- An LP names its settlement address when it has one, not when a reviewer
+-- happens to have finished — so the CHECK tying `stellar_address` to
+-- `kyb_status = 'Passed'` is wrong on its face and is dropped outright.
+--
+-- The replacement rule is "replaceable until the decision is final; `Passed`
+-- fixes the address already held, `Failed` refuses outright" — a *transition*
+-- rule over (old row, new row), which no `CHECK` can express (a `CHECK` sees
+-- only the new row). It cannot be re-expressed as a constraint at all, so it
+-- lives entirely in `LpRepo::link_address`'s `UPDATE … WHERE` predicate, which
+-- is now the sole enforcement point.
+--
+-- `Failed` closes the endpoint outright, not merely fixing what is stored,
+-- because `stellar_address` is UNIQUE across every LP: a terminally refused
+-- applicant left writable could point the column at a real LP's address, then
+-- the next, burning each one for its true holder via the unique index. A
+-- refused LP will never settle, so even a first write buys it nothing. This
+-- does not lean on `accounts.status = 'Suspended'` (also set at `Failed`),
+-- which is enforced nowhere yet (#1380) — the invariant holds on its own.
+--
+-- Inverse (rollback) SQL — forward-only migrations, provided for reference
+-- only, and it will fail on any row that linked an address before passing:
+--   ALTER TABLE lps ADD CONSTRAINT lps_stellar_address_passed_ck
+--       CHECK (stellar_address IS NULL OR kyb_status = 'Passed');
+ALTER TABLE lps DROP CONSTRAINT IF EXISTS lps_stellar_address_passed_ck;

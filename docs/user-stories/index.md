@@ -197,3 +197,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1270 Trustee: LP Counterparties menu item + list table](https://github.com/eq-lab/pipeline/issues/1270) | [1270-trustee-lp-counterparties.md](./epic-1269/1270-trustee-lp-counterparties.md) | Initial |
+
+---
+
+## Epic #1376 — KYB review lifecycle
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |

@@ -302,6 +302,8 @@ _No open questions remain._
 
 ### 1. Migration
 
+**Status: done.**
+
 Add `packages/shared/migrations/20260929000003_drop_lps_stellar_address_passed_ck.sql`
 (verify the stamp is free first — see "Migration version ordering").
 
@@ -337,6 +339,8 @@ migration supersedes, and they stay exactly as they are — the new migration's
 comment is where the correction is recorded.
 
 ### 2. `shared::lp_repo::KybStatus` — the policy, stated once
+
+**Status: done.**
 
 In `packages/shared/src/lp_repo.rs`, in the `impl KybStatus` block:
 
@@ -383,6 +387,8 @@ the reverse. The two sets cross in both directions — see the table in "Why
 other. #1377 narrows the freeze further still.
 
 ### 3. `LpRepo::link_address`
+
+**Status: done.**
 
 Same file. Only the `WHERE` changes:
 
@@ -442,6 +448,8 @@ this address) still surfaces as a DB error for the caller to map to `409`.
 
 ### 4. Comment cleanup in `lp_repo.rs` (do not skip)
 
+**Status: done.**
+
 Three more places assert the dropped rule. **Line numbers re-verified against
 this branch on 2026-09-30** — the #1382 spec merge touched only `docs/` and
 `packages/frontend/src/api/lps.ts`, so nothing in Rust moved and all three still
@@ -467,6 +475,8 @@ Stay inside the repo comment budget (AGENTS.md § Lint & style): rewrite existin
 doc comments on public items, add no new inline comments.
 
 ### 5. Handler — `packages/api/src/routes/lps.rs`
+
+**Status: done.**
 
 In `link_address`, after `let lp = my_lp(&claims, &state).await?;` and before the
 repo call:
@@ -539,6 +549,8 @@ fixed once `Passed` holds one, never settable at `Failed`.
 
 ### 6. Comment cleanup in `routes/lps.rs` (do not skip)
 
+**Status: done.**
+
 Line numbers re-verified on this branch 2026-09-30; all three still hold
 (`grep -n "link-address\|allows_owner_writes\|still trusts" packages/api/src/routes/lps.rs`).
 
@@ -562,12 +574,16 @@ Line numbers re-verified on this branch 2026-09-30; all three still hold
 
 ### 7. Lint
 
+**Status: done.**
+
 `cargo clippy --all -- -D warnings` must pass. `docs/` is touched (step 9 and
 "Docs to Update"), so run `npx tsx scripts/lint-docs.ts` too. It must stay at
 **0 errors**; the warning count on this repo is nonzero and pre-existing, so
 compare against a run on `main` rather than expecting silence.
 
 ### 8. Manual verification (required — this is the only coverage the enforcement gets)
+
+**Status: done.**
 
 Against a local Postgres, before the PR leaves draft. Statuses that are not
 reachable yet (`Passed`, `Failed` — nothing writes `kyb_status` on `main`) are set
@@ -613,7 +629,45 @@ by direct `UPDATE`, since #1274 is not merged.
 
 Record the outcome in the PR description.
 
+**Outcome (2026-09-30), against local Postgres (`postgres://myusername:mypassword@localhost:5432/pipeline`):**
+migration applied by hand; a control LP plus one fixture LP per terminal/non-terminal
+combination were created, the exact `LpRepo::link_address` `WHERE` clause was run by hand
+against each (mirroring the Rust literally), and the fixtures were deleted afterward,
+restoring the DB to its prior empty state. All 8 checks passed, including 5b and 6b:
+
+1. PASS — `UPDATE 1` on the target row only; the before/after snapshot diff of `SELECT id,
+   stellar_address, updated_at FROM lps ORDER BY id` showed exactly one changed row, with a
+   second `NotStarted`-with-address control row present and undisturbed. This is the check
+   that would have caught a missing parenthesis, and it did not fire.
+2. PASS — `UPDATE 1`, address replaced, `address_linked_at` strictly greater.
+3. PASS — the address abandoned in (2) was claimed by a different LP, `UPDATE 1`.
+4. PASS — claiming an address another LP currently holds raised
+   `duplicate key value violates unique constraint "lps_stellar_address_key"` at the DB
+   level (the existing `is_unique_violation` → `409` mapping in the handler is unchanged
+   code, not re-verified here).
+5. PASS — `Passed` LP holding an address: both a different-address replace and a
+   same-address re-send returned `UPDATE 0`, row unchanged.
+5b. PASS — `Failed` LP holding an address: replace returned `UPDATE 0`, row unchanged.
+6. PASS — `Passed` LP with `stellar_address IS NULL`: first set `UPDATE 1`; subsequent
+   replace `UPDATE 0`.
+6b. PASS (the check that must not be skipped) — `Failed` LP with `stellar_address IS NULL`:
+    first attempt `UPDATE 0`, row still `NULL` afterward. **Verified only at the SQL-predicate
+    level** (the "or running the `UPDATE` by hand" alternative the step names) — the
+    handler's Rust pre-check (`allows_address_write`) was not additionally exercised over
+    HTTP in this pass; it is covered by the `Failed`+`false` case in
+    `packages/shared/tests/settlement_address.rs::the_two_terminal_statuses_close_the_address_differently`,
+    which was confirmed to fail against both discarded predicate bodies (see that file and
+    the Test Strategy section).
+7. PASS — `\d lps` after the migration no longer lists `lps_stellar_address_passed_ck`.
+8. PASS — the `UnderReview` LP's address write (`UPDATE 1`, same predicate as above)
+   succeeded while, on the identical row, the `upsert_by_owner_account_id` freeze predicate
+   (`WHERE lps.kyb_status = ANY(ARRAY['NotStarted','InProgress','Failed'])`) returned zero
+   rows and left `legal_name` unedited — confirmed at the SQL level rather than through a
+   live HTTP call with a JWT.
+
 ### 9. Spec amendment — `docs/product-specs/kyb-lp-verification.md`
+
+**Status: done.**
 
 **The merged spec is now wrong on one point and this PR fixes it.** § "Settlement
 Address" (line 67 on `main` at `d509486`) says the address "may be set at any KYB
@@ -872,3 +926,31 @@ here does not mean the security fix landed.
   not be skipped; and **the merged spec is amended** (new step 9) because "may be
   set at any KYB status" is no longer true. Rationale — the asymmetry — in
   "`Passed` and `Failed` are not symmetric". **No open questions remain.**
+
+- **2026-09-30 (c) — implemented, no deviations.** All 9 steps landed as written:
+  migration `20260929000003_drop_lps_stellar_address_passed_ck.sql` (stamp
+  confirmed free on `main`, `feat/1274-kyb-state-machine` and
+  `feat/1377-notify-on-review` immediately before writing it);
+  `KybStatus::allows_address_write` as the exhaustive three-arm `match`; the
+  `link_address` predicate exactly as specified, with the `Failed` conjunct
+  outside the disjunction; the handler pre-check and its two distinct `409`
+  messages; all four comments in `lp_repo.rs`/`routes/lps.rs` (including
+  `LpResponse::stellar_address`) rewritten; TD-57 widened (not resolved) with the
+  bound stated and the stale `lp_owner_guard`/`owner_chain_id`/`owner_address`
+  mechanism corrected, cross-referencing TD-82 by subtitle; the spec's three
+  sentences replaced verbatim as specified. New tests:
+  `packages/shared/tests/settlement_address.rs` (5 tests) and four additions to
+  `packages/api/tests/lps.rs`. Per the Test Strategy's instruction, the
+  `allows_address_write` body was temporarily swapped to both discarded forms
+  (`!has_address || *self != KybStatus::Passed`, and
+  `!has_address || !matches!(self, Passed | Failed)`) and `cargo test -p shared
+  --test settlement_address` was confirmed to fail both times — 3/5 and 2/5
+  failures respectively, the latter failing exactly on the `Failed`+`false`
+  assertion — before being restored and re-confirmed green. Manual verification
+  (step 8) outcome is recorded inline above. `cargo clippy --all -- -D warnings`,
+  `cargo fmt --check`, and `npx tsx scripts/lint-docs.ts` (0 errors) all pass. A
+  user-stories doc was added at
+  `docs/user-stories/epic-1376/1379-ungate-link-address.md` and linked from the
+  index (ISSUE_PROTOCOL §6), following the API-only convention of
+  `docs/user-stories/epic-1247/1368-sendgrid-email-delivery.md` since this issue
+  has no UI. No scope, predicate, or policy deviation from revision (b).
