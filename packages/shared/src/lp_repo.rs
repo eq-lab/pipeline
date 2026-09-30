@@ -244,6 +244,10 @@ pub struct LpRow {
     pub kyb_decided_at: Option<DateTime<Utc>>,
     /// The latest verdict's free-text reason, if the trustee gave one.
     pub kyb_decision_reason: Option<String>,
+    /// Whether the owner asked to be emailed each trustee decision. Opt-in,
+    /// `false` by default, and outside the write freeze (spec § Review
+    /// Notifications, Issue #1377).
+    pub notify_on_review: bool,
     /// The account that registered this LP — the authorization key. See the
     /// module doc.
     pub owner_account_id: Uuid,
@@ -259,8 +263,8 @@ pub struct LpRow {
 
 const COLUMNS: &str = "id, legal_name, country, contact_email, stellar_address, \
                        address_linked_at, kyb_status, kyb_submitted_at, kyb_decided_by, \
-                       kyb_decided_at, kyb_decision_reason, owner_account_id, owner_chain_id, \
-                       owner_address, created_at, updated_at";
+                       kyb_decided_at, kyb_decision_reason, notify_on_review, owner_account_id, \
+                       owner_chain_id, owner_address, created_at, updated_at";
 
 pub struct LpRepo {
     pub pool: PgPool,
@@ -292,17 +296,33 @@ impl LpRepo {
     /// They are history, not authorization (TD-82), so a later edit must not
     /// rewrite them.
     ///
-    /// The `WHERE` on the update path is the freeze ([`KybStatus::allows_owner_writes`])
-    /// expressed in SQL rather than trusted from a prior read. The handler
-    /// reads the LP, then drains a multipart body that may be a hundred
-    /// megabytes, and only then writes — a trustee moving the record to
-    /// `UnderReview` inside that window would otherwise have it changed
-    /// underneath them, which is exactly what the freeze exists to prevent.
-    /// `None` means the row existed but was frozen. `KybDocumentRepo`'s
-    /// `insert` and `delete` carry the same predicate, so every owner write —
-    /// profile, upload, removal — is gated in SQL rather than on a prior read.
+    /// The `WHERE` on the update path is the freeze
+    /// ([`KybStatus::allows_owner_writes`]) narrowed to a profile *change*
+    /// (spec § Review Notifications, Issue #1377) — `routes::lps::decide_upsert`
+    /// is where that rule is stated; this is where it is enforced, because the
+    /// handler reads the LP, then drains a multipart body that may be a hundred
+    /// megabytes, and only then writes — a trustee freezing the record inside
+    /// that window would otherwise let the edit through if only the prior read
+    /// were checked. `None` now means the row existed, was frozen, and the
+    /// submitted profile differed from what is stored; a frozen row whose
+    /// profile is unchanged still matches the `WHERE` and updates
+    /// `notify_on_review` alone. `country` compares with `IS NOT DISTINCT FROM`
+    /// because it is nullable and `NULL = NULL` is `NULL`, not `true` — `=`
+    /// there would 409 every frozen LP with no country on a pure preference
+    /// toggle. `KybDocumentRepo`'s `insert` and `delete` keep the
+    /// **un**narrowed predicate: documents are the evidence, and only the
+    /// profile comparison is exempted.
+    ///
+    /// `notify_on_review` is `COALESCE`d against the bind parameter on both
+    /// paths, never against `EXCLUDED`: the insert's `VALUES` already folds a
+    /// `None` to `false` (a bare `NULL` would violate the column's `NOT NULL`
+    /// and override its `DEFAULT`), so `EXCLUDED.notify_on_review` would read
+    /// `false` whenever the caller omitted the field — silently opting an LP
+    /// out on every unrelated profile edit. Referencing `$8` directly on the
+    /// update path is what keeps an omitted preference unchanged.
     ///
     /// Returns the LP's `id` and whether this call created it.
+    #[allow(clippy::too_many_arguments)]
     pub async fn upsert_by_owner_account_id(
         &self,
         legal_name: &str,
@@ -311,15 +331,21 @@ impl LpRepo {
         owner_account_id: Uuid,
         owner_chain_id: Option<i64>,
         owner_address: Option<&str>,
+        notify_on_review: Option<bool>,
     ) -> Result<Option<(i64, bool)>, sqlx::Error> {
         sqlx::query_as::<_, (i64, bool)>(
             "INSERT INTO lps (legal_name, country, contact_email, owner_account_id, \
-             owner_chain_id, owner_address) \
-             VALUES ($1, $2, $3, $4, $5, $6) \
+             owner_chain_id, owner_address, notify_on_review) \
+             VALUES ($1, $2, $3, $4, $5, $6, COALESCE($8::boolean, false)) \
              ON CONFLICT (owner_account_id) DO UPDATE SET \
              legal_name = EXCLUDED.legal_name, country = EXCLUDED.country, \
-             contact_email = EXCLUDED.contact_email, updated_at = now() \
+             contact_email = EXCLUDED.contact_email, \
+             notify_on_review = COALESCE($8::boolean, lps.notify_on_review), \
+             updated_at = now() \
              WHERE lps.kyb_status = ANY($7) \
+                OR (lps.legal_name    IS NOT DISTINCT FROM EXCLUDED.legal_name \
+                AND lps.country       IS NOT DISTINCT FROM EXCLUDED.country \
+                AND lps.contact_email IS NOT DISTINCT FROM EXCLUDED.contact_email) \
              RETURNING id, (xmax = 0) AS created",
         )
         .bind(legal_name)
@@ -329,6 +355,7 @@ impl LpRepo {
         .bind(owner_chain_id)
         .bind(owner_address)
         .bind(Self::writable_statuses())
+        .bind(notify_on_review)
         .fetch_optional(&self.pool)
         .await
     }

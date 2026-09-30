@@ -6,9 +6,10 @@ use axum::http::StatusCode;
 
 use pipeline_api::config::KybLimits;
 use pipeline_api::routes::lps::{
-    check_document_cap, pass_blockers, resolve_document_review, resolve_kyb_decision,
-    submit_blockers, upload_status, validate_profile, DocumentReviewDecision,
-    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpsDoc, UpsertLpRequest,
+    check_document_cap, decide_upsert, pass_blockers, profile_is_unchanged,
+    resolve_document_review, resolve_kyb_decision, submit_blockers, upload_status,
+    validate_profile, DocumentReviewDecision, DocumentReviewRequest, FileResult, KybDecision,
+    KybDecisionRequest, LpsDoc, StoredProfile, UpsertLpRequest, UpsertOutcome, ValidatedProfile,
     MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN, MAX_DECISION_REASON_LEN, MAX_LEGAL_NAME_LEN,
 };
 use shared::kyb_document_repo::DocumentStatus;
@@ -69,6 +70,7 @@ fn form(legal_name: &str, country: Option<&str>, contact_email: &str) -> UpsertL
         legal_name: legal_name.to_owned(),
         country: country.map(str::to_owned),
         contact_email: contact_email.to_owned(),
+        notify_on_review: None,
     }
 }
 
@@ -96,6 +98,162 @@ fn a_blank_country_clears_the_column_rather_than_storing_empty_text() {
 
     let absent = form("Acme", None, "ops@acme.example");
     assert_eq!(validate_profile(&absent).unwrap().country, None);
+}
+
+// ── Narrowed freeze (profile_is_unchanged / decide_upsert) ──────────────────
+
+fn stored_profile<'a>(
+    legal_name: &'a str,
+    country: Option<&'a str>,
+    contact_email: &'a str,
+) -> StoredProfile<'a> {
+    StoredProfile {
+        legal_name,
+        country,
+        contact_email,
+    }
+}
+
+fn submitted(form: &UpsertLpRequest) -> ValidatedProfile<'_> {
+    validate_profile(form).expect("a valid profile")
+}
+
+#[test]
+fn identical_values_are_unchanged() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("Acme", Some("NL"), "ops@acme.example");
+    assert!(profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn surrounding_whitespace_is_not_a_change() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("  Acme  ", Some(" NL "), "  ops@acme.example  ");
+    assert!(profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn a_frozen_lp_with_no_country_toggling_only_the_preference_is_unchanged() {
+    let s = stored_profile("Acme", None, "ops@acme.example");
+    let f = form("Acme", None, "ops@acme.example");
+    assert!(profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn a_blank_submitted_country_against_a_stored_none_is_unchanged() {
+    let s = stored_profile("Acme", None, "ops@acme.example");
+    let f = form("Acme", Some("   "), "ops@acme.example");
+    assert!(profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn a_stored_none_country_against_a_submitted_value_is_a_change() {
+    let s = stored_profile("Acme", None, "ops@acme.example");
+    let f = form("Acme", Some("NL"), "ops@acme.example");
+    assert!(!profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn a_stored_country_against_an_omitted_one_is_a_change() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("Acme", None, "ops@acme.example");
+    assert!(!profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn legal_name_differing_only_in_case_is_a_change() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("ACME", Some("NL"), "ops@acme.example");
+    assert!(!profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn contact_email_differing_only_in_case_is_a_change() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("Acme", Some("NL"), "OPS@ACME.EXAMPLE");
+    assert!(!profile_is_unchanged(s, &submitted(&f)));
+}
+
+#[test]
+fn each_field_differing_on_its_own_is_a_change() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    assert!(!profile_is_unchanged(
+        s,
+        &submitted(&form("Widgets Ltd", Some("NL"), "ops@acme.example"))
+    ));
+    assert!(!profile_is_unchanged(
+        s,
+        &submitted(&form("Acme", Some("DE"), "ops@acme.example"))
+    ));
+    assert!(!profile_is_unchanged(
+        s,
+        &submitted(&form("Acme", Some("NL"), "other@acme.example"))
+    ));
+}
+
+#[test]
+fn no_stored_lp_always_writes() {
+    let f = form("Acme", Some("NL"), "ops@acme.example");
+    assert_eq!(
+        decide_upsert(None, false, &submitted(&f)),
+        UpsertOutcome::Write
+    );
+    assert_eq!(
+        decide_upsert(None, true, &submitted(&f)),
+        UpsertOutcome::Write
+    );
+}
+
+#[test]
+fn a_writable_lp_always_writes_even_with_a_changed_profile() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    assert_eq!(
+        decide_upsert(
+            Some(s),
+            true,
+            &submitted(&form("Acme", Some("NL"), "ops@acme.example"))
+        ),
+        UpsertOutcome::Write
+    );
+    assert_eq!(
+        decide_upsert(
+            Some(s),
+            true,
+            &submitted(&form("New Name", Some("NL"), "ops@acme.example"))
+        ),
+        UpsertOutcome::Write
+    );
+}
+
+#[test]
+fn a_frozen_lp_with_an_identical_profile_writes_the_preference_only() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("Acme", Some("NL"), "ops@acme.example");
+    assert_eq!(
+        decide_upsert(Some(s), false, &submitted(&f)),
+        UpsertOutcome::PreferenceOnly
+    );
+}
+
+#[test]
+fn a_frozen_lp_with_a_changed_profile_is_refused() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let f = form("New Name", Some("NL"), "ops@acme.example");
+    assert_eq!(
+        decide_upsert(Some(s), false, &submitted(&f)),
+        UpsertOutcome::Refuse
+    );
+}
+
+#[test]
+fn refuse_is_reachable_only_when_not_writable() {
+    let s = stored_profile("Acme", Some("NL"), "ops@acme.example");
+    let changed = form("New Name", Some("NL"), "ops@acme.example");
+    assert_ne!(
+        decide_upsert(Some(s), true, &submitted(&changed)),
+        UpsertOutcome::Refuse,
+        "a writable LP can never be refused a profile edit by this rule"
+    );
 }
 
 // ── Document cap ─────────────────────────────────────────────────────────────
@@ -244,6 +402,22 @@ fn the_profile_request_exposes_the_entity_fields() {
             props[field]
         );
     }
+}
+
+#[test]
+fn the_profile_request_exposes_notify_on_review_as_optional_boolean() {
+    let doc = openapi_json();
+    let schema = &doc["components"]["schemas"]["UpsertLpRequest"];
+    assert!(
+        has_type(&schema["properties"]["notify_on_review"], "boolean"),
+        "notify_on_review must be a boolean field, got {}",
+        schema["properties"]["notify_on_review"]
+    );
+    let required = schema["required"].as_array().cloned().unwrap_or_default();
+    assert!(
+        !required.iter().any(|f| f == "notify_on_review"),
+        "notify_on_review must stay optional — absent means do not change"
+    );
 }
 
 #[test]
@@ -587,6 +761,22 @@ fn lp_response_exposes_the_review_lifecycle_fields() {
             "LpSummary missing {field}"
         );
     }
+}
+
+#[test]
+fn lp_response_exposes_notify_on_review_as_a_required_boolean() {
+    let doc = openapi_json();
+    let schema = &doc["components"]["schemas"]["LpResponse"];
+    assert!(
+        has_type(&schema["properties"]["notify_on_review"], "boolean"),
+        "notify_on_review must be a boolean field, got {}",
+        schema["properties"]["notify_on_review"]
+    );
+    let required = schema["required"].as_array().cloned().unwrap_or_default();
+    assert!(
+        required.iter().any(|f| f == "notify_on_review"),
+        "notify_on_review is not an Option, so a reader never has to handle its absence"
+    );
 }
 
 #[test]

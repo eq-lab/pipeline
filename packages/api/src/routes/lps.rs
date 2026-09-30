@@ -28,16 +28,22 @@
 //! Two rules govern every owner write, and both exist so that a decision can
 //! never be detached from what it was made about:
 //!
-//! 1. [`KybStatus::allows_owner_writes`] freezes the whole record while
-//!    `UnderReview`, `Passed` or `Failed`; only `ChangesRequested` reopens it.
-//!    It reads `kyb_status`; [`submit_my_lp`] and [`decide_kyb`] are what
-//!    write it. The settlement address sits outside this freeze: it is not
-//!    evidence a decision was made about, so it follows its own rule
-//!    ([`KybStatus::allows_address_write`]) — open at `UnderReview`, where the
-//!    freeze bites. `Failed` now closes both the profile and the address, for
-//!    independent reasons neither expressed in terms of the other: the
-//!    profile because the verdict is final, the address because the column is
-//!    UNIQUE across LPs.
+//! 1. [`KybStatus::allows_owner_writes`] freezes the profile and the documents
+//!    while `UnderReview`, `Passed` or `Failed`; only `ChangesRequested`
+//!    reopens them. It reads `kyb_status`; [`submit_my_lp`] and [`decide_kyb`]
+//!    are what write it. Two things sit outside this freeze, because neither
+//!    is evidence a decision was made about: the settlement address follows
+//!    its own rule ([`KybStatus::allows_address_write`]) — open at
+//!    `UnderReview`, where the profile freeze bites — and `notify_on_review`
+//!    is exempt outright (spec § Review Notifications, Issue #1377): an LP
+//!    frozen mid-review must still be able to opt in to hearing that review's
+//!    outcome. [`upsert_my_lp`] narrows for the preference, via
+//!    [`decide_upsert`], to "the profile as submitted matches what is
+//!    stored" rather than lifting the freeze outright — see that function.
+//!    `Failed` now closes both the profile and the address, for independent
+//!    reasons neither expressed in terms of the other: the profile because
+//!    the verdict is final, the address because the column is UNIQUE across
+//!    LPs.
 //! 2. A `Verified` document cannot be deleted, even when the LP as a whole is
 //!    writable. That matters in `ChangesRequested`, where the LP reopens with
 //!    some documents approved and only the rejected ones needing replacement,
@@ -103,10 +109,15 @@ pub struct LpResponse {
     /// `Passed` | `Failed`.
     #[schema(example = "InProgress")]
     pub kyb_status: String,
-    /// Whether the owner may still edit this record — the rendered form of
-    /// [`KybStatus::allows_owner_writes`], so a client need not re-derive the
-    /// rule to know whether to disable its form.
+    /// Whether the owner may still edit the profile and documents — the
+    /// rendered form of [`KybStatus::allows_owner_writes`], so a client need
+    /// not re-derive the rule to know whether to disable its form.
+    /// `notify_on_review` is not governed by this flag; it is editable at any
+    /// `kyb_status` (spec § Review Notifications).
     pub writable: bool,
+    /// Whether the owner is emailed each trustee decision. Opt-in, `false` by
+    /// default, and editable at any `kyb_status` — not gated by `writable`.
+    pub notify_on_review: bool,
     /// ISO-8601 UTC. When the owner last submitted for review.
     pub kyb_submitted_at: Option<String>,
     /// ISO-8601 UTC. When the latest verdict was recorded.
@@ -139,6 +150,7 @@ impl LpResponse {
             address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
             writable,
+            notify_on_review: row.notify_on_review,
             kyb_submitted_at: row.kyb_submitted_at.as_ref().map(iso_utc),
             kyb_decided_at: row.kyb_decided_at.as_ref().map(iso_utc),
             kyb_decision_reason: row.kyb_decision_reason,
@@ -300,10 +312,13 @@ pub struct DocumentReviewRequest {
 
 /// Request body for `POST /v1/lps/me`.
 ///
-/// A full replace: every field is taken as sent, and an absent `country` is
-/// stored as `NULL`. That is unambiguous only because this endpoint carries
-/// nothing but the profile — when it also carried files, every upload became a
-/// profile write from whatever the client was holding.
+/// The profile (`legal_name`, `country`, `contact_email`) is a full replace:
+/// every field is taken as sent, and an absent `country` is stored as `NULL`.
+/// That is unambiguous only because this endpoint carries nothing but the
+/// profile — when it also carried files, every upload became a profile write
+/// from whatever the client was holding. `notify_on_review` rides along but
+/// is not part of that replace: absent means *do not change* (spec § Review
+/// Notifications).
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct UpsertLpRequest {
     #[schema(example = "Acme Trading Ltd")]
@@ -313,6 +328,11 @@ pub struct UpsertLpRequest {
     pub country: Option<String>,
     #[schema(example = "ops@acme.example")]
     pub contact_email: String,
+    /// Absent means *do not change*. Editable at any `kyb_status`, even a
+    /// frozen one — see the module doc.
+    #[serde(default)]
+    #[schema(example = true, nullable)]
+    pub notify_on_review: Option<bool>,
 }
 
 /// The `multipart/form-data` body of `POST /v1/lps/me/documents`.
@@ -623,21 +643,29 @@ async fn get_my_lp(
 
 /// Register or update the caller's LP.
 ///
-/// JSON, profile only — documents go to [`upload_my_documents`]. A full
-/// replace: every field is taken as sent, and an absent `country` clears the
-/// column. Deliberately separate from uploading, because combining them made
-/// every upload also rewrite the profile from whatever the client happened to
-/// be holding, which silently reverted edits made elsewhere.
+/// JSON, profile only — documents go to [`upload_my_documents`]. The profile
+/// is a full replace: every field is taken as sent, and an absent `country`
+/// clears the column. Deliberately separate from uploading, because combining
+/// them made every upload also rewrite the profile from whatever the client
+/// happened to be holding, which silently reverted edits made elsewhere.
+///
+/// `notify_on_review` is not part of that replace and is not frozen with the
+/// rest of the record: a frozen LP whose submitted profile matches what is
+/// stored still has its preference written (spec § Review Notifications). The
+/// narrowing is stated once as [`decide_upsert`] and restated in
+/// [`shared::lp_repo::LpRepo::upsert_by_owner_account_id`]'s SQL predicate,
+/// which is what actually enforces it against a trustee freezing the record
+/// between this handler's read and its write.
 #[utoipa::path(
     post,
     path = "/v1/lps/me",
     request_body = UpsertLpRequest,
     responses(
-        (status = 200, description = "LP updated", body = LpResponse),
+        (status = 200, description = "LP updated, or only notify_on_review updated", body = LpResponse),
         (status = 201, description = "LP registered", body = LpResponse),
         (status = 400, description = "legal_name or contact_email empty, or a field over its length limit"),
         (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 409, description = "KYB is UnderReview or Passed"),
+        (status = 409, description = "The LP is frozen and the submitted profile differs from the stored one"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -649,14 +677,26 @@ async fn upsert_my_lp(
 ) -> Result<Response, ApiError> {
     let profile = validate_profile(&req)?;
 
-    // The guard is an early exit for a clear refusal; the DB predicate below is
-    // what actually enforces the freeze.
+    // The early exit is for a clear refusal that can name the current status;
+    // the DB predicate below is what actually enforces the narrowed freeze,
+    // because a trustee may freeze the record between this read and that write.
     if let Some(lp) = state
         .lp_repo
         .find_by_owner_account_id(claims.account_id)
         .await?
     {
-        guard_writable(&lp)?;
+        let writable = KybStatus::from_str(&lp.kyb_status)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?
+            .allows_owner_writes();
+        if decide_upsert(Some(StoredProfile::from(&lp)), writable, &profile)
+            == UpsertOutcome::Refuse
+        {
+            return Err(ApiError::Conflict(format!(
+                "this LP is {} and its profile can no longer be changed; \
+                 notify_on_review may still be updated",
+                lp.kyb_status
+            )));
+        }
     }
 
     let (lp_id, created) = state
@@ -668,10 +708,15 @@ async fn upsert_my_lp(
             claims.account_id,
             claims.chain_id,
             claims.chain_id.map(|_| claims.sub.as_str()),
+            req.notify_on_review,
         )
         .await?
         .ok_or_else(|| {
-            ApiError::Conflict("this LP is under review and can no longer be changed".to_owned())
+            ApiError::Conflict(
+                "this LP was frozen before the change was applied, and the submitted profile \
+                 differs from the stored one"
+                    .to_owned(),
+            )
         })?;
 
     let lp = state.lp_repo.find(lp_id).await?.ok_or_else(|| {
@@ -1390,6 +1435,75 @@ pub fn validate_profile(form: &UpsertLpRequest) -> Result<ValidatedProfile<'_>, 
             .filter(|c| !c.is_empty()),
         contact_email,
     })
+}
+
+/// The three profile columns [`decide_upsert`] compares, borrowed from an
+/// `LpRow` rather than the row itself so the tests in `packages/api/tests/lps.rs`
+/// need no `Uuid`/`DateTime` fixtures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoredProfile<'a> {
+    pub legal_name: &'a str,
+    pub country: Option<&'a str>,
+    pub contact_email: &'a str,
+}
+
+impl<'a> From<&'a LpRow> for StoredProfile<'a> {
+    fn from(row: &'a LpRow) -> Self {
+        Self {
+            legal_name: &row.legal_name,
+            country: row.country.as_deref(),
+            contact_email: &row.contact_email,
+        }
+    }
+}
+
+/// What `POST /v1/lps/me` may do with a submitted profile (spec § Review
+/// Notifications).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpsertOutcome {
+    /// No LP yet, or the LP is writable: full replace plus the preference.
+    Write,
+    /// Frozen, but the submitted profile is identical to what is stored: only
+    /// `notify_on_review` is written.
+    PreferenceOnly,
+    /// Frozen and the profile differs: nothing is written.
+    Refuse,
+}
+
+/// Whether `submitted` would leave `stored` unchanged.
+///
+/// Compares the *validated* fields, because those are what would be written —
+/// a trimmed resubmission of the same values is not a change. `country`
+/// compares `None == None` as equal, mirroring the SQL's
+/// `IS NOT DISTINCT FROM`; `==` on a raw `Option<&str>` already does this in
+/// Rust, but the point is documented here because the SQL twin needs the
+/// non-obvious operator to get the same answer. Otherwise exact and
+/// case-sensitive.
+pub fn profile_is_unchanged(stored: StoredProfile<'_>, submitted: &ValidatedProfile<'_>) -> bool {
+    stored.legal_name == submitted.legal_name
+        && stored.country == submitted.country
+        && stored.contact_email == submitted.contact_email
+}
+
+/// The narrowed freeze in one place (spec § Review Notifications). Restated,
+/// not superseded, by `shared::lp_repo::LpRepo::upsert_by_owner_account_id`'s
+/// `WHERE` — that is what actually enforces it against a race between this
+/// function's read and the write.
+pub fn decide_upsert(
+    stored: Option<StoredProfile<'_>>,
+    writable: bool,
+    submitted: &ValidatedProfile<'_>,
+) -> UpsertOutcome {
+    let Some(stored) = stored else {
+        return UpsertOutcome::Write;
+    };
+    if writable {
+        return UpsertOutcome::Write;
+    }
+    if profile_is_unchanged(stored, submitted) {
+        return UpsertOutcome::PreferenceOnly;
+    }
+    UpsertOutcome::Refuse
 }
 
 /// Refuse an upload that would carry an LP past the per-LP document cap.

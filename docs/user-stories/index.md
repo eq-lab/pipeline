@@ -208,4 +208,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1380 Backend: enforce accounts.status = 'Suspended' in authorization](https://github.com/eq-lab/pipeline/issues/1380) | [1380-enforce-account-suspension.md](./epic-1376/1380-enforce-account-suspension.md) | Initial |
 | [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
 | [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |
+| [#1377 Backend: notify_on_review flag on POST /v1/lps/me + narrowed write freeze](https://github.com/eq-lab/pipeline/issues/1377) | [1377-notify-on-review.md](./epic-1376/1377-notify-on-review.md) | Initial |
 | [Epic #1376 KYB review lifecycle](https://github.com/eq-lab/pipeline/issues/1376) | [verification-runbook.md](./epic-1376/verification-runbook.md) | Initial |

@@ -175,7 +175,7 @@ so the rename has to happen *before* merge. The branch that lands second owns th
 
 ## Implementation Steps
 
-### 1. Migration
+### 1. DONE. Migration
 
 Add `packages/shared/migrations/20260929000002_lps_notify_on_review.sql` (the `…002` stamp leaves
 `…001` to #1274; if #1274 has already merged, bump so this sorts last — see Overlap).
@@ -197,7 +197,7 @@ The comment should record *why* the column is on `lps` and not on `accounts`: th
 about a decision made on an entity, one account owns at most one LP, and the address it is delivered
 to is `lps.contact_email`.
 
-### 2. `packages/shared/src/lp_repo.rs`
+### 2. DONE. `packages/shared/src/lp_repo.rs`
 
 **`LpRow`** gains:
 
@@ -252,7 +252,7 @@ predicate: documents are the evidence, and only the profile comparison is exempt
 
 `writable_statuses()` is unchanged and still binds `$7`.
 
-### 3. `packages/api/src/routes/lps.rs` — DTOs
+### 3. DONE. `packages/api/src/routes/lps.rs` — DTOs
 
 **`UpsertLpRequest`** gains:
 
@@ -278,7 +278,7 @@ the profile and documents; `notify_on_review` is outside it.
 **`LpSummary` is unchanged.** The trustee listing has no use for an LP's notification preference,
 and #1378 reads the flag from `LpRow` server-side, not from a DTO.
 
-### 4. `packages/api/src/routes/lps.rs` — pure compute
+### 4. DONE. `packages/api/src/routes/lps.rs` — pure compute
 
 Both go in the `// ── Compute (pure) ──` section, `pub` so `packages/api/tests/lps.rs` can drive
 them with no HTTP and no DB — the same shape as `validate_profile` / `resolve_document_review`.
@@ -327,7 +327,7 @@ pub fn decide_upsert(
 `decide_upsert`: `None` ⇒ `Write`; `writable` ⇒ `Write`; otherwise `profile_is_unchanged` ⇒
 `PreferenceOnly`, else `Refuse`.
 
-### 5. `packages/api/src/routes/lps.rs` — `upsert_my_lp`
+### 5. DONE. `packages/api/src/routes/lps.rs` — `upsert_my_lp`
 
 Replace the `guard_writable(&lp)?` early exit. `guard_writable` itself stays exactly as it is —
 `upload_my_documents` and `delete_my_document` still need the wide freeze.
@@ -380,7 +380,7 @@ Update the handler's `#[utoipa::path]`:
 Update the handler's doc comment: it is still a full replace of the profile, and it now also carries
 a preference that is not part of that replace and is accepted at any `kyb_status`.
 
-### 6. Module header
+### 6. DONE. Module header
 
 `routes/lps.rs`'s header lists the two rules governing every owner write. Rule 1 currently reads
 "[`KybStatus::allows_owner_writes`] freezes the whole record while `UnderReview` or `Passed`".
@@ -393,12 +393,12 @@ and editing it here creates a conflict for no benefit.
 
 Respect AGENTS.md § Lint & style: rewrite existing comments, add no new inline ones.
 
-### 7. OpenAPI
+### 7. DONE (unchanged, as predicted). OpenAPI
 
 No new schema types, so `LpsDoc`'s `components(schemas(...))` and `paths(...)` are unchanged — the
 two new fields ride on `UpsertLpRequest` and `LpResponse`, which are already registered.
 
-### 8. Lint
+### 8. DONE. Lint
 
 `cargo clippy --all -- -D warnings` must pass. No TypeScript changes; run
 `npx tsx scripts/lint-docs.ts` only if a file under `docs/` is touched (see Docs to Update).
@@ -497,3 +497,38 @@ it. At minimum:
 - **No `packages/frontend` changes**, and no generated docs to regenerate (`docs/generated/` holds
   only `stellar-protocol-contracts.md`; there is no checked-in OpenAPI dump).
 - Run `npx tsx scripts/lint-docs.ts` if any file under `docs/` is touched.
+
+## Decision Log (implementation pass)
+
+- **#1382 merged before implementation** (`main`'s `docs/product-specs/kyb-lp-verification.md`
+  already carries § "Review Notifications" and the freeze paragraph, including the endpoint-level
+  contract this issue settles — "a request whose profile fields match what is stored is accepted
+  and writes the preference alone... a request that would alter any profile field is refused and
+  writes nothing — the preference included"). No spec edit was made; the file already states the
+  behaviour implemented here.
+- **Migration stamp: `20260930000002`, not the plan's reserved `…002` off `…001`.** By
+  implementation time `main` held `20260929000003` (#1379) and `20260930000001` (#1274,
+  `kyb_review_lifecycle.sql`). `feat/1380-enforce-account-suspension` carries no migration of its
+  own yet. Used `20260930000002_lps_notify_on_review.sql`.
+- **`const COLUMNS` already existed** (added by #1274, `packages/shared/src/lp_repo.rs`).
+  `notify_on_review` was added to it directly rather than to three separate SELECT lists, as the
+  plan anticipated for the "if #1274 landed first" branch.
+- **`upsert_by_owner_account_id`'s predicate composes with #1274's `OWNER_WRITABLE`
+  (`NotStarted`/`InProgress`/`ChangesRequested`)** via `Self::writable_statuses()` / `$7`, unchanged
+  from what #1274 left — the narrowing adds an `OR (profile unchanged)` alongside it rather than
+  replacing it, so `Failed` (removed from `OWNER_WRITABLE` by #1274) is correctly frozen the same as
+  `UnderReview`/`Passed`.
+- **`kyb_decided_by` left unexposed**, per #1274's existing rule — `LpResponse` still has no field
+  for it; only `notify_on_review` was added to `LpRow`/`LpResponse`/`UpsertLpRequest`.
+- **`#[allow(clippy::too_many_arguments)]`** added to `upsert_by_owner_account_id` (now 8
+  parameters) — not anticipated in the plan, but an established pattern elsewhere in the repo
+  (`packages/shared/src/db.rs`, `collateral_valuation_repo.rs`, etc.) rather than a struct
+  refactor, to keep the diff minimal.
+- **Manual DB verification (Test Strategy's 8-point checklist) was not run** — this agent has no
+  access to a running Postgres instance. The SQL predicate is exercised only by inspection and by
+  the pure-Rust twin (`profile_is_unchanged`/`decide_upsert`, 15 new unit tests, all passing). This
+  must be verified against a local DB before PR #1384 is marked ready, per the plan's own Test
+  Strategy section.
+- No new tech-debt entries and no new known-bugs entries were needed — the implementation matches
+  the plan's SQL and Rust shapes exactly (`IS NOT DISTINCT FROM`, `COALESCE($8, …)` on both paths,
+  the `::boolean` cast).
