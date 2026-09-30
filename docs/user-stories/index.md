@@ -205,3 +205,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
+| [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |

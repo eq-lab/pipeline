@@ -12,6 +12,7 @@
 //! type does.
 
 use std::fmt;
+use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -57,6 +58,22 @@ impl DocumentStatus {
 impl fmt::Display for DocumentStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for DocumentStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "NotProvided" => Ok(DocumentStatus::NotProvided),
+            "Provided" => Ok(DocumentStatus::Provided),
+            "Verified" => Ok(DocumentStatus::Verified),
+            "Rejected" => Ok(DocumentStatus::Rejected),
+            other => Err(format!(
+                "unknown document status `{other}` (expected NotProvided, Provided, Verified, or Rejected)"
+            )),
+        }
     }
 }
 
@@ -187,9 +204,13 @@ impl KybDocumentRepo {
     }
 
     /// Apply a staff decision (`Verified` or `Rejected`) to a document still
-    /// awaiting review. Only a row in `Provided` is updated — terminal states
-    /// are left untouched, so the returned bool lets the caller 409 on "not
-    /// eligible for review", the same pattern as `SubmittedLoanRepo::review`.
+    /// awaiting review. Only a row in `Provided`, whose LP is currently
+    /// `UnderReview`, is updated — terminal document states are left
+    /// untouched, and the LP-status clause closes the race where a second
+    /// trustee moves the LP to `Passed`/`Failed` between the handler's read
+    /// and this write (Issue #1274, spec § KYB Review Lifecycle). The
+    /// returned bool lets the caller 409 on "not eligible for review", the
+    /// same pattern as `SubmittedLoanRepo::review`.
     pub async fn review(
         &self,
         id: i64,
@@ -199,7 +220,9 @@ impl KybDocumentRepo {
     ) -> Result<bool, sqlx::Error> {
         let affected = sqlx::query(
             "UPDATE kyb_documents SET status = $2, reject_reason = $3, reviewed_by = $4, reviewed_at = now() \
-             WHERE id = $1 AND status = 'Provided'",
+             WHERE id = $1 AND status = 'Provided' \
+               AND EXISTS (SELECT 1 FROM lps l WHERE l.id = kyb_documents.lp_id \
+                           AND l.kyb_status = 'UnderReview')",
         )
         .bind(id)
         .bind(new_status.as_str())

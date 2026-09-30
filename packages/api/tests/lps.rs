@@ -6,11 +6,13 @@ use axum::http::StatusCode;
 
 use pipeline_api::config::KybLimits;
 use pipeline_api::routes::lps::{
-    check_document_cap, resolve_document_review, upload_status, validate_profile,
-    DocumentReviewDecision, DocumentReviewRequest, FileResult, LpsDoc, UpsertLpRequest,
-    MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN, MAX_LEGAL_NAME_LEN,
+    check_document_cap, pass_blockers, resolve_document_review, resolve_kyb_decision,
+    submit_blockers, upload_status, validate_profile, DocumentReviewDecision,
+    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpsDoc, UpsertLpRequest,
+    MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN, MAX_DECISION_REASON_LEN, MAX_LEGAL_NAME_LEN,
 };
 use shared::kyb_document_repo::DocumentStatus;
+use shared::lp_repo::KybStatus;
 
 // ── Document review ──────────────────────────────────────────────────────────
 
@@ -415,5 +417,202 @@ fn lp_response_stellar_address_no_longer_claims_passed_only() {
         "LpResponse.stellar_address is rendered into the public OpenAPI \
          document — it must not claim it is settable only once Passed, got \
          {description:?}"
+    );
+}
+
+// ── KYB decision (Issue #1274) ───────────────────────────────────────────────
+
+fn decision_req(decision: KybDecision, reason: Option<&str>) -> KybDecisionRequest {
+    KybDecisionRequest {
+        decision,
+        reason: reason.map(str::to_owned),
+    }
+}
+
+#[test]
+fn each_decision_with_no_reason_succeeds_with_none() {
+    for (decision, status) in [
+        (KybDecision::Passed, KybStatus::Passed),
+        (KybDecision::ChangesRequested, KybStatus::ChangesRequested),
+        (KybDecision::Failed, KybStatus::Failed),
+    ] {
+        let req = decision_req(decision, None);
+        let (resolved, reason) = resolve_kyb_decision(&req).unwrap();
+        assert_eq!(resolved, status);
+        assert_eq!(reason, None);
+    }
+}
+
+#[test]
+fn a_decision_with_a_reason_yields_the_trimmed_reason() {
+    let req = decision_req(KybDecision::Failed, Some("  not enough proof  "));
+    let (_, reason) = resolve_kyb_decision(&req).unwrap();
+    assert_eq!(reason, Some("not enough proof"));
+}
+
+#[test]
+fn a_whitespace_only_reason_collapses_to_none() {
+    let req = decision_req(KybDecision::ChangesRequested, Some("   "));
+    let (_, reason) = resolve_kyb_decision(&req).unwrap();
+    assert_eq!(reason, None);
+}
+
+#[test]
+fn an_over_long_reason_is_refused() {
+    let long = "A".repeat(MAX_DECISION_REASON_LEN + 1);
+    assert!(resolve_kyb_decision(&decision_req(KybDecision::Failed, Some(&long))).is_err());
+
+    let at_limit = "A".repeat(MAX_DECISION_REASON_LEN);
+    assert!(resolve_kyb_decision(&decision_req(KybDecision::Failed, Some(&at_limit))).is_ok());
+}
+
+#[test]
+fn the_reason_length_limit_counts_characters_not_bytes() {
+    let cyrillic = "Я".repeat(MAX_DECISION_REASON_LEN);
+    assert!(
+        cyrillic.len() > MAX_DECISION_REASON_LEN,
+        "fixture must be multi-byte"
+    );
+    assert!(resolve_kyb_decision(&decision_req(KybDecision::Failed, Some(&cyrillic))).is_ok());
+
+    let over = "Я".repeat(MAX_DECISION_REASON_LEN + 1);
+    assert!(resolve_kyb_decision(&decision_req(KybDecision::Failed, Some(&over))).is_err());
+}
+
+#[test]
+fn submit_blockers_refuses_an_lp_with_no_documents() {
+    assert!(submit_blockers(&[]).is_err());
+}
+
+#[test]
+fn submit_blockers_accepts_a_set_with_no_rejections() {
+    assert!(submit_blockers(&[(1, DocumentStatus::Provided)]).is_ok());
+    assert!(submit_blockers(&[(1, DocumentStatus::Verified)]).is_ok());
+    assert!(submit_blockers(&[(1, DocumentStatus::NotProvided)]).is_ok());
+}
+
+#[test]
+fn submit_blockers_names_every_rejected_id_ascending_and_no_others() {
+    let err = submit_blockers(&[
+        (5, DocumentStatus::Rejected),
+        (2, DocumentStatus::Provided),
+        (9, DocumentStatus::Rejected),
+    ])
+    .unwrap_err();
+    assert!(err.contains('5'));
+    assert!(err.contains('9'));
+    assert!(!err.contains('2'));
+    assert!(
+        err.find('5') < err.find('9'),
+        "ids must appear ascending: {err:?}"
+    );
+}
+
+#[test]
+fn pass_blockers_accepts_a_fully_verified_set() {
+    assert!(pass_blockers(&[(1, DocumentStatus::Verified), (2, DocumentStatus::Verified)]).is_ok());
+}
+
+#[test]
+fn pass_blockers_accepts_an_empty_set() {
+    assert!(pass_blockers(&[]).is_ok());
+}
+
+#[test]
+fn pass_blockers_names_every_unverified_id() {
+    let err = pass_blockers(&[
+        (1, DocumentStatus::Verified),
+        (3, DocumentStatus::Provided),
+        (7, DocumentStatus::Rejected),
+    ])
+    .unwrap_err();
+    assert!(err.contains('3'));
+    assert!(err.contains('7'));
+    assert!(!err.contains('1'));
+}
+
+#[test]
+fn submit_and_decide_kyb_routes_are_documented() {
+    let doc = openapi_json();
+    assert!(doc["paths"]["/v1/lps/me/submit"]["post"].is_object());
+    assert!(doc["paths"]["/v1/lps/{id}/kyb"]["post"].is_object());
+}
+
+#[test]
+fn the_kyb_decision_request_schema_requires_decision_not_reason() {
+    let doc = openapi_json();
+    let schema = &doc["components"]["schemas"]["KybDecisionRequest"];
+    let required = schema["required"].as_array().cloned().unwrap_or_default();
+    assert!(required.iter().any(|f| f == "decision"));
+    assert!(!required.iter().any(|f| f == "reason"));
+}
+
+#[test]
+fn the_kyb_decision_enum_excludes_under_review() {
+    let doc = openapi_json();
+    let variants = doc["components"]["schemas"]["KybDecision"]["enum"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let names: Vec<&str> = variants.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(names.len(), 3, "got {names:?}");
+    for expected in ["Passed", "ChangesRequested", "Failed"] {
+        assert!(
+            names.contains(&expected),
+            "missing {expected}, got {names:?}"
+        );
+    }
+    assert!(
+        !names.contains(&"UnderReview"),
+        "a trustee cannot re-submit an LP, got {names:?}"
+    );
+}
+
+#[test]
+fn lp_response_exposes_the_review_lifecycle_fields() {
+    let doc = openapi_json();
+    let props = &doc["components"]["schemas"]["LpResponse"]["properties"];
+    for field in ["kyb_submitted_at", "kyb_decided_at", "kyb_decision_reason"] {
+        assert!(props.get(field).is_some(), "LpResponse missing {field}");
+    }
+    assert!(
+        props.get("kyb_decided_by").is_none(),
+        "kyb_decided_by must never be exposed to the LP owner"
+    );
+
+    let summary_props = &doc["components"]["schemas"]["LpSummary"]["properties"];
+    for field in ["kyb_submitted_at", "kyb_decided_at"] {
+        assert!(
+            summary_props.get(field).is_some(),
+            "LpSummary missing {field}"
+        );
+    }
+}
+
+#[test]
+fn kyb_status_schema_description_lists_changes_requested() {
+    let doc = openapi_json();
+    let description = doc["components"]["schemas"]["LpResponse"]["properties"]["kyb_status"]
+        ["description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        description.contains("ChangesRequested"),
+        "got {description:?}"
+    );
+}
+
+#[test]
+fn document_review_409_names_the_not_under_review_cause() {
+    let doc = openapi_json();
+    let description = doc["paths"]["/v1/lps/{id}/documents/{doc}/review"]["post"]["responses"]
+        ["409"]["description"]
+        .as_str()
+        .expect("a 409 description")
+        .to_owned();
+    assert!(
+        description.to_lowercase().contains("underreview") || description.contains("under review"),
+        "the 409 description must name the not-under-review cause, got {description:?}"
     );
 }

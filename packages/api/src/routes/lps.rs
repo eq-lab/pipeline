@@ -1,7 +1,7 @@
 //! LP (KYB) API group (`/v1/lps/*`).
 //!
-//! Backs the custom KYB workflow (Issue #1267). The surface is split by
-//! audience rather than by resource:
+//! Backs the custom KYB workflow (Issue #1267) and its review lifecycle
+//! (Issue #1274). The surface is split by audience rather than by resource:
 //!
 //! **Owner** — `lps.owner_account_id` is UNIQUE, so the caller's JWT already
 //! names exactly one LP and no id ever crosses the wire. `GET /v1/lps/me`
@@ -11,7 +11,7 @@
 //! `DELETE /v1/lps/me/documents/{doc}` removes one; `POST
 //! /v1/lps/me/link-address` sets or replaces the settlement account at any
 //! status short of a terminal verdict; fixed once `Passed` holds one, refused
-//! outright at `Failed`.
+//! outright at `Failed`; `POST /v1/lps/me/submit` asks for review.
 //!
 //! Profile and documents are separate endpoints on purpose. They were one
 //! request at first, which read as the smaller surface — but the profile is a
@@ -21,22 +21,29 @@
 //! keeps the 100MB body limit off the endpoint used to correct a typo.
 //!
 //! **Trustee** — `GET /v1/lps` lists, `GET /v1/lps/{id}` reads one (documents
-//! inline, same as `/me`), and `POST /v1/lps/{id}/documents/{doc}/review`
-//! records a decision.
+//! inline, same as `/me`), `POST /v1/lps/{id}/documents/{doc}/review` records
+//! a document decision, and `POST /v1/lps/{id}/kyb` records the verdict on
+//! the LP itself.
 //!
 //! Two rules govern every owner write, and both exist so that a decision can
 //! never be detached from what it was made about:
 //!
 //! 1. [`KybStatus::allows_owner_writes`] freezes the whole record while
-//!    `UnderReview` or `Passed`. It reads `kyb_status` and never writes it —
-//!    transitions are #1274's job, so this gate is inert until that lands. The
-//!    settlement address sits outside this freeze: it is not evidence a
-//!    decision was made about, so it follows its own rule
+//!    `UnderReview`, `Passed` or `Failed`; only `ChangesRequested` reopens it.
+//!    It reads `kyb_status`; [`submit_my_lp`] and [`decide_kyb`] are what
+//!    write it. The settlement address sits outside this freeze: it is not
+//!    evidence a decision was made about, so it follows its own rule
 //!    ([`KybStatus::allows_address_write`]) — open at `UnderReview`, where the
-//!    freeze bites, and closed at `Failed`, where the freeze lifts.
+//!    freeze bites. `Failed` now closes both the profile and the address, for
+//!    independent reasons neither expressed in terms of the other: the
+//!    profile because the verdict is final, the address because the column is
+//!    UNIQUE across LPs.
 //! 2. A `Verified` document cannot be deleted, even when the LP as a whole is
-//!    writable. That matters in `Failed`, where the LP reopens with some
-//!    documents approved and others rejected.
+//!    writable. That matters in `ChangesRequested`, where the LP reopens with
+//!    some documents approved and only the rejected ones needing replacement,
+//!    and it is also what [`review_document`]'s `UnderReview` precondition
+//!    exists to protect — verifying a document early would pin it into a
+//!    record still being assembled.
 //!
 //! Documents are **untyped**: no `doc_type`, no `subject`, no slots, no
 //! versioning. Replacing a document is delete-then-upload.
@@ -92,13 +99,22 @@ pub struct LpResponse {
     pub stellar_address: Option<String>,
     /// ISO-8601 UTC.
     pub address_linked_at: Option<String>,
-    /// `NotStarted` | `InProgress` | `UnderReview` | `Passed` | `Failed`.
+    /// `NotStarted` | `InProgress` | `UnderReview` | `ChangesRequested` |
+    /// `Passed` | `Failed`.
     #[schema(example = "InProgress")]
     pub kyb_status: String,
     /// Whether the owner may still edit this record — the rendered form of
     /// [`KybStatus::allows_owner_writes`], so a client need not re-derive the
     /// rule to know whether to disable its form.
     pub writable: bool,
+    /// ISO-8601 UTC. When the owner last submitted for review.
+    pub kyb_submitted_at: Option<String>,
+    /// ISO-8601 UTC. When the latest verdict was recorded.
+    pub kyb_decided_at: Option<String>,
+    /// The latest verdict's free-text reason, if the trustee gave one. Not
+    /// `kyb_decided_by` — that identifies the deciding operator and is never
+    /// returned to the LP owner.
+    pub kyb_decision_reason: Option<String>,
     /// The account that registered this LP — the authorization key.
     #[schema(value_type = String)]
     pub owner_account_id: Uuid,
@@ -123,6 +139,9 @@ impl LpResponse {
             address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
             writable,
+            kyb_submitted_at: row.kyb_submitted_at.as_ref().map(iso_utc),
+            kyb_decided_at: row.kyb_decided_at.as_ref().map(iso_utc),
+            kyb_decision_reason: row.kyb_decision_reason,
             owner_account_id: row.owner_account_id,
             owner_chain_id: row.owner_chain_id,
             owner_address: row.owner_address,
@@ -149,6 +168,11 @@ pub struct LpSummary {
     pub contact_email: String,
     pub stellar_address: Option<String>,
     pub kyb_status: String,
+    /// ISO-8601 UTC. Also orders and filters the trustee review queue, which
+    /// is `GET /v1/lps` filtered to `UnderReview` client-side.
+    pub kyb_submitted_at: Option<String>,
+    /// ISO-8601 UTC.
+    pub kyb_decided_at: Option<String>,
     #[schema(value_type = String)]
     pub owner_account_id: Uuid,
     /// ISO-8601 UTC.
@@ -164,6 +188,8 @@ impl From<LpRow> for LpSummary {
             contact_email: row.contact_email,
             stellar_address: row.stellar_address,
             kyb_status: row.kyb_status,
+            kyb_submitted_at: row.kyb_submitted_at.as_ref().map(iso_utc),
+            kyb_decided_at: row.kyb_decided_at.as_ref().map(iso_utc),
             owner_account_id: row.owner_account_id,
             created_at: iso_utc(&row.created_at),
         }
@@ -326,7 +352,9 @@ pub struct UploadDocumentsForm {
         upload_my_documents,
         delete_my_document,
         review_document,
-        link_address
+        link_address,
+        submit_my_lp,
+        decide_kyb
     ),
     components(schemas(
         LpResponse,
@@ -340,6 +368,8 @@ pub struct UploadDocumentsForm {
         LinkAddressRequest,
         DocumentReviewDecision,
         DocumentReviewRequest,
+        KybDecision,
+        KybDecisionRequest,
     )),
     modifiers(&SecurityAddon),
     tags((name = "Lps", description = "KYB: LP registration, documents, and Stellar address linking"))
@@ -362,8 +392,10 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
         )
         .route("/lps/me/documents/{doc}", delete(delete_my_document))
         .route("/lps/me/link-address", post(link_address))
+        .route("/lps/me/submit", post(submit_my_lp))
         .route("/lps/{id}", get(get_lp))
         .route("/lps/{id}/documents/{doc}/review", post(review_document))
+        .route("/lps/{id}/kyb", post(decide_kyb))
 }
 
 // ── Handlers: trustee ────────────────────────────────────────────────────────
@@ -419,10 +451,14 @@ async fn get_lp(
     Ok(Json(with_documents(&state, lp).await?))
 }
 
-/// Approve or reject an LP's document. Trustee-only. A rejection must carry a
-/// non-empty `reason`; a verification must not. Only a document currently
-/// `Provided` can be reviewed — reviewing an already-decided one returns
-/// `409 Conflict`. Mirrors `routes::ramp::review_ramp_event`.
+/// Approve or reject an LP's document. Trustee-only, and only while the LP
+/// itself is `UnderReview` ([`KybStatus::allows_document_review`]) — a
+/// `Verified` document can never be deleted, so verifying one before the LP
+/// is submitted would permanently pin it into a record its owner is still
+/// assembling. A rejection must carry a non-empty `reason`; a verification
+/// must not. Only a document currently `Provided` can be reviewed — reviewing
+/// an already-decided one, or one whose LP is no longer `UnderReview`,
+/// returns `409 Conflict`. Mirrors `routes::ramp::review_ramp_event`.
 #[utoipa::path(
     post,
     path = "/v1/lps/{id}/documents/{doc}/review",
@@ -437,7 +473,7 @@ async fn get_lp(
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No such document for this LP"),
-        (status = 409, description = "Document is not awaiting review"),
+        (status = 409, description = "Document is not awaiting review, or the LP is not UnderReview"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -461,17 +497,102 @@ async fn review_document(
         return Err(ApiError::NotFound(format!("no document {doc} for LP {id}")));
     }
 
+    let lp = state.lp_repo.find(id).await?.ok_or_else(|| {
+        ApiError::Internal(anyhow::anyhow!(
+            "document {doc} references LP {id}, which does not exist"
+        ))
+    })?;
+    let lp_status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    if !lp_status.allows_document_review() {
+        return Err(ApiError::Conflict(format!(
+            "LP {id} is {lp_status} and its documents are not under review"
+        )));
+    }
+
     let reviewed = state
         .kyb_document_repo
         .review(doc, status, reason, &claims.sub)
         .await?;
     if !reviewed {
         return Err(ApiError::Conflict(format!(
-            "document {doc} is not awaiting review"
+            "document {doc} is not awaiting review, or LP {id} is no longer under review"
         )));
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Record the trustee's verdict on an LP sitting at `UnderReview`. `Passed` is
+/// refused unless every document is `Verified`; `ChangesRequested` and
+/// `Failed` carry no such requirement. `reason` is optional on all three.
+/// `Failed` also suspends the owning account, in the same transaction as the
+/// status write ([`shared::lp_repo::LpRepo::decide_kyb`]).
+///
+/// No audit record is written: the verdict lives only in `kyb_decided_by` /
+/// `kyb_decided_at` / `kyb_decision_reason` on the `lps` row, and a later
+/// decision on the same LP overwrites this one with no trace anywhere. That
+/// is a deliberate product decision (spec § KYB Review Lifecycle), not a gap.
+#[utoipa::path(
+    post,
+    path = "/v1/lps/{id}/kyb",
+    params(("id" = i64, Path, description = "LP id")),
+    request_body = KybDecisionRequest,
+    responses(
+        (status = 200, description = "Verdict recorded", body = LpResponse),
+        (status = 400, description = "Malformed body, or reason exceeds the length limit"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 403, description = "Caller lacks the `trustee` role"),
+        (status = 404, description = "No LP with this id"),
+        (status = 409, description = "The LP is not UnderReview, or Passed was requested with an unverified document"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Lps"
+)]
+async fn decide_kyb(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(req): Json<KybDecisionRequest>,
+) -> Result<Json<LpResponse>, ApiError> {
+    require_trustee(&claims)?;
+
+    let (decision, reason) = resolve_kyb_decision(&req).map_err(ApiError::BadRequest)?;
+
+    let lp = state
+        .lp_repo
+        .find(id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
+    let status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    if !status.may_transition_to(decision) {
+        return Err(ApiError::Conflict(format!(
+            "an LP in {status} cannot be moved to {decision}"
+        )));
+    }
+
+    if decision == KybStatus::Passed {
+        let docs = documents_for_check(&state, id).await?;
+        pass_blockers(&docs).map_err(ApiError::Conflict)?;
+    }
+
+    if !state
+        .lp_repo
+        .decide_kyb(id, decision, reason, &claims.sub)
+        .await?
+    {
+        return Err(ApiError::Conflict(
+            "this LP is no longer awaiting review".to_owned(),
+        ));
+    }
+
+    let row = state.lp_repo.find(id).await?.ok_or_else(|| {
+        ApiError::Internal(anyhow::anyhow!(
+            "LP {id} vanished immediately after decide_kyb"
+        ))
+    })?;
+    Ok(Json(with_documents(&state, row).await?))
 }
 
 // ── Handlers: owner ──────────────────────────────────────────────────────────
@@ -701,9 +822,11 @@ async fn delete_my_document(
 /// Deliberately not folded into [`upsert_my_lp`]: this endpoint is exempt from
 /// [`guard_writable`]'s freeze — the address is not evidence a review decision
 /// was made about, so it stays settable while the profile is frozen (e.g.
-/// `UnderReview`), and in the other direction it stops being settable at
-/// `Failed` exactly where the profile reopens. Do not add a `guard_writable`
-/// call here; that would remove the exemption the rule depends on.
+/// `UnderReview`). `Failed` closes both, but for independent reasons: the
+/// profile because the verdict is final, the address because the column is
+/// UNIQUE across LPs and a refused applicant left writable could burn a real
+/// LP's address. Do not add a `guard_writable` call here; that would remove
+/// the exemption the rule depends on.
 #[utoipa::path(
     post,
     path = "/v1/lps/me/link-address",
@@ -765,6 +888,55 @@ async fn link_address(
     let row = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
         ApiError::Internal(anyhow::anyhow!(
             "LP {} vanished immediately after linking",
+            lp.id
+        ))
+    })?;
+    Ok(Json(with_documents(&state, row).await?))
+}
+
+/// Submit the caller's LP for trustee review. Legal only from `NotStarted` or
+/// `ChangesRequested` ([`KybStatus::SUBMITTABLE`]) — **not** `InProgress`,
+/// which is writable but unreachable and therefore never submittable. Refused
+/// unless the LP holds at least one document and none is `Rejected`; the
+/// refusal names the offending ids.
+#[utoipa::path(
+    post,
+    path = "/v1/lps/me/submit",
+    responses(
+        (status = 200, description = "Submitted for review", body = LpResponse),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 404, description = "This account has not registered an LP yet"),
+        (status = 409, description = "Not eligible for submission — wrong status, no documents, or a Rejected document is still present"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Lps"
+)]
+async fn submit_my_lp(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<LpResponse>, ApiError> {
+    let lp = my_lp(&claims, &state).await?;
+
+    let status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    if !status.may_transition_to(KybStatus::UnderReview) {
+        return Err(ApiError::Conflict(format!(
+            "this LP is {status} and cannot be submitted for review"
+        )));
+    }
+
+    let docs = documents_for_check(&state, lp.id).await?;
+    submit_blockers(&docs).map_err(ApiError::Conflict)?;
+
+    if !state.lp_repo.submit_for_review(lp.id).await? {
+        return Err(ApiError::Conflict(
+            "this LP is no longer eligible for review".to_owned(),
+        ));
+    }
+
+    let row = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
+        ApiError::Internal(anyhow::anyhow!(
+            "LP {} vanished immediately after submitting",
             lp.id
         ))
     })?;
@@ -1126,6 +1298,24 @@ async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiEr
     Ok(LpResponse::new(lp, documents))
 }
 
+/// An LP's documents as `(id, status)` pairs, for [`submit_blockers`] and
+/// [`pass_blockers`]. An unparseable stored status cannot occur — the column
+/// carries a CHECK — so it maps to [`ApiError::Internal`] rather than a
+/// silently dropped row.
+async fn documents_for_check(
+    state: &AppState,
+    lp_id: i64,
+) -> Result<Vec<(i64, DocumentStatus)>, ApiError> {
+    let rows = state.kyb_document_repo.list_for_lp(lp_id).await?;
+    rows.into_iter()
+        .map(|row| {
+            DocumentStatus::from_str(&row.status)
+                .map(|status| (row.id, status))
+                .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))
+        })
+        .collect()
+}
+
 // ── Compute (pure) ───────────────────────────────────────────────────────────
 
 /// Ceilings on the profile's text fields.
@@ -1263,4 +1453,102 @@ pub fn resolve_document_review(
             Ok((DocumentStatus::Verified, None))
         }
     }
+}
+
+/// The trustee verdict in `POST /v1/lps/{id}/kyb`. Deliberately excludes
+/// `UnderReview` — a trustee cannot re-submit an LP, only decide it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
+pub enum KybDecision {
+    Passed,
+    ChangesRequested,
+    Failed,
+}
+
+/// Request body for `POST /v1/lps/{id}/kyb`. `reason` is optional on every
+/// decision (spec) — a `ChangesRequested` with neither a reason nor a
+/// rejected document is accepted, and the LP may resubmit the identical set.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct KybDecisionRequest {
+    pub decision: KybDecision,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Ceiling on `kyb_decision_reason`. `lps` stores it as unbounded `TEXT` and
+/// this route carries no raised body limit, mirroring [`MAX_LEGAL_NAME_LEN`].
+pub const MAX_DECISION_REASON_LEN: usize = 2_000;
+
+/// Validate a trustee decision and map it to the `(KybStatus, reason)` the
+/// repo expects. A blank `reason` collapses to `None`, so a form submitting an
+/// empty textarea stores `NULL` rather than `""`. Length is counted in
+/// characters, matching [`validate_profile`].
+pub fn resolve_kyb_decision(req: &KybDecisionRequest) -> Result<(KybStatus, Option<&str>), String> {
+    let reason = req
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty());
+    if let Some(reason) = reason {
+        if reason.chars().count() > MAX_DECISION_REASON_LEN {
+            return Err(format!(
+                "reason must be at most {MAX_DECISION_REASON_LEN} characters"
+            ));
+        }
+    }
+    let status = match req.decision {
+        KybDecision::Passed => KybStatus::Passed,
+        KybDecision::ChangesRequested => KybStatus::ChangesRequested,
+        KybDecision::Failed => KybStatus::Failed,
+    };
+    Ok((status, reason))
+}
+
+/// List `ids` ascending, comma-separated, for a refusal message naming
+/// offending documents deterministically — `list_for_lp` returns newest-first,
+/// which a message must not depend on.
+fn sorted_ids(mut ids: Vec<i64>) -> String {
+    ids.sort_unstable();
+    ids.iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Why this LP may not be submitted for review, if it may not (spec: "the
+/// refusal names the offending ids").
+pub fn submit_blockers(docs: &[(i64, DocumentStatus)]) -> Result<(), String> {
+    if docs.is_empty() {
+        return Err("this LP has no documents to review".to_owned());
+    }
+    let rejected: Vec<i64> = docs
+        .iter()
+        .filter(|(_, status)| *status == DocumentStatus::Rejected)
+        .map(|(id, _)| *id)
+        .collect();
+    if !rejected.is_empty() {
+        return Err(format!(
+            "this LP has rejected documents that must be replaced first: {}",
+            sorted_ids(rejected)
+        ));
+    }
+    Ok(())
+}
+
+/// Why this LP may not be passed, if it may not — the ids of every document
+/// not yet `Verified`. An empty slice is `Ok`, which is unreachable in
+/// practice: `submit_for_review` already required at least one document, and
+/// this predicate is vacuously true on an empty set.
+pub fn pass_blockers(docs: &[(i64, DocumentStatus)]) -> Result<(), String> {
+    let unverified: Vec<i64> = docs
+        .iter()
+        .filter(|(_, status)| *status != DocumentStatus::Verified)
+        .map(|(id, _)| *id)
+        .collect();
+    if !unverified.is_empty() {
+        return Err(format!(
+            "this LP has documents not yet verified: {}",
+            sorted_ids(unverified)
+        ));
+    }
+    Ok(())
 }
