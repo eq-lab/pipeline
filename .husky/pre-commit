@@ -36,6 +36,18 @@ run() {
     return $rc
 }
 
+# ── Resolve yarn ────────────────────────────────────────────────────
+# `.yarnrc.yml` pins yarn 4 via `yarnPath`, normally reached through corepack's
+# `yarn` shim. Git hooks run with a trimmed PATH that often lacks it, and a bare
+# `yarn` then exits 127 and fails the commit before any JS check runs. Invoke the
+# pinned release through node, which needs nothing on PATH beyond node itself.
+YARN_PATH=$(sed -n 's/^yarnPath: *//p' .yarnrc.yml 2>/dev/null | head -1)
+if [ -n "${YARN_PATH:-}" ] && [ -f "$YARN_PATH" ]; then
+    YARN=(node "$YARN_PATH")
+else
+    YARN=(yarn)
+fi
+
 # ── Load .env if present ────────────────────────────────────────────
 if [ -f .env ]; then
     set -a
@@ -118,18 +130,18 @@ run "clippy ok" cargo clippy --workspace --all-targets -- -D warnings
 
 # ── 3a. Install JS dependencies ────────────────────────────────────
 step "yarn install"
-run "yarn install ok" yarn --frozen-lockfile --silent
+run "yarn install ok" "${YARN[@]}" install --immutable
 
 # ── 3b. Codegen (placeholder — TODO: wire up when API types are generated) ──
 step "yarn codegen"
-run "codegen ok" yarn codegen
+run "codegen ok" "${YARN[@]}" codegen
 
 # ── 3c. Frontend lint (ESLint + Prettier) ──────────────────────────
 # TODO: configure ESLint in packages/frontend and replace this warn
 step "frontend lint"
 if [ -f packages/frontend/package.json ] && \
    node -e "require('./packages/frontend/package.json').scripts?.lint" 2>/dev/null; then
-    run "frontend lint ok" yarn --cwd packages/frontend lint
+    run "frontend lint ok" "${YARN[@]}" workspace @pipeline/frontend lint
 else
     warn "frontend lint skipped (ESLint not yet configured in packages/frontend)"
 fi
@@ -138,7 +150,7 @@ fi
 # TODO: configure Vite in packages/frontend and replace with build command
 step "frontend build"
 if [ -f packages/frontend/tsconfig.json ]; then
-    run "frontend build ok" yarn --cwd packages/frontend build
+    run "frontend build ok" "${YARN[@]}" workspace @pipeline/frontend build
 else
     warn "frontend build skipped (tsconfig.json not yet present in packages/frontend)"
 fi
