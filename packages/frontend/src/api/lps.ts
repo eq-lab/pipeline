@@ -1,4 +1,4 @@
-// spec: docs/product-specs/lp-onboarding.md#overview
+// spec: docs/product-specs/kyb-lp-verification.md#lp-entity-registration-and-kyb-documents
 import { authHeaders } from "@/auth/session";
 import { apiFetch } from "./client";
 

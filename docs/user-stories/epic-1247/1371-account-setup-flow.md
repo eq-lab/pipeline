@@ -2,7 +2,7 @@
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1371](https://github.com/eq-lab/pipeline/issues/1371)
-Spec: [LP onboarding](../../product-specs/lp-onboarding.md)
+Spec: [KYB: LP entity verification](../../product-specs/kyb-lp-verification.md)
 
 Use a live LP API, a verified email account, and an authenticated frontend session. The `/test?tab=auth` trigger is a visual preview and does not make LP API requests. Compare its empty and uploaded states with the epic's Figma nodes `6701:96852` and `6701:96881`; compare the production profile card's shared inputs with sign-in and create-account.
 

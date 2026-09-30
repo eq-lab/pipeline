@@ -2,7 +2,7 @@
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1373](https://github.com/eq-lab/pipeline/issues/1373)
-Spec: [LP onboarding](../../product-specs/lp-onboarding.md)
+Spec: [KYB: LP entity verification](../../product-specs/kyb-lp-verification.md)
 
 Use an authenticated LP account and the live LP API on `/account`. Compare the Name and Country inputs with the Finish account setup modal. Compare the document states with the epic's Account Figma frames; `?state=` links under `/test?tab=auth` are development fixtures and must make no LP API calls.
 
