@@ -297,7 +297,7 @@ No plan under `docs/exec-plans/active/` cites a colliding number — verified. `
 Work strictly in this order. Steps 1–3 leave the numbers still colliding, so Step 4 must come after
 the merge, and Step 5 after Step 4.
 
-### 1. Confirm the preconditions
+### 1. Confirm the preconditions **[DONE]**
 
 ```bash
 git -C /Users/aabliazimov/Documents/work/pipeline rev-parse --abbrev-ref HEAD   # docs/1390-tech-debt-tracker-merge
@@ -308,7 +308,7 @@ gh pr view 1385 --json number,state,title
 Both must be `MERGED`. Record the baseline table from **Scope → Baseline** by running each command;
 a coder who skips this has no way to prove the after-state.
 
-### 2. Merge Block A's TD-80 and TD-81 into Block B; delete Block A
+### 2. Merge Block A's TD-80 and TD-81 into Block B; delete Block A **[DONE]**
 
 Target file: `docs/exec-plans/tech-debt-tracker.md`.
 
@@ -342,7 +342,7 @@ Target file: `docs/exec-plans/tech-debt-tracker.md`.
 Anchor every edit on the heading **plus** the following `- **Date:**`/`- **Location:**` lines, never
 on `### TD-8x` alone.
 
-### 3. Correct TD-85's stale mechanism (Post-MVP, line 1557)
+### 3. Correct TD-85's stale mechanism (Post-MVP, line 1557) **[DONE]**
 
 Its **Gap** cites `AccountRepo::set_password_hash`, which no longer exists. Replace that sentence
 with the real mechanism — the submitted password rides on the passcode and is installed by
@@ -352,7 +352,7 @@ at all. Leave the **Impact** and **Suggested fix** as they are: both still hold,
 consistent with the corrected mechanism (re-running signup re-issues a passcode carrying a new
 password, which is the overwrite path the Impact describes). Do not expand the entry's scope.
 
-### 4. Apply the renumber
+### 4. Apply the renumber **[DONE]**
 
 Edit the 13 `### TD-<N>:` headings per the **Option A** mapping table, bottom-up (TD-93 → TD-112
 first, TD-7 → TD-100 last) so earlier line numbers stay valid as you go. Change **only** the number
@@ -368,7 +368,7 @@ Then fix the two intra-tracker cross-references that point at renumbered entries
   entries that legitimately cite backend numbers (TD-96/TD-97 cite "TD-81/TD-86"; TD-83 cites
   "TD-81"; TD-99 cites "TD-96 and TD-97"), are correct as-is.
 
-### 5. Add the next-free-number authority
+### 5. Add the next-free-number authority **[DONE]**
 
 In the `## Format` block near the top of `docs/exec-plans/tech-debt-tracker.md`, add immediately
 after the fenced template:
@@ -380,7 +380,7 @@ after the fenced template:
 Without this, the next appender takes TD-100 from Post-MVP's TD-99 and re-collides with the new
 frontend block on day one.
 
-### 6. Sweep the five code references
+### 6. Sweep the five code references **[DONE]**
 
 Only one changes. `AGENTS.md` comment-less-code rule: these are existing spec-pointer comments —
 **adjust the number in place and add no prose.**
@@ -393,7 +393,7 @@ Only one changes. `AGENTS.md` comment-less-code rule: these are existing spec-po
 No Rust file changes, so `cargo clippy` is not strictly required — but run it anyway if any `.rs`
 file ends up touched.
 
-### 7. Sweep the live docs references
+### 7. Sweep the live docs references **[DONE]**
 
 Per the sweep table:
 
@@ -409,7 +409,7 @@ Per the sweep table:
 
 Touch nothing under `docs/exec-plans/completed/`.
 
-### 8. Close out BUG-24
+### 8. Close out BUG-24 **[DONE]**
 
 In `docs/exec-plans/known-bugs.md`, mark `### BUG-24` resolved in place in the house style (the
 file's own precedent for a resolved entry, e.g. the `[RESOLVED …]` convention the tracker uses for
@@ -419,7 +419,7 @@ found. Do **not** rewrite its history; append the resolution.
 
 BUG-21 is governed by Open Question 2 — do not touch it without an answer.
 
-### 9. Verify
+### 9. Verify **[DONE]**
 
 Run the full after-state check in **Test Strategy**, and paste the before/after numbers into the PR
 description so a reviewer can see the deltas without re-deriving them.
@@ -560,3 +560,56 @@ that catches a mis-pointed reference, and no grep substitutes for it.
 **No product-spec behavior change.** Nothing user- or agent-facing changes; the only product-spec
 edit is deleting a disambiguation sentence that the fix makes untrue. The exec plan alone is
 sufficient per the planner contract's step 3.
+
+---
+
+## Outcome — 2026-10-01
+
+All nine steps executed on `docs/1390-tech-debt-tracker-merge`. Settled decisions applied as
+directed by the manager: one sequence (Option A, no prefixes); BUG-21 closed alongside BUG-24; no
+entry moved between `## Known Gaps` and `## Post-MVP`; `docs/user-stories/epic-1247/*` treated as
+live; the `lint-docs` duplicate-heading guard (Option C) left to #1407.
+
+### Measured before → after (`docs/exec-plans/tech-debt-tracker.md`)
+
+| Measure | Before | After |
+| --- | --- | --- |
+| `grep -c '^## Post-MVP'` | 2 | 1 |
+| `grep -coE '^### TD-[0-9]+'` | 115 | 112 |
+| `grep -oE '^### TD-[0-9]+' \| sort \| uniq -d` | 13 numbers | empty |
+| distinct numbers | 99 | 112 |
+| highest number | 99 | 112 (`Next free number: TD-113`) |
+| `wc -l` | 1651 | 1619 |
+| `npx tsx scripts/lint-docs.ts` | 0 errors, 42 warnings | 0 errors, 42 warnings |
+
+`TD-1`…`TD-112` each held exactly once (seq 1..112 presence loop: no output). Archived plans and
+`docs/initial_spec.md` byte-identical (`git diff --stat 44da5f0 -- docs/exec-plans/completed/
+docs/initial_spec.md` empty).
+
+### Open Questions, as resolved
+
+1. **lint-docs guard** — out of scope, split to #1407. `scripts/lint-docs.ts` untouched.
+2. **BUG-21** — closed. Its TD-73 collision is resolved (password-policy entry → TD-101) and its
+   "start at TD-87" workaround is superseded by the `Next free number` authority.
+3. **Section taxonomy** — not touched; no entry moved between sections.
+4. **`docs/user-stories/epic-1247/*`** — live; all three references renumbered.
+
+### Verification notes
+
+- TD-84's unsettled half is now settled: both email-path call sites pass `Vec::new()`
+  unconditionally (`packages/api/src/routes/auth/password.rs:282`, `:420`), so the entry's claim
+  holds and it was left untouched.
+- TD-112's orphan claim is confirmed: `useAccountDropdown` is imported only by
+  `AccountDropdown.tsx`; the four other `AccountDropdown` hits under `packages/frontend/src/` are
+  prose mentions in comments.
+- The migration comment at `packages/shared/migrations/20260922000002_login_attempts.sql:20` cites
+  TD-86, a backend entry that keeps its number, so it was **left unchanged** — no sqlx checksum
+  risk.
+- One deviation from Step 2: Block B's TD-81 `Suggested fix` closed with "The per-account OTP
+  cooldown is already replica-safe because it reads from the table." The step authorises appending
+  only Block B's rejected-`governor` sentence, so that clause was not carried over; Block A's
+  "Reuse `LoginAttemptRepo` — it is already scope-keyed and replica-safe" covers the same ground.
+- Step 8 says "resolved in place". `known-bugs.md` has an explicit `## Open` / `## Resolved` split,
+  so both entries were moved to the head of `## Resolved` with a `- **Resolved:**` line in the
+  file's own style; every original bullet, including BUG-24's correction paragraph, is preserved
+  verbatim.

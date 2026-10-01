@@ -17,16 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-24: Tech-debt tracker has two divergent `## Post-MVP` sections, and five TD numbers each name two different things
-- **Date:** 2026-09-30, corrected 2026-10-01.
-- **Location:** `docs/exec-plans/tech-debt-tracker.md`
-- **Symptom:** Two `## Post-MVP` sections (lines 1471 and 1508 at time of writing). Separately, `## Known Gaps` and the Post-MVP blocks run **independent numbering sequences over overlapping ranges**, so TD-80, TD-81, TD-82, TD-92 and TD-93 each name two unrelated entries — a frontend one and a backend one.
-- **Root cause:** A merge that appended a Post-MVP block instead of reconciling it, compounded by a renumbering of the frontend entries (recorded in `docs/exec-plans/completed/issue-1284-lp-account-page.md`) that walked into the backend range.
-- **Correction to this entry's first version — read before acting on it.** It said the two blocks hold "byte-identical" entries and that the first is stale. **Both claims are wrong.** The blocks have *diverged*: edits over months landed in one or the other, so each holds content the other lacks, and neither is wholesale newer. Verified example: the first block's TD-81 says `POST /v1/auth/login` "is now bounded (3 attempts per 60s per address and per client, `login_attempts`)" — which matches the code (`MAX_LOGIN_ATTEMPTS`, migration `20260922000002_login_attempts.sql`) — while the second block's TD-81 says credential stuffing against `login` "is unthrottled", which is false. So the block everyone treated as stale is, in that entry, the accurate one.
-- **Why the mistake was unanimous:** the second block ends at the highest TD number, so it looks like the live one, and new entries do go there. That does not make each of its entries newer than its same-numbered twin, which is the inference three execution plans and this bug report all made.
-- **Workaround:** Anchor any edit on a heading **plus its subtitle**, never on `### TD-<N>` alone. Do not assume either block supersedes the other. Before editing or citing an entry, check its claim against the code — one has already been found false.
-- **Fix:** Not a deletion. It is a manual entry-by-entry merge with each claim re-verified against the code, plus a decision on whether the two sequences become one or get separate prefixes, plus a sweep of inbound references — which live in code as well as docs (`packages/shared/src/lp_repo.rs:16,292`, `packages/api/src/error.rs:42`, `packages/frontend/src/components/AccountDropdown.test.tsx:20`, and four places under `docs/product-specs/`). Tracked as #1390 and deliberately deferred until #1384 and #1385 merge, so the file is not moving under in-flight branches. Archived exec plans cite the old numbers and should not be rewritten.
-
 ### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
 - **Date:** 2026-09-29
 - **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx` (`reconcile`, introduced by #1371).
@@ -40,20 +30,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Symptom:** `cargo clippy --all -- -D warnings` fails workspace-wide with `error: unknown lint: clippy::duration_suboptimal_units` / `-D unknown-lints` implied by `-D warnings`, before reaching any of #1265's (nonexistent) Rust changes. Confirmed pre-existing: `git log` shows the `#[allow(...)]` line landed in #1023, long before this branch; `git stash` back to the base commit reproduces the same failure.
 - **Root cause:** The local toolchain is `clippy 0.1.94 (e408947bfd 2026-03-25)`, which has no lint named `duration_suboptimal_units` — likely a lint that never shipped on stable, or was renamed/removed since #1023 was authored against a different clippy version. `-D warnings` promotes clippy's own `unknown-lints` warning to a hard error, so a stale `#[allow(...)]` for a nonexistent lint now fails the whole workspace build.
 - **Workaround:** None applied — not this issue's file to touch. A fix would replace or drop that `#[allow(clippy::duration_suboptimal_units)]` attribute (check what lint, if any, the current clippy actually flags for that duration expression) in a follow-up unrelated to #1265.
-
-### BUG-21: Tech-debt tracker has two entries both numbered TD-73
-- **Date:** 2026-09-22
-- **Location:** `docs/exec-plans/tech-debt-tracker.md` — the unidentified-wire-matching-queue
-  entry ("No unidentified-wire matching queue — `lp_id` is required at deposit-entry time",
-  2026-09-18) and the create-account password-policy entry ("Create-account password policy is
-  derived from Figma copy only, no backend counterpart", 2026-09-21) both carry the id `TD-73`.
-  Found while logging new tech debt for issue #1283.
-- **Symptom:** Any cross-reference to "TD-73" is ambiguous between two unrelated gaps (a backend
-  wire-matching gap and a frontend password-policy gap).
-- **Root cause:** A numbering collision when the second entry was added — not renumbered here per
-  the exec plan's instruction to log the duplicate rather than fix it inline.
-- **Workaround:** New entries from #1283 onward start at TD-87, skipping the ambiguous range. A
-  future pass should renumber one of the two TD-73 entries and update any inbound references.
 
 ### BUG-20: `SignInModal`/`CreateAccountModal` submit-attempt validation path is unreachable in a real browser
 - **Date:** 2026-09-21
@@ -118,6 +94,32 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-24: Tech-debt tracker has two divergent `## Post-MVP` sections, and five TD numbers each name two different things
+- **Resolved:** 2026-10-01 by #1390 (PR #1406) — the two `## Post-MVP` blocks were merged entry by entry with every contested claim re-checked against the code. TD-80 kept the second block's text (it records #1380's `account_status` gating, which the code confirms); TD-81 took the first block's, so the second block's verified-false "credential stuffing against `login` is unthrottled" is gone, with the second block's rejected-`governor` reasoning appended; the first block's TD-82 was a byte-identical stray of the `## Known Gaps` copy and was dropped. One `## Post-MVP` section remains. The collision set was **13 numbers, not the five named in the heading and Symptom above** — TD-7, TD-73 and TD-83 through TD-88 collided too; the 13 frontend / `## Known Gaps` members moved to TD-100…TD-112, leaving TD-1…TD-112 each held exactly once, and `## Format` now carries a single `**Next free number:**` authority so the next appender cannot re-collide. All 8 live inbound references (code and docs) were re-pointed by reading each one's surrounding prose rather than matching the number. Archived plans under `docs/exec-plans/completed/` keep the old numbers by design. Separately, this pass corrected TD-85's cited mechanism: `AccountRepo::set_password_hash` does not exist in the workspace.
+- **Date:** 2026-09-30, corrected 2026-10-01.
+- **Location:** `docs/exec-plans/tech-debt-tracker.md`
+- **Symptom:** Two `## Post-MVP` sections (lines 1471 and 1508 at time of writing). Separately, `## Known Gaps` and the Post-MVP blocks run **independent numbering sequences over overlapping ranges**, so TD-80, TD-81, TD-82, TD-92 and TD-93 each name two unrelated entries — a frontend one and a backend one.
+- **Root cause:** A merge that appended a Post-MVP block instead of reconciling it, compounded by a renumbering of the frontend entries (recorded in `docs/exec-plans/completed/issue-1284-lp-account-page.md`) that walked into the backend range.
+- **Correction to this entry's first version — read before acting on it.** It said the two blocks hold "byte-identical" entries and that the first is stale. **Both claims are wrong.** The blocks have *diverged*: edits over months landed in one or the other, so each holds content the other lacks, and neither is wholesale newer. Verified example: the first block's TD-81 says `POST /v1/auth/login` "is now bounded (3 attempts per 60s per address and per client, `login_attempts`)" — which matches the code (`MAX_LOGIN_ATTEMPTS`, migration `20260922000002_login_attempts.sql`) — while the second block's TD-81 says credential stuffing against `login` "is unthrottled", which is false. So the block everyone treated as stale is, in that entry, the accurate one.
+- **Why the mistake was unanimous:** the second block ends at the highest TD number, so it looks like the live one, and new entries do go there. That does not make each of its entries newer than its same-numbered twin, which is the inference three execution plans and this bug report all made.
+- **Workaround:** Anchor any edit on a heading **plus its subtitle**, never on `### TD-<N>` alone. Do not assume either block supersedes the other. Before editing or citing an entry, check its claim against the code — one has already been found false.
+- **Fix:** Not a deletion. It is a manual entry-by-entry merge with each claim re-verified against the code, plus a decision on whether the two sequences become one or get separate prefixes, plus a sweep of inbound references — which live in code as well as docs (`packages/shared/src/lp_repo.rs:16,292`, `packages/api/src/error.rs:42`, `packages/frontend/src/components/AccountDropdown.test.tsx:20`, and four places under `docs/product-specs/`). Tracked as #1390 and deliberately deferred until #1384 and #1385 merge, so the file is not moving under in-flight branches. Archived exec plans cite the old numbers and should not be rewritten.
+
+### BUG-21: Tech-debt tracker has two entries both numbered TD-73
+- **Resolved:** 2026-10-01 by #1390 (PR #1406) — the create-account password-policy entry (2026-09-21) is now **TD-101**; the unidentified-wire-matching-queue entry (2026-09-18) keeps TD-73. Its one live inbound reference, `docs/frontend/auth-components.md:286`, was re-pointed at TD-101. The workaround above is obsolete: `## Format` now carries a single `**Next free number:**` authority for the whole file, so new entries no longer skip a range to dodge collisions.
+- **Date:** 2026-09-22
+- **Location:** `docs/exec-plans/tech-debt-tracker.md` — the unidentified-wire-matching-queue
+  entry ("No unidentified-wire matching queue — `lp_id` is required at deposit-entry time",
+  2026-09-18) and the create-account password-policy entry ("Create-account password policy is
+  derived from Figma copy only, no backend counterpart", 2026-09-21) both carry the id `TD-73`.
+  Found while logging new tech debt for issue #1283.
+- **Symptom:** Any cross-reference to "TD-73" is ambiguous between two unrelated gaps (a backend
+  wire-matching gap and a frontend password-policy gap).
+- **Root cause:** A numbering collision when the second entry was added — not renumbered here per
+  the exec plan's instruction to log the duplicate rather than fix it inline.
+- **Workaround:** New entries from #1283 onward start at TD-87, skipping the ambiguous range. A
+  future pass should renumber one of the two TD-73 entries and update any inbound references.
 
 ### BUG-18: frontend vitest suite broken on Node ≥20.19 — `localStorage` is undefined in jsdom tests
 - **Resolved:** 2026-08-27 by #1003 — a probe-and-repair storage shim in each jsdom workspace's `test-setup.ts` (frontend, wallet-connect, trustee): if the `localStorage`/`sessionStorage` global is missing or throwing (Node 20.19+/22+/26 defines an experimental WebStorage global that shadows jsdom's), it is replaced with a real `Storage` from a fresh `JSDOM` window (passes jsdom's `StorageEvent` IDL check), falling back to a Map-backed store. Flag-based fixes proved version-fragile: `NODE_OPTIONS=--no-experimental-webstorage` is rejected by CI's Node 20 ("not allowed in NODE_OPTIONS"), and worker `execArgv` behaved differently across Node 20/26 (locally masked by Homebrew yarn running its own newer Node — the BUG-6 quirk). All three suites green (1532 + 160 + 898); the two lingering `-deposit.test.tsx` toast failures were stale pre-#1142 title assertions, updated in the same PR. A `js-unit-tests` vitest job now runs the suites in CI.

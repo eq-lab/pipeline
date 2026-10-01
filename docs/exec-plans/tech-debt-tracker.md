@@ -13,6 +13,11 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
+**Next free number: TD-113.**
+
+The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
+line, whichever section it lands in.
+
 ---
 
 ## Known Gaps
@@ -73,7 +78,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Token verification is manual (DevTools console); visual regression is invisible until a consuming component breaks.
 - **Suggested fix:** Add a `Foundation/Tokens.stories.tsx` that renders color swatches, type ramp samples, and radius examples alongside the token names and expected values.
 
-### TD-7: Same-tab mock bridge not testable in jsdom
+### TD-100: Same-tab mock bridge not testable in jsdom
 
 - **Date:** 2026-05-14
 - **Location:** `packages/frontend/src/wallet/mock.ts` — `installSameTabMockBridge`
@@ -1187,7 +1192,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   that sets `lp_id` and appends the paired `lp_ledger` row — reusing `LpLedgerRepo::insert_deposit`'s
   transaction shape but decoupled from `BankTransactionRepo::insert_deposit`'s single-call insert.
 
-### TD-73: Create-account password policy is derived from Figma copy only, no backend counterpart
+### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart
 
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/components/useAuthCredentialsForm.ts`
@@ -1274,7 +1279,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Two copies of the same logic until #1282 lands.
 - **Suggested fix:** #1282 adopts `useActiveWalletAccount` when it rewrites the header.
 
-### TD-80: Wallet-namespace labels diverge three ways across the app
+### TD-102: Wallet-namespace labels diverge three ways across the app
 
 - **Date:** 2026-09-21
 - **Location:** `ConnectWalletModal` ("EVM"/"Soroban"), `AccountDropdown` ("EVM"/"Stellar"),
@@ -1285,7 +1290,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** One designer decision on canonical namespace labels, applied everywhere at
   once rather than guessed per-surface.
 
-### TD-81: Account-page wallet row ships a generic glyph, not the frame's MetaMask branding
+### TD-103: Account-page wallet row ships a generic glyph, not the frame's MetaMask branding
 
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/components/account/AccountWalletCard.tsx`.
@@ -1296,7 +1301,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Thread the actual connector id through if/when it becomes available, and swap
   in per-connector marks.
 
-### TD-82: No mobile frames for the Account page
+### TD-104: No mobile frames for the Account page
 
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/components/account/AccountPage.tsx`.
@@ -1306,7 +1311,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Untested against any mobile Figma reference, because none exists.
 - **Suggested fix:** Designer ask: mobile Account-page frames.
 
-### TD-83: Submit/Save enables at ≥ 1 file on both KYB upload surfaces, no designed threshold
+### TD-105: Submit/Save enables at ≥ 1 file on both KYB upload surfaces, no designed threshold
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/account/useAccountDocuments.ts` (`canSave`).
@@ -1320,7 +1325,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** A designer/PM pass should specify the real completion requirement for both
   surfaces.
 
-### TD-84: Shared KYB upload primitives live under `components/account/` but have a second, non-Account consumer
+### TD-106: Shared KYB upload primitives live under `components/account/` but have a second, non-Account consumer
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/account/AccountUploadRow.tsx`,
@@ -1335,7 +1340,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   components, four consumers, three test files, and two docs, so it is deliberately not bundled
   into #1278's redesign.
 
-### TD-85: `CompanyDocsModal`'s "closing keeps progress" is local state, not persistence
+### TD-107: `CompanyDocsModal`'s "closing keeps progress" is local state, not persistence
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx`.
@@ -1349,7 +1354,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Needs #1267 (upload transport) + #1273 (read-back), wired by #1254. Companion
   to TD-75 (the Account page's `Save` has no real transition either).
 
-### TD-86: Trustee `toUserError`'s 403 copy is hardcoded to the Origination-review wording
+### TD-108: Trustee `toUserError`'s 403 copy is hardcoded to the Origination-review wording
 
 - **Date:** 2026-09-22.
 - **Location:** `packages/trustee/src/utils/userError.ts` (`matchApiStatus`), first worked around by
@@ -1365,7 +1370,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Make the 403 copy caller-suppliable (e.g. a second parameter alongside
   `fallback`), or move it out of the generic status table into a per-page map.
 
-### TD-87: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways
+### TD-109: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways
 
 - **Date:** 2026-09-22
 - **Location:** `packages/ui/src/components/ErrorDetailsDialog/useErrorDetailsDialog.ts`,
@@ -1383,7 +1388,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `@pipeline/ui` since three of the six call sites already live in `packages/frontend` and one in
   `packages/ui`.
 
-### TD-88: No backend source for LP trust-account wire details
+### TD-110: No backend source for LP trust-account wire details
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/fundingDetails.ts` (`FUNDING_DETAILS_PLACEHOLDER`),
@@ -1427,13 +1432,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Location:** `packages/frontend/src/components/FundingDetailsModal.tsx`,
   `packages/frontend/src/components/AddUsdCard.tsx`.
 - **Gap:** No mobile frames exist for either surface — the whole V1.0 family is desktop-only (same
-  call as TD-82). `AddUsdCard` is width-driven by its grid slot and the modal already caps at
+  call as TD-104). `AddUsdCard` is width-driven by its grid slot and the modal already caps at
   `calc(100vw - 32px)`.
 - **Impact:** None today, since neither surface is mounted in production.
 - **Suggested fix:** No invented mobile layout; revisit once #1282 mounts the card into a real
   responsive grid.
 
-### TD-92: No UI control to disconnect a wallet after #1362
+### TD-111: No UI control to disconnect a wallet after #1362
 
 - **Date:** 2026-09-24
 - **Location:** `packages/frontend/src/components/TopBar.tsx`,
@@ -1452,56 +1457,19 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   disconnect control exists there either, so this needs a design decision, not just an
   implementation. Out of scope for #1362 (header auth entry only).
 
-### TD-93: `AccountDropdown` is orphaned dead code after #1362
+### TD-112: `AccountDropdown` is orphaned dead code after #1362
 
 - **Date:** 2026-09-24
 - **Location:** `packages/frontend/src/components/AccountDropdown.tsx`,
   `AccountDropdown.test.tsx`, `useAccountDropdown.ts`.
 - **Gap:** `TopBar` was the component's only production caller; #1362 stopped rendering it (see
-  TD-92 and `dashboard-components.md#accountdropdown`). The files remain in the tree with their
+  TD-111 and `dashboard-components.md#accountdropdown`). The files remain in the tree with their
   tests passing, but nothing imports them outside their own test file any more.
 - **Impact:** None functionally — dead code that still compiles and tests green. Reduces signal for
   future readers who may assume it is still wired.
 - **Suggested fix:** Either delete it, or repurpose its namespace-toggle/disconnect UI as the base
-  for TD-92's `AccountWalletCard` disconnect action (its `kind`/`onKindChange` and
+  for TD-111's `AccountWalletCard` disconnect action (its `kind`/`onKindChange` and
   `onDisconnect` props are close to what that would need).
-
----
-
-## Post-MVP
-
-- Automated bank integration (repayment identification currently manual)
-- On-chain LTV oracle writes and automated enforcement triggers
-- Withdrawal queue 4-tier mechanism (MVP is simple FIFO)
-- Multiple Loan Originators
-- Public bug bounty programme
-- GenTwo MTN issuance
-
-### TD-80: Email/password sessions cannot be revoked
-
-- **Date:** 2026-09-22
-- **Location:** `packages/api/src/auth.rs`, `packages/api/src/routes/auth/password.rs`
-- **Gap:** Email logins issue the same stateless 24h ES256 JWT as wallet logins. There is no refresh token, no `sessions` table, and no logout endpoint, so nothing invalidates an issued token before it expires.
-- **Impact:** A password reset does not end an attacker's existing session — the single most common reason a user resets a password. Suspending an account (`accounts.status = 'Suspended'`, and the operator suspension flow in `lp-onboarding.md`) likewise takes up to 24h to bite, because `AuthClaims` never reads the account row.
-- **Suggested fix:** Either a 15-minute access token plus a rotating opaque refresh token in a `sessions` table (also buys logout and "sign out everywhere"), or the lighter `accounts.sessions_valid_after` epoch checked in the `AuthClaims` extractor, which costs one indexed read per authenticated request and revokes all of an account's sessions at once. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
-
-### TD-81: No rate limiting on signup / resend-otp
-
-- **Date:** 2026-09-22
-- **Location:** `packages/api/src/routes/auth/password.rs`
-- **Gap:** `POST /v1/auth/login` is now bounded (3 attempts per 60s per address and per client, `login_attempts`), but `signup` and `resend-otp` still have only the Turnstile captcha plus the per-account OTP cooldown. There is no per-client or global limit on either.
-- **Impact:** Signup floods are bounded only by the captcha — and when `TURNSTILE_SECRET_KEY` is unset the captcha is a no-op, so both endpoints are entirely open. Once email delivery is real, a flood also burns send quota and sender reputation. The per-account OTP cooldown caps mail *per address*, not the rate at which an attacker walks new addresses.
-- **Suggested fix:** Reuse `LoginAttemptRepo` — it is already scope-keyed and replica-safe. Add an `ip` counter on `signup`/`resend-otp` with a looser limit than login's. Note the same `X-Forwarded-For` dependency: with no proxy in front there is no client address to key on.
-
-### TD-82: No mobile frames for the Account page
-
-- **Date:** 2026-09-21
-- **Location:** `packages/frontend/src/components/account/AccountPage.tsx`.
-- **Gap:** V1.0 Account frames are desktop-only. The 480px content column already behaves as a
-  reasonable single-column mobile layout; page padding is reduced below `md` as a best-effort
-  adaptation, not a designed mobile treatment.
-- **Impact:** Untested against any mobile Figma reference, because none exists.
-- **Suggested fix:** Designer ask: mobile Account-page frames.
 
 ---
 
@@ -1522,13 +1490,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** A password reset still does not end an attacker's existing session — the single most common reason a user resets a password; that half of this entry is untouched. **Closed by #1380:** suspension no longer waits for the token to expire. `AuthClaims` (`packages/api/src/auth.rs`) reads `accounts.status` on every bearer-authenticated request via `account_status::gate_request`, and both mint paths (`POST /v1/auth/login`, `POST /v1/auth/verify`) refuse a suspended account via `account_status::gate_token_issue`, so `Suspended` — from a terminal KYB refusal or an operator action — bites on the account's very next request.
 - **Suggested fix:** A 15-minute access token plus a rotating opaque refresh token in a `sessions` table — this also buys logout and "sign out everywhere", the remaining case for it now being password-reset and sign-out-everywhere revocation rather than suspension. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
 
-### TD-81: No rate limiting on the unauthenticated auth endpoints
+### TD-81: No rate limiting on signup / resend-otp
 
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/routes/auth/password.rs`
-- **Gap:** Only two controls exist on `POST /v1/auth/signup` / `/resend-otp` / `/login`: the Turnstile captcha, and the per-account OTP resend cooldown derived from `otp_codes.created_at`. There is no per-IP limit and no global limit, and `login` has neither captcha nor cooldown.
-- **Impact:** Credential stuffing against `login` is unthrottled. Signup floods are bounded only by the captcha — and when `TURNSTILE_SECRET_KEY` is unset the captcha is a no-op, so the endpoints are entirely open. Once email delivery is real, a flood also burns send quota and sender reputation.
-- **Suggested fix:** Per-IP and per-email limits. An in-process `governor` limiter is one line but is per-replica, so it bounds nothing if the API runs more than one instance; a Postgres- or Redis-backed counter is the version that actually holds. The per-account OTP cooldown is already replica-safe because it reads from the table.
+- **Gap:** `POST /v1/auth/login` is now bounded (3 attempts per 60s per address and per client, `login_attempts`), but `signup` and `resend-otp` still have only the Turnstile captcha plus the per-account OTP cooldown. There is no per-client or global limit on either.
+- **Impact:** Signup floods are bounded only by the captcha — and when `TURNSTILE_SECRET_KEY` is unset the captcha is a no-op, so both endpoints are entirely open. Once email delivery is real, a flood also burns send quota and sender reputation. The per-account OTP cooldown caps mail *per address*, not the rate at which an attacker walks new addresses.
+- **Suggested fix:** Reuse `LoginAttemptRepo` — it is already scope-keyed and replica-safe. Add an `ip` counter on `signup`/`resend-otp` with a looser limit than login's. Note the same `X-Forwarded-For` dependency: with no proxy in front there is no client address to key on. An in-process `governor` limiter is one line but is per-replica, so it bounds nothing if the API runs more than one instance; a Postgres- or Redis-backed counter is the version that actually holds.
 
 ### TD-82: `lps.owner_chain_id` / `owner_address` are dead authorization columns
 
@@ -1558,7 +1526,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/routes/auth/password.rs`, `packages/shared/src/account_repo.rs`
-- **Gap:** `#1266` shipped without password reset (descoped) and without change-password. `AccountRepo::set_password_hash` has exactly one caller — signup's re-issue path, which is reachable only while the account is still unverified. After verification the stored hash is immutable.
+- **Gap:** `#1266` shipped without password reset (descoped) and without change-password. The password has no writer of its own: the submitted password rides on the passcode and is installed by `AccountRepo::verify_email_consuming_code` (`password_hash = COALESCE($2, password_hash)`), a path reachable only while the account is still unverified. After verification the stored hash can never be written again.
 - **Impact:** Three concrete dead ends. A user who forgets their password has no recovery at all. A user who mistyped it at signup recovers only by re-running signup *before* verifying. And because that same path lets anyone who solves the captcha overwrite a *pending* password, an attacker can leave a real owner verified into an account whose password they never chose — the owner cannot log in and cannot reset. `ForgotPasswordModal` (#1280) is already built and inert, so the UI implies a recovery that does not exist.
 - **Suggested fix:** `POST /v1/auth/forgot-password` + `/reset-password`, reusing the `otp_codes` table (the `purpose` column exists for exactly this) and the same captcha and always-202 rules as signup. Add change-password for authenticated callers at the same time. This should land before self-serve signup is exposed to real users, not after.
 

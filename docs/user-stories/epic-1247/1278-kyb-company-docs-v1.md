@@ -16,9 +16,9 @@ agent's Figma comparison against nodes `6701-96852` (empty) and `6701-96881` (up
   existing caption to red with no other layout change.
 - TD-63: uploaded PDF files keep the same brand-tint glyph tile as the empty state rather than a
   rendered PDF-page thumbnail — only `jpg`/`png` uploads get a real image preview.
-- TD-83: Submit enables at ≥ 1 file because the raw-upload model gives no way to signal
+- TD-105: Submit enables at ≥ 1 file because the raw-upload model gives no way to signal
   completeness and the design specifies no threshold.
-- TD-85: "closing keeps progress" is local React state, not persistence — it survives only while
+- TD-107: "closing keeps progress" is local React state, not persistence — it survives only while
   `CompanyDocsModal` stays mounted.
 
 Also note: BUG-19 (`packages/ui` `tsc --noEmit` on `TextField.stories.tsx`) and BUG-20
@@ -163,4 +163,4 @@ See `docs/exec-plans/tech-debt-tracker.md` for full detail on each entry.
 
 This is the deliberate inverse of the retired five-slot modal's reset-on-open behaviour — closing
 this step means "exit onboarding, keep progress," per the epic's 2026-09-21 flow-semantics
-decision. See TD-85 above for the persistence caveat.
+decision. See TD-107 above for the persistence caveat.

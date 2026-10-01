@@ -17,7 +17,7 @@
  * AccountDropdown itself is a pure presentational component (all wallet state
  * comes in as props — see `AccountDropdownProps`) that is no longer composed
  * by `TopBar` as of issue #1362 (see `docs/exec-plans/tech-debt-tracker.md`
- * TD-93). These tests exercise it directly through a small local harness
+ * TD-112). These tests exercise it directly through a small local harness
  * instead of rendering the full `TopBar`/wallet-provider tree, so none of the
  * wagmi/AppKit/Stellar-wallets-kit scaffolding that used to live here is
  * needed any more — only a router (the hook reads `useRouterState`).
