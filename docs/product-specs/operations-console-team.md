@@ -49,8 +49,10 @@ Read-only dashboards for day-to-day operational awareness:
 
 Team members manage all operator accounts (team, trustee, originator) from this view.
 
-- **Invite new operator.** Fields: invitee email, role, optional sub-role, optional note. Generates a one-time signup link (72-hour expiry).
-- **Pending activations queue.** Lists accounts in Pending Activation state. Shows invitee email, role, invitation date, signup date (if completed), and approvers so far. After two distinct team members approve, the account activates automatically. The inviter cannot be one of the two approvers.
+These surfaces were specified around an email signup operators do not use — they sign in by wallet signature against the `auth_users` allow-list, which is maintained directly against the database. The invitation and activation surfaces therefore have nothing to drive today; they are kept as the intended target and flagged as an open design question (see `operations-console.md` § Authentication).
+
+- **Invite new operator.** *(unimplemented.)* Fields: invitee email, role, optional sub-role, optional note; a one-time signup link with a 72-hour expiry. A wallet credential has no signup to link to — what replaces this is the operator's `(chain_id, address)` and role being recorded.
+- **Pending activations queue.** *(unimplemented.)* Accounts awaiting two distinct team approvals, the inviter not counting as one. This is the control worth carrying into whatever replaces the flow: today one person with database access can mint an operator outright.
 - **Active operators view.** Lists all active accounts with role, last login, and status. Single-click Suspend for immediate suspension.
 - **Removal requests.** Permanent removal requires two-person team consensus. Initiator creates the request; a second team member approves.
 
@@ -112,7 +114,7 @@ Originators receive notifications for events on their own loans only, delivered 
 
 ## Security Considerations
 
-- All operators authenticate via email + password + TOTP/WebAuthn 2FA. No operator holds an Ethereum signing key outside their MPC participation.
+- All operators authenticate by wallet signature against the `auth_users` allow-list, which is also where their role lives. An operator therefore does hold a signing key for authentication, distinct from any MPC participation.
 - Two-person team consensus is required to activate any new operator account (team, trustee, or originator). A single team member can suspend; two-person consensus is required for permanent removal.
 - The Originator's EIP-712 signature on an origination request covers only the immutable parameters. It does not authorise any cash-rail action; the LoanRegistry mint is a trustee transaction.
 - Treasury redemption stages A and B each enforce a two-operator disjoint rule at the session level. The team console backend prevents a single operator from fulfilling both roles.
