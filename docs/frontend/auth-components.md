@@ -283,7 +283,7 @@ meetsPasswordPolicy(p) = p.length >= 8 && /\d/.test(p) && /[^A-Za-z0-9]/.test(p)
 
 "Special character" is read as "not `[A-Za-z0-9]`" — punctuation, symbols, whitespace, and
 non-ASCII all count. There is **deliberately no letter requirement** — the verbatim Figma copy
-does not mention one (see TD-73 for the backend-reconciliation risk this creates once real auth
+does not mention one (see TD-101 for the backend-reconciliation risk this creates once real auth
 endpoints land). Error copy (verbatim, replaces `SignInModal`'s "Enter the correct password" in
 this modal — a signup form has no "correct" password yet):
 
@@ -510,7 +510,7 @@ a deliberate reversal of the retired five-slot modal's reset-on-open behaviour: 
 reset-on-open effect, so `useAccountDocuments` holds the files for the lifetime of the mounted
 component — closing and reopening the preview shows them still staged. Production progress is read back from the LP API; staged files are local until confirmed uploaded.
 
-**Submit enables at ≥ 1 file (TD-83).** `useAccountDocuments.canSave` encodes this — the only
+**Submit enables at ≥ 1 file (TD-105).** `useAccountDocuments.canSave` encodes this — the only
 non-arbitrary rule the raw-upload model permits, same gap the retired TD-66 described for the
 Owners step.
 

@@ -249,5 +249,5 @@ wired never throws (the inert-seam contract).
 ## No mobile frames
 
 No mobile frames exist for either surface — the whole V1.0 family is desktop-only (same call as
-TD-82). The card is width-driven by its grid slot and the modal already caps at
+TD-104). The card is width-driven by its grid slot and the modal already caps at
 `calc(100vw - 32px)`. Logged as tech debt, no invented mobile layout.
