@@ -156,12 +156,6 @@ function AccountPageContent({
           />
         )}
 
-        {ready && account?.readState === "absent" && (
-          <p role="status">
-            Complete your company profile and upload documents to set up your
-            account.
-          </p>
-        )}
         {ready && account?.readState === "loaded" && !account.writable && (
           <p role="status">
             Your account is under review or approved. Profile and document
