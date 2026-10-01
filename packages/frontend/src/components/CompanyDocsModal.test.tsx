@@ -461,7 +461,7 @@ describe("CompanyDocsModal — production requests", () => {
       "Draft Name",
     );
     expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("FR");
-    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
     rerender(
       <CompanyDocsModal
         open
