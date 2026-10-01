@@ -17,12 +17,15 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-24: Tech-debt tracker has two `## Post-MVP` sections with duplicate TD-80/TD-81/TD-82 entries
-- **Date:** 2026-09-30
+### BUG-24: Tech-debt tracker has two divergent `## Post-MVP` sections, and five TD numbers each name two different things
+- **Date:** 2026-09-30, corrected 2026-10-01.
 - **Location:** `docs/exec-plans/tech-debt-tracker.md`
-- **Symptom:** The file has two `## Post-MVP` sections (lines 1471 and 1508 at time of writing) and consequently two byte-identical TD-80 "Email/password sessions cannot be revoked" entries, plus duplicate TD-81 and TD-82 entries. The first block's TD-81 carries superseded wording ("No rate limiting on signup / resend-otp"), and its TD-82 duplicates an unrelated frontend TD-82 entry under `## Known Gaps`.
-- **Root cause:** A merge that appended a Post-MVP block rather than reconciling it with the existing one.
-- **Workaround:** Treat the second block (running through TD-98 at time of writing, the most recently added entries) as live. Anchor any edit on the live block's unique neighbouring headings — never on a `### TD-<N>` heading whose text is duplicated — since an `Edit` matched on the shared text alone is ambiguous and fails.
+- **Symptom:** Two `## Post-MVP` sections (lines 1471 and 1508 at time of writing). Separately, `## Known Gaps` and the Post-MVP blocks run **independent numbering sequences over overlapping ranges**, so TD-80, TD-81, TD-82, TD-92 and TD-93 each name two unrelated entries — a frontend one and a backend one.
+- **Root cause:** A merge that appended a Post-MVP block instead of reconciling it, compounded by a renumbering of the frontend entries (recorded in `docs/exec-plans/completed/issue-1284-lp-account-page.md`) that walked into the backend range.
+- **Correction to this entry's first version — read before acting on it.** It said the two blocks hold "byte-identical" entries and that the first is stale. **Both claims are wrong.** The blocks have *diverged*: edits over months landed in one or the other, so each holds content the other lacks, and neither is wholesale newer. Verified example: the first block's TD-81 says `POST /v1/auth/login` "is now bounded (3 attempts per 60s per address and per client, `login_attempts`)" — which matches the code (`MAX_LOGIN_ATTEMPTS`, migration `20260922000002_login_attempts.sql`) — while the second block's TD-81 says credential stuffing against `login` "is unthrottled", which is false. So the block everyone treated as stale is, in that entry, the accurate one.
+- **Why the mistake was unanimous:** the second block ends at the highest TD number, so it looks like the live one, and new entries do go there. That does not make each of its entries newer than its same-numbered twin, which is the inference three execution plans and this bug report all made.
+- **Workaround:** Anchor any edit on a heading **plus its subtitle**, never on `### TD-<N>` alone. Do not assume either block supersedes the other. Before editing or citing an entry, check its claim against the code — one has already been found false.
+- **Fix:** Not a deletion. It is a manual entry-by-entry merge with each claim re-verified against the code, plus a decision on whether the two sequences become one or get separate prefixes, plus a sweep of inbound references — which live in code as well as docs (`packages/shared/src/lp_repo.rs:16,292`, `packages/api/src/error.rs:42`, `packages/frontend/src/components/AccountDropdown.test.tsx:20`, and four places under `docs/product-specs/`). Tracked as #1390 and deliberately deferred until #1384 and #1385 merge, so the file is not moving under in-flight branches. Archived exec plans cite the old numbers and should not be rewritten.
 
 ### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
 - **Date:** 2026-09-29
