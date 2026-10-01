@@ -576,7 +576,20 @@ describe("CompanyDocsModal — production requests", () => {
       ).not.toBeInTheDocument(),
     );
     expect(screen.getByText("saved.pdf")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    const submitForReview = screen.getByRole("button", {
+      name: "Submit for review",
+    });
+    expect(submitForReview).toBeEnabled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    mockSubmit.mockResolvedValueOnce(
+      lp([makeDocument(11)], { kyb_status: "UnderReview", writable: false }),
+    );
+    fireEvent.click(submitForReview);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Name" })).toBeDisabled(),
+    );
     expect(mockUpload).toHaveBeenCalledTimes(1);
   });
 });
