@@ -18,7 +18,9 @@ distinguishes loading, 404 (a new LP), and request error; an error offers retry 
 an empty LP. For a missing LP, the page shows the profile and document controls without an
 additional account-setup description (#1401). `AccountEmailCard` displays `contact_email` from a returned LP, or the authenticated
 session email on 404. A legacy session without email cannot create an LP until the user signs in
-again. The wallet card, logout button, and centered 480px column remain.
+again. The wallet card, logout button, and centered 480px column remain. UnderReview and Passed
+use the document status banner without an additional generic freeze paragraph (#1408); Failed
+retains its distinct verification-declined message. Edit restrictions still follow the server.
 
 A new profile card sits above the document card and uses the shared `TextField` for labelled Name
 (`legal_name`) and Country (`country`). Both fields have a visible one-pixel
