@@ -151,15 +151,21 @@ function AccountPageContent({
             onCountryChange={account.setCountry}
             onSave={() => void account.saveProfile()}
             canSave={account.canSaveProfile}
-            disabled={!account.writable || account.busy || !account.email}
+            disabled={
+              !account.writable ||
+              account.busy ||
+              account.uncertainSubmission ||
+              !account.email
+            }
             busy={account.busy}
           />
         )}
 
         {ready && account?.readState === "loaded" && !account.writable && (
           <p role="status">
-            Your account is under review or approved. Profile and document
-            changes are unavailable.
+            {account.lp?.kyb_status === "Failed"
+              ? "Your account verification was declined. Profile and document changes are unavailable."
+              : "Your account is under review or approved. Profile and document changes are unavailable."}
           </p>
         )}
         {ready && account?.readState === "absent" && !account.email && (
@@ -192,6 +198,21 @@ function AccountPageContent({
           </Button>
         )}
 
+        {ready && account?.uncertainSubmission && (
+          <Button
+            variant="secondary"
+            disabled={account.busy}
+            onClick={() => void account.checkSubmission()}
+          >
+            Check submission status
+          </Button>
+        )}
+        {ready && account?.profileChanged && account.lp?.writable && (
+          <p role="status">
+            Save your profile changes before uploading documents or submitting
+            for review.
+          </p>
+        )}
         {ready && (
           <div className="flex w-full flex-col items-start gap-3">
             <p
@@ -213,7 +234,11 @@ function AccountPageContent({
               onAddFiles={
                 account
                   ? (picked) => {
-                      if (!account.busy && !account.uncertainIds)
+                      if (
+                        !account.busy &&
+                        !account.uncertainIds &&
+                        !account.uncertainSubmission
+                      )
                         addFiles(picked);
                     }
                   : addFiles
@@ -221,7 +246,11 @@ function AccountPageContent({
               onRemoveStagedFile={
                 account
                   ? (index) => {
-                      if (!account.busy && !account.uncertainIds)
+                      if (
+                        !account.busy &&
+                        !account.uncertainIds &&
+                        !account.uncertainSubmission
+                      )
                         removeFile(index);
                     }
                   : removeFile
@@ -229,9 +258,18 @@ function AccountPageContent({
               canSave={account ? account.canUpload : canSave}
               onSave={account ? () => void account.saveDocuments() : handleSave}
               production={Boolean(account)}
+              failed={account?.lp?.kyb_status === "Failed"}
+              canSubmitForReview={account?.canSubmitForReview}
+              onSubmitForReview={
+                account ? () => void account.submitForReview() : undefined
+              }
               writable={account?.writable ?? true}
               busy={
-                account ? account.busy || Boolean(account.uncertainIds) : false
+                account
+                  ? account.busy ||
+                    Boolean(account.uncertainIds) ||
+                    account.uncertainSubmission
+                  : false
               }
               onRemoveDocument={
                 account ? (id) => void account.removeDocument(id) : undefined

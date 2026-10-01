@@ -26,8 +26,8 @@ local and do not call the API.
 - A lost submit response can occur after the server commits UnderReview. Reconcile with GET
   before allowing another POST. UnderReview proves success; Passed/Failed prove a subsequent
   terminal decision and must be adopted without a misleading under-review confirmation.
-  ChangesRequested may follow a quick trustee verdict: compare submission/decision timestamps
-  with the baseline, when available, to avoid treating that correction cycle as a failed POST.
+  ChangesRequested may follow a quick trustee verdict: adopt it with correction guidance and
+  require an explicit next submission action, never automatically issue another POST.
 - If reconciliation itself fails, block submission retries until a Check submission status GET
   succeeds. Do not infer status from upload completion or from an HTTP error alone.
 - Guard every post-await state update by the captured session token; reset submission recovery
@@ -58,12 +58,12 @@ _None_
 3. Add a focused frontend helper for submission eligibility and guarded submit/reconciliation
    shared by modal and Account controller. Eligibility is writable NotStarted/ChangesRequested,
    documents nonempty, no Rejected document, and no remaining staged or unresolved uploads.
-   Use the current LP snapshot for timestamp comparison. Return confirmed LP response, known
+   Use the current LP snapshot for eligibility. Return confirmed LP response, known
    refusal/error, or unresolved submit state; preserve API error details for existing copy.
    Never repeat POST as part of reconciliation. On network/parse uncertainty and 409, GET current
    LP and adopt it. UnderReview is successful submission; terminal status is current truth and
-   must not open the review confirmation. Newer submission/decision metadata can identify a
-   fast ChangesRequested verdict. Failures of this GET expose Check submission status and keep
+   must not open the review confirmation. A ChangesRequested read is adopted with correction
+   guidance and requires an explicit next submission action. Failures of this GET expose Check submission status and keep
    write actions blocked until a confirmed read.
 4. In `CompanyDocsModal.tsx`, keep preview `onSubmit` unchanged. For production Submit, upsert
    the profile and upload staged files in the existing sequence, retaining per-file recovery.
@@ -117,3 +117,20 @@ Capture these scenarios in user stories for the later epic QA pass.
 - `docs/user-stories/epic-1247/1404-lp-submit-review.md` and `docs/user-stories/index.md`.
 - Existing epic-1247 stories #1396, #1371, and #1373 where submission behavior changed.
 - This execution plan's progress/decision log.
+
+## Progress and Decisions
+
+- [x] Step 1: Updated specification/auth/Account docs and amended existing user stories.
+- [x] Step 2: Added bodyless authenticated submitMyLp and current response metadata types.
+- [x] Step 3: Added shared eligibility, submission, and GET-only reconciliation helper.
+- [x] Steps 4–5: Setup submits after complete uploads and supports submit-only retry/status checks.
+- [x] Step 6: Account submits complete uploads and supports existing persisted documents.
+- [x] Step 7: Added production submission action/status recovery and profile-draft guards.
+- [x] Step 8: Added ChangesRequested type and a declined-state banner for Failed.
+- [x] Step 9: Final documentation lint, frontend lint/build, and diff verification passed after
+  existing-fixture maintenance.
+
+Recovery deliberately does not infer a review cycle from timestamps: a ChangesRequested read
+is adopted with correction guidance and can only be submitted again by explicit user action.
+This avoids blindly resubmitting a quick trustee verdict. Existing test fixtures were maintained
+for the new intentional API interactions and legal NotStarted status; no tests were added or run.

@@ -14,6 +14,12 @@ import { AuthModalShell } from "@/components/AuthModalShell";
 import { UploadedFileRow } from "@/components/UploadedFileRow";
 import { AccountUploadRow } from "@/components/account/AccountUploadRow";
 import { AccountRequirementsList } from "@/components/account/AccountRequirementsList";
+import {
+  eligibleForReview,
+  submitLpForReview,
+  checkLpSubmission,
+  type SubmissionResult,
+} from "@/components/account/submitLpForReview";
 import { useAccountDocuments } from "@/components/account/useAccountDocuments";
 
 export interface CompanyDocsModalProps {
@@ -74,6 +80,8 @@ export function CompanyDocsModal({
   const lpIdentity = useRef(lp?.id ?? null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const submitPending = useRef(false);
+  const [uncertainSubmission, setUncertainSubmission] = useState(false);
   const [uncertainIds, setUncertainIds] = useState<number[] | null>(null);
   const {
     files,
@@ -99,22 +107,30 @@ export function CompanyDocsModal({
     lpIdentity.current = lp?.id ?? null;
   }, [lp]);
 
-  const writable = preview || (serverLp?.writable ?? true);
+  const writable =
+    preview || (!uncertainSubmission && (serverLp?.writable ?? true));
   const email = serverLp?.contact_email || sessionEmail;
   const profileChanged =
     serverLp !== null &&
     (legalName.trim() !== profileBaseline.legalName.trim() ||
       (country.trim() || null) !== (profileBaseline.country.trim() || null));
   const canSubmit =
-    (canSave || (!preview && profileChanged)) &&
+    (canSave ||
+      (!preview && files.length === 0 && eligibleForReview(serverLp))) &&
     legalName.trim().length > 0 &&
     writable &&
     !busy &&
     !uncertainIds &&
-    (preview || Boolean(email));
+    (preview ||
+      (Boolean(email) &&
+        (!serverLp ||
+          ["NotStarted", "ChangesRequested"].includes(serverLp.kyb_status))));
 
   async function reconcile(idsBefore: number[]) {
+    const expected = readSession()?.token;
+    if (!expected) return;
     const refreshed = await getMyLp();
+    if (readSession()?.token !== expected) return;
     const added = refreshed.documents.filter(
       (document) => !idsBefore.includes(document.id),
     );
@@ -142,26 +158,35 @@ export function CompanyDocsModal({
       if (canSubmit) handleSave();
       return;
     }
-    if (!canSubmit || !email) return;
+    if (!canSubmit || !email || submitPending.current) return;
     setBusy(true);
     setError(undefined);
     const token = readSession()?.token;
+    if (!token) {
+      setBusy(false);
+      return;
+    }
+    submitPending.current = true;
     try {
-      const saved = await upsertMyLp({
-        legal_name: legalName.trim(),
-        country: country.trim() || null,
-        contact_email: email,
-      });
-      if (readSession()?.token !== token) return;
-      setServerLp(saved);
-      lpIdentity.current = saved.id;
-      setProfileBaseline({
-        legalName: saved.legal_name,
-        country: saved.country ?? "",
-      });
-      onLpChange?.(saved);
+      let saved = serverLp;
+      if (!saved || profileChanged || files.length > 0) {
+        saved = await upsertMyLp({
+          legal_name: legalName.trim(),
+          country: country.trim() || null,
+          contact_email: email,
+        });
+        if (readSession()?.token !== token) return;
+        setServerLp(saved);
+        lpIdentity.current = saved.id;
+        setProfileBaseline({
+          legalName: saved.legal_name,
+          country: saved.country ?? "",
+        });
+        onLpChange?.(saved);
+      }
       if (files.length === 0) {
-        onSubmitSuccess?.();
+        if (eligibleForReview(saved) && token)
+          applySubmission(await submitLpForReview(token), token);
         return;
       }
       const idsBefore = saved.documents.map((document) => document.id);
@@ -169,6 +194,7 @@ export function CompanyDocsModal({
       try {
         response = await uploadMyDocuments(files);
       } catch (uploadError) {
+        if (readSession()?.token !== token) return;
         if (uploadError instanceof ApiError && uploadError.status === 400) {
           const rejected = uploadErrorResponse(uploadError);
           if (rejected) {
@@ -182,6 +208,7 @@ export function CompanyDocsModal({
           try {
             await reconcile(idsBefore);
           } catch {
+            if (readSession()?.token !== token) return;
             setError(
               "Upload status is unknown. Check uploads after your connection returns before retrying.",
             );
@@ -189,21 +216,72 @@ export function CompanyDocsModal({
         } else {
           if (uploadError.status === 409 || uploadError.status === 404) {
             const refreshed = await getMyLp().catch(() => undefined);
-            if (refreshed) {
+            if (refreshed && readSession()?.token === token) {
               setServerLp(refreshed);
               onLpChange?.(refreshed);
             }
           }
-          setError(errorMessage(uploadError));
+          if (readSession()?.token === token)
+            setError(errorMessage(uploadError));
         }
         return;
       }
       if (readSession()?.token !== token) return;
-      if (applyUploadResult(response)) onSubmitSuccess?.();
+      if (applyUploadResult(response)) {
+        if (eligibleForReview(response.lp))
+          applySubmission(await submitLpForReview(token), token);
+        else if (
+          response.lp.documents.some(
+            (document) => document.status === "Rejected",
+          )
+        )
+          setError(
+            "Your files are saved. Remove and replace rejected documents before submitting for review.",
+          );
+      }
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      if (readSession()?.token === token) setError(errorMessage(requestError));
     } finally {
-      setBusy(false);
+      if (readSession()?.token === token) {
+        submitPending.current = false;
+        setBusy(false);
+      }
+    }
+  }
+
+  async function checkUploads() {
+    const expected = readSession()?.token;
+    if (!expected || !uncertainIds || busy) return;
+    setBusy(true);
+    try {
+      await reconcile(uncertainIds);
+    } catch (requestError) {
+      if (readSession()?.token === expected)
+        setError(errorMessage(requestError));
+    } finally {
+      if (readSession()?.token === expected) setBusy(false);
+    }
+  }
+
+  function applySubmission(result: SubmissionResult, expected: string) {
+    if (result.cancelled || readSession()?.token !== expected) return;
+    setUncertainSubmission(Boolean(result.uncertain));
+    if (result.lp) {
+      setServerLp(result.lp);
+      onLpChange?.(result.lp);
+      if (result.lp.kyb_status === "UnderReview") onSubmitSuccess?.();
+    }
+    setError(result.error);
+  }
+
+  async function checkSubmission() {
+    const expected = readSession()?.token;
+    if (!expected || busy) return;
+    setBusy(true);
+    try {
+      applySubmission(await checkLpSubmission(expected), expected);
+    } finally {
+      if (readSession()?.token === expected) setBusy(false);
     }
   }
 
@@ -225,10 +303,13 @@ export function CompanyDocsModal({
 
   async function removeDocument(id: number) {
     if (!writable || busy) return;
+    const expected = readSession()?.token;
+    if (!expected) return;
     setBusy(true);
     setError(undefined);
     try {
       await deleteMyDocument(id);
+      if (readSession()?.token !== expected) return;
       const next = serverLp && {
         ...serverLp,
         documents: serverLp.documents.filter((document) => document.id !== id),
@@ -238,19 +319,21 @@ export function CompanyDocsModal({
         onLpChange?.(next);
       }
     } catch (requestError) {
+      if (readSession()?.token !== expected) return;
       if (
         requestError instanceof ApiError &&
         (requestError.status === 404 || requestError.status === 409)
       ) {
         const refreshed = await getMyLp().catch(() => undefined);
-        if (refreshed) {
+        if (refreshed && readSession()?.token === expected) {
           setServerLp(refreshed);
           onLpChange?.(refreshed);
         }
       }
-      setError(errorMessage(requestError));
+      if (readSession()?.token === expected)
+        setError(errorMessage(requestError));
     } finally {
-      setBusy(false);
+      if (readSession()?.token === expected) setBusy(false);
     }
   }
 
@@ -348,15 +431,26 @@ export function CompanyDocsModal({
             {error}
           </p>
         )}
+        {uncertainSubmission && (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={() => void checkSubmission()}
+          >
+            Check submission status
+          </Button>
+        )}
+        {!preview && serverLp?.kyb_status === "Failed" && (
+          <p role="status">Your account verification was declined.</p>
+        )}
+        {!preview && serverLp?.kyb_status === "Passed" && (
+          <p role="status">Your account is verified.</p>
+        )}
         {uncertainIds && (
           <Button
             variant="secondary"
             disabled={busy}
-            onClick={() =>
-              void reconcile(uncertainIds).catch((requestError) =>
-                setError(errorMessage(requestError)),
-              )
-            }
+            onClick={() => void checkUploads()}
           >
             Check uploads
           </Button>
@@ -367,7 +461,11 @@ export function CompanyDocsModal({
           onClick={() => void submit()}
           className="!w-full !min-w-0 disabled:opacity-[0.32]"
         >
-          {busy ? "Saving…" : "Submit"}
+          {busy
+            ? "Submitting…"
+            : !preview && files.length === 0 && eligibleForReview(serverLp)
+              ? "Submit for review"
+              : "Submit"}
         </Button>
       </div>
     </AuthModalShell>
