@@ -23,6 +23,7 @@ export interface CompanyDocsModalProps {
   lp?: LpResponse | null;
   sessionEmail?: string;
   onLpChange?: (lp: LpResponse) => void;
+  onSubmitSuccess?: () => void;
 }
 
 function errorMessage(error: unknown): string {
@@ -60,6 +61,7 @@ export function CompanyDocsModal({
   lp,
   sessionEmail,
   onLpChange,
+  onSubmitSuccess,
 }: CompanyDocsModalProps) {
   const preview = lp === undefined;
   const [serverLp, setServerLp] = useState<LpResponse | null>(lp ?? null);
@@ -158,7 +160,10 @@ export function CompanyDocsModal({
         country: saved.country ?? "",
       });
       onLpChange?.(saved);
-      if (files.length === 0) return;
+      if (files.length === 0) {
+        onSubmitSuccess?.();
+        return;
+      }
       const idsBefore = saved.documents.map((document) => document.id);
       let response: UploadDocumentsResponse;
       try {
@@ -194,7 +199,7 @@ export function CompanyDocsModal({
         return;
       }
       if (readSession()?.token !== token) return;
-      applyUploadResult(response);
+      if (applyUploadResult(response)) onSubmitSuccess?.();
     } catch (requestError) {
       setError(errorMessage(requestError));
     } finally {
@@ -215,6 +220,7 @@ export function CompanyDocsModal({
     removeFilesAt(successful);
     if (failures.length)
       setError(`Some files were not uploaded. ${failures.join("; ")}`);
+    return failures.length === 0;
   }
 
   async function removeDocument(id: number) {

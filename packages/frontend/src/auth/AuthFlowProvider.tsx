@@ -7,6 +7,7 @@ import { useConnectModal } from "@/wallet";
 import { useAuthSession } from "./useAuthSession";
 import { ApiError, getMyLp } from "@/api";
 import type { LpResponse } from "@/api";
+import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
 
 interface SetupState {
@@ -14,6 +15,7 @@ interface SetupState {
   status: "loading" | "absent" | "loaded" | "error";
   lp: LpResponse | null;
   open: boolean;
+  reviewOpen?: boolean;
 }
 
 export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
@@ -71,24 +73,51 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
       {token &&
         setup?.token === token &&
         (setup.status === "absent" || setup.status === "loaded") && (
-          <CompanyDocsModal
-            key={token}
-            open={setup.open}
-            onDismiss={() =>
-              setSetup((previous) =>
-                previous ? { ...previous, open: false } : null,
-              )
-            }
-            lp={setup.lp}
-            sessionEmail={email}
-            onLpChange={(lp) =>
-              setSetup((previous) =>
-                previous?.token === token
-                  ? { ...previous, status: "loaded", lp }
-                  : previous,
-              )
-            }
-          />
+          <>
+            <CompanyDocsModal
+              key={token}
+              open={setup.open}
+              onDismiss={() =>
+                setSetup((previous) =>
+                  previous ? { ...previous, open: false } : null,
+                )
+              }
+              onSubmitSuccess={() =>
+                setSetup((previous) =>
+                  previous?.token === token
+                    ? { ...previous, open: false, reviewOpen: true }
+                    : previous,
+                )
+              }
+              lp={setup.lp}
+              sessionEmail={email}
+              onLpChange={(lp) =>
+                setSetup((previous) =>
+                  previous?.token === token
+                    ? { ...previous, status: "loaded", lp }
+                    : previous,
+                )
+              }
+            />
+            <AccountInReviewModal
+              key={`review-${token}`}
+              open={setup.reviewOpen ?? false}
+              onDismiss={() =>
+                setSetup((previous) =>
+                  previous?.token === token
+                    ? { ...previous, reviewOpen: false }
+                    : previous,
+                )
+              }
+              onGoToApp={() =>
+                setSetup((previous) =>
+                  previous?.token === token
+                    ? { ...previous, reviewOpen: false }
+                    : previous,
+                )
+              }
+            />
+          </>
         )}
     </AuthFlowContext.Provider>
   );

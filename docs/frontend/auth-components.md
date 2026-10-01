@@ -578,7 +578,7 @@ screen carried — TD-64/65/67 are resolved by deletion, TD-66 was already resol
 `packages/frontend/src/components/AccountInReviewModal.tsx`. The KYB post-submission
 Account-in-review screen — presentational only, **no network call, no persistence**. The
 "notified" confirmation lives in React state for the lifetime of the open modal; closing/reopening
-resets it (TD-70). `onNotifyMe`/`onGoToApp` are seams for #1254 (both default to a no-op).
+resets it (TD-70). In production, `AuthFlowProvider` opens it after successful account setup (#1396). `onNotifyMe` is omitted, so Notify me only changes local appearance; `onGoToApp` closes it while preserving the session.
 
 **One screen, two states, not two screens.** The two Figma frames share an identical node tree —
 circle → heading → two buttons, full stop — with the only delta being the first button's
@@ -647,9 +647,7 @@ full evidence trail and the only other "under review" candidate found (a superse
 dashboard card, out of scope here).
 
 **Out of scope.** Any real "notify me" subscription, polling, or review-status fetch (TD-70);
-wiring Company Docs → Account-in-review as a sequence (Owners, the step that used to sit between
-them, was retired 2026-09-21), and `Go to app`'s destination (both #1254's flow orchestration —
-the `/test` seam keeps this trigger independent, same reasoning as the other pairs in this epic);
+backend review submission or transitions;
 the LP header entry point (a future Figma); the review banner (TD-69); `@pipeline/ui` promotion
 (LP-only, following `AuthModalShell`'s placement).
 
@@ -744,6 +742,13 @@ The provider owns `isOpen`/`screen` state and renders one `<EmailAuthFlow open i
 onClose={close} onConnectWallet={openConnectModal} />`. A successful sign-in flips the reactive
 session store; the provider fetches the LP and offers the account-setup modal for a missing LP or
 empty document list. There is no navigation or toast.
+
+`CompanyDocsModal.onSubmitSuccess` is distinct from `onLpChange`: it fires only after a valid
+profile-only Submit or when every staged upload succeeds. Partial uploads and failures keep
+the setup modal open. The provider then closes setup and opens `AccountInReviewModal`; Go to app
+and dismissal close it without logging out or navigating. Modal state belongs to the current
+session token and is cleared on session changes or reload. This confirmation does not invoke
+the backend submit-for-review endpoint or change `kyb_status`.
 
 **Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (signed out) call `open("sign-in")` /
 `open("create-account")`; `TopBar`'s account icon (signed in) does not call it at all — it
