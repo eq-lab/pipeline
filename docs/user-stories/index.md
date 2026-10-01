@@ -185,6 +185,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1283 LP: Add Funds wire-transfer modal + bank-transfer home states](https://github.com/eq-lab/pipeline/issues/1283) | [1283-lp-add-funds.md](./epic-1247/1283-lp-add-funds.md) | Initial |
 | [#1278 KYB: Company Docs step V1.0 redesign](https://github.com/eq-lab/pipeline/issues/1278) | [1278-kyb-company-docs-v1.md](./epic-1247/1278-kyb-company-docs-v1.md) | Initial |
 | [#1362 LP: header Sign in / Sign up entry + signed-in state](https://github.com/eq-lab/pipeline/issues/1362) | [1362-header-auth-entry.md](./epic-1247/1362-header-auth-entry.md) | Initial |
+| [#1399 Account input borders](https://github.com/eq-lab/pipeline/issues/1399) | [1399-account-input-borders.md](./epic-1247/1399-account-input-borders.md) | Initial |
 | [#1396 KYB: account setup review confirmation](https://github.com/eq-lab/pipeline/issues/1396) | [1396-account-setup-review-modal.md](./epic-1247/1396-account-setup-review-modal.md) | Initial |
 | [#1371 KYB: account setup and documents](https://github.com/eq-lab/pipeline/issues/1371) | [1371-account-setup-flow.md](./epic-1247/1371-account-setup-flow.md) | Initial |
 | [#1368 Backend: wire SendGrid as the transactional email provider (OTP delivery)](https://github.com/eq-lab/pipeline/issues/1368) | [1368-sendgrid-email-delivery.md](./epic-1247/1368-sendgrid-email-delivery.md) | Initial |

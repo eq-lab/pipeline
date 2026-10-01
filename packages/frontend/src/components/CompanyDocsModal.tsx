@@ -274,6 +274,7 @@ export function CompanyDocsModal({
               value={legalName}
               onChange={setLegalName}
               placeholder="Legal company name"
+              className="[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]"
               disabled={!writable || busy}
             />
           </label>
@@ -284,6 +285,7 @@ export function CompanyDocsModal({
               value={country}
               onChange={setCountry}
               placeholder="Country"
+              className="[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]"
               disabled={!writable || busy}
             />
           </label>

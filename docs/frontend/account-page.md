@@ -20,7 +20,10 @@ session email on 404. A legacy session without email cannot create an LP until t
 again. The wallet card, logout button, and centered 480px column remain.
 
 A new profile card sits above the document card and uses the shared `TextField` for labelled Name
-(`legal_name`) and Country (`country`). The form preloads returned values, requires a nonblank Name,
+(`legal_name`) and Country (`country`). Both fields have a visible one-pixel
+`--color-pipeline-line` border while unfocused (#1399); the existing focus border and disabled
+behavior remain. A targeted child selector styles the shared TextField control, so it does not
+add a second border to the outer wrapper or change other TextField consumers. The form preloads returned values, requires a nonblank Name,
 and sends the complete profile, including the stored `contact_email` and unchanged country, in
 JSON to `POST /v1/lps/me`. Profile-only edits save without another file. Draft text survives a
 same-LP document upload, deletion, or refetch; a successful profile save refreshes its baseline.

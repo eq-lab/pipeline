@@ -31,6 +31,7 @@ export function AccountProfileCard({
           value={legalName}
           onChange={onLegalNameChange}
           placeholder="Legal company name"
+          className="[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]"
           disabled={disabled}
         />
       </label>
@@ -41,6 +42,7 @@ export function AccountProfileCard({
           value={country}
           onChange={onCountryChange}
           placeholder="Country"
+          className="[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]"
           disabled={disabled}
         />
       </label>
