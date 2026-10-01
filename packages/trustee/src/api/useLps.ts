@@ -9,6 +9,8 @@ export interface LpSummary {
   contact_email: string;
   stellar_address: string | null;
   kyb_status: string;
+  kyb_submitted_at?: string | null;
+  kyb_decided_at?: string | null;
   owner_account_id: string;
   created_at: string;
 }

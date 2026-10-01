@@ -199,6 +199,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 | Issue | Doc | Status |
 | --- | --- | --- |
+| [#1271 Trustee: LP detail and KYB review](https://github.com/eq-lab/pipeline/issues/1271) | [1271-trustee-lp-review.md](./epic-1269/1271-trustee-lp-review.md) | Initial |
 | [#1270 Trustee: LP Counterparties menu item + list table](https://github.com/eq-lab/pipeline/issues/1270) | [1270-trustee-lp-counterparties.md](./epic-1269/1270-trustee-lp-counterparties.md) | Initial |
 
 ---

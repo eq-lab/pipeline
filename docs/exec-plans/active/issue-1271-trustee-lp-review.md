@@ -105,3 +105,22 @@ Passed gating; terminal refusal confirmation; ChangesRequested list/detail refre
 - `docs/product-specs/kyb-lp-verification.md` — trustee review UI presentation and guards.
 - `docs/user-stories/epic-1269/1271-trustee-lp-review.md` and `docs/user-stories/index.md`.
 - This execution plan — progress and material decisions during implementation.
+
+## Progress and Decisions
+
+- [x] Step 1: Updated trustee/KYB documentation and linked the epic user stories.
+- [x] Step 2: Added live LP detail/document types, query, polling, refresh, and cancellation.
+- [x] Step 3: Added document and LP verdict writes with cache invalidation and conflict refresh.
+- [x] Step 4: Added Changes requested mapping while retaining existing list columns.
+- [x] Step 5: Added detail controller for eligibility, dialogs, validation, and errors.
+- [x] Step 6: Replaced the placeholder with profile, documents, real downloads, and status states.
+- [x] Step 7: Added accessible confirmations and reason handling with pending-write protection.
+- [x] Step 8: Documentation lint, trustee lint/build, and diff checks passed.
+
+Implementation uses one `useReviewLp` mutation hook for both endpoints so pending writes are
+serialized across document and account decisions. The LP fetch wrapper checks the captured
+session token before accepting a completed response and clears only the matching session on
+401. Keyed detail content resets local state on LP navigation. No backend or bank changes.
+No automated tests or browser QA were run under the manager frontend workflow. Documentation
+lint reports 0 errors and 42 existing warnings; build reports existing dependency annotation
+and bundle-size warnings.

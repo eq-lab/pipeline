@@ -48,7 +48,7 @@ The latest decision, its reason, and its time are returned with the LP record, s
 
 `Failed` is terminal. The LP freezes permanently, and since one account owns at most one LP, the account cannot start over with a fresh record — so the decision suspends the account as well. Nothing in the API reverses a terminal refusal; reversing one is a deliberate manual intervention.
 
-The trustee reads every LP with its current status, submission time, and decision time. There is no separate "ready for review" queue: the queue is exactly the LPs sitting at `UnderReview`, and the listing already carries what distinguishes them.
+The trustee detail page displays the LP profile, latest verdict reason, and a flat list of documents with review metadata and presigned downloads. It offers review only for Provided documents while the LP is UnderReview, requiring a reason for document rejection. LP verdict confirmations accept optional reasons; approval is available only after every document is Verified, and terminal refusal explains account suspension before confirmation. Successful decisions refresh the detail and listing; conflicts refresh stale review state. The trustee reads every LP with its current status, submission time, and decision time. There is no separate "ready for review" queue: the queue is exactly the LPs sitting at `UnderReview`, and the listing already carries what distinguishes them.
 
 ### Review Notifications
 
