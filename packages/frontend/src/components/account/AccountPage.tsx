@@ -161,13 +161,14 @@ function AccountPageContent({
           />
         )}
 
-        {ready && account?.readState === "loaded" && !account.writable && (
-          <p role="status">
-            {account.lp?.kyb_status === "Failed"
-              ? "Your account verification was declined. Profile and document changes are unavailable."
-              : "Your account is under review or approved. Profile and document changes are unavailable."}
-          </p>
-        )}
+        {ready &&
+          account?.readState === "loaded" &&
+          account.lp?.kyb_status === "Failed" && (
+            <p role="status">
+              Your account verification was declined. Profile and document
+              changes are unavailable.
+            </p>
+          )}
         {ready && account?.readState === "absent" && !account.email && (
           <p role="alert">Sign out and sign in again to complete setup.</p>
         )}
