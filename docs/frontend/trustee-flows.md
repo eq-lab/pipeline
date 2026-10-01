@@ -727,7 +727,7 @@ chips while `kyb_status` is monotone, #1274).
 **Sources:** `packages/trustee/src/api/useLps.ts` (data hook),
 `packages/trustee/src/routes/-useLpCounterpartiesTable.ts` (presenter),
 `packages/trustee/src/routes/lp-counterparties.index.tsx` (list view),
-`packages/trustee/src/routes/lp-counterparties.$id.tsx` (placeholder detail view).
+`packages/trustee/src/routes/lp-counterparties.$id.tsx` (live detail view, #1271).
 **Consumer route:** `/lp-counterparties` (detail at `/lp-counterparties/$id`). Issue #1270, epic
 #1269 — **no Figma**: the epic has no LP-counterparties frame, so styling is derived from the
 shipped `/loans` page (the design system, not a specific screen, is the source).
@@ -769,6 +769,7 @@ detail page's scope, not this list).
 | `UnderReview` | KYB Pending | attention |
 | `Passed` | Approved | positive |
 | `Failed` | **Rejected** | negative |
+| `ChangesRequested` | Changes requested | attention |
 | anything else | the raw string, verbatim | neutral |
 
 `Failed → "Rejected"` is a proposed resolution for the epic's open question 1 (not yet
@@ -787,10 +788,6 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 - **Bank Info Available renders `—`, never `No`, until #1275.** No backend field exists yet for
   bank-requisites; `No` would fabricate a fact about the counterparty ("has not supplied bank
   details") that the absence of a field does not establish.
-- **Every row reads "New" on today's data — expected, not a bug.** `kyb_status` has no transition
-  path yet (that lands with #1274); until then every registered LP is `NotStarted`, so Account
-  Status and Bank Info are both correct-but-monotone. Logged as a known backend gap tracked by
-  issue #1274 — the QA agent should not file this as a defect.
 - **`country` is rendered verbatim, never normalised.** It is an optional free-text field with no
   validation and no frontend writer yet — rows may show `"CH"`, `"Switzerland"`, or anything else.
 
@@ -798,10 +795,23 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 
 Rows are fully clickable (pointer cursor, `tabIndex={0}`, Enter/Space, descriptive `aria-label`,
 trailing chevron) and navigate to `/lp-counterparties/$id` — a structural copy of `LoanRow` in
-`loans.index.tsx`. `/lp-counterparties/$id` ships here as a thin placeholder (reads the same
-`useLps` cache, shows the LP's `legal_name` — or `LP {id}` when not found — and a
-"Document review and KYB confirmation land in issue #1271." line) so the row-click affordance is
-never a dead link before #1271 replaces the body with the real detail page.
+`loans.index.tsx`. The detail route fetches `GET /v1/lps/{id}` independently of the list.
+It shows profile fields, registration/submission/decision times, the latest verdict reason, and
+embedded flat documents with filenames, size/type, review status/reviewer/time, rejection
+reason, and presigned downloads. Refresh obtains fresh links; missing links show unavailable.
+
+Document review is available only for Provided files while the LP is UnderReview. Verify sends
+`Verified` without a reason; Reject requires a nonblank reason and sends `Rejected`. Reviewed
+files cannot be reviewed again. LP verdicts are offered only while UnderReview: Confirm KYB
+passed requires a nonempty list of entirely Verified documents; Request changes reopens the
+record; Reject account is terminal and suspends the owner's account. Each verdict confirmation
+accepts an optional reason up to 2,000 characters and explains the consequence. Dialogs retain
+reason drafts on errors, prevent duplicate writes, and reset across LP route changes.
+
+Mutations invalidate the current LP detail and listing. Conflicts refresh both queries so
+stale review actions disappear. Pending, 404, permission, expired session, and network states
+have explicit feedback and retry; a session-expiry response clears the trustee session. Bank
+Info remains unavailable and no bank or ledger actions are added.
 
 ### States & error copy
 

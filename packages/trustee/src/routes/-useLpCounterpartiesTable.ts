@@ -47,6 +47,8 @@ export function mapKybStatus(kybStatus: string): AccountStatusChip {
       return { label: "KYB Pending", band: "attention" };
     case "UnderReview":
       return { label: "KYB Pending", band: "attention" };
+    case "ChangesRequested":
+      return { label: "Changes requested", band: "attention" };
     case "Passed":
       return { label: "Approved", band: "positive" };
     case "Failed":
