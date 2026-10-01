@@ -25,6 +25,9 @@ export interface AccountDocumentsCardProps {
   canSave: boolean;
   onSave: () => void;
   production?: boolean;
+  failed?: boolean;
+  canSubmitForReview?: boolean;
+  onSubmitForReview?: () => void;
   writable?: boolean;
   busy?: boolean;
   onRemoveDocument?: (id: number) => void;
@@ -61,6 +64,9 @@ export function AccountDocumentsCard({
   canSave,
   onSave,
   production = false,
+  failed = false,
+  canSubmitForReview = false,
+  onSubmitForReview,
   writable = true,
   busy = false,
   onRemoveDocument,
@@ -111,10 +117,16 @@ export function AccountDocumentsCard({
       {state === "under-review" && (
         <div className="w-full px-2">
           <AccountStatusBanner
-            tone="warning"
-            icon={<ShieldCheckIcon />}
-            title="Verifying account"
-            caption="We are reviewing your documents."
+            tone={failed ? "negative" : "warning"}
+            icon={failed ? <WarningTriangleIcon /> : <ShieldCheckIcon />}
+            title={
+              failed ? "Account verification declined" : "Verifying account"
+            }
+            caption={
+              failed
+                ? "Your account is frozen and cannot be changed."
+                : "We are reviewing your documents."
+            }
           />
         </div>
       )}
@@ -189,6 +201,22 @@ export function AccountDocumentsCard({
         </ul>
       )}
 
+      {production &&
+        writable &&
+        documents.length > 0 &&
+        stagedFiles.length === 0 &&
+        onSubmitForReview && (
+          <div className="w-full px-2">
+            <Button
+              variant="primary-dark"
+              disabled={!canSubmitForReview || busy}
+              onClick={onSubmitForReview}
+              className="w-full disabled:opacity-[0.32]"
+            >
+              Submit for review
+            </Button>
+          </div>
+        )}
       {uploadVisible && (
         <div className="w-full px-2">
           <Button

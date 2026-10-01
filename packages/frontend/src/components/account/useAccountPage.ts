@@ -10,6 +10,12 @@ import {
 import type { LpResponse, UploadDocumentsResponse } from "@/api";
 import { useAuthSession } from "@/auth";
 import { readSession } from "@/auth/session";
+import {
+  eligibleForReview,
+  submitLpForReview,
+  checkLpSubmission,
+  type SubmissionResult,
+} from "./submitLpForReview";
 import { useAccountDocuments } from "./useAccountDocuments";
 
 type ReadState = "loading" | "loaded" | "absent" | "error";
@@ -55,6 +61,9 @@ export function useAccountPage(enabled = true) {
   });
   const [actionError, setActionError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [uncertainSubmission, setUncertainSubmission] = useState(false);
+  const submissionPending = useRef(false);
+  const uploadPending = useRef(false);
   const [uncertainIds, setUncertainIds] = useState<number[] | null>(null);
   const [ambiguousNames, setAmbiguousNames] = useState<string[]>([]);
   const identity = useRef<string | undefined>(undefined);
@@ -87,6 +96,7 @@ export function useAccountPage(enabled = true) {
 
   const refresh = useCallback(
     async (expected: string, signal?: AbortSignal) => {
+      if (!current(expected)) return undefined;
       const serial = ++request.current;
       try {
         const next = await getMyLp(signal);
@@ -117,6 +127,9 @@ export function useAccountPage(enabled = true) {
     setBaseline({ legalName: "", country: "" });
     setActionError(undefined);
     setUncertainIds(null);
+    setUncertainSubmission(false);
+    submissionPending.current = false;
+    uploadPending.current = false;
     setAmbiguousNames([]);
     setBusy(false);
     if (!enabled) return;
@@ -144,6 +157,7 @@ export function useAccountPage(enabled = true) {
     email &&
     writable &&
     !busy &&
+    !uncertainSubmission &&
     (readState === "loaded" || readState === "absent"),
   );
   const canSaveProfile =
@@ -154,7 +168,53 @@ export function useAccountPage(enabled = true) {
     canWrite &&
     !uncertainIds &&
     documents.canSave &&
+    (readState === "absent" || !profileChanged) &&
     (readState === "loaded" || legalName.trim().length > 0);
+
+  const canSubmitForReview =
+    canWrite &&
+    eligibleForReview(lp) &&
+    !uncertainIds &&
+    documents.files.length === 0 &&
+    !profileChanged;
+
+  function applySubmission(result: SubmissionResult, expected: string) {
+    if (!current(expected) || result.cancelled) return;
+    setUncertainSubmission(Boolean(result.uncertain));
+    if (result.lp) adopt(result.lp, expected);
+    setActionError(result.error);
+  }
+
+  async function performSubmission(expected: string) {
+    if (!current(expected) || submissionPending.current) return;
+    submissionPending.current = true;
+    try {
+      applySubmission(await submitLpForReview(expected), expected);
+    } finally {
+      if (current(expected)) submissionPending.current = false;
+    }
+  }
+
+  async function submitForReview() {
+    if (!canSubmitForReview || !token || submissionPending.current) return;
+    setBusy(true);
+    setActionError(undefined);
+    try {
+      await performSubmission(token);
+    } finally {
+      if (current(token)) setBusy(false);
+    }
+  }
+
+  async function checkSubmission() {
+    if (!token || !uncertainSubmission || busy) return;
+    setBusy(true);
+    try {
+      applySubmission(await checkLpSubmission(token), token);
+    } finally {
+      if (current(token)) setBusy(false);
+    }
+  }
 
   async function saveProfile() {
     if (!canSaveProfile || !email || !token) return;
@@ -190,7 +250,7 @@ export function useAccountPage(enabled = true) {
     files: File[],
     expected: string,
   ) {
-    if (!current(expected)) return;
+    if (!current(expected)) return false;
     adopt(response.lp, expected);
     const successful: number[] = [];
     const failures: string[] = [];
@@ -202,6 +262,7 @@ export function useAccountPage(enabled = true) {
     documents.removeFilesAt(successful);
     if (failures.length)
       setActionError(`Some files were not uploaded. ${failures.join("; ")}`);
+    return failures.length === 0;
   }
 
   async function reconcile(
@@ -209,6 +270,7 @@ export function useAccountPage(enabled = true) {
     expected: string,
     files: File[],
   ) {
+    if (!current(expected)) return;
     const refreshed = await getMyLp();
     if (!current(expected)) return;
     const added = refreshed.documents.filter(
@@ -253,7 +315,8 @@ export function useAccountPage(enabled = true) {
   }
 
   async function saveDocuments() {
-    if (!canUpload || !token || !email) return;
+    if (!canUpload || !token || !email || uploadPending.current) return;
+    uploadPending.current = true;
     setBusy(true);
     setActionError(undefined);
     const files = documents.files;
@@ -278,7 +341,17 @@ export function useAccountPage(enabled = true) {
       const idsBefore = target.documents.map((document) => document.id);
       try {
         const response = await uploadMyDocuments(files);
-        applyUpload(response, files, token);
+        if (applyUpload(response, files, token)) {
+          if (eligibleForReview(response.lp)) await performSubmission(token);
+          else if (
+            response.lp.documents.some(
+              (document) => document.status === "Rejected",
+            )
+          )
+            setActionError(
+              "Your files are saved. Remove and replace rejected documents before submitting for review.",
+            );
+        }
       } catch (error) {
         if (!current(token)) return;
         if (error instanceof ApiError && error.status === 400) {
@@ -310,7 +383,10 @@ export function useAccountPage(enabled = true) {
       if (error instanceof ApiError && error.status === 409)
         await refresh(token);
     } finally {
-      if (current(token)) setBusy(false);
+      if (current(token)) {
+        uploadPending.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -321,6 +397,7 @@ export function useAccountPage(enabled = true) {
       !lp?.writable ||
       !target ||
       target.status === "Verified" ||
+      uncertainSubmission ||
       busy
     )
       return;
@@ -364,6 +441,11 @@ export function useAccountPage(enabled = true) {
     busy,
     actionError,
     uncertainIds,
+    uncertainSubmission,
+    canSubmitForReview,
+    submitForReview,
+    checkSubmission,
+    profileChanged,
     ambiguousNames,
     documents,
     canSaveProfile,

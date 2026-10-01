@@ -8,6 +8,7 @@ import { useAccountPage } from "./useAccountPage";
 const mockGet = vi.fn();
 const mockUpsert = vi.fn();
 const mockUpload = vi.fn();
+const mockSubmit = vi.fn();
 const mockDelete = vi.fn();
 
 vi.mock("@/api", async () => {
@@ -17,6 +18,7 @@ vi.mock("@/api", async () => {
     getMyLp: (...args: unknown[]) => mockGet(...args),
     upsertMyLp: (...args: unknown[]) => mockUpsert(...args),
     uploadMyDocuments: (...args: unknown[]) => mockUpload(...args),
+    submitMyLp: (...args: unknown[]) => mockSubmit(...args),
     deleteMyDocument: (...args: unknown[]) => mockDelete(...args),
   };
 });
@@ -49,7 +51,7 @@ function lp(overrides: Partial<LpResponse> = {}): LpResponse {
     contact_email: "stored@example.com",
     stellar_address: null,
     address_linked_at: null,
-    kyb_status: "InProgress",
+    kyb_status: "NotStarted",
     writable: true,
     owner_account_id: "account",
     owner_chain_id: null,
@@ -69,6 +71,10 @@ beforeEach(() => {
   mockGet.mockReset();
   mockUpsert.mockReset();
   mockUpload.mockReset();
+  mockSubmit.mockReset().mockImplementation(async () => {
+    const uploaded = await mockUpload.mock.results.at(-1)?.value;
+    return { ...uploaded.lp, kyb_status: "UnderReview", writable: false };
+  });
   mockDelete.mockReset();
 });
 

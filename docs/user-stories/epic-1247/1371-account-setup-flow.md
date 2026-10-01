@@ -12,11 +12,11 @@ Sign in to a verified email account with no LP, then reload. After each complete
 
 ## Story 2: Profile and files are saved in order
 
-Enter Name and optional Country; stage a PDF, JPEG, or PNG of at most 10MB. Remove one staged file with its X and stage it again. Submit. The JSON profile request contains `legal_name`, `country`, and the authenticated `contact_email`; the multipart request follows it with file parts only. The files appear by server filename after confirmation and remain after reload. Submit does not claim a KYB review transition. An empty Name prevents Submit. A new LP without a staged file cannot Submit.
+Enter Name and optional Country; stage a PDF, JPEG, or PNG of at most 10MB. Remove one staged file with its X and stage it again. Submit. The JSON profile request contains `legal_name`, `country`, and the authenticated `contact_email`; the multipart request follows it with file parts only. The files appear by server filename after confirmation and remain after reload. Successful uploads are followed by POST /v1/lps/me/submit; only confirmed UnderReview opens the review modal (#1404). An empty Name prevents Submit. A new LP without a staged file cannot Submit.
 
 ## Story 3: Existing profile data survives an edit
 
-With an existing writable LP and no documents, inspect prefilled Name and Country, edit Name, and upload a file. The profile request retains the LP's original `contact_email` and Country. Change Name or Country again with no staged file and submit; only the JSON profile request occurs. Edit both fields without submitting, then delete a persisted document and let the LP prop refresh; the drafts remain. Opening a different LP identity initializes the fields from that LP. With a nonwritable LP, profile fields, upload, Submit, and deletion are disabled. A Verified document has no remove action even if the LP is otherwise writable.
+With an existing writable LP and no documents, inspect prefilled Name and Country, edit Name, and upload a file. The profile request retains the LP's original `contact_email` and Country. For an eligible existing LP with persisted files, change Name or Country and Submit for review without staging another file; the profile upsert is followed by review submission. Without persisted files, a profile-only setup Submit is unavailable. Edit both fields without submitting, then delete a persisted document and let the LP prop refresh; the drafts remain. Opening a different LP identity initializes the fields from that LP. With a nonwritable LP, profile fields, upload, Submit, and deletion are disabled. A Verified document has no remove action even if the LP is otherwise writable.
 
 ## Story 4: Partial upload and recovery
 

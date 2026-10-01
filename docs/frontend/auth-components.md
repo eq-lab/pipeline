@@ -444,7 +444,7 @@ behavior; its outer wrapper has no additional border and other TextField default
 
 **Account-setup wiring (#1371).** The app-wide auth flow reads the authenticated LP after sign-in, OTP verification, and session restoration. Only a 404 or a 200 response with zero `documents` auto-opens this modal; loading, 401, and other errors do not. The close button dismisses this prompt for the current authenticated session without signing out or reopening on rerender. A later sign-in may prompt again if the server still has no documents. The `/test?tab=auth` trigger remains an isolated visual preview.
 
-A profile card above the upload card contains labelled Name (`legal_name`) and Country (`country`) fields using shared `TextField`s. Existing values are populated from `GET /v1/lps/me`; an existing LP's `contact_email` is retained on the full-replace JSON `POST /v1/lps/me`, and a new LP uses the email captured at successful authentication. The session stores that email with its token so the new-LP form remains usable after reload. The fields and upload actions are available only when the server says `writable`; a verified document cannot be removed even on a writable LP. Submit requires a nonblank name and a staged document for a new LP; an existing writable LP may submit changed Name or Country alone. With files staged, it saves the profile before uploading. The upload response's ordered per-file results distinguish stored files from failed files, including HTTP 400 when all files are rejected: only failures stay staged, and the refreshed LP supplies persisted filenames. Same-LP document refreshes preserve unsaved Name and Country drafts; a new LP identity resets the fields. Deletion calls `DELETE /v1/lps/me/documents/{doc}` and removes a row only after success. Neither save nor upload presents KYB as `UnderReview` without a server response saying so.
+A profile card above the upload card contains labelled Name (`legal_name`) and Country (`country`) fields using shared `TextField`s. Existing values are populated from `GET /v1/lps/me`; an existing LP's `contact_email` is retained on the full-replace JSON `POST /v1/lps/me`, and a new LP uses the email captured at successful authentication. The session stores that email with its token so the new-LP form remains usable after reload. The fields and upload actions are available only when the server says `writable`; a verified document cannot be removed even on a writable LP. Submit requires a nonblank name and a staged document for a new LP; an eligible existing LP may save changed Name or Country and submit persisted documents without staging another file. With files staged, it saves the profile before uploading. The upload response's ordered per-file results distinguish stored files from failed files, including HTTP 400 when all files are rejected: only failures stay staged, and the refreshed LP supplies persisted filenames. Same-LP document refreshes preserve unsaved Name and Country drafts; a new LP identity resets the fields. Deletion calls `DELETE /v1/lps/me/documents/{doc}` and removes a row only after success. After fully successful uploads, Submit requests backend review; the confirmation requires a server UnderReview response. Submission failures retain uploaded files and allow Submit for review without duplicate uploads. Profile-only setup submission requires eligible persisted files.
 
 The paragraphs below record the original #1278 layout and preview behavior. The production behavior is described above.
 
@@ -747,12 +747,13 @@ onClose={close} onConnectWallet={openConnectModal} />`. A successful sign-in fli
 session store; the provider fetches the LP and offers the account-setup modal for a missing LP or
 empty document list. There is no navigation or toast.
 
-`CompanyDocsModal.onSubmitSuccess` is distinct from `onLpChange`: it fires only after a valid
-profile-only Submit or when every staged upload succeeds. Partial uploads and failures keep
+`CompanyDocsModal.onSubmitSuccess` is distinct from `onLpChange`: it fires only after
+`POST /v1/lps/me/submit` or a reconciliation read confirms UnderReview. Fully successful uploads
+are followed by submission; persisted-only submission and retries do not re-upload files. Partial uploads and failures keep
 the setup modal open. The provider then closes setup and opens `AccountInReviewModal`; Go to app
 and dismissal close it without logging out or navigating. Modal state belongs to the current
-session token and is cleared on session changes or reload. This confirmation does not invoke
-the backend submit-for-review endpoint or change `kyb_status`.
+session token and is cleared on session changes or reload. Submission adopts the server LP and freezes editing. Failed or partial uploads do not submit;
+unknown submission status requires Check submission status before writes resume.
 
 **Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (signed out) call `open("sign-in")` /
 `open("create-account")`; `TopBar`'s account icon (signed in) does not call it at all — it

@@ -24,6 +24,9 @@ export interface LpResponse {
   stellar_address: string | null;
   address_linked_at: string | null;
   kyb_status: string;
+  kyb_submitted_at?: string | null;
+  kyb_decided_at?: string | null;
+  kyb_decision_reason?: string | null;
   writable: boolean;
   owner_account_id: string;
   owner_chain_id: number | null;
@@ -76,6 +79,13 @@ export function uploadMyDocuments(
 export function deleteMyDocument(id: number): Promise<void> {
   return apiFetch<void>(`/v1/lps/me/documents/${id}`, {
     method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
+export function submitMyLp(): Promise<LpResponse> {
+  return apiFetch<LpResponse>("/v1/lps/me/submit", {
+    method: "POST",
     headers: authHeaders(),
   });
 }

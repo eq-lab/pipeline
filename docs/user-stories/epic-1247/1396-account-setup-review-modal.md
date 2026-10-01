@@ -12,8 +12,9 @@ existing Account-in-review preview at `/test?tab=auth` and Figma nodes `6486:817
 
 Open Finish account setup for a missing or empty LP, enter Name, stage a valid file, and Submit.
 After the profile and all files save successfully, setup closes and Your account is under review
-opens. A valid profile-only Submit on an existing writable LP also opens it. Saving setup does
-not call the submit-for-review endpoint or change backend KYB status.
+opens after the backend submit-for-review response confirms UnderReview (#1404). Persisted
+eligible files can be submitted without another upload. Failed submission keeps saved files
+available for submit-only retry.
 
 ## Story 2: Failed and partial saves stay in setup
 

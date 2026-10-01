@@ -7,6 +7,7 @@ import { saveSession, clearSession } from "@/auth/session";
 
 const mockUpsert = vi.fn();
 const mockUpload = vi.fn();
+const mockSubmit = vi.fn();
 const mockDelete = vi.fn();
 const mockGet = vi.fn();
 
@@ -16,6 +17,7 @@ vi.mock("@/api", async () => {
     ...actual,
     upsertMyLp: (...args: unknown[]) => mockUpsert(...args),
     uploadMyDocuments: (...args: unknown[]) => mockUpload(...args),
+    submitMyLp: (...args: unknown[]) => mockSubmit(...args),
     deleteMyDocument: (...args: unknown[]) => mockDelete(...args),
     getMyLp: (...args: unknown[]) => mockGet(...args),
   };
@@ -24,6 +26,11 @@ vi.mock("@/api", async () => {
 beforeEach(() => {
   mockUpsert.mockReset();
   mockUpload.mockReset();
+  mockSubmit.mockReset().mockImplementation(async () => {
+    const uploaded = await mockUpload.mock.results.at(-1)?.value;
+    const saved = uploaded?.lp ?? (await mockUpsert.mock.results.at(-1)?.value);
+    return { ...saved, kyb_status: "UnderReview", writable: false };
+  });
   mockDelete.mockReset();
   mockGet.mockReset();
   clearSession();
@@ -264,7 +271,7 @@ function lp(
     contact_email: "existing@example.com",
     stellar_address: null,
     address_linked_at: null,
-    kyb_status: "InProgress",
+    kyb_status: "NotStarted",
     writable: true,
     owner_account_id: "owner",
     owner_chain_id: null,
@@ -295,20 +302,27 @@ function makeDocument(
 }
 
 describe("CompanyDocsModal — production requests", () => {
-  it("saves changed profile fields on an existing LP without uploading files", async () => {
+  beforeEach(() => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+  });
+  it("saves changed profile fields and submits existing documents without uploading files", async () => {
     const existing = lp([makeDocument(5)]);
     const saved = { ...existing, legal_name: "Changed Name", country: "US" };
     mockUpsert.mockResolvedValueOnce(saved);
     renderModal({ lp: existing });
-    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Submit for review" }),
+    ).toBeEnabled();
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Changed Name" },
     });
     fireEvent.change(screen.getByRole("textbox", { name: "Country" }), {
       target: { value: "US" },
     });
-    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(
+      screen.getByRole("button", { name: "Submit for review" }),
+    ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
     await waitFor(() =>
       expect(mockUpsert).toHaveBeenCalledWith({
         legal_name: "Changed Name",
@@ -447,7 +461,7 @@ describe("CompanyDocsModal — production requests", () => {
       "Draft Name",
     );
     expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("FR");
-    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
     rerender(
       <CompanyDocsModal
         open

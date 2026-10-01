@@ -37,8 +37,12 @@ upload. The returned per-file results are matched by request order, so duplicate
 not confuse partial success; confirmed successes leave the retry batch, failures stay staged with
 their reasons. A persisted row uses its server id for `DELETE /v1/lps/me/documents/{doc}` and
 stays visible until deletion succeeds. Verified files cannot be removed. A Rejected file on a
-writable LP offers deletion followed by replacement upload. The server response alone determines
-KYB state; the page never infers a review transition from Save.
+writable LP offers deletion followed by replacement upload. After all staged uploads succeed, the page calls `POST /v1/lps/me/submit` and adopts its returned
+LP state. Partial or uncertain uploads never submit. Submit for review is also available for
+eligible persisted documents with no staged files, rejected documents, or unresolved writes.
+Name/Country drafts must be saved first; profile-only Save never submits. Failed submission
+retains uploaded files for submit-only retry. Unknown submission requires Check submission
+status; a read showing UnderReview or a newer verdict adopts that state without another POST.
 
 The existing `missing` preview contains a synthetic `NotProvided` row and a named required file;
 the API supplies neither field. That content remains a development fixture, never production
@@ -345,8 +349,8 @@ remove button; Verified and frozen rows do not.
 
 `AccountWalletCard`'s Connect Wallet and the route's Log Out remain wired to the shared wallet
 and auth flows. `AccountDocumentsCard.onUploadMissingDocument` exists only for the synthetic
-`missing` preview. No Account action synthesizes a KYB transition; the server response determines
-the status displayed after Save.
+`missing` preview. Review submission changes KYB only through the backend endpoint; its server response
+determines the displayed status and freezes controls.
 
 ## `?state=` preview contract
 

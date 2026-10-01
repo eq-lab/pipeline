@@ -10,6 +10,7 @@ export type AccountDocumentsState =
 export type KybStatus =
   | "NotStarted"
   | "InProgress"
+  | "ChangesRequested"
   | "UnderReview"
   | "Passed"
   | "Failed";

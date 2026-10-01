@@ -13,6 +13,7 @@ export { signup, verifyOtp, resendOtp, login } from "./auth";
 export type { TokenResponse } from "./auth";
 export {
   getMyLp,
+  submitMyLp,
   upsertMyLp,
   uploadMyDocuments,
   deleteMyDocument,
