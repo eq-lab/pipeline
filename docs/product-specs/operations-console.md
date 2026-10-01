@@ -8,15 +8,17 @@ The Operations Console is the single web application through which the Pipeline 
 
 ## Authentication
 
-All operators authenticate via email + password + TOTP/WebAuthn 2FA. 2FA binding is mandatory; an account cannot be activated without it. Acceptable 2FA methods: TOTP via authenticator app (Google Authenticator, Authy) or hardware security key (WebAuthn / FIDO2).
+All operators authenticate by wallet signature, against the hand-maintained `auth_users` allow-list whose row carries their role. The key is the sole authentication factor; there is no separate 2FA binding, and the email-and-password credential is a lender's and carries no roles. See `lp-onboarding.md` § Operator Account Onboarding, including the open question about activation controls.
 
-Operators do not auto-onboard. Each operator account is created by an invited user and then activated by Pipeline team consensus before it can take any privileged action:
+Operators do not auto-onboard. An operator exists because its key was added to the allow-list, which happens directly against the database — there is no admin endpoint and no self-serve path.
 
-- **Invite.** A team member issues an invitation specifying the invitee's work email and role. The system generates a one-time signup link (72-hour expiry) and emails it to the invitee.
-- **Signup.** The invitee sets a password and binds a 2FA method. The account enters Pending Activation state.
-- **Activation.** Two distinct team members must independently approve the account. The inviter cannot count as one of the two approvers. On the second approval, the account is activated.
-- **Suspension.** A single team member can suspend an account immediately (e.g., suspected compromise, staff offboarding). Suspended accounts cannot log in; their audit history is preserved indefinitely.
-- **Permanent removal.** Requires two-person team consensus, mirroring the activation requirement.
+The lifecycle below was specified around an email signup that operators do not use. It is kept as the intended target, not as a description of today: only suspension is implemented, and a wallet credential leaves the rest without a mechanism. Treat it as an open design question.
+
+- **Invite.** *(unimplemented; assumed an email signup.)* A team member issues an invitation specifying the invitee's work email and role, with a one-time signup link expiring after 72 hours.
+- **Signup.** *(unimplemented; assumed an email signup.)* The invitee sets a password and binds a 2FA method, entering Pending Activation. Under a wallet credential there is nothing to bind — the key is the factor.
+- **Activation.** *(unimplemented.)* Two distinct team members approving independently, the inviter not counting as one. This is the control worth preserving in whatever replaces the flow: today a single person with database access can mint an operator.
+- **Suspension.** *Implemented* (Issue #1380). `accounts.status = 'Suspended'` is read on every authenticated request and refuses token issue, so a suspended operator stops on its next call. Which team member may set it is not modelled.
+- **Permanent removal.** *(unimplemented.)* Would require two-person consensus, mirroring activation.
 
 These rules apply to team member accounts as well: any existing team member can invite; two-person consensus activates; one team member suspends; two-person consensus permanently removes.
 

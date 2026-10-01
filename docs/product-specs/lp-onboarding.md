@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pipeline has two onboarding paths. Lenders authenticate by wallet **or** by self-serve email and password, and earn whitelist eligibility through compliance screening on transactions or addresses. Operators (Trustees, Originators, Pipeline team) authenticate by email with 2FA and require two-person consensus to activate — their email path is invitation-gated, unlike the lender one. Both paths converge on the Operations Console backend.
+Pipeline has two onboarding paths. Lenders authenticate by wallet **or** by self-serve email and password, and earn whitelist eligibility through compliance screening on transactions or addresses. Operators (Trustees, Originators, Pipeline team) authenticate by **wallet signature only**, against a hand-maintained allow-list. Email and password are a lender credential and carry no roles, so an operator never reaches the Operations Console that way. Both paths converge on the Operations Console backend.
 
 Lender onboarding does not require KYC, KYB, or accreditation declarations. Compliance is enforced by KYT screening on deposit transactions (per `deposits.md`), on standalone address enrolments, and on PLUSD transfers via the `WhitelistRegistry` `_update` gate. The legal framework that governs this approach is `[Framework: TBD]`.
 
@@ -95,14 +95,19 @@ Complex cases (PEPs, large entities with complex UBO chains, high-confidence ind
 
 ### Operator Account Onboarding (Trustees, Originators, Team)
 
-Operators authenticate via email, password, and 2FA. They do not use wallet connection.
+Operators authenticate by **wallet signature**, the opposite way round from a lender. A Trustee, Originator, or team member signs a server-issued challenge with a key recorded in the `auth_users` allow-list, and that row's `roles` are what the issued token carries. The email-and-password credential belongs to lenders: a token minted from it is role-less by construction, so it can never reach an operator endpoint whatever the person behind it does.
 
-1. **Invitation.** A team member issues an invitation specifying the invitee's work email and role. The system generates a one-time signup link, valid for 72 hours, and emails it to the invitee.
-2. **Signup.** The invitee opens the link, confirms their email, sets a password, and binds a 2FA authenticator (TOTP via Google Authenticator or Authy, or hardware key via WebAuthn or FIDO2). 2FA binding is mandatory. After signup, the account enters **Pending Activation**.
-3. **Two-person consensus activation.** The new account appears in the Pipeline team's operator approvals queue. At least two distinct team members must independently approve. The inviting team member cannot count as one of the two. Only after both approvals does the account transition to **Active**.
-4. **Suspension and removal.** Any single team member can suspend an operator account immediately. Permanent removal requires two-person consensus. Audit history for suspended or removed accounts is preserved indefinitely.
+An operator therefore comes into existence by a row being added to that allow-list. It is populated by hand — the table documents itself as a "manually-populated allow-list" with no admin endpoint — so adding or removing an operator is a deliberate act performed directly against the database.
 
-Team members themselves follow the same rules. Any existing team member can invite a new team member, two-person consensus activates, one member suspends, two-person consensus permanently removes.
+**Open design question.** The controls below were specified against an email signup flow operators do not use, and nothing implements them today. They are recorded rather than deleted because the second is a real control and its absence is a gap, not a decision:
+
+1. **Invitation.** A one-time signup link, valid for 72 hours, issued by a team member against the invitee's work email and role.
+2. **Two-person consensus activation.** Two distinct team members approving before the account becomes Active, with the inviting member not counting as one of the two.
+3. **Suspension and removal.** Suspension by any single team member; permanent removal by two-person consensus, with audit history preserved indefinitely. Suspension itself is now enforced (`accounts.status`, Issue #1380); the two-person and audit parts are not.
+
+A wallet credential makes the first redundant — the key is the factor, as it already is for a lender — but gives the second and third no mechanism at all.
+
+Team members are operators too and reach the console the same way, by wallet signature against the same allow-list. The invitation and consensus rules above would apply to them identically — once there is a mechanism for them.
 
 ---
 

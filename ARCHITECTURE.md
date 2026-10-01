@@ -36,7 +36,7 @@ Two logical views served from the same app, gated by authenticated role:
 **Entry point:** `packages/frontend/main.ts`
 **Auth:** wagmi + viem + Reown AppKit (WalletConnect v2) for LPs, plus a self-serve email +
 password + OTP credential (`packages/frontend/src/auth/`, `docs/frontend/auth-components.md#emailauthflow`)
-that resolves to the same `accounts` JWT — LP header entry point pending #1282; email + password + 2FA for operators.
+that resolves to the same `accounts` JWT — LP header entry point pending #1282. Operators do not use it: they authenticate by wallet signature, and only an `auth_users` row carries a role.
 **Web3:** wagmi + viem for contract interactions; Reown AppKit for the WalletConnect modal. All blockchain access goes through `packages/frontend/src/wallet/`.
 **Port:** 3000 (dev)
 
@@ -111,7 +111,7 @@ frontend (TypeScript)
 | Concern | Owner |
 |---------|-------|
 | Authentication (LP) | frontend (wallet signature via wagmi + viem + Reown AppKit / WalletConnect v2, or self-serve email + password + OTP) |
-| Authentication (operators) | api (email + password + TOTP/WebAuthn) |
+| Authentication (operators) | api (wallet signature over a server challenge; roles come from the `auth_users` allow-list) |
 | MPC signing | worker (via MPC vendor SDK — Fireblocks or BitGo, pending) |
 | KYC/screening | worker (Sumsub + Chainalysis webhooks/API) |
 | On-chain indexing | worker (custom EQ LAB indexer, writes to shared DB) |

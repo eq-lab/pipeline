@@ -69,16 +69,15 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 ### US-LP-ONBOARD-4: Operator Account Activation
 
-**As a** newly invited trustee or originator, **I want to** sign up with email + password + 2FA and have my account activated by two team members, **so that** I can access the Operations Console only after proper vetting.
+**As a** trustee or originator, **I want to** sign in by signing a challenge with the wallet recorded for me in the `auth_users` allow-list, **so that** I reach the Operations Console with my role and nobody can reach it with a self-serve email account.
 
 **Acceptance criteria:**
-- [ ] A team member issues an invitation specifying the invitee's work email and role (Trustee or Originator).
-- [ ] The system emails a one-time signup link that expires after 72 hours.
-- [ ] The invitee completes signup by entering their work email (must match the invited address), setting a password, and binding a TOTP or WebAuthn 2FA device.
-- [ ] The account enters Pending Activation state until two distinct team members approve it.
-- [ ] A single team member cannot provide both approvals; the inviter cannot count as one of the two approvers.
-- [ ] On second approval, the account is activated and the operator receives an email confirmation.
-- [ ] Every lifecycle event (invitation, signup, approval, activation) is recorded in the audit log.
+- [ ] A row in `auth_users` carrying the operator's `(chain_id, address)` and role is the only thing that grants Operations Console access; it is added directly against the database.
+- [ ] `GET /v1/auth/challenge` for that address returns a nonce, and `POST /v1/auth/verify` with a valid signature returns a token whose `roles` claim is the row's.
+- [ ] A token obtained through the email credential carries no roles, so an operator endpoint refuses it with a message naming the required role.
+- [ ] A suspended account (`accounts.status = 'Suspended'`) is refused at token issue and on every authenticated request, distinguishably from a missing role.
+
+**Not implemented — open design question** (see `operations-console.md` § Authentication): invitation links, 2FA binding, and two-person consensus activation were specified against an email signup operators do not use. Today one person with database access can mint an operator.
 
 ---
 
