@@ -36,10 +36,10 @@ role, so registering an account confers no privilege beyond starting KYB.
    verifies the signature against the claimed address, and — on success — clears
    the nonce (single-use, so the challenge cannot be replayed) and issues a JWT.
 4. **Authorize.** The client sends the token as `Authorization: Bearer <jwt>` to
-   protected endpoints. The token is validated (signature + expiry) on each
-   request and its claims (address, chain, roles) are made available to the
-   handler. An endpoint may additionally require a specific **role**: a valid
-   token whose `roles` lack the required role is rejected with `403 Forbidden`.
+   protected endpoints. The token is validated (signature + expiry), the named
+   account must have `status = 'Active'` (else `403 account_suspended`), and
+   its claims become available to the handler. A required **role** the token
+   lacks is a separate `403 Forbidden`.
 
 The challenge message is the single source of truth for the signed bytes and is
 identical between issuance and verification. It is a **single line** (no newlines)
@@ -55,11 +55,11 @@ Welcome to Pipeline! Sign this message to authenticate. This request will not tr
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET`  | `/v1/auth/challenge?chain_id&address` | none | Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
-| `POST` | `/v1/auth/verify` | none | Body `{ chain_id?, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. |
+| `POST` | `/v1/auth/verify` | none | Body `{ chain_id?, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
-| `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403` for a suspended one, `429` past the attempt limit. |
+| `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403 account_suspended` for a suspended one, `429` past the attempt limit. |
 | `POST` | `/v1/loan-book/loan` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](#loan-submission)). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
 | `GET`  | `/v1/loan-book/submissions?status` | bearer + `trustee` role | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. `400` on an unknown status value. |
 | `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
@@ -72,16 +72,16 @@ the chain, exactly as before — `account_id` is purely additive, so existing
 clients are unaffected. An email token's `sub` is the account id and its
 `chain_id` is `null`.
 
-Tokens cannot be revoked — no refresh token, no session table, no logout. A
-password reset does not end a live session, and suspending an account takes up
-to 24 hours to bite. See TD-80. Because `account_id` is required rather than
-optional, tokens issued before it existed fail to decode: deploying the accounts
-migration signs every active session out, and each user signs in again once.
+Tokens still cannot be revoked individually (TD-80): no refresh token, no
+session table, no logout, and a password reset does not end a live session.
+Suspension differs: `accounts.status` is read every request, so `Suspended`
+bites next request, not next login. `account_id` being required (not
+optional) meant the accounts migration signed every active session out once.
 
-To protect a new endpoint, take the `AuthClaims` extractor as a handler
-argument; a request without a valid token is rejected with `401` before the
-handler body runs. To additionally require a role, check `claims.has_role("…")`
-and return `403 Forbidden` when it is absent (see `routes::loan_book::submit_loan`).
+Protect a new endpoint by taking `AuthClaims`: it rejects `401` for an invalid
+token and `403 account_suspended` for a suspended account, inherited for
+free. Require a role via `claims.has_role("…")`, returning `403 Forbidden`
+when absent (see `routes::loan_book::submit_loan`).
 
 ## Data Model
 
@@ -195,5 +195,5 @@ manually like any other role).
 - **Optional at boot.** When the JWT keys (`JWT_ES256_PRIVATE_KEY_PEM` /
   `JWT_ES256_PUBLIC_KEY_PEM`) are unset, the auth endpoints are unavailable and
   every protected endpoint rejects with `401`; the rest of the API is unaffected.
-- **Short lifetime.** Tokens expire after 24 hours; there is no refresh or
-  revocation list, so privilege changes take effect on the next login.
+- **Short lifetime.** Tokens expire 24h after issuance with no refresh or revocation
+  list: a *role* change waits for login; *suspension*, read fresh each request, bites immediately (TD-80).

@@ -31,13 +31,17 @@ pub struct Account {
     pub updated_at: DateTime<Utc>,
 }
 
+pub fn is_active_status(status: &str) -> bool {
+    status == "Active"
+}
+
 impl Account {
     pub fn is_email_verified(&self) -> bool {
         self.email_verified_at.is_some()
     }
 
     pub fn is_active(&self) -> bool {
-        self.status == "Active"
+        is_active_status(&self.status)
     }
 }
 
@@ -65,6 +69,14 @@ impl AccountRepo {
             .bind(id)
             .fetch_optional(&self.pool)
             .await
+    }
+
+    pub async fn find_status(&self, id: Uuid) -> Result<Option<String>, sqlx::Error> {
+        let row: Option<(String,)> = sqlx::query_as("SELECT status FROM accounts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.0))
     }
 
     /// Create an unverified email account with **no password**. The submitted

@@ -1518,9 +1518,9 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/auth.rs`, `packages/api/src/routes/auth/password.rs`
-- **Gap:** Email logins issue the same stateless 24h ES256 JWT as wallet logins. There is no refresh token, no `sessions` table, and no logout endpoint, so nothing invalidates an issued token before it expires.
-- **Impact:** A password reset does not end an attacker's existing session — the single most common reason a user resets a password. Suspending an account (`accounts.status = 'Suspended'`, and the operator suspension flow in `lp-onboarding.md`) likewise takes up to 24h to bite, because `AuthClaims` never reads the account row.
-- **Suggested fix:** Either a 15-minute access token plus a rotating opaque refresh token in a `sessions` table (also buys logout and "sign out everywhere"), or the lighter `accounts.sessions_valid_after` epoch checked in the `AuthClaims` extractor, which costs one indexed read per authenticated request and revokes all of an account's sessions at once. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
+- **Gap:** Email logins issue the same stateless 24h ES256 JWT as wallet logins. There is still no refresh token, no `sessions` table, and no logout endpoint, so an issued token cannot be invalidated before it expires.
+- **Impact:** A password reset still does not end an attacker's existing session — the single most common reason a user resets a password; that half of this entry is untouched. **Closed by #1380:** suspension no longer waits for the token to expire. `AuthClaims` (`packages/api/src/auth.rs`) reads `accounts.status` on every bearer-authenticated request via `account_status::gate_request`, and both mint paths (`POST /v1/auth/login`, `POST /v1/auth/verify`) refuse a suspended account via `account_status::gate_token_issue`, so `Suspended` — from a terminal KYB refusal or an operator action — bites on the account's very next request.
+- **Suggested fix:** A 15-minute access token plus a rotating opaque refresh token in a `sessions` table — this also buys logout and "sign out everywhere", the remaining case for it now being password-reset and sign-out-everywhere revocation rather than suspension. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
 
 ### TD-81: No rate limiting on the unauthenticated auth endpoints
 

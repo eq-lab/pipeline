@@ -79,7 +79,7 @@ await resendOtp({ email, captchaToken }); // always 202, no body
 const session: TokenResponse = await login({ email, password });
 ```
 
-`login` rejects with `ApiError` on `401` (bad credentials), `403` (suspended,
+`login` rejects with `ApiError` on `401` (bad credentials), `403` (`account_suspended`,
 or `email_not_verified` — the frontend routes this one back to the OTP
 screen), and `429` (lockout). `verifyOtp` rejects with `401` on any invalid,
 expired, used, or out-of-attempts code. See `src/auth/session.ts` for storing

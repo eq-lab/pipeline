@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-24: Tech-debt tracker has two `## Post-MVP` sections with duplicate TD-80/TD-81/TD-82 entries
+- **Date:** 2026-09-30
+- **Location:** `docs/exec-plans/tech-debt-tracker.md`
+- **Symptom:** The file has two `## Post-MVP` sections (lines 1471 and 1508 at time of writing) and consequently two byte-identical TD-80 "Email/password sessions cannot be revoked" entries, plus duplicate TD-81 and TD-82 entries. The first block's TD-81 carries superseded wording ("No rate limiting on signup / resend-otp"), and its TD-82 duplicates an unrelated frontend TD-82 entry under `## Known Gaps`.
+- **Root cause:** A merge that appended a Post-MVP block rather than reconciling it with the existing one.
+- **Workaround:** Treat the second block (running through TD-98 at time of writing, the most recently added entries) as live. Anchor any edit on the live block's unique neighbouring headings — never on a `### TD-<N>` heading whose text is duplicated — since an `Edit` matched on the shared text alone is ambiguous and fails.
+
 ### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
 - **Date:** 2026-09-29
 - **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx` (`reconcile`, introduced by #1371).

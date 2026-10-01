@@ -179,7 +179,7 @@ The compliance review queue, KYT reason codes, and audit log live in the Operati
 
 - **Self-serve email registration is open by design, so the account is not a trust signal.** Anyone can create and verify one; it grants no roles and confers nothing beyond the ability to start KYB. Every privileged action stays gated on roles assigned manually in `auth_users` or on KYB status. Abuse of the endpoint itself (signup floods burning email quota, address enumeration) is handled at the API — see `api-authorization.md`.
 
-- **Email sessions cannot currently be revoked.** Tokens are stateless and live 24 hours, so a password reset does not end an attacker's existing session and suspending an account does not take effect immediately. Tracked as TD-80.
+- **Email sessions cannot currently be revoked.** Tokens are stateless and live 24 hours, so a password reset does not end an attacker's existing session. Tracked as TD-80. Suspension is different: `accounts.status` is read on every authenticated request, so suspending an account — whether via a terminal KYB refusal or an operator action — now takes effect on the account's very next request, for both wallet and email credentials.
 
 - **Operator accounts require 2FA.** Two-person consensus activation prevents a single compromised team account from introducing a rogue operator.
 
