@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-113.**
+**Next free number: TD-116.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1178,19 +1178,19 @@ line, whichever section it lands in.
 ### TD-73: No unidentified-wire matching queue — `lp_id` is required at deposit-entry time
 
 - **Date:** 2026-09-18
-- **Location:** `packages/api/src/routes/lp_ledger.rs` — `record_deposit` (`POST /v1/lp-ledger/deposits`);
-  `packages/shared/migrations/20260917000001_bank_transactions_lp_ledger.sql`
-- **Gap:** The `bank_transactions` migration's own module comment describes `lp_id = NULL` as "unidentified,
+- **Location:** `packages/api/src/routes/lp_bank_deposits.rs` — `record_bank_deposit`
+  (`POST /v1/lps/{id}/bank-deposits`, #1413, which replaced `POST /v1/lp-ledger/deposits`);
+  `packages/shared/migrations/20261002000001_lp_bank_deposits.sql`
+- **Gap:** The old `bank_transactions` migration's module comment described `lp_id = NULL` as "unidentified,
   goes to the queue in task 11" — i.e. a wire can land before anyone knows which LP it belongs to, and gets
-  matched later. `record_deposit` doesn't implement that: it always requires `lp_id` up front and inserts
-  `bank_transactions` and `lp_ledger` together in one call, so there is currently no way to create an
-  unidentified `bank_transactions` row, list the matching queue, or match one after the fact.
+  matched later. That was never implemented, and #1413 closed the door further: `lp_bank_deposits.lp_id` is
+  `NOT NULL` and the LP comes from the request path, so an unattributed arrival cannot be represented at all.
 - **Impact:** Fine for the manual-entry flow (an operator who already knows whose wire it is), but any real
   "unidentified wire" (e.g. an automated bank feed with no reference match) has nowhere to go yet.
-- **Suggested fix:** When task 11's queue is built, add a separate ingest path that can insert
-  `bank_transactions` with `lp_id = NULL`, plus a `GET` for the queue and a `POST .../match` (or similar)
-  that sets `lp_id` and appends the paired `lp_ledger` row — reusing `LpLedgerRepo::insert_deposit`'s
-  transaction shape but decoupled from `BankTransactionRepo::insert_deposit`'s single-call insert.
+- **Suggested fix:** When task 11's queue is built, give unattributed arrivals their own table (not a
+  nullable `lp_id` on `lp_bank_deposits`), with a `GET` for the queue and a `POST .../match` that moves a
+  row into `lp_bank_deposits` and appends the paired `lp_ledger` row — reusing
+  `LpBankDepositRepo::insert` + `LpLedgerRepo::insert_deposit`'s shared-transaction shape.
 
 ### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart
 
@@ -1470,6 +1470,85 @@ line, whichever section it lands in.
 - **Suggested fix:** Either delete it, or repurpose its namespace-toggle/disconnect UI as the base
   for TD-111's `AccountWalletCard` disconnect action (its `kind`/`onKindChange` and
   `onDisconnect` props are close to what that would need).
+
+---
+
+### TD-113: Nothing stops the same wire being recorded twice as two deposits
+
+- **Date:** 2026-10-02
+- **Location:** `packages/api/src/routes/lp_bank_deposits.rs` (`record_bank_deposit`),
+  `packages/shared/migrations/20261002000001_lp_bank_deposits.sql` — Issue #1413.
+- **Gap:** The superseded `bank_transactions` carried a caller-supplied `idempotency_key UUID UNIQUE`,
+  and `POST /v1/lp-ledger/deposits` turned a repeat into `409`. The column set agreed for
+  `lp_bank_deposits` (#1413 decision 1) drops it, and no other constraint distinguishes two rows with
+  the same `lp_id`, `amount`, and `occurred_at`, so `POST /v1/lps/{id}/bank-deposits` has no
+  double-submit guard at all.
+- **Impact:** A double-click, a client retry on a timed-out request, or a refreshed form posts the
+  wire twice. Each attempt also appends its own `lp_ledger` `Deposit` row, so the LP's `committed`
+  and `balance` overstate what arrived, and nothing in the data says which of the two is spurious —
+  two genuine same-amount wires on the same day look identical. The correction is a manual
+  `Correction` ledger row, and the duplicate deposit row stays (the table is append-only by
+  intent).
+- **Suggested fix:** Restore a caller-supplied `idempotency_key UUID NOT NULL UNIQUE` and map `23505`
+  to `409`, the shape the removed endpoint already had. A weaker alternative is a partial unique
+  index on `(lp_id, amount, occurred_at)`, but that also refuses the legitimate duplicate wire, so
+  the explicit key is the better answer.
+- **Resolved by #1413 (2026-10-05):** `20261005000001_lp_bank_deposits_ref_hash.sql` made
+  `payment_reference` `NOT NULL UNIQUE`, and `record_bank_deposit` maps the `23505` to `409`. The
+  guard is the wire's own reference rather than a caller-generated key, which is stricter than the
+  suggested fix — two wires sharing a reference are refused even when genuinely distinct — and is
+  what the Stellar minter already enforces on `ref_hash` (`RefHashSeen`), so the two layers now
+  agree. A legitimately repeated bank reference is the remaining edge: see TD-114.
+
+---
+
+### TD-114: A bank reference reused by the bank is unusable forever, on-chain irreversibly
+
+- **Date:** 2026-10-05
+- **Location:** `packages/api/src/routes/lp_bank_deposits.rs` (`reference_hash`),
+  `packages/shared/migrations/20261005000001_lp_bank_deposits_ref_hash.sql` — Issue #1413;
+  `contracts/minter/src/lib.rs` (`consume_mint_ref`) in `pipeline-stellar-contracts`.
+- **Gap:** `ref_hash` is `sha256(payment_reference)` and nothing else, so a reference identifies a
+  wire globally and for all time. Banks do recycle reference strings across statements and across
+  payers. The first use takes the string in `lp_bank_deposits` (`409` for anyone after it) and, once
+  the mint lands, burns the hash in the minter's `ref_seen` map, which has no un-mark path.
+- **Impact:** A second genuine wire that happens to carry a seen reference cannot be recorded at
+  all, and there is no override — the operator has to invent a distinct reference, which breaks the
+  one property the column exists for (matching the bank statement). The same bites a reset dev or
+  staging database against a long-lived contract: the chain still remembers hashes whose rows are
+  gone, so re-seeded deposits cannot mint.
+- **Suggested fix:** Salt the hash with something per-row — `sha256(id ‖ payment_reference)` was the
+  alternative weighed on #1413 — so the on-chain key is unique per deposit while the reference stays
+  the human-facing field, and drop `UNIQUE (payment_reference)` for a per-LP uniqueness at most. It
+  costs the property that the hash is reproducible from the reference alone, and the hash can only
+  be computed after the insert assigns an id.
+
+---
+
+### TD-115: CI's Rust toolchain floats, so lint failures arrive out of nowhere
+
+- **Date:** 2026-10-05
+- **Location:** `.github/workflows/lint.yml:26` (`dtolnay/rust-toolchain@stable`); no
+  `rust-toolchain.toml` in the repo; `#![allow(clippy::double_must_use)]` at the root of all three
+  crates — `packages/shared/src/lib.rs`, `packages/api/src/lib.rs`, `packages/worker/src/lib.rs`.
+- **Gap:** CI resolves `stable` at run time — it was on rustc 1.99.0 on 2026-10-05 — while
+  developers run whatever they last installed (1.96.0 here). A clippy release can therefore turn
+  every open PR red without a single line changing, and `cargo clippy --all -- -D warnings` passing
+  locally proves nothing about CI. It happened on #1413: clippy 1.99 started reading
+  `#[async_trait]`'s expansion as a doubled `#[must_use]` and failed every trait declared that way
+  across all three crates — `shared`'s `bitgo::client`, `email`, `loan_metadata`, `log_mapper`,
+  `price_provider` and `yield_mint_outbox_repo`, `api`'s `captcha`, and `worker`'s
+  `indexer::chain_poller`, `indexer::loan_metadata`, `relayer::stellar::yield_mint` and
+  `relayer::yield_mint::on_chain` — 27 errors in a PR that touches none of them.
+- **Impact:** A toolchain bump lands as a mystery failure on whoever opens the next PR, and the fix
+  gets bolted onto an unrelated branch — which is exactly what #1413 had to do. The crate-level
+  `allow` now suppresses the lint everywhere in `shared`, including any genuinely doubled
+  `#[must_use]` we write by hand.
+- **Suggested fix:** Pin the toolchain in-repo (`rust-toolchain.toml`, matched by the workflow) so
+  local and CI lint the same code with the same compiler, and bump it deliberately in its own PR —
+  where the resulting lint sweep belongs. With a pin in place, revisit whether the `allow` is still
+  needed: a newer `async_trait` may stop emitting the attribute, in which case it should narrow to
+  the traits that need it or disappear.
 
 ---
 

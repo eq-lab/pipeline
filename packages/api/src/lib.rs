@@ -1,3 +1,8 @@
+// `#[async_trait]` expands each method to a `Pin<Box<dyn Future>>` that already
+// carries `#[must_use]`, which clippy 1.99 reads as a doubled one — a warning
+// about macro output we do not write. See TD-115.
+#![allow(clippy::double_must_use)]
+
 pub mod account_status;
 pub mod auth;
 pub mod captcha;
@@ -28,6 +33,7 @@ use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
 use shared::login_attempt_repo::LoginAttemptRepo;
+use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
 use shared::object_store::ObjectStore;
@@ -98,8 +104,12 @@ pub struct AppState {
     /// LP (business entity) registry for the custom KYB service (`lps`).
     pub lp_repo: LpRepo,
     /// Append-only ledger of every movement of an LP's claim (`lp_ledger`),
-    /// backing `GET /v1/lp-ledger` and `POST /v1/lp-ledger/deposits`.
+    /// backing `GET /v1/lp-ledger` and the paired write behind
+    /// `POST /v1/lps/{id}/bank-deposits`.
     pub lp_ledger_repo: LpLedgerRepo,
+    /// The trustee's record of wires received from an LP (`lp_bank_deposits`),
+    /// backing `GET`/`POST /v1/lps/{id}/bank-deposits`.
+    pub lp_bank_deposit_repo: LpBankDepositRepo,
     /// KYB supporting documents (`kyb_documents`) — untyped files per LP.
     pub kyb_document_repo: KybDocumentRepo,
     /// Private Spaces bucket holding the bytes behind `kyb_documents.file_ref`.

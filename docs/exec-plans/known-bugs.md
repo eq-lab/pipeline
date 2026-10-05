@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-25: An out-of-range `effective_at` becomes a 1969 date instead of a 400
+- **Date:** 2026-10-02
+- **Location:** `packages/api/src/routes/collateral_valuation.rs:598` (`unix_to_datetime`). Found while writing the same helper for #1413's `POST /v1/lps/{id}/bank-deposits`, which has since dropped Unix seconds for an ISO-8601 string and no longer has the helper.
+- **Symptom:** A `u64` Unix-seconds field above `i64::MAX` is accepted instead of refused. `u64::MAX` stores as `1969-12-31T23:59:59Z`; the endpoint answers `201` and the anchor date is silently wrong. The function's own doc comment asserts the failure is "practically unreachable, since every valid `u64` fits", which is what the cast makes untrue.
+- **Root cause:** `DateTime::from_timestamp(unix_secs as i64, 0)` — the `as i64` cast wraps rather than failing, so `u64::MAX` arrives as `-1`, a perfectly valid timestamp that `from_timestamp` accepts. The `ok_or_else` branch can therefore never fire.
+- **Workaround:** None needed in practice (no real caller sends such a value), and not fixed here — a different endpoint's file. The fix is `i64::try_from(unix_secs).ok().and_then(|secs| DateTime::from_timestamp(secs, 0))`; taking the timestamp as an ISO-8601 string, the way `routes::lp_bank_deposits` now does, sidesteps the cast entirely.
+
 ### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
 - **Date:** 2026-09-29
 - **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx` (`reconcile`, introduced by #1371).

@@ -1,13 +1,16 @@
 //! `lp_ledger` — append-only record of every movement of an LP's claim (see
-//! `packages/shared/migrations/20260917000001_bank_transactions_lp_ledger.sql`).
+//! `packages/shared/migrations/20260917000001_bank_transactions_lp_ledger.sql`;
+//! its `Wire` counterpart table was replaced in #1413).
 //! Rows are never updated or deleted.
 //!
-//! Today the only writer is `routes::lp_ledger::record_deposit`, which appends
-//! a `Deposit`/`Wire` row alongside its matching `bank_transactions` insert, in
-//! the same transaction. `summaries` backs `GET /v1/lp-ledger`: `committed` is
-//! the sum of `Deposit` deltas, `repaid` is the sum of the magnitude of
-//! `Redemption` deltas, and `balance` is the net running total across every
-//! reason.
+//! Today the only writer is `routes::lp_bank_deposits::record_bank_deposit`,
+//! which appends a `Deposit`/`Wire` row alongside its matching
+//! `lp_bank_deposits` insert, in the same transaction, with `dealing_date` set
+//! to the wire's `occurred_at` — that endpoint takes no separate dealing date.
+//! `summaries` backs
+//! `GET /v1/lp-ledger`: `committed` is the sum of `Deposit` deltas, `repaid` is
+//! the sum of the magnitude of `Redemption` deltas, and `balance` is the net
+//! running total across every reason.
 
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
@@ -24,7 +27,7 @@ pub struct LpLedgerRow {
     pub reason: String,
     /// `Wire` | `USDC`.
     pub source: String,
-    /// FK to `bank_transactions.id` (Wire) or a loan repayment id (USDC) — not
+    /// FK to `lp_bank_deposits.id` (Wire) or a loan repayment id (USDC) — not
     /// a real FK constraint since it crosses tables depending on `source`.
     pub source_ref: Option<i64>,
     pub dealing_date: DateTime<Utc>,
