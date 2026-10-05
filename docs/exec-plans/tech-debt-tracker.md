@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-115.**
+**Next free number: TD-116.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1522,6 +1522,31 @@ line, whichever section it lands in.
   the human-facing field, and drop `UNIQUE (payment_reference)` for a per-LP uniqueness at most. It
   costs the property that the hash is reproducible from the reference alone, and the hash can only
   be computed after the insert assigns an id.
+
+---
+
+### TD-115: CI's Rust toolchain floats, so lint failures arrive out of nowhere
+
+- **Date:** 2026-10-05
+- **Location:** `.github/workflows/lint.yml:26` (`dtolnay/rust-toolchain@stable`); no
+  `rust-toolchain.toml` in the repo; `packages/shared/src/lib.rs`
+  (`#![allow(clippy::double_must_use)]`).
+- **Gap:** CI resolves `stable` at run time — it was on rustc 1.99.0 on 2026-10-05 — while
+  developers run whatever they last installed (1.96.0 here). A clippy release can therefore turn
+  every open PR red without a single line changing, and `cargo clippy --all -- -D warnings` passing
+  locally proves nothing about CI. It happened on #1413: clippy 1.99 started reading
+  `#[async_trait]`'s expansion as a doubled `#[must_use]` and failed six untouched traits in
+  `packages/shared` (`bitgo::client`, `email`, `loan_metadata`, `log_mapper`, `price_provider`,
+  `yield_mint_outbox_repo`), with 15 errors in a PR that touches none of them.
+- **Impact:** A toolchain bump lands as a mystery failure on whoever opens the next PR, and the fix
+  gets bolted onto an unrelated branch — which is exactly what #1413 had to do. The crate-level
+  `allow` now suppresses the lint everywhere in `shared`, including any genuinely doubled
+  `#[must_use]` we write by hand.
+- **Suggested fix:** Pin the toolchain in-repo (`rust-toolchain.toml`, matched by the workflow) so
+  local and CI lint the same code with the same compiler, and bump it deliberately in its own PR —
+  where the resulting lint sweep belongs. With a pin in place, revisit whether the `allow` is still
+  needed: a newer `async_trait` may stop emitting the attribute, in which case it should narrow to
+  the traits that need it or disappear.
 
 ---
 
