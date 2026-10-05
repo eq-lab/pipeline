@@ -1529,15 +1529,17 @@ line, whichever section it lands in.
 
 - **Date:** 2026-10-05
 - **Location:** `.github/workflows/lint.yml:26` (`dtolnay/rust-toolchain@stable`); no
-  `rust-toolchain.toml` in the repo; `packages/shared/src/lib.rs`
-  (`#![allow(clippy::double_must_use)]`).
+  `rust-toolchain.toml` in the repo; `#![allow(clippy::double_must_use)]` at the root of all three
+  crates — `packages/shared/src/lib.rs`, `packages/api/src/lib.rs`, `packages/worker/src/lib.rs`.
 - **Gap:** CI resolves `stable` at run time — it was on rustc 1.99.0 on 2026-10-05 — while
   developers run whatever they last installed (1.96.0 here). A clippy release can therefore turn
   every open PR red without a single line changing, and `cargo clippy --all -- -D warnings` passing
   locally proves nothing about CI. It happened on #1413: clippy 1.99 started reading
-  `#[async_trait]`'s expansion as a doubled `#[must_use]` and failed six untouched traits in
-  `packages/shared` (`bitgo::client`, `email`, `loan_metadata`, `log_mapper`, `price_provider`,
-  `yield_mint_outbox_repo`), with 15 errors in a PR that touches none of them.
+  `#[async_trait]`'s expansion as a doubled `#[must_use]` and failed every trait declared that way
+  across all three crates — `shared`'s `bitgo::client`, `email`, `loan_metadata`, `log_mapper`,
+  `price_provider` and `yield_mint_outbox_repo`, `api`'s `captcha`, and `worker`'s
+  `indexer::chain_poller`, `indexer::loan_metadata`, `relayer::stellar::yield_mint` and
+  `relayer::yield_mint::on_chain` — 27 errors in a PR that touches none of them.
 - **Impact:** A toolchain bump lands as a mystery failure on whoever opens the next PR, and the fix
   gets bolted onto an unrelated branch — which is exactly what #1413 had to do. The crate-level
   `allow` now suppresses the lint everywhere in `shared`, including any genuinely doubled
