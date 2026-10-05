@@ -210,9 +210,12 @@ class of staleness `account-page.md` documents for its own frame.
 | `AddUsdCard.onWithdraw` | no-op | #1285 |
 | `AddUsdCard.onStartVerification` / `onViewStatus` | no-op | #1282 |
 
-**Wire attribution is parked, not resolved.** The trustee's `POST /v1/lp-ledger/deposits` requires
-`lp_id` at entry time and there is no unidentified-wire matching queue (TD-73), yet the designed
-modal shows no reference/memo "include this code" line. Raised on epic #1247 for the next
+**Wire attribution is parked, not resolved.** The trustee's
+`POST /v1/lps/{id}/bank-deposits` (#1413, which replaced `POST /v1/lp-ledger/deposits`) takes the
+LP from the request path and there is no unidentified-wire matching queue (TD-73), yet the designed
+modal shows no reference/memo "include this code" line — and that endpoint now *requires* a unique
+`payment_reference` per wire (it is hashed into the minter's `ref_hash`), so whatever the LP puts on
+the transfer is the only string tying it to a statement line. Raised on epic #1247 for the next
 design/backend sync (2026-09-22 approval comment on issue #1283); if a memo code is added, the
 modal's content model becomes per-LP data (a fetch), not a static constant — a follow-up issue.
 
@@ -234,7 +237,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Deciding which card variant renders for a given account state | #1282 |
 | Mounting `AddUsdCard` into the home grid | #1282 |
 | A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
-| Recording a received wire (trustee side) | #1276, epic #1269 |
+| Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
 | Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |
 | Real source for trust-account wire details | #1285 (folded), or a new backend issue |
 

@@ -19,6 +19,7 @@ use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::HttpLoanMetadataFetcher;
 use shared::login_attempt_repo::LoginAttemptRepo;
+use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
 use shared::metadata_fetcher::MetadataFetcher;
@@ -67,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let loan_capital_transfers_repo = LoanCapitalTransfersRepo::new(pool.clone());
     let lp_repo = LpRepo::new(pool.clone());
     let lp_ledger_repo = LpLedgerRepo::new(pool.clone());
+    let lp_bank_deposit_repo = LpBankDepositRepo::new(pool.clone());
     let kyb_document_repo = KybDocumentRepo::new(pool.clone());
 
     // Required, not optional: an API that booted without storage would accept
@@ -157,6 +159,7 @@ async fn main() -> anyhow::Result<()> {
         loan_capital_transfers_repo,
         lp_repo,
         lp_ledger_repo,
+        lp_bank_deposit_repo,
         kyb_document_repo,
         object_store,
         kyb_limits,
@@ -189,6 +192,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::audit_log::AuditLogDoc::openapi());
     api_docs.merge(pipeline_api::routes::lps::LpsDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_ledger::LpLedgerDoc::openapi());
+    api_docs.merge(pipeline_api::routes::lp_bank_deposits::LpBankDepositsDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -213,6 +217,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::audit_log::router())
         .nest("/v1", pipeline_api::routes::lps::router(kyb_limits))
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
+        .nest("/v1", pipeline_api::routes::lp_bank_deposits::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

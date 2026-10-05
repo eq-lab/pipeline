@@ -757,8 +757,8 @@ View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-r
 | 7 | *(unlabeled)* | — | 34px trailing `›` chevron, `aria-hidden`, Loan Book precedent |
 
 Rows are consumed in served order — `lp_repo::list()` is `ORDER BY created_at DESC, id DESC`. No
-client-side sort, no search, no pagination, no ledger column (`GET /v1/lp-ledger` belongs to the
-detail page's scope, not this list).
+client-side sort, no search, no pagination, no ledger column (`GET /v1/lp-ledger` and
+`GET /v1/lps/{id}/bank-deposits` belong to the detail page's scope, not this list).
 
 ### Account Status mapping
 
