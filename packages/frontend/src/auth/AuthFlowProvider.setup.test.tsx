@@ -5,9 +5,14 @@ import { saveSession, clearSession } from "./session";
 import { ApiError } from "@/api";
 
 const mockGet = vi.fn();
+const mockUpsert = vi.fn();
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
-  return { ...actual, getMyLp: (...args: unknown[]) => mockGet(...args) };
+  return {
+    ...actual,
+    getMyLp: (...args: unknown[]) => mockGet(...args),
+    upsertMyLp: (...args: unknown[]) => mockUpsert(...args),
+  };
 });
 vi.mock("@/wallet", () => ({ useConnectModal: () => ({ open: vi.fn() }) }));
 vi.mock("@/components/EmailAuthFlow", () => ({ EmailAuthFlow: () => null }));
@@ -15,13 +20,16 @@ vi.mock("@/components/CompanyDocsModal", () => ({
   CompanyDocsModal: ({
     open,
     onDismiss,
+    onSubmitSuccess,
   }: {
     open: boolean;
     onDismiss: () => void;
+    onSubmitSuccess: () => void;
   }) =>
     open ? (
       <div role="dialog" aria-label="Finish account setup">
         <button onClick={onDismiss}>Close setup</button>
+        <button onClick={onSubmitSuccess}>Submit setup</button>
       </div>
     ) : null,
 }));
@@ -29,6 +37,7 @@ vi.mock("@/components/CompanyDocsModal", () => ({
 beforeEach(() => {
   clearSession();
   mockGet.mockReset();
+  mockUpsert.mockReset();
 });
 
 function signIn(token = "jwt") {
@@ -112,5 +121,56 @@ describe("LP setup prompt", () => {
     resolve({ documents: [] });
     await new Promise((done) => setTimeout(done, 0));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("Account-in-review Notify me", () => {
+  const stored = {
+    legal_name: "Acme Ltd",
+    country: null,
+    contact_email: "ops@acme.example",
+    notify_on_review: false,
+    documents: [],
+  };
+
+  async function openReviewModal() {
+    mockGet.mockResolvedValueOnce(stored);
+    render(
+      <AuthFlowProvider>
+        <div>App</div>
+      </AuthFlowProvider>,
+    );
+    signIn();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Submit setup" }),
+    );
+    return screen.findByRole("button", { name: "Notify me" });
+  }
+
+  it("saves the preference with the stored profile and confirms", async () => {
+    mockUpsert.mockResolvedValueOnce({ ...stored, notify_on_review: true });
+    fireEvent.click(await openReviewModal());
+
+    expect(mockUpsert).toHaveBeenCalledWith({
+      legal_name: "Acme Ltd",
+      country: null,
+      contact_email: "ops@acme.example",
+      notify_on_review: true,
+    });
+    expect(
+      await screen.findByRole("button", { name: "We’ll notify you" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Notify me and shows an error when the save fails", async () => {
+    mockUpsert.mockRejectedValueOnce(new ApiError(409, "frozen"));
+    fireEvent.click(await openReviewModal());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We couldn’t save your preference",
+    );
+    expect(
+      screen.getByRole("button", { name: "Notify me" }),
+    ).toBeInTheDocument();
   });
 });

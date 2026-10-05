@@ -580,9 +580,16 @@ screen carried — TD-64/65/67 are resolved by deletion, TD-66 was already resol
 ### AccountInReviewModal
 
 `packages/frontend/src/components/AccountInReviewModal.tsx`. The KYB post-submission
-Account-in-review screen — presentational only, **no network call, no persistence**. The
-"notified" confirmation lives in React state for the lifetime of the open modal; closing/reopening
-resets it (TD-70). In production, `AuthFlowProvider` opens it after successful account setup (#1396). `onNotifyMe` is omitted, so Notify me only changes local appearance; `onGoToApp` closes it while preserving the session.
+Account-in-review screen. The component itself makes no network call: `notified` seeds the
+confirmation from the saved preference (re-applied on each open), and `onNotifyMe` may return a
+promise — while it is pending the button carries `aria-busy`/`aria-disabled` and ignores clicks; it
+flips to the confirmation only on resolve, and a rejection keeps `Notify me` and shows a
+`role="alert"` error line ("We couldn’t save your preference. Please try again.") so the user can
+retry. A synchronous (or absent) `onNotifyMe` flips immediately, which `/test` still relies on. In
+production, `AuthFlowProvider` opens it after successful account setup (#1396), passes
+`lp.notify_on_review` as `notified`, and its `onNotifyMe` resends the stored profile with
+`notify_on_review: true` to `POST /v1/lps/me` (the frozen-LP exemption, spec § Review
+Notifications), adopting the returned LP; `onGoToApp` closes it while preserving the session.
 
 **One screen, two states, not two screens.** The two Figma frames share an identical node tree —
 circle → heading → two buttons, full stop — with the only delta being the first button's
@@ -605,8 +612,8 @@ button, no `stepLabel`, no `onBack`):
 2. **`Notify me` / `We’ll notify you`** — a single `<Button>` element whose `variant`, `className`,
    and children are computed from `notified`, so React reuses the same underlying DOM node and
    the user's focus survives the flip:
-   - Default: `variant="primary-dark"`, label `Notify me`, `onClick` sets `notified` and fires
-     `onNotifyMe?.()`.
+   - Default: `variant="primary-dark"`, label `Notify me`, `onClick` fires `onNotifyMe?.()` and
+     sets `notified` (immediately, or on resolve when it returns a promise).
    - Notified: `variant="secondary"` with a `!bg-[--color-pipeline-positive-secondary]` /
      `!text-[--color-pipeline-positive-strong]` override, `aria-disabled="true"` (**not**
      `disabled`, which would drop focus out of the trapped modal and pull in `secondary`'s
@@ -650,7 +657,7 @@ is icon → heading → two buttons. `KybInfoBanner` is **not** used by this scr
 full evidence trail and the only other "under review" candidate found (a superseded draft
 dashboard card, out of scope here).
 
-**Out of scope.** Any real "notify me" subscription, polling, or review-status fetch (TD-70);
+**Out of scope.** Polling or a live review-status fetch;
 backend review submission or transitions;
 the LP header entry point (a future Figma); the review banner (TD-69); `@pipeline/ui` promotion
 (LP-only, following `AuthModalShell`'s placement).

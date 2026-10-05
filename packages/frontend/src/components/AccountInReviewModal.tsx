@@ -48,7 +48,13 @@ function CheckIcon() {
 export interface AccountInReviewModalProps {
   open: boolean;
   onDismiss: () => void;
-  onNotifyMe?: () => void;
+  /** Saved preference; the modal opens already confirmed when true. */
+  notified?: boolean;
+  /**
+   * Fired by Notify me. A returned promise holds the button pending and
+   * flips it only on resolve; a rejection keeps Notify me and shows an error.
+   */
+  onNotifyMe?: () => void | Promise<unknown>;
   onGoToApp?: () => void;
 }
 
@@ -57,18 +63,36 @@ export interface AccountInReviewModalProps {
 export function AccountInReviewModal({
   open,
   onDismiss,
+  notified: savedNotified = false,
   onNotifyMe,
   onGoToApp,
 }: AccountInReviewModalProps) {
-  const [notified, setNotified] = useState(false);
+  const [notified, setNotified] = useState(savedNotified);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) setNotified(false);
-  }, [open]);
+    if (open) {
+      setNotified(savedNotified);
+      setError(null);
+    }
+  }, [open, savedNotified]);
 
   const handleNotify = () => {
-    setNotified(true);
-    onNotifyMe?.();
+    if (notified || pending) return;
+    setError(null);
+    const result = onNotifyMe?.();
+    if (!(result instanceof Promise)) {
+      setNotified(true);
+      return;
+    }
+    setPending(true);
+    result
+      .then(() => setNotified(true))
+      .catch(() =>
+        setError("We couldn’t save your preference. Please try again."),
+      )
+      .finally(() => setPending(false));
   };
 
   return (
@@ -97,8 +121,9 @@ export function AccountInReviewModal({
               ? "!bg-[color:var(--color-pipeline-positive-secondary)] !text-[color:var(--color-pipeline-positive-strong)]"
               : "",
           ].join(" ")}
-          aria-disabled={notified || undefined}
-          onClick={notified ? undefined : handleNotify}
+          aria-disabled={notified || pending || undefined}
+          aria-busy={pending || undefined}
+          onClick={notified || pending ? undefined : handleNotify}
         >
           {notified ? (
             <span className="flex items-center gap-2">
@@ -109,6 +134,15 @@ export function AccountInReviewModal({
             "Notify me"
           )}
         </Button>
+
+        {error && (
+          <p
+            role="alert"
+            className="text-center text-[color:var(--color-pipeline-negative-strong)]"
+          >
+            {error}
+          </p>
+        )}
 
         <Button
           variant="secondary"

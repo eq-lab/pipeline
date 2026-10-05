@@ -1134,7 +1134,7 @@ line, whichever section it lands in.
 - **Suggested fix:** A designer promotes `6590:86947` (or a new frame) out of draft status; a
   future sub-issue (likely alongside #1254's dashboard/auth-state work) builds it then.
 
-### TD-70: `AccountInReviewModal`'s "notify me" flip is a local, non-persistent mock
+### TD-70: `AccountInReviewModal`'s "notify me" flip is a local, non-persistent mock [RESOLVED 2026-10-05]
 
 - **Date:** 2026-09-18
 - **Location:** `packages/frontend/src/components/AccountInReviewModal.tsx`.
@@ -1145,6 +1145,10 @@ line, whichever section it lands in.
   review-status fetch are both unbuilt.
 - **Suggested fix:** #1254 replaces `onNotifyMe`/the local flip with a real subscription call and
   a real account-status source once the backend endpoint exists.
+- **Resolved 2026-10-05:** `AuthFlowProvider` now saves the preference through
+  `POST /v1/lps/me` `notify_on_review: true` (backend #1377) and seeds the modal from
+  `lp.notify_on_review`; the modal waits for the save and surfaces failures. A live
+  review-status source remains #1254's.
 
 ### TD-71: `ForgotPasswordModal` has no designed post-submit state
 

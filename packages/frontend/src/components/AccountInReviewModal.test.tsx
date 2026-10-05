@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AccountInReviewModal } from "./AccountInReviewModal";
 
 function renderModal(
@@ -171,5 +171,59 @@ describe("AccountInReviewModal — copy is verbatim", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Notify me" }));
     expect(screen.getByText("We’ll notify you")).toBeInTheDocument();
+  });
+});
+
+describe("AccountInReviewModal — saved preference", () => {
+  it("opens confirmed when notified is true and does not call onNotifyMe", () => {
+    const onNotifyMe = vi.fn();
+    renderModal({ notified: true, onNotifyMe });
+    fireEvent.click(screen.getByRole("button", { name: "We’ll notify you" }));
+    expect(onNotifyMe).not.toHaveBeenCalled();
+  });
+});
+
+describe("AccountInReviewModal — async onNotifyMe", () => {
+  it("holds the button pending until the promise resolves", async () => {
+    let resolve!: () => void;
+    const onNotifyMe = vi.fn(
+      () => new Promise<void>((done) => (resolve = done)),
+    );
+    renderModal({ onNotifyMe });
+    const notify = screen.getByRole("button", { name: "Notify me" });
+
+    fireEvent.click(notify);
+    expect(notify).toHaveAttribute("aria-busy", "true");
+    expect(notify).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(notify);
+    expect(onNotifyMe).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolve());
+    expect(
+      screen.getByRole("button", { name: "We’ll notify you" }),
+    ).not.toHaveAttribute("aria-busy");
+  });
+
+  it("stays on Notify me with an error when the promise rejects, and retries", async () => {
+    const onNotifyMe = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(undefined);
+    renderModal({ onNotifyMe });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Notify me" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "We couldn’t save your preference. Please try again.",
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Notify me" }));
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "We’ll notify you" }),
+    ).toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import { EmailAuthFlow } from "@/components/EmailAuthFlow";
 import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
 import { useConnectModal } from "@/wallet";
 import { useAuthSession } from "./useAuthSession";
-import { ApiError, getMyLp } from "@/api";
+import { ApiError, getMyLp, upsertMyLp } from "@/api";
 import type { LpResponse } from "@/api";
 import { AccountInReviewModal } from "@/components/AccountInReviewModal";
 import { CompanyDocsModal } from "@/components/CompanyDocsModal";
@@ -61,6 +61,22 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
 
   const close = useCallback(() => setIsOpen(false), []);
 
+  // The profile endpoint carries the preference; a frozen LP accepts it only
+  // alongside the stored profile, so resend exactly what the server returned.
+  const subscribeToReview = useCallback(async () => {
+    const lp = setup?.lp;
+    if (!token || !lp) throw new Error("No LP to subscribe");
+    const updated = await upsertMyLp({
+      legal_name: lp.legal_name,
+      country: lp.country,
+      contact_email: lp.contact_email,
+      notify_on_review: true,
+    });
+    setSetup((previous) =>
+      previous?.token === token ? { ...previous, lp: updated } : previous,
+    );
+  }, [setup?.lp, token]);
+
   return (
     <AuthFlowContext.Provider value={{ open, close }}>
       {children}
@@ -102,6 +118,8 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
             <AccountInReviewModal
               key={`review-${token}`}
               open={setup.reviewOpen ?? false}
+              notified={setup.lp?.notify_on_review ?? false}
+              onNotifyMe={subscribeToReview}
               onDismiss={() =>
                 setSetup((previous) =>
                   previous?.token === token
