@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-116.**
+**Next free number: TD-121.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1553,6 +1553,116 @@ line, whichever section it lands in.
   where the resulting lint sweep belongs. With a pin in place, revisit whether the `allow` is still
   needed: a newer `async_trait` may stop emitting the attribute, in which case it should narrow to
   the traits that need it or disappear.
+
+---
+
+### TD-116: A returned escrow wire is indistinguishable from one awaiting assignment
+
+- **Date:** 2026-10-05
+- **Location:** `packages/worker/src/indexer/stellar/parsers.rs` (`parse_wire_in`,
+  `parse_wire_in_assigned`), `packages/worker/src/relayer/stellar/wire_in_match.rs` — Issue #1416;
+  `contracts/minter/src/lib.rs` (`return_wire_in`) in `pipeline-stellar-contracts`.
+- **Gap:** #1416 indexes `WireIn` and `WireInAssigned`, which between them cover
+  `WireInStatus::{Direct, Assigned}`. The fourth state, `Returned`, has its own event —
+  `WireInReturned` — and it is not indexed. A wire received into escrow and later sent back to the
+  bank therefore keeps `is_minted = false` forever, which is the same value a wire still waiting
+  for an operator to assign it carries.
+- **Impact:** The two cases are opposite in meaning — in one the money is gone, in the other it is
+  sitting in escrow pending a decision — and nothing in our data separates them. The matching
+  phase also counts both under one "unmatched" figure, so the warn line cannot tell an operator
+  whether anything needs doing. Anyone reading `is_minted = false` has to go to the chain to find
+  out which it is.
+- **Suggested fix:** Add `parse_wire_in_returned` (topics `id`, map `{amount, ref_hash}` — needs no
+  new ScVal helper) and give the deposit a terminal state rather than a single boolean: the three
+  on-chain outcomes do not fit one flag. A nullable `minted_at` plus a `returned_at`, or a status
+  column, both work; the choice belongs with whatever first needs to display it.
+
+---
+
+### TD-117: Wire-in matching is only half chain-scoped — `lp_bank_deposits` has no `chain_id`
+
+- **Date:** 2026-10-06
+- **Location:** `packages/shared/src/lp_bank_deposit_repo.rs` (`WireInMatcher`),
+  `packages/shared/migrations/20261002000001_lp_bank_deposits.sql` — Issue #1416.
+- **Gap:** All three matching statements filter `contract_logs` by `chain_id` and
+  `contract_address`, but `lp_bank_deposits` carries no chain column at all — a deposit is
+  identified by `ref_hash` alone, globally. The scoping therefore constrains which events may
+  match, never which deposits.
+- **Impact:** One database serving two Stellar networks (the testnet sentinel `99000001` and a
+  production chain) has no separation on the deposit side: a rehearsal `record_wire_in` on testnet
+  carrying a reference that exists in production produces the same `sha256`, and the production
+  deposit is flipped `is_minted = true`. The plan for #1416 claims chain scoping as decision 5;
+  this is the half of it that does not exist.
+- **Suggested fix:** Add `chain_id` to `lp_bank_deposits` (the API knows it from the LP's chain)
+  and join on it in all three statements. Until then, do not point two chains' relayers at one
+  database — which is also true of nothing else in the system, so it is an easy assumption to
+  break unknowingly.
+
+---
+
+### TD-118: Nothing reports an escrowed wire stuck awaiting assignment
+
+- **Date:** 2026-10-06
+- **Location:** `packages/worker/src/relayer/stellar/wire_in_match.rs` (`WireInMatchSummary`),
+  `packages/shared/src/lp_bank_deposit_repo.rs` (`count_unmatched_wire_ins`) — Issue #1416.
+- **Gap:** The phase's `unmatched` figure counts `WireIn` events whose `ref_hash` matches no
+  deposit row. An escrowed wire always has a deposit row — that row is where the reference the
+  contract was handed came from — so it is never counted. Nothing else computes "deposits with
+  `is_minted = false` whose `ref_hash` does have an indexed `WireIn`", which is the figure that
+  would actually surface a wire waiting for `assign_wire_in`.
+- **Impact:** A wire can sit in escrow indefinitely while the phase reports `direct = 0,
+  assigned = 0, unmatched = 0` and, because the log line is gated on one of those being non-zero,
+  prints nothing at all. The state is invisible to operators until someone asks why a deposit is
+  still unminted. Found in review of #1416, where the field's own doc claimed the opposite.
+- **Suggested fix:** A fourth count — deposits `NOT is_minted` whose `ref_hash` has a matching
+  `WireIn` row for this chain and contract — reported beside the other three, and worth a `warn`
+  once it has been non-zero for longer than an operator would take to act. Pairs naturally with
+  TD-116, which wants the same row to distinguish `Returned`.
+
+---
+
+### TD-119: Wire-in matching rescans the whole indexed history every tick
+
+- **Date:** 2026-10-06
+- **Location:** `packages/shared/src/lp_bank_deposit_repo.rs` (`mark_minted_assigned`,
+  `count_unmatched_wire_ins`) — Issue #1416.
+- **Gap:** Rule B self-joins `contract_logs` on `w.params->>'id' = a.params->>'id'` — a JSONB
+  expression on both sides, served by no index (the GIN index on `params` does not answer `->>`
+  equality, and there is no expression index). The statement carries no high-water mark and no
+  time bound, so every tick — every 60s by default, every 5s in the local `.env` — rescans the
+  contract's entire indexed history. `NOT d.is_minted` stops the writes, not the scan.
+  `count_unmatched_wire_ins` has the same shape against `contract_logs`.
+- **Impact:** Cost grows linearly with the number of wires ever recorded, for a result that is
+  almost always "nothing changed". Invisible at today's volumes (the minter is not deployed and
+  the table is empty), and a slow squeeze later — the kind that is noticed as general database
+  load rather than traced back to this phase.
+- **Suggested fix:** Keep a per-chain cursor of the last processed `contract_logs.id` the way the
+  indexer keeps `log_collector_state`, or bound the join to the ledgers since the oldest
+  `NOT is_minted` deposit. An expression index on `(params->>'id')` filtered to the two event
+  names would help the join itself, but does nothing about the unbounded range.
+
+---
+
+### TD-120: A contract id configured after its contract went live silently misses every earlier event
+
+- **Date:** 2026-10-06
+- **Location:** `packages/shared/src/db.rs` (`log_collector_state`, keyed by `chain_id` alone);
+  `packages/worker/src/indexer/stellar/poller.rs` — surfaced by Issue #1416.
+- **Gap:** The indexer's cursor is per chain, not per contract. Adding a contract id to an
+  already-running chain starts polling it from the chain's *current* ledger, and nothing rewinds
+  to pick up what that contract emitted before. This is not new to #1416 — `loan_registry_id` and
+  `yield_minter_id` have always had it — but #1416 makes it consequential, because the expected
+  rollout is exactly "ship the var unset, set it once the minter is deployed".
+- **Impact:** Every `WireIn` emitted between the contract going live and the variable being set is
+  never indexed, so those deposits stay `is_minted = false` permanently. They are invisible to the
+  phase's figures too: `count_unmatched_wire_ins` counts indexed events with no deposit, not
+  deposits with no event, so the phase reports `0/0/0` and (below the gate) logs nothing at all.
+  Soroban RPC also keeps only ~7 days of event history, so the window to recover by re-indexing
+  closes on its own.
+- **Suggested fix:** Key `log_collector_state` by `(chain_id, contract_address)` so a newly
+  configured contract starts from its own zero, or provide an explicit operational re-index with a
+  start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
+  and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
 ---
 

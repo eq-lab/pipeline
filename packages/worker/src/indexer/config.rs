@@ -34,9 +34,15 @@ pub struct StellarIndexerSettings {
     /// When `None`, the loan-registry indexer branch is a no-op.
     /// Read from `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID`.
     pub loan_registry_id: Option<String>,
-    /// YieldMinter contract — optional; set only after the contract is deployed to the target chain.
-    /// When `None`, the yield-minter indexer branch is a no-op (ships dark).
-    /// Emits `YieldMinted` events routed to `contract_logs` (same as EVM).
+    /// The minter contract — optional; set only after it is deployed to the target
+    /// chain. When `None`, its indexer branch is a no-op (ships dark).
+    ///
+    /// Named for the contract's former identity: `pipeline-stellar-contracts` #33
+    /// renamed `yield-minter` to `minter` and rewrote it, so one id serves both
+    /// event families — `YieldMinted` from a pre-#33 deployment (EVM-parity, feeds
+    /// the dashboard's cumulative yield) and `WireIn`/`WireInAssigned` from a
+    /// post-#33 one (#1416, read by the relayer's wire-in matching phase). No
+    /// deployment emits both, so the branch simply tries each parser.
     /// Read from `CHAIN_<id>_STELLAR_YIELD_MINTER_ID`.
     pub yield_minter_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
@@ -110,7 +116,17 @@ impl StellarIndexerSettings {
         };
 
         let yield_minter_id = match env::var(&ym_key) {
-            Ok(raw) if !raw.trim().is_empty() => Some(validate_contract_id(&ym_key, raw)?),
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&ym_key, raw)?;
+                // `validate_contract_id` checks length and alphabet, not the
+                // Strkey CRC16. The relayer parses this same variable strictly
+                // (`relayer::config`), so without this the two components would
+                // disagree about what is a valid id — one booting, the other
+                // refusing, on one typo.
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{ym_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
             _ => None,
         };
 

@@ -613,3 +613,57 @@ fn withdrawal_queue_wallet_id_rejects_malformed_address() {
         std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
     }
 }
+
+#[test]
+fn yield_minter_id_rejects_a_bad_strkey_checksum() {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+
+    let id = 99_000_033_i64;
+    let p = format!("CHAIN_{id}_STELLAR_");
+    // Right length, right alphabet, wrong CRC16 — two characters transposed.
+    // The relayer refuses this id; the indexer must agree, or one component
+    // boots while the other does not on the very same variable.
+    let transposed = {
+        let mut c: Vec<char> = "CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX"
+            .chars()
+            .collect();
+        c.swap(10, 11);
+        c.into_iter().collect::<String>()
+    };
+
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(
+            format!("{p}DEPOSIT_MANAGER_ID"),
+            "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
+        );
+        std::env::set_var(
+            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}STAKED_PLUSD_ID"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        std::env::set_var(format!("{p}YIELD_MINTER_ID"), &transposed);
+    }
+
+    let result = StellarIndexerSettings::from_chain_env(id);
+    assert!(
+        result.is_err(),
+        "a Strkey whose checksum does not match must fail startup, as it does in the relayer"
+    );
+
+    unsafe {
+        std::env::remove_var(format!("{p}RPC_URL"));
+        std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
+        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
+        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}YIELD_MINTER_ID"));
+    }
+}

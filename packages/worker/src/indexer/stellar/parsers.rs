@@ -15,9 +15,9 @@ use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
 use crate::indexer::stellar::loan_registry_parsers::{
-    extract_u128_from_map, parse_ccr_updated, parse_economics_amended, parse_loan_closed,
-    parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over, parse_location_updated,
-    parse_payment_recorded, parse_status_updated,
+    extract_u128_from_map, extract_u32, extract_u64_from_map, get_map_entry, parse_ccr_updated,
+    parse_economics_amended, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
+    parse_loan_rolled_over, parse_location_updated, parse_payment_recorded, parse_status_updated,
 };
 
 pub use crate::stellar::scval::extract_i128;
@@ -253,6 +253,75 @@ pub fn parse_yield_minted(raw: &RawEvent) -> Option<StellarLog> {
     })
 }
 
+/// Minter `WireIn` event — a received bank wire, booked and minted (#1416).
+/// topics: [wire_in, id: u32]
+/// value:  Map { receiver: Address, amount: i128, value_date: u64, ref_hash: BytesN<32> }
+///
+/// `ref_hash` is `sha256(payment_reference)`, the key the relayer's wire-in
+/// matching phase joins against `lp_bank_deposits.ref_hash`; it is stored as
+/// lowercase hex, the same shape the API reports.
+pub fn parse_wire_in(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "wire_in" {
+        return None;
+    }
+    if raw.topics_base64.len() < 2 {
+        return None;
+    }
+
+    let id = extract_u32(&raw.topics_base64[1])?;
+    let receiver = extract_address_from_map(&raw.value_base64, "receiver")?;
+    let amount = extract_i128_from_map(&raw.value_base64, "amount")?;
+    let value_date = extract_u64_from_map(&raw.value_base64, "value_date")?;
+    let ref_hash = extract_bytes32_from_map(&raw.value_base64, "ref_hash")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "WireIn".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "id": id,
+            "receiver": receiver,
+            "amount": amount.to_string(),
+            "value_date": value_date.to_string(),
+            "ref_hash": ref_hash,
+        }),
+    })
+}
+
+/// Minter `WireInAssigned` event — an escrowed wire staked for an LP (#1416).
+/// topics: [wire_in_assigned, id: u32]
+/// value:  Map { receiver: Address }
+///
+/// Carries no reference of its own: the matching phase recovers `ref_hash` from
+/// this wire's own `WireIn` row by `id`.
+pub fn parse_wire_in_assigned(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "wire_in_assigned" {
+        return None;
+    }
+    if raw.topics_base64.len() < 2 {
+        return None;
+    }
+
+    let id = extract_u32(&raw.topics_base64[1])?;
+    let receiver = extract_address_from_map(&raw.value_base64, "receiver")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "WireInAssigned".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "id": id,
+            "receiver": receiver,
+        }),
+    })
+}
+
 /// SAC / SEP-41 asset `transfer` event.
 /// topics: [transfer, from: Address, to: Address, (optional) sep0011 asset: String]
 /// value:  i128 amount (plain `ScVal::I128`), or `Map { amount: i128 }` on
@@ -387,6 +456,27 @@ pub fn extract_i128_from_map(b64: &str, key: &str) -> Option<i128> {
     }
 }
 
+/// Decode the named `Address` field from a Map-encoded ScVal value, as an
+/// uppercase Strkey. The topic-level `extract_address` takes a standalone
+/// ScVal; a `#[contractevent]` field that is not a `#[topic]` lives in the map.
+pub fn extract_address_from_map(b64: &str, key: &str) -> Option<String> {
+    match get_map_entry(b64, key)? {
+        ScVal::Address(addr) => sc_address_to_strkey(&addr),
+        _ => None,
+    }
+}
+
+/// Decode the named `BytesN<32>` field from a Map-encoded ScVal value as
+/// lowercase hex. A payload of any other length is refused rather than padded
+/// or truncated: a wrong-length hash would match no deposit and read as a
+/// missing one.
+pub fn extract_bytes32_from_map(b64: &str, key: &str) -> Option<String> {
+    match get_map_entry(b64, key)? {
+        ScVal::Bytes(bytes) if bytes.0.len() == 32 => Some(hex::encode(bytes.0.as_slice())),
+        _ => None,
+    }
+}
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /// Synthesise a `log_index` from Soroban event coordinates.
@@ -495,8 +585,32 @@ pub fn dispatch_parser(
             .or_else(|| parse_loan_rolled_over(raw))
             .or_else(|| parse_economics_amended(raw))
     } else if yield_minter_id == Some(raw.contract_id.as_str()) {
-        // YieldMinter events — routes to StellarLogMapper → contract_logs.
-        parse_yield_minted(raw)
+        // The minter contract, under its former name (see the config field).
+        // `YieldMinted` comes from a pre-#33 deployment; `WireIn` /
+        // `WireInAssigned` from a post-#33 one (#1416). No deployment emits
+        // both, and each parser matches its own event name, so trying them in
+        // order is safe. The minter's other 19 events are deliberately not
+        // collected yet and fall through as `None`.
+        let parsed = parse_yield_minted(raw)
+            .or_else(|| parse_wire_in(raw))
+            .or_else(|| parse_wire_in_assigned(raw));
+        // A `None` here is normally one of the 19 events we do not collect. But
+        // for the two we do, it means the on-chain encoding differs from what
+        // the parsers expect — and the minter has never been deployed, so that
+        // encoding is unverified. Silence would be indistinguishable from "no
+        // wires have arrived yet", for as long as it took someone to notice
+        // every deposit stuck at `is_minted = false`.
+        if parsed.is_none() && matches!(raw.event_name.as_str(), "wire_in" | "wire_in_assigned") {
+            tracing::warn!(
+                contract_id = %raw.contract_id,
+                event_name = %raw.event_name,
+                tx_hash = %raw.tx_hash,
+                "minter event recognised by name but not decodable — its field \
+                 encoding differs from what the parser expects; no contract_logs \
+                 row was written"
+            );
+        }
+        parsed
     } else if asset_id == Some(raw.contract_id.as_str()) {
         // Asset (SAC) transfer events — routed to StellarLogMapper → contract_logs
         // after the poller applies the custody/ramp membership filter.

@@ -6,6 +6,8 @@
 //!     (Stellar-aware variant — preserves Strkey case).
 //!   - Phase 2: Elliptic KYT/AML screening (address + deposit-tx, chain-scoped).
 //!   - Phase 3: sync whitelist to on-chain `access_manager.set_authorized`.
+//!   - Phase 5: match indexed minter wire-ins to recorded bank deposits (#1416),
+//!     when the minter contract id is configured.
 //!
 //! Sumsub (Phase 1) is a no-op everywhere — Sumsub statuses are populated by
 //! the API's webhook handler. Crystal (Phase 2) is skipped because Crystal does
@@ -20,11 +22,13 @@ use anyhow::{Context, Result};
 use shared::elliptic::client::EllipticClient;
 use shared::elliptic::config::EllipticSettings;
 use shared::kyc_repo::KycRepo;
+use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::yield_mint_outbox_repo::YieldMintOutboxRepo;
 
 use crate::relayer::config::StellarRelayerSettings;
 use crate::relayer::elliptic_check::phase_check_elliptic;
 use crate::relayer::stellar::whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};
+use crate::relayer::stellar::wire_in_match::phase_match_wire_ins;
 use crate::relayer::stellar::yield_mint::{
     phase_yield_mint_stellar, StellarPhase4Settings, StellarYieldMinter,
 };
@@ -88,6 +92,23 @@ pub(crate) async fn run_stellar_relayer_inner(
         None
     };
 
+    // Phase 5 (#1416): enabled only once the minter contract id is configured.
+    // Pure database work — no RPC, no signing, so it needs nothing but the pool.
+    let wire_in_matching = if let Some(minter_id) = settings.minter_id.clone() {
+        tracing::info!(
+            chain_id = settings.chain_id,
+            minter = %minter_id,
+            "stellar wire-in matching phase enabled"
+        );
+        Some((LpBankDepositRepo::new(kyc_repo.pool.clone()), minter_id))
+    } else {
+        tracing::info!(
+            chain_id = settings.chain_id,
+            "stellar wire-in matching phase disabled — set CHAIN_<id>_STELLAR_YIELD_MINTER_ID (the INDEXER key, not RELAYER_STELLAR_YIELD_MINTER_ID)"
+        );
+        None
+    };
+
     let elliptic_client = if settings.elliptic_enabled {
         let s = EllipticSettings::from_env()
             .context("ELLIPTIC_ENABLED=true but Elliptic settings are missing")?;
@@ -138,6 +159,14 @@ pub(crate) async fn run_stellar_relayer_inner(
             if let Err(e) = phase_yield_mint_stellar(phase_settings, submitter, outbox).await {
                 tracing::error!(error = %e,
                     "stellar phase_yield_mint: cycle aborted (other phases unaffected)");
+            }
+        }
+
+        // Phase 5: wire-in matching (when configured).
+        if let Some((matcher, minter_id)) = wire_in_matching.as_ref() {
+            if let Err(e) = phase_match_wire_ins(matcher, chain_id, minter_id).await {
+                tracing::error!(error = %e,
+                    "stellar phase_match_wire_ins: cycle aborted (other phases unaffected)");
             }
         }
 
