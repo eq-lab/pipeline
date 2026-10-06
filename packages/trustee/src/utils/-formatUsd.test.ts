@@ -7,6 +7,8 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  parseUsdCentsInput,
+  formatUsdDecimal,
   formatBpsRate,
   formatCompactUsd,
   formatCompactUsd2dp,
@@ -163,5 +165,24 @@ describe("formatUsdInputValue (#1048)", () => {
   it("drops non-numeric characters entirely", () => {
     expect(formatUsdInputValue("abc")).toBe("");
     expect(formatUsdInputValue("")).toBe("");
+  });
+});
+
+describe("parseUsdCentsInput", () => {
+  it("accepts positive ≤2dp amounts, stripping grouping", () => {
+    expect(parseUsdCentsInput("50,000.00")).toBe("50000.00");
+    expect(parseUsdCentsInput(" 12.5 ")).toBe("12.5");
+    for (const bad of ["", "0", "0.00", "-1", "1.234", "abc", "1e3"])
+      expect(parseUsdCentsInput(bad)).toBeNull();
+  });
+});
+
+describe("formatUsdDecimal", () => {
+  it("formats exactly, padding cents", () => {
+    expect(formatUsdDecimal("1250000.5")).toBe("$1,250,000.50");
+    expect(formatUsdDecimal("7")).toBe("$7.00");
+    expect(formatUsdDecimal("999999999999999999.99")).toBe(
+      "$999,999,999,999,999,999.99",
+    );
   });
 });

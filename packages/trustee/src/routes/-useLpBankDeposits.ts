@@ -6,49 +6,12 @@ import {
   type LpBankDeposit,
 } from "@/api/useLpBankDeposits";
 import { ApiError } from "@/api/client";
-
-const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
-const MAX_AMOUNT = 1_000_000_000_000_000;
-
-/** Current UTC time as a `datetime-local` value (`YYYY-MM-DDTHH:MM`). */
-export function nowUtcInput(now = new Date()): string {
-  return now.toISOString().slice(0, 16);
-}
-
-/** `datetime-local` value, read as UTC → ISO-8601 with a `Z` offset. */
-export function utcInputToIso(value: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
-  const iso = `${value}:00Z`;
-  return Number.isNaN(Date.parse(iso)) ? null : iso;
-}
-
-/** Strips grouping commas/spaces; `null` unless a positive ≤2dp decimal. */
-export function normalizeAmount(raw: string): string | null {
-  const value = raw.replace(/[,\s]/g, "");
-  if (!AMOUNT_PATTERN.test(value)) return null;
-  const n = Number(value);
-  return n > 0 && n <= MAX_AMOUNT ? value : null;
-}
-
-/** `"50000.5"` → `"$50,000.50"`, string-based so large amounts stay exact. */
-export function formatDepositAmount(amount: string): string {
-  const [whole = "0", fraction = ""] = amount.split(".");
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `$${grouped}.${fraction.padEnd(2, "0").slice(0, 2)}`;
-}
-
-/** `2026-10-05T15:41:00Z` → `05 Oct 2026, 15:41 UTC`. */
-export function formatDepositTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  const day = date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  return `${day}, ${iso.slice(11, 16)} UTC`;
-}
+import {
+  formatIsoDateTimeUtc,
+  nowUtcDateTimeInput,
+  utcDateTimeInputToIso,
+} from "@/utils/formatDate";
+import { formatUsdDecimal, parseUsdCentsInput } from "@/utils/formatUsd";
 
 export function depositError(error: Error | null) {
   if (!error) return null;
@@ -81,8 +44,8 @@ export interface DepositRow {
 export function mapDepositToRow(deposit: LpBankDeposit): DepositRow {
   return {
     id: deposit.id,
-    occurredAt: formatDepositTime(deposit.occurred_at),
-    amount: formatDepositAmount(deposit.amount),
+    occurredAt: formatIsoDateTimeUtc(deposit.occurred_at),
+    amount: formatUsdDecimal(deposit.amount),
     reference: deposit.payment_reference,
     refHash: deposit.ref_hash,
     minted: deposit.is_minted ? "Minted" : "Not minted",
@@ -96,12 +59,12 @@ export function useLpBankDepositsSection(lpId: number) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
-  const [occurredAt, setOccurredAt] = useState(nowUtcInput);
+  const [occurredAt, setOccurredAt] = useState(nowUtcDateTimeInput);
   const [touched, setTouched] = useState(false);
   const submitting = useRef(false);
 
-  const normalizedAmount = normalizeAmount(amount);
-  const occurredIso = utcInputToIso(occurredAt);
+  const normalizedAmount = parseUsdCentsInput(amount);
+  const occurredIso = utcDateTimeInputToIso(occurredAt);
   const validationError = !normalizedAmount
     ? "Enter an amount greater than 0 with at most 2 decimal places."
     : !reference.trim()
@@ -117,7 +80,7 @@ export function useLpBankDepositsSection(lpId: number) {
     mutation.reset();
     setAmount("");
     setReference("");
-    setOccurredAt(nowUtcInput());
+    setOccurredAt(nowUtcDateTimeInput());
     setTouched(false);
     setOpen(true);
   }

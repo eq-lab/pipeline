@@ -2,12 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ApiError } from "@/api/client";
 import type { LpBankDeposit } from "@/api/useLpBankDeposits";
-import {
-  formatDepositAmount,
-  formatDepositTime,
-  normalizeAmount,
-  utcInputToIso,
-} from "./-useLpBankDeposits";
 
 vi.mock("@/api/useLpBankDeposits", () => ({
   useLpBankDeposits: vi.fn(),
@@ -72,30 +66,6 @@ beforeEach(() => {
   recorder();
 });
 
-describe("bank deposit helpers", () => {
-  it("normalizes amounts", () => {
-    expect(normalizeAmount("50,000.00")).toBe("50000.00");
-    expect(normalizeAmount(" 12.5 ")).toBe("12.5");
-    for (const bad of ["", "0", "0.00", "-1", "1.234", "abc", "1e3"])
-      expect(normalizeAmount(bad)).toBeNull();
-  });
-
-  it("reads datetime-local as UTC", () => {
-    expect(utcInputToIso("2026-10-05T15:41")).toBe("2026-10-05T15:41:00Z");
-    expect(utcInputToIso("")).toBeNull();
-  });
-
-  it("formats amount and time exactly", () => {
-    expect(formatDepositAmount("1250000.5")).toBe("$1,250,000.50");
-    expect(formatDepositAmount("999999999999999999.99")).toBe(
-      "$999,999,999,999,999,999.99",
-    );
-    expect(formatDepositTime("2026-10-05T15:41:00Z")).toBe(
-      "05 Oct 2026, 15:41 UTC",
-    );
-  });
-});
-
 describe("LpBankDepositsSection — list", () => {
   it("shows loading, empty, and error states", () => {
     list({ isPending: true });
@@ -119,7 +89,7 @@ describe("LpBankDepositsSection — list", () => {
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
     const row = screen.getAllByRole("row")[1]!;
-    expect(row).toHaveTextContent("05 Oct 2026, 15:41 UTC");
+    expect(row).toHaveTextContent("5 Oct 2026, 15:41 UTC");
     expect(row).toHaveTextContent("$1,250,000.50");
     expect(row).toHaveTextContent("WIRE-REF-1");
     expect(row).toHaveTextContent("Not minted");
