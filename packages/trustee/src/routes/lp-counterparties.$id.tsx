@@ -4,6 +4,7 @@ import { Button, InlineError } from "@pipeline/ui";
 import { useLpCounterpartyDetail } from "./-useLpCounterpartyDetail";
 import { mapKybStatus } from "./-useLpCounterpartiesTable";
 import { LpReviewDialog } from "./-LpReviewDialog";
+import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 import { formatIsoDateUtc } from "@/utils/formatDate";
 
 const statusClasses = {
@@ -225,6 +226,7 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
               </p>
             )}
           </section>
+          <LpBankDepositsSection lpId={lp.id} legalName={lp.legal_name} />
           {detail.action && (
             <LpReviewDialog
               action={detail.action}

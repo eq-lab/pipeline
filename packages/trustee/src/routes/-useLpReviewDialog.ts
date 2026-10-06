@@ -1,8 +1,11 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
 import { useEffect, useRef } from "react";
 
-export function useLpReviewDialog(onCancel: () => void, busy: boolean) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+export function useLpReviewDialog<T extends HTMLElement = HTMLDivElement>(
+  onCancel: () => void,
+  busy: boolean,
+) {
+  const dialogRef = useRef<T>(null);
   const cancelRef = useRef(onCancel);
   const busyRef = useRef(busy);
   cancelRef.current = onCancel;
@@ -24,7 +27,7 @@ export function useLpReviewDialog(onCancel: () => void, busy: boolean) {
       if (event.key !== "Tab" || !dialog) return;
       const items = Array.from(
         dialog.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
         ),
       );
       const first = items[0];

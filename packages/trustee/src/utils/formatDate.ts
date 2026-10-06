@@ -110,3 +110,31 @@ export function formatAuditTimestamp(
   }).format(date);
   return `${dayMonth} ${time}`;
 }
+
+/**
+ * Formats an ISO-8601 timestamp as `"5 Oct 2026, 15:41 UTC"`; `"—"` for
+ * missing/unparseable.
+ */
+export function formatIsoDateTimeUtc(
+  rfc3339: string | null | undefined,
+): string {
+  if (rfc3339 == null) return "—";
+  const date = new Date(rfc3339);
+  if (Number.isNaN(date.getTime())) return "—";
+  return `${formatIsoDateUtc(rfc3339)}, ${date.toISOString().slice(11, 16)} UTC`;
+}
+
+/** Current UTC time as a `datetime-local` value (`YYYY-MM-DDTHH:MM`). */
+export function nowUtcDateTimeInput(now = new Date()): string {
+  return now.toISOString().slice(0, 16);
+}
+
+/**
+ * Reads a `datetime-local` value as UTC → ISO-8601 with a `Z` offset;
+ * `null` for anything not a valid `YYYY-MM-DDTHH:MM`.
+ */
+export function utcDateTimeInputToIso(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const iso = `${value}:00Z`;
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
+}

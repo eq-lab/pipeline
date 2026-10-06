@@ -5,6 +5,9 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  formatIsoDateTimeUtc,
+  nowUtcDateTimeInput,
+  utcDateTimeInputToIso,
   formatAuditTimestamp,
   formatEpochDate,
   formatIsoDateUtc,
@@ -100,5 +103,31 @@ describe("formatAuditTimestamp", () => {
     expect(formatAuditTimestamp(null)).toBe("—");
     expect(formatAuditTimestamp(undefined)).toBe("—");
     expect(formatAuditTimestamp("not-a-date")).toBe("—");
+  });
+});
+
+describe("formatIsoDateTimeUtc", () => {
+  it("formats date and time in UTC", () => {
+    expect(formatIsoDateTimeUtc("2026-10-05T15:41:00Z")).toBe(
+      "5 Oct 2026, 15:41 UTC",
+    );
+    expect(formatIsoDateTimeUtc("2026-10-05T23:30:00-02:00")).toBe(
+      "6 Oct 2026, 01:30 UTC",
+    );
+    expect(formatIsoDateTimeUtc(null)).toBe("—");
+    expect(formatIsoDateTimeUtc("nope")).toBe("—");
+  });
+});
+
+describe("UTC datetime-local helpers", () => {
+  it("round-trips a datetime-local value as UTC", () => {
+    expect(nowUtcDateTimeInput(new Date("2026-10-05T15:41:59Z"))).toBe(
+      "2026-10-05T15:41",
+    );
+    expect(utcDateTimeInputToIso("2026-10-05T15:41")).toBe(
+      "2026-10-05T15:41:00Z",
+    );
+    expect(utcDateTimeInputToIso("")).toBeNull();
+    expect(utcDateTimeInputToIso("2026-13-40T99:99")).toBeNull();
   });
 });

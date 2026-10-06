@@ -159,3 +159,23 @@ export function formatBpsRate(bps: number | null | undefined): string {
   if (!Number.isFinite(bps)) return "—";
   return `${(bps / 100).toFixed(1)}%`;
 }
+
+/**
+ * Normalizes a typed dollar amount (grouping commas/spaces stripped) to a
+ * plain decimal string; `null` unless positive with at most 2 decimals.
+ */
+export function parseUsdCentsInput(raw: string): string | null {
+  const value = raw.replace(/[,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(value)) return null;
+  return /[1-9]/.test(value) ? value : null;
+}
+
+/**
+ * Formats a plain dollar decimal string (e.g. `"1250000.5"`) as
+ * `"$1,250,000.50"` — string-based, so amounts beyond `2^53` stay exact.
+ */
+export function formatUsdDecimal(amount: string): string {
+  const [whole = "0", fraction = ""] = amount.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `$${grouped}.${fraction.padEnd(2, "0").slice(0, 2)}`;
+}
