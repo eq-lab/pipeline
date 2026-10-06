@@ -7,7 +7,7 @@ knowledge that previously lived as inline comments and docblocks — see
 
 Trustee product intent lives in `docs/product-specs/` (see the Trustee panel note in
 [`docs/FRONTEND.md`](../FRONTEND.md#application-structure)); this doc captures the frontend
-_implementation_ architecture.
+*implementation* architecture.
 
 > **Status:** migrated (#997, part of epic
 > [#991](https://github.com/eq-lab/pipeline/issues/991)). Do not delete a source comment until its
@@ -58,7 +58,7 @@ Figma mock:
 
 ### Rendering (unpaginated feed)
 
-`GET /v1/audit-log` returns the **full feed, not paginated**. The page bounds _rendering_ — not the
+`GET /v1/audit-log` returns the **full feed, not paginated**. The page bounds *rendering* — not the
 payload:
 
 - Render the newest `AUDIT_PAGE_SIZE` (50) rows; a "Show older (N more)" control reveals another
@@ -122,7 +122,8 @@ Same "New swap" modal UX as On/Off-ramp — a Buy/Sell USYC swap-form UI shell (
 Balances shown against the shared Capital Allocation section: **Buy** spends **USDC** — the real
 on-chain Capital-Wallet balance; **Sell** spends **USYC** — the total T-Bills value at issuer NAV
 (`useCapitalAllocation().buckets.tbills`), currently `null` → `—` (the bucket is hardcoded `None`
-server-side, #931/#944). Buying/selling USYC is a Capital-Wallet MPC action (3-of-5, Type 2, flow 8) with no backend assembly/quote path yet (follow-up filed with #944) — submit is disabled, "You
+server-side, #931/#944). Buying/selling USYC is a Capital-Wallet MPC action (3-of-5, Type 2, flow
+8) with no backend assembly/quote path yet (follow-up filed with #944) — submit is disabled, "You
 receive" is a disabled twin of the amount input that stays empty (no USYC price/NAV served), and
 the fee shows `—`.
 
@@ -277,8 +278,8 @@ one-offs documented):
 - Heading `font-display text-[64px] leading-[64px]`, `rgba(56,55,53,0.3)` (ink-subtle, exact) —
   identical to the Origination h1.
 - Summary card `bg-white`, `LINE_COLOR` border (`rgba(56,55,53,0.18)`), `rounded-[4px]
-px-[21px] py-[19px]`. Label `Inter 12.5px` ink-muted; value `Besley 26px` ink; sub `Inter
-12.5px` ink-muted, `pt-[6px]`.
+  px-[21px] py-[19px]`. Label `Inter 12.5px` ink-muted; value `Besley 26px` ink; sub `Inter
+  12.5px` ink-muted, `pt-[6px]`.
 - CCR band colors: healthy → `--color-pipeline-positive-primary` (`#208000`, token);
   attention/yellow → `ATTENTION_AMBER` `#6e6400` (one-off); margin-call/orange →
   `MARGIN_CALL_ORANGE` `#b35900` (one-off — a hue the prior 3-band scheme lacked, between the
@@ -348,15 +349,15 @@ field, not a derived one.
 
 `statusToChip` maps the raw on-chain status to a display chip + colour band:
 
-| on-chain status                 | chip label          | band         |
-| ------------------------------- | ------------------- | ------------ |
-| `Performing`                    | Active (#1119)      | positive     |
-| `Disbursing`                    | Disbursing          | info (brand) |
-| `Watchlist` / `WatchList`       | Watchlist           | attention    |
-| `Past Due` / `Matured` (legacy) | Matured             | attention    |
-| `Default`                       | Default             | negative     |
-| `Closed`                        | Closed              | neutral      |
-| unknown                         | raw string verbatim | neutral      |
+| on-chain status | chip label | band |
+|---|---|---|
+| `Performing` | Active (#1119) | positive |
+| `Disbursing` | Disbursing | info (brand) |
+| `Watchlist` / `WatchList` | Watchlist | attention |
+| `Past Due` / `Matured` (legacy) | Matured | attention |
+| `Default` | Default | negative |
+| `Closed` | Closed | neutral |
+| unknown | raw string verbatim | neutral |
 
 `Disbursing` (a Performing loan whose outbound disbursement has not reached "Wired") is a
 data-derived divergence that needs movement state not served to this page, so a Performing loan
@@ -452,7 +453,7 @@ The page branches on `detail.variant` (derived from the served display status):
   disbursement-complete action (`POST …/disbursement/complete`, #862); the lifecycle shows the
   Disbursing node active.
 - **matured** — no stepper; a rollover card beside Price & collateral, the hero shows `<date> —
-passed`, and Roll over is the matured-only fast-path (Figma node `4116:10969`, #866). The served
+  passed`, and Roll over is the matured-only fast-path (Figma node `4116:10969`, #866). The served
   `Past Due` status maps here.
 
 A `Closed` status keeps the performing layout (the lifecycle spine reads it as the completed
@@ -497,9 +498,9 @@ own border/title).
   backdrop-click cancel (never a stray confirm), navy confirm button; pending disables both
   buttons and a failure (404 = loan not indexed) surfaces inline.
 - **Roll over** (Matured variant, S9, Figma node `4116:14050`, #870) — collects the new rate (bps)
-  - new maturity, then submits the on-chain `LoanRegistry.rollover` via `useRollover`. The
-    mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
-    on-chain at rollover, avoiding a fabricated transaction-effect number.
+  + new maturity, then submits the on-chain `LoanRegistry.rollover` via `useRollover`. The
+  mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
+  on-chain at rollover, avoiding a fabricated transaction-effect number.
 - **Update lifecycle** (S10, Figma node `4116:14087`, #872) — collects the non-economic mutable
   fields (status, CCR %, location, optional metadata URI), then submits the on-chain
   `LoanRegistry.updateMutable` via `useUpdateLifecycle`. Default/Closed are not offered (they route
@@ -541,7 +542,7 @@ The loan detail page renders a Documents section on **every** loan, regardless o
   (`SubmissionView.loan_id` matches `LoanBookEntry.loan_id`), reading `documents` off the
   loan-book row the page already fetches is strictly better — one fetch instead of two, no
   cross-endpoint consistency window, correct for loans whose submission row is absent, and
-  sourced from the loan's _live_ indexed metadata rather than the frozen submitted payload.
+  sourced from the loan's *live* indexed metadata rather than the frozen submitted payload.
 - **Placement.** Directly before the Other-actions section, in every §S5 status variant
   (performing, watchlist, disbursing, matured). The section **always renders**; only its
   contents vary — never hidden, never gated on `documents.length`.
@@ -550,7 +551,7 @@ The loan detail page renders a Documents section on **every** loan, regardless o
   square, the document name as a dashed-underline link, opening `uri` in a new tab
   (`target="_blank" rel="noopener noreferrer"`). A document with an empty `uri` renders inert
   (`aria-disabled`, no pointer events, no `href`) rather than a dead link. The zero-document
-  empty state reads "No documents provided." The card _chrome_ (26px `CardTitle`) follows the
+  empty state reads "No documents provided." The card *chrome* (26px `CardTitle`) follows the
   loan-detail page's own idiom rather than origination's 28px heading — the one deliberate
   divergence from the "reuse verbatim" rule.
 - **Never-fabricate.** Served order is preserved; no filtering, sorting, deduping, or synthesized
@@ -745,15 +746,15 @@ View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-r
 
 ### Column mapping
 
-| #   | Header                       | Source                      | Rendering                                                     |
-| --- | ---------------------------- | --------------------------- | ------------------------------------------------------------- |
-| 1   | Legal Entity Name            | `legal_name`                | verbatim; non-empty-string guard → `—`                        |
-| 2   | Jurisdiction                 | `country` (nullable)        | **verbatim**, no code→name mapping; `null`/empty → `—`        |
-| 3   | First Registration Date      | `created_at` (ISO-8601 UTC) | `formatIsoDateUtc` → `"18 Jun 2026"`                          |
-| 4   | Account Status               | `kyb_status`                | chip, mapping below                                           |
-| 5   | Blockchain Address Available | `stellar_address`           | `Yes` when a non-empty string, else `No`                      |
-| 6   | Bank Info Available          | _(none)_                    | always `—` until #1275 lands — **never** `No`                 |
-| 7   | _(unlabeled)_                | —                           | 34px trailing `›` chevron, `aria-hidden`, Loan Book precedent |
+| # | Header | Source | Rendering |
+|---|---|---|---|
+| 1 | Legal Entity Name | `legal_name` | verbatim; non-empty-string guard → `—` |
+| 2 | Jurisdiction | `country` (nullable) | **verbatim**, no code→name mapping; `null`/empty → `—` |
+| 3 | First Registration Date | `created_at` (ISO-8601 UTC) | `formatIsoDateUtc` → `"18 Jun 2026"` |
+| 4 | Account Status | `kyb_status` | chip, mapping below |
+| 5 | Blockchain Address Available | `stellar_address` | `Yes` when a non-empty string, else `No` |
+| 6 | Bank Info Available | *(none)* | always `—` until #1275 lands — **never** `No` |
+| 7 | *(unlabeled)* | — | 34px trailing `›` chevron, `aria-hidden`, Loan Book precedent |
 
 Rows are consumed in served order — `lp_repo::list()` is `ORDER BY created_at DESC, id DESC`. No
 client-side sort, no search, no pagination, no ledger column (`GET /v1/lps/{id}/bank-deposits` is the detail page's — see
@@ -761,15 +762,15 @@ client-side sort, no search, no pagination, no ledger column (`GET /v1/lps/{id}/
 
 ### Account Status mapping
 
-| served `kyb_status` | chip label               | band      |
-| ------------------- | ------------------------ | --------- |
-| `NotStarted`        | New                      | neutral   |
-| `InProgress`        | KYB Pending              | attention |
-| `UnderReview`       | KYB Pending              | attention |
-| `Passed`            | Approved                 | positive  |
-| `Failed`            | **Rejected**             | negative  |
-| `ChangesRequested`  | Changes requested        | attention |
-| anything else       | the raw string, verbatim | neutral   |
+| served `kyb_status` | chip label | band |
+|---|---|---|
+| `NotStarted` | New | neutral |
+| `InProgress` | KYB Pending | attention |
+| `UnderReview` | KYB Pending | attention |
+| `Passed` | Approved | positive |
+| `Failed` | **Rejected** | negative |
+| `ChangesRequested` | Changes requested | attention |
+| anything else | the raw string, verbatim | neutral |
 
 `Failed → "Rejected"` is a proposed resolution for the epic's open question 1 (not yet
 human-confirmed): the requirements enumerate the happy path (New / KYB Pending / Approved) and are
@@ -838,8 +839,8 @@ wrapper), and empty ("No registered LP counterparties.") states mirror the Loan 
 including `data-testid`s prefixed `lp-counterparties-`.
 
 **403 pre-check (tech debt, see `docs/exec-plans/tech-debt-tracker.md`):** the shared
-`toUserError`'s `matchApiStatus` maps every `403` to _"You are not authorized to review
-submissions."_ — copy hardcoded for the Origination review flow. `useLpCounterpartiesTable` checks
+`toUserError`'s `matchApiStatus` maps every `403` to *"You are not authorized to review
+submissions."* — copy hardcoded for the Origination review flow. `useLpCounterpartiesTable` checks
 `error instanceof ApiError && error.status === 403` **before** calling `toUserError` and returns
 page-specific copy ("Your trustee account is not authorized to view LP counterparties.") instead.
 
@@ -970,8 +971,8 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   Loan & metadata (`to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
   `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
   (four 6-decimal amount strings + rate bps + two unix-second dates), Collateral (`initial_ccr`
-  - `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
-    (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
+  + `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
+  (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
 - **Unique-URI banner:** a standing attention banner states that `metadata_uri` must be unique
   per submission; the API's duplicate rejection additionally surfaces inline on submit.
 - **Import from JSON (`-ImportJsonDialog.tsx`):** a dialog with a plain textarea. A successful
@@ -1013,7 +1014,7 @@ on-chain pre-mint, so there is no `loan_id` to call `GET /v1/loan-book/{loan_id}
 - Corridor → `loan_data.corridor`, arrow-formatted (same regex as the table). Governing law →
   `loan_data.governing_law`. Protection → `loan_data.protection` (optional — `—` when absent).
 - Location → `loan_data.initial_location` (#1014), rendered `{location_type} — {location_
-identifier}` (e.g. "Warehouse — SGS bonded stockpile, Callao, Peru"); a half missing on the wire
+  identifier}` (e.g. "Warehouse — SGS bonded stockpile, Callao, Peru"); a half missing on the wire
   renders alone, both missing renders `—`.
 - Documents → the top-level `submission.documents` (**not** `loan_data.documents` — the backend
   already lifts it); `[]` renders a graceful empty state.
@@ -1202,7 +1203,7 @@ the Risk-Council **display** screens for flows 11/12.
   `ccr_bps` used as-is); Repaid to date (`useLoanFinancials`, `offtaker − offtaker_outstanding`);
   CCR trend (`useLoanCcrHistory` + `buildCcrTrend`, reused from `-useLoanDetail.ts`); current
   at-risk % (`summary.at_risk_wl_and_default_pct`); concentration (`summary.top_concentration`,
-  only when it names _this_ loan's own commodity — the endpoint serves a single portfolio-wide top
+  only when it names *this* loan's own commodity — the endpoint serves a single portfolio-wide top
   concentration, not a per-commodity share — `—` otherwise).
 - **Mock** (no backend source, flagged, not per-loan): "Days on watchlist" (no "watchlist since"
   timestamp served anywhere, the same gap the Watchlist loan-detail page has, #859); the "→ Y% if
@@ -1391,7 +1392,7 @@ uppercase `text-[12px] leading-[16.8px] tracking-[0.96px]` ink-muted; row `bg-[r
 min-h-[72px] px-[17px] py-[15px]`; icon circle 36px brand bg wrapping the sidebar's
 `OriginationIcon` lightbulb glyph (reused rather than redrawing the Figma SVG asset — both are the
 lightbulb glyph); Review/Open button brand bg, white text, `rounded-[4px] h-[40px] px-[16px]`
-(human review follow-up: an earlier cut wrongly copied the Origination _table_'s disabled Review
+(human review follow-up: an earlier cut wrongly copied the Origination *table*'s disabled Review
 button shape, a different Figma component — corrected).
 
 ## Session & auth
@@ -1433,13 +1434,13 @@ navigations), and a reactive navigate alone (#1009). The trigger — "status fli
 `/sign-in` with no navigation in flight" — is inherently racy to convert into a navigation, which
 is why correctness no longer depends on one.
 
-| Scenario                      | URL        | Content   |
-| ----------------------------- | ---------- | --------- |
-| Visit `/` signed out          | `/sign-in` | overlay   |
-| Deep-link `/loans` signed out | `/sign-in` | overlay   |
-| Sign in from `/sign-in`       | `/`        | dashboard |
-| Logout from any page          | `/sign-in` | overlay   |
-| Token expiry mid-session      | `/sign-in` | overlay   |
+| Scenario | URL | Content |
+|---|---|---|
+| Visit `/` signed out | `/sign-in` | overlay |
+| Deep-link `/loans` signed out | `/sign-in` | overlay |
+| Sign in from `/sign-in` | `/` | dashboard |
+| Logout from any page | `/sign-in` | overlay |
+| Token expiry mid-session | `/sign-in` | overlay |
 
 ### Sign-in flow (#791, hardened #793/#794/#795)
 
@@ -1455,7 +1456,7 @@ unauthorized-error states).
      reconnect as a no-op, so a watch effect alone would miss this case, #794); not yet connected
      → the watch effect runs it once EVM connects.
    - **Stellar:** there is **no** immediate run from ambient state (#1106): the kit persists the
-     last wallet, so the hydrated address may belong to a _different_ wallet than the row the
+     last wallet, so the hydrated address may belong to a *different* wallet than the row the
      user just clicked — signing it produced Hana's "Incorrect wallet" rejection for a
      Freighter-addressed challenge. Every Soroban row click re-fetches via
      `useStellarConnectors().connectWallet`, which **clears the shared store address before
@@ -1463,16 +1464,16 @@ unauthorized-error states).
      and even a same-address re-pick produces a store transition (undefined → address) that
      fires the watch effect. Sign-in therefore always uses the freshly fetched address of the
      wallet actually picked.
-     A wallet on the _other_ chain never triggers sign-in. Dismissing the modal with no pick resets
-     to `unauthenticated` (#793 — no stuck "Connecting…"). An `orchestrating` ref makes the
-     challenge/verify orchestration single-flight.
-     The trustee mounts `ConnectModalProvider` with **`signMessageOnly`** (#1112): the Soroban tab
-     offers only wallets whose kit module implements `signMessage` — Freighter, xBull, LOBSTR
-     (Albedo/Rabet cannot sign messages and would dead-end after the challenge; they stay available
-     in the LP app, which only needs `signTransaction`). Belt-and-braces, `runSignIn` also
-     distinguishes the kit's unsupported-wallet rejection (`code: -3`) from a genuine user decline:
-     unsupported surfaces an explanatory `unauthorized` error ("This wallet cannot sign
-     authentication messages…"), while a true decline stays silent per spec.
+   A wallet on the *other* chain never triggers sign-in. Dismissing the modal with no pick resets
+   to `unauthenticated` (#793 — no stuck "Connecting…"). An `orchestrating` ref makes the
+   challenge/verify orchestration single-flight.
+   The trustee mounts `ConnectModalProvider` with **`signMessageOnly`** (#1112): the Soroban tab
+   offers only wallets whose kit module implements `signMessage` — Freighter, xBull, LOBSTR
+   (Albedo/Rabet cannot sign messages and would dead-end after the challenge; they stay available
+   in the LP app, which only needs `signTransaction`). Belt-and-braces, `runSignIn` also
+   distinguishes the kit's unsupported-wallet rejection (`code: -3`) from a genuine user decline:
+   unsupported surfaces an explanatory `unauthorized` error ("This wallet cannot sign
+   authentication messages…"), while a true decline stays silent per spec.
 2. `GET /v1/auth/challenge?address=&chain_id=` — `401` = address not on the server allow-list →
    `unauthorized` + explanatory error (authorization is entirely server-side); other failures →
    "could not reach the sign-in service".
