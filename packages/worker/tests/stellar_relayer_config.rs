@@ -35,6 +35,7 @@ fn clear_chain_env(id: i64) {
             "RELAYER_STELLAR_SIGNER_SECRET",
             "RELAYER_STELLAR_RPC_URL",
             "RELAYER_STELLAR_NETWORK_PASSPHRASE",
+            "STELLAR_YIELD_MINTER_ID",
         ] {
             std::env::remove_var(format!("{prefix}{suffix}"));
         }
@@ -269,4 +270,123 @@ fn relayer_settings_dispatch_evm_and_stellar() {
 
     clear_chain_env(1);
     clear_chain_env(99_000_001);
+}
+
+/// Minimal env for a parseable Stellar relayer config, minus anything minter-related.
+fn set_base_env(id: i64) {
+    unsafe {
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_RPC_URL"),
+            "https://soroban-testnet.stellar.org",
+        );
+        std::env::set_var(
+            format!("CHAIN_{id}_RELAYER_STELLAR_ACCESS_MANAGER_ID"),
+            FIXTURE_CONTRACT,
+        );
+        std::env::set_var(
+            format!("CHAIN_{id}_RELAYER_STELLAR_PLUSD_SAC_ID"),
+            FIXTURE_CONTRACT,
+        );
+        std::env::set_var(
+            format!("CHAIN_{id}_RELAYER_STELLAR_SIGNER_SECRET"),
+            fixture_seed_strkey(),
+        );
+    }
+}
+
+const MINTER_CONTRACT: &str = "CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX";
+
+#[test]
+fn stellar_relayer_minter_id_unset_yields_none() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+
+    let s = StellarRelayerSettings::from_chain_env(id).expect("parses");
+    assert!(
+        s.minter_id.is_none(),
+        "with no minter configured the wire-in matching phase must stay dark"
+    );
+    clear_chain_env(id);
+}
+
+#[test]
+fn stellar_relayer_minter_id_comes_from_the_indexer_yield_minter_key() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+    unsafe {
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_YIELD_MINTER_ID"),
+            MINTER_CONTRACT,
+        );
+    }
+
+    let s = StellarRelayerSettings::from_chain_env(id).expect("parses");
+    assert_eq!(
+        s.minter_id.as_deref(),
+        Some(MINTER_CONTRACT),
+        "the phase reads rows the indexer wrote, so it must read the indexer's id"
+    );
+    clear_chain_env(id);
+}
+
+#[test]
+fn stellar_relayer_minter_id_rejects_a_malformed_contract_id() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+    unsafe {
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_YIELD_MINTER_ID"),
+            "not-a-contract",
+        );
+    }
+
+    let result = StellarRelayerSettings::from_chain_env(id);
+    assert!(
+        result.is_err(),
+        "a malformed minter id must fail startup, not silently disable the phase"
+    );
+    clear_chain_env(id);
+}
+
+#[test]
+fn stellar_relayer_minter_id_rejects_a_bad_strkey_checksum() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+
+    // Two characters of a valid id transposed: right length, right alphabet,
+    // wrong CRC16. Length/alphabet validation waves it through; only a Strkey
+    // parse catches it. Left unchecked, the indexer filter matches nothing and
+    // the matching phase matches nothing, silently, forever.
+    let transposed = {
+        let mut c: Vec<char> = MINTER_CONTRACT.chars().collect();
+        c.swap(10, 11);
+        c.into_iter().collect::<String>()
+    };
+    assert_ne!(transposed, MINTER_CONTRACT);
+    unsafe {
+        std::env::set_var(format!("CHAIN_{id}_STELLAR_YIELD_MINTER_ID"), &transposed);
+    }
+
+    let result = StellarRelayerSettings::from_chain_env(id);
+    assert!(
+        result.is_err(),
+        "a Strkey whose checksum does not match must fail startup"
+    );
+    clear_chain_env(id);
 }

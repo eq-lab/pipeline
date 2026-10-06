@@ -296,6 +296,25 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
 | ShutdownController | `ShutdownEntered` | Halt all normal flows |
 | All pausable | `Paused() / Unpaused()` | Halt/resume flows |
 
+**Stellar (Soroban) events** are routed by contract id in
+`worker/src/indexer/stellar/parsers.rs`, each contract's id supplied by a
+`CHAIN_<id>_STELLAR_*_ID` variable; a contract whose id is unset has no branch at
+all, so an un-deployed contract ships dark rather than warning every cycle. The
+minter contributes two of its twenty-one events (#1416):
+
+| Contract | Event (topic) | Stored as | Why |
+|---|---|---|---|
+| Minter | `wire_in` | `WireIn` | Carries `ref_hash` = `sha256(payment_reference)`, the key that ties an on-chain mint back to a recorded bank deposit |
+| Minter | `wire_in_assigned` | `WireInAssigned` | An escrowed wire reaching its LP; carries no reference of its own, so it is joined to its `WireIn` by wire id |
+
+They are enabled by `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` — the minter under its
+former name. `pipeline-stellar-contracts` #33 renamed `yield-minter` to `minter`
+and rewrote it, deleting `mint_yield` and `YieldMinted`, so one id covers both
+event families: a pre-#33 deployment emits `YieldMinted`, a post-#33 one emits
+the wire-in pair, and no deployment emits both. The minter's other events —
+`WireInReturned`, the `Cash*` family, `WireOut*`, `Ramp*`, `Snapshot` and the
+admin setters — are not collected yet.
+
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
 **Stellar asset-transfer tracking.** The Stellar indexer can additionally track a single asset's (SAC / SEP-41 token) `transfer` events. It persists **raw** transfers only (`from` / `to` / `amount` in `contract_logs.params`, amount as an i128 string) under `event_name = "AssetTransfer"`. No role/direction labeling — downstream consumers classify against address lists. Configured **job-level** (applies to every Stellar chain), read once at startup:
@@ -486,6 +505,30 @@ The phase is enabled only when both contract ids are configured:
 Operational prerequisite: the relayer signer keypair must hold the minter role on
 the access-manager, and the yield-minter must hold the executor role (wired in
 `pipeline-stellar-contracts`).
+
+**Phase 5 — wire-in matching (#1416).** Pure database work: no RPC, no signing.
+Every cycle it joins indexed minter events to `lp_bank_deposits` by `ref_hash`
+and sets `is_minted = true` on the deposits whose PLUSD has reached an LP —
+either a `WireIn` staked straight to the LP, or an escrowed one resolved by its
+`WireInAssigned`. Both statements skip deposits already marked, so a repeat is a
+no-op and no outbox is needed. `is_minted` therefore means *the LP holds vault
+shares for this wire*, not merely that PLUSD exists: an escrowed wire stays
+`false` until it is assigned. Indexed `WireIn` events whose `ref_hash` matches no
+deposit row at all are counted and logged at `info` alongside the two match
+counts — a wire minted outside this flow, or against a reference we never
+recorded. Escrowed wires are **not** in that figure: they do have a deposit row,
+so nothing currently reports a wire stuck awaiting assignment (TD-118).
+
+The phase has no configuration of its own: it runs when the indexer's
+`CHAIN_<id>_STELLAR_YIELD_MINTER_ID` is set, and shares that id. Deliberately so
+— this phase makes no contract call, the id serves only the `receiver <> minter`
+comparison, and it must be the one the indexed rows came from. A second,
+relayer-scoped key could disagree, and escrowed wires would then be marked
+minted. (The relayer's own `RELAYER_STELLAR_*` contract ids belong to Phase 4,
+which does submit transactions and so may target another deployment.)
+
+Known gap: `WireInReturned` is not indexed, so a wire returned to the bank keeps
+`is_minted = false` and reads the same as one still awaiting assignment (TD-116).
 
 ### Data Pipeline
 

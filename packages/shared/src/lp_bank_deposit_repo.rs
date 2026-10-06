@@ -1,5 +1,7 @@
 // spec: packages/shared/migrations/20261005000001_lp_bank_deposits_ref_hash.sql, Issue #1413
 
+use anyhow::Result;
+use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -65,5 +67,89 @@ impl LpBankDepositRepo {
         .bind(lp_id)
         .fetch_all(&self.pool)
         .await
+    }
+}
+
+/// The store seam the relayer's wire-in matching phase works against (#1416),
+/// so the phase can be tested without a database.
+///
+/// Every statement is scoped to both `chain_id` and the emitting
+/// `contract_address` — on the `contract_logs` side only. `lp_bank_deposits`
+/// has no chain column, so the deposit side is not scoped at all (TD-117).
+/// The contract scope is not redundant: a minter redeploy
+/// leaves the previous deployment's `WireIn` rows in `contract_logs`, and those
+/// rows carry the *old* minter as `receiver` — so Rule A's `receiver <> minter`
+/// test would be true for them and would mark every escrowed deposit of that
+/// deployment minted.
+#[async_trait]
+pub trait WireInMatcher: Send + Sync {
+    /// Rule A — a `WireIn` staked straight to an LP. Returns rows flipped.
+    async fn mark_minted_direct(&self, chain_id: i64, minter_id: &str) -> Result<u64>;
+    /// Rule B — an escrowed `WireIn` resolved by `WireInAssigned`. Returns rows flipped.
+    async fn mark_minted_assigned(&self, chain_id: i64, minter_id: &str) -> Result<u64>;
+    /// Indexed `WireIn` events from this minter whose `ref_hash` matches no deposit.
+    async fn count_unmatched_wire_ins(&self, chain_id: i64, minter_id: &str) -> Result<i64>;
+}
+
+#[async_trait]
+impl WireInMatcher for LpBankDepositRepo {
+    async fn mark_minted_direct(&self, chain_id: i64, minter_id: &str) -> Result<u64> {
+        let result = sqlx::query(
+            "UPDATE lp_bank_deposits d \
+                SET is_minted = true \
+               FROM contract_logs l \
+              WHERE l.chain_id         = $1 \
+                AND l.contract_address = $2 \
+                AND l.event_name       = 'WireIn' \
+                AND l.params->>'receiver' <> $2 \
+                AND d.ref_hash   = decode(l.params->>'ref_hash', 'hex') \
+                AND NOT d.is_minted",
+        )
+        .bind(chain_id)
+        .bind(minter_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    async fn mark_minted_assigned(&self, chain_id: i64, minter_id: &str) -> Result<u64> {
+        let result = sqlx::query(
+            "UPDATE lp_bank_deposits d \
+                SET is_minted = true \
+               FROM contract_logs a \
+               JOIN contract_logs w \
+                 ON  w.chain_id         = a.chain_id \
+                 AND w.contract_address = a.contract_address \
+                 AND w.event_name       = 'WireIn' \
+                 AND w.params->>'id'    = a.params->>'id' \
+              WHERE a.chain_id         = $1 \
+                AND a.contract_address = $2 \
+                AND a.event_name       = 'WireInAssigned' \
+                AND d.ref_hash   = decode(w.params->>'ref_hash', 'hex') \
+                AND NOT d.is_minted",
+        )
+        .bind(chain_id)
+        .bind(minter_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    async fn count_unmatched_wire_ins(&self, chain_id: i64, minter_id: &str) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM contract_logs l \
+              WHERE l.chain_id         = $1 \
+                AND l.contract_address = $2 \
+                AND l.event_name       = 'WireIn' \
+                AND NOT EXISTS ( \
+                    SELECT 1 FROM lp_bank_deposits d \
+                     WHERE d.ref_hash = decode(l.params->>'ref_hash', 'hex') \
+                )",
+        )
+        .bind(chain_id)
+        .bind(minter_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
     }
 }

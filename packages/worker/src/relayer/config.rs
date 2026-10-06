@@ -80,6 +80,13 @@ pub struct StellarRelayerSettings {
     /// Soroban loan-registry contract id — `can_yield_be_minted` view target and
     /// `PaymentRecorded` discovery filter. `None` disables the yield-mint phase.
     pub loan_registry_id: Option<Contract>,
+    /// Soroban minter contract id, as the plain Strkey the matching phase binds
+    /// into SQL (#1416). `None` disables the wire-in matching phase. Read from
+    /// the indexer's `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` — one id for one
+    /// contract (renamed from `yield-minter` to `minter` by contracts #33), and
+    /// this phase interprets rows that indexer wrote, so the two must never be
+    /// configured apart.
+    pub minter_id: Option<String>,
     pub signing_key: SigningKey,
     pub sumsub_enabled: bool,
     /// KYT via Elliptic. Enabled with ELLIPTIC_ENABLED=true.
@@ -143,6 +150,27 @@ impl StellarRelayerSettings {
         let yield_minter_id = parse_opt_contract("YIELD_MINTER_ID")?;
         let loan_registry_id = parse_opt_contract("LOAN_REGISTRY_ID")?;
 
+        // Deliberately the INDEXER's key, with no relayer-scoped variant: the
+        // matching phase never calls the minter, it reads rows the indexer
+        // wrote. A second key could disagree with the one those rows came from,
+        // and Rule A's `receiver <> minter` test would then mark escrowed wires
+        // minted — the exact mistake that test exists to prevent. Bound as
+        // text, so it stays a validated String, not a parsed `Contract`.
+        let minter_key = format!("{indexer_p}YIELD_MINTER_ID");
+        let minter_id = match env::var(&minter_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&minter_key, raw)?;
+                // `validate_contract_id` checks length and alphabet, not the
+                // Strkey CRC16. Parse it too — discarding the result, since the
+                // phase binds the id as text — so a transposed character fails
+                // startup instead of matching nothing for ever.
+                Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{minter_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
         let interval_secs = env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?;
         let sumsub_enabled = env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?;
         // Lenient parse (1/true/yes, case-insensitive) to match how the API reads
@@ -159,6 +187,7 @@ impl StellarRelayerSettings {
             plusd_sac_id,
             yield_minter_id,
             loan_registry_id,
+            minter_id,
             signing_key,
             sumsub_enabled,
             elliptic_enabled,

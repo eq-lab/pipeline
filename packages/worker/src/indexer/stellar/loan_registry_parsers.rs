@@ -501,7 +501,7 @@ fn extract_enum_variant_name(b64: &str) -> Option<String> {
 }
 
 /// Look up a key in an `ScVal::Map` and return the value by cloning it.
-fn get_map_entry(b64: &str, key: &str) -> Option<ScVal> {
+pub(crate) fn get_map_entry(b64: &str, key: &str) -> Option<ScVal> {
     let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
     match val {
         ScVal::Map(Some(map)) => {
