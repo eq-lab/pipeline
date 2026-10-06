@@ -757,8 +757,8 @@ View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-r
 | 7 | *(unlabeled)* | — | 34px trailing `›` chevron, `aria-hidden`, Loan Book precedent |
 
 Rows are consumed in served order — `lp_repo::list()` is `ORDER BY created_at DESC, id DESC`. No
-client-side sort, no search, no pagination, no ledger column (`GET /v1/lp-ledger` and
-`GET /v1/lps/{id}/bank-deposits` belong to the detail page's scope, not this list).
+client-side sort, no search, no pagination, no ledger column (`GET /v1/lps/{id}/bank-deposits` is the detail page's — see
+[LP bank deposits](#lp-bank-deposits)).
 
 ### Account Status mapping
 
@@ -811,7 +811,26 @@ reason drafts on errors, prevent duplicate writes, and reset across LP route cha
 Mutations invalidate the current LP detail and listing. Conflicts refresh both queries so
 stale review actions disappear. Pending, 404, permission, expired session, and network states
 have explicit feedback and retry; a session-expiry response clears the trustee session. Bank
-Info remains unavailable and no bank or ledger actions are added.
+Info remains unavailable; bank deposits are below.
+
+### LP bank deposits
+
+The detail page carries a **Bank deposits** card (`-LpBankDepositsSection.tsx`, presenter
+`-useLpBankDeposits.ts`, hooks `api/useLpBankDeposits.ts`) over `GET`/`POST
+/v1/lps/{id}/bank-deposits` (#1413). No Figma; styling follows the page's other cards. It renders
+at every KYB status — the endpoint does not gate on one.
+
+- **List** — `GET`, 30 s poll, served order (newest first), no client sort. Columns: Received
+  (`occurred_at`, `DD Mon YYYY, HH:MM UTC`), Amount (string-formatted `$1,234.50`, no float
+  round-trip), Payment reference (`ref_hash` as its `title`), PLUSD (`Minted` / `Not minted` from
+  `is_minted`), Recorded by. Loading, empty ("No bank deposits recorded."), and error + Retry
+  states.
+- **Record deposit** — dialog (shares `useLpReviewDialog`'s focus trap/Escape) with Amount (USD),
+  Payment reference, and Received at (UTC, `datetime-local` defaulting to now). Client checks
+  mirror the API: amount > 0 with ≤ 2 decimals (grouping commas stripped), nonblank reference
+  (sent trimmed), a valid non-future time sent as `…:00Z`. Validation shows on submit; the
+  dialog closes on `201` and keeps drafts on error. `409` reads "A deposit with this payment
+  reference is already recorded." Every settle invalidates the deposits query.
 
 ### States & error copy
 
