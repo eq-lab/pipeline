@@ -53,6 +53,7 @@ function lp(overrides: Partial<LpResponse> = {}): LpResponse {
     address_linked_at: null,
     kyb_status: "NotStarted",
     writable: true,
+    notify_on_review: false,
     owner_account_id: "account",
     owner_chain_id: null,
     owner_address: null,

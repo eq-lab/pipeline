@@ -28,6 +28,7 @@ export interface LpResponse {
   kyb_decided_at?: string | null;
   kyb_decision_reason?: string | null;
   writable: boolean;
+  notify_on_review: boolean;
   owner_account_id: string;
   owner_chain_id: number | null;
   owner_address: string | null;
@@ -56,6 +57,7 @@ export function upsertMyLp(profile: {
   legal_name: string;
   country: string | null;
   contact_email: string;
+  notify_on_review?: boolean;
 }): Promise<LpResponse> {
   return apiFetch<LpResponse>("/v1/lps/me", {
     method: "POST",
