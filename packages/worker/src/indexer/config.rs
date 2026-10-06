@@ -116,7 +116,17 @@ impl StellarIndexerSettings {
         };
 
         let yield_minter_id = match env::var(&ym_key) {
-            Ok(raw) if !raw.trim().is_empty() => Some(validate_contract_id(&ym_key, raw)?),
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&ym_key, raw)?;
+                // `validate_contract_id` checks length and alphabet, not the
+                // Strkey CRC16. The relayer parses this same variable strictly
+                // (`relayer::config`), so without this the two components would
+                // disagree about what is a valid id — one booting, the other
+                // refusing, on one typo.
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{ym_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
             _ => None,
         };
 

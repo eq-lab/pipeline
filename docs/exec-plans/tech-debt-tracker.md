@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-120.**
+**Next free number: TD-121.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1636,6 +1636,29 @@ line, whichever section it lands in.
   indexer keeps `log_collector_state`, or bound the join to the ledgers since the oldest
   `NOT is_minted` deposit. An expression index on `(params->>'id')` filtered to the two event
   names would help the join itself, but does nothing about the unbounded range.
+
+---
+
+### TD-120: A contract id configured after its contract went live silently misses every earlier event
+
+- **Date:** 2026-10-06
+- **Location:** `packages/shared/src/db.rs` (`log_collector_state`, keyed by `chain_id` alone);
+  `packages/worker/src/indexer/stellar/poller.rs` — surfaced by Issue #1416.
+- **Gap:** The indexer's cursor is per chain, not per contract. Adding a contract id to an
+  already-running chain starts polling it from the chain's *current* ledger, and nothing rewinds
+  to pick up what that contract emitted before. This is not new to #1416 — `loan_registry_id` and
+  `yield_minter_id` have always had it — but #1416 makes it consequential, because the expected
+  rollout is exactly "ship the var unset, set it once the minter is deployed".
+- **Impact:** Every `WireIn` emitted between the contract going live and the variable being set is
+  never indexed, so those deposits stay `is_minted = false` permanently. They are invisible to the
+  phase's figures too: `count_unmatched_wire_ins` counts indexed events with no deposit, not
+  deposits with no event, so the phase reports `0/0/0` and (below the gate) logs nothing at all.
+  Soroban RPC also keeps only ~7 days of event history, so the window to recover by re-indexing
+  closes on its own.
+- **Suggested fix:** Key `log_collector_state` by `(chain_id, contract_address)` so a newly
+  configured contract starts from its own zero, or provide an explicit operational re-index with a
+  start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
+  and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
 ---
 

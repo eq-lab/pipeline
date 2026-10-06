@@ -84,6 +84,14 @@ impl LpBankDepositRepo {
 #[async_trait]
 pub trait WireInMatcher: Send + Sync {
     /// Rule A — a `WireIn` staked straight to an LP. Returns rows flipped.
+    ///
+    /// "Straight to an LP" is `receiver != the minter itself`, which mirrors the
+    /// contract's own branch verbatim: `record_wire_in` sets `Escrowed` iff
+    /// `receiver == e.current_contract_address()` and otherwise stakes and sets
+    /// `Direct` (pipeline-stellar-contracts `contracts/minter/src/lib.rs:120`).
+    /// Should the contract ever escrow to a dedicated address instead, this test
+    /// silently becomes wrong in the dangerous direction — escrowed wires would
+    /// pass it and be marked minted, and nothing ever clears the flag.
     async fn mark_minted_direct(&self, chain_id: i64, minter_id: &str) -> Result<u64>;
     /// Rule B — an escrowed `WireIn` resolved by `WireInAssigned`. Returns rows flipped.
     async fn mark_minted_assigned(&self, chain_id: i64, minter_id: &str) -> Result<u64>;
