@@ -55,6 +55,15 @@ real `<button>` with inherited focus-visible styling.
 Reuse: page-local to the Disconnected home view (replaced by the portfolio summary once a wallet
 connects); not hoisted into `@pipeline/ui`.
 
+**`variant` prop (issue #1421):** `"connect-wallet"` (default, unchanged above) | `"get-started"`.
+The `"get-started"` variant renders the home zero state's promo card (Figma node `6701:98331`):
+heading "Get Started", the same shared sub-line "Access real-world yield on-chain", a "Sign Up"
+`Button variant="primary-dark" size="m"` CTA (node `6701:98336`), and `SignUpIllustration` (from
+`@pipeline/ui`, node `6702:105867`) in place of `WalletIllustration` — pinned `top-[42px] right-0
+w-[288px]` inside the fixed-274px-tall card (desktop-only variant, so no mobile anchor math is
+needed). `onConnect` opens the create-account auth flow instead of the wallet connect modal; the
+caller decides which handler to wire per variant.
+
 ### EarnedCard
 
 Disconnected-state "Earned" placeholder card. Smallest card in the left column of the Disconnected
@@ -1445,6 +1454,18 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
    | StakeCard       | col 3–4, row 2                       | Once the user holds sPLUSD the card switches to the "Staked PLUSD" balance layout (Figma node `1497:95217`); otherwise it keeps the marketing CTA. The empty/plusd button labels are mobile-specific, so the desktop instance only opts into the `"splusd"` state. |
    | QnaSection      | col 1–7, row 3                       | Questions & Answers strip.                                                                                                                                                                                                                                         |
 
+   The table above is the `"legacy"` branch (today's wallet-connection-driven layout, unchanged by
+   issue #1421). When `deriveHomeState` returns `"zero"` (no auth session — see "Home state
+   derivation" below) the grid instead renders:
+
+   | Slot            | Grid position                        | Content                                                                                                            |
+   | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                  |
+   | Balances        | col 1–2, row 2                       | `StartHereCard` + `StakeCard` stacked (Figma node `6701:98347`) — both CTAs open the auth flow, Sell forced disabled. |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` + `EarnedCard` stacked (Figma node `6701:98377`) — Add Funds stays disabled.            |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                            |
+
 **Mobile (below md) visual structure — single-column stack**, rendered directly (no outer white Card wrapper — Figma frame `1989:8292` uses the page background, not a white card):
 
 1. `WelcomeHeader` — title only (32px), stats strip hidden. On mobile the `isConnected` prop drives "Welcome back" vs "Welcome" copy; the prop is ignored on desktop (the desktop block renders at md+ instead).
@@ -1469,6 +1490,20 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 - `"empty"` — connected but zero balances (State A, Figma `1988:7074`)
 
 Only meaningful when `isConnected === true`; callers short-circuit to the disconnected layout otherwise.
+
+**Home state derivation (`deriveHomeState`, issue #1421):** `packages/frontend/src/components/homeState.ts`
+exports `HomeState = "zero" | "legacy"` and `deriveHomeState({ hasSession, isConnected, kybStatus? })`.
+The precedence rule (not re-derived here — see `docs/product-specs/home-screen-states.md`
+for the authoritative six-state table) is: `"zero"` whenever `hasSession` is `false`, regardless of
+`isConnected` — a connected-but-unauthenticated wallet is a distinct, not-yet-designed combination
+and is deliberately ignored by this seam. `isConnected` and `kybStatus` are accepted on the input
+type so states 2–6 (#1422–#1426) can extend the union without changing every call site, but only
+`hasSession` is read today. The route reads `useAuthSession().isAuthenticated` for `hasSession`;
+it does **not** call `getMyLp` (`GET /v1/lps/me`) on this path — that call would 401 while
+unauthenticated, and `kyb_status` only enters the derivation once a later issue wires it. Only the
+desktop grid branches on `homeState`; the mobile stack keeps today's `isConnected`-only rendering
+unchanged (no mobile frame exists yet for the zero state — the composition stays flexible for one
+to slot in later).
 
 Token discipline: this composer adds no raw colors, fonts, sizes, or radii — every value comes from `@pipeline/ui/styles/theme.css` via component primitives or Tailwind utilities that resolve theme tokens.
 

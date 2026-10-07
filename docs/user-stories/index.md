@@ -217,3 +217,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1377 Backend: notify_on_review flag on POST /v1/lps/me + narrowed write freeze](https://github.com/eq-lab/pipeline/issues/1377) | [1377-notify-on-review.md](./epic-1376/1377-notify-on-review.md) | Initial |
 | [#1378 Backend: KYB decision emails to the LP](https://github.com/eq-lab/pipeline/issues/1378) | [1378-kyb-decision-emails.md](./epic-1376/1378-kyb-decision-emails.md) | Initial |
 | [Epic #1376 KYB review lifecycle](https://github.com/eq-lab/pipeline/issues/1376) | [verification-runbook.md](./epic-1376/verification-runbook.md) | Initial |
+
+---
+
+## Epic #1419 — LP home screen states
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1421 Home state 1: zero state — not signed in, no account, wallet not connected](https://github.com/eq-lab/pipeline/issues/1421) | [1421-home-zero-state.md](./epic-1419/1421-home-zero-state.md) | Initial |

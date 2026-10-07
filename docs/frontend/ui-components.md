@@ -72,6 +72,28 @@ differently).
 - **Reuse points:** `AddUsdCard`'s `verify` and `verifying` variants (`docs/frontend/bank-transfers.md#checkillustration`),
   each positioning the illustration absolutely in the card's bottom-right corner via `className`.
 
+## SignUpIllustration
+
+**Source:** `packages/ui/src/components/SignUpIllustration/SignUpIllustration.tsx`.
+
+Striped line-art illustration for the home zero state's "Get Started" promo card (issue #1421) —
+Figma node `6702:105867` (file `A43rjYYjSwdTmiwwf5cx5n`). The artwork ships as
+`packages/ui/src/assets/illustrations/striped-signup.svg`, exported from the Dev Mode MCP and
+committed verbatim (Figma asset URLs expire).
+
+- **Rendering technique:** the same CSS-mask recipe as `WalletIllustration`/`CheckIllustration` —
+  the SVG paints as a `mask-image` over a `currentColor` background, so `tone` swaps the fill
+  without duplicating paths.
+- **Sizing:** intrinsic square aspect ratio `288 / 288`, matching the Figma node exactly. Default
+  `width` 288.
+- **Tone semantics:** `primary` (default, ink) — the production use inside
+  `ConnectWalletPromoCard`'s `"get-started"` variant; `muted` available for a future surface.
+- **Accessibility:** purely decorative — `aria-hidden="true"`; meaning is conveyed by the card's
+  own heading/CTA text.
+- **Reuse points:** `ConnectWalletPromoCard`'s `"get-started"` variant only
+  (`docs/frontend/dashboard-components.md#connectwalletpromocard`), pinned `top-[42px] right-0
+  w-[288px]` inside the card's fixed 274px height.
+
 ## ActivityHeader
 
 **Source:** `packages/ui/src/components/ActivityHeader/ActivityHeader.tsx`.

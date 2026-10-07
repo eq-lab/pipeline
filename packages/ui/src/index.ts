@@ -25,6 +25,11 @@ export type {
   CheckIllustrationProps,
   CheckIllustrationTone,
 } from "./components/CheckIllustration";
+export { SignUpIllustration } from "./components/SignUpIllustration";
+export type {
+  SignUpIllustrationProps,
+  SignUpIllustrationTone,
+} from "./components/SignUpIllustration";
 export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";
 export { NetworkSwitchDialog } from "./components/NetworkSwitchDialog/NetworkSwitchDialog";

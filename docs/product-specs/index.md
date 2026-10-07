@@ -45,5 +45,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [collateral-valuation.md](./collateral-valuation.md) | Collateral Valuation | Price sources and feed budget, standard-goods and NSR concentrate valuation modes, off-chain valuation record, CCR derivation |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |
+| [dashboards-yield-history.md](./dashboards-yield-history.md) | Dashboards | Protocol Dashboard Panel D: yield history, T-bill accrual, exchange rate, trailing yield |
+| [home-screen-states.md](./home-screen-states.md) | Dashboards | LP home route (`/`) state table and precedence rule (epic #1419) |
 | [audit-logging.md](./audit-logging.md) | Audit Logging | Append-only log, third-party sink, compliance traceability |
 | [api-authorization.md](./api-authorization.md) | API Authorization | Signature-based login (EVM EIP-191 + Stellar SEP-0053), single-use nonce, ES256 JWT, allow-list & roles |

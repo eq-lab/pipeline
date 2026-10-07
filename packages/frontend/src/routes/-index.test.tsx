@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React, { useEffect } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider, useWalletView } from "@/wallet";
@@ -68,6 +68,22 @@ const mockConnectModalOpen = vi.fn();
 vi.mock("@/wallet", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/wallet")>()),
   useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
+}));
+
+const { mockAuthState, mockAuthFlowOpen } = vi.hoisted(() => ({
+  mockAuthState: { isAuthenticated: true },
+  mockAuthFlowOpen: vi.fn(),
+}));
+
+vi.mock("@/auth", () => ({
+  useAuthSession: () => ({
+    token: undefined,
+    email: undefined,
+    expiresAt: undefined,
+    isAuthenticated: mockAuthState.isAuthenticated,
+    signOut: vi.fn(),
+  }),
+  useAuthFlow: () => ({ open: mockAuthFlowOpen, close: vi.fn() }),
 }));
 
 const mockPnlData = vi.hoisted(() => ({
@@ -137,7 +153,10 @@ vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
 }));
 
+const { mockGetMyLp } = vi.hoisted(() => ({ mockGetMyLp: vi.fn() }));
+
 vi.mock("@/api", () => ({
+  getMyLp: mockGetMyLp,
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
   useDashboardSummary: () => ({
@@ -205,6 +224,9 @@ function renderHomeStellar() {
 
 beforeEach(() => {
   mockPnlData.current = undefined;
+  mockAuthState.isAuthenticated = true;
+  mockAuthFlowOpen.mockClear();
+  mockGetMyLp.mockClear();
 });
 
 describe("Home page — disconnected state", () => {
@@ -1190,5 +1212,138 @@ describe("Home page — dust balances display as zero (#1186)", () => {
       name: "Stake PLUSD",
     });
     expect(stakeBtns[0]).not.toBeDisabled();
+  });
+});
+
+describe("Home page — zero state, no session (#1421)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = false;
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the Get Started promo card with a Sign Up CTA on the desktop grid", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Get Started" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Sign Up" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("clicking Sign Up opens the create-account auth flow, not the connect modal", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const signUpBtn = await screen.findByRole("button", { name: "Sign Up" });
+    await user.click(signUpBtn);
+
+    await waitFor(() => {
+      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+
+  it("clicking Buy on the desktop grid opens the create-account auth flow", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const buyBtn = within(grid).getByRole("button", { name: "Buy" });
+    await user.click(buyBtn);
+
+    await waitFor(() => {
+      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+
+  it("clicking the Stake CTA on the desktop grid opens the create-account auth flow", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const stakeBtn = within(grid).getByRole("button", { name: "Stake PLUSD" });
+    await user.click(stakeBtn);
+
+    await waitFor(() => {
+      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+
+  it("every Sell button is disabled", async () => {
+    renderHome();
+    const sellBtns = await screen.findAllByRole("button", { name: "Sell" });
+    expect(sellBtns.length).toBeGreaterThanOrEqual(1);
+    for (const btn of sellBtns) {
+      expect(btn).toBeDisabled();
+    }
+  });
+
+  it("AddUsdCard renders in its locked variant with Add Funds disabled", async () => {
+    renderHome();
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "locked");
+    });
+    const addFundsBtn = screen.getByRole("button", { name: "Add Funds" });
+    expect(addFundsBtn).toBeDisabled();
+  });
+
+  it("grid occupancy: StartHereCard and StakeCard share the left stack; AddUsdCard and EarnedCard share the right stack", async () => {
+    renderHome();
+    await waitFor(() => {
+      const leftStack = screen.getByTestId("home-balances-stack");
+      expect(
+        within(leftStack).getByTestId("home-start-here-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(leftStack).getByTestId("home-stake-card"),
+      ).toBeInTheDocument();
+
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(
+        within(rightStack).getByTestId("home-add-usd-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(rightStack).getByTestId("home-earned-card"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("RecentActivityCard shows its empty placeholder", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("You will see your transactions here").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("QnaSection renders", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(screen.getByTestId("home-qna-section")).toBeInTheDocument();
+    });
+  });
+
+  it("issues no GET /v1/lps/me request while unauthenticated", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Get Started" }),
+      ).toBeInTheDocument();
+    });
+    expect(mockGetMyLp).not.toHaveBeenCalled();
   });
 });

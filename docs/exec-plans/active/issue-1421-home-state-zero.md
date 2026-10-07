@@ -77,46 +77,49 @@ Design tokens resolve onto the existing theme: `fill/brand` `#000080` → `--col
   so the promo card must gain a variant rather than have its copy overwritten in place.
 - **Dependency.** No unmerged blockers. Branch `feat/home-state-zero` and draft PR #1427 already exist.
 
-## Open Questions
+## Open Questions — resolved
 
-1. **Who owns the home state machine?** `docs/frontend/bank-transfers.md` § AddUsdCard states explicitly that
-   deriving the `AddUsdCard` variant from `(authenticated?, kybStatus, trustAccountBalance)` "is #1282's state
-   machine", and that guessing a precedence order elsewhere "would be a fabricated contract". Epic #1419 says it
-   is independent of #1282 and asks *this* issue to record the precedence rule. Does epic #1419 take ownership
-   (and `bank-transfers.md` gets corrected to point at `dashboards.md`), or must the derivation wait on #1282?
-2. **Unauthenticated but wallet connected — which state wins?** The epic's state table pairs "not signed in"
-   with "wallet not connected", but a visitor can connect a wallet without a session. Does the zero state win on
-   `!session` alone (wallet ignored), or does a connected wallet promote them to a balance-driven state? This is
-   the precedence rule the issue asks to write down, and the epic does not settle it.
-3. **Mobile zero-state layout.** No mobile frame exists for this state. Does mobile adopt the desktop reshuffle
-   (StartHere+Stake in the left stack, AddUsdCard+Earned in the right) and mount `AddUsdCard`, or does it keep
-   epic #463's current mobile disconnected stack (`docs/user-stories/epic-463/465-mobile-home-base.md`) with only
-   the promo-card copy/CTA changed?
+Answered by the human on the Issue (comment dated 2026-10-07):
+
+1. **Who owns the home state machine?** Epic #1419 takes ownership. `docs/frontend/bank-transfers.md`
+   § AddUsdCard now points at `docs/product-specs/home-screen-states.md` /
+   `packages/frontend/src/components/homeState.ts` instead of #1282.
+2. **Unauthenticated but wallet connected — which state wins?** The zero state wins on `!session`
+   alone; wallet connection is ignored for this decision. Recorded in
+   `docs/product-specs/home-screen-states.md`. The unauthenticated-but-connected
+   combination will be designed and added as a separate state later.
+3. **Mobile zero-state layout.** No mobile layout for this state now — mobile keeps epic #463's
+   existing disconnected stack unchanged (driven purely by `isConnected`, independent of
+   `homeState`). The composition stays flexible (desktop-only branch in `routes/index.tsx`) so a
+   mobile frame can slot in later without a refactor.
 
 ## Implementation Steps
 
-1. **Add the state seam.** New `packages/frontend/src/components/homeState.ts`:
+1. **Add the state seam. — DONE.** New `packages/frontend/src/components/homeState.ts`:
    - `export type HomeState = "zero" | "legacy";` (states 2–6 extend this union in #1422–#1426).
    - `export function deriveHomeState(input: { hasSession: boolean; isConnected: boolean; kybStatus?: string; ... }): HomeState` —
      returns `"zero"` when there is no session, `"legacy"` otherwise. Resolve Open Question 2 before writing
      the `!hasSession` guard; it determines whether `isConnected` participates.
    - Colocated `homeState.test.ts` covering the truth table.
-2. **Wire it into the route.** In `packages/frontend/src/routes/index.tsx`:
+2. **Wire it into the route. — DONE.** In `packages/frontend/src/routes/index.tsx`:
    - `const session = useAuthSession();` (from `@/auth`), feed `deriveHomeState`.
    - Branch the desktop grid and mobile stack on `homeState === "zero"`. Keep every existing
      `isConnected` / `mobileHomeState` code path intact for the `"legacy"` branch — this issue adds a branch,
      it does not refactor the existing one.
    - Do **not** add a `getMyLp` call on this path (unauthenticated → 401). `kyb_status` enters the derivation
      in #1422+.
-3. **Promo card variant.** Add `variant?: "connect-wallet" | "get-started"` to
+3. **Promo card variant. — DONE.** Add `variant?: "connect-wallet" | "get-started"` to
    `packages/frontend/src/components/ConnectWalletPromoCard.tsx`, defaulting to `"connect-wallet"` so every
    existing call site is unchanged. `"get-started"` renders heading "Get Started", CTA label "Sign Up"
    (`Button variant="primary-dark" size="m"`, node `6701:98336`), the new illustration, and
    `data-node-id="6701:98331"`. The sub-line "Access real-world yield on-chain" is shared.
-4. **Export the illustration.** Pull `6702:105867` via the Dev Mode MCP, commit the exact asset bytes under
-   `packages/ui/src/components/` as a new illustration alongside `WalletIllustration`, export it from
-   `packages/ui/src/index.ts`. Size it with an explicit 288×288 box; never `width:auto`.
-5. **Zero-state desktop grid** inside the existing `hidden md:block` outer `Card`:
+4. **Export the illustration. — DONE.** Pulled `6702:105867` via the Dev Mode MCP (exact SVG bytes
+   fetched from the live local asset host, since the forced-code MCP call itself hung) and
+   committed as `packages/ui/src/assets/illustrations/striped-signup.svg`; new `SignUpIllustration`
+   component at `packages/ui/src/components/SignUpIllustration/` alongside `WalletIllustration`,
+   exported from `packages/ui/src/index.ts`. 288×288 explicit box via `aspectRatio`, never
+   `width:auto`.
+5. **Zero-state desktop grid — DONE.** inside the existing `hidden md:block` outer `Card`:
    - col 1–4 row 1: `ConnectWalletPromoCard variant="get-started"` with `onConnect` → `useAuthFlow().open("create-account")`.
    - col 5–7 rows 1–2: `RecentActivityCard` (unchanged).
    - col 1–2 row 2: `StartHereCard` + `StakeCard` stacked, `gap-4`.
@@ -125,15 +128,19 @@ Design tokens resolve onto the existing theme: `fill/brand` `#000080` → `--col
    - CTAs stay disabled/inert exactly as the frame shows: `AddUsdCard`'s circular Add Funds is already
      disabled in `locked`; `StartHereCard` Sell disabled; Buy/Stake open the auth flow rather than the
      connect modal in this state.
-6. **Zero-state mobile stack** in the `md:hidden` block — per Open Question 3.
-7. **Record the precedence rule** in `docs/product-specs/dashboards.md` under `## LP Dashboard`: a new
+6. **Zero-state mobile stack — DONE (no-op by design).** Per the resolved Open Question 3, mobile
+   keeps epic #463's existing `isConnected`-driven stack untouched; no code change was needed in
+   the `md:hidden` block.
+7. **Record the precedence rule — DONE.** in `docs/product-specs/dashboards.md` under `## LP Dashboard`: a new
    "Home screen states" subsection with the epic's six-row condition table and an explicit ordered precedence
    list, marking states 2–6 as not-yet-implemented.
-8. **Update frontend docs.** `docs/frontend/dashboard-components.md` § "Home route": add the zero-state grid
+8. **Update frontend docs. — DONE.** `docs/frontend/dashboard-components.md` § "Home route": add the zero-state grid
    table and the `deriveHomeState` seam; § "ConnectWalletPromoCard": document the `variant` prop.
    `docs/frontend/bank-transfers.md` § AddUsdCard: replace the "#1282 owns the derivation" note per Open
-   Question 1.
-9. **Lint.** `yarn workspace @pipeline/frontend lint`, `yarn workspace @pipeline/frontend build`,
+   Question 1. Also added a new `## SignUpIllustration` entry to `docs/frontend/ui-components.md`
+   (not explicitly listed in this step, but required by the "one spec pointer per file" rule for
+   the new component).
+9. **Lint. — DONE**, see test/lint results in the coder report. `yarn workspace @pipeline/frontend lint`, `yarn workspace @pipeline/frontend build`,
    `npx tsx scripts/lint-docs.ts`. Keep the repo's comment-minimal rule: one 2–3-line spec-pointer header per
    new file, nothing else.
 
@@ -163,13 +170,15 @@ Vitest + React Testing Library, colocated. Commands:
   user-stories doc. Token-exact check: no raw hex, font, size or radius literals introduced — every value
   resolves through `packages/ui/src/styles/theme.css`.
 
-## Docs to Update
+## Docs to Update — all DONE
 
 - `docs/product-specs/dashboards.md` — § LP Dashboard: new "Home screen states" subsection with the state
   table and the precedence rule (required by the Issue).
 - `docs/frontend/dashboard-components.md` — § "Home route" (zero-state grid + `deriveHomeState` seam);
   § "ConnectWalletPromoCard" (`variant` prop).
 - `docs/frontend/bank-transfers.md` — § AddUsdCard: the variant-derivation ownership note (Open Question 1).
+- `docs/frontend/ui-components.md` — new § "SignUpIllustration" (not in the original plan list;
+  added because the new illustration component needs a spec pointer target).
 - `docs/user-stories/epic-1419/1421-home-zero-state.md` — new, in the epic-463 story format
   (Persona / Pre-conditions / Steps / Expected outcomes per scenario).
 - `docs/user-stories/index.md` — new "Epic #1419 — LP home screen states" section with the #1421 row.

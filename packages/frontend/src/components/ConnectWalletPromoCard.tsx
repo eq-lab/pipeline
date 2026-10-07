@@ -1,25 +1,24 @@
 import React from "react";
-import { Button, Card, WalletIllustration } from "@pipeline/ui";
+import {
+  Button,
+  Card,
+  SignUpIllustration,
+  WalletIllustration,
+} from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 
 // spec: docs/frontend/dashboard-components.md#connectwalletpromocard
-// (composition, layout, illustration positioning, Figma frame 1497:94556 node 1497:94566).
+// (composition, layout, illustration positioning, variants, Figma frame 1497:94556 node 1497:94566; zero-state node 6701:98331).
+
+export type ConnectWalletPromoCardVariant = "connect-wallet" | "get-started";
 
 export interface ConnectWalletPromoCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children" | "title"
 > {
-  /**
-   * Click handler for the Connect CTA. Optional so the card can be dropped
-   * into Storybook / preview routes without wiring a wallet provider; the
-   * page-level container is expected to supply this in production.
-   */
   onConnect?: () => void;
-  /**
-   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
-   * (24px). Set to `"md"` (16px) on mobile per Figma frame `1989:8292`.
-   */
   padding?: CardPadding;
+  variant?: ConnectWalletPromoCardVariant;
 }
 
 // Stable heading id so consumers do not collide if multiple cards mount in a
@@ -30,7 +29,10 @@ const HEADING_ID_BASE = "connect-wallet-promo-card-title";
 export const ConnectWalletPromoCard = React.forwardRef<
   HTMLDivElement,
   ConnectWalletPromoCardProps
->(function ConnectWalletPromoCard({ onConnect, className, ...rest }, ref) {
+>(function ConnectWalletPromoCard(
+  { onConnect, className, variant = "connect-wallet", ...rest },
+  ref,
+) {
   // Use a unique id per instance to avoid duplicate id attributes when both
   // the mobile and desktop blocks render this card in the same DOM.
   const instanceId = React.useId();
@@ -50,6 +52,10 @@ export const ConnectWalletPromoCard = React.forwardRef<
     .filter(Boolean)
     .join(" ");
 
+  const heading = variant === "get-started" ? "Get Started" : "Connect Wallet";
+  const ctaLabel = variant === "get-started" ? "Sign Up" : "Connect";
+  const nodeId = variant === "get-started" ? "6701:98331" : "1497:94566";
+
   return (
     <Card
       ref={ref}
@@ -57,26 +63,37 @@ export const ConnectWalletPromoCard = React.forwardRef<
       role="region"
       aria-labelledby={HEADING_ID}
       className={composed}
-      data-node-id="1497:94566"
+      data-node-id={nodeId}
+      data-variant={variant}
       {...rest}
     >
       {/* Illustration positioning — desktop + mobile Figma anchor math:
           spec: docs/frontend/dashboard-components.md#connectwalletpromocard. */}
-      <span
-        className={[
-          "pointer-events-none absolute -translate-y-1/2",
-          // -translate-y-1/2 positions by centre, so top-[192px] supplies the
-          // centre value directly rather than the top-edge value.
-          "top-[192px] right-[-48px] w-[235px]",
-          "md:top-[70%] md:w-[314px]",
-        ].join(" ")}
-      >
-        <WalletIllustration
-          tone="primary"
-          width="100%"
-          data-node-id="I1497:94566;1360:49452"
-        />
-      </span>
+      {variant === "get-started" ? (
+        <span className="pointer-events-none absolute top-[42px] right-0 w-[288px]">
+          <SignUpIllustration
+            tone="primary"
+            width="100%"
+            data-node-id="6702:105867"
+          />
+        </span>
+      ) : (
+        <span
+          className={[
+            "pointer-events-none absolute -translate-y-1/2",
+            // -translate-y-1/2 positions by centre, so top-[192px] supplies the
+            // centre value directly rather than the top-edge value.
+            "top-[192px] right-[-48px] w-[235px]",
+            "md:top-[70%] md:w-[314px]",
+          ].join(" ")}
+        >
+          <WalletIllustration
+            tone="primary"
+            width="100%"
+            data-node-id="I1497:94566;1360:49452"
+          />
+        </span>
+      )}
 
       {/* Heading block — top of the card. `relative` keeps the text above the
           absolutely-positioned illustration in the stacking order. */}
@@ -100,7 +117,7 @@ export const ConnectWalletPromoCard = React.forwardRef<
           data-node-id="I1497:94566;1360:49019;6539:2329"
           data-testid="home-connect-heading"
         >
-          Connect Wallet
+          {heading}
         </h2>
         <p
           className={[
@@ -128,7 +145,7 @@ export const ConnectWalletPromoCard = React.forwardRef<
         data-node-id="I1497:94566;1360:49021"
         data-testid="home-connect-cta"
       >
-        Connect
+        {ctaLabel}
       </Button>
     </Card>
   );

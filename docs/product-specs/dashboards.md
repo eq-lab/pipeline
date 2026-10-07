@@ -33,6 +33,12 @@ Visible to any LP who connects a whitelisted wallet to the Pipeline app.
 **Pending deposits**
 - Below-minimum accumulated USDC that has not yet reached the 1,000 USDC mint threshold is shown as "pending deposits — not yet earning yield", alongside the additional amount needed to unlock the mint.
 
+**Home screen states (epic #1419):** the home route (`/`) renders one of six states depending on
+account/wallet/KYB/balance combinations (full table: [home-screen-states.md](./home-screen-states.md)).
+**Precedence rule:** the first matching state wins, and the zero state (not signed in) wins on the
+absence of an auth session **alone** — a connected-but-unauthenticated wallet is ignored and still
+sees the zero state; that combination is undesigned today and will become its own state later.
+
 ---
 
 ## Protocol Dashboard — Header
@@ -185,15 +191,4 @@ time-in-queue over completed requests.
 
 ## Protocol Dashboard — Panel D: Yield History
 
-**Cumulative yield minted (issue #760)**
-- The "Top" row (Figma frame `3283:67619`) is a two-column layout: TVL card (left) and Cumulative Yield card (right). The Cumulative Yield series is backed by `GET /v1/dashboard/yield-history` (net minted to sPLUSD, blended single series). The loan-vs-T-bill yield split remains gated on the backend issue #738 — the labelled `#738` seams in the code are preserved. The prior `GET /v1/stats/yield` gross-accrual estimate is no longer the headline source; `summary.cumulative_yield_total` drives the KPI value.
-- Time series of cumulative PLUSD minted into the sPLUSD vault. Loan-vs-T-bill split (two distinct series: loan repayment yield and T-bill yield) is gated on #738.
-
-**Real-time T-bill accrual**
-- Rolling accrued T-bill yield since the last weekly distribution. Resets to zero after each weekly mint event. Informational only — does not affect sPLUSD NAV until the weekly distribution fires.
-
-**Exchange rate history**
-- Time series of the sPLUSD → PLUSD exchange rate.
-
-**Trailing yield**
-- Trailing 30-day annualised yield to the senior tranche, with breakdown into loan-yield contribution and T-bill-yield contribution.
+Split out to [dashboards-yield-history.md](./dashboards-yield-history.md) (size limit).
