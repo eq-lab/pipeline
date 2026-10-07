@@ -17,12 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-26: `RecentActivityCard` empty-placeholder copy says "your" where Figma says "all"
-- **Date:** 2026-10-07
-- **Location:** `packages/frontend/src/components/RecentActivityCard.tsx:134` — found while implementing #1422 against Figma frame `6701:97538`.
-- **Symptom:** The card's empty state renders "You will see **your** transactions here"; both the zero-state frame `6701:98220` and the unverified-state frame `6701:97538` read "You will see **all** transactions here".
-- **Root cause:** Pre-existing copy, shipped before either #1421 or #1422 touched this shared component — not introduced by this issue, and not fixed here since the copy is shared across every state that mounts `RecentActivityCard`.
-
 ### BUG-25: An out-of-range `effective_at` becomes a 1969 date instead of a 400
 - **Date:** 2026-10-02
 - **Location:** `packages/api/src/routes/collateral_valuation.rs:598` (`unix_to_datetime`). Found while writing the same helper for #1413's `POST /v1/lps/{id}/bank-deposits`, which has since dropped Unix seconds for an ISO-8601 string and no longer has the helper.

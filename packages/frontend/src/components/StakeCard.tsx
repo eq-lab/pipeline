@@ -1,13 +1,13 @@
+// spec: docs/frontend/dashboard-components.md#stakecard
 import React from "react";
 import { formatUnits } from "viem";
 import { Button, Card, CoinIcon } from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 import { useStats, formatApy } from "@/api";
 
-// spec: docs/frontend/dashboard-components.md#stakecard
-// (composition, states A/B/C, APY sourcing, Figma frame 1497:94556 node 1497:94702).
-
 type MobileHomeState = "empty" | "plusd" | "splusd";
+
+export type StakeCardLayout = "default" | "compact";
 
 export interface StakeCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -22,9 +22,50 @@ export interface StakeCardProps extends Omit<
   splusdUsdValue?: string;
   splusdDecimals?: number;
   padding?: CardPadding;
+  layout?: StakeCardLayout;
 }
 
 const HEADING_ID_BASE = "stake-card-title";
+
+const ELEVATION_BORDER = "!border-t !border-r-[3px] !border-b-[3px] !border-l";
+
+const eyebrowClasses = [
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "font-[var(--font-weight-regular)]",
+  "text-[color:var(--color-pipeline-ink)]",
+  "m-0",
+].join(" ");
+
+const responsiveHeadingClasses = [
+  "font-[family-name:var(--font-display)]",
+  "text-[length:var(--text-pipeline-heading-s-mobile)]",
+  "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
+  "md:text-[length:var(--text-pipeline-heading-s)]",
+  "md:leading-[var(--text-pipeline-heading-s--line-height)]",
+  "font-[var(--font-weight-regular)]",
+  "text-[color:var(--color-pipeline-ink)]",
+  "m-0",
+].join(" ");
+
+const compactHeadingClasses = [
+  "font-[family-name:var(--font-display)]",
+  "text-[length:var(--text-pipeline-heading-s)]",
+  "leading-[var(--text-pipeline-heading-s--line-height)]",
+  "font-[var(--font-weight-regular)]",
+  "text-[color:var(--color-pipeline-ink)]",
+  "m-0",
+].join(" ");
+
+const subtitleClasses = [
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-caption)]",
+  "leading-[var(--text-pipeline-caption--line-height)]",
+  "font-[var(--font-weight-regular)]",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+  "m-0",
+].join(" ");
 
 function formatBigintNumber(value: bigint | undefined, decimals = 18): string {
   if (value === undefined) return "0.00";
@@ -47,6 +88,8 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
       mobileSplusdInPlusd,
       splusdUsdValue,
       splusdDecimals = 18,
+      padding,
+      layout = "default",
       ...rest
     },
     ref,
@@ -61,11 +104,77 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
       Boolean(stakeDisabled) ||
       (mobileHomeState !== undefined && mobileHomeState === "empty");
 
+    if (layout === "compact") {
+      const compactComposed = [
+        "flex h-[164px] w-full flex-col justify-between",
+        ELEVATION_BORDER,
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return (
+        <Card
+          ref={ref}
+          variant="white"
+          padding={padding ?? "md"}
+          role="region"
+          aria-labelledby={HEADING_ID}
+          className={compactComposed}
+          data-node-id="6701:97678"
+          {...rest}
+        >
+          <header
+            className="flex w-full flex-col"
+            data-node-id="6701:97679"
+            data-testid="home-stake-header"
+          >
+            <p
+              id={HEADING_ID}
+              className={eyebrowClasses}
+              data-node-id="6701:97680"
+            >
+              Stake PLUSD
+            </p>
+            <div className="flex flex-col gap-1" data-node-id="6701:97683">
+              <p
+                className={compactHeadingClasses}
+                data-node-id="6701:97685"
+                data-testid="home-stake-heading"
+              >
+                {apyLabel}
+              </p>
+              <p className={subtitleClasses} data-node-id="6701:97688">
+                From senior loan coupons and T-bills
+              </p>
+            </div>
+          </header>
+
+          <div
+            className="flex w-full items-center gap-2"
+            data-node-id="6701:97692"
+            data-testid="home-stake-actions"
+          >
+            <Button
+              variant="primary-blue"
+              size="m"
+              onClick={onStake}
+              disabled={isStakeCtaDisabled}
+              data-node-id="6701:97693"
+              data-testid="home-stake-button"
+            >
+              Stake
+            </Button>
+          </div>
+        </Card>
+      );
+    }
+
     const composed = [
       "flex flex-col items-end justify-between",
       "min-h-[274px] w-full",
       "overflow-hidden",
-      "!border-t !border-r-[3px] !border-b-[3px] !border-l",
+      ELEVATION_BORDER,
       className,
     ]
       .filter(Boolean)
@@ -85,6 +194,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
         <Card
           ref={ref}
           variant="white"
+          padding={padding}
           role="region"
           aria-labelledby={HEADING_ID}
           className={composed}
@@ -95,32 +205,10 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             className="flex w-full flex-col items-start gap-1 self-start"
             data-node-id="1497:94703"
           >
-            <p
-              id={HEADING_ID}
-              className={[
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-body)]",
-                "leading-[var(--text-pipeline-body--line-height)]",
-                "font-[var(--font-weight-regular)]",
-                "text-[color:var(--color-pipeline-ink)]",
-                "m-0",
-              ].join(" ")}
-            >
+            <p id={HEADING_ID} className={eyebrowClasses}>
               Staked PLUSD
             </p>
-            <p
-              className={[
-                "font-[family-name:var(--font-display)]",
-                "text-[length:var(--text-pipeline-heading-s-mobile)]",
-                "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
-                "md:text-[length:var(--text-pipeline-heading-s)]",
-                "md:leading-[var(--text-pipeline-heading-s--line-height)]",
-                "font-[var(--font-weight-regular)]",
-                "text-[color:var(--color-pipeline-ink)]",
-                "m-0",
-              ].join(" ")}
-              data-testid="splusd-shares"
-            >
+            <p className={responsiveHeadingClasses} data-testid="splusd-shares">
               {sharesFormatted}
             </p>
             <div
@@ -133,16 +221,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
                 className="size-4 shrink-0"
                 aria-hidden
               />
-              <p
-                className={[
-                  "font-[family-name:var(--font-body)]",
-                  "text-[length:var(--text-pipeline-caption)]",
-                  "leading-[var(--text-pipeline-caption--line-height)]",
-                  "font-[var(--font-weight-regular)]",
-                  "text-[color:var(--color-pipeline-ink-muted)]",
-                  "m-0",
-                ].join(" ")}
-              >
+              <p className={subtitleClasses}>
                 {inPlusdFormatted} sPLUSD
                 {splusdUsdValue ? ` · ${splusdUsdValue}` : ""}
               </p>
@@ -191,6 +270,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
       <Card
         ref={ref}
         variant="white"
+        padding={padding}
         role="region"
         aria-labelledby={HEADING_ID}
         className={composed}
@@ -204,45 +284,19 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
         >
           <p
             id={HEADING_ID}
-            className={[
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-body)]",
-              "leading-[var(--text-pipeline-body--line-height)]",
-              "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink)]",
-              "m-0",
-            ].join(" ")}
+            className={eyebrowClasses}
             data-node-id="1497:94704"
           >
             Stake PLUSD
           </p>
           <p
-            className={[
-              "font-[family-name:var(--font-display)]",
-              "text-[length:var(--text-pipeline-heading-s-mobile)]",
-              "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
-              "md:text-[length:var(--text-pipeline-heading-s)]",
-              "md:leading-[var(--text-pipeline-heading-s--line-height)]",
-              "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink)]",
-              "m-0",
-            ].join(" ")}
+            className={responsiveHeadingClasses}
             data-node-id="1497:94709"
             data-testid="home-stake-heading"
           >
             {apyLabel}
           </p>
-          <p
-            className={[
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-caption)]",
-              "leading-[var(--text-pipeline-caption--line-height)]",
-              "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink-muted)]",
-              "m-0",
-            ].join(" ")}
-            data-node-id="1497:94711"
-          >
+          <p className={subtitleClasses} data-node-id="1497:94711">
             From senior loan coupons and T-bills
           </p>
         </header>

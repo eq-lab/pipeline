@@ -42,3 +42,25 @@ designed loading state for the home grid, and request failures do not imply an e
 Until states 3–6 land, every other signed-in session renders today's pre-#1419
 wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
 `packages/frontend/src/components/homeState.ts`).
+
+## Card composition (states 1–2)
+
+States 1 and 2 share one desktop composition — a 1136px-wide 7-column grid inside a 1200px white
+panel padded 32, matching Figma `6701:98220` (state 1) and `6701:97538` (state 2):
+
+| Row | Columns | State 1 (zero)                                   | State 2 (unverified)                              |
+| --- | ------- | -------------------------------------------------- | --------------------------------------------------- |
+| 1   | 1–4     | Get Started promo, 643×274                         | Total Balance placeholder + Connect wallet, 643×274 |
+| 1–2 | 5–7     | Recent activity, 478×634                           | Recent activity, 478×634                            |
+| 2   | 1–2     | Get PLUSD 313×164 + Stake PLUSD 313×164            | same                                                |
+| 2   | 3–4     | Add USD (locked) 313×246 + Earnings 313×82         | Verify your account 313×246 + Earnings 313×82       |
+| 3   | 1–7     | FAQ strip, 1136×89                                 | same                                                |
+
+Both states use the **compact** Get PLUSD / Stake PLUSD / Earnings cards — 16px interior padding,
+a single 40px rectangular CTA per card (no 128px circular Stake button), and the Figma copy
+"Convert with USDC 1:1". The `"legacy"` branch keeps the taller pre-#1419 cards until states 3–6
+land and define their own composition.
+
+Values on these cards stay backend-served: the staking APY renders exactly as `GET /v1/stats`
+serves it (`—` when absent, with the `" p.a."` suffix kept), and Earnings reads "Tracked once you
+stake" until `GET /v1/pnl` serves a total. Nothing on the home grid is computed client-side.

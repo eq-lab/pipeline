@@ -112,9 +112,12 @@ export const PortfolioPlaceholderCard = React.forwardRef<
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
 
+  const isConnectWallet = variant === "connect-wallet";
+
   const composed = [
-    "relative flex flex-col gap-6",
-    "min-h-[274px] w-full",
+    "relative flex flex-col",
+    isConnectWallet ? "h-[274px] gap-2" : "min-h-[274px] gap-6",
+    "w-full",
     "overflow-hidden",
     "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
@@ -137,96 +140,107 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     <Card
       ref={ref}
       variant="yellow"
+      padding={isConnectWallet ? "md" : "lg"}
       role="region"
       aria-labelledby={HEADING_ID}
       className={composed}
-      data-node-id={variant === "connect-wallet" ? "6701:97649" : "1497:95048"}
-      {...(variant === "connect-wallet" ? { "data-variant": variant } : {})}
+      data-node-id={isConnectWallet ? "6701:97649" : "1497:95048"}
+      {...(isConnectWallet ? { "data-variant": variant } : {})}
       {...rest}
     >
       <div className="flex flex-col items-start gap-4 md:flex-row md:items-start md:justify-between">
-        <header className="flex flex-col gap-1">
+        <header
+          className={isConnectWallet ? "flex flex-col" : "flex flex-col gap-1"}
+        >
           <span
             className={[
               "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-caption)]",
-              "leading-[var(--text-pipeline-caption--line-height)]",
+              isConnectWallet
+                ? "text-[length:var(--text-pipeline-body)]"
+                : "text-[length:var(--text-pipeline-caption)]",
+              isConnectWallet
+                ? "leading-[var(--text-pipeline-body--line-height)]"
+                : "leading-[var(--text-pipeline-caption--line-height)]",
               "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink-muted)]",
+              isConnectWallet
+                ? "text-[color:var(--color-pipeline-ink)]"
+                : "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >
             Total Balance
           </span>
 
-          <h2
-            id={HEADING_ID}
-            className={[
-              "font-[family-name:var(--font-display)]",
-              "text-[length:var(--text-pipeline-heading-m)]",
-              "leading-[var(--text-pipeline-heading-m--line-height)]",
-              "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink)]",
-              "m-0",
-            ].join(" ")}
-          >
-            {balanceLabel}
-          </h2>
-
-          {variant === "connect-wallet" ? (
-            <button
-              type="button"
-              onClick={onConnectWallet}
+          <div className="flex flex-col gap-1">
+            <h2
+              id={HEADING_ID}
               className={[
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-body)]",
-                "leading-[var(--text-pipeline-body--line-height)]",
-                "text-[color:var(--color-pipeline-brand)]",
-                "underline underline-offset-2",
-                "cursor-pointer bg-transparent p-0",
+                "font-[family-name:var(--font-display)]",
+                "text-[length:var(--text-pipeline-heading-m)]",
+                "leading-[var(--text-pipeline-heading-m--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "m-0",
               ].join(" ")}
             >
-              Connect wallet
-            </button>
-          ) : (
-            <>
-              <span
-                data-testid="earning-caption"
+              {balanceLabel}
+            </h2>
+
+            {isConnectWallet ? (
+              <button
+                type="button"
+                onClick={onConnectWallet}
                 className={[
                   "font-[family-name:var(--font-body)]",
-                  "text-[length:var(--text-pipeline-caption)]",
-                  "leading-[var(--text-pipeline-caption--line-height)]",
-                  "font-[var(--font-weight-regular)]",
-                  "text-[color:var(--color-pipeline-ink-muted)]",
+                  "text-[length:var(--text-pipeline-body)]",
+                  "leading-[var(--text-pipeline-body--line-height)]",
+                  "text-[color:var(--color-pipeline-brand)]",
+                  "underline underline-offset-2",
+                  "cursor-pointer bg-transparent p-0",
                 ].join(" ")}
               >
-                {unrealizedPnlLabel}
-              </span>
-
-              {mobileHomeState === "splusd" ? null : (
-                <Link
-                  to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
-                  search={
-                    mobileHomeState === "plusd"
-                      ? { tab: "stake" as const }
-                      : { direction: "deposit" as const }
-                  }
+                Connect wallet
+              </button>
+            ) : (
+              <>
+                <span
+                  data-testid="earning-caption"
                   className={[
                     "font-[family-name:var(--font-body)]",
                     "text-[length:var(--text-pipeline-caption)]",
                     "leading-[var(--text-pipeline-caption--line-height)]",
                     "font-[var(--font-weight-regular)]",
                     "text-[color:var(--color-pipeline-ink-muted)]",
-                    "underline-offset-2 hover:underline",
-                    "no-underline",
                   ].join(" ")}
                 >
-                  {mobileHomeState === "plusd"
-                    ? "Stake PLUSD to start earning"
-                    : "Get PLUSD to start"}
-                </Link>
-              )}
-            </>
-          )}
+                  {unrealizedPnlLabel}
+                </span>
+
+                {mobileHomeState === "splusd" ? null : (
+                  <Link
+                    to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
+                    search={
+                      mobileHomeState === "plusd"
+                        ? { tab: "stake" as const }
+                        : { direction: "deposit" as const }
+                    }
+                    className={[
+                      "font-[family-name:var(--font-body)]",
+                      "text-[length:var(--text-pipeline-caption)]",
+                      "leading-[var(--text-pipeline-caption--line-height)]",
+                      "font-[var(--font-weight-regular)]",
+                      "text-[color:var(--color-pipeline-ink-muted)]",
+                      "underline-offset-2 hover:underline",
+                      "no-underline",
+                    ].join(" ")}
+                  >
+                    {mobileHomeState === "plusd"
+                      ? "Stake PLUSD to start earning"
+                      : "Get PLUSD to start"}
+                  </Link>
+                )}
+              </>
+            )}
+          </div>
         </header>
 
         <SegmentedTabs
@@ -252,7 +266,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             className="relative flex-1"
             role="img"
             aria-label={
-              variant === "connect-wallet"
+              isConnectWallet
                 ? `Total balance for ${periodLabel}: ${balanceLabel}`
                 : `Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`
             }

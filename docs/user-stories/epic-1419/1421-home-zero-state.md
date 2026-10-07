@@ -35,16 +35,25 @@ account, and has not connected a wallet.
 - Step 2: A pale-yellow promo card shows heading "Get Started", sub-line "Access real-world yield
   on-chain", and a dark "Sign Up" button (`data-testid="home-connect-wallet-card"`). No "Connect
   Wallet" heading or "Connect" CTA appears on the desktop grid.
-- Step 3: `RecentActivityCard` shows its empty placeholder — "Recent activity" heading, the empty
-  illustration, and "You will see your transactions here".
-- Step 4: `StartHereCard` ("Start here" / "Get PLUSD" / "Convert USDC 1:1") is stacked above
-  `StakeCard` (its marketing CTA — "Stake PLUSD" eyebrow, "Earn X% p.a." heading, active "Stake"
-  circular button), `gap-4`.
+- Step 3: `RecentActivityCard` (478×634, 16px padding) shows its empty placeholder — "Recent
+  activity" heading, the 240×240 empty illustration, and **"You will see all transactions here"**
+  (corrected from "…your transactions…" in #1422; the zero-state frame `6701:98220` reads "all").
+- Step 4: `StartHereCard` ("Start here" / "Get PLUSD" / "Convert with USDC 1:1",
+  `data-node-id="6701:97660"`) is stacked above `StakeCard` ("Stake PLUSD" eyebrow, "Earn X% p.a."
+  heading, "From senior loan coupons and T-bills" subtitle, `data-node-id="6701:97678"`), `gap-4`.
+  Both are 313×164 compact cards with 16px padding and 40px-tall rectangular CTAs — "Buy" (navy) and
+  "Sell" (disabled, 32% opacity) 8px apart on the first, a single navy "Stake" on the second.
+  **No 128px circular Stake button appears in this state** (changed in #1422 when the epic moved to
+  pixel-exact grids; the zero-state frame `6701:98348` / `6701:98363` always showed the compact
+  cards).
 - Step 5: `AddUsdCard` in its `locked` variant ("Add USD" / "Use a bank transfer" / "KYB
-  verification required", circular "Add Funds" button disabled) is stacked above `EarnedCard`
-  ("Earnings" / "Tracked once you stake"), `gap-4`.
+  verification required", circular "Add Funds" button disabled, 313×246) is stacked above
+  `EarnedCard` ("Earnings" / "Tracked once you stake"), `gap-4`. `EarnedCard` is the 313×82 compact
+  card (`data-node-id="6701:97918"`) — a single row, no trailing icon.
 - Step 6: `QnaSection` renders unchanged ("Questions & answers" / "How it works?" / "What is
-  PLUSD?" / "What is sPLUSD?").
+  PLUSD?" / "What is sPLUSD?"), spanning the full 1136px content width.
+- Across the whole grid: the white panel spans the 1200px content column edge to edge, so the cards
+  measure 1136px across and the welcome heading sits 32px to the left of the first card (#1422).
 
 ---
 
@@ -123,3 +132,5 @@ wallet connected.
 - The mobile layout is byte-for-byte the same as `docs/user-stories/epic-463/465-mobile-home-base.md`
   Story 1 — `ConnectWalletPromoCard` default variant, `StartHereCard` + `EarnedCard` left,
   `StakeCard` right, no `RecentActivityCard`. No "Get Started" / "Sign Up" copy appears on mobile.
+- The compact cards are desktop-only: mobile keeps the taller cards, the circular Stake button and
+  the "Convert USDC 1:1" subtitle.

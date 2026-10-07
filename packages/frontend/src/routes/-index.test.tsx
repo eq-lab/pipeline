@@ -1,5 +1,4 @@
 // spec: docs/frontend/dashboard-components.md#home-route
-// (home route integration tests; wallet state seeded via the pipeline.mock.wallet.* localStorage layer).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React, { useEffect } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -1285,7 +1284,7 @@ describe("Home page — zero state, no session (#1421)", () => {
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
-    const stakeBtn = within(grid).getByRole("button", { name: "Stake PLUSD" });
+    const stakeBtn = within(grid).getByRole("button", { name: "Stake" });
     await user.click(stakeBtn);
 
     await waitFor(() => {
@@ -1338,7 +1337,7 @@ describe("Home page — zero state, no session (#1421)", () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getAllByText("You will see your transactions here").length,
+        screen.getAllByText("You will see all transactions here").length,
       ).toBeGreaterThanOrEqual(1);
     });
   });
@@ -1348,6 +1347,26 @@ describe("Home page — zero state, no session (#1421)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("home-qna-section")).toBeInTheDocument();
     });
+  });
+
+  it("the desktop grid uses the same compact cards as the unverified grid", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+
+    expect(within(grid).getByTestId("home-start-here-card")).toHaveAttribute(
+      "data-node-id",
+      "6701:97660",
+    );
+    expect(within(grid).getByTestId("home-stake-card")).toHaveAttribute(
+      "data-node-id",
+      "6701:97678",
+    );
+    expect(within(grid).getByTestId("home-earned-card")).toHaveAttribute(
+      "data-node-id",
+      "6701:97918",
+    );
+    expect(within(grid).getByText("Convert with USDC 1:1")).toBeInTheDocument();
   });
 
   it("issues no GET /v1/lps/me request while unauthenticated", async () => {
@@ -1459,7 +1478,7 @@ describe("Home page — unverified state (#1422)", () => {
     expect(mockAuthFlowOpen).not.toHaveBeenCalled();
 
     mockConnectModalOpen.mockClear();
-    const stakeBtn = within(grid).getByRole("button", { name: "Stake PLUSD" });
+    const stakeBtn = within(grid).getByRole("button", { name: "Stake" });
     await user.click(stakeBtn);
     await waitFor(() => expect(mockConnectModalOpen).toHaveBeenCalled());
 
@@ -1471,7 +1490,7 @@ describe("Home page — unverified state (#1422)", () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getAllByText("You will see your transactions here").length,
+        screen.getAllByText("You will see all transactions here").length,
       ).toBeGreaterThanOrEqual(1);
       expect(screen.getByTestId("home-qna-wrapper")).toBeInTheDocument();
     });
@@ -1485,6 +1504,28 @@ describe("Home page — unverified state (#1422)", () => {
       ).toBeGreaterThanOrEqual(1);
     });
     expect(mockGetMyLp).not.toHaveBeenCalled();
+  });
+
+  it("the desktop grid uses the compact cards from Figma 6701:97538", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(startHere).toHaveAttribute("data-node-id", "6701:97660");
+    expect(
+      within(startHere).getByText("Convert with USDC 1:1"),
+    ).toBeInTheDocument();
+
+    const stake = within(grid).getByTestId("home-stake-card");
+    expect(stake).toHaveAttribute("data-node-id", "6701:97678");
+    const stakeBtn = within(stake).getByRole("button", { name: "Stake" });
+    expect(stakeBtn).toHaveAttribute("data-size", "m");
+    expect(stakeBtn).not.toBeDisabled();
+
+    const earned = within(grid).getByTestId("home-earned-card");
+    expect(earned).toHaveAttribute("data-node-id", "6701:97918");
+    expect(within(earned).getByText("Tracked once you stake")).toBeVisible();
   });
 });
 
