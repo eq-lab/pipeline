@@ -15,7 +15,7 @@ describe("deriveHomeState", () => {
     );
   });
 
-  it("returns legacy when a session is present, wallet disconnected", () => {
+  it("returns legacy when a session is present, wallet disconnected, lpRead unknown", () => {
     expect(deriveHomeState({ hasSession: true, isConnected: false })).toBe(
       "legacy",
     );
@@ -26,4 +26,76 @@ describe("deriveHomeState", () => {
       "legacy",
     );
   });
+
+  it("returns unverified when signed in, disconnected, and the LP is absent (404)", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: false,
+        lpRead: "absent",
+      }),
+    ).toBe("unverified");
+  });
+
+  it("returns unverified when signed in, disconnected, loaded, kybStatus NotStarted", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: false,
+        lpRead: "loaded",
+        kybStatus: "NotStarted",
+      }),
+    ).toBe("unverified");
+  });
+
+  it("returns legacy when signed in, disconnected, lpRead unknown (in-flight read)", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: false,
+        lpRead: "unknown",
+      }),
+    ).toBe("legacy");
+  });
+
+  it("returns legacy when signed in, disconnected, lpRead error", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: false,
+        lpRead: "error",
+      }),
+    ).toBe("legacy");
+  });
+
+  it("returns legacy when signed in, connected, loaded, kybStatus NotStarted (wallet connected is part of the condition)", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "loaded",
+        kybStatus: "NotStarted",
+      }),
+    ).toBe("legacy");
+  });
+
+  it.each([
+    "UnderReview",
+    "Passed",
+    "ChangesRequested",
+    "Failed",
+    "InProgress",
+  ])(
+    "returns legacy when signed in, disconnected, loaded, kybStatus %s",
+    (kybStatus) => {
+      expect(
+        deriveHomeState({
+          hasSession: true,
+          isConnected: false,
+          lpRead: "loaded",
+          kybStatus,
+        }),
+      ).toBe("legacy");
+    },
+  );
 });

@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-121.**
+**Next free number: TD-123.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1810,3 +1810,19 @@ line, whichever section it lands in.
 - **Gap:** The decision email is sent inline and best-effort: the verdict commits first, and a send failure — or a failure to read the owning account for its verified address — is swallowed with a `tracing::warn!`. There is no retry, no outbox row, and no flag on `lps` recording that a notification was owed and never delivered; the only trace is a log line. Deliberate for epic #1376 (the verdict must not depend on SendGrid being reachable), and an outbox was explicitly ruled out of that epic's scope.
 - **Impact:** An LP that opted in to hear the outcome of its review can be told nothing, and neither the LP nor a trustee can see that it happened. `ChangesRequested` is the costly case: the record sits unfrozen awaiting a correction the LP does not know was asked for, and the cycle stalls until someone opens the app. The inline send also puts SendGrid's 10s client timeout on the trustee's request latency.
 - **Suggested fix:** A durable outbox table written in the same transaction as the decision, drained by a worker with retry and a dead-letter state. One change covers TD-96 and TD-97 as well — the auth emails have the same shape of problem from the other direction (they propagate where they should swallow), and an outbox removes the choice.
+
+### TD-121: The home route briefly flashes the legacy layout while `GET /v1/lps/me` is in flight
+
+- **Date:** 2026-10-07
+- **Location:** `packages/frontend/src/routes/index.tsx`, `packages/frontend/src/auth/AuthFlowProvider.tsx` — Issue #1422.
+- **Gap:** `deriveHomeState` treats `lpRead === "unknown"` (the LP read has not resolved yet) as `"legacy"` rather than `"unverified"`, since there is no designed loading state for the home grid. `AuthFlowProvider`'s `GET /v1/lps/me` starts at app mount (it sits above the router in `main.tsx`), so a signed-in, wallet-disconnected user sees today's pre-#1419 layout for one request round-trip before the grid swaps to `"unverified"` (or stays `"legacy"` once the read resolves).
+- **Impact:** A one-RTT layout flash on every fresh load for exactly the population this state targets (signed in, KYB bypassed or incomplete, no wallet). Cosmetic, not a data-correctness issue — nothing fabricated renders during the window.
+- **Suggested fix:** A designed loading state for the home grid (skeleton or the `"zero"` composition held briefly) would remove the flash, but Figma has not designed one; revisit once states 3–6 make the full state machine's loading behavior worth designing once rather than per state.
+
+### TD-122: Three near-identical desktop home-grid branches in `routes/index.tsx`
+
+- **Date:** 2026-10-07
+- **Location:** `packages/frontend/src/routes/index.tsx` (`Home`'s `homeState === "zero" | "unverified" | "legacy"` ternary) — Issue #1422, following #1421's precedent of adding a branch rather than refactoring.
+- **Gap:** The three branches share the same 7-column grid shape (`grid-cols-7 gap-4`, the same `RecentActivityCard` absolute-position wrapper, the same `QnaSection` footer slot) and differ only in which card fills each of the two left-hand slots and which handlers get wired to the shared cards. Nothing is extracted — each branch is a full, separately-maintained copy.
+- **Impact:** A shared-structure change (grid gap, `RecentActivityCard` positioning, `QnaSection` wrapper) now needs editing in three places, and that cost triples again once states 3–6 (#1423–#1426) land as further branches.
+- **Suggested fix:** Extract the shared grid shell (RecentActivityCard slot, QnaSection footer, grid classes) into a small composer that takes the two left-hand slots as render props or children, once states 3–6 make seven near-identical branches the alternative.

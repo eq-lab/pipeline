@@ -1,8 +1,21 @@
+// spec: docs/frontend/auth-components.md#authflowprovider
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AuthFlowProvider } from "./AuthFlowProvider";
+import { useAuthFlow } from "./AuthFlowContext";
 import { saveSession, clearSession } from "./session";
 import { ApiError } from "@/api";
+
+function LpReadConsumer() {
+  const { lpRead, kybStatus, openAccountSetup } = useAuthFlow();
+  return (
+    <div>
+      <span data-testid="lp-read">{lpRead}</span>
+      <span data-testid="kyb-status">{kybStatus ?? ""}</span>
+      <button onClick={openAccountSetup}>Reopen setup</button>
+    </div>
+  );
+}
 
 const mockGet = vi.fn();
 const mockUpsert = vi.fn();
@@ -172,5 +185,73 @@ describe("Account-in-review Notify me", () => {
     expect(
       screen.getByRole("button", { name: "Notify me" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("LP read state published via context (#1422)", () => {
+  it('publishes lpRead="unknown" while the GET is in flight, then "loaded" with kybStatus', async () => {
+    let resolve!: (lp: unknown) => void;
+    mockGet.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("unknown"),
+    );
+    resolve({ documents: [], kyb_status: "NotStarted" });
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("loaded"),
+    );
+    expect(screen.getByTestId("kyb-status")).toHaveTextContent("NotStarted");
+  });
+
+  it('publishes lpRead="absent" for a 404', async () => {
+    mockGet.mockRejectedValueOnce(new ApiError(404, "missing"));
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("absent"),
+    );
+    expect(screen.getByTestId("kyb-status")).toHaveTextContent("");
+  });
+
+  it('publishes lpRead="error" on a non-404 failure', async () => {
+    mockGet.mockRejectedValueOnce(new Error("offline"));
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("error"),
+    );
+  });
+
+  it("openAccountSetup() reopens CompanyDocsModal after the user dismissed it", async () => {
+    mockGet.mockResolvedValueOnce({ documents: [], kyb_status: "NotStarted" });
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Close setup" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reopen setup" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
   });
 });

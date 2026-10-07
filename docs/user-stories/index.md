@@ -225,3 +225,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1421 Home state 1: zero state — not signed in, no account, wallet not connected](https://github.com/eq-lab/pipeline/issues/1421) | [1421-home-zero-state.md](./epic-1419/1421-home-zero-state.md) | Initial |
+| [#1422 Home state 2: account created but not verified, wallet not connected](https://github.com/eq-lab/pipeline/issues/1422) | [1422-home-unverified-state.md](./epic-1419/1422-home-unverified-state.md) | Initial |

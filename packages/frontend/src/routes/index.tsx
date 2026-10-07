@@ -70,10 +70,17 @@ function Home() {
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthSession();
-  const { open: openAuthFlow } = useAuthFlow();
+  const {
+    open: openAuthFlow,
+    lpRead,
+    kybStatus,
+    openAccountSetup,
+  } = useAuthFlow();
   const homeState = deriveHomeState({
     hasSession: isAuthenticated,
     isConnected,
+    lpRead,
+    kybStatus,
   });
 
   const { plusd: plusdAddress } = useStakedPlusdAsset();
@@ -345,6 +352,71 @@ function Home() {
                 <AddUsdCard
                   variant="locked"
                   className="flex-1"
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
+          ) : homeState === "unverified" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant="connect-wallet"
+                onConnectWallet={openConnectModal}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:97659"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  className="flex-1"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  className="flex-1"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:97694"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="verify"
+                  className="flex-1"
+                  onStartVerification={openAccountSetup}
                   data-testid="home-add-usd-card"
                 />
                 <EarnedCard data-testid="home-earned-card" />

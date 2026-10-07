@@ -10,10 +10,13 @@ existence.
 **Presentational only.** No network call, no persistence, no auth. Every side-effecting action is
 a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who-wires-them).
 
-**Nothing here is mounted on `/`.** Both `FundingDetailsModal` and `AddUsdCard` ship reachable only
-from `/test?tab=auth`. Deciding which `AddUsdCard` variant renders for a given account state (the
-home gating state machine) and mounting the card into the home grid are #1282's; a real
-trust-account USD balance and the Withdraw flow behind its seam are #1285's.
+**`FundingDetailsModal` is reachable only from `/test?tab=auth`.** `AddUsdCard` is mounted on `/`:
+the `"locked"` variant ships from #1421 (zero state) and `"verify"` from #1422 (unverified state,
+`docs/product-specs/home-screen-states.md` state 2); the variant for a given account state is
+decided by `deriveHomeState` in `packages/frontend/src/components/homeState.ts`, not in this file
+— see `docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
+Withdraw flow behind its seam are #1285's; the `"unlocked"`/`"funded"` variants are not yet wired
+to any route.
 
 ## FundingDetailsModal
 

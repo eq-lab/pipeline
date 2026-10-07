@@ -743,11 +743,21 @@ instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern
 `useConnectModal()` for "Continue with wallet") and above `WalletViewProvider`/`RouterProvider`,
 so every route renders under it.
 
-`useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close() }`. `open()` defaults to the
-`"sign-in"` screen when called with no argument. Unlike `useConnectModal()` (no-op fallback for
-partial test trees), `useAuthFlow()` **throws** when called outside the provider — callers
-(`TopBar`, `MobileNavMenu`) are always inside it in production, so a missing provider in a test
-tree is a setup bug worth surfacing loudly rather than silently swallowing.
+`useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close(), lpRead, kybStatus?,
+openAccountSetup() }` (widened by #1422 for the home route's state derivation —
+`docs/frontend/dashboard-components.md#home-route`). `open()` defaults to the `"sign-in"` screen
+when called with no argument. Unlike `useConnectModal()` (no-op fallback for partial test trees),
+`useAuthFlow()` **throws** when called outside the provider — callers (`TopBar`, `MobileNavMenu`)
+are always inside it in production, so a missing provider in a test tree is a setup bug worth
+surfacing loudly rather than silently swallowing.
+
+`lpRead` (`"unknown" | "absent" | "loaded" | "error"`, from `homeState.ts`) and `kybStatus`
+(`setup.lp?.kyb_status`, only defined when `lpRead === "loaded"`) are a direct projection of the
+provider's own `SetupState.status`/`lp` — no second `getMyLp` call, no new state machine.
+`openAccountSetup()` re-opens the already-mounted `CompanyDocsModal` (`setSetup` flips `open` back
+to `true`) for a "reopen account setup" CTA elsewhere in the app; it is a no-op when there is no
+current setup state (signed out). The context value is memoized (`useMemo`) so consumers that only
+read `open`/`close` do not re-render on every `lpRead` tick.
 
 The provider owns `isOpen`/`screen` state and renders one `<EmailAuthFlow open initialScreen={screen}
 onClose={close} onConnectWallet={openConnectModal} />`. A successful sign-in flips the reactive

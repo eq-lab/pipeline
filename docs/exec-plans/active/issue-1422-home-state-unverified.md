@@ -129,7 +129,7 @@ mobile layout) are answered on that Issue and applied here; the remaining choice
 
 ## Implementation Steps
 
-1. **Extend the state seam.** `packages/frontend/src/components/homeState.ts`:
+1. **DONE. Extend the state seam.** `packages/frontend/src/components/homeState.ts`:
 
    ```ts
    export type HomeState = "zero" | "unverified" | "legacy";
@@ -151,7 +151,7 @@ mobile layout) are answered on that Issue and applied here; the remaining choice
 
    Do **not** treat `"InProgress"` as unverified — `kyb-lp-verification.md` records it as unreachable.
 
-2. **Expose the LP read through the auth flow context.**
+2. **DONE. Expose the LP read through the auth flow context.**
    `packages/frontend/src/auth/AuthFlowContext.ts` — widen `AuthFlowContextValue`:
 
    ```ts
@@ -167,7 +167,7 @@ mobile layout) are answered on that Issue and applied here; the remaining choice
    Memoize the context value with `useMemo` so the added fields do not re-render every consumer each tick.
    **No new request, no new state machine** — this only publishes what the provider already holds.
 
-3. **Add the `PortfolioPlaceholderCard` disconnected variant.**
+3. **DONE. Add the `PortfolioPlaceholderCard` disconnected variant.**
    `packages/frontend/src/components/PortfolioPlaceholderCard.tsx`:
 
    ```ts
@@ -185,7 +185,7 @@ mobile layout) are answered on that Issue and applied here; the remaining choice
    keep `1497:95048` for `"balance"`. Tabs, chart, dates row and the `role="img"` aria-label are untouched
    (drop the PnL clause from the aria-label in this variant since no caption renders).
 
-4. **Add the unverified desktop branch.** `packages/frontend/src/routes/index.tsx`:
+4. **DONE. Add the unverified desktop branch.** `packages/frontend/src/routes/index.tsx`:
    - `const { open: openAuthFlow, lpRead, kybStatus, openAccountSetup } = useAuthFlow();`
    - feed `lpRead` and `kybStatus` into the existing `deriveHomeState({ hasSession, isConnected, ... })` call.
    - inside the `hidden md:block` outer `Card`, add a third branch for `homeState === "unverified"`, built
@@ -203,13 +203,13 @@ mobile layout) are answered on that Issue and applied here; the remaining choice
      - col 1–7 row 3: `QnaSection` (unchanged).
    - Leave the `md:hidden` mobile block and the `"legacy"` branch byte-identical.
 
-5. **Record the precedence rule.** `docs/product-specs/home-screen-states.md` (35 lines, well under the 200-line
+5. **DONE. Record the precedence rule.** `docs/product-specs/home-screen-states.md` (35 lines, well under the 200-line
    cap): flip row 2's Status to `Implemented (#1422)`, and extend `## Precedence rule` with the state-2 clause —
    wallet-not-connected is part of the condition (`NotStarted` + a connected wallet stays `"legacy"` until that
    combination is designed); an absent LP (404) is equivalent to `NotStarted`; an unknown or failed
    `GET /v1/lps/me` read renders `"legacy"`.
 
-6. **Update the frontend docs.**
+6. **DONE. Update the frontend docs.**
    - `docs/frontend/dashboard-components.md` § "Home route": add the unverified grid table and update the
      "Home state derivation" paragraph for the widened union, the new inputs, and the fact that `kyb_status`
      now reaches the route from `AuthFlowProvider` (no route-level `getMyLp`).
@@ -217,14 +217,14 @@ mobile layout) are answered on that Issue and applied here; the remaining choice
    - `docs/frontend/auth-components.md` § "AuthFlowProvider": document the widened `AuthFlowContextValue`.
    - `docs/frontend/bank-transfers.md`: correct the stale "Nothing here is mounted on `/`" claim — `locked`
      ships on `/` from #1421 and `verify` from #1422; the variant derivation lives in `homeState.ts`.
-7. **User stories.** New `docs/user-stories/epic-1419/1422-home-unverified-state.md` in the #1421 format
+7. **DONE. User stories.** New `docs/user-stories/epic-1419/1422-home-unverified-state.md` in the #1421 format
    (Persona / Pre-conditions / Steps / Expected outcomes, desktop-only note), plus a row in
    `docs/user-stories/index.md` under "Epic #1419".
-8. **Log, do not fix.** Add the `RecentActivityCard` "your" vs "all" copy mismatch to
+8. **DONE. Log, do not fix.** Add the `RecentActivityCard` "your" vs "all" copy mismatch to
    `docs/exec-plans/known-bugs.md`, and add two entries to `docs/exec-plans/tech-debt-tracker.md`: the
    legacy-layout flash while `GET /v1/lps/me` is in flight, and extracting the shared epic-#1419 desktop grid
    once states 3–6 land.
-9. **Lint and build.** `yarn workspace @pipeline/frontend lint`, `yarn workspace @pipeline/frontend build`,
+9. **DONE. Lint and build.** `yarn workspace @pipeline/frontend lint`, `yarn workspace @pipeline/frontend build`,
    `npx tsx scripts/lint-docs.ts`. Keep the comment-minimal rule: one 2–3-line spec-pointer header per file,
    no field/function JSDoc, no body or test comments in new code.
 

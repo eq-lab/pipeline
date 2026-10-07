@@ -1,8 +1,10 @@
 // spec: docs/frontend/auth-components.md#authflowprovider
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AuthFlowContext } from "./AuthFlowContext";
+import type { AuthFlowContextValue } from "./AuthFlowContext";
 import { EmailAuthFlow } from "@/components/EmailAuthFlow";
 import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
+import type { LpReadState } from "@/components/homeState";
 import { useConnectModal } from "@/wallet";
 import { useAuthSession } from "./useAuthSession";
 import { ApiError, getMyLp, upsertMyLp } from "@/api";
@@ -16,6 +18,11 @@ interface SetupState {
   lp: LpResponse | null;
   open: boolean;
   reviewOpen?: boolean;
+}
+
+function toLpReadState(status: SetupState["status"] | undefined): LpReadState {
+  if (status === "loading" || status === undefined) return "unknown";
+  return status;
 }
 
 export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
@@ -61,8 +68,19 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
 
   const close = useCallback(() => setIsOpen(false), []);
 
-  // The profile endpoint carries the preference; a frozen LP accepts it only
-  // alongside the stored profile, so resend exactly what the server returned.
+  const openAccountSetup = useCallback(() => {
+    setSetup((previous) => (previous ? { ...previous, open: true } : previous));
+  }, []);
+
+  const lpRead = toLpReadState(setup?.status);
+  const kybStatus =
+    setup?.status === "loaded" ? setup.lp?.kyb_status : undefined;
+
+  const contextValue = useMemo<AuthFlowContextValue>(
+    () => ({ open, close, lpRead, kybStatus, openAccountSetup }),
+    [open, close, lpRead, kybStatus, openAccountSetup],
+  );
+
   const subscribeToReview = useCallback(async () => {
     const lp = setup?.lp;
     if (!token || !lp) throw new Error("No LP to subscribe");
@@ -78,7 +96,7 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   }, [setup?.lp, token]);
 
   return (
-    <AuthFlowContext.Provider value={{ open, close }}>
+    <AuthFlowContext.Provider value={contextValue}>
       {children}
       <EmailAuthFlow
         open={isOpen}
