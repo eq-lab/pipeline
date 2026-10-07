@@ -91,6 +91,11 @@ export interface AddUsdCardProps {
 }
 ```
 
+`locked` and `verify` ship on `/` for home states 1 and 2 (#1421/#1422); `verifying` ships on `/`
+for home state 3 (#1423, Figma frame `6701:98417`), stacked above `EarnedCard layout="compact"`
+with **no `flex-1`** — the card owns its 246px height, per § "Shape B frame and illustration
+anchor". `unlocked` and `funded` are still preview-only.
+
 `addUsdCardState.ts` ships the `AddUsdCardVariant` union and `ADD_USD_CARD_VARIANTS` (frame order,
 for previews) only — **no derivation function**. Deciding which variant renders for a given
 `(authenticated?, kybStatus, trustAccountBalance)` triple is epic #1419's home-state machine (see
@@ -157,7 +162,7 @@ right stack (`6701:97694`, 344 = 246 + 16 gap + 82) mounts `<AddUsdCard variant=
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `locked` | `6701:98378` | `Add USD` | `Use a bank transfer` | `KYB verification required` | no | circular `Add Funds`, **disabled** | none |
 | `verify` | `6701:97695` | none | `Verify your account` | `Complete KYB to unlock bank transfers.` | yes | `Start Verification` | none |
-| `verifying` | `6701:98539` | none | `Verifying account…` | `We are reviewing your documents.` | yes | `View Status` | none |
+| `verifying` | `6701:98539` | none | `Verifying account…` | `We are reviewing your documents.` | yes | `View Status` → `/account` | none |
 | `unlocked` | `6701:97494` | `Add USD` | `Use a bank transfer` | `Transfers unlocked` | no | circular `Add Funds` | none |
 | `funded` | `6701:97289` | `USD Balance` | `{usdBalanceLabel}` | `on Trust account` | no | circular `Add Funds` | `Withdraw` |
 
@@ -247,7 +252,8 @@ class of staleness `account-page.md` documents for its own frame.
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
 | `AddUsdCard.onAddFunds` | no-op | #1282 (opens `FundingDetailsModal`) |
 | `AddUsdCard.onWithdraw` | no-op | #1285 |
-| `AddUsdCard.onStartVerification` / `onViewStatus` | no-op | #1282 |
+| `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
+| `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`) |
 
 **Wire attribution is parked, not resolved.** The trustee's
 `POST /v1/lps/{id}/bank-deposits` (#1413, which replaced `POST /v1/lp-ledger/deposits`) takes the
@@ -273,8 +279,8 @@ seam](./auth-components.md#diagnostics-preview-seam).
 
 | Concern | Owner |
 | --- | --- |
-| Deciding which card variant renders for a given account state | #1282 |
-| Mounting `AddUsdCard` into the home grid | #1282 |
+| Deciding which card variant renders for a given account state | epic #1419 (`deriveHomeState`) |
+| Mounting `AddUsdCard` into the home grid for states 4–6 | #1424–#1426 |
 | A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
 | Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |
