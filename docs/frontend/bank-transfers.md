@@ -90,8 +90,9 @@ export interface AddUsdCardProps {
 
 `addUsdCardState.ts` ships the `AddUsdCardVariant` union and `ADD_USD_CARD_VARIANTS` (frame order,
 for previews) only — **no derivation function**. Deciding which variant renders for a given
-`(authenticated?, kybStatus, trustAccountBalance)` triple is #1282's state machine; the inputs live
-entirely there, and a guessed precedence order here would be a fabricated contract.
+`(authenticated?, kybStatus, trustAccountBalance)` triple is epic #1419's home-state machine (see
+`docs/product-specs/home-screen-states.md` and
+`packages/frontend/src/components/homeState.ts`), not #1282's; the precedence rule lives there.
 
 Built on `Card` from `@pipeline/ui` (`variant="white"`), `role="region"
 aria-labelledby={derived id}`, a `data-node-id` per variant, and the home cards' shared border

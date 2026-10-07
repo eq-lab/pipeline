@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
+import { useAuthFlow, useAuthSession } from "@/auth";
 import {
   formatBigintCurrency,
   formatRawDecimalUSD,
@@ -33,11 +34,13 @@ import { PortfolioPlaceholderCard } from "@/components/PortfolioPlaceholderCard"
 import { StartHereCard } from "@/components/StartHereCard";
 import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
+import { AddUsdCard } from "@/components/AddUsdCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
 import { usePnl, usePositionsHistory } from "@/api";
 import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
+import { deriveHomeState } from "@/components/homeState";
 
 // spec: docs/frontend/dashboard-components.md#home-route
 // (desktop/mobile composition, top-left card branching, Figma refs).
@@ -66,6 +69,12 @@ function Home() {
 
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuthSession();
+  const { open: openAuthFlow } = useAuthFlow();
+  const homeState = deriveHomeState({
+    hasSession: isAuthenticated,
+    isConnected,
+  });
 
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -134,7 +143,6 @@ function Home() {
     activeDecimals,
   );
 
-  // spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (Y axis)
   const sharesStats = positionsHistory.data?.shares_balance;
   const portfolioAxisMax =
     sharesStats?.max != null
@@ -186,6 +194,8 @@ function Home() {
   };
   const onUnstake = () =>
     navigate({ to: "/stake", search: { tab: "unstake" } });
+
+  const onSignUp = () => openAuthFlow("create-account");
 
   return (
     <div
@@ -288,80 +298,141 @@ function Home() {
           data-node-id="1497:94565"
           data-testid="home-dashboard-card"
         >
-          <div
-            className="grid w-full grid-cols-7 gap-4"
-            data-testid="home-dashboard-grid"
-          >
-            {isConnected ? (
-              <PortfolioPlaceholderCard
-                className="col-span-4 row-start-1"
-                mobileHomeState={mobileHomeState}
-                balanceLabel={splusdBalanceFormatted}
-                unrealizedPnlLabel={unrealizedPnlFormatted}
-                activePeriodId={portfolioPeriodId}
-                onActivePeriodChange={setPortfolioPeriodId}
-                series={portfolioSeries}
-                yAxis={portfolioAxis}
-                yAxisDomainMax={portfolioAxisMax}
-                data-testid="home-portfolio-placeholder"
-              />
-            ) : (
+          {homeState === "zero" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
               <ConnectWalletPromoCard
                 className="col-span-4 row-start-1"
-                onConnect={openConnectModal}
+                variant="get-started"
+                onConnect={onSignUp}
                 data-testid="home-connect-wallet-card"
               />
-            )}
 
-            <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
-              <RecentActivityCard
-                className="!absolute inset-0 min-h-0 overflow-hidden"
-                data-testid="home-recent-activity-card"
-              />
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:98347"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  className="flex-1"
+                  onBuy={onSignUp}
+                  onSell={onSignUp}
+                  sellDisabled
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  className="flex-1"
+                  onStake={onSignUp}
+                  onUnstake={onSignUp}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:98377"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="locked"
+                  className="flex-1"
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
             </div>
-
+          ) : (
             <div
-              className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
-              data-node-id="1497:94675"
-              data-testid="home-balances-stack"
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
             >
-              <StartHereCard
-                className="flex-1"
-                onBuy={onBuy}
-                onSell={onSell}
-                sellDisabled={sellDisabled}
-                data-testid="home-start-here-card"
-              />
-              <EarnedCard
-                earnedPnlLabel={earnedPnlLabel}
-                data-testid="home-earned-card"
-              />
-            </div>
+              {isConnected ? (
+                <PortfolioPlaceholderCard
+                  className="col-span-4 row-start-1"
+                  mobileHomeState={mobileHomeState}
+                  balanceLabel={splusdBalanceFormatted}
+                  unrealizedPnlLabel={unrealizedPnlFormatted}
+                  activePeriodId={portfolioPeriodId}
+                  onActivePeriodChange={setPortfolioPeriodId}
+                  series={portfolioSeries}
+                  yAxis={portfolioAxis}
+                  yAxisDomainMax={portfolioAxisMax}
+                  data-testid="home-portfolio-placeholder"
+                />
+              ) : (
+                <ConnectWalletPromoCard
+                  className="col-span-4 row-start-1"
+                  onConnect={openConnectModal}
+                  data-testid="home-connect-wallet-card"
+                />
+              )}
 
-            <StakeCard
-              className="col-span-2 col-start-3 row-start-2"
-              onStake={onStake}
-              onUnstake={onUnstake}
-              stakeDisabled={stakeDisabled}
-              mobileHomeState={
-                isConnected && mobileHomeState === "splusd"
-                  ? "splusd"
-                  : undefined
-              }
-              mobileSplusdShares={splusdSharesActive}
-              mobileSplusdInPlusd={splusdInPlusdActive}
-              splusdUsdValue={splusdBalanceFormatted}
-              splusdDecimals={activeDecimals}
-              data-testid="home-stake-card"
-            />
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
 
-            <div
-              className="col-span-7 col-start-1 row-start-3"
-              data-testid="home-qna-wrapper"
-            >
-              <QnaSection />
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="1497:94675"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  className="flex-1"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <EarnedCard
+                  earnedPnlLabel={earnedPnlLabel}
+                  data-testid="home-earned-card"
+                />
+              </div>
+
+              <StakeCard
+                className="col-span-2 col-start-3 row-start-2"
+                onStake={onStake}
+                onUnstake={onUnstake}
+                stakeDisabled={stakeDisabled}
+                mobileHomeState={
+                  isConnected && mobileHomeState === "splusd"
+                    ? "splusd"
+                    : undefined
+                }
+                mobileSplusdShares={splusdSharesActive}
+                mobileSplusdInPlusd={splusdInPlusdActive}
+                splusdUsdValue={splusdBalanceFormatted}
+                splusdDecimals={activeDecimals}
+                data-testid="home-stake-card"
+              />
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
             </div>
-          </div>
+          )}
         </Card>
       </main>
     </div>
