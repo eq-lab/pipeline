@@ -1,8 +1,5 @@
-/**
- * Integration tests for the / (home) route — wallet state seeded via the
- * `pipeline.mock.wallet.*` localStorage mock layer; no real wagmi/kit calls.
- * spec: docs/frontend/dashboard-components.md#home-route
- */
+// spec: docs/frontend/dashboard-components.md#home-route
+// (home route integration tests; wallet state seeded via the pipeline.mock.wallet.* localStorage layer).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React, { useEffect } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";

@@ -33,7 +33,7 @@ illustration bleeding off the right edge.
 
 **Layout:** the `Card` is the positioning context (`relative`); inner content is a vertical flex
 column with `justify-between` so the heading hugs the top and the CTA hugs the bottom (Figma "Top
-Container / Button" stack). `overflow-hidden` clips the illustration to the rounded card edge.
+Container / Button" stack). `overflow-hidden` clips the illustration to the rounded card edge. The heading id is suffixed with `useId()` because the mobile and desktop blocks mount the card in the same DOM.
 `min-h-[274px]` mirrors the Figma height.
 
 **Illustration positioning (Figma anchor math):**

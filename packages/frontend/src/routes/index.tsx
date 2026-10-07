@@ -143,7 +143,6 @@ function Home() {
     activeDecimals,
   );
 
-  // spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (Y axis)
   const sharesStats = positionsHistory.data?.shares_balance;
   const portfolioAxisMax =
     sharesStats?.max != null
