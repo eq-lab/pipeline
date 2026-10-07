@@ -1,5 +1,4 @@
 // spec: docs/frontend/dashboard-components.md#home-route
-// (home route integration tests; wallet state seeded via the pipeline.mock.wallet.* localStorage layer).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React, { useEffect } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -67,10 +66,17 @@ vi.mock("@/wallet", async (importOriginal) => ({
   useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
 }));
 
-const { mockAuthState, mockAuthFlowOpen } = vi.hoisted(() => ({
-  mockAuthState: { isAuthenticated: true },
-  mockAuthFlowOpen: vi.fn(),
-}));
+const { mockAuthState, mockAuthFlowOpen, mockOpenAccountSetup } = vi.hoisted(
+  () => ({
+    mockAuthState: {
+      isAuthenticated: true,
+      lpRead: "unknown" as "unknown" | "absent" | "loaded" | "error",
+      kybStatus: undefined as string | undefined,
+    },
+    mockAuthFlowOpen: vi.fn(),
+    mockOpenAccountSetup: vi.fn(),
+  }),
+);
 
 vi.mock("@/auth", () => ({
   useAuthSession: () => ({
@@ -80,7 +86,13 @@ vi.mock("@/auth", () => ({
     isAuthenticated: mockAuthState.isAuthenticated,
     signOut: vi.fn(),
   }),
-  useAuthFlow: () => ({ open: mockAuthFlowOpen, close: vi.fn() }),
+  useAuthFlow: () => ({
+    open: mockAuthFlowOpen,
+    close: vi.fn(),
+    lpRead: mockAuthState.lpRead,
+    kybStatus: mockAuthState.kybStatus,
+    openAccountSetup: mockOpenAccountSetup,
+  }),
 }));
 
 const mockPnlData = vi.hoisted(() => ({
@@ -222,7 +234,10 @@ function renderHomeStellar() {
 beforeEach(() => {
   mockPnlData.current = undefined;
   mockAuthState.isAuthenticated = true;
+  mockAuthState.lpRead = "unknown";
+  mockAuthState.kybStatus = undefined;
   mockAuthFlowOpen.mockClear();
+  mockOpenAccountSetup.mockClear();
   mockGetMyLp.mockClear();
 });
 
@@ -1269,7 +1284,7 @@ describe("Home page — zero state, no session (#1421)", () => {
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
-    const stakeBtn = within(grid).getByRole("button", { name: "Stake PLUSD" });
+    const stakeBtn = within(grid).getByRole("button", { name: "Stake" });
     await user.click(stakeBtn);
 
     await waitFor(() => {
@@ -1322,7 +1337,7 @@ describe("Home page — zero state, no session (#1421)", () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getAllByText("You will see your transactions here").length,
+        screen.getAllByText("You will see all transactions here").length,
       ).toBeGreaterThanOrEqual(1);
     });
   });
@@ -1334,6 +1349,26 @@ describe("Home page — zero state, no session (#1421)", () => {
     });
   });
 
+  it("the desktop grid uses the same compact cards as the unverified grid", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+
+    expect(within(grid).getByTestId("home-start-here-card")).toHaveAttribute(
+      "data-node-id",
+      "6701:97660",
+    );
+    expect(within(grid).getByTestId("home-stake-card")).toHaveAttribute(
+      "data-node-id",
+      "6701:97678",
+    );
+    expect(within(grid).getByTestId("home-earned-card")).toHaveAttribute(
+      "data-node-id",
+      "6701:97918",
+    );
+    expect(within(grid).getByText("Convert with USDC 1:1")).toBeInTheDocument();
+  });
+
   it("issues no GET /v1/lps/me request while unauthenticated", async () => {
     renderHome();
     await waitFor(() => {
@@ -1342,5 +1377,219 @@ describe("Home page — zero state, no session (#1421)", () => {
       ).toBeInTheDocument();
     });
     expect(mockGetMyLp).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — unverified state (#1422)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "NotStarted";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows Total Balance, $0.00, and a Connect wallet control; clicking it opens the connect modal", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Total Balance").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByRole("heading", { name: "$0.00" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Get Started" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Sign Up" }),
+    ).not.toBeInTheDocument();
+
+    const connectBtn = await screen.findByRole("button", {
+      name: "Connect wallet",
+    });
+    await user.click(connectBtn);
+
+    await waitFor(() => {
+      expect(mockConnectModalOpen).toHaveBeenCalled();
+    });
+  });
+
+  it("AddUsdCard renders in its verify variant; Start Verification reopens account setup", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "verify");
+    });
+    expect(
+      screen.getByRole("heading", { name: "Verify your account" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Complete KYB to unlock bank transfers."),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Start Verification" }),
+    );
+
+    expect(mockOpenAccountSetup).toHaveBeenCalledOnce();
+  });
+
+  it("grid occupancy: StartHereCard and StakeCard share the left stack; AddUsdCard and EarnedCard share the right stack", async () => {
+    renderHome();
+    await waitFor(() => {
+      const leftStack = screen.getByTestId("home-balances-stack");
+      expect(
+        within(leftStack).getByTestId("home-start-here-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(leftStack).getByTestId("home-stake-card"),
+      ).toBeInTheDocument();
+
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(
+        within(rightStack).getByTestId("home-add-usd-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(rightStack).getByTestId("home-earned-card"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("Buy and Stake open the connect modal (not the auth flow); Sell is disabled", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const buyBtn = within(grid).getByRole("button", { name: "Buy" });
+    await user.click(buyBtn);
+    await waitFor(() => expect(mockConnectModalOpen).toHaveBeenCalled());
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
+
+    mockConnectModalOpen.mockClear();
+    const stakeBtn = within(grid).getByRole("button", { name: "Stake" });
+    await user.click(stakeBtn);
+    await waitFor(() => expect(mockConnectModalOpen).toHaveBeenCalled());
+
+    const sellBtn = within(grid).getByRole("button", { name: "Sell" });
+    expect(sellBtn).toBeDisabled();
+  });
+
+  it("RecentActivityCard empty placeholder and QnaSection render", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("You will see all transactions here").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId("home-qna-wrapper")).toBeInTheDocument();
+    });
+  });
+
+  it("issues no GET /v1/lps/me of its own — the provider owns the request", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Total Balance").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(mockGetMyLp).not.toHaveBeenCalled();
+  });
+
+  it("the desktop grid uses the compact cards from Figma 6701:97538", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(startHere).toHaveAttribute("data-node-id", "6701:97660");
+    expect(
+      within(startHere).getByText("Convert with USDC 1:1"),
+    ).toBeInTheDocument();
+
+    const stake = within(grid).getByTestId("home-stake-card");
+    expect(stake).toHaveAttribute("data-node-id", "6701:97678");
+    const stakeBtn = within(stake).getByRole("button", { name: "Stake" });
+    expect(stakeBtn).toHaveAttribute("data-size", "m");
+    expect(stakeBtn).not.toBeDisabled();
+
+    const earned = within(grid).getByTestId("home-earned-card");
+    expect(earned).toHaveAttribute("data-node-id", "6701:97918");
+    expect(within(earned).getByText("Tracked once you stake")).toBeVisible();
+  });
+});
+
+describe("Home page — unverified-state regressions (#1422)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockAuthState.isAuthenticated = true;
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("lpRead: 'unknown' (in-flight read) keeps the legacy disconnected layout", async () => {
+    mockAuthState.lpRead = "unknown";
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "Connect Wallet" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lpRead: 'error' keeps the legacy disconnected layout", async () => {
+    mockAuthState.lpRead = "error";
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "Connect Wallet" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("kybStatus: 'Passed' keeps the legacy disconnected layout", async () => {
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "Passed";
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "Connect Wallet" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("a connected wallet keeps the legacy connected layout even with kybStatus 'NotStarted'", async () => {
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "NotStarted";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    renderHome();
+    await waitFor(() => {
+      const links = screen.getAllByRole("link", {
+        name: "Get PLUSD to start",
+      });
+      expect(links.length).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
   });
 });

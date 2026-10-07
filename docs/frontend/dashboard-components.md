@@ -100,6 +100,16 @@ raw amount — a dust-level value that rounds to `$0.00` is always unsigned (nev
 `+$0.00`). `+` renders only for positive values with `signed: true`; genuine negatives render
 `−$…`. This also governs the Total Balance "unrealized" caption.
 
+**`layout="compact"` (#1422, Figma node `6701:97918`).** The epic-#1419 home grids (`"zero"` and
+`"unverified"`) render a 313×82 single-row card instead of the default stack: `Card` padding drops
+to 16px (`padding="md"`), the box is pinned to `h-[82px]`, and the content is a `flex items-center
+gap-2` row whose text column is "Earnings" (Body 16/22, primary ink, node `6701:97920`) over the
+value at a fixed Heading 20 (20/28, no mobile step-down — the grid only renders at md+, node
+`6701:97925`). The frame's `Earned Icon` slot (36×36 at x=261, node `6701:97927`) is `hidden` in
+both state frames, so nothing is rendered there. The state → display-value table above is
+unchanged; only the box and the type scale differ. `layout="default"` keeps today's card for the
+`"legacy"` desktop grid and the mobile stack.
+
 **Accessibility:** `role="region"` + `aria-labelledby` referencing the "Earnings" label; the
 placeholder value never changes so no live-region semantics are needed.
 
@@ -140,6 +150,23 @@ gap (Figma `gap-2`).
 **Typography** (no raw font sizes): eyebrow "Start here" is Body token; heading "Get PLUSD" is
 Heading-S token in Besley display serif with the dollar glyph inline at 24px; subtitle is Caption
 token, ink-muted.
+
+**`layout="compact"` (#1422, Figma node `6701:97660`).** The epic-#1419 home grids (`"zero"` and
+`"unverified"`) render a 313×164 card: `Card` padding 16px (`padding="md"`), box pinned to
+`h-[164px]`, and a full-height `justify-between` column (Figma "List" `6701:97661`, 281×132) that
+pins the text block to the top and the button row to the bottom.
+
+| Element  | Figma node   | Style                                                                                     |
+| -------- | ------------ | ----------------------------------------------------------------------------------------- |
+| Eyebrow  | `6701:97663` | "Start here", Body 16/22, primary ink. No gap to the title block (Figma `gap 0`).          |
+| Title    | `6701:97669` | "Get PLUSD", Heading 20 (20/28) in Besley display, primary ink; 24px PLUSD `CoinIcon` at 4px gap (`6701:97668`). |
+| Subtitle | `6701:97671` | "Convert with USDC 1:1", Caption 12/16, ink-muted; 4px gap below the title row (Figma `TextCont gap 4`). |
+| Buttons  | `6701:97675` | 8px gap. "Buy" `primary-blue` `size="m"` (40px tall, 4px radius, 61px wide at this label); "Sell" `secondary` `size="m"`, disabled → 32% opacity. |
+
+The compact subtitle reads **"Convert with USDC 1:1"** — the state-1/state-2 frames' wording.
+`layout="default"` keeps the pre-#1419 "Convert USDC 1:1" copy, the 18→20px mobile step-down, and
+the `"empty"` auto-disable for Sell; the compact branch takes `sellDisabled` at face value because
+both #1419 grids pass it explicitly.
 
 **Accessibility:** `role="region"` + `aria-labelledby`; the PLUSD coin icon is decorative
 (`aria-hidden`); both CTAs are real `<button>` elements, and the disabled "Sell" button retains its
@@ -193,6 +220,25 @@ In State C, the sub-line (sPLUSD coin icon + PLUSD-equivalent + USD value) match
 
 `splusdDecimals` defaults to 18 (EVM); pass 7 for Stellar SAC balances to avoid a ~1e11× scale error
 when formatting (#688).
+
+**`layout="compact"` (#1422, Figma node `6701:97678`).** The epic-#1419 home grids (`"zero"` and
+`"unverified"`) render a 313×164 card with `padding="md"` (16px), `h-[164px]` and
+`flex-col justify-between` — no `items-end`, no `overflow-hidden`, and **no 128px circular CTA**.
+The frame carries two `Buttons` slots; the 40px one at y=108 (`6701:97692`) is the live one and the
+one at y=77 (`6701:97690`) is `hidden`.
+
+| Element  | Figma node   | Style                                                                                     |
+| -------- | ------------ | ----------------------------------------------------------------------------------------- |
+| Eyebrow  | `6701:97680` | "Stake PLUSD", Body 16/22, primary ink; no gap to the title block.                         |
+| Title    | `6701:97685` | `Earn <apy> p.a.`, Heading 20 (20/28) Besley; the APY is served verbatim by `useStats`, `—` when absent, and the `" p.a."` suffix is kept either way. |
+| Subtitle | `6701:97688` | "From senior loan coupons and T-bills", Caption 12/16, ink-muted; 4px below the title.     |
+| Button   | `6701:97693` | Single "Stake" `primary-blue` `size="m"` — 40px tall, 4px radius, 75px wide at this label. |
+
+The compact CTA's accessible name is its visible label, "Stake" (the circular CTA's
+`aria-label="Stake PLUSD"` does not apply). `stakeDisabled` is still honoured, but the label stays
+"Stake" — neither #1419 frame designs a disabled compact CTA, and neither grid passes the prop.
+`layout="default"` keeps the 274px marketing card, the circular CTA and the `"splusd"` staked
+layout untouched for the `"legacy"` grid and the mobile stack.
 
 **Accessibility:** `role="region"` + `aria-labelledby` referencing the "Stake PLUSD" heading id; the
 circular CTA has `aria-label="Stake PLUSD"` (or "Nothing to Stake" / "Stake More PLUSD" depending on
@@ -272,6 +318,18 @@ Connected-state replacement for `ConnectWalletPromoCard`. Renders in the top-lef
 dashboard when `isConnected === true` (Figma node `1497:95048`). The balance and PnL labels are
 supplied by the home route.
 
+**`variant="connect-wallet"` geometry (#1422, Figma node `6701:97649`).** The unverified-state
+grid's instance is pinned to the frame: 643×274 outer box (`h-[274px]`, not `min-h-`),
+`padding="md"` (16px, so the Top Container measures 611 wide like the node), and `gap-2` between
+the header row and the chart. The eyebrow "Total Balance" steps up from Caption/ink-muted to
+**Body 16/22 in primary ink** (node `I6701:97649;1100:74696`, 22px tall in the frame); `$0.00` stays
+Heading M 28/36 and sits flush under the eyebrow (Figma `gap 0`), with the underlined
+`Connect wallet` button 4px below it in `content-test/brand` `#000080`
+(= `--color-pipeline-brand`). The period tabs (224×36, 7D selected) and the grey placeholder bar
+chart are unchanged — both already matched the node. `variant="balance"` keeps the pre-#1419
+`min-h-[274px]` / `gap-6` / `padding="lg"` / Caption-eyebrow treatment for the `"legacy"` grid and
+the mobile stack.
+
 **Served series mode (#1138).** `GET /v1/positions/history` (backend #1116/#1135 — dense,
 window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
 period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days`/`interval`:
@@ -325,7 +383,16 @@ lands, real series data replaces the flat bars.
 
 **Header row:** mobile stacks balance-then-tabs (both left-aligned); `md+` restores a row with tabs top-right.
 
-**States A/B/C** (mobile-only CTA under the balance, via `mobileHomeState`):
+**`"connect-wallet"` variant (#1422, desktop-only, state 2 of `home-screen-states.md`).** Renders
+the `Total Balance` eyebrow and `balanceLabel` (default `"$0.00"`, the documented zero — no wallet
+means no balance query runs) exactly as the default variant, but in place of both the unrealized-PnL
+caption and the `"Get PLUSD to start"` link renders a single underlined `Connect wallet` button
+(`onConnectWallet`), styled Body 16/22 on `--color-pipeline-brand`. `mobileHomeState` is ignored.
+`data-node-id` switches to `6701:97649` (from the default `1497:95048`) and a `data-variant` attribute
+is set; the chart `role="img"` aria-label drops its PnL clause since no caption renders in this
+variant.
+
+**States A/B/C** (mobile-only CTA under the balance, via `mobileHomeState`, `"balance"` variant only):
 
 | State                 | CTA / caption                                   |
 | --------------------- | ----------------------------------------------- |
@@ -374,6 +441,15 @@ Illustration is pinned to 240×240 (Figma node `1497:94570`) to match the Figma 
 muted variant reads at the same scale as the design. Row cap: 5 rows (`MAX_ROWS`) — Figma frame
 `1497:95207` shows 5 rows (Sell / Sell / Unstake / Stake / Buy) filling the card height with the
 "View All" affordance below.
+
+**Empty-state copy:** "You will see all transactions here" — corrected from "…your transactions…"
+in #1422 against frames `6701:97538` and `6701:98220` (was BUG-26), and already the wording used by
+`/transactions`.
+
+**`padding` passthrough (#1422).** The card forwards an optional `padding` to `Card`. Both
+epic-#1419 grids pass `padding="md"` so the heading sits 16px in from the card edge like Figma node
+`6701:97548` (heading 36px tall at (16,16), `Placeholder` 446×502 at y=68). The default stays
+`"lg"` (24px) for the `"legacy"` grid and the mobile stack.
 
 **Typography:** title uses the Heading M token, Besley display family (Figma heading instance
 `1497:94568`). "View All" uses Body Semi Bold with `--color-pipeline-ink-muted`.
@@ -1443,7 +1519,7 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 **Desktop (md+) visual structure, top → bottom:**
 
 1. Sticky `TopBar` along the top edge of the viewport.
-2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room under the bar (48px gives the welcome heading air; horizontal padding lets the column breathe at narrower widths without exceeding the 1200px design cap). The column stacks `WelcomeHeader` and a white outer `Card` with a 48px gap; the outer Card is borderless (`!border-0` — the layout carries no strokes in the design, Figma node `1497:94948`; LP review #8/#1154).
+2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room under the bar (48px gives the welcome heading air). The column stacks `WelcomeHeader` and a white outer `Card` with a 48px gap; the outer Card is borderless (`!border-0` — the layout carries no strokes in the design, Figma node `1497:94948`; LP review #8/#1154). At md+ the column carries **no horizontal padding** (`md:px-0`, #1422): the epic-#1419 frames place the 1200px `Heading` column at x=264 of a 1728px frame with its `Content` panel padded 32, so the white panel's padding box must itself be 1200 wide for the cards to span the frame's 1136 (`md:px-8` made them 1072). The welcome heading sits flush with the panel's outer edge, 32px left of the cards, exactly as Figma node `6701:97540` does. Mobile keeps `px-2`.
 3. Inside the outer card, a 7-column CSS grid (mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`, 16px gap matching the design's `gap-x-16`/`gap-y-16`, node `1497:94565`; rows are content-sized, with Recent activity absolutely filling its two-row span so the columns' heights always match — node `1497:95187`, LP review #3):
 
    | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                            |
@@ -1462,9 +1538,31 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
    | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
    | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                |
    | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                  |
-   | Balances        | col 1–2, row 2                       | `StartHereCard` + `StakeCard` stacked (Figma node `6701:98347`) — both CTAs open the auth flow, Sell forced disabled. |
-   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` + `EarnedCard` stacked (Figma node `6701:98377`) — Add Funds stays disabled.            |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — both CTAs open the auth flow, Sell forced disabled. |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled. |
    | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                            |
+
+   When `deriveHomeState` returns `"unverified"` (signed in, KYB bypassed or not completed, wallet
+   disconnected — state 2 of `home-screen-states.md`, #1422, Figma node `6701:97538`) the grid
+   renders a third branch, built from the `"zero"` branch with two card swaps and the CTA rewiring:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="connect-wallet"` (Figma node `6701:97649`, 643×274) — "Total Balance" / "$0.00" / `Connect wallet` link, placeholder chart. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97548`, 478×634).                                                           |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:97659`, 313×344) — Buy/Stake open the connect modal, Sell disabled when zero. |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="verify"` (Figma node `6701:97695`, 246px) + `EarnedCard layout="compact"` (node `6701:97918`, 82px) stacked (node `6701:97694`) — Start Verification opens `openAccountSetup()`. |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97650`) — `pt-4` + 16px heading + `gap-4` + 41px cells already matches.             |
+
+   Both #1419 branches are pixel-matched to their frames, shared cards included (human decision,
+   2026-10-07 — this supersedes the "composition only, card heights accepted" note from #1421). The
+   grid itself needed no change: `grid-cols-7 gap-4` over a 1136px content box already yields the
+   frames' 148.57px columns, so 2 cols = 313.14, 3 cols = 477.71 and 4 cols = 642.28. Card radii
+   stay `--radius-pipeline-card` (4px) and button radii `--radius-pipeline-button` (4px) —
+   `get_variable_defs` resolves the frames' `radius/radius-xxl` and `radius/radius-s` to 4, which
+   the frame screenshots confirm (the 24px/8px literals in `get_design_context`'s output are
+   stale fallbacks, not the applied mode). The `"legacy"` grid and the mobile stack keep today's
+   card look until states 3–6 land.
 
 **Mobile (below md) visual structure — single-column stack**, rendered directly (no outer white Card wrapper — Figma frame `1989:8292` uses the page background, not a white card):
 
@@ -1491,19 +1589,21 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 
 Only meaningful when `isConnected === true`; callers short-circuit to the disconnected layout otherwise.
 
-**Home state derivation (`deriveHomeState`, issue #1421):** `packages/frontend/src/components/homeState.ts`
-exports `HomeState = "zero" | "legacy"` and `deriveHomeState({ hasSession, isConnected, kybStatus? })`.
-The precedence rule (not re-derived here — see `docs/product-specs/home-screen-states.md`
-for the authoritative six-state table) is: `"zero"` whenever `hasSession` is `false`, regardless of
-`isConnected` — a connected-but-unauthenticated wallet is a distinct, not-yet-designed combination
-and is deliberately ignored by this seam. `isConnected` and `kybStatus` are accepted on the input
-type so states 2–6 (#1422–#1426) can extend the union without changing every call site, but only
-`hasSession` is read today. The route reads `useAuthSession().isAuthenticated` for `hasSession`;
-it does **not** call `getMyLp` (`GET /v1/lps/me`) on this path — that call would 401 while
-unauthenticated, and `kyb_status` only enters the derivation once a later issue wires it. Only the
-desktop grid branches on `homeState`; the mobile stack keeps today's `isConnected`-only rendering
-unchanged (no mobile frame exists yet for the zero state — the composition stays flexible for one
-to slot in later).
+**Home state derivation (`deriveHomeState`, issues #1421/#1422):**
+`packages/frontend/src/components/homeState.ts` exports `HomeState = "zero" | "unverified" | "legacy"`,
+`LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
+`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus? })`. The precedence rule (not
+re-derived here — see `docs/product-specs/home-screen-states.md` for the authoritative six-state
+table and its precedence clause) is evaluated in order: `"zero"` whenever `hasSession` is `false`,
+regardless of `isConnected` (ignored by this seam); else `"unverified"` when `!isConnected` and
+either `lpRead === "absent"` or (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
+`"legacy"` (covers a connected wallet, `lpRead` `"unknown"`/`"error"`, and every other `kyb_status`,
+including the unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for
+`hasSession` and `lpRead`/`kybStatus` from `useAuthFlow()` — `AuthFlowProvider` already issues
+`GET /v1/lps/me` on every token change (see `docs/frontend/auth-components.md#authflowprovider`), so
+the route makes **no** `getMyLp` call of its own on this path. Only the desktop grid branches on
+`homeState`; the mobile stack keeps today's `isConnected`-only rendering unchanged (no mobile frame
+exists yet for states 1–2 — the composition stays flexible for one to slot in later).
 
 Token discipline: this composer adds no raw colors, fonts, sizes, or radii — every value comes from `@pipeline/ui/styles/theme.css` via component primitives or Tailwind utilities that resolve theme tokens.
 

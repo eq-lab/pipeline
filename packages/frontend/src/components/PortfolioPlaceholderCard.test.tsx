@@ -1,4 +1,4 @@
-/** Tests for PortfolioPlaceholderCard — header states + the zero-value placeholder chart (#1114). */
+// spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
 import {
@@ -374,4 +374,58 @@ describe("tooltip timestamp format per period (#1223, #1234 revision)", () => {
       expect(text).not.toMatch(/\d{2}:\d{2}/);
     },
   );
+});
+
+describe("PortfolioPlaceholderCard — connect-wallet variant (#1422)", () => {
+  it("renders a Connect wallet button and fires onConnectWallet on click", async () => {
+    const onConnectWallet = vi.fn();
+    const user = userEvent.setup();
+    renderCard({ variant: "connect-wallet", onConnectWallet });
+
+    const button = screen.getByRole("button", { name: "Connect wallet" });
+    await user.click(button);
+
+    expect(onConnectWallet).toHaveBeenCalledOnce();
+  });
+
+  it("renders no unrealized-PnL caption and no 'Get PLUSD to start' link", () => {
+    renderCard({ variant: "connect-wallet" });
+
+    expect(screen.queryByTestId("earning-caption")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Get PLUSD to start" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still shows the Total Balance heading and $0.00 default", () => {
+    renderCard({ variant: "connect-wallet" });
+
+    expect(screen.getByText("Total Balance")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+  });
+
+  it("sets data-node-id and data-variant for the connect-wallet variant", () => {
+    renderCard({ variant: "connect-wallet" });
+    expect(screen.getByRole("region")).toHaveAttribute(
+      "data-node-id",
+      "6701:97649",
+    );
+    expect(screen.getByRole("region")).toHaveAttribute(
+      "data-variant",
+      "connect-wallet",
+    );
+  });
+
+  it("the default variant still renders the caption and the link (regression)", () => {
+    renderCard();
+
+    expect(screen.getByTestId("earning-caption")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Get PLUSD to start" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region")).toHaveAttribute(
+      "data-node-id",
+      "1497:95048",
+    );
+  });
 });

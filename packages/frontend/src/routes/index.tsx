@@ -1,3 +1,4 @@
+// spec: docs/frontend/dashboard-components.md#home-route
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
@@ -42,9 +43,6 @@ import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
 import { deriveHomeState } from "@/components/homeState";
 
-// spec: docs/frontend/dashboard-components.md#home-route
-// (desktop/mobile composition, top-left card branching, Figma refs).
-
 type MobileHomeState = "empty" | "plusd" | "splusd";
 
 function deriveMobileHomeState(
@@ -70,10 +68,17 @@ function Home() {
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthSession();
-  const { open: openAuthFlow } = useAuthFlow();
+  const {
+    open: openAuthFlow,
+    lpRead,
+    kybStatus,
+    openAccountSetup,
+  } = useAuthFlow();
   const homeState = deriveHomeState({
     hasSession: isAuthenticated,
     isConnected,
+    lpRead,
+    kybStatus,
   });
 
   const { plusd: plusdAddress } = useStakedPlusdAsset();
@@ -203,7 +208,7 @@ function Home() {
       data-testid="home-page-root"
     >
       <main
-        className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-2 py-12 md:gap-12 md:px-8"
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-2 py-12 md:gap-12 md:px-0"
         data-testid="home-main"
       >
         <WelcomeHeader
@@ -313,6 +318,7 @@ function Home() {
               <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
                 <RecentActivityCard
                   className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
                   data-testid="home-recent-activity-card"
                 />
               </div>
@@ -323,14 +329,14 @@ function Home() {
                 data-testid="home-balances-stack"
               >
                 <StartHereCard
-                  className="flex-1"
+                  layout="compact"
                   onBuy={onSignUp}
                   onSell={onSignUp}
                   sellDisabled
                   data-testid="home-start-here-card"
                 />
                 <StakeCard
-                  className="flex-1"
+                  layout="compact"
                   onStake={onSignUp}
                   onUnstake={onSignUp}
                   data-testid="home-stake-card"
@@ -347,7 +353,72 @@ function Home() {
                   className="flex-1"
                   data-testid="home-add-usd-card"
                 />
-                <EarnedCard data-testid="home-earned-card" />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
+          ) : homeState === "unverified" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant="connect-wallet"
+                onConnectWallet={openConnectModal}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:97659"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  layout="compact"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  layout="compact"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:97694"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="verify"
+                  onStartVerification={openAccountSetup}
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
               </div>
 
               <div

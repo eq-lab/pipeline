@@ -1,38 +1,32 @@
+// spec: docs/frontend/dashboard-components.md#recentactivitycard
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
+import type { CardPadding } from "@pipeline/ui";
 import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 import { useRequests } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
-// spec: docs/frontend/dashboard-components.md#recentactivitycard
-// (connected/empty states, active-chain gating #644, Figma nodes 1497:95119 / 1497:94567).
-
-export type RecentActivityCardProps = Omit<
+export interface RecentActivityCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children"
->;
+> {
+  padding?: CardPadding;
+}
 
-/** Base heading id prefix — each instance gets a unique suffix from useId(). */
 const HEADING_ID_BASE = "recent-activity-card-title";
 
-// spec: docs/frontend/dashboard-components.md#recentactivitycard (illustration size, Figma node 1497:94570).
 const ILLUSTRATION_WIDTH = 240;
 
-// spec: docs/frontend/dashboard-components.md#recentactivitycard (row cap, Figma frame 1497:95207).
 const MAX_ROWS = 5;
 
 export const RecentActivityCard = React.forwardRef<
   HTMLDivElement,
   RecentActivityCardProps
->(function RecentActivityCard({ className, ...rest }, ref) {
-  // Use a unique id per instance to avoid duplicate id attributes when both
-  // the mobile and desktop blocks render this card in the same DOM.
+>(function RecentActivityCard({ className, padding, ...rest }, ref) {
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
-  // Tech-debt: this chain-selection derivation is duplicated in useRequests and
-  // transactions.tsx; extract to a shared hook in a follow-up (see tech-debt-tracker.md).
   const { kind } = useWalletView();
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { isConnected: isStellarConnected } = useStellarWallet();
@@ -44,9 +38,6 @@ export const RecentActivityCard = React.forwardRef<
   const composed = [
     "flex flex-col gap-4",
     "min-h-[564px] w-full",
-    // spec: docs/frontend/dashboard-components.md#recentactivitycard (elevation border, Figma node 1497:95207).
-    // `!` prefix so per-side widths beat the uniform `border` shorthand in
-    // Card's baseClasses regardless of Tailwind's CSS cascade order.
     "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
   ]
@@ -57,6 +48,7 @@ export const RecentActivityCard = React.forwardRef<
     <Card
       ref={ref}
       variant="white"
+      padding={padding}
       role="region"
       aria-labelledby={HEADING_ID}
       className={composed}
@@ -79,7 +71,6 @@ export const RecentActivityCard = React.forwardRef<
         Recent activity
       </h2>
 
-      {/* Body — either the activity list (connected + data) or the empty state */}
       <div
         className="flex min-h-0 flex-1 flex-col gap-4"
         data-node-id="1497:94569"
@@ -131,7 +122,7 @@ export const RecentActivityCard = React.forwardRef<
                 data-node-id="1497:94570"
               />
             }
-            caption="You will see your transactions here"
+            caption="You will see all transactions here"
             data-node-id="1497:94665"
           />
         )}
@@ -140,13 +131,6 @@ export const RecentActivityCard = React.forwardRef<
   );
 });
 
-// ── Local icon ────────────────────────────────────────────────────────────────
-
-/**
- * ChevronRight — 24×24 inline SVG icon painted with `currentColor`.
- * Matches the "›" shape used in the Figma "View All" button (node 1497:95216).
- * Decorative only; hidden from assistive technology.
- */
 function ChevronRight() {
   return (
     <svg
@@ -166,8 +150,6 @@ function ChevronRight() {
     </svg>
   );
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
 
 RecentActivityCard.displayName = "RecentActivityCard";
 

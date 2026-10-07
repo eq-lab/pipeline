@@ -442,7 +442,7 @@ Name and Country use a visible one-pixel `--color-pipeline-line` border while un
 matching the Account profile card. The control retains the shared focus border and disabled
 behavior; its outer wrapper has no additional border and other TextField defaults stay unchanged.
 
-**Account-setup wiring (#1371).** The app-wide auth flow reads the authenticated LP after sign-in, OTP verification, and session restoration. Only a 404 or a 200 response with zero `documents` auto-opens this modal; loading, 401, and other errors do not. The close button dismisses this prompt for the current authenticated session without signing out or reopening on rerender. A later sign-in may prompt again if the server still has no documents. The `/test?tab=auth` trigger remains an isolated visual preview.
+**Account-setup wiring (#1371, dismissal persistence #1429).** The app-wide auth flow reads the authenticated LP after sign-in, OTP verification, and session restoration. Only a 404 or a 200 response with zero `documents` auto-opens this modal; loading, 401, and other errors do not. The close button dismisses this prompt for the current **stored** session, without signing out. The dismissal is persisted next to the session record under `pipeline.auth.accountSetupDismissed` (`markAccountSetupDismissed` / `isAccountSetupDismissed` in `session.ts`, keyed by the stored token), so it survives a page reload: session restoration still re-reads `GET /v1/lps/me`, but a dismissed session never auto-opens again. `clearSession()` drops the dismissal, and `saveSession()` drops one left over from a different token, so sign-out followed by a fresh sign-in or OTP verification auto-opens again whenever the server still has no documents. `openAccountSetup()` — the home `AddUsdCard` verify card's Start Verification CTA and the Account page — opens the modal regardless of the stored dismissal. The `/test?tab=auth` trigger remains an isolated visual preview.
 
 A profile card above the upload card contains labelled Name (`legal_name`) and Country (`country`) fields using shared `TextField`s. Existing values are populated from `GET /v1/lps/me`; an existing LP's `contact_email` is retained on the full-replace JSON `POST /v1/lps/me`, and a new LP uses the email captured at successful authentication. The session stores that email with its token so the new-LP form remains usable after reload. The fields and upload actions are available only when the server says `writable`; a verified document cannot be removed even on a writable LP. Submit requires a nonblank name and a staged document for a new LP; an eligible existing LP may save changed Name or Country and submit persisted documents without staging another file. With files staged, it saves the profile before uploading. The upload response's ordered per-file results distinguish stored files from failed files, including HTTP 400 when all files are rejected: only failures stay staged, and the refreshed LP supplies persisted filenames. Same-LP document refreshes preserve unsaved Name and Country drafts; a new LP identity resets the fields. Deletion calls `DELETE /v1/lps/me/documents/{doc}` and removes a row only after success. After fully successful uploads, Submit requests backend review; the confirmation requires a server UnderReview response. Submission failures retain uploaded files and allow Submit for review without duplicate uploads. Profile-only setup submission requires eligible persisted files.
 
@@ -743,11 +743,21 @@ instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern
 `useConnectModal()` for "Continue with wallet") and above `WalletViewProvider`/`RouterProvider`,
 so every route renders under it.
 
-`useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close() }`. `open()` defaults to the
-`"sign-in"` screen when called with no argument. Unlike `useConnectModal()` (no-op fallback for
-partial test trees), `useAuthFlow()` **throws** when called outside the provider — callers
-(`TopBar`, `MobileNavMenu`) are always inside it in production, so a missing provider in a test
-tree is a setup bug worth surfacing loudly rather than silently swallowing.
+`useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close(), lpRead, kybStatus?,
+openAccountSetup() }` (widened by #1422 for the home route's state derivation —
+`docs/frontend/dashboard-components.md#home-route`). `open()` defaults to the `"sign-in"` screen
+when called with no argument. Unlike `useConnectModal()` (no-op fallback for partial test trees),
+`useAuthFlow()` **throws** when called outside the provider — callers (`TopBar`, `MobileNavMenu`)
+are always inside it in production, so a missing provider in a test tree is a setup bug worth
+surfacing loudly rather than silently swallowing.
+
+`lpRead` (`"unknown" | "absent" | "loaded" | "error"`, from `homeState.ts`) and `kybStatus`
+(`setup.lp?.kyb_status`, only defined when `lpRead === "loaded"`) are a direct projection of the
+provider's own `SetupState.status`/`lp` — no second `getMyLp` call, no new state machine.
+`openAccountSetup()` re-opens the already-mounted `CompanyDocsModal` (`setSetup` flips `open` back
+to `true`) for a "reopen account setup" CTA elsewhere in the app; it is a no-op when there is no
+current setup state (signed out). The context value is memoized (`useMemo`) so consumers that only
+read `open`/`close` do not re-render on every `lpRead` tick.
 
 The provider owns `isOpen`/`screen` state and renders one `<EmailAuthFlow open initialScreen={screen}
 onClose={close} onConnectWallet={openConnectModal} />`. A successful sign-in flips the reactive

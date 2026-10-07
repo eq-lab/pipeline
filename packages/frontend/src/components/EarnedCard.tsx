@@ -1,37 +1,22 @@
+// spec: docs/frontend/dashboard-components.md#earnedcard
 import React from "react";
 import { Card } from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 
-// spec: docs/frontend/dashboard-components.md#earnedcard
-// (composition, states A/B/C, Figma frame 1497:94556 node 1497:94691).
+export type EarnedCardLayout = "default" | "compact";
 
-/** Mobile home balance state — drives the earned value display. */
 export interface EarnedCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children"
 > {
-  /**
-   * Mobile-only: connected balance state.
-   * When `"splusd"` (State C), renders the tracking placeholder until PnL APY
-   * exists.
-   * When `"empty"` or `"plusd"` (States A/B), renders "Nothing yet".
-   * When `undefined`, renders "Tracked once you stake".
-   */
-  /**
-   * Formatted total PnL in dollars, e.g. `"+$123.00"` (realized + unrealized,
-   * sourced from `GET /v1/pnl` `total_pnl`). When present, this replaces the
-   * placeholder value.
-   */
   earnedPnlLabel?: string;
-  /**
-   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
-   * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
-   */
   padding?: CardPadding;
+  layout?: EarnedCardLayout;
 }
 
-/** Base label id prefix — each instance gets a unique suffix from useId(). */
 const LABEL_ID_BASE = "earned-card-label";
+
+const ELEVATION_BORDER = "!border-t !border-r-[3px] !border-b-[3px] !border-l";
 
 const labelClasses = [
   "font-[family-name:var(--font-body)]",
@@ -53,52 +38,106 @@ const valueClasses = [
   "m-0",
 ].join(" ");
 
+const compactValueClasses = [
+  "font-[family-name:var(--font-display)]",
+  "text-[length:var(--text-pipeline-heading-s)]",
+  "leading-[var(--text-pipeline-heading-s--line-height)]",
+  "font-[var(--font-weight-regular)]",
+  "text-[color:var(--color-pipeline-ink-subtle)]",
+  "m-0",
+].join(" ");
+
+function pnlValueClasses(earnedPnlLabel: string, compact: boolean): string {
+  return [
+    "font-[family-name:var(--font-display)]",
+    compact
+      ? "text-[length:var(--text-pipeline-heading-s)]"
+      : "text-[length:var(--text-pipeline-heading-s-mobile)]",
+    compact
+      ? "leading-[var(--text-pipeline-heading-s--line-height)]"
+      : "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
+    compact ? "" : "md:text-[length:var(--text-pipeline-heading-s)]",
+    compact ? "" : "md:leading-[var(--text-pipeline-heading-s--line-height)]",
+    "font-[var(--font-weight-regular)]",
+    earnedPnlLabel.startsWith("+")
+      ? "text-[color:var(--color-pipeline-chart-positive)]"
+      : "text-[color:var(--color-pipeline-ink)]",
+    "m-0",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
-  function EarnedCard({ className, earnedPnlLabel, ...rest }, ref) {
-    // Use a unique id per instance to avoid duplicate id attributes when both
-    // the mobile and desktop blocks render this card in the same DOM.
+  function EarnedCard(
+    { className, earnedPnlLabel, padding, layout = "default", ...rest },
+    ref,
+  ) {
     const instanceId = React.useId();
     const LABEL_ID = `${LABEL_ID_BASE}-${instanceId}`;
 
-    const composed = [
-      "!border-t !border-r-[3px] !border-b-[3px] !border-l",
-      className,
-    ]
-      .filter(Boolean)
-      .join(" ");
-
-    // spec: docs/frontend/dashboard-components.md#earnedcard (state → display-value table).
-    let earnedValue: string;
-    let valueExtra: string | undefined;
-
-    if (earnedPnlLabel !== undefined) {
-      earnedValue = earnedPnlLabel;
-      valueExtra = undefined;
-    } else {
-      earnedValue = "Tracked once you stake";
-      valueExtra = undefined;
-    }
+    const earnedValue = earnedPnlLabel ?? "Tracked once you stake";
+    const isCompact = layout === "compact";
 
     const stateValueClasses =
       earnedPnlLabel !== undefined
-        ? [
-            "font-[family-name:var(--font-display)]",
-            "text-[length:var(--text-pipeline-heading-s-mobile)]",
-            "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
-            "md:text-[length:var(--text-pipeline-heading-s)]",
-            "md:leading-[var(--text-pipeline-heading-s--line-height)]",
-            "font-[var(--font-weight-regular)]",
-            earnedPnlLabel.startsWith("+")
-              ? "text-[color:var(--color-pipeline-chart-positive)]"
-              : "text-[color:var(--color-pipeline-ink)]",
-            "m-0",
-          ].join(" ")
-        : valueClasses;
+        ? pnlValueClasses(earnedPnlLabel, isCompact)
+        : isCompact
+          ? compactValueClasses
+          : valueClasses;
+
+    if (isCompact) {
+      const compactComposed = [
+        "flex h-[82px] w-full items-center gap-2",
+        ELEVATION_BORDER,
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return (
+        <Card
+          ref={ref}
+          variant="white"
+          padding={padding ?? "md"}
+          role="region"
+          aria-labelledby={LABEL_ID}
+          className={compactComposed}
+          data-node-id="6701:97918"
+          {...rest}
+        >
+          <div
+            className="flex min-w-0 flex-1 flex-col"
+            data-node-id="6701:97919"
+            data-testid="home-earned-content"
+          >
+            <p
+              id={LABEL_ID}
+              className={labelClasses}
+              data-node-id="6701:97920"
+              data-testid="home-earned-label"
+            >
+              Earnings
+            </p>
+            <p
+              className={stateValueClasses}
+              data-node-id="6701:97925"
+              data-testid="home-earned-value"
+            >
+              {earnedValue}
+            </p>
+          </div>
+        </Card>
+      );
+    }
+
+    const composed = [ELEVATION_BORDER, className].filter(Boolean).join(" ");
 
     return (
       <Card
         ref={ref}
         variant="white"
+        padding={padding}
         role="region"
         aria-labelledby={LABEL_ID}
         className={composed}
@@ -125,20 +164,6 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
           >
             {earnedValue}
           </p>
-          {valueExtra !== undefined && (
-            <p
-              className={[
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-caption)]",
-                "leading-[var(--text-pipeline-caption--line-height)]",
-                "font-[var(--font-weight-regular)]",
-                "text-[color:var(--color-pipeline-ink-muted)]",
-                "m-0",
-              ].join(" ")}
-            >
-              {valueExtra}
-            </p>
-          )}
         </div>
       </Card>
     );

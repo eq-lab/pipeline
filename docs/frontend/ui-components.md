@@ -446,7 +446,8 @@ the page heading hierarchy beneath the dashboard's `<h1>`.
 Generic centred "no data yet" placeholder used inside a parent container (Card, panel,
 section body) when a list or surface has nothing to show yet. The dashboard's Recent
 activity card is the canonical example — Figma frame `1497-94556` → node `1497:94569`
-`Placeholder`, with the caption "You will see your transactions here".
+`Placeholder`, with the caption "You will see all transactions here" (the "your"/"all"
+mismatch logged as BUG-26 was corrected against frames `6701:97538` / `6701:98220` in #1422).
 
 Pure composition primitive — no surface fill, border, padding, or radius. The parent
 (typically `Card`) supplies the chrome; all visual values come from the design tokens in

@@ -1,24 +1,9 @@
-/**
- * AuthFlowProvider — unit tests.
- *
- * Covers:
- *   - `useAuthFlow()` outside the provider throws.
- *   - `open("sign-in")` / `open("create-account")` render EmailAuthFlow on the
- *     matching screen; `open()` with no argument defaults to "sign-in".
- *   - `close()` (via context) and the flow's own `onClose` both hide it.
- *   - "Continue with wallet" (EmailAuthFlow's `onConnectWallet`) is wired to
- *     the shared connect-modal's `open()`.
- */
+// spec: docs/frontend/auth-components.md#authflowprovider
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, renderHook } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthFlowProvider } from "./AuthFlowProvider";
 import { useAuthFlow } from "./AuthFlowContext";
-
-// ── Mock EmailAuthFlow ────────────────────────────────────────────────────────
-// Avoid pulling in SignInModal/CreateAccountModal/OtpModal/ForgotPasswordModal/
-// Turnstile/api machinery — AuthFlowProvider's own contract is what screen it
-// opens and how it wires onConnectWallet, not the modals' own behavior.
 
 vi.mock("@/components/EmailAuthFlow", () => ({
   EmailAuthFlow: ({
@@ -41,15 +26,11 @@ vi.mock("@/components/EmailAuthFlow", () => ({
     ) : null,
 }));
 
-// ── Mock the connect-modal hook ───────────────────────────────────────────────
-
 const mockOpenConnectModal = vi.fn();
 
 vi.mock("@/wallet", () => ({
   useConnectModal: () => ({ open: mockOpenConnectModal, close: vi.fn() }),
 }));
-
-// ── Consumer ──────────────────────────────────────────────────────────────────
 
 function ConsumerButtons() {
   const { open, close } = useAuthFlow();
@@ -63,8 +44,6 @@ function ConsumerButtons() {
   );
 }
 
-// ── Tests: outside provider ───────────────────────────────────────────────────
-
 describe("useAuthFlow — outside provider", () => {
   it("throws", () => {
     expect(() => renderHook(() => useAuthFlow())).toThrow(
@@ -72,8 +51,6 @@ describe("useAuthFlow — outside provider", () => {
     );
   });
 });
-
-// ── Tests: open / close ───────────────────────────────────────────────────────
 
 describe("AuthFlowProvider — open / close", () => {
   it("flow is absent initially", () => {
@@ -174,8 +151,6 @@ describe("AuthFlowProvider — open / close", () => {
     );
   });
 });
-
-// ── Tests: Continue with wallet ───────────────────────────────────────────────
 
 describe("AuthFlowProvider — Continue with wallet", () => {
   it("onConnectWallet is wired to the shared connect-modal's open()", async () => {

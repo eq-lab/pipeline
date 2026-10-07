@@ -1,30 +1,10 @@
-/**
- * Unit tests for RecentActivityCard.
- *
- * `useRequests` is mocked to return controlled fixture data. `useWallet` is
- * mocked to provide a configurable `isConnected` flag. TanStack Router's
- * `Link` is replaced with a passthrough `<a href={to}>` so assertions can
- * check the href attribute.
- *
- * Scenarios covered:
- *   1. Disconnected → empty state renders; no "View All" link.
- *   2. Connected + 3 rows → three list items render with correct amount
- *      strings; "View All" button-link present and points to /transactions.
- *   3. Connected + 6 rows → exactly 5 rows render (MAX_ROWS cap).
- *   4. Connected + empty list → empty state renders; no "View All" link.
- *   5. Connected + loading → empty state renders; no "View All" link.
- *   6. Connected + error → empty state renders; no "View All" link.
- *   7. Active-chain gating (Issue #644): Stellar view + Stellar connected + data
- *      → list renders, empty state absent. EVM connection state no longer drives
- *      the card when Stellar is active.
- */
+// spec: docs/frontend/dashboard-components.md#recentactivitycard
+// (unit tests; useRequests / useWallet mocked, Link replaced with a passthrough anchor).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { RecentActivityCard } from "./RecentActivityCard";
 import type { RequestsResponse } from "@/api";
-
-// ── Mock @/api ────────────────────────────────────────────────────────────────
 
 const mockRefetch = vi.fn();
 
@@ -38,12 +18,6 @@ const mockUseRequests = vi.fn(() => ({
 vi.mock("@/api", () => ({
   useRequests: () => mockUseRequests(),
 }));
-
-// ── Mock @/wallet ─────────────────────────────────────────────────────────────
-// All three hooks required for active-chain gating (Issue #644) are mocked:
-//   - useEvmWallet (mockUseWallet) — defaults disconnected
-//   - useStellarWallet (mockUseStellarWallet) — defaults disconnected
-//   - useWalletView (mockUseWalletView) — defaults { kind: "evm" }
 
 const mockUseWallet = vi.fn(() => ({
   isConnected: false,
@@ -67,9 +41,6 @@ vi.mock("@/wallet", async (importOriginal) => {
   };
 });
 
-// ── TanStack Router mock ──────────────────────────────────────────────────────
-// Render Link as a passthrough <a href={to}> so tests can assert the href.
-
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();
@@ -80,8 +51,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ),
   };
 });
-
-// ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const FIXTURE_3: RequestsResponse = {
   requests: [
@@ -129,9 +98,6 @@ const FIXTURE_5: RequestsResponse = {
     },
   ],
 };
-
-// 6-item fixture used to verify the MAX_ROWS=5 cap: the 6th item must not
-// render.
 const FIXTURE_6: RequestsResponse = {
   requests: [
     ...FIXTURE_5.requests,
@@ -145,13 +111,9 @@ const FIXTURE_6: RequestsResponse = {
   ],
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function renderCard() {
   return render(<RecentActivityCard />);
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("RecentActivityCard — disconnected wallet", () => {
   beforeEach(() => {
@@ -186,7 +148,7 @@ describe("RecentActivityCard — disconnected wallet", () => {
   it("renders the empty-state caption", () => {
     renderCard();
     expect(
-      screen.getByText("You will see your transactions here"),
+      screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -233,15 +195,12 @@ describe("RecentActivityCard — connected + 3 rows", () => {
 
   it("renders the Deposit (Buy) amount string", () => {
     renderCard();
-    // Deposit receives PLUSD (1:1 mint from USDC); label is PLUSD, not USDC
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("renders the Withdraw (Sell) pending amount string", () => {
     renderCard();
-    // Withdraw returns USDC; only the Withdraw row (not Deposit) shows USDC
     expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(1);
-    // Deposit row shows PLUSD
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
@@ -265,7 +224,7 @@ describe("RecentActivityCard — connected + 3 rows", () => {
   it("does not render the empty-state caption", () => {
     renderCard();
     expect(
-      screen.queryByText("You will see your transactions here"),
+      screen.queryByText("You will see all transactions here"),
     ).not.toBeInTheDocument();
   });
 });
@@ -302,7 +261,6 @@ describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
 
   it("does not render the 6th fixture amount", () => {
     renderCard();
-    // 6th row is a Deposit — renders PLUSD; must not appear when MAX_ROWS=5
     expect(screen.queryByText("+4,000.00 PLUSD")).not.toBeInTheDocument();
   });
 });
@@ -335,7 +293,7 @@ describe("RecentActivityCard — connected + empty list", () => {
   it("renders the empty-state caption", () => {
     renderCard();
     expect(
-      screen.getByText("You will see your transactions here"),
+      screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -377,7 +335,7 @@ describe("RecentActivityCard — connected + loading", () => {
   it("renders the empty-state caption while loading", () => {
     renderCard();
     expect(
-      screen.getByText("You will see your transactions here"),
+      screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -419,7 +377,7 @@ describe("RecentActivityCard — connected + error", () => {
   it("renders the empty-state caption on error", () => {
     renderCard();
     expect(
-      screen.getByText("You will see your transactions here"),
+      screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -433,11 +391,6 @@ describe("RecentActivityCard — connected + error", () => {
     expect(screen.queryByText("boom")).not.toBeInTheDocument();
   });
 });
-
-// ── Active-chain gating (Issue #644) ──────────────────────────────────────────
-
-// Stellar fixture: one Deposit row returned by useRequests for the Stellar wallet.
-// Amount encoded at 7 decimals (SAC_DECIMALS): 30000000000 = 3,000 USDC.
 const STELLAR_FIXTURE: RequestsResponse = {
   requests: [
     {
@@ -456,8 +409,6 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
   });
 
   it("Stellar view + Stellar connected + data → list renders, empty-state caption absent", () => {
-    // The card previously keyed off EVM isConnected. With EVM disconnected and
-    // Stellar active + connected, the list should render.
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
     mockUseStellarWallet.mockReturnValue({
       isConnected: true,
@@ -477,14 +428,10 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     });
 
     renderCard();
-
-    // List must render
     expect(screen.getByRole("list")).toBeInTheDocument();
-    // Stellar fixture is a Deposit row — receives PLUSD
     expect(screen.getByText("+3,000.00 PLUSD")).toBeInTheDocument();
-    // Empty-state must be absent
     expect(
-      screen.queryByText("You will see your transactions here"),
+      screen.queryByText("You will see all transactions here"),
     ).not.toBeInTheDocument();
   });
 
@@ -510,7 +457,7 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     renderCard();
 
     expect(
-      screen.getByText("You will see your transactions here"),
+      screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
@@ -535,23 +482,17 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     });
 
     renderCard();
-
-    // EVM active + EVM connected + data → list
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(
-      screen.queryByText("You will see your transactions here"),
+      screen.queryByText("You will see all transactions here"),
     ).not.toBeInTheDocument();
   });
 });
-
-// ── Stellar decimal fix (Issue #674) ─────────────────────────────────────────
 
 describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
-
-  // Stellar amounts at 7 dp (SAC_DECIMALS): 10_000_000 = 1.0; 9_900_000 = 0.99.
   const STELLAR_7DP: RequestsResponse = {
     requests: [
       {
@@ -620,7 +561,6 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
     expect(screen.getByText("−1.00 PLUSD")).toBeInTheDocument();
     expect(screen.getByText("+0.99 sPLUSD")).toBeInTheDocument();
-    // Old bug: formatted at 18 dp → effectively 0.00
     expect(screen.queryByText("−0.00 PLUSD")).not.toBeInTheDocument();
   });
 
