@@ -415,7 +415,6 @@ function Home() {
               >
                 <AddUsdCard
                   variant="verify"
-                  className="flex-1"
                   onStartVerification={openAccountSetup}
                   data-testid="home-add-usd-card"
                 />

@@ -7,6 +7,7 @@ import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
 import type { LpReadState } from "@/components/homeState";
 import { useConnectModal } from "@/wallet";
 import { useAuthSession } from "./useAuthSession";
+import { isAccountSetupDismissed, markAccountSetupDismissed } from "./session";
 import { ApiError, getMyLp, upsertMyLp } from "@/api";
 import type { LpResponse } from "@/api";
 import { AccountInReviewModal } from "@/components/AccountInReviewModal";
@@ -46,14 +47,19 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
             token,
             status: "loaded",
             lp,
-            open: lp.documents.length === 0,
+            open: lp.documents.length === 0 && !isAccountSetupDismissed(token),
           });
         }
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         if (error instanceof ApiError && error.status === 404) {
-          setSetup({ token, status: "absent", lp: null, open: true });
+          setSetup({
+            token,
+            status: "absent",
+            lp: null,
+            open: !isAccountSetupDismissed(token),
+          });
         } else {
           setSetup({ token, status: "error", lp: null, open: false });
         }
@@ -111,11 +117,12 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
             <CompanyDocsModal
               key={token}
               open={setup.open}
-              onDismiss={() =>
+              onDismiss={() => {
+                markAccountSetupDismissed(token);
                 setSetup((previous) =>
                   previous ? { ...previous, open: false } : null,
-                )
-              }
+                );
+              }}
               onSubmitSuccess={() =>
                 setSetup((previous) =>
                   previous?.token === token

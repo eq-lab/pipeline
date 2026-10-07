@@ -4,6 +4,8 @@ import {
   readSession,
   clearSession,
   subscribeSession,
+  isAccountSetupDismissed,
+  markAccountSetupDismissed,
 } from "./session";
 
 beforeEach(() => {
@@ -93,5 +95,34 @@ describe("subscribeSession", () => {
     unsubscribe();
     saveSession({ token: "jwt2", expires_in: 86400 });
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("account-setup dismissal (#1429)", () => {
+  it("is scoped to the stored token and cleared on sign-out", () => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+    expect(isAccountSetupDismissed("jwt")).toBe(false);
+
+    markAccountSetupDismissed("jwt");
+    expect(isAccountSetupDismissed("jwt")).toBe(true);
+    expect(isAccountSetupDismissed("other-jwt")).toBe(false);
+
+    clearSession();
+    expect(isAccountSetupDismissed("jwt")).toBe(false);
+  });
+
+  it("survives storing the same session again", () => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+    markAccountSetupDismissed("jwt");
+    saveSession({ token: "jwt", expires_in: 3600 });
+    expect(isAccountSetupDismissed("jwt")).toBe(true);
+  });
+
+  it("drops a dismissal left over from another token on a new sign-in", () => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+    markAccountSetupDismissed("jwt");
+    saveSession({ token: "next-jwt", expires_in: 3600 });
+    expect(isAccountSetupDismissed("jwt")).toBe(false);
+    expect(isAccountSetupDismissed("next-jwt")).toBe(false);
   });
 });

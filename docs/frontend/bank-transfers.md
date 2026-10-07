@@ -111,10 +111,45 @@ codegen's stale `#8fb2a4` literal) and disabled treatment
 (`rgba(184,191,190,0.12)` + ink-subtle text) already match the greyed-out `locked` rendering
 exactly. No new variant, no override.
 
-**Shape B — `Section`** (`verify`, `verifying`). `CheckIllustration` absolutely positioned
-bottom-right and clipped by the card (`overflow-hidden`), a heading block (title Besley 20/28 +
-description body 16/22, no eyebrow), and a rectangular `Button variant="primary-dark" size="m"`
-(the `!h-10` override — both designed buttons are 40 px tall, not the 48 px default).
+**Shape B — `Section`** (`verify`, `verifying`). A card-anchored `CheckIllustration` clipped by the
+card, a heading block (title Besley 20/28 + description body 16/22, no eyebrow), and a rectangular
+`Button variant="primary-dark" size="m"` (the `!h-10` override — both designed buttons are 40 px
+tall, not the 48 px default).
+
+#### Shape B frame and illustration anchor (#1430)
+
+Both frames are 313.14 × 246 with 16 px padding — 313.14 px is the home grid's `col-span-2` width
+at the 1136 px design container, and 246 px is the frame height the card owns. The anchor math:
+
+| | `verify` (`6701:97695`) | `verifying` (`6701:98539`) |
+| --- | --- | --- |
+| Union node | `6701:97696` | `6701:98540` |
+| Union size | 291 × 193.66 | 291 × 193.66 |
+| Union offset from the **card** box | `x=164, y=76` | `x=174, y=66` |
+| Bleed past the right edge | 142 px | 152 px |
+| Bleed past the bottom edge | 24 px | 14 px |
+| Visible artwork width | ~149 px | ~139 px |
+| Title block | `(16, 16)` | `(16, 16)` |
+| Button frame | 161 × 40 at `(16, 190)` | 122 × 40 at `(16, 190)` |
+
+The offsets are measured from the **card** box, not from the padded content box, so the `Card`
+itself is the positioning and clipping context: it carries `relative h-[246px] overflow-hidden` for
+these two variants only, and the inner column is a plain `flex h-full w-full flex-col
+justify-between` with no `relative`/`overflow` of its own. The illustration is `absolute` with the
+per-variant `top`/`left` above; the right and bottom bleed falls outside the card and is clipped
+there, which is what leaves only the artwork's left portion visible in the card's right half,
+behind the text column. The heading block and button keep `relative` so they paint over it.
+
+Three 1–3 px deltas against the frame come from the home cards' shared border idiom
+(`!border-t !border-r-[3px] !border-b-[3px] !border-l`), not from the anchor. Absolute offsets
+resolve against the card's padding box, so `left:164` lands 165 px from the outer edge, and
+`overflow-hidden` clips at the padding box, so the right and bottom cuts fall 3 px inside the Figma
+frame edge. `justify-between` likewise places the button's bottom at 227 rather than the frame's
+`y=230`.
+
+Because the card owns its height, the stack that mounts it must not stretch it. The unverified
+right stack (`6701:97694`, 344 = 246 + 16 gap + 82) mounts `<AddUsdCard variant="verify">` with no
+`flex-1`; `EarnedCard` keeps its own 82 px. Shape A carries no height and is still free to grow.
 
 ### Per-variant presence table
 

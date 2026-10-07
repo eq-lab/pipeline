@@ -255,3 +255,62 @@ describe("LP read state published via context (#1422)", () => {
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
   });
 });
+
+describe("Account-setup dismissal persists across reloads (#1429)", () => {
+  function mount() {
+    return render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+  }
+
+  async function dismissThenReload() {
+    const first = mount();
+    signIn();
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Close setup" }));
+    first.unmount();
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).not.toHaveTextContent("unknown"),
+    );
+  }
+
+  it("does not auto-open for an LP with no documents after a reload", async () => {
+    mockGet.mockResolvedValue({ documents: [], kyb_status: "NotStarted" });
+    await dismissThenReload();
+    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not auto-open for a missing LP after a reload", async () => {
+    mockGet.mockRejectedValue(new ApiError(404, "missing"));
+    await dismissThenReload();
+    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("auto-opens again after sign-out and a fresh sign-in", async () => {
+    mockGet.mockResolvedValue({ documents: [], kyb_status: "NotStarted" });
+    const first = mount();
+    signIn();
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Close setup" }));
+    first.unmount();
+
+    clearSession();
+    signIn();
+    mount();
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  });
+
+  it("openAccountSetup() still opens the modal after a dismissal survived a reload", async () => {
+    mockGet.mockResolvedValue({ documents: [], kyb_status: "NotStarted" });
+    await dismissThenReload();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reopen setup" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  });
+});

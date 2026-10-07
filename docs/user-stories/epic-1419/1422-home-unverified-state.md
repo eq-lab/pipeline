@@ -6,6 +6,11 @@ Spec: [docs/product-specs/home-screen-states.md](../../product-specs/home-screen
 [docs/frontend/dashboard-components.md](../../frontend/dashboard-components.md#home-route)
 Figma (desktop): https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=6701-97538&m=dev
 
+Follow-up defects found while testing this state have their own docs:
+[#1429](./1429-account-setup-dismissal-persistence.md) (account-setup modal reopens on reload) and
+[#1430](./1430-addusdcard-verify-illustration-anchor.md) (`AddUsdCard` verify frame and artwork
+anchor).
+
 This state renders only on the desktop (`md+`) grid. Mobile keeps today's `isConnected`-only stack
 unchanged — no mobile frame exists yet for this state (decision recorded on #1421, reapplied here).
 

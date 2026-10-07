@@ -1,5 +1,6 @@
 // spec: docs/product-specs/api-authorization-email.md#frontend
 const SESSION_KEY = "pipeline.auth.session";
+const SETUP_DISMISSED_KEY = "pipeline.auth.accountSetupDismissed";
 
 export interface Session {
   token: string;
@@ -33,6 +34,9 @@ export function saveSession({
     expiresAt: Date.now() + expires_in * 1000,
     ...(email ? { email: email.trim().toLowerCase() } : {}),
   };
+  if (localStorage.getItem(SETUP_DISMISSED_KEY) !== token) {
+    localStorage.removeItem(SETUP_DISMISSED_KEY);
+  }
   localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
   notify();
 }
@@ -70,7 +74,16 @@ export function readSession(): Session | null {
 
 export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SETUP_DISMISSED_KEY);
   notify();
+}
+
+export function markAccountSetupDismissed(token: string): void {
+  localStorage.setItem(SETUP_DISMISSED_KEY, token);
+}
+
+export function isAccountSetupDismissed(token: string): boolean {
+  return localStorage.getItem(SETUP_DISMISSED_KEY) === token;
 }
 
 export function subscribeSession(listener: () => void): () => void {

@@ -196,3 +196,34 @@ describe("AddUsdCard — seam handlers fire", () => {
     expect(onViewStatus).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("AddUsdCard — Shape B frame and illustration anchor (#1430)", () => {
+  it.each([
+    { variant: "verify" as const, anchor: ["top-[76px]", "left-[164px]"] },
+    { variant: "verifying" as const, anchor: ["top-[66px]", "left-[174px]"] },
+  ])(
+    "$variant clips a card-anchored illustration inside a 246px frame",
+    ({ variant, anchor }) => {
+      const { container } = render(<AddUsdCard variant={variant} />);
+      const card = screen.getByRole("region");
+      expect(card.className).toContain("h-[246px]");
+      expect(card.className).toContain("relative");
+      expect(card.className).toContain("overflow-hidden");
+
+      const illustration = container.querySelector("[data-tone]");
+      expect(illustration?.className).toContain("absolute");
+      for (const token of anchor) {
+        expect(illustration?.className).toContain(token);
+      }
+      expect(illustration?.parentElement?.className).not.toContain("relative");
+    },
+  );
+
+  it.each(["locked", "unlocked", "funded"] as const)(
+    "%s keeps the unconstrained horizontal frame",
+    (variant) => {
+      render(<AddUsdCard variant={variant} />);
+      expect(screen.getByRole("region").className).not.toContain("h-[246px]");
+    },
+  );
+});

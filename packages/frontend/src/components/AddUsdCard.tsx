@@ -25,6 +25,19 @@ const NODE_IDS: Record<AddUsdCardVariant, string> = {
   funded: "6701:97289",
 };
 
+const SECTION_FRAME_CLASSES = "relative h-[246px] overflow-hidden";
+
+const SECTION_ILLUSTRATION_ANCHOR: Record<"verify" | "verifying", string> = {
+  verify: "top-[76px] left-[164px]",
+  verifying: "top-[66px] left-[174px]",
+};
+
+function isSectionVariant(
+  variant: AddUsdCardVariant,
+): variant is "verify" | "verifying" {
+  return variant === "verify" || variant === "verifying";
+}
+
 const eyebrowClasses = [
   "m-0",
   "font-[family-name:var(--font-body)]",
@@ -147,11 +160,14 @@ function Section({
   const onAction = variant === "verify" ? onStartVerification : onViewStatus;
 
   return (
-    <div className="relative flex h-full w-full flex-col justify-between overflow-hidden">
+    <div className="flex h-full w-full flex-col justify-between">
       <CheckIllustration
         width={291}
         tone="muted"
-        className="pointer-events-none absolute right-[-10px] bottom-[-15px]"
+        className={[
+          "pointer-events-none absolute",
+          SECTION_ILLUSTRATION_ANCHOR[variant],
+        ].join(" ")}
       />
       <div className="relative flex flex-col gap-1">
         <h3 id={labelId} className={headingClasses}>
@@ -185,9 +201,11 @@ export const AddUsdCard = React.forwardRef<HTMLDivElement, AddUsdCardProps>(
   ) {
     const instanceId = React.useId();
     const labelId = `add-usd-card-title-${instanceId}`;
+    const isSection = isSectionVariant(variant);
 
     const composed = [
       "!border-t !border-r-[3px] !border-b-[3px] !border-l",
+      isSection ? SECTION_FRAME_CLASSES : null,
       className,
     ]
       .filter(Boolean)
@@ -205,7 +223,7 @@ export const AddUsdCard = React.forwardRef<HTMLDivElement, AddUsdCardProps>(
         data-variant={variant}
         {...rest}
       >
-        {variant === "verify" || variant === "verifying" ? (
+        {isSection ? (
           <Section
             variant={variant}
             onStartVerification={onStartVerification}
