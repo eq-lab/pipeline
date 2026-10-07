@@ -172,7 +172,7 @@ Figma node's own `Open Account` dev annotation together with
 
 ## Implementation Steps
 
-1. **Extend the state seam.** `packages/frontend/src/components/homeState.ts`:
+1. **Extend the state seam.** — DONE. `packages/frontend/src/components/homeState.ts`:
 
    ```ts
    export type HomeState = "zero" | "unverified" | "kyb-pending" | "legacy";
@@ -198,7 +198,7 @@ Figma node's own `Open Account` dev annotation together with
 
    `LpReadState` is unchanged. Keep the one-line spec-pointer header; add no other comments.
 
-2. **Add the `PortfolioPlaceholderCard` `"get-plusd"` variant.**
+2. **Add the `PortfolioPlaceholderCard` `"get-plusd"` variant.** — DONE.
    `packages/frontend/src/components/PortfolioPlaceholderCard.tsx`:
 
    ```ts
@@ -227,19 +227,19 @@ Figma node's own `Open Account` dev annotation together with
    `"1497:95048"` for `"balance"`; set `data-variant` for both compact variants. Drop the PnL clause
    from the chart `role="img"` aria-label whenever `isCompact`.
 
-3. **Give the compact `StakeCard` CTA a disabled treatment.**
+3. **Give the compact `StakeCard` CTA a disabled treatment.** — DONE.
    `packages/frontend/src/components/StakeCard.tsx`, compact branch only (`layout === "compact"`):
    - Label and `aria-label` become `Nothing to Stake` when `isStakeCtaDisabled` (the existing
      `stakeDisabled || mobileHomeState === "empty"` expression), matching the default branch's
      wording; otherwise `Stake` as today.
    - Add the scoped disabled className to that `Button`:
-     `disabled:bg-[rgba(184,191,190,0.12)]`, `disabled:hover:bg-[rgba(184,191,190,0.12)]`,
+     `disabled:bg-[rgba(184,191,190,0.12)]`, `disabled:hover:!bg-[rgba(184,191,190,0.12)]`,
      `disabled:text-[color:var(--color-pipeline-ink)]`, `disabled:opacity-[0.32]`.
    - Leave `layout="default"` and the `"splusd"` branch untouched.
    - The 160px frame width comes from the longer label plus the existing `size="m"` padding — do
      **not** hard-code a width.
 
-4. **Add the `"kyb-pending"` desktop branch.** `packages/frontend/src/routes/index.tsx`:
+4. **Add the `"kyb-pending"` desktop branch.** — DONE. `packages/frontend/src/routes/index.tsx`:
    - Feed the two new inputs into the existing `deriveHomeState` call:
      `plusdIsZero: isDisplayZero(plusdBalanceActive, activeDecimals)` and
      `splusdIsZero: isDisplayZero(splusdSharesActive, activeDecimals)`.
@@ -263,7 +263,7 @@ Figma node's own `Open Account` dev annotation together with
    - Leave the `md:hidden` mobile block, the `"zero"`, `"unverified"` and `"legacy"` branches
      byte-identical.
 
-5. **Record the precedence rule and composition.** `docs/product-specs/home-screen-states.md`
+5. **Record the precedence rule and composition.** — DONE. `docs/product-specs/home-screen-states.md`
    (66 lines, under the 200-line cap):
    - Flip row 3's Status to `Implemented (#1423)`.
    - Extend `## Precedence rule` with the state-3 clause: it requires a session, a **connected**
@@ -275,7 +275,7 @@ Figma node's own `Open Account` dev annotation together with
      7-column grid, with the Total Balance card showing `Get PLUSD to start`, the Stake CTA disabled
      as `Nothing to Stake`, and `AddUsdCard verifying` in the right stack.
 
-6. **Update the frontend docs.**
+6. **Update the frontend docs.** — DONE.
    - `docs/frontend/dashboard-components.md` § "Home route": add the `"kyb-pending"` grid table
      (node ids and geometry from the table above) and update the "Home state derivation" paragraph
      for the widened union and the two balance inputs. § "PortfolioPlaceholderCard": document
@@ -290,16 +290,16 @@ Figma node's own `Open Account` dev annotation together with
      treatment is a documented call-site override (StakeCard compact + the three auth modals), not a
      variant state.
 
-7. **User stories.** New `docs/user-stories/epic-1419/1423-home-kyb-pending-state.md` in the #1422
+7. **User stories.** — DONE. New `docs/user-stories/epic-1419/1423-home-kyb-pending-state.md` in the #1422
    format (Persona / Pre-conditions / Steps / Expected outcomes, desktop-only note, node ids and box
    sizes per card so `ux-tester` can verify against `6701:98417`), plus a row in
    `docs/user-stories/index.md` under "Epic #1419".
 
-8. **Log, do not fix.** Extend `docs/exec-plans/tech-debt-tracker.md`: add the in-flight **balance**
+8. **Log, do not fix.** — DONE. Extend `docs/exec-plans/tech-debt-tracker.md`: add the in-flight **balance**
    flash to TD-121 (same root shape as the in-flight LP read) and update TD-122 to say the branch
    count is now four.
 
-9. **Lint and build.** `yarn workspace @pipeline/frontend lint`,
+9. **Lint and build.** — DONE. `yarn workspace @pipeline/frontend lint`,
    `yarn workspace @pipeline/frontend build`, `npx tsx scripts/lint-docs.ts`. Keep the
    comment-minimal rule: one 2–3-line spec-pointer header per file, no field/function JSDoc, no body
    or test comments in new code.
