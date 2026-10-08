@@ -36,7 +36,7 @@ use crate::indexer::{
 ///
 /// Used to branch between `LoanEventMapper` and `StellarLogMapper` inside `poll`. A
 /// name missing here writes a `contract_logs` row with no snapshot, silently — see
-/// `docs/exec-plans/active/issue-1433-stellar-loan-parsers-realignment.md` (F2).
+/// `docs/exec-plans/completed/issue-1433-stellar-loan-parsers-realignment.md` (F2).
 /// Verified against `packages/worker/src/indexer/stellar/loan_registry_parsers.rs`.
 pub fn is_loan_registry_event(event_name: &str) -> bool {
     matches!(
