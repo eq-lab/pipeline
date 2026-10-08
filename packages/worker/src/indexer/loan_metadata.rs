@@ -94,6 +94,20 @@ pub struct RepaymentDataView {
     pub oet_alloc: alloy::primitives::U256,
 }
 
+impl Default for RepaymentDataView {
+    fn default() -> Self {
+        Self {
+            offtaker_received: alloy::primitives::U256::ZERO,
+            senior_principal_repaid: alloy::primitives::U256::ZERO,
+            senior_interest: alloy::primitives::U256::ZERO,
+            equity_distributed: alloy::primitives::U256::ZERO,
+            mgmt_fee: alloy::primitives::U256::ZERO,
+            perf_fee: alloy::primitives::U256::ZERO,
+            oet_alloc: alloy::primitives::U256::ZERO,
+        }
+    }
+}
+
 /// Plain-Rust projection of `ILoanRegistry.MutableLoanData` returned by
 /// `LoanRegistryReader::mutable_loan_data`. Decouples the mapper from alloy types.
 #[derive(Debug, Clone)]
@@ -105,12 +119,7 @@ pub struct MutableLoanDataView {
     /// Numeric ordinal of `LoanStatus`: 0=Approved, 1=Performing, 2=WatchList, 3=Default, 4=Closed
     pub status: u8,
     pub current_maturity_timestamp: u64,
-    /// Basis points. The contract reports this as a fraction of `ONE = 1_000_000`
-    /// (see `LoanRegistryUpgradeable.sol:17,653` and
-    /// `contracts/loan-registry/src/storage.rs:269` + `lib.rs:30`); each reader arm
-    /// must divide the raw value by 100 to reach basis points, exactly as the Stellar
-    /// reader already does for `senior_interest_rate` (`stellar/loan_registry_reader.rs:193`).
-    /// Neither arm populates this field yet (#1433/#1434).
+    /// Basis points — both reader arms divide the on-chain ppm value by 100 (`LoanRegistryUpgradeable.sol:17,653`).
     pub current_rate: u32,
     /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment,
     /// 3=Cancelled, 4=Default, 5=OtherWriteDown
@@ -157,13 +166,11 @@ pub trait MutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
         block: BlockHint,
     ) -> anyhow::Result<MutableLoanDataView>;
 
-    /// Read `cumulativeRepaymentData(loanId)` at `block`. This is the authoritative
-    /// source for the 7 repayment fields — `MutableLoanData` carries no cumulative
-    /// repayment data.
+    /// `Some` when this chain has a live on-chain getter (Stellar); `None` when the caller must reconstruct from indexed rows (EVM).
     async fn cumulative_repayment_data(
         &self,
         contract: &A,
         loan_id: Id,
         block: BlockHint,
-    ) -> anyhow::Result<RepaymentDataView>;
+    ) -> anyhow::Result<Option<RepaymentDataView>>;
 }

@@ -304,6 +304,7 @@ pub struct IndexerJobSettings {
     pub wq_contracts: Vec<String>,
     pub splusd_contracts: Vec<String>,
     pub loan_registry_contracts: Vec<String>,
+    /// The Minter contract (`PipelineMinter`, successor to `PipelineYieldMinter`); indexes `WireIn`/`WireInAssigned` (#1434).
     pub yield_minter_contracts: Vec<String>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,

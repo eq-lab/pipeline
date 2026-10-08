@@ -9,11 +9,12 @@ use super::{
     loan_metadata::{ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver},
     mappers::ContractLogMapper,
     parsers::{
-        parse_deposit_requested, parse_economics_amended, parse_loan_ccr_updated,
-        parse_loan_closed, parse_loan_defaulted, parse_loan_drawn, parse_loan_location_updated,
-        parse_loan_rolled_over, parse_loan_status_updated, parse_payment_recorded,
-        parse_request_claimed, parse_staking_deposit, parse_staking_withdraw,
-        parse_withdrawal_requested, parse_yield_minted,
+        parse_deposit_requested, parse_disbursed, parse_economics_amended, parse_interest_adjusted,
+        parse_loan_closed, parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over,
+        parse_loan_status_updated, parse_loan_written_down, parse_payment_recorded,
+        parse_payment_unrecorded, parse_request_claimed, parse_staking_deposit,
+        parse_staking_withdraw, parse_undisbursed, parse_wire_in, parse_wire_in_assigned,
+        parse_withdrawal_requested,
     },
     poller::EvmEventPollerBuilder,
 };
@@ -57,7 +58,7 @@ pub fn register_evm_handlers(
     let wq_repo = repos.repo.clone();
     let splusd_repo = repos.repo.clone();
     let loan_event_repo = repos.repo.clone();
-    let yield_minter_repo = repos.repo.clone();
+    let minter_repo = repos.repo.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
     let fetcher = loan_deps.fetcher;
@@ -96,9 +97,12 @@ pub fn register_evm_handlers(
                 .or_else(|| parse_loan_defaulted(log))
                 .or_else(|| parse_loan_closed(log))
                 .or_else(|| parse_payment_recorded(log))
+                .or_else(|| parse_payment_unrecorded(log))
                 .or_else(|| parse_loan_status_updated(log))
-                .or_else(|| parse_loan_ccr_updated(log))
-                .or_else(|| parse_loan_location_updated(log))
+                .or_else(|| parse_disbursed(log))
+                .or_else(|| parse_undisbursed(log))
+                .or_else(|| parse_loan_written_down(log))
+                .or_else(|| parse_interest_adjusted(log))
                 .or_else(|| parse_loan_rolled_over(log))
                 .or_else(|| parse_economics_amended(log))
                 .map(|ev| -> Box<dyn shared::log_mapper::LogMapper> {
@@ -122,12 +126,11 @@ pub fn register_evm_handlers(
                 })
         })
         .add_event_handler(contracts.yield_minter_contracts, move |log| {
-            parse_yield_minted(log).map(|ev| {
-                Box::new(ContractLogMapper::new(
-                    ev,
-                    chain_id,
-                    yield_minter_repo.clone(),
-                )) as Box<dyn shared::log_mapper::LogMapper>
-            })
+            parse_wire_in(log)
+                .or_else(|| parse_wire_in_assigned(log))
+                .map(|ev| {
+                    Box::new(ContractLogMapper::new(ev, chain_id, minter_repo.clone()))
+                        as Box<dyn shared::log_mapper::LogMapper>
+                })
         })
 }

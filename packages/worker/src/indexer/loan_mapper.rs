@@ -1,7 +1,9 @@
+use std::collections::{BTreeMap, HashSet};
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use alloy::primitives::U256;
 use anyhow::Context;
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
@@ -11,7 +13,7 @@ use shared::{
     contract_logs_repo::ContractLogsRepo,
     db::EventRepo,
     events::EventRow,
-    json_numeric::{i256_to_bigdecimal, u256_to_bigdecimal},
+    json_numeric::{bigdecimal_to_u256, i256_to_bigdecimal, u256_to_bigdecimal},
     loan_disbursement_repo::LoanDisbursementRepo,
     loan_snapshot::{LoanSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
@@ -236,6 +238,77 @@ pub fn compose_lifecycle_snapshot(
     }
 }
 
+// ── EVM cumulative-repayment reconstruction — pure composer (#1434 D3) ──────────
+
+/// The not-yet-persisted event, if any, that mutates the cumulative repayment total.
+pub enum InFlight {
+    Recorded(String, Box<RepaymentDataView>),
+    Unrecorded(String),
+}
+
+/// De-duplicates by `repayment_id` (`BTreeMap`) so a re-processed row can't double-count.
+#[allow(clippy::implicit_hasher)]
+pub fn accumulate_repayments(
+    recorded: &[(String, RepaymentDataView)],
+    reversed: &HashSet<String>,
+    in_flight: Option<&InFlight>,
+) -> RepaymentDataView {
+    let mut by_id: BTreeMap<String, RepaymentDataView> = BTreeMap::new();
+    for (id, data) in recorded {
+        by_id.insert(id.clone(), data.clone());
+    }
+    let mut reversed_ids = reversed.clone();
+    if let Some(flight) = in_flight {
+        match flight {
+            InFlight::Recorded(id, data) => {
+                by_id.insert(id.clone(), data.as_ref().clone());
+            }
+            InFlight::Unrecorded(id) => {
+                reversed_ids.insert(id.clone());
+            }
+        }
+    }
+
+    let mut total = RepaymentDataView::default();
+    for (id, data) in &by_id {
+        if reversed_ids.contains(id) {
+            continue;
+        }
+        total.offtaker_received += data.offtaker_received;
+        total.senior_principal_repaid += data.senior_principal_repaid;
+        total.senior_interest += data.senior_interest;
+        total.equity_distributed += data.equity_distributed;
+        total.mgmt_fee += data.mgmt_fee;
+        total.perf_fee += data.perf_fee;
+        total.oet_alloc += data.oet_alloc;
+    }
+    total
+}
+
+fn event_param_u256(
+    params: &serde_json::Value,
+    key: &str,
+    event_name: &str,
+) -> anyhow::Result<U256> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .and_then(|s| U256::from_str(s).ok())
+        .ok_or_else(|| anyhow::anyhow!("{event_name}: missing or unparseable {key} in params"))
+}
+
+fn event_param_string(
+    params: &serde_json::Value,
+    key: &str,
+    event_name: &str,
+) -> anyhow::Result<String> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow::anyhow!("{event_name}: missing or unparseable {key} in params"))
+}
+
 // ---------------------------------------------------------------------------
 // URI-refetch dispatch helper
 // ---------------------------------------------------------------------------
@@ -320,7 +393,11 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
     }
 
     /// Resolve the full `LoanSnapshot` for a `LoanDrawn` event.
-    async fn snapshot_for_drawn(&self, loan_id: &BigDecimal) -> anyhow::Result<LoanSnapshot> {
+    async fn snapshot_for_drawn(
+        &self,
+        conn: &mut PgConnection,
+        loan_id: &BigDecimal,
+    ) -> anyhow::Result<LoanSnapshot> {
         let loan_id_native = Id::from_bigdecimal(loan_id)?;
         let addr = &self.event.contract_address;
         let block = BlockHint::from_event(self.event.block_number);
@@ -342,7 +419,7 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
             })?;
 
         // 3. Read cumulative repayment data (authoritative source for repayment fields)
-        let cumulative = self
+        let resolved_cumulative = self
             .mutable_resolver
             .cumulative_repayment_data(addr, loan_id_native, block)
             .await
@@ -351,6 +428,12 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
                     "LoanDrawn: cumulativeRepaymentData(loan_id={loan_id}) at block {block:?} failed"
                 )
             })?;
+        let cumulative = if let Some(c) = resolved_cumulative {
+            c
+        } else {
+            self.reconstruct_cumulative(conn, loan_id, &mutable, None)
+                .await?
+        };
 
         // URI is from the mutable read (metadataURI lives in MutableLoanData)
         let uri = mutable.metadata_uri.clone();
@@ -417,7 +500,7 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
             })?;
 
         // Read cumulative repayment data pinned to event block
-        let cumulative = self
+        let resolved_cumulative = self
             .mutable_resolver
             .cumulative_repayment_data(addr, loan_id_native, block)
             .await
@@ -427,6 +510,13 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
                     self.event.event_name
                 )
             })?;
+        let cumulative = if let Some(c) = resolved_cumulative {
+            c
+        } else {
+            let in_flight = self.build_in_flight()?;
+            self.reconstruct_cumulative(conn, loan_id, &mutable, in_flight.as_ref())
+                .await?
+        };
 
         // IPFS re-fetch: if metadataURI changed on-chain, re-fetch and update IPFS fields.
         let refreshed_json = maybe_fetch_refreshed_json(
@@ -450,6 +540,99 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
         ))
     }
 
+    /// EVM-only path: reconstructs the cumulative total from indexed rows (#1434 D3).
+    async fn reconstruct_cumulative(
+        &self,
+        conn: &mut PgConnection,
+        loan_id: &BigDecimal,
+        mutable: &MutableLoanDataView,
+        in_flight: Option<&InFlight>,
+    ) -> anyhow::Result<RepaymentDataView> {
+        let contract_address = self.event.contract_address.as_db_string();
+        let max_block = self.event.block_number as i64;
+
+        let recorded_rows = self
+            .contract_logs_repo
+            .list_recorded_payments(conn, self.chain_id, &contract_address, loan_id, max_block)
+            .await?;
+        let recorded: Vec<(String, RepaymentDataView)> = recorded_rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.repayment_id,
+                    RepaymentDataView {
+                        offtaker_received: bigdecimal_to_u256(&r.offtaker_received),
+                        senior_principal_repaid: bigdecimal_to_u256(&r.senior_principal_repaid),
+                        senior_interest: bigdecimal_to_u256(&r.senior_interest),
+                        equity_distributed: bigdecimal_to_u256(&r.equity_distributed),
+                        mgmt_fee: bigdecimal_to_u256(&r.mgmt_fee),
+                        perf_fee: bigdecimal_to_u256(&r.perf_fee),
+                        oet_alloc: bigdecimal_to_u256(&r.oet_alloc),
+                    },
+                )
+            })
+            .collect();
+
+        let reversed: HashSet<String> = self
+            .contract_logs_repo
+            .list_unrecorded_repayment_ids(
+                conn,
+                self.chain_id,
+                &contract_address,
+                loan_id,
+                max_block,
+            )
+            .await?
+            .into_iter()
+            .collect();
+
+        let mut cumulative = accumulate_repayments(&recorded, &reversed, in_flight);
+        // Self-heals from `loan.repaid` rather than the accumulated sum: when START_BLOCK
+        // sits after a loan's first payments those rows are absent from contract_logs and
+        // the accumulation understates, permanently. The other six fields have no on-chain
+        // source to heal from — that absence is what D3 exists to work around. Cost: this
+        // value is end-of-block while the six are as-of-this-event, so two PaymentRecorded
+        // logs in one block leave the earlier snapshot internally inconsistent. See TD-129.
+        cumulative.senior_principal_repaid = mutable.repaid;
+        Ok(cumulative)
+    }
+
+    fn build_in_flight(&self) -> anyhow::Result<Option<InFlight>> {
+        let name = self.event.event_name.as_str();
+        match name {
+            "PaymentRecorded" => {
+                let repayment_id = event_param_string(&self.event.params, "repayment_id", name)?;
+                let data = RepaymentDataView {
+                    offtaker_received: event_param_u256(
+                        &self.event.params,
+                        "offtaker_received",
+                        name,
+                    )?,
+                    senior_principal_repaid: event_param_u256(
+                        &self.event.params,
+                        "senior_principal_repaid",
+                        name,
+                    )?,
+                    senior_interest: event_param_u256(&self.event.params, "senior_interest", name)?,
+                    equity_distributed: event_param_u256(
+                        &self.event.params,
+                        "equity_distributed",
+                        name,
+                    )?,
+                    mgmt_fee: event_param_u256(&self.event.params, "mgmt_fee", name)?,
+                    perf_fee: event_param_u256(&self.event.params, "perf_fee", name)?,
+                    oet_alloc: event_param_u256(&self.event.params, "oet_alloc", name)?,
+                };
+                Ok(Some(InFlight::Recorded(repayment_id, Box::new(data))))
+            }
+            "PaymentUnrecorded" => {
+                let repayment_id = event_param_string(&self.event.params, "repayment_id", name)?;
+                Ok(Some(InFlight::Unrecorded(repayment_id)))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Perform the actual insert: resolve the snapshot, restructure params JSONB
     /// into `{loan_id, event, snapshot}`, and write to `contract_logs`.
     async fn do_insert(&self, conn: &mut PgConnection) -> anyhow::Result<()> {
@@ -457,7 +640,7 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
 
         // Resolve snapshot based on event type
         let snapshot = if self.event.event_name == "LoanDrawn" {
-            self.snapshot_for_drawn(&loan_id).await?
+            self.snapshot_for_drawn(conn, &loan_id).await?
         } else {
             self.snapshot_for_lifecycle(conn, &loan_id).await?
         };

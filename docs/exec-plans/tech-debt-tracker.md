@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-129.**
+**Next free number: TD-130.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,30 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-129: EVM cumulative-repayment reconstruction mixes two points in time
+
+- **Where:** `packages/worker/src/indexer/loan_mapper.rs` — `reconstruct_cumulative`.
+- **Gap:** #1434 D3 replaced the removed `cumulativeRepaymentData()` eth_call with an
+  off-chain reconstruction. Six of the seven `RepaymentData` fields accumulate from indexed
+  `PaymentRecorded` / `PaymentUnrecorded` rows up to and including the event being
+  processed, while `senior_principal_repaid` is overwritten from `MutableLoanData.repaid`,
+  read block-pinned at the **end** of that block. Two `PaymentRecorded` logs in one block
+  therefore leave the earlier event's snapshot with `senior_principal_repaid` already
+  counting the later payment while the other six do not.
+- **Why it stands:** the override is load-bearing. When `START_BLOCK` sits after a loan's
+  first payments those rows are not in `contract_logs` at all, so the accumulation
+  understates permanently; the on-chain read heals that. The other six fields have no
+  on-chain source left to heal from — precisely the absence D3 works around. Reading
+  `repaid` as-of-event rather than as-of-block is not expressible: `BlockId` is
+  block-granular, so it would need trace-level or archive access.
+- **Impact:** narrow — same-block multiple payments on one loan, reachable via batched
+  calls. The EVM arm runs in no environment today (`CHAINS` is Stellar-only in both argocd
+  files), so this is latent. Stellar is unaffected: it kept its on-chain
+  `cumulative_repayment_data` getter and returns `Some(...)`.
+- **Suggested fix:** if same-block multiples ever matter, drop the override and accept that
+  a late `START_BLOCK` understates, or backfill the missing history once and keep the
+  accumulation authoritative.
 
 ### TD-1: Lint command not yet configured
 
@@ -1830,13 +1854,12 @@ line, whichever section it lands in.
 - **Impact:** A shared-structure change (grid gap, `RecentActivityCard` positioning, `QnaSection` wrapper) now needs editing in three places, and that cost triples again once states 3–6 (#1423–#1426) land as further branches.
 - **Suggested fix:** Extract the shared grid shell (RecentActivityCard slot, QnaSection footer, grid classes) into a small composer that takes the two left-hand slots as render props or children, once states 3–6 make seven near-identical branches the alternative.
 
-### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders
+### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders [RESOLVED 2026-10-08 / #1433, #1434]
 
-- **Date:** 2026-10-07. **Stellar half closed 2026-10-08 (#1433)** — EVM half still open for #1434.
-- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM, still open) — Issue #1432, decision D4.
-- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched — that is #1433's (Stellar) and #1434's (EVM) work. #1433 replaced every `// #1433:` placeholder in `packages/worker/src/indexer/stellar/loan_registry_reader.rs` with a real decode; the EVM reader still fills the six fields with `Default::default()`/`U256::ZERO`/`I256::ZERO`, marked `// #1434:`.
-- **Impact:** Every `LoanSnapshot` written by the EVM arm before #1434 lands carries zeros for these six fields — not missing, not null, genuinely wrong if anything reads them first. No current consumer reads them (D1 deliberately keeps them off `LoanBookEntry`), so the blast radius today is zero, but it is a landmine for whichever surface reads `LoanSnapshot.disbursed`/`written_down`/etc. first.
-- **Suggested fix:** #1434 replaces the EVM reader's placeholder block with a real decode of the corresponding contract fields and deletes the marker comments. Grep `// #1434:` in `packages/worker/src/indexer/loan_registry_reader.rs` to find every call site.
+- **Date:** 2026-10-07. **Stellar half closed 2026-10-08 (#1433). EVM half closed 2026-10-08 (#1434).**
+- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM) and `stellar/loan_registry_reader.rs` (Stellar) — Issue #1432, decision D4.
+- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched. #1433 replaced every `// #1433:` placeholder on the Stellar arm; #1434 replaced every `// #1434:` placeholder on the EVM arm (`decode_mutable_loan_data`, `decode_immutable_loan_data`) with a real decode of the corresponding contract fields, including the `ppm_to_bps` conversion for `current_rate`/`senior_interest_rate_bps`.
+- **Resolution:** Both readers now decode all fields for real; `grep -rn '// #143[34]:' packages/` returns nothing.
 
 ### TD-124: During a rolling deploy, the API must be upgraded before the worker
 
@@ -1856,11 +1879,11 @@ line, whichever section it lands in.
 
 ### TD-126: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion
 
-- **Date:** 2026-10-08
-- **Location:** `packages/worker/src/indexer/stellar/loan_registry_parsers.rs` (`parse_loan_rolled_over`, `parse_economics_amended`), `packages/api/src/routes/audit_log.rs` (`format_action` arms for both events) — Issue #1433, finding F8.
-- **Gap:** The Soroban contract's `new_rate` is the same `ONE = 1_000_000` fixed-point value as `current_rate`/`senior_interest_rate` (`lib.rs:30`, `storage.rs:344`), but both parsers write it into `params.new_rate` with no conversion, and `audit_log.rs` projects it verbatim into the Trustee feed's `details`.
-- **Impact:** A 10% rate renders as `100000` in the audit feed rather than `1000` (bps) or `10` (percent). Low urgency — it is a `params` display value, not a snapshot field read by any computation.
-- **Suggested fix:** Decide the target unit (bps, to match `current_rate`'s convention) and divide at parse time; existing stored `params.new_rate` rows would then be back-compat-inconsistent with newly written ones, so the fix needs a decision on already-stored rows (ignore vs. backfill) before landing.
+- **Date:** 2026-10-08. **Widened 2026-10-08 (#1434)** — confirmed the same gap on the EVM arm.
+- **Location:** `packages/worker/src/indexer/stellar/loan_registry_parsers.rs` and `packages/worker/src/indexer/parsers.rs` (`parse_loan_rolled_over`, `parse_economics_amended` on both arms), `packages/api/src/routes/audit_log.rs` (`format_action` arms for both events) — Issue #1433 finding F8, Issue #1434 finding F16.
+- **Gap:** Both contracts' `new_rate` is the same `ONE = 1_000_000` fixed-point value as `current_rate`/`senior_interest_rate` (Stellar: `lib.rs:30`, `storage.rs:344`; EVM: `LoanRegistryUpgradeable.sol:17`), but every parser on both arms writes it into `params.new_rate` with no conversion, and `audit_log.rs` projects it verbatim into the Trustee feed's `details`.
+- **Impact:** A 10% rate renders as `100000` in the audit feed rather than `1000` (bps) or `10` (percent), on either chain. Low urgency — it is a `params` display value, not a snapshot field read by any computation.
+- **Suggested fix:** Decide the target unit (bps, to match `current_rate`'s convention) and divide at parse time on both arms; existing stored `params.new_rate` rows would then be back-compat-inconsistent with newly written ones, so the fix needs a decision on already-stored rows (ignore vs. backfill) before landing.
 
 ### TD-127: `docs/product-specs/loans-data.md` "Key events" section is v1 design-era drift
 
@@ -1877,4 +1900,44 @@ line, whichever section it lands in.
 - **Gap:** The reference documents the v2.3 *designed* EVM contract (`updateCCR`, `updateLocation`, `ccrBps`, `location`) rather than either shipped repo's current LoanRegistry.
 - **Impact:** A reader of this 1,600-line reference gets a surface that does not exist on-chain today; no code depends on it.
 - **Suggested fix:** Realign the reference against the shipped contracts — its own standalone issue given its size, out of scope for a parser-realignment bug fix.
+
+### TD-129: EVM cumulative repayment totals are reconstructed off-chain and six of seven fields have no self-heal
+
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (`cumulative_repayment_data` → `None`), `packages/worker/src/indexer/loan_mapper.rs` (`reconstruct_cumulative`, `accumulate_repayments`) — Issue #1434, finding F3, decision D3, risk R1.
+- **Gap:** `cumulativeRepaymentData()` no longer exists on the reworked EVM contract; its replacement `RepaymentTotals` (`LoanRegistryUpgradeable.sol:28-32,96`) is a private, lossy 3-field mapping (`mgmtFee`+`perfFee` merged into `interestFees` at `:331`; `equityDistributed`/`oetAlloc` not accumulated at all). The mapper reconstructs the full 7-field total from indexed `PaymentRecorded`/`PaymentUnrecorded` rows instead. `senior_principal_repaid` is overridden from `mutable.repaid` and self-heals even if a row was never indexed; the other six fields (`offtaker_received`, `senior_interest`, `equity_distributed`, `mgmt_fee`, `perf_fee`, `oet_alloc`) do not.
+- **Impact:** A `PaymentRecorded` row that is never indexed (RPC gap, a `start_block` set past existing payments, a parser regression) leaves those six fields permanently understated, with no on-chain read to correct them. Not reachable today — no EVM chain runs (see TD-131) — but live the day one does.
+- **Suggested fix:** A reconciliation job comparing `loanMoney().accruedInterest` against `gross − (senior_interest + mgmt_fee + perf_fee) + interest_adjustment` would detect drift; not part of this Issue.
+
+### TD-130: EVM relayer's yield-mint phase targets a contract that no longer exists
+
+- **Date:** 2026-10-08
+- **Location:** `relayer/config.rs:27-29` (`yield_minter_address` doc comment), `relayer/yield_mint/mod.rs` — Issue #1434, finding F14.
+- **Gap:** Both still document and submit against `PipelineYieldMinter`, which does not exist anywhere in `pipeline-contracts/src/` — it was replaced by `PipelineMinter` in the contracts rework.
+- **Impact:** Latent, not live — no EVM chain runs today (TD-131), so this relayer phase never executes against a real deployment. Will need a rewrite before any EVM relayer goes live.
+- **Suggested fix:** Out of epic #1431 scope (decision 4) — track as its own issue once the relayer's EVM arm is scheduled for work.
+
+### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
+
+- **Date:** 2026-10-08
+- **Location:** `pipeline-contracts/deployments/` (4 months stale, pre-rework), `argocd/pipeline/test.yaml`, `argocd/pipeline/prod.yaml` (both: `CHAINS` is Stellar-only, zero `CHAIN_*_ETH_RPC_URL`/EVM keys) — Issue #1434, finding F9.
+- **Gap:** `pipeline-contracts` has no deploy CI job and no docs naming which deployment serves which environment; the only configured chain anywhere (`script/base/ChainValues.sol`) is Hoodi, whose deployment JSONs are pre-rework and un-configured in either argocd environment.
+- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance, not just in config — there is nothing to point a new chain config at until a post-rework deployment exists.
+- **Suggested fix:** Stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` already has for `test.yaml`'s deployment-id references.
+
+### TD-132: `outstanding` is defined two ways between the EVM contract and the API
+
+- **Date:** 2026-10-08
+- **Location:** `LoanRegistryUpgradeable.sol:657` (`_outstanding = disbursed − repaid − writtenDown`) vs. `packages/api/src/routes/loan_book.rs:1374` (`original_senior_tranche − senior_principal_repaid`) — Issue #1434, finding F4.
+- **Gap:** The two values are not interchangeable — one nets off write-downs and gross disbursed, the other nets off original tranche size and cumulative principal repaid — and nothing in either codebase states this is deliberate.
+- **Impact:** Unverified whether the two converge in every state transition; not touched by #1434 because `loanMoney()` (the contract's getter for its definition) has no consumer and was deliberately not called (F4).
+- **Suggested fix:** A reconciliation check or an explicit doc note on which definition each Trustee surface uses and why.
+
+### TD-133: EVM `WireInMatcher` (not yet written) has a `receiver` casing trap waiting for it
+
+- **Date:** 2026-10-08
+- **Location:** Future `relayer/evm/wire_in_match.rs` (does not exist yet); precedent at `relayer/stellar/wire_in_match.rs` — Issue #1434, finding F12.
+- **Gap:** The EVM Minter parser writes `receiver` as `to_checksum(None)` (mixed-case EIP-55); `CHAIN_<id>_YIELD_MINTER_CONTRACTS` is typically configured lowercase in env. A matcher ported verbatim from the Stellar arm's `l.params->>'receiver' <> $2` string comparison would be true for every row.
+- **Impact:** Latent — no EVM `WireInMatcher` exists yet, and no EVM chain runs (TD-131). Recorded so its author does not inherit a silent bug.
+- **Suggested fix:** Lowercase (or checksum) both sides of the comparison before the EVM matcher is written.
 

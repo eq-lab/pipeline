@@ -261,6 +261,21 @@ fn payment_unrecorded_action_is_payment_reversed() {
     assert_eq!(details["senior_interest"], json!("50.000000"));
 }
 
+// Shape-tolerant (#1434 D6): EVM's `PaymentUnrecorded` carries no amounts, only
+// `outstanding` — the projection must not render null-valued amount keys.
+#[test]
+fn payment_unrecorded_evm_shape_has_outstanding_and_no_amount_keys() {
+    let (action, details) = format_action(
+        "PaymentUnrecorded",
+        &json!({ "loan_id": "42", "repayment_id": "3", "outstanding": "900000000" }),
+        ChainKind::Evm,
+    );
+    assert_eq!(action, "Payment reversed");
+    assert_eq!(details["outstanding"], json!("900.000000"));
+    assert!(details.get("senior_interest").is_none());
+    assert!(details.get("senior_principal_repaid").is_none());
+}
+
 #[test]
 fn loan_written_down_action_includes_amount() {
     let (action, _) = format_action(

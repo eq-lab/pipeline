@@ -146,11 +146,11 @@ impl MutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader {
         contract: &StellarAddress,
         loan_id: u32,
         _block: BlockHint,
-    ) -> Result<RepaymentDataView> {
+    ) -> Result<Option<RepaymentDataView>> {
         let scval = self
             .call_view(&contract.0, "cumulative_repayment_data", loan_id)
             .await?;
-        decode_cumulative_repayment_data(&scval)
+        Ok(Some(decode_cumulative_repayment_data(&scval)?))
     }
 }
 
