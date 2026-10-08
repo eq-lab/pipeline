@@ -12,7 +12,10 @@ production `OtpModal` with a `verify` that rejects with `ApiError(401)`, and ind
 jsdom via a throwaway vitest probe. Both environments agree, and both contradict the literal
 report. The confirmed facts:
 
-1. **Focus is never lost.** After the rejected verify, `document.activeElement` is still the
+1. ~~**Focus is never lost.**~~ **Superseded — see "Focus loss: confirmed cause" below.** The
+   human's re-test in the real app contradicts this; the harness that produced it mounted
+   `OtpModal` outside `EmailAuthFlow` and its Turnstile slot. The original text follows.
+   After the rejected verify, `document.activeElement` is still the
    hidden `<input>` (`aria-label="Verification code"`), with `selectionStart/End === 6`. The
    `role="alert"` caption mounting does not move focus — `AuthModalShell`'s auto-focus effect is
    keyed on `[open]` only, and the caption is a sibling node, so `OtpInput` is not remounted.
@@ -40,6 +43,42 @@ So the defect is **not** a broken state machine or lost focus: it is that the er
 dead end with no visible way out — a full field that silently swallows keystrokes, no caret, and
 no reset affordance. The issue's prescribed fix (hold the error briefly, then clear to six empty
 boxes with the caret in box 1) addresses exactly this, and is the fix planned below.
+
+## Focus loss: confirmed cause (coder, 2026-10-08)
+
+**jsdom does not reproduce the focus loss, in either production path.** A time-boxed probe drove
+the full `EmailAuthFlow` — signup → OTP, and sign-in `403 email_not_verified` → auto-resend → OTP —
+with `verifyOtp` rejecting `ApiError(401)` and a `Turnstile` mock mirroring the real widget's
+`reset()` status churn (`loading` → token → `ready`). `document.activeElement` was the hidden OTP
+`<input>` at every sample point in both paths: before the paste, immediately after it, and after
+the `role="alert"` caption mounted. The probe was deleted.
+
+That rules out every React-side suspect named in the scope correction. `handleOtpVerify` only
+`throw`s — it resets no Turnstile and sets no state. Nothing on a rejected verify re-keys or
+remounts `OtpModal`, `AuthModalShell` or `OtpInput`; `AuthModalShell`'s auto-focus effect is keyed
+on `[open]` only, and `OtpModal`'s `open` prop (`open && flow.screen === "otp"`) does not change.
+The `autoResendResult` path runs at modal-open time, not on a rejection.
+
+**Best-supported cause: the real Cloudflare Turnstile cross-origin `<iframe>`.** It is the one
+thing in the production tree that the jsdom mock has no analogue for — the mock renders nothing.
+`turnstileSlot` places it as a sibling of the `OtpInput` inside the modal. Focus entering that
+iframe makes it `document.activeElement`, blurs the OTP input, and routes keystrokes to Cloudflare,
+which is exactly the reported "the wrong code cannot be deleted". Both `handleOtpResend` and the
+auto-resend effect call `otpTurnstileRef.current?.reset()` in a `finally`, and the widget also
+re-renders itself when a token expires; each re-render re-runs the challenge. These fire on the
+widget's own schedule, not on the rejection — which is why the loss reads as "after a wrong code":
+that is when the user first tries to type again.
+
+**Fix:** entering the `error` state now raises the same focus request as the timed clear, so the
+input is refocused the moment the caption appears. The request is guarded — focus sitting on a
+`<button>` or link inside the dialog is left alone (the back arrow, `Resend`), and is reclaimed
+only from `document.body` or a non-button node such as the iframe. This both implements D3 and
+satisfies the plan's own accessibility sentence about never moving focus out from under a user.
+
+**Residual risk:** a steal landing at an arbitrary moment *after* the rejection render is only
+recovered by the next reclaim (the 3 s auto-clear) or by the user clicking the boxes, which
+`OtpInput`'s root `onClick` already refocuses. Confirming the iframe as the thief needs the real
+widget in a real browser, which this run could not drive.
 
 ## Figma
 
@@ -165,9 +204,21 @@ Figma error frame does not show. Left alone.
 
 _None_
 
+## Deviations
+
+- **Step 5 gained a guard.** `OtpModal` refocuses through `holdsDeliberateFocus()` rather than
+  calling `focus()` unconditionally, and the focus request is now also raised on the rejection,
+  not only on the timed clear — required by the scope correction (b). See "Focus loss: confirmed
+  cause" above.
+- **Step 4 bumps `focusRequestId` in the `verify` rejection branch** alongside `errorSeq`, for the
+  same reason.
+- **Test strategy gained three cases beyond the nine planned**: the full-flow focus regressions in
+  `EmailAuthFlow.test.tsx`, and the `OtpModal` guard case asserting focus is *not* taken from a
+  deliberately focused button.
+
 ## Implementation Steps
 
-1. **Docs first — `docs/frontend/auth-components.md` § OtpModal.** In the **State machine**
+1. **DONE** — **Docs first — `docs/frontend/auth-components.md` § OtpModal.** In the **State machine**
    bullet list, immediately after the existing bullet "Any edit clears an `error` back to
    `idle` …", insert:
 
@@ -192,13 +243,13 @@ _None_
    input; it never moves focus away from a control the user is interacting with, because any edit
    cancels it first."
 
-2. **`docs/frontend/ui-components.md` § OtpInput** (starts at line 642). Document the new
+2. **DONE** — **`docs/frontend/ui-components.md` § OtpInput** (starts at line 642). Document the new
    imperative handle on the props/API block: `OtpInput` is a `forwardRef` component exposing
    `OtpInputHandle { focus(): void }`, which focuses the single hidden `<input>` (the caret then
    renders at `value.length`). Added for #1442 so `OtpModal` can return the caret to box 1 after
    the timed error clear; the component is otherwise unchanged and the ref is optional.
 
-3. **`packages/ui/src/components/OtpInput/OtpInput.tsx`.** Wrap the component in `forwardRef`,
+3. **DONE** — **`packages/ui/src/components/OtpInput/OtpInput.tsx`.** Wrap the component in `forwardRef`,
    export `export interface OtpInputHandle { focus: () => void }`, and
    `useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), [])`. Mirror the
    existing repo pattern in `packages/frontend/src/components/Turnstile.tsx` (`forwardRef` with a
@@ -206,7 +257,7 @@ _None_
    `packages/ui/src/components/OtpInput/index.ts` and from the package barrel alongside
    `OtpInput`. Change nothing else — not `isActive`, not `sanitize`, not the fills (D5).
 
-4. **`packages/frontend/src/components/useOtpModal.ts`.**
+4. **DONE** — **`packages/frontend/src/components/useOtpModal.ts`.**
    - Export `export const OTP_ERROR_VISIBLE_MS = 3000;` next to the other constants.
    - Add `const [errorSeq, setErrorSeq] = useState(0);` and
      `const [focusRequestId, setFocusRequestId] = useState(0);`
@@ -238,7 +289,7 @@ _None_
      `setFocusRequestId((n) => n + 1)` (D4), before the existing resend bookkeeping.
    - Add `focusRequestId: number` to `UseOtpModalResult` and return it.
 
-5. **`packages/frontend/src/components/OtpModal.tsx`.** Add
+5. **DONE** — **`packages/frontend/src/components/OtpModal.tsx`.** Add
    `const otpInputRef = useRef<OtpInputHandle>(null);`, pass it to `<OtpInput ref={otpInputRef} … />`,
    pull `focusRequestId` out of `useOtpModal`, and add
    ```
@@ -248,11 +299,11 @@ _None_
    ```
    No markup, copy, or class changes.
 
-6. **Comment hygiene.** Each touched file keeps exactly its one existing 2–3-line `// spec:`
+6. **DONE** — **Comment hygiene.** Each touched file keeps exactly its one existing 2–3-line `// spec:`
    header and gains no other comment — no JSDoc, no body comments, no test comments
    (`AGENTS.md` → Lint & style).
 
-7. **`docs/user-stories/epic-1247/1442-otp-error-auto-clear.md`** — new file, following the shape
+7. **DONE** — **`docs/user-stories/epic-1247/1442-otp-error-auto-clear.md`** — new file, following the shape
    of `1265-wire-kyb-auth.md`. Stories, written against the production entry point (TopBar →
    Sign Up → OTP), not the removed `/test` trigger:
    1. Wrong code → the six boxes turn red and the caption "Code is incorrect or expired. Request
@@ -265,7 +316,7 @@ _None_
       rejection.
    5. The resend countdown keeps ticking throughout and is unaffected by the error window.
 
-8. **Tech debt.** Append an entry to `docs/exec-plans/tech-debt-tracker.md` for the stale
+8. **DONE** — **Tech debt.** Append an entry to `docs/exec-plans/tech-debt-tracker.md` for the stale
    `/test?tab=auth` "Open OTP screen" instructions in
    `docs/user-stories/epic-1247/1250-kyb-otp.md` (the trigger was removed when #1362 added the
    production entry point), per `AGENTS.md` → Tech debt. Do not fix it inline.

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { OtpInput } from "@pipeline/ui";
+import { OtpInput, type OtpInputHandle } from "@pipeline/ui";
 
 function Controlled({
   onChange,
@@ -113,6 +113,22 @@ describe("OtpInput (#1250)", () => {
       expect(box.className).not.toContain("border-solid");
     });
     await user.click(getInput());
+  });
+
+  it("a ref exposes focus(), which focuses the hidden input and renders the caret at value.length", () => {
+    const ref = React.createRef<OtpInputHandle>();
+    const { container } = render(
+      <OtpInput ref={ref} value="123" onChange={() => {}} />,
+    );
+    expect(getInput()).not.toHaveFocus();
+
+    act(() => ref.current?.focus());
+
+    expect(getInput()).toHaveFocus();
+    const caret = container.querySelector(".w-px");
+    expect(caret).toBeInTheDocument();
+    const boxes = container.querySelectorAll('[aria-hidden="true"]');
+    expect(boxes[3]?.contains(caret)).toBe(true);
   });
 
   it("caret is present only while focused and only at the box for value.length", async () => {

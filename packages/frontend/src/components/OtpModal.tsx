@@ -1,11 +1,16 @@
 // spec: docs/frontend/auth-components.md#otpmodal
-import type { ReactNode } from "react";
-import { OtpInput } from "@pipeline/ui";
+import { useEffect, useRef, type ReactNode } from "react";
+import { OtpInput, type OtpInputHandle } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { useOtpModal } from "@/components/useOtpModal";
 import type { TurnstileStatus } from "@/components/Turnstile";
 
-// ── Loader icon ───────────────────────────────────────────────────────────────
+function holdsDeliberateFocus(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  if (!active.closest('[role="dialog"]')) return false;
+  return active.tagName === "BUTTON" || active.tagName === "A";
+}
 
 function LoaderIcon() {
   return (
@@ -25,8 +30,6 @@ function LoaderIcon() {
   );
 }
 
-// ── Props ─────────────────────────────────────────────────────────────────────
-
 export interface OtpModalProps {
   open: boolean;
   onBack: () => void;
@@ -39,8 +42,6 @@ export interface OtpModalProps {
   onCaptchaRetry?: () => void;
   autoResendResult?: { id: number; status: "success" | "error" };
 }
-
-// ── Modal component ───────────────────────────────────────────────────────────
 
 export function OtpModal({
   open,
@@ -65,7 +66,15 @@ export function OtpModal({
     resendError,
     resendNotice,
     onResend,
+    focusRequestId,
   } = useOtpModal({ open, verify, resend, onVerified, autoResendResult });
+  const otpInputRef = useRef<OtpInputHandle>(null);
+
+  useEffect(() => {
+    if (focusRequestId === 0) return;
+    if (holdsDeliberateFocus()) return;
+    otpInputRef.current?.focus();
+  }, [focusRequestId]);
 
   return (
     <AuthModalShell
@@ -85,6 +94,7 @@ export function OtpModal({
         className="mt-2 flex w-full flex-col items-center gap-8 pb-16"
       >
         <OtpInput
+          ref={otpInputRef}
           value={code}
           onChange={setCode}
           invalid={status === "error"}

@@ -12,6 +12,7 @@ export const RESEND_ACCEPTED_MESSAGE =
   "Request accepted. If no code arrives, retry after the countdown.";
 export const OTP_NETWORK_ERROR_MESSAGE =
   "Network error — check your connection and try again.";
+export const OTP_ERROR_VISIBLE_MS = 3000;
 
 export type OtpStatus = "idle" | "verifying" | "error";
 
@@ -33,6 +34,7 @@ export interface UseOtpModalResult {
   resendError: string | undefined;
   resendNotice: string | undefined;
   onResend: () => void;
+  focusRequestId: number;
 }
 
 function formatCountdown(seconds: number): string {
@@ -56,6 +58,8 @@ export function useOtpModal({
   const [resendError, setResendError] = useState<string>();
   const [resendNotice, setResendNotice] = useState<string>();
   const [allowImmediateResend, setAllowImmediateResend] = useState(false);
+  const [errorSeq, setErrorSeq] = useState(0);
+  const [focusRequestId, setFocusRequestId] = useState(0);
   const requestIdRef = useRef(0);
   const resendRequestIdRef = useRef(0);
 
@@ -69,6 +73,7 @@ export function useOtpModal({
       setResendError(undefined);
       setResendNotice(undefined);
       setAllowImmediateResend(false);
+      setErrorSeq(0);
       requestIdRef.current += 1;
       resendRequestIdRef.current += 1;
     } else {
@@ -99,6 +104,18 @@ export function useOtpModal({
     return () => clearInterval(id);
   }, [open]);
 
+  useEffect(() => {
+    if (!open || status !== "error") return;
+    const id = setTimeout(() => {
+      setCodeState("");
+      setStatus("idle");
+      setErrorMessage(undefined);
+      requestIdRef.current += 1;
+      setFocusRequestId((n) => n + 1);
+    }, OTP_ERROR_VISIBLE_MS);
+    return () => clearTimeout(id);
+  }, [open, status, errorSeq]);
+
   function setCode(next: string) {
     if (status === "verifying" && next === code) return;
 
@@ -125,6 +142,8 @@ export function useOtpModal({
               ? OTP_ERROR_MESSAGE
               : OTP_NETWORK_ERROR_MESSAGE,
           );
+          setErrorSeq((n) => n + 1);
+          setFocusRequestId((n) => n + 1);
         },
       );
     }
@@ -132,6 +151,11 @@ export function useOtpModal({
 
   function onResend() {
     if ((remaining > 0 && !allowImmediateResend) || isResending) return;
+    setCodeState("");
+    setStatus("idle");
+    setErrorMessage(undefined);
+    requestIdRef.current += 1;
+    setFocusRequestId((n) => n + 1);
     setResendError(undefined);
     setResendNotice(undefined);
     setIsResending(true);
@@ -171,5 +195,6 @@ export function useOtpModal({
     resendError,
     resendNotice,
     onResend,
+    focusRequestId,
   };
 }

@@ -668,6 +668,22 @@ export interface OtpInputProps {
 (`value.replace(/\D/g, "").slice(0, length)`) drops non-digits and truncates to `length`, so
 `123456`, `12 34 56`, `123-456`, and `1234567` (pasted) all resolve to `123456`.
 
+### Imperative handle
+
+`OtpInput` is a `forwardRef` component exposing:
+
+```ts
+export interface OtpInputHandle {
+  focus: () => void;
+}
+```
+
+`focus()` focuses the single hidden `<input>`; the caret then renders in the box at
+`value.length`, so on an empty value it lands in box 1. Added for #1442 so `OtpModal` can return
+the caret to box 1 after the timed error clear, and reclaim focus if the Turnstile iframe takes
+it. The ref is optional and the component is otherwise unchanged — a consumer that passes no ref
+behaves exactly as before.
+
 ### Figma → token mapping
 
 | Element | Value | Figma binding |
