@@ -229,3 +229,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1422 Home state 2: account created but not verified, wallet not connected](https://github.com/eq-lab/pipeline/issues/1422) | [1422-home-unverified-state.md](./epic-1419/1422-home-unverified-state.md) | Initial |
 | [#1429 Account-setup modal reopens on every page refresh after the LP dismissed it](https://github.com/eq-lab/pipeline/issues/1429) | [1429-account-setup-dismissal-persistence.md](./epic-1419/1429-account-setup-dismissal-persistence.md) | Initial |
 | [#1430 AddUsdCard verify variant: illustration anchoring and card height do not match Figma 6701:97695](https://github.com/eq-lab/pipeline/issues/1430) | [1430-addusdcard-verify-illustration-anchor.md](./epic-1419/1430-addusdcard-verify-illustration-anchor.md) | Initial |
+
+---
+
+## Epic #1431 — Realign the indexer to the reworked LoanRegistry contracts
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1432 Indexer: realign the shared loan-data model to the reworked contracts](https://github.com/eq-lab/pipeline/issues/1432) | [1432-shared-loan-data-model.md](./epic-1431/1432-shared-loan-data-model.md) | Initial |

@@ -4,6 +4,7 @@
 /// and `decode_cumulative_repayment_data` — pure ScVal → Rust functions,
 /// no live RPC, no DB.
 use alloy::primitives::U256;
+use pipeline_worker::indexer::loan_mapper::loan_status_name;
 use pipeline_worker::indexer::stellar::loan_registry_reader::{
     decode_cumulative_repayment_data, decode_immutable_loan_data, decode_mutable_loan_data,
 };
@@ -146,15 +147,15 @@ fn decode_mutable_loan_data_happy_path() {
 
     let view = decode_mutable_loan_data(&scval).expect("should decode MutableLoanData");
 
-    assert_eq!(view.status, 0); // 0 = Performing
+    assert_eq!(view.status, 1); // 1 = Performing
     assert_eq!(view.closure_reason, 0); // 0 = None
-                                        // Decoder converts Soroban 1e6-units → bps: 1_250_000 / 100 = 12_500 bps = 125%.
-    assert_eq!(view.ccr_bps, 12_500);
     assert_eq!(view.next_economics_epochs_id, U256::from(1u32));
     assert_eq!(view.next_repayment_id, U256::from(2u32));
     assert_eq!(view.metadata_uri, "ipfs://QmAbc");
-    assert_eq!(view.current_location.location_identifier, "IMO-1234567");
-    assert_eq!(view.current_location.updated_at, 1_700_500_000);
+    // #1433: realign the XDR decode
+    assert_eq!(view.current_rate, 0);
+    assert!(!view.carved_out);
+    assert_eq!(view.disbursed, U256::ZERO);
 }
 
 #[test]
@@ -174,8 +175,69 @@ fn decode_mutable_loan_data_closed_status() {
     ]);
 
     let view = decode_mutable_loan_data(&scval).expect("should decode Closed status");
-    assert_eq!(view.status, 3); // 3 = Closed
+    assert_eq!(view.status, 4); // 4 = Closed
     assert_eq!(view.closure_reason, 1); // 1 = ScheduledMaturity
+}
+
+#[test]
+fn decode_mutable_loan_data_approved_status() {
+    let current_location = location_map("Warehouse", "WH-002", "", 0);
+
+    let scval = make_map(vec![
+        ("ccr", u32_val(0)),
+        ("closure_reason", enum_variant("None")),
+        ("current_location", current_location),
+        ("current_maturity_timestamp", u64_val(0)),
+        ("last_reported_ccr_timestamp", u64_val(0)),
+        ("metadata_uri", string_val("ipfs://QmApproved")),
+        ("next_economics_epochs_id", u32_val(0)),
+        ("next_repayment_id", u32_val(0)),
+        ("status", enum_variant("Approved")),
+    ]);
+
+    let view = decode_mutable_loan_data(&scval).expect("should decode Approved status");
+    assert_eq!(view.status, 0); // 0 = Approved
+}
+
+#[test]
+fn decode_mutable_loan_data_cancelled_closure_reason() {
+    let current_location = location_map("Warehouse", "WH-003", "", 0);
+
+    let scval = make_map(vec![
+        ("ccr", u32_val(0)),
+        ("closure_reason", enum_variant("Cancelled")),
+        ("current_location", current_location),
+        ("current_maturity_timestamp", u64_val(0)),
+        ("last_reported_ccr_timestamp", u64_val(0)),
+        ("metadata_uri", string_val("ipfs://QmCancelled")),
+        ("next_economics_epochs_id", u32_val(0)),
+        ("next_repayment_id", u32_val(0)),
+        ("status", enum_variant("Closed")),
+    ]);
+
+    let view = decode_mutable_loan_data(&scval).expect("should decode Cancelled closure_reason");
+    assert_eq!(view.closure_reason, 3); // 3 = Cancelled
+}
+
+#[test]
+fn decode_then_name_performing_is_not_approved() {
+    let current_location = location_map("Warehouse", "WH-004", "", 0);
+
+    let scval = make_map(vec![
+        ("ccr", u32_val(0)),
+        ("closure_reason", enum_variant("None")),
+        ("current_location", current_location),
+        ("current_maturity_timestamp", u64_val(0)),
+        ("last_reported_ccr_timestamp", u64_val(0)),
+        ("metadata_uri", string_val("ipfs://QmPerforming")),
+        ("next_economics_epochs_id", u32_val(0)),
+        ("next_repayment_id", u32_val(0)),
+        ("status", enum_variant("Performing")),
+    ]);
+
+    let view = decode_mutable_loan_data(&scval).expect("should decode Performing status");
+    assert_eq!(loan_status_name(view.status), "Performing");
+    assert_ne!(loan_status_name(view.status), "Approved");
 }
 
 // ── decode_cumulative_repayment_data ──────────────────────────────────────────

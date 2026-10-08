@@ -11,9 +11,9 @@ use shared::{
     contract_logs_repo::ContractLogsRepo,
     db::EventRepo,
     events::EventRow,
-    json_numeric::u256_to_bigdecimal,
+    json_numeric::{i256_to_bigdecimal, u256_to_bigdecimal},
     loan_disbursement_repo::LoanDisbursementRepo,
-    loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
+    loan_snapshot::{LoanSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
     submitted_loan_repo::SubmittedLoanRepo,
 };
@@ -30,10 +30,11 @@ use super::loan_metadata::{
 
 pub fn loan_status_name(ordinal: u8) -> &'static str {
     match ordinal {
-        0 => "Performing",
-        1 => "WatchList",
-        2 => "Default",
-        3 => "Closed",
+        0 => "Approved",
+        1 => "Performing",
+        2 => "WatchList",
+        3 => "Default",
+        4 => "Closed",
         _ => "Unknown",
     }
 }
@@ -43,8 +44,9 @@ pub fn closure_reason_name(ordinal: u8) -> &'static str {
         0 => "None",
         1 => "ScheduledMaturity",
         2 => "EarlyRepayment",
-        3 => "Default",
-        4 => "OtherWriteDown",
+        3 => "Cancelled",
+        4 => "Default",
+        5 => "OtherWriteDown",
         _ => "Unknown",
     }
 }
@@ -95,7 +97,7 @@ pub struct LoanEvent<A: LoanAddress> {
 pub fn compose_drawn_snapshot(
     json: LoanMetadataJson,
     immutable: &ImmutableLoanDataView,
-    mutable: MutableLoanDataView,
+    mutable: &MutableLoanDataView,
     cumulative: &RepaymentDataView,
     metadata_uri_onchain: String,
 ) -> LoanSnapshot {
@@ -121,16 +123,14 @@ pub fn compose_drawn_snapshot(
         next_economics_epochs_id: u256_to_bigdecimal(mutable.next_economics_epochs_id),
         next_repayment_id: u256_to_bigdecimal(mutable.next_repayment_id),
         status: loan_status_name(mutable.status).to_owned(),
-        ccr_bps: mutable.ccr_bps,
-        last_reported_ccr_timestamp: mutable.last_reported_ccr_timestamp as i64,
         current_maturity_timestamp: mutable.current_maturity_timestamp as i64,
+        current_rate: mutable.current_rate,
         closure_reason: closure_reason_name(mutable.closure_reason).to_owned(),
-        current_location: LocationUpdateSnapshot {
-            location_type: mutable.current_location.location_type.as_str().to_owned(),
-            location_identifier: mutable.current_location.location_identifier,
-            tracking_url: mutable.current_location.tracking_url,
-            updated_at: mutable.current_location.updated_at as i64,
-        },
+        carved_out: mutable.carved_out,
+        disbursed: u256_to_bigdecimal(mutable.disbursed),
+        repaid: u256_to_bigdecimal(mutable.repaid),
+        written_down: u256_to_bigdecimal(mutable.written_down),
+        interest_adjustment: i256_to_bigdecimal(mutable.interest_adjustment),
         metadata_uri_onchain,
         // cumulativeRepaymentData
         repayment: RepaymentSnapshot {
@@ -215,16 +215,14 @@ pub fn compose_lifecycle_snapshot(
         next_economics_epochs_id: u256_to_bigdecimal(mutable.next_economics_epochs_id),
         next_repayment_id: u256_to_bigdecimal(mutable.next_repayment_id),
         status: loan_status_name(mutable.status).to_owned(),
-        ccr_bps: mutable.ccr_bps,
-        last_reported_ccr_timestamp: mutable.last_reported_ccr_timestamp as i64,
         current_maturity_timestamp: mutable.current_maturity_timestamp as i64,
+        current_rate: mutable.current_rate,
         closure_reason: closure_reason_name(mutable.closure_reason).to_owned(),
-        current_location: LocationUpdateSnapshot {
-            location_type: mutable.current_location.location_type.as_str().to_owned(),
-            location_identifier: mutable.current_location.location_identifier,
-            tracking_url: mutable.current_location.tracking_url,
-            updated_at: mutable.current_location.updated_at as i64,
-        },
+        carved_out: mutable.carved_out,
+        disbursed: u256_to_bigdecimal(mutable.disbursed),
+        repaid: u256_to_bigdecimal(mutable.repaid),
+        written_down: u256_to_bigdecimal(mutable.written_down),
+        interest_adjustment: i256_to_bigdecimal(mutable.interest_adjustment),
         metadata_uri_onchain: mutable.metadata_uri,
         repayment: RepaymentSnapshot {
             offtaker_received: u256_to_bigdecimal(cumulative.offtaker_received),
@@ -367,7 +365,7 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
         Ok(compose_drawn_snapshot(
             json,
             &immutable,
-            mutable,
+            &mutable,
             &cumulative,
             uri,
         ))

@@ -12,7 +12,7 @@ use pipeline_api::routes::loan_book::{
     compute_loan_book, display_status, loan_key, LoanBookResponse, LoanSpot,
 };
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
-use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
+use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 const DAY: i64 = 86_400;
 
@@ -39,15 +39,6 @@ fn zero_repayment() -> RepaymentSnapshot {
         mgmt_fee: BigDecimal::from(0_i64),
         perf_fee: BigDecimal::from(0_i64),
         oet_alloc: BigDecimal::from(0_i64),
-    }
-}
-
-fn zero_location() -> LocationUpdateSnapshot {
-    LocationUpdateSnapshot {
-        location_type: "Vessel".to_owned(),
-        location_identifier: String::new(),
-        tracking_url: String::new(),
-        updated_at: 0,
     }
 }
 
@@ -90,12 +81,15 @@ fn make_loan(
             next_economics_epochs_id: BigDecimal::from(1_i64),
             next_repayment_id: BigDecimal::from(0_i64),
             status: "Performing".to_owned(),
-            ccr_bps: 11_750,
-            last_reported_ccr_timestamp: 0,
             // Rollover-aware maturity defaults to the original maturity (no rollover).
             current_maturity_timestamp: end_day * DAY,
+            current_rate: rate_bps,
             closure_reason: "None".to_owned(),
-            current_location: zero_location(),
+            carved_out: false,
+            disbursed: BigDecimal::from(0_i64),
+            repaid: BigDecimal::from(0_i64),
+            written_down: BigDecimal::from(0_i64),
+            interest_adjustment: BigDecimal::from(0_i64),
             metadata_uri_onchain: String::new(),
             repayment: zero_repayment(),
         },
@@ -419,23 +413,10 @@ fn ccr_bps_is_collateral_over_outstanding_senior() {
     let collateral = collateral_map(&[(1, usdc(125_000))]);
     let r = at_with(0, &fixture_loans(), &[], &collateral);
     assert_eq!(r.loans[0].ccr_bps, Some(15_625));
-    // reported_ccr_bps is the fixture's on-chain snapshot value (11_750), independent
-    // of the freshly computed 15_625 above — the two fields are allowed to diverge.
-    assert_eq!(r.loans[0].reported_ccr_bps, 11_750);
 
-    // Loan without collateral → computed CCR null; reported_ccr_bps still present.
+    // Loan without collateral → computed CCR null.
     let r2 = at(0, &fixture_loans(), &[]);
     assert_eq!(r2.loans[0].ccr_bps, None);
-    assert_eq!(r2.loans[0].reported_ccr_bps, 11_750);
-}
-
-#[test]
-fn entry_exposes_reported_ccr_bps_from_snapshot() {
-    let mut loans = fixture_loans();
-    loans[0].snapshot.ccr_bps = 13_200;
-    let r = at(0, &loans, &[]); // no collateral map → computed ccr_bps is None
-    assert_eq!(r.loans[0].reported_ccr_bps, 13_200);
-    assert_eq!(r.loans[0].ccr_bps, None); // confirms the two fields are independent
 }
 
 #[test]
@@ -609,7 +590,7 @@ fn empty_book_defaults_the_trustee_metric_fields() {
     assert!(r.summary.top_concentration.is_none());
 }
 
-// ── Loans table per-loan columns (senior outstanding, maturity, CCR age, spot) ──
+// ── Loans table per-loan columns (senior outstanding, maturity, spot) ──
 
 #[test]
 fn entry_senior_outstanding_nets_repaid_from_original() {
@@ -622,13 +603,11 @@ fn entry_senior_outstanding_nets_repaid_from_original() {
 }
 
 #[test]
-fn entry_exposes_rollover_maturity_and_ccr_report_timestamp() {
+fn entry_exposes_rollover_maturity() {
     let mut loans = fixture_loans();
     loans[0].snapshot.current_maturity_timestamp = 1_900_000_000;
-    loans[0].snapshot.last_reported_ccr_timestamp = 1_800_000_000;
     let r = at(0, &loans, &[]);
     assert_eq!(r.loans[0].maturity, 1_900_000_000);
-    assert_eq!(r.loans[0].ccr_reported_at, 1_800_000_000);
 }
 
 #[test]

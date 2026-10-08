@@ -70,6 +70,9 @@ impl BlockHint {
 /// alloy-generated types so mapper tests can use a mock resolver.
 #[derive(Debug, Clone)]
 pub struct ImmutableLoanDataView {
+    /// `None` means "not decoded yet" (#1433/#1434) — distinguishes that from a
+    /// legitimate all-zero on-chain `borrowerRef`/`BytesN<32>`.
+    pub borrower_ref: Option<alloy::primitives::FixedBytes<32>>,
     pub original_facility_size: alloy::primitives::U256,
     pub original_senior_tranche: alloy::primitives::U256,
     pub original_equity_tranche: alloy::primitives::U256,
@@ -77,47 +80,6 @@ pub struct ImmutableLoanDataView {
     pub senior_interest_rate_bps: u32,
     pub origination_date: u64,
     pub original_maturity_date: u64,
-}
-
-/// Location type enum matching the on-chain `ILoanRegistry.LocationType`.
-/// 0=Vessel, 1=Warehouse, 2=TankFarm, 3=Other
-#[derive(Debug, Clone, PartialEq)]
-pub enum LocationType {
-    Vessel,
-    Warehouse,
-    TankFarm,
-    Other,
-}
-
-impl LocationType {
-    /// Map numeric ordinal from on-chain enum to Rust variant.
-    /// Out-of-range values clamp to `Other`.
-    pub fn from_ordinal(ord: u8) -> LocationType {
-        match ord {
-            0 => LocationType::Vessel,
-            1 => LocationType::Warehouse,
-            2 => LocationType::TankFarm,
-            _ => LocationType::Other,
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LocationType::Vessel => "Vessel",
-            LocationType::Warehouse => "Warehouse",
-            LocationType::TankFarm => "TankFarm",
-            LocationType::Other => "Other",
-        }
-    }
-}
-
-/// Plain-Rust projection of `ILoanRegistry.LocationUpdate`.
-#[derive(Debug, Clone)]
-pub struct LocationUpdateView {
-    pub location_type: LocationType,
-    pub location_identifier: String,
-    pub tracking_url: String,
-    pub updated_at: u64,
 }
 
 /// Plain-Rust projection of `ILoanRegistry.RepaymentData`.
@@ -140,14 +102,28 @@ pub struct MutableLoanDataView {
     pub next_economics_epochs_id: alloy::primitives::U256,
     /// `nextRepaymentId` — monotonically incrementing counter for repayment IDs.
     pub next_repayment_id: alloy::primitives::U256,
-    /// Numeric ordinal of `LoanStatus`: 0=Performing, 1=WatchList, 2=Default, 3=Closed
+    /// Numeric ordinal of `LoanStatus`: 0=Approved, 1=Performing, 2=WatchList, 3=Default, 4=Closed
     pub status: u8,
-    pub ccr_bps: u32,
-    pub last_reported_ccr_timestamp: u64,
     pub current_maturity_timestamp: u64,
-    /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
+    /// Basis points. The contract reports this as a fraction of `ONE = 1_000_000`
+    /// (see `LoanRegistryUpgradeable.sol:17,653` and
+    /// `contracts/loan-registry/src/storage.rs:269` + `lib.rs:30`); each reader arm
+    /// must divide the raw value by 100 to reach basis points, exactly as the Stellar
+    /// reader already does for `senior_interest_rate` (`stellar/loan_registry_reader.rs:193`).
+    /// Neither arm populates this field yet (#1433/#1434).
+    pub current_rate: u32,
+    /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment,
+    /// 3=Cancelled, 4=Default, 5=OtherWriteDown
     pub closure_reason: u8,
-    pub current_location: LocationUpdateView,
+    pub carved_out: bool,
+    /// Raw native USDC scale.
+    pub disbursed: alloy::primitives::U256,
+    /// Raw native USDC scale.
+    pub repaid: alloy::primitives::U256,
+    /// Raw native USDC scale.
+    pub written_down: alloy::primitives::U256,
+    /// Signed; raw native USDC scale.
+    pub interest_adjustment: alloy::primitives::I256,
     /// The mutable on-chain metadata URI (set by `_updateMutable`).
     pub metadata_uri: String,
 }
