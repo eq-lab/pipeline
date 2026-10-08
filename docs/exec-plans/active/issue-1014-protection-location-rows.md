@@ -2,6 +2,15 @@
 
 Source: https://github.com/eq-lab/pipeline/issues/1014
 
+**Reconciliation note (added by #1432):** #1432 removed the on-chain `current_location` /
+`LocationUpdate` concept entirely — the reworked contracts no longer report a location.
+Per #1432's Finding F2, this plan's two rows split cleanly: the **origination-detail**
+Location row (`loan_data.initial_location`, item 1 above) is off-chain submission intent
+stored in `submitted_loans`, not a contract read, and survives untouched. The **loan-detail**
+"Status / location" registry row (item 2 above, `LoanFinancialsResponse.location`) had no
+surviving source and was degraded to "Status" alone by #1432 — do not re-add a location to
+that row without a new on-chain or off-chain source; see #1432's D1b.
+
 ## Scope
 
 Add two display rows to the trustee app:

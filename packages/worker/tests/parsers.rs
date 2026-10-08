@@ -320,7 +320,7 @@ fn loan_closed_decodes() {
 #[test]
 fn loan_closed_other_write_down_decodes() {
     let loan_id = U256::from(10u64);
-    let reason: u8 = 4; // OtherWriteDown
+    let reason: u8 = 4; // pre-rework ClosureReason.OtherWriteDown (hoodi-v4 raw ordinal)
 
     let topic1: FixedBytes<32> = loan_id.into();
     let mut topic2 = [0u8; 32];
@@ -345,6 +345,36 @@ fn loan_closed_other_write_down_decodes() {
     let ev = parse_loan_closed(&log).expect("should decode LoanClosed OtherWriteDown");
     assert_eq!(ev.event_name, "LoanClosed");
     assert_eq!(ev.params["closure_reason"], "OtherWriteDown");
+}
+
+#[test]
+fn loan_closed_default_decodes() {
+    let loan_id = U256::from(11u64);
+    let reason: u8 = 3; // pre-rework ClosureReason.Default (hoodi-v4 raw ordinal)
+
+    let topic1: FixedBytes<32> = loan_id.into();
+    let mut topic2 = [0u8; 32];
+    topic2[31] = reason;
+
+    let inner = alloy::primitives::Log {
+        address: CONTRACT,
+        data: LogData::new(
+            vec![LoanClosed::SIGNATURE_HASH, topic1, FixedBytes::from(topic2)],
+            vec![].into(),
+        )
+        .unwrap(),
+    };
+    let log = Log {
+        inner,
+        block_number: Some(505),
+        transaction_hash: Some(TX_HASH),
+        log_index: Some(5),
+        ..Default::default()
+    };
+
+    let ev = parse_loan_closed(&log).expect("should decode LoanClosed Default");
+    assert_eq!(ev.event_name, "LoanClosed");
+    assert_eq!(ev.params["closure_reason"], "Default");
 }
 
 #[test]
@@ -475,11 +505,7 @@ fn loan_defaulted_decodes() {
 
 // --- New 5 loan-registry event parser tests ---
 
-#[test]
-fn loan_status_updated_decodes() {
-    let loan_id = U256::from(5u64);
-    let new_status: u8 = 1; // WatchList
-
+fn loan_status_updated_log(loan_id: U256, new_status: u8, block_number: u64) -> Log {
     let topic1: FixedBytes<32> = loan_id.into();
     let mut topic2 = [0u8; 32];
     topic2[31] = new_status;
@@ -496,19 +522,48 @@ fn loan_status_updated_decodes() {
         )
         .unwrap(),
     };
-    let log = Log {
+    Log {
         inner,
-        block_number: Some(600),
+        block_number: Some(block_number),
         transaction_hash: Some(TX_HASH),
         log_index: Some(0),
         ..Default::default()
-    };
+    }
+}
+
+#[test]
+fn loan_status_updated_decodes() {
+    let loan_id = U256::from(5u64);
+    let new_status: u8 = 1; // pre-rework LoanStatus.WatchList (hoodi-v4 raw ordinal)
+
+    let log = loan_status_updated_log(loan_id, new_status, 600);
 
     let ev = parse_loan_status_updated(&log).expect("should decode LoanStatusUpdated");
     assert_eq!(ev.event_name, "LoanStatusUpdated");
     assert_eq!(ev.params["loan_id"], loan_id.to_string());
     assert_eq!(ev.params["status"], "WatchList");
     assert_eq!(ev.block_number, 600);
+}
+
+#[test]
+fn loan_status_updated_translates_every_pre_rework_ordinal() {
+    // hoodi-v4 raw LoanStatus ordinals: 0=Performing,1=WatchList,2=Default,3=Closed.
+    let cases: [(u8, &str); 4] = [
+        (0, "Performing"),
+        (1, "WatchList"),
+        (2, "Default"),
+        (3, "Closed"),
+    ];
+    for (raw, expected) in cases {
+        let log = loan_status_updated_log(U256::from(50u64 + raw as u64), raw, 700 + raw as u64);
+        let ev = parse_loan_status_updated(&log).expect("should decode LoanStatusUpdated");
+        assert_eq!(ev.params["status"], expected);
+    }
+    // The sharp consequence this fixes: raw 0 (pre-rework Performing) must not
+    // resolve to the post-rework ordinal 0's name, "Approved".
+    let log = loan_status_updated_log(U256::from(99u64), 0, 799);
+    let ev = parse_loan_status_updated(&log).expect("should decode LoanStatusUpdated");
+    assert_ne!(ev.params["status"], "Approved");
 }
 
 #[test]

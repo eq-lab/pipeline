@@ -15,7 +15,7 @@ use pipeline_api::routes::waterfall::{
 use shared::collateral_valuation_repo::ValuationMode;
 use shared::contract_logs_repo::EconomicsEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
-use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
+use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 use utoipa::OpenApi;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -82,16 +82,14 @@ fn snapshot_with_repayment(
         next_economics_epochs_id: dec("1"),
         next_repayment_id: dec("1"),
         status: "Performing".to_owned(),
-        ccr_bps: 14_000,
-        last_reported_ccr_timestamp: ORIGINATION,
         current_maturity_timestamp: ONE_YEAR_LATER,
+        current_rate: rate_bps,
         closure_reason: String::new(),
-        current_location: LocationUpdateSnapshot {
-            location_type: String::new(),
-            location_identifier: String::new(),
-            tracking_url: String::new(),
-            updated_at: 0,
-        },
+        carved_out: false,
+        disbursed: dec("0"),
+        repaid: dec("0"),
+        written_down: dec("0"),
+        interest_adjustment: dec("0"),
         metadata_uri_onchain: String::new(),
         repayment,
     }

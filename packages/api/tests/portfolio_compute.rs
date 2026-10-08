@@ -9,7 +9,7 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::portfolio::{compute_series, SamplePoint};
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
-use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
+use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 // Loan A: 100k USDC @ 12% (1200 bps), day 0 – 180
 // Loan B:  50k USDC @ 15% (1500 bps), day 30 – 120
@@ -30,15 +30,6 @@ fn zero_repayment() -> RepaymentSnapshot {
         mgmt_fee: BigDecimal::from(0_i64),
         perf_fee: BigDecimal::from(0_i64),
         oet_alloc: BigDecimal::from(0_i64),
-    }
-}
-
-fn zero_location() -> LocationUpdateSnapshot {
-    LocationUpdateSnapshot {
-        location_type: "Vessel".to_owned(),
-        location_identifier: String::new(),
-        tracking_url: String::new(),
-        updated_at: 0,
     }
 }
 
@@ -79,11 +70,14 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
                 next_economics_epochs_id: BigDecimal::from(1_i64),
                 next_repayment_id: BigDecimal::from(0_i64),
                 status: "Performing".to_owned(),
-                ccr_bps: 0,
-                last_reported_ccr_timestamp: 0,
                 current_maturity_timestamp: 0,
+                current_rate: rate_bps,
                 closure_reason: "None".to_owned(),
-                current_location: zero_location(),
+                carved_out: false,
+                disbursed: BigDecimal::from(0_i64),
+                repaid: BigDecimal::from(0_i64),
+                written_down: BigDecimal::from(0_i64),
+                interest_adjustment: BigDecimal::from(0_i64),
                 metadata_uri_onchain: String::new(),
                 // cumulativeRepaymentData
                 repayment: zero_repayment(),

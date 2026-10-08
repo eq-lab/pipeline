@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-123.**
+**Next free number: TD-125.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -561,7 +561,8 @@ line, whichever section it lands in.
   sharing them — the same epic-#775 app-separation constraint. Two extra wrinkles specific to this
   page: (a) the trustee `useLoanBook` types carry the **post-#833 Trustee-only summary fields**
   (`deployed_senior`, `weighted_rate`, `weighted_tenor_days`, `at_risk_wl_and_default_*`,
-  `top_concentration`, per-loan `senior_outstanding`/`ccr_bps`/`ccr_reported_at`/`spot_*`) that the
+  `top_concentration`, per-loan `senior_outstanding`/`ccr_bps`/`spot_*` — `ccr_reported_at` was
+  removed by #1432, the contract no longer reports a CCR) that the
   pre-#833 LP hook does **not**, so the two loan-book hooks have already drifted; and (b) the
   `scaleRegistryAmount` ×1000 helpers and `-useLoansTable.ts`'s `correctCcrBps` (÷1000) are the
   trustee copies of the **#840 registry-scale workaround** — cross-linked to TD-42-adjacent debt so
@@ -586,7 +587,8 @@ line, whichever section it lands in.
   **Addendum (issue #852, Trustee Loan detail — a sixth hand-mirroring):** the loan detail's
   "Registry state & derived" section hand-mirrors the backend `LoanFinancialsResponse` DTO
   (`packages/api/src/routes/loan_financials.rs`) as `packages/trustee/src/api/useLoanFinancials.ts`'s
-  self-contained `LoanFinancialsResponse`/`LocationView` types — same epic-#775 constraint, no LP
+  self-contained `LoanFinancialsResponse` type (its `LocationView` companion was removed by #1432 —
+  the contract no longer reports a location) — same epic-#775 constraint, no LP
   counterpart. **Scale (open, #852):** unlike `/valuations`, this endpoint's money fields are
   registry/loan-snapshot-sourced, so they are treated as **#840 1000×-low** and scaled with
   `formatRegistryCompactUsd` in `-useLoanDetail.ts::buildFinancials` — **to be verified against real
@@ -596,12 +598,13 @@ line, whichever section it lands in.
   sourced from the endpoint's `epoch` object, #857).
 
   **Addendum (issue #1039, Trustee Loan detail — `documents` mirror drift closed, `reported_ccr_bps`
-  still open):** `useLoanBook.ts`'s `LoanBookEntry` hand-mirror had drifted from the backend DTO —
-  `documents` (added backend-side by commit `f73d54d`) was missing from the trustee TS type and
-  silently discarded on the wire. #1039 added it (`LoanDocumentDto`, a further trustee-local
-  duplicate of `useLoanSubmissions.ts`'s identical type — a fourth hand-mirroring alongside those
-  already tracked above). `reported_ccr_bps` is likewise served by the backend but still missing
-  from this mirror; nothing reads it yet, so it is left out rather than added speculatively.
+  resolved by removal):** `useLoanBook.ts`'s `LoanBookEntry` hand-mirror had drifted from the
+  backend DTO — `documents` (added backend-side by commit `f73d54d`) was missing from the trustee
+  TS type and silently discarded on the wire. #1039 added it (`LoanDocumentDto`, a further
+  trustee-local duplicate of `useLoanSubmissions.ts`'s identical type — a fourth hand-mirroring
+  alongside those already tracked above). `reported_ccr_bps` was likewise served by the backend
+  but never mirrored; #1432 resolved the gap by deleting the field from the backend response
+  (the contract no longer reports a CCR), rather than by belatedly mirroring it.
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own
@@ -1826,3 +1829,19 @@ line, whichever section it lands in.
 - **Gap:** The three branches share the same 7-column grid shape (`grid-cols-7 gap-4`, the same `RecentActivityCard` absolute-position wrapper, the same `QnaSection` footer slot) and differ only in which card fills each of the two left-hand slots and which handlers get wired to the shared cards. Nothing is extracted — each branch is a full, separately-maintained copy.
 - **Impact:** A shared-structure change (grid gap, `RecentActivityCard` positioning, `QnaSection` wrapper) now needs editing in three places, and that cost triples again once states 3–6 (#1423–#1426) land as further branches.
 - **Suggested fix:** Extract the shared grid shell (RecentActivityCard slot, QnaSection footer, grid classes) into a small composer that takes the two left-hand slots as render props or children, once states 3–6 make seven near-identical branches the alternative.
+
+### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders
+
+- **Date:** 2026-10-07
+- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM), `packages/worker/src/indexer/stellar/loan_registry_reader.rs` (Stellar) — Issue #1432, decision D4.
+- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched — that is #1433's (Stellar) and #1434's (EVM) work. Each reader fills the six new fields with `Default::default()`/`U256::ZERO`/`I256::ZERO`, marked `// #1433:` / `// #1434:` at each call site, so the workspace compiles without either arm issue having landed.
+- **Impact:** Every `LoanSnapshot` written by an unmodified worker between #1432 landing and #1433/#1434 landing carries zeros for these six fields — not missing, not null, genuinely wrong if anything reads them before the arm issues land. No current consumer reads them (D1 deliberately keeps them off `LoanBookEntry`), so the blast radius today is zero, but it is a landmine for whichever surface reads `LoanSnapshot.disbursed`/`written_down`/etc. first.
+- **Suggested fix:** #1433 and #1434 each replace their reader's placeholder block with a real decode of the corresponding contract fields and delete their marker comments. Grep `// #1433:` / `// #1434:` in both reader files to find every call site.
+
+### TD-124: During a rolling deploy, the API must be upgraded before the worker
+
+- **Date:** 2026-10-07 (direction corrected 2026-10-08 — the original entry had the compatibility backwards).
+- **Location:** `packages/shared/src/loan_snapshot.rs` (`LoanSnapshot`) — Issue #1432, decision D2/R2.
+- **Gap:** #1432 removed `#[serde(deny_unknown_fields)]` from `LoanSnapshot` and added six fields with `#[serde(default)]` (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), while deleting `ccr_bps`, `last_reported_ccr_timestamp` and `current_location` (no `#[serde(default)]`, required on `main`). This makes compatibility strictly **one-directional, new-reads-old**: a post-#1432 binary deserializing a pre-#1432 snapshot ignores its extra `ccr_bps`/`last_reported_ccr_timestamp`/`current_location` keys (no guard to violate) and defaults the six missing new fields — succeeds. The reverse fails on **both** counts at once: a pre-#1432 binary (`deny_unknown_fields` + `ccr_bps` etc. required, no default) deserializing a post-#1432 snapshot hits unknown-field rejection for the six new keys *and* missing-field rejection for the three deleted ones.
+- **Impact:** `ContractLogsRepo` (`packages/shared/src/contract_logs_repo.rs:297,364,446,1006`) propagates that deserialize failure as an `anyhow::Error` from `serde_json::from_value`, failing the whole query — not a per-row degradation. So in a rolling deploy, if the **worker** is upgraded first, every API pod still running the old binary throws on the first snapshot the new worker writes, for every query that touches that loan. If the **API** is upgraded first, new API instances read old-shaped snapshots from the still-old worker without error (defaults fill the gap) until the worker catches up. **Operational constraint: roll the API before the worker, never the reverse, for this change.**
+- **Suggested fix:** None needed given the ordering constraint is followed — note it in the deploy runbook if one exists, or treat this entry as that note.
