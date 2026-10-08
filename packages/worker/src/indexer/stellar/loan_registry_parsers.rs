@@ -16,24 +16,27 @@ use stellar_xdr::curr::{Limits, ReadXdr, ScVal};
 
 pub use crate::indexer::loan_metadata::RepaymentDataView;
 use crate::indexer::stellar::parsers::StellarLog;
+use crate::indexer::stellar::parsers::{extract_bytes32_from_map, extract_i128_from_map};
 use crate::indexer::stellar::{parsers::synthesise_log_index, rpc::RawEvent};
 
 // ── Public parsers ────────────────────────────────────────────────────────────
 
 /// LoanRegistry `LoanDrawn` event.
-/// topics: [loan_drawn, loan_id: u32, holder: Address]
+/// topics: [loan_drawn, loan_id: u32]
 /// value:  Map { metadata_uri: String }
 /// stored event_name = "LoanDrawn"
+///
+/// Post-rework the contract no longer emits a `holder` topic (#1433) — the loan's
+/// holder is reachable from the snapshot chain, and no consumer reads `params.holder`.
 pub fn parse_loan_drawn(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "loan_drawn" {
         return None;
     }
-    if raw.topics_base64.len() < 3 {
+    if raw.topics_base64.len() < 2 {
         return None;
     }
 
     let loan_id = extract_u32(&raw.topics_base64[1])?;
-    let holder = extract_address_topic(&raw.topics_base64[2])?;
     let metadata_uri = extract_string_from_map(&raw.value_base64, "metadata_uri")?;
 
     Some(StellarLog {
@@ -45,7 +48,6 @@ pub fn parse_loan_drawn(raw: &RawEvent) -> Option<StellarLog> {
         block_timestamp: raw.ledger_closed_at_unix,
         params: json!({
             "loan_id": loan_id.to_string(),
-            "holder": holder,
             "metadata_uri": metadata_uri,
         }),
     })
@@ -80,78 +82,14 @@ pub fn parse_status_updated(raw: &RawEvent) -> Option<StellarLog> {
     })
 }
 
-/// LoanRegistry `CcrUpdated` event.
-/// topics: [ccr_updated, loan_id: u32]
-/// value:  Map { new_ccr: u32 }
-/// stored event_name = "LoanCCRUpdated" (remapped for EVM analytics parity)
-pub fn parse_ccr_updated(raw: &RawEvent) -> Option<StellarLog> {
-    if raw.event_name != "ccr_updated" {
-        return None;
-    }
-    if raw.topics_base64.len() < 2 {
-        return None;
-    }
-
-    let loan_id = extract_u32(&raw.topics_base64[1])?;
-    let new_ccr = extract_u32_from_map(&raw.value_base64, "new_ccr")?;
-
-    Some(StellarLog {
-        contract_address: raw.contract_id.clone(),
-        event_name: "LoanCCRUpdated".to_owned(),
-        block_number: raw.ledger as u64,
-        tx_hash: raw.tx_hash.clone(),
-        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
-        block_timestamp: raw.ledger_closed_at_unix,
-        params: json!({
-            "loan_id": loan_id.to_string(),
-            "new_ccr": new_ccr,
-        }),
-    })
-}
-
-/// LoanRegistry `LocationUpdated` event.
-/// topics: [location_updated, loan_id: u32, new_location: String]
-/// value:  (none)
-/// stored event_name = "LoanLocationUpdated" (remapped for EVM analytics parity)
-///
-/// Note: on Stellar, the location string is the full literal string (unlike EVM which
-/// stores only the keccak hash). Stored verbatim in `params.new_location`.
-pub fn parse_location_updated(raw: &RawEvent) -> Option<StellarLog> {
-    if raw.event_name != "location_updated" {
-        return None;
-    }
-    if raw.topics_base64.len() < 3 {
-        return None;
-    }
-
-    let loan_id = extract_u32(&raw.topics_base64[1])?;
-    let new_location = extract_string(&raw.topics_base64[2])?;
-
-    Some(StellarLog {
-        contract_address: raw.contract_id.clone(),
-        event_name: "LoanLocationUpdated".to_owned(),
-        block_number: raw.ledger as u64,
-        tx_hash: raw.tx_hash.clone(),
-        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
-        block_timestamp: raw.ledger_closed_at_unix,
-        params: json!({
-            "loan_id": loan_id.to_string(),
-            "new_location": new_location,
-        }),
-    })
-}
-
 /// LoanRegistry `LoanDefaulted` event.
 /// topics: [loan_defaulted, loan_id: u32]
-/// value:  Map { ccr: u32 }
+/// value:  Map { outstanding: u128, moved: u128 }
 /// stored event_name = "LoanDefaulted"
 ///
-/// `params.ccr_bps` matches EVM's `parse_loan_defaulted` (which emits
-/// `decoded.ccrBps` in basis points). The on-chain Soroban Map key is `ccr`,
-/// stored in the contract's `ONE = 1_000_000` fixed-point scale (100% =
-/// 1_000_000); we divide by 100 to basis points — mirroring
-/// `decode_mutable_loan_data` — and rename to `ccr_bps` so downstream consumers
-/// (mapper, analytics) read a single field name and unit across chains.
+/// Post-rework (#1433) the contract no longer reports a `ccr`; `outstanding` is the
+/// loan's outstanding balance at default and `moved` is the PLUSD carved out of the
+/// vault into the loan's pocket (zero on a repeat default).
 pub fn parse_loan_defaulted(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "loan_defaulted" {
         return None;
@@ -161,7 +99,8 @@ pub fn parse_loan_defaulted(raw: &RawEvent) -> Option<StellarLog> {
     }
 
     let loan_id = extract_u32(&raw.topics_base64[1])?;
-    let ccr_bps = extract_u32_from_map(&raw.value_base64, "ccr")? / 100;
+    let outstanding = extract_u128_from_map(&raw.value_base64, "outstanding")?;
+    let moved = extract_u128_from_map(&raw.value_base64, "moved")?;
 
     Some(StellarLog {
         contract_address: raw.contract_id.clone(),
@@ -172,7 +111,8 @@ pub fn parse_loan_defaulted(raw: &RawEvent) -> Option<StellarLog> {
         block_timestamp: raw.ledger_closed_at_unix,
         params: json!({
             "loan_id": loan_id.to_string(),
-            "ccr_bps": ccr_bps,
+            "outstanding": outstanding.to_string(),
+            "moved": moved.to_string(),
         }),
     })
 }
@@ -208,12 +148,12 @@ pub fn parse_loan_closed(raw: &RawEvent) -> Option<StellarLog> {
 
 /// LoanRegistry `PaymentRecorded` event.
 /// topics: [payment_recorded, loan_id: u32, repayment_id: u32]
-/// value:  Map { repayment: RepaymentData (7 × u128) }
+/// value:  Map { repayment: RepaymentData (7 × u128), outstanding: u128 }
 /// stored event_name = "PaymentRecorded"
 ///
 /// The `repayment` field is a nested `#[contracttype]` struct, encoded as a sub-map.
 /// We flatten its 7 fields directly into `params` (matching the EVM parse_payment_recorded
-/// shape from `parsers.rs:234-258`).
+/// shape from `parsers.rs:234-258`), alongside the loan's post-payment `outstanding`.
 pub fn parse_payment_recorded(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "payment_recorded" {
         return None;
@@ -225,6 +165,7 @@ pub fn parse_payment_recorded(raw: &RawEvent) -> Option<StellarLog> {
     let loan_id = extract_u32(&raw.topics_base64[1])?;
     let repayment_id = extract_u32(&raw.topics_base64[2])?;
     let repayment = extract_repayment_data_from_map(&raw.value_base64, "repayment")?;
+    let outstanding = extract_u128_from_map(&raw.value_base64, "outstanding")?;
 
     Some(StellarLog {
         contract_address: raw.contract_id.clone(),
@@ -243,6 +184,177 @@ pub fn parse_payment_recorded(raw: &RawEvent) -> Option<StellarLog> {
             "mgmt_fee": repayment.mgmt_fee.to_string(),
             "perf_fee": repayment.perf_fee.to_string(),
             "oet_alloc": repayment.oet_alloc.to_string(),
+            "outstanding": outstanding.to_string(),
+        }),
+    })
+}
+
+/// LoanRegistry `PaymentUnrecorded` event — reverses a previously recorded repayment
+/// (once only).
+/// topics: [payment_unrecorded, loan_id: u32, repayment_id: u32]
+/// value:  Map { repayment: RepaymentData (7 × u128), outstanding: u128 }
+/// stored event_name = "PaymentUnrecorded"
+pub fn parse_payment_unrecorded(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "payment_unrecorded" {
+        return None;
+    }
+    if raw.topics_base64.len() < 3 {
+        return None;
+    }
+
+    let loan_id = extract_u32(&raw.topics_base64[1])?;
+    let repayment_id = extract_u32(&raw.topics_base64[2])?;
+    let repayment = extract_repayment_data_from_map(&raw.value_base64, "repayment")?;
+    let outstanding = extract_u128_from_map(&raw.value_base64, "outstanding")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "PaymentUnrecorded".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "loan_id": loan_id.to_string(),
+            "repayment_id": repayment_id.to_string(),
+            "offtaker_received": repayment.offtaker_received.to_string(),
+            "senior_principal_repaid": repayment.senior_principal_repaid.to_string(),
+            "senior_interest": repayment.senior_interest.to_string(),
+            "equity_distributed": repayment.equity_distributed.to_string(),
+            "mgmt_fee": repayment.mgmt_fee.to_string(),
+            "perf_fee": repayment.perf_fee.to_string(),
+            "oet_alloc": repayment.oet_alloc.to_string(),
+            "outstanding": outstanding.to_string(),
+        }),
+    })
+}
+
+/// LoanRegistry `Disbursed` event.
+/// topics: [disbursed, loan_id: u32]
+/// value:  Map { amount: u128, outstanding: u128 }
+/// stored event_name = "Disbursed"
+pub fn parse_disbursed(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "disbursed" {
+        return None;
+    }
+    if raw.topics_base64.len() < 2 {
+        return None;
+    }
+
+    let loan_id = extract_u32(&raw.topics_base64[1])?;
+    let amount = extract_u128_from_map(&raw.value_base64, "amount")?;
+    let outstanding = extract_u128_from_map(&raw.value_base64, "outstanding")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "Disbursed".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "loan_id": loan_id.to_string(),
+            "amount": amount.to_string(),
+            "outstanding": outstanding.to_string(),
+        }),
+    })
+}
+
+/// LoanRegistry `Undisbursed` event — reverses a disbursement.
+/// topics: [undisbursed, loan_id: u32]
+/// value:  Map { amount: u128, outstanding: u128 }
+/// stored event_name = "Undisbursed"
+pub fn parse_undisbursed(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "undisbursed" {
+        return None;
+    }
+    if raw.topics_base64.len() < 2 {
+        return None;
+    }
+
+    let loan_id = extract_u32(&raw.topics_base64[1])?;
+    let amount = extract_u128_from_map(&raw.value_base64, "amount")?;
+    let outstanding = extract_u128_from_map(&raw.value_base64, "outstanding")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "Undisbursed".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "loan_id": loan_id.to_string(),
+            "amount": amount.to_string(),
+            "outstanding": outstanding.to_string(),
+        }),
+    })
+}
+
+/// LoanRegistry `LoanWrittenDown` event — writes down a defaulted loan's outstanding
+/// balance, burning it from the loan's pocket; no cash moves.
+/// topics: [loan_written_down, loan_id: u32]
+/// value:  Map { amount: u128, outstanding: u128, burned: u128, unabsorbed: u128 }
+/// stored event_name = "LoanWrittenDown"
+pub fn parse_loan_written_down(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "loan_written_down" {
+        return None;
+    }
+    if raw.topics_base64.len() < 2 {
+        return None;
+    }
+
+    let loan_id = extract_u32(&raw.topics_base64[1])?;
+    let amount = extract_u128_from_map(&raw.value_base64, "amount")?;
+    let outstanding = extract_u128_from_map(&raw.value_base64, "outstanding")?;
+    let burned = extract_u128_from_map(&raw.value_base64, "burned")?;
+    let unabsorbed = extract_u128_from_map(&raw.value_base64, "unabsorbed")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "LoanWrittenDown".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "loan_id": loan_id.to_string(),
+            "amount": amount.to_string(),
+            "outstanding": outstanding.to_string(),
+            "burned": burned.to_string(),
+            "unabsorbed": unabsorbed.to_string(),
+        }),
+    })
+}
+
+/// LoanRegistry `InterestAdjusted` event — a signed risk-council adjustment to
+/// accrued interest (negative = waiver).
+/// topics: [interest_adjusted, loan_id: u32]
+/// value:  Map { delta: i128, reason_hash: BytesN<32> }
+/// stored event_name = "InterestAdjusted"
+pub fn parse_interest_adjusted(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "interest_adjusted" {
+        return None;
+    }
+    if raw.topics_base64.len() < 2 {
+        return None;
+    }
+
+    let loan_id = extract_u32(&raw.topics_base64[1])?;
+    let delta = extract_i128_from_map(&raw.value_base64, "delta")?;
+    let reason_hash = extract_bytes32_from_map(&raw.value_base64, "reason_hash")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "InterestAdjusted".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "loan_id": loan_id.to_string(),
+            "delta": delta.to_string(),
+            "reason_hash": reason_hash,
         }),
     })
 }
@@ -325,17 +437,6 @@ pub fn extract_u64(b64: &str) -> Option<u64> {
     let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
     match val {
         ScVal::U64(v) => Some(v),
-        _ => None,
-    }
-}
-
-/// Decode a base64-encoded XDR `ScVal::String` topic into a Rust `String`.
-/// Used for `LocationUpdated.new_location` which Soroban stores as a full string topic
-/// (unlike EVM's keccak-hashed indexed string).
-pub fn extract_string(b64: &str) -> Option<String> {
-    let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
-    match val {
-        ScVal::String(s) => Some(s.to_utf8_string_lossy()),
         _ => None,
     }
 }
@@ -453,34 +554,6 @@ pub fn extract_repayment_data_from_map(b64: &str, key: &str) -> Option<Repayment
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
-
-/// Decode a `ScVal::Address` topic into an uppercase Strkey string (G… or C…).
-/// Delegates to the same logic as `parsers::extract_address` — duplicated here to
-/// avoid a circular dependency between the two sibling modules.
-fn extract_address_topic(b64: &str) -> Option<String> {
-    use stellar_xdr::curr::ScAddress;
-
-    let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
-    match val {
-        ScVal::Address(addr) => match addr {
-            ScAddress::Account(account_id) => {
-                use stellar_xdr::curr::PublicKey;
-                match &account_id.0 {
-                    PublicKey::PublicKeyTypeEd25519(bytes) => {
-                        let pk = stellar_strkey::ed25519::PublicKey(bytes.0);
-                        Some(pk.to_string().to_string())
-                    }
-                }
-            }
-            ScAddress::Contract(contract_id) => {
-                let strkey = stellar_strkey::Contract(contract_id.0 .0);
-                Some(strkey.to_string().to_string())
-            }
-            _ => None,
-        },
-        _ => None,
-    }
-}
 
 /// Decode a unit-variant `#[contracttype]` enum topic from base64 XDR.
 ///

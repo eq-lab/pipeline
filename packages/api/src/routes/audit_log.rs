@@ -34,6 +34,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use utoipa::{OpenApi, ToSchema};
 
+use shared::chains::{parse_chain_type, ChainKind};
 use shared::contract_logs_repo::AuditLogRow;
 
 use crate::error::ApiError;
@@ -56,6 +57,11 @@ const AUDIT_EVENT_NAMES: &[&str] = &[
     "LoanRolledOver",
     "EconomicsAmended",
     "LoanLocationUpdated",
+    "Disbursed",
+    "Undisbursed",
+    "PaymentUnrecorded",
+    "LoanWrittenDown",
+    "InterestAdjusted",
 ];
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -136,29 +142,36 @@ async fn get_audit_log(
     Query(query): Query<ChainQuery>,
 ) -> Result<Json<AuditLogResponse>, ApiError> {
     let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_kind = parse_chain_type(chain_id)?;
 
     let rows = state
         .contract_logs_repo
         .list_audit_log(&state.pool, chain_id, AUDIT_EVENT_NAMES)
         .await?;
 
-    Ok(Json(build_response(rows)))
+    Ok(Json(build_response(rows, chain_kind)))
 }
 
 // ── Compute (pure — unit-tested without DB/HTTP) ──────────────────────────────
 
-/// Map a fetched slab of rows (already newest-first) into the response.
+/// Map a fetched slab of rows (already newest-first) into the response. `chain_kind`
+/// drives the amount scale (`param_amount`) — Stellar's Soroban contracts store
+/// monetary fields at 7 decimals vs. EVM's 6 (#901) — resolved once by the caller
+/// from the feed's `chain_id` rather than re-derived per row.
 ///
 /// Public so `packages/api/tests/audit_log.rs` can exercise the mapping without a DB.
-pub fn build_response(rows: Vec<AuditLogRow>) -> AuditLogResponse {
-    let items = rows.into_iter().map(map_item).collect();
+pub fn build_response(rows: Vec<AuditLogRow>, chain_kind: ChainKind) -> AuditLogResponse {
+    let items = rows
+        .into_iter()
+        .map(|row| map_item(row, chain_kind))
+        .collect();
     AuditLogResponse { items }
 }
 
 /// Map one raw row to an API item, rendering the action string, scope, and friendly
 /// loan name.
-fn map_item(row: AuditLogRow) -> AuditLogItem {
-    let (action, details) = format_action(&row.event_name, &row.params);
+fn map_item(row: AuditLogRow, chain_kind: ChainKind) -> AuditLogItem {
+    let (action, details) = format_action(&row.event_name, &row.params, chain_kind);
     let scope = match row.loan_id.as_deref() {
         Some(id) if !id.is_empty() => AuditScope {
             loan_id: Some(id.to_owned()),
@@ -194,35 +207,50 @@ fn build_reference_name(originator: Option<&str>, commodity: Option<&str>) -> Op
 
 /// Read a `params` field as a plain string, accepting either a JSON string or a JSON
 /// number (the indexer stores `uint256`s as strings but smaller ints as numbers).
+///
+/// Looks at the top level first, then under `params.event`: the two indexer mappers
+/// store different shapes. `ContractLogMapper` writes parser fields flat, while
+/// `LoanEventMapper` rewraps them as `{loan_id, event: {...}, snapshot: {...}}`
+/// (`worker/src/indexer/loan_mapper.rs`), which is why `yield_mint_outbox_repo` reads
+/// `params->'event'->>'repayment_id'`. Reading only the top level made every
+/// loan-registry `details` field null in production — issue #1096.
 fn param_str(params: &Value, key: &str) -> Option<String> {
-    match params.get(key) {
-        Some(Value::String(s)) => Some(s.clone()),
-        Some(Value::Number(n)) => Some(n.to_string()),
+    let value = params
+        .get(key)
+        .or_else(|| params.get("event").and_then(|event| event.get(key)))?;
+    match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
         _ => None,
     }
 }
 
-/// Format a base-6 integer amount string (on-chain USDC base units) as decimal dollars.
+/// Format an on-chain integer amount string as decimal dollars. `chain_kind` selects
+/// the native scale — EVM's `uint256` monetary fields are already 6-decimal
+/// (`normalize_usdc_amount` is a no-op); Stellar's Soroban contracts store them at
+/// 7 decimals (#901), so the value is normalized to 6 decimals before formatting.
 /// Returns `None` when the value is missing or unparseable.
-fn param_amount(params: &Value, key: &str) -> Option<String> {
+fn param_amount(params: &Value, key: &str, chain_kind: ChainKind) -> Option<String> {
     let raw = param_str(params, key)?;
-    BigDecimal::from_str(&raw)
-        .ok()
-        .map(|bd| base6_to_decimal_string(&bd))
+    let bd = BigDecimal::from_str(&raw).ok()?;
+    Some(base6_to_decimal_string(
+        &shared::chains::normalize_usdc_amount(chain_kind, &bd),
+    ))
 }
 
 /// Map an `(event_name, params)` pair to a human-readable action string plus a curated
-/// `details` object (amounts already in decimal dollars). Pure and total: any event
-/// outside [`AUDIT_EVENT_NAMES`] falls back to the raw event name with empty details.
+/// `details` object (amounts already in decimal dollars, normalized for `chain_kind`).
+/// Pure and total: any event outside [`AUDIT_EVENT_NAMES`] falls back to the raw event
+/// name with empty details.
 ///
 /// Public so `packages/api/tests/audit_log.rs` can exercise every branch without a DB.
-pub fn format_action(event_name: &str, params: &Value) -> (String, Value) {
+pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) -> (String, Value) {
     match event_name {
         "LoanDrawn" => ("Loan approved & minted".to_owned(), json!({})),
 
         "PaymentRecorded" => {
-            let interest = param_amount(params, "senior_interest");
-            let principal = param_amount(params, "senior_principal_repaid");
+            let interest = param_amount(params, "senior_interest", chain_kind);
+            let principal = param_amount(params, "senior_principal_repaid", chain_kind);
             // Principal untouched ⇒ interest-only coupon; otherwise a principal repayment.
             let interest_only = principal.as_deref() == Some("0.000000");
             let action = if interest_only {
@@ -237,8 +265,8 @@ pub fn format_action(event_name: &str, params: &Value) -> (String, Value) {
         }
 
         "YieldMinted" => {
-            let vault = param_amount(params, "s_plusd_amount");
-            let treasury = param_amount(params, "treasury_amount");
+            let vault = param_amount(params, "s_plusd_amount", chain_kind);
+            let treasury = param_amount(params, "treasury_amount", chain_kind);
             let action = match (&vault, &treasury) {
                 (Some(v), Some(t)) => format!("Coupon minted — ${v} vault + ${t} treasury"),
                 _ => "Coupon minted".to_owned(),
@@ -272,10 +300,23 @@ pub fn format_action(event_name: &str, params: &Value) -> (String, Value) {
             (action, json!({ "closure_reason": reason }))
         }
 
-        "LoanDefaulted" => (
-            "Loan defaulted".to_owned(),
-            json!({ "ccr_bps": params.get("ccr_bps") }),
-        ),
+        // Shape-tolerant (#1433 D4): post-rework rows carry `outstanding`/`moved` with
+        // no CCR; legacy rows (pre-rework parser) still carry `ccr_bps`. Project
+        // whichever keys the row actually has rather than a fixed three-key shape
+        // with nulls, so legacy rows keep rendering their original fields.
+        "LoanDefaulted" => {
+            let mut details = json!({});
+            if let Some(outstanding) = param_amount(params, "outstanding", chain_kind) {
+                details["outstanding"] = json!(outstanding);
+            }
+            if let Some(moved) = param_amount(params, "moved", chain_kind) {
+                details["moved"] = json!(moved);
+            }
+            if let Some(ccr_bps) = params.get("ccr_bps") {
+                details["ccr_bps"] = ccr_bps.clone();
+            }
+            ("Loan defaulted".to_owned(), details)
+        }
 
         "LoanRolledOver" => (
             "Loan rolled over".to_owned(),
@@ -294,6 +335,47 @@ pub fn format_action(event_name: &str, params: &Value) -> (String, Value) {
         ),
 
         "LoanLocationUpdated" => ("Collateral location updated".to_owned(), json!({})),
+
+        "Disbursed" => {
+            let amount = param_amount(params, "amount", chain_kind);
+            let action = match &amount {
+                Some(a) => format!("Disbursed — ${a}"),
+                None => "Disbursed".to_owned(),
+            };
+            (action, json!({ "amount": amount }))
+        }
+
+        "Undisbursed" => {
+            let amount = param_amount(params, "amount", chain_kind);
+            let action = match &amount {
+                Some(a) => format!("Disbursement reversed — ${a}"),
+                None => "Disbursement reversed".to_owned(),
+            };
+            (action, json!({ "amount": amount }))
+        }
+
+        "PaymentUnrecorded" => {
+            let principal = param_amount(params, "senior_principal_repaid", chain_kind);
+            let interest = param_amount(params, "senior_interest", chain_kind);
+            (
+                "Payment reversed".to_owned(),
+                json!({ "senior_interest": interest, "senior_principal_repaid": principal }),
+            )
+        }
+
+        "LoanWrittenDown" => {
+            let amount = param_amount(params, "amount", chain_kind);
+            let action = match &amount {
+                Some(a) => format!("Loan written down — ${a}"),
+                None => "Loan written down".to_owned(),
+            };
+            (action, json!({ "amount": amount }))
+        }
+
+        "InterestAdjusted" => {
+            let delta = param_amount(params, "delta", chain_kind);
+            ("Interest adjusted".to_owned(), json!({ "delta": delta }))
+        }
 
         // Unreachable in practice — the SQL allow-list filters these out before they get
         // here — but keep it total rather than panicking on an unexpected event.

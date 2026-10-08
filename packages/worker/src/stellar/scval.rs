@@ -17,6 +17,8 @@ pub fn extract_i128(b64: &str) -> Option<i128> {
     }
 }
 
-fn i128_from_parts(hi: i64, lo: u64) -> i128 {
+/// Reconstruct a signed `i128` from Soroban's `I128Parts { hi: i64, lo: u64 }`.
+/// `hi` sign-extends on the shift; `lo` is `u64` so the `or` cannot collide with it.
+pub fn i128_from_parts(hi: i64, lo: u64) -> i128 {
     ((hi as i128) << 64) | (lo as i128)
 }

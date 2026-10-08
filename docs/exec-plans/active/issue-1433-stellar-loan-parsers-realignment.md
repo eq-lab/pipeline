@@ -694,3 +694,22 @@ frontend consequence is tracked standalone as #1441.
   the affected loan ids and the ledger range.
 - **This plan** — record Step 0's answer to **Q1** in the Findings section before
   implementation proceeds, and move the file to `docs/exec-plans/completed/` at the end.
+
+## Progress
+
+- [x] 0. Settle Q1 — already discharged before this plan's final draft (latent, not active)
+- [x] 1. `parse_loan_drawn` — two-topic form, `holder` dropped
+- [x] 2. `parse_loan_defaulted` — `outstanding`/`moved`, `ccr_bps` dropped
+- [x] 3. `parse_payment_recorded` — `outstanding` added
+- [x] 4. Deleted `parse_ccr_updated`, `parse_location_updated`, `parse_yield_minted`, and their now-dead helpers
+- [x] 5. Five new parsers (`parse_disbursed`, `parse_undisbursed`, `parse_payment_unrecorded`, `parse_loan_written_down`, `parse_interest_adjusted`)
+- [x] 6. Dispatch ladder + imports in `stellar/parsers.rs`, stale minter comment rewritten
+- [x] 7. `is_loan_registry_event` in `stellar/poller.rs` mirrored (F2)
+- [x] 8. `decode_immutable_loan_data` — `borrower_ref` decoded
+- [x] 9. `decode_mutable_loan_data` — six placeholders replaced
+- [x] 10. New decoder primitives `map_bool`, `map_i128`, `map_bytes32`; `i128_from_parts` promoted to `pub` in `scval.rs` and reused (F11)
+- [x] 11. Five SQL allowlists in `shared/contract_logs_repo.rs` consolidated into one `LOAN_LIFECYCLE_EVENT_NAMES` const (F3)
+- [x] 12. `audit_log.rs` — shape-tolerant `LoanDefaulted` projection (D4), five new event arms (D5), chain-aware `param_amount` (F12/Q3)
+- [x] 13. Config doc comments (`config.rs`, `.env.example`)
+- [x] 14. Tests — see Test Strategy; all pass (`cargo test --all`)
+- [x] 15. Lint and build — `cargo fmt`, `cargo clippy --all --all-targets -- -D warnings`, `cargo build --workspace` all green

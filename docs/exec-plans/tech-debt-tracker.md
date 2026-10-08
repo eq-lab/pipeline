@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-125.**
+**Next free number: TD-128.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1832,11 +1832,11 @@ line, whichever section it lands in.
 
 ### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders
 
-- **Date:** 2026-10-07
-- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM), `packages/worker/src/indexer/stellar/loan_registry_reader.rs` (Stellar) — Issue #1432, decision D4.
-- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched — that is #1433's (Stellar) and #1434's (EVM) work. Each reader fills the six new fields with `Default::default()`/`U256::ZERO`/`I256::ZERO`, marked `// #1433:` / `// #1434:` at each call site, so the workspace compiles without either arm issue having landed.
-- **Impact:** Every `LoanSnapshot` written by an unmodified worker between #1432 landing and #1433/#1434 landing carries zeros for these six fields — not missing, not null, genuinely wrong if anything reads them before the arm issues land. No current consumer reads them (D1 deliberately keeps them off `LoanBookEntry`), so the blast radius today is zero, but it is a landmine for whichever surface reads `LoanSnapshot.disbursed`/`written_down`/etc. first.
-- **Suggested fix:** #1433 and #1434 each replace their reader's placeholder block with a real decode of the corresponding contract fields and delete their marker comments. Grep `// #1433:` / `// #1434:` in both reader files to find every call site.
+- **Date:** 2026-10-07. **Stellar half closed 2026-10-08 (#1433)** — EVM half still open for #1434.
+- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM, still open) — Issue #1432, decision D4.
+- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched — that is #1433's (Stellar) and #1434's (EVM) work. #1433 replaced every `// #1433:` placeholder in `packages/worker/src/indexer/stellar/loan_registry_reader.rs` with a real decode; the EVM reader still fills the six fields with `Default::default()`/`U256::ZERO`/`I256::ZERO`, marked `// #1434:`.
+- **Impact:** Every `LoanSnapshot` written by the EVM arm before #1434 lands carries zeros for these six fields — not missing, not null, genuinely wrong if anything reads them first. No current consumer reads them (D1 deliberately keeps them off `LoanBookEntry`), so the blast radius today is zero, but it is a landmine for whichever surface reads `LoanSnapshot.disbursed`/`written_down`/etc. first.
+- **Suggested fix:** #1434 replaces the EVM reader's placeholder block with a real decode of the corresponding contract fields and deletes the marker comments. Grep `// #1434:` in `packages/worker/src/indexer/loan_registry_reader.rs` to find every call site.
 
 ### TD-124: During a rolling deploy, the API must be upgraded before the worker
 
@@ -1845,3 +1845,27 @@ line, whichever section it lands in.
 - **Gap:** #1432 removed `#[serde(deny_unknown_fields)]` from `LoanSnapshot` and added six fields with `#[serde(default)]` (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), while deleting `ccr_bps`, `last_reported_ccr_timestamp` and `current_location` (no `#[serde(default)]`, required on `main`). This makes compatibility strictly **one-directional, new-reads-old**: a post-#1432 binary deserializing a pre-#1432 snapshot ignores its extra `ccr_bps`/`last_reported_ccr_timestamp`/`current_location` keys (no guard to violate) and defaults the six missing new fields — succeeds. The reverse fails on **both** counts at once: a pre-#1432 binary (`deny_unknown_fields` + `ccr_bps` etc. required, no default) deserializing a post-#1432 snapshot hits unknown-field rejection for the six new keys *and* missing-field rejection for the three deleted ones.
 - **Impact:** `ContractLogsRepo` (`packages/shared/src/contract_logs_repo.rs:297,364,446,1006`) propagates that deserialize failure as an `anyhow::Error` from `serde_json::from_value`, failing the whole query — not a per-row degradation. So in a rolling deploy, if the **worker** is upgraded first, every API pod still running the old binary throws on the first snapshot the new worker writes, for every query that touches that loan. If the **API** is upgraded first, new API instances read old-shaped snapshots from the still-old worker without error (defaults fill the gap) until the worker catches up. **Operational constraint: roll the API before the worker, never the reverse, for this change.**
 - **Suggested fix:** None needed given the ordering constraint is followed — note it in the deploy runbook if one exists, or treat this entry as that note.
+
+### TD-125: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion
+
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/indexer/stellar/loan_registry_parsers.rs` (`parse_loan_rolled_over`, `parse_economics_amended`), `packages/api/src/routes/audit_log.rs` (`format_action` arms for both events) — Issue #1433, finding F8.
+- **Gap:** The Soroban contract's `new_rate` is the same `ONE = 1_000_000` fixed-point value as `current_rate`/`senior_interest_rate` (`lib.rs:30`, `storage.rs:344`), but both parsers write it into `params.new_rate` with no conversion, and `audit_log.rs` projects it verbatim into the Trustee feed's `details`.
+- **Impact:** A 10% rate renders as `100000` in the audit feed rather than `1000` (bps) or `10` (percent). Low urgency — it is a `params` display value, not a snapshot field read by any computation.
+- **Suggested fix:** Decide the target unit (bps, to match `current_rate`'s convention) and divide at parse time; existing stored `params.new_rate` rows would then be back-compat-inconsistent with newly written ones, so the fix needs a decision on already-stored rows (ignore vs. backfill) before landing.
+
+### TD-126: `docs/product-specs/loans-data.md` "Key events" section is v1 design-era drift
+
+- **Date:** 2026-10-08
+- **Location:** `docs/product-specs/loans-data.md` (the "Key events" section) — Issue #1433, finding F9.
+- **Gap:** Lists `LoanMinted`, `LoanStatusChanged`, `MetadataUpdated` and a flat 8-arg `PaymentRecorded` — event names the indexer has never used on either chain arm — alongside the deleted `LocationUpdated`. It predates both the EVM and Stellar contract implementations.
+- **Impact:** A reader of this spec gets a wrong picture of the actual on-chain event surface; no code depends on it.
+- **Suggested fix:** Rewrite the section against the current contract sources (`pipeline-stellar-contracts/contracts/loan-registry/src/event.rs` and the EVM equivalent) once both #1433 and #1434 have landed.
+
+### TD-127: `docs/references/smart-contracts.md` documents a LoanRegistry surface neither shipped repo implements
+
+- **Date:** 2026-10-08
+- **Location:** `docs/references/smart-contracts.md` (`:1026`, `:1051-1052`, `:1069-1071`, `:1168`, `:1297`, `:1462`, `:1470`) — Issue #1433, scope note.
+- **Gap:** The reference documents the v2.3 *designed* EVM contract (`updateCCR`, `updateLocation`, `ccrBps`, `location`) rather than either shipped repo's current LoanRegistry.
+- **Impact:** A reader of this 1,600-line reference gets a surface that does not exist on-chain today; no code depends on it.
+- **Suggested fix:** Realign the reference against the shipped contracts — its own standalone issue given its size, out of scope for a parser-realignment bug fix.
