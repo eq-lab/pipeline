@@ -442,13 +442,14 @@ describe("OtpModal (#1250, #1265)", () => {
   it("a second rejection restarts the window instead of stacking timers", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const verify = vi.fn().mockRejectedValue(new ApiError(401, "invalid code"));
+    const partial = Math.floor((OTP_ERROR_VISIBLE_MS * 2) / 3);
     renderModal({ verify });
 
     await typeCode(user);
     expect(await screen.findByRole("alert")).toBeInTheDocument();
 
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(partial);
     });
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
@@ -457,12 +458,12 @@ describe("OtpModal (#1250, #1265)", () => {
     expect(verify).toHaveBeenCalledTimes(2);
 
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(partial);
     });
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
     act(() => {
-      vi.advanceTimersByTime(1200);
+      vi.advanceTimersByTime(OTP_ERROR_VISIBLE_MS - partial + 100);
     });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Verification code")).toHaveValue("");
