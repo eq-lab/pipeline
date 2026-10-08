@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-128.**
+**Next free number: TD-129.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1846,7 +1846,15 @@ line, whichever section it lands in.
 - **Impact:** `ContractLogsRepo` (`packages/shared/src/contract_logs_repo.rs:297,364,446,1006`) propagates that deserialize failure as an `anyhow::Error` from `serde_json::from_value`, failing the whole query — not a per-row degradation. So in a rolling deploy, if the **worker** is upgraded first, every API pod still running the old binary throws on the first snapshot the new worker writes, for every query that touches that loan. If the **API** is upgraded first, new API instances read old-shaped snapshots from the still-old worker without error (defaults fill the gap) until the worker catches up. **Operational constraint: roll the API before the worker, never the reverse, for this change.**
 - **Suggested fix:** None needed given the ordering constraint is followed — note it in the deploy runbook if one exists, or treat this entry as that note.
 
-### TD-125: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion
+### TD-125: `1250-kyb-otp.md` still routes the reader through a trigger that no longer exists
+
+- **Date:** 2026-10-08
+- **Location:** `docs/user-stories/epic-1247/1250-kyb-otp.md` — found while writing `1442-otp-error-edit.md` for Issue #1442.
+- **Gap:** Every story in that doc opens by telling the reader to go to `/test?tab=auth` and click "Open OTP screen". That trigger was removed from `packages/frontend/src/routes/test.tsx` when #1362 landed the production entry point (TopBar → Sign Up / Sign In → OTP), so the doc's pre-conditions cannot be satisfied as written.
+- **Impact:** The QA pass for epic #1247 executes every user-stories doc under `docs/user-stories/epic-1247/`; #1250's stories dead-end at step 1 and have to be re-derived by hand against the production path each time, or get skipped. #1442's new doc writes its stories against the production entry point instead, so the two docs now disagree on how to reach the same screen.
+- **Suggested fix:** Rewrite #1250's pre-conditions against the production entry point, and sweep the other epic-1247 docs for the same stale `/test?tab=auth` trigger (`1265-wire-kyb-auth.md` names it too) in one pass rather than per issue.
+
+### TD-126: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion
 
 - **Date:** 2026-10-08
 - **Location:** `packages/worker/src/indexer/stellar/loan_registry_parsers.rs` (`parse_loan_rolled_over`, `parse_economics_amended`), `packages/api/src/routes/audit_log.rs` (`format_action` arms for both events) — Issue #1433, finding F8.
@@ -1854,7 +1862,7 @@ line, whichever section it lands in.
 - **Impact:** A 10% rate renders as `100000` in the audit feed rather than `1000` (bps) or `10` (percent). Low urgency — it is a `params` display value, not a snapshot field read by any computation.
 - **Suggested fix:** Decide the target unit (bps, to match `current_rate`'s convention) and divide at parse time; existing stored `params.new_rate` rows would then be back-compat-inconsistent with newly written ones, so the fix needs a decision on already-stored rows (ignore vs. backfill) before landing.
 
-### TD-126: `docs/product-specs/loans-data.md` "Key events" section is v1 design-era drift
+### TD-127: `docs/product-specs/loans-data.md` "Key events" section is v1 design-era drift
 
 - **Date:** 2026-10-08
 - **Location:** `docs/product-specs/loans-data.md` (the "Key events" section) — Issue #1433, finding F9.
@@ -1862,10 +1870,11 @@ line, whichever section it lands in.
 - **Impact:** A reader of this spec gets a wrong picture of the actual on-chain event surface; no code depends on it.
 - **Suggested fix:** Rewrite the section against the current contract sources (`pipeline-stellar-contracts/contracts/loan-registry/src/event.rs` and the EVM equivalent) once both #1433 and #1434 have landed.
 
-### TD-127: `docs/references/smart-contracts.md` documents a LoanRegistry surface neither shipped repo implements
+### TD-128: `docs/references/smart-contracts.md` documents a LoanRegistry surface neither shipped repo implements
 
 - **Date:** 2026-10-08
 - **Location:** `docs/references/smart-contracts.md` (`:1026`, `:1051-1052`, `:1069-1071`, `:1168`, `:1297`, `:1462`, `:1470`) — Issue #1433, scope note.
 - **Gap:** The reference documents the v2.3 *designed* EVM contract (`updateCCR`, `updateLocation`, `ccrBps`, `location`) rather than either shipped repo's current LoanRegistry.
 - **Impact:** A reader of this 1,600-line reference gets a surface that does not exist on-chain today; no code depends on it.
 - **Suggested fix:** Realign the reference against the shipped contracts — its own standalone issue given its size, out of scope for a parser-realignment bug fix.
+

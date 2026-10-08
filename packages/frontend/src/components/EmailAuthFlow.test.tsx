@@ -357,3 +357,38 @@ describe("EmailAuthFlow — cross-link navigation", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("EmailAuthFlow — OTP focus through a rejected code (#1442)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function reachOtpScreen() {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mockSignup.mockResolvedValue(undefined);
+    mockVerifyOtp.mockRejectedValue(new ApiError(401, "invalid code"));
+    render(
+      <EmailAuthFlow open initialScreen="create-account" onClose={vi.fn()} />,
+    );
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+    await screen.findByRole("dialog", { name: "Check your inbox" });
+    return user;
+  }
+
+  it("keeps focus on the OTP input through a rejected verify in the full flow", async () => {
+    const user = await reachOtpScreen();
+    const input = screen.getByLabelText("Verification code");
+    await user.click(input);
+    await user.paste("111111");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Code is incorrect or expired. Request a new one.",
+    );
+    expect(screen.getByLabelText("Verification code")).toHaveFocus();
+  });
+});
