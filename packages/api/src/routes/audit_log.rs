@@ -10,7 +10,7 @@
 //! `docs/product-specs/audit-logging.md`) also records off-chain relayer/operator actions
 //! — fiat wire confirmations, MPC co-signatures, USDC↔USYC swaps — which are not persisted
 //! in a queryable store today. Those rows do not appear here yet; serving them is a
-//! follow-up. See `docs/exec-plans/active/issue-1000-audit-log-endpoint.md`.
+//! follow-up. See `docs/exec-plans/completed/issue-1000-audit-log-endpoint.md`.
 //!
 //! Each item carries a server-rendered human-readable `action`, the raw `event_name`, a
 //! curated `details` object (the same scalars the action string is built from), the
