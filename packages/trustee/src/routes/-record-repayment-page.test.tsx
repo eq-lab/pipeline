@@ -132,7 +132,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       maturity: 1_782_172_800,
       next_payment_timestamp: 1_782_172_800,
       days_overdue: null,
-      ccr_reported_at: 0,
       spot_price: "10450",
       spot_change_7d: null,
       collateral: null,
@@ -154,7 +153,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
-  location: null,
   epoch: {
     number: 2,
     current_apy_bps: 1000,

@@ -240,8 +240,10 @@ Figma details with no backend field are dropped, not invented:
   "30d" relabel. `formatSpot` renders `$4,500 · −18% 7d`.
 - Stage cell: the served `status` label only (`Performing` displays as **Active**, #1119) — no
   "· Risk Council" / "· feed stale" qualifier.
-- CCR staleness: the age derived from `ccr_reported_at` only (`1h` / `26h`) — no "feed stale"
-  label (its cutoff is not served).
+- CCR cell: the served `ccr_bps` percentage alone. The staleness age sub-value was removed with
+  its backing field (#1441): `ccr_reported_at` left `LoanBookEntry` in #1432/#1439 because the
+  on-chain CCR moved to `CollateralRegistry`, which the indexer does not index — the age has no
+  served source to be repointed at.
 
 Every field is read defensively → `—`, never fabricated.
 
@@ -251,8 +253,7 @@ Every field is read defensively → `—`, never fabricated.
   (green) · `120–130%` attention (yellow) · `110–120%` margin-call (orange) · `<110%` pre-default
   (red). Thresholds are frontend-owned policy constants (no backend flag — resolved decision #2 /
   #931): `MAINTENANCE_MARGIN_BPS = 12_000` (120%), `HEALTHY_MARGIN_BPS = 13_000` (130%),
-  `HARD_MARGIN_CALL_BPS = 11_000` (110%). `null` CCR → `null` band (neutral render, no flag);
-  staleness/age is handled separately from the band.
+  `HARD_MARGIN_CALL_BPS = 11_000` (110%). `null` CCR → `null` band (neutral render, no flag).
 - **Tab → status mapping:** an unfiltered **All** tab is first and the landing default (#1121) —
   it lists every loan in the book, and its count is the total row count. The backend serves
   `"WatchList"` (capital L); the tab reads
@@ -424,7 +425,12 @@ each independently `—` when its input is absent. The spot line pairs the valua
 self-contained port of the backend DTO (`packages/api/src/routes/loan_financials.rs`) — a sixth
 TD-42 hand-mirroring pair. Money fields display exactly as served, via plain `formatCompactUsd`
 (no rescaling, project-wide since #906). `Epochs` formats as `"1 · 10.0% · 18 Jun 2026 → 19 Aug 2029"`
-(number · APY · start → maturity); `—` when no epoch is on record (#857). `Custodian co-sig on
+(number · APY · start → maturity); `—` when no epoch is on record (#857). The first row is
+**Status** — the served `status` verbatim; it was `Status / location` until #1441 dropped the
+`location` / `LocationView` half, whose backing field left `LoanFinancialsResponse` in
+#1432/#1439 (the contract no longer exposes `LocationUpdate` as a read). The origination-side
+`initial_location` is unaffected — it is off-chain submission intent, not a contract read.
+`Custodian co-sig on
 mint` has no field on `/financials` yet, so it renders `—` pending clarification (#852 open
 question c) — never fabricated. `Unminted yield` (`not_minted_yield`) is shown as a single figure
 (no vault/treasury split — open question b). `Protection` is the deal-level trade-finance
