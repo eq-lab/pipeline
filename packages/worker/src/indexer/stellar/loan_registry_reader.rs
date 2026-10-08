@@ -24,6 +24,7 @@ use crate::indexer::loan_metadata::{
     MutableLoanDataView, RepaymentDataView,
 };
 use crate::indexer::stellar::rpc::StellarRpc;
+use crate::stellar::scval::i128_from_parts;
 use crate::stellar::tx::{build_invoke_envelope, envelope_to_base64};
 
 // ── StellarAddress ────────────────────────────────────────────────────────────
@@ -193,10 +194,14 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
     let senior_interest_rate_bps = senior_interest_rate_raw / 100;
     let origination_date = map_u64(&map, "origination_date", "ImmutableLoanData")?;
     let original_maturity_date = map_u64(&map, "original_maturity_date", "ImmutableLoanData")?;
+    let borrower_ref = Some(alloy::primitives::FixedBytes::<32>::from(map_bytes32(
+        &map,
+        "borrower_ref",
+        "ImmutableLoanData",
+    )?));
 
     Ok(ImmutableLoanDataView {
-        // #1433: not decoded yet; realign the XDR decode
-        borrower_ref: None,
+        borrower_ref,
         original_facility_size,
         original_senior_tranche,
         original_equity_tranche,
@@ -250,24 +255,31 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
 
     let metadata_uri = map_string(&map, "metadata_uri", "MutableLoanData")?;
 
+    // Soroban-units (fraction of `ONE = 1_000_000`, same scale as
+    // `senior_interest_rate` above) — see `lib.rs:30`, `lib.rs:102`,
+    // `storage.rs:269`/`:292` in `pipeline-stellar-contracts`. Divide by 100 to
+    // reach basis points.
+    let current_rate = map_u32(&map, "current_rate", "MutableLoanData")? / 100;
+    let carved_out = map_bool(&map, "carved_out", "MutableLoanData")?;
+    let disbursed = U256::from(map_u128(&map, "disbursed", "MutableLoanData")?);
+    let repaid = U256::from(map_u128(&map, "repaid", "MutableLoanData")?);
+    let written_down = U256::from(map_u128(&map, "written_down", "MutableLoanData")?);
+    let interest_adjustment_raw = map_i128(&map, "interest_adjustment", "MutableLoanData")?;
+    let interest_adjustment = alloy::primitives::I256::try_from(interest_adjustment_raw)
+        .map_err(|e| anyhow::anyhow!("MutableLoanData.interest_adjustment: {e}"))?;
+
     Ok(MutableLoanDataView {
         next_economics_epochs_id,
         next_repayment_id,
         status,
         current_maturity_timestamp,
-        // #1433: realign the XDR decode
-        current_rate: 0,
+        current_rate,
         closure_reason,
-        // #1433: realign the XDR decode
-        carved_out: false,
-        // #1433: realign the XDR decode
-        disbursed: U256::ZERO,
-        // #1433: realign the XDR decode
-        repaid: U256::ZERO,
-        // #1433: realign the XDR decode
-        written_down: U256::ZERO,
-        // #1433: realign the XDR decode
-        interest_adjustment: alloy::primitives::I256::ZERO,
+        carved_out,
+        disbursed,
+        repaid,
+        written_down,
+        interest_adjustment,
         metadata_uri,
     })
 }
@@ -340,6 +352,34 @@ fn map_u32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u32> {
     match entry {
         ScVal::U32(v) => Ok(*v),
         _ => anyhow::bail!("{ctx}.{key}: expected U32, got {entry:?}"),
+    }
+}
+
+fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
+    let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
+    match entry {
+        ScVal::Bool(v) => Ok(*v),
+        _ => anyhow::bail!("{ctx}.{key}: expected Bool, got {entry:?}"),
+    }
+}
+
+fn map_i128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<i128> {
+    let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
+    match entry {
+        ScVal::I128(parts) => Ok(i128_from_parts(parts.hi, parts.lo)),
+        _ => anyhow::bail!("{ctx}.{key}: expected I128, got {entry:?}"),
+    }
+}
+
+fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
+    let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
+    match entry {
+        ScVal::Bytes(bytes) if bytes.0.len() == 32 => {
+            let mut out = [0u8; 32];
+            out.copy_from_slice(bytes.0.as_slice());
+            Ok(out)
+        }
+        _ => anyhow::bail!("{ctx}.{key}: expected 32-byte Bytes, got {entry:?}"),
     }
 }
 

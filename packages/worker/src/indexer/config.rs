@@ -38,11 +38,12 @@ pub struct StellarIndexerSettings {
     /// chain. When `None`, its indexer branch is a no-op (ships dark).
     ///
     /// Named for the contract's former identity: `pipeline-stellar-contracts` #33
-    /// renamed `yield-minter` to `minter` and rewrote it, so one id serves both
-    /// event families — `YieldMinted` from a pre-#33 deployment (EVM-parity, feeds
-    /// the dashboard's cumulative yield) and `WireIn`/`WireInAssigned` from a
-    /// post-#33 one (#1416, read by the relayer's wire-in matching phase). No
-    /// deployment emits both, so the branch simply tries each parser.
+    /// renamed `yield-minter` to `minter` and rewrote it. Historically one id also
+    /// served `YieldMinted` (a pre-#33, EVM-parity event feeding the dashboard's
+    /// cumulative yield); that parser is retired (#1433) since the rework stopped
+    /// emitting it, so this id now serves only `WireIn`/`WireInAssigned` (#1416,
+    /// read by the relayer's wire-in matching phase). The dashboard's
+    /// cumulative-yield metrics read historical `YieldMinted` rows only.
     /// Read from `CHAIN_<id>_STELLAR_YIELD_MINTER_ID`.
     pub yield_minter_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.

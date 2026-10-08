@@ -6,6 +6,29 @@ use sqlx::PgPool;
 use crate::chains::{normalize_usdc_amount, parse_chain_type};
 use crate::loan_snapshot::LoanSnapshot;
 
+/// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
+/// the five "latest snapshot per loan" queries below (`list_latest_loan_snapshots`,
+/// `..._for_chain`, `get_loan_snapshot_as_of`, `latest_status_by_loans`,
+/// `get_latest_loan_snapshot`). A name missing from this list has its snapshot
+/// written but never read back as "latest" — see issue #1433 finding F3. All five
+/// queries must stay derived from this single list rather than hand-copied.
+pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
+    "LoanDrawn",
+    "LoanStatusUpdated",
+    "LoanCCRUpdated",
+    "LoanLocationUpdated",
+    "LoanDefaulted",
+    "LoanClosed",
+    "PaymentRecorded",
+    "PaymentUnrecorded",
+    "LoanRolledOver",
+    "EconomicsAmended",
+    "Disbursed",
+    "Undisbursed",
+    "LoanWrittenDown",
+    "InterestAdjusted",
+];
+
 /// A loan-end event row fetched from `contract_logs`.
 ///
 /// Used by the portfolio yield endpoint to determine each loan's `effective_end`:
@@ -267,23 +290,14 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND contract_address = $2
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($4)
                AND block_timestamp <= $3
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
         .bind(chain_id)
         .bind(contract_address)
         .bind(to_unix)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_all(executor)
         .await?;
 
@@ -335,22 +349,13 @@ impl ContractLogsRepo {
                  params->'snapshot' AS snapshot
              FROM contract_logs
              WHERE chain_id = $1
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($3)
                AND block_timestamp <= $2
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
         .bind(chain_id)
         .bind(to_unix)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_all(executor)
         .await?;
 
@@ -417,17 +422,7 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND (params->>'loan_id')::numeric = $2
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($4)
                AND (block_timestamp <= $3 OR event_name = 'LoanDrawn')
              ORDER BY block_number DESC, log_index DESC
              LIMIT 1",
@@ -435,6 +430,7 @@ impl ContractLogsRepo {
         .bind(chain_id)
         .bind(loan_id)
         .bind(as_of)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_optional(executor)
         .await?;
 
@@ -483,22 +479,13 @@ impl ContractLogsRepo {
                  params->'snapshot'->>'status'        AS status
              FROM contract_logs
              WHERE chain_id = $1
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($3)
                AND (params->>'loan_id')::numeric = ANY($2)
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
         .bind(chain_id)
         .bind(loan_ids)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_all(executor)
         .await?;
         Ok(rows)
@@ -977,17 +964,7 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND contract_address = $2
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($4)
                AND (params->>'loan_id')::numeric = $3
              ORDER BY block_number DESC, log_index DESC
              LIMIT 1",
@@ -995,6 +972,7 @@ impl ContractLogsRepo {
         .bind(chain_id)
         .bind(contract_address)
         .bind(loan_id)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_optional(conn)
         .await?;
 
