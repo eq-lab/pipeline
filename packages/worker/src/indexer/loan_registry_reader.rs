@@ -14,6 +14,7 @@ use super::loan_metadata::{
 
 sol! {
     interface ILoanRegistry {
+        // #1434: hoodi-v4 (the only EVM deployment) is pre-rework; translate_pre_rework_status maps its ordinals into the canonical post-rework space until #1434 realigns this enum.
         enum LoanStatus {
             Performing,
             WatchList,
@@ -21,12 +22,27 @@ sol! {
             Closed
         }
 
+        // #1434: hoodi-v4 is pre-rework; translate_pre_rework_closure_reason maps its ordinals into the canonical post-rework space until #1434 realigns this enum.
         enum ClosureReason {
             None,
             ScheduledMaturity,
             EarlyRepayment,
             Default,
             OtherWriteDown
+        }
+
+        enum LocationType {
+            Vessel,
+            Warehouse,
+            TankFarm,
+            Other
+        }
+
+        struct LocationUpdate {
+            LocationType locationType;
+            string locationIdentifier;
+            string trackingURL;
+            uint64 updatedAt;
         }
 
         struct ImmutableLoanData {
@@ -47,6 +63,7 @@ sol! {
             uint64 lastReportedCCRTimestamp;
             uint64 currentMaturityTimestamp;
             ClosureReason closureReason;
+            LocationUpdate currentLocation;
             string metadataURI;
         }
 
@@ -67,6 +84,61 @@ sol! {
 }
 
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
+
+// #1434: hoodi-v4 reports LoanStatus as 0=Performing,1=WatchList,2=Default,3=Closed (no Approved). Maps into the canonical post-rework ordinals loan_mapper::loan_status_name expects (0=Approved,1=Performing,2=WatchList,3=Default,4=Closed). Deleted together with the sol! realignment once #1434 lands.
+pub(crate) fn translate_pre_rework_status(ordinal: u8) -> u8 {
+    match ordinal {
+        0 => 1, // Performing
+        1 => 2, // WatchList
+        2 => 3, // Default
+        3 => 4, // Closed
+        other => other,
+    }
+}
+
+// #1434: hoodi-v4 reports ClosureReason as 0=None,1=ScheduledMaturity,2=EarlyRepayment,3=Default,4=OtherWriteDown (no Cancelled). Maps into the canonical post-rework ordinals loan_mapper::closure_reason_name expects (…,3=Cancelled,4=Default,5=OtherWriteDown). Deleted together with the sol! realignment once #1434 lands.
+pub(crate) fn translate_pre_rework_closure_reason(ordinal: u8) -> u8 {
+    match ordinal {
+        0 => 0, // None
+        1 => 1, // ScheduledMaturity
+        2 => 2, // EarlyRepayment
+        3 => 4, // Default
+        4 => 5, // OtherWriteDown
+        other => other,
+    }
+}
+
+/// Decode the `MutableLoanData` return value of `mutableLoanData(loanId)` and translate
+/// its pre-rework `status`/`closureReason` ordinals into the canonical post-rework space.
+/// `ccrBps`, `lastReportedCCRTimestamp` and `currentLocation` are decoded (required for the
+/// struct to match hoodi-v4's ABI) and discarded — `MutableLoanDataView` no longer carries them.
+/// Pure function so it is unit-testable without a live eth_call; see
+/// `packages/worker/tests/loan_registry_reader.rs`.
+pub fn decode_mutable_loan_data(result: &[u8]) -> Result<MutableLoanDataView> {
+    let decoded = ILoanRegistry::mutableLoanDataCall::abi_decode_returns(result, true)
+        .context("decode mutableLoanData return")?;
+    let d = decoded._0;
+    Ok(MutableLoanDataView {
+        next_economics_epochs_id: d.nextEconomicsEpochsId,
+        next_repayment_id: d.nextRepaymentId,
+        status: translate_pre_rework_status(d.status as u8),
+        current_maturity_timestamp: d.currentMaturityTimestamp,
+        // #1434: realign the sol! block
+        current_rate: 0,
+        closure_reason: translate_pre_rework_closure_reason(d.closureReason as u8),
+        // #1434: realign the sol! block
+        carved_out: false,
+        // #1434: realign the sol! block
+        disbursed: U256::ZERO,
+        // #1434: realign the sol! block
+        repaid: U256::ZERO,
+        // #1434: realign the sol! block
+        written_down: U256::ZERO,
+        // #1434: realign the sol! block
+        interest_adjustment: I256::ZERO,
+        metadata_uri: d.metadataURI,
+    })
+}
 
 /// Reads on-chain LoanRegistry data via eth_call. Implements two resolver traits:
 /// - `ImmutableDataResolver<Address, U256>`: `immutableLoanData(loanId)` — reads the immutable struct.
@@ -116,8 +188,8 @@ impl ImmutableDataResolver<Address, U256> for LoanRegistryReader {
             .with_context(|| format!("decode immutableLoanData({loan_id}) return"))?;
         let d = decoded._0;
         Ok(ImmutableLoanDataView {
-            // #1434: realign the sol! block
-            borrower_ref: alloy::primitives::FixedBytes::<32>::default(),
+            // #1434: not decoded yet; hoodi-v4's ImmutableLoanData carries no borrowerRef field.
+            borrower_ref: None,
             original_facility_size: d.originalFacilitySize,
             original_senior_tranche: d.originalSeniorTranche,
             original_equity_tranche: d.originalEquityTranche,
@@ -154,29 +226,7 @@ impl MutableDataResolver<Address, U256> for LoanRegistryReader {
                 )
             })?;
 
-        let decoded = ILoanRegistry::mutableLoanDataCall::abi_decode_returns(&result, true)
-            .with_context(|| format!("decode mutableLoanData({loan_id}) return"))?;
-        let d = decoded._0;
-        Ok(MutableLoanDataView {
-            next_economics_epochs_id: d.nextEconomicsEpochsId,
-            next_repayment_id: d.nextRepaymentId,
-            status: d.status as u8,
-            current_maturity_timestamp: d.currentMaturityTimestamp,
-            // #1434: realign the sol! block
-            current_rate: 0,
-            closure_reason: d.closureReason as u8,
-            // #1434: realign the sol! block
-            carved_out: false,
-            // #1434: realign the sol! block
-            disbursed: U256::ZERO,
-            // #1434: realign the sol! block
-            repaid: U256::ZERO,
-            // #1434: realign the sol! block
-            written_down: U256::ZERO,
-            // #1434: realign the sol! block
-            interest_adjustment: I256::ZERO,
-            metadata_uri: d.metadataURI,
-        })
+        decode_mutable_loan_data(&result)
     }
 
     async fn cumulative_repayment_data(

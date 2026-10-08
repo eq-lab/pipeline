@@ -8,7 +8,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use alloy::primitives::{address, Address, FixedBytes, I256, U256};
+use alloy::primitives::{address, Address, I256, U256};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 
@@ -50,7 +50,7 @@ impl ImmutableDataResolver<Address, U256> for MockImmutableResolver {
         _loan_id: U256,
     ) -> anyhow::Result<ImmutableLoanDataView> {
         Ok(ImmutableLoanDataView {
-            borrower_ref: FixedBytes::<32>::default(),
+            borrower_ref: None,
             original_facility_size: U256::from(120_000_u64),
             original_senior_tranche: U256::from(100_000_u64),
             original_equity_tranche: U256::from(20_000_u64),
@@ -178,7 +178,7 @@ impl ImmutableDataResolver<StellarAddress, u32> for MockStellarImmutableResolver
         _loan_id: u32,
     ) -> anyhow::Result<ImmutableLoanDataView> {
         Ok(ImmutableLoanDataView {
-            borrower_ref: FixedBytes::<32>::default(),
+            borrower_ref: None,
             original_facility_size: U256::from(500_000_u64),
             original_senior_tranche: U256::from(400_000_u64),
             original_equity_tranche: U256::from(100_000_u64),
@@ -511,7 +511,7 @@ fn compose_drawn_snapshot_full_row() {
     };
 
     let immutable = ImmutableLoanDataView {
-        borrower_ref: FixedBytes::<32>::default(),
+        borrower_ref: None,
         original_facility_size: U256::from(10_000_000_u64),
         original_senior_tranche: U256::from(8_000_000_u64),
         original_equity_tranche: U256::from(2_000_000_u64),

@@ -70,7 +70,9 @@ impl BlockHint {
 /// alloy-generated types so mapper tests can use a mock resolver.
 #[derive(Debug, Clone)]
 pub struct ImmutableLoanDataView {
-    pub borrower_ref: alloy::primitives::FixedBytes<32>,
+    /// `None` means "not decoded yet" (#1433/#1434) — distinguishes that from a
+    /// legitimate all-zero on-chain `borrowerRef`/`BytesN<32>`.
+    pub borrower_ref: Option<alloy::primitives::FixedBytes<32>>,
     pub original_facility_size: alloy::primitives::U256,
     pub original_senior_tranche: alloy::primitives::U256,
     pub original_equity_tranche: alloy::primitives::U256,
@@ -103,7 +105,12 @@ pub struct MutableLoanDataView {
     /// Numeric ordinal of `LoanStatus`: 0=Approved, 1=Performing, 2=WatchList, 3=Default, 4=Closed
     pub status: u8,
     pub current_maturity_timestamp: u64,
-    /// Basis points.
+    /// Basis points. The contract reports this as a fraction of `ONE = 1_000_000`
+    /// (see `LoanRegistryUpgradeable.sol:17,653` and
+    /// `contracts/loan-registry/src/storage.rs:269` + `lib.rs:30`); each reader arm
+    /// must divide the raw value by 100 to reach basis points, exactly as the Stellar
+    /// reader already does for `senior_interest_rate` (`stellar/loan_registry_reader.rs:193`).
+    /// Neither arm populates this field yet (#1433/#1434).
     pub current_rate: u32,
     /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment,
     /// 3=Cancelled, 4=Default, 5=OtherWriteDown

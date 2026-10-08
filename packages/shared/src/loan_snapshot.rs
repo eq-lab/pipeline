@@ -14,18 +14,16 @@ pub struct LoanSnapshot {
     pub corridor: String,
     pub governing_law: String,
     /// Trade-finance protection instrument (e.g. "LC at sight", "Doc. coll.").
-    /// `#[serde(default)]` is required: `LoanSnapshot` is `deny_unknown_fields` and
-    /// is deserialized from existing `contract_logs.params.snapshot` JSONB rows that
-    /// predate this field — empty string when absent.
+    /// `#[serde(default)]` is required: existing `contract_logs.params.snapshot` JSONB
+    /// rows predate this field and have no key for it — empty string when absent.
     #[serde(default)]
     pub protection: String,
     /// Secondary URI inside the IPFS JSON document (optional). Distinct from
     /// `metadata_uri_onchain` which is the mutable on-chain URI pointer.
     pub metadata_uri: Option<String>,
     /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
-    /// `#[serde(default)]` is required: `LoanSnapshot` is `deny_unknown_fields` and
-    /// is deserialized from existing `contract_logs.params.snapshot` JSONB rows that
-    /// predate this field — empty vec when absent.
+    /// `#[serde(default)]` is required: existing `contract_logs.params.snapshot` JSONB
+    /// rows predate this field and have no key for it — empty vec when absent.
     #[serde(default)]
     pub documents: Vec<LoanDocument>,
 
@@ -51,7 +49,11 @@ pub struct LoanSnapshot {
     /// boundary to preserve existing yield-computation semantics. `current_maturity_timestamp`
     /// is stored for informational/future use.
     pub current_maturity_timestamp: i64,
-    /// Basis points. `#[serde(default)]`: pre-rework rows predate this field.
+    /// Basis points. The contract reports this as a fraction of `ONE = 1_000_000`
+    /// (both arms share this accrual formula); each reader must divide the raw value
+    /// by 100 to reach basis points, as the Stellar reader already does for
+    /// `senior_interest_rate_bps`. Neither arm populates this field yet (#1433/#1434).
+    /// `#[serde(default)]`: pre-rework rows predate this field.
     #[serde(default)]
     pub current_rate: u32,
     pub closure_reason: String,

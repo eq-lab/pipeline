@@ -195,8 +195,8 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
     let original_maturity_date = map_u64(&map, "original_maturity_date", "ImmutableLoanData")?;
 
     Ok(ImmutableLoanDataView {
-        // #1433: realign the XDR decode
-        borrower_ref: alloy::primitives::FixedBytes::<32>::default(),
+        // #1433: not decoded yet; realign the XDR decode
+        borrower_ref: None,
         original_facility_size,
         original_senior_tranche,
         original_equity_tranche,
@@ -225,10 +225,11 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
     // `status` is a `LoanStatus` enum encoded as `ScVal::Vec([Symbol("Variant")])`.
     let status_variant = map_enum_variant(&map, "status", "MutableLoanData")?;
     let status: u8 = match status_variant.as_str() {
-        "Performing" => 0,
-        "WatchList" => 1,
-        "Default" => 2,
-        "Closed" => 3,
+        "Approved" => 0,
+        "Performing" => 1,
+        "WatchList" => 2,
+        "Default" => 3,
+        "Closed" => 4,
         other => anyhow::bail!("MutableLoanData.status: unknown variant '{other}'"),
     };
 
@@ -241,8 +242,9 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
         "None" => 0,
         "ScheduledMaturity" => 1,
         "EarlyRepayment" => 2,
-        "Default" => 3,
-        "OtherWriteDown" => 4,
+        "Cancelled" => 3,
+        "Default" => 4,
+        "OtherWriteDown" => 5,
         other => anyhow::bail!("MutableLoanData.closure_reason: unknown variant '{other}'"),
     };
 

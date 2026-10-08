@@ -3,7 +3,10 @@ use serde_json::json;
 
 use shared::events::ContractLog;
 
-use crate::indexer::loan_mapper::loan_status_name;
+use crate::indexer::loan_mapper::{closure_reason_name, loan_status_name};
+use crate::indexer::loan_registry_reader::{
+    translate_pre_rework_closure_reason, translate_pre_rework_status,
+};
 
 sol! {
     event DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount);
@@ -22,8 +25,7 @@ mod erc4626 {
 mod loan_registry {
     use alloy::sol;
     sol! {
-        // LoanStatus:    0=Performing, 1=WatchList, 2=Default, 3=Closed
-        // ClosureReason: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
+        // #1434: hoodi-v4 emits pre-rework LoanStatus/ClosureReason ordinals; translate_pre_rework_status/translate_pre_rework_closure_reason (loan_registry_reader.rs) convert before loan_mapper::{loan_status_name,closure_reason_name}.
         event LoanDrawn(uint256 indexed loanId, address indexed holder, string indexed metadataURI);
         event StatusUpdated(uint256 indexed loanId, uint8 indexed newStatus);
         event CCRUpdated(uint256 indexed loanId, uint32 newCcr);
@@ -59,19 +61,6 @@ fn extract_log_meta(log: &Log) -> Option<(Address, u64, alloy::primitives::B256,
         log.transaction_hash?,
         log.log_index?,
     ))
-}
-
-/// Map a numeric ClosureReason ordinal to its string name.
-/// Matches ILoanRegistry.sol: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
-fn closure_reason_name(ordinal: u8) -> &'static str {
-    match ordinal {
-        0 => "None",
-        1 => "ScheduledMaturity",
-        2 => "EarlyRepayment",
-        3 => "Default",
-        4 => "OtherWriteDown",
-        _ => "Unknown",
-    }
 }
 
 pub fn parse_deposit_requested(log: &Log) -> Option<ContractLog> {
@@ -226,7 +215,7 @@ pub fn parse_loan_closed(log: &Log) -> Option<ContractLog> {
         block_timestamp: 0,
         params: json!({
             "loan_id": decoded.loanId.to_string(),
-            "closure_reason": closure_reason_name(decoded.reason),
+            "closure_reason": closure_reason_name(translate_pre_rework_closure_reason(decoded.reason)),
         }),
     })
 }
@@ -270,7 +259,7 @@ pub fn parse_loan_status_updated(log: &Log) -> Option<ContractLog> {
         block_timestamp: 0,
         params: json!({
             "loan_id": decoded.loanId.to_string(),
-            "status": loan_status_name(decoded.newStatus),
+            "status": loan_status_name(translate_pre_rework_status(decoded.newStatus)),
         }),
     })
 }
