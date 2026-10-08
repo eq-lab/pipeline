@@ -101,8 +101,7 @@ describe("OtpInput (#1250)", () => {
     expect(getInput()).toHaveFocus();
   });
 
-  it("invalid sets aria-invalid and paints error tokens; no border on active box", async () => {
-    const user = userEvent.setup();
+  it("invalid sets aria-invalid and paints error tokens, with no border while unfocused", () => {
     const { container } = render(<Controlled value="123456" invalid />);
     expect(getInput()).toHaveAttribute("aria-invalid", "true");
     const boxes = container.querySelectorAll('[aria-hidden="true"]');
@@ -112,7 +111,25 @@ describe("OtpInput (#1250)", () => {
       );
       expect(box.className).not.toContain("border-solid");
     });
+  });
+
+  it("a focused invalid full value borders the last box so the error state reads as editable", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Controlled value="123456" invalid />);
     await user.click(getInput());
+
+    const boxes = container.querySelectorAll('[aria-hidden="true"]');
+    boxes.forEach((box, index) => {
+      expect(box.className).toContain(
+        "bg-[var(--color-pipeline-negative-secondary)]",
+      );
+      if (index === 5) {
+        expect(box.className).toContain("border-solid");
+      } else {
+        expect(box.className).not.toContain("border-solid");
+      }
+    });
+    expect(container.querySelector(".w-px")).not.toBeInTheDocument();
   });
 
   it("a ref exposes focus(), which focuses the hidden input and renders the caret at value.length", () => {
@@ -125,6 +142,9 @@ describe("OtpInput (#1250)", () => {
     act(() => ref.current?.focus());
 
     expect(getInput()).toHaveFocus();
+    const input = getInput() as HTMLInputElement;
+    expect(input.selectionStart).toBe(3);
+    expect(input.selectionEnd).toBe(3);
     const caret = container.querySelector(".w-px");
     expect(caret).toBeInTheDocument();
     const boxes = container.querySelectorAll('[aria-hidden="true"]');

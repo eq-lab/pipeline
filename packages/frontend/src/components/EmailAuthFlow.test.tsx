@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 import { EmailAuthFlow } from "./EmailAuthFlow";
 import { ApiError } from "@/api";
 import { readSession } from "@/auth/session";
-import { OTP_ERROR_VISIBLE_MS } from "./useOtpModal";
 
 const mockSignup = vi.fn();
 const mockVerifyOtp = vi.fn();
@@ -391,29 +390,5 @@ describe("EmailAuthFlow — OTP focus through a rejected code (#1442)", () => {
       "Code is incorrect or expired. Request a new one.",
     );
     expect(screen.getByLabelText("Verification code")).toHaveFocus();
-  });
-
-  it("reclaims focus for the OTP input when the turnstile slot has taken it", async () => {
-    const user = await reachOtpScreen();
-    const input = screen.getByLabelText("Verification code");
-    await user.click(input);
-    await user.paste("111111");
-    await screen.findByRole("alert");
-
-    const thief = document.createElement("iframe");
-    screen.getByRole("dialog").appendChild(thief);
-    act(() => {
-      input.blur();
-      thief.focus();
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(OTP_ERROR_VISIBLE_MS);
-    });
-
-    const cleared = screen.getByLabelText("Verification code");
-    expect(cleared).toHaveValue("");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(cleared).toHaveFocus();
   });
 });

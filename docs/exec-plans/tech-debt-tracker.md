@@ -1849,7 +1849,7 @@ line, whichever section it lands in.
 ### TD-125: `1250-kyb-otp.md` still routes the reader through a trigger that no longer exists
 
 - **Date:** 2026-10-08
-- **Location:** `docs/user-stories/epic-1247/1250-kyb-otp.md` — found while writing `1442-otp-error-auto-clear.md` for Issue #1442.
+- **Location:** `docs/user-stories/epic-1247/1250-kyb-otp.md` — found while writing `1442-otp-error-edit.md` for Issue #1442.
 - **Gap:** Every story in that doc opens by telling the reader to go to `/test?tab=auth` and click "Open OTP screen". That trigger was removed from `packages/frontend/src/routes/test.tsx` when #1362 landed the production entry point (TopBar → Sign Up / Sign In → OTP), so the doc's pre-conditions cannot be satisfied as written.
 - **Impact:** The QA pass for epic #1247 executes every user-stories doc under `docs/user-stories/epic-1247/`; #1250's stories dead-end at step 1 and have to be re-derived by hand against the production path each time, or get skipped. #1442's new doc writes its stories against the production entry point instead, so the two docs now disagree on how to reach the same screen.
 - **Suggested fix:** Rewrite #1250's pre-conditions against the production entry point, and sweep the other epic-1247 docs for the same stale `/test?tab=auth` trigger (`1265-wire-kyb-auth.md` names it too) in one pass rather than per issue.

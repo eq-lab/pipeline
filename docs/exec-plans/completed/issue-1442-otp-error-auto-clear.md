@@ -1,5 +1,22 @@
 # Issue #1442: OTP: a wrong code cannot be deleted; show the error briefly, then clear the boxes for a fresh entry
 
+## Superseded — 2026-10-08
+
+The timed auto-clear this plan designed and shipped (`OTP_ERROR_VISIBLE_MS`, originally 3 s, cut to
+1.5 s on human feedback) was **removed before the PR merged**. On seeing it live, the human judged
+that emptying the six boxes on a timer takes the screen away from the user: a timer that is too
+short wipes a code mid-correction, one that is too long makes the field look frozen, and no value
+is right for every reader. The behaviour now is to leave the error on screen indefinitely and let
+the **first edit** — a Backspace or a keystroke — clear it, with the focus reclaim kept and the
+last box given the focused-box border so the error state reads as editable.
+
+Everything else this plan established still stands: the root-cause analysis below, the
+`OtpInputHandle` / `forwardRef` `focus()` on `OtpInput`, the guarded focus reclaim in `OtpModal`
+that skips a deliberately focused button or link, the `requestIdRef` stale-rejection guard, and
+`Resend` clearing both the code and the error. The current behaviour is specified in
+`docs/frontend/auth-components.md#otpmodal` and `docs/frontend/ui-components.md#otpinput`, with
+stories in `docs/user-stories/epic-1247/1442-otp-error-edit.md`.
+
 Source: https://github.com/eq-lab/pipeline/issues/1442
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247). The OTP screen

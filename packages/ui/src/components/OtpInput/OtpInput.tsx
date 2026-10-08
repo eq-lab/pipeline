@@ -28,10 +28,20 @@ export const OtpInput = forwardRef<OtpInputHandle, OtpInputProps>(
     const { focused, onFocus, onBlur, sanitize } = useOtpInput();
     const inputRef = useRef<HTMLInputElement>(null);
     const boxes = Array.from({ length });
+    const caretIndex = invalid
+      ? Math.min(value.length, length - 1)
+      : value.length;
 
     useImperativeHandle(
       ref,
-      () => ({ focus: () => inputRef.current?.focus() }),
+      () => ({
+        focus: () => {
+          const el = inputRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        },
+      }),
       [],
     );
 
@@ -55,7 +65,7 @@ export const OtpInput = forwardRef<OtpInputHandle, OtpInputProps>(
           className="absolute inset-0 z-10 h-full w-full cursor-default opacity-0"
         />
         {boxes.map((_, index) => {
-          const isActive = !invalid && focused && index === value.length;
+          const isActive = focused && index === caretIndex;
           return (
             <div
               key={index}

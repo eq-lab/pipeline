@@ -92,7 +92,7 @@ committed verbatim (Figma asset URLs expire).
   own heading/CTA text.
 - **Reuse points:** `ConnectWalletPromoCard`'s `"get-started"` variant only
   (`docs/frontend/dashboard-components.md#connectwalletpromocard`), pinned `top-[42px] right-0
-  w-[288px]` inside the card's fixed 274px height.
+w-[288px]` inside the card's fixed 274px height.
 
 ## ActivityHeader
 
@@ -621,13 +621,13 @@ or any URL import at all.
 
 ### Supported names
 
-| Name        | Glyph                | Figma asset                                    |
-| ----------- | -------------------- | ---------------------------------------------- |
-| `"home"`    | filled house         | `nav-home.svg`                                 |
-| `"deposit"` | dollar-in-circle     | `nav-dollar.svg`                               |
-| `"stats"`   | three bar-chart bars | `nav-stats.svg` (three separate path elements) |
-| `"history"` | clock with arrow     | `nav-history.svg` (two separate path elements) |
-| `"overview"` | pie chart           | `nav-overview.svg` (three separate path elements, #1125) |
+| Name         | Glyph                | Figma asset                                              |
+| ------------ | -------------------- | -------------------------------------------------------- |
+| `"home"`     | filled house         | `nav-home.svg`                                           |
+| `"deposit"`  | dollar-in-circle     | `nav-dollar.svg`                                         |
+| `"stats"`    | three bar-chart bars | `nav-stats.svg` (three separate path elements)           |
+| `"history"`  | clock with arrow     | `nav-history.svg` (two separate path elements)           |
+| `"overview"` | pie chart            | `nav-overview.svg` (three separate path elements, #1125) |
 
 All path data is lifted verbatim from the SVG assets in `packages/ui/src/assets/icons/`.
 
@@ -678,28 +678,43 @@ export interface OtpInputHandle {
 }
 ```
 
-`focus()` focuses the single hidden `<input>`; the caret then renders in the box at
-`value.length`, so on an empty value it lands in box 1. Added for #1442 so `OtpModal` can return
-the caret to box 1 after the timed error clear, and reclaim focus if the Turnstile iframe takes
-it. The ref is optional and the component is otherwise unchanged — a consumer that passes no ref
-behaves exactly as before.
+`focus()` focuses the single hidden `<input>` and places the DOM selection at the end of the value, so the first Backspace after a programmatic refocus removes one digit in every engine; the caret then renders in the box at
+`value.length`, so on an empty value it lands in box 1. Added for #1442 so `OtpModal` can reclaim
+focus when a verify is rejected (the Turnstile iframe can take it) and after a `Resend`. The ref is
+optional and the component is otherwise unchanged — a consumer that passes no ref behaves exactly
+as before.
+
+### Focused box while `invalid`
+
+The focused box is the one at `caretIndex`, which is `value.length` normally but is clamped to
+`length - 1` while `invalid`. Without the clamp a full six-digit error state has no box at
+`value.length` and therefore no focus affordance at all: six flat red fills that read as a disabled
+field, which is the dead end reported in #1442. With the clamp the **last** box carries the border
+while the field is focused, so the error state reads as editable and Backspace is the obvious next
+move. No caret element is drawn there, because the box holds a digit.
+
+Figma's error frame `6486:81863` carries no focus ring — all six `.input-otp-item` instances are
+plain `fill/negative-secondary` with no stroke — so this reuses the component's existing
+focused-box border (`--color-pipeline-ink-subtle`) layered on the error fill rather than
+introducing a new token.
 
 ### Figma → token mapping
 
-| Element | Value | Figma binding |
-| --- | --- | --- |
-| Box | `h-16` (64px), `flex-1 min-w-0`, `rounded-[var(--radius-pipeline-card)]` (4px), `px-3`, `gap-2` (8px) between boxes | `radius-16` → 4px; `gap-xs` |
-| Box fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
-| Box fill, invalid | `--color-pipeline-negative-secondary` | `fill/negative-secondary` |
-| Active-box border | `border border-solid border-[color:var(--color-pipeline-ink-subtle)]` (only the box at `index === value.length`, and only while focused and not `invalid`) | `border-test/primary` |
-| Digit | `text-[24px] leading-[28px]` (raw literal, not a named Figma variable), `--font-display`, `--font-weight-regular` | 24/28 |
-| Digit, invalid | `--color-pipeline-negative-strong` | `content-test/negative` |
-| Caret | 28×1 (`h-7 w-px rounded-[1px]`), `--color-pipeline-ink`, static (no blink animation — the frame shows it static) | `.cursor` |
+| Element           | Value                                                                                                                                                                                   | Figma binding               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Box               | `h-16` (64px), `flex-1 min-w-0`, `rounded-[var(--radius-pipeline-card)]` (4px), `px-3`, `gap-2` (8px) between boxes                                                                     | `radius-16` → 4px; `gap-xs` |
+| Box fill, default | `--color-pipeline-surface`                                                                                                                                                              | `fill-test/on-primary`      |
+| Box fill, invalid | `--color-pipeline-negative-secondary`                                                                                                                                                   | `fill/negative-secondary`   |
+| Active-box border | `border border-solid border-[color:var(--color-pipeline-ink-subtle)]` (only the box at `caretIndex` — `value.length`, clamped to `length - 1` while `invalid` — and only while focused) | `border-test/primary`       |
+| Digit             | `text-[24px] leading-[28px]` (raw literal, not a named Figma variable), `--font-display`, `--font-weight-regular`                                                                       | 24/28                       |
+| Digit, invalid    | `--color-pipeline-negative-strong`                                                                                                                                                      | `content-test/negative`     |
+| Caret             | 28×1 (`h-7 w-px rounded-[1px]`), `--color-pipeline-ink`, static (no blink animation — the frame shows it static)                                                                        | `.cursor`                   |
 
 ### Accessibility
 
 The active-box border and caret are the only visible focus indicator, since the real `<input>` is
-invisible; `aria-label` defaults to `"Verification code"`; `aria-invalid` is set on the `<input>`
+invisible, and the border is kept in the `invalid` state so an error is never mistaken for a
+disabled field; `aria-label` defaults to `"Verification code"`; `aria-invalid` is set on the `<input>`
 when `invalid`. Component tests live in the LP app at
 `packages/frontend/src/components/OtpInput.dom.test.tsx`, following the `TextField.dom.test.tsx`
 precedent — `@pipeline/ui` has no test runner of its own.
@@ -936,19 +951,19 @@ error caption that never shifts layout.
 
 ### Figma → token mapping
 
-| Property | Value | Figma binding |
-| --- | --- | --- |
-| Box | `h-14` (56px), `rounded-[var(--radius-pipeline-card)]` (4px) | `radius/radius-s` |
-| Focus ring | `border` transparent at rest, `focus-within:border-[color:var(--color-pipeline-ink-subtle)]` (1px) — border sits on the field row, not the `<input>` (which keeps `outline-none`); border-box sizing so gaining focus never shifts the 56px height or 12px padding | `border-test/primary` = `#3835384d` (issue #1249, confirmed via the create-account enabled frame `6486:81640`) |
-| Fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
-| Fill, invalid | `--color-pipeline-negative-secondary` (new token) | `fill/negative-secondary` = `#b2000029` |
-| Text padding | 12px each side (`px-3` on the field row) | `Field` frame padding |
-| Text | `--text-pipeline-body` 16/22, `--font-weight-regular`, `--color-pipeline-ink` | `Body` / `content-test/primary` |
-| Text, invalid | `--color-pipeline-negative-strong` (new token) | `content-test/negative` = `#b20000` |
-| Placeholder | `--color-pipeline-ink-muted` | `content-test/secondary` |
-| Eye button | 32×32, right-aligned inside the field row | `button-icon` |
-| Eye glyph | 20×20, exact Figma-exported SVG (`eye` / `eye-slashed`) | via `get_design_context` |
-| Error line | `--text-pipeline-caption` 12/16, `--color-pipeline-negative-strong`, right-aligned, `absolute top-full` | `Caption` |
+| Property      | Value                                                                                                                                                                                                                                                              | Figma binding                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Box           | `h-14` (56px), `rounded-[var(--radius-pipeline-card)]` (4px)                                                                                                                                                                                                       | `radius/radius-s`                                                                                              |
+| Focus ring    | `border` transparent at rest, `focus-within:border-[color:var(--color-pipeline-ink-subtle)]` (1px) — border sits on the field row, not the `<input>` (which keeps `outline-none`); border-box sizing so gaining focus never shifts the 56px height or 12px padding | `border-test/primary` = `#3835384d` (issue #1249, confirmed via the create-account enabled frame `6486:81640`) |
+| Fill, default | `--color-pipeline-surface`                                                                                                                                                                                                                                         | `fill-test/on-primary`                                                                                         |
+| Fill, invalid | `--color-pipeline-negative-secondary` (new token)                                                                                                                                                                                                                  | `fill/negative-secondary` = `#b2000029`                                                                        |
+| Text padding  | 12px each side (`px-3` on the field row)                                                                                                                                                                                                                           | `Field` frame padding                                                                                          |
+| Text          | `--text-pipeline-body` 16/22, `--font-weight-regular`, `--color-pipeline-ink`                                                                                                                                                                                      | `Body` / `content-test/primary`                                                                                |
+| Text, invalid | `--color-pipeline-negative-strong` (new token)                                                                                                                                                                                                                     | `content-test/negative` = `#b20000`                                                                            |
+| Placeholder   | `--color-pipeline-ink-muted`                                                                                                                                                                                                                                       | `content-test/secondary`                                                                                       |
+| Eye button    | 32×32, right-aligned inside the field row                                                                                                                                                                                                                          | `button-icon`                                                                                                  |
+| Eye glyph     | 20×20, exact Figma-exported SVG (`eye` / `eye-slashed`)                                                                                                                                                                                                            | via `get_design_context`                                                                                       |
+| Error line    | `--text-pipeline-caption` 12/16, `--color-pipeline-negative-strong`, right-aligned, `absolute top-full`                                                                                                                                                            | `Caption`                                                                                                      |
 
 The two new negative tokens are documented in full at
 [`auth-components.md#signinmodal`](./auth-components.md#signinmodal) and in

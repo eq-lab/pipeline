@@ -1,4 +1,4 @@
-# User Stories: #1442 — OTP: hold the error briefly, then clear the boxes for a fresh entry
+# User Stories: #1442 — OTP: a rejected code stays on screen and clears when you edit it
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1442](https://github.com/eq-lab/pipeline/issues/1442)
@@ -6,12 +6,12 @@ Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md#otpmo
 [docs/frontend/ui-components.md](../../frontend/ui-components.md#otpinput)
 
 A rejected passcode used to leave the OTP screen in a dead end: six red boxes already at the
-sanitiser's length cap, so further keystrokes were silently swallowed, no caret rendered, and — in
-the production flow, where the Cloudflare Turnstile widget sits inside the modal — focus could be
-taken off the hidden input entirely. The error is now held for 1.5 seconds and then clears
-itself back to the shipped default state (Figma `6486:81665`): six empty boxes, caption gone,
-caret in box 1. Focus is also reclaimed the moment the rejection lands, so an immediate correction
-is typed into the field rather than lost.
+sanitiser's length cap, so further keystrokes were silently swallowed, no caret or border rendered
+anywhere, and — in the production flow, where the Cloudflare Turnstile widget sits inside the modal
+— focus could be taken off the hidden input entirely. The error state is now stable and editable:
+it stays on screen for as long as the user needs, focus is pulled back to the field the moment the
+rejection lands, the last box carries the focused-box border so the field does not look locked, and
+the red state clears on the first edit — a Backspace or a keystroke. Nothing is cleared on a timer.
 
 Reached through the **production entry point** — `TopBar` → "Sign Up" (or "Sign In" with an
 unverified account) → OTP screen. The `/test?tab=auth` "Open OTP screen" trigger named in
@@ -20,8 +20,6 @@ production entry (logged in `docs/exec-plans/tech-debt-tracker.md`).
 
 These stories need `VITE_API_BASE_URL` pointed at a live API and `VITE_TURNSTILE_SITE_KEY` set, and
 a real inbox for a throwaway test address to reach the OTP screen with an outstanding passcode.
-Story 2's timing assertion is "about 1.5 seconds" by observation — the exact constant is
-`OTP_ERROR_VISIBLE_MS` in `useOtpModal.ts`.
 
 Styling-only assertions (spacing, colors) are out of scope here — visual fidelity is verified
 separately against Figma `6486:81863` (error) and `6486:81665` (default).
@@ -48,68 +46,64 @@ separately against Figma `6486:81863` (error) and `6486:81665` (default).
 
 ---
 
-## Story 2: Waiting out the error returns a fresh, empty field with the caret in box 1
+## Story 2: The error waits for you — it never clears itself
 
-**Persona:** LP who reads the error message and does nothing else.
+**Persona:** LP who reads the error message and then looks away from the screen.
 
 **Pre-conditions:** The error state from Story 1, visible on screen. Do not touch the keyboard or
 the mouse.
 
 **Steps:**
 
-1. Wait about 1.5 seconds without interacting.
-2. Type a single digit.
+1. Wait at least ten seconds without interacting.
 
 **Expected outcomes:**
 
-- The six boxes clear to empty and lose the red fill.
-- The error caption disappears entirely — no lingering notice is left behind; the screen is
-  identical to the default state, countdown line included.
-- The caret is visible in box 1 (the active-box border and caret element are both rendered), with
-  no click needed.
-- The digit typed in step 2 lands in box 1 immediately.
+- The six boxes still hold the rejected digits and still carry the red fill — nothing has emptied
+  itself.
+- The error caption is still on screen, word for word.
+- The field still has keyboard focus, so the next keystroke goes to it without a click.
+- The last of the six boxes shows the focused-box border, so the field reads as editable rather
+  than as a disabled control.
 
 ---
 
-## Story 3: Correcting the code pre-empts the clear — nothing is wiped from under you
+## Story 3: Backspace clears the error and gives the field back
 
-**Persona:** LP who reacts to the red boxes by deleting a digit instead of waiting.
+**Persona:** LP who reacts to the red boxes by deleting a digit.
 
-**Pre-conditions:** The error state from Story 1, freshly shown.
+**Pre-conditions:** The error state from Story 1. Do not click anything first.
 
 **Steps:**
 
-1. Within the three-second window, press Backspace once.
-2. Wait a further five seconds without typing anything else.
+1. Press Backspace once.
 
 **Expected outcomes:**
 
-- The red fill and the error caption clear at once, on the keystroke — not after a delay.
+- The red fill and the error caption clear at once, on the keystroke.
 - Exactly one digit is removed; five digits remain in the boxes.
-- After the five-second wait those five digits are **still there**. The pending clear was
-  cancelled by the edit; the field is not wiped out from under a user who is mid-correction.
+- The sixth box is now empty and shows the caret, so the next digit's destination is obvious.
+- No click on the boxes was needed to get the keystroke through.
 
 ---
 
-## Story 4: A second wrong code gets its own full 1.5 seconds
+## Story 4: Typing the replacement digit re-verifies the corrected code
 
-**Persona:** LP who gets the code wrong twice in a row.
+**Persona:** LP correcting a single mistyped digit.
 
-**Pre-conditions:** The error state from Story 1. A second outstanding passcode is not required —
-any six digits will be rejected once the first code is burned.
+**Pre-conditions:** The five-digit state from Story 3.
 
 **Steps:**
 
-1. Wait about two seconds into the error window.
-2. Press Backspace, then type any digit so the field reaches six again and re-verifies.
-3. When the second error appears, start counting again.
+1. Type one digit so the field reaches six again.
 
 **Expected outcomes:**
 
-- The second rejection shows the red boxes and the caption as before.
-- The error is held for a fresh ~1.5 s measured from the **second** rejection — it does not vanish
-  after the ~1 s left over from the first window, and it does not clear twice.
-- After that window the field clears once, to six empty boxes with the caret in box 1.
+- The digit appears in box 6 immediately.
+- The spinner appears and the corrected six-digit code is sent for verification.
+- If it is still wrong, the red state and caption return and stay — Stories 2 and 3 apply again,
+  with no limit on how many corrections can be made this way.
+- If it is right, the OTP screen closes and the session continues.
 
 ---
 
@@ -130,8 +124,8 @@ any six digits will be rejected once the first code is burned.
   the old rejected digits are not left on screen in red while a new code is in flight.
 - The caret returns to box 1, so the new passcode can be typed as soon as it arrives.
 - The countdown restarts at "Resend in 00:59" and the accepted-request notice appears.
-- Throughout Stories 1–5 the countdown ticks down once per second without interruption; the error
-  window and the countdown are independent.
+- Throughout Stories 1–5 the countdown ticks down once per second without interruption; it is
+  independent of the verify and error states.
 
 ---
 
