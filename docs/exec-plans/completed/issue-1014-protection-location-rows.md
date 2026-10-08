@@ -11,6 +11,13 @@ stored in `submitted_loans`, not a contract read, and survives untouched. The **
 surviving source and was degraded to "Status" alone by #1432 — do not re-add a location to
 that row without a new on-chain or off-chain source; see #1432's D1b.
 
+**Reconciliation note (2026-10-08, added by #1441):** #1432/#1439 changed the API only; the
+trustee frontend was carried by #1441, which relabelled the registry row to **Status**, deleted
+the `location` branch in `buildFinancials`, and dropped `LocationView` from
+`packages/trustee/src/api/useLoanFinancials.ts`. Every "Status / location" reference below is
+therefore historical — read it as "Status". The origination-detail Location row (item 1) is
+untouched and still live.
+
 ## Scope
 
 Add two display rows to the trustee app:
