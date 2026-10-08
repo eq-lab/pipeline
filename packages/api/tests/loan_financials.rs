@@ -9,7 +9,7 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::loan_financials::build_response;
 use shared::contract_logs_repo::{EconomicsEventRow, LoanSnapshotRow};
-use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
+use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 // ── Fixture helpers ─────────────────────────────────────────────────────────
 
@@ -31,7 +31,6 @@ fn snapshot(
     equity_tranche: i64,
     offtaker_price: i64,
     repayment: RepaymentSnapshot,
-    location: LocationUpdateSnapshot,
 ) -> LoanSnapshot {
     LoanSnapshot {
         originator: String::new(),
@@ -52,22 +51,16 @@ fn snapshot(
         next_economics_epochs_id: BigDecimal::from(0),
         next_repayment_id: BigDecimal::from(0),
         status: status.to_owned(),
-        ccr_bps: 12_000,
-        last_reported_ccr_timestamp: 0,
         current_maturity_timestamp: 0,
+        current_rate: 1_200,
         closure_reason: String::new(),
-        current_location: location,
+        carved_out: false,
+        disbursed: BigDecimal::from(0),
+        repaid: BigDecimal::from(0),
+        written_down: BigDecimal::from(0),
+        interest_adjustment: BigDecimal::from(0),
         metadata_uri_onchain: String::new(),
         repayment,
-    }
-}
-
-fn empty_location() -> LocationUpdateSnapshot {
-    LocationUpdateSnapshot {
-        location_type: String::new(),
-        location_identifier: String::new(),
-        tracking_url: String::new(),
-        updated_at: 0,
     }
 }
 
@@ -108,7 +101,6 @@ fn derives_realized_figures_and_outstanding() {
         100_000_000,
         1_000_000_000,
         repayment(50_000_000, 30_000_000, 20_000_000, 600_000_000),
-        empty_location(),
     );
     // off_ramp complete + now == maturity(0) → the raw on-chain status shows through.
     let resp = build_response(
@@ -122,7 +114,6 @@ fn derives_realized_figures_and_outstanding() {
 
     assert_eq!(resp.loan_id, "42");
     assert_eq!(resp.status, "Performing");
-    assert!(resp.location.is_none());
     assert_eq!(resp.offtaker, "1000.000000");
     assert_eq!(resp.principal, "900.000000");
     assert_eq!(resp.interest, "50.000000");
@@ -145,7 +136,6 @@ fn not_minted_yield_clamps_at_zero() {
         0,
         100_000_000,
         repayment(10_000_000, 0, 0, 0),
-        empty_location(),
     );
     // minted (25) exceeds realized interest+fees (10) → clamp to 0.
     let resp = build_response(
@@ -160,28 +150,6 @@ fn not_minted_yield_clamps_at_zero() {
 }
 
 #[test]
-fn location_projected_when_reported() {
-    let snap = snapshot(
-        "WatchList",
-        100_000_000,
-        0,
-        100_000_000,
-        repayment(0, 0, 0, 0),
-        LocationUpdateSnapshot {
-            location_type: "Vessel".to_owned(),
-            location_identifier: "MV Example".to_owned(),
-            tracking_url: "https://track.example/1".to_owned(),
-            updated_at: 0,
-        },
-    );
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 0, None);
-    let loc = resp.location.expect("location present");
-    assert_eq!(loc.location_type, "Vessel");
-    assert_eq!(loc.location_identifier, "MV Example");
-    assert_eq!(loc.updated_at, "1970-01-01T00:00:00Z");
-}
-
-#[test]
 fn epoch_folds_rollover_then_amendment() {
     // Epoch 1: draw at 2026-01-01, matures 2026-04-01, 1_000 bps.
     let mut snap = snapshot(
@@ -190,7 +158,6 @@ fn epoch_folds_rollover_then_amendment() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
     let apr1 = 1_775_001_600; // 2026-04-01T00:00:00Z
@@ -237,7 +204,6 @@ fn epoch_maturity_date_uses_snapshot_not_malformed_event_param() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
     let jul1 = 1_782_864_000; // 2026-07-01T00:00:00Z
@@ -266,7 +232,6 @@ fn epoch_start_date_uses_override_not_malformed_amendment() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
     let apr1 = 1_775_001_600; // 2026-04-01T00:00:00Z
@@ -304,7 +269,6 @@ fn status_is_disbursing_when_off_ramp_incomplete() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0, None);
     assert_eq!(resp.status, "Disbursing");
@@ -319,7 +283,6 @@ fn status_is_past_due_when_complete_and_past_maturity() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     snap.current_maturity_timestamp = 1_000;
     let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 2_000, None);
@@ -338,7 +301,6 @@ fn epoch_amendment_without_rollover_keeps_ordinal() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
     let apr1 = 1_775_001_600; // 2026-04-01T00:00:00Z
@@ -371,7 +333,6 @@ fn next_payment_equals_current_maturity_and_not_overdue_before_it() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     snap.current_maturity_timestamp = 5_000;
     let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 1_000, None);
@@ -388,7 +349,6 @@ fn days_overdue_counts_whole_days_past_the_payment() {
         0,
         100_000_000,
         repayment(0, 0, 0, 0),
-        empty_location(),
     );
     snap.current_maturity_timestamp = 86_400;
     let resp = build_response(

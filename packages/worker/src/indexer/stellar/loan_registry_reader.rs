@@ -20,8 +20,8 @@ use stellar_strkey::Contract as ContractStrkey;
 use stellar_xdr::curr::{Limits, ReadXdr, ScVal};
 
 use crate::indexer::loan_metadata::{
-    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LocationType,
-    LocationUpdateView, MutableDataResolver, MutableLoanDataView, RepaymentDataView,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, MutableDataResolver,
+    MutableLoanDataView, RepaymentDataView,
 };
 use crate::indexer::stellar::rpc::StellarRpc;
 use crate::stellar::tx::{build_invoke_envelope, envelope_to_base64};
@@ -195,6 +195,8 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
     let original_maturity_date = map_u64(&map, "original_maturity_date", "ImmutableLoanData")?;
 
     Ok(ImmutableLoanDataView {
+        // #1433: realign the XDR decode
+        borrower_ref: alloy::primitives::FixedBytes::<32>::default(),
         original_facility_size,
         original_senior_tranche,
         original_equity_tranche,
@@ -230,15 +232,6 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
         other => anyhow::bail!("MutableLoanData.status: unknown variant '{other}'"),
     };
 
-    // Soroban stores CCR in the same `ONE = 1_000_000` fixed-point scale as the
-    // interest rate (100% → 1_000_000, 120% → 1_200_000). The shared snapshot field
-    // is basis points (1 bp = 1/10_000), matching EVM's native `ccrBps`. Divide by
-    // 100 here — mirroring the `senior_interest_rate` conversion above — so stored
-    // `ccr_bps` means the same thing on both chains. (Loan-book CCR is recomputed
-    // from collateral downstream, so this only fixes the stored snapshot value.)
-    let ccr_bps = map_u32(&map, "ccr", "MutableLoanData")? / 100;
-    let last_reported_ccr_timestamp =
-        map_u64(&map, "last_reported_ccr_timestamp", "MutableLoanData")?;
     let current_maturity_timestamp =
         map_u64(&map, "current_maturity_timestamp", "MutableLoanData")?;
 
@@ -253,18 +246,26 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
         other => anyhow::bail!("MutableLoanData.closure_reason: unknown variant '{other}'"),
     };
 
-    let current_location = map_location_update(&map, "current_location")?;
     let metadata_uri = map_string(&map, "metadata_uri", "MutableLoanData")?;
 
     Ok(MutableLoanDataView {
         next_economics_epochs_id,
         next_repayment_id,
         status,
-        ccr_bps,
-        last_reported_ccr_timestamp,
         current_maturity_timestamp,
+        // #1433: realign the XDR decode
+        current_rate: 0,
         closure_reason,
-        current_location,
+        // #1433: realign the XDR decode
+        carved_out: false,
+        // #1433: realign the XDR decode
+        disbursed: U256::ZERO,
+        // #1433: realign the XDR decode
+        repaid: U256::ZERO,
+        // #1433: realign the XDR decode
+        written_down: U256::ZERO,
+        // #1433: realign the XDR decode
+        interest_adjustment: alloy::primitives::I256::ZERO,
         metadata_uri,
     })
 }
@@ -361,36 +362,6 @@ fn map_enum_variant(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
         }
         _ => anyhow::bail!("{ctx}.{key}: expected Vec([Symbol(...)]), got {entry:?}"),
     }
-}
-
-/// Decode a `LocationUpdate` struct from a map entry.
-/// `LocationUpdate` is a `#[contracttype]` struct, encoded as a nested `ScVal::Map`.
-fn map_location_update(map: &ScMapSlice, key: &str) -> Result<LocationUpdateView> {
-    let entry = map_entry(map, key)
-        .ok_or_else(|| anyhow::anyhow!("MutableLoanData.{key}: field missing"))?;
-    let ScVal::Map(Some(loc_map)) = entry else {
-        anyhow::bail!("MutableLoanData.{key}: expected nested Map");
-    };
-
-    // `location_type` is a `LocationType` enum encoded as `ScVal::Vec([Symbol(...)])`.
-    let lt_variant = map_enum_variant(loc_map, "location_type", "LocationUpdate")?;
-    let location_type = match lt_variant.as_str() {
-        "Vessel" => LocationType::Vessel,
-        "Warehouse" => LocationType::Warehouse,
-        "TankFarm" => LocationType::TankFarm,
-        _ => LocationType::Other,
-    };
-
-    let location_identifier = map_string(loc_map, "location_identifier", "LocationUpdate")?;
-    let tracking_url = map_string(loc_map, "tracking_url", "LocationUpdate")?;
-    let updated_at = map_u64(loc_map, "updated_at", "LocationUpdate")?;
-
-    Ok(LocationUpdateView {
-        location_type,
-        location_identifier,
-        tracking_url,
-        updated_at,
-    })
 }
 
 fn u128_from_hi_lo(hi: u64, lo: u64) -> u128 {

@@ -478,7 +478,7 @@ fn loan_defaulted_decodes() {
 #[test]
 fn loan_status_updated_decodes() {
     let loan_id = U256::from(5u64);
-    let new_status: u8 = 1; // WatchList
+    let new_status: u8 = 2; // WatchList
 
     let topic1: FixedBytes<32> = loan_id.into();
     let mut topic2 = [0u8; 32];

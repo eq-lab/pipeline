@@ -1,4 +1,4 @@
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{Address, I256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol;
 use alloy::sol_types::SolCall;
@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use reqwest::Client;
 
 use super::loan_metadata::{
-    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LocationType, LocationUpdateView,
-    MutableDataResolver, MutableLoanDataView, RepaymentDataView,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, MutableDataResolver,
+    MutableLoanDataView, RepaymentDataView,
 };
 
 sol! {
@@ -27,20 +27,6 @@ sol! {
             EarlyRepayment,
             Default,
             OtherWriteDown
-        }
-
-        enum LocationType {
-            Vessel,
-            Warehouse,
-            TankFarm,
-            Other
-        }
-
-        struct LocationUpdate {
-            LocationType locationType;
-            string locationIdentifier;
-            string trackingURL;
-            uint64 updatedAt;
         }
 
         struct ImmutableLoanData {
@@ -61,7 +47,6 @@ sol! {
             uint64 lastReportedCCRTimestamp;
             uint64 currentMaturityTimestamp;
             ClosureReason closureReason;
-            LocationUpdate currentLocation;
             string metadataURI;
         }
 
@@ -131,6 +116,8 @@ impl ImmutableDataResolver<Address, U256> for LoanRegistryReader {
             .with_context(|| format!("decode immutableLoanData({loan_id}) return"))?;
         let d = decoded._0;
         Ok(ImmutableLoanDataView {
+            // #1434: realign the sol! block
+            borrower_ref: alloy::primitives::FixedBytes::<32>::default(),
             original_facility_size: d.originalFacilitySize,
             original_senior_tranche: d.originalSeniorTranche,
             original_equity_tranche: d.originalEquityTranche,
@@ -170,21 +157,24 @@ impl MutableDataResolver<Address, U256> for LoanRegistryReader {
         let decoded = ILoanRegistry::mutableLoanDataCall::abi_decode_returns(&result, true)
             .with_context(|| format!("decode mutableLoanData({loan_id}) return"))?;
         let d = decoded._0;
-        let loc = d.currentLocation;
         Ok(MutableLoanDataView {
             next_economics_epochs_id: d.nextEconomicsEpochsId,
             next_repayment_id: d.nextRepaymentId,
             status: d.status as u8,
-            ccr_bps: d.ccrBps,
-            last_reported_ccr_timestamp: d.lastReportedCCRTimestamp,
             current_maturity_timestamp: d.currentMaturityTimestamp,
+            // #1434: realign the sol! block
+            current_rate: 0,
             closure_reason: d.closureReason as u8,
-            current_location: LocationUpdateView {
-                location_type: LocationType::from_ordinal(loc.locationType as u8),
-                location_identifier: loc.locationIdentifier,
-                tracking_url: loc.trackingURL,
-                updated_at: loc.updatedAt,
-            },
+            // #1434: realign the sol! block
+            carved_out: false,
+            // #1434: realign the sol! block
+            disbursed: U256::ZERO,
+            // #1434: realign the sol! block
+            repaid: U256::ZERO,
+            // #1434: realign the sol! block
+            written_down: U256::ZERO,
+            // #1434: realign the sol! block
+            interest_adjustment: I256::ZERO,
             metadata_uri: d.metadataURI,
         })
     }

@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 /// (IPFS + immutable) are sourced from the most recent prior row, mutable fields
 /// from block-pinned eth_calls at event.block_number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct LoanSnapshot {
     // IPFS-sourced
     pub originator: String,
@@ -47,18 +46,30 @@ pub struct LoanSnapshot {
     pub next_economics_epochs_id: BigDecimal,
     pub next_repayment_id: BigDecimal,
     pub status: String,
-    /// Collateral-coverage ratio in basis points (12_000 = 120%), normalized across
-    /// chains: EVM emits native `ccrBps`; the Stellar indexer converts the Soroban
-    /// `ONE = 1_000_000`-scaled `ccr` (÷100) so both mean basis points here.
-    pub ccr_bps: u32,
-    pub last_reported_ccr_timestamp: i64,
     /// Rollover-aware maturity timestamp (may differ from `original_maturity_date` after rollovers).
     /// NOTE: The portfolio yield compute uses `original_maturity_date` for the scheduled-end
     /// boundary to preserve existing yield-computation semantics. `current_maturity_timestamp`
     /// is stored for informational/future use.
     pub current_maturity_timestamp: i64,
+    /// Basis points. `#[serde(default)]`: pre-rework rows predate this field.
+    #[serde(default)]
+    pub current_rate: u32,
     pub closure_reason: String,
-    pub current_location: LocationUpdateSnapshot,
+    /// `#[serde(default)]`: pre-rework rows predate this field.
+    #[serde(default)]
+    pub carved_out: bool,
+    /// Raw native USDC scale. `#[serde(default)]`: pre-rework rows predate this field.
+    #[serde(default)]
+    pub disbursed: BigDecimal,
+    /// Raw native USDC scale. `#[serde(default)]`: pre-rework rows predate this field.
+    #[serde(default)]
+    pub repaid: BigDecimal,
+    /// Raw native USDC scale. `#[serde(default)]`: pre-rework rows predate this field.
+    #[serde(default)]
+    pub written_down: BigDecimal,
+    /// Signed; raw native USDC scale. `#[serde(default)]`: pre-rework rows predate this field.
+    #[serde(default)]
+    pub interest_adjustment: BigDecimal,
     /// The mutable on-chain URI (from `MutableLoanData.metadataURI`). Re-fetched from IPFS
     /// when it changes between events. Separate from `metadata_uri` (the secondary URI
     /// inside the IPFS JSON document).
@@ -79,6 +90,10 @@ impl LoanSnapshot {
         self.original_senior_tranche = normalize_usdc_amount(kind, &self.original_senior_tranche);
         self.original_equity_tranche = normalize_usdc_amount(kind, &self.original_equity_tranche);
         self.original_offtaker_price = normalize_usdc_amount(kind, &self.original_offtaker_price);
+        self.disbursed = normalize_usdc_amount(kind, &self.disbursed);
+        self.repaid = normalize_usdc_amount(kind, &self.repaid);
+        self.written_down = normalize_usdc_amount(kind, &self.written_down);
+        self.interest_adjustment = normalize_usdc_amount(kind, &self.interest_adjustment);
         self.repayment.normalize_usdc_for_display(kind);
     }
 }
@@ -104,16 +119,6 @@ impl RepaymentSnapshot {
 pub struct LoanDocument {
     pub name: String,
     pub uri: String,
-}
-
-/// Snapshot of the on-chain `LocationUpdate` struct at event time.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LocationUpdateSnapshot {
-    pub location_type: String,
-    pub location_identifier: String,
-    pub tracking_url: String,
-    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

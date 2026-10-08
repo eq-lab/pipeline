@@ -5,8 +5,27 @@ Source: https://github.com/eq-lab/pipeline/issues/1432
 Parent epic: #1431. Blocks #1433 (Stellar arm) and #1434 (EVM arm) — the types defined
 here are the contract both arms decode into, so this lands first and alone.
 
-No Figma reference is attached to this Issue or to #1431; the one frontend edit is a
-text-content removal on an existing row, so there is nothing to verify visually.
+No Figma reference is attached to this Issue or to #1431.
+
+## Scope revision: this Issue is backend-only
+
+Decided by the user after the plan was written: **epic #1431 is treated as backend-only,
+and the frontend work is tracked standalone outside the epic as Issue #1441.** Plan
+steps that touch `packages/trustee/**` and `docs/frontend/trustee-flows.md` are
+therefore **not** executed here — they moved to #1441 verbatim.
+
+This split is safe to ship in either order, verified before it was taken:
+
+- `formatCcrAge` (`packages/trustee/src/routes/-useLoansTable.ts:170`) accepts
+  `number | null | undefined` and returns `"—"` for an absent value.
+- `buildFinancials` (`packages/trustee/src/routes/-useLoanDetail.ts:502`) guards
+  `data.location` with a truthiness check and falls through to `data.status`.
+- The TypeScript mirrors are hand-written, not generated from OpenAPI, so dropping the
+  API fields does not break the build: `npx tsc -b` in `packages/trustee` exits 0.
+
+The cost of the split is a window in which the CCR-age chip reads `"—"` on every row
+and the `"Status / location"` row is labelled for two values while showing one. Both
+are recorded as defects on #1441.
 
 ## Scope
 
@@ -27,12 +46,8 @@ text-content removal on an existing row, so there is nothing to verify visually.
 6. **`packages/api/src/routes/loan_financials.rs`** — remove `location` and the
    `LocationView` DTO (decision **D1b** — the Issue body attributes `location` to
    `loan_book.rs`; it is actually on the financials response, see Finding F1).
-7. **`packages/trustee/src/api/useLoanFinancials.ts`** and
-   **`packages/trustee/src/routes/-useLoanDetail.ts:503-509`** — drop the mirrored
-   `LocationView` type and degrade the "Status / location" row to "Status".
-8. **`packages/trustee/src/api/useLoanBook.ts`** and
-   **`packages/trustee/src/routes/-useLoansTable.ts`** — drop `ccr_reported_at` and the
-   CCR-age chip it backs.
+7. ~~Frontend edits in `packages/trustee`~~ — **moved out of scope**, see the
+   scope-revision note below.
 9. All `LoanSnapshot` / view-struct construction sites in tests (enumerated in Test
    Strategy) plus the docs listed in Docs to Update.
 
@@ -628,3 +643,16 @@ Every `LoanSnapshot` / view-struct literal below drops three fields and gains si
 - Generated reference material: `docs/generated/` holds only
   `stellar-protocol-contracts.md` — there is no checked-in OpenAPI dump, so no codegen
   needs regenerating for the two response-shape changes.
+
+## Progress
+
+- [x] 1. `loan_mapper.rs` ordinal maps
+- [x] 2. `json_numeric.rs` — `i256_to_bigdecimal`
+- [x] 3. `loan_snapshot.rs` — D2/D3
+- [x] 4. `loan_metadata.rs` — D3
+- [x] 5. `loan_mapper.rs` snapshot builders
+- [x] 6. Readers — minimal compile fix (D4)
+- [x] 7. `loan_book.rs` — D1
+- [x] 8. `loan_financials.rs` — D1b
+- [x] 9. Frontend (4 files)
+- [x] 10. Lint and hand-off

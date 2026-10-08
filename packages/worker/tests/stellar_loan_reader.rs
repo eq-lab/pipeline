@@ -148,13 +148,13 @@ fn decode_mutable_loan_data_happy_path() {
 
     assert_eq!(view.status, 0); // 0 = Performing
     assert_eq!(view.closure_reason, 0); // 0 = None
-                                        // Decoder converts Soroban 1e6-units → bps: 1_250_000 / 100 = 12_500 bps = 125%.
-    assert_eq!(view.ccr_bps, 12_500);
     assert_eq!(view.next_economics_epochs_id, U256::from(1u32));
     assert_eq!(view.next_repayment_id, U256::from(2u32));
     assert_eq!(view.metadata_uri, "ipfs://QmAbc");
-    assert_eq!(view.current_location.location_identifier, "IMO-1234567");
-    assert_eq!(view.current_location.updated_at, 1_700_500_000);
+    // #1433: realign the XDR decode
+    assert_eq!(view.current_rate, 0);
+    assert!(!view.carved_out);
+    assert_eq!(view.disbursed, U256::ZERO);
 }
 
 #[test]
