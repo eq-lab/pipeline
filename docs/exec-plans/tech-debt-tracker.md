@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-125.**
+**Next free number: TD-126.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1845,3 +1845,11 @@ line, whichever section it lands in.
 - **Gap:** #1432 removed `#[serde(deny_unknown_fields)]` from `LoanSnapshot` and added six fields with `#[serde(default)]` (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), while deleting `ccr_bps`, `last_reported_ccr_timestamp` and `current_location` (no `#[serde(default)]`, required on `main`). This makes compatibility strictly **one-directional, new-reads-old**: a post-#1432 binary deserializing a pre-#1432 snapshot ignores its extra `ccr_bps`/`last_reported_ccr_timestamp`/`current_location` keys (no guard to violate) and defaults the six missing new fields — succeeds. The reverse fails on **both** counts at once: a pre-#1432 binary (`deny_unknown_fields` + `ccr_bps` etc. required, no default) deserializing a post-#1432 snapshot hits unknown-field rejection for the six new keys *and* missing-field rejection for the three deleted ones.
 - **Impact:** `ContractLogsRepo` (`packages/shared/src/contract_logs_repo.rs:297,364,446,1006`) propagates that deserialize failure as an `anyhow::Error` from `serde_json::from_value`, failing the whole query — not a per-row degradation. So in a rolling deploy, if the **worker** is upgraded first, every API pod still running the old binary throws on the first snapshot the new worker writes, for every query that touches that loan. If the **API** is upgraded first, new API instances read old-shaped snapshots from the still-old worker without error (defaults fill the gap) until the worker catches up. **Operational constraint: roll the API before the worker, never the reverse, for this change.**
 - **Suggested fix:** None needed given the ordering constraint is followed — note it in the deploy runbook if one exists, or treat this entry as that note.
+
+### TD-125: `1250-kyb-otp.md` still routes the reader through a trigger that no longer exists
+
+- **Date:** 2026-10-08
+- **Location:** `docs/user-stories/epic-1247/1250-kyb-otp.md` — found while writing `1442-otp-error-edit.md` for Issue #1442.
+- **Gap:** Every story in that doc opens by telling the reader to go to `/test?tab=auth` and click "Open OTP screen". That trigger was removed from `packages/frontend/src/routes/test.tsx` when #1362 landed the production entry point (TopBar → Sign Up / Sign In → OTP), so the doc's pre-conditions cannot be satisfied as written.
+- **Impact:** The QA pass for epic #1247 executes every user-stories doc under `docs/user-stories/epic-1247/`; #1250's stories dead-end at step 1 and have to be re-derived by hand against the production path each time, or get skipped. #1442's new doc writes its stories against the production entry point instead, so the two docs now disagree on how to reach the same screen.
+- **Suggested fix:** Rewrite #1250's pre-conditions against the production entry point, and sweep the other epic-1247 docs for the same stale `/test?tab=auth` trigger (`1265-wire-kyb-auth.md` names it too) in one pass rather than per issue.
