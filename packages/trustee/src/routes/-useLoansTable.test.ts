@@ -4,8 +4,8 @@
  *
  * All pure — no DOM, no query layer. Covers the CCR classification (served
  * `ccr_bps` used as-is, no ÷1000 correction — #888), the 120% pre-default
- * classification boundaries, CCR staleness age, the spot sub-line (real
- * 7-day basis, no fabricated `/t`), the row + summary mappings (all amounts
+ * classification boundaries, the spot sub-line (real 7-day basis, no
+ * fabricated `/t`), the row + summary mappings (all amounts
  * displayed exactly as served, `—` for every null), and the per-status
  * counts + active-tab client-side filter (Default/Closed empty per resolved
  * Open Question 2).
@@ -16,7 +16,6 @@ import { formatMaturityDate } from "@/utils/formatDate";
 import {
   buildLoansView,
   classifyCcr,
-  formatCcrAge,
   formatNearestPayment,
   formatSpot,
   mapEntryToRow,
@@ -43,7 +42,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     maturity: 1_785_000_000,
     next_payment_timestamp: 1_785_000_000,
     days_overdue: null,
-    ccr_reported_at: NOW_S - 3600,
     spot_price: "4500.00",
     spot_change_7d: "-0.1800",
     collateral: "2100.000000",
@@ -136,32 +134,6 @@ describe("formatNearestPayment", () => {
   });
 });
 
-// ── formatCcrAge ──────────────────────────────────────────────────────────────
-
-describe("formatCcrAge", () => {
-  it("formats an hour-old timestamp as '1h' (Figma)", () => {
-    expect(formatCcrAge(NOW_S - 3600, NOW_MS)).toBe("1h");
-  });
-
-  it("formats 26 hours as '26h' (Figma, no day rollover under 72h)", () => {
-    expect(formatCcrAge(NOW_S - 26 * 3600, NOW_MS)).toBe("26h");
-  });
-
-  it("formats sub-hour ages in minutes", () => {
-    expect(formatCcrAge(NOW_S - 5 * 60, NOW_MS)).toBe("5m");
-  });
-
-  it("rolls over to days at/after 72h", () => {
-    expect(formatCcrAge(NOW_S - 80 * 3600, NOW_MS)).toBe("3d");
-  });
-
-  it("returns em-dash for never-reported (0), missing, or future timestamps", () => {
-    expect(formatCcrAge(0, NOW_MS)).toBe("—");
-    expect(formatCcrAge(null, NOW_MS)).toBe("—");
-    expect(formatCcrAge(NOW_S + 3600, NOW_MS)).toBe("—");
-  });
-});
-
 // ── formatSpot ────────────────────────────────────────────────────────────────
 
 describe("formatSpot", () => {
@@ -196,7 +168,7 @@ describe("formatSpot", () => {
 
 describe("mapEntryToRow", () => {
   it("displays senior AND collateral as served (issue #906), maps the served CCR as-is", () => {
-    const row = mapEntryToRow(makeEntry(), NOW_MS);
+    const row = mapEntryToRow(makeEntry());
     // The served loan_id is both the stable list key and the /loans/$id nav param.
     expect(row.key).toBe("4488");
     expect(row.loanId).toBe("4488");
@@ -218,7 +190,6 @@ describe("mapEntryToRow", () => {
     expect(row.ccr).toEqual({
       percent: "114%",
       band: "margin-call",
-      age: "1h",
     });
   });
 
@@ -229,9 +200,7 @@ describe("mapEntryToRow", () => {
         spot_price: null,
         spot_change_7d: null,
         ccr_bps: null,
-        ccr_reported_at: 0,
       }),
-      NOW_MS,
     );
     expect(row.collateral).toBe("—");
     expect(row.spot).toBeNull();
@@ -247,7 +216,6 @@ describe("mapEntryToRow", () => {
         collateral: "2098.65", // displayed as served ⇒ $2.10K
         ccr_bps: 20_987, // served as-is (not ÷1000) ⇒ 209.87%
       }),
-      NOW_MS,
     );
     expect(row.seniorOutstanding).toBe("$1.00K");
     expect(row.collateral).toBe("$2.10K");
@@ -314,7 +282,7 @@ describe("buildLoansView", () => {
   };
 
   it("counts each status; Default/Closed are 0 (backend serves active-only, OQ2)", () => {
-    const { counts } = buildLoansView(data, "Active", NOW_MS);
+    const { counts } = buildLoansView(data, "Active");
     expect(counts).toEqual({
       All: 3,
       Active: 2,
@@ -325,22 +293,22 @@ describe("buildLoansView", () => {
   });
 
   it("the All tab is unfiltered — every loan, in book order (#1121)", () => {
-    const { rows } = buildLoansView(data, "All", NOW_MS);
+    const { rows } = buildLoansView(data, "All");
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Gamma"]);
   });
 
   it("filters rows to the Active tab", () => {
-    const { rows } = buildLoansView(data, "Active", NOW_MS);
+    const { rows } = buildLoansView(data, "Active");
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta"]);
   });
 
   it("maps the Watchlist tab to the served 'WatchList' status literal", () => {
-    const { rows } = buildLoansView(data, "Watchlist", NOW_MS);
+    const { rows } = buildLoansView(data, "Watchlist");
     expect(rows.map((r) => r.originator)).toEqual(["Gamma"]);
   });
 
   it("yields an empty row set for the (unpopulated) Default tab", () => {
-    const { rows } = buildLoansView(data, "Default", NOW_MS);
+    const { rows } = buildLoansView(data, "Default");
     expect(rows).toEqual([]);
   });
 
@@ -354,7 +322,7 @@ describe("buildLoansView", () => {
         makeEntry({ loan_id: "4", originator: "Delta", status: "Performing" }),
       ],
     };
-    const { counts, rows } = buildLoansView(withPastDue, "Watchlist", NOW_MS);
+    const { counts, rows } = buildLoansView(withPastDue, "Watchlist");
     expect(counts.Watchlist).toBe(3); // WatchList + Past Due + Matured
     expect(rows.map((r) => r.originator)).toEqual([
       "Alpha",
@@ -371,7 +339,7 @@ describe("buildLoansView", () => {
         makeEntry({ loan_id: "4", originator: "Delta", status: "Disbursing" }),
       ],
     };
-    const { counts, rows } = buildLoansView(withDisbursing, "Active", NOW_MS);
+    const { counts, rows } = buildLoansView(withDisbursing, "Active");
     expect(counts.Active).toBe(3); // 2 Performing + 1 Disbursing
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Delta"]);
   });

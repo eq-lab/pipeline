@@ -53,7 +53,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     maturity: 1_782_777_600, // 2026-06-30
     next_payment_timestamp: 1_782_777_600,
     days_overdue: null,
-    ccr_reported_at: 0,
     spot_price: "10450",
     spot_change_7d: "-0.012",
     collateral: null,
@@ -507,12 +506,6 @@ function makeFinancials(
   return {
     loan_id: "4488",
     status: "Performing",
-    location: {
-      location_type: "Vessel",
-      location_identifier: "MV Andes",
-      tracking_url: "",
-      updated_at: "2026-06-01T00:00:00Z",
-    },
     epoch: {
       number: 1,
       current_apy_bps: 1000,
@@ -547,11 +540,7 @@ describe("buildFinancials", () => {
   it("maps the financials to registry rows (amounts displayed as served)", () => {
     const rows = buildFinancials(makeFinancials(), "LC at sight");
     expect(rows).toEqual([
-      {
-        label: "Status / location",
-        value: "Performing · Vessel MV Andes",
-        tag: "chain",
-      },
+      { label: "Status", value: "Performing", tag: "chain" },
       { label: "Protection", value: "LC at sight", tag: "relayer" },
       {
         label: "Epochs",
@@ -569,11 +558,11 @@ describe("buildFinancials", () => {
     ]);
   });
 
-  it("shows the status alone when no location is reported (never fabricated)", () => {
-    const rows = buildFinancials(makeFinancials({ location: null }));
+  it("renders the served status verbatim under a Status label (#1441)", () => {
+    const rows = buildFinancials(makeFinancials({ status: "WatchList" }));
     expect(rows[0]).toEqual({
-      label: "Status / location",
-      value: "Performing",
+      label: "Status",
+      value: "WatchList",
       tag: "chain",
     });
   });
