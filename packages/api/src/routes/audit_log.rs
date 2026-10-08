@@ -354,13 +354,19 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             (action, json!({ "amount": amount }))
         }
 
+        // Shape-tolerant (#1434 D6) — same treatment as `LoanDefaulted` above.
         "PaymentUnrecorded" => {
-            let principal = param_amount(params, "senior_principal_repaid", chain_kind);
-            let interest = param_amount(params, "senior_interest", chain_kind);
-            (
-                "Payment reversed".to_owned(),
-                json!({ "senior_interest": interest, "senior_principal_repaid": principal }),
-            )
+            let mut details = json!({});
+            if let Some(principal) = param_amount(params, "senior_principal_repaid", chain_kind) {
+                details["senior_principal_repaid"] = json!(principal);
+            }
+            if let Some(interest) = param_amount(params, "senior_interest", chain_kind) {
+                details["senior_interest"] = json!(interest);
+            }
+            if let Some(outstanding) = param_amount(params, "outstanding", chain_kind) {
+                details["outstanding"] = json!(outstanding);
+            }
+            ("Payment reversed".to_owned(), details)
         }
 
         "LoanWrittenDown" => {

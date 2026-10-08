@@ -238,3 +238,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1432 Indexer: realign the shared loan-data model to the reworked contracts](https://github.com/eq-lab/pipeline/issues/1432) | [1432-shared-loan-data-model.md](./epic-1431/1432-shared-loan-data-model.md) | Initial |
 | [#1433 Stellar indexer: realign parsers to the reworked LoanRegistry contracts](https://github.com/eq-lab/pipeline/issues/1433) | [1433-stellar-loan-parsers-realignment.md](./epic-1431/1433-stellar-loan-parsers-realignment.md) | Initial |
+| [#1434 EVM indexer: realign parsers and reader to post-rework pipeline-contracts, add the Minter group](https://github.com/eq-lab/pipeline/issues/1434) | [1434-evm-loan-parsers-realignment.md](./epic-1431/1434-evm-loan-parsers-realignment.md) | Initial |

@@ -604,6 +604,40 @@ ingest-time guard #765 also asks for.
   rate scale and is untouched. Post a comment on #765 explaining what was fixed and what
   remains, and leave it open.
 
+## Review findings (post-implementation)
+
+**R1 — `repayment_id` is never reused, so the set-subtraction model in
+`accumulate_repayments` is sound.** Review raised the possibility that reversing a payment
+rolls `nextRepaymentId` back, which would let a later payment reuse a blacklisted id and be
+silently dropped from six of the seven `RepaymentData` fields while
+`senior_principal_repaid` (overridden from the on-chain `mutable.repaid`) still counted it.
+Checked against the contract rather than assumed:
+
+- `LoanRegistryUpgradeable.sol:325,327` — `repaymentId = loan.nextRepaymentId; ++loan.nextRepaymentId;`
+  is the only writer; `grep` finds no decrement anywhere.
+- `:356` — `if ($.reversedRepayments[loanId][repaymentId]) revert LoanRegistryRepaymentAlreadyReversed();`
+  so a reversal is permanent and cannot be undone or repeated.
+
+Ids are therefore monotonic and reversals are terminal; treating `reversed` as an
+order-blind blacklist is correct. No change made. Recorded here so this is not
+"fixed" later on the same false premise.
+
+**R2 — `list_recorded_payments` now orders `block_number ASC, log_index ASC`.** It had no
+`ORDER BY`, while `accumulate_repayments` folds rows with `BTreeMap::insert`, which
+overwrites. Two rows sharing a `repayment_id` — only reachable via a re-index or reorg,
+given R1 — resolved to whatever Postgres returned last, non-deterministically between runs.
+Three other snapshot queries in the same file are explicitly ordered; this one now matches.
+
+**R3 — both new queries tolerate either `params` shape and skip rows carrying neither.**
+They read only `params->'event'->>…` while `RecordedPaymentRow` declares every column
+non-`Option`, so a row missing the `event` object produced SQL `NULL` → sqlx
+`UnexpectedNull` → `Err` from `reconstruct_cumulative` → **every** subsequent lifecycle
+event for that loan failing to index, permanently and unrecoverably. Latent rather than
+live (the flat-shape era named the event `LoanRepayment`, not `PaymentRecorded`), but the
+blast radius justified the fix: `COALESCE(params->'event'->>'x', params->>'x')` plus an
+`IS NOT NULL` guard, mirroring the tolerance `audit_log::param_str` already carries for
+this exact class of drift. A bad row is now a dropped row, not a wedged indexer.
+
 ## Implementation Steps
 
 **Step 1 — re-verify the ABI.** Before writing code, re-read
@@ -883,21 +917,21 @@ backend-only and the epic's frontend consequence is tracked standalone as #1441.
 
 ## Progress
 
-- [ ] 1. Re-verify the ABI against the sibling checkout
-- [ ] 2. `parsers.rs` `sol!` blocks — loan registry rewritten, minter added, yield-minter deleted
-- [ ] 3. Five changed parsers (`LoanDrawn`, `LoanDefaulted`, `PaymentRecorded`, `StatusUpdated`, `LoanClosed`)
-- [ ] 4. Deleted `parse_loan_ccr_updated`, `parse_loan_location_updated`, `parse_yield_minted`
-- [ ] 5. Five new loan parsers
-- [ ] 6. Two Minter parsers (`WireIn`, `WireInAssigned`)
-- [ ] 7. `evm_parsers.rs` handler chains and imports
-- [ ] 8. `loan_registry_reader.rs` `sol!` block + both `translate_pre_rework_*` deleted
-- [ ] 9. `immutable_loan_data` — `borrower_ref` decoded, rate ÷ 100
-- [ ] 10. `decode_mutable_loan_data` — six placeholders replaced, `current_rate` ÷ 100
-- [ ] 11. `MutableDataResolver::cumulative_repayment_data` → `Option`
-- [ ] 12. Both resolver impls updated (EVM `None`, Stellar `Some`)
-- [ ] 13. Two new `ContractLogsRepo` queries
-- [ ] 14. Mapper reconstruction + `accumulate_repayments`
-- [ ] 15. `audit_log.rs` shape-tolerant `PaymentUnrecorded`
-- [ ] 16. Config doc comments (`config.rs`, `.env.example`)
-- [ ] 17. Tests — see Test Strategy
-- [ ] 18. Verification sweep (two greps, fmt, clippy, tests, build)
+- [x] 1. Re-verify the ABI against the sibling checkout
+- [x] 2. `parsers.rs` `sol!` blocks — loan registry rewritten, minter added, yield-minter deleted
+- [x] 3. Five changed parsers (`LoanDrawn`, `LoanDefaulted`, `PaymentRecorded`, `StatusUpdated`, `LoanClosed`)
+- [x] 4. Deleted `parse_loan_ccr_updated`, `parse_loan_location_updated`, `parse_yield_minted`
+- [x] 5. Five new loan parsers
+- [x] 6. Two Minter parsers (`WireIn`, `WireInAssigned`)
+- [x] 7. `evm_parsers.rs` handler chains and imports
+- [x] 8. `loan_registry_reader.rs` `sol!` block + both `translate_pre_rework_*` deleted
+- [x] 9. `immutable_loan_data` — `borrower_ref` decoded, rate ÷ 100
+- [x] 10. `decode_mutable_loan_data` — six placeholders replaced, `current_rate` ÷ 100
+- [x] 11. `MutableDataResolver::cumulative_repayment_data` → `Option`
+- [x] 12. Both resolver impls updated (EVM `None`, Stellar `Some`)
+- [x] 13. Two new `ContractLogsRepo` queries
+- [x] 14. Mapper reconstruction + `accumulate_repayments`
+- [x] 15. `audit_log.rs` shape-tolerant `PaymentUnrecorded`
+- [x] 16. Config doc comments (`config.rs`, `.env.example`)
+- [x] 17. Tests — see Test Strategy
+- [x] 18. Verification sweep (two greps, fmt, clippy, tests, build)
