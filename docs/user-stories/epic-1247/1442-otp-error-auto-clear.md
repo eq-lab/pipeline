@@ -8,7 +8,7 @@ Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md#otpmo
 A rejected passcode used to leave the OTP screen in a dead end: six red boxes already at the
 sanitiser's length cap, so further keystrokes were silently swallowed, no caret rendered, and — in
 the production flow, where the Cloudflare Turnstile widget sits inside the modal — focus could be
-taken off the hidden input entirely. The error is now held for three seconds and then clears
+taken off the hidden input entirely. The error is now held for 1.5 seconds and then clears
 itself back to the shipped default state (Figma `6486:81665`): six empty boxes, caption gone,
 caret in box 1. Focus is also reclaimed the moment the rejection lands, so an immediate correction
 is typed into the field rather than lost.
@@ -20,7 +20,7 @@ production entry (logged in `docs/exec-plans/tech-debt-tracker.md`).
 
 These stories need `VITE_API_BASE_URL` pointed at a live API and `VITE_TURNSTILE_SITE_KEY` set, and
 a real inbox for a throwaway test address to reach the OTP screen with an outstanding passcode.
-Story 2's timing assertion is "about three seconds" by observation — the exact constant is
+Story 2's timing assertion is "about 1.5 seconds" by observation — the exact constant is
 `OTP_ERROR_VISIBLE_MS` in `useOtpModal.ts`.
 
 Styling-only assertions (spacing, colors) are out of scope here — visual fidelity is verified
@@ -57,7 +57,7 @@ the mouse.
 
 **Steps:**
 
-1. Wait about three seconds without interacting.
+1. Wait about 1.5 seconds without interacting.
 2. Type a single digit.
 
 **Expected outcomes:**
@@ -91,7 +91,7 @@ the mouse.
 
 ---
 
-## Story 4: A second wrong code gets its own full three seconds
+## Story 4: A second wrong code gets its own full 1.5 seconds
 
 **Persona:** LP who gets the code wrong twice in a row.
 
@@ -107,7 +107,7 @@ any six digits will be rejected once the first code is burned.
 **Expected outcomes:**
 
 - The second rejection shows the red boxes and the caption as before.
-- The error is held for a fresh ~3 s measured from the **second** rejection — it does not vanish
+- The error is held for a fresh ~1.5 s measured from the **second** rejection — it does not vanish
   after the ~1 s left over from the first window, and it does not clear twice.
 - After that window the field clears once, to six empty boxes with the caret in box 1.
 

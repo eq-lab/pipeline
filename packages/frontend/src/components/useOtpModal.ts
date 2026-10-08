@@ -12,7 +12,7 @@ export const RESEND_ACCEPTED_MESSAGE =
   "Request accepted. If no code arrives, retry after the countdown.";
 export const OTP_NETWORK_ERROR_MESSAGE =
   "Network error — check your connection and try again.";
-export const OTP_ERROR_VISIBLE_MS = 3000;
+export const OTP_ERROR_VISIBLE_MS = 1500;
 
 export type OtpStatus = "idle" | "verifying" | "error";
 

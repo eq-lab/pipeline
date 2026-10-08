@@ -411,13 +411,13 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
 - Any edit clears an `error` back to `idle`. A duplicate resubmission of the exact code already
   being verified (`OtpInput` can re-fire `onChange` with the same value on paste) is ignored —
   it does not call `verify` a second time.
-- An `error` is held for `OTP_ERROR_VISIBLE_MS` (3000 ms) and then clears itself: the code resets
+- An `error` is held for `OTP_ERROR_VISIBLE_MS` (1500 ms) and then clears itself: the code resets
   to the empty string, `status` returns to `idle`, the caption is removed, and focus is driven
   back to the OTP input so the caret sits in box 1 and the user can type a new code immediately.
   The screen is then byte-identical to the default state (Figma `6486:81665`). The duration is
   product behaviour — the Figma error frame (`6486:81863`) carries no timed affordance — chosen so
   the 9-word caption can be read, and spoken by a screen reader, before the layout changes.
-- The window is pre-empted by any edit: typing or deleting during those 3 s clears the error at
+- The window is pre-empted by any edit: typing or deleting during those 1.5 s clears the error at
   once, accepts the keystroke, and cancels the pending clear (nothing is wiped out from under the
   user). A second rejection restarts the window from zero rather than stacking a second timer. A
   successful verify, a `Resend` click, and closing or reopening the modal all cancel it. Clicking
@@ -449,7 +449,7 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
   ?.reset()` in a `finally`, and the widget also re-renders itself when a token expires; each
   re-render re-runs the challenge. That is the best-supported cause, and the guarded reclaim above
   is the fix for it. **Residual risk:** a steal that lands at an arbitrary moment *after* the
-  rejection render is only recovered by the next reclaim (the 3 s auto-clear) or by the user
+  rejection render is only recovered by the next reclaim (the 1.5 s auto-clear) or by the user
   clicking the boxes, which `OtpInput`'s root `onClick` already refocuses.
 - Reaching 6 digits sets `verifying` and awaits `verify(code)`: resolve → `idle` +
   `onVerified?.(code)`; `401` reject → invalid/expired code error; network/`5xx` reject → network
