@@ -434,5 +434,5 @@ All new tests are **pure unit tests** — no live network, no DB. Fixtures live 
 - `ARCHITECTURE.md` — one sentence in the per-chain task paragraph noting indexer polymorphism via `CHAIN_<id>_TYPE` (Step 14).
 - `docs/design-docs/multi-chain-kyc-sharding.md` — append "Stellar `chain_id` convention" subsection with the sentinel scheme (Step 15).
 - `docs/references/index.md` — optional one-line entry for Soroban RPC docs + Stellar contracts repo (Step 16; only if the index already references similar external docs).
-- `docs/exec-plans/active/issue-528-stellar-soroban-indexer.md` (this file) — kept until the PR merges; the manager moves it to `completed/` on close.
+- `docs/exec-plans/completed/issue-528-stellar-soroban-indexer.md` (this file) — kept until the PR merges; the manager moves it to `completed/` on close.
 - **No product spec update.** The change is a worker-internal feature (indexing infrastructure). No user-facing or agent-facing behaviour shifts in the API. The `chore`-of-feature rule applies: spec stays untouched.

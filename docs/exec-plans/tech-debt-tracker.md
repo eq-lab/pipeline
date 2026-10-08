@@ -568,7 +568,7 @@ line, whichever section it lands in.
   trustee copies of the **#840 registry-scale workaround** — cross-linked to TD-42-adjacent debt so
   they are removed **together with the LP copies when backend issue #840 is fixed** (otherwise the
   Loans-page amounts render 1000× too big and CCR 1000× too small). See #843's exec plan
-  (`docs/exec-plans/active/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
+  (`docs/exec-plans/completed/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
   detail.
 
   **Addendum (issues #845 / #847, Trustee Loan detail page — a fifth hand-mirroring):** the Loan
