@@ -1773,9 +1773,11 @@ it calls `useNavigate()`, which needs router context, so it mounts inside the ro
 raise one. It exports `ToastProvider` and `useToast()`, which returns `{ showToast(title, tone?) }`
 — `tone` defaults to `"success"` and is forwarded to `@pipeline/ui`'s `Toast`, the only renderer.
 One toast is live at a time (a second call replaces the first), it auto-dismisses after
-`TOAST_TIMEOUT_MS` (2.4 s), and the timer is cleared on unmount. The container is
-`fixed inset-x-0 bottom-[24px] z-[60]`, centred and `pointer-events-none` so it never blocks the
-page under it.
+`TOAST_TIMEOUT_MS` (2.4 s), and the timer is cleared on unmount. The container is pinned to the
+**bottom-right corner** (`fixed right-[24px] bottom-[24px] z-[60]`), not centred — a centred toast
+sits over the content the operator just acted on. It is `pointer-events-none` (the toast itself
+re-enables them) so it never blocks the page under it, and `max-w-[calc(100vw-48px)]` keeps it on
+screen on a narrow window.
 
 `useToast()` outside a provider returns a no-op `showToast` rather than throwing, so component
 tests that render a section in isolation need no wrapper. Introduced by #1453 for the deposits

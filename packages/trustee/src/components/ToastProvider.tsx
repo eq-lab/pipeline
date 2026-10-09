@@ -57,7 +57,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[24px] z-[60] flex justify-center px-[16px]">
+        <div className="pointer-events-none fixed right-[24px] bottom-[24px] z-[60] flex max-w-[calc(100vw-48px)] justify-end">
           <Toast
             key={toast.id}
             tone={toast.tone}

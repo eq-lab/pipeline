@@ -213,7 +213,7 @@ connected Stellar wallet.
   the Loans table — `$1.25M`, `$30.00K` — not as a long `$30,000.00` string.
 - **Recorded by** is plain text, not a chip: `…` plus the last five characters, with the full key
   as a hover tooltip. Clicking it copies the full key — the paste is the complete key, character
-  for character — and a short **Address copied** toast appears at the bottom of the window. The
+  for character — and a short **Address copied** toast appears in the bottom-right corner. The
   cell itself does not expand and no inline "Copied" appears, so the row never reflows. If the
   browser blocks clipboard access, no toast appears.
 - **PLUSD is the last column and carries the state and the action together** — there is no
