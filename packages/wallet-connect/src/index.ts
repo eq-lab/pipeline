@@ -175,6 +175,21 @@ export type {
   BuildUpdateMutableEnvelopeParams,
 } from "./stellar/contracts/loanRegistry";
 
+export {
+  recordWireIn,
+  buildRecordWireInEnvelope,
+  encodeRecordWireInArgs,
+  parseUsdDollarsToI128,
+  hexToBytes32ScVal,
+} from "./stellar/contracts/minter";
+export type {
+  RecordWireInArgs,
+  RecordWireInParams,
+  RecordWireInResult,
+  RecordWireInStage,
+  BuildRecordWireInEnvelopeParams,
+} from "./stellar/contracts/minter";
+
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";

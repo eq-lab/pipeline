@@ -837,6 +837,27 @@ at every KYB status — the endpoint does not gate on one.
   (sent trimmed), a valid non-future time sent as `…:00Z`. Validation shows on submit; the
   dialog closes on `201` and keeps drafts on error. `409` reads "A deposit with this payment
   reference is already recorded." Every settle invalidates the deposits query.
+- **Mint PLUSD** (#1449) — a trailing **Action** column. A row with `is_minted: true` shows
+  `Minted` in the PLUSD column and renders no control. Otherwise the cell is a `Mint PLUSD`
+  button that calls the yield minter's `record_wire_in` directly from the trustee's connected
+  Stellar wallet (`api/useRecordWireIn.ts` over `@pipeline/wallet-connect`'s `recordWireIn`;
+  see [deposits.md](../product-specs/deposits.md) for the signature, the `CASH_REPORTER`
+  requirement and the 7-decimal scale). Arguments come only from served data: `amount` is the
+  row's `amount` string, `value_date` is `occurred_at` in Unix seconds, `ref_hash` is the
+  served hash.
+- **Receiver rule** — the LP's `stellar_address` when `address_linked_at` is non-null,
+  otherwise `VITE_STELLAR_USDC_CUSTODY_ID`; when neither resolves the action is disabled. The
+  trustee's wallet is the signer and `caller`, never the receiver.
+- **States** — idle (`Mint PLUSD`) → `Awaiting signature…` → `Submitting…` → `Confirming…`
+  while in flight, then `Waiting for the indexer` with `Pending` in the PLUSD column until the
+  served `is_minted` flips. The pending set is in-memory only, bounded to ~2 min, and only
+  raises the deposits poll to 5 s; it is never persisted and never substitutes for the served
+  flag. Disabled reasons, rendered as the button's `title` and an `aria-describedby` hint, in
+  order: wallet not connected, minter id unset, no receiver resolvable, already minted,
+  waiting for the indexer, another mint in flight.
+- **Errors** — surfaced through `toUserError` in an `InlineError` with the raw contract text in
+  the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has
+  already been minted on-chain. Refresh the list."
 
 ### States & error copy
 

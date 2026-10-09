@@ -71,22 +71,25 @@ Testnet minter contract id: `CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJ
 
 ## Open Questions
 
+- **ANSWERED (issue comment, 2026-10-08):** the trustee wallet is the test signer for now;
+  `CASH_REPORTER` is held only by the backend developer's address on testnet, and granting it is
+  outside this issue. The frontend ships complete; end-to-end exercise waits on the grant.
 - The deployed minter maps `record_wire_in` to the **`CASH_REPORTER`** role, but the trustee wallets are granted `TRUSTEE` in `deployments/networks/testnet/config.json`. Should `CASH_REPORTER` be granted (delay 0) to the trustee wallets on testnet/staging so this action is usable, or is a different signer intended for the mint leg? The frontend work is unblocked either way, but the feature cannot be exercised end-to-end until this is settled.
 
 ## Implementation Steps
 
-1. **`packages/wallet-connect/src/stellar/contracts/minter.ts` (new).** Mirror `loanRegistry.ts`'s structure; file-header comment records the confirmed signature, the direct-invoke (no executor) decision, and the ×10^7 scale.
+1. **DONE** — **`packages/wallet-connect/src/stellar/contracts/minter.ts` (new).** Mirror `loanRegistry.ts`'s structure; file-header comment records the confirmed signature, the direct-invoke (no executor) decision, and the ×10^7 scale.
    - `export type RecordWireInStage = "awaiting-signature" | "submitting" | "confirming";`
    - `export function parseUsdDollarsToI128(decimalStr: string): bigint` — exact decimal-string → base units at 7 decimals; reject a non-numeric string, a negative/zero value, or more than 7 fractional digits. No `Number` arithmetic.
    - `export function hexToBytes32ScVal(hex: string): xdr.ScVal` — require exactly 64 lowercase hex chars, decode to 32 bytes, `xdr.ScVal.scvBytes`.
    - `export function encodeRecordWireInArgs({ caller, receiver, amount, valueDate, refHash })` → `[Address(caller).toScVal(), Address(receiver).toScVal(), i128, u64, bytesN32]` in exactly that order.
    - `export async function buildRecordWireInEnvelope(...)` — `new Contract(minterId).call("record_wire_in", ...args)`, `getAccount(caller)`, build, `simulateTransaction`, throw on simulation error including `simResult.error` verbatim, `assembleTransaction`, return XDR.
    - `export async function recordWireIn(...)` — build → `signTransaction` → `sendTransaction` → `pollTransaction`, with `onStageChange`, returning `{ hash, wireId }` where `wireId` is read from the final result's return value (fall back to the `wire_in` event topic, as `extractDrawnLoanId` does) and is `null` when it cannot be decoded.
-2. **`packages/wallet-connect/src/index.ts`.** Export `recordWireIn`, `buildRecordWireInEnvelope`, `encodeRecordWireInArgs`, `parseUsdDollarsToI128`, `hexToBytes32ScVal` and the stage/param types, following the existing export-comment style.
-3. **`packages/trustee/src/lib/env.ts`.** Add `STELLAR_YIELD_MINTER_ID: readString("VITE_STELLAR_YIELD_MINTER_ID", "")` with the established "empty = unconfigured, callers must short-circuit" comment.
-4. **`.env.example`.** Add `VITE_STELLAR_YIELD_MINTER_ID=CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK` next to the other `VITE_STELLAR_*` entries, with a one-line comment naming #1449 and the testnet deployment it comes from.
-5. **`packages/trustee/src/api/useRecordWireIn.ts` (new).** Shape it on `useRecordPayment.ts`: `useStellarWallet()`, a `stage` state, `useMutation`. Short-circuit with a clear message when `ENV.STELLAR_YIELD_MINTER_ID` is empty or the wallet is not connected. Input `{ lpId, depositId, receiver, amount, occurredAt, refHash }`; convert `occurredAt` (ISO-8601) to `value_date` Unix **seconds** and `amount` via `parseUsdDollarsToI128`. On success invalidate `["lp-bank-deposits", lpId]` and `["lp", lpId]`.
-6. **`packages/trustee/src/routes/-useLpBankDeposits.ts`.**
+2. **DONE** — **`packages/wallet-connect/src/index.ts`.** Export `recordWireIn`, `buildRecordWireInEnvelope`, `encodeRecordWireInArgs`, `parseUsdDollarsToI128`, `hexToBytes32ScVal` and the stage/param types, following the existing export-comment style.
+3. **DONE** — **`packages/trustee/src/lib/env.ts`.** Add `STELLAR_YIELD_MINTER_ID: readString("VITE_STELLAR_YIELD_MINTER_ID", "")` with the established "empty = unconfigured, callers must short-circuit" comment.
+4. **DONE** — **`.env.example`.** Add `VITE_STELLAR_YIELD_MINTER_ID=CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK` next to the other `VITE_STELLAR_*` entries, with a one-line comment naming #1449 and the testnet deployment it comes from.
+5. **DONE** — **`packages/trustee/src/api/useRecordWireIn.ts` (new).** Shape it on `useRecordPayment.ts`: `useStellarWallet()`, a `stage` state, `useMutation`. Short-circuit with a clear message when `ENV.STELLAR_YIELD_MINTER_ID` is empty or the wallet is not connected. Input `{ lpId, depositId, receiver, amount, occurredAt, refHash }`; convert `occurredAt` (ISO-8601) to `value_date` Unix **seconds** and `amount` via `parseUsdDollarsToI128`. On success invalidate `["lp-bank-deposits", lpId]` and `["lp", lpId]`.
+6. **DONE** — **`packages/trustee/src/routes/-useLpBankDeposits.ts`.**
    - Pull `useLp(lpId)` for `stellar_address` / `address_linked_at`.
    - `export function wireInReceiver(lp, custodyId): { receiver: string; isCustody: boolean } | null` — the LP's `stellar_address` when it is set **and** `address_linked_at` is non-null; otherwise `ENV.STELLAR_USDC_CUSTODY_ID`; `null` when neither is available (action disabled).
    - Extend `DepositRow` with `isMinted: boolean`, `refHash`, `amountRaw` (the served decimal string), `occurredAtIso`.
@@ -94,8 +97,8 @@ Testnet minter contract id: `CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJ
    - `mintDisabledReason(row)` returning the first applicable message: wallet not connected / minter id unset / no receiver available / already minted / a submit in flight.
    - Map on-chain errors through `toUserError` (`@/utils/userError`), surfacing the contract message verbatim in `details`; add a dedicated case so a `RefHashSeen` trap reads "This deposit's reference has already been minted on-chain. Refresh the list."
    - **Never** set a client-side minted flag — the `minted` cell stays derived from `deposit.is_minted`.
-7. **`packages/trustee/src/routes/-LpBankDepositsSection.tsx`.** Add a trailing "Action" column. For `is_minted === true` render the existing "Minted" state and no button. Otherwise render a `Button` labelled "Mint PLUSD", disabled with `title`/`aria-describedby` carrying `mintDisabledReason`, showing the stage text while in flight ("Awaiting signature…" / "Submitting…" / "Confirming…") and "Waiting for the indexer" while pending. Render the error through `InlineError` with `details`, matching the section's existing error treatment.
-8. **Docs** (step 9 below lists the files).
+7. **DONE** — **`packages/trustee/src/routes/-LpBankDepositsSection.tsx`.** Add a trailing "Action" column. For `is_minted === true` render the existing "Minted" state and no button. Otherwise render a `Button` labelled "Mint PLUSD", disabled with `title`/`aria-describedby` carrying `mintDisabledReason`, showing the stage text while in flight ("Awaiting signature…" / "Submitting…" / "Confirming…") and "Waiting for the indexer" while pending. Render the error through `InlineError` with `details`, matching the section's existing error treatment.
+8. **DONE** — **Docs** (step 9 below lists the files).
 
 ## Test Strategy
 

@@ -3,6 +3,8 @@ import { Button, InlineError } from "@pipeline/ui";
 import { useLpReviewDialog } from "./-useLpReviewDialog";
 import {
   useLpBankDepositsSection,
+  mintStageLabel,
+  type DepositRow,
   type LpBankDepositsSection as Section,
 } from "./-useLpBankDeposits";
 
@@ -65,7 +67,8 @@ export function LpBankDepositsSection({
                 <th className="py-2 pr-4 text-right font-normal">Amount</th>
                 <th className="py-2 pr-4 font-normal">Payment reference</th>
                 <th className="py-2 pr-4 font-normal">PLUSD</th>
-                <th className="py-2 font-normal">Recorded by</th>
+                <th className="py-2 pr-4 font-normal">Recorded by</th>
+                <th className="py-2 font-normal">Action</th>
               </tr>
             </thead>
             <tbody className="divide-pipeline-line divide-y">
@@ -81,17 +84,62 @@ export function LpBankDepositsSection({
                     {row.reference}
                   </td>
                   <td className="py-3 pr-4 whitespace-nowrap">{row.minted}</td>
-                  <td className="py-3 break-all">{row.recordedBy}</td>
+                  <td className="py-3 pr-4 break-all">{row.recordedBy}</td>
+                  <td className="py-3 whitespace-nowrap">
+                    <MintCell row={row} section={section} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {section.mintError && (
+        <div role="alert">
+          <InlineError
+            message={section.mintError.message}
+            details={section.mintError.details}
+          />
+        </div>
+      )}
       {section.open && (
         <RecordBankDepositDialog section={section} legalName={legalName} />
       )}
     </section>
+  );
+}
+
+function MintCell({ row, section }: { row: DepositRow; section: Section }) {
+  if (row.isMinted) return null;
+
+  const inFlight = section.mintingDepositId === row.id;
+
+  if (row.isPending && !inFlight) {
+    return (
+      <span className="text-pipeline-ink-muted">Waiting for the indexer</span>
+    );
+  }
+
+  const reason = inFlight ? null : section.mintDisabledReason(row);
+  const hintId = `lp-deposit-mint-hint-${row.id}`;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Button
+        variant="secondary"
+        onClick={() => void section.mintDeposit(row)}
+        disabled={reason !== null || inFlight}
+        title={reason ?? undefined}
+        aria-describedby={reason ? hintId : undefined}
+      >
+        {inFlight ? mintStageLabel(section.mintStage) : "Mint PLUSD"}
+      </Button>
+      {reason && (
+        <span id={hintId} className="text-pipeline-ink-muted text-xs">
+          {reason}
+        </span>
+      )}
+    </div>
   );
 }
 

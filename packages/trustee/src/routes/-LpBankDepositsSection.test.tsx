@@ -2,21 +2,51 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ApiError } from "@/api/client";
 import type { LpBankDeposit } from "@/api/useLpBankDeposits";
+import type { LpDetail } from "@/api/useLp";
 
 vi.mock("@/api/useLpBankDeposits", () => ({
   useLpBankDeposits: vi.fn(),
   useRecordBankDeposit: vi.fn(),
+  LP_BANK_DEPOSITS_REFETCH_MS: 30_000,
 }));
+vi.mock("@/api/useLp", () => ({ useLp: vi.fn() }));
+vi.mock("@/api/useRecordWireIn", () => ({ useRecordWireIn: vi.fn() }));
+vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+
+const envMock = {
+  STELLAR_USDC_CUSTODY_ID:
+    "GCUSTODY00000000000000000000000000000000000000000000000",
+  STELLAR_YIELD_MINTER_ID:
+    "CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK",
+};
+
+vi.mock("@/lib/env", () => ({
+  get ENV() {
+    return envMock;
+  },
+}));
+
 import {
   useLpBankDeposits,
   useRecordBankDeposit,
 } from "@/api/useLpBankDeposits";
+import { useLp } from "@/api/useLp";
+import { useRecordWireIn } from "@/api/useRecordWireIn";
+import { useStellarWallet } from "@pipeline/wallet-connect";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 
 const mockList = vi.mocked(useLpBankDeposits);
 const mockRecord = vi.mocked(useRecordBankDeposit);
+const mockLp = vi.mocked(useLp);
+const mockMint = vi.mocked(useRecordWireIn);
+const mockWallet = vi.mocked(useStellarWallet);
 const mutateAsync = vi.fn();
 const reset = vi.fn();
+const mintAsync = vi.fn();
+const mintReset = vi.fn();
+
+const LP_WALLET = "GLPWALLET0000000000000000000000000000000000000000000000";
+const CUSTODY = envMock.STELLAR_USDC_CUSTODY_ID;
 
 const DEPOSIT: LpBankDeposit = {
   id: 3,
@@ -54,6 +84,38 @@ function recorder(error: Error | null = null, isPending = false) {
   } as unknown as ReturnType<typeof useRecordBankDeposit>);
 }
 
+function lp(overrides: Partial<LpDetail> = {}) {
+  mockLp.mockReturnValue({
+    data: {
+      id: 7,
+      stellar_address: LP_WALLET,
+      address_linked_at: "2026-09-01T00:00:00Z",
+      ...overrides,
+    },
+  } as unknown as ReturnType<typeof useLp>);
+}
+
+function minter(
+  overrides: { error?: Error | null; stage?: string | null } = {},
+) {
+  mockMint.mockReturnValue({
+    mutateAsync: mintAsync,
+    reset: mintReset,
+    isPending: false,
+    isSuccess: false,
+    error: overrides.error ?? null,
+    stage: overrides.stage ?? null,
+  } as unknown as ReturnType<typeof useRecordWireIn>);
+}
+
+function wallet(isConnected = true) {
+  mockWallet.mockReturnValue({
+    address: isConnected ? "GTRUSTEEWALLET" : "",
+    isConnected,
+    signTransaction: vi.fn(),
+  } as unknown as ReturnType<typeof useStellarWallet>);
+}
+
 function renderSection() {
   return render(<LpBankDepositsSection lpId={7} legalName="Acme Ltd" />);
 }
@@ -61,9 +123,20 @@ function renderSection() {
 beforeEach(() => {
   mockList.mockReset();
   mockRecord.mockReset();
+  mockLp.mockReset();
+  mockMint.mockReset();
+  mockWallet.mockReset();
   mutateAsync.mockReset();
   reset.mockReset();
+  mintAsync.mockReset();
+  mintReset.mockReset();
+  envMock.STELLAR_USDC_CUSTODY_ID = CUSTODY;
+  envMock.STELLAR_YIELD_MINTER_ID =
+    "CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK";
   recorder();
+  lp();
+  minter();
+  wallet();
 });
 
 describe("LpBankDepositsSection — list", () => {
@@ -149,5 +222,145 @@ describe("LpBankDepositsSection — record", () => {
     expect(dialog).toHaveTextContent(
       "A deposit with this payment reference is already recorded.",
     );
+  });
+});
+
+describe("LpBankDepositsSection — mint PLUSD", () => {
+  it("mints to the LP wallet when the address is linked", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+
+    await waitFor(() =>
+      expect(mintAsync).toHaveBeenCalledWith({
+        lpId: 7,
+        depositId: 3,
+        receiver: LP_WALLET,
+        amount: "1250000.5",
+        occurredAt: "2026-10-05T15:41:00Z",
+        refHash: "ab".repeat(32),
+      }),
+    );
+  });
+
+  it("falls back to the custody account when no wallet is linked", async () => {
+    lp({ address_linked_at: null });
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+
+    await waitFor(() =>
+      expect(mintAsync.mock.calls[0]![0].receiver).toBe(CUSTODY),
+    );
+  });
+
+  it("shows Minted and no action for a minted row", () => {
+    list({ data: { deposits: [{ ...DEPOSIT, is_minted: true }] } });
+    renderSection();
+
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Minted");
+    expect(
+      screen.queryByRole("button", { name: "Mint PLUSD" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("disables the action with a reason when the wallet is disconnected", () => {
+    wallet(false);
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const button = screen.getByRole("button", { name: "Mint PLUSD" });
+    expect(button).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(
+      "Connect your trustee wallet to mint PLUSD.",
+    );
+  });
+
+  it("disables the action when the minter id is unset", () => {
+    envMock.STELLAR_YIELD_MINTER_ID = "";
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(
+      "On-chain PLUSD minting is not configured for this environment.",
+    );
+  });
+
+  it("disables the action when no receiver can be resolved", () => {
+    lp({ stellar_address: null, address_linked_at: null });
+    envMock.STELLAR_USDC_CUSTODY_ID = "";
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(
+      "no linked Stellar wallet and no custody account is configured",
+    );
+  });
+
+  it("holds Waiting for the indexer until the served is_minted flips", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    const { rerender } = renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Waiting for the indexer")).toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Pending");
+
+    list({ data: { deposits: [{ ...DEPOSIT, is_minted: true }] } });
+    rerender(<LpBankDepositsSection lpId={7} legalName="Acme Ltd" />);
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("row")[1]).toHaveTextContent("Minted"),
+    );
+    expect(
+      screen.queryByText("Waiting for the indexer"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("surfaces a RefHashSeen trap with its own message and raw details", () => {
+    minter({
+      error: new Error(
+        "recordWireIn simulation error: HostError: Error(Contract, #9) RefHashSeen",
+      ),
+    });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const alert = screen.getAllByRole("alert").at(-1)!;
+    expect(alert).toHaveTextContent(
+      "This deposit's reference has already been minted on-chain. Refresh the list.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /details/i }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("RefHashSeen");
+  });
+
+  it("shows the stage label while a mint is in flight", async () => {
+    minter({ stage: "awaiting-signature" });
+    let resolveMint: (value: unknown) => void = () => {};
+    mintAsync.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveMint = resolve;
+      }),
+    );
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Awaiting signature…" }),
+      ).toBeDisabled(),
+    );
+    resolveMint({ hash: "tx", wireId: 1 });
   });
 });

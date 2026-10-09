@@ -125,6 +125,8 @@ export const ENV = Object.freeze({
     "",
   ),
 
+  STELLAR_YIELD_MINTER_ID: readString("VITE_STELLAR_YIELD_MINTER_ID", ""),
+
   /**
    * Sibling-deployment URLs for the cross-deployment network switcher
    * (issue #1032), e.g. `"mainnet=https://dashboard.pipeline.one,testnet=https://dashboard.pipeline.stage.eqlab.net"`.
