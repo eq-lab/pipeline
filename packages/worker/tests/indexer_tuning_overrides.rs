@@ -1,4 +1,4 @@
-//! Per-chain indexer tuning overrides (#1435) — `CHAIN_<id>_INDEXER_*` resolving
+//! Per-chain indexer tuning overrides (#1435) — `CHAIN_<id>_<TYPE>_INDEXER_*` resolving
 //! through `JOB_INDEXER_*` to the hard-coded default, on both the EVM and the
 //! Stellar arm. See `docs/exec-plans/active/issue-1435-per-chain-indexer-tuning.md`.
 
@@ -31,8 +31,10 @@ fn clear_tuning(chain_ids: &[i64]) {
         unsafe { std::env::remove_var(key) };
     }
     for id in chain_ids {
-        for suffix in CHAIN_SUFFIXES {
-            unsafe { std::env::remove_var(format!("CHAIN_{id}_INDEXER_{suffix}")) };
+        for kind in ["EVM", "STELLAR"] {
+            for suffix in CHAIN_SUFFIXES {
+                unsafe { std::env::remove_var(format!("CHAIN_{id}_{kind}_INDEXER_{suffix}")) };
+            }
         }
     }
 }
@@ -45,18 +47,18 @@ fn set_job(range: &str, interval: &str, confirmations: &str) {
     }
 }
 
-fn set_chain(chain_id: i64, range: &str, interval: &str, confirmations: &str) {
+fn set_chain(chain_id: i64, kind: &str, range: &str, interval: &str, confirmations: &str) {
     unsafe {
         std::env::set_var(
-            format!("CHAIN_{chain_id}_INDEXER_POLLING_BLOCK_RANGE"),
+            format!("CHAIN_{chain_id}_{kind}_INDEXER_POLLING_BLOCK_RANGE"),
             range,
         );
         std::env::set_var(
-            format!("CHAIN_{chain_id}_INDEXER_POLLING_INTERVAL_MS"),
+            format!("CHAIN_{chain_id}_{kind}_INDEXER_POLLING_INTERVAL_MS"),
             interval,
         );
         std::env::set_var(
-            format!("CHAIN_{chain_id}_INDEXER_LOG_CONFIRMATIONS_DELAY"),
+            format!("CHAIN_{chain_id}_{kind}_INDEXER_LOG_CONFIRMATIONS_DELAY"),
             confirmations,
         );
     }
@@ -64,25 +66,26 @@ fn set_chain(chain_id: i64, range: &str, interval: &str, confirmations: &str) {
 
 fn set_evm_required(chain_id: i64) {
     unsafe {
-        std::env::set_var(format!("CHAIN_{chain_id}_ETH_RPC_URL"), "https://rpc.test");
-        std::env::set_var(format!("CHAIN_{chain_id}_DM_CONTRACTS"), "0x01");
-        std::env::set_var(format!("CHAIN_{chain_id}_WQ_CONTRACTS"), "0x02");
-        std::env::set_var(format!("CHAIN_{chain_id}_SPLUSD_CONTRACTS"), "0x03");
-        std::env::set_var(format!("CHAIN_{chain_id}_LOAN_REGISTRY_CONTRACTS"), "0x04");
-        std::env::set_var(format!("CHAIN_{chain_id}_YIELD_MINTER_CONTRACTS"), "0x05");
+        std::env::set_var(format!("CHAIN_{chain_id}_EVM_RPC_URL"), "https://rpc.test");
+        let ip = format!("CHAIN_{chain_id}_EVM_INDEXER_");
+        std::env::set_var(format!("{ip}DEPOSIT_MANAGER_ADDRESS"), "0x01");
+        std::env::set_var(format!("{ip}WITHDRAWAL_QUEUE_ADDRESS"), "0x02");
+        std::env::set_var(format!("{ip}STAKED_PLUSD_ADDRESS"), "0x03");
+        std::env::set_var(format!("{ip}LOAN_REGISTRY_ADDRESS"), "0x04");
+        std::env::set_var(format!("{ip}MINTER_ADDRESS"), "0x05");
     }
 }
 
 fn clear_evm_required(chain_id: i64) {
+    unsafe { std::env::remove_var(format!("CHAIN_{chain_id}_EVM_RPC_URL")) };
     for key in [
-        "ETH_RPC_URL",
-        "DM_CONTRACTS",
-        "WQ_CONTRACTS",
-        "SPLUSD_CONTRACTS",
-        "LOAN_REGISTRY_CONTRACTS",
-        "YIELD_MINTER_CONTRACTS",
+        "DEPOSIT_MANAGER_ADDRESS",
+        "WITHDRAWAL_QUEUE_ADDRESS",
+        "STAKED_PLUSD_ADDRESS",
+        "LOAN_REGISTRY_ADDRESS",
+        "MINTER_ADDRESS",
     ] {
-        unsafe { std::env::remove_var(format!("CHAIN_{chain_id}_{key}")) };
+        unsafe { std::env::remove_var(format!("CHAIN_{chain_id}_EVM_INDEXER_{key}")) };
     }
 }
 
@@ -95,15 +98,15 @@ fn set_stellar_required(chain_id: i64) {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -114,9 +117,9 @@ fn clear_stellar_required(chain_id: i64) {
     for key in [
         "RPC_URL",
         "NETWORK_PASSPHRASE",
-        "DEPOSIT_MANAGER_ID",
-        "WITHDRAWAL_QUEUE_ID",
-        "STAKED_PLUSD_ID",
+        "INDEXER_DEPOSIT_MANAGER_ADDRESS",
+        "INDEXER_WITHDRAWAL_QUEUE_ADDRESS",
+        "INDEXER_STAKED_PLUSD_ADDRESS",
     ] {
         unsafe { std::env::remove_var(format!("{p}{key}")) };
     }
@@ -137,7 +140,7 @@ fn evm_per_chain_overrides_win_over_job_level() {
     clear_tuning(&[id]);
     set_evm_required(id);
     set_job("1111", "222", "33");
-    set_chain(id, "5000", "900", "64");
+    set_chain(id, "EVM", "5000", "900", "64");
 
     let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
     assert_eq!(s.polling_block_range, 5000);
@@ -188,7 +191,7 @@ fn evm_blank_per_chain_falls_through_to_job_level() {
     clear_tuning(&[id]);
     set_evm_required(id);
     set_job("1111", "222", "33");
-    set_chain(id, "", "   ", "");
+    set_chain(id, "EVM", "", "   ", "");
 
     let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
     assert_eq!(s.polling_block_range, 1111);
@@ -205,7 +208,7 @@ fn evm_per_chain_value_is_trimmed() {
     let id = 70_005_i64;
     clear_tuning(&[id]);
     set_evm_required(id);
-    set_chain(id, " 2048 ", " 750 ", " 40 ");
+    set_chain(id, "EVM", " 2048 ", " 750 ", " 40 ");
 
     let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
     assert_eq!(s.polling_block_range, 2048);
@@ -225,7 +228,7 @@ fn evm_invalid_per_chain_value_errors_naming_the_chain_key() {
     set_job("1111", "222", "33");
     unsafe {
         std::env::set_var(
-            format!("CHAIN_{id}_INDEXER_POLLING_BLOCK_RANGE"),
+            format!("CHAIN_{id}_EVM_INDEXER_POLLING_BLOCK_RANGE"),
             "not-a-number",
         );
     }
@@ -235,7 +238,7 @@ fn evm_invalid_per_chain_value_errors_naming_the_chain_key() {
         .expect("must reject");
     let msg = format!("{err:#}");
     assert!(
-        msg.contains(&format!("CHAIN_{id}_INDEXER_POLLING_BLOCK_RANGE")),
+        msg.contains(&format!("CHAIN_{id}_EVM_INDEXER_POLLING_BLOCK_RANGE")),
         "error should name the per-chain key, got: {msg}"
     );
     assert!(
@@ -254,7 +257,7 @@ fn evm_zero_polling_range_is_rejected_from_either_layer() {
     clear_tuning(&[id]);
     set_evm_required(id);
 
-    unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_BLOCK_RANGE"), "0") };
+    unsafe { std::env::set_var(format!("CHAIN_{id}_EVM_INDEXER_POLLING_BLOCK_RANGE"), "0") };
     let err = IndexerJobSettings::from_chain_env(id)
         .err()
         .expect("per-chain 0 must be rejected");
@@ -277,7 +280,7 @@ fn evm_zero_confirmations_stays_legal() {
     let id = 70_008_i64;
     clear_tuning(&[id]);
     set_evm_required(id);
-    set_chain(id, "1000", "500", "0");
+    set_chain(id, "EVM", "1000", "500", "0");
 
     let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
     assert_eq!(s.log_confirmations_delay, 0);
@@ -293,7 +296,7 @@ fn evm_zero_polling_interval_is_rejected_from_either_layer() {
     clear_tuning(&[id]);
     set_evm_required(id);
 
-    unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_INTERVAL_MS"), "0") };
+    unsafe { std::env::set_var(format!("CHAIN_{id}_EVM_INDEXER_POLLING_INTERVAL_MS"), "0") };
     let err = IndexerJobSettings::from_chain_env(id)
         .err()
         .expect("per-chain 0 must be rejected");
@@ -318,10 +321,10 @@ fn two_chains_resolve_tuning_independently() {
     set_evm_required(a);
     set_evm_required(b);
     set_job("1111", "222", "33");
-    set_chain(a, "5000", "900", "64");
+    set_chain(a, "EVM", "5000", "900", "64");
     unsafe {
         std::env::set_var("CHAINS", format!("{a},{b}"));
-        std::env::set_var(format!("CHAIN_{b}_INDEXER_POLLING_BLOCK_RANGE"), "250");
+        std::env::set_var(format!("CHAIN_{b}_EVM_INDEXER_POLLING_BLOCK_RANGE"), "250");
     }
 
     let all = IndexerSettings::all_from_env().expect("all_from_env");
@@ -393,17 +396,17 @@ fn blank_start_block_still_aborts_rather_than_seeding_genesis() {
     let id = 70_014_i64;
     clear_tuning(&[id]);
     set_evm_required(id);
-    unsafe { std::env::set_var(format!("CHAIN_{id}_START_BLOCK"), "") };
+    unsafe { std::env::set_var(format!("CHAIN_{id}_EVM_START_BLOCK"), "") };
 
     let err = IndexerJobSettings::from_chain_env(id)
         .err()
         .expect("a blank cursor seed must not silently become 0");
     assert!(
-        format!("{err:#}").contains("START_BLOCK"),
+        format!("{err:#}").contains("EVM_START_BLOCK"),
         "error should name the cursor key, got: {err:#}"
     );
 
-    unsafe { std::env::remove_var(format!("CHAIN_{id}_START_BLOCK")) };
+    unsafe { std::env::remove_var(format!("CHAIN_{id}_EVM_START_BLOCK")) };
     clear_tuning(&[id]);
     clear_evm_required(id);
 }
@@ -417,7 +420,7 @@ fn stellar_per_chain_overrides_win_over_job_level() {
     clear_tuning(&[id]);
     set_stellar_required(id);
     set_job("1111", "222", "33");
-    set_chain(id, "4096", "1500", "64");
+    set_chain(id, "STELLAR", "4096", "1500", "64");
 
     let s = StellarIndexerSettings::from_chain_env(id).expect("settings parse");
     assert_eq!(s.polling_ledger_range, 4096);
@@ -465,7 +468,7 @@ fn stellar_blank_per_chain_falls_through_to_job_level() {
     clear_tuning(&[id]);
     set_stellar_required(id);
     set_job("1111", "222", "33");
-    set_chain(id, "  ", "", "");
+    set_chain(id, "STELLAR", "  ", "", "");
 
     let s = StellarIndexerSettings::from_chain_env(id).expect("settings parse");
     assert_eq!(s.polling_ledger_range, 1111);
@@ -481,7 +484,12 @@ fn stellar_zero_ledger_range_is_rejected() {
     let id = 79_000_005_i64;
     clear_tuning(&[id]);
     set_stellar_required(id);
-    unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_BLOCK_RANGE"), "0") };
+    unsafe {
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_INDEXER_POLLING_BLOCK_RANGE"),
+            "0",
+        );
+    };
 
     let err = StellarIndexerSettings::from_chain_env(id)
         .err()
@@ -498,7 +506,12 @@ fn stellar_zero_polling_interval_is_rejected() {
     let id = 79_000_007_i64;
     clear_tuning(&[id]);
     set_stellar_required(id);
-    unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_INTERVAL_MS"), "0") };
+    unsafe {
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_INDEXER_POLLING_INTERVAL_MS"),
+            "0",
+        );
+    };
 
     let err = StellarIndexerSettings::from_chain_env(id)
         .err()
@@ -516,7 +529,10 @@ fn stellar_ignores_a_per_chain_confirmations_delay() {
     clear_tuning(&[id]);
     set_stellar_required(id);
     unsafe {
-        std::env::set_var(format!("CHAIN_{id}_INDEXER_LOG_CONFIRMATIONS_DELAY"), "64");
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_INDEXER_LOG_CONFIRMATIONS_DELAY"),
+            "64",
+        );
     }
 
     let s = StellarIndexerSettings::from_chain_env(id).expect("settings parse");

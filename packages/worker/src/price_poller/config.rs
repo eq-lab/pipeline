@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use std::env;
 
-use crate::indexer::config::{parse_chain_type, parse_chains_env, ChainType};
+use crate::indexer::config::{
+    parse_chain_type, parse_chains_env, validate_chain_kind_keys, ChainType,
+};
 
 // ─── EVM price-poller settings ────────────────────────────────────────────────
 
@@ -22,12 +24,12 @@ pub struct EvmPricePollerSettings {
 
 impl EvmPricePollerSettings {
     /// Parse EVM price-poller settings for a single chain using `CHAIN_<id>_*` env vars.
-    /// Falls back to `CHAIN_<id>_ETH_RPC_URL` from the indexer config (same URL).
+    /// Shares `CHAIN_<id>_EVM_RPC_URL` with the indexer (same URL).
     pub fn from_chain_env(chain_id: i64) -> Result<Self> {
         let p = format!("CHAIN_{chain_id}_");
 
-        let eth_rpc_url = env::var(format!("{p}ETH_RPC_URL"))
-            .with_context(|| format!("CHAIN_{chain_id}_ETH_RPC_URL is not set"))?;
+        let eth_rpc_url = env::var(format!("{p}EVM_RPC_URL"))
+            .with_context(|| format!("CHAIN_{chain_id}_EVM_RPC_URL is not set"))?;
 
         let start_block: u64 = env::var("JOB_PRICE_POLLER_START_BLOCK")
             .ok()
@@ -145,13 +147,17 @@ impl PricePollerSettings {
         let chain_ids = parse_chains_env()?;
         chain_ids
             .into_iter()
-            .map(|id| match parse_chain_type(id)? {
-                ChainType::Evm => Ok(PricePollerSettings::Evm(
-                    EvmPricePollerSettings::from_chain_env(id)?,
-                )),
-                ChainType::Stellar => Ok(PricePollerSettings::Stellar(
-                    StellarPricePollerSettings::from_chain_env(id)?,
-                )),
+            .map(|id| {
+                let kind = parse_chain_type(id)?;
+                validate_chain_kind_keys(id, kind)?;
+                match kind {
+                    ChainType::Evm => Ok(PricePollerSettings::Evm(
+                        EvmPricePollerSettings::from_chain_env(id)?,
+                    )),
+                    ChainType::Stellar => Ok(PricePollerSettings::Stellar(
+                        StellarPricePollerSettings::from_chain_env(id)?,
+                    )),
+                }
             })
             .collect()
     }
