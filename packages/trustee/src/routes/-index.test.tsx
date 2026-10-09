@@ -8,7 +8,7 @@
  * deterministic and never hits the network.
  *
  * `@pipeline/wallet-connect` is mocked because `CapitalAllocationCard` now
- * (issue #805) mounts `useCapitalWalletBalance`, which statically imports
+ * (issue #805) mounts `useUsdcCustodyBalance`, which statically imports
  * `@pipeline/wallet-connect` for its on-chain read. Without this mock, the
  * real module graph (down to `@creit.tech/stellar-wallets-kit`'s
  * `defaultModules()` / `@stellar/freighter-api`) gets pulled in, which can

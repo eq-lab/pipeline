@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { ApiError } from "@/api/client";
 import type { LpBankDeposit } from "@/api/useLpBankDeposits";
 import type { LpDetail } from "@/api/useLp";
@@ -36,6 +42,7 @@ import { useLp } from "@/api/useLp";
 import { useRecordWireIn } from "@/api/useRecordWireIn";
 import { useStellarWallet } from "@pipeline/wallet-connect";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
+import { MINT_PENDING_WINDOW_MS } from "./-useLpBankDeposits";
 
 const mockList = vi.mocked(useLpBankDeposits);
 const mockRecord = vi.mocked(useRecordBankDeposit);
@@ -397,5 +404,100 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
       ).toBeDisabled(),
     );
     resolveMint({ hash: "tx", wireId: 1 });
+  });
+});
+
+describe("LpBankDepositsSection — mint pending window", () => {
+  const SECOND_DEPOSIT: LpBankDeposit = {
+    ...DEPOSIT,
+    id: 4,
+    payment_reference: "WIRE-REF-9",
+    ref_hash: "cd".repeat(32),
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function clickMint(index = 0) {
+    const buttons = screen.getAllByRole("button", { name: "Mint PLUSD" });
+    await act(async () => {
+      fireEvent.click(buttons[index]!);
+    });
+  }
+
+  it("drops the pending flag when the window expires", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await clickMint();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Pending");
+
+    act(() => {
+      vi.advanceTimersByTime(MINT_PENDING_WINDOW_MS);
+    });
+
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Not minted");
+    expect(
+      screen.getByRole("button", { name: "Mint PLUSD" }),
+    ).toBeInTheDocument();
+  });
+
+  it("drops the pending flag early when the served is_minted flips", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    const { rerender } = renderSection();
+
+    await clickMint();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Pending");
+
+    list({ data: { deposits: [{ ...DEPOSIT, is_minted: true }] } });
+    await act(async () => {
+      rerender(<LpBankDepositsSection lpId={7} legalName="Acme Ltd" />);
+    });
+
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Minted");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("leaves no timer armed when unmounted mid-window", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    const { unmount } = renderSection();
+
+    await clickMint();
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not restart an earlier deposit's window when a second mint starts", async () => {
+    mintAsync.mockResolvedValue({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT, SECOND_DEPOSIT] } });
+    renderSection();
+
+    await clickMint();
+
+    act(() => {
+      vi.advanceTimersByTime(MINT_PENDING_WINDOW_MS / 2);
+    });
+    await clickMint();
+
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Pending");
+    expect(screen.getAllByRole("row")[2]).toHaveTextContent("Pending");
+
+    act(() => {
+      vi.advanceTimersByTime(MINT_PENDING_WINDOW_MS / 2);
+    });
+
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Not minted");
+    expect(screen.getAllByRole("row")[2]).toHaveTextContent("Pending");
   });
 });

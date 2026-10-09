@@ -27,7 +27,7 @@
  * `getSacBalance` (issue #805) is a plain async Stellar SAC `balance(account)`
  * read — NOT a hook (this package forbids `@tanstack/react-query` outside
  * `src/evm/**`). Callers that want polling/caching wrap it in their own
- * `useQuery` (e.g. the Trustee's `useCapitalWalletBalance`).
+ * `useQuery` (e.g. the Trustee's `useUsdcCustodyBalance`).
  */
 
 // ── Config ───────────────────────────────────────────────────────────────────

@@ -133,12 +133,14 @@ export function mapDepositToRow(
 }
 
 export function useLpBankDepositsSection(lpId: number) {
-  const [pendingIds, setPendingIds] = useState<ReadonlySet<number>>(
-    () => new Set<number>(),
-  );
+  const [pendingDeadlines, setPendingDeadlines] = useState<
+    ReadonlyMap<number, number>
+  >(() => new Map<number, number>());
   const query = useLpBankDeposits(
     lpId,
-    pendingIds.size > 0 ? MINT_PENDING_REFETCH_MS : LP_BANK_DEPOSITS_REFETCH_MS,
+    pendingDeadlines.size > 0
+      ? MINT_PENDING_REFETCH_MS
+      : LP_BANK_DEPOSITS_REFETCH_MS,
   );
   const lpQuery = useLp(lpId);
   const mutation = useRecordBankDeposit();
@@ -151,7 +153,6 @@ export function useLpBankDepositsSection(lpId: number) {
   const [touched, setTouched] = useState(false);
   const [mintingDepositId, setMintingDepositId] = useState<number | null>(null);
   const submitting = useRef(false);
-  const pendingTimers = useRef<number[]>([]);
 
   const deposits = query.data?.deposits ?? [];
   const mintedIdsKey = deposits
@@ -160,21 +161,35 @@ export function useLpBankDepositsSection(lpId: number) {
     .join(",");
 
   useEffect(() => {
-    if (pendingIds.size === 0) return;
+    if (pendingDeadlines.size === 0) return;
     const minted = new Set(
       mintedIdsKey === "" ? [] : mintedIdsKey.split(",").map(Number),
     );
-    const next = new Set([...pendingIds].filter((id) => !minted.has(id)));
-    if (next.size !== pendingIds.size) setPendingIds(next);
-  }, [mintedIdsKey, pendingIds]);
+    const next = new Map(
+      [...pendingDeadlines].filter(([id]) => !minted.has(id)),
+    );
+    if (next.size !== pendingDeadlines.size) setPendingDeadlines(next);
+  }, [mintedIdsKey, pendingDeadlines]);
 
-  useEffect(
-    () => () => {
-      for (const timer of pendingTimers.current) clearTimeout(timer);
-      pendingTimers.current = [];
-    },
-    [],
-  );
+  useEffect(() => {
+    if (pendingDeadlines.size === 0) return;
+    const now = Date.now();
+    const timers = [...pendingDeadlines].map(([id, deadline]) =>
+      setTimeout(
+        () =>
+          setPendingDeadlines((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          }),
+        Math.max(0, deadline - now),
+      ),
+    );
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [pendingDeadlines]);
 
   const receiver = wireInReceiver(lpQuery.data, ENV.STELLAR_CAPITAL_WALLET_ID);
 
@@ -259,15 +274,8 @@ export function useLpBankDepositsSection(lpId: number) {
         occurredAt: row.occurredAtIso,
         refHash: row.refHash,
       });
-      setPendingIds((prev) => new Set(prev).add(row.id));
-      pendingTimers.current.push(
-        setTimeout(() => {
-          setPendingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(row.id);
-            return next;
-          });
-        }, MINT_PENDING_WINDOW_MS) as unknown as number,
+      setPendingDeadlines((prev) =>
+        new Map(prev).set(row.id, Date.now() + MINT_PENDING_WINDOW_MS),
       );
     } catch {
       return;
@@ -279,7 +287,7 @@ export function useLpBankDepositsSection(lpId: number) {
   return {
     query,
     rows: deposits.map((deposit) =>
-      mapDepositToRow(deposit, pendingIds.has(deposit.id)),
+      mapDepositToRow(deposit, pendingDeadlines.has(deposit.id)),
     ),
     state: query.isPending
       ? ("loading" as const)

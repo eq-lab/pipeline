@@ -162,16 +162,20 @@ function toWireId(native: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-function extractWireId(
+function wireIdFromReturnValue(
   finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
 ): number | null {
+  if (!finalResult.returnValue) return null;
   try {
-    if (finalResult.returnValue) {
-      const id = toWireId(scValToNative(finalResult.returnValue));
-      if (id != null) return id;
-    }
-  } catch {}
+    return toWireId(scValToNative(finalResult.returnValue));
+  } catch {
+    return null;
+  }
+}
 
+function wireIdFromEvents(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
   try {
     const events = finalResult.resultMetaXdr.v3().sorobanMeta()?.events() ?? [];
     for (const event of events) {
@@ -184,9 +188,16 @@ function extractWireId(
         if (id != null) return id;
       }
     }
-  } catch {}
-
+  } catch {
+    return null;
+  }
   return null;
+}
+
+function extractWireId(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
+  return wireIdFromReturnValue(finalResult) ?? wireIdFromEvents(finalResult);
 }
 
 export async function recordWireIn({
