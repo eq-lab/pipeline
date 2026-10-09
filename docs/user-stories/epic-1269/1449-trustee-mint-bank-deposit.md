@@ -27,12 +27,13 @@ positional args, the amount at 7 decimals (a `$50,000.00` deposit is `5000000000
 date as the deposit's `occurred_at` in Unix seconds, and the 32-byte reference hash equal to the
 row's served `ref_hash`.
 
-## Story 3: Without a linked wallet the mint goes to custody
+## Story 3: Without a linked wallet the mint goes to the capital wallet
 
 For an LP with no linked address (`address_linked_at` null), the same click sends the mint to
-`VITE_STELLAR_USDC_CUSTODY_ID` instead — nothing else about the call changes. With neither a linked
-address nor a configured custody account, the button is disabled and its hint reads "This LP has no
-linked Stellar wallet and no custody account is configured."
+`VITE_STELLAR_CAPITAL_WALLET_ID` instead — nothing else about the call changes. The USDC custody
+account is never used as the receiver. With neither a linked address nor a configured capital
+wallet, the button is disabled and its hint reads "This LP has no linked Stellar wallet and no
+capital wallet is configured."
 
 ## Story 4: The button says why it cannot be used
 

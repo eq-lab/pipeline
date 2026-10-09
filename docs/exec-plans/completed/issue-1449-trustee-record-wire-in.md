@@ -4,6 +4,12 @@ Source: https://github.com/eq-lab/pipeline/issues/1449
 
 Part of epic #1269. Continues #1413 (per-LP bank deposits, `ref_hash` / `is_minted`), PR #1418 (the Bank deposits section) and #1416 (the indexer/relayer flips `is_minted`).
 
+## Amendment (2026-10-09)
+
+The first real testnet simulation of `record_wire_in` for an LP with no linked Stellar wallet trapped with PLUSD `Error(Contract, #13)` ("trustline entry is missing") on the USDC custody account this plan had named as the fallback receiver. The PLUSD issuer is auth-required, and the custody account is a USDC account with no authorized PLUSD trustline.
+
+Decision: the fallback receiver is a dedicated capital wallet, configured as a new env `VITE_STELLAR_CAPITAL_WALLET_ID` (`ENV.STELLAR_CAPITAL_WALLET_ID`). It applies to the mint operation only — `VITE_STELLAR_USDC_CUSTODY_ID` keeps its existing balance-sheet uses untouched and is never a `record_wire_in` receiver. The `isCustody` flag on `wireInReceiver` became `isCapitalWallet`, and the disabled copy became "This LP has no linked Stellar wallet and no capital wallet is configured." Delivered on PR #1450; nothing else in this plan changed.
+
 ## Scope
 
 Add a per-row **Mint PLUSD** action to the Trustee → LP detail → "Bank deposits" table. For a row with `is_minted == false`, the Trustee's connected Stellar wallet signs and submits `record_wire_in` on the minter contract. All arguments come from data the API already serves; the minted state keeps coming from the served `is_minted` flag.

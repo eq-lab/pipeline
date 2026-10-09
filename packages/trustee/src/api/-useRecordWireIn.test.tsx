@@ -168,7 +168,9 @@ describe("useRecordWireIn", () => {
     await act(async () => {
       await expect(
         result.current.mutateAsync({ ...INPUT, receiver: "" }),
-      ).rejects.toThrow(/no linked Stellar wallet/);
+      ).rejects.toThrow(
+        /no linked Stellar wallet and no capital wallet is configured/,
+      );
     });
     expect(recordWireInMock).not.toHaveBeenCalled();
   });

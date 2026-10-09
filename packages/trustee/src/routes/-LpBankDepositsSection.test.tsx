@@ -16,6 +16,8 @@ vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
 const envMock = {
   STELLAR_USDC_CUSTODY_ID:
     "GCUSTODY00000000000000000000000000000000000000000000000",
+  STELLAR_CAPITAL_WALLET_ID:
+    "GCAPITAL00000000000000000000000000000000000000000000000",
   STELLAR_YIELD_MINTER_ID:
     "CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK",
 };
@@ -47,6 +49,7 @@ const mintReset = vi.fn();
 
 const LP_WALLET = "GLPWALLET0000000000000000000000000000000000000000000000";
 const CUSTODY = envMock.STELLAR_USDC_CUSTODY_ID;
+const CAPITAL_WALLET = envMock.STELLAR_CAPITAL_WALLET_ID;
 
 const DEPOSIT: LpBankDeposit = {
   id: 3,
@@ -131,6 +134,7 @@ beforeEach(() => {
   mintAsync.mockReset();
   mintReset.mockReset();
   envMock.STELLAR_USDC_CUSTODY_ID = CUSTODY;
+  envMock.STELLAR_CAPITAL_WALLET_ID = CAPITAL_WALLET;
   envMock.STELLAR_YIELD_MINTER_ID =
     "CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK";
   recorder();
@@ -245,7 +249,7 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     );
   });
 
-  it("falls back to the custody account when no wallet is linked", async () => {
+  it("falls back to the capital wallet when no wallet is linked", async () => {
     lp({ address_linked_at: null });
     mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
     list({ data: { deposits: [DEPOSIT] } });
@@ -254,8 +258,20 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
 
     await waitFor(() =>
-      expect(mintAsync.mock.calls[0]![0].receiver).toBe(CUSTODY),
+      expect(mintAsync.mock.calls[0]![0].receiver).toBe(CAPITAL_WALLET),
     );
+  });
+
+  it("never falls back to the USDC custody account", () => {
+    lp({ stellar_address: null, address_linked_at: null });
+    envMock.STELLAR_CAPITAL_WALLET_ID = "";
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mint PLUSD" }));
+
+    expect(envMock.STELLAR_USDC_CUSTODY_ID).toBe(CUSTODY);
+    expect(mintAsync).not.toHaveBeenCalled();
   });
 
   it("shows Minted and no action for a minted row", () => {
@@ -291,15 +307,15 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     );
   });
 
-  it("disables the action when no receiver can be resolved", () => {
+  it("disables the action when the capital wallet is unset and no wallet is linked", () => {
     lp({ stellar_address: null, address_linked_at: null });
-    envMock.STELLAR_USDC_CUSTODY_ID = "";
+    envMock.STELLAR_CAPITAL_WALLET_ID = "";
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
 
     expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeDisabled();
     expect(screen.getAllByRole("row")[1]).toHaveTextContent(
-      "no linked Stellar wallet and no custody account is configured",
+      "no linked Stellar wallet and no capital wallet is configured",
     );
   });
 
@@ -341,6 +357,25 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /details/i }));
     expect(screen.getByRole("dialog")).toHaveTextContent("RefHashSeen");
+  });
+
+  it("maps a PLUSD trustline trap to its own message and keeps the raw details", () => {
+    minter({
+      error: new Error(
+        "recordWireIn simulation error: HostError: Error(Contract, #13)",
+      ),
+    });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const alert = screen.getAllByRole("alert").at(-1)!;
+    expect(alert).toHaveTextContent(
+      "The receiver has no authorized PLUSD trustline.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /details/i }));
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "Error(Contract, #13)",
+    );
   });
 
   it("shows the stage label while a mint is in flight", async () => {

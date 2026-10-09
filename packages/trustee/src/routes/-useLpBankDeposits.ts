@@ -10,7 +10,11 @@ import { useLp, type LpDetail } from "@/api/useLp";
 import { useRecordWireIn, type RecordWireInStage } from "@/api/useRecordWireIn";
 import { ApiError } from "@/api/client";
 import { ENV } from "@/lib/env";
-import { toUserError, type UserFacingError } from "@/utils/userError";
+import {
+  parseSorobanContractErrorCode,
+  toUserError,
+  type UserFacingError,
+} from "@/utils/userError";
 import { useStellarWallet } from "@pipeline/wallet-connect";
 import {
   formatIsoDateTimeUtc,
@@ -54,6 +58,13 @@ export function mintError(error: Error | null): UserFacingError | null {
       isSpecific: true,
     };
   }
+  if (parseSorobanContractErrorCode(mapped.details) === 13) {
+    return {
+      message: "The receiver has no authorized PLUSD trustline.",
+      details: mapped.details,
+      isSpecific: true,
+    };
+  }
   return mapped;
 }
 
@@ -72,17 +83,19 @@ export function mintStageLabel(stage: RecordWireInStage | null): string {
 
 export interface WireInReceiver {
   receiver: string;
-  isCustody: boolean;
+  isCapitalWallet: boolean;
 }
 
 export function wireInReceiver(
   lp: Pick<LpDetail, "stellar_address" | "address_linked_at"> | undefined,
-  custodyId: string,
+  capitalWalletId: string,
 ): WireInReceiver | null {
   if (lp?.stellar_address && lp.address_linked_at) {
-    return { receiver: lp.stellar_address, isCustody: false };
+    return { receiver: lp.stellar_address, isCapitalWallet: false };
   }
-  if (custodyId) return { receiver: custodyId, isCustody: true };
+  if (capitalWalletId) {
+    return { receiver: capitalWalletId, isCapitalWallet: true };
+  }
   return null;
 }
 
@@ -163,7 +176,7 @@ export function useLpBankDepositsSection(lpId: number) {
     [],
   );
 
-  const receiver = wireInReceiver(lpQuery.data, ENV.STELLAR_USDC_CUSTODY_ID);
+  const receiver = wireInReceiver(lpQuery.data, ENV.STELLAR_CAPITAL_WALLET_ID);
 
   const mintDisabledReason = useCallback(
     (row: DepositRow): string | null => {
@@ -174,7 +187,7 @@ export function useLpBankDepositsSection(lpId: number) {
         return "On-chain PLUSD minting is not configured for this environment.";
       }
       if (!receiver) {
-        return "This LP has no linked Stellar wallet and no custody account is configured.";
+        return "This LP has no linked Stellar wallet and no capital wallet is configured.";
       }
       if (row.isMinted) return "This deposit is already minted.";
       if (row.isPending) {

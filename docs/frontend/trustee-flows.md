@@ -846,7 +846,11 @@ at every KYB status — the endpoint does not gate on one.
   row's `amount` string, `value_date` is `occurred_at` in Unix seconds, `ref_hash` is the
   served hash.
 - **Receiver rule** — the LP's `stellar_address` when `address_linked_at` is non-null,
-  otherwise `VITE_STELLAR_USDC_CUSTODY_ID`; when neither resolves the action is disabled. The
+  otherwise the dedicated capital wallet `VITE_STELLAR_CAPITAL_WALLET_ID` (#1449, amended
+  2026-10-09); when neither resolves the action is disabled with "This LP has no linked Stellar
+  wallet and no capital wallet is configured." The USDC custody account
+  (`VITE_STELLAR_USDC_CUSTODY_ID`) is **never** the receiver — it is a USDC account and holds no
+  authorized PLUSD trustline, so minting to it traps with PLUSD `Error(Contract, #13)`. The
   trustee's wallet is the signer and `caller`, never the receiver.
 - **States** — idle (`Mint PLUSD`) → `Awaiting signature…` → `Submitting…` → `Confirming…`
   while in flight, then `Waiting for the indexer` with `Pending` in the PLUSD column until the
@@ -857,7 +861,9 @@ at every KYB status — the endpoint does not gate on one.
   waiting for the indexer, another mint in flight.
 - **Errors** — surfaced through `toUserError` in an `InlineError` with the raw contract text in
   the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has
-  already been minted on-chain. Refresh the list."
+  already been minted on-chain. Refresh the list." A PLUSD `Error(Contract, #13)` trap reads
+  "The receiver has no authorized PLUSD trustline." — the receiver must be authorized by the
+  auth-required PLUSD issuer before any mint.
 
 ### States & error copy
 

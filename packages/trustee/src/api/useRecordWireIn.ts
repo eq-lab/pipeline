@@ -60,7 +60,7 @@ export function useRecordWireIn(): UseRecordWireInResult {
         }
         if (!receiver) {
           throw new Error(
-            "This LP has no linked Stellar wallet and no custody account is configured.",
+            "This LP has no linked Stellar wallet and no capital wallet is configured.",
           );
         }
 
