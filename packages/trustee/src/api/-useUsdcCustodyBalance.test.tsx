@@ -1,20 +1,8 @@
-/**
- * Tests for `src/api/useCapitalWalletBalance.ts` (issue #805).
- *
- * `getSacBalance` (from `@pipeline/wallet-connect`) is mocked — no real
- * Soroban RPC access. Mirrors `-useCapitalAllocation.test.tsx`'s structure.
- *
- * Covers:
- *   - Unset custody id / USDC id → no RPC call, `data === undefined`.
- *   - Successful read → scaled human-decimal string.
- *   - Sentinel / read error → `error` set, `data === undefined`.
- *   - Query key includes the RPC url + USDC id + custody id.
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useCapitalWalletBalance } from "./useCapitalWalletBalance";
+import { useUsdcCustodyBalance } from "./useUsdcCustodyBalance";
 
 // ── Mock @pipeline/wallet-connect ─────────────────────────────────────────────
 
@@ -70,13 +58,13 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// ── useCapitalWalletBalance ───────────────────────────────────────────────────
+// ── useUsdcCustodyBalance ───────────────────────────────────────────────────
 
-describe("useCapitalWalletBalance", () => {
+describe("useUsdcCustodyBalance", () => {
   it("does not call getSacBalance and returns undefined when USDC id is unset", () => {
     envMock = { ...ENV_CONFIGURED, STELLAR_USDC_ID: "" };
 
-    const { result } = renderHook(() => useCapitalWalletBalance(), {
+    const { result } = renderHook(() => useUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
@@ -89,7 +77,7 @@ describe("useCapitalWalletBalance", () => {
   it("does not call getSacBalance and returns undefined when custody id is unset", () => {
     envMock = { ...ENV_CONFIGURED, STELLAR_USDC_CUSTODY_ID: "" };
 
-    const { result } = renderHook(() => useCapitalWalletBalance(), {
+    const { result } = renderHook(() => useUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
@@ -98,10 +86,9 @@ describe("useCapitalWalletBalance", () => {
   });
 
   it("returns the scaled human-decimal string on a successful read", async () => {
-    // 8,400,000 USDC at 7-decimal SAC scale.
     getSacBalanceMock.mockResolvedValueOnce(84_000_000_000_000n);
 
-    const { result } = renderHook(() => useCapitalWalletBalance(), {
+    const { result } = renderHook(() => useUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
@@ -115,7 +102,7 @@ describe("useCapitalWalletBalance", () => {
   it("passes RPC url, passphrase, USDC id, and custody id to getSacBalance", async () => {
     getSacBalanceMock.mockResolvedValueOnce(10_000_000n);
 
-    const { result } = renderHook(() => useCapitalWalletBalance(), {
+    const { result } = renderHook(() => useUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
@@ -136,7 +123,7 @@ describe("useCapitalWalletBalance", () => {
       new Error("getSacBalance: balance returned i64 max sentinel"),
     );
 
-    const { result } = renderHook(() => useCapitalWalletBalance(), {
+    const { result } = renderHook(() => useUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 

@@ -101,7 +101,7 @@ doc has no such section.)
 Two parts:
 
 1. A **"New swap" button** opening the doc's swap form in a modal (`SwapDialog`, Transak-style) —
-   off/on-ramp toggle, USDC amount + real on-chain balance (`useCapitalWalletBalance`), bank-wire
+   off/on-ramp toggle, USDC amount + real on-chain balance (`useUsdcCustodyBalance`), bank-wire
    method, ramp destination (`GET /v1/ramp/addresses`), and a 1:1 receive summary. This is a **UI
    shell**: off-ramp execution is a Capital-Wallet MPC 3-of-5 transfer with no backend endpoint yet
    (#781), and there is no ramp-quote endpoint, so submit is disabled and the fee shows `—` (never
@@ -837,6 +837,35 @@ at every KYB status — the endpoint does not gate on one.
   (sent trimmed), a valid non-future time sent as `…:00Z`. Validation shows on submit; the
   dialog closes on `201` and keeps drafts on error. `409` reads "A deposit with this payment
   reference is already recorded." Every settle invalidates the deposits query.
+- **Mint PLUSD** (#1449) — a trailing **Action** column. A row with `is_minted: true` shows
+  `Minted` in the PLUSD column and renders no control. Otherwise the cell is a `Mint PLUSD`
+  button that calls the yield minter's `record_wire_in` directly from the trustee's connected
+  Stellar wallet (`api/useRecordWireIn.ts` over `@pipeline/wallet-connect`'s `recordWireIn`;
+  see [deposits.md](../product-specs/deposits.md) for the signature, the `CASH_REPORTER`
+  requirement and the 7-decimal scale). Arguments come only from served data: `amount` is the
+  row's `amount` string, `value_date` is `occurred_at` in Unix seconds, `ref_hash` is the
+  served hash.
+- **Receiver rule** — the LP's `stellar_address` when `address_linked_at` is non-null,
+  otherwise the dedicated capital wallet `VITE_STELLAR_CAPITAL_WALLET_ID` (#1449, amended
+  2026-10-09); when neither resolves the action is disabled with "This LP has no linked Stellar
+  wallet and no capital wallet is configured." The USDC custody account
+  (`VITE_STELLAR_USDC_CUSTODY_ID`) is **never** the receiver — it is the Deposit Manager's custody
+  account for LP USDC deposits and holds no authorized PLUSD trustline, so minting to it traps with
+  PLUSD `Error(Contract, #13)`. The
+  trustee's wallet is the signer and `caller`, never the receiver.
+- **States** — idle (`Mint PLUSD`) → `Awaiting signature…` → `Submitting…` → `Confirming…`
+  while in flight, then `Waiting for the indexer` with `Pending` in the PLUSD column until the
+  served `is_minted` flips. The pending set is in-memory only, bounded to ~2 min, and only
+  raises the deposits poll to 5 s; it is never persisted and never substitutes for the served
+  flag. Each id's window is anchored to its own mint time (the set stores a deadline per id), so
+  a later mint never restarts an earlier id's window, and unmounting clears every armed window. Disabled reasons, rendered as the button's `title` and an `aria-describedby` hint, in
+  order: wallet not connected, minter id unset, no receiver resolvable, already minted,
+  waiting for the indexer, another mint in flight.
+- **Errors** — surfaced through `toUserError` in an `InlineError` with the raw contract text in
+  the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has
+  already been minted on-chain. Refresh the list." A PLUSD `Error(Contract, #13)` trap reads
+  "The receiver has no authorized PLUSD trustline." — the receiver must be authorized by the
+  auth-required PLUSD issuer before any mint.
 
 ### States & error copy
 
@@ -1259,7 +1288,7 @@ after the timelock, GUARDIAN-cancelable.
 ## Overview page
 
 **Sources:** `packages/trustee/src/api/useCapitalAllocation.ts` (data hook),
-`api/useCapitalWalletBalance.ts` (on-chain interim data hook),
+`api/useUsdcCustodyBalance.ts` (on-chain interim data hook),
 `components/useCapitalAllocationCard.ts` + `components/CapitalAllocationCard.tsx` (Capital
 Allocation card, issue #797, extended #805/#807/#811/#1020, Figma node `4116:8928`, frame
 `4116-8854`), `components/useNeedsAttention.ts` + `components/NeedsAttention.tsx` (Needs
@@ -1274,10 +1303,13 @@ already in human units, or `null` when the backend has no source for that field 
 `deployed` is indexer-sourced) — render `—` for `null`, never derive a value client-side
 ([[no-frontend-computed-metrics]]).
 
-**Capital Wallet on-chain fold-in (#805, TD-41).** `useCapitalWalletBalance` reads the Capital
-Wallet's USDC balance directly from the Stellar contract (`usdc.balance(ENV.
+**Capital Wallet on-chain fold-in (#805, TD-41).** `useUsdcCustodyBalance` reads the Deposit
+Manager's USDC custody account directly from the Stellar contract (`usdc.balance(ENV.
 STELLAR_USDC_CUSTODY_ID)`, the same custody id the LP frontend's `useStellarUsdcCustodyBalance`
-uses) as an interim substitute for the backend `capital_wallet` bucket (`null` until
+uses) — that custody account is the on-chain source of the **Capital Wallet** balance-sheet
+bucket, so the hook is named for the account it reads, not for the bucket it feeds (it is
+unrelated to `VITE_STELLAR_CAPITAL_WALLET_ID`, the PLUSD receiver introduced in #1449). It is an
+interim substitute for the backend `capital_wallet` bucket (`null` until
 `capital_allocation.rs` indexes it). It converts the raw i128 7-decimal-SAC bigint to the same
 human-decimal-string shape as the backend buckets so it can feed straight into the existing
 formatters/summing logic; a misconfigured custody id (pointing at the USDC issuer) surfaces as

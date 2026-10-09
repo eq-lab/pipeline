@@ -7,18 +7,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 
-vi.mock("@/api/useCapitalWalletBalance", () => ({
-  useCapitalWalletBalance: vi.fn(),
+vi.mock("@/api/useUsdcCustodyBalance", () => ({
+  useUsdcCustodyBalance: vi.fn(),
 }));
 vi.mock("@/api/useCapitalAllocation", () => ({
   useCapitalAllocation: vi.fn(),
 }));
 
-import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { formatSwapAmount, useTbillsSwap } from "./-cash-management-tbills";
 
-const mockBalance = vi.mocked(useCapitalWalletBalance);
+const mockBalance = vi.mocked(useUsdcCustodyBalance);
 const mockAllocation = vi.mocked(useCapitalAllocation);
 
 function allocation(tbills: string | null) {

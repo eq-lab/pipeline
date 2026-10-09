@@ -27,7 +27,7 @@
  * `getSacBalance` (issue #805) is a plain async Stellar SAC `balance(account)`
  * read — NOT a hook (this package forbids `@tanstack/react-query` outside
  * `src/evm/**`). Callers that want polling/caching wrap it in their own
- * `useQuery` (e.g. the Trustee's `useCapitalWalletBalance`).
+ * `useQuery` (e.g. the Trustee's `useUsdcCustodyBalance`).
  */
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -174,6 +174,21 @@ export type {
   UpdateMutableStage,
   BuildUpdateMutableEnvelopeParams,
 } from "./stellar/contracts/loanRegistry";
+
+export {
+  recordWireIn,
+  buildRecordWireInEnvelope,
+  encodeRecordWireInArgs,
+  parseUsdDollarsToI128,
+  hexToBytes32ScVal,
+} from "./stellar/contracts/minter";
+export type {
+  RecordWireInArgs,
+  RecordWireInParams,
+  RecordWireInResult,
+  RecordWireInStage,
+  BuildRecordWireInEnvelopeParams,
+} from "./stellar/contracts/minter";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

@@ -500,7 +500,7 @@ line, whichever section it lands in.
 ### TD-41: Trustee Capital-Wallet balance is a client-side interim source + client-side total sum + client-side legend percentages + client-side proportional bar
 
 - **Date:** 2026-07-09 (extended same-day, PR #811 review follow-up)
-- **Location:** `packages/trustee/src/api/useCapitalWalletBalance.ts`,
+- **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts`,
   `packages/trustee/src/components/useCapitalAllocationCard.ts`,
   `packages/trustee/src/components/CapitalAllocationCard.tsx`,
   `packages/wallet-connect/src/stellar/sacBalance.ts`
@@ -533,7 +533,7 @@ line, whichever section it lands in.
   (e.g. decimal scale), since the trustee performs the conversion (`sacRawToDisplay`-style
   7-decimal → human-unit string, duplicated locally per TD-38's precedent since the trustee
   cannot depend on `@pipeline/frontend`).
-- **Suggested fix:** Remove `useCapitalWalletBalance` and the total-sum/percentage/bar-fraction
+- **Suggested fix:** Remove `useUsdcCustodyBalance` and the total-sum/percentage/bar-fraction
   computation logic in `useCapitalAllocationCard.ts` (and the proportional-width rendering in
   `CapitalAllocationCard.tsx`) once the backend serves a non-null `capital_wallet` bucket (and,
   if a percentage/proportion field is ever added server-side, prefer that instead of computing

@@ -3,7 +3,7 @@
  *
  * `drawLoan` and `useStellarWallet` (from `@pipeline/wallet-connect`) are
  * mocked — no real Soroban RPC / wallet access. Mirrors
- * `-useCapitalWalletBalance.test.tsx`'s structure.
+ * `-useUsdcCustodyBalance.test.tsx`'s structure.
  *
  * Covers:
  *   - Unconfigured registry/executor ids → rejects before calling `drawLoan`.

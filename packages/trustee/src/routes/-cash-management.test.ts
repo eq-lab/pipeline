@@ -8,8 +8,8 @@ import { describe, it, expect, vi } from "vitest";
 // graph reaches `@stellar/freighter-api` (CommonJS) and breaks under Vitest's
 // ESM loader. These pure-helper tests never touch the hooks — stub the modules
 // so importing `./-cash-management` doesn't pull that graph in.
-vi.mock("@/api/useCapitalWalletBalance", () => ({
-  useCapitalWalletBalance: vi.fn(),
+vi.mock("@/api/useUsdcCustodyBalance", () => ({
+  useUsdcCustodyBalance: vi.fn(),
 }));
 vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
 

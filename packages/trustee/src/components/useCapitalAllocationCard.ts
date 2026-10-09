@@ -11,7 +11,7 @@
  * TD-41).
  */
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
-import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import { formatCompactUsd, formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -115,7 +115,7 @@ function computeBarFraction(
 
 export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
   const { data, isLoading, error } = useCapitalAllocation();
-  const { data: onChainCapitalWallet } = useCapitalWalletBalance();
+  const { data: onChainCapitalWallet } = useUsdcCustodyBalance();
 
   const effectiveCapitalWallet =
     data?.buckets.capital_wallet ?? onChainCapitalWallet;
