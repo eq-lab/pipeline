@@ -272,16 +272,39 @@ fn evm_zero_polling_range_is_rejected_from_either_layer() {
 }
 
 #[test]
-fn evm_zero_interval_and_confirmations_stay_legal() {
+fn evm_zero_confirmations_stays_legal() {
     let _guard = lock();
     let id = 70_008_i64;
     clear_tuning(&[id]);
     set_evm_required(id);
-    set_chain(id, "1000", "0", "0");
+    set_chain(id, "1000", "500", "0");
 
     let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
-    assert_eq!(s.polling_interval_ms, 0);
     assert_eq!(s.log_confirmations_delay, 0);
+
+    clear_tuning(&[id]);
+    clear_evm_required(id);
+}
+
+#[test]
+fn evm_zero_polling_interval_is_rejected_from_either_layer() {
+    let _guard = lock();
+    let id = 70_009_i64;
+    clear_tuning(&[id]);
+    set_evm_required(id);
+
+    unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_INTERVAL_MS"), "0") };
+    let err = IndexerJobSettings::from_chain_env(id)
+        .err()
+        .expect("per-chain 0 must be rejected");
+    assert!(format!("{err:#}").contains("must be >= 1"), "{err:#}");
+
+    clear_tuning(&[id]);
+    unsafe { std::env::set_var("JOB_INDEXER_POLLING_INTERVAL_MS", "0") };
+    let err = IndexerJobSettings::from_chain_env(id)
+        .err()
+        .expect("job-level 0 must be rejected");
+    assert!(format!("{err:#}").contains("must be >= 1"), "{err:#}");
 
     clear_tuning(&[id]);
     clear_evm_required(id);
@@ -404,6 +427,23 @@ fn stellar_zero_ledger_range_is_rejected() {
     clear_tuning(&[id]);
     set_stellar_required(id);
     unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_BLOCK_RANGE"), "0") };
+
+    let err = StellarIndexerSettings::from_chain_env(id)
+        .err()
+        .expect("0 must be rejected");
+    assert!(format!("{err:#}").contains("must be >= 1"), "{err:#}");
+
+    clear_tuning(&[id]);
+    clear_stellar_required(id);
+}
+
+#[test]
+fn stellar_zero_polling_interval_is_rejected() {
+    let _guard = lock();
+    let id = 79_000_007_i64;
+    clear_tuning(&[id]);
+    set_stellar_required(id);
+    unsafe { std::env::set_var(format!("CHAIN_{id}_INDEXER_POLLING_INTERVAL_MS"), "0") };
 
     let err = StellarIndexerSettings::from_chain_env(id)
         .err()

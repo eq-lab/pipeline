@@ -259,7 +259,11 @@ impl StellarIndexerSettings {
             custody_addresses,
             ramp_addresses,
             ipfs_gateway_url,
-            polling_interval_ms: env_parse_chain_or_job(chain_id, "POLLING_INTERVAL_MS", 500)?,
+            polling_interval_ms: require_nonzero(
+                chain_id,
+                "POLLING_INTERVAL_MS",
+                env_parse_chain_or_job(chain_id, "POLLING_INTERVAL_MS", 500)?,
+            )?,
             polling_ledger_range: require_nonzero(
                 chain_id,
                 "POLLING_BLOCK_RANGE",
@@ -349,7 +353,11 @@ impl IndexerJobSettings {
                 "POLLING_BLOCK_RANGE",
                 env_parse_chain_or_job(chain_id, "POLLING_BLOCK_RANGE", 1000)?,
             )?,
-            polling_interval_ms: env_parse_chain_or_job(chain_id, "POLLING_INTERVAL_MS", 500)?,
+            polling_interval_ms: require_nonzero(
+                chain_id,
+                "POLLING_INTERVAL_MS",
+                env_parse_chain_or_job(chain_id, "POLLING_INTERVAL_MS", 500)?,
+            )?,
             log_confirmations_delay: env_parse_chain_or_job(
                 chain_id,
                 "LOG_CONFIRMATIONS_DELAY",
@@ -445,7 +453,7 @@ where
 fn require_nonzero(chain_id: i64, suffix: &str, value: u64) -> Result<u64> {
     if value == 0 {
         anyhow::bail!(
-            "indexer polling range for chain {chain_id} resolved to 0 \
+            "indexer {suffix} for chain {chain_id} resolved to 0 \
              (CHAIN_{chain_id}_INDEXER_{suffix} or JOB_INDEXER_{suffix}); must be >= 1"
         );
     }
