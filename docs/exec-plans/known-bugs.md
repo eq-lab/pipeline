@@ -258,3 +258,12 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Resolved:** 2026-08-12 by #1081 — added `addressUpdatedEvent`/`disconnectEvent` subscribe stubs to the test's kit mock, matching the sibling test files.
 - **Location:** `packages/frontend/src/api/useRequests.test.tsx`
 - **Symptom:** Whole suite failed at module load: `No "addressUpdatedEvent" export is defined on the "@creit.tech/stellar-wallets-kit" mock` (raised from `wallet-connect`'s module-scope subscription in `connectionStore.ts`).
+
+### BUG-10: A malformed EVM contract address is silently dropped instead of failing startup
+- **Tracked:** not yet filed — found while comparing the two indexer arms for #1435; relevant to #1436.
+- **Date:** 2026-10-09
+- **Location:** `packages/worker/src/indexer/mod.rs:54-83` (five `filter_map(|a| a.parse().ok())` blocks), fed by `env_csv_require` in `packages/worker/src/indexer/config.rs:357`.
+- **Symptom:** A typo in `CHAIN_<id>_DM_CONTRACTS` / `_WQ_` / `_SPLUSD_` / `_LOAN_REGISTRY_` / `_YIELD_MINTER_CONTRACTS` produces an empty (or short) address list for that contract group. The indexer starts, logs "indexer job started", polls happily, and indexes nothing from that contract — with no error, no warning, and a cursor that keeps advancing past the un-indexed blocks.
+- **Root cause:** `env_csv_require` validates only that the CSV is non-empty — it never checks that an entry is a valid address — and `mod.rs` then discards unparseable entries with `.ok()` rather than propagating the failure. The Stellar arm does the opposite: `validate_contract_id` checks length and alphabet, `stellar_strkey::Contract::from_string` checks the CRC on the minter id, and duplicate ids across roles abort startup.
+- **Impact:** Latent today (no EVM chain is in `CHAINS`), but #1436 configures five EVM address lists by hand against a fresh mainnet deployment — exactly the situation this failure mode is invisible in. The advancing cursor makes it unrecoverable without a manual cursor reset.
+- **Workaround:** Verify each configured address appears in the startup logs / produces rows before trusting a new EVM chain config.

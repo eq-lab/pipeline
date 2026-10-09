@@ -69,9 +69,9 @@ pub struct StellarIndexerSettings {
     /// IPFS gateway URL used by the loan-metadata fetcher (mirrors `JOB_INDEXER_IPFS_GATEWAY_URL`
     /// on the EVM side). Defaults to `https://ipfs.io/ipfs/` when unset.
     pub ipfs_gateway_url: String,
-    /// Polling interval in milliseconds (shared with EVM via JOB_INDEXER_POLLING_INTERVAL_MS).
+    /// Polling interval in ms: `CHAIN_<id>_INDEXER_POLLING_INTERVAL_MS`, else `JOB_INDEXER_POLLING_INTERVAL_MS`.
     pub polling_interval_ms: u64,
-    /// How many ledgers to fetch per poll cycle (semantics like EVM polling_block_range).
+    /// Ledgers per poll cycle: `CHAIN_<id>_INDEXER_POLLING_BLOCK_RANGE`, else `JOB_INDEXER_POLLING_BLOCK_RANGE`.
     pub polling_ledger_range: u64,
 }
 
@@ -257,8 +257,12 @@ impl StellarIndexerSettings {
             custody_addresses,
             ramp_addresses,
             ipfs_gateway_url,
-            polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
-            polling_ledger_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
+            polling_interval_ms: env_parse_chain_or_job(chain_id, "POLLING_INTERVAL_MS", 500)?,
+            polling_ledger_range: require_nonzero(
+                chain_id,
+                "POLLING_BLOCK_RANGE",
+                env_parse_chain_or_job(chain_id, "POLLING_BLOCK_RANGE", 1000)?,
+            )?,
         })
     }
 }
@@ -326,9 +330,17 @@ impl IndexerJobSettings {
             splusd_contracts: env_csv_require(&format!("{p}SPLUSD_CONTRACTS"))?,
             loan_registry_contracts: env_csv_require(&format!("{p}LOAN_REGISTRY_CONTRACTS"))?,
             yield_minter_contracts: env_csv_require(&format!("{p}YIELD_MINTER_CONTRACTS"))?,
-            polling_block_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
-            polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
-            log_confirmations_delay: env_parse("JOB_INDEXER_LOG_CONFIRMATIONS_DELAY", 12)?,
+            polling_block_range: require_nonzero(
+                chain_id,
+                "POLLING_BLOCK_RANGE",
+                env_parse_chain_or_job(chain_id, "POLLING_BLOCK_RANGE", 1000)?,
+            )?,
+            polling_interval_ms: env_parse_chain_or_job(chain_id, "POLLING_INTERVAL_MS", 500)?,
+            log_confirmations_delay: env_parse_chain_or_job(
+                chain_id,
+                "LOG_CONFIRMATIONS_DELAY",
+                12,
+            )?,
             ipfs_gateway_url: env::var("JOB_INDEXER_IPFS_GATEWAY_URL")
                 .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned()),
         })
@@ -394,4 +406,34 @@ where
             .with_context(|| format!("{key} must be a valid number")),
         Err(_) => Ok(default),
     }
+}
+
+fn env_parse_chain_or_job<T: std::str::FromStr>(
+    chain_id: i64,
+    suffix: &str,
+    default: T,
+) -> Result<T>
+where
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    let chain_key = format!("CHAIN_{chain_id}_INDEXER_{suffix}");
+    if let Ok(raw) = env::var(&chain_key) {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return trimmed
+                .parse::<T>()
+                .with_context(|| format!("{chain_key} must be a valid number"));
+        }
+    }
+    env_parse(&format!("JOB_INDEXER_{suffix}"), default)
+}
+
+fn require_nonzero(chain_id: i64, suffix: &str, value: u64) -> Result<u64> {
+    if value == 0 {
+        anyhow::bail!(
+            "indexer polling range for chain {chain_id} resolved to 0 \
+             (CHAIN_{chain_id}_INDEXER_{suffix} or JOB_INDEXER_{suffix}); must be >= 1"
+        );
+    }
+    Ok(value)
 }
