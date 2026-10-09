@@ -35,7 +35,8 @@ fn clear_chain_env(id: i64) {
             "RELAYER_STELLAR_SIGNER_SECRET",
             "RELAYER_STELLAR_RPC_URL",
             "RELAYER_STELLAR_NETWORK_PASSPHRASE",
-            "STELLAR_YIELD_MINTER_ID",
+            "STELLAR_INDEXER_MINTER_ADDRESS",
+            "EVM_RPC_URL",
         ] {
             std::env::remove_var(format!("{prefix}{suffix}"));
         }
@@ -224,7 +225,7 @@ fn relayer_settings_dispatch_evm_and_stellar() {
         std::env::set_var("CHAINS", "1,99000001");
         std::env::set_var("CHAIN_99000001_TYPE", "stellar");
         // EVM side
-        std::env::set_var("CHAIN_1_ETH_RPC_URL", "http://localhost:8545");
+        std::env::set_var("CHAIN_1_EVM_RPC_URL", "http://localhost:8545");
         std::env::set_var("CHAIN_1_RELAYER_SIGNER_KEY", "0xabc"); // not parsed in from_chain_env
         std::env::set_var(
             "CHAIN_1_RELAYER_REGISTRY_ADDRESS",
@@ -314,7 +315,7 @@ fn stellar_relayer_minter_id_unset_yields_none() {
 }
 
 #[test]
-fn stellar_relayer_minter_id_comes_from_the_indexer_yield_minter_key() {
+fn stellar_relayer_minter_id_comes_from_the_indexer_minter_key() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -323,7 +324,7 @@ fn stellar_relayer_minter_id_comes_from_the_indexer_yield_minter_key() {
     set_base_env(id);
     unsafe {
         std::env::set_var(
-            format!("CHAIN_{id}_STELLAR_YIELD_MINTER_ID"),
+            format!("CHAIN_{id}_STELLAR_INDEXER_MINTER_ADDRESS"),
             MINTER_CONTRACT,
         );
     }
@@ -347,7 +348,7 @@ fn stellar_relayer_minter_id_rejects_a_malformed_contract_id() {
     set_base_env(id);
     unsafe {
         std::env::set_var(
-            format!("CHAIN_{id}_STELLAR_YIELD_MINTER_ID"),
+            format!("CHAIN_{id}_STELLAR_INDEXER_MINTER_ADDRESS"),
             "not-a-contract",
         );
     }
@@ -380,7 +381,10 @@ fn stellar_relayer_minter_id_rejects_a_bad_strkey_checksum() {
     };
     assert_ne!(transposed, MINTER_CONTRACT);
     unsafe {
-        std::env::set_var(format!("CHAIN_{id}_STELLAR_YIELD_MINTER_ID"), &transposed);
+        std::env::set_var(
+            format!("CHAIN_{id}_STELLAR_INDEXER_MINTER_ADDRESS"),
+            &transposed,
+        );
     }
 
     let result = StellarRelayerSettings::from_chain_env(id);

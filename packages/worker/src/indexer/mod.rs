@@ -12,7 +12,7 @@ pub mod stellar;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use sqlx::PgPool;
 use tracing::Instrument;
 
@@ -51,35 +51,32 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         }
     }
 
-    let dm_contracts: Vec<alloy::primitives::Address> = settings
-        .dm_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
+    let parse_address = |role: &str, raw: &str| -> Result<alloy::primitives::Address> {
+        raw.parse().with_context(|| {
+            format!(
+                "CHAIN_{}_EVM_INDEXER_{role} must be a valid EVM address, got '{raw}'",
+                settings.chain_id
+            )
+        })
+    };
 
-    let wq_contracts: Vec<alloy::primitives::Address> = settings
-        .wq_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
-    let splusd_contracts: Vec<alloy::primitives::Address> = settings
-        .splusd_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
-    let loan_registry_contracts: Vec<alloy::primitives::Address> = settings
-        .loan_registry_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
-    let yield_minter_contracts: Vec<alloy::primitives::Address> = settings
-        .yield_minter_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
+    let dm_contracts = vec![parse_address(
+        "DEPOSIT_MANAGER_ADDRESS",
+        &settings.deposit_manager_address,
+    )?];
+    let wq_contracts = vec![parse_address(
+        "WITHDRAWAL_QUEUE_ADDRESS",
+        &settings.withdrawal_queue_address,
+    )?];
+    let splusd_contracts = vec![parse_address(
+        "STAKED_PLUSD_ADDRESS",
+        &settings.staked_plusd_address,
+    )?];
+    let loan_registry_contracts = vec![parse_address(
+        "LOAN_REGISTRY_ADDRESS",
+        &settings.loan_registry_address,
+    )?];
+    let yield_minter_contracts = vec![parse_address("MINTER_ADDRESS", &settings.minter_address)?];
 
     // Shared deps for loan mappers.
     // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.

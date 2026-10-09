@@ -5,7 +5,8 @@ use alloy::signers::local::PrivateKeySigner;
 use anyhow::{Context, Result};
 
 use shared::chains::{
-    parse_chain_type, parse_chains_env, parse_default_chain_id, validate_stellar_address, ChainKind,
+    parse_chain_type, parse_chains_env, parse_default_chain_id, validate_chain_kind_keys,
+    validate_stellar_address, ChainKind,
 };
 use shared::eip712::Eip712Domain;
 use shared::object_store::ObjectStore;
@@ -135,6 +136,7 @@ impl ChainsConfig {
 
         for &chain_id in &chains {
             let chain_kind = parse_chain_type(chain_id)?;
+            validate_chain_kind_keys(chain_id, chain_kind)?;
 
             match chain_kind {
                 ChainKind::Evm => {
@@ -224,8 +226,8 @@ fn load_transfer_addresses(
 
 /// Load the Withdrawal Queue Wallet address for one Stellar chain from
 /// `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` (optional; parallel to the
-/// worker's `CHAIN_<id>_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` — API and worker are
-/// decoupled). Unset → the `withdrawal_queue` bucket stays `null` for this chain.
+/// worker's `CHAIN_<id>_STELLAR_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` — API and
+/// worker are decoupled). Unset → the `withdrawal_queue` bucket stays `null`.
 fn load_withdrawal_queue_wallet(chain_id: i64, out: &mut HashMap<i64, String>) -> Result<()> {
     let key = format!("CHAIN_{chain_id}_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID");
     if let Ok(raw) = env::var(&key) {
@@ -335,7 +337,7 @@ fn load_evm_voucher_config(
 /// - `CHAIN_<id>_API_STELLAR_NETWORK_PASSPHRASE` (defaults to testnet for 99000001)
 ///
 /// These are parallel API-specific vars, deliberately decoupled from the indexer's
-/// `CHAIN_<id>_STELLAR_DEPOSIT_MANAGER_ID` / `WITHDRAWAL_QUEUE_ID` /
+/// `CHAIN_<id>_STELLAR_INDEXER_DEPOSIT_MANAGER_ADDRESS` / `..._WITHDRAWAL_QUEUE_ADDRESS` /
 /// `NETWORK_PASSPHRASE` vars.
 fn load_stellar_voucher_config(
     chain_id: i64,
