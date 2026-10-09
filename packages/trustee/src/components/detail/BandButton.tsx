@@ -10,12 +10,14 @@ export function BandButton({
   onClick,
   disabled,
   testId,
+  ariaLabel,
   children,
 }: {
   band: StatusBand;
   onClick: () => void;
   disabled?: boolean;
   testId?: string;
+  ariaLabel?: string;
   children: ReactNode;
 }) {
   return (
@@ -23,6 +25,7 @@ export function BandButton({
       type="button"
       data-band={band}
       data-testid={testId}
+      aria-label={ariaLabel}
       className={`${BAND_BUTTON_BASE} h-[32px] px-[12px] text-[13px] leading-[18.2px] whitespace-nowrap`}
       style={chipStyle(band)}
       onClick={onClick}

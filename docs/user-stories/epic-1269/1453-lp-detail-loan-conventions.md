@@ -150,8 +150,8 @@ rejected document, and one LP with no documents at all.
 - **Download is now an icon button** — a down-arrow glyph announced as "Download <filename>" — and
   is still a real link that opens the presigned URL in a new tab. When no URL is served the row
   shows "Download unavailable. Refresh to retry." instead.
-- **Verify and Reject are 32×32 icon buttons** beside the download icon: a green check and a red
-  cross, announced as "Verify <filename>" and "Reject <filename>". They appear only for a
+- **Verify and Reject are 32px text buttons** beside the download icon, green and red in the band
+  colours, announced as "Verify <filename>" and "Reject <filename>". They appear only for a
   `Provided` document while the LP is UnderReview, and each still opens the same dialog as before.
 - The empty LP shows "No documents submitted." and still offers the refresh icon.
 
@@ -164,7 +164,7 @@ rejected document, and one LP with no documents at all.
 **Steps:**
 
 1. On the `UnderReview` LP, look at the **KYB documents** title row.
-2. Click the verify icon on the document, confirm in the dialog, and watch the title row.
+2. Click **Verify** on the document, confirm in the dialog, and watch the title row.
 3. Click **Confirm KYB passed** and submit.
 4. Open the `Passed` LP and read the same row.
 
@@ -182,7 +182,7 @@ rejected document, and one LP with no documents at all.
   before; rejecting a document still requires a nonblank reason; submitting still writes through
   the review endpoint and refreshes the record.
 - The `Passed` LP shows only "Review actions are available only while the LP is UnderReview." in
-  that row — no verdict buttons, and no verify/reject icons on the documents.
+  that row — no verdict buttons, and no Verify/Reject buttons on the documents.
 
 ## Story 8: Bank deposits keep working under the new table typography
 

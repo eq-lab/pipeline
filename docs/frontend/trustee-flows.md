@@ -856,8 +856,8 @@ The page is assembled from the [shared detail primitives](#shared-detail-primiti
   `AddressChip`) and the rejection reason (negative red). Its right-hand cluster is the 32px
   download `<a>` (`DownloadIcon`, brand, `aria-label="Download <filename>"`, still the real
   presigned link opened in a new tab) — or the "Download unavailable. Refresh to retry." text when
-  no URL is served — followed, while the document is reviewable, by the 32×32 `BandIconButton`s
-  **Verify** (positive check) and **Reject** (negative cross). Empty state: "No documents
+  no URL is served — followed, while the document is reviewable, by the 32px `BandButton`s
+  **Verify** (positive) and **Reject** (negative), labelled in text and announced with the filename. Empty state: "No documents
   submitted."
 - **There is no KYB decision card.** It held only buttons, so #1453's design feedback moved them
   onto the documents title row — the documents are what the verdict is about.

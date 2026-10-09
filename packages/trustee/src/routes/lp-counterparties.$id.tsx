@@ -3,13 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Button, IconButton, InlineError } from "@pipeline/ui";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { AddressChip } from "@/components/detail/AddressChip";
-import { BandButton, BandIconButton } from "@/components/detail/BandButton";
-import {
-  CheckIcon,
-  CrossIcon,
-  DownloadIcon,
-  RefreshIcon,
-} from "@/components/detail/DetailIcons";
+import { BandButton } from "@/components/detail/BandButton";
+import { DownloadIcon, RefreshIcon } from "@/components/detail/DetailIcons";
 import { DetailHero } from "@/components/detail/DetailHero";
 import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
@@ -263,10 +258,9 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                         )}
                         {detail.canReview && document.status === "Provided" && (
                           <>
-                            <BandIconButton
+                            <BandButton
                               band="positive"
-                              label={`Verify ${document.original_filename}`}
-                              icon={<CheckIcon />}
+                              ariaLabel={`Verify ${document.original_filename}`}
                               disabled={detail.busy}
                               onClick={() =>
                                 detail.open({
@@ -275,11 +269,12 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                                   filename: document.original_filename,
                                 })
                               }
-                            />
-                            <BandIconButton
+                            >
+                              Verify
+                            </BandButton>
+                            <BandButton
                               band="negative"
-                              label={`Reject ${document.original_filename}`}
-                              icon={<CrossIcon />}
+                              ariaLabel={`Reject ${document.original_filename}`}
                               disabled={detail.busy}
                               onClick={() =>
                                 detail.open({
@@ -288,7 +283,9 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                                   filename: document.original_filename,
                                 })
                               }
-                            />
+                            >
+                              Reject
+                            </BandButton>
                           </>
                         )}
                       </div>
