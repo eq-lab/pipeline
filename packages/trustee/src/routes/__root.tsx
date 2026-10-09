@@ -1,5 +1,6 @@
 import { createRootRoute, redirect } from "@tanstack/react-router";
 import { RiskBanner } from "@pipeline/ui";
+import { ToastProvider } from "@/components/ToastProvider";
 import { TrusteeShell } from "@/components/TrusteeShell";
 import { TrusteeSessionProvider } from "@/auth/TrusteeSessionProvider";
 import { getSessionState } from "@/auth/sessionStore";
@@ -20,7 +21,9 @@ function RootComponent() {
     <>
       <RiskBanner />
       <TrusteeSessionProvider>
-        <TrusteeShell />
+        <ToastProvider>
+          <TrusteeShell />
+        </ToastProvider>
       </TrusteeSessionProvider>
     </>
   );

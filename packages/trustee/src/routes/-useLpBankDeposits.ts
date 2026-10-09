@@ -21,7 +21,7 @@ import {
   nowUtcDateTimeInput,
   utcDateTimeInputToIso,
 } from "@/utils/formatDate";
-import { formatUsdDecimal, parseUsdCentsInput } from "@/utils/formatUsd";
+import { formatCompactUsd2dp, parseUsdCentsInput } from "@/utils/formatUsd";
 
 export const MINT_PENDING_WINDOW_MS = 120_000;
 export const MINT_PENDING_REFETCH_MS = 5_000;
@@ -109,7 +109,6 @@ export interface DepositRow {
   refHash: string;
   isMinted: boolean;
   isPending: boolean;
-  minted: string;
   recordedBy: string;
 }
 
@@ -121,13 +120,12 @@ export function mapDepositToRow(
     id: deposit.id,
     occurredAt: formatIsoDateTimeUtc(deposit.occurred_at),
     occurredAtIso: deposit.occurred_at,
-    amount: formatUsdDecimal(deposit.amount),
+    amount: formatCompactUsd2dp(deposit.amount),
     amountRaw: deposit.amount,
     reference: deposit.payment_reference,
     refHash: deposit.ref_hash,
     isMinted: deposit.is_minted,
     isPending: !deposit.is_minted && isPending,
-    minted: deposit.is_minted ? "Minted" : isPending ? "Pending" : "Not minted",
     recordedBy: deposit.recorded_by,
   };
 }

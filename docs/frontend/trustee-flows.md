@@ -306,8 +306,14 @@ one-offs documented):
 
 **Sources:** `packages/trustee/src/routes/-useLoanDetail.ts` (presenter),
 `packages/trustee/src/routes/loans.$id.tsx` (view), `routes/-loanDetailStatic.ts` (static action
-config), `routes/-CcrTrendChart.tsx` (shared chart).
+config), `routes/-CcrTrendChart.tsx` (shared chart),
+`packages/trustee/src/components/detail/` (hero, chip, card, key/value row, tokens).
 **Consumer route:** `/loans/$id`. Issues #845/#847, Figma node `4116:10549`.
+
+Since #1453 the hero, status chip, card shell, card title and key/value row are **not** defined
+here — they live in [`components/detail/`](#shared-detail-primitives) and are shared with the LP
+counterparty detail page. `loans.$id.tsx` keeps only what is loan-specific (lifecycle stepper,
+summary tiles, price & collateral, registry, other-actions, dialogs).
 
 ### Architecture
 
@@ -391,6 +397,8 @@ An absent status (no loan-book row) leaves every step pending — never fabricat
 
 ### Hero
 
+Rendered by the shared `DetailHero` ([`components/detail/`](#shared-detail-primitives)) with
+`backTo="/loans"` and the `loan-detail-status-chip` / `loan-detail-meta` test ids.
 Degrades to the loan id only when no matching loan-book row is found (e.g. a direct URL to a
 non-active loan) — identity is never fabricated. The meta line prints the loan id + the
 **maturity date** (both layouts, #859; a real served field, `entry.maturity`) plus the
@@ -733,10 +741,11 @@ chips while `kyb_status` is monotone, #1274).
 **Sources:** `packages/trustee/src/api/useLps.ts` (data hook),
 `packages/trustee/src/routes/-useLpCounterpartiesTable.ts` (presenter),
 `packages/trustee/src/routes/lp-counterparties.index.tsx` (list view),
-`packages/trustee/src/routes/lp-counterparties.$id.tsx` (live detail view, #1271).
-**Consumer route:** `/lp-counterparties` (detail at `/lp-counterparties/$id`). Issue #1270, epic
-#1269 — **no Figma**: the epic has no LP-counterparties frame, so styling is derived from the
-shipped `/loans` page (the design system, not a specific screen, is the source).
+`packages/trustee/src/routes/lp-counterparties.$id.tsx` (live detail view, #1271),
+`packages/trustee/src/components/detail/` (shared detail primitives, #1453).
+**Consumer route:** `/lp-counterparties` (detail at `/lp-counterparties/$id`). Issues #1270 /
+#1453, epic #1269 — **no Figma**: the epic has no LP-counterparties frame, so styling is derived
+from the shipped `/loans` page (the design system, not a specific screen, is the source).
 
 ### Architecture
 
@@ -772,7 +781,7 @@ client-side sort, no search, no pagination, no ledger column (`GET /v1/lps/{id}/
 |---|---|---|
 | `NotStarted` | New | neutral |
 | `InProgress` | KYB Pending | attention |
-| `UnderReview` | KYB Pending | attention |
+| `UnderReview` | KYB Pending | info |
 | `Passed` | Approved | positive |
 | `Failed` | **Rejected** | negative |
 | `ChangesRequested` | Changes requested | attention |
@@ -785,9 +794,14 @@ silent on `Failed`; folding a failed KYB into any of those three would misinform
 table's `OriginationRowStatus` `rejected` kind). The unknown → verbatim/neutral fallback mirrors
 the loan `statusToChip` rule (see "Origination & review" below).
 
+`UnderReview → info` (#1453): the band vocabulary is now the Loan-detail `StatusBand`, where
+`info` (brand) means "an action is in flight" — the trustee owns the next move. `InProgress`
+stays `attention` (the LP still owes documents). Labels did not change.
+
 Band → colour, matching the Loans/Loan-detail chip literals: neutral
 `var(--color-pipeline-ink-muted)`, attention `#6e6400`, positive
-`var(--color-pipeline-positive-primary)`, negative `#b20000`.
+`var(--color-pipeline-positive-primary)`, negative `#b20000`, info
+`var(--color-pipeline-brand)`.
 
 ### Never-fabricate notes
 
@@ -797,49 +811,194 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 - **`country` is rendered verbatim, never normalised.** It is an optional free-text field with no
   validation and no frontend writer yet — rows may show `"CH"`, `"Switzerland"`, or anything else.
 
-### Row click & the #1271 seam
+### Row click
 
 Rows are fully clickable (pointer cursor, `tabIndex={0}`, Enter/Space, descriptive `aria-label`,
 trailing chevron) and navigate to `/lp-counterparties/$id` — a structural copy of `LoanRow` in
 `loans.index.tsx`. The detail route fetches `GET /v1/lps/{id}` independently of the list.
-It shows profile fields, registration/submission/decision times, the latest verdict reason, and
-embedded flat documents with filenames, size/type, review status/reviewer/time, rejection
-reason, and presigned downloads. Refresh obtains fresh links; missing links show unavailable.
 
-Document review is available only for Provided files while the LP is UnderReview. Verify sends
-`Verified` without a reason; Reject requires a nonblank reason and sends `Rejected`. Reviewed
-files cannot be reviewed again. LP verdicts are offered only while UnderReview: Confirm KYB
-passed requires a nonempty list of entirely Verified documents; Request changes reopens the
-record; Reject account is terminal and suspends the owner's account. Each verdict confirmation
-accepts an optional reason up to 2,000 characters and explains the consequence. Dialogs retain
-reason drafts on errors, prevent duplicate writes, and reset across LP route changes.
+### Detail view (#1271, restyled onto the Loan-detail conventions by #1453)
+
+The page is assembled from the [shared detail primitives](#shared-detail-primitives), so
+`/lp-counterparties/$id` and `/loans/$id` are one visual system rather than two look-alikes:
+
+- **Shell** — `max-w-[1180px]`, `px-[56px] pt-[39px] pb-[80px]`, `gap-[16px]` column (the loan
+  page's `<main>`).
+- **Hero** — `DetailHero` with `backTo="/lp-counterparties"`, back label `‹ LP Counterparties`,
+  the served `legal_name` as the 44px `h1` (`LP <id>` only while no record is served — never
+  fabricated), then the status chip (`lp-detail-status-chip`) and the meta line
+  (`lp-detail-meta`). Meta is built by `lpHeroMeta` in `-useLpCounterpartyDetail.ts` as
+  `Jurisdiction · Registered <date> · Submitted <date> · Decided <date>`; a clause whose value is
+  not served is **dropped entirely**, never printed as `—` (same rule as the loan hero).
+- **LP profile** + **KYB review** — two `DetailCard`s in one
+  `grid grid-cols-1 gap-[16px] min-[900px]:grid-cols-2` row, so they sit side by side on a desk
+  window and stack below 900px (design feedback on #1453: one tall key/value list buried the
+  review state). **LP profile** holds the registration record — Legal name, Jurisdiction, Contact
+  email, Registered, Linked wallet. **KYB review** holds the review record — Status (a
+  `StatusChip`, `lp-kyb-review-chip`, the same band as the hero chip), Submitted for review,
+  Latest decision date, Reviewer, Latest decision reason. Absent values render `—`; the decision
+  reason keeps `whitespace-pre-wrap`; the linked wallet renders as an
+  [`AddressChip`](#shared-detail-primitives).
+- **Reviewer renders `—`, always — it is not served.** `LpResponse` deliberately withholds
+  `kyb_decided_by` (`packages/api/src/routes/lps.rs`: it identifies the deciding operator and is
+  never returned). The row is kept so the card states the shape of the review record, and follows
+  the same never-fabricate rule as Bank Info Available on the list: the value is absent, so it
+  prints `—` rather than a guess derived from the documents' `reviewed_by`.
+- **KYB documents** — `DetailCard` whose title row carries the account verdicts and the refresh
+  control, left to right: **Reject account** (`BandButton`, negative), **Request changes**
+  (attention), **Confirm KYB passed** (positive, rendered only when `canPass`), then the 40×40
+  `@pipeline/ui` `IconButton` labelled **Refresh documents** (`RefreshIcon`; the presigned
+  download links expire). When the LP is not UnderReview the three verdicts are replaced in that
+  row by the gating note at 13px ink-muted; the "Verify every submitted document before confirming
+  KYB passed." note renders under the title row. Each document row is prefixed with the loan
+  Documents card's 32px document tile, separated by a `LINE_COLOR` rule, and keeps the filename,
+  the bytes/type/status line, the uploaded/reviewed/reviewer line (reviewer key as an
+  `AddressChip`) and the rejection reason (negative red). Its right-hand cluster is the 32px
+  download `<a>` (`DownloadIcon`, brand, `aria-label="Download <filename>"`, still the real
+  presigned link opened in a new tab) — or the "Download unavailable. Refresh to retry." text when
+  no URL is served — followed, while the document is reviewable, by the 32px `BandButton`s
+  **Verify** (positive) and **Reject** (negative). Each carries its glyph before the label —
+  `CheckIcon` on Verify, `CrossIcon` on Reject, 16px, `currentColor` so the glyph inherits the
+  band colour, 6px gap (`BandButton`'s `icon` slot, rendered `aria-hidden`) — and is still
+  announced as "Verify <filename>" / "Reject <filename>" (#1453 design feedback: the two text
+  buttons were indistinguishable at a glance). Empty state: "No documents submitted."
+- **There is no KYB decision card.** It held only buttons, so #1453's design feedback moved them
+  onto the documents title row — the documents are what the verdict is about.
+- **Bank deposits** — see [LP bank deposits](#lp-bank-deposits).
+- **Buttons** — three shapes. Page-level `@pipeline/ui` `Button` at `size="m"` (40px, 4px radius)
+  for Retry, Record deposit and every dialog action: primary is `variant="primary-blue"`
+  (the loan page's brand primary), secondary is `variant="secondary"` plus
+  `DETAIL_SECONDARY_BUTTON_CLASS` / `detailSecondaryButtonStyle()`, which add the white ground and
+  the `LINE_COLOR` border the borderless shared variant lacks. Row-level actions are `BandButton`s —
+  32px tall, the `chipStyle(band)` colours (band-coloured text and border over a light band fill),
+  never a solid primary: the account verdicts read as positive / attention / negative at a glance,
+  and the document verdicts carry their `CheckIcon` / `CrossIcon`. `BandButton` is for *verdicts*
+  only — Mint PLUSD is a plain action, so it is the shared `Button` at `size="compact"` (32px
+  brand primary), the same height as a `BandButton` but unmistakably a button (#1453 design
+  feedback — the 40px bordered secondary was too heavy for a table row, and a band-coloured one
+  read as a chip).
+  Icon-only affordances are 40×40 (`IconButton`, page chrome) or 32×32 (`BandIconButton` and the
+  download link, row-level), each carrying an explicit `aria-label`.
+
+**Behaviour is unchanged by the restyle.** Document review is available only for Provided files
+while the LP is UnderReview. Verify sends `Verified` without a reason; Reject requires a nonblank
+reason and sends `Rejected`. Reviewed files cannot be reviewed again. LP verdicts are offered only
+while UnderReview: Confirm KYB passed requires a nonempty list of entirely Verified documents;
+Request changes reopens the record; Reject account is terminal and suspends the owner's account.
+Each verdict confirmation accepts an optional reason up to 2,000 characters and explains the
+consequence. Dialogs retain reason drafts on errors, prevent duplicate writes, and reset across LP
+route changes.
 
 Mutations invalidate the current LP detail and listing. Conflicts refresh both queries so
 stale review actions disappear. Pending, 404, permission, expired session, and network states
-have explicit feedback and retry; a session-expiry response clears the trustee session. Bank
-Info remains unavailable; bank deposits are below.
+have explicit feedback and retry; a session-expiry response clears the trustee session. The
+error branch renders inside a `DetailCard` with the Retry action. Bank Info remains unavailable;
+bank deposits are below.
+
+### Shared detail primitives
+
+`packages/trustee/src/components/detail/` is the single definition site for the trustee's detail-page
+look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDepositsSection.tsx`,
+`-LpReviewDialog.tsx` and `lp-counterparties.index.tsx` (colour tokens only).
+
+| file | exports |
+|---|---|
+| `detailTokens.ts` | `StatusBand`; `LINE_COLOR`, `INK`, `INK_MUTED`, `BRAND`, `POSITIVE_GREEN`, `ATTENTION_AMBER`, `NEGATIVE_RED`; `CARD_CLASS`, `cardStyle()`, `chipStyle(band)`; `DETAIL_SECONDARY_BUTTON_CLASS`, `detailSecondaryButtonStyle()` |
+| `StatusChip.tsx` | `StatusChip` — 4px radius, 1px border, 12px body, band-coloured, `data-band` for tests |
+| `DetailCard.tsx` | `DetailCard` (card shell; renders a named `<section>` when given `ariaLabel`/`ariaLabelledBy`, a bare `<div>` otherwise) and `CardTitle` (26px display `h2`, optional `id`) |
+| `KeyValueRow.tsx` | `KeyValueRow` — 15px muted label / 16px right-aligned value, `LINE_COLOR` divider unless `isLast` |
+| `DetailHero.tsx` | `DetailHero` — back link → 44px `h1` → chip + meta row; `backTo`, `backLabel`, `title`, `status`, `meta`, `statusTestId`, `metaTestId` |
+| `AddressChip.tsx` | `AddressChip` — click-to-reveal/copy chip for a `G…` / `C…` key; `shortAddress(value)`, `copyAddress(value)` |
+| `AddressText.tsx` | `AddressText` — copy-to-toast plain-text key for table cells (no border, no inline reveal) |
+| `BandButton.tsx` | `BandButton` (32px text button, optional leading `icon`) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
+| `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon` (inline 16px stroked glyphs) |
+
+**`RefreshIcon` carries no clock hands (#1453).** `arrow-clock.svg` ships two paths — the circular
+arrow and a pair of clock hands inside it. Keeping both made the control read as *activity* or
+*history*, not *refresh*. Only the circular-arrow path is kept; the hands path was dropped, so the
+glyph says "fetch this again" and nothing else. The viewBox is unchanged, so the arrow keeps its
+original proportions.
+
+**`AddressChip` (#1453).** Stellar keys are 56 characters and were pushing every row they
+appeared in out of shape. The chip renders `…` plus the **last five** characters (`…CQXS4`), keeps
+the full value in its `title`, and is a `<button>`: the first click reveals the full value inline
+and copies it with `navigator.clipboard.writeText`, flashing a muted "Copied" for 1.6 s; a second
+click collapses it. A missing or rejecting clipboard is swallowed — the value still reveals, and
+nothing claims a copy that did not happen. Used for the linked wallet and the documents' reviewer
+key. `lib/truncateAddress.ts` (head+tail form, sidebar wallet pill) is a different convention and
+is deliberately left alone.
+
+**`AddressText` (#1453 design feedback).** Inside a table the chip's inline reveal expands one
+cell to 56 characters and tears the row grid apart, and the "Copied" flash shifts every column to
+its right. `AddressText` is the table form of the same affordance: a borderless, fill-less
+`<button>` rendering `shortAddress(value)` at the 16px body step, the full value in `title`, and a
+click that copies through the shared `copyAddress` and reports the result as the
+[toast](#toasts) "Address copied" — no inline reveal, no in-row state, so the row never reflows.
+A failed or unavailable clipboard raises no toast. Used for the deposits table's `recorded_by`.
+
+`StatusBand` is defined here and re-exported by `-useLoanDetail.ts`; `AccountStatusBand` in
+`-useLpCounterpartiesTable.ts` is an alias of it, so both pages and the list share one band
+vocabulary (`neutral | attention | positive | negative | info`).
+
+**Why trustee-local and not `@pipeline/ui`.** These primitives are raw literals
+(`rgba(56,55,53,0.18)`, `#262524`, the 44/26/15px display+body steps) that encode the trustee
+design assignment, not the shared token system. Promoting them to `@pipeline/ui` would export
+trustee styling to the LP and borrower apps. `SummaryTiles` and `OtherActionsCard` stay private to
+`loans.$id.tsx` — the LP page has neither.
 
 ### LP bank deposits
 
 The detail page carries a **Bank deposits** card (`-LpBankDepositsSection.tsx`, presenter
 `-useLpBankDeposits.ts`, hooks `api/useLpBankDeposits.ts`) over `GET`/`POST
-/v1/lps/{id}/bank-deposits` (#1413). No Figma; styling follows the page's other cards. It renders
-at every KYB status — the endpoint does not gate on one.
+/v1/lps/{id}/bank-deposits` (#1413). No Figma; since #1453 the card is a
+[`DetailCard` + `CardTitle`](#shared-detail-primitives) and the table uses the loan-page
+typography (14px ink-muted `font-normal` headers, 16px `#262524` body cells, `LINE_COLOR` row
+rules, amounts right-aligned `tabular-nums`, `overflow-x-auto` kept for narrow viewports). The
+#1413/#1449 wiring — list, record, mint, disabled hints, pending window, error copy — is
+untouched by that restyle. It renders at every KYB status — the endpoint does not gate on one.
 
-- **List** — `GET`, 30 s poll, served order (newest first), no client sort. Columns: Received
-  (`occurred_at`, `formatIsoDateTimeUtc` → `5 Oct 2026, 15:41 UTC`), Amount (`formatUsdDecimal` → `$1,234.50`, no float
-  round-trip), Payment reference (`ref_hash` as its `title`), PLUSD (`Minted` / `Not minted` from
-  `is_minted`), Recorded by. Loading, empty ("No bank deposits recorded."), and error + Retry
-  states.
+**Column plan (#1453 design feedback).** The auto-layout table came out lopsided — Received took
+whatever width it wanted and Amount was squeezed against Payment reference. The table is now
+`table-fixed` over a `<colgroup>` with a fixed share per column, so the five columns read evenly
+at the card width and keep those proportions as the card grows:
+
+| column | width | cell |
+|---|---|---|
+| Received | 22% | `occurred_at` via `formatIsoDateTimeUtc` → `5 Oct 2026, 15:41 UTC`, `whitespace-nowrap` |
+| Amount | 16% | right-aligned `tabular-nums`, `formatCompactUsd2dp` |
+| Payment reference | 26% | `payment_reference`, `break-all`, `ref_hash` as its `title` |
+| Recorded by | 18% | `recorded_by` as an [`AddressText`](#shared-detail-primitives) |
+| PLUSD | 18% | the status cell below |
+
+`min-w-[820px]` holds those shares legible before `overflow-x-auto` takes over.
+
+**Amount uses the Loans-table formatter.** `formatCompactUsd2dp` — the same formatter
+`-useLoansTable.ts` uses for `senior_outstanding` / `collateral` — replaced the local
+`formatUsdDecimal`, so a deposit reads `$1.25M` / `$30.00K` exactly as a loan amount does
+elsewhere in the trustee app instead of inventing a second money style per table. The served
+string is unchanged; only the display formatter moved.
+
+- **List** — `GET`, 30 s poll, served order (newest first), no client sort. Columns per the plan
+  above. Loading, empty ("No bank deposits recorded."), and error + Retry states.
 - **Record deposit** — dialog (shares `useLpReviewDialog`'s focus trap/Escape) with Amount (USD),
   Payment reference, and Received at (UTC, `datetime-local` defaulting to now). Client checks
   mirror the API: amount > 0 with ≤ 2 decimals (grouping commas stripped), nonblank reference
   (sent trimmed), a valid non-future time sent as `…:00Z`. Validation shows on submit; the
   dialog closes on `201` and keeps drafts on error. `409` reads "A deposit with this payment
   reference is already recorded." Every settle invalidates the deposits query.
-- **Mint PLUSD** (#1449) — a trailing **Action** column. A row with `is_minted: true` shows
-  `Minted` in the PLUSD column and renders no control. Otherwise the cell is a `Mint PLUSD`
-  button that calls the yield minter's `record_wire_in` directly from the trustee's connected
+- **PLUSD — one status column** (#1449, folded into a single column by #1453). The trailing
+  **Action** column is gone: the PLUSD column now carries both the state and the control, because
+  a two-column `Not minted` + button pair said the same thing twice. A row with `is_minted: true`
+  renders a positive `StatusChip` reading **Minted** (`lp-deposit-minted`) and no control. A row
+  inside the pending window renders an attention `StatusChip` reading **Pending**
+  (`lp-deposit-pending`) over the `Waiting for the indexer` hint. Otherwise the cell is a
+  `@pipeline/ui` `Button`, `variant="primary-blue" size="compact"` (32px, solid brand fill, white
+  label, 4px radius), reading **Mint PLUSD** — the design system's own row-scale button, not the
+  40px bordered secondary it used to be and deliberately not a `BandButton`, which would read as a
+  chip rather than an action (#1453 design feedback). The only local class is the 13px row type
+  and `disabled:opacity-[0.32]`, the `secondary` variant's own disabled opacity, because
+  `primary-blue` ships no disabled treatment and a disabled mint must look disabled. It calls the
+  yield minter's `record_wire_in` directly from the trustee's connected
   Stellar wallet (`api/useRecordWireIn.ts` over `@pipeline/wallet-connect`'s `recordWireIn`;
   see [deposits.md](../product-specs/deposits.md) for the signature, the `CASH_REPORTER`
   requirement and the 7-decimal scale). Arguments come only from served data: `amount` is the
@@ -854,8 +1013,8 @@ at every KYB status — the endpoint does not gate on one.
   PLUSD `Error(Contract, #13)`. The
   trustee's wallet is the signer and `caller`, never the receiver.
 - **States** — idle (`Mint PLUSD`) → `Awaiting signature…` → `Submitting…` → `Confirming…`
-  while in flight, then `Waiting for the indexer` with `Pending` in the PLUSD column until the
-  served `is_minted` flips. The pending set is in-memory only, bounded to ~2 min, and only
+  as the button's own label while in flight, then the `Pending` chip over `Waiting for the
+  indexer` until the served `is_minted` flips. The pending set is in-memory only, bounded to ~2 min, and only
   raises the deposits poll to 5 s; it is never persisted and never substitutes for the served
   flag. Each id's window is anchored to its own mint time (the set stores a deadline per id), so
   a later mint never restarts an earlier id's window, and unmounting clears every armed window. Disabled reasons, rendered as the button's `title` and an `aria-describedby` hint, in
@@ -1612,6 +1771,24 @@ Log). Without a `WalletGateContext.Provider` mounted, `@pipeline/wallet-connect`
 default to a no-op (immediate proceed). `TrusteeSessionProvider` is NOT mounted in `main.tsx` —
 it calls `useNavigate()`, which needs router context, so it mounts inside the root route
 (`routes/__root.tsx`), below `<RouterProvider>`.
+
+### Toasts
+
+`components/ToastProvider.tsx` is the trustee's one transient-feedback surface, mounted in
+`routes/__root.tsx` inside `TrusteeSessionProvider` and around `TrusteeShell`, so every route can
+raise one. It exports `ToastProvider` and `useToast()`, which returns `{ showToast(title, tone?) }`
+— `tone` defaults to `"success"` and is forwarded to `@pipeline/ui`'s `Toast`, the only renderer.
+One toast is live at a time (a second call replaces the first), it auto-dismisses after
+`TOAST_TIMEOUT_MS` (2.4 s), and the timer is cleared on unmount. The container is pinned to the
+**bottom-right corner** (`fixed right-[24px] bottom-[24px] z-[60]`), not centred — a centred toast
+sits over the content the operator just acted on. It is `pointer-events-none` (the toast itself
+re-enables them) so it never blocks the page under it, and `max-w-[calc(100vw-48px)]` keeps it on
+screen on a narrow window.
+
+`useToast()` outside a provider returns a no-op `showToast` rather than throwing, so component
+tests that render a section in isolation need no wrapper. Introduced by #1453 for the deposits
+table's [`AddressText`](#shared-detail-primitives) copy confirmation — an inline "Copied" inside a
+table cell reflows the row.
 
 ### Nav sections (`lib/nav.ts`)
 

@@ -12,8 +12,9 @@ delay 0; without it every attempt stops at simulation (Story 6) and nothing is s
 ## Story 1: An unminted deposit offers a Mint PLUSD action
 
 Record a deposit (Story 1 of [#1413](./1413-lp-bank-deposits.md)) and reload the LP detail page.
-Its row shows `Not minted` in the PLUSD column and a `Mint PLUSD` button in the trailing **Action**
-column. A row whose `is_minted` is already `true` shows `Minted` and no button at all — there is no
+Its row shows a compact `Mint PLUSD` button in the trailing **PLUSD** column — since #1453 that one
+column carries both the state and the action, and there is no separate Action column. A row whose
+`is_minted` is already `true` shows a green `Minted` chip and no button at all — there is no
 control to re-mint it.
 
 ## Story 2: The mint goes to the LP's linked wallet
@@ -46,13 +47,12 @@ No disabled state ever fires a wallet prompt.
 ## Story 5: Submitted, then waiting for the indexer
 
 Sign and submit. The button label moves through `Awaiting signature…`, `Submitting…` and
-`Confirming…`, then the cell becomes the text `Waiting for the indexer` and the PLUSD column reads
-`Pending`. The deposits list polls every ~5 s while anything is pending. `Pending` is not a claim
+`Confirming…`, then the PLUSD column becomes an amber `Pending` chip with `Waiting for the indexer`
+under it. The deposits list polls every ~5 s while anything is pending. `Pending` is not a claim
 that the mint succeeded: the row only becomes `Minted` when the API's own `is_minted` turns true
 after the worker matches the `WireIn` event on `ref_hash`. Reload the page mid-wait — the pending
-state is gone (it is in-memory only) and the row reads `Not minted` again until the served flag
-flips. Leave it for ~2 minutes without the flag flipping and the row returns to `Not minted` with
-the button offered again.
+state is gone (it is in-memory only) and the `Mint PLUSD` button is offered again until the served
+flag flips. Leave it for ~2 minutes without the flag flipping and the button returns the same way.
 
 ## Story 6: Failures surface verbatim, and a replay is named
 

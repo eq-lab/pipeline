@@ -116,6 +116,16 @@ describe("LP Counterparties list route (ready)", () => {
     expect(statuses[0]).toHaveAttribute("data-band", "negative");
   });
 
+  it("renders an UnderReview LP as 'KYB Pending' with the info status band", () => {
+    ready({
+      lps: [{ ...RESPONSE.lps[0]!, id: 3, kyb_status: "UnderReview" }],
+    });
+    renderRoute();
+    const status = screen.getByTestId("lp-counterparties-status");
+    expect(status).toHaveTextContent("KYB Pending");
+    expect(status).toHaveAttribute("data-band", "info");
+  });
+
   it("navigates to /lp-counterparties/<id> on row click", () => {
     renderRoute();
     fireEvent.click(screen.getAllByTestId("lp-counterparties-row")[0]!);

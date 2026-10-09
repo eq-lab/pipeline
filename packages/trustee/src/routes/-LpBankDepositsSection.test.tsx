@@ -4,6 +4,7 @@ import {
   screen,
   fireEvent,
   waitFor,
+  within,
   act,
 } from "@testing-library/react";
 import { ApiError } from "@/api/client";
@@ -18,6 +19,17 @@ vi.mock("@/api/useLpBankDeposits", () => ({
 vi.mock("@/api/useLp", () => ({ useLp: vi.fn() }));
 vi.mock("@/api/useRecordWireIn", () => ({ useRecordWireIn: vi.fn() }));
 vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+
+const showToast = vi.fn();
+vi.mock("@/components/ToastProvider", () => ({
+  useToast: () => ({ showToast }),
+}));
+
+const writeText = vi.fn<(value: string) => Promise<void>>();
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText },
+  configurable: true,
+});
 
 const envMock = {
   STELLAR_USDC_CUSTODY_ID:
@@ -140,6 +152,9 @@ beforeEach(() => {
   reset.mockReset();
   mintAsync.mockReset();
   mintReset.mockReset();
+  showToast.mockReset();
+  writeText.mockReset();
+  writeText.mockResolvedValue(undefined);
   envMock.STELLAR_USDC_CUSTODY_ID = CUSTODY;
   envMock.STELLAR_CAPITAL_WALLET_ID = CAPITAL_WALLET;
   envMock.STELLAR_YIELD_MINTER_ID =
@@ -172,12 +187,41 @@ describe("LpBankDepositsSection — list", () => {
   it("renders deposit rows", () => {
     list({ data: { deposits: [DEPOSIT] } });
     renderSection();
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    expect(headers).toEqual([
+      "Received",
+      "Amount",
+      "Payment reference",
+      "Recorded by",
+      "PLUSD",
+    ]);
     const row = screen.getAllByRole("row")[1]!;
     expect(row).toHaveTextContent("5 Oct 2026, 15:41 UTC");
-    expect(row).toHaveTextContent("$1,250,000.50");
+    expect(row).toHaveTextContent("$1.25M");
     expect(row).toHaveTextContent("WIRE-REF-1");
-    expect(row).toHaveTextContent("Not minted");
-    expect(row).toHaveTextContent("GTRUSTEE");
+    expect(
+      within(row).getByRole("button", { name: "Mint PLUSD" }),
+    ).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "…USTEE" })).toHaveAttribute(
+      "title",
+      "GTRUSTEE",
+    );
+  });
+
+  it("copies recorded_by to the clipboard and toasts instead of revealing inline", async () => {
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    fireEvent.click(screen.getByRole("button", { name: "…USTEE" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("GTRUSTEE"));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith("Address copied"),
+    );
+    expect(screen.queryByText("Copied")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("row")[1]).not.toHaveTextContent("GTRUSTEE");
   });
 });
 
@@ -281,11 +325,13 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     expect(mintAsync).not.toHaveBeenCalled();
   });
 
-  it("shows Minted and no action for a minted row", () => {
+  it("shows a positive Minted chip and no action for a minted row", () => {
     list({ data: { deposits: [{ ...DEPOSIT, is_minted: true }] } });
     renderSection();
 
-    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Minted");
+    const chip = screen.getByTestId("lp-deposit-minted");
+    expect(chip).toHaveTextContent("Minted");
+    expect(chip).toHaveAttribute("data-band", "positive");
     expect(
       screen.queryByRole("button", { name: "Mint PLUSD" }),
     ).not.toBeInTheDocument();
@@ -442,7 +488,7 @@ describe("LpBankDepositsSection — mint pending window", () => {
       vi.advanceTimersByTime(MINT_PENDING_WINDOW_MS);
     });
 
-    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Not minted");
+    expect(screen.queryByTestId("lp-deposit-pending")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Mint PLUSD" }),
     ).toBeInTheDocument();
@@ -497,7 +543,11 @@ describe("LpBankDepositsSection — mint pending window", () => {
       vi.advanceTimersByTime(MINT_PENDING_WINDOW_MS / 2);
     });
 
-    expect(screen.getAllByRole("row")[1]).toHaveTextContent("Not minted");
+    expect(
+      within(screen.getAllByRole("row")[1]!).getByRole("button", {
+        name: "Mint PLUSD",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("row")[2]).toHaveTextContent("Pending");
   });
 });

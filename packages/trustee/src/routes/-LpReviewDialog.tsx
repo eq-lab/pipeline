@@ -1,5 +1,9 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
 import { Button, InlineError } from "@pipeline/ui";
+import {
+  DETAIL_SECONDARY_BUTTON_CLASS,
+  detailSecondaryButtonStyle,
+} from "@/components/detail/detailTokens";
 import type { LpReviewAction } from "./-useLpCounterpartyDetail";
 import { useLpReviewDialog } from "./-useLpReviewDialog";
 
@@ -130,11 +134,19 @@ export function LpReviewDialog({
           <InlineError message={error.message} details={error.details} />
         )}
         <div className="flex flex-wrap justify-end gap-3">
-          <Button variant="secondary" disabled={busy} onClick={onCancel}>
+          <Button
+            variant="secondary"
+            size="m"
+            className={DETAIL_SECONDARY_BUTTON_CLASS}
+            style={detailSecondaryButtonStyle()}
+            disabled={busy}
+            onClick={onCancel}
+          >
             Cancel
           </Button>
           <Button
-            variant="primary-dark"
+            variant="primary-blue"
+            size="m"
             disabled={!eligible || Boolean(validationError) || busy}
             onClick={onSubmit}
           >

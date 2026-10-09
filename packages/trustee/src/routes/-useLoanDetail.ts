@@ -22,6 +22,7 @@ import type {
   UseLoanFinancialsResult,
 } from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
+import type { StatusBand } from "@/components/detail/detailTokens";
 import {
   formatBpsRate,
   formatFullUsd,
@@ -73,12 +74,7 @@ const CCR_TREND_THRESHOLDS: CcrThreshold[] = [
   { pct: 110, label: "110%" },
 ];
 
-export type StatusBand =
-  | "positive"
-  | "attention"
-  | "negative"
-  | "neutral"
-  | "info";
+export type { StatusBand };
 
 /** The hero identity block, sourced from the loan-book row. */
 export interface HeroView {
