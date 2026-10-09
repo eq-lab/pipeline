@@ -913,6 +913,12 @@ look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDeposits
 | `BandButton.tsx` | `BandButton` (32px text button, optional leading `icon`) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
 | `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon` (inline 16px stroked glyphs) |
 
+**`RefreshIcon` carries no clock hands (#1453).** `arrow-clock.svg` ships two paths — the circular
+arrow and a pair of clock hands inside it. Keeping both made the control read as *activity* or
+*history*, not *refresh*. Only the circular-arrow path is kept; the hands path was dropped, so the
+glyph says "fetch this again" and nothing else. The viewBox is unchanged, so the arrow keeps its
+original proportions.
+
 **`AddressChip` (#1453).** Stellar keys are 56 characters and were pushing every row they
 appeared in out of shape. The chip renders `…` plus the **last five** characters (`…CQXS4`), keeps
 the full value in its `title`, and is a `<button>`: the first click reveals the full value inline

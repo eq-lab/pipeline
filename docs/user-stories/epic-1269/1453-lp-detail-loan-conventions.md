@@ -144,9 +144,10 @@ rejected document, and one LP with no documents at all.
   uses, then the filename, the `<bytes> bytes · <content type> · <status>` line beneath it, and the
   `Uploaded … · Reviewed … · Reviewer …` line below that. A rejected document still shows
   `Rejection reason: …` in red.
-- **Refresh is now a 40×40 icon button** on the card's title row — a circular-arrow glyph with no
-  label text, announced as "Refresh documents". Clicking it refetches and the download links keep
-  working.
+- **Refresh is now a 40×40 icon button** on the card's title row — a plain circular-arrow glyph
+  with no label text and **no clock hands inside it**, so it reads as "refresh", not as an
+  activity or history log. It is announced as "Refresh documents". Clicking it refetches and the
+  download links keep working.
 - **Download is now an icon button** — a down-arrow glyph announced as "Download <filename>" — and
   is still a real link that opens the presigned URL in a new tab. When no URL is served the row
   shows "Download unavailable. Refresh to retry." instead.
