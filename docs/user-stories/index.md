@@ -206,6 +206,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1270 Trustee: LP Counterparties menu item + list table](https://github.com/eq-lab/pipeline/issues/1270) | [1270-trustee-lp-counterparties.md](./epic-1269/1270-trustee-lp-counterparties.md) | Initial |
 | [#1413 Backend: per-LP bank deposits](https://github.com/eq-lab/pipeline/issues/1413) | [1413-lp-bank-deposits.md](./epic-1269/1413-lp-bank-deposits.md) | Initial |
 | [#1449 Trustee: mint the PLUSD leg of an LP bank deposit](https://github.com/eq-lab/pipeline/issues/1449) | [1449-trustee-mint-bank-deposit.md](./epic-1269/1449-trustee-mint-bank-deposit.md) | Initial |
+| [#1453 Trustee: align the LP counterparty detail page with the Loan detail conventions](https://github.com/eq-lab/pipeline/issues/1453) | [1453-lp-detail-loan-conventions.md](./epic-1269/1453-lp-detail-loan-conventions.md) | Initial |
 
 ---
 

@@ -1,5 +1,12 @@
 // spec: docs/frontend/trustee-flows.md#lp-bank-deposits
 import { Button, InlineError } from "@pipeline/ui";
+import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
+import {
+  DETAIL_SECONDARY_BUTTON_CLASS,
+  INK_MUTED,
+  LINE_COLOR,
+  detailSecondaryButtonStyle,
+} from "@/components/detail/detailTokens";
 import { useLpReviewDialog } from "./-useLpReviewDialog";
 import {
   useLpBankDepositsSection,
@@ -11,6 +18,15 @@ import {
 const inputClass =
   "rounded-pipeline-card border-pipeline-line bg-pipeline-surface text-pipeline-ink focus:border-pipeline-brand w-full border p-3 focus:outline-none disabled:opacity-50";
 
+const BODY_CLASS =
+  "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
+
+const HEAD_CELL_CLASS =
+  "py-[12px] pr-[16px] font-normal font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]";
+
+const BODY_CELL_CLASS =
+  "py-[12px] pr-[16px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]";
+
 export function LpBankDepositsSection({
   lpId,
   legalName,
@@ -20,16 +36,15 @@ export function LpBankDepositsSection({
 }) {
   const section = useLpBankDepositsSection(lpId);
   return (
-    <section
-      className="rounded-pipeline-card border-pipeline-line bg-pipeline-surface flex flex-col gap-4 border p-6"
-      aria-labelledby="lp-deposits-heading"
+    <DetailCard
+      className="gap-[16px] p-[26px]"
+      ariaLabelledBy="lp-deposits-heading"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="lp-deposits-heading" className="font-display text-2xl">
-          Bank deposits
-        </h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
+        <CardTitle id="lp-deposits-heading">Bank deposits</CardTitle>
         <Button
-          variant="primary-dark"
+          variant="primary-blue"
+          size="m"
           onClick={section.openDialog}
           disabled={section.busy}
         >
@@ -37,55 +52,77 @@ export function LpBankDepositsSection({
         </Button>
       </div>
       {section.state === "loading" && (
-        <p role="status">Loading bank deposits…</p>
+        <p role="status" className={BODY_CLASS} style={{ color: INK_MUTED }}>
+          Loading bank deposits…
+        </p>
       )}
       {section.error && (
-        <div role="alert" className="flex flex-col gap-3">
+        <div role="alert" className="flex flex-col gap-[12px]">
           <InlineError
             message={section.error.message}
             details={section.error.details}
           />
           <Button
             variant="secondary"
+            size="m"
             onClick={section.refresh}
             disabled={section.query.isFetching}
-            className="w-fit"
+            className={`w-fit ${DETAIL_SECONDARY_BUTTON_CLASS}`}
+            style={detailSecondaryButtonStyle()}
           >
             Retry
           </Button>
         </div>
       )}
       {section.state === "empty" && (
-        <p className="text-pipeline-ink-muted">No bank deposits recorded.</p>
+        <p className={BODY_CLASS} style={{ color: INK_MUTED }}>
+          No bank deposits recorded.
+        </p>
       )}
       {section.state === "ready" && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="text-pipeline-ink-muted">
+          <table className="w-full min-w-[720px] text-left">
+            <thead style={{ color: INK_MUTED }}>
               <tr>
-                <th className="py-2 pr-4 font-normal">Received</th>
-                <th className="py-2 pr-4 text-right font-normal">Amount</th>
-                <th className="py-2 pr-4 font-normal">Payment reference</th>
-                <th className="py-2 pr-4 font-normal">PLUSD</th>
-                <th className="py-2 pr-4 font-normal">Recorded by</th>
-                <th className="py-2 font-normal">Action</th>
+                <th className={HEAD_CELL_CLASS}>Received</th>
+                <th className={`${HEAD_CELL_CLASS} text-right`}>Amount</th>
+                <th className={HEAD_CELL_CLASS}>Payment reference</th>
+                <th className={HEAD_CELL_CLASS}>PLUSD</th>
+                <th className={HEAD_CELL_CLASS}>Recorded by</th>
+                <th className={`${HEAD_CELL_CLASS} pr-0`}>Action</th>
               </tr>
             </thead>
-            <tbody className="divide-pipeline-line divide-y">
-              {section.rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="py-3 pr-4 whitespace-nowrap">
+            <tbody>
+              {section.rows.map((row, index) => (
+                <tr
+                  key={row.id}
+                  style={
+                    index === 0
+                      ? undefined
+                      : { borderTop: `1px solid ${LINE_COLOR}` }
+                  }
+                >
+                  <td className={`${BODY_CELL_CLASS} whitespace-nowrap`}>
                     {row.occurredAt}
                   </td>
-                  <td className="py-3 pr-4 text-right whitespace-nowrap tabular-nums">
+                  <td
+                    className={`${BODY_CELL_CLASS} text-right whitespace-nowrap tabular-nums`}
+                  >
                     {row.amount}
                   </td>
-                  <td className="py-3 pr-4 break-all" title={row.refHash}>
+                  <td
+                    className={`${BODY_CELL_CLASS} break-all`}
+                    title={row.refHash}
+                  >
                     {row.reference}
                   </td>
-                  <td className="py-3 pr-4 whitespace-nowrap">{row.minted}</td>
-                  <td className="py-3 pr-4 break-all">{row.recordedBy}</td>
-                  <td className="py-3 whitespace-nowrap">
+                  <td className={`${BODY_CELL_CLASS} whitespace-nowrap`}>
+                    {row.minted}
+                  </td>
+                  <td className={`${BODY_CELL_CLASS} break-all`}>
+                    {row.recordedBy}
+                  </td>
+                  <td className={`${BODY_CELL_CLASS} pr-0 whitespace-nowrap`}>
                     <MintCell row={row} section={section} />
                   </td>
                 </tr>
@@ -105,7 +142,7 @@ export function LpBankDepositsSection({
       {section.open && (
         <RecordBankDepositDialog section={section} legalName={legalName} />
       )}
-    </section>
+    </DetailCard>
   );
 }
 
@@ -116,7 +153,9 @@ function MintCell({ row, section }: { row: DepositRow; section: Section }) {
 
   if (row.isPending && !inFlight) {
     return (
-      <span className="text-pipeline-ink-muted">Waiting for the indexer</span>
+      <span className={BODY_CLASS} style={{ color: INK_MUTED }}>
+        Waiting for the indexer
+      </span>
     );
   }
 
@@ -127,6 +166,9 @@ function MintCell({ row, section }: { row: DepositRow; section: Section }) {
     <div className="flex flex-col gap-1">
       <Button
         variant="secondary"
+        size="m"
+        className={DETAIL_SECONDARY_BUTTON_CLASS}
+        style={detailSecondaryButtonStyle()}
         onClick={() => void section.mintDeposit(row)}
         disabled={reason !== null || inFlight}
         title={reason ?? undefined}
@@ -135,7 +177,11 @@ function MintCell({ row, section }: { row: DepositRow; section: Section }) {
         {inFlight ? mintStageLabel(section.mintStage) : "Mint PLUSD"}
       </Button>
       {reason && (
-        <span id={hintId} className="text-pipeline-ink-muted text-xs">
+        <span
+          id={hintId}
+          className="font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px]"
+          style={{ color: INK_MUTED }}
+        >
           {reason}
         </span>
       )}
@@ -246,12 +292,20 @@ function RecordBankDepositDialog({
           <Button
             type="button"
             variant="secondary"
+            size="m"
+            className={DETAIL_SECONDARY_BUTTON_CLASS}
+            style={detailSecondaryButtonStyle()}
             disabled={section.busy}
             onClick={section.close}
           >
             Cancel
           </Button>
-          <Button type="submit" variant="primary-dark" disabled={section.busy}>
+          <Button
+            type="submit"
+            variant="primary-blue"
+            size="m"
+            disabled={section.busy}
+          >
             {section.busy ? "Recording…" : "Record deposit"}
           </Button>
         </div>

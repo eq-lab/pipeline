@@ -1,200 +1,258 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Button, InlineError } from "@pipeline/ui";
-import { useLpCounterpartyDetail } from "./-useLpCounterpartyDetail";
+import { DocumentIcon } from "@/components/DocumentIcon";
+import { DetailHero } from "@/components/detail/DetailHero";
+import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
+import { KeyValueRow } from "@/components/detail/KeyValueRow";
+import {
+  DETAIL_SECONDARY_BUTTON_CLASS,
+  INK_MUTED,
+  LINE_COLOR,
+  NEGATIVE_RED,
+  detailSecondaryButtonStyle,
+} from "@/components/detail/detailTokens";
+import {
+  lpHeroMeta,
+  useLpCounterpartyDetail,
+} from "./-useLpCounterpartyDetail";
 import { mapKybStatus } from "./-useLpCounterpartiesTable";
 import { LpReviewDialog } from "./-LpReviewDialog";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 import { formatIsoDateUtc } from "@/utils/formatDate";
 
-const statusClasses = {
-  neutral: "text-pipeline-ink-muted bg-pipeline-fill-muted",
-  attention: "text-pipeline-warning bg-pipeline-promo",
-  positive: "text-pipeline-positive-strong bg-pipeline-positive-secondary",
-  negative: "text-pipeline-negative-strong bg-pipeline-negative-secondary",
-};
+const NOTE_CLASS =
+  "font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]";
+const BODY_CLASS =
+  "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
+const SUB_CLASS =
+  "font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px]";
+
+function orDash(value: string | null | undefined) {
+  return value || "—";
+}
 
 function LpCounterpartyDetailContent({ id }: { id: string }) {
   const detail = useLpCounterpartyDetail(id);
   const { lp } = detail;
   const status = lp ? mapKybStatus(lp.kyb_status) : null;
   return (
-    <main className="font-body text-pipeline-ink mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-12 md:px-8">
-      <Link to="/lp-counterparties" className="text-pipeline-brand w-fit">
-        ← Back to LP Counterparties
-      </Link>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="font-display text-[40px] leading-tight break-words md:text-[64px]">
-          {lp?.legal_name ?? `LP ${id}`}
-        </h1>
-        {detail.validId && (
-          <Button
-            variant="secondary"
-            onClick={detail.refresh}
-            disabled={detail.query.isFetching || detail.busy}
-          >
-            Refresh
-          </Button>
-        )}
-      </div>
-      {!detail.validId && <p role="alert">This LP identifier is invalid.</p>}
+    <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
+      <DetailHero
+        backTo="/lp-counterparties"
+        backLabel="‹ LP Counterparties"
+        title={lp?.legal_name ?? `LP ${id}`}
+        status={status}
+        meta={lp ? lpHeroMeta(lp) : ""}
+        statusTestId="lp-detail-status-chip"
+        metaTestId="lp-detail-meta"
+      />
+      {!detail.validId && (
+        <p role="alert" className={BODY_CLASS} style={{ color: INK_MUTED }}>
+          This LP identifier is invalid.
+        </p>
+      )}
       {detail.validId && detail.query.isPending && (
-        <p role="status">Loading LP counterparty…</p>
+        <p role="status" className={BODY_CLASS} style={{ color: INK_MUTED }}>
+          Loading LP counterparty…
+        </p>
       )}
       {detail.error && (
-        <div role="alert" className="flex flex-col gap-3">
-          <InlineError
-            message={detail.error.message}
-            details={detail.error.details}
-          />
-          <Button
-            variant="secondary"
-            onClick={detail.refresh}
-            disabled={detail.query.isFetching}
-          >
-            Retry
-          </Button>
-        </div>
+        <DetailCard className="gap-[12px] p-[26px]" testId="lp-detail-error">
+          <div role="alert" className="flex flex-col gap-[12px]">
+            <InlineError
+              message={detail.error.message}
+              details={detail.error.details}
+            />
+            <Button
+              variant="secondary"
+              size="m"
+              className={`w-fit ${DETAIL_SECONDARY_BUTTON_CLASS}`}
+              style={detailSecondaryButtonStyle()}
+              onClick={detail.refresh}
+              disabled={detail.query.isFetching}
+            >
+              Retry
+            </Button>
+          </div>
+        </DetailCard>
       )}
       {lp && (
         <>
-          <section
-            className="rounded-pipeline-card border-pipeline-line bg-pipeline-surface border p-6"
-            aria-label="LP profile"
+          <DetailCard className="gap-[8px] p-[26px]" ariaLabel="LP profile">
+            <CardTitle>LP profile</CardTitle>
+            <div className="flex flex-col">
+              <KeyValueRow label="Jurisdiction">
+                {orDash(lp.country)}
+              </KeyValueRow>
+              <KeyValueRow label="Contact email">
+                <span className="break-all">{orDash(lp.contact_email)}</span>
+              </KeyValueRow>
+              <KeyValueRow label="First registration date">
+                {formatIsoDateUtc(lp.created_at)}
+              </KeyValueRow>
+              <KeyValueRow label="Submitted for review">
+                {formatIsoDateUtc(lp.kyb_submitted_at)}
+              </KeyValueRow>
+              <KeyValueRow label="Latest decision date">
+                {formatIsoDateUtc(lp.kyb_decided_at)}
+              </KeyValueRow>
+              <KeyValueRow label="Settlement address">
+                <span className="break-all">{orDash(lp.stellar_address)}</span>
+              </KeyValueRow>
+              <KeyValueRow label="Latest decision reason" isLast>
+                <span className="break-words whitespace-pre-wrap">
+                  {orDash(lp.kyb_decision_reason)}
+                </span>
+              </KeyValueRow>
+            </div>
+          </DetailCard>
+
+          <DetailCard
+            className="gap-[8px] p-[26px]"
+            ariaLabelledBy="lp-documents-heading"
           >
-            {status && (
-              <span
-                className={`rounded-pipeline-pill inline-flex px-3 py-1 text-sm ${statusClasses[status.band]}`}
+            <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
+              <CardTitle id="lp-documents-heading">KYB documents</CardTitle>
+              <Button
+                variant="secondary"
+                size="m"
+                className={DETAIL_SECONDARY_BUTTON_CLASS}
+                style={detailSecondaryButtonStyle()}
+                onClick={detail.refresh}
+                disabled={detail.query.isFetching || detail.busy}
               >
-                {status.label}
-              </span>
-            )}
-            <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <ProfileField label="Jurisdiction" value={lp.country} />
-              <ProfileField label="Contact email" value={lp.contact_email} />
-              <ProfileField
-                label="First registration date"
-                value={formatIsoDateUtc(lp.created_at)}
-              />
-              <ProfileField
-                label="Submitted for review"
-                value={formatIsoDateUtc(lp.kyb_submitted_at)}
-              />
-              <ProfileField
-                label="Latest decision date"
-                value={formatIsoDateUtc(lp.kyb_decided_at)}
-              />
-              <ProfileField
-                label="Settlement address"
-                value={lp.stellar_address}
-              />
-              <ProfileField
-                label="Latest decision reason"
-                value={lp.kyb_decision_reason}
-              />
-            </dl>
-          </section>
-          <section
-            className="rounded-pipeline-card border-pipeline-line bg-pipeline-surface flex flex-col gap-4 border p-6"
-            aria-labelledby="lp-documents-heading"
-          >
-            <h2 id="lp-documents-heading" className="font-display text-2xl">
-              KYB documents
-            </h2>
-            {lp.documents.length === 0 && (
-              <p className="text-pipeline-ink-muted">No documents submitted.</p>
-            )}
-            <ul className="divide-pipeline-line flex flex-col divide-y">
-              {lp.documents.map((document) => (
-                <li key={document.id} className="flex flex-col gap-3 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium break-all">
-                        {document.original_filename}
-                      </p>
-                      <p className="text-pipeline-ink-muted text-sm">
-                        {document.size_bytes.toLocaleString()} bytes ·{" "}
-                        {document.content_type} · {document.status}
-                      </p>
+                Refresh
+              </Button>
+            </div>
+            {lp.documents.length === 0 ? (
+              <p
+                className={`py-[8px] ${BODY_CLASS}`}
+                style={{ color: INK_MUTED }}
+              >
+                No documents submitted.
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {lp.documents.map((document, index) => (
+                  <li
+                    key={document.id}
+                    className="flex flex-col gap-[8px] py-[12px]"
+                    style={
+                      index === lp.documents.length - 1
+                        ? undefined
+                        : { borderBottom: `1px solid ${LINE_COLOR}` }
+                    }
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-[12px]">
+                      <div className="flex min-w-0 items-center gap-[12px]">
+                        <span className="flex size-[32px] shrink-0 items-center justify-center rounded-[4px] bg-[rgba(0,0,128,0.06)] text-[#000080]">
+                          <DocumentIcon />
+                        </span>
+                        <div className="min-w-0">
+                          <p
+                            className={`${BODY_CLASS} break-all text-[#262524]`}
+                          >
+                            {document.original_filename}
+                          </p>
+                          <p className={SUB_CLASS} style={{ color: INK_MUTED }}>
+                            {document.size_bytes.toLocaleString()} bytes ·{" "}
+                            {document.content_type} · {document.status}
+                          </p>
+                        </div>
+                      </div>
+                      {document.download_url ? (
+                        <a
+                          href={document.download_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`${BODY_CLASS} text-[color:var(--color-pipeline-brand)]`}
+                          aria-label={`Download ${document.original_filename}`}
+                        >
+                          Download
+                        </a>
+                      ) : (
+                        <span
+                          className={SUB_CLASS}
+                          style={{ color: INK_MUTED }}
+                        >
+                          Download unavailable. Refresh to retry.
+                        </span>
+                      )}
                     </div>
-                    {document.download_url ? (
-                      <a
-                        href={document.download_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-pipeline-brand"
-                        aria-label={`Download ${document.original_filename}`}
-                      >
-                        Download
-                      </a>
-                    ) : (
-                      <span className="text-pipeline-ink-muted text-sm">
-                        Download unavailable. Refresh to retry.
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-pipeline-ink-muted text-sm">
-                    Uploaded {formatIsoDateUtc(document.created_at)} · Reviewed{" "}
-                    {formatIsoDateUtc(document.reviewed_at)} · Reviewer{" "}
-                    {document.reviewed_by ?? "—"}
-                  </p>
-                  {document.reject_reason && (
-                    <p className="text-pipeline-negative-strong text-sm break-words whitespace-pre-wrap">
-                      Rejection reason: {document.reject_reason}
+                    <p className={SUB_CLASS} style={{ color: INK_MUTED }}>
+                      Uploaded {formatIsoDateUtc(document.created_at)} ·
+                      Reviewed {formatIsoDateUtc(document.reviewed_at)} ·
+                      Reviewer {document.reviewed_by ?? "—"}
                     </p>
-                  )}
-                  {detail.canReview && document.status === "Provided" && (
-                    <div className="flex flex-wrap gap-3">
-                      <Button
-                        variant="secondary"
-                        disabled={detail.busy}
-                        onClick={() =>
-                          detail.open({
-                            decision: "Verified",
-                            documentId: document.id,
-                            filename: document.original_filename,
-                          })
-                        }
-                        aria-label={`Verify ${document.original_filename}`}
+                    {document.reject_reason && (
+                      <p
+                        className={`${NOTE_CLASS} break-words whitespace-pre-wrap`}
+                        style={{ color: NEGATIVE_RED }}
                       >
-                        Verify document
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        disabled={detail.busy}
-                        onClick={() =>
-                          detail.open({
-                            decision: "Rejected",
-                            documentId: document.id,
-                            filename: document.original_filename,
-                          })
-                        }
-                        aria-label={`Reject ${document.original_filename}`}
-                      >
-                        Reject document
-                      </Button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section
-            className="rounded-pipeline-card border-pipeline-line bg-pipeline-surface flex flex-col gap-4 border p-6"
-            aria-label="KYB decision"
-          >
-            <h2 className="font-display text-2xl">KYB decision</h2>
+                        Rejection reason: {document.reject_reason}
+                      </p>
+                    )}
+                    {detail.canReview && document.status === "Provided" && (
+                      <div className="flex flex-wrap gap-[12px]">
+                        <Button
+                          variant="secondary"
+                          size="m"
+                          className={DETAIL_SECONDARY_BUTTON_CLASS}
+                          style={detailSecondaryButtonStyle()}
+                          disabled={detail.busy}
+                          onClick={() =>
+                            detail.open({
+                              decision: "Verified",
+                              documentId: document.id,
+                              filename: document.original_filename,
+                            })
+                          }
+                          aria-label={`Verify ${document.original_filename}`}
+                        >
+                          Verify document
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="m"
+                          className={DETAIL_SECONDARY_BUTTON_CLASS}
+                          style={detailSecondaryButtonStyle()}
+                          disabled={detail.busy}
+                          onClick={() =>
+                            detail.open({
+                              decision: "Rejected",
+                              documentId: document.id,
+                              filename: document.original_filename,
+                            })
+                          }
+                          aria-label={`Reject ${document.original_filename}`}
+                        >
+                          Reject document
+                        </Button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DetailCard>
+
+          <DetailCard className="gap-[16px] p-[26px]" ariaLabel="KYB decision">
+            <CardTitle>KYB decision</CardTitle>
             {detail.canReview ? (
               <>
                 {!detail.canPass && (
-                  <p className="text-pipeline-ink-muted text-sm">
+                  <p className={NOTE_CLASS} style={{ color: INK_MUTED }}>
                     Verify every submitted document before confirming KYB
                     passed.
                   </p>
                 )}
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-[12px]">
                   <Button
                     variant="secondary"
+                    size="m"
+                    className={DETAIL_SECONDARY_BUTTON_CLASS}
+                    style={detailSecondaryButtonStyle()}
                     disabled={detail.busy}
                     onClick={() => detail.open({ decision: "Failed" })}
                   >
@@ -202,6 +260,9 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                   </Button>
                   <Button
                     variant="secondary"
+                    size="m"
+                    className={DETAIL_SECONDARY_BUTTON_CLASS}
+                    style={detailSecondaryButtonStyle()}
                     disabled={detail.busy}
                     onClick={() =>
                       detail.open({ decision: "ChangesRequested" })
@@ -211,7 +272,8 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                   </Button>
                   {detail.canPass && (
                     <Button
-                      variant="primary-dark"
+                      variant="primary-blue"
+                      size="m"
                       disabled={detail.busy}
                       onClick={() => detail.open({ decision: "Passed" })}
                     >
@@ -221,11 +283,12 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                 </div>
               </>
             ) : (
-              <p className="text-pipeline-ink-muted text-sm">
+              <p className={NOTE_CLASS} style={{ color: INK_MUTED }}>
                 Review actions are available only while the LP is UnderReview.
               </p>
             )}
-          </section>
+          </DetailCard>
+
           <LpBankDepositsSection lpId={lp.id} legalName={lp.legal_name} />
           {detail.action && (
             <LpReviewDialog
@@ -244,21 +307,6 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
         </>
       )}
     </main>
-  );
-}
-
-function ProfileField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-pipeline-ink-muted text-sm">{label}</dt>
-      <dd className="break-words whitespace-pre-wrap">{value || "—"}</dd>
-    </div>
   );
 }
 

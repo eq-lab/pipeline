@@ -102,7 +102,7 @@ calls the planner is expected to make):
 
 ## Implementation Steps
 
-### 1. Extract the shared detail primitives (no rendered change)
+### 1. Extract the shared detail primitives (no rendered change) — DONE
 
 Create `packages/trustee/src/components/detail/`:
 
@@ -128,7 +128,7 @@ Then edit `loans.$id.tsx` to import all of the above and delete the local copies
 
 Run `-loans.$id.test.tsx` here, before touching the LP page — it must be green with zero test edits.
 
-### 2. Unify the band vocabulary
+### 2. Unify the band vocabulary — DONE
 
 - `packages/trustee/src/routes/-useLpCounterpartiesTable.ts`: make `AccountStatusBand` an alias of the
   shared `StatusBand` (keep the exported name for existing importers), and change `mapKybStatus`'s
@@ -137,7 +137,7 @@ Run `-loans.$id.test.tsx` here, before touching the LP page — it must be green
   `statusBandColor` (import `BRAND` from `detailTokens.ts`; drop its now-duplicate local colour
   constants if they only served this switch).
 
-### 3. Rebuild the LP detail shell and hero
+### 3. Rebuild the LP detail shell and hero — DONE
 
 In `packages/trustee/src/routes/lp-counterparties.$id.tsx`:
 
@@ -154,7 +154,7 @@ In `packages/trustee/src/routes/lp-counterparties.$id.tsx`:
 - Keep the invalid-id / pending / error branches, but render the error branch inside a `DetailCard`
   wrapping the existing `InlineError` + Retry, matching `loan-detail-error`'s treatment.
 
-### 4. Restyle the cards
+### 4. Restyle the cards — DONE
 
 - **Profile** — `<DetailCard className="gap-[8px] p-[26px]" ariaLabel="LP profile">` with
   `<CardTitle>LP profile</CardTitle>` and the seven fields as `KeyValueRow`s (not a `dl` grid):
@@ -179,7 +179,7 @@ In `packages/trustee/src/routes/lp-counterparties.$id.tsx`:
   today. Keep `overflow-x-auto` + `min-w-[720px]`. Leave `MintCell`, `mintDisabledReason`, the pending
   copy and the hint `id`/`aria-describedby` wiring exactly as they are.
 
-### 5. Buttons
+### 5. Buttons — DONE
 
 Across `lp-counterparties.$id.tsx`, `-LpBankDepositsSection.tsx` and `-LpReviewDialog.tsx`:
 
@@ -192,7 +192,7 @@ Across `lp-counterparties.$id.tsx`, `-LpBankDepositsSection.tsx` and `-LpReviewD
   `font-display text-[26px] leading-[36px]` (already the `CardTitle` step) — only the two button rows
   change. Leave `rounded-pipeline-card-sm`, the backdrop, focus trap and `useLpReviewDialog` alone.
 
-### 6. Lint and build
+### 6. Lint and build — DONE
 
 `yarn workspace @pipeline/trustee lint && yarn workspace @pipeline/trustee build`, then
 `npx tsx scripts/lint-docs.ts`. Do not commit — the manager commits the plan and the code.

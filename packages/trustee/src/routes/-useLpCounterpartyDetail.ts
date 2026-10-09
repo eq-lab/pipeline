@@ -1,8 +1,9 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
 import { useRef, useState } from "react";
-import { useLp } from "@/api/useLp";
+import { useLp, type LpDetail } from "@/api/useLp";
 import { useReviewLp, type LpReviewInput } from "@/api/useReviewLp";
 import { ApiError } from "@/api/client";
+import { formatIsoDateUtc } from "@/utils/formatDate";
 
 export function lpError(error: Error | null) {
   if (!error) return null;
@@ -20,6 +21,22 @@ export function lpError(error: Error | null) {
               ? "Check the decision and reason, then try again."
               : "Could not complete the request. Check your connection and try again.";
   return { message, details: error.message };
+}
+
+function metaClause(prefix: string, iso: string | null | undefined) {
+  const formatted = formatIsoDateUtc(iso);
+  return formatted === "—" ? null : `${prefix} ${formatted}`;
+}
+
+export function lpHeroMeta(lp: LpDetail): string {
+  return [
+    lp.country || null,
+    metaClause("Registered", lp.created_at),
+    metaClause("Submitted", lp.kyb_submitted_at),
+    metaClause("Decided", lp.kyb_decided_at),
+  ]
+    .filter((clause): clause is string => clause !== null)
+    .join(" · ");
 }
 
 export interface LpReviewAction {

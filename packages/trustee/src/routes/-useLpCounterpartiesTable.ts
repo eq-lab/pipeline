@@ -3,12 +3,9 @@ import { useLps, type LpSummary } from "@/api/useLps";
 import { formatIsoDateUtc } from "@/utils/formatDate";
 import { ApiError } from "@/api/client";
 import { toUserError } from "@/utils/userError";
+import type { StatusBand } from "@/components/detail/detailTokens";
 
-export type AccountStatusBand =
-  | "neutral"
-  | "attention"
-  | "positive"
-  | "negative";
+export type AccountStatusBand = StatusBand;
 
 export interface AccountStatusChip {
   label: string;
@@ -46,7 +43,7 @@ export function mapKybStatus(kybStatus: string): AccountStatusChip {
     case "InProgress":
       return { label: "KYB Pending", band: "attention" };
     case "UnderReview":
-      return { label: "KYB Pending", band: "attention" };
+      return { label: "KYB Pending", band: "info" };
     case "ChangesRequested":
       return { label: "Changes requested", band: "attention" };
     case "Passed":
