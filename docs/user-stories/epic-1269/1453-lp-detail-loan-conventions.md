@@ -109,7 +109,7 @@ least one recorded bank deposit.
 2. Click the wallet value.
 3. Paste into any text field.
 4. Click the wallet value again.
-5. Read the reviewer on a reviewed document and the **Recorded by** cell in Bank deposits.
+5. Read the reviewer on a reviewed document.
 
 **Expected outcomes:**
 
@@ -119,8 +119,8 @@ least one recorded bank deposit.
   muted **Copied** appears next to it and fades after about a second and a half.
 - The pasted value is the complete key, character for character.
 - Clicking again collapses the chip back to `…CQXS4`.
-- The document reviewer key and the Bank deposits **Recorded by** cell use the same chip, and no
-  row is stretched by a long key any more.
+- The linked wallet and the document reviewer key use the same chip, and no row is stretched by a
+  long key any more. The Bank deposits **Recorded by** cell is the table variant — see Story 8.
 - If the browser blocks clipboard access the value still expands and no "Copied" is shown — the
   page never claims a copy that did not happen.
 
@@ -150,9 +150,11 @@ rejected document, and one LP with no documents at all.
 - **Download is now an icon button** — a down-arrow glyph announced as "Download <filename>" — and
   is still a real link that opens the presigned URL in a new tab. When no URL is served the row
   shows "Download unavailable. Refresh to retry." instead.
-- **Verify and Reject are 32px text buttons** beside the download icon, green and red in the band
-  colours, announced as "Verify <filename>" and "Reject <filename>". They appear only for a
-  `Provided` document while the LP is UnderReview, and each still opens the same dialog as before.
+- **Verify and Reject are 32px icon-plus-text buttons** beside the download icon, green and red in
+  the band colours: a tick glyph before "Verify", a cross glyph before "Reject", each glyph the
+  same colour as its label. They are announced as "Verify <filename>" and "Reject <filename>" —
+  the glyph itself is decorative and is not read out. They appear only for a `Provided` document
+  while the LP is UnderReview, and each still opens the same dialog as before.
 - The empty LP shows "No documents submitted." and still offers the refresh icon.
 
 ## Story 7: The verdicts live on the documents title row, and behave exactly as before
@@ -184,33 +186,48 @@ rejected document, and one LP with no documents at all.
 - The `Passed` LP shows only "Review actions are available only while the LP is UnderReview." in
   that row — no verdict buttons, and no Verify/Reject buttons on the documents.
 
-## Story 8: Bank deposits keep working under the new table typography
+## Story 8: Bank deposits read as an even five-column table
 
 **Persona:** Trustee operator recording and minting a wire.
 
-**Pre-conditions:** An LP with at least one recorded, unminted deposit; a connected Stellar
-wallet.
+**Pre-conditions:** An LP with at least one recorded, unminted deposit and one minted deposit; a
+connected Stellar wallet.
 
 **Steps:**
 
 1. Read the **Bank deposits** card.
-2. Click **Record deposit**, then cancel.
-3. Click **Mint PLUSD** on an unminted row.
+2. Click the **Recorded by** value on any row, then paste into a text field.
+3. Click **Record deposit**, then cancel.
+4. Click **Mint PLUSD** on the unminted row.
+5. Narrow the window.
 
 **Expected outcomes:**
 
-- The card is now a loan-style card with a display-face "Bank deposits" title; the table headers
-  are muted and unbolded, body cells sit at the loan body size, rows are separated by hairline
-  rules, and the Amount column stays right-aligned with tabular figures. The table still scrolls
-  horizontally on a narrow window rather than squashing.
-- **Recorded by** shows the truncated address chip from Story 5, not the raw key.
-- **Record deposit** is the brand-blue primary; Cancel and **Mint PLUSD** are the bordered
-  secondary. The dialog's fields, validation copy and the `409` duplicate-reference message are
-  unchanged.
-- Minting still walks `Awaiting signature… → Submitting… → Confirming… → Waiting for the indexer`,
-  and a disabled **Mint PLUSD** still shows its reason both as a hover title and as the hint line
-  under the button. See [#1449](./1449-trustee-mint-bank-deposit.md) for the full mint matrix —
-  none of it changed here.
+- The card is a loan-style card with a display-face "Bank deposits" title; the table headers are
+  muted and unbolded, body cells sit at the loan body size, and rows are separated by hairline
+  rules.
+- The table has **five columns of even, fixed proportions** — Received, Amount, Payment reference,
+  Recorded by, PLUSD. Received no longer takes a disproportionate share and Amount is no longer
+  squeezed against Payment reference; the proportions hold as the window widens.
+- **Amount** is right-aligned with tabular figures and is formatted exactly like a loan amount on
+  the Loans table — `$1.25M`, `$30.00K` — not as a long `$30,000.00` string.
+- **Recorded by** is plain text, not a chip: `…` plus the last five characters, with the full key
+  as a hover tooltip. Clicking it copies the full key — the paste is the complete key, character
+  for character — and a short **Address copied** toast appears at the bottom of the window. The
+  cell itself does not expand and no inline "Copied" appears, so the row never reflows. If the
+  browser blocks clipboard access, no toast appears.
+- **PLUSD is the last column and carries the state and the action together** — there is no
+  separate Action column any more. A minted deposit shows a green **Minted** chip and no button.
+  An unminted one shows a compact **Mint PLUSD** button in the brand blue, the same 32px shape as
+  the review verdicts rather than a large bordered secondary.
+- **Record deposit** is the brand-blue primary and Cancel is the bordered secondary. The dialog's
+  fields, validation copy and the `409` duplicate-reference message are unchanged.
+- Minting still walks `Awaiting signature… → Submitting… → Confirming…` on the button itself, then
+  shows an amber **Pending** chip with `Waiting for the indexer` under it until the served flag
+  flips. A disabled **Mint PLUSD** still shows its reason both as a hover title and as the hint
+  line under the button. See [#1449](./1449-trustee-mint-bank-deposit.md) for the full mint matrix
+  — none of that behaviour changed here.
+- On a narrow window the table scrolls horizontally rather than squashing.
 
 ## Story 9: The loan detail page is untouched
 

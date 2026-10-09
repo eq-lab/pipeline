@@ -9,7 +9,7 @@ export function shortAddress(value: string): string {
   return value.length > TAIL_LENGTH ? `…${value.slice(-TAIL_LENGTH)}` : value;
 }
 
-async function copyAddress(value: string): Promise<boolean> {
+export async function copyAddress(value: string): Promise<boolean> {
   const clipboard = navigator.clipboard;
   if (!clipboard?.writeText) return false;
   try {

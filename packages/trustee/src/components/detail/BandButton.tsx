@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { chipStyle, type StatusBand } from "./detailTokens";
 
 const BAND_BUTTON_BASE =
-  "inline-flex items-center justify-center rounded-[4px] border border-solid font-[family-name:var(--font-body)] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center gap-[6px] rounded-[4px] border border-solid font-[family-name:var(--font-body)] disabled:cursor-not-allowed disabled:opacity-50";
 
 export function BandButton({
   band,
@@ -11,6 +11,7 @@ export function BandButton({
   disabled,
   testId,
   ariaLabel,
+  icon,
   children,
 }: {
   band: StatusBand;
@@ -18,6 +19,7 @@ export function BandButton({
   disabled?: boolean;
   testId?: string;
   ariaLabel?: string;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -31,6 +33,11 @@ export function BandButton({
       onClick={onClick}
       disabled={disabled}
     >
+      {icon && (
+        <span aria-hidden="true" className="inline-flex items-center">
+          {icon}
+        </span>
+      )}
       {children}
     </button>
   );

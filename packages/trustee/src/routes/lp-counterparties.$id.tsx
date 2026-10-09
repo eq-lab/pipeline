@@ -4,7 +4,12 @@ import { Button, IconButton, InlineError } from "@pipeline/ui";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { AddressChip } from "@/components/detail/AddressChip";
 import { BandButton } from "@/components/detail/BandButton";
-import { DownloadIcon, RefreshIcon } from "@/components/detail/DetailIcons";
+import {
+  CheckIcon,
+  CrossIcon,
+  DownloadIcon,
+  RefreshIcon,
+} from "@/components/detail/DetailIcons";
 import { DetailHero } from "@/components/detail/DetailHero";
 import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
@@ -260,6 +265,7 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                           <>
                             <BandButton
                               band="positive"
+                              icon={<CheckIcon size={16} />}
                               ariaLabel={`Verify ${document.original_filename}`}
                               disabled={detail.busy}
                               onClick={() =>
@@ -274,6 +280,7 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                             </BandButton>
                             <BandButton
                               band="negative"
+                              icon={<CrossIcon size={16} />}
                               ariaLabel={`Reject ${document.original_filename}`}
                               disabled={detail.busy}
                               onClick={() =>

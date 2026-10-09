@@ -1,7 +1,8 @@
 // spec: docs/frontend/trustee-flows.md#lp-bank-deposits
 import { Button, InlineError } from "@pipeline/ui";
-import { AddressChip } from "@/components/detail/AddressChip";
+import { AddressText } from "@/components/detail/AddressText";
 import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
+import { StatusChip } from "@/components/detail/StatusChip";
 import {
   DETAIL_SECONDARY_BUTTON_CLASS,
   INK_MUTED,
@@ -24,6 +25,14 @@ const BODY_CLASS =
 
 const HEAD_CELL_CLASS =
   "py-[12px] pr-[16px] font-normal font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]";
+
+const HINT_CLASS =
+  "font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px]";
+
+const COLUMN_WIDTHS = ["22%", "16%", "26%", "18%", "18%"] as const;
+
+const MINT_BUTTON_CLASS =
+  "!rounded-[4px] text-[13px] whitespace-nowrap disabled:opacity-[0.32]";
 
 const BODY_CELL_CLASS =
   "py-[12px] pr-[16px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]";
@@ -82,15 +91,19 @@ export function LpBankDepositsSection({
       )}
       {section.state === "ready" && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left">
+          <table className="w-full min-w-[820px] table-fixed text-left">
+            <colgroup>
+              {COLUMN_WIDTHS.map((width) => (
+                <col key={width} style={{ width }} />
+              ))}
+            </colgroup>
             <thead style={{ color: INK_MUTED }}>
               <tr>
                 <th className={HEAD_CELL_CLASS}>Received</th>
                 <th className={`${HEAD_CELL_CLASS} text-right`}>Amount</th>
                 <th className={HEAD_CELL_CLASS}>Payment reference</th>
-                <th className={HEAD_CELL_CLASS}>PLUSD</th>
                 <th className={HEAD_CELL_CLASS}>Recorded by</th>
-                <th className={`${HEAD_CELL_CLASS} pr-0`}>Action</th>
+                <th className={`${HEAD_CELL_CLASS} pr-0`}>PLUSD</th>
               </tr>
             </thead>
             <tbody>
@@ -117,18 +130,15 @@ export function LpBankDepositsSection({
                   >
                     {row.reference}
                   </td>
-                  <td className={`${BODY_CELL_CLASS} whitespace-nowrap`}>
-                    {row.minted}
-                  </td>
                   <td className={BODY_CELL_CLASS}>
                     {row.recordedBy ? (
-                      <AddressChip value={row.recordedBy} />
+                      <AddressText value={row.recordedBy} />
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className={`${BODY_CELL_CLASS} pr-0 whitespace-nowrap`}>
-                    <MintCell row={row} section={section} />
+                  <td className={`${BODY_CELL_CLASS} pr-0`}>
+                    <PlusdCell row={row} section={section} />
                   </td>
                 </tr>
               ))}
@@ -151,16 +161,27 @@ export function LpBankDepositsSection({
   );
 }
 
-function MintCell({ row, section }: { row: DepositRow; section: Section }) {
-  if (row.isMinted) return null;
+function PlusdCell({ row, section }: { row: DepositRow; section: Section }) {
+  if (row.isMinted) {
+    return (
+      <StatusChip band="positive" label="Minted" testId="lp-deposit-minted" />
+    );
+  }
 
   const inFlight = section.mintingDepositId === row.id;
 
   if (row.isPending && !inFlight) {
     return (
-      <span className={BODY_CLASS} style={{ color: INK_MUTED }}>
-        Waiting for the indexer
-      </span>
+      <div className="flex flex-col items-start gap-[4px]">
+        <StatusChip
+          band="attention"
+          label="Pending"
+          testId="lp-deposit-pending"
+        />
+        <span className={HINT_CLASS} style={{ color: INK_MUTED }}>
+          Waiting for the indexer
+        </span>
+      </div>
     );
   }
 
@@ -168,12 +189,11 @@ function MintCell({ row, section }: { row: DepositRow; section: Section }) {
   const hintId = `lp-deposit-mint-hint-${row.id}`;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-start gap-[4px]">
       <Button
-        variant="secondary"
-        size="m"
-        className={DETAIL_SECONDARY_BUTTON_CLASS}
-        style={detailSecondaryButtonStyle()}
+        variant="primary-blue"
+        size="compact"
+        className={MINT_BUTTON_CLASS}
         onClick={() => void section.mintDeposit(row)}
         disabled={reason !== null || inFlight}
         title={reason ?? undefined}
@@ -182,11 +202,7 @@ function MintCell({ row, section }: { row: DepositRow; section: Section }) {
         {inFlight ? mintStageLabel(section.mintStage) : "Mint PLUSD"}
       </Button>
       {reason && (
-        <span
-          id={hintId}
-          className="font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px]"
-          style={{ color: INK_MUTED }}
-        >
+        <span id={hintId} className={HINT_CLASS} style={{ color: INK_MUTED }}>
           {reason}
         </span>
       )}

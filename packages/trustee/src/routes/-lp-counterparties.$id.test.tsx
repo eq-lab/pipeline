@@ -382,7 +382,7 @@ describe("LP counterparty detail — documents card", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("renders the document verify and reject text buttons named after the filename", () => {
+  it("renders the document verify and reject icon-plus-text buttons named after the filename", () => {
     renderRoute();
     const verify = screen.getByRole("button", {
       name: "Verify certificate-of-incorporation.pdf",
@@ -394,7 +394,8 @@ describe("LP counterparty detail — documents card", () => {
     expect(reject).toHaveAttribute("data-band", "negative");
     expect(verify).toHaveTextContent("Verify");
     expect(reject).toHaveTextContent("Reject");
-    expect(verify.querySelector("svg")).not.toBeInTheDocument();
+    expect(verify.querySelector("svg")).toBeInTheDocument();
+    expect(reject.querySelector("svg")).toBeInTheDocument();
   });
 });
 
