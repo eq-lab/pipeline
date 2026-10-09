@@ -872,9 +872,11 @@ The page is assembled from the [shared detail primitives](#shared-detail-primiti
   the `LINE_COLOR` border the borderless shared variant lacks. Row-level actions are `BandButton`s —
   32px tall, the `chipStyle(band)` colours (band-coloured text and border over a light band fill),
   never a solid primary: the account verdicts read as positive / attention / negative at a glance,
-  the document verdicts carry their `CheckIcon` / `CrossIcon`, and Mint PLUSD is the same shape in
-  the `info` band (#1453 design feedback — a 40px bordered secondary inside a table row was too
-  heavy).
+  and the document verdicts carry their `CheckIcon` / `CrossIcon`. `BandButton` is for *verdicts*
+  only — Mint PLUSD is a plain action, so it is the shared `Button` at `size="compact"` (32px
+  brand primary), the same height as a `BandButton` but unmistakably a button (#1453 design
+  feedback — the 40px bordered secondary was too heavy for a table row, and a band-coloured one
+  read as a chip).
   Icon-only affordances are 40×40 (`IconButton`, page chrome) or 32×32 (`BandIconButton` and the
   download link, row-level), each carrying an explicit `aria-label`.
 
@@ -908,7 +910,7 @@ look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDeposits
 | `DetailHero.tsx` | `DetailHero` — back link → 44px `h1` → chip + meta row; `backTo`, `backLabel`, `title`, `status`, `meta`, `statusTestId`, `metaTestId` |
 | `AddressChip.tsx` | `AddressChip` — click-to-reveal/copy chip for a `G…` / `C…` key; `shortAddress(value)`, `copyAddress(value)` |
 | `AddressText.tsx` | `AddressText` — copy-to-toast plain-text key for table cells (no border, no inline reveal) |
-| `BandButton.tsx` | `BandButton` (32px text button, optional leading `icon`, optional `title` / `ariaDescribedBy`) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
+| `BandButton.tsx` | `BandButton` (32px text button, optional leading `icon`) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
 | `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon` (inline 16px stroked glyphs) |
 
 **`AddressChip` (#1453).** Stellar keys are 56 characters and were pushing every row they
@@ -983,10 +985,14 @@ string is unchanged; only the display formatter moved.
   a two-column `Not minted` + button pair said the same thing twice. A row with `is_minted: true`
   renders a positive `StatusChip` reading **Minted** (`lp-deposit-minted`) and no control. A row
   inside the pending window renders an attention `StatusChip` reading **Pending**
-  (`lp-deposit-pending`) over the `Waiting for the indexer` hint. Otherwise the cell is a 32px
-  `BandButton` in the `info` (brand) band reading **Mint PLUSD** — the same shape as the review
-  verdicts, not the 40px bordered secondary it used to be — that calls the yield minter's
-  `record_wire_in` directly from the trustee's connected
+  (`lp-deposit-pending`) over the `Waiting for the indexer` hint. Otherwise the cell is a
+  `@pipeline/ui` `Button`, `variant="primary-blue" size="compact"` (32px, solid brand fill, white
+  label, 4px radius), reading **Mint PLUSD** — the design system's own row-scale button, not the
+  40px bordered secondary it used to be and deliberately not a `BandButton`, which would read as a
+  chip rather than an action (#1453 design feedback). The only local class is the 13px row type
+  and `disabled:opacity-[0.32]`, the `secondary` variant's own disabled opacity, because
+  `primary-blue` ships no disabled treatment and a disabled mint must look disabled. It calls the
+  yield minter's `record_wire_in` directly from the trustee's connected
   Stellar wallet (`api/useRecordWireIn.ts` over `@pipeline/wallet-connect`'s `recordWireIn`;
   see [deposits.md](../product-specs/deposits.md) for the signature, the `CASH_REPORTER`
   requirement and the 7-decimal scale). Arguments come only from served data: `amount` is the

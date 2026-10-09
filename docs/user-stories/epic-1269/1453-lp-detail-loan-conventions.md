@@ -218,8 +218,9 @@ connected Stellar wallet.
   browser blocks clipboard access, no toast appears.
 - **PLUSD is the last column and carries the state and the action together** — there is no
   separate Action column any more. A minted deposit shows a green **Minted** chip and no button.
-  An unminted one shows a compact **Mint PLUSD** button in the brand blue, the same 32px shape as
-  the review verdicts rather than a large bordered secondary.
+  An unminted one shows a compact **Mint PLUSD** button — a real solid brand-blue button from the
+  design system at the 32px row scale, not a tinted chip and not the old large bordered secondary.
+  A disabled one is visibly dimmed.
 - **Record deposit** is the brand-blue primary and Cancel is the bordered secondary. The dialog's
   fields, validation copy and the `409` duplicate-reference message are unchanged.
 - Minting still walks `Awaiting signature… → Submitting… → Confirming…` on the button itself, then
