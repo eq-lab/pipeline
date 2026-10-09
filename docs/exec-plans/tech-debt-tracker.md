@@ -1944,7 +1944,7 @@ line, whichever section it lands in.
 ### TD-134: The EVM indexer sleeps `POLLING_INTERVAL_MS` twice per cycle, so the effective cadence is double the configured value
 
 - **Date:** 2026-10-09
-- **Location:** `packages/worker/src/indexer/poller.rs:121` (inter-chunk sleep in `EvmEventPoller::poll`) and `packages/worker/src/indexer/mod.rs:163` (cycle sleep in `index_loop`) — Issue #1435, open question Q1.
+- **Location:** `packages/worker/src/indexer/poller.rs:120` (inter-chunk sleep in `EvmEventPoller::poll`) and `packages/worker/src/indexer/mod.rs:163` (cycle sleep in `index_loop`) — Issue #1435, open question Q1.
 - **Gap:** `index_once` caps `end` at `cursor + block_range - 1`, so `poll` runs exactly one chunk per cycle under normal operation and its trailing sleep composes with the loop's own. An operator who sets 500 ms gets a ~1 s cadence. EVM-only: `StellarEventPoller::poll` has no inter-chunk sleep, so the Stellar arm's cadence is exactly its configured value.
 - **Impact:** Cosmetic today (nobody tunes to the millisecond), but #1435 made the knob per-chain, so the doubling is now inherited by every per-chain override and will mislead whoever sizes a mainnet cadence. Documented in `.env.example` rather than fixed.
-- **Suggested fix:** Drop the trailing sleep in `poll` after the final chunk (or skip it when `current > to_block`), then halve the defaults so existing deployments keep their current real cadence.
+- **Suggested fix:** Drop the trailing sleep in `poll` after the final chunk (or skip it when `current > to_block`). That makes the real cadence equal the configured value, so to preserve today's behaviour the defaults must be **doubled** (500 → 1000 ms), not halved — halving them would land on a 250 ms real cadence, four times today's RPC poll rate.

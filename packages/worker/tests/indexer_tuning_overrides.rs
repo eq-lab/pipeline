@@ -353,6 +353,40 @@ fn two_chains_resolve_tuning_independently() {
     unsafe { std::env::remove_var("CHAINS") };
 }
 
+#[test]
+fn blank_job_level_falls_through_to_the_default() {
+    let _guard = lock();
+    let id = 70_012_i64;
+    clear_tuning(&[id]);
+    set_evm_required(id);
+    set_job("", "   ", "");
+
+    let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
+    assert_eq!(s.polling_block_range, 1000);
+    assert_eq!(s.polling_interval_ms, 500);
+    assert_eq!(s.log_confirmations_delay, 12);
+
+    clear_tuning(&[id]);
+    clear_evm_required(id);
+}
+
+#[test]
+fn job_level_value_is_trimmed() {
+    let _guard = lock();
+    let id = 70_013_i64;
+    clear_tuning(&[id]);
+    set_evm_required(id);
+    set_job(" 2048 ", " 750 ", " 40 ");
+
+    let s = IndexerJobSettings::from_chain_env(id).expect("settings parse");
+    assert_eq!(s.polling_block_range, 2048);
+    assert_eq!(s.polling_interval_ms, 750);
+    assert_eq!(s.log_confirmations_delay, 40);
+
+    clear_tuning(&[id]);
+    clear_evm_required(id);
+}
+
 // ── Stellar arm ──────────────────────────────────────────────────────────────
 
 #[test]

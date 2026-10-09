@@ -242,7 +242,7 @@ impl StellarIndexerSettings {
         let ipfs_gateway_url = env::var("JOB_INDEXER_IPFS_GATEWAY_URL")
             .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned());
 
-        warn_if_confirmations_delay_set(chain_id);
+        warn_about_stellar_tuning_keys(chain_id);
 
         Ok(Self {
             chain_id,
@@ -273,15 +273,31 @@ impl StellarIndexerSettings {
     }
 }
 
-fn warn_if_confirmations_delay_set(chain_id: i64) {
-    let key = format!("CHAIN_{chain_id}_INDEXER_LOG_CONFIRMATIONS_DELAY");
-    if env::var(&key).is_ok_and(|v| !v.trim().is_empty()) {
+fn warn_about_stellar_tuning_keys(chain_id: i64) {
+    let inert = format!("CHAIN_{chain_id}_INDEXER_LOG_CONFIRMATIONS_DELAY");
+    if env::var(&inert).is_ok_and(|v| !v.trim().is_empty()) {
         tracing::warn!(
             chain_id,
-            key,
+            key = inert,
             "confirmation delay is ignored on a Stellar chain — the arm indexes at a fixed 0 \
              (deterministic finality at ledger close); remove the variable to silence this"
         );
+    }
+
+    for suffix in [
+        "POLLING_BLOCK_RANGE",
+        "POLLING_INTERVAL_MS",
+        "LOG_CONFIRMATIONS_DELAY",
+    ] {
+        let misspelled = format!("CHAIN_{chain_id}_STELLAR_INDEXER_{suffix}");
+        if env::var(&misspelled).is_ok_and(|v| !v.trim().is_empty()) {
+            tracing::warn!(
+                chain_id,
+                key = misspelled,
+                expected = format!("CHAIN_{chain_id}_INDEXER_{suffix}"),
+                "indexer tuning is not read under the _STELLAR_ prefix — this value is ignored"
+            );
+        }
     }
 }
 
@@ -423,10 +439,11 @@ where
     T::Err: std::error::Error + Send + Sync + 'static,
 {
     match env::var(key) {
-        Ok(v) => v
+        Ok(v) if !v.trim().is_empty() => v
+            .trim()
             .parse::<T>()
             .with_context(|| format!("{key} must be a valid number")),
-        Err(_) => Ok(default),
+        _ => Ok(default),
     }
 }
 
