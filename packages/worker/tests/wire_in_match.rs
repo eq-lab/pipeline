@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 
-use pipeline_worker::relayer::stellar::wire_in_match::phase_match_wire_ins;
+use pipeline_worker::relayer::wire_in_match::phase_match_wire_ins;
 use shared::lp_bank_deposit_repo::WireInMatcher;
 
 const MINTER: &str = "CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX";
@@ -154,5 +154,25 @@ async fn a_failing_statement_fails_the_tick() {
     assert!(
         chain.contains("marking directly staked wire-ins minted"),
         "and the context must say which statement failed, got {chain}"
+    );
+}
+
+const EVM_MINTER: &str = "0xE75814d9618285AE4d789D4424672597DC494D3E";
+const EVM_CHAIN: i64 = 560_048;
+
+#[tokio::test]
+async fn an_evm_minter_is_scoped_by_its_checksummed_address_verbatim() {
+    let matcher = FakeMatcher::new(1, 0, 0);
+    phase_match_wire_ins(&matcher, EVM_CHAIN, EVM_MINTER)
+        .await
+        .expect("should succeed");
+
+    let calls = matcher.calls.lock().unwrap();
+    let expected = vec![(EVM_CHAIN, EVM_MINTER.to_owned())];
+    assert_eq!(calls.direct, expected);
+    assert_eq!(calls.assigned, expected);
+    assert_eq!(
+        calls.unmatched, expected,
+        "the phase must not re-case the id: EVM contract_logs rows are checksummed text"
     );
 }

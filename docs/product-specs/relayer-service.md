@@ -46,7 +46,7 @@ Relayer does NOT call `requestWithdrawal`, does NOT call `claim`, and does NOT f
 
 ### 3. Yield Minting — Repayment
 
-When a loan repayment USDC inflow is detected at the Capital Wallet:
+On EVM the relayer mints no yield: `PipelineMinter.repay` records the payment and mints interest and fees in one call, under `MINT_CALLER_ROLE`, which the relayer does not hold. Sections 3 and 4 apply only where a separate yield-minter exists. There, when a loan repayment USDC inflow is detected at the Capital Wallet:
 
 1. Relayer presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
 2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve` and broadcasts
@@ -94,9 +94,9 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 ### 5. WhitelistRegistry Maintenance
 
-- **On clean KYT (deposit-triggered):** Relayer signs a `ClaimAttestation`. The lender calls `DepositManager.claim`, which internally calls `WhitelistRegistry.setAccess` to enrol the lender as a side effect.
+- **On clean KYT (deposit-triggered):** Relayer signs a `ClaimAttestation`. The lender calls `DepositManager.claim`, which internally calls `WhitelistRegistry.setAccess` to enrol the lender as a side effect. _Current implementation: the relayer adds the address on-chain itself, with `WhitelistRegistry.allow` on EVM and `access_manager.execute(set_authorized)` on Soroban. It marks the address allowed only once that transaction succeeds._
 - **On clean KYT (standalone enrolment):** Relayer signs an `EnrolAttestation`. The address holder calls `WhitelistRegistry.enrol(addr, att, sig)` themselves.
-- **On failed passive re-screen:** Relayer calls `revokeAccess(addr)` directly under the `WHITELIST_REVOKER` role. Any in-flight deposit ticket or queue entry routes to compliance review queue.
+- **On failed passive re-screen:** Relayer calls `revokeAccess(addr)` directly under the `WHITELIST_REVOKER` role. Any in-flight deposit ticket or queue entry routes to compliance review queue. _Current implementation: on both chains a KYT failure is recorded in the database only; there is no on-chain revocation yet (TD-31)._
 - **On manual compliance approval:** Relayer signs the appropriate attestation (claim or enrol) and serves it via API. The address holder submits on-chain.
 - **Periodic batch re-screen:** For freshness maintenance, the Relayer offers fresh `EnrolAttestation` payloads through the standalone enrolment endpoint. Holders refresh by calling `enrol` again with the new attestation. There is no Relayer-direct refresh path.
 
@@ -168,7 +168,7 @@ For the internal architecture diagram and blast-radius analysis per service, see
 
 ## Role Assignments on Contracts
 
-Relayer holds: **WHITELIST_REVOKER** (WhitelistRegistry, narrow defensive role). The Relayer also holds the `kytAttestor` signing key, which is referenced as a configured address on DepositManager, WithdrawalQueue, and WhitelistRegistry (not a role grant). The yield-attestation key (`relayerYieldAttestor`) is similarly referenced by YieldMinter as a signing-key address, not a role grant.
+Relayer holds: **WHITELIST_REVOKER** (WhitelistRegistry, narrow defensive role). The Relayer also holds the `kytAttestor` signing key, which is referenced as a configured address on DepositManager, WithdrawalQueue, and WhitelistRegistry (not a role grant). The yield-attestation key (`relayerYieldAttestor`) is similarly referenced by YieldMinter as a signing-key address, not a role grant. On the reworked EVM contracts the relayer's only on-chain role is **`WHITELIST_MANAGER_ROLE`** on the AccessManager. That role covers `WhitelistRegistry.allow` and `disallow`, and the relayer calls only `allow`. It holds neither `MINT_CALLER_ROLE` nor `MINTER_OPS_ROLE` on `PipelineMinter`.
 
 Relayer **does not write `setAccess`, `markClaimable`, or any other state-flip on DepositManager or WithdrawalQueue**. Enrolment lands via DepositManager.claim (auto-enrol side effect) or via the address holder calling `enrol` with an off-chain attestation. Claims land via the lender submitting an off-chain attestation.
 

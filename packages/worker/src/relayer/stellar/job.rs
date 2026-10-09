@@ -28,10 +28,10 @@ use shared::yield_mint_outbox_repo::YieldMintOutboxRepo;
 use crate::relayer::config::StellarRelayerSettings;
 use crate::relayer::elliptic_check::phase_check_elliptic;
 use crate::relayer::stellar::whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};
-use crate::relayer::stellar::wire_in_match::phase_match_wire_ins;
 use crate::relayer::stellar::yield_mint::{
     phase_yield_mint_stellar, StellarPhase4Settings, StellarYieldMinter,
 };
+use crate::relayer::wire_in_match::phase_match_wire_ins;
 
 /// Stellar relayer loop body. Called only by the top-level dispatcher
 /// `crate::relayer::relayer_job::run_relayer_job`; not exported from `mod.rs`.

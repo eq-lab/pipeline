@@ -477,9 +477,34 @@ All outbound transactions (`fundRequest`, `yieldMint`, `setAccess`, `refreshScre
 
 Yield mint intents in the outbox carry the full `(YieldAttestation, bridgeSig, custodianSig)` payload in `calldata`. If a yield mint reverts (e.g. reserve-invariant tightening, hard cap breach), the failure is terminal — a new attestation with a fresh `salt` + fresh custodian co-sig is required.
 
+#### EVM relayer
+
+`packages/worker/src/relayer/evm/` mirrors the Soroban relayer's chain-facing modules, one for
+one (`docs/exec-plans/active/evm-relayer-v5.md`). Each tick:
+
+- **Phases 0–2.** The KYC phases (profiles, Sumsub, Crystal) run unchanged.
+- **Phase 3 — whitelist.**
+  - Signs `WhitelistRegistry.allow(addr)` for up to `JOB_RELAYER_EVM_BATCH_SIZE` KYC-cleared
+    candidates (default 50).
+  - Skips any address `isAllowed` already reports.
+  - Marks a profile allowed only once a receipt with `status = 1` arrives within 120 s.
+  - Signs with the configured chain id rather than the one the RPC reports.
+  - KYT failures are recorded in the database only (TD-31).
+- **Phase 5 — wire-in matching.** The same phase as on Soroban (below), run once per address in
+  the indexer's `CHAIN_<id>_YIELD_MINTER_CONTRACTS`.
+
+There is no EVM yield-mint phase: the reworked contracts mint yield inside `PipelineMinter.repay`.
+
+Required env:
+
+- `CHAIN_<id>_RELAYER_SIGNER_KEY` — the address must hold `WHITELIST_MANAGER_ROLE`, with zero delay.
+- `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`.
+- An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_ETH_RPC_URL`.
+
 #### Stellar yield-mint phase
 
-The Stellar relayer runs a yield-mint phase parallel to EVM Phase 4. It reuses
+The Stellar relayer runs a yield-mint phase against Soroban deployments that still have a
+separate yield-minter; it has no EVM counterpart. It reuses
 the `yield_mint_outbox` table (discover → skip-nothing-to-mint → submit → confirm)
 but signs `yield_minter.mint_yield(caller, loan_id, repayment_id)` directly with the
 relayer ed25519 keypair — no BitGo. Double-mint is prevented on-chain by
@@ -506,7 +531,7 @@ Operational prerequisite: the relayer signer keypair must hold the minter role o
 the access-manager, and the yield-minter must hold the executor role (wired in
 `pipeline-stellar-contracts`).
 
-**Phase 5 — wire-in matching (#1416).** Pure database work: no RPC, no signing.
+**Phase 5 — wire-in matching (#1416), both chains.** Pure database work: no RPC, no signing.
 Every cycle it joins indexed minter events to `lp_bank_deposits` by `ref_hash`
 and sets `is_minted = true` on the deposits whose PLUSD has reached an LP —
 either a `WireIn` staked straight to the LP, or an escrowed one resolved by its
@@ -526,6 +551,19 @@ comparison, and it must be the one the indexed rows came from. A second,
 relayer-scoped key could disagree, and escrowed wires would then be marked
 minted. (The relayer's own `RELAYER_STELLAR_*` contract ids belong to Phase 4,
 which does submit transactions and so may target another deployment.)
+
+On EVM the phase runs once per address in the indexer's `CHAIN_<id>_YIELD_MINTER_CONTRACTS`, for
+the same reason. Each address is bound EIP-55 checksummed, like every EVM `contract_logs` row.
+
+The statements are shared between the chains, so EVM rows must take the Soroban shape:
+
+- `event_name = 'WireIn'` for `WireInRecorded`, and `'WireInAssigned'` as is;
+- `contract_address` and `params.receiver` checksummed;
+- `params.ref_hash` as bare lowercase hex. A `0x` prefix makes `decode(…, 'hex')` fail the
+  whole statement.
+- `params.id` as a JSON number.
+
+Until the EVM indexer writes those rows, the EVM phase matches nothing.
 
 Known gap: `WireInReturned` is not indexed, so a wire returned to the bank keeps
 `is_minted = false` and reads the same as one still awaiting assignment (TD-116).

@@ -230,14 +230,6 @@ fn relayer_settings_dispatch_evm_and_stellar() {
             "CHAIN_1_RELAYER_REGISTRY_ADDRESS",
             "0x0000000000000000000000000000000000000001",
         );
-        std::env::set_var(
-            "CHAIN_1_RELAYER_YIELD_MINTER_ADDRESS",
-            "0x0000000000000000000000000000000000000002",
-        );
-        std::env::set_var(
-            "CHAIN_1_RELAYER_LOAN_REGISTRY_ADDRESS",
-            "0x0000000000000000000000000000000000000003",
-        );
         // Stellar side
         std::env::set_var(
             "CHAIN_99000001_STELLAR_RPC_URL",

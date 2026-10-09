@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-26: The Stellar whitelist phase skips its disallow pass on every tick with no allow candidates
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar`. Found while mirroring it as `relayer/evm/whitelist.rs` (`docs/exec-plans/active/evm-relayer-v5.md`).
+- **Symptom:** With Elliptic enabled, a profile that turns KYT-failed (`kyt_status = 2`) keeps `on_chain_allowed = TRUE` until some other profile becomes an allow candidate. On a quiet chain that can take arbitrarily long.
+- **Root cause:** The function returns from `if candidates.is_empty() { return; }` before it reaches the disallow pass at its end, so the disallow pass runs only on ticks that also have something to allow.
+- **Workaround:** None. The EVM twin runs its disallow pass unconditionally. The fix here is the same: move the early return so that it skips only the allow loop.
+
 ### BUG-25: An out-of-range `effective_at` becomes a 1969 date instead of a 400
 - **Date:** 2026-10-02
 - **Location:** `packages/api/src/routes/collateral_valuation.rs:598` (`unix_to_datetime`). Found while writing the same helper for #1413's `POST /v1/lps/{id}/bank-deposits`, which has since dropped Unix seconds for an ISO-8601 string and no longer has the helper.

@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-126.**
+**Next free number: TD-128.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -294,16 +294,16 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a `chain_id` parameter/filter to `fetch_unverified_transfers` and
   pass the EVM relayer's `chain_id`, mirroring `fetch_unverified_transfers_for_chain`.
 
-### TD-31: Stellar KYT disallow is DB-only (no on-chain deauthorize)
+### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize)
 
-- **Date:** 2026-07-06
-- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar` disallow pass
-- **Gap:** When a Stellar profile becomes KYT-failed (`kyt_status = 2`), the relayer sets
-  `on_chain_allowed = FALSE` in the DB but submits no on-chain `set_authorized(addr, false)`
-  transaction — the `StellarWhitelister` exposes no deauthorize path today. A previously
-  authorized, now-sanctioned wallet retains on-chain authorization until an admin revokes it.
-  This is **symmetric with EVM** (`phase_sync_whitelist`'s `process_disallows` is also
-  deferred to a separate admin flow), so it is not a Stellar-specific regression.
+- **Date:** 2026-07-06 (widened to EVM 2026-10-08)
+- **Location:** the disallow passes of `packages/worker/src/relayer/stellar/whitelist.rs` (`phase_sync_whitelist_stellar`) and `packages/worker/src/relayer/evm/whitelist.rs` (`phase_sync_whitelist_evm`)
+- **Gap:** When a profile becomes KYT-failed (`kyt_status = 2`), the relayer sets
+  `on_chain_allowed = FALSE` in the DB but submits no on-chain revocation. Stellar has no
+  `set_authorized(addr, false)` path; EVM does not call `WhitelistRegistry.disallow`, although
+  the relayer's `WHITELIST_MANAGER_ROLE` covers it. The EVM pass mirrors the Stellar one
+  deliberately (`docs/exec-plans/active/evm-relayer-v5.md`). A previously authorized, now-sanctioned
+  wallet keeps on-chain access until an admin revokes it.
 - **Impact:** Automated relayer does not revoke on-chain access on a KYT failure; requires a
   manual/admin revocation flow (same as EVM).
 - **Suggested fix:** Add a `set_authorized(addr, false)` submission path to `StellarWhitelister`
@@ -1666,6 +1666,33 @@ line, whichever section it lands in.
   configured contract starts from its own zero, or provide an explicit operational re-index with a
   start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
   and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
+
+### TD-126: The BitGo client and the EVM-only yield-mint outbox methods have no caller
+
+- **Date:** 2026-10-08
+- **Location:** `packages/shared/src/bitgo/`; `packages/shared/src/yield_mint_outbox_repo.rs`
+  (`discover_pending`, `OutboxStore::mark_submitted`). Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
+- **Gap:** The EVM yield-mint phase was their only consumer and is deleted: the reworked EVM
+  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. Both
+  were kept because the outbox trait is shared with the Stellar yield-mint phase, and BitGo is the
+  architecture's named MPC vendor. Any EVM rows already in `yield_mint_outbox` are inert.
+- **Impact:** Dead code that still compiles and reads like a live path; `BITGO_*` env vars are
+  gone from `.env.example`, so the client cannot be configured from it.
+- **Suggested fix:** Delete `shared::bitgo`, `discover_pending` and `mark_submitted` (updating the
+  Stellar test fake that implements `OutboxStore`), or reconnect them when a BitGo signer returns.
+
+### TD-127: An EVM `allow` stuck in the mempool blocks every later one
+
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/relayer/evm/whitelist.rs` — `EvmWhitelister::submit_allow`.
+- **Gap:** There is no fee bumping or replacement. alloy's default `SimpleNonceManager` reads the
+  `pending` nonce, so after a 120 s confirmation timeout the stuck transaction keeps its nonce and
+  every later `allow` queues behind it.
+- **Impact:** A gas spike can stall whitelisting on that chain until the stuck transaction is mined
+  or dropped. Each tick logs a timeout per candidate; the database is left untouched, so nothing is
+  lost once it clears.
+- **Suggested fix:** On timeout, rebroadcast the same nonce with bumped fees, or keep a per-chain
+  nonce in the relayer and replace stale transactions explicitly.
 
 ---
 

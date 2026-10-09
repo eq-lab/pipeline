@@ -8,55 +8,44 @@ use stellar_strkey::Contract;
 use crate::indexer::config::{parse_chain_type, parse_chains_env, validate_contract_id, ChainType};
 
 // ─── EVM relayer settings ────────────────────────────────────────────────────
-//
-// Renamed from `RelayerJobSettings` (Issue #562) to clarify the chain-kind split
-// against the new `StellarRelayerSettings`.
 
 pub struct EvmRelayerSettings {
-    // Shared
+    pub chain_id: i64,
     pub interval_secs: u64,
     pub eth_rpc_url: String,
-    pub chain_id: i64,
     pub signer_key: String,
-    // Whitelist phase
     pub registry_address: Address,
-    // Provider toggles
+    pub minter_addresses: Vec<Address>,
     pub sumsub_enabled: bool,
     pub crystal_enabled: bool,
-    // Phase 4: Yield-Minter automation (always enabled when the EVM relayer runs).
-    /// PipelineYieldMinter contract address. Value doubles as the
-    /// `yield_minter_address` column stored in every outbox row.
-    pub yield_minter_address: Address,
-    /// LoanRegistry contract address — used as the `canYieldBeMinted` view target
-    /// during Phase 4 submission, and to filter `contract_logs.PaymentRecorded`
-    /// during discovery.
-    pub loan_registry_address: Address,
-    /// BitGo coin symbol for native gas (e.g. `"hteth"` on Hoodi, `"eth"` on mainnet).
-    pub bitgo_native_symbol: String,
-    /// Maximum outbox rows processed per Phase 4 cycle (default 50).
-    pub yield_minter_batch_size: usize,
+    pub batch_size: usize,
 }
 
 impl EvmRelayerSettings {
-    /// Parse EVM relayer settings for a single chain using `CHAIN_<id>_RELAYER_*` env vars.
     pub fn from_chain_env(chain_id: i64) -> Result<Self> {
         let p = format!("CHAIN_{chain_id}_RELAYER_");
 
         Ok(Self {
+            chain_id,
             interval_secs: env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?,
             eth_rpc_url: env_require(&format!("{p}ETH_RPC_URL"))
-                // Fall back to the chain's shared RPC URL
                 .or_else(|_| env_require(&format!("CHAIN_{chain_id}_ETH_RPC_URL")))?,
-            chain_id,
             signer_key: env_require(&format!("{p}SIGNER_KEY"))?,
             registry_address: env_require_address(&format!("{p}REGISTRY_ADDRESS"))?,
+            minter_addresses: env_address_list(&format!(
+                "CHAIN_{chain_id}_YIELD_MINTER_CONTRACTS"
+            ))?,
             sumsub_enabled: env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?,
             crystal_enabled: env_parse("CRYSTAL_ENABLED", true)?,
-            yield_minter_address: env_require_address(&format!("{p}YIELD_MINTER_ADDRESS"))?,
-            loan_registry_address: env_require_address(&format!("{p}LOAN_REGISTRY_ADDRESS"))?,
-            bitgo_native_symbol: env_parse_string("BITGO_NATIVE_SYMBOL", "hteth"),
-            yield_minter_batch_size: env_parse("JOB_RELAYER_YIELD_MINTER_BATCH_SIZE", 50usize)?,
+            batch_size: env_parse("JOB_RELAYER_EVM_BATCH_SIZE", 50usize)?,
         })
+    }
+
+    pub fn minter_ids(&self) -> Vec<String> {
+        self.minter_addresses
+            .iter()
+            .map(|a| a.to_checksum(None))
+            .collect()
     }
 }
 
@@ -245,10 +234,6 @@ where
     }
 }
 
-fn env_parse_string(key: &str, default: &str) -> String {
-    env::var(key).unwrap_or_else(|_| default.to_owned())
-}
-
 /// Lenient boolean flag: `1`/`true`/`yes` (case-insensitive) → true; any other
 /// value → false; unset → `default`. Mirrors the API's `ELLIPTIC_ENABLED`
 /// parsing so both components interpret the same value identically. (Unlike
@@ -264,4 +249,18 @@ fn env_require_address(key: &str) -> Result<Address> {
     let v = env_require(key)?;
     v.parse()
         .with_context(|| format!("{key} must be a valid EVM address"))
+}
+
+fn env_address_list(key: &str) -> Result<Vec<Address>> {
+    let Ok(raw) = env::var(key) else {
+        return Ok(Vec::new());
+    };
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.parse()
+                .with_context(|| format!("{key} entry {s:?} must be a valid EVM address"))
+        })
+        .collect()
 }

@@ -1,6 +1,6 @@
 //! Stellar whitelister + `phase_sync_whitelist_stellar`.
 //!
-//! Parallels `crate::relayer::whitelist::phase_sync_whitelist` (EVM) but for Soroban:
+//! Parallels `crate::relayer::evm::whitelist::phase_sync_whitelist_evm` (EVM) but for Soroban:
 //! instead of calling `WhitelistRegistry.allow(addr)`, it invokes
 //! `access_manager.execute(set_authorized)` on the PLUSD SAC.
 //!
