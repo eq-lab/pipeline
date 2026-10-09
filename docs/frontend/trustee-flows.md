@@ -849,8 +849,9 @@ at every KYB status — the endpoint does not gate on one.
   otherwise the dedicated capital wallet `VITE_STELLAR_CAPITAL_WALLET_ID` (#1449, amended
   2026-10-09); when neither resolves the action is disabled with "This LP has no linked Stellar
   wallet and no capital wallet is configured." The USDC custody account
-  (`VITE_STELLAR_USDC_CUSTODY_ID`) is **never** the receiver — it is a USDC account and holds no
-  authorized PLUSD trustline, so minting to it traps with PLUSD `Error(Contract, #13)`. The
+  (`VITE_STELLAR_USDC_CUSTODY_ID`) is **never** the receiver — it is the Deposit Manager's custody
+  account for LP USDC deposits and holds no authorized PLUSD trustline, so minting to it traps with
+  PLUSD `Error(Contract, #13)`. The
   trustee's wallet is the signer and `caller`, never the receiver.
 - **States** — idle (`Mint PLUSD`) → `Awaiting signature…` → `Submitting…` → `Confirming…`
   while in flight, then `Waiting for the indexer` with `Pending` in the PLUSD column until the
