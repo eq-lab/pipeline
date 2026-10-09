@@ -284,11 +284,17 @@ fn warn_about_stellar_tuning_keys(chain_id: i64) {
         );
     }
 
-    for suffix in [
-        "POLLING_BLOCK_RANGE",
-        "POLLING_INTERVAL_MS",
-        "LOG_CONFIRMATIONS_DELAY",
-    ] {
+    let misspelled_inert = format!("CHAIN_{chain_id}_STELLAR_INDEXER_LOG_CONFIRMATIONS_DELAY");
+    if env::var(&misspelled_inert).is_ok_and(|v| !v.trim().is_empty()) {
+        tracing::warn!(
+            chain_id,
+            key = misspelled_inert,
+            "confirmation delay is ignored on a Stellar chain under any prefix — the arm indexes \
+             at a fixed 0 (deterministic finality at ledger close)"
+        );
+    }
+
+    for suffix in ["POLLING_BLOCK_RANGE", "POLLING_INTERVAL_MS"] {
         let misspelled = format!("CHAIN_{chain_id}_STELLAR_INDEXER_{suffix}");
         if env::var(&misspelled).is_ok_and(|v| !v.trim().is_empty()) {
             tracing::warn!(
@@ -439,11 +445,10 @@ where
     T::Err: std::error::Error + Send + Sync + 'static,
 {
     match env::var(key) {
-        Ok(v) if !v.trim().is_empty() => v
-            .trim()
+        Ok(v) => v
             .parse::<T>()
             .with_context(|| format!("{key} must be a valid number")),
-        _ => Ok(default),
+        Err(_) => Ok(default),
     }
 }
 
@@ -455,16 +460,20 @@ fn env_parse_chain_or_job<T: std::str::FromStr>(
 where
     T::Err: std::error::Error + Send + Sync + 'static,
 {
-    let chain_key = format!("CHAIN_{chain_id}_INDEXER_{suffix}");
-    if let Ok(raw) = env::var(&chain_key) {
-        let trimmed = raw.trim();
-        if !trimmed.is_empty() {
-            return trimmed
-                .parse::<T>()
-                .with_context(|| format!("{chain_key} must be a valid number"));
+    for key in [
+        format!("CHAIN_{chain_id}_INDEXER_{suffix}"),
+        format!("JOB_INDEXER_{suffix}"),
+    ] {
+        if let Ok(raw) = env::var(&key) {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                return trimmed
+                    .parse::<T>()
+                    .with_context(|| format!("{key} must be a valid number"));
+            }
         }
     }
-    env_parse(&format!("JOB_INDEXER_{suffix}"), default)
+    Ok(default)
 }
 
 fn require_nonzero(chain_id: i64, suffix: &str, value: u64) -> Result<u64> {

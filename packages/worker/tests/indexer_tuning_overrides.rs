@@ -387,6 +387,27 @@ fn job_level_value_is_trimmed() {
     clear_evm_required(id);
 }
 
+#[test]
+fn blank_start_block_still_aborts_rather_than_seeding_genesis() {
+    let _guard = lock();
+    let id = 70_014_i64;
+    clear_tuning(&[id]);
+    set_evm_required(id);
+    unsafe { std::env::set_var(format!("CHAIN_{id}_START_BLOCK"), "") };
+
+    let err = IndexerJobSettings::from_chain_env(id)
+        .err()
+        .expect("a blank cursor seed must not silently become 0");
+    assert!(
+        format!("{err:#}").contains("START_BLOCK"),
+        "error should name the cursor key, got: {err:#}"
+    );
+
+    unsafe { std::env::remove_var(format!("CHAIN_{id}_START_BLOCK")) };
+    clear_tuning(&[id]);
+    clear_evm_required(id);
+}
+
 // ── Stellar arm ──────────────────────────────────────────────────────────────
 
 #[test]
