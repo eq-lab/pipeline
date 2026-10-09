@@ -242,6 +242,8 @@ impl StellarIndexerSettings {
         let ipfs_gateway_url = env::var("JOB_INDEXER_IPFS_GATEWAY_URL")
             .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned());
 
+        warn_if_confirmations_delay_set(chain_id);
+
         Ok(Self {
             chain_id,
             rpc_url: env_require(&format!("{p}RPC_URL"))?,
@@ -264,6 +266,18 @@ impl StellarIndexerSettings {
                 env_parse_chain_or_job(chain_id, "POLLING_BLOCK_RANGE", 1000)?,
             )?,
         })
+    }
+}
+
+fn warn_if_confirmations_delay_set(chain_id: i64) {
+    let key = format!("CHAIN_{chain_id}_INDEXER_LOG_CONFIRMATIONS_DELAY");
+    if env::var(&key).is_ok_and(|v| !v.trim().is_empty()) {
+        tracing::warn!(
+            chain_id,
+            key,
+            "confirmation delay is ignored on a Stellar chain — the arm indexes at a fixed 0 \
+             (deterministic finality at ledger close); remove the variable to silence this"
+        );
     }
 }
 
