@@ -1,10 +1,19 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
 import { createFileRoute } from "@tanstack/react-router";
-import { Button, InlineError } from "@pipeline/ui";
+import { Button, IconButton, InlineError } from "@pipeline/ui";
 import { DocumentIcon } from "@/components/DocumentIcon";
+import { AddressChip } from "@/components/detail/AddressChip";
+import { BandButton, BandIconButton } from "@/components/detail/BandButton";
+import {
+  CheckIcon,
+  CrossIcon,
+  DownloadIcon,
+  RefreshIcon,
+} from "@/components/detail/DetailIcons";
 import { DetailHero } from "@/components/detail/DetailHero";
 import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
+import { StatusChip } from "@/components/detail/StatusChip";
 import {
   DETAIL_SECONDARY_BUTTON_CLASS,
   INK_MUTED,
@@ -27,6 +36,10 @@ const BODY_CLASS =
   "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
 const SUB_CLASS =
   "font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px]";
+const DOWNLOAD_LINK_CLASS =
+  "inline-flex size-[32px] shrink-0 items-center justify-center rounded-[4px] text-[color:var(--color-pipeline-brand)] hover:bg-[rgba(0,0,128,0.06)]";
+const GATING_NOTE =
+  "Review actions are available only while the LP is UnderReview.";
 
 function orDash(value: string | null | undefined) {
   return value || "—";
@@ -79,52 +92,117 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
       )}
       {lp && (
         <>
-          <DetailCard className="gap-[8px] p-[26px]" ariaLabel="LP profile">
-            <CardTitle>LP profile</CardTitle>
-            <div className="flex flex-col">
-              <KeyValueRow label="Jurisdiction">
-                {orDash(lp.country)}
-              </KeyValueRow>
-              <KeyValueRow label="Contact email">
-                <span className="break-all">{orDash(lp.contact_email)}</span>
-              </KeyValueRow>
-              <KeyValueRow label="First registration date">
-                {formatIsoDateUtc(lp.created_at)}
-              </KeyValueRow>
-              <KeyValueRow label="Submitted for review">
-                {formatIsoDateUtc(lp.kyb_submitted_at)}
-              </KeyValueRow>
-              <KeyValueRow label="Latest decision date">
-                {formatIsoDateUtc(lp.kyb_decided_at)}
-              </KeyValueRow>
-              <KeyValueRow label="Settlement address">
-                <span className="break-all">{orDash(lp.stellar_address)}</span>
-              </KeyValueRow>
-              <KeyValueRow label="Latest decision reason" isLast>
-                <span className="break-words whitespace-pre-wrap">
-                  {orDash(lp.kyb_decision_reason)}
-                </span>
-              </KeyValueRow>
-            </div>
-          </DetailCard>
+          <div className="grid grid-cols-1 gap-[16px] min-[900px]:grid-cols-2">
+            <DetailCard className="gap-[8px] p-[26px]" ariaLabel="LP profile">
+              <CardTitle>LP profile</CardTitle>
+              <div className="flex flex-col">
+                <KeyValueRow label="Legal name">
+                  <span className="break-words">{orDash(lp.legal_name)}</span>
+                </KeyValueRow>
+                <KeyValueRow label="Jurisdiction">
+                  {orDash(lp.country)}
+                </KeyValueRow>
+                <KeyValueRow label="Contact email">
+                  <span className="break-all">{orDash(lp.contact_email)}</span>
+                </KeyValueRow>
+                <KeyValueRow label="Registered">
+                  {formatIsoDateUtc(lp.created_at)}
+                </KeyValueRow>
+                <KeyValueRow label="Linked wallet" isLast>
+                  {lp.stellar_address ? (
+                    <AddressChip
+                      value={lp.stellar_address}
+                      testId="lp-linked-wallet"
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </KeyValueRow>
+              </div>
+            </DetailCard>
+
+            <DetailCard className="gap-[8px] p-[26px]" ariaLabel="KYB review">
+              <CardTitle>KYB review</CardTitle>
+              <div className="flex flex-col">
+                <KeyValueRow label="Status">
+                  {status && (
+                    <StatusChip
+                      band={status.band}
+                      label={status.label}
+                      testId="lp-kyb-review-chip"
+                    />
+                  )}
+                </KeyValueRow>
+                <KeyValueRow label="Submitted for review">
+                  {formatIsoDateUtc(lp.kyb_submitted_at)}
+                </KeyValueRow>
+                <KeyValueRow label="Latest decision date">
+                  {formatIsoDateUtc(lp.kyb_decided_at)}
+                </KeyValueRow>
+                <KeyValueRow label="Reviewer">—</KeyValueRow>
+                <KeyValueRow label="Latest decision reason" isLast>
+                  <span className="break-words whitespace-pre-wrap">
+                    {orDash(lp.kyb_decision_reason)}
+                  </span>
+                </KeyValueRow>
+              </div>
+            </DetailCard>
+          </div>
 
           <DetailCard
             className="gap-[8px] p-[26px]"
             ariaLabelledBy="lp-documents-heading"
           >
-            <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
+            <div className="flex flex-wrap items-center justify-between gap-[12px]">
               <CardTitle id="lp-documents-heading">KYB documents</CardTitle>
-              <Button
-                variant="secondary"
-                size="m"
-                className={DETAIL_SECONDARY_BUTTON_CLASS}
-                style={detailSecondaryButtonStyle()}
-                onClick={detail.refresh}
-                disabled={detail.query.isFetching || detail.busy}
-              >
-                Refresh
-              </Button>
+              <div className="flex flex-wrap items-center gap-[8px]">
+                {detail.canReview ? (
+                  <>
+                    <BandButton
+                      band="negative"
+                      disabled={detail.busy}
+                      onClick={() => detail.open({ decision: "Failed" })}
+                    >
+                      Reject account
+                    </BandButton>
+                    <BandButton
+                      band="attention"
+                      disabled={detail.busy}
+                      onClick={() =>
+                        detail.open({ decision: "ChangesRequested" })
+                      }
+                    >
+                      Request changes
+                    </BandButton>
+                    {detail.canPass && (
+                      <BandButton
+                        band="positive"
+                        disabled={detail.busy}
+                        onClick={() => detail.open({ decision: "Passed" })}
+                      >
+                        Confirm KYB passed
+                      </BandButton>
+                    )}
+                  </>
+                ) : (
+                  <span className={NOTE_CLASS} style={{ color: INK_MUTED }}>
+                    {GATING_NOTE}
+                  </span>
+                )}
+                <IconButton
+                  icon={<RefreshIcon />}
+                  label="Refresh documents"
+                  style={{ color: INK_MUTED }}
+                  onClick={detail.refresh}
+                  disabled={detail.query.isFetching || detail.busy}
+                />
+              </div>
             </div>
+            {detail.canReview && !detail.canPass && (
+              <p className={NOTE_CLASS} style={{ color: INK_MUTED }}>
+                Verify every submitted document before confirming KYB passed.
+              </p>
+            )}
             {lp.documents.length === 0 ? (
               <p
                 className={`py-[8px] ${BODY_CLASS}`}
@@ -161,29 +239,69 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                           </p>
                         </div>
                       </div>
-                      {document.download_url ? (
-                        <a
-                          href={document.download_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`${BODY_CLASS} text-[color:var(--color-pipeline-brand)]`}
-                          aria-label={`Download ${document.original_filename}`}
-                        >
-                          Download
-                        </a>
-                      ) : (
-                        <span
-                          className={SUB_CLASS}
-                          style={{ color: INK_MUTED }}
-                        >
-                          Download unavailable. Refresh to retry.
-                        </span>
-                      )}
+                      <div className="flex shrink-0 flex-wrap items-center gap-[8px]">
+                        {document.download_url ? (
+                          <a
+                            href={document.download_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={DOWNLOAD_LINK_CLASS}
+                            aria-label={`Download ${document.original_filename}`}
+                            title={`Download ${document.original_filename}`}
+                          >
+                            <span aria-hidden="true">
+                              <DownloadIcon />
+                            </span>
+                          </a>
+                        ) : (
+                          <span
+                            className={SUB_CLASS}
+                            style={{ color: INK_MUTED }}
+                          >
+                            Download unavailable. Refresh to retry.
+                          </span>
+                        )}
+                        {detail.canReview && document.status === "Provided" && (
+                          <>
+                            <BandIconButton
+                              band="positive"
+                              label={`Verify ${document.original_filename}`}
+                              icon={<CheckIcon />}
+                              disabled={detail.busy}
+                              onClick={() =>
+                                detail.open({
+                                  decision: "Verified",
+                                  documentId: document.id,
+                                  filename: document.original_filename,
+                                })
+                              }
+                            />
+                            <BandIconButton
+                              band="negative"
+                              label={`Reject ${document.original_filename}`}
+                              icon={<CrossIcon />}
+                              disabled={detail.busy}
+                              onClick={() =>
+                                detail.open({
+                                  decision: "Rejected",
+                                  documentId: document.id,
+                                  filename: document.original_filename,
+                                })
+                              }
+                            />
+                          </>
+                        )}
+                      </div>
                     </div>
                     <p className={SUB_CLASS} style={{ color: INK_MUTED }}>
                       Uploaded {formatIsoDateUtc(document.created_at)} ·
                       Reviewed {formatIsoDateUtc(document.reviewed_at)} ·
-                      Reviewer {document.reviewed_by ?? "—"}
+                      Reviewer{" "}
+                      {document.reviewed_by ? (
+                        <AddressChip value={document.reviewed_by} />
+                      ) : (
+                        "—"
+                      )}
                     </p>
                     {document.reject_reason && (
                       <p
@@ -193,99 +311,9 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                         Rejection reason: {document.reject_reason}
                       </p>
                     )}
-                    {detail.canReview && document.status === "Provided" && (
-                      <div className="flex flex-wrap gap-[12px]">
-                        <Button
-                          variant="secondary"
-                          size="m"
-                          className={DETAIL_SECONDARY_BUTTON_CLASS}
-                          style={detailSecondaryButtonStyle()}
-                          disabled={detail.busy}
-                          onClick={() =>
-                            detail.open({
-                              decision: "Verified",
-                              documentId: document.id,
-                              filename: document.original_filename,
-                            })
-                          }
-                          aria-label={`Verify ${document.original_filename}`}
-                        >
-                          Verify document
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="m"
-                          className={DETAIL_SECONDARY_BUTTON_CLASS}
-                          style={detailSecondaryButtonStyle()}
-                          disabled={detail.busy}
-                          onClick={() =>
-                            detail.open({
-                              decision: "Rejected",
-                              documentId: document.id,
-                              filename: document.original_filename,
-                            })
-                          }
-                          aria-label={`Reject ${document.original_filename}`}
-                        >
-                          Reject document
-                        </Button>
-                      </div>
-                    )}
                   </li>
                 ))}
               </ul>
-            )}
-          </DetailCard>
-
-          <DetailCard className="gap-[16px] p-[26px]" ariaLabel="KYB decision">
-            <CardTitle>KYB decision</CardTitle>
-            {detail.canReview ? (
-              <>
-                {!detail.canPass && (
-                  <p className={NOTE_CLASS} style={{ color: INK_MUTED }}>
-                    Verify every submitted document before confirming KYB
-                    passed.
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-[12px]">
-                  <Button
-                    variant="secondary"
-                    size="m"
-                    className={DETAIL_SECONDARY_BUTTON_CLASS}
-                    style={detailSecondaryButtonStyle()}
-                    disabled={detail.busy}
-                    onClick={() => detail.open({ decision: "Failed" })}
-                  >
-                    Reject account
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="m"
-                    className={DETAIL_SECONDARY_BUTTON_CLASS}
-                    style={detailSecondaryButtonStyle()}
-                    disabled={detail.busy}
-                    onClick={() =>
-                      detail.open({ decision: "ChangesRequested" })
-                    }
-                  >
-                    Request changes
-                  </Button>
-                  {detail.canPass && (
-                    <Button
-                      variant="primary-blue"
-                      size="m"
-                      disabled={detail.busy}
-                      onClick={() => detail.open({ decision: "Passed" })}
-                    >
-                      Confirm KYB passed
-                    </Button>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className={NOTE_CLASS} style={{ color: INK_MUTED }}>
-                Review actions are available only while the LP is UnderReview.
-              </p>
             )}
           </DetailCard>
 

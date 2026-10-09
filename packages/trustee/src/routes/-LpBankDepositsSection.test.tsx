@@ -4,6 +4,7 @@ import {
   screen,
   fireEvent,
   waitFor,
+  within,
   act,
 } from "@testing-library/react";
 import { ApiError } from "@/api/client";
@@ -177,7 +178,10 @@ describe("LpBankDepositsSection — list", () => {
     expect(row).toHaveTextContent("$1,250,000.50");
     expect(row).toHaveTextContent("WIRE-REF-1");
     expect(row).toHaveTextContent("Not minted");
-    expect(row).toHaveTextContent("GTRUSTEE");
+    expect(within(row).getByRole("button", { name: "…USTEE" })).toHaveAttribute(
+      "title",
+      "GTRUSTEE",
+    );
   });
 });
 

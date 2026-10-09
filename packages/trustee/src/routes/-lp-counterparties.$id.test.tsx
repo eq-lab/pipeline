@@ -193,21 +193,52 @@ describe("LP counterparty detail — status chip band mapping", () => {
   }
 });
 
-describe("LP counterparty detail — profile card", () => {
+describe("LP counterparty detail — profile and KYB review cards", () => {
+  it("renders the two cards in a grid that stacks below 900px", () => {
+    renderRoute();
+    const profile = screen.getByRole("region", { name: "LP profile" });
+    const review = screen.getByRole("region", { name: "KYB review" });
+    expect(profile.parentElement).toBe(review.parentElement);
+    expect(profile.parentElement).toHaveClass(
+      "grid",
+      "grid-cols-1",
+      "min-[900px]:grid-cols-2",
+    );
+  });
+
   it("renders every served profile value", () => {
-    served(lp({ kyb_decided_at: "2026-06-25T08:00:00Z" }));
     renderRoute();
     const card = screen.getByRole("region", { name: "LP profile" });
+    expect(card).toHaveTextContent("Acme Capital LP");
     expect(card).toHaveTextContent("Jurisdiction");
     expect(card).toHaveTextContent("CH");
     expect(card).toHaveTextContent("ops@acme.example");
     expect(card).toHaveTextContent("18 Jun 2026");
-    expect(card).toHaveTextContent("20 Jun 2026");
-    expect(card).toHaveTextContent("25 Jun 2026");
-    expect(card).toHaveTextContent(LP.stellar_address!);
+    expect(within(card).getByTestId("lp-linked-wallet")).toHaveAttribute(
+      "title",
+      LP.stellar_address,
+    );
   });
 
-  it("renders an em dash for every absent profile value", () => {
+  it("renders every served KYB review value", () => {
+    served(
+      lp({
+        kyb_status: "Passed",
+        kyb_decided_at: "2026-06-25T08:00:00Z",
+        kyb_decision_reason: "All documents verified",
+      }),
+    );
+    renderRoute();
+    const card = screen.getByRole("region", { name: "KYB review" });
+    expect(within(card).getByTestId("lp-kyb-review-chip")).toHaveTextContent(
+      "Approved",
+    );
+    expect(card).toHaveTextContent("20 Jun 2026");
+    expect(card).toHaveTextContent("25 Jun 2026");
+    expect(card).toHaveTextContent("All documents verified");
+  });
+
+  it("renders an em dash for every absent value in each card", () => {
     served(
       lp({
         country: null,
@@ -219,8 +250,26 @@ describe("LP counterparty detail — profile card", () => {
       }),
     );
     renderRoute();
-    const card = screen.getByRole("region", { name: "LP profile" });
-    expect(within(card).getAllByText("—")).toHaveLength(6);
+    expect(
+      within(screen.getByRole("region", { name: "LP profile" })).getAllByText(
+        "—",
+      ),
+    ).toHaveLength(3);
+    expect(
+      within(screen.getByRole("region", { name: "KYB review" })).getAllByText(
+        "—",
+      ),
+    ).toHaveLength(4);
+  });
+
+  it("renders the reviewer row as an em dash — the API never serves kyb_decided_by", () => {
+    served(
+      lp({ kyb_status: "Passed", kyb_decided_at: "2026-06-25T08:00:00Z" }),
+    );
+    renderRoute();
+    const card = screen.getByRole("region", { name: "KYB review" });
+    expect(card).toHaveTextContent("Reviewer");
+    expect(within(card).getAllByText("—")).toHaveLength(2);
   });
 
   it("preserves newlines in the latest decision reason", () => {
@@ -234,6 +283,27 @@ describe("LP counterparty detail — profile card", () => {
     const reason = screen.getByText(/Line one/);
     expect(reason).toHaveClass("whitespace-pre-wrap");
     expect(reason.textContent).toContain("\n");
+  });
+
+  it("reveals and copies the linked wallet on click", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    });
+    renderRoute();
+    const chip = screen.getByTestId("lp-linked-wallet");
+    expect(chip).toHaveTextContent("…00000");
+    fireEvent.click(chip);
+    expect(chip).toHaveTextContent(LP.stellar_address!);
+    expect(writeText).toHaveBeenCalledWith(LP.stellar_address);
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
   });
 });
 
@@ -256,8 +326,11 @@ describe("LP counterparty detail — documents card", () => {
     expect(card).toHaveTextContent("certificate-of-incorporation.pdf");
     expect(card).toHaveTextContent("20,480 bytes · application/pdf · Verified");
     expect(card).toHaveTextContent(
-      "Uploaded 19 Jun 2026 · Reviewed 21 Jun 2026 · Reviewer GTRUSTEE",
+      "Uploaded 19 Jun 2026 · Reviewed 21 Jun 2026 · Reviewer",
     );
+    expect(
+      within(card).getByRole("button", { name: "…USTEE" }),
+    ).toHaveAttribute("title", "GTRUSTEE");
   });
 
   it("renders the rejection reason for a rejected document", () => {
@@ -278,16 +351,17 @@ describe("LP counterparty detail — documents card", () => {
     ).toBeInTheDocument();
   });
 
-  it("links Download to the presigned URL", () => {
+  it("links the download icon to the presigned URL", () => {
     renderRoute();
-    expect(
-      screen.getByRole("link", {
-        name: "Download certificate-of-incorporation.pdf",
-      }),
-    ).toHaveAttribute("href", "https://files.example/doc-11");
+    const link = screen.getByRole("link", {
+      name: "Download certificate-of-incorporation.pdf",
+    });
+    expect(link).toHaveAttribute("href", "https://files.example/doc-11");
+    expect(link.querySelector("svg")).toBeInTheDocument();
+    expect(link).not.toHaveTextContent("Download");
   });
 
-  it("replaces Download with the refresh hint when no URL is served", () => {
+  it("replaces the download icon with the refresh hint when no URL is served", () => {
     served(lp({ documents: [{ ...DOCUMENT, download_url: null }] }));
     renderRoute();
     expect(
@@ -298,34 +372,62 @@ describe("LP counterparty detail — documents card", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the empty state and still offers Refresh when no documents are served", () => {
+  it("refreshes from the icon button on the title row", () => {
     served(lp({ documents: [] }));
     renderRoute();
     expect(screen.getByText("No documents submitted.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    const refresh = screen.getByRole("button", { name: "Refresh documents" });
+    expect(refresh.querySelector("svg")).toBeInTheDocument();
+    fireEvent.click(refresh);
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("names the document verify and reject icon buttons after the filename", () => {
+    renderRoute();
+    const verify = screen.getByRole("button", {
+      name: "Verify certificate-of-incorporation.pdf",
+    });
+    const reject = screen.getByRole("button", {
+      name: "Reject certificate-of-incorporation.pdf",
+    });
+    expect(verify).toHaveAttribute("data-band", "positive");
+    expect(reject).toHaveAttribute("data-band", "negative");
+    expect(verify.querySelector("svg")).toBeInTheDocument();
+    expect(reject.querySelector("svg")).toBeInTheDocument();
+    expect(verify).not.toHaveTextContent("document");
   });
 });
 
-describe("LP counterparty detail — KYB decision card", () => {
-  it("offers the three decisions only while the LP is UnderReview", () => {
+describe("LP counterparty detail — review actions on the title row", () => {
+  it("offers the three decisions on the documents card title row", () => {
+    served(lp({ documents: [{ ...DOCUMENT, status: "Verified" }] }));
+    renderRoute();
+    const card = screen.getByRole("region", { name: "KYB documents" });
+    expect(
+      within(card).getByRole("button", { name: "Reject account" }),
+    ).toHaveAttribute("data-band", "negative");
+    expect(
+      within(card).getByRole("button", { name: "Request changes" }),
+    ).toHaveAttribute("data-band", "attention");
+    expect(
+      within(card).getByRole("button", { name: "Confirm KYB passed" }),
+    ).toHaveAttribute("data-band", "positive");
+  });
+
+  it("drops the standalone KYB decision card", () => {
     renderRoute();
     expect(
-      screen.getByRole("button", { name: "Reject account" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Request changes" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("region", { name: "KYB decision" }),
+    ).not.toBeInTheDocument();
   });
 
   it("replaces the decisions with the gating note for any other status", () => {
     served(lp({ kyb_status: "Passed" }));
     renderRoute();
-    expect(
-      screen.getByText(
-        "Review actions are available only while the LP is UnderReview.",
-      ),
-    ).toBeInTheDocument();
+    const card = screen.getByRole("region", { name: "KYB documents" });
+    expect(card).toHaveTextContent(
+      "Review actions are available only while the LP is UnderReview.",
+    );
     expect(
       screen.queryByRole("button", { name: "Reject account" }),
     ).not.toBeInTheDocument();
@@ -367,6 +469,9 @@ describe("LP counterparty detail — KYB decision card", () => {
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Request changes" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Refresh documents" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("button", {

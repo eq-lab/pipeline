@@ -1,5 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#lp-bank-deposits
 import { Button, InlineError } from "@pipeline/ui";
+import { AddressChip } from "@/components/detail/AddressChip";
 import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
 import {
   DETAIL_SECONDARY_BUTTON_CLASS,
@@ -119,8 +120,12 @@ export function LpBankDepositsSection({
                   <td className={`${BODY_CELL_CLASS} whitespace-nowrap`}>
                     {row.minted}
                   </td>
-                  <td className={`${BODY_CELL_CLASS} break-all`}>
-                    {row.recordedBy}
+                  <td className={BODY_CELL_CLASS}>
+                    {row.recordedBy ? (
+                      <AddressChip value={row.recordedBy} />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className={`${BODY_CELL_CLASS} pr-0 whitespace-nowrap`}>
                     <MintCell row={row} section={section} />

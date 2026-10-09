@@ -830,24 +830,47 @@ The page is assembled from the [shared detail primitives](#shared-detail-primiti
   (`lp-detail-meta`). Meta is built by `lpHeroMeta` in `-useLpCounterpartyDetail.ts` as
   `Jurisdiction · Registered <date> · Submitted <date> · Decided <date>`; a clause whose value is
   not served is **dropped entirely**, never printed as `—` (same rule as the loan hero).
-- **LP profile** — `DetailCard` + `CardTitle` with seven `KeyValueRow`s: Jurisdiction, Contact
-  email, First registration date, Submitted for review, Latest decision date, Settlement address,
-  Latest decision reason. Absent values render `—`; the decision reason keeps
-  `whitespace-pre-wrap`.
-- **KYB documents** — `DetailCard` whose title row carries the **Refresh** secondary button (the
-  presigned download links expire). Each row is prefixed with the loan Documents card's 32px
-  document tile, separated by a `LINE_COLOR` rule, and keeps the filename, the
-  bytes/type/status line, the uploaded/reviewed/reviewer line, the rejection reason (negative
-  red) and the real `<a>` download to the presigned URL. Empty state: "No documents submitted."
-- **KYB decision** — `DetailCard` with the gating note at 13px ink-muted and the three verdict
-  buttons.
+- **LP profile** + **KYB review** — two `DetailCard`s in one
+  `grid grid-cols-1 gap-[16px] min-[900px]:grid-cols-2` row, so they sit side by side on a desk
+  window and stack below 900px (design feedback on #1453: one tall key/value list buried the
+  review state). **LP profile** holds the registration record — Legal name, Jurisdiction, Contact
+  email, Registered, Linked wallet. **KYB review** holds the review record — Status (a
+  `StatusChip`, `lp-kyb-review-chip`, the same band as the hero chip), Submitted for review,
+  Latest decision date, Reviewer, Latest decision reason. Absent values render `—`; the decision
+  reason keeps `whitespace-pre-wrap`; the linked wallet renders as an
+  [`AddressChip`](#shared-detail-primitives).
+- **Reviewer renders `—`, always — it is not served.** `LpResponse` deliberately withholds
+  `kyb_decided_by` (`packages/api/src/routes/lps.rs`: it identifies the deciding operator and is
+  never returned). The row is kept so the card states the shape of the review record, and follows
+  the same never-fabricate rule as Bank Info Available on the list: the value is absent, so it
+  prints `—` rather than a guess derived from the documents' `reviewed_by`.
+- **KYB documents** — `DetailCard` whose title row carries the account verdicts and the refresh
+  control, left to right: **Reject account** (`BandButton`, negative), **Request changes**
+  (attention), **Confirm KYB passed** (positive, rendered only when `canPass`), then the 40×40
+  `@pipeline/ui` `IconButton` labelled **Refresh documents** (`RefreshIcon`; the presigned
+  download links expire). When the LP is not UnderReview the three verdicts are replaced in that
+  row by the gating note at 13px ink-muted; the "Verify every submitted document before confirming
+  KYB passed." note renders under the title row. Each document row is prefixed with the loan
+  Documents card's 32px document tile, separated by a `LINE_COLOR` rule, and keeps the filename,
+  the bytes/type/status line, the uploaded/reviewed/reviewer line (reviewer key as an
+  `AddressChip`) and the rejection reason (negative red). Its right-hand cluster is the 32px
+  download `<a>` (`DownloadIcon`, brand, `aria-label="Download <filename>"`, still the real
+  presigned link opened in a new tab) — or the "Download unavailable. Refresh to retry." text when
+  no URL is served — followed, while the document is reviewable, by the 32×32 `BandIconButton`s
+  **Verify** (positive check) and **Reject** (negative cross). Empty state: "No documents
+  submitted."
+- **There is no KYB decision card.** It held only buttons, so #1453's design feedback moved them
+  onto the documents title row — the documents are what the verdict is about.
 - **Bank deposits** — see [LP bank deposits](#lp-bank-deposits).
-- **Buttons** — `@pipeline/ui` `Button` at `size="m"` (40px, 4px radius) everywhere. Primary
-  (Confirm KYB passed, Record deposit, every dialog submit) is `variant="primary-blue"` — the
-  loan page's brand primary, replacing the former `primary-dark`. Secondary (Reject account,
-  Request changes, Verify/Reject document, Refresh, Retry, Mint PLUSD, every dialog Cancel) is
-  `variant="secondary"` plus `DETAIL_SECONDARY_BUTTON_CLASS` / `detailSecondaryButtonStyle()`,
-  which add the white ground and the `LINE_COLOR` border the borderless shared variant lacks.
+- **Buttons** — three shapes. Page-level `@pipeline/ui` `Button` at `size="m"` (40px, 4px radius)
+  for Retry, Record deposit, Mint PLUSD and every dialog action: primary is `variant="primary-blue"`
+  (the loan page's brand primary), secondary is `variant="secondary"` plus
+  `DETAIL_SECONDARY_BUTTON_CLASS` / `detailSecondaryButtonStyle()`, which add the white ground and
+  the `LINE_COLOR` border the borderless shared variant lacks. Review verdicts are `BandButton`s —
+  32px tall, the `chipStyle(band)` colours (band-coloured text and border over a light band fill),
+  never a solid primary, so the three verdicts read as positive / attention / negative at a glance.
+  Icon-only affordances are 40×40 (`IconButton`, page chrome) or 32×32 (`BandIconButton` and the
+  download link, row-level), each carrying an explicit `aria-label`.
 
 **Behaviour is unchanged by the restyle.** Document review is available only for Provided files
 while the LP is UnderReview. Verify sends `Verified` without a reason; Reject requires a nonblank
@@ -877,6 +900,18 @@ look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDeposits
 | `DetailCard.tsx` | `DetailCard` (card shell; renders a named `<section>` when given `ariaLabel`/`ariaLabelledBy`, a bare `<div>` otherwise) and `CardTitle` (26px display `h2`, optional `id`) |
 | `KeyValueRow.tsx` | `KeyValueRow` — 15px muted label / 16px right-aligned value, `LINE_COLOR` divider unless `isLast` |
 | `DetailHero.tsx` | `DetailHero` — back link → 44px `h1` → chip + meta row; `backTo`, `backLabel`, `title`, `status`, `meta`, `statusTestId`, `metaTestId` |
+| `AddressChip.tsx` | `AddressChip` — click-to-reveal/copy chip for a `G…` / `C…` key; `shortAddress(value)` |
+| `BandButton.tsx` | `BandButton` (32px text button) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
+| `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon` (inline 16px stroked glyphs) |
+
+**`AddressChip` (#1453).** Stellar keys are 56 characters and were pushing every row they
+appeared in out of shape. The chip renders `…` plus the **last five** characters (`…CQXS4`), keeps
+the full value in its `title`, and is a `<button>`: the first click reveals the full value inline
+and copies it with `navigator.clipboard.writeText`, flashing a muted "Copied" for 1.6 s; a second
+click collapses it. A missing or rejecting clipboard is swallowed — the value still reveals, and
+nothing claims a copy that did not happen. Used for the linked wallet, the documents' reviewer key
+and the deposits table's `recorded_by`. `lib/truncateAddress.ts` (head+tail form, sidebar wallet
+pill) is a different convention and is deliberately left alone.
 
 `StatusBand` is defined here and re-exported by `-useLoanDetail.ts`; `AccountStatusBand` in
 `-useLpCounterpartiesTable.ts` is an alias of it, so both pages and the list share one band
@@ -895,7 +930,8 @@ The detail page carries a **Bank deposits** card (`-LpBankDepositsSection.tsx`, 
 /v1/lps/{id}/bank-deposits` (#1413). No Figma; since #1453 the card is a
 [`DetailCard` + `CardTitle`](#shared-detail-primitives) and the table uses the loan-page
 typography (14px ink-muted `font-normal` headers, 16px `#262524` body cells, `LINE_COLOR` row
-rules, amounts right-aligned `tabular-nums`, `overflow-x-auto` + `min-w-[720px]` kept). The
+rules, amounts right-aligned `tabular-nums`, `overflow-x-auto` + `min-w-[720px]` kept, `recorded_by`
+as an [`AddressChip`](#shared-detail-primitives)). The
 #1413/#1449 wiring — list, record, mint, disabled hints, pending window, error copy — is
 untouched by that restyle. It renders at every KYB status — the endpoint does not gate on one.
 
