@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-138.**
+**Next free number: TD-140.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1978,3 +1978,19 @@ line, whichever section it lands in.
 - **Gap:** The Account column in the Figma file holds only `6701-98137`, `6701-98175`, `6701-97942`, `6701-98061`, `6701-98099`, `6701-97982`, `6701-98022` — none a declined/`Failed` state. The page ships a stand-in built from designed parts (the `under-review` banner chrome with `failed` styling and the already-shipped 403 copy), the same pattern already used for the `under-review` stand-in itself.
 - **Impact:** No ground truth to pixel-verify the declined Account banner against; a future designer pass could redesign it as a dedicated frame and invalidate the stand-in.
 - **Suggested fix:** Designer ask — request a dedicated declined-state Account frame.
+
+### TD-138: The home grid derives connection from the active wallet view; the header derives it from any-wallet presence
+
+- **Date:** 2026-10-12
+- **Location:** `packages/frontend/src/routes/index.tsx` (`isConnected` from `useWalletView().kind`) vs `TopBar`/`MobileNavMenu` (`useWalletPresence().isAnyConnected`, #1458) — Issue #1460.
+- **Gap:** A Stellar-connected visitor whose active wallet view is still the default EVM sees the header's account icon (`isAnyConnected` is true) over a "Sign Up" zero-state grid (the home route's `isConnected` reads the EVM view, which is disconnected). `setKind` is only ever called by the Account page / its dropdown, never by `ConnectWalletModal`, so a freshly Stellar-connected visitor who has not yet visited `/account` stays on the EVM view by default.
+- **Impact:** Visually inconsistent combination, first observable once #1460 shipped state 7 (a sessionless zero/wallet-only split that depends on the active view). No functional breakage — the header's affordances (account icon → `/account`) still work.
+- **Suggested fix:** Either derive the header's icon from the active view too, or derive the home grid's connection from any-wallet presence and resolve balances/activity across both namespaces. Both are product decisions, not mechanical fixes.
+
+### TD-139: Completing Add email from the wallet-only state (#1460) lands the visitor in `"legacy"`, not a designed state
+
+- **Date:** 2026-10-12
+- **Location:** `packages/frontend/src/components/homeState.ts` (`"legacy"` fallback) — Issue #1460, following #1459's Add email flow.
+- **Gap:** After `Start Verification` → Add email → OTP → session, the visitor is signed-in + connected + `lpRead: "absent"` (no LP profile submitted yet). `deriveHomeState`'s `"unverified"` branch requires `!isConnected`, so this combination falls through to `"legacy"` — today's pre-#1419 taller-card layout, with no `AddUsdCard` at all, dropping the "Verify your account" card the visitor just acted on.
+- **Impact:** The one-click registration path #1460 opened up lands the visitor on a layout with no verification CTA, immediately after they asked to verify. Documented as the expected follow-on in the #1460 user-stories doc so QA does not file it as a defect.
+- **Suggested fix:** Design state "signed in, connected, KYB not started" (session + connected + `NotStarted`/absent) as its own home state, the same way states 2–7 were each designed individually.

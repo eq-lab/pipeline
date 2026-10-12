@@ -9,10 +9,21 @@ describe("deriveHomeState", () => {
     );
   });
 
-  it("returns zero when there is no session, even with a wallet connected", () => {
+  it("returns zero when there is no session, wallet connected and balances unknown", () => {
     expect(deriveHomeState({ hasSession: false, isConnected: true })).toBe(
       "zero",
     );
+  });
+
+  it("returns wallet-only when there is no session, wallet connected, both balances zero", () => {
+    expect(
+      deriveHomeState({
+        hasSession: false,
+        isConnected: true,
+        plusdIsZero: true,
+        splusdIsZero: true,
+      }),
+    ).toBe("wallet-only");
   });
 
   it("returns legacy when a session is present, wallet disconnected, lpRead unknown", () => {
@@ -155,8 +166,8 @@ describe("deriveHomeState — kyb-pending (#1423)", () => {
     },
   );
 
-  it("returns zero when there is no session, even with every state-3 input set", () => {
-    expect(deriveHomeState({ ...base, hasSession: false })).toBe("zero");
+  it("returns wallet-only when there is no session, even with every state-3 input set", () => {
+    expect(deriveHomeState({ ...base, hasSession: false })).toBe("wallet-only");
   });
 
   it("returns legacy when the balance inputs are omitted entirely", () => {
@@ -266,14 +277,14 @@ describe("deriveHomeState — kyb-problem (#1426)", () => {
     },
   );
 
-  it("returns zero when there is no session, regardless of kybStatus", () => {
+  it("returns wallet-only when there is no session, regardless of kybStatus", () => {
     expect(
       deriveHomeState({
         ...connectedZero,
         hasSession: false,
         kybStatus: "ChangesRequested",
       }),
-    ).toBe("zero");
+    ).toBe("wallet-only");
   });
 
   it.each(["unknown", "error", "absent"] as const)(
@@ -306,4 +317,59 @@ describe("deriveHomeState — kyb-problem (#1426)", () => {
       );
     },
   );
+});
+
+describe("deriveHomeState — wallet-only (#1460)", () => {
+  const base = {
+    hasSession: false,
+    isConnected: true,
+    plusdIsZero: true,
+    splusdIsZero: true,
+  };
+
+  it("returns wallet-only when connected, both balances display-zero, no session", () => {
+    expect(deriveHomeState(base)).toBe("wallet-only");
+  });
+
+  it("returns zero when there is no session and the wallet is disconnected", () => {
+    expect(deriveHomeState({ ...base, isConnected: false })).toBe("zero");
+  });
+
+  it("returns zero when there is no session, connected, PLUSD non-zero", () => {
+    expect(deriveHomeState({ ...base, plusdIsZero: false })).toBe("zero");
+  });
+
+  it("returns zero when there is no session, connected, sPLUSD non-zero", () => {
+    expect(deriveHomeState({ ...base, splusdIsZero: false })).toBe("zero");
+  });
+
+  it("returns zero when there is no session, connected, balance inputs omitted", () => {
+    expect(deriveHomeState({ hasSession: false, isConnected: true })).toBe(
+      "zero",
+    );
+  });
+
+  it.each(["unknown", "absent", "loaded", "error"] as const)(
+    "returns wallet-only regardless of lpRead %s",
+    (lpRead) => {
+      expect(deriveHomeState({ ...base, lpRead })).toBe("wallet-only");
+    },
+  );
+
+  it.each([
+    "NotStarted",
+    "InProgress",
+    "UnderReview",
+    "Passed",
+    "ChangesRequested",
+    "Failed",
+  ])("returns wallet-only regardless of kybStatus %s", (kybStatus) => {
+    expect(deriveHomeState({ ...base, kybStatus })).toBe("wallet-only");
+  });
+
+  it("returns legacy when signed in, connected, zero balances, lpRead unknown", () => {
+    expect(
+      deriveHomeState({ ...base, hasSession: true, lpRead: "unknown" }),
+    ).toBe("legacy");
+  });
 });

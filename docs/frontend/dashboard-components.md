@@ -1671,10 +1671,23 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
    Full `declined` card geometry (illustration anchor, heading cap, bleed) is
    `docs/frontend/bank-transfers.md#shape-b-frame-and-illustration-anchor-1430-1426`.
 
-   All five #1419 branches are pixel-matched to their frames, shared cards included (human decision,
-   2026-10-07 — this supersedes the "composition only, card heights accepted" note from #1421; the
-   `"kyb-problem"` branch extends this to a sixth, per the 2026-10-12 scope note that only the
-   `AddUsdCard` is pixel-traced for #1426, every other slot reusing state 3's composition). The
+   When `deriveHomeState` returns `"wallet-only"` (no auth session, wallet connected, both PLUSD
+   and sPLUSD display-zero — state 7 of `home-screen-states.md`, #1460, Figma frame `7149:16033`)
+   the grid renders a seventh branch, built from the `"kyb-pending"` branch with one card swap:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`7149:16142`)        | `PortfolioPlaceholderCard variant="get-plusd"` — same as state 3, `data-node-id` kept at the variant-keyed `6701:98528`.          |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`7149:16043`) | `RecentActivityCard padding="md"` — unchanged from state 3.                                                                 |
+   | Balances        | col 1–2, row 2 (`7149:16787`)        | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3 (no `compactVariant="balance"`: Buy stays default navy, Sell/Stake disabled). |
+   | AddUsdCard      | col 3–4, row 2 (`7149:16152`)        | `AddUsdCard variant="verify"` (same card state 2 uses, 246px, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `Start Verification` calls `openAddEmail()`, **not** `openAccountSetup()` (a no-op without a session). |
+   | QnaSection      | col 1–7, row 3 (`7149:16143`)        | FAQ strip, 1136×89 — unchanged.                                                                                                  |
+
+   All seven #1419 branches are pixel-matched to their frames, shared cards included (human
+   decision, 2026-10-07 — this supersedes the "composition only, card heights accepted" note from
+   #1421; the `"kyb-problem"` branch extended this to a sixth per the 2026-10-12 scope note that
+   only the `AddUsdCard` is pixel-traced for #1426; state 7 needed no new geometry at all — `7149:16033`
+   resolves to state 3's composition verbatim with the single `AddUsdCard` swap above). The
    grid itself needed no change: `grid-cols-7 gap-4` over a 1136px content box already yields the
    frames' 148.57px columns, so 2 cols = 313.14, 3 cols = 477.71 and 4 cols = 642.28. Card radii
    stay `--radius-pipeline-card` (4px) and button radii `--radius-pipeline-button` (4px) —
@@ -1708,17 +1721,19 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 
 Only meaningful when `isConnected === true`; callers short-circuit to the disconnected layout otherwise.
 
-**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426):**
+**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460):**
 `packages/frontend/src/components/homeState.ts` exports
-`HomeState = "zero" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
+`HomeState = "zero" | "wallet-only" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
 `deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
-`"kyb-pending"` or `"plusd-held"`. The precedence rule (not re-derived here — see
+`"kyb-pending"` / `"plusd-held"` / `"wallet-only"`. The precedence rule (not re-derived here — see
 `docs/product-specs/home-screen-states.md` for the authoritative seven-state table and its
-precedence clause) is evaluated in order: `"zero"` whenever `hasSession` is `false`, regardless of
-`isConnected` (ignored by this seam); else `"unverified"` when `!isConnected` and either
-`lpRead === "absent"` or (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
+precedence clause) is evaluated in order: when `hasSession` is `false`, `"wallet-only"` if
+`isConnected && plusdIsZero && splusdIsZero`, else `"zero"` (this is the one short-circuit #1460
+changed — every sessionless caller still resolves to exactly one of these two, and can never reach
+the KYB branches below); else `"unverified"` when `!isConnected` and either `lpRead === "absent"` or
+(`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
 `"kyb-pending"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "UnderReview"` and both
 `plusdIsZero` and `splusdIsZero`; else `"plusd-held"` when `isConnected`, `lpRead === "loaded"`,
 `kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"kyb-problem"` when
@@ -1728,12 +1743,18 @@ non-zero sPLUSD balance, `lpRead` `"unknown"`/`"error"`, and every other `kyb_st
 unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for `hasSession`,
 `lpRead`/`kybStatus` from `useAuthFlow()`, and feeds the two balance inputs from
 `isDisplayZero(plusdBalanceActive, activeDecimals)` / `isDisplayZero(splusdSharesActive,
-activeDecimals)` — the same #1186 displayed-zero rule as `stakeDisabled` / `sellDisabled`.
-`AuthFlowProvider` already issues `GET /v1/lps/me` on every token change (see
+activeDecimals)` — the same #1186 displayed-zero rule as `stakeDisabled` / `sellDisabled`. For the
+`"wallet-only"` branch the route also passes `openAddEmail` (from `useAuthFlow()`) rather than
+`openAccountSetup` to `AddUsdCard`'s `onStartVerification`, since `openAccountSetup` is a no-op
+without a session. `AuthFlowProvider` already issues `GET /v1/lps/me` on every token change (see
 `docs/frontend/auth-components.md#authflowprovider`), so the route makes **no** `getMyLp` call of
 its own on this path. Only the desktop grid branches on `homeState`; the mobile stack keeps today's
 `isConnected`-only rendering unchanged (no mobile frame exists for states 1–3 or 6 — the
-composition stays flexible for one to slot in later).
+composition stays flexible for one to slot in later). State 7 deliberately leaves mobile untouched
+too: the mobile block never reads `homeState`, and a sessionless connected visitor with zero
+balances already renders `mobileHomeState === "empty"` (State A), which is this state's mobile
+reading — the only difference from a signed-in State A visitor is the greeting and the absence of a
+`Verify your account` card, for which no mobile frame exists.
 
 Token discipline: this composer adds no raw colors, fonts, sizes, or radii — every value comes from `@pipeline/ui/styles/theme.css` via component primitives or Tailwind utilities that resolve theme tokens.
 

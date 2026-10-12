@@ -1,6 +1,7 @@
 // spec: docs/product-specs/home-screen-states.md
 export type HomeState =
   | "zero"
+  | "wallet-only"
   | "unverified"
   | "kyb-pending"
   | "plusd-held"
@@ -26,7 +27,9 @@ export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
     plusdIsZero = false,
     splusdIsZero = false,
   } = input;
-  if (!hasSession) return "zero";
+  if (!hasSession) {
+    return isConnected && plusdIsZero && splusdIsZero ? "wallet-only" : "zero";
+  }
   const unverified =
     lpRead === "absent" || (lpRead === "loaded" && kybStatus === "NotStarted");
   if (!isConnected && unverified) return "unverified";

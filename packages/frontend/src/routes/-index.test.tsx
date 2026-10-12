@@ -66,17 +66,21 @@ vi.mock("@/wallet", async (importOriginal) => ({
   useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
 }));
 
-const { mockAuthState, mockAuthFlowOpen, mockOpenAccountSetup } = vi.hoisted(
-  () => ({
-    mockAuthState: {
-      isAuthenticated: true,
-      lpRead: "unknown" as "unknown" | "absent" | "loaded" | "error",
-      kybStatus: undefined as string | undefined,
-    },
-    mockAuthFlowOpen: vi.fn(),
-    mockOpenAccountSetup: vi.fn(),
-  }),
-);
+const {
+  mockAuthState,
+  mockAuthFlowOpen,
+  mockOpenAccountSetup,
+  mockOpenAddEmail,
+} = vi.hoisted(() => ({
+  mockAuthState: {
+    isAuthenticated: true,
+    lpRead: "unknown" as "unknown" | "absent" | "loaded" | "error",
+    kybStatus: undefined as string | undefined,
+  },
+  mockAuthFlowOpen: vi.fn(),
+  mockOpenAccountSetup: vi.fn(),
+  mockOpenAddEmail: vi.fn(),
+}));
 
 vi.mock("@/auth", () => ({
   useAuthSession: () => ({
@@ -92,6 +96,7 @@ vi.mock("@/auth", () => ({
     lpRead: mockAuthState.lpRead,
     kybStatus: mockAuthState.kybStatus,
     openAccountSetup: mockOpenAccountSetup,
+    openAddEmail: mockOpenAddEmail,
   }),
 }));
 
@@ -238,6 +243,7 @@ beforeEach(() => {
   mockAuthState.kybStatus = undefined;
   mockAuthFlowOpen.mockClear();
   mockOpenAccountSetup.mockClear();
+  mockOpenAddEmail.mockClear();
   mockGetMyLp.mockClear();
 });
 
@@ -2131,5 +2137,178 @@ describe("Home page — KYB-problem state (#1426)", () => {
     const grid = await screen.findByTestId("home-dashboard-grid");
     const card = within(grid).getByTestId("home-add-usd-card");
     expect(card).toHaveAttribute("data-variant", "declined");
+  });
+});
+
+describe("Home page — wallet-only state (#1460)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockAuthFlowOpen.mockClear();
+    mockOpenAccountSetup.mockClear();
+    mockOpenAddEmail.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = false;
+    mockAuthState.lpRead = "unknown";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("the top-left card shows Total Balance, $0.00 and a Get PLUSD to start link, with no zero-state or state-2 CTAs", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    expect(portfolio).toHaveAttribute("data-variant", "get-plusd");
+    expect(within(portfolio).getByText("Total Balance")).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("heading", { name: "$0.00" }),
+    ).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("link", { name: "Get PLUSD to start" }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("heading", { name: "Get Started" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Sign Up" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("AddUsdCard renders in its verify variant; Start Verification opens Add email, not account setup", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "verify");
+    });
+    expect(
+      screen.getByRole("heading", { name: "Verify your account" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Complete KYB to unlock bank transfers."),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Start Verification" }),
+    );
+
+    expect(mockOpenAddEmail).toHaveBeenCalledOnce();
+    expect(mockOpenAccountSetup).not.toHaveBeenCalled();
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+
+  it("Buy navigates to /deposit?direction=deposit without opening the connect modal or auth flow", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const buyBtn = within(grid).getByRole("button", { name: "Buy" });
+    await user.click(buyBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/deposit",
+        search: { direction: "deposit" },
+      });
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
+  });
+
+  it("Sell is disabled; the Stake CTA reads Nothing to Stake and is disabled", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(
+      within(startHere).getByRole("button", { name: "Sell" }),
+    ).toBeDisabled();
+
+    const stake = within(grid).getByTestId("home-stake-card");
+    const stakeBtn = within(stake).getByRole("button", {
+      name: "Nothing to Stake",
+    });
+    expect(stakeBtn).toBeDisabled();
+  });
+
+  it("grid occupancy: StartHere+Stake on the left, AddUsd+Earned on the right, state-7 node ids", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      const leftStack = screen.getByTestId("home-balances-stack");
+      expect(leftStack).toHaveAttribute("data-node-id", "7149:16787");
+      expect(
+        within(leftStack).getByTestId("home-start-here-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(leftStack).getByTestId("home-stake-card"),
+      ).toBeInTheDocument();
+
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(rightStack).toHaveAttribute("data-node-id", "7149:16152");
+      expect(
+        within(rightStack).getByTestId("home-add-usd-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(rightStack).getByTestId("home-earned-card"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("RecentActivityCard empty placeholder and QnaSection render; EarnedCard reads Tracked once you stake", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("You will see all transactions here").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId("home-qna-wrapper")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Tracked once you stake").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("a non-zero PLUSD balance falls through to the zero state (undesigned combination)", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000000",
+    );
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Get Started" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Sign Up" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("a signed-in visitor with the same wallet and balances is unaffected (legacy, unchanged)", async () => {
+    mockAuthState.isAuthenticated = true;
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(
+      within(grid).queryByTestId("home-add-usd-card"),
+    ).not.toBeInTheDocument();
   });
 });
