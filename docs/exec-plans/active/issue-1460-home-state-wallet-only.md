@@ -1,5 +1,8 @@
 # Issue #1460: Home state 7: wallet connected, not signed in, PLUSD = 0, sPLUSD = 0
 
+**Status: implemented (coder, 2026-10-12)** — all steps below and the Test Strategy are complete;
+lint/build/test gate green. See the PR for the diff.
+
 Source: https://github.com/eq-lab/pipeline/issues/1460
 
 Epic: [#1419 — LP home screen states](https://github.com/eq-lab/pipeline/issues/1419)

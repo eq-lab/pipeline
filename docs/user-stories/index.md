@@ -236,6 +236,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1426 Home state 6: KYB not verified due to a problem](https://github.com/eq-lab/pipeline/issues/1426) | [1426-home-kyb-problem-state.md](./epic-1419/1426-home-kyb-problem-state.md) | Initial |
 | [#1458 Header + Account: wallet connected without a session shows the account icon; Account page wallet-only variant with Add email and Disconnect](https://github.com/eq-lab/pipeline/issues/1458) | [1458-wallet-only-account.md](./epic-1419/1458-wallet-only-account.md) | Initial |
 | [#1459 Add email screen for a wallet-connected visitor — email + password, then OTP, then session](https://github.com/eq-lab/pipeline/issues/1459) | [1459-add-email-screen.md](./epic-1419/1459-add-email-screen.md) | Initial |
+| [#1460 Home state 7: wallet connected, not signed in, PLUSD = 0, sPLUSD = 0](https://github.com/eq-lab/pipeline/issues/1460) | [1460-home-wallet-only-state.md](./epic-1419/1460-home-wallet-only-state.md) | Initial |
 
 ---
 

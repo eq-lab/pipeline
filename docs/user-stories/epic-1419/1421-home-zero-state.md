@@ -79,21 +79,28 @@ account, and has not connected a wallet.
 
 ---
 
-## Story 3: A connected wallet does not override the zero state while signed out
+## Story 3: A connected wallet with zero balances renders state 7, not the zero state
 
-**Persona:** A visitor who has connected an EVM or Stellar wallet but has no account/session.
+**Persona:** A visitor who has connected an EVM or Stellar wallet but has no account/session, and
+whose connected wallet holds neither PLUSD nor sPLUSD.
 
-**Pre-conditions:** No session in `localStorage`; a wallet is connected (EVM or Stellar).
+**Pre-conditions:** No session in `localStorage`; a wallet is connected (EVM or Stellar); PLUSD and
+sPLUSD both display as zero for that wallet.
 
 **Steps:**
 
-1. Load `/` with a wallet connected and no session.
+1. Load `/` with a wallet connected, no session, and zero balances.
+2. Load `/` with the same wallet connected, no session, but a **non-zero** PLUSD or sPLUSD balance.
 
 **Expected outcomes:**
 
-- The desktop grid still renders the zero-state composition from Story 1 — the wallet connection
-  is ignored for this decision (precedence rule, `docs/product-specs/home-screen-states.md`).
-  This unauthenticated-but-connected combination is not yet a distinct designed state.
+- Step 1: the desktop grid renders **state 7** (wallet connected, no account), not the zero-state
+  composition from Story 1 — see
+  [docs/user-stories/epic-1419/1460-home-wallet-only-state.md](./1460-home-wallet-only-state.md)
+  for the full story set (#1460 supersedes this story).
+- Step 2: a connected wallet with a non-zero balance and no session is still an undesigned
+  combination and falls back to the zero-state composition from Story 1 (precedence rule,
+  `docs/product-specs/home-screen-states.md`) until a frame exists for it.
 
 ---
 

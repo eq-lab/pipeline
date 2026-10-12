@@ -19,7 +19,7 @@ replaced or superseded. See [dashboards.md](./dashboards.md) for the rest of the
 | 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Implemented (#1424) |
 | 5 | Verified, funded, staked | wallet connected · KYB `Passed` · bank transfer received · PLUSD = 0 · sPLUSD > 0 | Not yet implemented |
 | 6 | KYB problem | KYB `ChangesRequested` or `Failed` (status alone — no wallet or balance condition) | Implemented (#1426) |
-| 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Not yet implemented (#1460) |
+| 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Implemented (#1460) |
 
 ## Precedence rule
 
@@ -35,10 +35,18 @@ isAuthenticated`, see
 [`dashboard-components.md#topbar`](../frontend/dashboard-components.md#topbar)). `/account` itself
 is also reachable for this visitor as of #1458 (its wallet-only variant —
 [`account-page.md#wallet-only-variant-1458`](../frontend/account-page.md#wallet-only-variant-1458)).
-Until #1460 lands, `deriveHomeState` is untouched and still returns `"zero"` for every sessionless
-visitor, wallet or not, so the zero-state grid is what a wallet-only visitor sees on `/` today —
-only the header and `/account` have moved. A connected wallet with a non-zero balance and no
-session is still undesigned and keeps falling through to state 1 until a frame exists.
+
+**State 7's exact condition** is `!hasSession && isConnected && plusdIsZero && splusdIsZero`,
+evaluated ahead of state 1 in `deriveHomeState`. The balance test is the same #1186 displayed-zero
+rule (`isDisplayZero`) that drives `stakeDisabled`/`sellDisabled` elsewhere on the grid. `isConnected`
+here is the **active wallet view's** connection (`useWalletView().kind` → EVM or Stellar) — the same
+input states 3/4/6 use — not `useWalletPresence().isAnyConnected`, which only the header uses; a
+Stellar-connected visitor whose active view is EVM still sees state 1, since the balances, activity
+and chart are all read from the active view's chain (tracked as tech debt — see
+[`tech-debt-tracker.md`](../exec-plans/tech-debt-tracker.md)). The balance inputs' conservative
+`false` defaults mean an unresolved or omitted balance keeps a sessionless visitor in state 1, not
+state 7. A connected wallet with a non-zero balance and no session is still undesigned and keeps
+falling through to state 1 until a frame exists.
 
 States 2–6 all presuppose an auth session — their KYB status comes from `GET /v1/lps/me`, which
 needs one.
@@ -91,15 +99,32 @@ connection. `View` on the `AddUsdCard` navigates to `/account`
 ([account-page.md](../frontend/account-page.md)), which renders the `invalid` documents state for
 `ChangesRequested` and the declined stand-in for the (unobservable) `Failed` 403.
 
-Until states 5 and 7 land, every other signed-in session renders today's pre-#1419
+**State 7 (wallet connected, no account) reuses state 3's composition verbatim**, with one card
+swap: the Shape B slot mounts `AddUsdCard variant="verify"` (the same card state 2 uses) instead of
+`"verifying"`. `Start Verification` calls `openAddEmail()` rather than `openAccountSetup()`, because
+the latter is a no-op without a session (`AuthFlowProvider`'s `setup` is `null` until a token
+exists) — `openAddEmail()` opens the same Add email → OTP → session flow as the Account page's row
+(#1459). The Total Balance headline keeps the sPLUSD-position binding (`$0.00`, served, not a
+default — the same decision #1424 took for state 4). `Buy` and `Get PLUSD to start` both navigate to
+`/deposit?direction=deposit`, exactly as they do for any connected visitor today — `/deposit` has no
+`beforeLoad` auth guard. After registering through `Start Verification`, the visitor is signed-in +
+connected + `lpRead: "absent"`, which lands in `"legacy"` (session + connected + `NotStarted` is an
+undesigned combination, see the state 2 paragraph above) until that combination gets its own design
+— tracked as tech debt, not fixed by #1460. Mobile is unchanged: the mobile block branches on
+`isConnected` alone (never on `homeState`), and this visitor already renders
+`mobileHomeState === "empty"`, the mobile reading of this exact state.
+
+Until state 5 lands, every other signed-in session renders today's pre-#1419
 wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
 `packages/frontend/src/components/homeState.ts`).
 
-## Card composition (states 1–4)
+## Card composition (states 1–4, 7)
 
 States 1–3 share one desktop composition — a 1136px-wide 7-column grid inside a 1200px white
 panel padded 32, matching Figma `6701:98220` (state 1), `6701:97538` (state 2) and `6701:98417`
-(state 3); state 4 (Figma `6701:97340`) reuses the same grid with two of its four cards swapped:
+(state 3); state 4 (Figma `6701:97340`) reuses the same grid with two of its four cards swapped.
+State 7 (Figma `7149:16033`) reuses the same grid again with the single card swap described above —
+no new geometry work, since it composes already pixel-matched parts.
 
 | Row | Columns | State 1 (zero) | State 2 (unverified) | State 3 (KYB pending) | State 4 (PLUSD held) |
 | --- | ------- | --------------- | --------------------- | ----------------------- | ---------------------- |
