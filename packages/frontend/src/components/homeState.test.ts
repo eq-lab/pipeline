@@ -79,13 +79,7 @@ describe("deriveHomeState", () => {
     ).toBe("legacy");
   });
 
-  it.each([
-    "UnderReview",
-    "Passed",
-    "ChangesRequested",
-    "Failed",
-    "InProgress",
-  ])(
+  it.each(["UnderReview", "Passed", "InProgress"])(
     "returns legacy when signed in, disconnected, loaded, kybStatus %s",
     (kybStatus) => {
       expect(
@@ -96,6 +90,20 @@ describe("deriveHomeState", () => {
           kybStatus,
         }),
       ).toBe("legacy");
+    },
+  );
+
+  it.each(["ChangesRequested", "Failed"])(
+    "returns kyb-problem when signed in, disconnected, loaded, kybStatus %s",
+    (kybStatus) => {
+      expect(
+        deriveHomeState({
+          hasSession: true,
+          isConnected: false,
+          lpRead: "loaded",
+          kybStatus,
+        }),
+      ).toBe("kyb-problem");
     },
   );
 });
@@ -133,10 +141,17 @@ describe("deriveHomeState — kyb-pending (#1423)", () => {
     },
   );
 
-  it.each(["NotStarted", "Passed", "ChangesRequested", "Failed", "InProgress"])(
+  it.each(["NotStarted", "Passed", "InProgress"])(
     "returns legacy when connected with zero balances and kybStatus %s",
     (kybStatus) => {
       expect(deriveHomeState({ ...base, kybStatus })).toBe("legacy");
+    },
+  );
+
+  it.each(["ChangesRequested", "Failed"])(
+    "returns kyb-problem when connected with zero balances and kybStatus %s",
+    (kybStatus) => {
+      expect(deriveHomeState({ ...base, kybStatus })).toBe("kyb-problem");
     },
   );
 
@@ -201,20 +216,94 @@ describe("deriveHomeState — plusd-held (#1424)", () => {
     },
   );
 
-  it.each([
-    "NotStarted",
-    "UnderReview",
-    "ChangesRequested",
-    "Failed",
-    "InProgress",
-  ])(
+  it.each(["NotStarted", "UnderReview", "InProgress"])(
     "returns legacy when connected with PLUSD held and kybStatus %s",
     (kybStatus) => {
       expect(deriveHomeState({ ...base, kybStatus })).toBe("legacy");
     },
   );
 
+  it.each(["ChangesRequested", "Failed"])(
+    "returns kyb-problem when connected with PLUSD held and kybStatus %s",
+    (kybStatus) => {
+      expect(deriveHomeState({ ...base, kybStatus })).toBe("kyb-problem");
+    },
+  );
+
   it("returns zero when there is no session, even with every state-4 input set", () => {
     expect(deriveHomeState({ ...base, hasSession: false })).toBe("zero");
   });
+});
+
+describe("deriveHomeState — kyb-problem (#1426)", () => {
+  const connectedZero = {
+    hasSession: true,
+    isConnected: true,
+    lpRead: "loaded" as const,
+    plusdIsZero: true,
+    splusdIsZero: true,
+  };
+
+  it.each(["ChangesRequested", "Failed"] as const)(
+    "returns kyb-problem for every isConnected/balance combination — kybStatus %s",
+    (kybStatus) => {
+      for (const isConnected of [true, false]) {
+        for (const plusdIsZero of [true, false]) {
+          for (const splusdIsZero of [true, false]) {
+            expect(
+              deriveHomeState({
+                hasSession: true,
+                isConnected,
+                lpRead: "loaded",
+                kybStatus,
+                plusdIsZero,
+                splusdIsZero,
+              }),
+            ).toBe("kyb-problem");
+          }
+        }
+      }
+    },
+  );
+
+  it("returns zero when there is no session, regardless of kybStatus", () => {
+    expect(
+      deriveHomeState({
+        ...connectedZero,
+        hasSession: false,
+        kybStatus: "ChangesRequested",
+      }),
+    ).toBe("zero");
+  });
+
+  it.each(["unknown", "error", "absent"] as const)(
+    "returns legacy when ChangesRequested but lpRead is %s",
+    (lpRead) => {
+      expect(
+        deriveHomeState({
+          ...connectedZero,
+          lpRead,
+          kybStatus: "ChangesRequested",
+        }),
+      ).toBe("legacy");
+    },
+  );
+
+  it.each(["unknown", "error", "absent"] as const)(
+    "returns legacy when Failed but lpRead is %s",
+    (lpRead) => {
+      expect(
+        deriveHomeState({ ...connectedZero, lpRead, kybStatus: "Failed" }),
+      ).toBe("legacy");
+    },
+  );
+
+  it.each(["NotStarted", "InProgress", "UnderReview", "Passed"])(
+    "does not promote kybStatus %s into kyb-problem",
+    (kybStatus) => {
+      expect(deriveHomeState({ ...connectedZero, kybStatus })).not.toBe(
+        "kyb-problem",
+      );
+    },
+  );
 });

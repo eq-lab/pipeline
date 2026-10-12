@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveDocumentsState,
+  deriveProductionDocumentsState,
   parseAccountStatePreview,
   ACCOUNT_STATE_PREVIEWS,
   type AccountDocumentRecord,
@@ -99,6 +100,95 @@ describe("deriveDocumentsState", () => {
       deriveDocumentsState({
         kybStatus: "NotStarted",
         documents: [],
+        stagedCount: 0,
+      }),
+    ).toBe("verify");
+  });
+});
+
+describe("deriveProductionDocumentsState — kyb-problem (#1426)", () => {
+  it("returns invalid for ChangesRequested with a Rejected document", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "ChangesRequested",
+        documents: [VERIFIED, REJECTED],
+        stagedCount: 0,
+        writable: true,
+      }),
+    ).toBe("invalid");
+  });
+
+  it("returns invalid for ChangesRequested with no Rejected document", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "ChangesRequested",
+        documents: [VERIFIED],
+        stagedCount: 0,
+        writable: true,
+      }),
+    ).toBe("invalid");
+  });
+
+  it("returns under-review for Failed with a Rejected document", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "Failed",
+        documents: [VERIFIED, REJECTED],
+        stagedCount: 0,
+        writable: false,
+      }),
+    ).toBe("under-review");
+  });
+
+  it("returns under-review for Failed with no Rejected document", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "Failed",
+        documents: [VERIFIED],
+        stagedCount: 0,
+        writable: false,
+      }),
+    ).toBe("under-review");
+  });
+
+  it("returns under-review for a non-writable NotStarted LP, unchanged", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "NotStarted",
+        documents: [],
+        stagedCount: 0,
+        writable: false,
+      }),
+    ).toBe("under-review");
+  });
+
+  it("returns verified for Passed, unchanged", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "Passed",
+        documents: [REJECTED],
+        stagedCount: 0,
+        writable: true,
+      }),
+    ).toBe("verified");
+  });
+
+  it("returns under-review for UnderReview, unchanged", () => {
+    expect(
+      deriveProductionDocumentsState({
+        kybStatus: "UnderReview",
+        documents: [VERIFIED],
+        stagedCount: 0,
+        writable: false,
+      }),
+    ).toBe("under-review");
+  });
+
+  it("the preview path (deriveDocumentsState) is unaffected by the reorder", () => {
+    expect(
+      deriveDocumentsState({
+        kybStatus: "ChangesRequested",
+        documents: [VERIFIED],
         stagedCount: 0,
       }),
     ).toBe("verify");

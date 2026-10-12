@@ -1,4 +1,7 @@
 // spec: docs/frontend/account-page.md#accountpagestate
+export const ACCOUNT_DECLINED_MESSAGE =
+  "Your account verification was declined. Profile and document changes are unavailable.";
+
 export type AccountDocumentsState =
   | "verify"
   | "staged"
@@ -67,7 +70,9 @@ export function deriveProductionDocumentsState({
   writable,
 }: DeriveDocumentsStateInput & { writable: boolean }): AccountDocumentsState {
   if (kybStatus === "Passed") return "verified";
+  if (kybStatus === "Failed") return "under-review";
   if (kybStatus === "UnderReview") return "under-review";
+  if (kybStatus === "ChangesRequested") return "invalid";
   if (documents.some((document) => document.status === "Rejected"))
     return "invalid";
   if (writable) return stagedCount > 0 ? "staged" : "verify";

@@ -12,10 +12,11 @@ a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who
 
 **`FundingDetailsModal` is now also reachable from `/` (state 4, #1424), beyond `/test?tab=auth`.**
 `AddUsdCard` is mounted on `/`: the `"locked"` variant ships from #1421 (zero state), `"verify"`
-from #1422 (unverified state), `"verifying"` from #1423 (KYB-pending state), and `"unlocked"` from
-#1424 (state 4, `kyb_status: "Passed"` with PLUSD held and sPLUSD zero) — its `onAddFunds` opens
-`FundingDetailsModal` with no `details`, so every row renders `—` just as the `/test` preview does.
-The variant for a given account state is decided by `deriveHomeState` in
+from #1422 (unverified state), `"verifying"` from #1423 (KYB-pending state), `"unlocked"` from
+#1424 (state 4, `kyb_status: "Passed"` with PLUSD held and sPLUSD zero), and `"declined"` from
+#1426 (state 6, `kyb_status: "ChangesRequested"` or `"Failed"`, gated on status alone) — its
+`onAddFunds` opens `FundingDetailsModal` with no `details`, so every row renders `—` just as the
+`/test` preview does. The variant for a given account state is decided by `deriveHomeState` in
 `packages/frontend/src/components/homeState.ts`, not in this file — see
 `docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
 Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not wired to any route.
@@ -76,11 +77,11 @@ export interface FundingDetailsModalProps {
 ## AddUsdCard
 
 `packages/frontend/src/components/AddUsdCard.tsx` — the "Add USD / Use a bank transfer" home card
-as a standalone presentational component with an explicit `variant` prop covering the five designed
+as a standalone presentational component with an explicit `variant` prop covering the six designed
 states. `variant` is required — unlike the modal's seams there is no honest default state.
 
 ```ts
-export type AddUsdCardVariant = "locked" | "verify" | "verifying" | "unlocked" | "funded";
+export type AddUsdCardVariant = "locked" | "verify" | "verifying" | "declined" | "unlocked" | "funded";
 
 export interface AddUsdCardProps {
   variant: AddUsdCardVariant;
@@ -98,7 +99,11 @@ for home state 3 (#1423, Figma frame `6701:98417`), stacked above `EarnedCard la
 with **no `flex-1`** — the card owns its 246px height, per § "Shape B frame and illustration
 anchor". `unlocked` ships on `/` for home state 4 (#1424, Figma frame `6701:97340`, node
 `6701:97494`), stacked above `EarnedCard layout="compact"` **with** `className="flex-1"` (Shape A
-carries no height of its own). `funded` is still preview-only.
+carries no height of its own). `declined` ships on `/` for home state 6 (#1426, Figma frame
+`6702:104071`, node `6702:104191`), gated on `kyb_status` alone (`ChangesRequested` or `Failed`, no
+wallet or balance gating — see `docs/product-specs/home-screen-states.md`), stacked above
+`EarnedCard layout="compact"` with **no `flex-1`**, same as `verifying`. `funded` is still
+preview-only.
 
 `addUsdCardState.ts` ships the `AddUsdCardVariant` union and `ADD_USD_CARD_VARIANTS` (frame order,
 for previews) only — **no derivation function**. Deciding which variant renders for a given
@@ -120,34 +125,46 @@ codegen's stale `#8fb2a4` literal) and disabled treatment
 (`rgba(184,191,190,0.12)` + ink-subtle text) already match the greyed-out `locked` rendering
 exactly. No new variant, no override.
 
-**Shape B — `Section`** (`verify`, `verifying`). A card-anchored `CheckIllustration` clipped by the
+**Shape B — `Section`** (`verify`, `verifying`, `declined`). A card-anchored illustration
+(`CheckIllustration` for `verify`/`verifying`, `WarningIllustration` for `declined`) clipped by the
 card, a heading block (title Besley 20/28 + description body 16/22, no eyebrow), and a rectangular
-`Button variant="primary-dark" size="m"` (the `!h-10` override — both designed buttons are 40 px
-tall, not the 48 px default).
+`Button variant="primary-dark" size="m"` (the `!h-10` override — all three designed buttons are
+40 px tall, not the 48 px default).
 
-#### Shape B frame and illustration anchor (#1430)
+#### Shape B frame and illustration anchor (#1430, #1426)
 
-Both frames are 313.14 × 246 with 16 px padding — 313.14 px is the home grid's `col-span-2` width
-at the 1136 px design container, and 246 px is the frame height the card owns. The anchor math:
+All three frames are 313.14 × 246 with 16 px padding — 313.14 px is the home grid's `col-span-2`
+width at the 1136 px design container, and 246 px is the frame height the card owns. The anchor
+math:
 
-| | `verify` (`6701:97695`) | `verifying` (`6701:98539`) |
-| --- | --- | --- |
-| Union node | `6701:97696` | `6701:98540` |
-| Union size | 291 × 193.66 | 291 × 193.66 |
-| Union offset from the **card** box | `x=164, y=76` | `x=174, y=66` |
-| Bleed past the right edge | 142 px | 152 px |
-| Bleed past the bottom edge | 24 px | 14 px |
-| Visible artwork width | ~149 px | ~139 px |
-| Title block | `(16, 16)` | `(16, 16)` |
-| Button frame | 161 × 40 at `(16, 190)` | 122 × 40 at `(16, 190)` |
+| | `verify` (`6701:97695`) | `verifying` (`6701:98539`) | `declined` (`6702:104191`) |
+| --- | --- | --- | --- |
+| Illustration node | `6701:97696` (Union) | `6701:98540` (Union) | `6703:106694` (`warning 1`) |
+| Illustration size | 291 × 193.66 | 291 × 193.66 | 236 × 236 |
+| Offset from the **card** box | `x=164, y=76` | `x=174, y=66` | `x=128.86, y=48` |
+| Bleed past the right edge | 142 px | 152 px | 51.72 px |
+| Bleed past the bottom edge | 24 px | 14 px | 38 px |
+| Visible artwork width | ~149 px | ~139 px | ~184 px |
+| Title block | `(16, 16)` | `(16, 16)` | `(16, 16)`, text column capped `227px` |
+| Button frame | 161 × 40 at `(16, 190)` | 122 × 40 at `(16, 190)` | 70 × 40 at `(16, 190)` |
+
+The `declined` card's frame (`6702:104191`) also carries a second, **hidden** artwork node —
+`Union` `6702:104192`, 291 × 193.66 at card-box `(174, 66.34)`, the identical leftover striped-check
+geometry the `verifying` card uses. It is not rendered; the visible artwork is `warning 1`
+(`6703:106694`) only. The title block's 227px cap is load-bearing: it is what wraps the `declined`
+heading `We can’t verify your account` onto two lines — without the cap the heading fits on one
+line and the card stops matching the frame. (The frame's own `Frame 1321317268` title container
+reports `height: 46`, which is a Figma clip artifact — its content measures 82px (56 heading + 4
+gap + 22 description) and the frame screenshot shows all three lines; the block is left to flow
+naturally, not pinned to 46px.)
 
 The offsets are measured from the **card** box, not from the padded content box, so the `Card`
 itself is the positioning and clipping context: it carries `relative h-[246px] overflow-hidden` for
-these two variants only, and the inner column is a plain `flex h-full w-full flex-col
+all three Shape B variants, and the inner column is a plain `flex h-full w-full flex-col
 justify-between` with no `relative`/`overflow` of its own. The illustration is `absolute` with the
 per-variant `top`/`left` above; the right and bottom bleed falls outside the card and is clipped
-there, which is what leaves only the artwork's left portion visible in the card's right half,
-behind the text column. The heading block and button keep `relative` so they paint over it.
+there, which is what leaves only the artwork's visible portion in the card, behind the text column.
+The heading block and button keep `relative` so they paint over it.
 
 Three 1–3 px deltas against the frame come from the home cards' shared border idiom
 (`!border-t !border-r-[3px] !border-b-[3px] !border-l`), not from the anchor. Absolute offsets
@@ -158,7 +175,8 @@ frame edge. `justify-between` likewise places the button's bottom at 227 rather 
 
 Because the card owns its height, the stack that mounts it must not stretch it. The unverified
 right stack (`6701:97694`, 344 = 246 + 16 gap + 82) mounts `<AddUsdCard variant="verify">` with no
-`flex-1`; `EarnedCard` keeps its own 82 px. Shape A carries no height and is still free to grow.
+`flex-1`; `EarnedCard` keeps its own 82 px. The state-6 right stack (`6702:104190`) mounts
+`<AddUsdCard variant="declined">` the same way. Shape A carries no height and is still free to grow.
 
 ### Per-variant presence table
 
@@ -167,6 +185,7 @@ right stack (`6701:97694`, 344 = 246 + 16 gap + 82) mounts `<AddUsdCard variant=
 | `locked` | `6701:98378` | `Add USD` | `Use a bank transfer` | `KYB verification required` | no | circular `Add Funds`, **disabled** | none |
 | `verify` | `6701:97695` | none | `Verify your account` | `Complete KYB to unlock bank transfers.` | yes | `Start Verification` | none |
 | `verifying` | `6701:98539` | none | `Verifying account…` | `We are reviewing your documents.` | yes | `View Status` → `/account` | none |
+| `declined` | `6702:104191` | none | `We can’t verify your account` | `Please check and try again.` | yes | `View` → `/account` | none |
 | `unlocked` | `6701:97494` | `Add USD` | `Use a bank transfer` | `Transfers unlocked` | no | circular `Add Funds` | none |
 | `funded` | `6701:97289` | `USD Balance` | `{usdBalanceLabel}` | `on Trust account` | no | circular `Add Funds` | `Withdraw` |
 
@@ -176,6 +195,13 @@ Notes:
   already shipped the corrected spelling for its own `under-review` stand-in, citing the #1248
   design-file-artifact precedent; shipping the typo here would make the two surfaces disagree.
   Logged as a designer ask (tech debt).
+- **`declined`'s apostrophe ships as the frame's typographic U+2019**, `We can’t verify your
+  account` — no typo correction needed here, unlike `Veryfying` above.
+- **`declined` is gated on `kyb_status` alone.** No wallet-connection or balance condition — see
+  `docs/product-specs/home-screen-states.md` state 6. `ChangesRequested` is what the frame renders
+  for in practice; `Failed` is in the condition but unobservable today because a `Failed` verdict
+  suspends the account (403 on every bearer request, routing the home read to `"legacy"` instead —
+  logged as tech debt).
 - **`funded`'s balance never gets a fabricated number.** `usdBalanceLabel` omitted → `—`. The
   frame's `$1,000.00` is preview-fixture data only.
 - **`Withdraw` is a plain `<button>` styled as a body-text link**, not a rectangular `Button` —
@@ -199,6 +225,10 @@ Asset: `packages/ui/src/assets/illustrations/striped-check.svg`, exported from F
 identical asset hash, confirming the plan's assumption that this is one shared asset positioned
 per variant, not two exports.
 
+The `declined` variant clips a different artwork, `WarningIllustration` — same CSS-mask recipe,
+new asset (`packages/ui/src/assets/illustrations/striped-warning.svg`, Figma node `6703:106694`,
+square `236 / 236` aspect ratio). Full spec: `docs/frontend/ui-components.md#warningillustration`.
+
 ## Verbatim copy
 
 Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `Account Number` ·
@@ -209,7 +239,8 @@ Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `
 Card: `Add USD` · `Use a bank transfer` · `KYB verification required` · `Transfers unlocked` ·
 `USD Balance` · `on Trust account` · `Add Funds` · `Withdraw` · `Verify your account` ·
 `Complete KYB to unlock bank transfers.` · `Verifying account…` · `We are reviewing your
-documents.` · `Start Verification` · `View Status`.
+documents.` · `Start Verification` · `View Status` · `We can’t verify your account` ·
+`Please check and try again.` · `View`.
 
 ## Figma → token mapping
 
@@ -257,7 +288,7 @@ class of staleness `account-page.md` documents for its own frame.
 | `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal` with no `details`) |
 | `AddUsdCard.onWithdraw` | no-op | #1285 |
 | `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
-| `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`) |
+| `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`); reused as-is by #1426 (home state 6, `declined` variant) |
 
 **Wire attribution is parked, not resolved.** The trustee's
 `POST /v1/lps/{id}/bank-deposits` (#1413, which replaced `POST /v1/lp-ledger/deposits`) takes the
@@ -273,7 +304,7 @@ modal's content model becomes per-LP data (a fetch), not a static constant — a
 `packages/frontend/src/routes/test.tsx` → `AuthTab`, a `Wire transfers (#1283)` block placed after
 the existing Account-page preview links: a `Button variant="secondary"` labelled
 `Open Funding details modal` (opens the modal with `details={FUNDING_DETAILS_PLACEHOLDER}`, so QA
-can Figma-compare a fully populated modal), and the five `AddUsdCard` variants rendered inline in
+can Figma-compare a fully populated modal), and the six `AddUsdCard` variants rendered inline in
 fixed `w-[313px]` boxes with their variant id as a caption. `onAddFunds` opens the same modal;
 `onWithdraw`/`onStartVerification`/`onViewStatus` each reveal a stand-in confirmation line by
 `data-testid` naming the owning issue. See [Diagnostics preview
@@ -284,7 +315,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Concern | Owner |
 | --- | --- |
 | Deciding which card variant renders for a given account state | epic #1419 (`deriveHomeState`) |
-| Mounting `AddUsdCard` into the home grid for states 5–6 | #1425–#1426 |
+| Mounting `AddUsdCard` into the home grid for state 5 | #1425 (shipped for state 6 by #1426) |
 | A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
 | Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |

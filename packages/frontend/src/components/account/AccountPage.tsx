@@ -8,6 +8,7 @@ import { AccountProfileCard } from "./AccountProfileCard";
 import { useAccountDocuments } from "./useAccountDocuments";
 import { useAccountPage } from "./useAccountPage";
 import {
+  ACCOUNT_DECLINED_MESSAGE,
   ACCOUNT_STATE_PREVIEWS,
   createPreviewStagedFiles,
   deriveDocumentsState,
@@ -134,10 +135,16 @@ function AccountPageContent({
         )}
         {account?.readState === "error" && (
           <div className="flex w-full flex-col gap-3" role="alert">
-            <p>{account.actionError ?? "Could not load your account."}</p>
-            <Button variant="secondary" onClick={account.retry}>
-              Retry
-            </Button>
+            <p>
+              {account.suspended
+                ? ACCOUNT_DECLINED_MESSAGE
+                : (account.actionError ?? "Could not load your account.")}
+            </p>
+            {!account.suspended && (
+              <Button variant="secondary" onClick={account.retry}>
+                Retry
+              </Button>
+            )}
           </div>
         )}
 
@@ -164,10 +171,7 @@ function AccountPageContent({
         {ready &&
           account?.readState === "loaded" &&
           account.lp?.kyb_status === "Failed" && (
-            <p role="status">
-              Your account verification was declined. Profile and document
-              changes are unavailable.
-            </p>
+            <p role="status">{ACCOUNT_DECLINED_MESSAGE}</p>
           )}
         {ready && account?.readState === "absent" && !account.email && (
           <p role="alert">Sign out and sign in again to complete setup.</p>

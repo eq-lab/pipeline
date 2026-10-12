@@ -172,6 +172,73 @@ describe("AccountDocumentsCard — under-review state", () => {
   });
 });
 
+describe("AccountDocumentsCard — under-review + failed (#1426)", () => {
+  it("renders the declined banner instead of the verifying banner", () => {
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          state: "under-review",
+          failed: true,
+          documents: ACCOUNT_STATE_PREVIEWS["under-review"].documents,
+        })}
+      />,
+    );
+    expect(
+      screen.getByText("Account verification declined"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Your account is frozen and cannot be changed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Verifying account")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("We are reviewing your documents."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveClass(
+      "bg-[color:var(--color-pipeline-negative-secondary)]",
+    );
+  });
+});
+
+describe("AccountDocumentsCard — production invalid state (#1426)", () => {
+  it("a writable LP sees the upload row, requirements list, and Save", () => {
+    const preview = ACCOUNT_STATE_PREVIEWS.invalid;
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          state: "invalid",
+          production: true,
+          writable: true,
+          documents: preview.documents,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("account-upload-row")).toBeInTheDocument();
+    expect(screen.getByTestId("account-requirements-list")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("a non-writable LP sees none of those", () => {
+    const preview = ACCOUNT_STATE_PREVIEWS.invalid;
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          state: "invalid",
+          production: true,
+          writable: false,
+          documents: preview.documents,
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("account-requirements-list"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("AccountDocumentsCard — missing state", () => {
   it("renders the negative banner with an inline Upload action and 6 Verified rows", () => {
     const preview = ACCOUNT_STATE_PREVIEWS.missing;

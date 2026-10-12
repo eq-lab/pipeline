@@ -3,6 +3,7 @@ export type AddUsdCardVariant =
   | "locked"
   | "verify"
   | "verifying"
+  | "declined"
   | "unlocked"
   | "funded";
 
@@ -10,6 +11,7 @@ export const ADD_USD_CARD_VARIANTS: ReadonlyArray<AddUsdCardVariant> = [
   "locked",
   "verify",
   "verifying",
+  "declined",
   "unlocked",
   "funded",
 ];

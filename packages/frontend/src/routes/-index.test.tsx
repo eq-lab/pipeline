@@ -1809,7 +1809,7 @@ describe("Home page — KYB-pending regressions (#1423)", () => {
     await expectLegacyConnectedLayout();
   });
 
-  it.each(["Passed", "ChangesRequested", "Failed"])(
+  it.each(["Passed"])(
     "kybStatus %s keeps the legacy connected layout",
     async (kybStatus) => {
       connect();
@@ -2029,4 +2029,107 @@ describe("Home page — plusd-held regressions (#1424)", () => {
       ).toHaveAttribute("data-node-id", "1497:95048");
     },
   );
+});
+
+describe("Home page — KYB-problem state (#1426)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "ChangesRequested";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the declined AddUsdCard above EarnedCard in the col 3-4 stack, with the compact balances stack, Recent activity and QnA", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(rightStack).toHaveAttribute("data-node-id", "6702:104190");
+      const card = within(rightStack).getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "declined");
+      expect(card).toHaveAttribute("data-node-id", "6702:104191");
+      expect(
+        within(rightStack).getByTestId("home-earned-card"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("heading", { name: "We can’t verify your account" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Please check and try again.")).toBeInTheDocument();
+
+    const leftStack = screen.getByTestId("home-balances-stack");
+    expect(leftStack).toHaveAttribute("data-node-id", "6702:104425");
+    expect(
+      within(leftStack).getByTestId("home-start-here-card"),
+    ).toBeInTheDocument();
+    expect(
+      within(leftStack).getByTestId("home-stake-card"),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getAllByTestId("home-recent-activity-card").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("home-qna-wrapper")).toBeInTheDocument();
+  });
+
+  it("clicking View navigates to /account", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await screen.findByTestId("home-add-usd-card");
+    await user.click(screen.getByRole("button", { name: "View" }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/account",
+        search: { state: undefined },
+      });
+    });
+  });
+
+  it("a disconnected wallet flips the portfolio card to connect-wallet but keeps AddUsdCard declined", async () => {
+    localStorage.removeItem("pipeline.mock.wallet.isConnected");
+    localStorage.removeItem("pipeline.mock.wallet.address");
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    expect(portfolio).toHaveAttribute("data-variant", "connect-wallet");
+
+    const card = within(grid).getByTestId("home-add-usd-card");
+    expect(card).toHaveAttribute("data-variant", "declined");
+  });
+
+  it("a non-zero PLUSD balance still renders kyb-problem — no balance gating", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000000",
+    );
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const card = within(grid).getByTestId("home-add-usd-card");
+    expect(card).toHaveAttribute("data-variant", "declined");
+  });
+
+  it("a Failed kyb_status renders the same declined branch", async () => {
+    mockAuthState.kybStatus = "Failed";
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const card = within(grid).getByTestId("home-add-usd-card");
+    expect(card).toHaveAttribute("data-variant", "declined");
+  });
 });
