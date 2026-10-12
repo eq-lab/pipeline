@@ -138,6 +138,7 @@ export function AccountWalletCard() {
           >
             <span
               className={[
+                "flex min-h-6 items-center",
                 "font-[family-name:var(--font-body)]",
                 "text-[length:var(--text-pipeline-body)]",
                 "leading-[var(--text-pipeline-body--line-height)]",

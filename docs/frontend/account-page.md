@@ -377,7 +377,7 @@ used instead (e.g. `certificate-of-incorporation.pdf`).
 | `fill-test/primary` (circles, tab track) | `rgba(191,189,187,0.12)` | `--color-pipeline-fill-muted` |
 | `fill/warning-secondary` (verify banner) | `rgba(211,235,117,0.16)` | `--color-pipeline-promo` |
 | `fill/negative-secondary` (error banners) | `rgba(178,0,0,0.16)` | `--color-pipeline-negative-secondary` |
-| leading-tile fill (wallet/email/upload) | sampled screenshot, pale navy tint | `--color-pipeline-brand-secondary` |
+| `fill-test/primary` (leading tiles: wallet/email/upload) | `rgba(191,189,187,0.12)` | `--color-pipeline-fill-muted` (corrected by #1458 — see below) |
 | `border-test/secondary` | `rgba(56,55,53,0.18)` | `--color-pipeline-line` |
 | `content-test/primary` | `#262524` | `--color-pipeline-ink` |
 | `content-test/secondary` | `rgba(56,55,53,0.6)` | `--color-pipeline-ink-muted` |
@@ -421,13 +421,14 @@ px-1>` with no touch-target wrapper (issue #1295). The `invalid` banner itself (
 **no** trailing action — confirmed no `ButtonCont`/button node in its subtree, unlike the `missing`
 banner's inline `Upload`.
 
-**The 40×40 leading tiles (wallet row, email row, upload row) render a pale navy tint, not
-`#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen
-is stale here (same class as #1251's `content-test/primary` finding), literally emitting
-`bg-[var(--fill-test/primary,#262524)]` for all three tiles, but only the email tile's *icon*
-(hardcoded SVG fill `black`) reads as dark; the tile background itself is the same
-`--color-pipeline-brand-secondary` pale tint `UploadedFileRow` already ships (TD-63). `AccountIconTile`
-uses that fill uniformly; only the icon's own color varies — ink for envelope/wallet, solid
+**The 40×40 leading tiles (wallet row, email row, upload row) are `fill-test/primary` =
+`rgba(191,189,187,0.12)` → `--color-pipeline-fill-muted`.** `get_design_context`'s codegen emits a
+stale `bg-[var(--fill-test/primary,#262524)]` literal for all three tiles (same class as #1251's
+`content-test/primary` finding); #1284 read the tile as a pale navy tint from a screenshot sample
+and shipped `--color-pipeline-brand-secondary`. #1458 resolved the binding live with
+`get_variable_defs` on `7129:15860` and `6701:98112` (both `#bfbdbb1f`) and corrected
+`AccountIconTile` to `--color-pipeline-fill-muted` — the same token the circles and the tab track
+already use. Only the icon's own color varies — ink for envelope/wallet, solid
 `--color-pipeline-brand` navy for the upload glyph (`AccountUploadRow.tsx`'s `FileUploadIcon`,
 `currentColor`). The upload icon is a second stale-codegen spot (issue #1292): the raw exported
 `file-upload` SVG asset hardcodes `fill="#8FB3A4"` (sage green) with no `currentColor`, but
