@@ -358,6 +358,117 @@ describe("EmailAuthFlow — cross-link navigation", () => {
   });
 });
 
+describe("EmailAuthFlow — Add email (#1459)", () => {
+  it('initialScreen="add-email" renders exactly one dialog and it is add-email-modal', () => {
+    render(<EmailAuthFlow open initialScreen="add-email" onClose={vi.fn()} />);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByTestId("add-email-modal")).toBeInTheDocument();
+  });
+
+  it("add-email -> OTP -> verify -> session saved and modal closes", async () => {
+    const user = userEvent.setup();
+    mockSignup.mockResolvedValue(undefined);
+    mockVerifyOtp.mockResolvedValue({ token: "jwt", expires_in: 86400 });
+    const onClose = vi.fn();
+    const onAuthenticated = vi.fn();
+
+    render(
+      <EmailAuthFlow
+        open
+        initialScreen="add-email"
+        onClose={onClose}
+        onAuthenticated={onAuthenticated}
+      />,
+    );
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mockSignup).toHaveBeenCalledWith({
+      email: "lp@example.com",
+      password: "P@ssw0rd!",
+      captchaToken: "test-captcha-token",
+    });
+
+    await screen.findByRole("dialog", { name: "Check your inbox" });
+    expect(
+      screen.getByText("We’ve sent a passcode to lp@example.com"),
+    ).toBeInTheDocument();
+
+    const otpInput = screen.getByLabelText("Verification code");
+    await user.click(otpInput);
+    await user.paste("123456");
+
+    await waitFor(() =>
+      expect(mockVerifyOtp).toHaveBeenCalledWith({
+        email: "lp@example.com",
+        code: "123456",
+      }),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onAuthenticated).toHaveBeenCalledTimes(1);
+    expect(readSession()?.token).toBe("jwt");
+  });
+
+  it("the OTP back arrow from the add-email path returns to add-email-modal, not sign-in-modal", async () => {
+    const user = userEvent.setup();
+    mockSignup.mockResolvedValue(undefined);
+    render(<EmailAuthFlow open initialScreen="add-email" onClose={vi.fn()} />);
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("dialog", { name: "Check your inbox" });
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByTestId("add-email-modal")).toBeInTheDocument();
+    expect(screen.queryByTestId("sign-in-modal")).not.toBeInTheDocument();
+  });
+
+  it("the OTP back arrow from the create-account path still returns to sign-in-modal (regression guard)", async () => {
+    const user = userEvent.setup();
+    mockSignup.mockResolvedValue(undefined);
+    render(
+      <EmailAuthFlow open initialScreen="create-account" onClose={vi.fn()} />,
+    );
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Sign Up" }));
+    await screen.findByRole("dialog", { name: "Check your inbox" });
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByTestId("sign-in-modal")).toBeInTheDocument();
+  });
+
+  it("swapping add-email <-> otp never leaves two dialogs mounted and keeps body scroll locked", async () => {
+    const user = userEvent.setup();
+    mockSignup.mockResolvedValue(undefined);
+    render(<EmailAuthFlow open initialScreen="add-email" onClose={vi.fn()} />);
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("dialog", { name: "Check your inbox" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(document.body.style.overflow).toBe("hidden");
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("an already-registered address still advances to OTP with no 'email taken' copy", async () => {
+    const user = userEvent.setup();
+    mockSignup.mockResolvedValue(undefined);
+    render(<EmailAuthFlow open initialScreen="add-email" onClose={vi.fn()} />);
+    await fillCredentials(user);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByRole("dialog", { name: "Check your inbox" });
+    expect(screen.queryByText(/already registered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email.*taken/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("EmailAuthFlow — OTP focus through a rejected code (#1442)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

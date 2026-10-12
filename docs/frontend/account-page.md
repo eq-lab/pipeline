@@ -132,8 +132,10 @@ handler is supplied, the row renders as a real `<button>` with title `Add email`
 read-only `—` row. `walletOnly` wires `onAddEmail={openAddEmail}`, `openAddEmail` coming from
 `useAuthFlow()` (see
 [`auth-components.md#authflowprovider`](./auth-components.md#authflowprovider)) — clicking it opens
-the normal create-account registration (email + password → OTP → session, #1459). The authenticated
-path never passes `onAddEmail`, so its read-only row is unchanged.
+`AddEmailModal` (#1459), the normal create-account registration (email + password → OTP → session)
+with its own chrome; see
+[`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal). The authenticated path
+never passes `onAddEmail`, so its read-only row is unchanged.
 
 `Upload` (`AccountUploadRow`, via `AccountDocumentsCard`'s `onUploadIntercept`): document writes
 need a session (`POST /v1/lps/me/documents`), so in the wallet-only variant `Upload` calls
@@ -493,7 +495,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Home page KYB orchestration and wallet linking | #1254 |
 | Wiring sign-in / create-account / OTP to real auth | #1265 |
 | Header auth buttons, the account icon | #1362 (shipped — this doc's [Route gate](#route-gate)), extended to wallet-only visitors by #1458 |
-| The Add email screen itself and the OTP hand-off | #1459 (this doc's `Add email` row only opens the existing create-account screen) |
+| The Add email screen itself and the OTP hand-off | #1459 (shipped — `AddEmailModal`, see [`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal)) |
 | The home grid for a wallet-only visitor (home state 7) | #1460 — `deriveHomeState` is untouched; a wallet-only visitor keeps rendering the zero-state grid on `/` (see [home-screen-states.md](../product-specs/home-screen-states.md)) |
 | The home card states, composite Total Balance, merged activity feed | #1282 |
 | The redesigned onboarding-time Company Docs modal | #1278 |

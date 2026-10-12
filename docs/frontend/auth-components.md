@@ -299,6 +299,72 @@ matching both the error frame (weak password → disabled) and the enabled frame
 **Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
 `TextField`; since #1315, "Log in" is a focusable `<button>` (see composition step 5 above).
 
+### AddEmailModal
+
+`packages/frontend/src/components/AddEmailModal.tsx` (#1459). **This screen is the create-account
+registration (email + password → OTP → session), reached from `/account`'s `Add email` row instead
+of the header's `Sign Up` button.** It is not a new account type and does not link the visitor's
+connected wallet to the resulting account — nothing about the wallet is read by, or sent to, this
+flow (see `account-page.md#wallet-only-variant-1458`). There is no change to
+`POST /v1/auth/signup`/`verify-otp`/`resend-otp`; `EmailAuthFlow` (below) routes this screen through
+the exact same handlers `CreateAccountModal` uses.
+
+Visual specs (Figma, verified live via the local Dev Mode MCP 2026-10-12):
+
+- Default, `Save` disabled: node
+  [`7129:15702`](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=7129-15702&m=dev).
+- Enabled, `Save` solid `#000080`: node
+  [`7129:15921`](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=7129-15921&m=dev).
+- Back arrow instance: `7129:15704` at (20, 20).
+- Validation error: **no Add email frame was designed.** This screen reuses
+  `CreateAccountModal`'s validation-error treatment verbatim (frame `6585:75897`, #1281) because
+  both drive the same `useAuthCredentialsForm({ passwordRule: "policy" })`.
+
+Composition inside `AuthModalShell` (heading "Add email", description "Enter your corporate email
+and create a password", `headingId` `add-email-modal-heading`, `testId` `add-email-modal`,
+`showImagePanel={false}`, `showCloseButton={false}`, `align="center"`, `onBack` doubling as
+`onDismiss`) — unlike every other screen in this file, there is **no right-hand image pane and no
+close icon**; the back arrow is the only way to leave the screen short of a valid submit, and it
+dismisses the whole flow (not a `goTo*` cross-link) because this screen has no sibling to return to.
+
+1. **Fields** — two `TextField`s, flat `gap-8` group: `type="email"` placeholder "Enter corporate
+   email", then `type="password"` (`autoComplete="new-password"`) placeholder "Password" with its
+   own eye toggle. Same `turnstileSlot`, captcha status/retry block, and `formError` paragraph as
+   `CreateAccountModal`, same markup and tokens.
+2. **Save** — `Button variant="primary-blue" type="submit"`, label "Save", `h-12` (48px), `radius-s`
+   (4px, resolved via `get_variable_defs`), fill `#000080`, `opacity-[0.32]` when disabled.
+
+**Geometry.** The form wrapper is `mt-6 flex w-full flex-col gap-12 pb-16`: `mt-6` plus the shell
+column's own `gap-6` reproduces the frame's 48px heading→fields gap (the same `mt-*` technique
+`OtpModal` uses for its own 32px gap); the form's own `gap-12` is the 48px fields→`Save` gap; `pb-16`
+reproduces the Container's 64px bottom padding. With `align="center"` (`my-auto`), this is what
+centers the rendered column where Figma's 438px container centers: `86 + 48 + 144 + 48 + 48 + 64 =
+438`. No field is nested further than the plan above — there is no wallet button, no "OR" divider,
+and no footer line anywhere in this screen.
+
+**Validation.** `useAuthCredentialsForm({ open, onSubmit, passwordRule: "policy" })` — the identical
+hook, policy, and error copy as `CreateAccountModal` (see its section above): `Save` stays disabled
+until the email is well-formed and the password passes the ≥8-chars/digit/special-character policy.
+
+**No duplicate-email or lockout copy.** `signup` answers `202` for every address, taken or not
+(enumeration resistance — `api-authorization-email.md`), so registering an already-registered
+address still advances to OTP with no passcode delivered and no "email taken" message. `signup` has
+no `429`; the lockout status code belongs to `login`, which this screen never calls. The only errors
+this screen can show are the generic `formError` (any non-`202`/network failure) and the captcha
+status/retry block — exactly `CreateAccountModal`'s set.
+
+**Props** — the `CreateAccountModal` subset this screen actually uses: `open`, `onBack`, `onSubmit?`,
+`formError?`, `captchaStatus?`, `onCaptchaRetry?`, `turnstileSlot?`. No `onContinueWithWallet`, no
+`onSignIn`, no `onDismiss` separate from `onBack`.
+
+**End-state (user-confirmed 2026-10-12).** A successful OTP on this path closes the flow exactly as
+create-account's does: the session is saved, the header keeps the account icon,
+`AccountEmailCard` renders the session email in place of the `Add email` row, and
+`AuthFlowProvider`'s existing `token` effect (`### AuthFlowProvider` below) then opens
+`CompanyDocsModal` over `/account` for the brand-new (LP-less) account — identical to what happens
+after a header Sign Up. This is inherited provider behaviour, not new code for this issue; it is
+asserted as a regression guard in `AuthFlowProvider.setup.test.tsx`.
+
 ### ForgotPasswordModal
 
 `packages/frontend/src/components/ForgotPasswordModal.tsx` + `useForgotPasswordForm.ts`. The
@@ -710,14 +776,14 @@ both states.
 
 ### EmailAuthFlow
 
-`packages/frontend/src/components/EmailAuthFlow.tsx` + `useEmailAuthFlow.ts` (#1265). The
-orchestrator that turns `SignInModal`, `CreateAccountModal`, `OtpModal`, and `ForgotPasswordModal`
-into one wired flow against `packages/api/src/routes/auth/password.rs`. It is the only consumer
-of the four modals' `onSubmit`/`verify`/`resend` network seams; the modals themselves stay
-presentational (see their individual sections above).
+`packages/frontend/src/components/EmailAuthFlow.tsx` + `useEmailAuthFlow.ts` (#1265, widened by
+#1459). The orchestrator that turns `SignInModal`, `CreateAccountModal`, `AddEmailModal`, `OtpModal`,
+and `ForgotPasswordModal` into one wired flow against `packages/api/src/routes/auth/password.rs`. It
+is the only consumer of the five modals' `onSubmit`/`verify`/`resend` network seams; the modals
+themselves stay presentational (see their individual sections above).
 
 Props: `open`, `initialScreen?: EmailAuthScreen` (`"sign-in" | "create-account" |
-"forgot-password" | "otp"`, default `"sign-in"`), `onClose`, `onAuthenticated?`,
+"forgot-password" | "otp" | "add-email"`, default `"sign-in"`), `onClose`, `onAuthenticated?`,
 `onConnectWallet?`, `onForgotPasswordSubmit?: (payload: { email: string }) => void`. Internal
 `screen` state resets to `initialScreen` whenever `open` transitions `false → true` **or**
 `initialScreen` itself changes while already open (a caller re-pointing an already-open flow at a
@@ -726,6 +792,32 @@ different screen) — never on the modals' own internal cross-link navigation, w
 false`), `signupCaptchaToken`/`otpCaptchaToken` are cleared and both Turnstile widgets reset —
 Turnstile tokens are single-use, so a reopened flow always waits for a fresh token rather than
 risking a spent or stale one reaching the backend.
+
+**Shared signup machinery (#1459).** `CreateAccountModal` and `AddEmailModal` are two chrome
+variants of the same registration — `screen` is a single value, so they are never mounted
+simultaneously. `useEmailAuthFlow` reflects that: a private `submitSignup(origin, credentials)`
+holds the one body both screens' submits run (the `captchaToken` pre-check and its status-dependent
+message, the `flowGenerationRef` comparison, `clearOtpCaptcha()`, `setPendingEmail(email)`, the
+`finally` that resets the Turnstile widget and clears the token, and the re-`throw` that drives
+`isSubmitting` back to `false`); it additionally records `otpBackScreen` — `origin === "add-email"`
+resolves it to `"add-email"`, `origin === "create-account"` to `"sign-in"` — before advancing to
+`otp`. `handleCreateAccountSubmit` and `handleAddEmailSubmit` are thin wrappers that call
+`submitSignup` with their own origin. The error state these submits share is `signupFormError`
+(renamed from `createAccountFormError` by #1459 — it now serves both signup screens), and the
+Turnstile ref/token/status (`signupTurnstileRef`, `signupCaptchaToken`, `signupCaptchaStatus`) are
+likewise shared: a second captcha token or a second error field would be dead state, since only one
+signup screen can ever be open. Reusing this machinery rather than forking it means Add email has no
+network call, no state machine, and no session handling that create-account doesn't already have —
+the only new code is a screen.
+
+**`otpBackScreen` / `goBackFromOtp()` (#1459).** The OTP screen is reachable from three origins —
+create-account's submit, add-email's submit, and sign-in's `403 email_not_verified` — and its back
+arrow must return to whichever one sent it there. `otpBackScreen` (reset to `"sign-in"` whenever the
+flow opens) records that origin; `goBackFromOtp()` returns to `"add-email"` when it is `"add-email"`
+and to `"sign-in"` otherwise, covering both the create-account and the sign-in-403 origins (`OtpModal`
+only ever wires one `onBack`). `AddEmailModal` itself has no cross-link back to sign-in, so
+`otpBackScreen` cannot leak from an add-email submit into Create account before a later OTP+403
+sequence.
 
 Wiring, screen by screen:
 
@@ -737,13 +829,14 @@ Wiring, screen by screen:
   `429` → `formError` "Too many attempts. Try again in a minute." Anything else (including a
   non-`ApiError`, i.e. a network failure) → `formError` from the error's own message, or "Network
   error — check your connection and try again." for a non-`ApiError`.
-- **Create account submit** → `signup`, using whatever captcha token `CreateAccountModal`'s
-  `Turnstile` slot currently holds (`captchaReady` gates the button so a submit without a token
-  cannot happen through the UI; the handler also guards it directly). Success sets `pendingEmail`
-  and jumps to `otp` — signup always answers `202`, so there is no "email taken" branch to handle
-  (see the backend doc's enumeration-resistance rationale). Any failure sets `formError` from the
-  error message and, either way, the Turnstile widget is reset and its token cleared (tokens are
-  single-use).
+- **Create account submit** / **Add email submit** → `signup` via the shared `submitSignup` above,
+  using whatever captcha token the active screen's `Turnstile` slot currently holds (`captchaReady`
+  gates the button so a submit without a token cannot happen through the UI; the handler also
+  guards it directly). Success sets `pendingEmail` and jumps to `otp` — signup always answers `202`,
+  so there is no "email taken" branch to handle on either screen (see the backend doc's
+  enumeration-resistance rationale, and `### AddEmailModal` above). Any failure sets
+  `signupFormError` from the error message and, either way, the Turnstile widget is reset and its
+  token cleared (tokens are single-use).
 - **OTP verify** → `verifyOtp({ email: pendingEmail, code })`. Success saves the session, closes
   the flow, and calls `onAuthenticated?.()` — `OtpModal`'s own `onVerified` seam is unused here
   since `verify` itself performs the side effects. A `401` rejection shows the generic invalid or
@@ -772,8 +865,13 @@ Wiring, screen by screen:
 - **Forgot password submit** → calls `onForgotPasswordSubmit?.(payload)` then closes the flow.
   `ForgotPasswordModal.onSubmit` has no real backend yet (see "ForgotPasswordModal" above; #1358
   ships the backend, #1359 the frontend wiring) — this stays a stand-in, same as before #1265.
-- **Cross-links** (`onForgotPassword`, `onCreateAccount`, `onSignIn`, `onBackToSignIn`, OTP's
-  `onBack`) all just move `screen` between the four values; OTP's back arrow returns to `sign-in`.
+- **Add email back arrow** (#1459) → `flow.dismiss`, i.e. `onClose` directly, not a `goTo*`
+  cross-link — the screen has no sibling to return to, so "back" and "dismiss the flow" are the
+  same action, matching the Issue's "back closes the flow and returns to `/account`." Escape does
+  the same via `AuthModalShell`'s `onDismiss`.
+- **Cross-links** (`onForgotPassword`, `onCreateAccount`, `onSignIn`, `onBackToSignIn`) move `screen`
+  between the sign-in-family values. OTP's back arrow is `goBackFromOtp()` (#1459, see above), not a
+  fixed cross-link — it returns to `sign-in` or to `add-email` depending on `otpBackScreen`.
 
 ### AuthFlowProvider
 
@@ -793,13 +891,12 @@ argument. Unlike `useConnectModal()` (no-op fallback for partial test trees), `u
 are always inside it in production, so a missing provider in a test tree is a setup bug worth
 surfacing loudly rather than silently swallowing.
 
-`openAddEmail()` (#1458) is implemented today as `open("create-account")` — a named seam rather
-than a raw `open()` call, so the one call site (`AccountEmailCard`'s `Add email` row, wired from
+`openAddEmail()` (#1458, re-pointed by #1459) is `open("add-email")` — a named seam rather than a
+raw `open()` call, so the one call site (`AccountEmailCard`'s `Add email` row, wired from
 `AccountPage`'s wallet-only variant) has a self-documenting name and a single place to re-point.
-**Do not** add an `"add-email"` member to `EmailAuthScreen` for this — that union, and the screen
-it names, are #1459's to add; #1459 re-points `openAddEmail()`'s implementation to that new screen
-without touching `AccountEmailCard`. See
-[`account-page.md#wallet-only-variant-1458`](./account-page.md#wallet-only-variant-1458).
+`AccountEmailCard`/`AccountPage` were not touched by #1459 — only this one line changed. See
+[`account-page.md#wallet-only-variant-1458`](./account-page.md#wallet-only-variant-1458) and
+`### AddEmailModal` above.
 
 `lpRead` (`"unknown" | "absent" | "loaded" | "error"`, from `homeState.ts`) and `kybStatus`
 (`setup.lp?.kyb_status`, only defined when `lpRead === "loaded"`) are a direct projection of the
@@ -826,8 +923,9 @@ unknown submission status requires Check submission status before writes resume.
 `open("sign-in")` / `open("create-account")`; the account icon (session, or a connected wallet
 with no session — #1458) does not call it at all — it navigates to `/account`. `MobileNavMenu`
 mirrors both via `onSignIn`/`onSignUp` props threaded from `TopBar`. On `/account`, a wallet-only
-visitor's `Add email` row calls `openAddEmail()`. `/test?tab=auth` does **not** use this provider —
-see `### Diagnostics preview seam` below.
+visitor's `Add email` row calls `openAddEmail()`, which opens the `"add-email"` screen (#1459, see
+`### AddEmailModal` above) — the same registration as `open("create-account")`, different chrome.
+`/test?tab=auth` does **not** use this provider — see `### Diagnostics preview seam` below.
 
 ### Turnstile
 
@@ -867,10 +965,10 @@ tab next re-reads the store.
 
 `packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders a session
 status line (`useAuthSession`, `data-testid="auth-session-status"`, plus a `Sign out` button once
-authenticated), three trigger buttons that open `EmailAuthFlow` on its `sign-in` /
-`forgot-password` / `create-account` screen (`openAuthFlow(screen)`, which sets both the
-`authFlowScreen` and `authFlowOpen` state read by the flow's `initialScreen`/`open` props), and
-two further triggers opening `CompanyDocsModal` (#1278, redesigned from #1251) and
+authenticated), four trigger buttons that open `EmailAuthFlow` on its `sign-in` /
+`forgot-password` / `create-account` / `add-email` (#1459) screen (`openAuthFlow(screen)`, which
+sets both the `authFlowScreen` and `authFlowOpen` state read by the flow's `initialScreen`/`open`
+props), and two further triggers opening `CompanyDocsModal` (#1278, redesigned from #1251) and
 `AccountInReviewModal` (#1253) independently — a sixth trigger, `OwnersModal` (#1252), was retired
 2026-09-21 (see `### OwnersModal` above), and there is **no standalone "Open OTP screen" trigger**
 any more: the OTP screen is reachable only through `EmailAuthFlow` itself (a successful Create
@@ -886,10 +984,11 @@ This was an explicit #1362 decision (plan default, confirmed in the Issue commen
 keeps its own `EmailAuthFlow` instance rather than switching to `useAuthFlow()`, so its tests stay
 undisturbed by the production entry point's addition.
 
-**Sign in ↔ Forgot Password ↔ Create Account ↔ OTP swap, never stack (#1280, extended #1315,
-folded into `EmailAuthFlow` by #1265).** All four screens are `EmailAuthFlow`'s single
-`screen: EmailAuthScreen` state (see "EmailAuthFlow" above), so "two of these open at once" is
-unrepresentable — only one of the four modals ever has `open={true}`. This is safe against the
+**Sign in ↔ Forgot Password ↔ Create Account ↔ Add email ↔ OTP swap, never stack (#1280, extended
+#1315, folded into `EmailAuthFlow` by #1265, widened by #1459).** All five screens are
+`EmailAuthFlow`'s single `screen: EmailAuthScreen` state (see "EmailAuthFlow" above), so "two of
+these open at once" is unrepresentable — only one of the five modals ever has `open={true}`. This
+is safe against the
 shell's stacking hazards (the un-refcounted body-scroll-lock, the capture-phase Escape collision)
 because a swap never stacks two shells: React runs the outgoing tree's effect cleanups before the
 incoming tree's effect creates within a single commit, so `document.body.style.overflow` lands on

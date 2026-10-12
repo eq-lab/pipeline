@@ -74,7 +74,7 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
 
   const close = useCallback(() => setIsOpen(false), []);
 
-  const openAddEmail = useCallback(() => open("create-account"), [open]);
+  const openAddEmail = useCallback(() => open("add-email"), [open]);
 
   const openAccountSetup = useCallback(() => {
     setSetup((previous) => (previous ? { ...previous, open: true } : previous));

@@ -137,6 +137,19 @@ describe("LP setup prompt", () => {
   });
 });
 
+describe("Add email end-state (#1459)", () => {
+  it("still opens CompanyDocsModal for a brand-new (LP-less) account reached via the Add email path", async () => {
+    mockGet.mockRejectedValueOnce(new ApiError(404, "missing"));
+    render(
+      <AuthFlowProvider>
+        <div>App</div>
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  });
+});
+
 describe("Account-in-review Notify me", () => {
   const stored = {
     legal_name: "Acme Ltd",
