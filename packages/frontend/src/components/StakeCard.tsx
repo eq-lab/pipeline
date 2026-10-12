@@ -29,6 +29,13 @@ const HEADING_ID_BASE = "stake-card-title";
 
 const ELEVATION_BORDER = "!border-t !border-r-[3px] !border-b-[3px] !border-l";
 
+const COMPACT_DISABLED_CTA_CLASSES = [
+  "disabled:bg-[rgba(184,191,190,0.12)]",
+  "disabled:hover:!bg-[rgba(184,191,190,0.12)]",
+  "disabled:text-[color:var(--color-pipeline-ink)]",
+  "disabled:opacity-[0.32]",
+].join(" ");
+
 const eyebrowClasses = [
   "font-[family-name:var(--font-body)]",
   "text-[length:var(--text-pipeline-body)]",
@@ -160,10 +167,12 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
               size="m"
               onClick={onStake}
               disabled={isStakeCtaDisabled}
+              aria-label={isStakeCtaDisabled ? "Nothing to Stake" : "Stake"}
+              className={COMPACT_DISABLED_CTA_CLASSES}
               data-node-id="6701:97693"
               data-testid="home-stake-button"
             >
-              Stake
+              {isStakeCtaDisabled ? "Nothing to Stake" : "Stake"}
             </Button>
           </div>
         </Card>

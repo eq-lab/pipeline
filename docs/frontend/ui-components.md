@@ -248,6 +248,14 @@ Common rules:
 - Hover/active states are `color-mix` lighten/darken blends of the variant fill.
 - The inner `<span>` label wrapper mirrors the Figma "Label" inset: `px-2` at default size,
   `px-1` (4 px) at compact size.
+- **The rectangular variants carry no disabled fill of their own.** `circular-blue` is the only
+  variant with a designed disabled state; where a rectangular button needs one, the call site adds
+  it as a `className` override — `CreateAccountModal`, `SignInModal` and `ForgotPasswordModal` add
+  `disabled:opacity-[0.32]`, and `StakeCard layout="compact"` adds the Figma `6701:98802` treatment
+  (`disabled:bg-[rgba(184,191,190,0.12)]` + `disabled:opacity-[0.32]` + ink label, see
+  `dashboard-components.md#stakecard`). Promoting any of these into `primary-blue` would restyle
+  the other call sites against frames nobody has re-checked, so the override stays at the call
+  site until a frame covers the shared state.
 
 ### Size variants (rectangular variants only: `primary-dark`, `primary-blue`, `secondary`)
 

@@ -20,9 +20,18 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...original,
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
-    ),
+    Link: ({
+      children,
+      to,
+      search,
+    }: {
+      children: React.ReactNode;
+      to: string;
+      search?: Record<string, string>;
+    }) => {
+      const qs = search ? new URLSearchParams(search).toString() : "";
+      return <a href={qs ? `${to}?${qs}` : to}>{children}</a>;
+    },
   };
 });
 
@@ -51,7 +60,7 @@ describe("PortfolioPlaceholderCard — header", () => {
   it("shows 'Get PLUSD to start' link pointing to /deposit", () => {
     renderCard();
     const link = screen.getByRole("link", { name: "Get PLUSD to start" });
-    expect(link).toHaveAttribute("href", "/deposit");
+    expect(link).toHaveAttribute("href", "/deposit?direction=deposit");
   });
 
   it("renders provided sPLUSD balance as the main heading", () => {
@@ -75,7 +84,7 @@ describe("PortfolioPlaceholderCard — header", () => {
     );
     expect(
       screen.getByRole("link", { name: "Stake PLUSD to start earning" }),
-    ).toHaveAttribute("href", "/stake");
+    ).toHaveAttribute("href", "/stake?tab=stake");
     rerender(<PortfolioPlaceholderCard mobileHomeState="splusd" />);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
@@ -426,6 +435,52 @@ describe("PortfolioPlaceholderCard — connect-wallet variant (#1422)", () => {
     expect(screen.getByRole("region")).toHaveAttribute(
       "data-node-id",
       "1497:95048",
+    );
+  });
+});
+
+describe("PortfolioPlaceholderCard — get-plusd variant (#1423)", () => {
+  it("renders Total Balance, the passed balanceLabel and the Get PLUSD to start link", () => {
+    renderCard({ variant: "get-plusd", balanceLabel: "$0.00" });
+
+    expect(screen.getByText("Total Balance")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Get PLUSD to start" }),
+    ).toHaveAttribute("href", "/deposit?direction=deposit");
+  });
+
+  it("renders no unrealized-PnL caption and no Connect wallet control", () => {
+    renderCard({ variant: "get-plusd" });
+
+    expect(screen.queryByTestId("earning-caption")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ignores mobileHomeState and keeps the Get PLUSD to start link", () => {
+    renderCard({ variant: "get-plusd", mobileHomeState: "splusd" });
+
+    expect(
+      screen.getByRole("link", { name: "Get PLUSD to start" }),
+    ).toBeInTheDocument();
+  });
+
+  it("sets data-node-id and data-variant for the get-plusd variant", () => {
+    renderCard({ variant: "get-plusd" });
+
+    const region = screen.getByRole("region");
+    expect(region).toHaveAttribute("data-node-id", "6701:98528");
+    expect(region).toHaveAttribute("data-variant", "get-plusd");
+    expect(region.className).toContain("h-[274px]");
+  });
+
+  it("drops the PnL clause from the chart aria-label", () => {
+    renderCard({ variant: "get-plusd", balanceLabel: "$0.00" });
+
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+      "Total balance for All: $0.00",
     );
   });
 });

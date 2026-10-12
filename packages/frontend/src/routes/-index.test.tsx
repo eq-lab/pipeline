@@ -1593,3 +1593,249 @@ describe("Home page — unverified-state regressions (#1422)", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("Home page — KYB-pending state (#1423)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "UnderReview";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("the top-left card shows Total Balance, $0.00 and a Get PLUSD to start link", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    expect(portfolio).toHaveAttribute("data-variant", "get-plusd");
+    expect(portfolio).toHaveAttribute("data-node-id", "6701:98528");
+    expect(within(portfolio).getByText("Total Balance")).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("heading", { name: "$0.00" }),
+    ).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("link", { name: "Get PLUSD to start" }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Get Started" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Sign Up" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("AddUsdCard renders in its verifying variant; View Status navigates to /account", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "verifying");
+      expect(card).toHaveAttribute("data-node-id", "6701:98539");
+    });
+    expect(
+      screen.getByRole("heading", { name: "Verifying account…" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("We are reviewing your documents."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View Status" }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/account",
+        search: { state: undefined },
+      });
+    });
+  });
+
+  it("the compact Stake CTA is disabled, grey and labelled Nothing to Stake", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const stake = within(grid).getByTestId("home-stake-card");
+    const stakeBtn = within(stake).getByRole("button", {
+      name: "Nothing to Stake",
+    });
+    expect(stakeBtn).toBeDisabled();
+    expect(stakeBtn).toHaveAttribute("data-size", "m");
+    expect(stakeBtn).toHaveAttribute("data-variant", "primary-blue");
+    expect(stakeBtn.className).toContain(
+      "disabled:bg-[rgba(184,191,190,0.12)]",
+    );
+    expect(stakeBtn.className).toContain("disabled:opacity-[0.32]");
+  });
+
+  it("StartHereCard keeps Buy enabled and Sell disabled", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(within(startHere).getByText("Get PLUSD")).toBeInTheDocument();
+    expect(
+      within(startHere).getByRole("button", { name: "Buy" }),
+    ).toBeEnabled();
+    expect(
+      within(startHere).getByRole("button", { name: "Sell" }),
+    ).toBeDisabled();
+  });
+
+  it("grid occupancy: StartHere+Stake on the left, AddUsd+Earned on the right", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      const leftStack = screen.getByTestId("home-balances-stack");
+      expect(leftStack).toHaveAttribute("data-node-id", "6701:98773");
+      expect(
+        within(leftStack).getByTestId("home-start-here-card"),
+      ).toBeInTheDocument();
+      expect(
+        within(leftStack).getByTestId("home-stake-card"),
+      ).toBeInTheDocument();
+
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(rightStack).toHaveAttribute("data-node-id", "6701:98538");
+      expect(
+        within(rightStack).getByTestId("home-add-usd-card"),
+      ).toBeInTheDocument();
+      const earned = within(rightStack).getByTestId("home-earned-card");
+      expect(earned).toHaveAttribute("data-node-id", "6701:97918");
+      expect(within(earned).getByText("Tracked once you stake")).toBeVisible();
+    });
+  });
+
+  it("RecentActivityCard empty placeholder and QnaSection render", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("You will see all transactions here").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId("home-qna-wrapper")).toBeInTheDocument();
+    });
+  });
+
+  it("the desktop grid carries no 128px circular Stake button", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(
+      within(grid).queryByTestId("home-stake-more-button"),
+    ).not.toBeInTheDocument();
+    for (const btn of within(grid).getAllByRole("button")) {
+      expect(btn.className).not.toContain("md:size-32");
+    }
+  });
+
+  it("issues no GET /v1/lps/me of its own — the provider owns the request", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Total Balance").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(mockGetMyLp).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — KYB-pending regressions (#1423)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "UnderReview";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  function connect() {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  }
+
+  async function expectLegacyConnectedLayout() {
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(
+      within(grid).queryByTestId("home-add-usd-card"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(grid).getByTestId("home-portfolio-placeholder"),
+    ).toHaveAttribute("data-node-id", "1497:95048");
+  }
+
+  it("a non-zero PLUSD balance keeps the legacy connected layout", async () => {
+    connect();
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000",
+    );
+    renderHome();
+    await expectLegacyConnectedLayout();
+  });
+
+  it("a non-zero sPLUSD balance keeps the legacy connected layout", async () => {
+    connect();
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
+      "1000000000000000000",
+    );
+    renderHome();
+    await expectLegacyConnectedLayout();
+  });
+
+  it.each(["Passed", "ChangesRequested", "Failed"])(
+    "kybStatus %s keeps the legacy connected layout",
+    async (kybStatus) => {
+      connect();
+      mockAuthState.kybStatus = kybStatus;
+      renderHome();
+      await expectLegacyConnectedLayout();
+    },
+  );
+
+  it.each(["unknown", "error"] as const)(
+    "lpRead %s keeps the legacy connected layout",
+    async (lpRead) => {
+      connect();
+      mockAuthState.lpRead = lpRead;
+      renderHome();
+      await expectLegacyConnectedLayout();
+    },
+  );
+
+  it("UnderReview with the wallet disconnected keeps the legacy disconnected layout", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "Connect Wallet" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByTestId("home-add-usd-card")).not.toBeInTheDocument();
+  });
+});
