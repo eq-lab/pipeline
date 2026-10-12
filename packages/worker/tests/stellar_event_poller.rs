@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
+// spec: docs/exec-plans/completed/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
 use pipeline_worker::indexer::stellar::poller::is_loan_registry_event;
 
 const STORED_LOAN_REGISTRY_EVENT_NAMES: &[&str] = &[

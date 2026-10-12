@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
+// spec: docs/exec-plans/completed/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
 use shared::contract_logs_repo::LOAN_LIFECYCLE_EVENT_NAMES;
 
 #[test]

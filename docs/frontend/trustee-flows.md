@@ -1266,7 +1266,7 @@ one-off, no token) — no Figma reference exists for either state.
 **Out of scope (do not reintroduce):** `useCollateralValuation`, the `CollateralValuationResponse`
 shape, `ValuationDisplay`/`ValuationInputRow`/`WaterfallRow`, `mapValuation`, `modeLabel`,
 `usdOrDash`, `initial_ccr`/`formatInitialCcr`, `freshnessLabel` — see the (completed) exec plan
-`docs/exec-plans/active/issue-821-trustee-origination-details-page.md` for why.
+`docs/exec-plans/completed/issue-821-trustee-origination-details-page.md` for why.
 
 ### Approve & mint confirmation dialog (#838, Figma node `4116:13943`)
 
@@ -1705,7 +1705,7 @@ Module-level external store (the same pattern as `@pipeline/wallet-connect`'s St
 ### Trustee sidebar (Figma node `4116:8855` "Aside")
 
 `TrusteeSidebar` is the persistent left nav panel, replacing the earlier topbar nav (#786). Full
-trace: `docs/exec-plans/active/issue-786-trustee-app-shell.md` "Decisions" + "Exact layout spec".
+trace: `docs/exec-plans/completed/issue-786-trustee-app-shell.md` "Decisions" + "Exact layout spec".
 
 - Active state is driven by TanStack Router (`activeProps`), not a hardcoded label. `Link`'s
   `className` and `activeProps`/`inactiveProps` classNames are **concatenated** (not swapped) by
