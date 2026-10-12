@@ -5,11 +5,19 @@ Issue: [#1284](https://github.com/eq-lab/pipeline/issues/1284)
 Spec: [docs/frontend/account-page.md](../../frontend/account-page.md)
 
 This is a presentational route — no network call, no persistence, no auth. It is reachable only
-at `http://localhost:5173/account` under the dev server (`beforeLoad` redirects to `/` when
-`ENV.IS_DEV` is false); the six designed documents states are reachable via `?state=<id>` links on
+at `http://localhost:5173/account` under the dev server (the route gate redirects to `/` when
+`ENV.IS_DEV` is false **and** neither a session nor a connected wallet is present — see #1458
+below); the six designed documents states are reachable via `?state=<id>` links on
 `/test?tab=auth`. Styling-only assertions (exact colors, radii, spacing) are out of scope — visual
 fidelity is verified separately by the QA agent's Figma comparison against nodes `6701-98099`,
 `6701-98137`, `6701-98175`, `6701-98022`, `6701-97982`, and `6701-98061`.
+
+**Amended by #1458 (2026-10-12):** the wallet card's connected state gained a divider + `Disconnect`
+row (Story 10, below); the route gate moved from `beforeLoad` into the route component and now also
+admits a wallet-connected visitor with no session; `Corporate email` renders an `Add email` row
+instead of `—` for that visitor (Story 12, below — now the authenticated-path story). See
+[1458-wallet-only-account.md](../epic-1419/1458-wallet-only-account.md) for the full wallet-only
+variant.
 
 ---
 
@@ -190,7 +198,9 @@ fidelity is verified separately by the QA agent's Figma comparison against nodes
 - Disconnected: a 72px circle with a generic wallet glyph and a full-width `Connect Wallet`
   button; clicking it opens the shared connect-wallet picker.
 - Connected: a `Wallet` row shows the truncated address plus a copy button; a `USDC balance` row
-  shows the formatted balance, or `—` when it has not resolved yet.
+  shows the formatted balance, or `—` when it has not resolved yet. Below those, a divider followed
+  by a `Disconnect` row (`account-disconnect-row`, #1458) — clicking it disconnects the active
+  namespace's wallet only (switching tabs never disconnects, per Story 11).
 
 ---
 
@@ -213,9 +223,12 @@ disconnected.
 
 ---
 
-## Story 12: Corporate email renders `—` until the backend is wired
+## Story 12: Corporate email renders `—` for an authenticated LP with no email on file
 
-**Pre-conditions:** At `http://localhost:5173/account`.
+**Persona:** An authenticated LP (a session exists). This story no longer covers the wallet-only
+visitor — see the note below.
+
+**Pre-conditions:** At `http://localhost:5173/account`, signed in.
 
 **Steps:**
 
@@ -223,5 +236,11 @@ disconnected.
 
 **Expected outcomes:**
 
-- The `Email` row shows `—` (no client-computed or placeholder address) — #1254 wires the real
-  value.
+- The `Email` row shows `—` (no client-computed or placeholder address) when no email is on file
+  for the signed-in LP — #1254 wires the real value for the authenticated path.
+
+**Amended by #1458:** a visitor with **no session** (wallet-only) no longer sees this `—` row at
+all — `AccountEmailCard` renders an actionable `Add email` row instead (`account-add-email-row`),
+which opens the create-account registration flow. See
+[1458-wallet-only-account.md](../epic-1419/1458-wallet-only-account.md) Story 6. The authenticated
+path in this story is unaffected: `onAddEmail` is never passed when a session exists.

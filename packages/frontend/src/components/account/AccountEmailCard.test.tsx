@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { AccountEmailCard } from "./AccountEmailCard";
 
 describe("AccountEmailCard", () => {
@@ -9,13 +10,26 @@ describe("AccountEmailCard", () => {
     expect(screen.getByText("Email")).toBeInTheDocument();
   });
 
-  it("renders — when no email is supplied", () => {
+  it("renders — when no email and no onAddEmail is supplied (authenticated-path regression)", () => {
     render(<AccountEmailCard />);
     expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("has no edit control", () => {
-    render(<AccountEmailCard email="hello@eqlab.io" />);
+  it("has no edit control when an email is present, even with onAddEmail supplied", () => {
+    render(<AccountEmailCard email="hello@eqlab.io" onAddEmail={vi.fn()} />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+});
+
+describe("AccountEmailCard — wallet-only Add email row (issue #1458)", () => {
+  it("renders an Add email button that calls onAddEmail when there is no email", async () => {
+    const onAddEmail = vi.fn();
+    render(<AccountEmailCard onAddEmail={onAddEmail} />);
+    const button = screen.getByTestId("account-add-email-row");
+    expect(button.tagName).toBe("BUTTON");
+    expect(button).toHaveTextContent("Add email");
+    await userEvent.click(button);
+    expect(onAddEmail).toHaveBeenCalledTimes(1);
   });
 });

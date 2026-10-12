@@ -10,7 +10,7 @@ export function AccountIconTile({ children, className }: AccountIconTileProps) {
   const composed = [
     "flex size-10 shrink-0 items-center justify-center",
     "rounded-[var(--radius-pipeline-card)]",
-    "bg-[color:var(--color-pipeline-brand-secondary)]",
+    "bg-[color:var(--color-pipeline-fill-muted)]",
     "text-[color:var(--color-pipeline-ink)]",
     className,
   ]
@@ -18,9 +18,9 @@ export function AccountIconTile({ children, className }: AccountIconTileProps) {
     .join(" ");
 
   return (
-    <div className={composed} aria-hidden="true">
+    <span className={composed} aria-hidden="true">
       {children}
-    </div>
+    </span>
   );
 }
 

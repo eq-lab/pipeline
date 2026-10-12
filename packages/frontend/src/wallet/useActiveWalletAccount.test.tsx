@@ -125,3 +125,75 @@ describe("useActiveWalletAccount — connect", () => {
     expect(mockOpen).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("useActiveWalletAccount — disconnect (issue #1458)", () => {
+  it("routes to the EVM wallet's disconnect when kind is evm", () => {
+    const evmDisconnect = vi.fn();
+    const stellarDisconnect = vi.fn();
+    mockUseWalletView.mockReturnValue({ kind: "evm", setKind });
+    mockUseEvmWallet.mockReturnValue({
+      isConnected: true,
+      address: "0x8493333333333333333333333333333333b92a",
+      disconnect: evmDisconnect,
+    });
+    mockUseEvmToken.mockReturnValue({ formattedBalance: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+      disconnect: stellarDisconnect,
+    });
+    mockUseStellarToken.mockReturnValue({ formattedBalance: undefined });
+
+    const { result } = renderHook(() => useActiveWalletAccount());
+    result.current.disconnect();
+    expect(evmDisconnect).toHaveBeenCalledTimes(1);
+    expect(stellarDisconnect).not.toHaveBeenCalled();
+  });
+
+  it("routes to the Stellar wallet's disconnect when kind is stellar", () => {
+    const evmDisconnect = vi.fn();
+    const stellarDisconnect = vi.fn();
+    mockUseWalletView.mockReturnValue({ kind: "stellar", setKind });
+    mockUseEvmWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+      disconnect: evmDisconnect,
+    });
+    mockUseEvmToken.mockReturnValue({ formattedBalance: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: true,
+      address: "GABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEWXYZ",
+      disconnect: stellarDisconnect,
+    });
+    mockUseStellarToken.mockReturnValue({ formattedBalance: undefined });
+
+    const { result } = renderHook(() => useActiveWalletAccount());
+    result.current.disconnect();
+    expect(stellarDisconnect).toHaveBeenCalledTimes(1);
+    expect(evmDisconnect).not.toHaveBeenCalled();
+  });
+
+  it("switching kind never disconnects either namespace (view-switch regression guard)", () => {
+    const evmDisconnect = vi.fn();
+    const stellarDisconnect = vi.fn();
+    mockUseWalletView.mockReturnValue({ kind: "evm", setKind });
+    mockUseEvmWallet.mockReturnValue({
+      isConnected: true,
+      address: "0x8493333333333333333333333333333333b92a",
+      disconnect: evmDisconnect,
+    });
+    mockUseEvmToken.mockReturnValue({ formattedBalance: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: true,
+      address: "GABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEABCDEWXYZ",
+      disconnect: stellarDisconnect,
+    });
+    mockUseStellarToken.mockReturnValue({ formattedBalance: undefined });
+
+    const { result } = renderHook(() => useActiveWalletAccount());
+    result.current.setKind("stellar");
+    expect(setKind).toHaveBeenCalledWith("stellar");
+    expect(evmDisconnect).not.toHaveBeenCalled();
+    expect(stellarDisconnect).not.toHaveBeenCalled();
+  });
+});

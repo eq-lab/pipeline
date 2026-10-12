@@ -29,6 +29,26 @@ vi.mock("@/wallet", async (importOriginal) => {
       truncatedAddress: undefined,
       formattedBalance: undefined,
       connect: vi.fn(),
+      disconnect: vi.fn(),
+    }),
+    useWalletPresence: () => ({
+      isAnyConnected: false,
+      isSettled: true,
+      disconnectAll: vi.fn(),
+    }),
+  };
+});
+
+vi.mock("@/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/auth")>();
+  return {
+    ...actual,
+    useAuthFlow: () => ({
+      open: vi.fn(),
+      close: vi.fn(),
+      lpRead: "unknown" as const,
+      openAccountSetup: vi.fn(),
+      openAddEmail: vi.fn(),
     }),
   };
 });

@@ -5,6 +5,7 @@ import { AccountWalletCard } from "./AccountWalletCard";
 
 const mockUseActiveWalletAccount = vi.fn();
 const mockConnect = vi.fn();
+const mockDisconnect = vi.fn();
 const setKind = vi.fn();
 
 vi.mock("@/wallet", async (importOriginal) => {
@@ -29,6 +30,7 @@ describe("AccountWalletCard — connected", () => {
       truncatedAddress: "0x8493…b92a",
       formattedBalance: "$10,000.00",
       connect: mockConnect,
+      disconnect: mockDisconnect,
     });
     render(<AccountWalletCard />);
     expect(screen.getByText("0x8493…b92a")).toBeInTheDocument();
@@ -52,9 +54,32 @@ describe("AccountWalletCard — connected", () => {
       truncatedAddress: "0x8493…b92a",
       formattedBalance: undefined,
       connect: mockConnect,
+      disconnect: mockDisconnect,
     });
     render(<AccountWalletCard />);
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("renders the divider and Disconnect row after the wallet rows, which calls disconnect (issue #1458)", async () => {
+    mockUseActiveWalletAccount.mockReturnValue({
+      kind: "evm",
+      setKind,
+      isConnected: true,
+      address: "0x8493333333333333333333333333333333b92a",
+      truncatedAddress: "0x8493…b92a",
+      formattedBalance: "$10,000.00",
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    });
+    render(<AccountWalletCard />);
+    const row = screen.getByTestId("account-disconnect-row");
+    expect(row).toHaveTextContent("Disconnect");
+    const rowsContainer = screen.getByTestId(
+      "account-disconnect-row",
+    ).parentElement;
+    expect(rowsContainer).toHaveClass("gap-0");
+    await userEvent.click(row);
+    expect(mockDisconnect).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -68,12 +93,30 @@ describe("AccountWalletCard — disconnected", () => {
       truncatedAddress: undefined,
       formattedBalance: undefined,
       connect: mockConnect,
+      disconnect: mockDisconnect,
     });
     render(<AccountWalletCard />);
     const button = screen.getByRole("button", { name: "Connect Wallet" });
     expect(button).toBeInTheDocument();
     await userEvent.click(button);
     expect(mockConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders no divider and no Disconnect row", () => {
+    mockUseActiveWalletAccount.mockReturnValue({
+      kind: "evm",
+      setKind,
+      isConnected: false,
+      address: undefined,
+      truncatedAddress: undefined,
+      formattedBalance: undefined,
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    });
+    render(<AccountWalletCard />);
+    expect(
+      screen.queryByTestId("account-disconnect-row"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -87,9 +130,11 @@ describe("AccountWalletCard — namespace tabs", () => {
       truncatedAddress: undefined,
       formattedBalance: undefined,
       connect: mockConnect,
+      disconnect: mockDisconnect,
     });
     render(<AccountWalletCard />);
     await userEvent.click(screen.getByRole("tab", { name: "Stellar" }));
     expect(setKind).toHaveBeenCalledWith("stellar");
+    expect(mockDisconnect).not.toHaveBeenCalled();
   });
 });

@@ -657,25 +657,44 @@ scrolls away in normal flow, and the header pins once it reaches the viewport to
 above page content but below the fixed `z-[9999]` portals (mobile nav menu, the auth flow's own
 modal shells).
 
-**No wallet UI in the header (#1362).** Figma frames `6701:98403` (signed out) and `6701:97929`
-(signed in) show neither a `WalletPill` nor a "Connect Wallet" button in either auth state — wallet
-connection lives entirely on `/account` (`AccountWalletCard`, see `account-page.md`) now that the
-account page is reachable from the header. `TopBar.tsx` no longer reads any wallet hook
-(`useEvmWallet`/`useStellarWallet`/etc.) — see "Where wallet-connect entry points still live" below
-for what replaces the removed header CTA.
+**No wallet UI in the header (#1362), but a presence read as of #1458.** Figma frames `6701:98403`
+(signed out) and `6701:97929` (signed in) show neither a `WalletPill` nor a "Connect Wallet" button
+in either auth state — wallet connection lives entirely on `/account` (`AccountWalletCard`, see
+`account-page.md`) now that the account page is reachable from the header. `TopBar.tsx` reads no
+wallet hook beyond `useWalletPresence()` (`@/wallet`, issue #1458 — see [Hooks](./hooks.md)): a
+narrow `{ isAnyConnected, isSettled, disconnectAll }` surface over `useEvmWallet()` +
+`useStellarWallet()` only, deliberately **not** `useActiveWalletAccount`, which would mount
+`useEvmToken`/`useStellarToken` contract reads in the global header on every route. `TopBar` adds
+no wallet UI — no pill, no balance, no Connect button — only the presence boolean. See "Where
+wallet-connect entry points still live" below for what replaces the removed header CTA.
 
-**Signed-out state** (Figma node `6701:98403`): renders `Button variant="secondary"` "Sign In"
-(`topbar-sign-in-button`) and `Button variant="primary-dark"` "Sign Up" (`topbar-sign-up-button`).
-Both call `useAuthFlow().open(screen)` — `"sign-in"` / `"create-account"` respectively — opening
-the app-wide `EmailAuthFlow` instance (see `auth-components.md#authflowprovider`). No navigation
-and no menu; the header itself flips to the signed-in state once `useAuthSession().isAuthenticated`
-turns true (same-tab reactive via the session store).
+**Header icon rule (#1458): session *or* connected wallet, not session alone.**
+`showAccount = isAuthenticated || isAnyConnected` — a visitor with a connected wallet but no auth
+session sees the same account icon as a signed-in LP, reactively (flipping either source re-renders
+the right slot without a remount). This closes the gap where a wallet-only visitor used to see Sign
+In / Sign Up with nowhere to see the wallet they just connected. `isAnyConnected` is `evm.isConnected
+|| stellar.isConnected` — **any namespace**, not the active `useWalletView().kind` tab — so a
+visitor connected on EVM who switches to the Account page's Stellar tab does not lose the account
+icon or get bounced by the route gate (see
+[`account-page.md#route-gate`](./account-page.md#route-gate)). The `/account` wallet **card** keeps
+its own per-tab view semantics unchanged — only the header and the route gate use "any connected".
 
-**Signed-in state** (Figma node `6701:97929`): renders a single 48×48 icon button (`AccountGlyph`,
-Figma node `6701:97941`), `aria-label="Account"`, `data-testid="topbar-account-button"`. Clicking
-it navigates to `/account` directly — there is no dropdown/menu (per the #1362 Issue comment
-resolving the plan's open question). Sign-out lives on `/account` itself (`Log Out` button — see
-`account-page.md#seams-and-who-wires-them`).
+**Signed-out state** (Figma node `6701:98403`, now gated on `!showAccount`): renders
+`Button variant="secondary"` "Sign In" (`topbar-sign-in-button`) and `Button variant="primary-dark"`
+"Sign Up" (`topbar-sign-up-button`). Both call `useAuthFlow().open(screen)` — `"sign-in"` /
+`"create-account"` respectively — opening the app-wide `EmailAuthFlow` instance (see
+`auth-components.md#authflowprovider`). No navigation and no menu; the header flips to the account
+icon once either `useAuthSession().isAuthenticated` or `useWalletPresence().isAnyConnected` turns
+true (same-tab reactive).
+
+**Account-icon state** (Figma node `6701:97929`/`6701:98174` — same 48×48 `AccountGlyph` glyph for
+both the signed-in and wallet-only visitor): renders a single 48×48 icon button (`AccountGlyph`),
+`aria-label="Account"`, `data-testid="topbar-account-button"`. Clicking it navigates to `/account`
+directly — there is no dropdown/menu (per the #1362 Issue comment resolving the plan's open
+question). Sign-out/disconnect both live on `/account` itself (`Log Out` and the wallet card's
+`Disconnect` row — see
+[`account-page.md#wallet-only-variant-1458`](./account-page.md#wallet-only-variant-1458) and
+[`account-page.md#wallet-card`](./account-page.md#wallet-card)).
 
 **Wallet slot** (`topbar-wallet-slot`, #1125 — name kept for continuity even though it no longer
 renders wallet UI): `min-w-40 justify-end gap-2`, contains the `NetworkSwitcher` pill (unrelated
@@ -699,13 +718,11 @@ was the only always-visible "Connect Wallet" entry point. After removing it:
   with these.
 - Authenticated LPs reach it from `/account`'s `AccountWalletCard` (`Connect Wallet` button,
   already wired per #1284 — see `account-page.md#wallet-card`).
-- **Left unreachable:** there is no UI control to *disconnect* a wallet any more. The only
-  disconnect affordance was `AccountDropdown`'s "Disconnect" button (desktop) and
-  `MobileNavMenu`'s "Disconnect" button (mobile), both removed with the header's wallet UI;
-  `AccountWalletCard` has no disconnect action (`useActiveWalletAccount` exposes `connect` only).
-  Logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`) — likely resolved by adding a
-  disconnect action to `AccountWalletCard` in a follow-up, but that is a design decision (no Figma
-  disconnect control exists there either) outside #1362's scope.
+- **Disconnect is reachable again (#1458, closes TD-111).** `AccountWalletCard` now renders a
+  `Disconnect` row after the `Wallet`/`USDC balance` rows on every connected state (signed-in or
+  wallet-only) — `useActiveWalletAccount` gained `disconnect`, dispatching to the active
+  namespace's own `disconnect()`. See `account-page.md#wallet-card`. (Between #1362 and #1458 there
+  was briefly no UI control to disconnect a wallet; that gap is now closed.)
 
 **Active nav** is derived from the current URL:
 
@@ -750,15 +767,15 @@ page, not pinned: the banner is **non-sticky** and scrolls away in normal flow w
 
 ### AccountDropdown
 
-**Status: orphaned by #1362, no longer composed anywhere.** `TopBar` stopped rendering the
+**Status: orphaned by #1362, no longer composed anywhere (TD-112).** `TopBar` stopped rendering the
 `WalletPill` trigger + this dropdown when the header's right slot switched to the auth-state
 matrix (Sign In/Sign Up ↔ account icon) — see `### TopBar` above. The component and its test file
 are left in the tree (not deleted, to keep this change reviewable) rather than removed outright;
-logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`), a candidate either for deletion or
-for its namespace-toggle/disconnect pattern to be reused by `AccountWalletCard` (which currently
-has no disconnect affordance — see the "Where wallet-connect entry points still live" note above).
-The rest of this section documents the component as it existed before #1362, for that eventual
-reuse.
+logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`, TD-112), a candidate for deletion.
+`AccountWalletCard` gained its own `Disconnect` row directly (#1458, closed TD-111) rather than
+reusing this component's namespace-toggle/disconnect pattern, so TD-112 is now purely "delete this
+dead code," unrelated to TD-111. The rest of this section documents the component as it existed
+before #1362, kept for history.
 
 **Source:** `AccountDropdown.tsx` + `useAccountDropdown.ts`.
 

@@ -33,6 +33,7 @@ export interface AccountDocumentsCardProps {
   onRemoveDocument?: (id: number) => void;
   onUploadMissingDocument?: () => void;
   onReuploadDocument?: (id: number) => void;
+  onUploadIntercept?: () => void;
 }
 
 const CONTAINER_CLASS_BY_STATE: Record<AccountDocumentsState, string> = {
@@ -72,6 +73,7 @@ export function AccountDocumentsCard({
   onRemoveDocument,
   onUploadMissingDocument,
   onReuploadDocument,
+  onUploadIntercept,
 }: AccountDocumentsCardProps) {
   const visibleDocuments = documents.filter((d) => d.status !== "NotProvided");
   const uploadVisible =
@@ -168,6 +170,7 @@ export function AccountDocumentsCard({
           rejected={rejected}
           onFiles={onAddFiles}
           disabled={busy}
+          onIntercept={onUploadIntercept}
         />
       )}
 

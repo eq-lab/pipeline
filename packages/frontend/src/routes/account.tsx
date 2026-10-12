@@ -1,8 +1,9 @@
 // spec: docs/frontend/account-page.md#route
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ENV } from "@/lib/env";
-import { readSession } from "@/auth/session";
 import { useAuthSession } from "@/auth";
+import { useWalletPresence } from "@/wallet";
 import { AccountPage } from "@/components/account/AccountPage";
 import {
   parseAccountStatePreview,
@@ -10,9 +11,6 @@ import {
 } from "@/components/account/accountPageState";
 
 export const Route = createFileRoute("/account")({
-  beforeLoad: () => {
-    if (!ENV.IS_DEV && readSession() === null) throw redirect({ to: "/" });
-  },
   validateSearch: (raw): { state: AccountDocumentsState | undefined } => ({
     state: ENV.IS_DEV ? parseAccountStatePreview(raw.state) : undefined,
   }),
@@ -22,12 +20,23 @@ export const Route = createFileRoute("/account")({
 function AccountRoute() {
   const { state } = Route.useSearch();
   const navigate = useNavigate();
-  const { signOut } = useAuthSession();
+  const { isAuthenticated, signOut } = useAuthSession();
+  const { isAnyConnected, isSettled, disconnectAll } = useWalletPresence();
+
+  const blocked = !ENV.IS_DEV && !isAuthenticated && !isAnyConnected;
+
+  useEffect(() => {
+    if (blocked && isSettled) void navigate({ to: "/", replace: true });
+  }, [blocked, isSettled, navigate]);
+
+  if (blocked) return null;
+
   return (
     <AccountPage
       previewState={state}
       onLogOut={() => {
-        signOut();
+        if (isAuthenticated) signOut();
+        else disconnectAll();
         void navigate({ to: "/" });
       }}
     />

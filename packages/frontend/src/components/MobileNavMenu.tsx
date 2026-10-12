@@ -214,8 +214,8 @@ export interface MobileNavMenuProps {
   pathname: string;
   /** Navigate to a route. */
   onNavigate: (to: string) => void;
-  /** Whether the LP has an active auth session (issue #1362). */
-  isAuthenticated: boolean;
+  /** Whether to show the account row (session or connected wallet, issue #1458). */
+  showAccount: boolean;
   /** Opens the shared auth flow on the sign-in screen. */
   onSignIn: () => void;
   /** Opens the shared auth flow on the create-account screen. */
@@ -229,7 +229,7 @@ export function MobileNavMenu({
   onClose,
   pathname,
   onNavigate,
-  isAuthenticated,
+  showAccount,
   onSignIn,
   onSignUp,
 }: MobileNavMenuProps) {
@@ -434,7 +434,7 @@ export function MobileNavMenu({
             <NetworkSwitcher />
           </div>
 
-          {isAuthenticated ? (
+          {showAccount ? (
             <button
               type="button"
               onClick={() => handleNavClick("/account")}

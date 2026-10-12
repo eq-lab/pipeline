@@ -785,12 +785,21 @@ instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern
 so every route renders under it.
 
 `useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close(), lpRead, kybStatus?,
-openAccountSetup() }` (widened by #1422 for the home route's state derivation —
-`docs/frontend/dashboard-components.md#home-route`). `open()` defaults to the `"sign-in"` screen
-when called with no argument. Unlike `useConnectModal()` (no-op fallback for partial test trees),
-`useAuthFlow()` **throws** when called outside the provider — callers (`TopBar`, `MobileNavMenu`)
+openAccountSetup(), openAddEmail() }` (widened by #1422 for the home route's state derivation —
+`docs/frontend/dashboard-components.md#home-route` — and by #1458 for the Account page's
+wallet-only `Add email` row). `open()` defaults to the `"sign-in"` screen when called with no
+argument. Unlike `useConnectModal()` (no-op fallback for partial test trees), `useAuthFlow()`
+**throws** when called outside the provider — callers (`TopBar`, `MobileNavMenu`, `AccountPage`)
 are always inside it in production, so a missing provider in a test tree is a setup bug worth
 surfacing loudly rather than silently swallowing.
+
+`openAddEmail()` (#1458) is implemented today as `open("create-account")` — a named seam rather
+than a raw `open()` call, so the one call site (`AccountEmailCard`'s `Add email` row, wired from
+`AccountPage`'s wallet-only variant) has a self-documenting name and a single place to re-point.
+**Do not** add an `"add-email"` member to `EmailAuthScreen` for this — that union, and the screen
+it names, are #1459's to add; #1459 re-points `openAddEmail()`'s implementation to that new screen
+without touching `AccountEmailCard`. See
+[`account-page.md#wallet-only-variant-1458`](./account-page.md#wallet-only-variant-1458).
 
 `lpRead` (`"unknown" | "absent" | "loaded" | "error"`, from `homeState.ts`) and `kybStatus`
 (`setup.lp?.kyb_status`, only defined when `lpRead === "loaded"`) are a direct projection of the
@@ -813,11 +822,12 @@ and dismissal close it without logging out or navigating. Modal state belongs to
 session token and is cleared on session changes or reload. Submission adopts the server LP and freezes editing. Failed or partial uploads do not submit;
 unknown submission status requires Check submission status before writes resume.
 
-**Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (signed out) call `open("sign-in")` /
-`open("create-account")`; `TopBar`'s account icon (signed in) does not call it at all — it
-navigates to `/account`. `MobileNavMenu` mirrors both via `onSignIn`/`onSignUp` props threaded from
-`TopBar`. `/test?tab=auth` does **not** use this provider — see `### Diagnostics preview seam`
-below.
+**Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (no session, no wallet) call
+`open("sign-in")` / `open("create-account")`; the account icon (session, or a connected wallet
+with no session — #1458) does not call it at all — it navigates to `/account`. `MobileNavMenu`
+mirrors both via `onSignIn`/`onSignUp` props threaded from `TopBar`. On `/account`, a wallet-only
+visitor's `Add email` row calls `openAddEmail()`. `/test?tab=auth` does **not** use this provider —
+see `### Diagnostics preview seam` below.
 
 ### Turnstile
 

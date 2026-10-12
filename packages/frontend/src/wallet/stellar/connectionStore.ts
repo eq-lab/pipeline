@@ -35,6 +35,15 @@ const listeners = new Set<() => void>();
  */
 let hydrated = false;
 
+/**
+ * Settled flag — true once the mount-effect `getAddress()` call has resolved
+ * or rejected (unlike `hydrated`, which is set *before* that call starts).
+ * Reactive via `useStellarConnectionSettled()`, which reuses the address
+ * store's listener set, for consumers that must not redirect while the
+ * first-load hydration race is still in flight.
+ */
+let settled = false;
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /** Non-reactive snapshot getter — used by `useSyncExternalStore`. */
@@ -92,6 +101,33 @@ export function isStellarConnectionHydrated(): boolean {
 }
 
 /**
+ * Mark the mount-effect `getAddress()` call as settled (resolved or
+ * rejected) and notify subscribers.
+ */
+export function markStellarConnectionSettled(): void {
+  if (settled) return;
+  settled = true;
+  listeners.forEach((l) => l());
+}
+
+/** Returns `true` once the mount-effect `getAddress()` call has settled. */
+export function isStellarConnectionSettled(): boolean {
+  return settled;
+}
+
+/**
+ * React hook that returns `true` once the mount-effect `getAddress()` call
+ * has settled. SSR snapshot is always `false`.
+ */
+export function useStellarConnectionSettled(): boolean {
+  return useSyncExternalStore(
+    subscribeStellarConnection,
+    isStellarConnectionSettled,
+    () => false,
+  );
+}
+
+/**
  * Reset all store state (address, listeners, hydration guard).
  *
  * FOR TESTS ONLY — call this in `beforeEach`/`afterEach` to guarantee
@@ -102,6 +138,7 @@ export function _resetStellarConnectionStoreForTests(): void {
   currentAddress = undefined;
   listeners.clear();
   hydrated = false;
+  settled = false;
 }
 
 // ── Kit event subscriptions ────────────────────────────────────────────────────
