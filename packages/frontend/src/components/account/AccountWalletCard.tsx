@@ -54,6 +54,7 @@ export function AccountWalletCard() {
     truncatedAddress,
     formattedBalance,
     connect,
+    disconnect,
   } = useActiveWalletAccount();
 
   function handleCopy() {
@@ -84,7 +85,7 @@ export function AccountWalletCard() {
 
       {isConnected ? (
         <div
-          className="flex w-full flex-col items-start gap-2"
+          className="flex w-full flex-col items-start gap-0"
           data-node-id="6701:98145"
         >
           <AccountListRow
@@ -117,6 +118,35 @@ export function AccountWalletCard() {
             title={formattedBalance ?? "—"}
             data-node-id="6701:98147"
           />
+          <div
+            aria-hidden="true"
+            className="flex h-6 w-full items-center"
+            data-node-id="7127:15564"
+          >
+            <span className="h-px w-full bg-[color:var(--color-pipeline-line)]" />
+          </div>
+          <button
+            type="button"
+            onClick={disconnect}
+            className={[
+              "flex w-full items-center gap-3 rounded-[var(--radius-pipeline-card)] p-2 text-left",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+              "focus-visible:ring-[var(--color-pipeline-brand)]",
+            ].join(" ")}
+            data-testid="account-disconnect-row"
+            data-node-id="7127:15570"
+          >
+            <span
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body)]",
+                "leading-[var(--text-pipeline-body--line-height)]",
+                "text-[color:var(--color-pipeline-ink)]",
+              ].join(" ")}
+            >
+              Disconnect
+            </span>
+          </button>
         </div>
       ) : (
         <div

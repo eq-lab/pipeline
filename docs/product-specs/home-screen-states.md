@@ -29,11 +29,16 @@ States are evaluated in the order above; the first matching condition wins.
 a wallet connected but no session is **state 7** (Figma `7149:16033`, #1460): the wallet is not a
 credential — connecting it only lets the visitor see it on the Account page — and the visitor
 registers through the Account page's `Add email` row (#1459, the same signup → OTP → session flow
-as Create account), with the header showing the account icon instead of Sign In / Sign Up (#1458).
-Until #1460 lands, `deriveHomeState` still returns `"zero"` for every sessionless visitor, wallet
-or not, so the zero-state grid is what a wallet-only visitor sees today. A connected wallet with a
-non-zero balance and no session is still undesigned and keeps falling through to state 1 until a
-frame exists.
+as Create account), with the header showing the account icon instead of Sign In / Sign Up
+(**shipped, #1458** — `TopBar`/`MobileNavMenu` key on `useWalletPresence().isAnyConnected ||
+isAuthenticated`, see
+[`dashboard-components.md#topbar`](../frontend/dashboard-components.md#topbar)). `/account` itself
+is also reachable for this visitor as of #1458 (its wallet-only variant —
+[`account-page.md#wallet-only-variant-1458`](../frontend/account-page.md#wallet-only-variant-1458)).
+Until #1460 lands, `deriveHomeState` is untouched and still returns `"zero"` for every sessionless
+visitor, wallet or not, so the zero-state grid is what a wallet-only visitor sees on `/` today —
+only the header and `/account` have moved. A connected wallet with a non-zero balance and no
+session is still undesigned and keeps falling through to state 1 until a frame exists.
 
 States 2–6 all presuppose an auth session — their KYB status comes from `GET /v1/lps/me`, which
 needs one.

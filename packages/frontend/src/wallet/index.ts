@@ -213,6 +213,10 @@ export type {
   StakeStepInfo,
 } from "./useStakeFlow";
 
+// ── Wallet presence (issue #1458) ─────────────────────────────────────────────
+export { useWalletPresence } from "./useWalletPresence";
+export type { UseWalletPresenceResult } from "./useWalletPresence";
+
 // ── Network switcher (cross-deployment links, issue #1032) ───────────────────
 export {
   getNetworkSwitcherState,

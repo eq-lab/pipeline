@@ -12,6 +12,11 @@ The `Disconnect` row and its divider also exist on every other connected Account
 (`6701:97942`/`7127:15605`, `6701:97982`/`15609`, `6701:98022`/`15611`, `6701:98175`/`15603`,
 `6701:98061`/`15607`), so it ships for signed-in LPs too.
 
+**Status: Implemented (2026-10-12).** All steps in A–E below are landed, the Test Strategy's items
+are covered (plus `wallet/useWalletPresence.test.tsx`, new), and every doc in "Docs to Update" is
+updated, including the new user-stories doc. `yarn lint`, `yarn build`, `npx tsx scripts/lint-docs.ts`,
+and the full frontend test suite (2210 tests) are green.
+
 ## Scope
 
 **In scope**
@@ -126,6 +131,11 @@ These are settled; the coder implements them as written.
   or keep today's per-tab semantics? **Proposed default: keep today's semantics** (the tab is a view
   switch, identical to the signed-in behaviour #1284 shipped) — the coder should proceed on that if
   there is no answer.
+
+  **Resolved (2026-10-12, on the Issue):** keep today's per-tab wallet-view semantics. A wallet-only
+  visitor looking at the other namespace tab on `/account` sees that tab's `Connect Wallet` state
+  with no `Disconnect` row; the header and the route gate key on "any namespace connected" exactly
+  as proposed. No change to the wallet card's per-tab view logic.
 
 ## Implementation Steps
 

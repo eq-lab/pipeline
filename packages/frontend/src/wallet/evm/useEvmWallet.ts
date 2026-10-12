@@ -40,13 +40,18 @@ const KEYS = {
 export interface WalletState {
   address: `0x${string}` | undefined;
   isConnected: boolean;
+  isSettled: boolean;
   chainId: number | undefined;
   connect(): void;
   disconnect(): void;
 }
 
 export function useEvmWallet(): WalletState {
-  const { address: realAddress, isConnected: realIsConnected } = useAccount();
+  const {
+    address: realAddress,
+    isConnected: realIsConnected,
+    status,
+  } = useAccount();
   const realChainId = useChainId();
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const { open } = useAppKit();
@@ -65,6 +70,9 @@ export function useEvmWallet(): WalletState {
         ? true
         : realIsConnected;
   const chainId = mockChainId ?? realChainId;
+  const isSettled =
+    mockAddress !== undefined ||
+    (status !== "connecting" && status !== "reconnecting");
 
   function connect() {
     // Mock short-circuit — dev affordance, bypasses the terms gate.
@@ -95,7 +103,7 @@ export function useEvmWallet(): WalletState {
     wagmiDisconnect();
   }
 
-  return { address, isConnected, chainId, connect, disconnect };
+  return { address, isConnected, isSettled, chainId, connect, disconnect };
 }
 
 // ── Per-wallet EVM connect hook ───────────────────────────────────────────────

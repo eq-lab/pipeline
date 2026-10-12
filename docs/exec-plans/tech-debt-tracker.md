@@ -1469,7 +1469,7 @@ line, whichever section it lands in.
 - **Suggested fix:** No invented mobile layout; revisit once #1282 mounts the card into a real
   responsive grid.
 
-### TD-111: No UI control to disconnect a wallet after #1362
+### TD-111: No UI control to disconnect a wallet after #1362 [RESOLVED 2026-10-12 / #1458]
 
 - **Date:** 2026-09-24
 - **Location:** `packages/frontend/src/components/TopBar.tsx`,
@@ -1484,9 +1484,13 @@ line, whichever section it lands in.
   wallet extension itself (e.g., MetaMask's own site-permissions UI) or clearing site data. Low
   severity (wallet connection is a read/sign convenience, not a security boundary the app needs to
   revoke), but a real, user-facing gap worth closing.
-- **Suggested fix:** Add a disconnect action to `AccountWalletCard`'s connected state — no Figma
-  disconnect control exists there either, so this needs a design decision, not just an
-  implementation. Out of scope for #1362 (header auth entry only).
+- **Resolved by #1458:** the "No Verified Account" Figma frame (`6701:98137`) turned out to carry a
+  divider + `Disconnect` row (`7127:15564`/`7127:15570`) on every connected wallet-card state, so
+  the design decision this entry was waiting on arrived. `useActiveWalletAccount` gained
+  `disconnect` (dispatches to the active namespace's own `disconnect()`), and `AccountWalletCard`
+  renders the divider + `Disconnect` row after the `Wallet`/`USDC balance` rows on every connected
+  state — signed-in and wallet-only alike. See
+  [`account-page.md#wallet-card`](../frontend/account-page.md#wallet-card).
 
 ### TD-112: `AccountDropdown` is orphaned dead code after #1362
 
@@ -1498,9 +1502,10 @@ line, whichever section it lands in.
   tests passing, but nothing imports them outside their own test file any more.
 - **Impact:** None functionally — dead code that still compiles and tests green. Reduces signal for
   future readers who may assume it is still wired.
-- **Suggested fix:** Either delete it, or repurpose its namespace-toggle/disconnect UI as the base
-  for TD-111's `AccountWalletCard` disconnect action (its `kind`/`onKindChange` and
-  `onDisconnect` props are close to what that would need).
+- **Suggested fix:** Delete it. TD-111 (the disconnect gap this component's pattern could have fed)
+  was resolved by #1458 without reusing this component — `AccountWalletCard` grew its own
+  `Disconnect` row directly from the Figma frame instead. This entry is now purely "delete dead
+  code," unblocked by nothing.
 
 ---
 

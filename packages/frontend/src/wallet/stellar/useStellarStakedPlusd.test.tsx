@@ -237,6 +237,7 @@ beforeEach(() => {
   vi.mocked(useStellarWallet).mockImplementation(() => ({
     address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
     isConnected: true,
+    isSettled: true,
     signTransaction: mockSignTransaction,
     connect: vi.fn(),
     disconnect: vi.fn(),
@@ -312,6 +313,7 @@ describe("useStellarStake", () => {
     vi.mocked(walletModule.useStellarWallet).mockReturnValueOnce({
       address: undefined,
       isConnected: false,
+      isSettled: true,
       signTransaction: mockSignTransaction,
       connect: vi.fn(),
       disconnect: vi.fn(),
@@ -568,6 +570,7 @@ describe("useStellarStakedPlusdBalance", () => {
     vi.mocked(walletModule.useStellarWallet).mockReturnValue({
       address: undefined,
       isConnected: false,
+      isSettled: true,
       signTransaction: mockSignTransaction,
       connect: vi.fn(),
       disconnect: vi.fn(),
@@ -608,6 +611,7 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     vi.mocked(walletModule.useStellarWallet).mockReturnValue({
       address: TEST_ADDRESS,
       isConnected: true,
+      isSettled: true,
       signTransaction: mockSignTransaction,
       connect: vi.fn(),
       disconnect: vi.fn(),

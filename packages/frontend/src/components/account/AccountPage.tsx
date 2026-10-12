@@ -1,6 +1,6 @@
 // spec: docs/frontend/account-page.md#accountpage
 import { Button } from "@pipeline/ui";
-import { useAuthSession } from "@/auth";
+import { useAuthSession, useAuthFlow } from "@/auth";
 import { AccountWalletCard } from "./AccountWalletCard";
 import { AccountEmailCard } from "./AccountEmailCard";
 import { AccountDocumentsCard } from "./AccountDocumentsCard";
@@ -42,12 +42,18 @@ export interface AccountPageProps {
 }
 
 export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
-  const { token } = useAuthSession();
-  return previewState ? (
-    <AccountPageContent previewState={previewState} onLogOut={onLogOut} />
-  ) : (
-    <ProductionAccountPage key={token ?? "signed-out"} onLogOut={onLogOut} />
-  );
+  const { token, isAuthenticated } = useAuthSession();
+  if (previewState) {
+    return (
+      <AccountPageContent previewState={previewState} onLogOut={onLogOut} />
+    );
+  }
+  if (isAuthenticated) {
+    return (
+      <ProductionAccountPage key={token ?? "signed-out"} onLogOut={onLogOut} />
+    );
+  }
+  return <AccountPageContent walletOnly onLogOut={onLogOut} />;
 }
 
 function ProductionAccountPage({
@@ -61,7 +67,12 @@ function AccountPageContent({
   previewState,
   onLogOut,
   account,
-}: AccountPageProps & { account?: ReturnType<typeof useAccountPage> }) {
+  walletOnly = false,
+}: AccountPageProps & {
+  account?: ReturnType<typeof useAccountPage>;
+  walletOnly?: boolean;
+}) {
+  const { openAddEmail } = useAuthFlow();
   const preview = previewState
     ? ACCOUNT_STATE_PREVIEWS[previewState]
     : undefined;
@@ -96,6 +107,7 @@ function AccountPageContent({
     : documents;
   const ready = Boolean(
     previewState ||
+    walletOnly ||
     account?.readState === "loaded" ||
     account?.readState === "absent",
   );
@@ -148,7 +160,12 @@ function AccountPageContent({
           </div>
         )}
 
-        {ready && <AccountEmailCard email={account?.email} />}
+        {ready && (
+          <AccountEmailCard
+            email={account?.email}
+            onAddEmail={walletOnly ? openAddEmail : undefined}
+          />
+        )}
 
         {ready && account && (
           <AccountProfileCard
@@ -282,6 +299,7 @@ function AccountPageContent({
               onReuploadDocument={
                 account ? (id) => void account.removeDocument(id) : undefined
               }
+              onUploadIntercept={walletOnly ? openAddEmail : undefined}
             />
           </div>
         )}

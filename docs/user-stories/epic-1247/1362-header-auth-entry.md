@@ -4,7 +4,14 @@ Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1362](https://github.com/eq-lab/pipeline/issues/1362)
 Spec: [docs/frontend/dashboard-components.md](../../frontend/dashboard-components.md#topbar),
 [docs/frontend/auth-components.md](../../frontend/auth-components.md#authflowprovider),
-[docs/frontend/account-page.md](../../frontend/account-page.md#route-and-dev-only-guard)
+[docs/frontend/account-page.md](../../frontend/account-page.md#route-gate)
+
+**Amended by #1458 (2026-10-12):** the header's auth-entry rule widened from "session" to "session
+*or* connected wallet" — a visitor with a connected wallet and no session now also sees the account
+icon, not Sign In / Sign Up (see Story 1's pre-condition below and
+[1458-wallet-only-account.md](../epic-1419/1458-wallet-only-account.md)). The route gate also moved
+from `beforeLoad` into the route component, so Story 7's redirect is asynchronous — restated below,
+not re-tested.
 
 The LP header (`TopBar`, desktop and mobile) now exposes the production auth entry point that
 `#1265` deferred: signed out shows "Sign In" / "Sign Up" (Figma node `6701:98403`); signed in
@@ -15,18 +22,21 @@ keeps its own independent auth-flow instance (Story 9 there still applies unchan
 
 Stories 1–6 and 8 are fully browser-drivable against a dev deployment (`ENV.IS_DEV` true, which is
 also required to reach `/test?tab=auth`'s preview links used to seed a session for Stories 4–8).
-Story 7 (the production redirect for an unauthenticated visitor) cannot be exercised against a dev
-deployment, since `ENV.IS_DEV` alone already grants `/account` access there — flagged as
-code-review-verified instead (see `routes/account.tsx`'s `beforeLoad`).
+Story 7 (the production redirect for a visitor with neither a session nor a connected wallet)
+cannot be exercised against a dev deployment, since `ENV.IS_DEV` alone already grants `/account`
+access there — flagged as code-review-verified instead (see `routes/account.tsx`'s component-level
+gate, moved out of `beforeLoad` by #1458).
 
 ---
 
 ## Story 1: Signed-out desktop header shows Sign In and Sign Up, no wallet controls
 
-**Persona:** Any visitor, not authenticated, no session in `localStorage`.
+**Persona:** Any visitor, not authenticated, no session in `localStorage`, **and no wallet
+connected** (#1458 — a connected wallet with no session instead shows the account icon; see
+[1458-wallet-only-account.md](../epic-1419/1458-wallet-only-account.md) Story 1).
 
-**Pre-conditions:** Fresh browser profile (or `localStorage.clear()`), desktop viewport (≥768px
-wide), land on `/`.
+**Pre-conditions:** Fresh browser profile (or `localStorage.clear()`), no wallet connected, desktop
+viewport (≥768px wide), land on `/`.
 
 **Steps:**
 
@@ -142,23 +152,28 @@ LP route), unauthenticated.
 
 ---
 
-## Story 7: An unauthenticated visitor cannot reach /account in production (code-review-verified)
+## Story 7: A visitor with neither a session nor a wallet cannot reach /account in production (code-review-verified)
 
-**Persona:** Anonymous visitor, no session.
+**Persona:** Anonymous visitor, no session, no connected wallet.
 
 **Pre-conditions:** A production build (`ENV.IS_DEV` false) — not exercisable against a normal dev
-deployment, where `IS_DEV` alone grants access regardless of auth.
+deployment, where `IS_DEV` alone grants access regardless of auth or wallet state.
 
 **Steps (for a human/staging check, not an agent against `localhost`):**
 
-1. Navigate directly to `/account` with no session cookie/localStorage entry.
+1. Navigate directly to `/account` with no session and no wallet connected.
 
 **Expected outcomes:**
 
-- Redirected to `/` (`routes/account.tsx`'s `beforeLoad`: `!ENV.IS_DEV && readSession() === null`
-  → `redirect({ to: "/" })`).
-- `?state=<id>` preview overrides are also inert outside `ENV.IS_DEV`, even for an authenticated
-  production user (`validateSearch` only calls `parseAccountStatePreview` when `ENV.IS_DEV`).
+- The route component renders nothing for a tick, then redirects to `/`
+  (`blocked = !ENV.IS_DEV && !isAuthenticated && !isAnyConnected`; a `useEffect` navigates once
+  `useWalletPresence().isSettled` is also true — restated by #1458, since the gate moved out of
+  `beforeLoad` into the component and is now asynchronous; see
+  [1458-wallet-only-account.md](../epic-1419/1458-wallet-only-account.md) Story 3 for the full
+  matrix, including a **connected** visitor, who reaches the page instead).
+- `?state=<id>` preview overrides are also inert outside `ENV.IS_DEV`, even for an authenticated or
+  wallet-connected production user (`validateSearch` only calls `parseAccountStatePreview` when
+  `ENV.IS_DEV`).
 
 ---
 

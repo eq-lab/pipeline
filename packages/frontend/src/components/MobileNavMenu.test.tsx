@@ -40,7 +40,7 @@ function renderMenu(
     onClose: noop,
     pathname: "/",
     onNavigate: noop,
-    isAuthenticated: false,
+    showAccount: false,
     onSignIn: noop,
     onSignUp: noop,
   };
@@ -244,8 +244,8 @@ describe("MobileNavMenu — navigation", () => {
 // ── Tests: auth section, signed-out state (issue #1362) ─────────────────────
 
 describe("MobileNavMenu — signed-out auth state (#1362)", () => {
-  it("shows Sign In and Sign Up when isAuthenticated=false", () => {
-    renderMenu({ open: true, isAuthenticated: false });
+  it("shows Sign In and Sign Up when showAccount=false", () => {
+    renderMenu({ open: true, showAccount: false });
     expect(screen.getByTestId("mobile-sign-in-button")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-sign-up-button")).toBeInTheDocument();
     expect(
@@ -258,7 +258,7 @@ describe("MobileNavMenu — signed-out auth state (#1362)", () => {
     const onSignIn = vi.fn();
     const onClose = vi.fn();
 
-    renderMenu({ open: true, isAuthenticated: false, onSignIn, onClose });
+    renderMenu({ open: true, showAccount: false, onSignIn, onClose });
 
     await user.click(screen.getByTestId("mobile-sign-in-button"));
 
@@ -271,7 +271,7 @@ describe("MobileNavMenu — signed-out auth state (#1362)", () => {
     const onSignUp = vi.fn();
     const onClose = vi.fn();
 
-    renderMenu({ open: true, isAuthenticated: false, onSignUp, onClose });
+    renderMenu({ open: true, showAccount: false, onSignUp, onClose });
 
     await user.click(screen.getByTestId("mobile-sign-up-button"));
 
@@ -283,8 +283,8 @@ describe("MobileNavMenu — signed-out auth state (#1362)", () => {
 // ── Tests: auth section, signed-in state (issue #1362) ──────────────────────
 
 describe("MobileNavMenu — signed-in auth state (#1362)", () => {
-  it("shows an Account row and no Sign In/Sign Up when isAuthenticated=true", () => {
-    renderMenu({ open: true, isAuthenticated: true });
+  it("shows an Account row and no Sign In/Sign Up when showAccount=true", () => {
+    renderMenu({ open: true, showAccount: true });
     expect(screen.getByTestId("mobile-account-button")).toBeInTheDocument();
     expect(
       screen.queryByTestId("mobile-sign-in-button"),
@@ -299,7 +299,7 @@ describe("MobileNavMenu — signed-in auth state (#1362)", () => {
     const onNavigate = vi.fn();
     const onClose = vi.fn();
 
-    renderMenu({ open: true, isAuthenticated: true, onNavigate, onClose });
+    renderMenu({ open: true, showAccount: true, onNavigate, onClose });
 
     await user.click(screen.getByTestId("mobile-account-button"));
 

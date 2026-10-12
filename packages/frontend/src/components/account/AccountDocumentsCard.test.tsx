@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { AccountDocumentsCard } from "./AccountDocumentsCard";
 import { ACCOUNT_STATE_PREVIEWS } from "./accountPageState";
 
@@ -41,6 +42,20 @@ describe("AccountDocumentsCard — verify state", () => {
       "border-[color:var(--color-pipeline-line)]",
     );
     expect(uploadButton.parentElement).toHaveClass("p-1");
+  });
+
+  it("routes Upload through onUploadIntercept instead of the file input when supplied (issue #1458)", async () => {
+    const onUploadIntercept = vi.fn();
+    render(
+      <AccountDocumentsCard
+        {...baseProps({ state: "verify", onUploadIntercept })}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+    expect(onUploadIntercept).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByTestId("account-upload-input"),
+    ).not.toBeInTheDocument();
   });
 });
 

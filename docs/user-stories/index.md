@@ -234,6 +234,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1429 Account-setup modal reopens on every page refresh after the LP dismissed it](https://github.com/eq-lab/pipeline/issues/1429) | [1429-account-setup-dismissal-persistence.md](./epic-1419/1429-account-setup-dismissal-persistence.md) | Initial |
 | [#1430 AddUsdCard verify variant: illustration anchoring and card height do not match Figma 6701:97695](https://github.com/eq-lab/pipeline/issues/1430) | [1430-addusdcard-verify-illustration-anchor.md](./epic-1419/1430-addusdcard-verify-illustration-anchor.md) | Initial |
 | [#1426 Home state 6: KYB not verified due to a problem](https://github.com/eq-lab/pipeline/issues/1426) | [1426-home-kyb-problem-state.md](./epic-1419/1426-home-kyb-problem-state.md) | Initial |
+| [#1458 Header + Account: wallet connected without a session shows the account icon; Account page wallet-only variant with Add email and Disconnect](https://github.com/eq-lab/pipeline/issues/1458) | [1458-wallet-only-account.md](./epic-1419/1458-wallet-only-account.md) | Initial |
 
 ---
 

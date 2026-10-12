@@ -18,9 +18,9 @@ export function AccountIconTile({ children, className }: AccountIconTileProps) {
     .join(" ");
 
   return (
-    <div className={composed} aria-hidden="true">
+    <span className={composed} aria-hidden="true">
       {children}
-    </div>
+    </span>
   );
 }
 

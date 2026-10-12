@@ -2,15 +2,15 @@
  * TopBar — unit tests.
  *
  * Tests route-derived active nav, the auth-state right slot (issue #1362 —
- * Sign In/Sign Up when signed out, account icon when signed in), the network
- * switcher badge, the mainnet dashboard gate, mobile responsive classes, and
- * a smoke test that the header renders on non-`/` routes (regression guard
- * for the root-layout approach).
+ * Sign In/Sign Up when signed out, account icon when signed in; issue #1458 —
+ * account icon also shows for a connected wallet with no session), the
+ * network switcher badge, the mainnet dashboard gate, mobile responsive
+ * classes, and a smoke test that the header renders on non-`/` routes
+ * (regression guard for the root-layout approach).
  *
- * `@/auth` (useAuthSession/useAuthFlow) is mocked at module level — TopBar no
- * longer reads any wallet hook directly (wallet connection moved to
- * `/account`, see `docs/frontend/dashboard-components.md#topbar`), so no
- * wagmi/AppKit/Stellar-wallets-kit scaffolding is needed here any more.
+ * `@/auth` (useAuthSession/useAuthFlow) and `@/wallet`'s `useWalletPresence`
+ * are mocked at module level — TopBar reads no other wallet hook directly, so
+ * no wagmi/AppKit/Stellar-wallets-kit scaffolding is needed here.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -40,6 +40,24 @@ vi.mock("@/auth", () => ({
   }),
   useAuthFlow: () => ({ open: mockAuthFlowOpen, close: vi.fn() }),
 }));
+
+// ── Wallet presence mock (issue #1458) ────────────────────────────────────────
+
+const { mockWalletPresenceState } = vi.hoisted(() => ({
+  mockWalletPresenceState: { isAnyConnected: false },
+}));
+
+vi.mock("@/wallet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/wallet")>();
+  return {
+    ...actual,
+    useWalletPresence: () => ({
+      isAnyConnected: mockWalletPresenceState.isAnyConnected,
+      isSettled: true,
+      disconnectAll: vi.fn(),
+    }),
+  };
+});
 
 // ── Network switcher mock (issue #1032) ───────────────────────────────────────
 // Same pattern as AccountDropdown.test.tsx: only `getNetworkSwitcherState` is
@@ -131,6 +149,7 @@ function clearMocks() {
   mockNetworkSwitcherState.otherNetworks = [];
   mockIsMainnet.value = false;
   mockAuthState.isAuthenticated = false;
+  mockWalletPresenceState.isAnyConnected = false;
   mockAuthFlowOpen.mockClear();
 }
 
@@ -383,6 +402,56 @@ describe("TopBar — auth state (#1362)", () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe("/account"),
     );
+  });
+});
+
+// ── Tests: wallet-only visitor, no session (issue #1458) ─────────────────────
+
+describe("TopBar — wallet-connected, no session (#1458)", () => {
+  afterEach(() => {
+    clearMocks();
+    localStorage.clear();
+  });
+
+  it("shows the account icon when a wallet is connected but there is no session", async () => {
+    mockWalletPresenceState.isAnyConnected = true;
+    renderTopBar("/");
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-account-button")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId("topbar-sign-in-button"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("topbar-sign-up-button"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the account icon when both a session and a wallet are present", async () => {
+    mockAuthState.isAuthenticated = true;
+    mockWalletPresenceState.isAnyConnected = true;
+    renderTopBar("/");
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-account-button")).toBeInTheDocument(),
+    );
+  });
+
+  it("returns to Sign In / Sign Up when the wallet disconnects and there is no session (same-tab reactive)", async () => {
+    mockWalletPresenceState.isAnyConnected = true;
+    const { router } = renderTopBar("/");
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-account-button")).toBeInTheDocument(),
+    );
+    mockWalletPresenceState.isAnyConnected = false;
+    // A route change forces TopBar to re-render without remounting — the
+    // same component instance picks up the updated wallet-presence mock.
+    await router.navigate({ to: "/transactions" });
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-sign-in-button")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId("topbar-account-button"),
+    ).not.toBeInTheDocument();
   });
 });
 

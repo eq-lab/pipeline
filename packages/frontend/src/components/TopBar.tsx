@@ -7,6 +7,7 @@ import { AccountGlyph } from "./AccountGlyph";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
 import { isMainnetDeployment } from "@/wallet/networkSwitcher";
+import { useWalletPresence } from "@/wallet";
 
 // spec: docs/frontend/dashboard-components.md#topbar
 // (connected/disconnected states, active-nav derivation, Figma frame 1497:94715).
@@ -49,6 +50,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     // ── Auth state (issue #1362 — header sign-in/sign-up/account entry) ───
     const { isAuthenticated } = useAuthSession();
     const { open: openAuthFlow } = useAuthFlow();
+    const { isAnyConnected } = useWalletPresence();
+    const showAccount = isAuthenticated || isAnyConnected;
 
     // ── Mobile nav menu state ─────────────────────────────────────────────
     const mobileMenu = useMobileNavMenu();
@@ -137,7 +140,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           data-node-id="1497:94724"
         >
           <NetworkSwitcher />
-          {isAuthenticated ? (
+          {showAccount ? (
             <button
               type="button"
               aria-label="Account"
@@ -153,7 +156,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
                 "focus-visible:ring-[var(--color-pipeline-brand)]",
               ].join(" ")}
               data-testid="topbar-account-button"
-              data-node-id="6701:97941"
+              data-node-id="6701:97941 6701:98174"
             >
               <AccountGlyph />
             </button>
@@ -211,7 +214,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           onClose={mobileMenu.close}
           pathname={pathname}
           onNavigate={(to) => void navigate({ to })}
-          isAuthenticated={isAuthenticated}
+          showAccount={showAccount}
           onSignIn={() => openAuthFlow("sign-in")}
           onSignUp={() => openAuthFlow("create-account")}
         />

@@ -6,10 +6,25 @@ import { clearSession, saveSession } from "@/auth/session";
 import { AccountPage } from "./AccountPage";
 
 const mockGet = vi.fn();
+const mockOpenAddEmail = vi.fn();
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return { ...actual, getMyLp: (...args: unknown[]) => mockGet(...args) };
+});
+
+vi.mock("@/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/auth")>();
+  return {
+    ...actual,
+    useAuthFlow: () => ({
+      open: vi.fn(),
+      close: vi.fn(),
+      lpRead: "unknown" as const,
+      openAccountSetup: vi.fn(),
+      openAddEmail: mockOpenAddEmail,
+    }),
+  };
 });
 
 vi.mock("@/wallet", async (importOriginal) => {
@@ -24,6 +39,7 @@ vi.mock("@/wallet", async (importOriginal) => {
       truncatedAddress: undefined,
       formattedBalance: undefined,
       connect: vi.fn(),
+      disconnect: vi.fn(),
     }),
   };
 });
@@ -77,6 +93,50 @@ describe("AccountPage", () => {
     render(<AccountPage previewState="verified" />);
     expect(screen.getAllByText("Verified")).toHaveLength(7);
     expect(screen.queryByText("Verify your account")).not.toBeInTheDocument();
+  });
+});
+
+describe("AccountPage — wallet-only variant (#1458)", () => {
+  afterEach(() => {
+    clearSession();
+    mockGet.mockReset();
+    mockOpenAddEmail.mockReset();
+  });
+
+  it("renders the wallet-only composition with no session and no /v1/lps/me request", () => {
+    render(<AccountPage />);
+    expect(screen.getByTestId("account-wallet-card")).toBeInTheDocument();
+    expect(screen.getByTestId("account-add-email-row")).toBeInTheDocument();
+    expect(screen.getByTestId("account-documents-card")).toBeInTheDocument();
+    expect(screen.getByText("Verify your account")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(
+      screen.queryByText(/sign in to view your account/i),
+    ).not.toBeInTheDocument();
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it("renders no profile card and no Submit for review", () => {
+    render(<AccountPage />);
+    expect(screen.queryByText("Legal name")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Submit for review" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking the Add email row calls useAuthFlow().openAddEmail", async () => {
+    render(<AccountPage />);
+    await userEvent.click(screen.getByTestId("account-add-email-row"));
+    expect(mockOpenAddEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking Upload calls openAddEmail and does not open the file input", async () => {
+    render(<AccountPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+    expect(mockOpenAddEmail).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByTestId("account-upload-input"),
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -36,6 +36,8 @@ import {
   setStellarConnectionAddress,
   isStellarConnectionHydrated,
   markStellarConnectionHydrated,
+  markStellarConnectionSettled,
+  useStellarConnectionSettled,
 } from "./connectionStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -45,6 +47,8 @@ export interface StellarWalletState {
   address: string | undefined;
   /** `true` when a wallet is connected (or mocked). */
   isConnected: boolean;
+  /** `true` once the mount-effect address hydration has settled (or mocked). */
+  isSettled: boolean;
   /**
    * Open the Stellar wallet-picker modal.
    *
@@ -95,6 +99,7 @@ export function useStellarWallet(): StellarWalletState {
   const mockAddress = useMockStellarAddress();
   const mockIsConnected = useMockStellarIsConnected();
   const { openGate } = useWalletGate();
+  const connectionSettled = useStellarConnectionSettled();
 
   // On mount, try to read the last-known address from kit memory.
   // Guarded by a module-level `hydrated` flag so only one instance fires
@@ -112,6 +117,8 @@ export function useStellarWallet(): StellarWalletState {
         }
       } catch {
         // No prior connection — leave address undefined.
+      } finally {
+        markStellarConnectionSettled();
       }
     })();
   }, []);
@@ -124,6 +131,7 @@ export function useStellarWallet(): StellarWalletState {
       : mockAddress !== undefined
         ? true
         : realAddress !== undefined;
+  const isSettled = mockAddress !== undefined ? true : connectionSettled;
 
   /**
    * The actual kit connect flow. Opens the picker modal, waits for the user to
@@ -193,7 +201,14 @@ export function useStellarWallet(): StellarWalletState {
     [mockAddress, address],
   );
 
-  return { address, isConnected, connect, disconnect, signTransaction };
+  return {
+    address,
+    isConnected,
+    isSettled,
+    connect,
+    disconnect,
+    signTransaction,
+  };
 }
 
 // ── Per-wallet Soroban connect hook ───────────────────────────────────────────
