@@ -15,12 +15,14 @@ use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
 use crate::indexer::stellar::loan_registry_parsers::{
-    extract_u128_from_map, extract_u32, extract_u64_from_map, get_map_entry, parse_ccr_updated,
-    parse_economics_amended, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
-    parse_loan_rolled_over, parse_location_updated, parse_payment_recorded, parse_status_updated,
+    extract_u32, extract_u64_from_map, get_map_entry, parse_disbursed, parse_economics_amended,
+    parse_interest_adjusted, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
+    parse_loan_rolled_over, parse_loan_written_down, parse_payment_recorded,
+    parse_payment_unrecorded, parse_status_updated, parse_undisbursed,
 };
 
 pub use crate::stellar::scval::extract_i128;
+use crate::stellar::scval::i128_from_parts;
 
 use crate::indexer::stellar::rpc::RawEvent;
 
@@ -216,39 +218,6 @@ pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
             "owner": owner,
             "assets": assets.to_string(),
             "shares": shares.to_string(),
-        }),
-    })
-}
-
-/// YieldMinter `YieldMinted` event.
-/// topics: [yield_minted]
-/// value:  Map { s_plusd_amount: u128, treasury_amount: u128 }
-///
-/// Params shape matches the EVM `parse_yield_minted` in `packages/worker/src/indexer/parsers.rs`
-/// so that `list_yield_mints` (`params->>'s_plusd_amount'`) works identically on both chains.
-/// On Stellar this event is loan-repayment-only: `s_plusd_amount` = net senior coupon,
-/// `treasury_amount` = mgmt_fee + perf_fee + oet_alloc.
-pub fn parse_yield_minted(raw: &RawEvent) -> Option<StellarLog> {
-    if raw.event_name != "yield_minted" {
-        return None;
-    }
-    if raw.topics_base64.is_empty() {
-        return None;
-    }
-
-    let s_plusd_amount = extract_u128_from_map(&raw.value_base64, "s_plusd_amount")?;
-    let treasury_amount = extract_u128_from_map(&raw.value_base64, "treasury_amount")?;
-
-    Some(StellarLog {
-        contract_address: raw.contract_id.clone(),
-        event_name: "YieldMinted".to_owned(),
-        block_number: raw.ledger as u64,
-        tx_hash: raw.tx_hash.clone(),
-        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
-        block_timestamp: raw.ledger_closed_at_unix,
-        params: json!({
-            "s_plusd_amount": s_plusd_amount.to_string(),
-            "treasury_amount": treasury_amount.to_string(),
         }),
     })
 }
@@ -493,10 +462,6 @@ fn u128_from_parts(hi: u64, lo: u64) -> u128 {
     ((hi as u128) << 64) | (lo as u128)
 }
 
-fn i128_from_parts(hi: i64, lo: u64) -> i128 {
-    ((hi as i128) << 64) | (lo as i128)
-}
-
 fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
     match addr {
         ScAddress::Account(account_id) => {
@@ -538,9 +503,11 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `loan_registry_id` is `None` when the contract has not yet been deployed
 /// (ships dark — the new branch is a no-op until the env var is set).
 ///
-/// `yield_minter_id` is `None` when the YieldMinter contract has not yet been deployed to
-/// this chain. When set, `YieldMinted` events are collected and routed to `StellarLogMapper`
-/// (contract_logs), matching the EVM path. Loan-repayment-only on Stellar today.
+/// `yield_minter_id` is `None` when the minter contract has not yet been deployed to
+/// this chain. When set, `WireIn` / `WireInAssigned` events are collected and routed
+/// to `StellarLogMapper` (contract_logs) for the relayer's wire-in matching (#1416).
+/// `YieldMinted` is retired (#1433) — it belonged to a pre-#33 deployment this field
+/// no longer targets.
 ///
 /// `asset_id` is `Some` when asset-transfer tracking is configured (Issue #789 /
 /// #933). When set, `transfer` events from the asset contract are decoded to
@@ -573,33 +540,32 @@ pub fn dispatch_parser(
             .or_else(|| parse_vault_withdraw(raw))
             .or_else(|| parse_share_transfer(raw))
     } else if loan_registry_id == Some(raw.contract_id.as_str()) {
-        // LoanRegistry events — all 9 events, tried in order.
+        // LoanRegistry events — all 12 collected events, tried in order.
         // Returns None for any event not emitted by the LoanRegistry contract.
         parse_loan_drawn(raw)
             .or_else(|| parse_status_updated(raw))
-            .or_else(|| parse_ccr_updated(raw))
-            .or_else(|| parse_location_updated(raw))
-            .or_else(|| parse_loan_defaulted(raw))
-            .or_else(|| parse_loan_closed(raw))
+            .or_else(|| parse_disbursed(raw))
+            .or_else(|| parse_undisbursed(raw))
             .or_else(|| parse_payment_recorded(raw))
+            .or_else(|| parse_payment_unrecorded(raw))
+            .or_else(|| parse_loan_defaulted(raw))
+            .or_else(|| parse_loan_written_down(raw))
+            .or_else(|| parse_interest_adjusted(raw))
+            .or_else(|| parse_loan_closed(raw))
             .or_else(|| parse_loan_rolled_over(raw))
             .or_else(|| parse_economics_amended(raw))
     } else if yield_minter_id == Some(raw.contract_id.as_str()) {
-        // The minter contract, under its former name (see the config field).
-        // `YieldMinted` comes from a pre-#33 deployment; `WireIn` /
-        // `WireInAssigned` from a post-#33 one (#1416). No deployment emits
-        // both, and each parser matches its own event name, so trying them in
-        // order is safe. The minter's other 19 events are deliberately not
-        // collected yet and fall through as `None`.
-        let parsed = parse_yield_minted(raw)
-            .or_else(|| parse_wire_in(raw))
-            .or_else(|| parse_wire_in_assigned(raw));
+        // The minter contract, under its former name (see the config field). It is
+        // deployed (#36 lists `minter: CAPL5WN3…`): `YieldMinted` is retired (#1433)
+        // since the rework stopped emitting it, so only `WireIn` / `WireInAssigned`
+        // (#1416) are collected here now. The minter's other 19 events are
+        // deliberately not collected yet and fall through as `None`.
+        let parsed = parse_wire_in(raw).or_else(|| parse_wire_in_assigned(raw));
         // A `None` here is normally one of the 19 events we do not collect. But
-        // for the two we do, it means the on-chain encoding differs from what
-        // the parsers expect — and the minter has never been deployed, so that
-        // encoding is unverified. Silence would be indistinguishable from "no
-        // wires have arrived yet", for as long as it took someone to notice
-        // every deposit stuck at `is_minted = false`.
+        // for the two we do, it means the on-chain encoding differs from what the
+        // parsers expect. Silence would be indistinguishable from "no wires have
+        // arrived yet", for as long as it took someone to notice every deposit
+        // stuck at `is_minted = false`.
         if parsed.is_none() && matches!(raw.event_name.as_str(), "wire_in" | "wire_in_assigned") {
             tracing::warn!(
                 contract_id = %raw.contract_id,

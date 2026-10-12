@@ -195,5 +195,5 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
 - Repayment accounting splits Senior principal, net Senior coupon, the three fee
   carve-outs, and Equity flows explicitly on chain. Outstanding obligations are derivable
   from genesis economics minus the mutable counters, auditable by any third party.
-- The registry is informational. sPLUSD share price moves only on actual yield mints and
-  not on `recordPayment()` writes, so an erroneous Trustee entry cannot inflate share price.
+- The registry is informational. sPLUSD share price moves only on actual yield mints and not on `recordPayment()` writes, so an erroneous Trustee entry cannot inflate share price.
+- The Stellar minter's `record_wire_in(caller, receiver, amount: i128, value_date: u64, ref_hash: BytesN<32>) -> u32` is a direct, self-authorising invocation gated by `CASH_REPORTER` at execution delay 0, with a single-use `ref_hash` and 7-decimal amounts — it is not a LoanRegistry write and mints only against a recorded bank deposit; see [deposits.md](./deposits.md).

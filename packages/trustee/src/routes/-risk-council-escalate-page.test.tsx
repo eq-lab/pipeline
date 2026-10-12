@@ -97,7 +97,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       maturity: 1_782_777_600,
       next_payment_timestamp: 1_782_777_600,
       days_overdue: null,
-      ccr_reported_at: 0,
       spot_price: "4500",
       spot_change_7d: "-0.18",
       // Served display-scale (#906): $2,106,000 as-is.
@@ -121,7 +120,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4471",
   status: "WatchList",
-  location: null,
   epoch: null,
   offtaker: "2000000.000000",
   principal: "1800000.000000",

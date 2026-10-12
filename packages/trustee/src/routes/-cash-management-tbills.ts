@@ -5,7 +5,7 @@
  *
  * spec: docs/frontend/trustee-flows.md#t-bills-tab-944.
  */
-import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 
 /** Plain amount with thousands separators (`"8,400,000"`); `"—"` when unknown. */
@@ -35,7 +35,7 @@ export interface TbillsSwapView {
 }
 
 export function useTbillsSwap(): TbillsSwapView {
-  const balance = useCapitalWalletBalance();
+  const balance = useUsdcCustodyBalance();
   const allocation = useCapitalAllocation();
 
   const usdcValue = toValue(balance.data);

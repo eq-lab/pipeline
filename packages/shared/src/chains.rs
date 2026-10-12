@@ -25,6 +25,9 @@ pub enum ChainKind {
 
 /// Read `CHAIN_<id>_TYPE` and return the discriminator.
 /// Defaults to `Evm` when unset. Returns `Err` for unknown values.
+///
+/// Cheap and called per request; the key-prefix audit lives in
+/// `validate_chain_kind_keys`, which each job runs once per chain at startup.
 pub fn parse_chain_type(chain_id: i64) -> Result<ChainKind> {
     let key = format!("CHAIN_{chain_id}_TYPE");
     match env::var(&key).as_deref() {
@@ -32,6 +35,38 @@ pub fn parse_chain_type(chain_id: i64) -> Result<ChainKind> {
         Ok("evm") | Err(_) => Ok(ChainKind::Evm),
         Ok(v) => anyhow::bail!("{key} must be 'evm' or 'stellar', got '{v}'"),
     }
+}
+
+/// Every per-chain key carries its network kind, so a key of the *other* kind is
+/// configuration the chain can never read. Left unchecked, flipping
+/// `CHAIN_<id>_TYPE` would silently orphan a whole block of settings.
+///
+/// Walks the whole process environment, so it belongs at startup — each job calls
+/// it once per chain while assembling settings. Config cannot change after boot.
+pub fn validate_chain_kind_keys(chain_id: i64, kind: ChainKind) -> Result<()> {
+    let other = match kind {
+        ChainKind::Evm => "STELLAR",
+        ChainKind::Stellar => "EVM",
+    };
+    let prefix = format!("CHAIN_{chain_id}_{other}_");
+    let mut stray: Vec<String> = env::vars()
+        .map(|(k, _)| k)
+        .filter(|k| k.starts_with(&prefix))
+        .collect();
+    if stray.is_empty() {
+        return Ok(());
+    }
+    stray.sort();
+    let declared = match kind {
+        ChainKind::Evm => "evm",
+        ChainKind::Stellar => "stellar",
+    };
+    anyhow::bail!(
+        "chain {chain_id} is declared '{declared}' but {} {other} key(s) are set and will \
+         never be read: {}. Either fix CHAIN_{chain_id}_TYPE or remove them.",
+        stray.len(),
+        stray.join(", ")
+    )
 }
 
 /// Normalize a USDC-denominated amount for **display/API use only**.

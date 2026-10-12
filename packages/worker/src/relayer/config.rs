@@ -5,7 +5,9 @@ use anyhow::{Context, Result};
 use ed25519_dalek::SigningKey;
 use stellar_strkey::Contract;
 
-use crate::indexer::config::{parse_chain_type, parse_chains_env, validate_contract_id, ChainType};
+use crate::indexer::config::{
+    parse_chain_type, parse_chains_env, validate_chain_kind_keys, validate_contract_id, ChainType,
+};
 
 // ─── EVM relayer settings ────────────────────────────────────────────────────
 //
@@ -46,7 +48,7 @@ impl EvmRelayerSettings {
             interval_secs: env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?,
             eth_rpc_url: env_require(&format!("{p}ETH_RPC_URL"))
                 // Fall back to the chain's shared RPC URL
-                .or_else(|_| env_require(&format!("CHAIN_{chain_id}_ETH_RPC_URL")))?,
+                .or_else(|_| env_require(&format!("CHAIN_{chain_id}_EVM_RPC_URL")))?,
             chain_id,
             signer_key: env_require(&format!("{p}SIGNER_KEY"))?,
             registry_address: env_require_address(&format!("{p}REGISTRY_ADDRESS"))?,
@@ -82,7 +84,7 @@ pub struct StellarRelayerSettings {
     pub loan_registry_id: Option<Contract>,
     /// Soroban minter contract id, as the plain Strkey the matching phase binds
     /// into SQL (#1416). `None` disables the wire-in matching phase. Read from
-    /// the indexer's `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` — one id for one
+    /// the indexer's `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` — one id for one
     /// contract (renamed from `yield-minter` to `minter` by contracts #33), and
     /// this phase interprets rows that indexer wrote, so the two must never be
     /// configured apart.
@@ -156,7 +158,7 @@ impl StellarRelayerSettings {
         // and Rule A's `receiver <> minter` test would then mark escrowed wires
         // minted — the exact mistake that test exists to prevent. Bound as
         // text, so it stays a validated String, not a parsed `Contract`.
-        let minter_key = format!("{indexer_p}YIELD_MINTER_ID");
+        let minter_key = format!("{indexer_p}INDEXER_MINTER_ADDRESS");
         let minter_id = match env::var(&minter_key) {
             Ok(raw) if !raw.trim().is_empty() => {
                 let validated = validate_contract_id(&minter_key, raw)?;
@@ -210,13 +212,17 @@ impl RelayerSettings {
         let chain_ids = parse_chains_env()?;
         chain_ids
             .into_iter()
-            .map(|id| match parse_chain_type(id)? {
-                ChainType::Evm => Ok(RelayerSettings::Evm(Box::new(
-                    EvmRelayerSettings::from_chain_env(id)?,
-                ))),
-                ChainType::Stellar => Ok(RelayerSettings::Stellar(Box::new(
-                    StellarRelayerSettings::from_chain_env(id)?,
-                ))),
+            .map(|id| {
+                let kind = parse_chain_type(id)?;
+                validate_chain_kind_keys(id, kind)?;
+                match kind {
+                    ChainType::Evm => Ok(RelayerSettings::Evm(Box::new(
+                        EvmRelayerSettings::from_chain_env(id)?,
+                    ))),
+                    ChainType::Stellar => Ok(RelayerSettings::Stellar(Box::new(
+                        StellarRelayerSettings::from_chain_env(id)?,
+                    ))),
+                }
             })
             .collect()
     }

@@ -6,19 +6,21 @@
 ///   - topics[0] = ScVal::Symbol(snake_case_event_name)
 ///   - topics[1..n] = #[topic] fields in declaration order
 ///   - value = ScVal::Map with non-topic fields (sorted alphabetically)
+///
+/// Event shapes are taken from `pipeline-stellar-contracts/contracts/loan-registry/src/event.rs`
+/// (#1433), not from whatever makes a test pass.
 use alloy::primitives::U256;
 use pipeline_worker::indexer::stellar::loan_registry_parsers::{
     extract_closure_reason, extract_loan_status, extract_repayment_data_from_map,
     extract_string_from_map, extract_u32, extract_u32_from_map, extract_u64_from_map,
-    parse_ccr_updated, parse_economics_amended, parse_loan_closed, parse_loan_defaulted,
-    parse_loan_drawn, parse_loan_rolled_over, parse_location_updated, parse_payment_recorded,
-    parse_status_updated,
+    parse_disbursed, parse_economics_amended, parse_interest_adjusted, parse_loan_closed,
+    parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over, parse_loan_written_down,
+    parse_payment_recorded, parse_payment_unrecorded, parse_status_updated, parse_undisbursed,
 };
-use pipeline_worker::indexer::stellar::parsers::parse_yield_minted;
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::{
-    AccountId, Limits, PublicKey, ScAddress, ScMap, ScMapEntry, ScString, ScSymbol, ScVal, ScVec,
-    StringM, UInt128Parts, Uint256, VecM, WriteXdr,
+    Int128Parts, Limits, ScBytes, ScMap, ScMapEntry, ScString, ScSymbol, ScVal, ScVec, StringM,
+    UInt128Parts, VecM, WriteXdr,
 };
 
 // ── ScVal encode helpers ──────────────────────────────────────────────────────
@@ -32,22 +34,6 @@ fn encode_symbol(s: &str) -> String {
 
 fn encode_u32(v: u32) -> String {
     ScVal::U32(v).to_xdr_base64(Limits::none()).unwrap()
-}
-
-fn encode_string_val(s: &str) -> String {
-    let inner: StringM<{ u32::MAX }> = s.try_into().unwrap();
-    ScVal::String(ScString(inner))
-        .to_xdr_base64(Limits::none())
-        .unwrap()
-}
-
-fn encode_account(strkey: &str) -> String {
-    let pk = stellar_strkey::ed25519::PublicKey::from_string(strkey).unwrap();
-    ScVal::Address(ScAddress::Account(AccountId(
-        PublicKey::PublicKeyTypeEd25519(Uint256(pk.0)),
-    )))
-    .to_xdr_base64(Limits::none())
-    .unwrap()
 }
 
 /// Encode a `#[contracttype]` unit enum as `ScVal::Vec([Symbol("Variant")])`.
@@ -133,7 +119,35 @@ fn encode_map_mixed_u32_u64(u32_pairs: &[(&str, u32)], u64_pairs: &[(&str, u64)]
         .unwrap()
 }
 
-/// Build a `RepaymentData` sub-map and wrap it in an outer map under key `"repayment"`.
+/// Encode a `ScVal::Map` with u128 fields (sorted alphabetically by key).
+/// Mirrors the `#[contractevent]` data encoding for fields with type `u128`.
+fn encode_map_u128(pairs: &[(&str, u128)]) -> String {
+    let mut sorted = pairs.to_vec();
+    sorted.sort_by_key(|(k, _)| *k);
+
+    let entries: Vec<ScMapEntry> = sorted
+        .iter()
+        .map(|(k, v)| {
+            let key_sym: StringM<32> = (*k).try_into().unwrap();
+            let hi = (*v >> 64) as u64;
+            let lo = (*v & 0xFFFF_FFFF_FFFF_FFFF) as u64;
+            ScMapEntry {
+                key: ScVal::Symbol(ScSymbol(key_sym)),
+                val: ScVal::U128(UInt128Parts { hi, lo }),
+            }
+        })
+        .collect();
+
+    let map: VecM<ScMapEntry> = entries.try_into().unwrap();
+    ScVal::Map(Some(ScMap(map)))
+        .to_xdr_base64(Limits::none())
+        .unwrap()
+}
+
+/// Build a `RepaymentData` sub-map (7 × u128) plus a sibling top-level `outstanding`
+/// u128 field, matching the `PaymentRecorded`/`PaymentUnrecorded` data shape
+/// `Map { repayment: RepaymentData, outstanding: u128 }`.
+#[allow(clippy::too_many_arguments)]
 fn encode_repayment_map(
     offtaker_received: u128,
     senior_principal_repaid: u128,
@@ -142,6 +156,7 @@ fn encode_repayment_map(
     mgmt_fee: u128,
     perf_fee: u128,
     oet_alloc: u128,
+    outstanding: u128,
 ) -> String {
     let mut inner_entries: Vec<ScMapEntry> = vec![
         ("equity_distributed", equity_distributed),
@@ -175,12 +190,48 @@ fn encode_repayment_map(
     let inner = ScVal::Map(Some(ScMap(inner_map)));
 
     let repayment_key: StringM<32> = "repayment".try_into().unwrap();
-    let outer_entry = ScMapEntry {
-        key: ScVal::Symbol(ScSymbol(repayment_key)),
-        val: inner,
-    };
-    let outer_map: VecM<ScMapEntry> = vec![outer_entry].try_into().unwrap();
+    let outstanding_key: StringM<32> = "outstanding".try_into().unwrap();
+    let outstanding_hi = (outstanding >> 64) as u64;
+    let outstanding_lo = (outstanding & 0xFFFF_FFFF_FFFF_FFFF) as u64;
+    // Alphabetical: "outstanding" < "repayment".
+    let outer_entries = vec![
+        ScMapEntry {
+            key: ScVal::Symbol(ScSymbol(outstanding_key)),
+            val: ScVal::U128(UInt128Parts {
+                hi: outstanding_hi,
+                lo: outstanding_lo,
+            }),
+        },
+        ScMapEntry {
+            key: ScVal::Symbol(ScSymbol(repayment_key)),
+            val: inner,
+        },
+    ];
+    let outer_map: VecM<ScMapEntry> = outer_entries.try_into().unwrap();
     ScVal::Map(Some(ScMap(outer_map)))
+        .to_xdr_base64(Limits::none())
+        .unwrap()
+}
+
+/// Build the `InterestAdjusted` data map `Map { delta: i128, reason_hash: BytesN<32> }`.
+fn encode_interest_adjusted_map(delta: i128, reason_hash: [u8; 32]) -> String {
+    let delta_key: StringM<32> = "delta".try_into().unwrap();
+    let hash_key: StringM<32> = "reason_hash".try_into().unwrap();
+    let hi = (delta >> 64) as i64;
+    let lo = (delta & 0xFFFF_FFFF_FFFF_FFFF) as u64;
+    // Alphabetical: "delta" < "reason_hash".
+    let entries = vec![
+        ScMapEntry {
+            key: ScVal::Symbol(ScSymbol(delta_key)),
+            val: ScVal::I128(Int128Parts { hi, lo }),
+        },
+        ScMapEntry {
+            key: ScVal::Symbol(ScSymbol(hash_key)),
+            val: ScVal::Bytes(ScBytes(reason_hash.to_vec().try_into().unwrap())),
+        },
+    ];
+    let map: VecM<ScMapEntry> = entries.try_into().unwrap();
+    ScVal::Map(Some(ScMap(map)))
         .to_xdr_base64(Limits::none())
         .unwrap()
 }
@@ -194,7 +245,6 @@ fn encode_empty_map() -> String {
 // ── Test constants ────────────────────────────────────────────────────────────
 
 const LR_CONTRACT: &str = "CDWGDGLKZRGYPZYVXELOWBHIVRPAHGK3DM6AF4M4J3QKQB47QPNKM2LB";
-const USER_G: &str = "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQHES5";
 
 fn make_raw_event(
     contract_id: &str,
@@ -226,7 +276,7 @@ fn loan_drawn_decodes_fixture() {
     let raw = make_raw_event(
         LR_CONTRACT,
         "loan_drawn",
-        vec![encode_u32(loan_id), encode_account(USER_G)],
+        vec![encode_u32(loan_id)],
         encode_map_string(&[("metadata_uri", "ipfs://QmTestCid")]),
     );
 
@@ -234,7 +284,10 @@ fn loan_drawn_decodes_fixture() {
     assert_eq!(log.event_name, "LoanDrawn");
     assert_eq!(log.contract_address, LR_CONTRACT);
     assert_eq!(log.params["loan_id"], "42");
-    assert_eq!(log.params["holder"], USER_G);
+    assert!(
+        log.params.get("holder").is_none(),
+        "holder is no longer emitted (#1433)"
+    );
     assert_eq!(log.params["metadata_uri"], "ipfs://QmTestCid");
     assert_eq!(log.block_number, 2_000_000);
     assert_eq!(log.block_timestamp, 1_700_100_000);
@@ -247,17 +300,40 @@ fn loan_drawn_rejects_wrong_event_name() {
     let raw = make_raw_event(
         LR_CONTRACT,
         "status_updated",
-        vec![encode_u32(1), encode_account(USER_G)],
+        vec![encode_u32(1)],
         encode_map_string(&[("metadata_uri", "ipfs://Q")]),
     );
     assert!(parse_loan_drawn(&raw).is_none());
 }
 
+/// Regression test for the Issue this plan realigns: the deployed #36 contract emits
+/// a **two-topic** `loan_drawn` (`[loan_drawn, loan_id]`, no `holder`). The pre-#1433
+/// parser required 3 topics and silently dropped every such event.
 #[test]
-fn loan_drawn_rejects_short_topics() {
+fn loan_drawn_decodes_two_topic_event() {
     let raw = RawEvent {
         event_name: "loan_drawn".to_owned(),
-        topics_base64: vec![encode_symbol("loan_drawn"), encode_u32(1)], // missing holder
+        topics_base64: vec![encode_symbol("loan_drawn"), encode_u32(1)],
+        value_base64: encode_map_string(&[("metadata_uri", "ipfs://Q")]),
+        contract_id: LR_CONTRACT.to_owned(),
+        ledger: 1,
+        ledger_closed_at_unix: 0,
+        tx_hash: String::new(),
+        tx_index: 0,
+        op_index: 0,
+        event_index_in_op: 0,
+    };
+    assert!(
+        parse_loan_drawn(&raw).is_some(),
+        "two-topic loan_drawn (the #36 contract's actual shape) must decode"
+    );
+}
+
+#[test]
+fn loan_drawn_rejects_missing_loan_id_topic() {
+    let raw = RawEvent {
+        event_name: "loan_drawn".to_owned(),
+        topics_base64: vec![encode_symbol("loan_drawn")], // missing loan_id
         value_base64: encode_map_string(&[("metadata_uri", "ipfs://Q")]),
         contract_id: LR_CONTRACT.to_owned(),
         ledger: 1,
@@ -311,62 +387,6 @@ fn status_updated_rejects_wrong_event_name() {
     assert!(parse_status_updated(&raw).is_none());
 }
 
-// ── parse_ccr_updated ────────────────────────────────────────────────────────
-
-#[test]
-fn ccr_updated_decodes_fixture() {
-    let raw = make_raw_event(
-        LR_CONTRACT,
-        "ccr_updated",
-        vec![encode_u32(10)],
-        encode_map_u32(&[("new_ccr", 12500)]),
-    );
-
-    let log = parse_ccr_updated(&raw).expect("should decode LoanCCRUpdated");
-    assert_eq!(log.event_name, "LoanCCRUpdated");
-    assert_eq!(log.params["loan_id"], "10");
-    assert_eq!(log.params["new_ccr"], 12500);
-}
-
-#[test]
-fn ccr_updated_rejects_wrong_event_name() {
-    let raw = make_raw_event(
-        LR_CONTRACT,
-        "location_updated",
-        vec![encode_u32(1)],
-        encode_map_u32(&[("new_ccr", 100)]),
-    );
-    assert!(parse_ccr_updated(&raw).is_none());
-}
-
-// ── parse_location_updated ────────────────────────────────────────────────────
-
-#[test]
-fn location_updated_decodes_fixture() {
-    let raw = make_raw_event(
-        LR_CONTRACT,
-        "location_updated",
-        vec![encode_u32(5), encode_string_val("TANK_FARM_US_HOUSTON")],
-        encode_empty_map(),
-    );
-
-    let log = parse_location_updated(&raw).expect("should decode LoanLocationUpdated");
-    assert_eq!(log.event_name, "LoanLocationUpdated");
-    assert_eq!(log.params["loan_id"], "5");
-    assert_eq!(log.params["new_location"], "TANK_FARM_US_HOUSTON");
-}
-
-#[test]
-fn location_updated_rejects_wrong_event_name() {
-    let raw = make_raw_event(
-        LR_CONTRACT,
-        "ccr_updated",
-        vec![encode_u32(1), encode_string_val("LOC")],
-        encode_empty_map(),
-    );
-    assert!(parse_location_updated(&raw).is_none());
-}
-
 // ── parse_loan_defaulted ─────────────────────────────────────────────────────
 
 #[test]
@@ -375,17 +395,19 @@ fn loan_defaulted_decodes_fixture() {
         LR_CONTRACT,
         "loan_defaulted",
         vec![encode_u32(99)],
-        // Soroban-units: CCR in `ONE = 1_000_000` scale. 1_250_000 = 125%.
-        encode_map_u32(&[("ccr", 1_250_000)]),
+        // Post-rework data shape: Map { outstanding: u128, moved: u128 } — no `ccr` (#1433).
+        encode_map_u128(&[("outstanding", 5_000_000_000), ("moved", 2_500_000_000)]),
     );
 
     let log = parse_loan_defaulted(&raw).expect("should decode LoanDefaulted");
     assert_eq!(log.event_name, "LoanDefaulted");
     assert_eq!(log.params["loan_id"], "99");
-    // EVM-parity shape: renamed from on-chain `ccr` to `ccr_bps` AND converted
-    // from 1e6-scale to basis points: 1_250_000 / 100 = 12_500 bps = 125%.
-    assert_eq!(log.params["ccr_bps"], 12_500);
-    assert!(log.params.get("ccr").is_none(), "renamed to ccr_bps");
+    assert_eq!(log.params["outstanding"], "5000000000");
+    assert_eq!(log.params["moved"], "2500000000");
+    assert!(
+        log.params.get("ccr_bps").is_none(),
+        "ccr no longer exists on the reworked contract"
+    );
 }
 
 #[test]
@@ -394,7 +416,7 @@ fn loan_defaulted_rejects_wrong_event_name() {
         LR_CONTRACT,
         "loan_closed",
         vec![encode_u32(1)],
-        encode_map_u32(&[("ccr", 100)]),
+        encode_map_u128(&[("outstanding", 1), ("moved", 1)]),
     );
     assert!(parse_loan_defaulted(&raw).is_none());
 }
@@ -443,6 +465,7 @@ fn payment_recorded_decodes_fixture() {
             10_000,    // mgmt_fee
             5_000,     // perf_fee
             2_000,     // oet_alloc
+            9_500_000, // outstanding (#1433)
         ),
     );
 
@@ -457,6 +480,7 @@ fn payment_recorded_decodes_fixture() {
     assert_eq!(log.params["mgmt_fee"], "10000");
     assert_eq!(log.params["perf_fee"], "5000");
     assert_eq!(log.params["oet_alloc"], "2000");
+    assert_eq!(log.params["outstanding"], "9500000");
 }
 
 #[test]
@@ -465,9 +489,226 @@ fn payment_recorded_rejects_wrong_event_name() {
         LR_CONTRACT,
         "loan_rolled_over",
         vec![encode_u32(1), encode_u32(1)],
-        encode_repayment_map(1, 2, 3, 4, 5, 6, 7),
+        encode_repayment_map(1, 2, 3, 4, 5, 6, 7, 8),
     );
     assert!(parse_payment_recorded(&raw).is_none());
+}
+
+// ── parse_payment_unrecorded ──────────────────────────────────────────────────
+
+#[test]
+fn payment_unrecorded_decodes_fixture() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "payment_unrecorded",
+        vec![encode_u32(20), encode_u32(3)],
+        encode_repayment_map(
+            1_000_000, 500_000, 250_000, 100_000, 10_000, 5_000, 2_000, 10_000_000,
+        ),
+    );
+
+    let log = parse_payment_unrecorded(&raw).expect("should decode PaymentUnrecorded");
+    assert_eq!(log.event_name, "PaymentUnrecorded");
+    assert_eq!(log.params["loan_id"], "20");
+    assert_eq!(log.params["repayment_id"], "3");
+    assert_eq!(log.params["senior_principal_repaid"], "500000");
+    assert_eq!(log.params["outstanding"], "10000000");
+}
+
+#[test]
+fn payment_unrecorded_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "payment_recorded",
+        vec![encode_u32(1), encode_u32(1)],
+        encode_repayment_map(1, 2, 3, 4, 5, 6, 7, 8),
+    );
+    assert!(parse_payment_unrecorded(&raw).is_none());
+}
+
+#[test]
+fn payment_recorded_and_payment_unrecorded_do_not_claim_each_others_events() {
+    // Same topic arity, different `event_name` guard — regression against the two
+    // parsers silently cross-matching.
+    let recorded_raw = make_raw_event(
+        LR_CONTRACT,
+        "payment_recorded",
+        vec![encode_u32(1), encode_u32(1)],
+        encode_repayment_map(1, 2, 3, 4, 5, 6, 7, 8),
+    );
+    let unrecorded_raw = make_raw_event(
+        LR_CONTRACT,
+        "payment_unrecorded",
+        vec![encode_u32(1), encode_u32(1)],
+        encode_repayment_map(1, 2, 3, 4, 5, 6, 7, 8),
+    );
+
+    assert!(parse_payment_recorded(&recorded_raw).is_some());
+    assert!(parse_payment_unrecorded(&recorded_raw).is_none());
+    assert!(parse_payment_unrecorded(&unrecorded_raw).is_some());
+    assert!(parse_payment_recorded(&unrecorded_raw).is_none());
+}
+
+// ── parse_disbursed / parse_undisbursed ───────────────────────────────────────
+
+#[test]
+fn disbursed_decodes_fixture() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "disbursed",
+        vec![encode_u32(5)],
+        encode_map_u128(&[("amount", 3_000_000_000), ("outstanding", 3_000_000_000)]),
+    );
+
+    let log = parse_disbursed(&raw).expect("should decode Disbursed");
+    assert_eq!(log.event_name, "Disbursed");
+    assert_eq!(log.params["loan_id"], "5");
+    assert_eq!(log.params["amount"], "3000000000");
+    assert_eq!(log.params["outstanding"], "3000000000");
+}
+
+#[test]
+fn disbursed_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "undisbursed",
+        vec![encode_u32(1)],
+        encode_map_u128(&[("amount", 1), ("outstanding", 1)]),
+    );
+    assert!(parse_disbursed(&raw).is_none());
+}
+
+#[test]
+fn undisbursed_decodes_fixture() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "undisbursed",
+        vec![encode_u32(5)],
+        encode_map_u128(&[("amount", 1_000_000_000), ("outstanding", 2_000_000_000)]),
+    );
+
+    let log = parse_undisbursed(&raw).expect("should decode Undisbursed");
+    assert_eq!(log.event_name, "Undisbursed");
+    assert_eq!(log.params["loan_id"], "5");
+    assert_eq!(log.params["amount"], "1000000000");
+    assert_eq!(log.params["outstanding"], "2000000000");
+}
+
+#[test]
+fn undisbursed_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "disbursed",
+        vec![encode_u32(1)],
+        encode_map_u128(&[("amount", 1), ("outstanding", 1)]),
+    );
+    assert!(parse_undisbursed(&raw).is_none());
+}
+
+// ── parse_loan_written_down ────────────────────────────────────────────────────
+
+#[test]
+fn loan_written_down_decodes_fixture() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "loan_written_down",
+        vec![encode_u32(8)],
+        encode_map_u128(&[
+            ("amount", 400_000_000),
+            ("outstanding", 100_000_000),
+            ("burned", 300_000_000),
+            ("unabsorbed", 100_000_000),
+        ]),
+    );
+
+    let log = parse_loan_written_down(&raw).expect("should decode LoanWrittenDown");
+    assert_eq!(log.event_name, "LoanWrittenDown");
+    assert_eq!(log.params["loan_id"], "8");
+    assert_eq!(log.params["amount"], "400000000");
+    assert_eq!(log.params["outstanding"], "100000000");
+    assert_eq!(log.params["burned"], "300000000");
+    assert_eq!(log.params["unabsorbed"], "100000000");
+}
+
+#[test]
+fn loan_written_down_decodes_u128_max_fields() {
+    let max = u128::MAX;
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "loan_written_down",
+        vec![encode_u32(8)],
+        encode_map_u128(&[
+            ("amount", max),
+            ("outstanding", max),
+            ("burned", max),
+            ("unabsorbed", max),
+        ]),
+    );
+
+    let log = parse_loan_written_down(&raw).expect("should decode u128::MAX fields");
+    assert_eq!(log.params["amount"], max.to_string());
+    assert_eq!(log.params["outstanding"], max.to_string());
+    assert_eq!(log.params["burned"], max.to_string());
+    assert_eq!(log.params["unabsorbed"], max.to_string());
+}
+
+#[test]
+fn loan_written_down_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "loan_defaulted",
+        vec![encode_u32(1)],
+        encode_map_u128(&[
+            ("amount", 1),
+            ("outstanding", 1),
+            ("burned", 1),
+            ("unabsorbed", 1),
+        ]),
+    );
+    assert!(parse_loan_written_down(&raw).is_none());
+}
+
+// ── parse_interest_adjusted ────────────────────────────────────────────────────
+
+#[test]
+fn interest_adjusted_decodes_positive_delta() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "interest_adjusted",
+        vec![encode_u32(12)],
+        encode_interest_adjusted_map(500_000, [0xAB; 32]),
+    );
+
+    let log = parse_interest_adjusted(&raw).expect("should decode InterestAdjusted");
+    assert_eq!(log.event_name, "InterestAdjusted");
+    assert_eq!(log.params["loan_id"], "12");
+    assert_eq!(log.params["delta"], "500000");
+    assert_eq!(log.params["reason_hash"], "ab".repeat(32));
+}
+
+#[test]
+fn interest_adjusted_decodes_negative_delta() {
+    // Negative = waiver. Directly covers R3: a sign-extension bug here is silent.
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "interest_adjusted",
+        vec![encode_u32(12)],
+        encode_interest_adjusted_map(-250_000, [0; 32]),
+    );
+
+    let log = parse_interest_adjusted(&raw).expect("should decode a negative delta");
+    assert_eq!(log.params["delta"], "-250000");
+}
+
+#[test]
+fn interest_adjusted_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "loan_defaulted",
+        vec![encode_u32(1)],
+        encode_interest_adjusted_map(1, [0; 32]),
+    );
+    assert!(parse_interest_adjusted(&raw).is_none());
 }
 
 // ── parse_loan_rolled_over ────────────────────────────────────────────────────
@@ -500,6 +741,18 @@ fn loan_rolled_over_rejects_wrong_event_name() {
         encode_map_mixed_u32_u64(&[("new_rate", 100)], &[("new_maturity_timestamp", 999)]),
     );
     assert!(parse_loan_rolled_over(&raw).is_none());
+}
+
+#[test]
+fn loan_rolled_over_decodes_u32_max_rate() {
+    let raw = make_raw_event(
+        LR_CONTRACT,
+        "loan_rolled_over",
+        vec![encode_u32(1)],
+        encode_map_mixed_u32_u64(&[("new_rate", u32::MAX)], &[("new_maturity_timestamp", 1)]),
+    );
+    let log = parse_loan_rolled_over(&raw).expect("should decode u32::MAX new_rate");
+    assert_eq!(log.params["new_rate"], u32::MAX);
 }
 
 // ── parse_economics_amended ───────────────────────────────────────────────────
@@ -586,7 +839,7 @@ fn extract_loan_status_rejects_non_vec() {
 
 #[test]
 fn extract_repayment_data_decodes_all_fields() {
-    let b64 = encode_repayment_map(10, 20, 30, 40, 50, 60, 70);
+    let b64 = encode_repayment_map(10, 20, 30, 40, 50, 60, 70, 0);
     let view = extract_repayment_data_from_map(&b64, "repayment")
         .expect("should decode RepaymentDataView");
 
@@ -601,7 +854,7 @@ fn extract_repayment_data_decodes_all_fields() {
 
 #[test]
 fn extract_repayment_data_rejects_wrong_key() {
-    let b64 = encode_repayment_map(1, 2, 3, 4, 5, 6, 7);
+    let b64 = encode_repayment_map(1, 2, 3, 4, 5, 6, 7, 0);
     assert!(extract_repayment_data_from_map(&b64, "not_repayment").is_none());
 }
 
@@ -625,9 +878,9 @@ fn extract_string_from_map_returns_none_for_missing_key() {
 // ── extract_u32_from_map / extract_u64_from_map ───────────────────────────────
 
 #[test]
-fn extract_u32_from_map_decodes_new_ccr() {
-    let b64 = encode_map_u32(&[("new_ccr", 9999)]);
-    assert_eq!(extract_u32_from_map(&b64, "new_ccr"), Some(9999));
+fn extract_u32_from_map_decodes_new_rate() {
+    let b64 = encode_map_u32(&[("new_rate", 9999)]);
+    assert_eq!(extract_u32_from_map(&b64, "new_rate"), Some(9999));
 }
 
 #[test]
@@ -637,105 +890,4 @@ fn extract_u64_from_map_decodes_new_maturity_timestamp() {
         extract_u64_from_map(&b64, "new_maturity_timestamp"),
         Some(1_234_567_890)
     );
-}
-
-// ── u32 boundary values ────────────────────────────────────────────────────────
-
-#[test]
-fn u32_max_in_ccr_updated() {
-    let raw = make_raw_event(
-        LR_CONTRACT,
-        "ccr_updated",
-        vec![encode_u32(1)],
-        encode_map_u32(&[("new_ccr", u32::MAX)]),
-    );
-    let log = parse_ccr_updated(&raw).expect("should decode u32::MAX ccr");
-    assert_eq!(log.params["new_ccr"], u32::MAX);
-}
-
-// ── parse_yield_minted ────────────────────────────────────────────────────────
-
-/// Encode a `ScVal::Map` with u128 fields (sorted alphabetically by key).
-/// Mirrors the `#[contractevent]` data encoding for fields with type `u128`.
-fn encode_map_u128(pairs: &[(&str, u128)]) -> String {
-    let mut sorted = pairs.to_vec();
-    sorted.sort_by_key(|(k, _)| *k);
-
-    let entries: Vec<ScMapEntry> = sorted
-        .iter()
-        .map(|(k, v)| {
-            let key_sym: StringM<32> = (*k).try_into().unwrap();
-            let hi = (*v >> 64) as u64;
-            let lo = (*v & 0xFFFF_FFFF_FFFF_FFFF) as u64;
-            ScMapEntry {
-                key: ScVal::Symbol(ScSymbol(key_sym)),
-                val: ScVal::U128(UInt128Parts { hi, lo }),
-            }
-        })
-        .collect();
-
-    let map: VecM<ScMapEntry> = entries.try_into().unwrap();
-    ScVal::Map(Some(ScMap(map)))
-        .to_xdr_base64(Limits::none())
-        .unwrap()
-}
-
-const YM_CONTRACT: &str = "CDWGDGLKZRGYPZYVXELOWBHIVRPAHGK3DM6AF4M4J3QKQB47QPNKM2LC";
-
-#[test]
-fn yield_minted_decodes_fixture() {
-    let s_plusd_amount: u128 = 500_000_000; // 500 PLUSD (6dp)
-    let treasury_amount: u128 = 25_000_000; // 25 PLUSD
-
-    let raw = make_raw_event(
-        YM_CONTRACT,
-        "yield_minted",
-        vec![], // no #[topic] fields beyond the discriminator symbol
-        encode_map_u128(&[
-            ("s_plusd_amount", s_plusd_amount),
-            ("treasury_amount", treasury_amount),
-        ]),
-    );
-
-    let log = parse_yield_minted(&raw).expect("should decode YieldMinted");
-    assert_eq!(log.event_name, "YieldMinted");
-    assert_eq!(log.contract_address, YM_CONTRACT);
-    assert_eq!(log.params["s_plusd_amount"], "500000000");
-    assert_eq!(log.params["treasury_amount"], "25000000");
-    assert_eq!(log.block_number, 2_000_000);
-    assert_eq!(log.block_timestamp, 1_700_100_000);
-    // log_index = tx_index*1000 + op_index*100 + event_index = 1*1000 + 0 + 2 = 1002
-    assert_eq!(log.log_index, 1002);
-}
-
-#[test]
-fn yield_minted_decodes_large_u128_amounts() {
-    // Test amounts that use the high 64 bits of u128.
-    let s_plusd_amount: u128 = (1u128 << 64) + 42; // spans hi/lo boundary
-    let treasury_amount: u128 = u128::MAX;
-
-    let raw = make_raw_event(
-        YM_CONTRACT,
-        "yield_minted",
-        vec![],
-        encode_map_u128(&[
-            ("s_plusd_amount", s_plusd_amount),
-            ("treasury_amount", treasury_amount),
-        ]),
-    );
-
-    let log = parse_yield_minted(&raw).expect("should decode large u128 YieldMinted");
-    assert_eq!(log.params["s_plusd_amount"], s_plusd_amount.to_string());
-    assert_eq!(log.params["treasury_amount"], u128::MAX.to_string());
-}
-
-#[test]
-fn yield_minted_rejects_wrong_event_name() {
-    let raw = make_raw_event(
-        YM_CONTRACT,
-        "deposit_requested", // wrong event name
-        vec![],
-        encode_map_u128(&[("s_plusd_amount", 1), ("treasury_amount", 1)]),
-    );
-    assert!(parse_yield_minted(&raw).is_none());
 }

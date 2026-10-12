@@ -235,11 +235,6 @@ function CcrCellView({ row }: { row: LoanTableRow }) {
       >
         {row.ccr.percent}
       </span>
-      {row.ccr.age !== "—" && (
-        <span className="text-[12px] leading-[16.8px] text-[color:var(--color-pipeline-ink-muted)]">
-          {row.ccr.age}
-        </span>
-      )}
     </div>
   );
 }

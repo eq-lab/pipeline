@@ -104,7 +104,9 @@ pub(crate) async fn run_stellar_relayer_inner(
     } else {
         tracing::info!(
             chain_id = settings.chain_id,
-            "stellar wire-in matching phase disabled — set CHAIN_<id>_STELLAR_YIELD_MINTER_ID (the INDEXER key, not RELAYER_STELLAR_YIELD_MINTER_ID)"
+            "stellar wire-in matching phase disabled — set \
+             CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS (the indexer key, not \
+             CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID)"
         );
         None
     };

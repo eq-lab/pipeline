@@ -19,8 +19,8 @@ vi.mock("@/components/CapitalAllocationCard", () => ({
 vi.mock("@/api/useRampEvents", () => ({ useRampEvents: vi.fn() }));
 vi.mock("@/api/useReviewRampEvent", () => ({ useReviewRampEvent: vi.fn() }));
 vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
-vi.mock("@/api/useCapitalWalletBalance", () => ({
-  useCapitalWalletBalance: vi.fn(),
+vi.mock("@/api/useUsdcCustodyBalance", () => ({
+  useUsdcCustodyBalance: vi.fn(),
 }));
 // The T-Bills tab's useTbillsSwap wires the capital-allocation tbills bucket.
 vi.mock("@/api/useCapitalAllocation", () => ({
@@ -32,7 +32,7 @@ vi.mock("@/api/useWithdrawalQueue", () => ({ useWithdrawalQueue: vi.fn() }));
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
 import { useRampAddresses } from "@/api/useRampAddresses";
-import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
 import { Route } from "./cash-management";
@@ -40,7 +40,7 @@ import { Route } from "./cash-management";
 const mockUseRampEvents = vi.mocked(useRampEvents);
 const mockUseReviewRampEvent = vi.mocked(useReviewRampEvent);
 const mockUseRampAddresses = vi.mocked(useRampAddresses);
-const mockUseCapitalWalletBalance = vi.mocked(useCapitalWalletBalance);
+const mockUseUsdcCustodyBalance = vi.mocked(useUsdcCustodyBalance);
 const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
 const mockUseWithdrawalQueue = vi.mocked(useWithdrawalQueue);
 const mockReview = vi.fn();
@@ -99,7 +99,7 @@ beforeEach(() => {
   mockUseRampEvents.mockReset();
   mockUseReviewRampEvent.mockReset();
   mockUseRampAddresses.mockReset();
-  mockUseCapitalWalletBalance.mockReset();
+  mockUseUsdcCustodyBalance.mockReset();
   mockUseCapitalAllocation.mockReset();
   mockReview.mockReset();
   mockUseReviewRampEvent.mockReturnValue(reviewHook());
@@ -110,7 +110,7 @@ beforeEach(() => {
     refetch: () => {},
   });
   // USDC balance real; tbills bucket null (hardcoded None server-side, #931).
-  mockUseCapitalWalletBalance.mockReturnValue({
+  mockUseUsdcCustodyBalance.mockReturnValue({
     data: "8400000.0000000",
     isLoading: false,
     error: null,

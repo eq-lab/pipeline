@@ -34,12 +34,6 @@ vi.mock("@/auth/sessionStore", () => ({
 const FIXTURE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
-  location: {
-    location_type: "Vessel",
-    location_identifier: "MV Andes",
-    tracking_url: "",
-    updated_at: "2026-06-01T00:00:00Z",
-  },
   epoch: {
     number: 1,
     current_apy_bps: 1000,

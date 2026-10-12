@@ -1,25 +1,25 @@
 /**
  * Tests for `useCapitalAllocationCard` (issue #797, extended #805).
  *
- * `useCapitalAllocation` and `useCapitalWalletBalance` are both mocked so
+ * `useCapitalAllocation` and `useUsdcCustodyBalance` are both mocked so
  * this is a pure mapping-logic test — no QueryClient / network involved.
  * This is the behavioral core of issue #805's guarded total-sum + legend
  * precedence rules.
  *
  * `@pipeline/wallet-connect` is also mocked (even though this file never
- * calls it directly) because `useCapitalWalletBalance` imports it statically
- * — without this mock, `vi.spyOn`-ing `useCapitalWalletBalance` still pulls
+ * calls it directly) because `useUsdcCustodyBalance` imports it statically
+ * — without this mock, `vi.spyOn`-ing `useUsdcCustodyBalance` still pulls
  * in the real module graph (down to `@creit.tech/stellar-wallets-kit`'s
  * `defaultModules()` / `@stellar/freighter-api`), which can fail to resolve
- * in some sandboxes. Mirrors `-useCapitalWalletBalance.test.tsx`'s own mock.
+ * in some sandboxes. Mirrors `-useUsdcCustodyBalance.test.tsx`'s own mock.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
 import * as capitalAllocationModule from "@/api/useCapitalAllocation";
-import * as capitalWalletBalanceModule from "@/api/useCapitalWalletBalance";
+import * as usdcCustodyBalanceModule from "@/api/useUsdcCustodyBalance";
 import type { UseCapitalAllocationResult } from "@/api/useCapitalAllocation";
-import type { UseCapitalWalletBalanceResult } from "@/api/useCapitalWalletBalance";
+import type { UseUsdcCustodyBalanceResult } from "@/api/useUsdcCustodyBalance";
 
 vi.mock("@pipeline/wallet-connect", () => ({
   getSacBalance: vi.fn(),
@@ -38,18 +38,18 @@ function mockCapitalAllocation(overrides: Partial<UseCapitalAllocationResult>) {
   });
 }
 
-function mockCapitalWalletBalance(
-  overrides: Partial<UseCapitalWalletBalanceResult>,
+function mockUsdcCustodyBalance(
+  overrides: Partial<UseUsdcCustodyBalanceResult>,
 ) {
-  const base: UseCapitalWalletBalanceResult = {
+  const base: UseUsdcCustodyBalanceResult = {
     data: undefined,
     isLoading: false,
     error: null,
   };
-  vi.spyOn(
-    capitalWalletBalanceModule,
-    "useCapitalWalletBalance",
-  ).mockReturnValue({ ...base, ...overrides });
+  vi.spyOn(usdcCustodyBalanceModule, "useUsdcCustodyBalance").mockReturnValue({
+    ...base,
+    ...overrides,
+  });
 }
 
 afterEach(() => {
@@ -71,7 +71,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -95,7 +95,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -120,7 +120,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -141,7 +141,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -163,7 +163,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -188,7 +188,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -209,7 +209,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         },
       },
     });
-    mockCapitalWalletBalance({
+    mockUsdcCustodyBalance({
       data: undefined,
       error: new Error("sentinel"),
     });
@@ -240,7 +240,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
       },
       isLoading: false,
     });
-    mockCapitalWalletBalance({ data: undefined, isLoading: true });
+    mockUsdcCustodyBalance({ data: undefined, isLoading: true });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -276,7 +276,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -303,7 +303,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -330,7 +330,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -354,7 +354,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -377,7 +377,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -403,7 +403,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -427,7 +427,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -452,7 +452,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result: justUnder } = renderHook(() => useCapitalAllocationCard());
     expect(percentOf(justUnder.current.legend, "in_transit")).toBe("< 1%");
@@ -471,7 +471,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result: atOnePercent } = renderHook(() =>
       useCapitalAllocationCard(),
@@ -502,7 +502,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -536,7 +536,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -561,7 +561,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -584,7 +584,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         },
       },
     });
-    mockCapitalWalletBalance({ data: undefined });
+    mockUsdcCustodyBalance({ data: undefined });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 
@@ -608,7 +608,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         },
       },
     });
-    mockCapitalWalletBalance({ data: "8400000.0000000" });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
 
     const { result } = renderHook(() => useCapitalAllocationCard());
 

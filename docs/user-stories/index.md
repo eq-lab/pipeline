@@ -205,6 +205,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1271 Trustee: LP detail and KYB review](https://github.com/eq-lab/pipeline/issues/1271) | [1271-trustee-lp-review.md](./epic-1269/1271-trustee-lp-review.md) | Initial |
 | [#1270 Trustee: LP Counterparties menu item + list table](https://github.com/eq-lab/pipeline/issues/1270) | [1270-trustee-lp-counterparties.md](./epic-1269/1270-trustee-lp-counterparties.md) | Initial |
 | [#1413 Backend: per-LP bank deposits](https://github.com/eq-lab/pipeline/issues/1413) | [1413-lp-bank-deposits.md](./epic-1269/1413-lp-bank-deposits.md) | Initial |
+| [#1449 Trustee: mint the PLUSD leg of an LP bank deposit](https://github.com/eq-lab/pipeline/issues/1449) | [1449-trustee-mint-bank-deposit.md](./epic-1269/1449-trustee-mint-bank-deposit.md) | Initial |
+| [#1453 Trustee: align the LP counterparty detail page with the Loan detail conventions](https://github.com/eq-lab/pipeline/issues/1453) | [1453-lp-detail-loan-conventions.md](./epic-1269/1453-lp-detail-loan-conventions.md) | Initial |
 
 ---
 
@@ -237,3 +239,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1432 Indexer: realign the shared loan-data model to the reworked contracts](https://github.com/eq-lab/pipeline/issues/1432) | [1432-shared-loan-data-model.md](./epic-1431/1432-shared-loan-data-model.md) | Initial |
+| [#1433 Stellar indexer: realign parsers to the reworked LoanRegistry contracts](https://github.com/eq-lab/pipeline/issues/1433) | [1433-stellar-loan-parsers-realignment.md](./epic-1431/1433-stellar-loan-parsers-realignment.md) | Initial |
+| [#1434 EVM indexer: realign parsers and reader to post-rework pipeline-contracts, add the Minter group](https://github.com/eq-lab/pipeline/issues/1434) | [1434-evm-loan-parsers-realignment.md](./epic-1431/1434-evm-loan-parsers-realignment.md) | Initial |

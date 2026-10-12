@@ -25,7 +25,7 @@ describe("mapKybStatus", () => {
     });
     expect(mapKybStatus("UnderReview")).toEqual({
       label: "KYB Pending",
-      band: "attention",
+      band: "info",
     });
     expect(mapKybStatus("Passed")).toEqual({
       label: "Approved",

@@ -52,7 +52,8 @@ pub struct LoanSnapshot {
     /// Basis points. The contract reports this as a fraction of `ONE = 1_000_000`
     /// (both arms share this accrual formula); each reader must divide the raw value
     /// by 100 to reach basis points, as the Stellar reader already does for
-    /// `senior_interest_rate_bps`. Neither arm populates this field yet (#1433/#1434).
+    /// `senior_interest_rate_bps`. The Stellar arm populates it (#1433); the EVM arm
+    /// still writes a placeholder until #1434 realigns its `sol!` block.
     /// `#[serde(default)]`: pre-rework rows predate this field.
     #[serde(default)]
     pub current_rate: u32,

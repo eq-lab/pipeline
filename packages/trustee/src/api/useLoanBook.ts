@@ -125,11 +125,6 @@ export interface LoanBookEntry {
    * form of **Nearest payment** (#941/#953).
    */
   days_overdue: number | null;
-  /**
-   * Timestamp the current CCR was last reported on-chain, Unix seconds; `0`
-   * when never reported. Backs the CCR staleness age chip.
-   */
-  ccr_reported_at: number;
   /** Latest spot price of the underlying asset (USD, decimal string). `null` when unpriced. */
   spot_price: string | null;
   /**

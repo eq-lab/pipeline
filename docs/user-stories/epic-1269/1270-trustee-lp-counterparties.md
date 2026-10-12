@@ -97,7 +97,7 @@ non-null `country`.
 
 ---
 
-## Story 5: Row click opens the placeholder detail page; Back returns to the list
+## Story 5: Row click opens the LP detail page; Back returns to the list
 
 **Persona:** Trustee operator drilling into one LP counterparty.
 
@@ -113,8 +113,10 @@ non-null `country`.
 **Expected outcomes:**
 
 - Clicking the row navigates to `/lp-counterparties/<id>`.
-- That page shows the LP's legal name as its heading and the line "Document review and KYB
-  confirmation land in issue #1271." (the real detail page ships in #1271).
+- That page opens on the Loan-detail hero: a `‹ LP Counterparties` back link, the LP's
+  `legal_name` as the `h1`, and below it the Account Status chip (same label and band as the row
+  just clicked) followed by the meta line (jurisdiction and the registered / submitted / decided
+  dates that are served).
 - Browser Back returns to `/lp-counterparties`.
 
 ---

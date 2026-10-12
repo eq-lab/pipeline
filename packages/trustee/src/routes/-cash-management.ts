@@ -13,7 +13,7 @@ import {
   type ReviewRampEventInput,
 } from "@/api/useReviewRampEvent";
 import { useRampAddresses } from "@/api/useRampAddresses";
-import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -81,7 +81,7 @@ export interface CashManagementView {
   reviewErrorDetails: string | null;
 
   // ── Swap-form data (UI shell — #943 chose B; execution/quote have no backend) ──
-  /** Capital Wallet on-chain USDC balance (`useCapitalWalletBalance`); `null` when unavailable. */
+  /** Capital Wallet on-chain USDC balance (`useUsdcCustodyBalance`); `null` when unavailable. */
   usdcBalanceValue: number | null;
   /** The same balance formatted, or `"—"`. */
   usdcBalanceDisplay: string;
@@ -106,7 +106,7 @@ function mapEvent(event: RampEvent, nowSec: number): RampEventRow {
 export function useCashManagement(): CashManagementView {
   const rampEvents = useRampEvents();
   const review = useReviewRampEvent();
-  const balance = useCapitalWalletBalance();
+  const balance = useUsdcCustodyBalance();
   const addresses = useRampAddresses();
 
   const nowSec = Math.floor(Date.now() / 1000);

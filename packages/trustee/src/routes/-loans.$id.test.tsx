@@ -163,11 +163,7 @@ function makeResult(
       errorMessage: null,
       errorDetails: null,
       rows: [
-        {
-          label: "Status / location",
-          value: "Performing · Vessel MV Andes",
-          tag: "chain",
-        },
+        { label: "Status", value: "Performing", tag: "chain" },
         {
           label: "Epochs",
           value: "1 · 10.0% · 18 Jun 2026 → 19 Aug 2029",
@@ -356,10 +352,8 @@ describe("Loan detail route — Registry state & derived (live)", () => {
   it("renders the financials rows + source tags", () => {
     renderRoute();
     const reg = screen.getByTestId("loan-detail-registry");
-    expect(within(reg).getByText("Status / location")).toBeInTheDocument();
-    expect(
-      within(reg).getByText("Performing · Vessel MV Andes"),
-    ).toBeInTheDocument();
+    expect(within(reg).getByText("Status")).toBeInTheDocument();
+    expect(within(reg).getByText("Performing")).toBeInTheDocument();
     expect(
       within(reg).getByText("1 · 10.0% · 18 Jun 2026 → 19 Aug 2029"),
     ).toBeInTheDocument();

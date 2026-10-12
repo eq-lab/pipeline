@@ -3,7 +3,8 @@ use std::env;
 use anyhow::{Context, Result};
 
 pub use shared::chains::{
-    parse_chain_type, parse_chains_env, validate_contract_id, validate_stellar_address, ChainKind,
+    parse_chain_type, parse_chains_env, validate_chain_kind_keys, validate_contract_id,
+    validate_stellar_address, ChainKind,
 };
 
 /// Type alias so existing call sites in the worker that use `ChainType` still compile.
@@ -26,24 +27,25 @@ pub struct StellarIndexerSettings {
     /// `docs/product-specs/withdrawals.md`). Optional; set only once the wallet
     /// address is known for this chain. When `Some`, every USDC transfer
     /// touching it (either side, any counterparty) is tracked — see `asset_id`.
-    /// Read from `CHAIN_<id>_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID`.
+    /// Read from `CHAIN_<id>_STELLAR_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS`.
     pub withdrawal_queue_wallet_id: Option<String>,
     /// StakedPLUSD vault contract — emits Vault Deposit/Withdraw (remapped to StakingDeposit/StakingWithdrawal)
     pub staked_plusd_id: String,
     /// LoanRegistry contract — optional; set only after the contract is deployed to the target chain.
     /// When `None`, the loan-registry indexer branch is a no-op.
-    /// Read from `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID`.
+    /// Read from `CHAIN_<id>_STELLAR_INDEXER_LOAN_REGISTRY_ADDRESS`.
     pub loan_registry_id: Option<String>,
     /// The minter contract — optional; set only after it is deployed to the target
     /// chain. When `None`, its indexer branch is a no-op (ships dark).
     ///
     /// Named for the contract's former identity: `pipeline-stellar-contracts` #33
-    /// renamed `yield-minter` to `minter` and rewrote it, so one id serves both
-    /// event families — `YieldMinted` from a pre-#33 deployment (EVM-parity, feeds
-    /// the dashboard's cumulative yield) and `WireIn`/`WireInAssigned` from a
-    /// post-#33 one (#1416, read by the relayer's wire-in matching phase). No
-    /// deployment emits both, so the branch simply tries each parser.
-    /// Read from `CHAIN_<id>_STELLAR_YIELD_MINTER_ID`.
+    /// renamed `yield-minter` to `minter` and rewrote it. Historically one id also
+    /// served `YieldMinted` (a pre-#33, EVM-parity event feeding the dashboard's
+    /// cumulative yield); that parser is retired (#1433) since the rework stopped
+    /// emitting it, so this id now serves only `WireIn`/`WireInAssigned` (#1416,
+    /// read by the relayer's wire-in matching phase). The dashboard's
+    /// cumulative-yield metrics read historical `YieldMinted` rows only.
+    /// Read from `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
     pub yield_minter_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
     /// `Some` enables asset-transfer polling outright — when `withdrawal_queue_wallet_id`
@@ -68,9 +70,9 @@ pub struct StellarIndexerSettings {
     /// IPFS gateway URL used by the loan-metadata fetcher (mirrors `JOB_INDEXER_IPFS_GATEWAY_URL`
     /// on the EVM side). Defaults to `https://ipfs.io/ipfs/` when unset.
     pub ipfs_gateway_url: String,
-    /// Polling interval in milliseconds (shared with EVM via JOB_INDEXER_POLLING_INTERVAL_MS).
+    /// Polling interval in ms: `CHAIN_<id>_STELLAR_INDEXER_POLLING_INTERVAL_MS`, else `JOB_INDEXER_POLLING_INTERVAL_MS`.
     pub polling_interval_ms: u64,
-    /// How many ledgers to fetch per poll cycle (semantics like EVM polling_block_range).
+    /// Ledgers per poll cycle: `CHAIN_<id>_STELLAR_INDEXER_POLLING_BLOCK_RANGE`, else `JOB_INDEXER_POLLING_BLOCK_RANGE`.
     pub polling_ledger_range: u64,
 }
 
@@ -78,6 +80,7 @@ impl StellarIndexerSettings {
     /// Parse Stellar indexer settings for a single chain using `CHAIN_<id>_STELLAR_*` env vars.
     pub fn from_chain_env(chain_id: i64) -> Result<Self> {
         let p = format!("CHAIN_{chain_id}_STELLAR_");
+        let ip = format!("CHAIN_{chain_id}_STELLAR_INDEXER_");
 
         // Default network passphrase for the testnet sentinel (99000001).
         let default_passphrase = if chain_id == 99_000_001 {
@@ -95,17 +98,13 @@ impl StellarIndexerSettings {
             );
         }
 
-        // START_LEDGER falls back to START_BLOCK for symmetry with ChainEventPoller convention.
-        let start_ledger = env_parse(
-            &format!("CHAIN_{chain_id}_STELLAR_START_LEDGER"),
-            env_parse(&format!("CHAIN_{chain_id}_START_BLOCK"), 0_u64)?,
-        )?;
+        let start_ledger = env_parse(&format!("{p}START_BLOCK"), 0_u64)?;
 
-        let dm_key = format!("{p}DEPOSIT_MANAGER_ID");
-        let wq_key = format!("{p}WITHDRAWAL_QUEUE_ID");
-        let splusd_key = format!("{p}STAKED_PLUSD_ID");
-        let lr_key = format!("{p}LOAN_REGISTRY_ID");
-        let ym_key = format!("{p}YIELD_MINTER_ID");
+        let dm_key = format!("{ip}DEPOSIT_MANAGER_ADDRESS");
+        let wq_key = format!("{ip}WITHDRAWAL_QUEUE_ADDRESS");
+        let splusd_key = format!("{ip}STAKED_PLUSD_ADDRESS");
+        let lr_key = format!("{ip}LOAN_REGISTRY_ADDRESS");
+        let ym_key = format!("{ip}MINTER_ADDRESS");
         let deposit_manager_id = validate_contract_id(&dm_key, env_require(&dm_key)?)?;
         let withdrawal_queue_id = validate_contract_id(&wq_key, env_require(&wq_key)?)?;
         let staked_plusd_id = validate_contract_id(&splusd_key, env_require(&splusd_key)?)?;
@@ -130,7 +129,7 @@ impl StellarIndexerSettings {
             _ => None,
         };
 
-        let wq_wallet_key = format!("{p}WITHDRAWAL_QUEUE_WALLET_ID");
+        let wq_wallet_key = format!("{ip}WITHDRAWAL_QUEUE_WALLET_ADDRESS");
         let withdrawal_queue_wallet_id = match env::var(&wq_wallet_key) {
             Ok(raw) if !raw.trim().is_empty() => {
                 Some(validate_stellar_address(&wq_wallet_key, raw)?)
@@ -212,17 +211,17 @@ impl StellarIndexerSettings {
         // misroute one role's events to another role's parser group.
         let mut seen = std::collections::HashSet::new();
         let mut roles: Vec<(&str, &String)> = vec![
-            ("DEPOSIT_MANAGER_ID", &deposit_manager_id),
-            ("WITHDRAWAL_QUEUE_ID", &withdrawal_queue_id),
-            ("STAKED_PLUSD_ID", &staked_plusd_id),
+            ("DEPOSIT_MANAGER_ADDRESS", &deposit_manager_id),
+            ("WITHDRAWAL_QUEUE_ADDRESS", &withdrawal_queue_id),
+            ("STAKED_PLUSD_ADDRESS", &staked_plusd_id),
         ];
         // Include loan_registry_id in the distinctness check when configured.
         if let Some(id) = &loan_registry_id {
-            roles.push(("LOAN_REGISTRY_ID", id));
+            roles.push(("LOAN_REGISTRY_ADDRESS", id));
         }
         // Include yield_minter_id in the distinctness check when configured.
         if let Some(id) = &yield_minter_id {
-            roles.push(("YIELD_MINTER_ID", id));
+            roles.push(("MINTER_ADDRESS", id));
         }
         // Include the asset id when transfer tracking is enabled — it is polled
         // alongside the other roles and routed by the same if/else dispatch ladder.
@@ -232,8 +231,8 @@ impl StellarIndexerSettings {
         for (label, id) in roles {
             if !seen.insert(id.as_str()) {
                 anyhow::bail!(
-                    "CHAIN_{chain_id}_STELLAR_{label} ({id}) duplicates another \
-                     configured contract id; each role must point at a distinct contract"
+                    "CHAIN_{chain_id}_STELLAR_INDEXER_{label} ({id}) duplicates another \
+                     configured contract address; each role must point at a distinct contract"
                 );
             }
         }
@@ -256,8 +255,18 @@ impl StellarIndexerSettings {
             custody_addresses,
             ramp_addresses,
             ipfs_gateway_url,
-            polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
-            polling_ledger_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
+            polling_interval_ms: require_nonzero(
+                chain_id,
+                ChainKind::Stellar,
+                "POLLING_INTERVAL_MS",
+                env_parse_chain_or_job(chain_id, ChainKind::Stellar, "POLLING_INTERVAL_MS", 500)?,
+            )?,
+            polling_ledger_range: require_nonzero(
+                chain_id,
+                ChainKind::Stellar,
+                "POLLING_BLOCK_RANGE",
+                env_parse_chain_or_job(chain_id, ChainKind::Stellar, "POLLING_BLOCK_RANGE", 1000)?,
+            )?,
         })
     }
 }
@@ -275,13 +284,17 @@ impl IndexerSettings {
         let chain_ids = parse_chains_env()?;
         chain_ids
             .into_iter()
-            .map(|id| match parse_chain_type(id)? {
-                ChainType::Evm => Ok(IndexerSettings::Evm(IndexerJobSettings::from_chain_env(
-                    id,
-                )?)),
-                ChainType::Stellar => Ok(IndexerSettings::Stellar(
-                    StellarIndexerSettings::from_chain_env(id)?,
-                )),
+            .map(|id| {
+                let kind = parse_chain_type(id)?;
+                validate_chain_kind_keys(id, kind)?;
+                match kind {
+                    ChainType::Evm => Ok(IndexerSettings::Evm(IndexerJobSettings::from_chain_env(
+                        id,
+                    )?)),
+                    ChainType::Stellar => Ok(IndexerSettings::Stellar(
+                        StellarIndexerSettings::from_chain_env(id)?,
+                    )),
+                }
             })
             .collect()
     }
@@ -299,11 +312,12 @@ pub struct IndexerJobSettings {
     pub eth_rpc_url: String,
     pub chain_id: i64,
     pub start_block: u64,
-    pub dm_contracts: Vec<String>,
-    pub wq_contracts: Vec<String>,
-    pub splusd_contracts: Vec<String>,
-    pub loan_registry_contracts: Vec<String>,
-    pub yield_minter_contracts: Vec<String>,
+    pub deposit_manager_address: String,
+    pub withdrawal_queue_address: String,
+    pub staked_plusd_address: String,
+    pub loan_registry_address: String,
+    /// The Minter contract (`PipelineMinter`, successor to `PipelineYieldMinter`); indexes `WireIn`/`WireInAssigned` (#1434).
+    pub minter_address: String,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
     pub log_confirmations_delay: u64,
@@ -313,20 +327,36 @@ pub struct IndexerJobSettings {
 impl IndexerJobSettings {
     /// Parse indexer settings for a single chain using `CHAIN_<id>_*` env vars.
     pub fn from_chain_env(chain_id: i64) -> Result<Self> {
-        let p = format!("CHAIN_{chain_id}_");
+        let p = format!("CHAIN_{chain_id}_EVM_");
+        let ip = format!("CHAIN_{chain_id}_EVM_INDEXER_");
 
         Ok(Self {
-            eth_rpc_url: env_require(&format!("{p}ETH_RPC_URL"))?,
+            eth_rpc_url: env_require(&format!("{p}RPC_URL"))?,
             chain_id,
             start_block: env_parse(&format!("{p}START_BLOCK"), 0)?,
-            dm_contracts: env_csv_require(&format!("{p}DM_CONTRACTS"))?,
-            wq_contracts: env_csv_require(&format!("{p}WQ_CONTRACTS"))?,
-            splusd_contracts: env_csv_require(&format!("{p}SPLUSD_CONTRACTS"))?,
-            loan_registry_contracts: env_csv_require(&format!("{p}LOAN_REGISTRY_CONTRACTS"))?,
-            yield_minter_contracts: env_csv_require(&format!("{p}YIELD_MINTER_CONTRACTS"))?,
-            polling_block_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
-            polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
-            log_confirmations_delay: env_parse("JOB_INDEXER_LOG_CONFIRMATIONS_DELAY", 12)?,
+            deposit_manager_address: env_require(&format!("{ip}DEPOSIT_MANAGER_ADDRESS"))?,
+            withdrawal_queue_address: env_require(&format!("{ip}WITHDRAWAL_QUEUE_ADDRESS"))?,
+            staked_plusd_address: env_require(&format!("{ip}STAKED_PLUSD_ADDRESS"))?,
+            loan_registry_address: env_require(&format!("{ip}LOAN_REGISTRY_ADDRESS"))?,
+            minter_address: env_require(&format!("{ip}MINTER_ADDRESS"))?,
+            polling_block_range: require_nonzero(
+                chain_id,
+                ChainKind::Evm,
+                "POLLING_BLOCK_RANGE",
+                env_parse_chain_or_job(chain_id, ChainKind::Evm, "POLLING_BLOCK_RANGE", 1000)?,
+            )?,
+            polling_interval_ms: require_nonzero(
+                chain_id,
+                ChainKind::Evm,
+                "POLLING_INTERVAL_MS",
+                env_parse_chain_or_job(chain_id, ChainKind::Evm, "POLLING_INTERVAL_MS", 500)?,
+            )?,
+            log_confirmations_delay: env_parse_chain_or_job(
+                chain_id,
+                ChainKind::Evm,
+                "LOG_CONFIRMATIONS_DELAY",
+                12,
+            )?,
             ipfs_gateway_url: env::var("JOB_INDEXER_IPFS_GATEWAY_URL")
                 .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned()),
         })
@@ -346,20 +376,6 @@ impl IndexerJobSettings {
 
 fn env_require(key: &str) -> Result<String> {
     env::var(key).with_context(|| format!("required env var {key} is not set"))
-}
-
-fn env_csv_require(key: &str) -> Result<Vec<String>> {
-    let val = env_require(key)?;
-    let items: Vec<String> = val
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .collect();
-    if items.is_empty() {
-        anyhow::bail!("{key} must not be empty");
-    }
-    Ok(items)
 }
 
 /// Split an optional CSV value into trimmed, non-empty **raw** entries.
@@ -391,5 +407,50 @@ where
             .parse::<T>()
             .with_context(|| format!("{key} must be a valid number")),
         Err(_) => Ok(default),
+    }
+}
+
+fn env_parse_chain_or_job<T: std::str::FromStr>(
+    chain_id: i64,
+    kind: ChainKind,
+    suffix: &str,
+    default: T,
+) -> Result<T>
+where
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    let kind_token = chain_kind_token(kind);
+    for key in [
+        format!("CHAIN_{chain_id}_{kind_token}_INDEXER_{suffix}"),
+        format!("JOB_INDEXER_{suffix}"),
+    ] {
+        if let Ok(raw) = env::var(&key) {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                return trimmed
+                    .parse::<T>()
+                    .with_context(|| format!("{key} must be a valid number"));
+            }
+        }
+    }
+    Ok(default)
+}
+
+fn require_nonzero(chain_id: i64, kind: ChainKind, suffix: &str, value: u64) -> Result<u64> {
+    if value == 0 {
+        let kind_token = chain_kind_token(kind);
+        anyhow::bail!(
+            "indexer {suffix} for chain {chain_id} resolved to 0 \
+             (CHAIN_{chain_id}_{kind_token}_INDEXER_{suffix} or JOB_INDEXER_{suffix}); \
+             must be >= 1"
+        );
+    }
+    Ok(value)
+}
+
+fn chain_kind_token(kind: ChainKind) -> &'static str {
+    match kind {
+        ChainKind::Evm => "EVM",
+        ChainKind::Stellar => "STELLAR",
     }
 }
