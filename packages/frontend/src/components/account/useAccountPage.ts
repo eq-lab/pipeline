@@ -1,6 +1,7 @@
 // spec: docs/frontend/account-page.md#production-lp-data-contract-1373
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ACCOUNT_SUSPENDED,
   ApiError,
   deleteMyDocument,
   getMyLp,
@@ -23,7 +24,7 @@ type ReadState = "loading" | "loaded" | "absent" | "error";
 type Profile = { legalName: string; country: string };
 
 function isAccountSuspended(error: unknown): boolean {
-  return error instanceof ApiError && error.message === "account_suspended";
+  return error instanceof ApiError && error.message === ACCOUNT_SUSPENDED;
 }
 
 function message(error: unknown): string {

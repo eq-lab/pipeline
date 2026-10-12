@@ -45,6 +45,28 @@ export class ApiError extends Error {
   }
 }
 
+export const ACCOUNT_SUSPENDED = "account_suspended";
+
+const accountSuspendedListeners = new Set<() => void>();
+
+export function subscribeAccountSuspended(listener: () => void): () => void {
+  accountSuspendedListeners.add(listener);
+  return () => {
+    accountSuspendedListeners.delete(listener);
+  };
+}
+
+function requestIsAuthenticated(init?: RequestInit): boolean {
+  const headers = init?.headers;
+  if (!headers) return false;
+  if (headers instanceof Headers) return headers.has("authorization");
+  if (Array.isArray(headers))
+    return headers.some(([key]) => key.toLowerCase() === "authorization");
+  return Object.keys(headers).some(
+    (key) => key.toLowerCase() === "authorization",
+  );
+}
+
 /**
  * Fetches `${ENV.API_BASE_URL}${path}` and returns the parsed JSON body.
  *
@@ -101,6 +123,13 @@ export async function apiFetch<T>(
       }
     } catch {
       // JSON parse failed — fall back to statusText
+    }
+    if (
+      response.status === 403 &&
+      message === ACCOUNT_SUSPENDED &&
+      requestIsAuthenticated(init)
+    ) {
+      [...accountSuspendedListeners].forEach((listener) => listener());
     }
     throw new ApiError(response.status, message, payload);
   }

@@ -22,7 +22,8 @@ export interface UseEmailAuthFlowOptions {
 const NETWORK_ERROR_MESSAGE =
   "Network error — check your connection and try again.";
 const LOCKOUT_ERROR_MESSAGE = "Too many attempts. Try again in a minute.";
-const SUSPENDED_ERROR_MESSAGE = "This account is suspended. Contact support.";
+export const SUSPENDED_ERROR_MESSAGE =
+  "This account is suspended. Contact support.";
 const INVALID_CREDENTIALS_MESSAGE = "Incorrect email or password";
 const CAPTCHA_NOT_READY_MESSAGE =
   "Verification is still loading — please try again in a moment.";

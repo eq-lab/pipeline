@@ -94,9 +94,26 @@ wording updated).
    missed entirely. Confirm the modal, or say "toast" and step 6 swaps the surfacing call only —
    everything else in this plan is unchanged.
 
+## Decision Log
+
+- **2026-10-12 — Open Question 1 resolved: no message after the forced sign-out.** The user answered
+  on the Issue: clear the session and return to `/` silently — no modal, no toast. The suspension
+  copy ("This account is suspended. Contact support.") is shown only when the LP next tries to sign
+  in, via the already-shipped login-403 path in `useEmailAuthFlow` (rule 1). Accordingly,
+  `openSuspended()` (`AuthFlowContext`/`AuthFlowProvider`) and the `signInNotice` prop/effect
+  (`EmailAuthFlow`/`useEmailAuthFlow`) described in steps 3, 5, 6, 7, 8 below are **not implemented**:
+  `useSuspensionSignOut` only clears the session and navigates home. `SUSPENDED_ERROR_MESSAGE` is
+  still exported from `useEmailAuthFlow.ts` (single source of the copy, now consumed by its own
+  test file instead of the provider) and `ACCOUNT_SUSPENDED` is exported from `api/client.ts` (single
+  source of the literal, consumed by `useAccountPage.ts`'s fallback). Steps 1, 2, 4, 9, 10 are
+  implemented as planned; steps 3's hook body is simplified as shown below.
+
 ## Implementation Steps
 
-1. **`packages/frontend/src/api/client.ts` — the one global 403 seam.**
+Status: 1, 2, 4, 9, 10 implemented as planned; 3 implemented with the `openSuspended()` call removed
+(see Decision Log); 5, 6, 7, 8 dropped (see Decision Log).
+
+1. **[done]** **`packages/frontend/src/api/client.ts` — the one global 403 seam.**
    - Export `const ACCOUNT_SUSPENDED = "account_suspended"`.
    - Add a module-level `Set` of listeners and
      `export function subscribeAccountSuspended(listener: () => void): () => void` returning an
@@ -109,64 +126,42 @@ wording updated).
      requestIsAuthenticated(init)`, notify every listener (iterate a copy of the set). The thrown
      `ApiError` is unchanged, so every existing caller keeps today's behaviour.
    - The mock layer returns before the real fetch and never produces a 403, so it is untouched.
-2. **`packages/frontend/src/api/index.ts`** — export `subscribeAccountSuspended` and
+2. **[done]** **`packages/frontend/src/api/index.ts`** — export `subscribeAccountSuspended` and
    `ACCOUNT_SUSPENDED` from the barrel.
-3. **`packages/frontend/src/auth/useSuspensionSignOut.ts` (new).** A hook with no arguments and no
-   return value, carrying one spec-pointer header (`docs/frontend/auth-components.md#session-module`):
+3. **[done, simplified]** **`packages/frontend/src/auth/useSuspensionSignOut.ts` (new).** Implemented
+   without `openSuspended` (dropped per the Decision Log):
    ```ts
    const navigate = useNavigate();
-   const { openSuspended } = useAuthFlow();
    useEffect(
      () =>
        subscribeAccountSuspended(() => {
          if (!readSession()) return;
          clearSession();
-         openSuspended();
          void navigate({ to: "/", replace: true });
        }),
-     [navigate, openSuspended],
+     [navigate],
    );
    ```
-   `openSuspended` is memoized in the provider, so the effect does not re-subscribe on every
-   render. Export it from `auth/index.ts`.
-4. **`packages/frontend/src/routes/__root.tsx`** — replace the inline arrow `component` with a named
-   `RootLayout()` function that calls `useSuspensionSignOut()` and returns today's
-   `RiskBanner`/`TopBar`/`Outlet`/`Footer` tree unchanged. Keep the existing spec-pointer comment.
-5. **`packages/frontend/src/auth/AuthFlowContext.ts`** — add `openSuspended(): void` to
-   `AuthFlowContextValue` (a named seam, following the shipped `openAddEmail()` precedent rather
-   than overloading `open(screen, options)`).
-6. **`packages/frontend/src/auth/AuthFlowProvider.tsx`** — add `const [signInNotice,
-   setSignInNotice] = useState<string>()`; `open()` and `close()` clear it (so a later ordinary
-   sign-in never inherits the notice); `openSuspended` is a `useCallback` that sets it to
-   `SUSPENDED_ERROR_MESSAGE`, sets `screen` to `"sign-in"`, and opens the flow. Add `openSuspended`
-   to the context `useMemo` value and pass `signInNotice={signInNotice}` to the rendered
-   `<EmailAuthFlow />`. (If Open Question 1 resolves to "toast", `openSuspended` is dropped and step
-   3 calls `useToast().show({ tone: "danger", title: SUSPENDED_ERROR_MESSAGE })` instead; steps 5
-   and 7 then fall away.)
-7. **`packages/frontend/src/components/useEmailAuthFlow.ts`** — export the existing
-   `SUSPENDED_ERROR_MESSAGE` constant (single source of the copy, imported by the provider); add an
-   optional `signInNotice?: string` to `UseEmailAuthFlowOptions`; add a small effect **after** the
-   existing open-reset effect:
-   ```ts
-   useEffect(() => {
-     if (open && signInNotice) {
-       setScreen("sign-in");
-       setSignInFormError(signInNotice);
-     }
-   }, [open, signInNotice]);
-   ```
-   Effects run in declaration order on the same commit, so the reset effect cannot wipe the notice.
-   Typing in either credential field (`onCredentialsEdit` → `clearSignInErrors`) and any cross-link
-   away from sign-in clear it, exactly as they clear a login error today.
-8. **`packages/frontend/src/components/EmailAuthFlow.tsx`** — add `signInNotice?: string` to
-   `EmailAuthFlowProps` and thread it into `useEmailAuthFlow({ … })`. No modal prop changes:
-   `SignInModal` already renders `formError` as a `role="alert"` paragraph.
-9. **`packages/frontend/src/components/account/useAccountPage.ts`** — keep the suspended branch;
-   change `isAccountSuspended` to compare against `ACCOUNT_SUSPENDED` imported from `@/api` instead
-   of the inline literal. No behaviour change.
-10. **`packages/frontend/src/api/README.md`** — document `subscribeAccountSuspended` /
-    `ACCOUNT_SUSPENDED` in the module's public surface next to the existing `login` 403 note
-    (lines 82-86), including the "authenticated requests only" rule.
+   Exported from `auth/index.ts`.
+4. **[done]** **`packages/frontend/src/routes/__root.tsx`** — replaced the inline arrow `component`
+   with a named `RootLayout()` function that calls `useSuspensionSignOut()` and returns today's
+   `RiskBanner`/`TopBar`/`Outlet`/`Footer` tree unchanged. Kept the existing spec-pointer comment.
+5. **[dropped — see Decision Log]** ~~`packages/frontend/src/auth/AuthFlowContext.ts`~~ — no
+   `openSuspended()` seam added; `AuthFlowContextValue` is unchanged.
+6. **[dropped — see Decision Log]** ~~`packages/frontend/src/auth/AuthFlowProvider.tsx`~~ — no
+   `signInNotice` state, no `openSuspended` callback; `<EmailAuthFlow />` is rendered unchanged.
+7. **[partially done]** **`packages/frontend/src/components/useEmailAuthFlow.ts`** — exported the
+   existing `SUSPENDED_ERROR_MESSAGE` constant (single source of the copy), now consumed by this
+   file's own test (rule 1 hook-level assertion) rather than by a provider. The `signInNotice` option
+   and effect are dropped — see Decision Log.
+8. **[dropped — see Decision Log]** ~~`packages/frontend/src/components/EmailAuthFlow.tsx`~~ — no
+   `signInNotice` prop added.
+9. **[done]** **`packages/frontend/src/components/account/useAccountPage.ts`** — kept the suspended
+   branch; changed `isAccountSuspended` to compare against `ACCOUNT_SUSPENDED` imported from `@/api`
+   instead of the inline literal. No behaviour change.
+10. **[done]** **`packages/frontend/src/api/README.md`** — documented `subscribeAccountSuspended` /
+    `ACCOUNT_SUSPENDED` in the module's public surface next to the existing `login` 403 note,
+    including the "authenticated requests only" rule.
 
 ## Test Strategy
 
@@ -183,40 +178,40 @@ All under `packages/frontend` (`yarn test`, Vitest + jsdom + Testing Library).
    - `Headers` instance and `[name, value][]` header forms, and a lowercase `authorization` key,
      are all recognised.
    - the returned unsubscribe stops further delivery; two subscribers both receive one call.
-2. **`src/auth/useSuspensionSignOut.test.tsx`** (new). Render a probe component that calls the hook,
-   with `useNavigate` mocked (`vi.mock("@tanstack/react-router", …)`) or inside the memory-router
-   harness `src/components/TopBar.test.tsx` already demonstrates, and a stub `AuthFlowContext.Provider`
-   supplying a spy `openSuspended`:
-   - with a saved session, one notification → `readSession()` is `null`, `openSuspended` called
-     once, `navigate` called once with `{ to: "/", replace: true }`.
-   - **two notifications back-to-back** (the concurrent-403 case) → `openSuspended` and `navigate`
-     called exactly once in total.
+2. **`src/auth/useSuspensionSignOut.test.tsx`** (new; implemented). `useNavigate` is mocked
+   (`vi.mock("@tanstack/react-router", …)`) and `@/api`'s `subscribeAccountSuspended` is replaced by a
+   test-owned listener set, so notifications are triggered directly without going through a real
+   fetch:
+   - with a saved session, one notification → `readSession()` is `null`, `navigate` called once with
+     `{ to: "/", replace: true }`.
+   - **two notifications back-to-back** (the concurrent-403 case) → `navigate` called exactly once.
    - with **no** session → nothing called, no navigation.
    - unmount → the subscription is released (a later notification does nothing).
-3. **`src/auth/AuthFlowProvider.test.tsx`** (extend; widen the `EmailAuthFlow` mock to render
-   `signInNotice` into a `data-testid`):
-   - `openSuspended()` opens the flow on `sign-in` with `signInNotice` = "This account is
-     suspended. Contact support."
-   - a subsequent `close()` then plain `open("sign-in")` renders **no** notice.
-4. **`src/auth/AuthFlowProvider.setup.test.tsx`** (extend; `getMyLp` is already mocked and
-   `saveSession`/`clearSession` already imported): with a session saved, `getMyLp` rejecting
-   `new ApiError(403, "account_suspended")` and a probe calling `useSuspensionSignOut`, assert the
-   end state — no session, `lpRead` back to `"unknown"` — i.e. the provider's own `"error"` write
-   for the stale token does not survive.
-5. **`src/components/EmailAuthFlow.test.tsx`** (extend):
-   - mounting with `open` and `signInNotice` set renders the copy in the sign-in `role="alert"`
-     slot; typing in the email or password field clears it; following the "Create account"
-     cross-link and returning to sign-in leaves it cleared.
-   - the existing `403 account_suspended` login test (line 209) stays untouched — that is rule 1's
-     coverage.
-6. **`src/components/useEmailAuthFlow.test.ts`** (extend, rule 1 at hook level): a login rejection
-   of `ApiError(403, "account_suspended")` sets `signInFormError` to the suspension copy and leaves
-   `screen` on `"sign-in"`, while `ApiError(403, "email_not_verified")` still routes to `"otp"` —
-   locking the branch that distinguishes the two 403s.
+3. **[dropped — see Decision Log]** ~~`src/auth/AuthFlowProvider.test.tsx` `openSuspended` /
+   `signInNotice` coverage~~ — not implemented, since `openSuspended` was never added.
+4. **`src/auth/AuthFlowProvider.setup.test.tsx`** (extended, implemented): a new test in the "LP read
+   state published via context" block rejects `getMyLp` with `ApiError(403, "account_suspended")`,
+   waits for `lpRead === "error"`, then calls `clearSession()` directly (standing in for
+   `useSuspensionSignOut`'s effect) and asserts `lpRead` resets to `"unknown"` — i.e. the provider's
+   own `"error"` write for the stale token does not survive a cleared session.
+5. **[dropped — see Decision Log]** ~~`src/components/EmailAuthFlow.test.tsx` `signInNotice`
+   coverage~~ — not implemented. The existing `403 account_suspended` login test (line 209) stays
+   untouched — that is rule 1's coverage.
+6. **`src/components/useEmailAuthFlow.test.ts`** (extended, implemented; rule 1 at hook level): a
+   login rejection of `ApiError(403, "account_suspended")` sets `signInFormError` to
+   `SUSPENDED_ERROR_MESSAGE` and leaves `screen` on `"sign-in"`, while
+   `ApiError(403, "email_not_verified")` routes to `"otp"` with no `signInFormError` — locking the
+   branch that distinguishes the two 403s.
 7. **`src/components/account/useAccountPage.test.tsx` / `AccountPage.test.tsx`** — unchanged; they
    keep proving the defensive fallback still renders the declined copy with `Retry` suppressed when
    the page is mounted without the root subscriber.
-8. **Gates:** `yarn workspace @pipeline/frontend test`, `yarn workspace @pipeline/frontend lint`,
+8. **`src/routes/-root.test.tsx`** (new; end-to-end, not in the original plan). Mounts the real
+   `Route` from `routes/__root.tsx` (`RootLayout` + `TopBar`) inside a real `AuthFlowProvider`, with
+   global `fetch` stubbed so `getMyLp` actually goes through `apiFetch`: a signed-in render that hits
+   a `403 account_suspended` on `/v1/lps/me` ends with the session cleared, the header showing
+   Sign In / Sign Up, no `dialog` role, no `alert` role, and the router still on `/`. A second case
+   confirms an unrelated 403 (`{"error":"forbidden"}`) leaves the session intact.
+9. **Gates:** `yarn workspace @pipeline/frontend test`, `yarn workspace @pipeline/frontend lint`,
    `yarn workspace @pipeline/frontend build`, and `npx tsx scripts/lint-docs.ts` (AGENTS.md).
    Comment-minimal code throughout: at most one 2-3-line spec-pointer header per new file, no test
    comments.
@@ -229,10 +224,10 @@ All under `packages/frontend` (`yarn test`, Vitest + jsdom + Testing Library).
     once in `routes/__root.tsx`, the `readSession()` dedupe for concurrent 403s, `clearSession()` →
     `/` (`replace: true`) → suspension copy, and the explicit "an unrelated 403 does not sign the
     LP out" rule.
-  - `### AuthFlowProvider` — add `openSuspended()` to the documented `useAuthFlow()` return shape
-    and describe the `signInNotice` prop it passes to `EmailAuthFlow` (cleared by `open()`/`close()`).
-  - `### EmailAuthFlow` — document the `signInNotice` prop and that it survives the open-reset
-    effect, clearing on credential edits and cross-links like any other `formError`.
+  - `### AuthFlowProvider` / `### EmailAuthFlow` — **[dropped — see Decision Log]**: no
+    `openSuspended()` / `signInNotice` plumbing exists, so neither section gains new prose beyond
+    the Session module paragraph above. A one-line note added to the sign-in `formError` description
+    instead, pointing at the session-module paragraph for the mid-session case.
 - **`docs/frontend/account-page.md`** — the two declined-stand-in passages (the paragraph ending
   "in practice unreachable while a `Failed` verdict suspends the account (tech debt)", ~line 59, and
   "The declined stand-in (#1426, also no designed frame)", ~lines 314-330): the 403 path is no
@@ -252,8 +247,8 @@ All under `packages/frontend` (`yarn test`, Vitest + jsdom + Testing Library).
   `1460-home-wallet-only-state.md` header format, with a "no Figma frame exists for this behaviour"
   scope note): Story 1 — a suspended LP signing in sees the message on the sign-in form and no
   session is created. Story 2 — a signed-in LP whose account is suspended mid-session is signed out
-  on the next authenticated request: header reverts to Sign In / Sign Up, the app lands on `/`, the
-  message is visible. Story 3 — the same from `/account` (the page does not linger on the declined
+  on the next authenticated request: header reverts to Sign In / Sign Up, the app lands on `/`
+  silently (no modal, no toast). Story 3 — the same from `/account` (the page does not linger on the declined
   stand-in). Story 4 — an unrelated 403 leaves the session intact. Story 5 — two authenticated
   requests 403ing together sign out once.
 - **`docs/user-stories/index.md`** — add the #1465 row to the Epic #1419 table (status `Initial`),

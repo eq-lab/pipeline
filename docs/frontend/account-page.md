@@ -56,7 +56,8 @@ card, not an Account frame — despite sharing a name with `6701-97982` below it
 `docs/frontend/bank-transfers.md#addusdcard`), whose `View` button navigates into this page. A
 `ChangesRequested` LP lands on the `invalid` state below; a `Failed` LP lands on the
 `under-review` stand-in's declined banner (see "The under review stand-in" below) — in practice
-unreachable while a `Failed` verdict suspends the account (tech debt).
+unreachable while a `Failed` verdict suspends the account (tech debt), and since #1465 the LP is
+signed out before `/account` renders at all (see "The declined stand-in" below).
 
 ## Route gate
 
@@ -324,9 +325,14 @@ suspends the account (`accounts.status = 'Suspended'`), so every bearer request 
 today's behaviour) and renders the already-shipped stand-in copy,
 `Your account verification was declined. Profile and document changes are unavailable.`, in the
 read-error block with its `Retry` button suppressed — retrying a terminal refusal can never
-succeed. This is the realistic path; the `kyb_status === "Failed"` banner above is unit-testable
-only, since the suspension makes the read itself unreachable in a running app (tracked as tech
-debt alongside the home-route unobservability note in
+succeed. **Since #1465 this is a defensive fallback, not the realistic path**: the same
+`account_suspended` 403 fires the global `subscribeAccountSuspended` seam
+(`docs/frontend/auth-components.md#session-module`), which signs the LP out and lands them on `/`
+before `/account` can render this branch — it stays shipped and tested for a tree mounted without
+the root subscriber (today, component tests) or a future authenticated call site the header sniff
+does not recognise. The `kyb_status === "Failed"` banner above is unit-testable only, since the
+suspension makes the read itself unreachable in a running app (tracked as tech debt alongside the
+home-route unobservability note in
 [home-screen-states.md](../product-specs/home-screen-states.md)).
 
 ## Verbatim copy
