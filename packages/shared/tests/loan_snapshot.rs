@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1432-shared-loan-data-model.md#d2--legacy-row-compatibility-remove-deny_unknown_fields-from-loansnapshot
+// spec: docs/exec-plans/completed/issue-1432-shared-loan-data-model.md#d2--legacy-row-compatibility-remove-deny_unknown_fields-from-loansnapshot
 
 use bigdecimal::BigDecimal;
 use shared::chains::ChainKind;
