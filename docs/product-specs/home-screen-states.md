@@ -2,7 +2,7 @@
 
 ## Overview
 
-The LP home route (`/`) renders one of six states depending on the combination of account
+The LP home route (`/`) renders one of seven states depending on the combination of account
 creation / sign-in, wallet connection, KYB status (`NotStarted` / `UnderReview` / `Passed` /
 `ChangesRequested` / `Failed`, per [kyb-lp-verification.md](./kyb-lp-verification.md)), and
 balances (PLUSD, sPLUSD, bank transfer received). Epic #1419 owns this derivation and its
@@ -19,16 +19,24 @@ replaced or superseded. See [dashboards.md](./dashboards.md) for the rest of the
 | 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Not yet implemented |
 | 5 | Verified, funded, staked | wallet connected · KYB `Passed` · bank transfer received · PLUSD = 0 · sPLUSD > 0 | Not yet implemented |
 | 6 | KYB problem | KYB not verified due to a problem (`ChangesRequested` / `Failed`) | Not yet implemented |
+| 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Not yet implemented (#1460) |
 
 ## Precedence rule
 
 States are evaluated in the order above; the first matching condition wins.
 
-**State 1 (zero state) wins on the absence of an auth session alone** — an unauthenticated visitor
-with a wallet connected still sees the zero state; the wallet connection is ignored for this
-decision. Unauthenticated-but-wallet-connected is a distinct combination the product has not
-designed yet; it will be added as its own state in a later issue, at which point this precedence
-list is revisited.
+**State 1 (zero state) requires both no auth session and no connected wallet.** A visitor with
+a wallet connected but no session is **state 7** (Figma `7149:16033`, #1460): the wallet is not a
+credential — connecting it only lets the visitor see it on the Account page — and the visitor
+registers through the Account page's `Add email` row (#1459, the same signup → OTP → session flow
+as Create account), with the header showing the account icon instead of Sign In / Sign Up (#1458).
+Until #1460 lands, `deriveHomeState` still returns `"zero"` for every sessionless visitor, wallet
+or not, so the zero-state grid is what a wallet-only visitor sees today. A connected wallet with a
+non-zero balance and no session is still undesigned and keeps falling through to state 1 until a
+frame exists.
+
+States 2–6 all presuppose an auth session — their KYB status comes from `GET /v1/lps/me`, which
+needs one.
 
 **State 2 (account not verified)** additionally requires the wallet to be disconnected — a
 connected wallet with `kyb_status: "NotStarted"` is a combination not yet designed and falls
@@ -49,7 +57,7 @@ has not designed and falls through to `"legacy"`; an unknown or failed LP read s
 `UnderReview` LP that actually holds PLUSD can render state 3 for the moment before the balance
 resolves — the same in-flight shape tracked as TD-121.
 
-Until states 4–6 land, every other signed-in session renders today's pre-#1419
+Until states 4–7 land, every other signed-in session renders today's pre-#1419
 wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
 `packages/frontend/src/components/homeState.ts`).
 
