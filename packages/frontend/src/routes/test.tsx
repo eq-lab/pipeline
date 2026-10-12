@@ -775,7 +775,7 @@ function AuthTab(): React.JSX.Element {
       </div>
       <div className="flex flex-col gap-3">
         <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
-          Wire transfers (#1283) — the Funding details modal and the five
+          Wire transfers (#1283) — the Funding details modal and the six
           AddUsdCard variants. Not mounted on any production entry point; the
           home-state derivation is #1282's, the real trust-account balance and
           Withdraw are #1285's.

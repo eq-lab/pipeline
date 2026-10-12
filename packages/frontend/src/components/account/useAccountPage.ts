@@ -10,6 +10,7 @@ import {
 import type { LpResponse, UploadDocumentsResponse } from "@/api";
 import { useAuthSession } from "@/auth";
 import { readSession } from "@/auth/session";
+import { ACCOUNT_DECLINED_MESSAGE } from "./accountPageState";
 import {
   eligibleForReview,
   submitLpForReview,
@@ -21,6 +22,10 @@ import { useAccountDocuments } from "./useAccountDocuments";
 type ReadState = "loading" | "loaded" | "absent" | "error";
 type Profile = { legalName: string; country: string };
 
+function isAccountSuspended(error: unknown): boolean {
+  return error instanceof ApiError && error.message === "account_suspended";
+}
+
 function message(error: unknown): string {
   if (!(error instanceof ApiError))
     return "Connection lost. Check your connection and try again.";
@@ -29,6 +34,10 @@ function message(error: unknown): string {
       return `Check your profile and files: ${error.message}`;
     case 401:
       return "Your session expired. Sign in again to continue.";
+    case 403:
+      return isAccountSuspended(error)
+        ? ACCOUNT_DECLINED_MESSAGE
+        : error.message || "The request failed. Try again.";
     case 404:
       return "The account or document was not found. Refresh and try again.";
     case 409:
@@ -52,6 +61,7 @@ function uploadErrorResponse(error: ApiError): UploadDocumentsResponse | null {
 export function useAccountPage(enabled = true) {
   const { token, email: sessionEmail } = useAuthSession();
   const [readState, setReadState] = useState<ReadState>("loading");
+  const [suspended, setSuspended] = useState(false);
   const [lp, setLp] = useState<LpResponse | null>(null);
   const [legalName, setLegalName] = useState("");
   const [country, setCountry] = useState("");
@@ -100,18 +110,22 @@ export function useAccountPage(enabled = true) {
       const serial = ++request.current;
       try {
         const next = await getMyLp(signal);
-        if (serial === request.current && current(expected))
+        if (serial === request.current && current(expected)) {
           adopt(next, expected);
+          setSuspended(false);
+        }
         return next;
       } catch (error) {
         if (signal?.aborted || serial !== request.current || !current(expected))
           return undefined;
         if (error instanceof ApiError && error.status === 404) {
           adopt(null, expected);
+          setSuspended(false);
           return null;
         }
         setReadState("error");
         setActionError(message(error));
+        setSuspended(isAccountSuspended(error));
         return undefined;
       }
     },
@@ -126,6 +140,7 @@ export function useAccountPage(enabled = true) {
     setCountry("");
     setBaseline({ legalName: "", country: "" });
     setActionError(undefined);
+    setSuspended(false);
     setUncertainIds(null);
     setUncertainSubmission(false);
     submissionPending.current = false;
@@ -431,6 +446,7 @@ export function useAccountPage(enabled = true) {
   return {
     token,
     readState,
+    suspended,
     lp,
     email,
     legalName,

@@ -94,6 +94,31 @@ committed verbatim (Figma asset URLs expire).
   (`docs/frontend/dashboard-components.md#connectwalletpromocard`), pinned `top-[42px] right-0
 w-[288px]` inside the card's fixed 274px height.
 
+## WarningIllustration
+
+**Source:** `packages/ui/src/components/WarningIllustration/WarningIllustration.tsx`.
+
+Striped warning-triangle illustration for the `AddUsdCard` `declined` variant (home state 6, issue
+#1426) — Figma node `6703:106694` (file `A43rjYYjSwdTmiwwf5cx5n`, "warning 1"). The artwork ships
+as `packages/ui/src/assets/illustrations/striped-warning.svg`, exported from the Dev Mode MCP and
+committed verbatim (Figma asset URLs expire). The frame's old striped-check `Union`
+(`6702:104192`, identical geometry to the `verifying` card's artwork) is hidden in Figma and is not
+reused here — this is new artwork, not `CheckIllustration`.
+
+- **Rendering technique:** the same CSS-mask recipe as `CheckIllustration`/`SignUpIllustration` —
+  the SVG paints as a `mask-image` over a `currentColor` background, so `tone` swaps the fill
+  without duplicating paths.
+- **Sizing:** intrinsic square aspect ratio `236 / 236`, matching the Figma node exactly. Default
+  `width` 236.
+- **Tone semantics:** `muted` (default, ink-muted) — the production use inside `AddUsdCard`;
+  `primary` available for a future high-contrast surface.
+- **Accessibility:** purely decorative — `aria-hidden="true"`; meaning is conveyed by the card's
+  own heading/description text.
+- **Reuse points:** `AddUsdCard`'s `declined` variant only
+  (`docs/frontend/bank-transfers.md#addusdcard`), anchored absolutely at the card-box offset
+  `(128.86, 48)`, clipped by the card's `overflow-hidden` frame (51.72px bleeds past the right
+  edge, 38px past the bottom).
+
 ## ActivityHeader
 
 **Source:** `packages/ui/src/components/ActivityHeader/ActivityHeader.tsx`.

@@ -1637,15 +1637,34 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`. |
    | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                      |
 
-   All four #1419 branches are pixel-matched to their frames, shared cards included (human decision,
-   2026-10-07 — this supersedes the "composition only, card heights accepted" note from #1421). The
+   When `deriveHomeState` returns `"kyb-problem"` (signed in, `lpRead === "loaded"`,
+   `kyb_status` `ChangesRequested` or `Failed` — state 6 of `home-screen-states.md`, #1426, Figma
+   frame `6702:104071`) the grid renders a sixth branch, built from the `"kyb-pending"` branch with
+   two swaps. Unlike states 3–4, this branch is gated on `kyb_status` alone — no `isConnected`, no
+   balance check:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`6702:104180`)       | `PortfolioPlaceholderCard variant={isConnected ? "get-plusd" : "connect-wallet"}` — the only card that still branches on connection, since the frame itself is drawn connected but the state is not gated on it. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`6702:104081`) | `RecentActivityCard padding="md"` — unchanged from state 3/4.                                                                   |
+   | Balances        | col 1–2, row 2 (`6702:104425`)       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3/4 (Buy/Sell/Stake wired the same way, `sellDisabled`/`stakeDisabled` from the served balances). |
+   | AddUsdCard      | col 3–4, row 2 (`6702:104190`)       | `AddUsdCard variant="declined"` (Figma node `6702:104191`, 313.14×246, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `View` (`onViewStatus`) navigates to `/account`, the same seam state 3's `View Status` uses. |
+   | QnaSection      | col 1–7, row 3 (`6702:104181`)       | FAQ strip, 1136×89 — unchanged.                                                                                                  |
+
+   Full `declined` card geometry (illustration anchor, heading cap, bleed) is
+   `docs/frontend/bank-transfers.md#shape-b-frame-and-illustration-anchor-1430-1426`.
+
+   All five #1419 branches are pixel-matched to their frames, shared cards included (human decision,
+   2026-10-07 — this supersedes the "composition only, card heights accepted" note from #1421; the
+   `"kyb-problem"` branch extends this to a sixth, per the 2026-10-12 scope note that only the
+   `AddUsdCard` is pixel-traced for #1426, every other slot reusing state 3's composition). The
    grid itself needed no change: `grid-cols-7 gap-4` over a 1136px content box already yields the
    frames' 148.57px columns, so 2 cols = 313.14, 3 cols = 477.71 and 4 cols = 642.28. Card radii
    stay `--radius-pipeline-card` (4px) and button radii `--radius-pipeline-button` (4px) —
    `get_variable_defs` resolves the frames' `radius/radius-xxl` and `radius/radius-s` to 4, which
    the frame screenshots confirm (the 24px/8px literals in `get_design_context`'s output are
    stale fallbacks, not the applied mode). The `"legacy"` grid and the mobile stack keep today's
-   card look until states 5–6 land.
+   card look until state 5 lands.
 
 **Mobile (below md) visual structure — single-column stack**, rendered directly (no outer white Card wrapper — Figma frame `1989:8292` uses the page background, not a white card):
 
@@ -1672,9 +1691,9 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 
 Only meaningful when `isConnected === true`; callers short-circuit to the disconnected layout otherwise.
 
-**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424):**
+**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426):**
 `packages/frontend/src/components/homeState.ts` exports
-`HomeState = "zero" | "unverified" | "kyb-pending" | "plusd-held" | "legacy"`,
+`HomeState = "zero" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
 `deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
@@ -1685,18 +1704,19 @@ precedence clause) is evaluated in order: `"zero"` whenever `hasSession` is `fal
 `lpRead === "absent"` or (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
 `"kyb-pending"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "UnderReview"` and both
 `plusdIsZero` and `splusdIsZero`; else `"plusd-held"` when `isConnected`, `lpRead === "loaded"`,
-`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"legacy"` (covers a disconnected
-wallet, a non-zero sPLUSD balance, `lpRead` `"unknown"`/`"error"`, and every other `kyb_status`,
-including the unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for
-`hasSession`,
+`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"kyb-problem"` when
+`lpRead === "loaded"` and `kybStatus` is `"ChangesRequested"` or `"Failed"` — **no `isConnected` or
+balance check**, unlike the two branches above it; else `"legacy"` (covers a disconnected wallet, a
+non-zero sPLUSD balance, `lpRead` `"unknown"`/`"error"`, and every other `kyb_status`, including the
+unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for `hasSession`,
 `lpRead`/`kybStatus` from `useAuthFlow()`, and feeds the two balance inputs from
 `isDisplayZero(plusdBalanceActive, activeDecimals)` / `isDisplayZero(splusdSharesActive,
 activeDecimals)` — the same #1186 displayed-zero rule as `stakeDisabled` / `sellDisabled`.
 `AuthFlowProvider` already issues `GET /v1/lps/me` on every token change (see
 `docs/frontend/auth-components.md#authflowprovider`), so the route makes **no** `getMyLp` call of
 its own on this path. Only the desktop grid branches on `homeState`; the mobile stack keeps today's
-`isConnected`-only rendering unchanged (no mobile frame exists yet for states 1–3 — the composition
-stays flexible for one to slot in later).
+`isConnected`-only rendering unchanged (no mobile frame exists for states 1–3 or 6 — the
+composition stays flexible for one to slot in later).
 
 Token discipline: this composer adds no raw colors, fonts, sizes, or radii — every value comes from `@pipeline/ui/styles/theme.css` via component primitives or Tailwind utilities that resolve theme tokens.
 

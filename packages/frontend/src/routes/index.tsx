@@ -571,6 +571,73 @@ function Home() {
                 <QnaSection />
               </div>
             </div>
+          ) : homeState === "kyb-problem" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant={isConnected ? "get-plusd" : "connect-wallet"}
+                onConnectWallet={openConnectModal}
+                balanceLabel={splusdBalanceFormatted}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6702:104425"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  layout="compact"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  layout="compact"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  stakeDisabled={stakeDisabled}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6702:104190"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="declined"
+                  onViewStatus={onViewStatus}
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
           ) : (
             <div
               className="grid w-full grid-cols-7 gap-4"

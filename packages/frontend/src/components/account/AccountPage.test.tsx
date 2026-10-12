@@ -1,7 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ApiError } from "@/api";
+import { clearSession, saveSession } from "@/auth/session";
 import { AccountPage } from "./AccountPage";
+
+const mockGet = vi.fn();
+
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  return { ...actual, getMyLp: (...args: unknown[]) => mockGet(...args) };
+});
 
 vi.mock("@/wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/wallet")>();
@@ -68,5 +77,28 @@ describe("AccountPage", () => {
     render(<AccountPage previewState="verified" />);
     expect(screen.getAllByText("Verified")).toHaveLength(7);
     expect(screen.queryByText("Verify your account")).not.toBeInTheDocument();
+  });
+});
+
+describe("AccountPage — 403 account_suspended (#1426)", () => {
+  afterEach(() => {
+    clearSession();
+    mockGet.mockReset();
+  });
+
+  it("renders the declined copy with no Retry button", async () => {
+    saveSession({ token: "token", expires_in: 3600 });
+    mockGet.mockRejectedValue(new ApiError(403, "account_suspended"));
+    render(<AccountPage />);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Your account verification was declined. Profile and document changes are unavailable.",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Retry" }),
+    ).not.toBeInTheDocument();
   });
 });

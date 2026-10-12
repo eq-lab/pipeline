@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-130.**
+**Next free number: TD-138.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1949,3 +1949,27 @@ line, whichever section it lands in.
 - **Gap:** `index_once` caps `end` at `cursor + block_range - 1`, so `poll` runs exactly one chunk per cycle under normal operation and its trailing sleep composes with the loop's own. An operator who sets 500 ms gets a ~1 s cadence. EVM-only: `StellarEventPoller::poll` has no inter-chunk sleep, so the Stellar arm's cadence is exactly its configured value.
 - **Impact:** Cosmetic today (nobody tunes to the millisecond), but #1435 made the knob per-chain, so the doubling is now inherited by every per-chain override and will mislead whoever sizes a mainnet cadence. Documented in `.env.example` rather than fixed.
 - **Suggested fix:** Drop the trailing sleep in `poll` after the final chunk (or skip it when `current > to_block`). That makes the real cadence equal the configured value, so to preserve today's behaviour the defaults must be **doubled** (500 → 1000 ms), not halved — halving them would land on a 250 ms real cadence, four times today's RPC poll rate.
+
+### TD-135: A `Failed` KYB verdict suspends the account, so no authenticated surface can ever render its declined copy
+
+- **Date:** 2026-10-12
+- **Location:** `LpRepo::decide_kyb` (`packages/shared/src/lp_repo.rs`) sets `accounts.status = 'Suspended'` in the same transaction as a `Failed` verdict; `AuthClaims::from_request_parts` (`packages/api/src/auth.rs`) re-reads account status on every bearer request and refuses with `403 account_suspended` (`packages/api/src/account_status.rs`) — Issue #1426.
+- **Gap:** `GET /v1/lps/me` 403s from the request immediately after a `Failed` verdict lands, so the home route's `lpRead` can never resolve to `"loaded"` with `kyb_status: "Failed"` (it sees `"error"` and renders `"legacy"`), and `/account`'s production read never reaches `readState: "loaded"` either. The declined copy both surfaces ship — `AddUsdCard variant="declined"`, the home route's `"kyb-problem"` branch, `AccountDocumentsCard`'s `failed` banner, and `useAccountPage`'s 403 stand-in — is real code with real tests, but only the 403 stand-in is reachable in a running app; the rest is unit-testable only.
+- **Impact:** A `Failed` LP sees a generic suspended/declined message via the 403 path, never the purpose-built home card or document banner. QA cannot verify those two surfaces end-to-end against a live `Failed` account.
+- **Suggested fix:** Decide whether `Failed` should actually suspend the account (freezing login for anyone, forever) or should instead freeze only writes the way `UnderReview`/`Passed` do, leaving reads open so `kyb_status: "Failed"` is observable. A product/backend decision, not a frontend one.
+
+### TD-136: `kyb_decision_reason` and per-document `reject_reason` are served and rendered nowhere
+
+- **Date:** 2026-10-12
+- **Location:** `GET /v1/lps/me` serves `kyb_decision_reason` on the LP and `reject_reason` on each document (`packages/api` LP response shape); `documentsFromLp` (`packages/frontend/src/components/account/accountPageState.ts`) maps `LpDocument` to `AccountDocumentRecord` and drops `reject_reason` on the floor — Issue #1426.
+- **Gap:** Neither the home route's declined card, the Account page's `invalid`/declined banners, nor `AccountDocumentRow` render either field. An LP told to "re-upload" or "check and try again" is never told *why* — which document, what was wrong with it.
+- **Impact:** LP support burden: every `ChangesRequested`/`Failed` verdict requires a support contact to learn the reason already sitting in the API response.
+- **Suggested fix:** Thread `kyb_decision_reason` into the home/`Account` declined copy and `reject_reason` into `AccountDocumentRow`'s rejected-row caption. A product/design decision (copy, placement), not purely mechanical — logged rather than fixed inline.
+
+### TD-137: No Figma frame exists for the Account page's declined (`Failed`) state
+
+- **Date:** 2026-10-12
+- **Location:** `docs/frontend/account-page.md` § "The under review stand-in" — Issue #1426.
+- **Gap:** The Account column in the Figma file holds only `6701-98137`, `6701-98175`, `6701-97942`, `6701-98061`, `6701-98099`, `6701-97982`, `6701-98022` — none a declined/`Failed` state. The page ships a stand-in built from designed parts (the `under-review` banner chrome with `failed` styling and the already-shipped 403 copy), the same pattern already used for the `under-review` stand-in itself.
+- **Impact:** No ground truth to pixel-verify the declined Account banner against; a future designer pass could redesign it as a dedicated frame and invalidate the stand-in.
+- **Suggested fix:** Designer ask — request a dedicated declined-state Account frame.

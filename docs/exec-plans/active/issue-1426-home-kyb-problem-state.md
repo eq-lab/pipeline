@@ -138,21 +138,22 @@ _None_
 
 ## Implementation Steps
 
-1. **`packages/ui/src/assets/illustrations/striped-warning.svg`** — export Figma node
-   `6703:106694` through the Dev Mode MCP and commit the bytes verbatim (236×236 viewBox).
+1. **`packages/ui/src/assets/illustrations/striped-warning.svg`** — DONE. Re-exported Figma node
+   `6703:106694` through the local Dev Mode MCP at implementation time (fresh export byte-identical
+   to the planner's cached copy) and committed verbatim (236×236 viewBox).
 
-2. **`packages/ui/src/components/WarningIllustration/WarningIllustration.tsx`** (+ `index`
+2. **`packages/ui/src/components/WarningIllustration/WarningIllustration.tsx`** — DONE (+ `index`
    barrel export in `packages/ui/src/index.ts`, + a `.stories.tsx` alongside, matching
    `CheckIllustration`). Copy the `CheckIllustration` recipe verbatim: `width` prop (number → px,
    string passthrough) + `tone` (`"primary" | "muted"`), `maskImage` painting `currentColor`,
    `aria-hidden="true"`, `data-tone`, `forwardRef<HTMLSpanElement>`. Intrinsic aspect ratio
    `236 / 236`; default `width` 236.
 
-3. **`packages/frontend/src/components/addUsdCardState.ts`** — extend `AddUsdCardVariant` with
+3. **`packages/frontend/src/components/addUsdCardState.ts`** — DONE. Extended `AddUsdCardVariant` with
    `"declined"` and add it to `ADD_USD_CARD_VARIANTS` (frame order: after `verifying`). No
    derivation function is added here — epic #1419 owns the state machine.
 
-4. **`packages/frontend/src/components/AddUsdCard.tsx`** — add `"declined"` to the Shape B
+4. **`packages/frontend/src/components/AddUsdCard.tsx`** — DONE. Added `"declined"` to the Shape B
    (`Section`) branch, `NODE_IDS["declined"] = "6702:104191"`:
    - Card: `Card variant="white"`, `relative h-[246px] overflow-hidden`, the home cards' shared
      border idiom, `role="region"` + `aria-labelledby`, `data-variant="declined"`.
@@ -167,13 +168,13 @@ _None_
      existing `justify-between` column; `onClick={onViewStatus}`. Reuses the existing
      `onViewStatus` prop — no new prop.
 
-5. **`packages/frontend/src/components/homeState.ts`** — extend `HomeState` with `"kyb-problem"`
+5. **`packages/frontend/src/components/homeState.ts`** — DONE. Extended `HomeState` with `"kyb-problem"`
    and add the branch after the `"plusd-held"` check, before the `"legacy"` fallback:
    `lpRead === "loaded" && (kybStatus === "ChangesRequested" || kybStatus === "Failed")`.
    No `isConnected`, no `plusdIsZero` / `splusdIsZero`. The spec-pointer header stays the file's
    only comment.
 
-6. **`packages/frontend/src/routes/index.tsx`** — add the `homeState === "kyb-problem"` branch
+6. **`packages/frontend/src/routes/index.tsx`** — DONE. Added the `homeState === "kyb-problem"` branch
    after the `"plusd-held"` branch, copied from `"kyb-pending"` with two edits:
    - `PortfolioPlaceholderCard` — `variant={isConnected ? "get-plusd" : "connect-wallet"}`,
      `onConnectWallet={openConnectModal}` (Decision 4); everything else unchanged.
@@ -185,7 +186,7 @@ _None_
    `6702:104425` (col 1–2, row 2); add-usd stack `6702:104190` (col 3–4, row 2); FAQ `6702:104181`
    (col 1–7, row 3). `data-testid`s match the existing branches exactly.
 
-7. **`packages/frontend/src/components/account/accountPageState.ts`** — reorder and extend
+7. **`packages/frontend/src/components/account/accountPageState.ts`** — DONE. Reordered and extended
    `deriveProductionDocumentsState`:
    ```
    Passed            → "verified"
@@ -199,16 +200,20 @@ _None_
    `deriveDocumentsState` (the preview path) is untouched — the `?state=` fixtures keep their
    current behaviour.
 
-8. **`packages/frontend/src/components/account/useAccountPage.ts`** — add an `account_suspended`
-   case to `message()` returning
-   `Your account verification was declined. Profile and document changes are unavailable.`, keyed
-   on the payload/message string rather than on the bare 403. Expose a flag (e.g. `suspended`) so
-   `AccountPage.tsx` can render the error block **without** the `Retry` button for this case —
-   retrying a terminal refusal can never succeed.
+8. **`packages/frontend/src/components/account/useAccountPage.ts`** — DONE. Added an
+   `account_suspended` case to `message()` returning the declined copy, keyed on
+   `error.message === "account_suspended"` rather than on the bare 403 (`isAccountSuspended`
+   helper). Exposed a `suspended` flag, reset alongside the other per-session state and set/cleared
+   in `refresh()`'s success/404/catch branches, so `AccountPage.tsx` can render the error block
+   without `Retry`.
 
-9. **`packages/frontend/src/components/account/AccountPage.tsx`** — consume that flag to hide
-   `Retry` on the suspended error block. No copy duplication: the existing `Failed` paragraph and
-   the new 403 message are the same string, so lift it to one constant in this file.
+9. **`packages/frontend/src/components/account/AccountPage.tsx`** — DONE. Consumes `suspended` to
+   hide `Retry` on the error block. Deviation: the shared string was lifted to
+   `ACCOUNT_DECLINED_MESSAGE` in `accountPageState.ts` (not inline in `AccountPage.tsx`) — both
+   `AccountPage.tsx` (the existing `Failed` paragraph and the new suspended-error render) and
+   `useAccountPage.ts`'s `message()` import it from there, which avoids both the literal
+   duplication the plan calls out and a cross-file cycle `AccountPage.tsx → useAccountPage.ts →
+   AccountPage.tsx` would have created.
 
 10. **Lint/format gate** — `npx tsx scripts/lint-docs.ts`,
     `yarn workspace @pipeline/frontend lint`, `yarn workspace @pipeline/frontend build`,

@@ -18,7 +18,7 @@ replaced or superseded. See [dashboards.md](./dashboards.md) for the rest of the
 | 3 | KYB pending, empty | wallet connected · PLUSD = 0 · sPLUSD = 0 · KYB `UnderReview` | Implemented (#1423) |
 | 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Implemented (#1424) |
 | 5 | Verified, funded, staked | wallet connected · KYB `Passed` · bank transfer received · PLUSD = 0 · sPLUSD > 0 | Not yet implemented |
-| 6 | KYB problem | KYB not verified due to a problem (`ChangesRequested` / `Failed`) | Not yet implemented |
+| 6 | KYB problem | KYB `ChangesRequested` or `Failed` (status alone — no wallet or balance condition) | Implemented (#1426) |
 | 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Not yet implemented (#1460) |
 
 ## Precedence rule
@@ -68,7 +68,25 @@ designed. As with state 3, an unresolved PLUSD balance reads as displayed-zero (
 `AddUsdCard variant="unlocked"` rendering, gated by the same `kyb_status === "Passed"` that defines
 the state itself; there is no separate "transfers unlocked" flag on `GET /v1/lps/me`.
 
-Until states 5–7 land, every other signed-in session renders today's pre-#1419
+**State 6 (KYB problem)** requires only an auth session, `lpRead === "loaded"`, and
+`kyb_status` in (`"ChangesRequested"`, `"Failed"`) — **no wallet-connection condition and no
+balance condition**, unlike states 3 and 4 (human decision, 2026-10-12). It is evaluated after
+state 4 and before the `"legacy"` fallback, so it never loses precedence to a neighbouring
+combination falling through to `"legacy"`: there is no `isConnected` or balance gate for either
+status to fail. `ChangesRequested` is what this frame renders for in practice. `Failed` is in the
+condition — the derivation must be correct regardless of today's suspension behaviour — but is
+**unobservable**: `LpRepo::decide_kyb` suspends the account in the same transaction as a `Failed`
+verdict, and every subsequent bearer request 403s (`account_suspended`), so `GET /v1/lps/me` fails
+and the home route sees `lpRead === "error"`, which falls through to `"legacy"` instead (tracked as
+tech debt). On the home grid, only the `AddUsdCard` (`"declined"` variant) is state-specific; Total
+Balance, Recent activity, Get PLUSD/Stake PLUSD and the FAQ strip reuse the state-3 composition
+verbatim, with the Total Balance card's variant following `isConnected`
+(`"get-plusd"` connected, `"connect-wallet"` disconnected) since the frame itself is not gated on
+connection. `View` on the `AddUsdCard` navigates to `/account`
+([account-page.md](../frontend/account-page.md)), which renders the `invalid` documents state for
+`ChangesRequested` and the declined stand-in for the (unobservable) `Failed` 403.
+
+Until states 5 and 7 land, every other signed-in session renders today's pre-#1419
 wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
 `packages/frontend/src/components/homeState.ts`).
 
@@ -91,8 +109,17 @@ interior padding, a single 40px rectangular CTA per card (no 128px circular Stak
 1–3 keep the Figma copy "Convert with USDC 1:1"; state 4 swaps the left card's content for the
 served PLUSD balance (eyebrow "PLUSD Balance", the balance at Heading 20 with the `$` stripped,
 caption "`$<amount>` USDC"), rendering `—` for both when the balance is not yet served. The
-`"legacy"` branch keeps the taller pre-#1419 cards until states 5–6 land and define their own
+`"legacy"` branch keeps the taller pre-#1419 cards until state 5 lands and defines its own
 composition.
+
+**State 6 reuses state 3's composition verbatim**, with one card swap: the Shape B slot at col 3–4
+row 2 mounts `AddUsdCard variant="declined"` (Figma frame `6702:104071`) instead of `"verifying"`,
+stacked above the same compact `EarnedCard`. Every other slot — Total Balance, Recent activity, the
+compact Get PLUSD/Stake PLUSD stack, and the FAQ strip — is state 3's composition unchanged (no
+pixel-tracing was done for these cards in #1426; see [bank-transfers.md](../frontend/bank-transfers.md)
+for the `declined` card's own Figma-exact geometry). The one exception is the Total Balance card's
+variant, which follows `isConnected` here rather than being fixed, since state 6 (unlike state 3)
+is not gated on connection.
 
 State 4's Buy/Sell row is the one visual exception to "states share one `Button` treatment": Buy is
 tinted `rgba(184,191,190,0.12)` with a primary-ink label, and Sell is untinted with an **ink-muted**

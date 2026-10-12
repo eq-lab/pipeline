@@ -531,9 +531,9 @@ describe("TestPage — Wire transfers (#1283) preview seam", () => {
     vi.clearAllMocks();
   });
 
-  it("?tab=auth renders five AddUsdCards, one per ADD_USD_CARD_VARIANTS entry", () => {
+  it("?tab=auth renders six AddUsdCards, one per ADD_USD_CARD_VARIANTS entry", () => {
     renderTestPage("auth");
-    expect(screen.getAllByRole("region")).toHaveLength(5);
+    expect(screen.getAllByRole("region")).toHaveLength(6);
   });
 
   it("no dialog is present initially", () => {

@@ -4,6 +4,7 @@ export type HomeState =
   | "unverified"
   | "kyb-pending"
   | "plusd-held"
+  | "kyb-problem"
   | "legacy";
 export type LpReadState = "unknown" | "absent" | "loaded" | "error";
 
@@ -46,6 +47,12 @@ export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
     splusdIsZero
   ) {
     return "plusd-held";
+  }
+  if (
+    lpRead === "loaded" &&
+    (kybStatus === "ChangesRequested" || kybStatus === "Failed")
+  ) {
+    return "kyb-problem";
   }
   return "legacy";
 }

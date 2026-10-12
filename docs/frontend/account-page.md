@@ -50,10 +50,13 @@ The existing `missing` preview contains a synthetic `NotProvided` row and a name
 the API supplies neither field. That content remains a development fixture, never production
 data. All `?state=` fixtures stay dev-only and do not fetch or mutate LP data.
 
-`6702-104071` ("Error Verification" in the home-frame column) is **not** part of this page —
-despite sharing a name with one of the Account frames it is the **home dashboard**'s failure card
-("We can't verify your account"), whose `View` button is the prototype wire into this page. It
-belongs to #1282, not this issue.
+`6702-104071` ("Error Verification" in the home-frame column) is the **home dashboard**'s failure
+card, not an Account frame — despite sharing a name with `6701-97982` below it is
+`AddUsdCard variant="declined"` ("We can’t verify your account", #1426,
+`docs/frontend/bank-transfers.md#addusdcard`), whose `View` button navigates into this page. A
+`ChangesRequested` LP lands on the `invalid` state below; a `Failed` LP lands on the
+`under-review` stand-in's declined banner (see "The under review stand-in" below) — in practice
+unreachable while a `Failed` verdict suspends the account (tech debt).
 
 ## Route and dev-only guard
 
@@ -163,19 +166,32 @@ React.
 export type AccountDocumentsState =
   | "verify" | "staged" | "under-review" | "missing" | "invalid" | "verified";
 
-export type KybStatus = "NotStarted" | "InProgress" | "UnderReview" | "Passed" | "Failed";
+export type KybStatus =
+  | "NotStarted" | "InProgress" | "ChangesRequested" | "UnderReview" | "Passed" | "Failed";
 export type KybDocumentStatus = "NotProvided" | "Provided" | "Verified" | "Rejected";
 export interface AccountDocumentRecord { id?: number; name: string; status: KybDocumentStatus }
 ```
 
 These names mirror the backend vocabulary: `deriveDocumentsState({
-kybStatus, documents, stagedCount })` maps a `(KybStatus, AccountDocumentRecord[], stagedCount)`
-triple onto one `AccountDocumentsState`, with an explicit precedence — `Passed` → `verified`; any
-`Rejected` → `invalid`; a `NotProvided` document → `missing`; `UnderReview` → `under-review`;
-`stagedCount > 0` → `staged`; otherwise `verify`. Production uses
-`deriveProductionDocumentsState` with the server's `kyb_status`, persisted document statuses,
-and `writable` flag. Writable LPs retain upload controls and all persisted rows, including
-Provided rows. The `missing` state and named required document remain fixture-only.
+kybStatus, documents, stagedCount })` (the `?state=` preview path, unchanged by #1426) maps a
+`(KybStatus, AccountDocumentRecord[], stagedCount)` triple onto one `AccountDocumentsState`, with an
+explicit precedence — `Passed` → `verified`; any `Rejected` → `invalid`; a `NotProvided` document →
+`missing`; `UnderReview` → `under-review`; `stagedCount > 0` → `staged`; otherwise `verify`.
+
+Production uses `deriveProductionDocumentsState` with the server's `kyb_status`, persisted document
+statuses, and `writable` flag, in its own precedence order: `Passed` → `verified`; `Failed` →
+`under-review` (checked before the `Rejected` check, so a `Failed` LP holding a rejected document
+is not mis-routed into the re-upload banner — #1426); `UnderReview` → `under-review`;
+`ChangesRequested` → `invalid` (also checked before the `Rejected` check — a `ChangesRequested`
+with neither a reason nor a single rejected document is a real case per
+[kyb-lp-verification.md](../product-specs/kyb-lp-verification.md), and must still show the
+re-upload banner rather than the first-time "Verify your account" banner); any `Rejected` document →
+`invalid`; a writable LP → `staged` or `verify`; otherwise `under-review`. Writable LPs retain
+upload controls and all persisted rows, including Provided rows. The `missing` state and named
+required document remain fixture-only — `deriveProductionDocumentsState` never returns `"missing"`,
+since KYB documents are untyped and carry no `NotProvided` status (see
+[kyb-lp-verification.md](../product-specs/kyb-lp-verification.md)); frame `6701-98022` stays a
+`?state=` preview, unreachable from production data.
 
 There is **no doc-type or subject selector anywhere in this UI** — the epic's 2026-09-21 decision
 puts classification in the trustee's review screen (#1267); this page's requirements list
@@ -213,6 +229,23 @@ only: the warning banner chrome from `6701-98137`, title `Verifying account`, ca
 reviewing your documents.` (verbatim from the home card, correcting its "Veryfying" typo per the
 #1248 design-file-artifact precedent), the submitted files with the `Uploaded` caption and no
 remove control, no upload row, no Save. Logged as a designer ask (tech debt).
+
+**The declined stand-in (#1426, also no designed frame).** A `Failed` kyb_status reuses the same
+`under-review` banner slot with `failed` set: negative tone, `WarningTriangleIcon`, title
+`Account verification declined`, caption `Your account is frozen and cannot be changed.` There is
+no designed Account frame for a declined verdict either (decision 5 of the #1426 exec plan) — the
+Account column holds only `6701-98137`, `6701-98175`, `6701-97942`, `6701-98061`, `6701-98099`,
+`6701-97982`, `6701-98022`. The same situation reaches the page a second way: a `Failed` verdict
+suspends the account (`accounts.status = 'Suspended'`), so every bearer request 403s with
+`account_suspended` and the read never reaches `readState: "loaded"`. `useAccountPage` keys that
+403 on the payload's `account_suspended` string (not the bare status, so an unrelated 403 keeps
+today's behaviour) and renders the already-shipped stand-in copy,
+`Your account verification was declined. Profile and document changes are unavailable.`, in the
+read-error block with its `Retry` button suppressed — retrying a terminal refusal can never
+succeed. This is the realistic path; the `kyb_status === "Failed"` banner above is unit-testable
+only, since the suspension makes the read itself unreachable in a running app (tracked as tech
+debt alongside the home-route unobservability note in
+[home-screen-states.md](../product-specs/home-screen-states.md)).
 
 ## Verbatim copy
 

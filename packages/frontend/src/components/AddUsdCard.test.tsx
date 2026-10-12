@@ -42,6 +42,14 @@ const CASES: PresenceCase[] = [
     hasIllustration: true,
   },
   {
+    variant: "declined",
+    heading: "We can’t verify your account",
+    subCaption: "Please check and try again.",
+    primaryLabel: "View",
+    hasWithdraw: false,
+    hasIllustration: true,
+  },
+  {
     variant: "unlocked",
     heading: "Use a bank transfer",
     eyebrow: "Add USD",
@@ -194,6 +202,50 @@ describe("AddUsdCard — seam handlers fire", () => {
     render(<AddUsdCard variant="verifying" onViewStatus={onViewStatus} />);
     await user.click(screen.getByRole("button", { name: "View Status" }));
     expect(onViewStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("onViewStatus fires on declined", async () => {
+    const onViewStatus = vi.fn();
+    const user = userEvent.setup();
+    render(<AddUsdCard variant="declined" onViewStatus={onViewStatus} />);
+    await user.click(screen.getByRole("button", { name: "View" }));
+    expect(onViewStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AddUsdCard — declined variant (#1426)", () => {
+  it("renders the Figma heading with its typographic apostrophe (U+2019)", () => {
+    render(<AddUsdCard variant="declined" />);
+    const heading = screen.getByText(/We can.t verify your account/);
+    expect(heading.textContent).toBe("We can’t verify your account");
+  });
+
+  it("carries the declined data-variant and data-node-id", () => {
+    render(<AddUsdCard variant="declined" />);
+    const region = screen.getByRole("region");
+    expect(region.getAttribute("data-variant")).toBe("declined");
+    expect(region.getAttribute("data-node-id")).toBe("6702:104191");
+  });
+
+  it("renders the warning illustration anchored at the card-box offset", () => {
+    const { container } = render(<AddUsdCard variant="declined" />);
+    const illustration = container.querySelector("[data-tone]");
+    expect(illustration?.className).toContain("absolute");
+    expect(illustration?.className).toContain("top-[48px]");
+    expect(illustration?.className).toContain("left-[128.86px]");
+  });
+
+  it("renders no Add Funds control and no Start Verification / View Status label", () => {
+    render(<AddUsdCard variant="declined" />);
+    expect(
+      screen.queryByRole("button", { name: "Add Funds" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Start Verification" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View Status" }),
+    ).not.toBeInTheDocument();
   });
 });
 

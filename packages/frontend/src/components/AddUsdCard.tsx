@@ -1,6 +1,11 @@
 // spec: docs/frontend/bank-transfers.md#addusdcard
 import React from "react";
-import { Card, Button, CheckIllustration } from "@pipeline/ui";
+import {
+  Card,
+  Button,
+  CheckIllustration,
+  WarningIllustration,
+} from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 import type { AddUsdCardVariant } from "./addUsdCardState";
 
@@ -21,6 +26,7 @@ const NODE_IDS: Record<AddUsdCardVariant, string> = {
   locked: "6701:98378",
   verify: "6701:97695",
   verifying: "6701:98539",
+  declined: "6702:104191",
   unlocked: "6701:97494",
   funded: "6701:97289",
 };
@@ -34,8 +40,10 @@ const SECTION_ILLUSTRATION_ANCHOR: Record<"verify" | "verifying", string> = {
 
 function isSectionVariant(
   variant: AddUsdCardVariant,
-): variant is "verify" | "verifying" {
-  return variant === "verify" || variant === "verifying";
+): variant is "verify" | "verifying" | "declined" {
+  return (
+    variant === "verify" || variant === "verifying" || variant === "declined"
+  );
 }
 
 const eyebrowClasses = [
@@ -138,17 +146,49 @@ function CardHorizontal({
   );
 }
 
+function DeclinedSection({
+  onViewStatus,
+  labelId,
+}: {
+  onViewStatus?: () => void;
+  labelId: string;
+}) {
+  return (
+    <div className="flex h-full w-full flex-col justify-between">
+      <WarningIllustration
+        width={236}
+        tone="muted"
+        className="pointer-events-none absolute top-[48px] left-[128.86px]"
+      />
+      <div className="relative flex w-[227px] flex-col gap-1">
+        <h3 id={labelId} className={headingClasses}>
+          We can’t verify your account
+        </h3>
+        <p className={sectionDescriptionClasses}>Please check and try again.</p>
+      </div>
+      <div className="relative">
+        <Button variant="primary-dark" size="m" onClick={onViewStatus}>
+          View
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Section({
   variant,
   onStartVerification,
   onViewStatus,
   labelId,
 }: {
-  variant: "verify" | "verifying";
+  variant: "verify" | "verifying" | "declined";
   onStartVerification?: () => void;
   onViewStatus?: () => void;
   labelId: string;
 }) {
+  if (variant === "declined")
+    return <DeclinedSection onViewStatus={onViewStatus} labelId={labelId} />;
+
   const heading =
     variant === "verify" ? "Verify your account" : "Verifying account…";
   const description =
