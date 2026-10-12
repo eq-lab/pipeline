@@ -63,10 +63,12 @@ Out of scope:
 - **Reusing `signup`'s single captcha token across two screens is safe** because `screen` is one
   value — `"create-account"` and `"add-email"` are never mounted simultaneously, so the shared
   `signupTurnstileRef` / `signupCaptchaToken` cannot be double-claimed. Do not add a third token.
-- **After OTP success the provider may open `CompanyDocsModal`.** `AuthFlowProvider`'s `token`
-  effect fires on the new session, `GET /v1/lps/me` returns `404` for a brand-new account, and
-  `setup.open` becomes `true`. That is existing #1265/#1278 behaviour for every signup, but the
-  Issue's stated end-state does not mention it — see **Open Questions**.
+- **After OTP success the provider opens `CompanyDocsModal`, and that is wanted** — user decision,
+  2026-10-12: "it's ok, let it open the modal". `AuthFlowProvider`'s `token` effect fires on the new
+  session, `GET /v1/lps/me` returns `404` for a brand-new account, and `setup.open` becomes `true`.
+  This is existing #1265/#1278 behaviour for every signup and the Add email path inherits it
+  unchanged. **Write no code for it** — the obligations are to document it as the intended end-state
+  and to assert it does not regress (see Test Strategy).
 - Nothing navigates. `AuthModalShell` portals a `fixed inset-0` overlay onto `document.body`, so
   `/account` stays mounted underneath and "back returns to `/account`" is just `onClose`.
 - `AuthModalShell`'s body-scroll-lock and capture-phase Escape are not stack-safe (TD-58/TD-61
@@ -75,12 +77,13 @@ Out of scope:
 
 ## Open Questions
 
-- After a successful OTP on the **Add email** path, `AuthFlowProvider` will auto-open
-  `CompanyDocsModal` over `/account` (new account → `GET /v1/lps/me` 404 → `setup.open = true`),
-  the same as after a header Sign Up. The Issue's end-state says only "the flow closes, the header
-  shows the account icon, `AccountEmailCard` renders the session email". Should the Add email path
-  keep that auto-open (consistent with create-account — the planner's default, and what this plan
-  implements unless told otherwise), or land the visitor on `/account` with no modal?
+_None_
+
+Resolved during planning (2026-10-12, user): the `CompanyDocsModal` auto-open after OTP success on
+the Add email path stays — "it's ok, let it open the modal". The Add email end-state is therefore
+identical to create-account's: flow closes → session exists → header keeps the account icon →
+`AccountEmailCard` renders the session email → the account-setup modal opens over `/account` for
+the brand-new (LP-less) account. See **Assumptions and Risks**.
 
 ## Implementation Steps
 
@@ -234,8 +237,11 @@ to name the screen.
     composition list above, the `48px / 32px / 48px / 64px-pb` geometry and how `mt-6` + `gap-12` +
     `pb-16` produce it, the shell prop set, the `passwordRule: "policy"` reuse, the
     "validation-error frame is `6585:75897`, borrowed from Create account" note, the Turnstile
-    placement divergence, and the explicit "no duplicate-email / no lockout branch exists on
-    `signup`" statement.
+    placement divergence, the explicit "no duplicate-email / no lockout branch exists on
+    `signup`" statement, **and** the completion end-state: the flow closes, the header keeps the
+    account icon, `AccountEmailCard` renders the session email, and `AuthFlowProvider` then opens
+    `CompanyDocsModal` for the brand-new LP-less account — intended, user-confirmed 2026-10-12,
+    identical to the create-account path.
   - `### EmailAuthFlow`: widen the `initialScreen` union, document `submitSignup`'s shared body,
     `otpBackScreen` / `goBackFromOtp`, the shared signup captcha token, and the
     `createAccountFormError` → `signupFormError` rename.
@@ -245,7 +251,17 @@ to name the screen.
 - `docs/frontend/account-page.md`: resolve the two forward references — the `Add email` row
   paragraph (line ~132) and the ownership table row at line ~496 ("The Add email screen itself and
   the OTP hand-off | #1459") — to point at `auth-components.md#addemailmodal`.
-- `docs/user-stories/epic-1419/1459-add-email-screen.md` (new) — see **Test Strategy**.
+- `docs/user-stories/epic-1419/1459-add-email-screen.md` (new) — follow
+  `1458-wallet-only-account.md`'s shape (header block with epic/issue/spec/Figma links, then
+  numbered stories with persona / pre-conditions / steps / expected outcomes). Stories to cover:
+  (1) `Add email` from `/account` opens the screen with the Figma chrome — back arrow, no image
+  pane, no close icon, centred column; (2) `Save` stays disabled until email + policy password are
+  valid; (3) validation-error copy on blur for a malformed email and a weak password;
+  (4) submit → OTP → correct code → session, and the end-state **including** the account-setup
+  modal opening over `/account`; (5) back arrow and Escape close the flow and leave the visitor on
+  `/account` with no navigation and no session; (6) an already-registered address still advances to
+  OTP with no "email taken" copy (enumeration resistance); (7) the connected wallet is neither read
+  nor sent — registering does not link the address to the new account.
 - `docs/user-stories/index.md`: add the `#1459` row to the epic-1419 table.
 - Run `npx tsx scripts/lint-docs.ts` (currently 0 errors / 47 warnings — do not add errors). The
   200-line spec cap applies only to `docs/product-specs/`, so growing `auth-components.md` is fine.
@@ -300,6 +316,12 @@ add one. The file mocks `EmailAuthFlow` and renders `initialScreen` into
 `email-auth-flow-screen` has text `add-email`. Leave the existing
 `open("create-account")` case asserting `create-account` — it is the regression guard that this
 issue re-pointed only `openAddEmail`, not `open`.
+
+End-state guard for the resolved question — the account-setup modal **must** still open after the
+Add email path completes. The provider's existing tests already mock `getMyLp`; add a case that
+drives a session through the add-email path (or sets the session token the way those tests do),
+has `getMyLp` reject `404`, and asserts `CompanyDocsModal` renders. This locks in the user's
+2026-10-12 decision so a later change cannot quietly suppress it.
 
 `packages/frontend/src/routes/-test.test.tsx`: `?tab=auth` renders an `Open Add email screen`
 trigger and clicking it opens `add-email-modal`.
