@@ -167,3 +167,54 @@ describe("deriveHomeState — kyb-pending (#1423)", () => {
     ).toBe("legacy");
   });
 });
+
+describe("deriveHomeState — plusd-held (#1424)", () => {
+  const base = {
+    hasSession: true,
+    isConnected: true,
+    lpRead: "loaded" as const,
+    kybStatus: "Passed",
+    plusdIsZero: false,
+    splusdIsZero: true,
+  };
+
+  it("returns plusd-held when signed in, connected, Passed, PLUSD held, sPLUSD zero", () => {
+    expect(deriveHomeState(base)).toBe("plusd-held");
+  });
+
+  it("returns legacy when PLUSD is also zero", () => {
+    expect(deriveHomeState({ ...base, plusdIsZero: true })).toBe("legacy");
+  });
+
+  it("returns legacy when sPLUSD is non-zero", () => {
+    expect(deriveHomeState({ ...base, splusdIsZero: false })).toBe("legacy");
+  });
+
+  it("returns legacy when the wallet is disconnected", () => {
+    expect(deriveHomeState({ ...base, isConnected: false })).toBe("legacy");
+  });
+
+  it.each(["unknown", "error", "absent"] as const)(
+    "returns legacy when Passed but lpRead is %s",
+    (lpRead) => {
+      expect(deriveHomeState({ ...base, lpRead })).toBe("legacy");
+    },
+  );
+
+  it.each([
+    "NotStarted",
+    "UnderReview",
+    "ChangesRequested",
+    "Failed",
+    "InProgress",
+  ])(
+    "returns legacy when connected with PLUSD held and kybStatus %s",
+    (kybStatus) => {
+      expect(deriveHomeState({ ...base, kybStatus })).toBe("legacy");
+    },
+  );
+
+  it("returns zero when there is no session, even with every state-4 input set", () => {
+    expect(deriveHomeState({ ...base, hasSession: false })).toBe("zero");
+  });
+});

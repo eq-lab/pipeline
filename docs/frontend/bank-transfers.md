@@ -10,13 +10,15 @@ existence.
 **Presentational only.** No network call, no persistence, no auth. Every side-effecting action is
 a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who-wires-them).
 
-**`FundingDetailsModal` is reachable only from `/test?tab=auth`.** `AddUsdCard` is mounted on `/`:
-the `"locked"` variant ships from #1421 (zero state) and `"verify"` from #1422 (unverified state,
-`docs/product-specs/home-screen-states.md` state 2); the variant for a given account state is
-decided by `deriveHomeState` in `packages/frontend/src/components/homeState.ts`, not in this file
-— see `docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
-Withdraw flow behind its seam are #1285's; the `"unlocked"`/`"funded"` variants are not yet wired
-to any route.
+**`FundingDetailsModal` is now also reachable from `/` (state 4, #1424), beyond `/test?tab=auth`.**
+`AddUsdCard` is mounted on `/`: the `"locked"` variant ships from #1421 (zero state), `"verify"`
+from #1422 (unverified state), `"verifying"` from #1423 (KYB-pending state), and `"unlocked"` from
+#1424 (state 4, `kyb_status: "Passed"` with PLUSD held and sPLUSD zero) — its `onAddFunds` opens
+`FundingDetailsModal` with no `details`, so every row renders `—` just as the `/test` preview does.
+The variant for a given account state is decided by `deriveHomeState` in
+`packages/frontend/src/components/homeState.ts`, not in this file — see
+`docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
+Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not wired to any route.
 
 ## FundingDetailsModal
 
@@ -94,7 +96,9 @@ export interface AddUsdCardProps {
 `locked` and `verify` ship on `/` for home states 1 and 2 (#1421/#1422); `verifying` ships on `/`
 for home state 3 (#1423, Figma frame `6701:98417`), stacked above `EarnedCard layout="compact"`
 with **no `flex-1`** — the card owns its 246px height, per § "Shape B frame and illustration
-anchor". `unlocked` and `funded` are still preview-only.
+anchor". `unlocked` ships on `/` for home state 4 (#1424, Figma frame `6701:97340`, node
+`6701:97494`), stacked above `EarnedCard layout="compact"` **with** `className="flex-1"` (Shape A
+carries no height of its own). `funded` is still preview-only.
 
 `addUsdCardState.ts` ships the `AddUsdCardVariant` union and `ADD_USD_CARD_VARIANTS` (frame order,
 for previews) only — **no derivation function**. Deciding which variant renders for a given
@@ -250,7 +254,7 @@ class of staleness `account-page.md` documents for its own frame.
 | `FundingDetailsModal.onContactSupport` | no-op | unassigned — no destination exists in the design (tech debt) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
-| `AddUsdCard.onAddFunds` | no-op | #1282 (opens `FundingDetailsModal`) |
+| `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal` with no `details`) |
 | `AddUsdCard.onWithdraw` | no-op | #1285 |
 | `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
 | `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`) |
@@ -280,7 +284,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Concern | Owner |
 | --- | --- |
 | Deciding which card variant renders for a given account state | epic #1419 (`deriveHomeState`) |
-| Mounting `AddUsdCard` into the home grid for states 4–6 | #1424–#1426 |
+| Mounting `AddUsdCard` into the home grid for states 5–6 | #1425–#1426 |
 | A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
 | Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |

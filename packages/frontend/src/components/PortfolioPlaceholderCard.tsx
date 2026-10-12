@@ -19,7 +19,8 @@ export type MobileHomeState = "empty" | "plusd" | "splusd";
 export type PortfolioPlaceholderCardVariant =
   | "balance"
   | "connect-wallet"
-  | "get-plusd";
+  | "get-plusd"
+  | "stake-or-add-usd";
 
 export interface PortfolioPlaceholderCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -35,6 +36,7 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   yAxisDomainMax?: number | null;
   variant?: PortfolioPlaceholderCardVariant;
   onConnectWallet?: () => void;
+  onAddFunds?: () => void;
 }
 
 const HEADING_ID_BASE = "portfolio-placeholder-card-title";
@@ -48,10 +50,19 @@ const compactSubtitleClasses = [
   "cursor-pointer bg-transparent p-0",
 ].join(" ");
 
+const sentenceTextClasses = [
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "text-[color:var(--color-pipeline-brand)]",
+  "underline underline-offset-2",
+].join(" ");
+
 const NODE_IDS: Record<PortfolioPlaceholderCardVariant, string> = {
   balance: "1497:95048",
   "connect-wallet": "6701:97649",
   "get-plusd": "6701:98528",
+  "stake-or-add-usd": "6701:97451",
 };
 
 const TABS = [
@@ -89,6 +100,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     yAxisDomainMax = null,
     variant = "balance",
     onConnectWallet,
+    onAddFunds,
     ...rest
   },
   ref,
@@ -132,6 +144,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
 
   const isConnectWallet = variant === "connect-wallet";
   const isGetPlusd = variant === "get-plusd";
+  const isStakeOrAddUsd = variant === "stake-or-add-usd";
   const isCompact = variant !== "balance";
 
   const composed = [
@@ -220,6 +233,30 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               >
                 Get PLUSD to start
               </Link>
+            ) : isStakeOrAddUsd ? (
+              <p
+                className="m-0"
+                data-node-id="I6701:97451;1100:70504;6539:2331"
+              >
+                <Link
+                  to="/stake"
+                  search={{ tab: "stake" as const }}
+                  className={compactSubtitleClasses}
+                  data-testid="home-balance-stake-link"
+                >
+                  Stake PLUSD
+                </Link>{" "}
+                <span className={sentenceTextClasses}>or</span>{" "}
+                <button
+                  type="button"
+                  onClick={onAddFunds}
+                  className={compactSubtitleClasses}
+                  data-testid="home-balance-add-funds-link"
+                >
+                  Add USD
+                </button>{" "}
+                <span className={sentenceTextClasses}>to start earning</span>
+              </p>
             ) : (
               <>
                 <span

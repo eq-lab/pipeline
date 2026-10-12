@@ -1,5 +1,10 @@
 // spec: docs/product-specs/home-screen-states.md
-export type HomeState = "zero" | "unverified" | "kyb-pending" | "legacy";
+export type HomeState =
+  | "zero"
+  | "unverified"
+  | "kyb-pending"
+  | "plusd-held"
+  | "legacy";
 export type LpReadState = "unknown" | "absent" | "loaded" | "error";
 
 export interface DeriveHomeStateInput {
@@ -32,6 +37,15 @@ export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
     splusdIsZero
   ) {
     return "kyb-pending";
+  }
+  if (
+    isConnected &&
+    lpRead === "loaded" &&
+    kybStatus === "Passed" &&
+    !plusdIsZero &&
+    splusdIsZero
+  ) {
+    return "plusd-held";
   }
   return "legacy";
 }

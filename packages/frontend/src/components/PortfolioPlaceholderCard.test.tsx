@@ -484,3 +484,49 @@ describe("PortfolioPlaceholderCard — get-plusd variant (#1423)", () => {
     );
   });
 });
+
+describe("PortfolioPlaceholderCard — stake-or-add-usd variant (#1424)", () => {
+  it("renders Total Balance, the served balanceLabel and the split-action sentence", () => {
+    renderCard({ variant: "stake-or-add-usd", balanceLabel: "$0.00" });
+
+    expect(screen.getByText("Total Balance")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Stake PLUSD" })).toHaveAttribute(
+      "href",
+      "/stake?tab=stake",
+    );
+    expect(screen.getByRole("button", { name: "Add USD" })).toBeInTheDocument();
+    expect(screen.getByText("or")).toBeInTheDocument();
+    expect(screen.getByText("to start earning")).toBeInTheDocument();
+  });
+
+  it("fires onAddFunds when 'Add USD' is clicked", async () => {
+    const onAddFunds = vi.fn();
+    const user = userEvent.setup();
+    renderCard({ variant: "stake-or-add-usd", onAddFunds });
+
+    await user.click(screen.getByRole("button", { name: "Add USD" }));
+
+    expect(onAddFunds).toHaveBeenCalledOnce();
+  });
+
+  it("renders no unrealized-PnL caption, no Connect wallet and no Get PLUSD to start link", () => {
+    renderCard({ variant: "stake-or-add-usd" });
+
+    expect(screen.queryByTestId("earning-caption")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connect wallet" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Get PLUSD to start" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sets data-node-id and data-variant for the stake-or-add-usd variant", () => {
+    renderCard({ variant: "stake-or-add-usd" });
+
+    const region = screen.getByRole("region");
+    expect(region).toHaveAttribute("data-node-id", "6701:97451");
+    expect(region).toHaveAttribute("data-variant", "stake-or-add-usd");
+  });
+});
