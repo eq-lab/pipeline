@@ -16,7 +16,7 @@ replaced or superseded. See [dashboards.md](./dashboards.md) for the rest of the
 | 1 | Zero state | not signed in · no account · wallet not connected | Implemented (#1421) |
 | 2 | Account not verified | account created · KYB bypassed / not completed · wallet not connected | Implemented (#1422) |
 | 3 | KYB pending, empty | wallet connected · PLUSD = 0 · sPLUSD = 0 · KYB `UnderReview` | Implemented (#1423) |
-| 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Not yet implemented |
+| 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Implemented (#1424) |
 | 5 | Verified, funded, staked | wallet connected · KYB `Passed` · bank transfer received · PLUSD = 0 · sPLUSD > 0 | Not yet implemented |
 | 6 | KYB problem | KYB not verified due to a problem (`ChangesRequested` / `Failed`) | Not yet implemented |
 | 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Not yet implemented (#1460) |
@@ -57,28 +57,47 @@ has not designed and falls through to `"legacy"`; an unknown or failed LP read s
 `UnderReview` LP that actually holds PLUSD can render state 3 for the moment before the balance
 resolves — the same in-flight shape tracked as TD-121.
 
-Until states 4–7 land, every other signed-in session renders today's pre-#1419
+**State 4 (verified, holds PLUSD)** requires all five of: an auth session, a **connected** wallet,
+`lpRead === "loaded"`, `kyb_status === "Passed"`, and PLUSD rendering **non**-zero while sPLUSD
+renders zero at two decimal places (the same #1186 displayed-zero rule as state 3). `Passed` with
+PLUSD also display-zero, `Passed` with sPLUSD non-zero, `Passed` with no wallet connected, and an
+unknown/failed/absent LP read all fall through to `"legacy"` — none of these combinations is
+designed. As with state 3, an unresolved PLUSD balance reads as displayed-zero (TD-121), so a
+`Passed` LP who actually holds PLUSD can render briefly as `"legacy"` before the balance resolves.
+"Bank transfer unlocked" is not an independently served field — it is the
+`AddUsdCard variant="unlocked"` rendering, gated by the same `kyb_status === "Passed"` that defines
+the state itself; there is no separate "transfers unlocked" flag on `GET /v1/lps/me`.
+
+Until states 5–7 land, every other signed-in session renders today's pre-#1419
 wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
 `packages/frontend/src/components/homeState.ts`).
 
-## Card composition (states 1–3)
+## Card composition (states 1–4)
 
 States 1–3 share one desktop composition — a 1136px-wide 7-column grid inside a 1200px white
 panel padded 32, matching Figma `6701:98220` (state 1), `6701:97538` (state 2) and `6701:98417`
-(state 3):
+(state 3); state 4 (Figma `6701:97340`) reuses the same grid with two of its four cards swapped:
 
-| Row | Columns | State 1 (zero)                             | State 2 (unverified)                                | State 3 (KYB pending)                                 |
-| --- | ------- | ------------------------------------------ | --------------------------------------------------- | ----------------------------------------------------- |
-| 1   | 1–4     | Get Started promo, 643×274                 | Total Balance placeholder + Connect wallet, 643×274 | Total Balance + `Get PLUSD to start`, 643×274         |
-| 1–2 | 5–7     | Recent activity, 478×634                   | Recent activity, 478×634                            | same                                                   |
-| 2   | 1–2     | Get PLUSD 313×164 + Stake PLUSD 313×164    | same                                                 | same, Stake CTA disabled as `Nothing to Stake` 160×40 |
-| 2   | 3–4     | Add USD (locked) 313×246 + Earnings 313×82 | Verify your account 313×246 + Earnings 313×82       | Verifying account… 313×246 + Earnings 313×82          |
-| 3   | 1–7     | FAQ strip, 1136×89                         | same                                                 | same                                                   |
+| Row | Columns | State 1 (zero) | State 2 (unverified) | State 3 (KYB pending) | State 4 (PLUSD held) |
+| --- | ------- | --------------- | --------------------- | ----------------------- | ---------------------- |
+| 1   | 1–4     | Get Started promo, 643×274 | Total Balance placeholder + Connect wallet, 643×274 | Total Balance + `Get PLUSD to start`, 643×274 | Total Balance + `Stake PLUSD or Add USD to start earning`, 642×274 |
+| 1–2 | 5–7     | Recent activity, 478×634 | Recent activity, 478×634 | same | same, populated with real activity rows + `View All` |
+| 2   | 1–2     | Get PLUSD 313×164 + Stake PLUSD 313×164 | same | same, Stake CTA disabled as `Nothing to Stake` 160×40 | PLUSD Balance 313×164 (Buy tinted, Sell ink-muted) + Stake PLUSD 313×164, CTA enabled |
+| 2   | 3–4     | Add USD (locked) 313×246 + Earnings 313×82 | Verify your account 313×246 + Earnings 313×82 | Verifying account… 313×246 + Earnings 313×82 | Add USD (unlocked) 313×246 + Earnings 313×82 |
+| 3   | 1–7     | FAQ strip, 1136×89 | same | same | same |
 
-All three states use the **compact** Get PLUSD / Stake PLUSD / Earnings cards — 16px interior
-padding, a single 40px rectangular CTA per card (no 128px circular Stake button), and the Figma
-copy "Convert with USDC 1:1". The `"legacy"` branch keeps the taller pre-#1419 cards until states
-4–6 land and define their own composition.
+All four states use the **compact** Get PLUSD/PLUSD Balance / Stake PLUSD / Earnings cards — 16px
+interior padding, a single 40px rectangular CTA per card (no 128px circular Stake button). States
+1–3 keep the Figma copy "Convert with USDC 1:1"; state 4 swaps the left card's content for the
+served PLUSD balance (eyebrow "PLUSD Balance", the balance at Heading 20 with the `$` stripped,
+caption "`$<amount>` USDC"), rendering `—` for both when the balance is not yet served. The
+`"legacy"` branch keeps the taller pre-#1419 cards until states 5–6 land and define their own
+composition.
+
+State 4's Buy/Sell row is the one visual exception to "states share one `Button` treatment": Buy is
+tinted `rgba(184,191,190,0.12)` with a primary-ink label, and Sell is untinted with an **ink-muted**
+label (the `--color-pipeline-ink-muted` token, not an opacity override) — scoped to this state's
+compact balance mode only; states 1–3's navy-Buy/ink-Sell pair is unchanged.
 
 In state 3 the Total Balance card keeps its served wiring — the heading is the real
 `formatBigintCurrency(splusdShares)` (which reads `$0.00` because sPLUSD is zero, a served value
@@ -87,6 +106,17 @@ rather than a default) and the chart stays bound to `GET /v1/positions/history`.
 `Open Account` annotation and [kyb-lp-verification.md](./kyb-lp-verification.md), which freezes LP
 writes while `UnderReview`. The card's heading ships as `Verifying account…`; the Figma frame's
 "Veryfying account..." is a typo and is not reproduced.
+
+**State 4's Total Balance heading keeps the same sPLUSD-position binding as state 3** —
+`formatBigintCurrency(splusdSharesActive)`, `$0.00` here since sPLUSD is zero — even though the
+Figma frame mocks `$1,000.00` (the PLUSD holding). No endpoint serves a combined PLUSD+sPLUSD
+total, and summing them client-side is the derived-metric the project forbids; a backend total is
+out of scope for #1424 (human decision, 2026-10-12). The sub-line below it,
+"Stake PLUSD or Add USD to start earning", carries two real actions in one underlined brand-navy
+sentence: "Stake PLUSD" navigates to `/stake?tab=stake`; "Add USD" opens the `FundingDetailsModal`
+(#1283) with no `details`, so all six rows render `—` — the same inert-modal decision #1282 shipped
+for `/test`, now reachable from `/` for the first time. `RecentActivityCard` needs no change: with
+PLUSD held, `useRequests` already populates real rows and the `View All` link.
 
 Values on these cards stay backend-served: the staking APY renders exactly as `GET /v1/stats`
 serves it (`—` when absent, with the `" p.a."` suffix kept), and Earnings reads "Tracked once you

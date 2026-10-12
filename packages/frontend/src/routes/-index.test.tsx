@@ -1839,3 +1839,194 @@ describe("Home page — KYB-pending regressions (#1423)", () => {
     expect(screen.queryByTestId("home-add-usd-card")).not.toBeInTheDocument();
   });
 });
+
+describe("Home page — plusd-held state (#1424)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "Passed";
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000000",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("the top-left card shows Total Balance, $0.00 and the split Stake PLUSD / Add USD sentence", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    expect(portfolio).toHaveAttribute("data-variant", "stake-or-add-usd");
+    expect(portfolio).toHaveAttribute("data-node-id", "6701:97451");
+    expect(within(portfolio).getByText("Total Balance")).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("heading", { name: "$0.00" }),
+    ).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("link", { name: "Stake PLUSD" }),
+    ).toBeInTheDocument();
+    expect(
+      within(portfolio).getByRole("button", { name: "Add USD" }),
+    ).toBeInTheDocument();
+  });
+
+  it("StartHereCard renders the PLUSD Balance compact card with both Buy and Sell enabled", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const startHere = within(grid).getByTestId("home-start-here-card");
+    expect(startHere).toHaveAttribute("data-node-id", "6701:97462");
+    expect(within(startHere).getByText("PLUSD Balance")).toBeInTheDocument();
+    expect(
+      within(startHere).getByRole("button", { name: "Buy" }),
+    ).toBeEnabled();
+    expect(
+      within(startHere).getByRole("button", { name: "Sell" }),
+    ).toBeEnabled();
+  });
+
+  it("the compact Stake CTA is enabled and labelled Stake", async () => {
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const stake = within(grid).getByTestId("home-stake-card");
+    expect(within(stake).getByRole("button", { name: "Stake" })).toBeEnabled();
+  });
+
+  it("AddUsdCard renders in its unlocked variant", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      const card = screen.getByTestId("home-add-usd-card");
+      expect(card).toHaveAttribute("data-variant", "unlocked");
+      expect(card).toHaveAttribute("data-node-id", "6701:97494");
+    });
+    expect(screen.getByText("Transfers unlocked")).toBeInTheDocument();
+  });
+
+  it("clicking Add Funds on AddUsdCard opens the funding details modal with every row '—'", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    await screen.findByTestId("home-add-usd-card");
+    await user.click(screen.getByRole("button", { name: "Add Funds" }));
+
+    const modal = await screen.findByTestId("funding-details-modal");
+    expect(
+      within(modal).getByTestId("funding-details-row-company-name"),
+    ).toHaveTextContent("—");
+  });
+
+  it("clicking Add USD in the Total Balance sentence opens the same funding details modal", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    const portfolio = within(grid).getByTestId("home-portfolio-placeholder");
+    await user.click(
+      within(portfolio).getByRole("button", { name: "Add USD" }),
+    );
+
+    expect(
+      await screen.findByTestId("funding-details-modal"),
+    ).toBeInTheDocument();
+  });
+
+  it("grid occupancy: StartHere+Stake on the left, AddUsd+Earned on the right", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      const leftStack = screen.getByTestId("home-balances-stack");
+      expect(leftStack).toHaveAttribute("data-node-id", "6701:97461");
+      const rightStack = screen.getByTestId("home-add-usd-stack");
+      expect(rightStack).toHaveAttribute("data-node-id", "6701:97493");
+    });
+  });
+
+  it("RecentActivityCard and QnaSection render", async () => {
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("home-recent-activity-card").length,
+      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getByTestId("home-qna-wrapper")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Home page — plusd-held regressions (#1424)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "loaded";
+    mockAuthState.kybStatus = "Passed";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  function connectWithPlusd() {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000000",
+    );
+  }
+
+  it("a non-zero sPLUSD balance keeps the legacy connected layout", async () => {
+    connectWithPlusd();
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
+      "1000000000000000000",
+    );
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(
+      within(grid).queryByTestId("home-add-usd-card"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("a disconnected wallet keeps the legacy disconnected layout even with Passed", async () => {
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "Connect Wallet" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it.each(["unknown", "error"] as const)(
+    "lpRead %s keeps the legacy connected layout",
+    async (lpRead) => {
+      connectWithPlusd();
+      mockAuthState.lpRead = lpRead;
+      renderHome();
+      const grid = await screen.findByTestId("home-dashboard-grid");
+      expect(
+        within(grid).getByTestId("home-portfolio-placeholder"),
+      ).toHaveAttribute("data-node-id", "1497:95048");
+    },
+  );
+});

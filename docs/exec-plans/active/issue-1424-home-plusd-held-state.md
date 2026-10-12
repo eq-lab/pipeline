@@ -93,65 +93,75 @@ Out of scope:
    `details`, so all six rows render `—` (backend-served-only rule). Confirm that an all-`—` modal
    is acceptable on the real home screen, or should Add Funds stay inert until #1285 serves data?
 
+## Decision log
+
+Answers from the user on the Issue (2026-10-12), unblocking implementation:
+
+1. **Total Balance heading** — no "total" changes in this issue; keep the shipped binding (served
+   sPLUSD position, `formatBigintCurrency(splusdSharesActive)`, which renders `$0.00` here). A
+   follow-up issue catches up once the backend serves a combined total.
+2. **Link target** — split into its two actions, not one link: "Stake PLUSD" navigates to `/stake`
+   (`search: { tab: "stake" }`); "Add USD" opens the Add Funds modal (the #1283
+   `FundingDetailsModal` / `useFundingDetailsModal`). Both are underlined brand-coloured link/button
+   text in the same sentence "Stake PLUSD or Add USD to start earning" — the Figma text node
+   (`I6701:97451;1100:70504;6539:2331`) turned out to be a single run, entirely underlined brand
+   navy, so the plain words ("or", "to start earning") carry the same typography as the two actions
+   rather than being styled differently.
+3. **Buy / Sell treatment** — exactly as in Figma, scoped to the new compact balance mode only:
+   Buy tinted `rgba(184,191,190,0.12)` fill with a primary-ink label (node `6701:97475`); Sell
+   untinted with an ink-**muted** label — the `--color-pipeline-ink-muted` token (node
+   `6701:97476`), confirmed against `get_design_context`'s `content-test/secondary` binding, not an
+   opacity override. States 1–3's navy/ink Buy/Sell pair is untouched.
+4. **Add Funds modal** — keep it as it is: mount the existing `FundingDetailsModal` from `/` with
+   no `details`, so all six rows render `—`. Follow-up when the backend serves wire details.
+
 ## Implementation Steps
 
-1. **`packages/frontend/src/components/homeState.ts`** — extend `HomeState` with `"plusd-held"` and
-   add the branch after the `"kyb-pending"` check:
+1. **`packages/frontend/src/components/homeState.ts`** — DONE. Extended `HomeState` with
+   `"plusd-held"` and added the branch after the `"kyb-pending"` check exactly as specified:
+   `isConnected && lpRead === "loaded" && kybStatus === "Passed" && !plusdIsZero && splusdIsZero`.
+   The spec-pointer header is unchanged and remains the file's only comment.
 
-   ```
-   isConnected && lpRead === "loaded" && kybStatus === "Passed" && !plusdIsZero && splusdIsZero
-   ```
+2. **`packages/frontend/src/components/homeState.test.ts`** — DONE. Added a
+   `deriveHomeState — plusd-held (#1424)` block with the cases listed in the plan, plus the
+   neighbouring-`kybStatus` sweep (`NotStarted`/`UnderReview`/`ChangesRequested`/`Failed`/
+   `InProgress`, all → `"legacy"`).
 
-   Keep the existing spec-pointer header as the file's only comment. Do not reorder existing
-   branches — precedence is the table order in `home-screen-states.md`.
+3. **`packages/frontend/src/components/PortfolioPlaceholderCard.tsx`** — DONE, with one deviation
+   from the plan's pre-decision-log wording: `get_design_context` on node `6701:97451` showed the
+   whole sentence "Stake PLUSD or Add USD to start earning" as a **single** underlined brand-navy
+   text run — not just two linked substrings — so per the decision log's answer to Question 2 the
+   sentence renders as a `<Link to="/stake" search={{ tab: "stake" }}>` for "Stake PLUSD", a plain
+   `<button onClick={onAddFunds}>` for "Add USD", and two `<span>`s for "or" / "to start earning",
+   all four styled identically (`compactSubtitleClasses` / `sentenceTextClasses`, same brand
+   underline). New prop `onAddFunds?: () => void`. No unrealized-PnL caption in this variant.
+   Heading binding kept at the served `splusdBalanceFormatted` per decision 1.
 
-2. **`packages/frontend/src/components/homeState.test.ts`** — add cases: `Passed` + connected +
-   PLUSD held + sPLUSD zero → `"plusd-held"`; `Passed` with PLUSD display-zero → `"legacy"`;
-   `Passed` with sPLUSD non-zero → `"legacy"`; `Passed` with no wallet → `"legacy"`; `Passed` with
-   `lpRead` `"unknown"` / `"error"` / `"absent"` → not `"plusd-held"`; no session → `"zero"`.
+4. **`packages/frontend/src/components/StartHereCard.tsx`** — DONE, with one deviation: instead of
+   a single `compactBalanceLabel` prop doubling as the mode toggle (ambiguous once the value can
+   legitimately be `undefined` while still in balance mode, per the test strategy's `—` case), the
+   mode is a separate `compactVariant?: "get-plusd" | "balance"` prop (default `"get-plusd"`, the
+   existing copy), with `compactBalanceLabel?: string` carrying only the value. Renders eyebrow
+   `PLUSD Balance` (`6701:97465`), PLUSD `CoinIcon` + the `$`-stripped label at Heading 20
+   (`6701:97471`), caption `<label> USDC` (`6701:97473`) — both render `—` when
+   `compactBalanceLabel` is omitted. Card node id `6701:97462`; Buy `6701:97475` tinted
+   `rgba(184,191,190,0.12)` + ink label; Sell `6701:97476` ink-**muted** label (token, not opacity)
+   per decision 3 — both only in balance mode, the default compact branch is untouched.
 
-3. **`packages/frontend/src/components/PortfolioPlaceholderCard.tsx`** — add the variant for this
-   state (suggested id `"stake-or-add-usd"`, `data-node-id="6701:97451"`). It reuses the existing
-   compact header shape (`Total Balance` eyebrow at Body/ink, heading at Heading M 28/36, tabs,
-   chart) and swaps the sub-line for a `Link` carrying the frame's copy, underlined, in brand navy
-   (`compactSubtitleClasses`, `data-node-id="I6701:97451;1100:70504;6539:2331"`). Target per Open
-   Question 2. No unrealized-PnL caption in this variant. Heading binding per Open Question 1.
+5. **`packages/frontend/src/routes/index.tsx`** — DONE. Added the `homeState === "plusd-held"`
+   branch exactly as specified (grid positions, node ids, `data-testid`s all match), with
+   `compactVariant="balance"` + `compactBalanceLabel={plusdFormattedActive}` on `StartHereCard` and
+   `onAddFunds` wired to both the `PortfolioPlaceholderCard` sentence and `AddUsdCard`.
 
-4. **`packages/frontend/src/components/StartHereCard.tsx`** — in the `layout === "compact"` branch,
-   add the balance mode (opt-in prop, e.g. `compactBalanceLabel`, so the zero/unverified/pending
-   branches are untouched). When set: eyebrow `PLUSD Balance` (`6701:97465`), PLUSD `CoinIcon`
-   `size="md"` + the label at Heading 20 (`6701:97471`), caption `<label> USDC` (`6701:97473`,
-   Caption 12/16, muted). Renders `—` when the balance is not served. Card node id for this state:
-   `6701:97462`; buttons `6701:97475` (Buy) / `6701:97476` (Sell), 61×40, `gap-2`. Button treatment
-   per Open Question 3.
+6. **Add-funds wiring** — DONE. Added `fundingDetailsOpen` state and mounted
+   `<FundingDetailsModal open={fundingDetailsOpen} onDismiss={...} />` (no `details`, per decision
+   4) at the end of the route's JSX, reusing the component exactly as `routes/test.tsx` does.
 
-5. **`packages/frontend/src/routes/index.tsx`** — add the `homeState === "plusd-held"` branch to
-   the desktop grid, modelled on the `"kyb-pending"` branch:
-   - col 1–4 row 1 — the new `PortfolioPlaceholderCard` variant, with the existing
-     `activePeriodId` / `series` / `yAxis` / `yAxisDomainMax` wiring.
-   - col 5–7 rows 1–2 — `RecentActivityCard padding="md"`, unchanged (node `6701:97519`).
-   - col 1–2 row 2 — `data-node-id="6701:97461"`: `StartHereCard layout="compact"` with the balance
-     label `plusdFormattedActive` and `sellDisabled={sellDisabled}` (false here), above
-     `StakeCard layout="compact"` with `stakeDisabled={stakeDisabled}` (false here, so the CTA
-     renders the enabled 75×40 `Stake`). `onBuy`/`onSell`/`onStake` reuse the route's handlers.
-   - col 3–4 row 2 — `data-node-id="6701:97493"`: `AddUsdCard variant="unlocked" className="flex-1"`
-     (→ 246px inside the 344px stack) with `onAddFunds` opening the funding-details modal, above
-     `EarnedCard layout="compact"` (node `6701:97508`).
-   - col 1–7 row 3 — `QnaSection`, unchanged (node `6701:97452`).
-
-   Keep the existing `data-testid` names used by the other branches (`home-dashboard-grid`,
-   `home-portfolio-placeholder`, `home-balances-stack`, `home-add-usd-stack`,
-   `home-start-here-card`, `home-stake-card`, `home-add-usd-card`, `home-earned-card`,
-   `home-recent-activity-card`, `home-qna-wrapper`) so the existing QA selectors keep working.
-
-6. **Add-funds wiring** — mount the modal from the home route using
-   `packages/frontend/src/components/useFundingDetailsModal.ts` +
-   `FundingDetailsModal.tsx` exactly as `routes/test.tsx` does, with `details` per Open Question 4.
-   Do not duplicate the modal markup; reuse the component.
-
-7. **Lint/format** — `npx tsx scripts/lint-docs.ts` after the doc edits; project lint + `tsc` +
-   build for the frontend package. Keep the comment-minimal rule: at most one 2–3-line
-   spec-pointer header per touched file, no new inline comments.
+7. **Lint/format** — DONE. `npx tsx scripts/lint-docs.ts` (0 errors), `yarn workspace
+   @pipeline/frontend lint` (eslint + prettier, clean), `yarn workspace @pipeline/frontend build`
+   (tsc + vite, clean), `TZ=UTC yarn workspace @pipeline/frontend test` (2139 passed), plus
+   `cargo clippy --all -- -D warnings` and `cargo test --all` (no Rust touched, both green) per the
+   coder gate.
 
 ## Test Strategy
 
