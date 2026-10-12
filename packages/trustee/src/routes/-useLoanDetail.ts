@@ -22,6 +22,7 @@ import type {
   UseLoanFinancialsResult,
 } from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
+import type { StatusBand } from "@/components/detail/detailTokens";
 import {
   formatBpsRate,
   formatFullUsd,
@@ -73,12 +74,7 @@ const CCR_TREND_THRESHOLDS: CcrThreshold[] = [
   { pct: 110, label: "110%" },
 ];
 
-export type StatusBand =
-  | "positive"
-  | "attention"
-  | "negative"
-  | "neutral"
-  | "info";
+export type { StatusBand };
 
 /** The hero identity block, sourced from the loan-book row. */
 export interface HeroView {
@@ -500,13 +496,8 @@ export function buildFinancials(
   data: LoanFinancialsResponse,
   protection: string | null = null,
 ): RegistryRow[] {
-  const loc = data.location;
-  const statusLocation = loc
-    ? `${data.status} · ${loc.location_type} ${loc.location_identifier}`.trim()
-    : data.status;
-
   return [
-    { label: "Status / location", value: statusLocation, tag: "chain" },
+    { label: "Status", value: data.status, tag: "chain" },
     // Protection: #1014. spec: docs/frontend/trustee-flows.md#registry-state--derived-852.
     {
       label: "Protection",

@@ -5,28 +5,29 @@
 //! of the same generic `LoanEventMapper<A, Id>`. EVM tests are the regression gate for
 //! the genericisation refactor.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use alloy::primitives::{address, Address, U256};
+use alloy::primitives::{address, Address, I256, U256};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 
 use pipeline_worker::indexer::{
     loan_mapper::{
-        closure_reason_name, compose_drawn_snapshot, compose_lifecycle_snapshot, loan_status_name,
-        maybe_fetch_refreshed_json, LoanEvent, LoanEventMapper,
+        accumulate_repayments, closure_reason_name, compose_drawn_snapshot,
+        compose_lifecycle_snapshot, loan_status_name, maybe_fetch_refreshed_json, InFlight,
+        LoanEvent, LoanEventMapper,
     },
     loan_metadata::{
         BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LoanMetadataFetcher,
-        LoanMetadataJson, LocationType, LocationUpdateView, MutableDataResolver,
-        MutableLoanDataView, RepaymentDataView,
+        LoanMetadataJson, MutableDataResolver, MutableLoanDataView, RepaymentDataView,
     },
     stellar::loan_registry_reader::StellarAddress,
 };
 use shared::{
     json_numeric::u256_to_bigdecimal,
-    loan_snapshot::{LoanDocument, LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
+    loan_snapshot::{LoanDocument, LoanSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
 };
 
@@ -51,6 +52,7 @@ impl ImmutableDataResolver<Address, U256> for MockImmutableResolver {
         _loan_id: U256,
     ) -> anyhow::Result<ImmutableLoanDataView> {
         Ok(ImmutableLoanDataView {
+            borrower_ref: None,
             original_facility_size: U256::from(120_000_u64),
             original_senior_tranche: U256::from(100_000_u64),
             original_equity_tranche: U256::from(20_000_u64),
@@ -74,25 +76,19 @@ fn mock_repayment() -> RepaymentDataView {
     }
 }
 
-fn mock_location() -> LocationUpdateView {
-    LocationUpdateView {
-        location_type: LocationType::Vessel,
-        location_identifier: "LOC-001".to_owned(),
-        tracking_url: "https://track.example.com/LOC-001".to_owned(),
-        updated_at: 0,
-    }
-}
-
 fn mock_mutable_view(block_number: u64) -> MutableLoanDataView {
     MutableLoanDataView {
         next_economics_epochs_id: alloy::primitives::U256::from(1_u64),
         next_repayment_id: alloy::primitives::U256::from(0_u64),
-        status: 0, // Performing
-        ccr_bps: 8000,
-        last_reported_ccr_timestamp: block_number * 12,
+        status: 1, // Performing
         current_maturity_timestamp: block_number * 12,
+        current_rate: 1200,
         closure_reason: 0, // None
-        current_location: mock_location(),
+        carved_out: false,
+        disbursed: U256::from(100_000_u64),
+        repaid: U256::from(0_u64),
+        written_down: U256::from(0_u64),
+        interest_adjustment: I256::ZERO,
         metadata_uri: "ipfs://Qm_test".to_owned(),
     }
 }
@@ -122,12 +118,12 @@ impl MutableDataResolver<Address, U256> for MockMutableResolver {
         _contract: &Address,
         _loan_id: U256,
         block: BlockHint,
-    ) -> anyhow::Result<RepaymentDataView> {
+    ) -> anyhow::Result<Option<RepaymentDataView>> {
         assert_eq!(
             block.0, self.expected_block_number,
             "block-pinning mismatch"
         );
-        Ok(mock_repayment())
+        Ok(None)
     }
 }
 
@@ -184,6 +180,7 @@ impl ImmutableDataResolver<StellarAddress, u32> for MockStellarImmutableResolver
         _loan_id: u32,
     ) -> anyhow::Result<ImmutableLoanDataView> {
         Ok(ImmutableLoanDataView {
+            borrower_ref: None,
             original_facility_size: U256::from(500_000_u64),
             original_senior_tranche: U256::from(400_000_u64),
             original_equity_tranche: U256::from(100_000_u64),
@@ -208,12 +205,15 @@ impl MutableDataResolver<StellarAddress, u32> for MockStellarMutableResolver {
         Ok(MutableLoanDataView {
             next_economics_epochs_id: U256::from(1_u64),
             next_repayment_id: U256::from(0_u64),
-            status: 0, // Performing
-            ccr_bps: 7500,
-            last_reported_ccr_timestamp: 1_700_010_000_u64,
+            status: 1, // Performing
             current_maturity_timestamp: 1_800_000_000_u64,
+            current_rate: 800,
             closure_reason: 0, // None
-            current_location: mock_location(),
+            carved_out: false,
+            disbursed: U256::from(400_000_u64),
+            repaid: U256::from(0_u64),
+            written_down: U256::from(0_u64),
+            interest_adjustment: I256::ZERO,
             metadata_uri: "ipfs://Qm_stellar_test".to_owned(),
         })
     }
@@ -223,8 +223,8 @@ impl MutableDataResolver<StellarAddress, u32> for MockStellarMutableResolver {
         _contract: &StellarAddress,
         _loan_id: u32,
         _block: BlockHint,
-    ) -> anyhow::Result<RepaymentDataView> {
-        Ok(mock_repayment())
+    ) -> anyhow::Result<Option<RepaymentDataView>> {
+        Ok(Some(mock_repayment()))
     }
 }
 
@@ -351,16 +351,14 @@ fn make_prior_snapshot() -> LoanSnapshot {
         next_economics_epochs_id: BigDecimal::from(2),
         next_repayment_id: BigDecimal::from(1),
         status: "Performing".to_owned(),
-        ccr_bps: 7500_u32,
-        last_reported_ccr_timestamp: 1_700_001_000_i64,
         current_maturity_timestamp: 1_800_001_000_i64,
+        current_rate: 950_u32,
         closure_reason: "None".to_owned(),
-        current_location: LocationUpdateSnapshot {
-            location_type: "Warehouse".to_owned(),
-            location_identifier: "WH-001".to_owned(),
-            tracking_url: "https://track.example.com/WH-001".to_owned(),
-            updated_at: 1_700_000_500_i64,
-        },
+        carved_out: false,
+        disbursed: BigDecimal::from(4_000_000),
+        repaid: BigDecimal::from(0),
+        written_down: BigDecimal::from(0),
+        interest_adjustment: BigDecimal::from(0),
         metadata_uri_onchain: "ipfs://Qm_test".to_owned(),
         repayment: RepaymentSnapshot {
             offtaker_received: BigDecimal::from(0),
@@ -515,6 +513,7 @@ fn compose_drawn_snapshot_full_row() {
     };
 
     let immutable = ImmutableLoanDataView {
+        borrower_ref: None,
         original_facility_size: U256::from(10_000_000_u64),
         original_senior_tranche: U256::from(8_000_000_u64),
         original_equity_tranche: U256::from(2_000_000_u64),
@@ -527,17 +526,15 @@ fn compose_drawn_snapshot_full_row() {
     let mutable = MutableLoanDataView {
         next_economics_epochs_id: U256::from(3_u64),
         next_repayment_id: U256::from(5_u64),
-        status: 1, // WatchList
-        ccr_bps: 6_500_u32,
-        last_reported_ccr_timestamp: 1_690_000_000_u64,
+        status: 2, // WatchList
         current_maturity_timestamp: 1_780_500_000_u64,
+        current_rate: 850,
         closure_reason: 0, // None
-        current_location: LocationUpdateView {
-            location_type: LocationType::TankFarm,
-            location_identifier: "TF-007".to_owned(),
-            tracking_url: "https://track.example.com/TF-007".to_owned(),
-            updated_at: 1_690_100_000_u64,
-        },
+        carved_out: true,
+        disbursed: U256::from(8_000_000_u64),
+        repaid: U256::from(200_000_u64),
+        written_down: U256::from(0_u64),
+        interest_adjustment: -I256::try_from(1_000_i64).unwrap(),
         metadata_uri: "ipfs://Qm_onchain_uri".to_owned(),
     };
 
@@ -556,7 +553,7 @@ fn compose_drawn_snapshot_full_row() {
     let snap = compose_drawn_snapshot(
         json,
         &immutable,
-        mutable,
+        &mutable,
         &cumulative,
         metadata_uri_onchain.clone(),
     );
@@ -608,12 +605,14 @@ fn compose_drawn_snapshot_full_row() {
     assert_eq!(snap.next_economics_epochs_id, BigDecimal::from(3));
     assert_eq!(snap.next_repayment_id, BigDecimal::from(5));
     assert_eq!(snap.status, "WatchList");
-    assert_eq!(snap.ccr_bps, 6_500_u32);
-    assert_eq!(snap.last_reported_ccr_timestamp, 1_690_000_000_i64);
     assert_eq!(snap.current_maturity_timestamp, 1_780_500_000_i64);
+    assert_eq!(snap.current_rate, 850);
     assert_eq!(snap.closure_reason, "None");
-    assert_eq!(snap.current_location.location_type, "TankFarm");
-    assert_eq!(snap.current_location.location_identifier, "TF-007");
+    assert!(snap.carved_out);
+    assert_eq!(snap.disbursed, BigDecimal::from(8_000_000_u64));
+    assert_eq!(snap.repaid, BigDecimal::from(200_000_u64));
+    assert_eq!(snap.written_down, BigDecimal::from(0));
+    assert_eq!(snap.interest_adjustment, BigDecimal::from(-1_000));
     assert_eq!(snap.metadata_uri_onchain, metadata_uri_onchain);
     assert_eq!(
         snap.repayment.offtaker_received,
@@ -644,17 +643,15 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     let mutable = MutableLoanDataView {
         next_economics_epochs_id: U256::from(5_u64),
         next_repayment_id: U256::from(3_u64),
-        status: 0, // Performing
-        ccr_bps: 8500_u32,
-        last_reported_ccr_timestamp: 1_750_000_000_u64,
+        status: 1, // Performing
         current_maturity_timestamp: 1_800_000_500_u64,
+        current_rate: 975,
         closure_reason: 0, // None
-        current_location: LocationUpdateView {
-            location_type: LocationType::Vessel,
-            location_identifier: "VES-042".to_owned(),
-            tracking_url: "https://track.example.com/VES-042".to_owned(),
-            updated_at: 1_750_000_100_u64,
-        },
+        carved_out: false,
+        disbursed: U256::from(4_000_000_u64),
+        repaid: U256::from(500_000_u64),
+        written_down: U256::from(0_u64),
+        interest_adjustment: I256::ZERO,
         metadata_uri: "ipfs://Qm_test".to_owned(), // same as prior.metadata_uri_onchain
     };
 
@@ -681,13 +678,13 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     assert_eq!(snap.documents, prior.documents);
     assert_eq!(snap.original_facility_size, prior.original_facility_size);
     assert_eq!(snap.original_senior_tranche, prior.original_senior_tranche);
-    assert_eq!(snap.ccr_bps, 8500_u32);
-    assert_eq!(snap.last_reported_ccr_timestamp, 1_750_000_000_i64);
     assert_eq!(snap.current_maturity_timestamp, 1_800_000_500_i64);
+    assert_eq!(snap.current_rate, 975);
     assert_eq!(snap.status, "Performing");
     assert_eq!(snap.closure_reason, "None");
-    assert_eq!(snap.current_location.location_type, "Vessel");
-    assert_eq!(snap.current_location.location_identifier, "VES-042");
+    assert!(!snap.carved_out);
+    assert_eq!(snap.disbursed, BigDecimal::from(4_000_000_u64));
+    assert_eq!(snap.repaid, BigDecimal::from(500_000_u64));
     assert_eq!(snap.metadata_uri_onchain, "ipfs://Qm_test");
     assert_eq!(
         snap.repayment.offtaker_received,
@@ -711,17 +708,15 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     let mutable = MutableLoanDataView {
         next_economics_epochs_id: U256::from(6_u64),
         next_repayment_id: U256::from(4_u64),
-        status: 0,
-        ccr_bps: 8000_u32,
-        last_reported_ccr_timestamp: 1_760_000_000_u64,
+        status: 1,
         current_maturity_timestamp: 1_800_002_000_u64,
+        current_rate: 950,
         closure_reason: 0,
-        current_location: LocationUpdateView {
-            location_type: LocationType::Warehouse,
-            location_identifier: "WH-099".to_owned(),
-            tracking_url: "https://track.example.com/WH-099".to_owned(),
-            updated_at: 1_760_000_100_u64,
-        },
+        carved_out: false,
+        disbursed: U256::from(4_000_000_u64),
+        repaid: U256::from(0_u64),
+        written_down: U256::from(0_u64),
+        interest_adjustment: I256::ZERO,
         metadata_uri: new_uri.clone(),
     };
 
@@ -770,8 +765,7 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     assert_eq!(snap.origination_date, prior.origination_date);
     assert_eq!(snap.original_maturity_date, prior.original_maturity_date);
     assert_eq!(snap.metadata_uri_onchain, new_uri);
-    assert_eq!(snap.current_location.location_type, "Warehouse");
-    assert_eq!(snap.current_location.location_identifier, "WH-099");
+    assert_eq!(snap.current_rate, 950);
 }
 
 fn mock_repayment_data_view(amount: u64) -> RepaymentDataView {
@@ -796,10 +790,11 @@ fn compose_lifecycle_snapshot_status_strings_mapping() {
     let cumulative = mock_repayment();
 
     let status_cases: &[(u8, &str)] = &[
-        (0, "Performing"),
-        (1, "WatchList"),
-        (2, "Default"),
-        (3, "Closed"),
+        (0, "Approved"),
+        (1, "Performing"),
+        (2, "WatchList"),
+        (3, "Default"),
+        (4, "Closed"),
         (255, "Unknown"),
     ];
 
@@ -808,11 +803,14 @@ fn compose_lifecycle_snapshot_status_strings_mapping() {
             next_economics_epochs_id: U256::from(1_u64),
             next_repayment_id: U256::from(0_u64),
             status: ordinal,
-            ccr_bps: 8000_u32,
-            last_reported_ccr_timestamp: 0_u64,
             current_maturity_timestamp: 0_u64,
+            current_rate: 0,
             closure_reason: 0,
-            current_location: mock_location(),
+            carved_out: false,
+            disbursed: U256::ZERO,
+            repaid: U256::ZERO,
+            written_down: U256::ZERO,
+            interest_adjustment: I256::ZERO,
             metadata_uri: prior.metadata_uri_onchain.clone(),
         };
         let snap = compose_lifecycle_snapshot(prior.clone(), mutable, &cumulative, None);
@@ -825,11 +823,12 @@ fn compose_lifecycle_snapshot_status_strings_mapping() {
 
 #[test]
 fn loan_status_name_all_variants() {
-    assert_eq!(loan_status_name(0), "Performing");
-    assert_eq!(loan_status_name(1), "WatchList");
-    assert_eq!(loan_status_name(2), "Default");
-    assert_eq!(loan_status_name(3), "Closed");
-    assert_eq!(loan_status_name(4), "Unknown");
+    assert_eq!(loan_status_name(0), "Approved");
+    assert_eq!(loan_status_name(1), "Performing");
+    assert_eq!(loan_status_name(2), "WatchList");
+    assert_eq!(loan_status_name(3), "Default");
+    assert_eq!(loan_status_name(4), "Closed");
+    assert_eq!(loan_status_name(5), "Unknown");
     assert_eq!(loan_status_name(100), "Unknown");
     assert_eq!(loan_status_name(255), "Unknown");
 }
@@ -847,21 +846,25 @@ fn compose_lifecycle_snapshot_closure_reason_mapping() {
         (0, "None"),
         (1, "ScheduledMaturity"),
         (2, "EarlyRepayment"),
-        (3, "Default"),
-        (4, "OtherWriteDown"),
-        (5, "Unknown"),
+        (3, "Cancelled"),
+        (4, "Default"),
+        (5, "OtherWriteDown"),
+        (6, "Unknown"),
     ];
 
     for &(ordinal, expected) in cases {
         let mutable = MutableLoanDataView {
             next_economics_epochs_id: U256::from(1_u64),
             next_repayment_id: U256::from(0_u64),
-            status: 0,
-            ccr_bps: 0_u32,
-            last_reported_ccr_timestamp: 0_u64,
+            status: 1,
             current_maturity_timestamp: 0_u64,
+            current_rate: 0,
             closure_reason: ordinal,
-            current_location: mock_location(),
+            carved_out: false,
+            disbursed: U256::ZERO,
+            repaid: U256::ZERO,
+            written_down: U256::ZERO,
+            interest_adjustment: I256::ZERO,
             metadata_uri: prior.metadata_uri_onchain.clone(),
         };
         let snap = compose_lifecycle_snapshot(prior.clone(), mutable, &cumulative, None);
@@ -877,30 +880,12 @@ fn closure_reason_name_all_variants() {
     assert_eq!(closure_reason_name(0), "None");
     assert_eq!(closure_reason_name(1), "ScheduledMaturity");
     assert_eq!(closure_reason_name(2), "EarlyRepayment");
-    assert_eq!(closure_reason_name(3), "Default");
-    assert_eq!(closure_reason_name(4), "OtherWriteDown");
-    assert_eq!(closure_reason_name(5), "Unknown");
+    assert_eq!(closure_reason_name(3), "Cancelled");
+    assert_eq!(closure_reason_name(4), "Default");
+    assert_eq!(closure_reason_name(5), "OtherWriteDown");
+    assert_eq!(closure_reason_name(6), "Unknown");
     assert_eq!(closure_reason_name(100), "Unknown");
     assert_eq!(closure_reason_name(255), "Unknown");
-}
-
-// ---------------------------------------------------------------------------
-// 12. LocationType::from_ordinal clamps out-of-range values
-// ---------------------------------------------------------------------------
-
-#[test]
-fn location_type_from_ordinal_clamps_out_of_range() {
-    assert_eq!(LocationType::from_ordinal(0), LocationType::Vessel);
-    assert_eq!(LocationType::from_ordinal(1), LocationType::Warehouse);
-    assert_eq!(LocationType::from_ordinal(2), LocationType::TankFarm);
-    assert_eq!(LocationType::from_ordinal(3), LocationType::Other);
-    assert_eq!(LocationType::from_ordinal(4), LocationType::Other);
-    assert_eq!(LocationType::from_ordinal(10), LocationType::Other);
-    assert_eq!(LocationType::from_ordinal(255), LocationType::Other);
-    assert_eq!(LocationType::Vessel.as_str(), "Vessel");
-    assert_eq!(LocationType::Warehouse.as_str(), "Warehouse");
-    assert_eq!(LocationType::TankFarm.as_str(), "TankFarm");
-    assert_eq!(LocationType::Other.as_str(), "Other");
 }
 
 // ---------------------------------------------------------------------------
@@ -931,16 +916,14 @@ fn loan_snapshot_serde_round_trip() {
         next_economics_epochs_id: BigDecimal::from_str("7").unwrap(),
         next_repayment_id: BigDecimal::from_str("3").unwrap(),
         status: "WatchList".to_owned(),
-        ccr_bps: 7200_u32,
-        last_reported_ccr_timestamp: 1_710_000_000_i64,
         current_maturity_timestamp: 1_800_500_000_i64,
+        current_rate: 1125_u32,
         closure_reason: "None".to_owned(),
-        current_location: LocationUpdateSnapshot {
-            location_type: "TankFarm".to_owned(),
-            location_identifier: "TF-SERDE".to_owned(),
-            tracking_url: "https://track.example.com/TF-SERDE".to_owned(),
-            updated_at: 1_710_100_000_i64,
-        },
+        carved_out: true,
+        disbursed: BigDecimal::from_str("9876543210987654321").unwrap(),
+        repaid: BigDecimal::from_str("1234567890123456789").unwrap(),
+        written_down: BigDecimal::from_str("1000000000000000000").unwrap(),
+        interest_adjustment: BigDecimal::from_str("-500000000000000000").unwrap(),
         metadata_uri_onchain: "ipfs://Qm_onchain_serde".to_owned(),
         repayment: RepaymentSnapshot {
             offtaker_received: BigDecimal::from_str("999999999999999999").unwrap(),
@@ -1266,4 +1249,145 @@ fn stellar_loan_id_serialised_as_decimal_string() {
 fn stellar_address_as_db_string_returns_strkey() {
     let addr = StellarAddress(STELLAR_CONTRACT.to_owned());
     assert_eq!(addr.as_db_string(), STELLAR_CONTRACT);
+}
+
+// ---------------------------------------------------------------------------
+// 14. accumulate_repayments / InFlight (#1434 D3) — EVM reconstruction, no DB
+// ---------------------------------------------------------------------------
+
+fn repayment(n: u64) -> RepaymentDataView {
+    RepaymentDataView {
+        offtaker_received: U256::from(n * 100),
+        senior_principal_repaid: U256::from(n * 50),
+        senior_interest: U256::from(n * 5),
+        equity_distributed: U256::from(n * 2),
+        mgmt_fee: U256::from(n),
+        perf_fee: U256::from(n),
+        oet_alloc: U256::from(n),
+    }
+}
+
+#[test]
+fn accumulate_repayments_sums_all_recorded_rows() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+        ("3".to_owned(), repayment(3)),
+    ];
+    let reversed = HashSet::new();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(total.offtaker_received, U256::from(600u64));
+    assert_eq!(total.senior_principal_repaid, U256::from(300u64));
+    assert_eq!(total.senior_interest, U256::from(30u64));
+    assert_eq!(total.equity_distributed, U256::from(12u64));
+    assert_eq!(total.mgmt_fee, U256::from(6u64));
+    assert_eq!(total.perf_fee, U256::from(6u64));
+    assert_eq!(total.oet_alloc, U256::from(6u64));
+}
+
+#[test]
+fn accumulate_repayments_excludes_reversed_ids() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+        ("3".to_owned(), repayment(3)),
+    ];
+    let reversed: HashSet<String> = ["2".to_owned()].into_iter().collect();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(400u64),
+        "2 (id=2) must be excluded"
+    );
+}
+
+#[test]
+fn accumulate_repayments_includes_in_flight_recorded_not_in_slice() {
+    let recorded = vec![("1".to_owned(), repayment(1))];
+    let reversed = HashSet::new();
+    let in_flight = InFlight::Recorded("2".to_owned(), Box::new(repayment(2)));
+
+    let total = accumulate_repayments(&recorded, &reversed, Some(&in_flight));
+
+    assert_eq!(total.offtaker_received, U256::from(300u64));
+}
+
+#[test]
+fn accumulate_repayments_in_flight_unrecorded_excludes_a_row_in_the_slice() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+    ];
+    let reversed = HashSet::new();
+    let in_flight = InFlight::Unrecorded("2".to_owned());
+
+    let total = accumulate_repayments(&recorded, &reversed, Some(&in_flight));
+
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(100u64),
+        "id=2 must be excluded by the in-flight Unrecorded event"
+    );
+}
+
+#[test]
+fn accumulate_repayments_deduplicates_a_repeated_repayment_id() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("1".to_owned(), repayment(1)),
+    ];
+    let reversed = HashSet::new();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(100u64),
+        "a duplicated row must count once"
+    );
+}
+
+#[test]
+fn accumulate_repayments_empty_slice_yields_zeros() {
+    let recorded: Vec<(String, RepaymentDataView)> = Vec::new();
+    let reversed = HashSet::new();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(total.offtaker_received, U256::ZERO);
+    assert_eq!(total.senior_principal_repaid, U256::ZERO);
+    assert_eq!(total.senior_interest, U256::ZERO);
+    assert_eq!(total.equity_distributed, U256::ZERO);
+    assert_eq!(total.mgmt_fee, U256::ZERO);
+    assert_eq!(total.perf_fee, U256::ZERO);
+    assert_eq!(total.oet_alloc, U256::ZERO);
+}
+
+/// Mirrors the `senior_principal_repaid` override `reconstruct_cumulative` applies.
+#[test]
+fn senior_principal_repaid_override_replaces_accumulated_sum() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+    ];
+    let reversed = HashSet::new();
+    let accumulated_sum = U256::from(150u64); // 1*50 + 2*50
+
+    let mut total = accumulate_repayments(&recorded, &reversed, None);
+    assert_eq!(total.senior_principal_repaid, accumulated_sum);
+
+    let mutable_repaid = U256::from(999u64);
+    total.senior_principal_repaid = mutable_repaid;
+
+    assert_eq!(total.senior_principal_repaid, mutable_repaid);
+    assert_ne!(total.senior_principal_repaid, accumulated_sum);
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(300u64),
+        "the other six fields are untouched by the override"
+    );
 }

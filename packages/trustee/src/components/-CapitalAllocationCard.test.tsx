@@ -11,7 +11,7 @@
  *
  * `@pipeline/wallet-connect` is also mocked (even though this file never
  * calls it directly) because `./useCapitalAllocationCard` statically imports
- * `useCapitalWalletBalance`, which statically imports `@pipeline/wallet-connect`
+ * `useUsdcCustodyBalance`, which statically imports `@pipeline/wallet-connect`
  * — without this mock, `vi.spyOn`-ing the view hook still pulls in the real
  * module graph (down to `@creit.tech/stellar-wallets-kit`'s `defaultModules()`
  * / `@stellar/freighter-api`), which can fail to resolve in some sandboxes.

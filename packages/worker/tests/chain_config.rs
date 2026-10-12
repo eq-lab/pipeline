@@ -60,7 +60,7 @@ fn indexer_from_chain_env_missing_rpc_url_is_error() {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     unsafe {
         std::env::set_var("CHAINS", "77777");
-        std::env::remove_var("CHAIN_77777_ETH_RPC_URL");
+        std::env::remove_var("CHAIN_77777_EVM_RPC_URL");
     }
     assert!(IndexerJobSettings::from_chain_env(77777).is_err());
     unsafe { std::env::remove_var("CHAINS") };
@@ -74,7 +74,7 @@ fn price_poller_from_chain_env_missing_rpc_url_is_error() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     unsafe {
-        std::env::remove_var("CHAIN_88888_ETH_RPC_URL");
+        std::env::remove_var("CHAIN_88888_EVM_RPC_URL");
     }
     assert!(EvmPricePollerSettings::from_chain_env(88888).is_err());
 }
@@ -89,7 +89,7 @@ fn relayer_from_chain_env_missing_signer_key_is_error() {
     unsafe {
         std::env::remove_var("CHAIN_66666_RELAYER_SIGNER_KEY");
         std::env::remove_var("CHAIN_66666_RELAYER_ETH_RPC_URL");
-        std::env::remove_var("CHAIN_66666_ETH_RPC_URL");
+        std::env::remove_var("CHAIN_66666_EVM_RPC_URL");
     }
     assert!(EvmRelayerSettings::from_chain_env(66666).is_err());
 }

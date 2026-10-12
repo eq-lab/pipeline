@@ -5,13 +5,15 @@ import {
   type AccountStatusBand,
   type LpCounterpartyRow,
 } from "./-useLpCounterpartiesTable";
+import {
+  ATTENTION_AMBER,
+  BRAND,
+  LINE_COLOR,
+  NEGATIVE_RED,
+  POSITIVE_GREEN,
+} from "@/components/detail/detailTokens";
 
 // spec: docs/frontend/trustee-flows.md#lp-counterparties.
-
-const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
-const ATTENTION_AMBER = "#6e6400";
-const NEGATIVE_RED = "#b20000";
-const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 
 const GRID_TEMPLATE_COLUMNS =
   "minmax(0,1.7fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) 34px";
@@ -39,6 +41,8 @@ function statusBandColor(band: AccountStatusBand): string {
       return ATTENTION_AMBER;
     case "negative":
       return NEGATIVE_RED;
+    case "info":
+      return BRAND;
     default:
       return "var(--color-pipeline-ink-muted)";
   }

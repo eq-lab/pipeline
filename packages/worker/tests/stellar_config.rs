@@ -66,15 +66,15 @@ fn stellar_settings_from_env_happy_path() {
     unsafe {
         std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -87,9 +87,9 @@ fn stellar_settings_from_env_happy_path() {
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -107,15 +107,15 @@ fn stellar_settings_from_env_missing_rpc_url() {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
         // Ensure RPC_URL is not set
@@ -127,9 +127,9 @@ fn stellar_settings_from_env_missing_rpc_url() {
 
     unsafe {
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -150,15 +150,15 @@ fn stellar_settings_uppercases_lowercase_contract_ids() {
         // otherwise dispatch_parser's == comparison against RPC-returned uppercase
         // Strkey would silently drop every event.
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "cb62uzdtbjoqwtltqchqujjayo4bszc6qhvdhcjwd3xopwp4m3aljcoo",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -171,9 +171,9 @@ fn stellar_settings_uppercases_lowercase_contract_ids() {
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -190,13 +190,13 @@ fn stellar_settings_rejects_wrong_length_contract_id() {
             format!("{p}NETWORK_PASSPHRASE"),
             "Test SDF Network ; September 2015",
         );
-        std::env::set_var(format!("{p}DEPOSIT_MANAGER_ID"), "CBTOOSHORT");
+        std::env::set_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"), "CBTOOSHORT");
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -209,15 +209,15 @@ fn stellar_settings_rejects_wrong_length_contract_id() {
         "error should mention length: {msg}"
     );
     assert!(
-        msg.contains("DEPOSIT_MANAGER_ID"),
+        msg.contains("DEPOSIT_MANAGER_ADDRESS"),
         "error should name the bad key: {msg}"
     );
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -236,15 +236,15 @@ fn stellar_settings_rejects_wrong_prefix_contract_id() {
         );
         // 'G' is the account prefix (ed25519 public key), not a contract.
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQHES5",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -259,9 +259,9 @@ fn stellar_settings_rejects_wrong_prefix_contract_id() {
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -280,13 +280,13 @@ fn stellar_settings_rejects_non_base32_chars_in_contract_id() {
             format!("{p}NETWORK_PASSPHRASE"),
             "Test SDF Network ; September 2015",
         );
-        std::env::set_var(format!("{p}DEPOSIT_MANAGER_ID"), &bad_id);
+        std::env::set_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"), &bad_id);
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -301,9 +301,9 @@ fn stellar_settings_rejects_non_base32_chars_in_contract_id() {
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -324,10 +324,10 @@ fn stellar_settings_rejects_duplicate_contract_ids() {
             format!("{p}NETWORK_PASSPHRASE"),
             "Test SDF Network ; September 2015",
         );
-        std::env::set_var(format!("{p}DEPOSIT_MANAGER_ID"), dm);
-        std::env::set_var(format!("{p}WITHDRAWAL_QUEUE_ID"), dm);
+        std::env::set_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"), dm);
+        std::env::set_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"), dm);
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -339,15 +339,15 @@ fn stellar_settings_rejects_duplicate_contract_ids() {
     );
     let msg = format!("{}", err.err().unwrap());
     assert!(
-        msg.contains("duplicates") && msg.contains("WITHDRAWAL_QUEUE_ID"),
+        msg.contains("duplicates") && msg.contains("WITHDRAWAL_QUEUE_ADDRESS"),
         "error should name the duplicate role: {msg}"
     );
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -362,15 +362,15 @@ fn stellar_settings_from_env_non_testnet_requires_passphrase() {
     unsafe {
         std::env::set_var(format!("{p}RPC_URL"), "https://soroban-mainnet.stellar.org");
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
@@ -384,9 +384,9 @@ fn stellar_settings_from_env_non_testnet_requires_passphrase() {
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -406,19 +406,19 @@ fn loan_registry_id_unset_yields_none() {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
         // Ensure LOAN_REGISTRY_ID is not set
-        std::env::remove_var(format!("{p}LOAN_REGISTRY_ID"));
+        std::env::remove_var(format!("{p}INDEXER_LOAN_REGISTRY_ADDRESS"));
     }
 
     let s = StellarIndexerSettings::from_chain_env(id)
@@ -431,9 +431,9 @@ fn loan_registry_id_unset_yields_none() {
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -451,37 +451,37 @@ fn loan_registry_id_rejects_duplicate_of_dm() {
             format!("{p}NETWORK_PASSPHRASE"),
             "Test SDF Network ; September 2015",
         );
-        std::env::set_var(format!("{p}DEPOSIT_MANAGER_ID"), dm);
+        std::env::set_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"), dm);
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
         // LOAN_REGISTRY_ID set to same value as DEPOSIT_MANAGER_ID
-        std::env::set_var(format!("{p}LOAN_REGISTRY_ID"), dm);
+        std::env::set_var(format!("{p}INDEXER_LOAN_REGISTRY_ADDRESS"), dm);
     }
 
     let err = StellarIndexerSettings::from_chain_env(id);
     assert!(
         err.is_err(),
-        "should fail when LOAN_REGISTRY_ID duplicates DEPOSIT_MANAGER_ID"
+        "should fail when LOAN_REGISTRY_ADDRESS duplicates DEPOSIT_MANAGER_ADDRESS"
     );
     let msg = format!("{}", err.err().unwrap());
     assert!(
-        msg.contains("duplicates") && msg.contains("LOAN_REGISTRY_ID"),
-        "error should mention LOAN_REGISTRY_ID duplicate: {msg}"
+        msg.contains("duplicates") && msg.contains("LOAN_REGISTRY_ADDRESS"),
+        "error should mention LOAN_REGISTRY_ADDRESS duplicate: {msg}"
     );
 
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
-        std::env::remove_var(format!("{p}LOAN_REGISTRY_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_LOAN_REGISTRY_ADDRESS"));
     }
 }
 
@@ -501,18 +501,18 @@ fn withdrawal_queue_wallet_id_unset_yields_none() {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS"));
     }
 
     let s = StellarIndexerSettings::from_chain_env(id)
@@ -525,9 +525,9 @@ fn withdrawal_queue_wallet_id_unset_yields_none() {
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
     }
 }
 
@@ -546,18 +546,21 @@ fn withdrawal_queue_wallet_id_parses_g_account() {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
-        std::env::set_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"), wallet);
+        std::env::set_var(
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS"),
+            wallet,
+        );
     }
 
     let s = StellarIndexerSettings::from_chain_env(id).expect("should succeed");
@@ -566,10 +569,10 @@ fn withdrawal_queue_wallet_id_parses_g_account() {
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS"));
     }
 }
 
@@ -587,18 +590,21 @@ fn withdrawal_queue_wallet_id_rejects_malformed_address() {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
-        std::env::set_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"), "NOTASTRKEY");
+        std::env::set_var(
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS"),
+            "NOTASTRKEY",
+        );
     }
 
     let err = StellarIndexerSettings::from_chain_env(id);
@@ -607,10 +613,10 @@ fn withdrawal_queue_wallet_id_rejects_malformed_address() {
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS"));
     }
 }
 
@@ -638,18 +644,18 @@ fn yield_minter_id_rejects_a_bad_strkey_checksum() {
             "Test SDF Network ; September 2015",
         );
         std::env::set_var(
-            format!("{p}DEPOSIT_MANAGER_ID"),
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
             "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
         );
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
-        std::env::set_var(format!("{p}YIELD_MINTER_ID"), &transposed);
+        std::env::set_var(format!("{p}INDEXER_MINTER_ADDRESS"), &transposed);
     }
 
     let result = StellarIndexerSettings::from_chain_env(id);
@@ -661,9 +667,9 @@ fn yield_minter_id_rejects_a_bad_strkey_checksum() {
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
-        std::env::remove_var(format!("{p}YIELD_MINTER_ID"));
+        std::env::remove_var(format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"));
+        std::env::remove_var(format!("{p}INDEXER_MINTER_ADDRESS"));
     }
 }

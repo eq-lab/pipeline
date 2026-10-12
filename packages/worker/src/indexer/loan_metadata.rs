@@ -70,6 +70,9 @@ impl BlockHint {
 /// alloy-generated types so mapper tests can use a mock resolver.
 #[derive(Debug, Clone)]
 pub struct ImmutableLoanDataView {
+    /// `None` means "not decoded yet" (#1433/#1434) — distinguishes that from a
+    /// legitimate all-zero on-chain `borrowerRef`/`BytesN<32>`.
+    pub borrower_ref: Option<alloy::primitives::FixedBytes<32>>,
     pub original_facility_size: alloy::primitives::U256,
     pub original_senior_tranche: alloy::primitives::U256,
     pub original_equity_tranche: alloy::primitives::U256,
@@ -77,47 +80,6 @@ pub struct ImmutableLoanDataView {
     pub senior_interest_rate_bps: u32,
     pub origination_date: u64,
     pub original_maturity_date: u64,
-}
-
-/// Location type enum matching the on-chain `ILoanRegistry.LocationType`.
-/// 0=Vessel, 1=Warehouse, 2=TankFarm, 3=Other
-#[derive(Debug, Clone, PartialEq)]
-pub enum LocationType {
-    Vessel,
-    Warehouse,
-    TankFarm,
-    Other,
-}
-
-impl LocationType {
-    /// Map numeric ordinal from on-chain enum to Rust variant.
-    /// Out-of-range values clamp to `Other`.
-    pub fn from_ordinal(ord: u8) -> LocationType {
-        match ord {
-            0 => LocationType::Vessel,
-            1 => LocationType::Warehouse,
-            2 => LocationType::TankFarm,
-            _ => LocationType::Other,
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LocationType::Vessel => "Vessel",
-            LocationType::Warehouse => "Warehouse",
-            LocationType::TankFarm => "TankFarm",
-            LocationType::Other => "Other",
-        }
-    }
-}
-
-/// Plain-Rust projection of `ILoanRegistry.LocationUpdate`.
-#[derive(Debug, Clone)]
-pub struct LocationUpdateView {
-    pub location_type: LocationType,
-    pub location_identifier: String,
-    pub tracking_url: String,
-    pub updated_at: u64,
 }
 
 /// Plain-Rust projection of `ILoanRegistry.RepaymentData`.
@@ -132,6 +94,20 @@ pub struct RepaymentDataView {
     pub oet_alloc: alloy::primitives::U256,
 }
 
+impl Default for RepaymentDataView {
+    fn default() -> Self {
+        Self {
+            offtaker_received: alloy::primitives::U256::ZERO,
+            senior_principal_repaid: alloy::primitives::U256::ZERO,
+            senior_interest: alloy::primitives::U256::ZERO,
+            equity_distributed: alloy::primitives::U256::ZERO,
+            mgmt_fee: alloy::primitives::U256::ZERO,
+            perf_fee: alloy::primitives::U256::ZERO,
+            oet_alloc: alloy::primitives::U256::ZERO,
+        }
+    }
+}
+
 /// Plain-Rust projection of `ILoanRegistry.MutableLoanData` returned by
 /// `LoanRegistryReader::mutable_loan_data`. Decouples the mapper from alloy types.
 #[derive(Debug, Clone)]
@@ -140,14 +116,23 @@ pub struct MutableLoanDataView {
     pub next_economics_epochs_id: alloy::primitives::U256,
     /// `nextRepaymentId` — monotonically incrementing counter for repayment IDs.
     pub next_repayment_id: alloy::primitives::U256,
-    /// Numeric ordinal of `LoanStatus`: 0=Performing, 1=WatchList, 2=Default, 3=Closed
+    /// Numeric ordinal of `LoanStatus`: 0=Approved, 1=Performing, 2=WatchList, 3=Default, 4=Closed
     pub status: u8,
-    pub ccr_bps: u32,
-    pub last_reported_ccr_timestamp: u64,
     pub current_maturity_timestamp: u64,
-    /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
+    /// Basis points — both reader arms divide the on-chain ppm value by 100 (`LoanRegistryUpgradeable.sol:17,653`).
+    pub current_rate: u32,
+    /// Numeric ordinal of `ClosureReason`: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment,
+    /// 3=Cancelled, 4=Default, 5=OtherWriteDown
     pub closure_reason: u8,
-    pub current_location: LocationUpdateView,
+    pub carved_out: bool,
+    /// Raw native USDC scale.
+    pub disbursed: alloy::primitives::U256,
+    /// Raw native USDC scale.
+    pub repaid: alloy::primitives::U256,
+    /// Raw native USDC scale.
+    pub written_down: alloy::primitives::U256,
+    /// Signed; raw native USDC scale.
+    pub interest_adjustment: alloy::primitives::I256,
     /// The mutable on-chain metadata URI (set by `_updateMutable`).
     pub metadata_uri: String,
 }
@@ -181,13 +166,11 @@ pub trait MutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
         block: BlockHint,
     ) -> anyhow::Result<MutableLoanDataView>;
 
-    /// Read `cumulativeRepaymentData(loanId)` at `block`. This is the authoritative
-    /// source for the 7 repayment fields — `MutableLoanData` carries no cumulative
-    /// repayment data.
+    /// `Some` when this chain has a live on-chain getter (Stellar); `None` when the caller must reconstruct from indexed rows (EVM).
     async fn cumulative_repayment_data(
         &self,
         contract: &A,
         loan_id: Id,
         block: BlockHint,
-    ) -> anyhow::Result<RepaymentDataView>;
+    ) -> anyhow::Result<Option<RepaymentDataView>>;
 }

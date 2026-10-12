@@ -7,7 +7,7 @@
 
 use std::str::FromStr;
 
-use alloy_primitives::U256;
+use alloy_primitives::{I256, U256};
 use bigdecimal::BigDecimal;
 
 /// Parse a JSON decimal string into `BigDecimal` for binding to `NUMERIC(78,0)`.
@@ -43,6 +43,15 @@ pub fn parse_i32(field: &str, value: &str) -> anyhow::Result<i32> {
 /// always produces a valid decimal literal.
 pub fn u256_to_bigdecimal(v: U256) -> BigDecimal {
     BigDecimal::from_str(&v.to_string()).expect("U256 stringifies to a valid decimal")
+}
+
+/// Convert an alloy `I256` to a `BigDecimal`.
+///
+/// Goes through the I256 signed-decimal string representation. Panics if the
+/// conversion fails — this should be impossible since `I256::to_string()`
+/// always produces a valid signed decimal literal.
+pub fn i256_to_bigdecimal(v: I256) -> BigDecimal {
+    BigDecimal::from_str(&v.to_string()).expect("I256 stringifies to a valid signed decimal")
 }
 
 /// Convert a `BigDecimal` (typically loaded from a `NUMERIC(78,0)` column) to

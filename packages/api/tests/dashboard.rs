@@ -14,7 +14,7 @@ use pipeline_api::routes::dashboard::{
     compute_yield_series, net_apy, MAX_SAMPLES,
 };
 use shared::contract_logs_repo::{FlowEventRow, LifecycleRow, LoanSnapshotRow, YieldMintRow};
-use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
+use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 // ── Fixture helpers ─────────────────────────────────────────────────────────
 
@@ -22,15 +22,6 @@ const DAY: i64 = 86_400;
 
 fn usdc(whole: i64) -> BigDecimal {
     BigDecimal::from(whole * 1_000_000)
-}
-
-fn zero_location() -> LocationUpdateSnapshot {
-    LocationUpdateSnapshot {
-        location_type: "Vessel".to_owned(),
-        location_identifier: String::new(),
-        tracking_url: String::new(),
-        updated_at: 0,
-    }
 }
 
 fn repayment(
@@ -93,11 +84,14 @@ fn make_loan(
             next_economics_epochs_id: BigDecimal::from(1_i64),
             next_repayment_id: BigDecimal::from(0_i64),
             status: "Performing".to_owned(),
-            ccr_bps: 0,
-            last_reported_ccr_timestamp: 0,
             current_maturity_timestamp: 0,
+            current_rate: rate_bps,
             closure_reason: "None".to_owned(),
-            current_location: zero_location(),
+            carved_out: false,
+            disbursed: BigDecimal::from(0_i64),
+            repaid: BigDecimal::from(0_i64),
+            written_down: BigDecimal::from(0_i64),
+            interest_adjustment: BigDecimal::from(0_i64),
             metadata_uri_onchain: String::new(),
             repayment: repayment_snapshot,
         },

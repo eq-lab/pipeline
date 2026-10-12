@@ -1,6 +1,6 @@
 //! Per-loan financials endpoint (`GET /v1/loan-book/{loan_id}/financials`).
 //!
-//! Read-only. Loads the loan's latest `LoanSnapshot` (status, location, immutable
+//! Read-only. Loads the loan's latest `LoanSnapshot` (status, immutable
 //! economics, cumulative repayment) and the minted-yield total attributable to the
 //! loan, then derives a small set of realized figures. All monetary values are
 //! USDC base-6 in storage and serialized as 6-decimal strings.
@@ -53,8 +53,6 @@ pub struct LoanFinancialsResponse {
     /// complete) and `Past Due` (past current maturity) overrides layered on. See
     /// `routes::loan_book::display_status`.
     pub status: String,
-    /// Current physical location of the collateral. `null` when never reported.
-    pub location: Option<LocationView>,
 
     /// Original offtaker price (USDC, 6-decimal string). What the offtaker owes in
     /// total for the commodity.
@@ -108,24 +106,11 @@ pub struct EpochView {
     pub maturity_date: String,
 }
 
-/// Collateral location, projected from the loan snapshot's `current_location`.
-#[derive(Debug, Serialize, ToSchema)]
-pub struct LocationView {
-    /// Location kind (`Vessel`, `Warehouse`, `TankFarm`, `Other`).
-    pub location_type: String,
-    /// Free-form identifier (vessel name, warehouse id, …).
-    pub location_identifier: String,
-    /// Optional external tracking URL. Empty string when none.
-    pub tracking_url: String,
-    /// ISO-8601 UTC timestamp of the last location update.
-    pub updated_at: String,
-}
-
 /// OpenAPI doc bundle for the financials route.
 #[derive(OpenApi)]
 #[openapi(
     paths(get_loan_financials),
-    components(schemas(LoanFinancialsResponse, LocationView, EpochView)),
+    components(schemas(LoanFinancialsResponse, EpochView)),
     modifiers(&SecurityAddon)
 )]
 pub struct LoanFinancialsDoc;
@@ -281,7 +266,6 @@ pub fn build_response(
             now,
             s.current_maturity_timestamp,
         ),
-        location: location_view(s),
         offtaker: base6_to_decimal_string(&s.original_offtaker_price),
         principal: base6_to_decimal_string(&principal),
         interest: base6_to_decimal_string(interest),
@@ -333,19 +317,4 @@ fn current_epoch(
         // `ContractLogsRepo::list_loan_economics_events`).
         maturity_date: iso_utc_from_unix(s.current_maturity_timestamp),
     }
-}
-
-/// Project `current_location` to a `LocationView`, or `None` when no location has
-/// been reported (the snapshot carries an empty `location_type` at draw time).
-fn location_view(s: &LoanSnapshot) -> Option<LocationView> {
-    let loc = &s.current_location;
-    if loc.location_type.is_empty() {
-        return None;
-    }
-    Some(LocationView {
-        location_type: loc.location_type.clone(),
-        location_identifier: loc.location_identifier.clone(),
-        tracking_url: loc.tracking_url.clone(),
-        updated_at: iso_utc_from_unix(loc.updated_at),
-    })
 }

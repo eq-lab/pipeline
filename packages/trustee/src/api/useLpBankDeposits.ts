@@ -32,7 +32,12 @@ export interface RecordBankDepositInput {
 
 export const lpBankDepositsKey = (id: number) => ["lp", id, "bank-deposits"];
 
-export function useLpBankDeposits(id: number) {
+export const LP_BANK_DEPOSITS_REFETCH_MS = 30_000;
+
+export function useLpBankDeposits(
+  id: number,
+  refetchIntervalMs: number = LP_BANK_DEPOSITS_REFETCH_MS,
+) {
   return useQuery<LpBankDepositsResponse, Error>({
     queryKey: lpBankDepositsKey(id),
     queryFn: ({ signal }) =>
@@ -40,7 +45,7 @@ export function useLpBankDeposits(id: number) {
         signal,
       }),
     enabled: Number.isSafeInteger(id) && id > 0,
-    refetchInterval: 30_000,
+    refetchInterval: refetchIntervalMs,
     retry: (count, error) =>
       !(error instanceof ApiError && [401, 403, 404].includes(error.status)) &&
       count < 2,

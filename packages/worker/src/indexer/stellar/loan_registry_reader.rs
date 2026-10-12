@@ -20,10 +20,11 @@ use stellar_strkey::Contract as ContractStrkey;
 use stellar_xdr::curr::{Limits, ReadXdr, ScVal};
 
 use crate::indexer::loan_metadata::{
-    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LocationType,
-    LocationUpdateView, MutableDataResolver, MutableLoanDataView, RepaymentDataView,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, MutableDataResolver,
+    MutableLoanDataView, RepaymentDataView,
 };
 use crate::indexer::stellar::rpc::StellarRpc;
+use crate::stellar::scval::i128_from_parts;
 use crate::stellar::tx::{build_invoke_envelope, envelope_to_base64};
 
 // ── StellarAddress ────────────────────────────────────────────────────────────
@@ -145,11 +146,11 @@ impl MutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader {
         contract: &StellarAddress,
         loan_id: u32,
         _block: BlockHint,
-    ) -> Result<RepaymentDataView> {
+    ) -> Result<Option<RepaymentDataView>> {
         let scval = self
             .call_view(&contract.0, "cumulative_repayment_data", loan_id)
             .await?;
-        decode_cumulative_repayment_data(&scval)
+        Ok(Some(decode_cumulative_repayment_data(&scval)?))
     }
 }
 
@@ -193,8 +194,14 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
     let senior_interest_rate_bps = senior_interest_rate_raw / 100;
     let origination_date = map_u64(&map, "origination_date", "ImmutableLoanData")?;
     let original_maturity_date = map_u64(&map, "original_maturity_date", "ImmutableLoanData")?;
+    let borrower_ref = Some(alloy::primitives::FixedBytes::<32>::from(map_bytes32(
+        &map,
+        "borrower_ref",
+        "ImmutableLoanData",
+    )?));
 
     Ok(ImmutableLoanDataView {
+        borrower_ref,
         original_facility_size,
         original_senior_tranche,
         original_equity_tranche,
@@ -223,22 +230,14 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
     // `status` is a `LoanStatus` enum encoded as `ScVal::Vec([Symbol("Variant")])`.
     let status_variant = map_enum_variant(&map, "status", "MutableLoanData")?;
     let status: u8 = match status_variant.as_str() {
-        "Performing" => 0,
-        "WatchList" => 1,
-        "Default" => 2,
-        "Closed" => 3,
+        "Approved" => 0,
+        "Performing" => 1,
+        "WatchList" => 2,
+        "Default" => 3,
+        "Closed" => 4,
         other => anyhow::bail!("MutableLoanData.status: unknown variant '{other}'"),
     };
 
-    // Soroban stores CCR in the same `ONE = 1_000_000` fixed-point scale as the
-    // interest rate (100% → 1_000_000, 120% → 1_200_000). The shared snapshot field
-    // is basis points (1 bp = 1/10_000), matching EVM's native `ccrBps`. Divide by
-    // 100 here — mirroring the `senior_interest_rate` conversion above — so stored
-    // `ccr_bps` means the same thing on both chains. (Loan-book CCR is recomputed
-    // from collateral downstream, so this only fixes the stored snapshot value.)
-    let ccr_bps = map_u32(&map, "ccr", "MutableLoanData")? / 100;
-    let last_reported_ccr_timestamp =
-        map_u64(&map, "last_reported_ccr_timestamp", "MutableLoanData")?;
     let current_maturity_timestamp =
         map_u64(&map, "current_maturity_timestamp", "MutableLoanData")?;
 
@@ -248,23 +247,39 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
         "None" => 0,
         "ScheduledMaturity" => 1,
         "EarlyRepayment" => 2,
-        "Default" => 3,
-        "OtherWriteDown" => 4,
+        "Cancelled" => 3,
+        "Default" => 4,
+        "OtherWriteDown" => 5,
         other => anyhow::bail!("MutableLoanData.closure_reason: unknown variant '{other}'"),
     };
 
-    let current_location = map_location_update(&map, "current_location")?;
     let metadata_uri = map_string(&map, "metadata_uri", "MutableLoanData")?;
+
+    // Soroban-units (fraction of `ONE = 1_000_000`, same scale as
+    // `senior_interest_rate` above) — see `lib.rs:30`, `lib.rs:102`,
+    // `storage.rs:269`/`:292` in `pipeline-stellar-contracts`. Divide by 100 to
+    // reach basis points.
+    let current_rate = map_u32(&map, "current_rate", "MutableLoanData")? / 100;
+    let carved_out = map_bool(&map, "carved_out", "MutableLoanData")?;
+    let disbursed = U256::from(map_u128(&map, "disbursed", "MutableLoanData")?);
+    let repaid = U256::from(map_u128(&map, "repaid", "MutableLoanData")?);
+    let written_down = U256::from(map_u128(&map, "written_down", "MutableLoanData")?);
+    let interest_adjustment_raw = map_i128(&map, "interest_adjustment", "MutableLoanData")?;
+    let interest_adjustment = alloy::primitives::I256::try_from(interest_adjustment_raw)
+        .map_err(|e| anyhow::anyhow!("MutableLoanData.interest_adjustment: {e}"))?;
 
     Ok(MutableLoanDataView {
         next_economics_epochs_id,
         next_repayment_id,
         status,
-        ccr_bps,
-        last_reported_ccr_timestamp,
         current_maturity_timestamp,
+        current_rate,
         closure_reason,
-        current_location,
+        carved_out,
+        disbursed,
+        repaid,
+        written_down,
+        interest_adjustment,
         metadata_uri,
     })
 }
@@ -340,6 +355,34 @@ fn map_u32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u32> {
     }
 }
 
+fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
+    let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
+    match entry {
+        ScVal::Bool(v) => Ok(*v),
+        _ => anyhow::bail!("{ctx}.{key}: expected Bool, got {entry:?}"),
+    }
+}
+
+fn map_i128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<i128> {
+    let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
+    match entry {
+        ScVal::I128(parts) => Ok(i128_from_parts(parts.hi, parts.lo)),
+        _ => anyhow::bail!("{ctx}.{key}: expected I128, got {entry:?}"),
+    }
+}
+
+fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
+    let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
+    match entry {
+        ScVal::Bytes(bytes) if bytes.0.len() == 32 => {
+            let mut out = [0u8; 32];
+            out.copy_from_slice(bytes.0.as_slice());
+            Ok(out)
+        }
+        _ => anyhow::bail!("{ctx}.{key}: expected 32-byte Bytes, got {entry:?}"),
+    }
+}
+
 fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
@@ -361,36 +404,6 @@ fn map_enum_variant(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
         }
         _ => anyhow::bail!("{ctx}.{key}: expected Vec([Symbol(...)]), got {entry:?}"),
     }
-}
-
-/// Decode a `LocationUpdate` struct from a map entry.
-/// `LocationUpdate` is a `#[contracttype]` struct, encoded as a nested `ScVal::Map`.
-fn map_location_update(map: &ScMapSlice, key: &str) -> Result<LocationUpdateView> {
-    let entry = map_entry(map, key)
-        .ok_or_else(|| anyhow::anyhow!("MutableLoanData.{key}: field missing"))?;
-    let ScVal::Map(Some(loc_map)) = entry else {
-        anyhow::bail!("MutableLoanData.{key}: expected nested Map");
-    };
-
-    // `location_type` is a `LocationType` enum encoded as `ScVal::Vec([Symbol(...)])`.
-    let lt_variant = map_enum_variant(loc_map, "location_type", "LocationUpdate")?;
-    let location_type = match lt_variant.as_str() {
-        "Vessel" => LocationType::Vessel,
-        "Warehouse" => LocationType::Warehouse,
-        "TankFarm" => LocationType::TankFarm,
-        _ => LocationType::Other,
-    };
-
-    let location_identifier = map_string(loc_map, "location_identifier", "LocationUpdate")?;
-    let tracking_url = map_string(loc_map, "tracking_url", "LocationUpdate")?;
-    let updated_at = map_u64(loc_map, "updated_at", "LocationUpdate")?;
-
-    Ok(LocationUpdateView {
-        location_type,
-        location_identifier,
-        tracking_url,
-        updated_at,
-    })
 }
 
 fn u128_from_hi_lo(hi: u64, lo: u64) -> u128 {

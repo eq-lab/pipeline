@@ -6,6 +6,29 @@ use sqlx::PgPool;
 use crate::chains::{normalize_usdc_amount, parse_chain_type};
 use crate::loan_snapshot::LoanSnapshot;
 
+/// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
+/// the five "latest snapshot per loan" queries below (`list_latest_loan_snapshots`,
+/// `..._for_chain`, `get_loan_snapshot_as_of`, `latest_status_by_loans`,
+/// `get_latest_loan_snapshot`). A name missing from this list has its snapshot
+/// written but never read back as "latest" — see issue #1433 finding F3. All five
+/// queries must stay derived from this single list rather than hand-copied.
+pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
+    "LoanDrawn",
+    "LoanStatusUpdated",
+    "LoanCCRUpdated",
+    "LoanLocationUpdated",
+    "LoanDefaulted",
+    "LoanClosed",
+    "PaymentRecorded",
+    "PaymentUnrecorded",
+    "LoanRolledOver",
+    "EconomicsAmended",
+    "Disbursed",
+    "Undisbursed",
+    "LoanWrittenDown",
+    "InterestAdjusted",
+];
+
 /// A loan-end event row fetched from `contract_logs`.
 ///
 /// Used by the portfolio yield endpoint to determine each loan's `effective_end`:
@@ -194,6 +217,19 @@ pub struct AuditLogRow {
     pub params: serde_json::Value,
 }
 
+/// One indexed `PaymentRecorded` row's flattened `RepaymentData` (#1434 D3).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RecordedPaymentRow {
+    pub repayment_id: String,
+    pub offtaker_received: BigDecimal,
+    pub senior_principal_repaid: BigDecimal,
+    pub senior_interest: BigDecimal,
+    pub equity_distributed: BigDecimal,
+    pub mgmt_fee: BigDecimal,
+    pub perf_fee: BigDecimal,
+    pub oet_alloc: BigDecimal,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -267,23 +303,14 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND contract_address = $2
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($4)
                AND block_timestamp <= $3
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
         .bind(chain_id)
         .bind(contract_address)
         .bind(to_unix)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_all(executor)
         .await?;
 
@@ -335,22 +362,13 @@ impl ContractLogsRepo {
                  params->'snapshot' AS snapshot
              FROM contract_logs
              WHERE chain_id = $1
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($3)
                AND block_timestamp <= $2
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
         .bind(chain_id)
         .bind(to_unix)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_all(executor)
         .await?;
 
@@ -417,17 +435,7 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND (params->>'loan_id')::numeric = $2
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($4)
                AND (block_timestamp <= $3 OR event_name = 'LoanDrawn')
              ORDER BY block_number DESC, log_index DESC
              LIMIT 1",
@@ -435,6 +443,7 @@ impl ContractLogsRepo {
         .bind(chain_id)
         .bind(loan_id)
         .bind(as_of)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_optional(executor)
         .await?;
 
@@ -483,22 +492,13 @@ impl ContractLogsRepo {
                  params->'snapshot'->>'status'        AS status
              FROM contract_logs
              WHERE chain_id = $1
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($3)
                AND (params->>'loan_id')::numeric = ANY($2)
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
         .bind(chain_id)
         .bind(loan_ids)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_all(executor)
         .await?;
         Ok(rows)
@@ -977,17 +977,7 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND contract_address = $2
-               AND event_name IN (
-                   'LoanDrawn',
-                   'LoanStatusUpdated',
-                   'LoanCCRUpdated',
-                   'LoanLocationUpdated',
-                   'LoanDefaulted',
-                   'LoanClosed',
-                   'PaymentRecorded',
-                   'LoanRolledOver',
-                   'EconomicsAmended'
-               )
+               AND event_name = ANY($4)
                AND (params->>'loan_id')::numeric = $3
              ORDER BY block_number DESC, log_index DESC
              LIMIT 1",
@@ -995,6 +985,7 @@ impl ContractLogsRepo {
         .bind(chain_id)
         .bind(contract_address)
         .bind(loan_id)
+        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
         .fetch_optional(conn)
         .await?;
 
@@ -1058,5 +1049,86 @@ impl ContractLogsRepo {
                 })
             })
             .collect()
+    }
+
+    /// Backs the EVM arm's off-chain cumulative-repayment reconstruction (#1434 D3).
+    ///
+    /// Ordered `block_number ASC, log_index ASC` because `accumulate_repayments` folds
+    /// rows with `BTreeMap::insert`, so the last row for a `repayment_id` wins and must
+    /// be the chain-latest one. Reads tolerate both `params` shapes — `LoanEventMapper`
+    /// nests under `event`, `ContractLogMapper` writes flat — and skip rows carrying
+    /// any of the eight keys, so shape drift drops a row instead of wedging the loan's
+    /// indexing with an `UnexpectedNull` (every column is non-`Option`). The guard covers
+    /// all eight rather than `repayment_id` alone: one missing amount is enough to produce
+    /// the `NULL` that stops the loan indexing permanently.
+    pub async fn list_recorded_payments(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        chain_id: i64,
+        contract_address: &str,
+        loan_id: &BigDecimal,
+        max_block: i64,
+    ) -> anyhow::Result<Vec<RecordedPaymentRow>> {
+        let rows = sqlx::query_as::<_, RecordedPaymentRow>(
+            "SELECT
+                 COALESCE(params->'event'->>'repayment_id', params->>'repayment_id') AS repayment_id,
+                 (COALESCE(params->'event'->>'offtaker_received', params->>'offtaker_received'))::numeric AS offtaker_received,
+                 (COALESCE(params->'event'->>'senior_principal_repaid', params->>'senior_principal_repaid'))::numeric AS senior_principal_repaid,
+                 (COALESCE(params->'event'->>'senior_interest', params->>'senior_interest'))::numeric AS senior_interest,
+                 (COALESCE(params->'event'->>'equity_distributed', params->>'equity_distributed'))::numeric AS equity_distributed,
+                 (COALESCE(params->'event'->>'mgmt_fee', params->>'mgmt_fee'))::numeric AS mgmt_fee,
+                 (COALESCE(params->'event'->>'perf_fee', params->>'perf_fee'))::numeric AS perf_fee,
+                 (COALESCE(params->'event'->>'oet_alloc', params->>'oet_alloc'))::numeric AS oet_alloc
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND contract_address = $2
+               AND event_name = 'PaymentRecorded'
+               AND (params->>'loan_id')::numeric = $3
+               AND block_number <= $4
+               AND COALESCE(params->'event'->>'repayment_id', params->>'repayment_id') IS NOT NULL
+               AND COALESCE(params->'event'->>'offtaker_received', params->>'offtaker_received') IS NOT NULL
+               AND COALESCE(params->'event'->>'senior_principal_repaid', params->>'senior_principal_repaid') IS NOT NULL
+               AND COALESCE(params->'event'->>'senior_interest', params->>'senior_interest') IS NOT NULL
+               AND COALESCE(params->'event'->>'equity_distributed', params->>'equity_distributed') IS NOT NULL
+               AND COALESCE(params->'event'->>'mgmt_fee', params->>'mgmt_fee') IS NOT NULL
+               AND COALESCE(params->'event'->>'perf_fee', params->>'perf_fee') IS NOT NULL
+               AND COALESCE(params->'event'->>'oet_alloc', params->>'oet_alloc') IS NOT NULL
+             ORDER BY block_number ASC, log_index ASC",
+        )
+        .bind(chain_id)
+        .bind(contract_address)
+        .bind(loan_id)
+        .bind(max_block)
+        .fetch_all(conn)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Paired with `list_recorded_payments` to drop reversed repayments (#1434 D3).
+    pub async fn list_unrecorded_repayment_ids(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        chain_id: i64,
+        contract_address: &str,
+        loan_id: &BigDecimal,
+        max_block: i64,
+    ) -> anyhow::Result<Vec<String>> {
+        let ids = sqlx::query_scalar::<_, String>(
+            "SELECT COALESCE(params->'event'->>'repayment_id', params->>'repayment_id')
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND contract_address = $2
+               AND event_name = 'PaymentUnrecorded'
+               AND (params->>'loan_id')::numeric = $3
+               AND block_number <= $4
+               AND COALESCE(params->'event'->>'repayment_id', params->>'repayment_id') IS NOT NULL",
+        )
+        .bind(chain_id)
+        .bind(contract_address)
+        .bind(loan_id)
+        .bind(max_block)
+        .fetch_all(conn)
+        .await?;
+        Ok(ids)
     }
 }

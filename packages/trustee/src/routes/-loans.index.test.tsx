@@ -60,7 +60,6 @@ const RESPONSE: LoanBookResponse = {
       maturity: 1_785_000_000,
       next_payment_timestamp: 1_785_000_000,
       days_overdue: null,
-      ccr_reported_at: Math.floor(Date.now() / 1000) - 3600,
       spot_price: "4500.00",
       spot_change_7d: "-0.1800",
       collateral: "2100.000000", // displayed as served (issue #906) → $2.10K
@@ -88,7 +87,6 @@ const RESPONSE: LoanBookResponse = {
       maturity: 1_789_000_000,
       next_payment_timestamp: 1_789_000_000,
       days_overdue: null,
-      ccr_reported_at: 0,
       spot_price: null,
       spot_change_7d: null,
       collateral: null,

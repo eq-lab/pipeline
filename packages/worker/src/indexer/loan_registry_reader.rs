@@ -8,13 +8,14 @@ use async_trait::async_trait;
 use reqwest::Client;
 
 use super::loan_metadata::{
-    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LocationType, LocationUpdateView,
-    MutableDataResolver, MutableLoanDataView, RepaymentDataView,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, MutableDataResolver,
+    MutableLoanDataView, RepaymentDataView,
 };
 
 sol! {
     interface ILoanRegistry {
         enum LoanStatus {
+            Approved,
             Performing,
             WatchList,
             Default,
@@ -25,30 +26,18 @@ sol! {
             None,
             ScheduledMaturity,
             EarlyRepayment,
+            Cancelled,
             Default,
             OtherWriteDown
         }
 
-        enum LocationType {
-            Vessel,
-            Warehouse,
-            TankFarm,
-            Other
-        }
-
-        struct LocationUpdate {
-            LocationType locationType;
-            string locationIdentifier;
-            string trackingURL;
-            uint64 updatedAt;
-        }
-
         struct ImmutableLoanData {
+            bytes32 borrowerRef;
             uint256 originalFacilitySize;
             uint256 originalSeniorTranche;
             uint256 originalEquityTranche;
             uint256 originalOfftakerPrice;
-            uint32 seniorInterestRateBps;
+            uint32 seniorInterestRate;
             uint64 originationDate;
             uint64 originalMaturityDate;
         }
@@ -57,31 +46,66 @@ sol! {
             uint256 nextEconomicsEpochsId;
             uint256 nextRepaymentId;
             LoanStatus status;
-            uint32 ccrBps;
-            uint64 lastReportedCCRTimestamp;
             uint64 currentMaturityTimestamp;
+            uint32 currentRate;
             ClosureReason closureReason;
-            LocationUpdate currentLocation;
+            bool carvedOut;
+            uint256 disbursed;
+            uint256 repaid;
+            uint256 writtenDown;
+            int256 interestAdjustment;
             string metadataURI;
-        }
-
-        struct RepaymentData {
-            uint256 offtakerReceived;
-            uint256 seniorPrincipalRepaid;
-            uint256 seniorInterest;
-            uint256 equityDistributed;
-            uint256 mgmtFee;
-            uint256 perfFee;
-            uint256 oetAlloc;
         }
 
         function immutableLoanData(uint256 loanId) external view returns (ImmutableLoanData memory);
         function mutableLoanData(uint256 loanId) external view returns (MutableLoanData memory);
-        function cumulativeRepaymentData(uint256 loanId) external view returns (RepaymentData memory);
     }
 }
 
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
+
+/// `LoanRegistryUpgradeable.sol:17,653,235,610` — ppm (`ONE = 1_000_000`) to bps.
+fn ppm_to_bps(raw: u32) -> u32 {
+    raw / 100
+}
+
+/// Pure decode, unit-tested in `packages/worker/tests/loan_registry_reader.rs`.
+pub fn decode_immutable_loan_data(result: &[u8]) -> Result<ImmutableLoanDataView> {
+    let decoded = ILoanRegistry::immutableLoanDataCall::abi_decode_returns(result, true)
+        .context("decode immutableLoanData return")?;
+    let d = decoded._0;
+    Ok(ImmutableLoanDataView {
+        borrower_ref: Some(d.borrowerRef),
+        original_facility_size: d.originalFacilitySize,
+        original_senior_tranche: d.originalSeniorTranche,
+        original_equity_tranche: d.originalEquityTranche,
+        original_offtaker_price: d.originalOfftakerPrice,
+        senior_interest_rate_bps: ppm_to_bps(d.seniorInterestRate),
+        origination_date: d.originationDate,
+        original_maturity_date: d.originalMaturityDate,
+    })
+}
+
+/// Pure decode, unit-tested in `packages/worker/tests/loan_registry_reader.rs`.
+pub fn decode_mutable_loan_data(result: &[u8]) -> Result<MutableLoanDataView> {
+    let decoded = ILoanRegistry::mutableLoanDataCall::abi_decode_returns(result, true)
+        .context("decode mutableLoanData return")?;
+    let d = decoded._0;
+    Ok(MutableLoanDataView {
+        next_economics_epochs_id: d.nextEconomicsEpochsId,
+        next_repayment_id: d.nextRepaymentId,
+        status: d.status as u8,
+        current_maturity_timestamp: d.currentMaturityTimestamp,
+        current_rate: ppm_to_bps(d.currentRate),
+        closure_reason: d.closureReason as u8,
+        carved_out: d.carvedOut,
+        disbursed: d.disbursed,
+        repaid: d.repaid,
+        written_down: d.writtenDown,
+        interest_adjustment: d.interestAdjustment,
+        metadata_uri: d.metadataURI,
+    })
+}
 
 /// Reads on-chain LoanRegistry data via eth_call. Implements two resolver traits:
 /// - `ImmutableDataResolver<Address, U256>`: `immutableLoanData(loanId)` — reads the immutable struct.
@@ -127,18 +151,7 @@ impl ImmutableDataResolver<Address, U256> for LoanRegistryReader {
                 format!("eth_call immutableLoanData({loan_id}) on {contract} failed")
             })?;
 
-        let decoded = ILoanRegistry::immutableLoanDataCall::abi_decode_returns(&result, true)
-            .with_context(|| format!("decode immutableLoanData({loan_id}) return"))?;
-        let d = decoded._0;
-        Ok(ImmutableLoanDataView {
-            original_facility_size: d.originalFacilitySize,
-            original_senior_tranche: d.originalSeniorTranche,
-            original_equity_tranche: d.originalEquityTranche,
-            original_offtaker_price: d.originalOfftakerPrice,
-            senior_interest_rate_bps: d.seniorInterestRateBps,
-            origination_date: d.originationDate,
-            original_maturity_date: d.originalMaturityDate,
-        })
+        decode_immutable_loan_data(&result)
     }
 }
 
@@ -167,62 +180,16 @@ impl MutableDataResolver<Address, U256> for LoanRegistryReader {
                 )
             })?;
 
-        let decoded = ILoanRegistry::mutableLoanDataCall::abi_decode_returns(&result, true)
-            .with_context(|| format!("decode mutableLoanData({loan_id}) return"))?;
-        let d = decoded._0;
-        let loc = d.currentLocation;
-        Ok(MutableLoanDataView {
-            next_economics_epochs_id: d.nextEconomicsEpochsId,
-            next_repayment_id: d.nextRepaymentId,
-            status: d.status as u8,
-            ccr_bps: d.ccrBps,
-            last_reported_ccr_timestamp: d.lastReportedCCRTimestamp,
-            current_maturity_timestamp: d.currentMaturityTimestamp,
-            closure_reason: d.closureReason as u8,
-            current_location: LocationUpdateView {
-                location_type: LocationType::from_ordinal(loc.locationType as u8),
-                location_identifier: loc.locationIdentifier,
-                tracking_url: loc.trackingURL,
-                updated_at: loc.updatedAt,
-            },
-            metadata_uri: d.metadataURI,
-        })
+        decode_mutable_loan_data(&result)
     }
 
+    /// `cumulativeRepaymentData()` no longer exists (`LoanRegistryUpgradeable.sol:28-32,96`); `loan_mapper.rs` reconstructs it from indexed rows.
     async fn cumulative_repayment_data(
         &self,
-        contract: &Address,
-        loan_id: U256,
-        block: BlockHint,
-    ) -> Result<RepaymentDataView> {
-        let call_data = ILoanRegistry::cumulativeRepaymentDataCall { loanId: loan_id }.abi_encode();
-
-        let result = self
-            .provider
-            .call(
-                &alloy::rpc::types::TransactionRequest::default()
-                    .to(*contract)
-                    .input(call_data.into()),
-            )
-            .block(block.to_evm_block_id())
-            .await
-            .with_context(|| {
-                format!(
-                    "eth_call cumulativeRepaymentData({loan_id}) on {contract} at block {block:?} failed"
-                )
-            })?;
-
-        let decoded = ILoanRegistry::cumulativeRepaymentDataCall::abi_decode_returns(&result, true)
-            .with_context(|| format!("decode cumulativeRepaymentData({loan_id}) return"))?;
-        let rd = decoded._0;
-        Ok(RepaymentDataView {
-            offtaker_received: rd.offtakerReceived,
-            senior_principal_repaid: rd.seniorPrincipalRepaid,
-            senior_interest: rd.seniorInterest,
-            equity_distributed: rd.equityDistributed,
-            mgmt_fee: rd.mgmtFee,
-            perf_fee: rd.perfFee,
-            oet_alloc: rd.oetAlloc,
-        })
+        _contract: &Address,
+        _loan_id: U256,
+        _block: BlockHint,
+    ) -> Result<Option<RepaymentDataView>> {
+        Ok(None)
     }
 }

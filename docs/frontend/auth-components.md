@@ -411,6 +411,45 @@ Composition inside `AuthModalShell` (heading "Check your inbox", description
 - Any edit clears an `error` back to `idle`. A duplicate resubmission of the exact code already
   being verified (`OtpInput` can re-fire `onChange` with the same value on paste) is ignored —
   it does not call `verify` a second time.
+- An `error` persists until the user edits the code — **nothing clears it on a timer** (product
+  decision, 2026-10-08; the `OTP_ERROR_VISIBLE_MS` window shipped earlier in #1442 was removed, see
+  `docs/exec-plans/completed/issue-1442-otp-error-auto-clear.md`). The six boxes stay red with the
+  rejected digits in them (Figma `6486:81863`), the caption stays, and focus stays on the hidden
+  `<input>` with the caret at the end, so the next keystroke lands in the field. Backspace deletes a
+  digit and returns the screen to `idle`; typing the replacement reaches six digits again and
+  re-runs `verify`.
+- While six digits are present the field is at `OtpInput`'s length cap, so further keystrokes are
+  sanitised away with no visible effect. Backspace is therefore the only way forward, and
+  `OtpInput` draws its focused-box border on the **last** box while `invalid` so the field reads as
+  editable rather than locked (see `ui-components.md#otpinput`).
+- Clicking `Resend` clears the code back to six empty boxes, clears the error, and returns focus to
+  box 1, since a new code is on its way. It bumps the internal request id, so a verify still in
+  flight against the wiped code is discarded when it settles. Closing or reopening the modal resets
+  the same state.
+- **Focus is reclaimed when the rejection lands** (#1442). Entering the `error` state raises a
+  focus request, so the hidden `<input>` is focused again the moment the caption appears and an
+  immediate correction lands. The request is guarded: if the user has deliberately moved focus to a
+  `<button>` or link inside the dialog (the back arrow, the `Resend` affordance), focus is left
+  where it is. It is reclaimed only from `document.body` or from a non-button node such as the
+  Turnstile `<iframe>`.
+
+  The thief could **not** be reproduced in jsdom. A full-flow probe through `EmailAuthFlow`
+  (signup → OTP and sign-in `403 email_not_verified` → auto-resend → OTP), with `verifyOtp`
+  rejecting `401` and the `Turnstile` mock mirroring the real widget's `reset()` status churn,
+  kept `document.activeElement` on the OTP input across the whole rejection — before the paste,
+  immediately after it, and after the `role="alert"` caption mounted. No React state change on a
+  rejected verify re-keys or remounts `OtpModal`, `AuthModalShell` or `OtpInput`, and
+  `AuthModalShell`'s auto-focus effect is keyed on `[open]` only. The remaining difference between
+  jsdom and production is the one thing the mock has no analogue for: the **real Cloudflare
+  Turnstile cross-origin `<iframe>`** that `turnstileSlot` renders as a sibling of the `OtpInput`.
+  Focus moving into that iframe makes it `document.activeElement`, blurs the OTP input, and sends
+  keystrokes to Cloudflare — which is what the user experiences as "the wrong code cannot be
+  deleted". `handleOtpResend` and the auto-resend effect both call `otpTurnstileRef.current
+  ?.reset()` in a `finally`, and the widget also re-renders itself when a token expires; each
+  re-render re-runs the challenge. That is the best-supported cause, and the guarded reclaim above
+  is the fix for it. **Residual risk:** a steal that lands at an arbitrary moment *after* the
+  rejection render is only recovered by the next rejection's reclaim or by the user clicking the
+  boxes, which `OtpInput`'s root `onClick` already refocuses.
 - Reaching 6 digits sets `verifying` and awaits `verify(code)`: resolve → `idle` +
   `onVerified?.(code)`; `401` reject → invalid/expired code error; network/`5xx` reject → network
   error. Editing the code at all while a verify is in flight —
@@ -434,7 +473,9 @@ error caption "Couldn't resend the code. Try again."
 **Accessibility:** the back arrow is the only dismiss (Figma hides the Close Icon instance for
 this frame — a non-interactive arrow would trap the preview); on open, focus lands on the OTP
 input (rendered before the back button in DOM order), not the back button; the loader and error
-caption use `role="status"`/`role="alert"` respectively.
+caption use `role="status"`/`role="alert"` respectively. A rejected code pulls focus back to the OTP
+input so the correction can be typed without a click, and never moves focus away from a control the
+user is interacting with, because the reclaim skips a focused `<button>` or link inside the dialog.
 
 ### CompanyDocsModal
 

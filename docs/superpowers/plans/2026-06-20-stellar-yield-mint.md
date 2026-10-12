@@ -9,7 +9,7 @@
 **Tech Stack:** Rust, `tokio`, `sqlx` (Postgres), `ed25519-dalek`, `stellar-xdr`, `stellar-strkey`, `base64`, `sha2`, `async-trait`, `anyhow`, `bigdecimal`.
 
 Spec: `docs/superpowers/specs/2026-06-19-stellar-yield-mint-design.md`
-Exec plan: `docs/exec-plans/active/issue-683-stellar-yield-mint.md`
+Exec plan: `docs/exec-plans/completed/issue-683-stellar-yield-mint.md`
 Issue: https://github.com/eq-lab/pipeline/issues/683
 
 ## Global Constraints

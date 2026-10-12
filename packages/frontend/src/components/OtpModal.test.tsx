@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OtpModal } from "./OtpModal";
 import { ApiError } from "@/api";
@@ -23,6 +23,13 @@ async function typeCode(
   const input = screen.getByLabelText("Verification code");
   await user.click(input);
   await user.paste(code);
+}
+
+function boxTexts() {
+  const row = screen.getByLabelText("Verification code").parentElement!;
+  return Array.from(row.querySelectorAll(':scope > [aria-hidden="true"]')).map(
+    (box) => box.textContent,
+  );
 }
 
 function pendingVerify() {
@@ -339,5 +346,186 @@ describe("OtpModal (#1250, #1265)", () => {
   it("renders no image pane", () => {
     renderModal();
     expect(document.querySelector("img")).not.toBeInTheDocument();
+  });
+
+  it("the error persists until the next edit, with focus on the OTP input", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
+
+    await typeCode(user);
+    await act(async () => {
+      reject(new ApiError(401, "invalid code"));
+      await promise.catch(() => {});
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    const input = screen.getByLabelText("Verification code");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Code is incorrect or expired. Request a new one.",
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveValue("111111");
+    expect(boxTexts()).toEqual(["1", "1", "1", "1", "1", "1"]);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("Backspace from the error state drops the last digit, clears the error and keeps focus", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
+
+    await typeCode(user);
+    await act(async () => {
+      reject(new ApiError(401, "invalid code"));
+      await promise.catch(() => {});
+    });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await user.keyboard("{Backspace}");
+
+    const input = screen.getByLabelText("Verification code");
+    expect(input).toHaveValue("11111");
+    expect(input).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(boxTexts()).toEqual(["1", "1", "1", "1", "1", ""]);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("typing a replacement digit after the Backspace re-runs verify", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const verify = vi.fn().mockRejectedValue(new ApiError(401, "invalid code"));
+    renderModal({ verify });
+
+    await typeCode(user);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    await user.keyboard("{Backspace}2");
+
+    expect(verify).toHaveBeenCalledTimes(2);
+    expect(verify).toHaveBeenLastCalledWith("111112");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText("Verification code")).toHaveValue("111112");
+  });
+
+  it("a resolved verify leaves the code in place and nothing clears it later", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, resolve } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    const onVerified = vi.fn();
+    renderModal({ verify, onVerified });
+
+    await typeCode(user, "123456");
+    await act(async () => {
+      resolve();
+      await promise;
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    expect(onVerified).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Verification code")).toHaveValue("123456");
+  });
+
+  it("a stale rejection is discarded and leaves the edited code alone", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
+
+    await typeCode(user);
+    await user.type(screen.getByLabelText("Verification code"), "{backspace}");
+
+    await act(async () => {
+      reject(new ApiError(401, "invalid code"));
+      await promise.catch(() => {});
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Verification code")).toHaveValue("11111");
+  });
+
+  it("clicking Resend clears the code and the error and restarts the countdown", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const resend = vi.fn().mockResolvedValue(undefined);
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify, resend });
+
+    act(() => {
+      vi.advanceTimersByTime(59_000);
+    });
+    await typeCode(user);
+    await act(async () => {
+      reject(new ApiError(401, "invalid code"));
+      await promise.catch(() => {});
+    });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Resend" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(resend).toHaveBeenCalledTimes(1);
+    const input = screen.getByLabelText("Verification code");
+    expect(input).toHaveValue("");
+    expect(input).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input).toHaveFocus();
+    expect(screen.getByText("Resend in 00:59")).toBeInTheDocument();
+  });
+
+  it("focus is reclaimed the moment the rejection lands, even if the input was blurred", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
+
+    await typeCode(user);
+    const input = screen.getByLabelText("Verification code");
+    act(() => {
+      fireEvent.blur(input);
+      input.blur();
+    });
+    expect(input).not.toHaveFocus();
+
+    await act(async () => {
+      reject(new ApiError(401, "invalid code"));
+      await promise.catch(() => {});
+    });
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText("Verification code")).toHaveFocus();
+  });
+
+  it("the reclaim leaves focus alone when the user has deliberately moved it to a button", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { promise, reject } = pendingVerify();
+    const verify = vi.fn().mockReturnValue(promise);
+    renderModal({ verify });
+
+    await typeCode(user);
+    const back = screen.getByRole("button", { name: "Back" });
+    act(() => back.focus());
+
+    await act(async () => {
+      reject(new ApiError(401, "invalid code"));
+      await promise.catch(() => {});
+    });
+
+    expect(back).toHaveFocus();
   });
 });

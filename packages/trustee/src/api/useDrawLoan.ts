@@ -48,7 +48,7 @@ export interface UseDrawLoanResult {
 /**
  * Mutation hook for the Approve action's on-chain `draw_loan` mint.
  *
- * Guards (both throw BEFORE any RPC call, mirroring `useCapitalWalletBalance`'s
+ * Guards (both throw BEFORE any RPC call, mirroring `useUsdcCustodyBalance`'s
  * unconfigured convention):
  *   - `ENV.STELLAR_LOAN_REGISTRY_ID` / `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`
  *     unset → "On-chain minting isn't configured for this environment."

@@ -33,6 +33,7 @@ export interface UseOtpModalResult {
   resendError: string | undefined;
   resendNotice: string | undefined;
   onResend: () => void;
+  focusRequestId: number;
 }
 
 function formatCountdown(seconds: number): string {
@@ -56,6 +57,7 @@ export function useOtpModal({
   const [resendError, setResendError] = useState<string>();
   const [resendNotice, setResendNotice] = useState<string>();
   const [allowImmediateResend, setAllowImmediateResend] = useState(false);
+  const [focusRequestId, setFocusRequestId] = useState(0);
   const requestIdRef = useRef(0);
   const resendRequestIdRef = useRef(0);
 
@@ -125,6 +127,7 @@ export function useOtpModal({
               ? OTP_ERROR_MESSAGE
               : OTP_NETWORK_ERROR_MESSAGE,
           );
+          setFocusRequestId((n) => n + 1);
         },
       );
     }
@@ -132,6 +135,11 @@ export function useOtpModal({
 
   function onResend() {
     if ((remaining > 0 && !allowImmediateResend) || isResending) return;
+    setCodeState("");
+    setStatus("idle");
+    setErrorMessage(undefined);
+    requestIdRef.current += 1;
+    setFocusRequestId((n) => n + 1);
     setResendError(undefined);
     setResendNotice(undefined);
     setIsResending(true);
@@ -171,5 +179,6 @@ export function useOtpModal({
     resendError,
     resendNotice,
     onResend,
+    focusRequestId,
   };
 }

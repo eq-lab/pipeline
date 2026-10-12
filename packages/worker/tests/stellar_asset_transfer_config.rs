@@ -27,6 +27,7 @@ const RAMP_KEY: &str = "JOB_INDEXER_STELLAR_RAMP_ADDRESSES";
 /// from a known state (guards against a prior test leaving them set).
 fn set_base(id: i64) {
     let p = format!("CHAIN_{id}_STELLAR_");
+    let ip = format!("CHAIN_{id}_STELLAR_INDEXER_");
     unsafe {
         std::env::remove_var(ASSET_KEY);
         std::env::remove_var(CUSTODY_KEY);
@@ -36,13 +37,13 @@ fn set_base(id: i64) {
             format!("{p}NETWORK_PASSPHRASE"),
             "Test SDF Network ; September 2015",
         );
-        std::env::set_var(format!("{p}DEPOSIT_MANAGER_ID"), DM_ID);
+        std::env::set_var(format!("{ip}DEPOSIT_MANAGER_ADDRESS"), DM_ID);
         std::env::set_var(
-            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            format!("{ip}WITHDRAWAL_QUEUE_ADDRESS"),
             "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
         );
         std::env::set_var(
-            format!("{p}STAKED_PLUSD_ID"),
+            format!("{ip}STAKED_PLUSD_ADDRESS"),
             "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
         );
     }
@@ -50,12 +51,13 @@ fn set_base(id: i64) {
 
 fn clear(id: i64) {
     let p = format!("CHAIN_{id}_STELLAR_");
+    let ip = format!("CHAIN_{id}_STELLAR_INDEXER_");
     unsafe {
         std::env::remove_var(format!("{p}RPC_URL"));
         std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
-        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
-        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
-        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{ip}DEPOSIT_MANAGER_ADDRESS"));
+        std::env::remove_var(format!("{ip}WITHDRAWAL_QUEUE_ADDRESS"));
+        std::env::remove_var(format!("{ip}STAKED_PLUSD_ADDRESS"));
         std::env::remove_var(ASSET_KEY);
         std::env::remove_var(CUSTODY_KEY);
         std::env::remove_var(RAMP_KEY);
@@ -205,7 +207,7 @@ fn asset_id_duplicate_role_errors() {
     let id = 99_000_054_i64;
     set_base(id);
     unsafe {
-        // ASSET_ID duplicates DEPOSIT_MANAGER_ID; custody+ramp set so tracking enables.
+        // ASSET_ID duplicates DEPOSIT_MANAGER_ADDRESS; custody+ramp set so tracking enables.
         std::env::set_var(ASSET_KEY, DM_ID);
         std::env::set_var(CUSTODY_KEY, CUSTODY_G);
         std::env::set_var(RAMP_KEY, RAMP_G);

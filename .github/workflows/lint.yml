@@ -18,6 +18,13 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: npx tsx scripts/lint-docs.ts
 
+  lint-env-names:
+    name: Per-chain env names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-chain-env-names.sh
+
   lint-rust:
     name: Rust clippy
     runs-on: ubuntu-latest

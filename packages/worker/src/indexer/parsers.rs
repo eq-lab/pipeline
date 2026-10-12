@@ -3,7 +3,7 @@ use serde_json::json;
 
 use shared::events::ContractLog;
 
-use crate::indexer::loan_mapper::loan_status_name;
+use crate::indexer::loan_mapper::{closure_reason_name, loan_status_name};
 
 sol! {
     event DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount);
@@ -22,14 +22,10 @@ mod erc4626 {
 mod loan_registry {
     use alloy::sol;
     sol! {
-        // LoanStatus:    0=Performing, 1=WatchList, 2=Default, 3=Closed
-        // ClosureReason: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
-        event LoanDrawn(uint256 indexed loanId, address indexed holder, string indexed metadataURI);
+        event LoanDrawn(uint256 indexed loanId, string metadataURI);
         event StatusUpdated(uint256 indexed loanId, uint8 indexed newStatus);
-        event CCRUpdated(uint256 indexed loanId, uint32 newCcr);
-        event LocationUpdated(uint256 indexed loanId, string indexed newLocation);
-        event LoanDefaulted(uint256 indexed loanId, uint32 ccrBps);
-        event LoanClosed(uint256 indexed loanId, uint8 indexed reason);
+        event Disbursed(uint256 indexed loanId, uint256 amount, uint256 outstanding);
+        event Undisbursed(uint256 indexed loanId, uint256 amount, uint256 outstanding);
         struct RepaymentData {
             uint256 offtakerReceived;
             uint256 seniorPrincipalRepaid;
@@ -39,16 +35,22 @@ mod loan_registry {
             uint256 perfFee;
             uint256 oetAlloc;
         }
-        event PaymentRecorded(uint256 indexed tokenId, uint256 indexed repaymentId, RepaymentData repaymentData);
+        event PaymentRecorded(uint256 indexed loanId, uint256 indexed repaymentId, RepaymentData repayment, uint256 outstanding);
+        event PaymentUnrecorded(uint256 indexed loanId, uint256 indexed repaymentId, uint256 outstanding);
+        event LoanDefaulted(uint256 indexed loanId, uint256 outstanding, uint256 moved);
+        event LoanWrittenDown(uint256 indexed loanId, uint256 amount, uint256 outstanding, uint256 burned, uint256 unabsorbed);
+        event InterestAdjusted(uint256 indexed loanId, int256 delta, bytes32 reasonHash);
+        event LoanClosed(uint256 indexed loanId, uint8 indexed reason);
         event LoanRolledOver(uint256 indexed loanId, uint32 newRate, uint64 newMaturityTimestamp);
         event EconomicsAmended(uint256 indexed loanId, uint32 newRate, uint64 newMaturityTimestamp);
     }
 }
 
-mod yield_minter {
+mod minter {
     use alloy::sol;
     sol! {
-        event YieldMinted(uint256 sPlUsdAmount, uint256 treasuryAmount);
+        event WireInRecorded(uint256 indexed id, address indexed receiver, uint256 amount, uint64 valueDate, bytes32 refHash);
+        event WireInAssigned(uint256 indexed id, address indexed receiver);
     }
 }
 
@@ -59,19 +61,6 @@ fn extract_log_meta(log: &Log) -> Option<(Address, u64, alloy::primitives::B256,
         log.transaction_hash?,
         log.log_index?,
     ))
-}
-
-/// Map a numeric ClosureReason ordinal to its string name.
-/// Matches ILoanRegistry.sol: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
-fn closure_reason_name(ordinal: u8) -> &'static str {
-    match ordinal {
-        0 => "None",
-        1 => "ScheduledMaturity",
-        2 => "EarlyRepayment",
-        3 => "Default",
-        4 => "OtherWriteDown",
-        _ => "Unknown",
-    }
 }
 
 pub fn parse_deposit_requested(log: &Log) -> Option<ContractLog> {
@@ -188,9 +177,7 @@ pub fn parse_loan_drawn(log: &Log) -> Option<ContractLog> {
         block_timestamp: 0,
         params: json!({
             "loan_id": decoded.loanId.to_string(),
-            "holder": decoded.holder.to_checksum(None),
-            // metadataURI is string indexed — topic is keccak256 hash of the URI,
-            // not the URI itself. The real URI is recovered via tokenURI(loanId).
+            "metadata_uri": decoded.metadataURI,
         }),
     })
 }
@@ -208,7 +195,8 @@ pub fn parse_loan_defaulted(log: &Log) -> Option<ContractLog> {
         block_timestamp: 0,
         params: json!({
             "loan_id": decoded.loanId.to_string(),
-            "ccr_bps": decoded.ccrBps,
+            "outstanding": decoded.outstanding.to_string(),
+            "moved": decoded.moved.to_string(),
         }),
     })
 }
@@ -234,7 +222,7 @@ pub fn parse_loan_closed(log: &Log) -> Option<ContractLog> {
 pub fn parse_payment_recorded(log: &Log) -> Option<ContractLog> {
     let decoded = loan_registry::PaymentRecorded::decode_log(log.as_ref(), true).ok()?;
     let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
-    let rd = &decoded.repaymentData;
+    let rd = &decoded.repayment;
 
     Some(ContractLog {
         contract_address,
@@ -244,7 +232,7 @@ pub fn parse_payment_recorded(log: &Log) -> Option<ContractLog> {
         log_index,
         block_timestamp: 0,
         params: json!({
-            "loan_id": decoded.tokenId.to_string(),
+            "loan_id": decoded.loanId.to_string(),
             "repayment_id": decoded.repaymentId.to_string(),
             "offtaker_received": rd.offtakerReceived.to_string(),
             "senior_principal_repaid": rd.seniorPrincipalRepaid.to_string(),
@@ -253,6 +241,104 @@ pub fn parse_payment_recorded(log: &Log) -> Option<ContractLog> {
             "mgmt_fee": rd.mgmtFee.to_string(),
             "perf_fee": rd.perfFee.to_string(),
             "oet_alloc": rd.oetAlloc.to_string(),
+            "outstanding": decoded.outstanding.to_string(),
+        }),
+    })
+}
+
+pub fn parse_payment_unrecorded(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::PaymentUnrecorded::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "PaymentUnrecorded".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "repayment_id": decoded.repaymentId.to_string(),
+            "outstanding": decoded.outstanding.to_string(),
+        }),
+    })
+}
+
+pub fn parse_disbursed(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::Disbursed::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "Disbursed".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "amount": decoded.amount.to_string(),
+            "outstanding": decoded.outstanding.to_string(),
+        }),
+    })
+}
+
+pub fn parse_undisbursed(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::Undisbursed::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "Undisbursed".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "amount": decoded.amount.to_string(),
+            "outstanding": decoded.outstanding.to_string(),
+        }),
+    })
+}
+
+pub fn parse_loan_written_down(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::LoanWrittenDown::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "LoanWrittenDown".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "amount": decoded.amount.to_string(),
+            "outstanding": decoded.outstanding.to_string(),
+            "burned": decoded.burned.to_string(),
+            "unabsorbed": decoded.unabsorbed.to_string(),
+        }),
+    })
+}
+
+pub fn parse_interest_adjusted(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::InterestAdjusted::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "InterestAdjusted".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "delta": decoded.delta.to_string(),
+            "reason_hash": hex::encode(decoded.reasonHash.as_slice()),
         }),
     })
 }
@@ -271,43 +357,6 @@ pub fn parse_loan_status_updated(log: &Log) -> Option<ContractLog> {
         params: json!({
             "loan_id": decoded.loanId.to_string(),
             "status": loan_status_name(decoded.newStatus),
-        }),
-    })
-}
-
-pub fn parse_loan_ccr_updated(log: &Log) -> Option<ContractLog> {
-    let decoded = loan_registry::CCRUpdated::decode_log(log.as_ref(), true).ok()?;
-    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
-
-    Some(ContractLog {
-        contract_address,
-        event_name: "LoanCCRUpdated".to_owned(),
-        block_number,
-        tx_hash,
-        log_index,
-        block_timestamp: 0,
-        params: json!({
-            "loan_id": decoded.loanId.to_string(),
-            "new_ccr": decoded.newCcr,
-        }),
-    })
-}
-
-pub fn parse_loan_location_updated(log: &Log) -> Option<ContractLog> {
-    let decoded = loan_registry::LocationUpdated::decode_log(log.as_ref(), true).ok()?;
-    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
-
-    Some(ContractLog {
-        contract_address,
-        event_name: "LoanLocationUpdated".to_owned(),
-        block_number,
-        tx_hash,
-        log_index,
-        block_timestamp: 0,
-        params: json!({
-            // newLocation is string indexed — topic carries keccak256 hash, not the value.
-            // The canonical string is recovered from mutableLoanData via block-pinned eth_call.
-            "loan_id": decoded.loanId.to_string(),
         }),
     })
 }
@@ -350,20 +399,43 @@ pub fn parse_economics_amended(log: &Log) -> Option<ContractLog> {
     })
 }
 
-pub fn parse_yield_minted(log: &Log) -> Option<ContractLog> {
-    let decoded = yield_minter::YieldMinted::decode_log(log.as_ref(), true).ok()?;
+// --- Minter parsers ---
+
+pub fn parse_wire_in(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::WireInRecorded::decode_log(log.as_ref(), true).ok()?;
     let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
 
     Some(ContractLog {
         contract_address,
-        event_name: "YieldMinted".to_owned(),
+        event_name: "WireIn".to_owned(),
         block_number,
         tx_hash,
         log_index,
         block_timestamp: 0,
         params: json!({
-            "s_plusd_amount": decoded.sPlUsdAmount.to_string(),
-            "treasury_amount": decoded.treasuryAmount.to_string(),
+            "id": decoded.id.to_string(),
+            "receiver": decoded.receiver.to_checksum(None),
+            "amount": decoded.amount.to_string(),
+            "value_date": decoded.valueDate.to_string(),
+            "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    })
+}
+
+pub fn parse_wire_in_assigned(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::WireInAssigned::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "WireInAssigned".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "id": decoded.id.to_string(),
+            "receiver": decoded.receiver.to_checksum(None),
         }),
     })
 }

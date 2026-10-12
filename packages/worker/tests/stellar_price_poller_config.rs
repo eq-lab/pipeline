@@ -23,7 +23,7 @@ fn clear_price_poller_env(id: i64) {
         }
         std::env::remove_var(format!("CHAIN_{id}_TYPE"));
         // EVM vars — clear to avoid cross-contamination in dispatch tests.
-        std::env::remove_var(format!("CHAIN_{id}_ETH_RPC_URL"));
+        std::env::remove_var(format!("CHAIN_{id}_EVM_RPC_URL"));
     }
 }
 
@@ -140,7 +140,7 @@ fn price_poller_settings_dispatches_evm_and_stellar() {
         std::env::set_var("CHAINS", "1,99000001");
         std::env::set_var("CHAIN_99000001_TYPE", "stellar");
         // EVM side.
-        std::env::set_var("CHAIN_1_ETH_RPC_URL", "http://localhost:8545");
+        std::env::set_var("CHAIN_1_EVM_RPC_URL", "http://localhost:8545");
         // Stellar side.
         std::env::set_var(
             "CHAIN_99000001_STELLAR_RPC_URL",
