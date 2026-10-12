@@ -1,5 +1,8 @@
 # Issue #1459: Add email screen for a wallet-connected visitor — email + password, then OTP, then session
 
+**Status: implemented (coder, 2026-10-12)** — all steps below and the Test Strategy are complete;
+lint/build/test gate green. See the PR for the diff.
+
 Source: https://github.com/eq-lab/pipeline/issues/1459
 
 Epic: [#1419 — LP home screen states](https://github.com/eq-lab/pipeline/issues/1419).
@@ -89,7 +92,7 @@ the brand-new (LP-less) account. See **Assumptions and Risks**.
 
 All paths are under the worktree `/Users/luiza/Projects/pipeline-feat-add-email-screen`.
 
-### 1. `packages/frontend/src/components/AddEmailModal.tsx` (new)
+### 1. `packages/frontend/src/components/AddEmailModal.tsx` (new) — done
 
 One spec-pointer header: `// spec: docs/frontend/auth-components.md#addemailmodal`. No other comments.
 
@@ -174,7 +177,7 @@ the same policy (`>= 8 chars + digit + special`), the same `PASSWORD_POLICY_ERRO
 ("At least 8 characters, including a number and a special character") and `EMAIL_ERROR_MESSAGE`,
 and therefore the same validation-error rendering as frame `6585:75897`.
 
-### 2. `packages/frontend/src/components/useEmailAuthFlow.ts`
+### 2. `packages/frontend/src/components/useEmailAuthFlow.ts` — done
 
 - Extend the union: `export type EmailAuthScreen = "sign-in" | "create-account" | "forgot-password" | "otp" | "add-email";`
 - Rename the state `createAccountFormError` → `signupFormError` (4 references repo-wide:
@@ -201,7 +204,7 @@ Rationale for reusing the signup machinery rather than adding parallel state: `s
 value, so only one signup screen can be mounted; a second captcha token would be dead state and a
 second error field would duplicate `CreateAccountModal`'s copy. Record this in the docs.
 
-### 3. `packages/frontend/src/components/EmailAuthFlow.tsx`
+### 3. `packages/frontend/src/components/EmailAuthFlow.tsx` — done
 
 - Render `<AddEmailModal open={open && flow.screen === "add-email"} onBack={flow.dismiss} … />`.
   `onBack` is `flow.dismiss` (not a `goTo*`): the Issue's "back closes the flow and returns to
@@ -217,20 +220,20 @@ second error field would duplicate `CreateAccountModal`'s copy. Record this in t
 - Point `CreateAccountModal`'s `formError` at `flow.signupFormError` (rename only).
 - Change `OtpModal`'s `onBack={flow.goToSignIn}` → `onBack={flow.goBackFromOtp}`.
 
-### 4. `packages/frontend/src/auth/AuthFlowProvider.tsx`
+### 4. `packages/frontend/src/auth/AuthFlowProvider.tsx` — done
 
 One line: `const openAddEmail = useCallback(() => open("add-email"), [open]);`. Nothing else —
 `AuthFlowContext`'s signature is unchanged and `AccountEmailCard` / `AccountPage` are untouched,
 as #1458's doc note promised.
 
-### 5. `packages/frontend/src/routes/test.tsx`
+### 5. `packages/frontend/src/routes/test.tsx` — done
 
 Add a fifth trigger in the existing `<div className="flex gap-2">` button row:
 `<Button variant="secondary" className="w-fit" onClick={() => openAuthFlow("add-email")}>Open Add email screen</Button>`.
 No new state — `openAuthFlow` already takes any `EmailAuthScreen`. Update the tab's intro paragraph
 to name the screen.
 
-### 6. Docs
+### 6. Docs — done
 
 - `docs/frontend/auth-components.md`:
   - New `### AddEmailModal` section placed after `### CreateAccountModal` — frame ids, the

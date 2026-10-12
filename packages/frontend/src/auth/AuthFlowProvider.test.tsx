@@ -33,12 +33,13 @@ vi.mock("@/wallet", () => ({
 }));
 
 function ConsumerButtons() {
-  const { open, close } = useAuthFlow();
+  const { open, close, openAddEmail } = useAuthFlow();
   return (
     <>
       <button onClick={() => open("sign-in")}>Open Sign In</button>
       <button onClick={() => open("create-account")}>Open Sign Up</button>
       <button onClick={() => open()}>Open Default</button>
+      <button onClick={openAddEmail}>Open Add Email</button>
       <button onClick={close}>Close Via Context</button>
     </>
   );
@@ -95,6 +96,23 @@ describe("AuthFlowProvider — open / close", () => {
     );
     expect(screen.getByTestId("email-auth-flow-screen")).toHaveTextContent(
       "create-account",
+    );
+  });
+
+  it("openAddEmail() renders EmailAuthFlow on the add-email screen (#1459)", async () => {
+    const user = userEvent.setup();
+    render(
+      <AuthFlowProvider>
+        <ConsumerButtons />
+      </AuthFlowProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Add Email" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("email-auth-flow-screen")).toHaveTextContent(
+        "add-email",
+      ),
     );
   });
 

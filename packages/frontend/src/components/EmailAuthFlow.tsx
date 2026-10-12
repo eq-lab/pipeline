@@ -1,6 +1,7 @@
 // spec: docs/frontend/auth-components.md#emailauthflow
 import { SignInModal } from "@/components/SignInModal";
 import { CreateAccountModal } from "@/components/CreateAccountModal";
+import { AddEmailModal } from "@/components/AddEmailModal";
 import { OtpModal } from "@/components/OtpModal";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { Turnstile } from "@/components/Turnstile";
@@ -53,11 +54,30 @@ export function EmailAuthFlow({
         onSubmit={flow.handleCreateAccountSubmit}
         onContinueWithWallet={flow.handleContinueWithWallet}
         onSignIn={flow.goToSignIn}
-        formError={flow.createAccountFormError}
+        formError={flow.signupFormError}
         captchaStatus={flow.signupCaptchaStatus}
         onCaptchaRetry={flow.retrySignupCaptcha}
         turnstileSlot={
-          open && flow.screen === "create-account" ? (
+          open &&
+          (flow.screen === "create-account" || flow.screen === "add-email") ? (
+            <Turnstile
+              ref={flow.signupTurnstileRef}
+              onToken={flow.onSignupToken}
+              onStatusChange={flow.onSignupCaptchaStatus}
+            />
+          ) : null
+        }
+      />
+      <AddEmailModal
+        open={open && flow.screen === "add-email"}
+        onBack={flow.dismiss}
+        onSubmit={flow.handleAddEmailSubmit}
+        formError={flow.signupFormError}
+        captchaStatus={flow.signupCaptchaStatus}
+        onCaptchaRetry={flow.retrySignupCaptcha}
+        turnstileSlot={
+          open &&
+          (flow.screen === "create-account" || flow.screen === "add-email") ? (
             <Turnstile
               ref={flow.signupTurnstileRef}
               onToken={flow.onSignupToken}
@@ -68,7 +88,7 @@ export function EmailAuthFlow({
       />
       <OtpModal
         open={open && flow.screen === "otp"}
-        onBack={flow.goToSignIn}
+        onBack={flow.goBackFromOtp}
         email={flow.pendingEmail}
         verify={flow.handleOtpVerify}
         resend={flow.handleOtpResend}

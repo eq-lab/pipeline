@@ -728,10 +728,11 @@ function AuthTab(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
-        Preview seam for the KYB Sign-in / Create-account / OTP flow, now wired
-        to the real backend auth endpoints (issue #1265) via `EmailAuthFlow`,
-        plus the Company Docs (issue #1278) and Account-in-review (issue #1253)
-        modals. Not mounted on any production entry point — see #1282.
+        Preview seam for the KYB Sign-in / Create-account / Add email / OTP
+        flow, now wired to the real backend auth endpoints (issue #1265) via
+        `EmailAuthFlow`, plus the Company Docs (issue #1278) and
+        Account-in-review (issue #1253) modals. Not mounted on any production
+        entry point — see #1282.
       </p>
       <div className="flex flex-col gap-1">
         <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
@@ -851,6 +852,13 @@ function AuthTab(): React.JSX.Element {
           onClick={() => openAuthFlow("create-account")}
         >
           Open Create Account modal
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => openAuthFlow("add-email")}
+        >
+          Open Add email screen
         </Button>
         <Button
           variant="secondary"
