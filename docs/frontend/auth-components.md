@@ -825,8 +825,10 @@ Wiring, screen by screen:
   the flow (`onClose`), and calls `onAuthenticated?.()`. `401` → `passwordServerError`
   "Incorrect email or password". `403 email_not_verified` → screen jumps to `otp`, remembers the
   submitted email as `pendingEmail`, and marks an auto-resend pending (see OTP below). `403`
-  (any other reason, i.e. suspended) → `formError` "This account is suspended. Contact support."
-  `429` → `formError` "Too many attempts. Try again in a minute." Anything else (including a
+  (any other reason, i.e. suspended) → `formError` `SUSPENDED_ERROR_MESSAGE`, "This account is
+  suspended. Contact support." (exported from `useEmailAuthFlow.ts`; the same copy a forced
+  mid-session sign-out leads back to — see "Session module" below). `429` → `formError` "Too many
+  attempts. Try again in a minute." Anything else (including a
   non-`ApiError`, i.e. a network failure) → `formError` from the error's own message, or "Network
   error — check your connection and try again." for a non-`ApiError`.
 - **Create account submit** / **Add email submit** → `signup` via the shared `submitSignup` above,
@@ -960,6 +962,20 @@ exposing `{ token, email, expiresAt, isAuthenticated, signOut }`; reactivity is 
 the wallet module's `connectionStore.ts` pattern) — it does not listen for cross-tab `storage`
 events, so a sign-out in one tab does not live-update another tab's `isAuthenticated` until that
 tab next re-reads the store.
+
+**In-session forced sign-out (#1465).** `api/client.ts` exports `ACCOUNT_SUSPENDED` ("account_suspended")
+and `subscribeAccountSuspended(listener)`. `apiFetch` calls every listener synchronously, before
+throwing the `ApiError`, when a response is `403`, its parsed `error` body equals `ACCOUNT_SUSPENDED`,
+and the request was authenticated (`init.headers` carries an `Authorization` key, case-insensitively,
+across the `Headers` / record / tuple-array shapes) — an unrelated 403, or any 403 on an
+unauthenticated request such as login, never notifies. `useSuspensionSignOut()`
+(`auth/useSuspensionSignOut.ts`) subscribes once from `RootLayout` (`routes/__root.tsx`, mounted
+inside the router): on notification it returns early if `readSession()` is already `null` — the
+guard that makes several in-flight 403s sign out exactly once — otherwise it calls `clearSession()`
+and navigates to `/` (`replace: true`). There is no message at this point: the session is cleared and
+the app lands on `/` silently, no modal, no toast. The header reverts to Sign In / Sign Up on its own
+through `useAuthSession`'s existing reactivity (#1364); the suspension copy only ever appears on the
+next sign-in attempt, through the login-403 path documented under EmailAuthFlow/SignInModal below.
 
 ### Diagnostics preview seam
 

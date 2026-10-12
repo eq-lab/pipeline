@@ -200,8 +200,8 @@ Notes:
 - **`declined` is gated on `kyb_status` alone.** No wallet-connection or balance condition — see
   `docs/product-specs/home-screen-states.md` state 6. `ChangesRequested` is what the frame renders
   for in practice; `Failed` is in the condition but unobservable today because a `Failed` verdict
-  suspends the account (403 on every bearer request, routing the home read to `"legacy"` instead —
-  logged as tech debt).
+  suspends the account, and since #1465 the LP is signed out on the next authenticated request
+  instead of the home read ever reaching `"legacy"` — logged as tech debt.
 - **`funded`'s balance never gets a fabricated number.** `usdBalanceLabel` omitted → `—`. The
   frame's `$1,000.00` is preview-fixture data only.
 - **`Withdraw` is a plain `<button>` styled as a body-text link**, not a rectangular `Button` —

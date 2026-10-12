@@ -252,6 +252,25 @@ describe("LP read state published via context (#1422)", () => {
     );
   });
 
+  it("resets a stale error lpRead to unknown once the session is cleared (#1465 forced sign-out)", async () => {
+    mockGet.mockRejectedValueOnce(new ApiError(403, "account_suspended"));
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("error"),
+    );
+
+    clearSession();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("unknown"),
+    );
+  });
+
   it("openAccountSetup() reopens CompanyDocsModal after the user dismissed it", async () => {
     mockGet.mockResolvedValueOnce({ documents: [], kyb_status: "NotStarted" });
     render(

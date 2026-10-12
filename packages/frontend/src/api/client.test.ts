@@ -9,7 +9,12 @@
  *   - Non-2xx with non-JSON body falls back to `response.statusText`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { apiFetch, ApiError } from "./client";
+import {
+  apiFetch,
+  ApiError,
+  ACCOUNT_SUSPENDED,
+  subscribeAccountSuspended,
+} from "./client";
 
 // ── Mock @/lib/env ────────────────────────────────────────────────────────────
 
@@ -231,5 +236,139 @@ describe("apiFetch — non-2xx responses", () => {
     await expect(apiFetch("/v1/requests")).rejects.toThrow(
       "Unprocessable Entity",
     );
+  });
+});
+
+describe("subscribeAccountSuspended", () => {
+  function suspendedResponse() {
+    return new Response(JSON.stringify({ error: ACCOUNT_SUSPENDED }), {
+      status: 403,
+      statusText: "Forbidden",
+    });
+  }
+
+  it("notifies listeners for an authenticated 403 account_suspended response, and the rejection is unchanged", async () => {
+    fetchMock.mockResolvedValueOnce(suspendedResponse());
+    const listener = vi.fn();
+    const unsubscribe = subscribeAccountSuspended(listener);
+
+    const error = await apiFetch("/v1/lps/me", {
+      headers: { Authorization: "Bearer t" },
+    }).catch((e: unknown) => e);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(403);
+    expect((error as ApiError).message).toBe(ACCOUNT_SUSPENDED);
+    unsubscribe();
+  });
+
+  it("does not notify for a 403 account_suspended response with no Authorization header", async () => {
+    fetchMock.mockResolvedValueOnce(suspendedResponse());
+    const listener = vi.fn();
+    const unsubscribe = subscribeAccountSuspended(listener);
+
+    await apiFetch("/v1/auth/login", { method: "POST" }).catch(() => {});
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("does not notify for an authenticated 403 with a different error body", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeAccountSuspended(listener);
+
+    await apiFetch("/v1/lps/me", {
+      headers: { Authorization: "Bearer t" },
+    }).catch(() => {});
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("does not notify for an authenticated 403 with a non-JSON body", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("not json", { status: 403, statusText: "Forbidden" }),
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeAccountSuspended(listener);
+
+    await apiFetch("/v1/lps/me", {
+      headers: { Authorization: "Bearer t" },
+    }).catch(() => {});
+
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it.each([401, 500])(
+    "does not notify for an authenticated %i response",
+    async (status) => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: ACCOUNT_SUSPENDED }), {
+          status,
+        }),
+      );
+      const listener = vi.fn();
+      const unsubscribe = subscribeAccountSuspended(listener);
+
+      await apiFetch("/v1/lps/me", {
+        headers: { Authorization: "Bearer t" },
+      }).catch(() => {});
+
+      expect(listener).not.toHaveBeenCalled();
+      unsubscribe();
+    },
+  );
+
+  it("recognises a Headers instance carrying Authorization", async () => {
+    fetchMock.mockResolvedValueOnce(suspendedResponse());
+    const listener = vi.fn();
+    const unsubscribe = subscribeAccountSuspended(listener);
+
+    await apiFetch("/v1/lps/me", {
+      headers: new Headers({ Authorization: "Bearer t" }),
+    }).catch(() => {});
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it("recognises a header tuple array with a lowercase authorization key", async () => {
+    fetchMock.mockResolvedValueOnce(suspendedResponse());
+    const listener = vi.fn();
+    const unsubscribe = subscribeAccountSuspended(listener);
+
+    await apiFetch("/v1/lps/me", {
+      headers: [["authorization", "Bearer t"]],
+    }).catch(() => {});
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it("stops delivering to an unsubscribed listener while other subscribers keep receiving one call each", async () => {
+    fetchMock
+      .mockResolvedValueOnce(suspendedResponse())
+      .mockResolvedValueOnce(suspendedResponse());
+    const first = vi.fn();
+    const second = vi.fn();
+    const unsubscribeFirst = subscribeAccountSuspended(first);
+    const unsubscribeSecond = subscribeAccountSuspended(second);
+
+    await apiFetch("/v1/lps/me", {
+      headers: { Authorization: "Bearer t" },
+    }).catch(() => {});
+    unsubscribeFirst();
+    await apiFetch("/v1/lps/me", {
+      headers: { Authorization: "Bearer t" },
+    }).catch(() => {});
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
+    unsubscribeSecond();
   });
 });

@@ -1,7 +1,7 @@
 // spec: docs/frontend/auth-components.md#emailauthflow
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useEmailAuthFlow } from "./useEmailAuthFlow";
+import { useEmailAuthFlow, SUSPENDED_ERROR_MESSAGE } from "./useEmailAuthFlow";
 import { ApiError } from "@/api";
 import { clearSession, readSession } from "@/auth/session";
 
@@ -253,6 +253,38 @@ describe("useEmailAuthFlow — sign-in error lifecycle (#1265 review)", () => {
     });
 
     expect(result.current.passwordServerError).toBeUndefined();
+    expect(result.current.signInFormError).toBeUndefined();
+  });
+
+  it("a login 403 account_suspended sets the suspension copy and stays on sign-in, distinct from email_not_verified", async () => {
+    mockLogin.mockRejectedValue(new ApiError(403, "account_suspended"));
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current
+        .handleSignInSubmit({ email: "a@b.com", password: "x" })
+        .catch(() => {});
+    });
+
+    expect(result.current.signInFormError).toBe(SUSPENDED_ERROR_MESSAGE);
+    expect(result.current.screen).toBe("sign-in");
+  });
+
+  it("a login 403 email_not_verified routes to the otp screen, not the suspension copy", async () => {
+    mockLogin.mockRejectedValue(new ApiError(403, "email_not_verified"));
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current
+        .handleSignInSubmit({ email: "a@b.com", password: "x" })
+        .catch(() => {});
+    });
+
+    expect(result.current.screen).toBe("otp");
     expect(result.current.signInFormError).toBeUndefined();
   });
 });

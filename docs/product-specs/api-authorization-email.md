@@ -163,12 +163,13 @@ the frontend calls `resend-otp` (reusing the pending signup passcode's
 password per the backend behavior above) and opens the OTP screen — the user
 verifies with the code just re-issued, which installs the original password.
 
-**Error copy** (none of these states are in Figma): login `401` → "Incorrect
-email or password"; login `403` (suspended) → "This account is suspended.
-Contact support."; login `429` → "Too many attempts. Try again in a minute.";
-OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
-"Code is incorrect or expired. Request a new one."; network/unexpected errors
-→ "Network error — check your connection and try again."
+**Error copy** (none of these states are in Figma): login `401` → "Incorrect email or password";
+login `403` (suspended) → "This account is suspended. Contact support." — the same 403 in-session
+(not just login) silently clears the session and returns to `/`, one global seam, no message until
+the next sign-in (`auth-components.md#session-module`, #1465); login `429` → "Too many attempts. Try
+again in a minute."; OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
+"Code is incorrect or expired. Request a new one."; network/unexpected errors → "Network error —
+check your connection and try again."
 
 **Captcha availability.** Sign Up becomes actionable once the email and password
 meet their rules. Submitting without a Turnstile token stays on the form, explains
