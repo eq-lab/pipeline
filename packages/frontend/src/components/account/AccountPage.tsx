@@ -1,6 +1,6 @@
 // spec: docs/frontend/account-page.md#accountpage
 import { Button } from "@pipeline/ui";
-import { useAuthSession } from "@/auth";
+import { useAuthSession, useAuthFlow } from "@/auth";
 import { AccountWalletCard } from "./AccountWalletCard";
 import { AccountEmailCard } from "./AccountEmailCard";
 import { AccountDocumentsCard } from "./AccountDocumentsCard";
@@ -8,6 +8,7 @@ import { AccountProfileCard } from "./AccountProfileCard";
 import { useAccountDocuments } from "./useAccountDocuments";
 import { useAccountPage } from "./useAccountPage";
 import {
+  ACCOUNT_DECLINED_MESSAGE,
   ACCOUNT_STATE_PREVIEWS,
   createPreviewStagedFiles,
   deriveDocumentsState,
@@ -41,12 +42,18 @@ export interface AccountPageProps {
 }
 
 export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
-  const { token } = useAuthSession();
-  return previewState ? (
-    <AccountPageContent previewState={previewState} onLogOut={onLogOut} />
-  ) : (
-    <ProductionAccountPage key={token ?? "signed-out"} onLogOut={onLogOut} />
-  );
+  const { token, isAuthenticated } = useAuthSession();
+  if (previewState) {
+    return (
+      <AccountPageContent previewState={previewState} onLogOut={onLogOut} />
+    );
+  }
+  if (isAuthenticated) {
+    return (
+      <ProductionAccountPage key={token ?? "signed-out"} onLogOut={onLogOut} />
+    );
+  }
+  return <AccountPageContent walletOnly onLogOut={onLogOut} />;
 }
 
 function ProductionAccountPage({
@@ -60,7 +67,12 @@ function AccountPageContent({
   previewState,
   onLogOut,
   account,
-}: AccountPageProps & { account?: ReturnType<typeof useAccountPage> }) {
+  walletOnly = false,
+}: AccountPageProps & {
+  account?: ReturnType<typeof useAccountPage>;
+  walletOnly?: boolean;
+}) {
+  const { openAddEmail } = useAuthFlow();
   const preview = previewState
     ? ACCOUNT_STATE_PREVIEWS[previewState]
     : undefined;
@@ -95,6 +107,7 @@ function AccountPageContent({
     : documents;
   const ready = Boolean(
     previewState ||
+    walletOnly ||
     account?.readState === "loaded" ||
     account?.readState === "absent",
   );
@@ -134,14 +147,25 @@ function AccountPageContent({
         )}
         {account?.readState === "error" && (
           <div className="flex w-full flex-col gap-3" role="alert">
-            <p>{account.actionError ?? "Could not load your account."}</p>
-            <Button variant="secondary" onClick={account.retry}>
-              Retry
-            </Button>
+            <p>
+              {account.suspended
+                ? ACCOUNT_DECLINED_MESSAGE
+                : (account.actionError ?? "Could not load your account.")}
+            </p>
+            {!account.suspended && (
+              <Button variant="secondary" onClick={account.retry}>
+                Retry
+              </Button>
+            )}
           </div>
         )}
 
-        {ready && <AccountEmailCard email={account?.email} />}
+        {ready && (
+          <AccountEmailCard
+            email={account?.email}
+            onAddEmail={walletOnly ? openAddEmail : undefined}
+          />
+        )}
 
         {ready && account && (
           <AccountProfileCard
@@ -164,10 +188,7 @@ function AccountPageContent({
         {ready &&
           account?.readState === "loaded" &&
           account.lp?.kyb_status === "Failed" && (
-            <p role="status">
-              Your account verification was declined. Profile and document
-              changes are unavailable.
-            </p>
+            <p role="status">{ACCOUNT_DECLINED_MESSAGE}</p>
           )}
         {ready && account?.readState === "absent" && !account.email && (
           <p role="alert">Sign out and sign in again to complete setup.</p>
@@ -278,6 +299,7 @@ function AccountPageContent({
               onReuploadDocument={
                 account ? (id) => void account.removeDocument(id) : undefined
               }
+              onUploadIntercept={walletOnly ? openAddEmail : undefined}
             />
           </div>
         )}

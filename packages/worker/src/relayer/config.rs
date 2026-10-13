@@ -5,7 +5,9 @@ use anyhow::{Context, Result};
 use ed25519_dalek::SigningKey;
 use stellar_strkey::Contract;
 
-use crate::indexer::config::{parse_chain_type, parse_chains_env, validate_contract_id, ChainType};
+use crate::indexer::config::{
+    parse_chain_type, parse_chains_env, validate_chain_kind_keys, validate_contract_id, ChainType,
+};
 
 // ─── EVM relayer settings ────────────────────────────────────────────────────
 
@@ -15,7 +17,7 @@ pub struct EvmRelayerSettings {
     pub eth_rpc_url: String,
     pub signer_key: String,
     pub registry_address: Address,
-    pub minter_addresses: Vec<Address>,
+    pub minter_address: Option<Address>,
     pub sumsub_enabled: bool,
     pub crystal_enabled: bool,
     pub batch_size: usize,
@@ -29,11 +31,11 @@ impl EvmRelayerSettings {
             chain_id,
             interval_secs: env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?,
             eth_rpc_url: env_require(&format!("{p}ETH_RPC_URL"))
-                .or_else(|_| env_require(&format!("CHAIN_{chain_id}_ETH_RPC_URL")))?,
+                .or_else(|_| env_require(&format!("CHAIN_{chain_id}_EVM_RPC_URL")))?,
             signer_key: env_require(&format!("{p}SIGNER_KEY"))?,
             registry_address: env_require_address(&format!("{p}REGISTRY_ADDRESS"))?,
-            minter_addresses: env_address_list(&format!(
-                "CHAIN_{chain_id}_YIELD_MINTER_CONTRACTS"
+            minter_address: env_optional_address(&format!(
+                "CHAIN_{chain_id}_EVM_INDEXER_MINTER_ADDRESS"
             ))?,
             sumsub_enabled: env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?,
             crystal_enabled: env_parse("CRYSTAL_ENABLED", true)?,
@@ -41,11 +43,8 @@ impl EvmRelayerSettings {
         })
     }
 
-    pub fn minter_ids(&self) -> Vec<String> {
-        self.minter_addresses
-            .iter()
-            .map(|a| a.to_checksum(None))
-            .collect()
+    pub fn minter_id(&self) -> Option<String> {
+        self.minter_address.map(|a| a.to_checksum(None))
     }
 }
 
@@ -71,7 +70,7 @@ pub struct StellarRelayerSettings {
     pub loan_registry_id: Option<Contract>,
     /// Soroban minter contract id, as the plain Strkey the matching phase binds
     /// into SQL (#1416). `None` disables the wire-in matching phase. Read from
-    /// the indexer's `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` — one id for one
+    /// the indexer's `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` — one id for one
     /// contract (renamed from `yield-minter` to `minter` by contracts #33), and
     /// this phase interprets rows that indexer wrote, so the two must never be
     /// configured apart.
@@ -145,7 +144,7 @@ impl StellarRelayerSettings {
         // and Rule A's `receiver <> minter` test would then mark escrowed wires
         // minted — the exact mistake that test exists to prevent. Bound as
         // text, so it stays a validated String, not a parsed `Contract`.
-        let minter_key = format!("{indexer_p}YIELD_MINTER_ID");
+        let minter_key = format!("{indexer_p}INDEXER_MINTER_ADDRESS");
         let minter_id = match env::var(&minter_key) {
             Ok(raw) if !raw.trim().is_empty() => {
                 let validated = validate_contract_id(&minter_key, raw)?;
@@ -199,13 +198,17 @@ impl RelayerSettings {
         let chain_ids = parse_chains_env()?;
         chain_ids
             .into_iter()
-            .map(|id| match parse_chain_type(id)? {
-                ChainType::Evm => Ok(RelayerSettings::Evm(Box::new(
-                    EvmRelayerSettings::from_chain_env(id)?,
-                ))),
-                ChainType::Stellar => Ok(RelayerSettings::Stellar(Box::new(
-                    StellarRelayerSettings::from_chain_env(id)?,
-                ))),
+            .map(|id| {
+                let kind = parse_chain_type(id)?;
+                validate_chain_kind_keys(id, kind)?;
+                match kind {
+                    ChainType::Evm => Ok(RelayerSettings::Evm(Box::new(
+                        EvmRelayerSettings::from_chain_env(id)?,
+                    ))),
+                    ChainType::Stellar => Ok(RelayerSettings::Stellar(Box::new(
+                        StellarRelayerSettings::from_chain_env(id)?,
+                    ))),
+                }
             })
             .collect()
     }
@@ -251,16 +254,13 @@ fn env_require_address(key: &str) -> Result<Address> {
         .with_context(|| format!("{key} must be a valid EVM address"))
 }
 
-fn env_address_list(key: &str) -> Result<Vec<Address>> {
-    let Ok(raw) = env::var(key) else {
-        return Ok(Vec::new());
-    };
-    raw.split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| {
-            s.parse()
-                .with_context(|| format!("{key} entry {s:?} must be a valid EVM address"))
-        })
-        .collect()
+fn env_optional_address(key: &str) -> Result<Option<Address>> {
+    match env::var(key) {
+        Ok(raw) if !raw.trim().is_empty() => raw
+            .trim()
+            .parse()
+            .map(Some)
+            .with_context(|| format!("{key} must be a valid EVM address")),
+        _ => Ok(None),
+    }
 }

@@ -9,6 +9,7 @@ export interface AuthFlowContextValue {
   lpRead: LpReadState;
   kybStatus?: string;
   openAccountSetup(): void;
+  openAddEmail(): void;
 }
 
 export const AuthFlowContext = createContext<AuthFlowContextValue | null>(null);

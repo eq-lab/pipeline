@@ -490,8 +490,8 @@ one (`docs/exec-plans/active/evm-relayer-v5.md`). Each tick:
   - Marks a profile allowed only once a receipt with `status = 1` arrives within 120 s.
   - Signs with the configured chain id rather than the one the RPC reports.
   - KYT failures are recorded in the database only (TD-31).
-- **Phase 5 — wire-in matching.** The same phase as on Soroban (below), run once per address in
-  the indexer's `CHAIN_<id>_YIELD_MINTER_CONTRACTS`.
+- **Phase 5 — wire-in matching.** The same phase as on Soroban (below), run when the indexer's
+  `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` is set.
 
 There is no EVM yield-mint phase: the reworked contracts mint yield inside `PipelineMinter.repay`.
 
@@ -499,7 +499,7 @@ Required env:
 
 - `CHAIN_<id>_RELAYER_SIGNER_KEY` — the address must hold `WHITELIST_MANAGER_ROLE`, with zero delay.
 - `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`.
-- An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_ETH_RPC_URL`.
+- An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_EVM_RPC_URL`.
 
 #### Stellar yield-mint phase
 
@@ -545,25 +545,27 @@ recorded. Escrowed wires are **not** in that figure: they do have a deposit row,
 so nothing currently reports a wire stuck awaiting assignment (TD-118).
 
 The phase has no configuration of its own: it runs when the indexer's
-`CHAIN_<id>_STELLAR_YIELD_MINTER_ID` is set, and shares that id. Deliberately so
+`CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` is set, and shares that id. Deliberately so
 — this phase makes no contract call, the id serves only the `receiver <> minter`
 comparison, and it must be the one the indexed rows came from. A second,
 relayer-scoped key could disagree, and escrowed wires would then be marked
 minted. (The relayer's own `RELAYER_STELLAR_*` contract ids belong to Phase 4,
 which does submit transactions and so may target another deployment.)
 
-On EVM the phase runs once per address in the indexer's `CHAIN_<id>_YIELD_MINTER_CONTRACTS`, for
-the same reason. Each address is bound EIP-55 checksummed, like every EVM `contract_logs` row.
+On EVM the phase runs when the indexer's `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` is set, and
+shares that id for the same reason. The relayer re-renders it EIP-55 checksummed whatever case it
+is configured in, to match every EVM `contract_logs` row (TD-133).
 
-The statements are shared between the chains, so EVM rows must take the Soroban shape:
+The statements are shared between the chains, so the EVM indexer's Minter group (#1451:
+`parse_wire_in`, `parse_wire_in_assigned`) writes the Soroban shape:
 
 - `event_name = 'WireIn'` for `WireInRecorded`, and `'WireInAssigned'` as is;
 - `contract_address` and `params.receiver` checksummed;
-- `params.ref_hash` as bare lowercase hex. A `0x` prefix makes `decode(…, 'hex')` fail the
+- `params.ref_hash` as bare lowercase hex. A `0x` prefix would make `decode(…, 'hex')` fail the
   whole statement.
-- `params.id` as a JSON number.
-
-Until the EVM indexer writes those rows, the EVM phase matches nothing.
+- `params.id` as a canonical decimal. The EVM parser writes a JSON string and the Soroban one a
+  number; Rule B compares them with `->>`, which yields text either way, and both sides of the
+  join always come from the same parser.
 
 Known gap: `WireInReturned` is not indexed, so a wire returned to the bank keeps
 `is_minted = false` and reads the same as one still awaiting assignment (TD-116).

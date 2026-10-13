@@ -1,6 +1,12 @@
 // spec: docs/frontend/auth-components.md#authflowprovider
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { AuthFlowProvider } from "./AuthFlowProvider";
 import { useAuthFlow } from "./AuthFlowContext";
 import { saveSession, clearSession } from "./session";
@@ -137,6 +143,19 @@ describe("LP setup prompt", () => {
   });
 });
 
+describe("Add email end-state (#1459)", () => {
+  it("still opens CompanyDocsModal for a brand-new (LP-less) account reached via the Add email path", async () => {
+    mockGet.mockRejectedValueOnce(new ApiError(404, "missing"));
+    render(
+      <AuthFlowProvider>
+        <div>App</div>
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  });
+});
+
 describe("Account-in-review Notify me", () => {
   const stored = {
     legal_name: "Acme Ltd",
@@ -237,6 +256,43 @@ describe("LP read state published via context (#1422)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("lp-read")).toHaveTextContent("error"),
     );
+  });
+
+  it("resets a stale error lpRead to unknown once the session is cleared (#1465 forced sign-out)", async () => {
+    mockGet.mockRejectedValueOnce(new ApiError(403, "account_suspended"));
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("error"),
+    );
+
+    clearSession();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("unknown"),
+    );
+  });
+
+  it("unmounts an open setup modal and resets lpRead once the session is cleared (#1473)", async () => {
+    mockGet.mockResolvedValueOnce({ documents: [], kyb_status: "NotStarted" });
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await screen.findByRole("dialog");
+
+    act(() => clearSession());
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("lp-read")).toHaveTextContent("unknown");
   });
 
   it("openAccountSetup() reopens CompanyDocsModal after the user dismissed it", async () => {

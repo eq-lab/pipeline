@@ -2,7 +2,7 @@
 
 Date: 2026-06-19
 Issue: [#683](https://github.com/eq-lab/pipeline/issues/683)
-Related exec plan: `docs/exec-plans/active/issue-683-stellar-yield-mint.md`
+Related exec plan: `docs/exec-plans/completed/issue-683-stellar-yield-mint.md`
 
 ## Problem
 

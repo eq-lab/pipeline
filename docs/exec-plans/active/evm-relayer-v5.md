@@ -41,7 +41,7 @@ Rule: nothing goes in that the Soroban modules do not do.
 
 **Out of scope:**
 
-- **The indexer**, including writing EVM `WireIn` rows. The EVM wire-in phase ships dark until the indexer writes them, as the Soroban one did before its minter was deployed. The row shape it expects is pinned in D3.
+- **The indexer**, including writing EVM `WireIn` rows. The row shape the EVM wire-in phase expects is pinned in D3. _Merge note (2026-10-13):_ `main`'s #1451 has since added the EVM Minter parsers, and they write that shape.
 - **KYC phases 0–2** (profiles, Sumsub, Crystal). They move into `evm/job.rs` unchanged.
 - **Anything the Soroban relayer does not do:**
   - on-chain `disallow`;
@@ -66,7 +66,7 @@ Soroban mints yield with a separate `yield_minter.mint_yield` call after `Paymen
 
 `submit_allow` replaces today's `watch()` call. `watch()` returns once the transaction is included, ignores a revert and never times out, so it is not equivalent to Soroban's terminal-status poll.
 
-The EVM phase runs the disallow pass even when there are no allow candidates. The Soroban phase returns early and skips that pass. That is a bug: it is logged in `known-bugs.md` and not fixed here.
+The EVM phase runs the disallow pass even when there are no allow candidates. The Soroban phase returns early and skips that pass. That is a bug: it is logged in `known-bugs.md` as BUG-27 and not fixed here.
 
 **D3. Wire-in matching is shared, not duplicated.**
 The three statements in `LpBankDepositRepo`'s `WireInMatcher` key on:
@@ -80,19 +80,19 @@ None of that is Soroban-specific. The EVM phase calls them unchanged, which pins
 - `event_name` is `WireIn` for `WireInRecorded` (the cross-chain name, as with `DepositRequested`), and `WireInAssigned` as is.
 - `contract_address` and `params.receiver` are EIP-55 checksummed, like every EVM row today. The relayer passes the minter as `to_checksum(None)`, so Rule A's `receiver <> minter` and the `contract_address` filter compare like with like.
 - `params.ref_hash` is bare lowercase hex with no `0x`. `decode(…, 'hex')` rejects the prefix, and the whole statement errors.
-- `params.id` is a decimal JSON number.
+- `params.id` is a canonical decimal. _Merge note:_ #1451's EVM parser writes it as a JSON string where Soroban writes a number. That is harmless, because Rule B joins with `->>`, which yields text either way, and both sides always come from the same parser.
 
 **D4. The wire-in gate reads the indexer's key, as Soroban does.**
-The key is `CHAIN_<id>_YIELD_MINTER_CONTRACTS`. The reasoning is the same as #1416's:
+The key is `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`. Before `main`'s #1457 renamed the indexer keys it was the CSV `CHAIN_<id>_YIELD_MINTER_CONTRACTS`. The reasoning is the same as #1416's:
 
 - the minter replaced the yield-minter;
 - the phase interprets rows the indexer wrote, so a separate relayer key could disagree.
 
 Handling of the key:
 
-- The EVM key is a list, so the phase runs once per listed address. An address that never emitted `WireIn` matches nothing.
+- The key holds one address, mirroring Soroban's single `minter_id`. (The pre-#1457 CSV list ran the phase once per entry.)
 - If the key is unset, the phase is disabled.
-- Each entry is parsed as an `Address` at startup, so a malformed entry fails startup. That matches the Soroban key's checksum check.
+- It is parsed as an `Address` at startup, so a malformed value fails startup. That matches the Soroban key's checksum check.
 
 ## Open Questions
 
@@ -103,11 +103,11 @@ _None._
 1. **`relayer/config.rs` — `EvmRelayerSettings`, mirroring `StellarRelayerSettings`.**
    - Keep:
      - `chain_id`, `interval_secs`, `signer_key`, `registry_address`, `sumsub_enabled`, `crystal_enabled`;
-     - `eth_rpc_url`, with its `CHAIN_<id>_ETH_RPC_URL` fallback.
+     - `eth_rpc_url`, with its `CHAIN_<id>_EVM_RPC_URL` fallback (`CHAIN_<id>_ETH_RPC_URL` before #1457).
    - Add:
-     - `minter_addresses: Vec<Address>`, from `CHAIN_<id>_YIELD_MINTER_CONTRACTS`; unset gives an empty list (D4);
+     - `minter_address: Option<Address>`, from `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`; unset gives `None` (D4);
      - `batch_size`, from `JOB_RELAYER_EVM_BATCH_SIZE`, default 50;
-     - `minter_ids() -> Vec<String>`, returning the checksummed strings Phase 5 binds.
+     - `minter_id() -> Option<String>`, returning the checksummed string Phase 5 binds.
    - Drop: `yield_minter_address`, `loan_registry_address`, `bitgo_native_symbol`, `yield_minter_batch_size` and `env_parse_string`.
 
 2. **`relayer/evm/mod.rs`** — `pub mod job; pub mod whitelist;` plus re-exports, shaped like `stellar/mod.rs`.
@@ -123,7 +123,7 @@ _None._
    - Build the provider per D2 and `EvmWhitelister`.
    - Phases 0–2: verbatim.
    - Phase 3: `phase_sync_whitelist_evm`.
-   - Phase 5: when `minter_ids()` is non-empty, call `phase_match_wire_ins(&LpBankDepositRepo, chain_id, id)` for each id. Log each error and continue, as Soroban does.
+   - Phase 5: when `minter_id()` is `Some`, call `phase_match_wire_ins(&LpBankDepositRepo, chain_id, id)`. Log an error and continue, as Soroban does.
    - Startup logs mirror Soroban's:
      - one "running" line with the signer, registry, minters and flags;
      - one line saying the wire-in phase is enabled or disabled.
@@ -150,14 +150,14 @@ _None._
      - the `BITGO_*` block (nothing reads it after step 7).
    - Add `JOB_RELAYER_EVM_BATCH_SIZE`.
    - Note on `CHAIN_1_RELAYER_SIGNER_KEY` that the key needs `WHITELIST_MANAGER_ROLE`.
-   - Note on `CHAIN_1_YIELD_MINTER_CONTRACTS` that it also gates the relayer's wire-in phase, mirroring the Soroban note on `CHAIN_<id>_STELLAR_YIELD_MINTER_ID`.
+   - Note on `CHAIN_1_EVM_INDEXER_MINTER_ADDRESS` that it also gates the relayer's wire-in phase, mirroring the Soroban note on `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
 
 10. **Bug and debt trackers.**
     - `docs/exec-plans/known-bugs.md`: `phase_sync_whitelist_stellar` returns before its disallow pass whenever there are no allow candidates, so KYT-failed profiles keep `on_chain_allowed = TRUE` until some allow candidate appears.
     - `docs/exec-plans/tech-debt-tracker.md`:
       - Widen TD-31 to EVM: the disallow pass is DB-only on both chains, although the EVM registry exposes `disallow`.
-      - Add TD-126: `shared::bitgo` and the EVM-only outbox methods (`discover_pending`, `mark_submitted`) have no caller, and EVM rows left in `yield_mint_outbox` are inert.
-      - Add TD-127: EVM `allow` has no fee bumping. alloy's default nonce manager reads the `pending` nonce, so one stuck transaction queues every later one.
+      - Add TD-140: `shared::bitgo` and the EVM-only outbox methods (`discover_pending`, `mark_submitted`) have no caller, and EVM rows left in `yield_mint_outbox` are inert.
+      - Add TD-141: EVM `allow` has no fee bumping. alloy's default nonce manager reads the `pending` nonce, so one stuck transaction queues every later one.
       - Bump "Next free number".
 
 ## Test Strategy
@@ -166,12 +166,12 @@ _None._
 
 - Boots with only the signer key, registry address and an RPC URL. This is today's v5 blocker.
 - Errors without the signer key, and without the registry address.
-- The RPC URL falls back to `CHAIN_<id>_ETH_RPC_URL`.
-- The minter list:
-  - unset gives an empty list, so the phase is off;
-  - a CSV gives every entry;
-  - a malformed entry fails;
-  - lowercase input comes out of `minter_ids()` EIP-55 checksummed (the D3 invariant).
+- The RPC URL falls back to `CHAIN_<id>_EVM_RPC_URL`.
+- The minter:
+  - unset gives `None`, so the phase is off;
+  - set, it comes from the indexer's key;
+  - a malformed value fails;
+  - lowercase input comes out of `minter_id()` EIP-55 checksummed (the D3 invariant).
 - `JOB_RELAYER_EVM_BATCH_SIZE`: the default and an override both work.
 
 **`tests/wire_in_match.rs`** (the moved test):

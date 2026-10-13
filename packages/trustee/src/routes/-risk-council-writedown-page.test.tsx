@@ -79,7 +79,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       maturity: 1_786_838_400,
       next_payment_timestamp: 1_786_838_400,
       days_overdue: null,
-      ccr_reported_at: 0,
       spot_price: "4500",
       spot_change_7d: "-0.18",
       collateral: "2106000.000000",

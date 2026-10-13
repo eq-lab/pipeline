@@ -33,11 +33,12 @@ Visible to any LP who connects a whitelisted wallet to the Pipeline app.
 **Pending deposits**
 - Below-minimum accumulated USDC that has not yet reached the 1,000 USDC mint threshold is shown as "pending deposits — not yet earning yield", alongside the additional amount needed to unlock the mint.
 
-**Home screen states (epic #1419):** the home route (`/`) renders one of six states depending on
+**Home screen states (epic #1419):** the home route (`/`) renders one of seven states depending on
 account/wallet/KYB/balance combinations (full table: [home-screen-states.md](./home-screen-states.md)).
-**Precedence rule:** the first matching state wins, and the zero state (not signed in) wins on the
-absence of an auth session **alone** — a connected-but-unauthenticated wallet is ignored and still
-sees the zero state; that combination is undesigned today and will become its own state later.
+**Precedence rule:** the first matching state wins. The zero state requires **both** no auth session
+and no connected wallet; a wallet-connected visitor with no session is its own state (state 7,
+#1460 — the wallet is display-only, the visitor registers via the Account page's `Add email` row),
+and every other state presupposes a session.
 
 ---
 

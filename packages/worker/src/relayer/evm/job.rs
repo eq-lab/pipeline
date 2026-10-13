@@ -56,20 +56,19 @@ pub(crate) async fn run_evm_relayer_inner(
         None
     };
 
-    let minter_ids = settings.minter_ids();
-    let wire_in_matching = if minter_ids.is_empty() {
+    let wire_in_matching = if let Some(minter_id) = settings.minter_id() {
         tracing::info!(
             chain_id = settings.chain_id,
-            "evm wire-in matching phase disabled — set CHAIN_<id>_YIELD_MINTER_CONTRACTS (the INDEXER key)"
+            minter = %minter_id,
+            "evm wire-in matching phase enabled"
         );
-        None
+        Some((LpBankDepositRepo::new(kyc_repo.pool.clone()), minter_id))
     } else {
         tracing::info!(
             chain_id = settings.chain_id,
-            minters = ?minter_ids,
-            "evm wire-in matching phase enabled"
+            "evm wire-in matching phase disabled — set CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS (the INDEXER key)"
         );
-        Some(LpBankDepositRepo::new(kyc_repo.pool.clone()))
+        None
     };
 
     tracing::info!(
@@ -117,12 +116,10 @@ pub(crate) async fn run_evm_relayer_inner(
         )
         .await;
 
-        if let Some(matcher) = wire_in_matching.as_ref() {
-            for minter_id in &minter_ids {
-                if let Err(e) = phase_match_wire_ins(matcher, chain_id, minter_id).await {
-                    tracing::error!(error = %e, minter = %minter_id,
-                        "evm phase_match_wire_ins: cycle aborted (other phases unaffected)");
-                }
+        if let Some((matcher, minter_id)) = wire_in_matching.as_ref() {
+            if let Err(e) = phase_match_wire_ins(matcher, chain_id, minter_id).await {
+                tracing::error!(error = %e,
+                    "evm phase_match_wire_ins: cycle aborted (other phases unaffected)");
             }
         }
 

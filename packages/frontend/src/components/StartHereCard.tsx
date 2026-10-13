@@ -6,6 +6,7 @@ import type { CardPadding } from "@pipeline/ui";
 type MobileHomeState = "empty" | "plusd" | "splusd";
 
 export type StartHereCardLayout = "default" | "compact";
+export type StartHereCardCompactVariant = "get-plusd" | "balance";
 
 export interface StartHereCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -18,6 +19,8 @@ export interface StartHereCardProps extends Omit<
   mobilePlusdBalance?: string;
   padding?: CardPadding;
   layout?: StartHereCardLayout;
+  compactVariant?: StartHereCardCompactVariant;
+  compactBalanceLabel?: string;
 }
 
 const HEADING_ID_BASE = "start-here-card-title";
@@ -62,6 +65,16 @@ const subtitleClasses = [
 
 const ELEVATION_BORDER = "!border-t !border-r-[3px] !border-b-[3px] !border-l";
 
+const COMPACT_BALANCE_BUY_CLASSES = [
+  "!bg-[rgba(184,191,190,0.12)]",
+  "hover:!bg-[rgba(184,191,190,0.12)]",
+  "active:!bg-[rgba(184,191,190,0.12)]",
+  "!text-[color:var(--color-pipeline-ink)]",
+].join(" ");
+
+const COMPACT_BALANCE_SELL_CLASSES =
+  "!text-[color:var(--color-pipeline-ink-muted)]";
+
 export const StartHereCard = React.forwardRef<
   HTMLDivElement,
   StartHereCardProps
@@ -75,6 +88,8 @@ export const StartHereCard = React.forwardRef<
     mobilePlusdBalance,
     padding,
     layout = "default",
+    compactVariant = "get-plusd",
+    compactBalanceLabel,
     ...rest
   },
   ref,
@@ -86,6 +101,12 @@ export const StartHereCard = React.forwardRef<
     mobileHomeState === "plusd" || mobileHomeState === "splusd";
 
   if (layout === "compact") {
+    const isBalanceMode = compactVariant === "balance";
+    const balanceHeadingText = compactBalanceLabel
+      ? compactBalanceLabel.replace(/^\$/, "")
+      : "—";
+    const balanceCaptionText = `${compactBalanceLabel ?? "—"} USDC`;
+
     const compactComposed = [
       "flex h-[164px] w-full flex-col",
       ELEVATION_BORDER,
@@ -102,7 +123,7 @@ export const StartHereCard = React.forwardRef<
         role="region"
         aria-labelledby={HEADING_ID}
         className={compactComposed}
-        data-node-id="6701:97660"
+        data-node-id={isBalanceMode ? "6701:97462" : "6701:97660"}
         {...rest}
       >
         <div
@@ -114,33 +135,71 @@ export const StartHereCard = React.forwardRef<
             data-node-id="6701:97662"
             data-testid="home-start-here-header"
           >
-            <p className={eyebrowClasses} data-node-id="6701:97663">
-              Start here
-            </p>
-            <div className="flex flex-col gap-1" data-node-id="6701:97666">
-              <div
-                className="flex items-center gap-1"
-                data-node-id="6701:97667"
-              >
-                <CoinIcon
-                  token="plusd"
-                  size="md"
-                  aria-hidden="true"
-                  data-node-id="6701:97668"
-                />
-                <h2
-                  id={HEADING_ID}
-                  className={compactHeadingClasses}
-                  data-node-id="6701:97669"
-                  data-testid="home-start-here-heading"
-                >
-                  Get PLUSD
-                </h2>
-              </div>
-              <p className={subtitleClasses} data-node-id="6701:97671">
-                Convert with USDC 1:1
-              </p>
-            </div>
+            {isBalanceMode ? (
+              <>
+                <p className={eyebrowClasses} data-node-id="6701:97465">
+                  PLUSD Balance
+                </p>
+                <div className="flex flex-col gap-1" data-node-id="6701:97468">
+                  <div
+                    className="flex items-center gap-1"
+                    data-node-id="6701:97469"
+                  >
+                    <CoinIcon
+                      token="plusd"
+                      size="md"
+                      aria-hidden="true"
+                      data-node-id="6701:97470"
+                    />
+                    <h2
+                      id={HEADING_ID}
+                      className={compactHeadingClasses}
+                      data-node-id="6701:97471"
+                      data-testid="home-start-here-heading"
+                    >
+                      {balanceHeadingText}
+                    </h2>
+                  </div>
+                  <p
+                    className={subtitleClasses}
+                    data-node-id="6701:97473"
+                    data-testid="plusd-balance-usdc-caption"
+                  >
+                    {balanceCaptionText}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className={eyebrowClasses} data-node-id="6701:97663">
+                  Start here
+                </p>
+                <div className="flex flex-col gap-1" data-node-id="6701:97666">
+                  <div
+                    className="flex items-center gap-1"
+                    data-node-id="6701:97667"
+                  >
+                    <CoinIcon
+                      token="plusd"
+                      size="md"
+                      aria-hidden="true"
+                      data-node-id="6701:97668"
+                    />
+                    <h2
+                      id={HEADING_ID}
+                      className={compactHeadingClasses}
+                      data-node-id="6701:97669"
+                      data-testid="home-start-here-heading"
+                    >
+                      Get PLUSD
+                    </h2>
+                  </div>
+                  <p className={subtitleClasses} data-node-id="6701:97671">
+                    Convert with USDC 1:1
+                  </p>
+                </div>
+              </>
+            )}
           </header>
 
           <div
@@ -152,7 +211,10 @@ export const StartHereCard = React.forwardRef<
               variant="primary-blue"
               size="m"
               onClick={onBuy}
-              data-node-id="6701:97676"
+              className={
+                isBalanceMode ? COMPACT_BALANCE_BUY_CLASSES : undefined
+              }
+              data-node-id={isBalanceMode ? "6701:97475" : "6701:97676"}
               data-testid="home-buy-button"
             >
               Buy
@@ -162,7 +224,10 @@ export const StartHereCard = React.forwardRef<
               size="m"
               onClick={onSell}
               disabled={Boolean(sellDisabled)}
-              data-node-id="6701:97677"
+              className={
+                isBalanceMode ? COMPACT_BALANCE_SELL_CLASSES : undefined
+              }
+              data-node-id={isBalanceMode ? "6701:97476" : "6701:97677"}
               data-testid="home-sell-button"
             >
               Sell

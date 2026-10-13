@@ -152,23 +152,24 @@ link. `/test?tab=auth` keeps an independent flow. Typed wrappers are in
 `packages/frontend/src/api/auth.ts`; see its README for request shapes.
 
 **Session storage.** `login`/`verify-otp` saves `{ token, expiresAt }` under
-`pipeline.auth.session`, deriving expiry from `expires_in`. `readSession()`
-clears expired sessions; there is no refresh endpoint. `useAuthSession()`
-(`useSyncExternalStore`) exposes `{ token, isAuthenticated, signOut }` within
-the current tab, without cross-tab `storage` support. The LP header (#1362)
-and account data flows (#1371, #1373) reuse this session.
+`pipeline.auth.session`, deriving expiry from `expires_in`. A timer at `expiresAt`, or an
+authenticated `401`, clears the token, returns to `/` and shows a neutral "Your session
+expired. Sign in again to continue." toast with a Sign in action; wallets stay connected.
+No refresh endpoint. `useAuthSession()` (current tab only) exposes `{ token, email, expiresAt,
+isAuthenticated, signOut }`; the LP header (#1362) and account flows (#1371, #1373) reuse it.
 
 **403 `email_not_verified` routing.** On `login`'s `403 email_not_verified`,
 the frontend calls `resend-otp` (reusing the pending signup passcode's
 password per the backend behavior above) and opens the OTP screen — the user
 verifies with the code just re-issued, which installs the original password.
 
-**Error copy** (none of these states are in Figma): login `401` → "Incorrect
-email or password"; login `403` (suspended) → "This account is suspended.
-Contact support."; login `429` → "Too many attempts. Try again in a minute.";
-OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
-"Code is incorrect or expired. Request a new one."; network/unexpected errors
-→ "Network error — check your connection and try again."
+**Error copy** (none of these states are in Figma): login `401` → "Incorrect email or password";
+login `403` (suspended) → "This account is suspended. Contact support." — the same 403 in-session
+silently clears the session and returns to `/` via the shared session-end seam, no message until
+the next sign-in (`auth-components.md#session-module`, #1465, #1473); login `429` → "Too many attempts. Try
+again in a minute."; OTP verify failure (any of unknown/wrong/expired/used/out-of-attempts code) →
+"Code is incorrect or expired. Request a new one."; network/unexpected errors → "Network error —
+check your connection and try again."
 
 **Captcha availability.** Sign Up becomes actionable once the email and password
 meet their rules. Submitting without a Turnstile token stays on the form, explains

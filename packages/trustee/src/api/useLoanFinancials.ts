@@ -12,18 +12,6 @@ import { ENV } from "@/lib/env";
 
 // ── Types (port of the backend DTO) ─────────────────────────────────────────
 
-/** Collateral location, projected from the loan snapshot's `current_location`. */
-export interface LocationView {
-  /** `Vessel`, `Warehouse`, `TankFarm`, `Other`. */
-  location_type: string;
-  /** Free-form identifier (vessel name, warehouse id, …). */
-  location_identifier: string;
-  /** Optional external tracking URL; empty string when none. */
-  tracking_url: string;
-  /** ISO-8601 UTC timestamp of the last location update. */
-  updated_at: string;
-}
-
 /** The loan's current epoch (genesis or latest rollover/amend). */
 export interface Epoch {
   /** 1-based epoch number. */
@@ -41,8 +29,6 @@ export interface LoanFinancialsResponse {
   loan_id: string;
   /** Loan status (`Performing`, `WatchList`, `Default`, `Closed`). */
   status: string;
-  /** Current physical location of the collateral; `null` when never reported. */
-  location: LocationView | null;
   /** Current epoch (number · APY · start → maturity); `null` when none on record. */
   epoch: Epoch | null;
   /** Original offtaker price (USDC 6-decimal string) — total the offtaker owes. */
@@ -72,7 +58,7 @@ export interface UseLoanFinancialsResult {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
- * Returns one loan's realized financials (status, location, recorded counters,
+ * Returns one loan's realized financials (status, recorded counters,
  * offtaker outstanding, unminted yield).
  *
  * - Public endpoint — enabled once a `loanId` is present (disabled while empty so

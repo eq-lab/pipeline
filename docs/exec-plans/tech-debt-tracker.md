@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-128.**
+**Next free number: TD-142.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -21,6 +21,30 @@ line, whichever section it lands in.
 ---
 
 ## Known Gaps
+
+### TD-129: EVM cumulative-repayment reconstruction mixes two points in time
+
+- **Where:** `packages/worker/src/indexer/loan_mapper.rs` — `reconstruct_cumulative`.
+- **Gap:** #1434 D3 replaced the removed `cumulativeRepaymentData()` eth_call with an
+  off-chain reconstruction. Six of the seven `RepaymentData` fields accumulate from indexed
+  `PaymentRecorded` / `PaymentUnrecorded` rows up to and including the event being
+  processed, while `senior_principal_repaid` is overwritten from `MutableLoanData.repaid`,
+  read block-pinned at the **end** of that block. Two `PaymentRecorded` logs in one block
+  therefore leave the earlier event's snapshot with `senior_principal_repaid` already
+  counting the later payment while the other six do not.
+- **Why it stands:** the override is load-bearing. When `START_BLOCK` sits after a loan's
+  first payments those rows are not in `contract_logs` at all, so the accumulation
+  understates permanently; the on-chain read heals that. The other six fields have no
+  on-chain source left to heal from — precisely the absence D3 works around. Reading
+  `repaid` as-of-event rather than as-of-block is not expressible: `BlockId` is
+  block-granular, so it would need trace-level or archive access.
+- **Impact:** narrow — same-block multiple payments on one loan, reachable via batched
+  calls. The EVM arm runs in no environment today (`CHAINS` is Stellar-only in both argocd
+  files), so this is latent. Stellar is unaffected: it kept its on-chain
+  `cumulative_repayment_data` getter and returns `Some(...)`.
+- **Suggested fix:** if same-block multiples ever matter, drop the override and accept that
+  a late `START_BLOCK` understates, or backfill the missing history once and keep the
+  accumulation authoritative.
 
 ### TD-1: Lint command not yet configured
 
@@ -476,7 +500,7 @@ line, whichever section it lands in.
 ### TD-41: Trustee Capital-Wallet balance is a client-side interim source + client-side total sum + client-side legend percentages + client-side proportional bar
 
 - **Date:** 2026-07-09 (extended same-day, PR #811 review follow-up)
-- **Location:** `packages/trustee/src/api/useCapitalWalletBalance.ts`,
+- **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts`,
   `packages/trustee/src/components/useCapitalAllocationCard.ts`,
   `packages/trustee/src/components/CapitalAllocationCard.tsx`,
   `packages/wallet-connect/src/stellar/sacBalance.ts`
@@ -509,7 +533,7 @@ line, whichever section it lands in.
   (e.g. decimal scale), since the trustee performs the conversion (`sacRawToDisplay`-style
   7-decimal → human-unit string, duplicated locally per TD-38's precedent since the trustee
   cannot depend on `@pipeline/frontend`).
-- **Suggested fix:** Remove `useCapitalWalletBalance` and the total-sum/percentage/bar-fraction
+- **Suggested fix:** Remove `useUsdcCustodyBalance` and the total-sum/percentage/bar-fraction
   computation logic in `useCapitalAllocationCard.ts` (and the proportional-width rendering in
   `CapitalAllocationCard.tsx`) once the backend serves a non-null `capital_wallet` bucket (and,
   if a percentage/proportion field is ever added server-side, prefer that instead of computing
@@ -568,7 +592,7 @@ line, whichever section it lands in.
   trustee copies of the **#840 registry-scale workaround** — cross-linked to TD-42-adjacent debt so
   they are removed **together with the LP copies when backend issue #840 is fixed** (otherwise the
   Loans-page amounts render 1000× too big and CCR 1000× too small). See #843's exec plan
-  (`docs/exec-plans/active/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
+  (`docs/exec-plans/completed/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
   detail.
 
   **Addendum (issues #845 / #847, Trustee Loan detail page — a fifth hand-mirroring):** the Loan
@@ -1445,7 +1469,7 @@ line, whichever section it lands in.
 - **Suggested fix:** No invented mobile layout; revisit once #1282 mounts the card into a real
   responsive grid.
 
-### TD-111: No UI control to disconnect a wallet after #1362
+### TD-111: No UI control to disconnect a wallet after #1362 [RESOLVED 2026-10-12 / #1458]
 
 - **Date:** 2026-09-24
 - **Location:** `packages/frontend/src/components/TopBar.tsx`,
@@ -1460,9 +1484,13 @@ line, whichever section it lands in.
   wallet extension itself (e.g., MetaMask's own site-permissions UI) or clearing site data. Low
   severity (wallet connection is a read/sign convenience, not a security boundary the app needs to
   revoke), but a real, user-facing gap worth closing.
-- **Suggested fix:** Add a disconnect action to `AccountWalletCard`'s connected state — no Figma
-  disconnect control exists there either, so this needs a design decision, not just an
-  implementation. Out of scope for #1362 (header auth entry only).
+- **Resolved by #1458:** the "No Verified Account" Figma frame (`6701:98137`) turned out to carry a
+  divider + `Disconnect` row (`7127:15564`/`7127:15570`) on every connected wallet-card state, so
+  the design decision this entry was waiting on arrived. `useActiveWalletAccount` gained
+  `disconnect` (dispatches to the active namespace's own `disconnect()`), and `AccountWalletCard`
+  renders the divider + `Disconnect` row after the `Wallet`/`USDC balance` rows on every connected
+  state — signed-in and wallet-only alike. See
+  [`account-page.md#wallet-card`](../frontend/account-page.md#wallet-card).
 
 ### TD-112: `AccountDropdown` is orphaned dead code after #1362
 
@@ -1474,9 +1502,10 @@ line, whichever section it lands in.
   tests passing, but nothing imports them outside their own test file any more.
 - **Impact:** None functionally — dead code that still compiles and tests green. Reduces signal for
   future readers who may assume it is still wired.
-- **Suggested fix:** Either delete it, or repurpose its namespace-toggle/disconnect UI as the base
-  for TD-111's `AccountWalletCard` disconnect action (its `kind`/`onKindChange` and
-  `onDisconnect` props are close to what that would need).
+- **Suggested fix:** Delete it. TD-111 (the disconnect gap this component's pattern could have fed)
+  was resolved by #1458 without reusing this component — `AccountWalletCard` grew its own
+  `Disconnect` row directly from the Figma frame instead. This entry is now purely "delete dead
+  code," unblocked by nothing.
 
 ---
 
@@ -1667,7 +1696,7 @@ line, whichever section it lands in.
   start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
   and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
-### TD-126: The BitGo client and the EVM-only yield-mint outbox methods have no caller
+### TD-140: The BitGo client and the EVM-only yield-mint outbox methods have no caller
 
 - **Date:** 2026-10-08
 - **Location:** `packages/shared/src/bitgo/`; `packages/shared/src/yield_mint_outbox_repo.rs`
@@ -1681,7 +1710,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Delete `shared::bitgo`, `discover_pending` and `mark_submitted` (updating the
   Stellar test fake that implements `OutboxStore`), or reconnect them when a BitGo signer returns.
 
-### TD-127: An EVM `allow` stuck in the mempool blocks every later one
+### TD-141: An EVM `allow` stuck in the mempool blocks every later one
 
 - **Date:** 2026-10-08
 - **Location:** `packages/worker/src/relayer/evm/whitelist.rs` — `EvmWhitelister::submit_allow`.
@@ -1848,22 +1877,22 @@ line, whichever section it lands in.
 - **Gap:** `deriveHomeState` treats `lpRead === "unknown"` (the LP read has not resolved yet) as `"legacy"` rather than `"unverified"`, since there is no designed loading state for the home grid. `AuthFlowProvider`'s `GET /v1/lps/me` starts at app mount (it sits above the router in `main.tsx`), so a signed-in, wallet-disconnected user sees today's pre-#1419 layout for one request round-trip before the grid swaps to `"unverified"` (or stays `"legacy"` once the read resolves).
 - **Impact:** A one-RTT layout flash on every fresh load for exactly the population this state targets (signed in, KYB bypassed or incomplete, no wallet). Cosmetic, not a data-correctness issue — nothing fabricated renders during the window.
 - **Suggested fix:** A designed loading state for the home grid (skeleton or the `"zero"` composition held briefly) would remove the flash, but Figma has not designed one; revisit once states 3–6 make the full state machine's loading behavior worth designing once rather than per state.
+- **Extended 2026-10-07 (#1423):** the same shape now applies to the **balance** reads. `deriveHomeState`'s `plusdIsZero`/`splusdIsZero` inputs come from `isDisplayZero`, and `isDisplayZero(undefined, d)` is `true`, so a connected `UnderReview` LP that actually holds PLUSD renders state 3 for one balance round-trip before the grid falls back to `"legacy"` — the inverse of the LP-read flash above, and fixed by the same designed loading state.
 
-### TD-122: Three near-identical desktop home-grid branches in `routes/index.tsx`
-
-- **Date:** 2026-10-07
-- **Location:** `packages/frontend/src/routes/index.tsx` (`Home`'s `homeState === "zero" | "unverified" | "legacy"` ternary) — Issue #1422, following #1421's precedent of adding a branch rather than refactoring.
-- **Gap:** The three branches share the same 7-column grid shape (`grid-cols-7 gap-4`, the same `RecentActivityCard` absolute-position wrapper, the same `QnaSection` footer slot) and differ only in which card fills each of the two left-hand slots and which handlers get wired to the shared cards. Nothing is extracted — each branch is a full, separately-maintained copy.
-- **Impact:** A shared-structure change (grid gap, `RecentActivityCard` positioning, `QnaSection` wrapper) now needs editing in three places, and that cost triples again once states 3–6 (#1423–#1426) land as further branches.
-- **Suggested fix:** Extract the shared grid shell (RecentActivityCard slot, QnaSection footer, grid classes) into a small composer that takes the two left-hand slots as render props or children, once states 3–6 make seven near-identical branches the alternative.
-
-### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders
+### TD-122: Four near-identical desktop home-grid branches in `routes/index.tsx`
 
 - **Date:** 2026-10-07
-- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM), `packages/worker/src/indexer/stellar/loan_registry_reader.rs` (Stellar) — Issue #1432, decision D4.
-- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched — that is #1433's (Stellar) and #1434's (EVM) work. Each reader fills the six new fields with `Default::default()`/`U256::ZERO`/`I256::ZERO`, marked `// #1433:` / `// #1434:` at each call site, so the workspace compiles without either arm issue having landed.
-- **Impact:** Every `LoanSnapshot` written by an unmodified worker between #1432 landing and #1433/#1434 landing carries zeros for these six fields — not missing, not null, genuinely wrong if anything reads them before the arm issues land. No current consumer reads them (D1 deliberately keeps them off `LoanBookEntry`), so the blast radius today is zero, but it is a landmine for whichever surface reads `LoanSnapshot.disbursed`/`written_down`/etc. first.
-- **Suggested fix:** #1433 and #1434 each replace their reader's placeholder block with a real decode of the corresponding contract fields and delete their marker comments. Grep `// #1433:` / `// #1434:` in both reader files to find every call site.
+- **Location:** `packages/frontend/src/routes/index.tsx` (`Home`'s `homeState === "zero" | "unverified" | "kyb-pending" | "legacy"` ternary) — Issues #1422 and #1423, following #1421's precedent of adding a branch rather than refactoring.
+- **Gap:** The four branches share the same 7-column grid shape (`grid-cols-7 gap-4`, the same `RecentActivityCard` absolute-position wrapper, the same `QnaSection` footer slot) and differ only in which card fills each of the two left-hand slots and which handlers get wired to the shared cards. Nothing is extracted — each branch is a full, separately-maintained copy.
+- **Impact:** A shared-structure change (grid gap, `RecentActivityCard` positioning, `QnaSection` wrapper) now needs editing in four places, and that cost grows again once states 4–6 (#1424–#1426) land as further branches.
+- **Suggested fix:** Extract the shared grid shell (RecentActivityCard slot, QnaSection footer, grid classes) into a small composer that takes the two left-hand slots as render props or children, once states 4–6 make seven near-identical branches the alternative.
+
+### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders [RESOLVED 2026-10-08 / #1433, #1434]
+
+- **Date:** 2026-10-07. **Stellar half closed 2026-10-08 (#1433). EVM half closed 2026-10-08 (#1434).**
+- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (EVM) and `stellar/loan_registry_reader.rs` (Stellar) — Issue #1432, decision D4.
+- **Gap:** #1432 reshaped the shared `MutableLoanDataView`/`LoanSnapshot` to the reworked contracts' field set (`current_rate`, `carved_out`, `disbursed`, `repaid`, `written_down`, `interest_adjustment`), but deliberately left the per-arm readers' actual decode untouched. #1433 replaced every `// #1433:` placeholder on the Stellar arm; #1434 replaced every `// #1434:` placeholder on the EVM arm (`decode_mutable_loan_data`, `decode_immutable_loan_data`) with a real decode of the corresponding contract fields, including the `ppm_to_bps` conversion for `current_rate`/`senior_interest_rate_bps`.
+- **Resolution:** Both readers now decode all fields for real; `grep -rn '// #143[34]:' packages/` returns nothing.
 
 ### TD-124: During a rolling deploy, the API must be upgraded before the worker
 
@@ -1880,3 +1909,118 @@ line, whichever section it lands in.
 - **Gap:** Every story in that doc opens by telling the reader to go to `/test?tab=auth` and click "Open OTP screen". That trigger was removed from `packages/frontend/src/routes/test.tsx` when #1362 landed the production entry point (TopBar → Sign Up / Sign In → OTP), so the doc's pre-conditions cannot be satisfied as written.
 - **Impact:** The QA pass for epic #1247 executes every user-stories doc under `docs/user-stories/epic-1247/`; #1250's stories dead-end at step 1 and have to be re-derived by hand against the production path each time, or get skipped. #1442's new doc writes its stories against the production entry point instead, so the two docs now disagree on how to reach the same screen.
 - **Suggested fix:** Rewrite #1250's pre-conditions against the production entry point, and sweep the other epic-1247 docs for the same stale `/test?tab=auth` trigger (`1265-wire-kyb-auth.md` names it too) in one pass rather than per issue.
+
+### TD-126: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion
+
+- **Date:** 2026-10-08. **Widened 2026-10-08 (#1434)** — confirmed the same gap on the EVM arm.
+- **Location:** `packages/worker/src/indexer/stellar/loan_registry_parsers.rs` and `packages/worker/src/indexer/parsers.rs` (`parse_loan_rolled_over`, `parse_economics_amended` on both arms), `packages/api/src/routes/audit_log.rs` (`format_action` arms for both events) — Issue #1433 finding F8, Issue #1434 finding F16.
+- **Gap:** Both contracts' `new_rate` is the same `ONE = 1_000_000` fixed-point value as `current_rate`/`senior_interest_rate` (Stellar: `lib.rs:30`, `storage.rs:344`; EVM: `LoanRegistryUpgradeable.sol:17`), but every parser on both arms writes it into `params.new_rate` with no conversion, and `audit_log.rs` projects it verbatim into the Trustee feed's `details`.
+- **Impact:** A 10% rate renders as `100000` in the audit feed rather than `1000` (bps) or `10` (percent), on either chain. Low urgency — it is a `params` display value, not a snapshot field read by any computation.
+- **Suggested fix:** Decide the target unit (bps, to match `current_rate`'s convention) and divide at parse time on both arms; existing stored `params.new_rate` rows would then be back-compat-inconsistent with newly written ones, so the fix needs a decision on already-stored rows (ignore vs. backfill) before landing.
+
+### TD-127: `docs/product-specs/loans-data.md` "Key events" section is v1 design-era drift
+
+- **Date:** 2026-10-08
+- **Location:** `docs/product-specs/loans-data.md` (the "Key events" section) — Issue #1433, finding F9.
+- **Gap:** Lists `LoanMinted`, `LoanStatusChanged`, `MetadataUpdated` and a flat 8-arg `PaymentRecorded` — event names the indexer has never used on either chain arm — alongside the deleted `LocationUpdated`. It predates both the EVM and Stellar contract implementations.
+- **Impact:** A reader of this spec gets a wrong picture of the actual on-chain event surface; no code depends on it.
+- **Suggested fix:** Rewrite the section against the current contract sources (`pipeline-stellar-contracts/contracts/loan-registry/src/event.rs` and the EVM equivalent) once both #1433 and #1434 have landed.
+
+### TD-128: `docs/references/smart-contracts.md` documents a LoanRegistry surface neither shipped repo implements
+
+- **Date:** 2026-10-08
+- **Location:** `docs/references/smart-contracts.md` (`:1026`, `:1051-1052`, `:1069-1071`, `:1168`, `:1297`, `:1462`, `:1470`) — Issue #1433, scope note.
+- **Gap:** The reference documents the v2.3 *designed* EVM contract (`updateCCR`, `updateLocation`, `ccrBps`, `location`) rather than either shipped repo's current LoanRegistry.
+- **Impact:** A reader of this 1,600-line reference gets a surface that does not exist on-chain today; no code depends on it.
+- **Suggested fix:** Realign the reference against the shipped contracts — its own standalone issue given its size, out of scope for a parser-realignment bug fix.
+
+### TD-129: EVM cumulative repayment totals are reconstructed off-chain and six of seven fields have no self-heal
+
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/indexer/loan_registry_reader.rs` (`cumulative_repayment_data` → `None`), `packages/worker/src/indexer/loan_mapper.rs` (`reconstruct_cumulative`, `accumulate_repayments`) — Issue #1434, finding F3, decision D3, risk R1.
+- **Gap:** `cumulativeRepaymentData()` no longer exists on the reworked EVM contract; its replacement `RepaymentTotals` (`LoanRegistryUpgradeable.sol:28-32,96`) is a private, lossy 3-field mapping (`mgmtFee`+`perfFee` merged into `interestFees` at `:331`; `equityDistributed`/`oetAlloc` not accumulated at all). The mapper reconstructs the full 7-field total from indexed `PaymentRecorded`/`PaymentUnrecorded` rows instead. `senior_principal_repaid` is overridden from `mutable.repaid` and self-heals even if a row was never indexed; the other six fields (`offtaker_received`, `senior_interest`, `equity_distributed`, `mgmt_fee`, `perf_fee`, `oet_alloc`) do not.
+- **Impact:** A `PaymentRecorded` row that is never indexed (RPC gap, a `start_block` set past existing payments, a parser regression) leaves those six fields permanently understated, with no on-chain read to correct them. Not reachable today — no EVM chain runs (see TD-131) — but live the day one does.
+- **Suggested fix:** A reconciliation job comparing `loanMoney().accruedInterest` against `gross − (senior_interest + mgmt_fee + perf_fee) + interest_adjustment` would detect drift; not part of this Issue.
+
+### TD-130: EVM relayer's yield-mint phase targets a contract that no longer exists [RESOLVED 2026-10-13 / feature/evm-relayer]
+
+- **Date:** 2026-10-08
+- **Location:** `relayer/config.rs:27-29` (`yield_minter_address` doc comment), `relayer/yield_mint/mod.rs` — Issue #1434, finding F14.
+- **Gap:** Both still document and submit against `PipelineYieldMinter`, which does not exist anywhere in `pipeline-contracts/src/` — it was replaced by `PipelineMinter` in the contracts rework.
+- **Impact:** Latent, not live — no EVM chain runs today (TD-131), so this relayer phase never executes against a real deployment. Will need a rewrite before any EVM relayer goes live.
+- **Suggested fix:** Out of epic #1431 scope (decision 4) — track as its own issue once the relayer's EVM arm is scheduled for work.
+- **Resolution:** The phase is deleted rather than rewritten: the reworked contracts mint yield inside `PipelineMinter.repay`, so there is nothing for a relayer to submit (`docs/exec-plans/active/evm-relayer-v5.md`, D1). `relayer/yield_mint/` and its `yield_minter_address` setting are gone; the orphaned BitGo client is TD-140.
+
+### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
+
+- **Date:** 2026-10-08
+- **Location:** `pipeline-contracts/deployments/` (4 months stale, pre-rework), `argocd/pipeline/test.yaml`, `argocd/pipeline/prod.yaml` (both: `CHAINS` is Stellar-only, zero `CHAIN_*_ETH_RPC_URL`/EVM keys) — Issue #1434, finding F9.
+- **Gap:** `pipeline-contracts` has no deploy CI job and no docs naming which deployment serves which environment; the only configured chain anywhere (`script/base/ChainValues.sol`) is Hoodi, whose deployment JSONs are pre-rework and un-configured in either argocd environment.
+- **Impact:** Blocks #1436 (Ethereum mainnet config) in substance, not just in config — there is nothing to point a new chain config at until a post-rework deployment exists.
+- **Suggested fix:** Stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` already has for `test.yaml`'s deployment-id references.
+
+### TD-132: `outstanding` is defined two ways between the EVM contract and the API
+
+- **Date:** 2026-10-08
+- **Location:** `LoanRegistryUpgradeable.sol:657` (`_outstanding = disbursed − repaid − writtenDown`) vs. `packages/api/src/routes/loan_book.rs:1374` (`original_senior_tranche − senior_principal_repaid`) — Issue #1434, finding F4.
+- **Gap:** The two values are not interchangeable — one nets off write-downs and gross disbursed, the other nets off original tranche size and cumulative principal repaid — and nothing in either codebase states this is deliberate.
+- **Impact:** Unverified whether the two converge in every state transition; not touched by #1434 because `loanMoney()` (the contract's getter for its definition) has no consumer and was deliberately not called (F4).
+- **Suggested fix:** A reconciliation check or an explicit doc note on which definition each Trustee surface uses and why.
+
+### TD-133: EVM `WireInMatcher` (not yet written) has a `receiver` casing trap waiting for it [RESOLVED 2026-10-13 / feature/evm-relayer]
+
+- **Date:** 2026-10-08
+- **Location:** Future `relayer/evm/wire_in_match.rs` (does not exist yet); precedent at `relayer/stellar/wire_in_match.rs` — Issue #1434, finding F12.
+- **Gap:** The EVM Minter parser writes `receiver` as `to_checksum(None)` (mixed-case EIP-55); `CHAIN_<id>_YIELD_MINTER_CONTRACTS` is typically configured lowercase in env. A matcher ported verbatim from the Stellar arm's `l.params->>'receiver' <> $2` string comparison would be true for every row.
+- **Impact:** Latent — no EVM `WireInMatcher` exists yet, and no EVM chain runs (TD-131). Recorded so its author does not inherit a silent bug.
+- **Suggested fix:** Lowercase (or checksum) both sides of the comparison before the EVM matcher is written.
+- **Resolution:** The EVM relayer reuses the shared `phase_match_wire_ins` and binds the minter as `EvmRelayerSettings::minter_id()`, which re-renders `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` with `to_checksum(None)` whatever case it is configured in, so both sides of `receiver <> minter` and the `contract_address` filter are EIP-55. Pinned by `tests/evm_relayer_config.rs`; exercised end to end on a Hoodi v5 fork, where an escrowed wire (receiver = minter) stayed unmatched until its `WireInAssigned`.
+
+### TD-134: The EVM indexer sleeps `POLLING_INTERVAL_MS` twice per cycle, so the effective cadence is double the configured value
+
+- **Date:** 2026-10-09
+- **Location:** `packages/worker/src/indexer/poller.rs:120` (inter-chunk sleep in `EvmEventPoller::poll`) and `packages/worker/src/indexer/mod.rs:163` (cycle sleep in `index_loop`) — Issue #1435, open question Q1.
+- **Gap:** `index_once` caps `end` at `cursor + block_range - 1`, so `poll` runs exactly one chunk per cycle under normal operation and its trailing sleep composes with the loop's own. An operator who sets 500 ms gets a ~1 s cadence. EVM-only: `StellarEventPoller::poll` has no inter-chunk sleep, so the Stellar arm's cadence is exactly its configured value.
+- **Impact:** Cosmetic today (nobody tunes to the millisecond), but #1435 made the knob per-chain, so the doubling is now inherited by every per-chain override and will mislead whoever sizes a mainnet cadence. Documented in `.env.example` rather than fixed.
+- **Suggested fix:** Drop the trailing sleep in `poll` after the final chunk (or skip it when `current > to_block`). That makes the real cadence equal the configured value, so to preserve today's behaviour the defaults must be **doubled** (500 → 1000 ms), not halved — halving them would land on a 250 ms real cadence, four times today's RPC poll rate.
+
+### TD-135: A `Failed` KYB verdict suspends the account, so no authenticated surface can ever render its declined copy
+
+- **Date:** 2026-10-12
+- **Location:** `LpRepo::decide_kyb` (`packages/shared/src/lp_repo.rs`) sets `accounts.status = 'Suspended'` in the same transaction as a `Failed` verdict; `AuthClaims::from_request_parts` (`packages/api/src/auth.rs`) re-reads account status on every bearer request and refuses with `403 account_suspended` (`packages/api/src/account_status.rs`) — Issue #1426.
+- **Gap:** `GET /v1/lps/me` 403s from the request immediately after a `Failed` verdict lands, so the home route's `lpRead` can never resolve to `"loaded"` with `kyb_status: "Failed"` (it sees `"error"` and renders `"legacy"`), and `/account`'s production read never reaches `readState: "loaded"` either. Since #1465, the in-session `account_suspended` 403 also signs the LP out via the global `subscribeSessionEnded` seam (the `suspended` reason) before `/account` can render, so `useAccountPage`'s own 403 stand-in is demoted to a defensive fallback (still shipped and tested, for a tree mounted without the root subscriber, or a future call site the header sniff misses) rather than the realistic path it was before. No authenticated surface renders the declined copy at all in a running app anymore — `AddUsdCard variant="declined"`, the home route's `"kyb-problem"` branch, `AccountDocumentsCard`'s `failed` banner, and `useAccountPage`'s stand-in are all unit-testable only.
+- **Impact:** A `Failed` LP is signed out and sees "This account is suspended. Contact support." on their next sign-in attempt, never the purpose-built home card, document banner, or declined-stand-in copy. QA cannot verify any of those three surfaces end-to-end against a live `Failed` account.
+- **Suggested fix:** Decide whether `Failed` should actually suspend the account (freezing login for anyone, forever) or should instead freeze only writes the way `UnderReview`/`Passed` do, leaving reads open so `kyb_status: "Failed"` is observable. A product/backend decision, not a frontend one.
+
+### TD-136: `kyb_decision_reason` and per-document `reject_reason` are served and rendered nowhere
+
+- **Date:** 2026-10-12
+- **Location:** `GET /v1/lps/me` serves `kyb_decision_reason` on the LP and `reject_reason` on each document (`packages/api` LP response shape); `documentsFromLp` (`packages/frontend/src/components/account/accountPageState.ts`) maps `LpDocument` to `AccountDocumentRecord` and drops `reject_reason` on the floor — Issue #1426.
+- **Gap:** Neither the home route's declined card, the Account page's `invalid`/declined banners, nor `AccountDocumentRow` render either field. An LP told to "re-upload" or "check and try again" is never told *why* — which document, what was wrong with it.
+- **Impact:** LP support burden: every `ChangesRequested`/`Failed` verdict requires a support contact to learn the reason already sitting in the API response.
+- **Suggested fix:** Thread `kyb_decision_reason` into the home/`Account` declined copy and `reject_reason` into `AccountDocumentRow`'s rejected-row caption. A product/design decision (copy, placement), not purely mechanical — logged rather than fixed inline.
+
+### TD-137: No Figma frame exists for the Account page's declined (`Failed`) state
+
+- **Date:** 2026-10-12
+- **Location:** `docs/frontend/account-page.md` § "The under review stand-in" — Issue #1426.
+- **Gap:** The Account column in the Figma file holds only `6701-98137`, `6701-98175`, `6701-97942`, `6701-98061`, `6701-98099`, `6701-97982`, `6701-98022` — none a declined/`Failed` state. The page ships a stand-in built from designed parts (the `under-review` banner chrome with `failed` styling and the already-shipped 403 copy), the same pattern already used for the `under-review` stand-in itself.
+- **Impact:** No ground truth to pixel-verify the declined Account banner against; a future designer pass could redesign it as a dedicated frame and invalidate the stand-in.
+- **Suggested fix:** Designer ask — request a dedicated declined-state Account frame.
+
+### TD-138: The home grid derives connection from the active wallet view; the header derives it from any-wallet presence
+
+- **Date:** 2026-10-12
+- **Location:** `packages/frontend/src/routes/index.tsx` (`isConnected` from `useWalletView().kind`) vs `TopBar`/`MobileNavMenu` (`useWalletPresence().isAnyConnected`, #1458) — Issue #1460.
+- **Gap:** A Stellar-connected visitor whose active wallet view is still the default EVM sees the header's account icon (`isAnyConnected` is true) over a "Sign Up" zero-state grid (the home route's `isConnected` reads the EVM view, which is disconnected). `setKind` is only ever called by the Account page / its dropdown, never by `ConnectWalletModal`, so a freshly Stellar-connected visitor who has not yet visited `/account` stays on the EVM view by default.
+- **Impact:** Visually inconsistent combination, first observable once #1460 shipped state 7 (a sessionless zero/wallet-only split that depends on the active view). No functional breakage — the header's affordances (account icon → `/account`) still work.
+- **Suggested fix:** Either derive the header's icon from the active view too, or derive the home grid's connection from any-wallet presence and resolve balances/activity across both namespaces. Both are product decisions, not mechanical fixes.
+- **Narrowed by #1475 (2026-10-13):** entering `/account` now persists the single connected namespace as the active view, so the grid agrees with the header from then on, and the home heading keys on the header condition (`isAuthenticated || isAnyConnected`). Remaining gap: a visitor who connects one namespace and never opens `/account` still sees the zero-state grid under the account icon.
+
+### TD-139: Completing Add email from the wallet-only state (#1460) lands the visitor in `"legacy"`, not a designed state
+
+- **Date:** 2026-10-12
+- **Location:** `packages/frontend/src/components/homeState.ts` (`"legacy"` fallback) — Issue #1460, following #1459's Add email flow.
+- **Gap:** After `Start Verification` → Add email → OTP → session, the visitor is signed-in + connected + `lpRead: "absent"` (no LP profile submitted yet). `deriveHomeState`'s `"unverified"` branch requires `!isConnected`, so this combination falls through to `"legacy"` — today's pre-#1419 taller-card layout, with no `AddUsdCard` at all, dropping the "Verify your account" card the visitor just acted on.
+- **Impact:** The one-click registration path #1460 opened up lands the visitor on a layout with no verification CTA, immediately after they asked to verify. Documented as the expected follow-on in the #1460 user-stories doc so QA does not file it as a defect.
+- **Suggested fix:** Design state "signed in, connected, KYB not started" (session + connected + `NotStarted`/absent) as its own home state, the same way states 2–7 were each designed individually.

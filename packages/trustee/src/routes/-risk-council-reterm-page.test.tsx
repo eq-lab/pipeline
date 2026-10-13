@@ -83,7 +83,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       maturity: 1_786_838_400,
       next_payment_timestamp: 1_786_838_400,
       days_overdue: null,
-      ccr_reported_at: 0,
       spot_price: "4500",
       spot_change_7d: "-0.18",
       collateral: "2106000.000000",
@@ -106,7 +105,6 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4471",
   status: "WatchList",
-  location: null,
   // Current epoch coupon = 12.0%.
   epoch: {
     number: 1,

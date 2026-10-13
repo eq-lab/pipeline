@@ -10,6 +10,7 @@ export interface AccountUploadRowProps {
   dataNodeId?: string;
   testId?: string;
   disabled?: boolean;
+  onIntercept?: () => void;
 }
 
 export function AccountUploadRow({
@@ -18,6 +19,7 @@ export function AccountUploadRow({
   dataNodeId = "6701:98157",
   testId = "account-upload-row",
   disabled = false,
+  onIntercept,
 }: AccountUploadRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -63,24 +65,28 @@ export function AccountUploadRow({
         </p>
       </div>
 
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept="application/pdf,image/jpeg,image/png"
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-        data-testid="account-upload-input"
-        onChange={handleChange}
-        disabled={disabled}
-      />
+      {!onIntercept && (
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept="application/pdf,image/jpeg,image/png"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+          data-testid="account-upload-input"
+          onChange={handleChange}
+          disabled={disabled}
+        />
+      )}
       <div className="flex shrink-0 items-center justify-center p-1">
         <Button
           variant="secondary"
           size="compact"
           className="border border-[color:var(--color-pipeline-line)]"
-          onClick={() => inputRef.current?.click()}
+          onClick={() =>
+            onIntercept ? onIntercept() : inputRef.current?.click()
+          }
           disabled={disabled}
         >
           Upload

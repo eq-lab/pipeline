@@ -393,6 +393,18 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
+  it("?tab=auth shows an Open Add email screen button and opens add-email-modal on click (#1459)", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open add email screen/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("add-email-modal")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open add email screen/i }),
+    );
+    expect(screen.getByTestId("add-email-modal")).toBeInTheDocument();
+  });
+
   it("swaps Sign In for Create Account instead of stacking them", () => {
     renderTestPage("auth");
     fireEvent.click(
@@ -531,9 +543,9 @@ describe("TestPage — Wire transfers (#1283) preview seam", () => {
     vi.clearAllMocks();
   });
 
-  it("?tab=auth renders five AddUsdCards, one per ADD_USD_CARD_VARIANTS entry", () => {
+  it("?tab=auth renders six AddUsdCards, one per ADD_USD_CARD_VARIANTS entry", () => {
     renderTestPage("auth");
-    expect(screen.getAllByRole("region")).toHaveLength(5);
+    expect(screen.getAllByRole("region")).toHaveLength(6);
   });
 
   it("no dialog is present initially", () => {

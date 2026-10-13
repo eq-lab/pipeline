@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { AccountDocumentsCard } from "./AccountDocumentsCard";
 import { ACCOUNT_STATE_PREVIEWS } from "./accountPageState";
 
@@ -41,6 +42,20 @@ describe("AccountDocumentsCard — verify state", () => {
       "border-[color:var(--color-pipeline-line)]",
     );
     expect(uploadButton.parentElement).toHaveClass("p-1");
+  });
+
+  it("routes Upload through onUploadIntercept instead of the file input when supplied (issue #1458)", async () => {
+    const onUploadIntercept = vi.fn();
+    render(
+      <AccountDocumentsCard
+        {...baseProps({ state: "verify", onUploadIntercept })}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+    expect(onUploadIntercept).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByTestId("account-upload-input"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -168,6 +183,73 @@ describe("AccountDocumentsCard — under-review state", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /^Remove/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("AccountDocumentsCard — under-review + failed (#1426)", () => {
+  it("renders the declined banner instead of the verifying banner", () => {
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          state: "under-review",
+          failed: true,
+          documents: ACCOUNT_STATE_PREVIEWS["under-review"].documents,
+        })}
+      />,
+    );
+    expect(
+      screen.getByText("Account verification declined"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Your account is frozen and cannot be changed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Verifying account")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("We are reviewing your documents."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveClass(
+      "bg-[color:var(--color-pipeline-negative-secondary)]",
+    );
+  });
+});
+
+describe("AccountDocumentsCard — production invalid state (#1426)", () => {
+  it("a writable LP sees the upload row, requirements list, and Save", () => {
+    const preview = ACCOUNT_STATE_PREVIEWS.invalid;
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          state: "invalid",
+          production: true,
+          writable: true,
+          documents: preview.documents,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("account-upload-row")).toBeInTheDocument();
+    expect(screen.getByTestId("account-requirements-list")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("a non-writable LP sees none of those", () => {
+    const preview = ACCOUNT_STATE_PREVIEWS.invalid;
+    render(
+      <AccountDocumentsCard
+        {...baseProps({
+          state: "invalid",
+          production: true,
+          writable: false,
+          documents: preview.documents,
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("account-upload-row")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("account-requirements-list"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save" }),
     ).not.toBeInTheDocument();
   });
 });

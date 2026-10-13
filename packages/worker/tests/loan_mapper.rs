@@ -5,6 +5,7 @@
 //! of the same generic `LoanEventMapper<A, Id>`. EVM tests are the regression gate for
 //! the genericisation refactor.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -14,8 +15,9 @@ use bigdecimal::BigDecimal;
 
 use pipeline_worker::indexer::{
     loan_mapper::{
-        closure_reason_name, compose_drawn_snapshot, compose_lifecycle_snapshot, loan_status_name,
-        maybe_fetch_refreshed_json, LoanEvent, LoanEventMapper,
+        accumulate_repayments, closure_reason_name, compose_drawn_snapshot,
+        compose_lifecycle_snapshot, loan_status_name, maybe_fetch_refreshed_json, InFlight,
+        LoanEvent, LoanEventMapper,
     },
     loan_metadata::{
         BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LoanMetadataFetcher,
@@ -116,12 +118,12 @@ impl MutableDataResolver<Address, U256> for MockMutableResolver {
         _contract: &Address,
         _loan_id: U256,
         block: BlockHint,
-    ) -> anyhow::Result<RepaymentDataView> {
+    ) -> anyhow::Result<Option<RepaymentDataView>> {
         assert_eq!(
             block.0, self.expected_block_number,
             "block-pinning mismatch"
         );
-        Ok(mock_repayment())
+        Ok(None)
     }
 }
 
@@ -221,8 +223,8 @@ impl MutableDataResolver<StellarAddress, u32> for MockStellarMutableResolver {
         _contract: &StellarAddress,
         _loan_id: u32,
         _block: BlockHint,
-    ) -> anyhow::Result<RepaymentDataView> {
-        Ok(mock_repayment())
+    ) -> anyhow::Result<Option<RepaymentDataView>> {
+        Ok(Some(mock_repayment()))
     }
 }
 
@@ -1247,4 +1249,145 @@ fn stellar_loan_id_serialised_as_decimal_string() {
 fn stellar_address_as_db_string_returns_strkey() {
     let addr = StellarAddress(STELLAR_CONTRACT.to_owned());
     assert_eq!(addr.as_db_string(), STELLAR_CONTRACT);
+}
+
+// ---------------------------------------------------------------------------
+// 14. accumulate_repayments / InFlight (#1434 D3) — EVM reconstruction, no DB
+// ---------------------------------------------------------------------------
+
+fn repayment(n: u64) -> RepaymentDataView {
+    RepaymentDataView {
+        offtaker_received: U256::from(n * 100),
+        senior_principal_repaid: U256::from(n * 50),
+        senior_interest: U256::from(n * 5),
+        equity_distributed: U256::from(n * 2),
+        mgmt_fee: U256::from(n),
+        perf_fee: U256::from(n),
+        oet_alloc: U256::from(n),
+    }
+}
+
+#[test]
+fn accumulate_repayments_sums_all_recorded_rows() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+        ("3".to_owned(), repayment(3)),
+    ];
+    let reversed = HashSet::new();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(total.offtaker_received, U256::from(600u64));
+    assert_eq!(total.senior_principal_repaid, U256::from(300u64));
+    assert_eq!(total.senior_interest, U256::from(30u64));
+    assert_eq!(total.equity_distributed, U256::from(12u64));
+    assert_eq!(total.mgmt_fee, U256::from(6u64));
+    assert_eq!(total.perf_fee, U256::from(6u64));
+    assert_eq!(total.oet_alloc, U256::from(6u64));
+}
+
+#[test]
+fn accumulate_repayments_excludes_reversed_ids() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+        ("3".to_owned(), repayment(3)),
+    ];
+    let reversed: HashSet<String> = ["2".to_owned()].into_iter().collect();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(400u64),
+        "2 (id=2) must be excluded"
+    );
+}
+
+#[test]
+fn accumulate_repayments_includes_in_flight_recorded_not_in_slice() {
+    let recorded = vec![("1".to_owned(), repayment(1))];
+    let reversed = HashSet::new();
+    let in_flight = InFlight::Recorded("2".to_owned(), Box::new(repayment(2)));
+
+    let total = accumulate_repayments(&recorded, &reversed, Some(&in_flight));
+
+    assert_eq!(total.offtaker_received, U256::from(300u64));
+}
+
+#[test]
+fn accumulate_repayments_in_flight_unrecorded_excludes_a_row_in_the_slice() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+    ];
+    let reversed = HashSet::new();
+    let in_flight = InFlight::Unrecorded("2".to_owned());
+
+    let total = accumulate_repayments(&recorded, &reversed, Some(&in_flight));
+
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(100u64),
+        "id=2 must be excluded by the in-flight Unrecorded event"
+    );
+}
+
+#[test]
+fn accumulate_repayments_deduplicates_a_repeated_repayment_id() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("1".to_owned(), repayment(1)),
+    ];
+    let reversed = HashSet::new();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(100u64),
+        "a duplicated row must count once"
+    );
+}
+
+#[test]
+fn accumulate_repayments_empty_slice_yields_zeros() {
+    let recorded: Vec<(String, RepaymentDataView)> = Vec::new();
+    let reversed = HashSet::new();
+
+    let total = accumulate_repayments(&recorded, &reversed, None);
+
+    assert_eq!(total.offtaker_received, U256::ZERO);
+    assert_eq!(total.senior_principal_repaid, U256::ZERO);
+    assert_eq!(total.senior_interest, U256::ZERO);
+    assert_eq!(total.equity_distributed, U256::ZERO);
+    assert_eq!(total.mgmt_fee, U256::ZERO);
+    assert_eq!(total.perf_fee, U256::ZERO);
+    assert_eq!(total.oet_alloc, U256::ZERO);
+}
+
+/// Mirrors the `senior_principal_repaid` override `reconstruct_cumulative` applies.
+#[test]
+fn senior_principal_repaid_override_replaces_accumulated_sum() {
+    let recorded = vec![
+        ("1".to_owned(), repayment(1)),
+        ("2".to_owned(), repayment(2)),
+    ];
+    let reversed = HashSet::new();
+    let accumulated_sum = U256::from(150u64); // 1*50 + 2*50
+
+    let mut total = accumulate_repayments(&recorded, &reversed, None);
+    assert_eq!(total.senior_principal_repaid, accumulated_sum);
+
+    let mutable_repaid = U256::from(999u64);
+    total.senior_principal_repaid = mutable_repaid;
+
+    assert_eq!(total.senior_principal_repaid, mutable_repaid);
+    assert_ne!(total.senior_principal_repaid, accumulated_sum);
+    assert_eq!(
+        total.offtaker_received,
+        U256::from(300u64),
+        "the other six fields are untouched by the override"
+    );
 }

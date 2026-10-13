@@ -8,8 +8,14 @@
  * See `src/api/README.md` for the full public API, mock-key schema,
  * and DevTools snippets.
  */
-export { apiFetch, ApiError } from "./client";
+export {
+  apiFetch,
+  ApiError,
+  ACCOUNT_SUSPENDED,
+  subscribeSessionEnded,
+} from "./client";
 export { signup, verifyOtp, resendOtp, login } from "./auth";
+export type { SessionEndReason } from "./client";
 export type { TokenResponse } from "./auth";
 export {
   getMyLp,

@@ -22,9 +22,11 @@ function EnvelopeGlyph() {
 
 export interface AccountEmailCardProps {
   email?: string;
+  onAddEmail?: () => void;
 }
 
-export function AccountEmailCard({ email }: AccountEmailCardProps) {
+export function AccountEmailCard({ email, onAddEmail }: AccountEmailCardProps) {
+  const showAddEmail = !email && onAddEmail;
   return (
     <div className="flex w-full flex-col items-start gap-3">
       <p
@@ -37,16 +39,31 @@ export function AccountEmailCard({ email }: AccountEmailCardProps) {
       >
         Corporate email
       </p>
-      <AccountListRow
-        leading={
-          <AccountIconTile>
-            <EnvelopeGlyph />
-          </AccountIconTile>
-        }
-        caption="Email"
-        title={email ?? "—"}
-        data-node-id="6701:98112"
-      />
+      {showAddEmail ? (
+        <AccountListRow
+          leading={
+            <AccountIconTile>
+              <EnvelopeGlyph />
+            </AccountIconTile>
+          }
+          caption="Email"
+          title="Add email"
+          onActivate={onAddEmail}
+          data-node-id="7129:15860"
+          data-testid="account-add-email-row"
+        />
+      ) : (
+        <AccountListRow
+          leading={
+            <AccountIconTile>
+              <EnvelopeGlyph />
+            </AccountIconTile>
+          }
+          caption="Email"
+          title={email ?? "—"}
+          data-node-id="6701:98112"
+        />
+      )}
     </div>
   );
 }

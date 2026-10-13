@@ -50,22 +50,42 @@ The existing `missing` preview contains a synthetic `NotProvided` row and a name
 the API supplies neither field. That content remains a development fixture, never production
 data. All `?state=` fixtures stay dev-only and do not fetch or mutate LP data.
 
-`6702-104071` ("Error Verification" in the home-frame column) is **not** part of this page —
-despite sharing a name with one of the Account frames it is the **home dashboard**'s failure card
-("We can't verify your account"), whose `View` button is the prototype wire into this page. It
-belongs to #1282, not this issue.
+`6702-104071` ("Error Verification" in the home-frame column) is the **home dashboard**'s failure
+card, not an Account frame — despite sharing a name with `6701-97982` below it is
+`AddUsdCard variant="declined"` ("We can’t verify your account", #1426,
+`docs/frontend/bank-transfers.md#addusdcard`), whose `View` button navigates into this page. A
+`ChangesRequested` LP lands on the `invalid` state below; a `Failed` LP lands on the
+`under-review` stand-in's declined banner (see "The under review stand-in" below) — in practice
+unreachable while a `Failed` verdict suspends the account (tech debt), and since #1465 the LP is
+signed out before `/account` renders at all (see "The declined stand-in" below).
 
-## Route and dev-only guard
+## Route gate
 
-`packages/frontend/src/routes/account.tsx`. `beforeLoad` throws `redirect({ to: "/" })` when
-`ENV.IS_DEV` is false **and** no auth session exists (`readSession() === null`) — updated by
-#1362, which wires the header's account icon as the real production entry point (split out of
-#1282). An authenticated LP, in any environment, reaches `/account`; an unauthenticated visitor
-outside the dev server is redirected to `/`. Access and the `?state=` preview override are no
-longer the same guard: an authenticated production user can reach the route without `ENV.IS_DEV`,
-so `validateSearch` now gates `state` behind `ENV.IS_DEV` explicitly (`parseAccountStatePreview`
-only runs when `ENV.IS_DEV`) — otherwise a real LP could append `?state=verified` in production
-and see fixture data instead of their own documents.
+`packages/frontend/src/routes/account.tsx`. The access gate lives in the `AccountRoute` component,
+not `beforeLoad` (issue #1458) — wallet connection is not synchronously readable at `beforeLoad`
+time: EVM reconnects through wagmi after mount, and Stellar hydrates asynchronously via
+`StellarWalletsKit.getAddress()` in a mount effect (`wallet/stellar/useStellarWallet.ts`). A
+`beforeLoad` check would bounce a connected visitor who hard-refreshes `/account`. Instead,
+`blocked = !ENV.IS_DEV && !isAuthenticated && !isAnyConnected` (`useAuthSession` + the
+`useWalletPresence()` hook, see [Hooks](./hooks.md)) is computed on every render; the component
+renders nothing (`return null`) while `blocked`, and a `useEffect` navigates to `/` (`replace:
+true`) **only once `useWalletPresence().isSettled` is also true** — so there is no flash and no
+bounce while reconnection is still in flight. An authenticated LP, or a visitor with any wallet
+namespace connected, reaches `/account` in any environment; a visitor with neither is redirected to
+`/` outside the dev server once wallet state has settled. On a dev deployment the gate never
+blocks, same as before.
+
+Access and the `?state=` preview override are not the same guard: an authenticated or
+wallet-connected production user can reach the route without `ENV.IS_DEV`, so `validateSearch`
+gates `state` behind `ENV.IS_DEV` explicitly (`parseAccountStatePreview` only runs when
+`ENV.IS_DEV`) — otherwise a real LP could append `?state=verified` in production and see fixture
+data instead of their own documents.
+
+`onLogOut` (passed down from the route) branches on `isAuthenticated`: an authenticated LP calls
+`signOut()`; a wallet-only visitor calls `useWalletPresence().disconnectAll()` instead. Either way
+it navigates to `/`.
+
+The route also owns the one-shot entry-tab selection ([Entry tab](#wallet-card)).
 
 ## Page composition
 
@@ -92,7 +112,71 @@ this off `AccountPage.tsx`, so the page rendered on the default (white) canvas i
 paper tone (issue #1291, no `?state=` fixture exercises the root div's own background so this
 was invisible to state-scoped snapshots).
 
+## Wallet-only variant (#1458)
+
+Design added a visitor state: a wallet is connected (EVM or Stellar) but there is no auth session.
+**The wallet is display-only, not a credential** — connecting it only lets the visitor see it on
+this page; nothing links the address to an account. Renders when `useAuthSession().isAuthenticated`
+is `false` and the route gate has already admitted the visitor (i.e. a wallet is connected — see
+[Route gate](#route-gate)); `AccountPage` branches on `isAuthenticated` alone (not on wallet state
+again), since the gate already guarantees one of the two. In that branch `AccountPageContent`
+renders with `walletOnly` and **does not call `useAccountPage()`**, so there is no
+`GET /v1/lps/me` request for a visitor with no session.
+
+The wallet card opens on the connected namespace's tab ([Entry tab](#wallet-card), #1475).
+
+Composition (frame `6701:98137`, "No Verified Account"): the heading, `AccountWalletCard` (its
+connected state — [Wallet card](#wallet-card)), `Corporate email` with an `Add email` row, the
+Documents card in its `verify` composition (`{ kybStatus: "NotStarted", documents: [], stagedCount:
+0 }` derives to `verify` via `deriveDocumentsState`), and a full-width `Log Out`. **No profile
+card** — node `6701:98148` is hidden in the frame, and the card is already gated on a present
+`account` object, which is `undefined` here.
+
+`Add email` (`AccountEmailCard`, row `7129:15860`): when `email` is falsy and an `onAddEmail`
+handler is supplied, the row renders as a real `<button>` with title `Add email` instead of the
+read-only `—` row. `walletOnly` wires `onAddEmail={openAddEmail}`, `openAddEmail` coming from
+`useAuthFlow()` (see
+[`auth-components.md#authflowprovider`](./auth-components.md#authflowprovider)) — clicking it opens
+`AddEmailModal` (#1459), the normal create-account registration (email + password → OTP → session)
+with its own chrome; see
+[`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal). The authenticated path
+never passes `onAddEmail`, so its read-only row is unchanged.
+
+`Upload` (`AccountUploadRow`, via `AccountDocumentsCard`'s `onUploadIntercept`): document writes
+need a session (`POST /v1/lps/me/documents`), so in the wallet-only variant `Upload` calls
+`openAddEmail()` instead of opening the hidden file input — the input is not even rendered in that
+case. `Save` needs no interception: `canSave` is `false` in this variant (nothing can be staged),
+so the frame's disabled `Save` renders as-is; `Submit for review` does not render at all
+(`AccountDocumentsCard` gates it on `production && documents.length > 0`, and `production` is
+`false` here).
+
+`Log Out` disconnects every connected namespace (`useWalletPresence().disconnectAll()`, not just
+the active tab's wallet) and navigates to `/` — so the stated outcome (the header reverts to Sign
+In / Sign Up) holds even when the visitor is sitting on a tab whose namespace is not the connected
+one. The signed-in variant's `Log Out` is unchanged (`signOut()` + navigate; the wallet, if any, is
+left connected — the `Disconnect` row handles that separately).
+
+No new `?state=` fixture: the variant is fully reachable for real (connect a wallet, no session),
+so it is exercised live rather than through a dev-only preview — per the project's no-mocks rule,
+nothing about this variant is faked.
+
 ## Wallet card
+
+**Entry tab (#1475).** On entering `/account`, the card's tab is chosen once from
+`useWalletPresence().onlyConnectedKind`:
+
+| Connected namespaces | Entry tab |
+|---|---|
+| EVM only | `evm` |
+| Stellar only | `stellar` |
+| both | persisted view (`useWalletView().kind`, unchanged) |
+| none | persisted view (unchanged) |
+
+The decision is taken in `AccountRoute` by a ref-guarded layout effect on the first render where
+`isSettled` is true, so a hard refresh waits for wallet reconnection and a client-side entry
+commits before paint. The choice is persisted via `setKind`; it is not a sync, so tabs stay a view
+switch and a later tab click is never undone. It applies to the signed-in, wallet-only and `?state=`
+preview branches alike (the preview only overrides the Documents card).
 
 `AccountWalletCard.tsx` is a *view switch* over the existing `useWalletView()` (`kind: "evm" |
 "stellar"`, persisted at `pipeline.wallet.view.kind`) — the same state `AccountDropdown`'s
@@ -101,13 +185,35 @@ is the extracted derivation (see [Hooks](./hooks.md)): `kind`/`setKind` from `us
 `isConnected`/`address` from `useEvmWallet()`/`useStellarWallet()` per `kind` (all hooks called
 unconditionally, branched only in the derivation — the shape `TopBar.tsx` already used inline),
 `truncatedAddress` via `@/utils/truncateAddress`, `formattedBalance` from `useEvmToken`/
-`useStellarToken`, and `connect` = `useConnectModal().open` (routes through the shared
+`useStellarToken`, `connect` = `useConnectModal().open` (routes through the shared
 first-connection terms gate, same as `TopBar`, the home promo card, and the deposit/stake
-banners). Selecting a namespace tab is a *view* switch only — it never disconnects the other
-namespace. `TopBar.tsx` was untouched by this issue at the time; #1362 later removed all wallet
-balance/pill UI from the header entirely (Figma showed neither in the signed-in nor signed-out
-state), so the "adopt the extracted hook in TopBar" tech debt this paragraph used to flag no
-longer applies — there is no wallet UI left in `TopBar.tsx` to adopt it into.
+banners), and `disconnect` (issue #1458) = the active namespace's own `disconnect()`. Selecting a
+namespace tab is a *view* switch only — it never disconnects the other namespace, and the card
+keeps today's per-tab semantics for a wallet-only visitor too: looking at the other namespace's tab
+shows that tab's own `Connect Wallet` state with no `Disconnect` row, even though the header still
+shows the account icon (the header and the route gate key on "any namespace connected", not the
+active tab — see [Route gate](#route-gate) and
+[`dashboard-components.md#topbar`](./dashboard-components.md#topbar)).
+
+**`Disconnect` row (issue #1458, closes TD-111).** Every connected state of the card renders a
+24px divider (`7127:15564`, a centered 1px `--color-pipeline-line` rule) followed by a full-width
+`Disconnect` row (`7127:15570`) after the `Wallet`/`USDC balance` rows — confirmed on every
+connected Account frame (`6701:97942`, `6701:97982`, `6701:98022`, `6701:98137`, `6701:98061`,
+each with its own divider id). It is a plain `<button>`, not an `AccountListRow` (that primitive
+requires `leading`/`caption`) — body-typography text only, no leading tile, no trailing control.
+Clicking it calls `useActiveWalletAccount().disconnect` for the **active namespace** (not
+`disconnectAll`) — with no session left, the header's account icon reverts to Sign In / Sign Up
+and the home route falls back to the zero state. This ships for signed-in LPs too, since the row
+lives in the card's shared connected branch — there was previously no UI anywhere to disconnect a
+wallet (TD-111). The connected-rows container's gap is `gap-0`, not `gap-2` — `get_metadata` on
+`6701:98145` places the two rows and the divider+Disconnect block with **no** inter-row gap (`y=0`
+h56, `y=56` h56, `y=112` h24, `y=136` h40, total 176px); a prior pass had `gap-2` (8px too much),
+corrected in the same pass that added the new rows to this exact container.
+
+`TopBar.tsx` was untouched by #1284 at the time; #1362 later removed all wallet balance/pill UI
+from the header entirely, and #1458 added back a presence-only read (`useWalletPresence()`, no
+balance, no token reads) for the header icon rule — see
+[`dashboard-components.md#topbar`](./dashboard-components.md#topbar).
 
 `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) renders the `Ethereum`/`Stellar` tabs —
 its documented anatomy (2px-padded `--color-pipeline-fill-muted` track at radius 6, equal-width
@@ -163,19 +269,32 @@ React.
 export type AccountDocumentsState =
   | "verify" | "staged" | "under-review" | "missing" | "invalid" | "verified";
 
-export type KybStatus = "NotStarted" | "InProgress" | "UnderReview" | "Passed" | "Failed";
+export type KybStatus =
+  | "NotStarted" | "InProgress" | "ChangesRequested" | "UnderReview" | "Passed" | "Failed";
 export type KybDocumentStatus = "NotProvided" | "Provided" | "Verified" | "Rejected";
 export interface AccountDocumentRecord { id?: number; name: string; status: KybDocumentStatus }
 ```
 
 These names mirror the backend vocabulary: `deriveDocumentsState({
-kybStatus, documents, stagedCount })` maps a `(KybStatus, AccountDocumentRecord[], stagedCount)`
-triple onto one `AccountDocumentsState`, with an explicit precedence — `Passed` → `verified`; any
-`Rejected` → `invalid`; a `NotProvided` document → `missing`; `UnderReview` → `under-review`;
-`stagedCount > 0` → `staged`; otherwise `verify`. Production uses
-`deriveProductionDocumentsState` with the server's `kyb_status`, persisted document statuses,
-and `writable` flag. Writable LPs retain upload controls and all persisted rows, including
-Provided rows. The `missing` state and named required document remain fixture-only.
+kybStatus, documents, stagedCount })` (the `?state=` preview path, unchanged by #1426) maps a
+`(KybStatus, AccountDocumentRecord[], stagedCount)` triple onto one `AccountDocumentsState`, with an
+explicit precedence — `Passed` → `verified`; any `Rejected` → `invalid`; a `NotProvided` document →
+`missing`; `UnderReview` → `under-review`; `stagedCount > 0` → `staged`; otherwise `verify`.
+
+Production uses `deriveProductionDocumentsState` with the server's `kyb_status`, persisted document
+statuses, and `writable` flag, in its own precedence order: `Passed` → `verified`; `Failed` →
+`under-review` (checked before the `Rejected` check, so a `Failed` LP holding a rejected document
+is not mis-routed into the re-upload banner — #1426); `UnderReview` → `under-review`;
+`ChangesRequested` → `invalid` (also checked before the `Rejected` check — a `ChangesRequested`
+with neither a reason nor a single rejected document is a real case per
+[kyb-lp-verification.md](../product-specs/kyb-lp-verification.md), and must still show the
+re-upload banner rather than the first-time "Verify your account" banner); any `Rejected` document →
+`invalid`; a writable LP → `staged` or `verify`; otherwise `under-review`. Writable LPs retain
+upload controls and all persisted rows, including Provided rows. The `missing` state and named
+required document remain fixture-only — `deriveProductionDocumentsState` never returns `"missing"`,
+since KYB documents are untyped and carry no `NotProvided` status (see
+[kyb-lp-verification.md](../product-specs/kyb-lp-verification.md)); frame `6701-98022` stays a
+`?state=` preview, unreachable from production data.
 
 There is **no doc-type or subject selector anywhere in this UI** — the epic's 2026-09-21 decision
 puts classification in the trustee's review screen (#1267); this page's requirements list
@@ -214,10 +333,32 @@ reviewing your documents.` (verbatim from the home card, correcting its "Veryfyi
 #1248 design-file-artifact precedent), the submitted files with the `Uploaded` caption and no
 remove control, no upload row, no Save. Logged as a designer ask (tech debt).
 
+**The declined stand-in (#1426, also no designed frame).** A `Failed` kyb_status reuses the same
+`under-review` banner slot with `failed` set: negative tone, `WarningTriangleIcon`, title
+`Account verification declined`, caption `Your account is frozen and cannot be changed.` There is
+no designed Account frame for a declined verdict either (decision 5 of the #1426 exec plan) — the
+Account column holds only `6701-98137`, `6701-98175`, `6701-97942`, `6701-98061`, `6701-98099`,
+`6701-97982`, `6701-98022`. The same situation reaches the page a second way: a `Failed` verdict
+suspends the account (`accounts.status = 'Suspended'`), so every bearer request 403s with
+`account_suspended` and the read never reaches `readState: "loaded"`. `useAccountPage` keys that
+403 on the payload's `account_suspended` string (not the bare status, so an unrelated 403 keeps
+today's behaviour) and renders the already-shipped stand-in copy,
+`Your account verification was declined. Profile and document changes are unavailable.`, in the
+read-error block with its `Retry` button suppressed — retrying a terminal refusal can never
+succeed. **Since #1465 this is a defensive fallback, not the realistic path**: the same
+`account_suspended` 403 fires the global `subscribeSessionEnded` seam
+(`docs/frontend/auth-components.md#session-module`), which signs the LP out and lands them on `/`
+before `/account` can render this branch — it stays shipped and tested for a tree mounted without
+the root subscriber (today, component tests) or a future authenticated call site the header sniff
+does not recognise. The `kyb_status === "Failed"` banner above is unit-testable only, since the
+suspension makes the read itself unreachable in a running app (tracked as tech debt alongside the
+home-route unobservability note in
+[home-screen-states.md](../product-specs/home-screen-states.md)).
+
 ## Verbatim copy
 
 Page chrome: `Account` · `Ethereum` · `Stellar` · `Connect Wallet` · `Wallet` · `USDC balance` ·
-`Corporate email` · `Email` · `Documents` · `Log Out`.
+`Disconnect` · `Corporate email` · `Email` · `Add email` · `Documents` · `Log Out`.
 
 Banners: `Verify your account` · `Verify your identity` (staged state only — a design-file
 inconsistency, see below) · `Verifying account` (stand-in) · `Upload your company documents to
@@ -264,7 +405,7 @@ used instead (e.g. `certificate-of-incorporation.pdf`).
 | `fill-test/primary` (circles, tab track) | `rgba(191,189,187,0.12)` | `--color-pipeline-fill-muted` |
 | `fill/warning-secondary` (verify banner) | `rgba(211,235,117,0.16)` | `--color-pipeline-promo` |
 | `fill/negative-secondary` (error banners) | `rgba(178,0,0,0.16)` | `--color-pipeline-negative-secondary` |
-| leading-tile fill (wallet/email/upload) | sampled screenshot, pale navy tint | `--color-pipeline-brand-secondary` |
+| `fill-test/primary` (leading tiles: wallet/email/upload) | `rgba(191,189,187,0.12)` | `--color-pipeline-fill-muted` (corrected by #1458 — see below) |
 | `border-test/secondary` | `rgba(56,55,53,0.18)` | `--color-pipeline-line` |
 | `content-test/primary` | `#262524` | `--color-pipeline-ink` |
 | `content-test/secondary` | `rgba(56,55,53,0.6)` | `--color-pipeline-ink-muted` |
@@ -308,13 +449,14 @@ px-1>` with no touch-target wrapper (issue #1295). The `invalid` banner itself (
 **no** trailing action — confirmed no `ButtonCont`/button node in its subtree, unlike the `missing`
 banner's inline `Upload`.
 
-**The 40×40 leading tiles (wallet row, email row, upload row) render a pale navy tint, not
-`#262524`** — confirmed by sampling `get_screenshot` at the node: `get_design_context`'s codegen
-is stale here (same class as #1251's `content-test/primary` finding), literally emitting
-`bg-[var(--fill-test/primary,#262524)]` for all three tiles, but only the email tile's *icon*
-(hardcoded SVG fill `black`) reads as dark; the tile background itself is the same
-`--color-pipeline-brand-secondary` pale tint `UploadedFileRow` already ships (TD-63). `AccountIconTile`
-uses that fill uniformly; only the icon's own color varies — ink for envelope/wallet, solid
+**The 40×40 leading tiles (wallet row, email row, upload row) are `fill-test/primary` =
+`rgba(191,189,187,0.12)` → `--color-pipeline-fill-muted`.** `get_design_context`'s codegen emits a
+stale `bg-[var(--fill-test/primary,#262524)]` literal for all three tiles (same class as #1251's
+`content-test/primary` finding); #1284 read the tile as a pale navy tint from a screenshot sample
+and shipped `--color-pipeline-brand-secondary`. #1458 resolved the binding live with
+`get_variable_defs` on `7129:15860` and `6701:98112` (both `#bfbdbb1f`) and corrected
+`AccountIconTile` to `--color-pipeline-fill-muted` — the same token the circles and the tab track
+already use. Only the icon's own color varies — ink for envelope/wallet, solid
 `--color-pipeline-brand` navy for the upload glyph (`AccountUploadRow.tsx`'s `FileUploadIcon`,
 `currentColor`). The upload icon is a second stale-codegen spot (issue #1292): the raw exported
 `file-upload` SVG asset hardcodes `fill="#8FB3A4"` (sage green) with no `currentColor`, but
@@ -349,10 +491,10 @@ review the returned documents, and select any missing files again. Rejected rows
 then the visible upload controls accept the correction. Provided rows on writable LPs have a
 remove button; Verified and frozen rows do not.
 
-`AccountWalletCard`'s Connect Wallet and the route's Log Out remain wired to the shared wallet
-and auth flows. `AccountDocumentsCard.onUploadMissingDocument` exists only for the synthetic
-`missing` preview. Review submission changes KYB only through the backend endpoint; its server response
-determines the displayed status and freezes controls.
+`AccountWalletCard`'s Connect Wallet / Disconnect and the route's Log Out remain wired to the
+shared wallet and auth flows. `AccountDocumentsCard.onUploadMissingDocument` exists only for the
+synthetic `missing` preview. Review submission changes KYB only through the backend endpoint; its
+server response determines the displayed status and freezes controls.
 
 ## `?state=` preview contract
 
@@ -378,7 +520,9 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | --- | --- |
 | Home page KYB orchestration and wallet linking | #1254 |
 | Wiring sign-in / create-account / OTP to real auth | #1265 |
-| Header auth buttons, the account icon | #1362 (shipped — this doc's [Route and dev-only guard](#route-and-dev-only-guard)) |
+| Header auth buttons, the account icon | #1362 (shipped — this doc's [Route gate](#route-gate)), extended to wallet-only visitors by #1458 |
+| The Add email screen itself and the OTP hand-off | #1459 (shipped — `AddEmailModal`, see [`auth-components.md#addemailmodal`](./auth-components.md#addemailmodal)) |
+| The home grid for a wallet-only visitor (home state 7) | #1460 — `deriveHomeState` is untouched; a wallet-only visitor keeps rendering the zero-state grid on `/` (see [home-screen-states.md](../product-specs/home-screen-states.md)) |
 | The home card states, composite Total Balance, merged activity feed | #1282 |
 | The redesigned onboarding-time Company Docs modal | #1278 |
 | Add Funds wire-transfer modal | #1283 |
@@ -398,6 +542,14 @@ frame exists anywhere in V1.0, so it has no destination (tech debt, designer ask
 row's file input is visually hidden (`sr-only`) but reachable via its trailing `Upload` button. The
 status banner uses `role="status"`. `Log Out` and `Connect Wallet` are real `<button>` elements,
 focusable and clickable with no throw even with no handler wired (the inert-seam contract).
+
+`Disconnect` (`AccountWalletCard.tsx`) and `Add email` (`AccountEmailCard.tsx`, issue #1458) are
+also real `<button>` elements. `AccountListRow` gained an optional `onActivate` prop (#1458): when
+present the root renders as `<button type="button">` instead of a `<div>`, and its inner content
+wrapper and the two text nodes render as `<span>` rather than `<div>`/`<p>` so the button's content
+model stays valid (a `<button>` cannot contain block-level `<div>`/`<p>` descendants) — no visual
+change, since Tailwind preflight already zeroes `<p>` margins. `AccountIconTile` renders a `<span>`
+for the same reason (it is used as a `<button>`'s leading icon in the `Add email` row).
 
 ## No mobile frames
 

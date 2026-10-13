@@ -7,6 +7,21 @@ import {
   type LocationInput,
 } from "@/api/useUpdateLifecycle";
 import { DocumentIcon } from "@/components/DocumentIcon";
+import { DetailHero } from "@/components/detail/DetailHero";
+import { CardTitle } from "@/components/detail/DetailCard";
+import { KeyValueRow } from "@/components/detail/KeyValueRow";
+import {
+  ATTENTION_AMBER,
+  BRAND,
+  CARD_CLASS,
+  INK,
+  INK_MUTED,
+  LINE_COLOR,
+  NEGATIVE_RED,
+  POSITIVE_GREEN,
+  cardStyle,
+  chipStyle,
+} from "@/components/detail/detailTokens";
 import {
   useLoanDetail,
   type HeroView,
@@ -14,7 +29,6 @@ import {
   type LifecycleStep,
   type PriceCollateralView,
   type RegistryView,
-  type StatusBand,
   type CcrTrend,
   type DocumentDisplay,
 } from "./-useLoanDetail";
@@ -42,14 +56,6 @@ interface DialogError {
  * layout incl. the #1040 Documents card, Figma → token mapping).
  */
 
-const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
-const NEGATIVE_RED = "#b20000";
-const ATTENTION_AMBER = "#6e6400";
-const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
-const BRAND = "var(--color-pipeline-brand)";
-const INK = "var(--color-pipeline-ink)";
-const INK_MUTED = "rgba(56,55,53,0.6)";
-
 // Lifecycle stepper one-offs. spec: trustee-flows.md#figma--token--px-mapping-411610549.
 const STEP_DONE_BG = "rgba(32, 128, 0, 0.08)";
 const STEP_DONE_LINE = "rgba(32, 128, 0, 0.3)";
@@ -65,42 +71,6 @@ function toneColor(tone: TileTone): string {
       return NEGATIVE_RED;
     default:
       return INK_MUTED;
-  }
-}
-
-/** Status-chip colours per band (matches the Loans-table CCR one-offs). */
-function chipStyle(band: StatusBand): React.CSSProperties {
-  switch (band) {
-    case "positive":
-      return {
-        color: POSITIVE_GREEN,
-        backgroundColor: "rgba(32,128,0,0.08)",
-        borderColor: "rgba(32,128,0,0.3)",
-      };
-    case "attention":
-      return {
-        color: ATTENTION_AMBER,
-        backgroundColor: "rgba(110,100,0,0.08)",
-        borderColor: "rgba(110,100,0,0.3)",
-      };
-    case "negative":
-      return {
-        color: NEGATIVE_RED,
-        backgroundColor: "rgba(178,0,0,0.08)",
-        borderColor: "rgba(178,0,0,0.3)",
-      };
-    case "info":
-      return {
-        color: BRAND,
-        backgroundColor: "rgba(0,0,128,0.08)",
-        borderColor: "rgba(0,0,128,0.3)",
-      };
-    default:
-      return {
-        color: INK_MUTED,
-        backgroundColor: "rgba(56,55,53,0.06)",
-        borderColor: LINE_COLOR,
-      };
   }
 }
 
@@ -128,46 +98,17 @@ function CheckIcon(props: React.SVGAttributes<SVGSVGElement>) {
   );
 }
 
-function cardStyle() {
-  return { border: `1px solid ${LINE_COLOR}` } as const;
-}
-
-const CARD_CLASS =
-  "flex w-full flex-col rounded-[4px] bg-[color:var(--color-pipeline-surface)]";
-
-// ── Hero ────────────────────────────────────────────────────────────────────
-
 function Hero({ hero }: { hero: HeroView }) {
   return (
-    <div className="flex flex-col gap-[8px]">
-      <Link
-        to="/loans"
-        className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
-      >
-        {hero.backLabel}
-      </Link>
-      <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-[48.4px] text-[#262524]">
-        {hero.title}
-      </h1>
-      <div className="flex flex-wrap items-center gap-[8px] pt-[4px]">
-        {hero.status && (
-          <span
-            data-testid="loan-detail-status-chip"
-            className="inline-flex items-center rounded-[4px] border border-solid px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap"
-            style={chipStyle(hero.status.band)}
-          >
-            {hero.status.label}
-          </span>
-        )}
-        <span
-          data-testid="loan-detail-meta"
-          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-          style={{ color: INK_MUTED }}
-        >
-          {hero.meta}
-        </span>
-      </div>
-    </div>
+    <DetailHero
+      backTo="/loans"
+      backLabel={hero.backLabel}
+      title={hero.title}
+      status={hero.status}
+      meta={hero.meta}
+      statusTestId="loan-detail-status-chip"
+      metaTestId="loan-detail-meta"
+    />
   );
 }
 
@@ -300,53 +241,6 @@ function SummaryTiles({ tiles }: { tiles: SummaryTile[] }) {
           </p>
         </div>
       ))}
-    </div>
-  );
-}
-
-// ── Cards shared row ──────────────────────────────────────────────────────────
-
-function CardTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="font-[family-name:var(--font-display)] text-[26px] leading-[33.28px] text-[#262524]">
-      {children}
-    </h2>
-  );
-}
-
-function KeyValueRow({
-  label,
-  children,
-  tag,
-  isLast,
-}: {
-  label: string;
-  children: React.ReactNode;
-  tag?: string;
-  isLast?: boolean;
-}) {
-  return (
-    <div
-      className="flex items-start justify-between gap-[16px] py-[12px]"
-      style={isLast ? undefined : { borderBottom: `1px solid ${LINE_COLOR}` }}
-    >
-      <span
-        className="font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
-        style={{ color: INK_MUTED }}
-      >
-        {label}
-        {tag && (
-          <span
-            className="ml-[6px] text-[11px] lowercase"
-            style={{ color: INK_MUTED }}
-          >
-            {tag}
-          </span>
-        )}
-      </span>
-      <span className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]">
-        {children}
-      </span>
     </div>
   );
 }

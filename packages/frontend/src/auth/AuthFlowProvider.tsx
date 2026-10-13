@@ -74,6 +74,8 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
 
   const close = useCallback(() => setIsOpen(false), []);
 
+  const openAddEmail = useCallback(() => open("add-email"), [open]);
+
   const openAccountSetup = useCallback(() => {
     setSetup((previous) => (previous ? { ...previous, open: true } : previous));
   }, []);
@@ -83,8 +85,8 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
     setup?.status === "loaded" ? setup.lp?.kyb_status : undefined;
 
   const contextValue = useMemo<AuthFlowContextValue>(
-    () => ({ open, close, lpRead, kybStatus, openAccountSetup }),
-    [open, close, lpRead, kybStatus, openAccountSetup],
+    () => ({ open, close, lpRead, kybStatus, openAccountSetup, openAddEmail }),
+    [open, close, lpRead, kybStatus, openAccountSetup, openAddEmail],
   );
 
   const subscribeToReview = useCallback(async () => {

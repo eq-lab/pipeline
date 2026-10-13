@@ -126,7 +126,7 @@ order-free; both arms map into it by name.
   (`docs/frontend/trustee-flows.md:1016` → `loan_data.initial_location`). It is not
   sourced from a contract read, so the contract's deletion of `LocationUpdate` does not
   invalidate it. Only the **current on-chain** location dies. This also means the
-  `docs/exec-plans/active/issue-1014-protection-location-rows.md` work splits: its
+  `docs/exec-plans/completed/issue-1014-protection-location-rows.md` work splits: its
   origination Location row is unaffected; its loan-detail "Status / location" row is
   the one this Issue degrades (risk R4).
 - **F3 — `reported_ccr_bps` has zero consumers.** `grep -rn reported_ccr_bps
@@ -349,7 +349,7 @@ this Issue's diff unreviewable.
   an old API reading) would fail on `missing field ccr_bps` — so **the API must not be
   rolled back past this change once a new worker has written a snapshot.** Note it in
   the tech-debt/deploy log.
-- **R3 — `docs/exec-plans/active/issue-1014-protection-location-rows.md` overlaps.**
+- **R3 — `docs/exec-plans/completed/issue-1014-protection-location-rows.md` overlaps.**
   That plan is active and reads `current_location` via
   `useLoanFinancials.ts:28`. Per F2 its origination row survives; its loan-detail
   location row is removed by D1b. Whoever executes whichever lands second must
@@ -626,7 +626,7 @@ Every `LoanSnapshot` / view-struct literal below drops three fields and gains si
   entry at `:598-603`, which this change resolves by deletion rather than by mirroring.
   Also check `:564` and `:589`, which name `ccr_reported_at` and
   `LoanFinancialsResponse`/`LocationView` in the epic-#775 hand-mirroring entries.
-- **`docs/exec-plans/active/issue-1014-protection-location-rows.md`** — add a note
+- **`docs/exec-plans/completed/issue-1014-protection-location-rows.md`** — add a note
   recording the F2 split (origination row survives, loan-detail location row removed by
   this Issue) so that plan is not executed against a removed field.
 - **`docs/product-specs/trustee-dashboard.md:172`** — **required.** The Loans-page row

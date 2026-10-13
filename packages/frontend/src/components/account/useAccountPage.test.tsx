@@ -367,6 +367,38 @@ describe("useAccountPage", () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  it("surfaces the declined copy and sets the no-retry flag for a 403 account_suspended read", async () => {
+    signIn("session@example.com");
+    mockGet.mockRejectedValue(new ApiError(403, "account_suspended"));
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("error"));
+    expect(result.current.actionError).toBe(
+      "Your account verification was declined. Profile and document changes are unavailable.",
+    );
+    expect(result.current.actionError).not.toContain("account_suspended");
+    expect(result.current.suspended).toBe(true);
+  });
+
+  it("keeps today's behavior for an unrelated 403", async () => {
+    signIn("session@example.com");
+    mockGet.mockRejectedValue(new ApiError(403, "role_forbidden"));
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("error"));
+    expect(result.current.actionError).toBe("role_forbidden");
+    expect(result.current.suspended).toBe(false);
+  });
+
+  it("still renders the session-expired copy for a 401", async () => {
+    signIn("session@example.com");
+    mockGet.mockRejectedValue(new ApiError(401, "expired"));
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("error"));
+    expect(result.current.actionError).toBe(
+      "Your session expired. Sign in again to continue.",
+    );
+    expect(result.current.suspended).toBe(false);
+  });
+
   it("ignores an LP response after sign-out and performs no preview read", async () => {
     signIn("session@example.com");
     let resolve!: (value: LpResponse) => void;

@@ -195,6 +195,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1373 LP Account page: load and edit profile and documents from LP API](https://github.com/eq-lab/pipeline/issues/1373) | [1373-account-page-lp-api.md](./epic-1247/1373-account-page-lp-api.md) | Initial |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
+| [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
 
 ---
 
@@ -205,6 +206,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1271 Trustee: LP detail and KYB review](https://github.com/eq-lab/pipeline/issues/1271) | [1271-trustee-lp-review.md](./epic-1269/1271-trustee-lp-review.md) | Initial |
 | [#1270 Trustee: LP Counterparties menu item + list table](https://github.com/eq-lab/pipeline/issues/1270) | [1270-trustee-lp-counterparties.md](./epic-1269/1270-trustee-lp-counterparties.md) | Initial |
 | [#1413 Backend: per-LP bank deposits](https://github.com/eq-lab/pipeline/issues/1413) | [1413-lp-bank-deposits.md](./epic-1269/1413-lp-bank-deposits.md) | Initial |
+| [#1449 Trustee: mint the PLUSD leg of an LP bank deposit](https://github.com/eq-lab/pipeline/issues/1449) | [1449-trustee-mint-bank-deposit.md](./epic-1269/1449-trustee-mint-bank-deposit.md) | Initial |
+| [#1453 Trustee: align the LP counterparty detail page with the Loan detail conventions](https://github.com/eq-lab/pipeline/issues/1453) | [1453-lp-detail-loan-conventions.md](./epic-1269/1453-lp-detail-loan-conventions.md) | Initial |
 
 ---
 
@@ -227,8 +230,16 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1421 Home state 1: zero state — not signed in, no account, wallet not connected](https://github.com/eq-lab/pipeline/issues/1421) | [1421-home-zero-state.md](./epic-1419/1421-home-zero-state.md) | Initial |
 | [#1422 Home state 2: account created but not verified, wallet not connected](https://github.com/eq-lab/pipeline/issues/1422) | [1422-home-unverified-state.md](./epic-1419/1422-home-unverified-state.md) | Initial |
+| [#1423 Home state 3: wallet connected, PLUSD = 0, sPLUSD = 0, KYB verification pending](https://github.com/eq-lab/pipeline/issues/1423) | [1423-home-kyb-pending-state.md](./epic-1419/1423-home-kyb-pending-state.md) | Initial |
+| [#1424 Home state 4: wallet connected, PLUSD > 0, sPLUSD = 0, KYB passed, bank transfer unlocked](https://github.com/eq-lab/pipeline/issues/1424) | [1424-home-plusd-held-state.md](./epic-1419/1424-home-plusd-held-state.md) | Initial |
 | [#1429 Account-setup modal reopens on every page refresh after the LP dismissed it](https://github.com/eq-lab/pipeline/issues/1429) | [1429-account-setup-dismissal-persistence.md](./epic-1419/1429-account-setup-dismissal-persistence.md) | Initial |
 | [#1430 AddUsdCard verify variant: illustration anchoring and card height do not match Figma 6701:97695](https://github.com/eq-lab/pipeline/issues/1430) | [1430-addusdcard-verify-illustration-anchor.md](./epic-1419/1430-addusdcard-verify-illustration-anchor.md) | Initial |
+| [#1426 Home state 6: KYB not verified due to a problem](https://github.com/eq-lab/pipeline/issues/1426) | [1426-home-kyb-problem-state.md](./epic-1419/1426-home-kyb-problem-state.md) | Initial |
+| [#1458 Header + Account: wallet connected without a session shows the account icon; Account page wallet-only variant with Add email and Disconnect](https://github.com/eq-lab/pipeline/issues/1458) | [1458-wallet-only-account.md](./epic-1419/1458-wallet-only-account.md) | Initial |
+| [#1459 Add email screen for a wallet-connected visitor — email + password, then OTP, then session](https://github.com/eq-lab/pipeline/issues/1459) | [1459-add-email-screen.md](./epic-1419/1459-add-email-screen.md) | Initial |
+| [#1460 Home state 7: wallet connected, not signed in, PLUSD = 0, sPLUSD = 0](https://github.com/eq-lab/pipeline/issues/1460) | [1460-home-wallet-only-state.md](./epic-1419/1460-home-wallet-only-state.md) | Initial |
+| [#1475 Account page opens on the connected wallet's tab; LP home heading reads "Welcome back" whenever the header shows the account icon](https://github.com/eq-lab/pipeline/issues/1475) | [1475-account-entry-tab-welcome-back.md](./epic-1419/1475-account-entry-tab-welcome-back.md) | Initial |
+| [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
 
 ---
 
@@ -237,3 +248,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1432 Indexer: realign the shared loan-data model to the reworked contracts](https://github.com/eq-lab/pipeline/issues/1432) | [1432-shared-loan-data-model.md](./epic-1431/1432-shared-loan-data-model.md) | Initial |
+| [#1433 Stellar indexer: realign parsers to the reworked LoanRegistry contracts](https://github.com/eq-lab/pipeline/issues/1433) | [1433-stellar-loan-parsers-realignment.md](./epic-1431/1433-stellar-loan-parsers-realignment.md) | Initial |
+| [#1434 EVM indexer: realign parsers and reader to post-rework pipeline-contracts, add the Minter group](https://github.com/eq-lab/pipeline/issues/1434) | [1434-evm-loan-parsers-realignment.md](./epic-1431/1434-evm-loan-parsers-realignment.md) | Initial |

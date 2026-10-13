@@ -1,7 +1,7 @@
 // spec: docs/frontend/auth-components.md#emailauthflow
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useEmailAuthFlow } from "./useEmailAuthFlow";
+import { useEmailAuthFlow, SUSPENDED_ERROR_MESSAGE } from "./useEmailAuthFlow";
 import { ApiError } from "@/api";
 import { clearSession, readSession } from "@/auth/session";
 
@@ -150,7 +150,7 @@ describe("useEmailAuthFlow — captcha token lifecycle (#1265 review)", () => {
       });
     });
     expect(mockSignup).not.toHaveBeenCalled();
-    expect(result.current.createAccountFormError).toContain(
+    expect(result.current.signupFormError).toContain(
       "Verification is still loading",
     );
   });
@@ -254,5 +254,179 @@ describe("useEmailAuthFlow — sign-in error lifecycle (#1265 review)", () => {
 
     expect(result.current.passwordServerError).toBeUndefined();
     expect(result.current.signInFormError).toBeUndefined();
+  });
+
+  it("a login 403 account_suspended sets the suspension copy and stays on sign-in, distinct from email_not_verified", async () => {
+    mockLogin.mockRejectedValue(new ApiError(403, "account_suspended"));
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current
+        .handleSignInSubmit({ email: "a@b.com", password: "x" })
+        .catch(() => {});
+    });
+
+    expect(result.current.signInFormError).toBe(SUSPENDED_ERROR_MESSAGE);
+    expect(result.current.screen).toBe("sign-in");
+  });
+
+  it("a login 403 email_not_verified routes to the otp screen, not the suspension copy", async () => {
+    mockLogin.mockRejectedValue(new ApiError(403, "email_not_verified"));
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current
+        .handleSignInSubmit({ email: "a@b.com", password: "x" })
+        .catch(() => {});
+    });
+
+    expect(result.current.screen).toBe("otp");
+    expect(result.current.signInFormError).toBeUndefined();
+  });
+});
+
+describe("useEmailAuthFlow — Add email (#1459)", () => {
+  it("initialScreen: 'add-email' starts on that screen", () => {
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({
+        open: true,
+        initialScreen: "add-email",
+        onClose: vi.fn(),
+      }),
+    );
+    expect(result.current.screen).toBe("add-email");
+  });
+
+  it("handleAddEmailSubmit with a signup captcha token calls signup once, then advances to otp with the submitted email", async () => {
+    mockSignup.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({
+        open: true,
+        initialScreen: "add-email",
+        onClose: vi.fn(),
+      }),
+    );
+    act(() => result.current.onSignupToken("captcha"));
+    await act(async () =>
+      result.current.handleAddEmailSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      }),
+    );
+    expect(mockSignup).toHaveBeenCalledTimes(1);
+    expect(mockSignup).toHaveBeenCalledWith({
+      email: "lp@example.com",
+      password: "Test1234!",
+      captchaToken: "captcha",
+    });
+    expect(result.current.screen).toBe("otp");
+    expect(result.current.pendingEmail).toBe("lp@example.com");
+  });
+
+  it("without a token it does not call signup and sets the not-ready signupFormError", async () => {
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({
+        open: true,
+        initialScreen: "add-email",
+        onClose: vi.fn(),
+      }),
+    );
+    await act(async () =>
+      result.current.handleAddEmailSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      }),
+    );
+    expect(mockSignup).not.toHaveBeenCalled();
+    expect(result.current.signupFormError).toContain(
+      "Verification is still loading",
+    );
+  });
+
+  it("a rejected signup sets signupFormError and rethrows; the token is cleared either way", async () => {
+    mockSignup.mockRejectedValue(new ApiError(500, "boom"));
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({
+        open: true,
+        initialScreen: "add-email",
+        onClose: vi.fn(),
+      }),
+    );
+    act(() => result.current.onSignupToken("captcha"));
+    await act(async () => {
+      await expect(
+        result.current.handleAddEmailSubmit({
+          email: "lp@example.com",
+          password: "Test1234!",
+        }),
+      ).rejects.toThrow();
+    });
+    expect(result.current.signupFormError).toBe("boom");
+    expect(result.current.signupCaptchaReady).toBe(false);
+  });
+
+  it("goBackFromOtp returns to 'add-email' after the add-email submit", async () => {
+    mockSignup.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({
+        open: true,
+        initialScreen: "add-email",
+        onClose: vi.fn(),
+      }),
+    );
+    act(() => result.current.onSignupToken("captcha"));
+    await act(async () =>
+      result.current.handleAddEmailSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      }),
+    );
+    expect(result.current.screen).toBe("otp");
+
+    act(() => result.current.goBackFromOtp());
+    expect(result.current.screen).toBe("add-email");
+  });
+
+  it("goBackFromOtp returns to 'sign-in' after the create-account submit", async () => {
+    mockSignup.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({
+        open: true,
+        initialScreen: "create-account",
+        onClose: vi.fn(),
+      }),
+    );
+    act(() => result.current.onSignupToken("captcha"));
+    await act(async () =>
+      result.current.handleCreateAccountSubmit({
+        email: "lp@example.com",
+        password: "Test1234!",
+      }),
+    );
+    expect(result.current.screen).toBe("otp");
+
+    act(() => result.current.goBackFromOtp());
+    expect(result.current.screen).toBe("sign-in");
+  });
+
+  it("goBackFromOtp returns to 'sign-in' after the 403 email_not_verified sign-in path (regression guard)", async () => {
+    mockLogin.mockRejectedValue(new ApiError(403, "email_not_verified"));
+    mockResendOtp.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useEmailAuthFlow({ open: true, onClose: vi.fn() }),
+    );
+    await act(async () => {
+      await result.current
+        .handleSignInSubmit({ email: "lp@example.com", password: "x" })
+        .catch(() => {});
+    });
+    expect(result.current.screen).toBe("otp");
+
+    act(() => result.current.goBackFromOtp());
+    expect(result.current.screen).toBe("sign-in");
   });
 });

@@ -14,6 +14,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useWalletPresence,
   useConnectModal,
   useStellarDepositManagerAddresses,
   useStellarSacToken,
@@ -38,6 +39,7 @@ import { EarnedCard } from "@/components/EarnedCard";
 import { AddUsdCard } from "@/components/AddUsdCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
+import { FundingDetailsModal } from "@/components/FundingDetailsModal";
 import { usePnl, usePositionsHistory } from "@/api";
 import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
@@ -56,9 +58,11 @@ function deriveMobileHomeState(
 }
 
 function Home() {
+  const [fundingDetailsOpen, setFundingDetailsOpen] = useState(false);
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
+  const { isAnyConnected } = useWalletPresence();
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
   const pnl = usePnl();
@@ -73,14 +77,8 @@ function Home() {
     lpRead,
     kybStatus,
     openAccountSetup,
+    openAddEmail,
   } = useAuthFlow();
-  const homeState = deriveHomeState({
-    hasSession: isAuthenticated,
-    isConnected,
-    lpRead,
-    kybStatus,
-  });
-
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
   const { balance: evmPlusdBalance, formattedBalance: evmPlusdFormatted } =
@@ -126,6 +124,15 @@ function Home() {
     : evmSplusdInPlusd;
 
   const activeDecimals = isStellar ? SAC_DECIMALS : 18;
+
+  const homeState = deriveHomeState({
+    hasSession: isAuthenticated,
+    isConnected,
+    lpRead,
+    kybStatus,
+    plusdIsZero: isDisplayZero(plusdBalanceActive, activeDecimals),
+    splusdIsZero: isDisplayZero(splusdSharesActive, activeDecimals),
+  });
 
   const plusdFormattedActive: string | undefined = isStellar
     ? stellarPlusd.hasTrustline && stellarPlusd.balance != null
@@ -199,6 +206,9 @@ function Home() {
   };
   const onUnstake = () =>
     navigate({ to: "/stake", search: { tab: "unstake" } });
+  const onViewStatus = () =>
+    navigate({ to: "/account", search: { state: undefined } });
+  const onAddFunds = () => setFundingDetailsOpen(true);
 
   const onSignUp = () => openAuthFlow("create-account");
 
@@ -212,7 +222,7 @@ function Home() {
         data-testid="home-main"
       >
         <WelcomeHeader
-          isConnected={isConnected}
+          isReturning={isAuthenticated || isAnyConnected}
           data-testid="home-welcome-header"
         />
 
@@ -363,6 +373,72 @@ function Home() {
                 <QnaSection />
               </div>
             </div>
+          ) : homeState === "wallet-only" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant="get-plusd"
+                balanceLabel={splusdBalanceFormatted}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="7149:16787"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  layout="compact"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  layout="compact"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  stakeDisabled={stakeDisabled}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="7149:16152"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="verify"
+                  onStartVerification={openAddEmail}
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
           ) : homeState === "unverified" ? (
             <div
               className="grid w-full grid-cols-7 gap-4"
@@ -416,6 +492,209 @@ function Home() {
                 <AddUsdCard
                   variant="verify"
                   onStartVerification={openAccountSetup}
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
+          ) : homeState === "kyb-pending" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant="get-plusd"
+                balanceLabel={splusdBalanceFormatted}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:98773"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  layout="compact"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  layout="compact"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  stakeDisabled={stakeDisabled}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:98538"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="verifying"
+                  onViewStatus={onViewStatus}
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
+          ) : homeState === "plusd-held" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant="stake-or-add-usd"
+                balanceLabel={splusdBalanceFormatted}
+                onAddFunds={onAddFunds}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:97461"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  layout="compact"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  compactVariant="balance"
+                  compactBalanceLabel={plusdFormattedActive}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  layout="compact"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  stakeDisabled={stakeDisabled}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6701:97493"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="unlocked"
+                  className="flex-1"
+                  onAddFunds={onAddFunds}
+                  data-testid="home-add-usd-card"
+                />
+                <EarnedCard layout="compact" data-testid="home-earned-card" />
+              </div>
+
+              <div
+                className="col-span-7 col-start-1 row-start-3"
+                data-testid="home-qna-wrapper"
+              >
+                <QnaSection />
+              </div>
+            </div>
+          ) : homeState === "kyb-problem" ? (
+            <div
+              className="grid w-full grid-cols-7 gap-4"
+              data-testid="home-dashboard-grid"
+            >
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                variant={isConnected ? "get-plusd" : "connect-wallet"}
+                onConnectWallet={openConnectModal}
+                balanceLabel={splusdBalanceFormatted}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
+                data-testid="home-portfolio-placeholder"
+              />
+
+              <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+                <RecentActivityCard
+                  className="!absolute inset-0 min-h-0 overflow-hidden"
+                  padding="md"
+                  data-testid="home-recent-activity-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
+                data-node-id="6702:104425"
+                data-testid="home-balances-stack"
+              >
+                <StartHereCard
+                  layout="compact"
+                  onBuy={onBuy}
+                  onSell={onSell}
+                  sellDisabled={sellDisabled}
+                  data-testid="home-start-here-card"
+                />
+                <StakeCard
+                  layout="compact"
+                  onStake={onStake}
+                  onUnstake={onUnstake}
+                  stakeDisabled={stakeDisabled}
+                  data-testid="home-stake-card"
+                />
+              </div>
+
+              <div
+                className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4"
+                data-node-id="6702:104190"
+                data-testid="home-add-usd-stack"
+              >
+                <AddUsdCard
+                  variant="declined"
+                  onViewStatus={onViewStatus}
                   data-testid="home-add-usd-card"
                 />
                 <EarnedCard layout="compact" data-testid="home-earned-card" />
@@ -506,6 +785,11 @@ function Home() {
           )}
         </Card>
       </main>
+
+      <FundingDetailsModal
+        open={fundingDetailsOpen}
+        onDismiss={() => setFundingDetailsOpen(false)}
+      />
     </div>
   );
 }

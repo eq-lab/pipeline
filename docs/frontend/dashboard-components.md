@@ -168,6 +168,22 @@ The compact subtitle reads **"Convert with USDC 1:1"** — the state-1/state-2 f
 the `"empty"` auto-disable for Sell; the compact branch takes `sellDisabled` at face value because
 both #1419 grids pass it explicitly.
 
+**`compactVariant="balance"` (#1424, Figma node `6701:97462`).** State 4's left card swaps the
+"Get PLUSD" copy for the served PLUSD balance: eyebrow `PLUSD Balance` (`6701:97465`, Body 16/22,
+primary ink), the PLUSD `CoinIcon` + the balance at Heading 20 (`6701:97471`) with its leading `$`
+stripped (Figma shows the bare number, e.g. `1,000.00`, not `$1,000.00`), and a caption
+`<$-prefixed label> USDC` (`6701:97473`, Caption 12/16, muted) — e.g. `$1,000.00 USDC`. Both render
+`—` when `compactBalanceLabel` is omitted (the balance not yet served), never a fabricated number.
+`compactVariant` defaults to `"get-plusd"`, the pre-existing copy above, so the zero/unverified/
+kyb-pending branches are untouched; only the home route's `"plusd-held"` branch passes `"balance"`.
+Buy (`6701:97475`) and Sell (`6701:97476`) are both enabled in this mode and carry the one Button
+treatment unique to #1419: Buy is tinted `rgba(184,191,190,0.12)` with a primary-ink label (a
+`className` override on `primary-blue`, matching the literal `StakeCard`'s compact disabled CTA
+already reuses), and Sell's label is **ink-muted** (`--color-pipeline-ink-muted`, an override on
+`secondary`, not an opacity hack) — confirmed against `get_design_context`'s
+`content-test/primary`/`content-test/secondary` bindings on the two buttons. States 1–3's navy-Buy/
+ink-Sell pair is unchanged; the override only ever applies when `compactVariant === "balance"`.
+
 **Accessibility:** `role="region"` + `aria-labelledby`; the PLUSD coin icon is decorative
 (`aria-hidden`); both CTAs are real `<button>` elements, and the disabled "Sell" button retains its
 semantic role so screen readers still announce it.
@@ -234,11 +250,24 @@ one at y=77 (`6701:97690`) is `hidden`.
 | Subtitle | `6701:97688` | "From senior loan coupons and T-bills", Caption 12/16, ink-muted; 4px below the title.     |
 | Button   | `6701:97693` | Single "Stake" `primary-blue` `size="m"` — 40px tall, 4px radius, 75px wide at this label. |
 
-The compact CTA's accessible name is its visible label, "Stake" (the circular CTA's
-`aria-label="Stake PLUSD"` does not apply). `stakeDisabled` is still honoured, but the label stays
-"Stake" — neither #1419 frame designs a disabled compact CTA, and neither grid passes the prop.
+The compact CTA's accessible name is its visible label (the circular CTA's
+`aria-label="Stake PLUSD"` does not apply).
 `layout="default"` keeps the 274px marketing card, the circular CTA and the `"splusd"` staked
 layout untouched for the `"legacy"` grid and the mobile stack.
+
+**Compact disabled CTA (#1423, Figma node `6701:98802`).** When `stakeDisabled` (or the mobile
+`"empty"` state) applies, the compact CTA's label and `aria-label` become "Nothing to Stake",
+matching the default branch's wording, and the button grows to the frame's 160×40 from the longer
+label plus the existing `size="m"` padding — no width is hard-coded. The disabled fill is a
+call-site `className` override, not a `Button` variant state: `disabled:bg-[rgba(184,191,190,0.12)]`,
+`disabled:hover:!bg-[rgba(184,191,190,0.12)]`,
+`disabled:text-[color:var(--color-pipeline-ink)]`, `disabled:opacity-[0.32]`. `primary-blue` has no
+disabled treatment of its own, and adding one would silently restyle `CreateAccountModal`,
+`SignInModal` and `ForgotPasswordModal`, whose frames nobody has re-checked — see
+`ui-components.md#button`. The literal reuses `circular-blue`'s existing
+`rgba(184,191,190,0.12)` rather than the `#bfbdbb1f` that `get_variable_defs` now resolves for
+`fill-test/primary` on this node; two shipped assertions pin the old literal and the per-channel
+delta at 12% alpha is sub-perceptual.
 
 **Accessibility:** `role="region"` + `aria-labelledby` referencing the "Stake PLUSD" heading id; the
 circular CTA has `aria-label="Stake PLUSD"` (or "Nothing to Stake" / "Stake More PLUSD" depending on
@@ -329,6 +358,34 @@ Heading M 28/36 and sits flush under the eyebrow (Figma `gap 0`), with the under
 chart are unchanged — both already matched the node. `variant="balance"` keeps the pre-#1419
 `min-h-[274px]` / `gap-6` / `padding="lg"` / Caption-eyebrow treatment for the `"legacy"` grid and
 the mobile stack.
+
+**`variant="get-plusd"` (#1423, Figma node `6701:98528`).** The KYB-pending grid's instance shares
+every bit of the compact geometry above (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
+eyebrow — the card branches on `isCompact = variant !== "balance"`), and swaps only the subtitle
+slot: an underlined brand-coloured router `Link` reading "Get PLUSD to start"
+(node `I6701:98528;1100:74697;6539:2331`, 139×22, Body 16/22) pointing at
+`/deposit?direction=deposit`, the same target the `"balance"` variant's caption link uses. Both
+compact variants render **no** unrealized-PnL caption, carry `data-variant`, and drop the PnL
+clause from the chart's `role="img"` aria-label; `"get-plusd"` ignores `mobileHomeState`. The
+balance heading is the route's served `balanceLabel`, so `$0.00` here is a formatted zero sPLUSD
+balance, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"balance"`),
+`6701:97649` (`"connect-wallet"`), `6701:98528` (`"get-plusd"`).
+
+**`variant="stake-or-add-usd"` (#1424, Figma node `6701:97451`).** State 4's instance shares the
+same compact geometry as `"get-plusd"` (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
+eyebrow) and keeps the Total Balance heading bound to the served `balanceLabel`
+(`formatBigintCurrency(splusdSharesActive)`, `$0.00` here since sPLUSD is zero — the Figma frame's
+`$1,000.00` is a PLUSD-holding mock, not served data; no combined-total endpoint exists, so summing
+PLUSD + sPLUSD client-side is not done). The subtitle slot swaps to the sentence
+"Stake PLUSD or Add USD to start earning": `get_design_context` on the frame's text node
+(`I6701:97451;1100:70504;6539:2331`) shows the **whole string** as one underlined brand-navy run,
+so rather than styling two link-like words inside plain text, all four pieces — a `Link` to
+`/stake?tab=stake` ("Stake PLUSD"), a `<button onClick={onAddFunds}>` ("Add USD"), and two plain
+`<span>`s ("or", "to start earning") — share the same `compactSubtitleClasses`/`sentenceTextClasses`
+typography, reproducing the frame's uniform underline exactly. New prop `onAddFunds?: () => void`.
+Like `"get-plusd"`, this variant renders no unrealized-PnL caption and ignores `mobileHomeState`;
+`data-node-id` per variant is now `1497:95048` (`"balance"`), `6701:97649` (`"connect-wallet"`),
+`6701:98528` (`"get-plusd"`), `6701:97451` (`"stake-or-add-usd"`).
 
 **Served series mode (#1138).** `GET /v1/positions/history` (backend #1116/#1135 — dense,
 window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
@@ -470,18 +527,15 @@ external-link icon button).
 **Responsive behavior:**
 
 - Desktop (`md+`): heading at 64px/64px (`--text-pipeline-title`, Figma frame `1497:94558`), stats
-  strip visible on the right. Always renders "Welcome" — connected desktop states are out of scope
-  for issue #466.
+  strip visible on the right.
 - Mobile (below `md`): heading at a raw 32px/36px (Figma mobile frame `1989:8292`; note this size
   is a literal, not a `-mobile` token variant like the other home cards), stats strip hidden here —
   the same stats render at the bottom of the home page via `HomeStatsStrip` in `routes/index.tsx`.
-  When `isConnected` is `true`, renders "Welcome back" (Figma connected frames `1988:7074`,
-  `1984:6501`, `1886:46777`).
 
-The `isConnected` prop is **mobile-only**; the Tailwind responsive utilities (`md:`) gate the copy
-change to viewports below 768px, and both "Welcome"/"Welcome back" variants are always rendered in
-the DOM with visibility toggled by CSS (not a JS conditional) so screen readers pick up the right
-string at each breakpoint without extra logic.
+The `isReturning` prop (default `false`) selects the single heading string, the same at every
+breakpoint: "Welcome back" when `true`, "Welcome" otherwise (Figma connected frames `7149:16033`,
+`1988:7074`, `1984:6501`, `1886:46777`). The home route supplies it as
+`isAuthenticated || isAnyConnected` (#1475); the header takes no wallet hooks.
 
 The exchange rate and APY stats are live, sourced from `HomeStatsStrip` (`useStakedPlusdConvertToAssets`
 and `useStats`). TVL remains hardcoded pending a separate issue.
@@ -600,25 +654,44 @@ scrolls away in normal flow, and the header pins once it reaches the viewport to
 above page content but below the fixed `z-[9999]` portals (mobile nav menu, the auth flow's own
 modal shells).
 
-**No wallet UI in the header (#1362).** Figma frames `6701:98403` (signed out) and `6701:97929`
-(signed in) show neither a `WalletPill` nor a "Connect Wallet" button in either auth state — wallet
-connection lives entirely on `/account` (`AccountWalletCard`, see `account-page.md`) now that the
-account page is reachable from the header. `TopBar.tsx` no longer reads any wallet hook
-(`useEvmWallet`/`useStellarWallet`/etc.) — see "Where wallet-connect entry points still live" below
-for what replaces the removed header CTA.
+**No wallet UI in the header (#1362), but a presence read as of #1458.** Figma frames `6701:98403`
+(signed out) and `6701:97929` (signed in) show neither a `WalletPill` nor a "Connect Wallet" button
+in either auth state — wallet connection lives entirely on `/account` (`AccountWalletCard`, see
+`account-page.md`) now that the account page is reachable from the header. `TopBar.tsx` reads no
+wallet hook beyond `useWalletPresence()` (`@/wallet`, issue #1458 — see [Hooks](./hooks.md)): a
+narrow `{ isAnyConnected, isSettled, disconnectAll }` surface over `useEvmWallet()` +
+`useStellarWallet()` only, deliberately **not** `useActiveWalletAccount`, which would mount
+`useEvmToken`/`useStellarToken` contract reads in the global header on every route. `TopBar` adds
+no wallet UI — no pill, no balance, no Connect button — only the presence boolean. See "Where
+wallet-connect entry points still live" below for what replaces the removed header CTA.
 
-**Signed-out state** (Figma node `6701:98403`): renders `Button variant="secondary"` "Sign In"
-(`topbar-sign-in-button`) and `Button variant="primary-dark"` "Sign Up" (`topbar-sign-up-button`).
-Both call `useAuthFlow().open(screen)` — `"sign-in"` / `"create-account"` respectively — opening
-the app-wide `EmailAuthFlow` instance (see `auth-components.md#authflowprovider`). No navigation
-and no menu; the header itself flips to the signed-in state once `useAuthSession().isAuthenticated`
-turns true (same-tab reactive via the session store).
+**Header icon rule (#1458): session *or* connected wallet, not session alone.**
+`showAccount = isAuthenticated || isAnyConnected` — a visitor with a connected wallet but no auth
+session sees the same account icon as a signed-in LP, reactively (flipping either source re-renders
+the right slot without a remount). This closes the gap where a wallet-only visitor used to see Sign
+In / Sign Up with nowhere to see the wallet they just connected. `isAnyConnected` is `evm.isConnected
+|| stellar.isConnected` — **any namespace**, not the active `useWalletView().kind` tab — so a
+visitor connected on EVM who switches to the Account page's Stellar tab does not lose the account
+icon or get bounced by the route gate (see
+[`account-page.md#route-gate`](./account-page.md#route-gate)). The `/account` wallet **card** keeps
+its own per-tab view semantics unchanged — only the header and the route gate use "any connected".
 
-**Signed-in state** (Figma node `6701:97929`): renders a single 48×48 icon button (`AccountGlyph`,
-Figma node `6701:97941`), `aria-label="Account"`, `data-testid="topbar-account-button"`. Clicking
-it navigates to `/account` directly — there is no dropdown/menu (per the #1362 Issue comment
-resolving the plan's open question). Sign-out lives on `/account` itself (`Log Out` button — see
-`account-page.md#seams-and-who-wires-them`).
+**Signed-out state** (Figma node `6701:98403`, now gated on `!showAccount`): renders
+`Button variant="secondary"` "Sign In" (`topbar-sign-in-button`) and `Button variant="primary-dark"`
+"Sign Up" (`topbar-sign-up-button`). Both call `useAuthFlow().open(screen)` — `"sign-in"` /
+`"create-account"` respectively — opening the app-wide `EmailAuthFlow` instance (see
+`auth-components.md#authflowprovider`). No navigation and no menu; the header flips to the account
+icon once either `useAuthSession().isAuthenticated` or `useWalletPresence().isAnyConnected` turns
+true (same-tab reactive).
+
+**Account-icon state** (Figma node `6701:97929`/`6701:98174` — same 48×48 `AccountGlyph` glyph for
+both the signed-in and wallet-only visitor): renders a single 48×48 icon button (`AccountGlyph`),
+`aria-label="Account"`, `data-testid="topbar-account-button"`. Clicking it navigates to `/account`
+directly — there is no dropdown/menu (per the #1362 Issue comment resolving the plan's open
+question). Sign-out/disconnect both live on `/account` itself (`Log Out` and the wallet card's
+`Disconnect` row — see
+[`account-page.md#wallet-only-variant-1458`](./account-page.md#wallet-only-variant-1458) and
+[`account-page.md#wallet-card`](./account-page.md#wallet-card)).
 
 **Wallet slot** (`topbar-wallet-slot`, #1125 — name kept for continuity even though it no longer
 renders wallet UI): `min-w-40 justify-end gap-2`, contains the `NetworkSwitcher` pill (unrelated
@@ -642,13 +715,11 @@ was the only always-visible "Connect Wallet" entry point. After removing it:
   with these.
 - Authenticated LPs reach it from `/account`'s `AccountWalletCard` (`Connect Wallet` button,
   already wired per #1284 — see `account-page.md#wallet-card`).
-- **Left unreachable:** there is no UI control to *disconnect* a wallet any more. The only
-  disconnect affordance was `AccountDropdown`'s "Disconnect" button (desktop) and
-  `MobileNavMenu`'s "Disconnect" button (mobile), both removed with the header's wallet UI;
-  `AccountWalletCard` has no disconnect action (`useActiveWalletAccount` exposes `connect` only).
-  Logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`) — likely resolved by adding a
-  disconnect action to `AccountWalletCard` in a follow-up, but that is a design decision (no Figma
-  disconnect control exists there either) outside #1362's scope.
+- **Disconnect is reachable again (#1458, closes TD-111).** `AccountWalletCard` now renders a
+  `Disconnect` row after the `Wallet`/`USDC balance` rows on every connected state (signed-in or
+  wallet-only) — `useActiveWalletAccount` gained `disconnect`, dispatching to the active
+  namespace's own `disconnect()`. See `account-page.md#wallet-card`. (Between #1362 and #1458 there
+  was briefly no UI control to disconnect a wallet; that gap is now closed.)
 
 **Active nav** is derived from the current URL:
 
@@ -693,15 +764,15 @@ page, not pinned: the banner is **non-sticky** and scrolls away in normal flow w
 
 ### AccountDropdown
 
-**Status: orphaned by #1362, no longer composed anywhere.** `TopBar` stopped rendering the
+**Status: orphaned by #1362, no longer composed anywhere (TD-112).** `TopBar` stopped rendering the
 `WalletPill` trigger + this dropdown when the header's right slot switched to the auth-state
 matrix (Sign In/Sign Up ↔ account icon) — see `### TopBar` above. The component and its test file
 are left in the tree (not deleted, to keep this change reviewable) rather than removed outright;
-logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`), a candidate either for deletion or
-for its namespace-toggle/disconnect pattern to be reused by `AccountWalletCard` (which currently
-has no disconnect affordance — see the "Where wallet-connect entry points still live" note above).
-The rest of this section documents the component as it existed before #1362, for that eventual
-reuse.
+logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`, TD-112), a candidate for deletion.
+`AccountWalletCard` gained its own `Disconnect` row directly (#1458, closed TD-111) rather than
+reusing this component's namespace-toggle/disconnect pattern, so TD-112 is now purely "delete this
+dead code," unrelated to TD-111. The rest of this section documents the component as it existed
+before #1362, kept for history.
 
 **Source:** `AccountDropdown.tsx` + `useAccountDropdown.ts`.
 
@@ -1554,19 +1625,77 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="verify"` (Figma node `6701:97695`, 246px) + `EarnedCard layout="compact"` (node `6701:97918`, 82px) stacked (node `6701:97694`) — Start Verification opens `openAccountSetup()`. |
    | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97650`) — `pt-4` + 16px heading + `gap-4` + 41px cells already matches.             |
 
-   Both #1419 branches are pixel-matched to their frames, shared cards included (human decision,
-   2026-10-07 — this supersedes the "composition only, card heights accepted" note from #1421). The
+   When `deriveHomeState` returns `"kyb-pending"` (signed in, wallet connected, `kyb_status`
+   `UnderReview`, both PLUSD and sPLUSD displaying as zero — state 3 of `home-screen-states.md`,
+   #1423, Figma frame `6701:98417`) the grid renders a fourth branch, built from the `"unverified"`
+   branch with two card swaps:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="get-plusd"` (Figma node `6701:98528`, 643×274 at (32,32)) — "Total Balance" / served `$0.00` / underlined brand `Get PLUSD to start` link to `/deposit?direction=deposit`; chart wired to `usePositionsHistory` as in the legacy branch. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:98427`, 477.71×634 at (690.29,32)) — unchanged.                             |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98773`, 313.14×344 at (32,322) = two 164px cards + 16px gap) — Buy navigates to `/deposit`, Sell disabled (`6701:98788`, 61×40 at 32% opacity), Stake CTA disabled as `Nothing to Stake` (`6701:98802`, 160×40). |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="verifying"` (Figma node `6701:98539`, 313.14×246, no `flex-1` — the card owns its height) + `EarnedCard layout="compact"` (node `6701:98762`, 313.14×82) stacked (node `6701:98538`) — `View Status` (`6701:98761`, 122×40 `primary-dark`) navigates to `/account` per the node's `Open Account` dev annotation. |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:98529`) — unchanged.                                                                      |
+
+   When `deriveHomeState` returns `"plusd-held"` (signed in, wallet connected, `kyb_status`
+   `"Passed"`, PLUSD non-zero, sPLUSD display-zero — state 4 of `home-screen-states.md`, #1424,
+   Figma frame `6701:97340`) the grid renders a fifth branch, built from the `"kyb-pending"` branch
+   with three card swaps:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="stake-or-add-usd"` (Figma node `6701:97451`, 642×274 at (32,32)) — "Total Balance" / served `$0.00` (sPLUSD binding unchanged) / the sentence "Stake PLUSD or Add USD to start earning", all four runs underlined brand navy: a `Link` to `/stake?tab=stake`, a `<button onClick={onAddFunds}>`, and two plain spans; chart wired to `usePositionsHistory` as in the legacy branch. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97519`, 477.71×634 at (690.29,32)) — unchanged; with PLUSD held `useRequests` populates real rows and the `View All` link (node `6701:97525`, 126×48). |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`). |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`. |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                      |
+
+   When `deriveHomeState` returns `"kyb-problem"` (signed in, `lpRead === "loaded"`,
+   `kyb_status` `ChangesRequested` or `Failed` — state 6 of `home-screen-states.md`, #1426, Figma
+   frame `6702:104071`) the grid renders a sixth branch, built from the `"kyb-pending"` branch with
+   two swaps. Unlike states 3–4, this branch is gated on `kyb_status` alone — no `isConnected`, no
+   balance check:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`6702:104180`)       | `PortfolioPlaceholderCard variant={isConnected ? "get-plusd" : "connect-wallet"}` — the only card that still branches on connection, since the frame itself is drawn connected but the state is not gated on it. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`6702:104081`) | `RecentActivityCard padding="md"` — unchanged from state 3/4.                                                                   |
+   | Balances        | col 1–2, row 2 (`6702:104425`)       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3/4 (Buy/Sell/Stake wired the same way, `sellDisabled`/`stakeDisabled` from the served balances). |
+   | AddUsdCard      | col 3–4, row 2 (`6702:104190`)       | `AddUsdCard variant="declined"` (Figma node `6702:104191`, 313.14×246, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `View` (`onViewStatus`) navigates to `/account`, the same seam state 3's `View Status` uses. |
+   | QnaSection      | col 1–7, row 3 (`6702:104181`)       | FAQ strip, 1136×89 — unchanged.                                                                                                  |
+
+   Full `declined` card geometry (illustration anchor, heading cap, bleed) is
+   `docs/frontend/bank-transfers.md#shape-b-frame-and-illustration-anchor-1430-1426`.
+
+   When `deriveHomeState` returns `"wallet-only"` (no auth session, wallet connected, both PLUSD
+   and sPLUSD display-zero — state 7 of `home-screen-states.md`, #1460, Figma frame `7149:16033`)
+   the grid renders a seventh branch, built from the `"kyb-pending"` branch with one card swap:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`7149:16142`)        | `PortfolioPlaceholderCard variant="get-plusd"` — same as state 3, `data-node-id` kept at the variant-keyed `6701:98528`.          |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`7149:16043`) | `RecentActivityCard padding="md"` — unchanged from state 3.                                                                 |
+   | Balances        | col 1–2, row 2 (`7149:16787`)        | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3 (no `compactVariant="balance"`: Buy stays default navy, Sell/Stake disabled). |
+   | AddUsdCard      | col 3–4, row 2 (`7149:16152`)        | `AddUsdCard variant="verify"` (same card state 2 uses, 246px, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `Start Verification` calls `openAddEmail()`, **not** `openAccountSetup()` (a no-op without a session). |
+   | QnaSection      | col 1–7, row 3 (`7149:16143`)        | FAQ strip, 1136×89 — unchanged.                                                                                                  |
+
+   All seven #1419 branches are pixel-matched to their frames, shared cards included (human
+   decision, 2026-10-07 — this supersedes the "composition only, card heights accepted" note from
+   #1421; the `"kyb-problem"` branch extended this to a sixth per the 2026-10-12 scope note that
+   only the `AddUsdCard` is pixel-traced for #1426; state 7 needed no new geometry at all — `7149:16033`
+   resolves to state 3's composition verbatim with the single `AddUsdCard` swap above). The
    grid itself needed no change: `grid-cols-7 gap-4` over a 1136px content box already yields the
    frames' 148.57px columns, so 2 cols = 313.14, 3 cols = 477.71 and 4 cols = 642.28. Card radii
    stay `--radius-pipeline-card` (4px) and button radii `--radius-pipeline-button` (4px) —
    `get_variable_defs` resolves the frames' `radius/radius-xxl` and `radius/radius-s` to 4, which
    the frame screenshots confirm (the 24px/8px literals in `get_design_context`'s output are
    stale fallbacks, not the applied mode). The `"legacy"` grid and the mobile stack keep today's
-   card look until states 3–6 land.
+   card look until state 5 lands.
 
 **Mobile (below md) visual structure — single-column stack**, rendered directly (no outer white Card wrapper — Figma frame `1989:8292` uses the page background, not a white card):
 
-1. `WelcomeHeader` — title only (32px), stats strip hidden. On mobile the `isConnected` prop drives "Welcome back" vs "Welcome" copy; the prop is ignored on desktop (the desktop block renders at md+ instead).
+1. `WelcomeHeader` — title only (32px), stats strip hidden. The route passes `isReturning={isAuthenticated || isAnyConnected}`, the same string at every breakpoint (#1475).
 2. `ConnectWalletPromoCard` / `PortfolioPlaceholderCard` — full width, 256px tall.
 3. A flex row (Figma node `1989:9006`): left = `StartHereCard` + `EarnedCard` stacked, `flex-1` (node `1989:9007`); right = `StakeCard`, fixed 189px wide, 224px tall.
 4. `RecentActivityCard` — shown only when connected with a non-empty mobile home state (States B/C). Per issue #466 answer Q6: if there is no activity the entire block is hidden on mobile.
@@ -1589,21 +1718,40 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 
 Only meaningful when `isConnected === true`; callers short-circuit to the disconnected layout otherwise.
 
-**Home state derivation (`deriveHomeState`, issues #1421/#1422):**
-`packages/frontend/src/components/homeState.ts` exports `HomeState = "zero" | "unverified" | "legacy"`,
+**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460):**
+`packages/frontend/src/components/homeState.ts` exports
+`HomeState = "zero" | "wallet-only" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
-`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus? })`. The precedence rule (not
-re-derived here — see `docs/product-specs/home-screen-states.md` for the authoritative six-state
-table and its precedence clause) is evaluated in order: `"zero"` whenever `hasSession` is `false`,
-regardless of `isConnected` (ignored by this seam); else `"unverified"` when `!isConnected` and
-either `lpRead === "absent"` or (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
-`"legacy"` (covers a connected wallet, `lpRead` `"unknown"`/`"error"`, and every other `kyb_status`,
-including the unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for
-`hasSession` and `lpRead`/`kybStatus` from `useAuthFlow()` — `AuthFlowProvider` already issues
-`GET /v1/lps/me` on every token change (see `docs/frontend/auth-components.md#authflowprovider`), so
-the route makes **no** `getMyLp` call of its own on this path. Only the desktop grid branches on
-`homeState`; the mobile stack keeps today's `isConnected`-only rendering unchanged (no mobile frame
-exists yet for states 1–2 — the composition stays flexible for one to slot in later).
+`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
+Both balance inputs default to `false` so an unpassed input can never promote a caller into
+`"kyb-pending"` / `"plusd-held"` / `"wallet-only"`. The precedence rule (not re-derived here — see
+`docs/product-specs/home-screen-states.md` for the authoritative seven-state table and its
+precedence clause) is evaluated in order: when `hasSession` is `false`, `"wallet-only"` if
+`isConnected && plusdIsZero && splusdIsZero`, else `"zero"` (this is the one short-circuit #1460
+changed — every sessionless caller still resolves to exactly one of these two, and can never reach
+the KYB branches below); else `"unverified"` when `!isConnected` and either `lpRead === "absent"` or
+(`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
+`"kyb-pending"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "UnderReview"` and both
+`plusdIsZero` and `splusdIsZero`; else `"plusd-held"` when `isConnected`, `lpRead === "loaded"`,
+`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"kyb-problem"` when
+`lpRead === "loaded"` and `kybStatus` is `"ChangesRequested"` or `"Failed"` — **no `isConnected` or
+balance check**, unlike the two branches above it; else `"legacy"` (covers a disconnected wallet, a
+non-zero sPLUSD balance, `lpRead` `"unknown"`/`"error"`, and every other `kyb_status`, including the
+unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for `hasSession`,
+`lpRead`/`kybStatus` from `useAuthFlow()`, and feeds the two balance inputs from
+`isDisplayZero(plusdBalanceActive, activeDecimals)` / `isDisplayZero(splusdSharesActive,
+activeDecimals)` — the same #1186 displayed-zero rule as `stakeDisabled` / `sellDisabled`. For the
+`"wallet-only"` branch the route also passes `openAddEmail` (from `useAuthFlow()`) rather than
+`openAccountSetup` to `AddUsdCard`'s `onStartVerification`, since `openAccountSetup` is a no-op
+without a session. `AuthFlowProvider` already issues `GET /v1/lps/me` on every token change (see
+`docs/frontend/auth-components.md#authflowprovider`), so the route makes **no** `getMyLp` call of
+its own on this path. Only the desktop grid branches on `homeState`; the mobile stack keeps today's
+`isConnected`-only rendering unchanged (no mobile frame exists for states 1–3 or 6 — the
+composition stays flexible for one to slot in later). State 7 deliberately leaves mobile untouched
+too: the mobile block never reads `homeState`, and a sessionless connected visitor with zero
+balances already renders `mobileHomeState === "empty"` (State A), which is this state's mobile
+reading — the only difference from a signed-in State A visitor is the greeting and the absence of a
+`Verify your account` card, for which no mobile frame exists.
 
 Token discipline: this composer adds no raw colors, fonts, sizes, or radii — every value comes from `@pipeline/ui/styles/theme.css` via component primitives or Tailwind utilities that resolve theme tokens.
 

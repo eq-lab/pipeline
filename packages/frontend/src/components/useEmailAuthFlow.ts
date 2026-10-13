@@ -8,7 +8,8 @@ export type EmailAuthScreen =
   | "sign-in"
   | "create-account"
   | "forgot-password"
-  | "otp";
+  | "otp"
+  | "add-email";
 
 export interface UseEmailAuthFlowOptions {
   open: boolean;
@@ -21,7 +22,8 @@ export interface UseEmailAuthFlowOptions {
 const NETWORK_ERROR_MESSAGE =
   "Network error — check your connection and try again.";
 const LOCKOUT_ERROR_MESSAGE = "Too many attempts. Try again in a minute.";
-const SUSPENDED_ERROR_MESSAGE = "This account is suspended. Contact support.";
+export const SUSPENDED_ERROR_MESSAGE =
+  "This account is suspended. Contact support.";
 const INVALID_CREDENTIALS_MESSAGE = "Incorrect email or password";
 const CAPTCHA_NOT_READY_MESSAGE =
   "Verification is still loading — please try again in a moment.";
@@ -48,8 +50,9 @@ export function useEmailAuthFlow({
   const [pendingEmail, setPendingEmail] = useState("");
   const [passwordServerError, setPasswordServerError] = useState<string>();
   const [signInFormError, setSignInFormError] = useState<string>();
-  const [createAccountFormError, setCreateAccountFormError] =
-    useState<string>();
+  const [signupFormError, setSignupFormError] = useState<string>();
+  const [otpBackScreen, setOtpBackScreen] =
+    useState<EmailAuthScreen>("sign-in");
   const [signupCaptchaToken, setSignupCaptchaToken] = useState<string>();
   const [otpCaptchaToken, setOtpCaptchaToken] = useState<string>();
   const [signupCaptchaStatus, setSignupCaptchaStatus] =
@@ -78,7 +81,8 @@ export function useEmailAuthFlow({
     setScreen(initialScreen);
     setPendingEmail("");
     clearSignInErrors();
-    setCreateAccountFormError(undefined);
+    setSignupFormError(undefined);
+    setOtpBackScreen("sign-in");
     setAutoResendResult(undefined);
     setOtpCaptchaToken(undefined);
     setOtpCaptchaStatus("loading");
@@ -178,17 +182,14 @@ export function useEmailAuthFlow({
     }
   }
 
-  async function handleCreateAccountSubmit({
-    email,
-    password,
-  }: {
-    email: string;
-    password: string;
-  }) {
-    setCreateAccountFormError(undefined);
+  async function submitSignup(
+    origin: "create-account" | "add-email",
+    { email, password }: { email: string; password: string },
+  ) {
+    setSignupFormError(undefined);
     const captchaToken = signupCaptchaToken;
     if (!captchaToken) {
-      setCreateAccountFormError(
+      setSignupFormError(
         signupCaptchaStatus === "error"
           ? undefined
           : signupCaptchaStatus === "expired"
@@ -208,10 +209,11 @@ export function useEmailAuthFlow({
       flowGenerationRef.current += 1;
       clearOtpCaptcha();
       setPendingEmail(email);
+      setOtpBackScreen(origin === "add-email" ? "add-email" : "sign-in");
       setScreen("otp");
     } catch (error) {
       if (generation !== flowGenerationRef.current) return;
-      setCreateAccountFormError(describeApiError(error));
+      setSignupFormError(describeApiError(error));
       throw error;
     } finally {
       if (generation === flowGenerationRef.current) {
@@ -219,6 +221,20 @@ export function useEmailAuthFlow({
         setSignupCaptchaToken(undefined);
       }
     }
+  }
+
+  function handleCreateAccountSubmit(credentials: {
+    email: string;
+    password: string;
+  }) {
+    return submitSignup("create-account", credentials);
+  }
+
+  function handleAddEmailSubmit(credentials: {
+    email: string;
+    password: string;
+  }) {
+    return submitSignup("add-email", credentials);
   }
 
   async function handleOtpVerify(code: string) {
@@ -249,12 +265,51 @@ export function useEmailAuthFlow({
     }
   }
 
+  function goToSignIn() {
+    flowGenerationRef.current += 1;
+    autoResendPendingRef.current = false;
+    setAutoResendResult(undefined);
+    clearOtpCaptcha();
+    clearSignInErrors();
+    setScreen("sign-in");
+  }
+
+  function goToCreateAccount() {
+    flowGenerationRef.current += 1;
+    clearSignInErrors();
+    setScreen("create-account");
+  }
+
+  function goToForgotPassword() {
+    flowGenerationRef.current += 1;
+    clearSignInErrors();
+    setScreen("forgot-password");
+  }
+
+  function goToAddEmail() {
+    flowGenerationRef.current += 1;
+    autoResendPendingRef.current = false;
+    setAutoResendResult(undefined);
+    clearOtpCaptcha();
+    clearSignInErrors();
+    setSignupFormError(undefined);
+    setScreen("add-email");
+  }
+
+  function goBackFromOtp() {
+    if (otpBackScreen === "add-email") {
+      goToAddEmail();
+    } else {
+      goToSignIn();
+    }
+  }
+
   return {
     screen,
     pendingEmail,
     passwordServerError,
     signInFormError,
-    createAccountFormError,
+    signupFormError,
     signupCaptchaReady: signupCaptchaToken !== undefined,
     signupCaptchaStatus,
     otpCaptchaStatus,
@@ -265,7 +320,7 @@ export function useEmailAuthFlow({
       setSignupCaptchaToken(token || undefined);
       if (token) {
         setSignupCaptchaStatus("ready");
-        setCreateAccountFormError(undefined);
+        setSignupFormError(undefined);
       }
     },
     onOtpToken: (token: string) => {
@@ -284,28 +339,16 @@ export function useEmailAuthFlow({
     retryOtpCaptcha: () => otpTurnstileRef.current?.retry(),
     handleSignInSubmit,
     handleCreateAccountSubmit,
+    handleAddEmailSubmit,
     handleOtpVerify,
     handleOtpResend,
     handleContinueWithWallet,
     dismiss,
     clearSignInErrors,
-    goToSignIn: () => {
-      flowGenerationRef.current += 1;
-      autoResendPendingRef.current = false;
-      setAutoResendResult(undefined);
-      clearOtpCaptcha();
-      clearSignInErrors();
-      setScreen("sign-in");
-    },
-    goToCreateAccount: () => {
-      flowGenerationRef.current += 1;
-      clearSignInErrors();
-      setScreen("create-account");
-    },
-    goToForgotPassword: () => {
-      flowGenerationRef.current += 1;
-      clearSignInErrors();
-      setScreen("forgot-password");
-    },
+    goToSignIn,
+    goToCreateAccount,
+    goToForgotPassword,
+    goToAddEmail,
+    goBackFromOtp,
   };
 }

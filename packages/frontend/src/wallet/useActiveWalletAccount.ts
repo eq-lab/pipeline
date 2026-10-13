@@ -18,6 +18,7 @@ export interface UseActiveWalletAccountResult {
   truncatedAddress: string | undefined;
   formattedBalance: string | undefined;
   connect: () => void;
+  disconnect: () => void;
 }
 
 export function useActiveWalletAccount(): UseActiveWalletAccountResult {
@@ -55,5 +56,6 @@ export function useActiveWalletAccount(): UseActiveWalletAccountResult {
     truncatedAddress: address ? truncateAddress(address) : undefined,
     formattedBalance,
     connect: open,
+    disconnect: kind === "evm" ? evm.disconnect : stellar.disconnect,
   };
 }

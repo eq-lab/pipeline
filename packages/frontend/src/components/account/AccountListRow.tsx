@@ -2,7 +2,7 @@
 import React from "react";
 
 export interface AccountListRowProps extends Omit<
-  React.HTMLAttributes<HTMLDivElement>,
+  React.HTMLAttributes<HTMLElement>,
   "title"
 > {
   leading: React.ReactNode;
@@ -10,6 +10,7 @@ export interface AccountListRowProps extends Omit<
   title: string;
   trailing?: React.ReactNode;
   variant?: "card" | "plain";
+  onActivate?: () => void;
 }
 
 export function AccountListRow({
@@ -18,6 +19,7 @@ export function AccountListRow({
   title,
   trailing,
   variant = "card",
+  onActivate,
   className,
   ...rest
 }: AccountListRowProps) {
@@ -25,18 +27,25 @@ export function AccountListRow({
     "flex w-full items-center gap-3",
     "rounded-[var(--radius-pipeline-card)]",
     variant === "card" ? "bg-[color:var(--color-pipeline-surface)] p-4" : "p-2",
+    onActivate
+      ? [
+          "text-left",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+          "focus-visible:ring-[var(--color-pipeline-brand)]",
+        ].join(" ")
+      : "",
     className,
   ]
     .filter(Boolean)
     .join(" ");
 
-  return (
-    <div className={composed} {...rest}>
+  const content = (
+    <>
       {leading}
-      <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <p
+      <span className="flex min-w-0 flex-1 flex-col justify-center">
+        <span
           className={[
-            "truncate",
+            "block truncate",
             "font-[family-name:var(--font-body)]",
             "text-[length:var(--text-pipeline-caption)]",
             "leading-[var(--text-pipeline-caption--line-height)]",
@@ -44,10 +53,10 @@ export function AccountListRow({
           ].join(" ")}
         >
           {caption}
-        </p>
-        <p
+        </span>
+        <span
           className={[
-            "truncate",
+            "block truncate",
             "font-[family-name:var(--font-body)]",
             "text-[length:var(--text-pipeline-body)]",
             "leading-[var(--text-pipeline-body--line-height)]",
@@ -55,9 +64,23 @@ export function AccountListRow({
           ].join(" ")}
         >
           {title}
-        </p>
-      </div>
+        </span>
+      </span>
       {trailing}
+    </>
+  );
+
+  if (onActivate) {
+    return (
+      <button type="button" onClick={onActivate} className={composed} {...rest}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={composed} {...rest}>
+      {content}
     </div>
   );
 }

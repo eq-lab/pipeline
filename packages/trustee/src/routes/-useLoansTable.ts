@@ -70,8 +70,6 @@ export interface CcrCell {
   percent: string;
   /** Colour band, or `null` when CCR is unavailable (renders neutral). */
   band: CcrBand | null;
-  /** Staleness age from `ccr_reported_at`, e.g. `"1h"` / `"26h"`; `—` when never reported. */
-  age: string;
 }
 
 /** One formatted, display-ready row of the active-loan table. */
@@ -167,27 +165,6 @@ export function formatNearestPayment(
   return { text: formatMaturityDate(nextPaymentUnix), overdue: false };
 }
 
-/** Formats `ccr_reported_at` as an age (`"1h"` / `"26h"`); unreported/future → `"—"`. */
-export function formatCcrAge(
-  reportedAtUnix: number | null | undefined,
-  nowMs: number,
-): string {
-  if (
-    reportedAtUnix == null ||
-    !Number.isFinite(reportedAtUnix) ||
-    reportedAtUnix <= 0
-  ) {
-    return "—";
-  }
-  const diffMs = nowMs - reportedAtUnix * 1000;
-  if (diffMs < 0) return "—";
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 72) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
-
 // Formats the spot sub-line, e.g. "$4,500 · −18% 7d". spec:
 // trustee-flows.md#never-fabricate-defaults-exec-plan-risk-3.
 export function formatSpot(
@@ -232,14 +209,8 @@ function formatTenor(days: number | null): string {
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
 
-/**
- * Maps one `LoanBookEntry` to a formatted table row. `nowMs` is injected (not
- * read from `Date.now()`) so the CCR-age formatting is deterministic under test.
- */
-export function mapEntryToRow(
-  entry: LoanBookEntry,
-  nowMs: number,
-): LoanTableRow {
+/** Maps one `LoanBookEntry` to a formatted table row. */
+export function mapEntryToRow(entry: LoanBookEntry): LoanTableRow {
   const servedCcrBps = entry.ccr_bps;
   const ccr: CcrCell | null =
     servedCcrBps == null || !Number.isFinite(servedCcrBps)
@@ -247,7 +218,6 @@ export function mapEntryToRow(
       : {
           percent: `${Math.round(servedCcrBps / 100)}%`,
           band: classifyCcr(servedCcrBps),
-          age: formatCcrAge(entry.ccr_reported_at, nowMs),
         };
 
   return {
@@ -300,20 +270,19 @@ function countByStatus(rows: LoanTableRow[]): Record<LoanTab, number> {
 }
 
 /**
- * Pure derivation of the view-model from a loaded response + the active tab +
- * the current time. Split out so the mapping is unit-testable without the query
- * layer (the hook is a thin `useLoanBook` wrapper around it).
+ * Pure derivation of the view-model from a loaded response + the active tab.
+ * Split out so the mapping is unit-testable without the query layer (the hook
+ * is a thin `useLoanBook` wrapper around it).
  */
 export function buildLoansView(
   data: LoanBookResponse,
   activeTab: LoanTab,
-  nowMs: number,
 ): {
   summary: LoansSummaryView;
   counts: Record<LoanTab, number>;
   rows: LoanTableRow[];
 } {
-  const allRows = data.loans.map((entry) => mapEntryToRow(entry, nowMs));
+  const allRows = data.loans.map((entry) => mapEntryToRow(entry));
   const counts = countByStatus(allRows);
   const rows = allRows.filter((r) => tabMatches(activeTab, r.status));
   return { summary: mapSummary(data.summary), counts, rows };
@@ -371,8 +340,7 @@ export function useLoansTable(activeTab: LoanTab): UseLoansTableResult {
     };
   }
 
-  const nowMs = Date.now();
-  const { summary, counts, rows } = buildLoansView(data, activeTab, nowMs);
+  const { summary, counts, rows } = buildLoansView(data, activeTab);
   return {
     state: data.loans.length === 0 ? "empty" : "ready",
     errorMessage: null,

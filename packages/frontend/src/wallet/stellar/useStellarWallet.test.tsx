@@ -114,6 +114,49 @@ describe("useStellarWallet — no mocks, no real wallet", () => {
   });
 });
 
+describe("useStellarWallet — isSettled (issue #1458)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    _resetStellarConnectionStoreForTests();
+    mockGetAddress.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    _resetStellarConnectionStoreForTests();
+  });
+
+  it("is false before the mount-effect getAddress() resolves, true after (success path)", async () => {
+    let resolveGetAddress: (value: { address: string }) => void;
+    mockGetAddress.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGetAddress = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+    expect(result.current.isSettled).toBe(false);
+
+    resolveGetAddress!({ address: STELLAR_ADDR });
+    await waitFor(() => expect(result.current.isSettled).toBe(true));
+  });
+
+  it("is true after the mount-effect getAddress() rejects", async () => {
+    mockGetAddress.mockRejectedValue(new Error("no prior connection"));
+
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+    await waitFor(() => expect(result.current.isSettled).toBe(true));
+  });
+
+  it("is true immediately on the mock path", () => {
+    localStorage.setItem("pipeline.mock.wallet.stellar.address", STELLAR_ADDR);
+    mockGetAddress.mockRejectedValue(new Error("no prior connection"));
+
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+    expect(result.current.isSettled).toBe(true);
+  });
+});
+
 describe("useStellarWallet — localStorage mock", () => {
   beforeEach(() => {
     localStorage.clear();

@@ -16,7 +16,11 @@ import type { ChartSeries } from "./usePortfolioChart";
 import type { AxisTicks } from "@/utils/chartAxis";
 
 export type MobileHomeState = "empty" | "plusd" | "splusd";
-export type PortfolioPlaceholderCardVariant = "balance" | "connect-wallet";
+export type PortfolioPlaceholderCardVariant =
+  | "balance"
+  | "connect-wallet"
+  | "get-plusd"
+  | "stake-or-add-usd";
 
 export interface PortfolioPlaceholderCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -32,9 +36,34 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   yAxisDomainMax?: number | null;
   variant?: PortfolioPlaceholderCardVariant;
   onConnectWallet?: () => void;
+  onAddFunds?: () => void;
 }
 
 const HEADING_ID_BASE = "portfolio-placeholder-card-title";
+
+const compactSubtitleClasses = [
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "text-[color:var(--color-pipeline-brand)]",
+  "underline underline-offset-2",
+  "cursor-pointer bg-transparent p-0",
+].join(" ");
+
+const sentenceTextClasses = [
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "text-[color:var(--color-pipeline-brand)]",
+  "underline underline-offset-2",
+].join(" ");
+
+const NODE_IDS: Record<PortfolioPlaceholderCardVariant, string> = {
+  balance: "1497:95048",
+  "connect-wallet": "6701:97649",
+  "get-plusd": "6701:98528",
+  "stake-or-add-usd": "6701:97451",
+};
 
 const TABS = [
   { id: "7d", label: "7D" },
@@ -71,6 +100,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     yAxisDomainMax = null,
     variant = "balance",
     onConnectWallet,
+    onAddFunds,
     ...rest
   },
   ref,
@@ -113,10 +143,13 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
 
   const isConnectWallet = variant === "connect-wallet";
+  const isGetPlusd = variant === "get-plusd";
+  const isStakeOrAddUsd = variant === "stake-or-add-usd";
+  const isCompact = variant !== "balance";
 
   const composed = [
     "relative flex flex-col",
-    isConnectWallet ? "h-[274px] gap-2" : "min-h-[274px] gap-6",
+    isCompact ? "h-[274px] gap-2" : "min-h-[274px] gap-6",
     "w-full",
     "overflow-hidden",
     "!border-t !border-r-[3px] !border-b-[3px] !border-l",
@@ -140,29 +173,27 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     <Card
       ref={ref}
       variant="yellow"
-      padding={isConnectWallet ? "md" : "lg"}
+      padding={isCompact ? "md" : "lg"}
       role="region"
       aria-labelledby={HEADING_ID}
       className={composed}
-      data-node-id={isConnectWallet ? "6701:97649" : "1497:95048"}
-      {...(isConnectWallet ? { "data-variant": variant } : {})}
+      data-node-id={NODE_IDS[variant]}
+      {...(isCompact ? { "data-variant": variant } : {})}
       {...rest}
     >
       <div className="flex flex-col items-start gap-4 md:flex-row md:items-start md:justify-between">
-        <header
-          className={isConnectWallet ? "flex flex-col" : "flex flex-col gap-1"}
-        >
+        <header className={isCompact ? "flex flex-col" : "flex flex-col gap-1"}>
           <span
             className={[
               "font-[family-name:var(--font-body)]",
-              isConnectWallet
+              isCompact
                 ? "text-[length:var(--text-pipeline-body)]"
                 : "text-[length:var(--text-pipeline-caption)]",
-              isConnectWallet
+              isCompact
                 ? "leading-[var(--text-pipeline-body--line-height)]"
                 : "leading-[var(--text-pipeline-caption--line-height)]",
               "font-[var(--font-weight-regular)]",
-              isConnectWallet
+              isCompact
                 ? "text-[color:var(--color-pipeline-ink)]"
                 : "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
@@ -189,17 +220,43 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               <button
                 type="button"
                 onClick={onConnectWallet}
-                className={[
-                  "font-[family-name:var(--font-body)]",
-                  "text-[length:var(--text-pipeline-body)]",
-                  "leading-[var(--text-pipeline-body--line-height)]",
-                  "text-[color:var(--color-pipeline-brand)]",
-                  "underline underline-offset-2",
-                  "cursor-pointer bg-transparent p-0",
-                ].join(" ")}
+                className={compactSubtitleClasses}
               >
                 Connect wallet
               </button>
+            ) : isGetPlusd ? (
+              <Link
+                to="/deposit"
+                search={{ direction: "deposit" as const }}
+                className={compactSubtitleClasses}
+                data-node-id="I6701:98528;1100:74697;6539:2331"
+              >
+                Get PLUSD to start
+              </Link>
+            ) : isStakeOrAddUsd ? (
+              <p
+                className="m-0"
+                data-node-id="I6701:97451;1100:70504;6539:2331"
+              >
+                <Link
+                  to="/stake"
+                  search={{ tab: "stake" as const }}
+                  className={compactSubtitleClasses}
+                  data-testid="home-balance-stake-link"
+                >
+                  Stake PLUSD
+                </Link>{" "}
+                <span className={sentenceTextClasses}>or</span>{" "}
+                <button
+                  type="button"
+                  onClick={onAddFunds}
+                  className={compactSubtitleClasses}
+                  data-testid="home-balance-add-funds-link"
+                >
+                  Add USD
+                </button>{" "}
+                <span className={sentenceTextClasses}>to start earning</span>
+              </p>
             ) : (
               <>
                 <span
@@ -266,7 +323,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             className="relative flex-1"
             role="img"
             aria-label={
-              isConnectWallet
+              isCompact
                 ? `Total balance for ${periodLabel}: ${balanceLabel}`
                 : `Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`
             }

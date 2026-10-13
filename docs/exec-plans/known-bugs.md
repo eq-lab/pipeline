@@ -17,7 +17,7 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-26: The Stellar whitelist phase skips its disallow pass on every tick with no allow candidates
+### BUG-27: The Stellar whitelist phase skips its disallow pass on every tick with no allow candidates
 - **Date:** 2026-10-08
 - **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar`. Found while mirroring it as `relayer/evm/whitelist.rs` (`docs/exec-plans/active/evm-relayer-v5.md`).
 - **Symptom:** With Elliptic enabled, a profile that turns KYT-failed (`kyt_status = 2`) keeps `on_chain_allowed = TRUE` until some other profile becomes an allow candidate. On a quiet chain that can take arbitrarily long.
@@ -265,3 +265,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Resolved:** 2026-08-12 by #1081 — added `addressUpdatedEvent`/`disconnectEvent` subscribe stubs to the test's kit mock, matching the sibling test files.
 - **Location:** `packages/frontend/src/api/useRequests.test.tsx`
 - **Symptom:** Whole suite failed at module load: `No "addressUpdatedEvent" export is defined on the "@creit.tech/stellar-wallets-kit" mock` (raised from `wallet-connect`'s module-scope subscription in `connectionStore.ts`).
+
+### BUG-26: A malformed EVM contract address is silently dropped, and an all-malformed config indexes foreign logs
+- **Tracked:** not yet filed — found while comparing the two indexer arms for #1435; relevant to #1436.
+- **Date:** 2026-10-09
+- **Location:** `packages/worker/src/indexer/mod.rs:54-83` (five `filter_map(|a| a.parse().ok())` blocks), fed by the five `env_csv_require` calls in `IndexerJobSettings::from_chain_env` (`packages/worker/src/indexer/config.rs`).
+- **Symptom:** Two failure modes, by how much of the config is malformed. **Partial** — a typo in one of `CHAIN_<id>_DM_CONTRACTS` / `_WQ_` / `_SPLUSD_` / `_LOAN_REGISTRY_` / `_YIELD_MINTER_CONTRACTS` leaves that group's address list empty or short, and the indexer starts, logs "indexer job started", polls, and indexes nothing from that contract — no error, no warning, cursor advancing past the un-indexed blocks. **Total** — if every list is malformed, `EvmEventPoller::poll` flattens them into an empty `all_addresses`, and `Filter::serialize` omits the `address` field entirely for an empty set (`FilterSet::to_value_or_array` returns `None` at len 0, `alloy-rpc-types-eth-0.8.3/src/filter.rs:136-143`, used at `:568`). `eth_getLogs` then returns **every** log in the range, and since the decode closures in `evm_parsers.rs` match on topic0 alone and never re-check `log.address`, any foreign contract emitting a known signature is decoded and written to `contract_logs` attributed to ours. Silent data corruption, not silent absence.
+- **Root cause:** `env_csv_require` validates only that the CSV is non-empty — it never checks that an entry is a valid address — and `mod.rs` then discards unparseable entries with `.ok()` rather than propagating the failure. The Stellar arm does the opposite: `validate_contract_id` checks length and alphabet, `stellar_strkey::Contract::from_string` checks the CRC on the minter id, and duplicate ids across roles abort startup.
+- **Impact:** Latent today (no EVM chain is in `CHAINS`), but #1436 configures five EVM address lists by hand against a fresh mainnet deployment — exactly the situation both modes are invisible in. The advancing cursor makes either unrecoverable without a manual cursor reset, and the total mode additionally requires deleting the foreign rows.
+- **Workaround:** Verify each configured address appears in the startup logs / produces rows before trusting a new EVM chain config.
+- **Suggested fix:** Parse addresses at config time with `?` instead of `.ok()`, and reject an empty resolved address set outright — an unfiltered `eth_getLogs` is never what the caller meant.
