@@ -5,6 +5,11 @@ Issue: [#1465](https://github.com/eq-lab/pipeline/issues/1465)
 Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md#session-module),
 [docs/product-specs/api-authorization-email.md](../../product-specs/api-authorization-email.md#frontend)
 
+**Amended by #1473 (2026-10-13):** the seam is now `subscribeSessionEnded` (reason `suspended`) and
+the subscriber is `useSessionEndSignOut`, which also handles token expiry and authenticated `401`s
+(see [1473-session-expiry.md](../epic-1247/1473-session-expiry.md)). The behaviour here is unchanged:
+still silent, no toast, wallets not touched.
+
 **Scope note:** No Figma frame exists for this behaviour (confirmed with the Issue) — there is no
 visual to verify. Copy is the already-shipped `SUSPENDED_ERROR_MESSAGE` string, surfaced only on the
 existing sign-in form's `formError` slot; chrome is otherwise the shipped `TopBar`/`SignInModal`. The
@@ -53,8 +58,8 @@ app (e.g. a stale tab, or a decision landing between two of their own requests).
 
 **Expected outcomes:**
 
-- Step 1: the request answers `403 account_suspended`. The global `subscribeAccountSuspended` seam
-  fires; `useSuspensionSignOut` clears the session and navigates to `/` (`replace: true`).
+- Step 1: the request answers `403 account_suspended`. The global `subscribeSessionEnded` seam
+  fires with `suspended`; `useSessionEndSignOut` clears the session and navigates to `/` (`replace: true`).
 - Step 2: the header reverts to Sign In / Sign Up on its own (`useAuthSession`'s existing reactivity,
   #1364) — no manual refresh needed.
 - Step 3: the app lands on `/`. **No modal opens and no toast appears** — the sign-out is silent. The
@@ -98,7 +103,7 @@ app (e.g. a stale tab, or a decision landing between two of their own requests).
 
 **Expected outcomes:**
 
-- Step 1: `subscribeAccountSuspended` listeners are not notified. The session is untouched; the LP
+- Step 1: `subscribeSessionEnded` listeners are not notified. The session is untouched; the LP
   stays signed in and on the current page. The request's own `ApiError` still rejects normally for
   its caller to handle.
 

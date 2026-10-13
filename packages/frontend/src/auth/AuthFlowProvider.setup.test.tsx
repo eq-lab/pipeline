@@ -1,6 +1,12 @@
 // spec: docs/frontend/auth-components.md#authflowprovider
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { AuthFlowProvider } from "./AuthFlowProvider";
 import { useAuthFlow } from "./AuthFlowContext";
 import { saveSession, clearSession } from "./session";
@@ -269,6 +275,24 @@ describe("LP read state published via context (#1422)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("lp-read")).toHaveTextContent("unknown"),
     );
+  });
+
+  it("unmounts an open setup modal and resets lpRead once the session is cleared (#1473)", async () => {
+    mockGet.mockResolvedValueOnce({ documents: [], kyb_status: "NotStarted" });
+    render(
+      <AuthFlowProvider>
+        <LpReadConsumer />
+      </AuthFlowProvider>,
+    );
+    signIn();
+    await screen.findByRole("dialog");
+
+    act(() => clearSession());
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("lp-read")).toHaveTextContent("unknown");
   });
 
   it("openAccountSetup() reopens CompanyDocsModal after the user dismissed it", async () => {

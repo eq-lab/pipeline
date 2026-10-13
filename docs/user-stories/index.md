@@ -195,6 +195,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1373 LP Account page: load and edit profile and documents from LP API](https://github.com/eq-lab/pipeline/issues/1373) | [1373-account-page-lp-api.md](./epic-1247/1373-account-page-lp-api.md) | Initial |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
+| [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
 
 ---
 
@@ -237,7 +238,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1458 Header + Account: wallet connected without a session shows the account icon; Account page wallet-only variant with Add email and Disconnect](https://github.com/eq-lab/pipeline/issues/1458) | [1458-wallet-only-account.md](./epic-1419/1458-wallet-only-account.md) | Initial |
 | [#1459 Add email screen for a wallet-connected visitor — email + password, then OTP, then session](https://github.com/eq-lab/pipeline/issues/1459) | [1459-add-email-screen.md](./epic-1419/1459-add-email-screen.md) | Initial |
 | [#1460 Home state 7: wallet connected, not signed in, PLUSD = 0, sPLUSD = 0](https://github.com/eq-lab/pipeline/issues/1460) | [1460-home-wallet-only-state.md](./epic-1419/1460-home-wallet-only-state.md) | Initial |
-| [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Initial |
+| [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
 
 ---
 

@@ -85,19 +85,22 @@ screen), and `429` (lockout). `verifyOtp` rejects with `401` on any invalid,
 expired, used, or out-of-attempts code. See `src/auth/session.ts` for storing
 the returned token.
 
-### `ACCOUNT_SUSPENDED` / `subscribeAccountSuspended(listener)`
+### `ACCOUNT_SUSPENDED` / `subscribeSessionEnded(listener)`
 
 `ACCOUNT_SUSPENDED` is the `"account_suspended"` literal, exported so callers never duplicate the
-string. `subscribeAccountSuspended` registers a listener fired by `apiFetch` itself — synchronously,
-before the `ApiError` is thrown — whenever a response is `403`, its parsed error body equals
-`ACCOUNT_SUSPENDED`, **and** the request was authenticated (`init.headers` carried an `Authorization`
-key). An unrelated 403, and any 403 on an unauthenticated request such as `login`, never notifies.
-`packages/frontend/src/auth/useSuspensionSignOut.ts` is the one subscriber, mounted once in
+string. `subscribeSessionEnded` registers a listener receiving a `SessionEndReason`
+(`"expired" | "unauthorized" | "suspended"`). `apiFetch` emits `suspended` and `unauthorized` itself,
+but never `expired` (that one comes from the session timer) — synchronously, before the `ApiError`
+is thrown: `suspended` when a response is `403`, its parsed error body equals `ACCOUNT_SUSPENDED`,
+**and** the request was authenticated (`init.headers` carried an `Authorization` key); `unauthorized`
+when a response is `401` and the request was authenticated. An unrelated 403, and any 401/403 on an
+unauthenticated request such as `login`, never notifies. The rejection is unchanged.
+`packages/frontend/src/auth/useSessionEndSignOut.ts` is the one subscriber, mounted once in
 `routes/__root.tsx`; see `docs/frontend/auth-components.md#session-module`.
 
 ```ts
-const unsubscribe = subscribeAccountSuspended(() => {
-  // sign the LP out
+const unsubscribe = subscribeSessionEnded((reason) => {
+  // sign the LP out; reason is "unauthorized" | "suspended" here
 });
 ```
 

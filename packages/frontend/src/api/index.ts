@@ -12,9 +12,10 @@ export {
   apiFetch,
   ApiError,
   ACCOUNT_SUSPENDED,
-  subscribeAccountSuspended,
+  subscribeSessionEnded,
 } from "./client";
 export { signup, verifyOtp, resendOtp, login } from "./auth";
+export type { SessionEndReason } from "./client";
 export type { TokenResponse } from "./auth";
 export {
   getMyLp,
