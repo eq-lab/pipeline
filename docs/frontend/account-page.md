@@ -326,7 +326,7 @@ today's behaviour) and renders the already-shipped stand-in copy,
 `Your account verification was declined. Profile and document changes are unavailable.`, in the
 read-error block with its `Retry` button suppressed — retrying a terminal refusal can never
 succeed. **Since #1465 this is a defensive fallback, not the realistic path**: the same
-`account_suspended` 403 fires the global `subscribeAccountSuspended` seam
+`account_suspended` 403 fires the global `subscribeSessionEnded` seam
 (`docs/frontend/auth-components.md#session-module`), which signs the LP out and lands them on `/`
 before `/account` can render this branch — it stays shipped and tested for a tree mounted without
 the root subscriber (today, component tests) or a future authenticated call site the header sniff

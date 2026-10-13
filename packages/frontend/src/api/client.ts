@@ -47,13 +47,21 @@ export class ApiError extends Error {
 
 export const ACCOUNT_SUSPENDED = "account_suspended";
 
-const accountSuspendedListeners = new Set<() => void>();
+export type SessionEndReason = "expired" | "unauthorized" | "suspended";
 
-export function subscribeAccountSuspended(listener: () => void): () => void {
-  accountSuspendedListeners.add(listener);
+const sessionEndedListeners = new Set<(reason: SessionEndReason) => void>();
+
+export function subscribeSessionEnded(
+  listener: (reason: SessionEndReason) => void,
+): () => void {
+  sessionEndedListeners.add(listener);
   return () => {
-    accountSuspendedListeners.delete(listener);
+    sessionEndedListeners.delete(listener);
   };
+}
+
+function publishSessionEnded(reason: SessionEndReason): void {
+  [...sessionEndedListeners].forEach((listener) => listener(reason));
 }
 
 function requestIsAuthenticated(init?: RequestInit): boolean {
@@ -129,7 +137,9 @@ export async function apiFetch<T>(
       message === ACCOUNT_SUSPENDED &&
       requestIsAuthenticated(init)
     ) {
-      [...accountSuspendedListeners].forEach((listener) => listener());
+      publishSessionEnded("suspended");
+    } else if (response.status === 401 && requestIsAuthenticated(init)) {
+      publishSessionEnded("unauthorized");
     }
     throw new ApiError(response.status, message, payload);
   }

@@ -912,6 +912,8 @@ The provider owns `isOpen`/`screen` state and renders one `<EmailAuthFlow open i
 onClose={close} onConnectWallet={openConnectModal} />`. A successful sign-in flips the reactive
 session store; the provider fetches the LP and offers the account-setup modal for a missing LP or
 empty document list. There is no navigation or toast.
+Its `token` effect is also what resets setup and review state, and `lpRead`, on any session end
+(#1473 regression test); no separate reset call exists.
 
 `CompanyDocsModal.onSubmitSuccess` is distinct from `onLpChange`: it fires only after
 `POST /v1/lps/me/submit` or a reconciliation read confirms UnderReview. Fully successful uploads
@@ -955,7 +957,8 @@ product spec's "Bot defense" section).
 `packages/frontend/src/auth/session.ts` + `useAuthSession.ts` (#1265, extended by #1371). `saveSession({ token,
 expires_in, email })` stores the token, expiry, and normalized authenticated email as JSON under the
 `pipeline.auth.session` `localStorage` key and notifies subscribers; `readSession()` returns
-`null` (clearing the key) once `expiresAt` has passed, or on any parse/shape failure;
+`null` (clearing the key, without notifying) once `expiresAt` has passed, or on any parse/shape
+failure — reactivity at `expiresAt` comes from the timer in `useSessionEndSignOut`, see below;
 `clearSession()` removes the key. `authHeaders()` returns `{ Authorization: "Bearer <token>" }`
 when a live session exists, `{}` otherwise. `useAuthSession()` is a `useSyncExternalStore` hook
 exposing `{ token, email, expiresAt, isAuthenticated, signOut }`; reactivity is same-tab only (mirrors
@@ -963,19 +966,36 @@ the wallet module's `connectionStore.ts` pattern) — it does not listen for cro
 events, so a sign-out in one tab does not live-update another tab's `isAuthenticated` until that
 tab next re-reads the store.
 
-**In-session forced sign-out (#1465).** `api/client.ts` exports `ACCOUNT_SUSPENDED` ("account_suspended")
-and `subscribeAccountSuspended(listener)`. `apiFetch` calls every listener synchronously, before
-throwing the `ApiError`, when a response is `403`, its parsed `error` body equals `ACCOUNT_SUSPENDED`,
-and the request was authenticated (`init.headers` carries an `Authorization` key, case-insensitively,
-across the `Headers` / record / tuple-array shapes) — an unrelated 403, or any 403 on an
-unauthenticated request such as login, never notifies. `useSuspensionSignOut()`
-(`auth/useSuspensionSignOut.ts`) subscribes once from `RootLayout` (`routes/__root.tsx`, mounted
-inside the router): on notification it returns early if `readSession()` is already `null` — the
-guard that makes several in-flight 403s sign out exactly once — otherwise it calls `clearSession()`
-and navigates to `/` (`replace: true`). There is no message at this point: the session is cleared and
-the app lands on `/` silently, no modal, no toast. The header reverts to Sign In / Sign Up on its own
-through `useAuthSession`'s existing reactivity (#1364); the suspension copy only ever appears on the
-next sign-in attempt, through the login-403 path documented under EmailAuthFlow/SignInModal below.
+**Session end (#1465, #1473).** `api/client.ts` exports `ACCOUNT_SUSPENDED` ("account_suspended"),
+`type SessionEndReason = "expired" | "unauthorized" | "suspended"`, and
+`subscribeSessionEnded(listener)` (replacing `subscribeAccountSuspended`). `apiFetch` publishes
+synchronously, before throwing the unchanged `ApiError`: `suspended` on a `403` whose parsed `error`
+equals `ACCOUNT_SUSPENDED`, and `unauthorized` on any `401`, in both cases only when the request was
+authenticated (`init.headers` carries an `Authorization` key, case-insensitively, across the
+`Headers` / record / tuple-array shapes). An unrelated 403, or any 403/401 on an unauthenticated
+request, never publishes: `login` and `verify-otp` send no `Authorization` header (`authHeaders()` is
+`{}` without a live session), so a wrong-password 401 stays a form error. `apiFetch` never emits
+`expired`; that reason belongs to the timer.
+
+`useSessionEndSignOut()` (`auth/useSessionEndSignOut.ts`) is mounted once by `RootLayout`
+(`routes/__root.tsx`, inside the router and the toast provider). It owns the subscription, with a
+`readSession()` once-guard so several in-flight 401/403s end the session exactly once, and the expiry
+timer: an effect keyed on `useAuthSession().expiresAt`, re-armed by each `saveSession`, not armed
+when the delay exceeds `2 ** 31 - 1` ms, and unguarded, because `readSession()` is already `null`
+(and has cleared the key without notifying) at that moment. Every reason runs the same routine:
+`clearSession()`, then navigate to `/` with `replace: true`. Wallets stay connected (the wallet is
+display-only, #1460), so the visitor lands in home state 7 or the wallet-only Account variant; the
+header reverts to Sign In / Sign Up through `useAuthSession`'s reactivity (#1364).
+
+For `expired` and `unauthorized` the hook also shows a `Toast` (`id: "session-expired"`, so retries
+upsert rather than stack; `tone: "neutral"`; title "Your session expired. Sign in again to
+continue."; action "Sign in" → `useAuthFlow().open("sign-in")`; `durationMs: 10000`). `suspended` stays
+silent: no toast, no modal; the suspension copy only appears on the next sign-in attempt, through the
+login-403 path documented under EmailAuthFlow/SignInModal below. Known limits: re-saving the same
+token with a longer expiry would not re-arm the timer (`useSyncExternalStore` bails on an identical
+snapshot; both `saveSession` call sites follow a fresh `login`/`verify-otp` token), and a root
+re-render between `expiresAt` and the timer callback cancels the timer, flipping the header without
+the toast or navigation.
 
 ### Diagnostics preview seam
 
