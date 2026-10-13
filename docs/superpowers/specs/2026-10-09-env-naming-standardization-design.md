@@ -157,13 +157,20 @@ of the deliverable so no one does forty substitutions by hand.
 | `CHAIN_<id>_INDEXER_POLLING_INTERVAL_MS` | `CHAIN_<id>_<TYPE>_INDEXER_POLLING_INTERVAL_MS` |
 | `CHAIN_<id>_INDEXER_LOG_CONFIRMATIONS_DELAY` | `CHAIN_<id>_EVM_INDEXER_LOG_CONFIRMATIONS_DELAY` |
 
-### Price-poller — deferred, defined but not implemented in this issue
+### Price-poller — implemented in #1470
 
 | Old | New |
 |---|---|
 | `CHAIN_<id>_PRICE_POLLER_STELLAR_RPC_URL` | `CHAIN_<id>_STELLAR_PRICE_POLLER_RPC_URL` |
 | `CHAIN_<id>_PRICE_POLLER_STELLAR_NETWORK_PASSPHRASE` | `CHAIN_<id>_STELLAR_PRICE_POLLER_NETWORK_PASSPHRASE` |
-| `CHAIN_<id>_PRICE_POLLER_STELLAR_INTERVAL_SECS` | `CHAIN_<id>_STELLAR_PRICE_POLLER_INTERVAL_SECS` |
+| `CHAIN_<id>_PRICE_POLLER_STELLAR_INTERVAL_SECS` | `CHAIN_<id>_STELLAR_PRICE_POLLER_POLL_INTERVAL_SECS` |
+| `JOB_PRICE_POLLER_START_BLOCK` | `CHAIN_<id>_EVM_PRICE_POLLER_START_BLOCK` |
+| `JOB_PRICE_POLLER_BLOCK_INTERVAL` | `CHAIN_<id>_EVM_PRICE_POLLER_BLOCK_INTERVAL` |
+| `JOB_PRICE_POLLER_POLL_INTERVAL_SECS` | `CHAIN_<id>_EVM_PRICE_POLLER_POLL_INTERVAL_SECS` |
+| `JOB_PRICE_POLLER_RPC_DELAY_MS` | `CHAIN_<id>_EVM_PRICE_POLLER_RPC_DELAY_MS` |
+| — (from `vaults` table) | `CHAIN_<id>_<TYPE>_PRICE_POLLER_STAKED_PLUSD_ADDRESS` |
+
+The Stellar interval deviates from the mapping originally drafted here (`…_INTERVAL_SECS`) so both arms spell the setting the same way; see `2026-10-12-multi-chain-price-poller-design.md`.
 
 ### Relayer — deferred, defined but not implemented in this issue
 
@@ -201,7 +208,7 @@ Job-level `JOB_*` variables are untouched: they are not per-chain, so the scheme
 
 ## Out of scope
 
-- The relayer, price-poller and API renames — defined above, implemented in follow-up issues.
+- The relayer and API renames — defined above, implemented in follow-up issues.
   That defers the one naming question still open: `WhitelistRegistry` (EVM) and `AccessManager`
   (Stellar) are genuinely different contract names for the same role, so the pair either keeps
   two names or is renamed to the role. It belongs with the relayer.

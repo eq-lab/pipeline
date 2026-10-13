@@ -7,7 +7,7 @@ use pipeline_worker::indexer::stellar::run_stellar_indexer_job;
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
 use pipeline_worker::price_poller::{
-    run_price_poller_job, run_stellar_price_poller_job, PricePollerSettings,
+    run_evm_price_poller_job, run_stellar_price_poller_job, PricePollerSettings,
 };
 use pipeline_worker::relayer::config::RelayerSettings;
 use pipeline_worker::relayer::relayer_job::run_relayer_job;
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!(chain_id, "price poller job started");
             tokio::spawn(async move {
                 let result = match s {
-                    PricePollerSettings::Evm(s) => run_price_poller_job(s, repo).await,
+                    PricePollerSettings::Evm(s) => run_evm_price_poller_job(s, repo).await,
                     PricePollerSettings::Stellar(s) => run_stellar_price_poller_job(s, repo).await,
                 };
                 if let Err(e) = result {

@@ -72,6 +72,33 @@ impl PositionRepo {
         Ok(rows)
     }
 
+    pub async fn upsert_vault(
+        &self,
+        chain_id: i64,
+        address: &str,
+        name: &str,
+        asset_decimals: i16,
+        share_decimals: i16,
+    ) -> anyhow::Result<Vault> {
+        let row = sqlx::query_as::<_, Vault>(
+            "INSERT INTO vaults (chain_id, address, name, asset_decimals, share_decimals)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (chain_id, address) DO UPDATE SET
+                 name = EXCLUDED.name,
+                 asset_decimals = EXCLUDED.asset_decimals,
+                 share_decimals = EXCLUDED.share_decimals
+             RETURNING id, chain_id, address, name, asset_decimals, share_decimals",
+        )
+        .bind(chain_id)
+        .bind(address)
+        .bind(name)
+        .bind(asset_decimals)
+        .bind(share_decimals)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn insert_share_price(
         &self,
         chain_id: i64,
