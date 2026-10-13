@@ -83,6 +83,28 @@ describe("useWalletPresence — isAnyConnected", () => {
   });
 });
 
+describe("useWalletPresence — onlyConnectedKind", () => {
+  const cases: Array<[boolean, boolean, "evm" | "stellar" | undefined]> = [
+    [true, false, "evm"],
+    [false, true, "stellar"],
+    [true, true, undefined],
+    [false, false, undefined],
+  ];
+  it.each(cases)(
+    "evm=%s stellar=%s gives %s",
+    (evmConnected, stellarConnected, expected) => {
+      setWallets({
+        evmConnected,
+        evmSettled: true,
+        stellarConnected,
+        stellarSettled: true,
+      });
+      const { result } = renderHook(() => useWalletPresence());
+      expect(result.current.onlyConnectedKind).toBe(expected);
+    },
+  );
+});
+
 describe("useWalletPresence — isSettled", () => {
   it("false while EVM is reconnecting", () => {
     setWallets({

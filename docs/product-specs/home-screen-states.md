@@ -118,6 +118,12 @@ Until state 5 lands, every other signed-in session renders today's pre-#1419
 wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
 `packages/frontend/src/components/homeState.ts`).
 
+## Heading
+
+The home heading is independent of the derived state. At every breakpoint it reads "Welcome back"
+when `isAuthenticated || isAnyConnected` (the header account-icon condition, #1458) and "Welcome"
+otherwise, i.e. state 1 only. Matches Figma for states 1–4 and 7 (#1475).
+
 ## Card composition (states 1–4, 7)
 
 States 1–3 share one desktop composition — a 1136px-wide 7-column grid inside a 1200px white

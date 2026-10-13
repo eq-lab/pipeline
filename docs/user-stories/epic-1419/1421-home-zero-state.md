@@ -53,7 +53,8 @@ account, and has not connected a wallet.
 - Step 6: `QnaSection` renders unchanged ("Questions & answers" / "How it works?" / "What is
   PLUSD?" / "What is sPLUSD?"), spanning the full 1136px content width.
 - Across the whole grid: the white panel spans the 1200px content column edge to edge, so the cards
-  measure 1136px across and the welcome heading sits 32px to the left of the first card (#1422).
+  measure 1136px across and the welcome heading, which reads "Welcome" (state 1 is the only state
+  with the plain heading, #1475), sits 32px to the left of the first card (#1422).
 
 ---
 

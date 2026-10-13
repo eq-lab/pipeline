@@ -133,7 +133,8 @@ wallet-only visitor still sees the zero-state grid on `/` until #1460 lands.
 
 **Steps:**
 
-1. Load `/account` (default tab is `evm`). Observe the wallet card.
+1. Load `/account` — the card opens on the connected EVM tab regardless of the persisted view
+   (#1475). Observe the wallet card.
 2. Click the `Stellar` tab.
 
 **Expected outcomes:**

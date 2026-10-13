@@ -2312,3 +2312,54 @@ describe("Home page — wallet-only state (#1460)", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("Home page — heading per state (#1475)", () => {
+  const heading = () => screen.getByTestId("home-welcome-heading").textContent;
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("zero state reads Welcome", async () => {
+    mockAuthState.isAuthenticated = false;
+    renderHome();
+    await waitFor(() => expect(heading()).toBe("Welcome"));
+  });
+
+  it("wallet-only (EVM connected) reads Welcome back", async () => {
+    mockAuthState.isAuthenticated = false;
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    renderHome();
+    await waitFor(() => expect(heading()).toBe("Welcome back"));
+  });
+
+  it("wallet-only with Stellar connected on the EVM view reads Welcome back", async () => {
+    mockAuthState.isAuthenticated = false;
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.address",
+      STELLAR_MOCK_ADDRESS,
+    );
+    localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
+    renderHome();
+    await waitFor(() => expect(heading()).toBe("Welcome back"));
+  });
+
+  it("signed-in disconnected reads Welcome back", async () => {
+    mockAuthState.isAuthenticated = true;
+    renderHome();
+    await waitFor(() => expect(heading()).toBe("Welcome back"));
+  });
+
+  it("signed-in connected reads Welcome back", async () => {
+    mockAuthState.isAuthenticated = true;
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    renderHome();
+    await waitFor(() => expect(heading()).toBe("Welcome back"));
+  });
+});

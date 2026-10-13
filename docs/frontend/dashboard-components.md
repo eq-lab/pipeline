@@ -527,18 +527,15 @@ external-link icon button).
 **Responsive behavior:**
 
 - Desktop (`md+`): heading at 64px/64px (`--text-pipeline-title`, Figma frame `1497:94558`), stats
-  strip visible on the right. Always renders "Welcome" — connected desktop states are out of scope
-  for issue #466.
+  strip visible on the right.
 - Mobile (below `md`): heading at a raw 32px/36px (Figma mobile frame `1989:8292`; note this size
   is a literal, not a `-mobile` token variant like the other home cards), stats strip hidden here —
   the same stats render at the bottom of the home page via `HomeStatsStrip` in `routes/index.tsx`.
-  When `isConnected` is `true`, renders "Welcome back" (Figma connected frames `1988:7074`,
-  `1984:6501`, `1886:46777`).
 
-The `isConnected` prop is **mobile-only**; the Tailwind responsive utilities (`md:`) gate the copy
-change to viewports below 768px, and both "Welcome"/"Welcome back" variants are always rendered in
-the DOM with visibility toggled by CSS (not a JS conditional) so screen readers pick up the right
-string at each breakpoint without extra logic.
+The `isReturning` prop (default `false`) selects the single heading string, the same at every
+breakpoint: "Welcome back" when `true`, "Welcome" otherwise (Figma connected frames `7149:16033`,
+`1988:7074`, `1984:6501`, `1886:46777`). The home route supplies it as
+`isAuthenticated || isAnyConnected` (#1475); the header takes no wallet hooks.
 
 The exchange rate and APY stats are live, sourced from `HomeStatsStrip` (`useStakedPlusdConvertToAssets`
 and `useStats`). TVL remains hardcoded pending a separate issue.
@@ -1698,7 +1695,7 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 
 **Mobile (below md) visual structure — single-column stack**, rendered directly (no outer white Card wrapper — Figma frame `1989:8292` uses the page background, not a white card):
 
-1. `WelcomeHeader` — title only (32px), stats strip hidden. On mobile the `isConnected` prop drives "Welcome back" vs "Welcome" copy; the prop is ignored on desktop (the desktop block renders at md+ instead).
+1. `WelcomeHeader` — title only (32px), stats strip hidden. The route passes `isReturning={isAuthenticated || isAnyConnected}`, the same string at every breakpoint (#1475).
 2. `ConnectWalletPromoCard` / `PortfolioPlaceholderCard` — full width, 256px tall.
 3. A flex row (Figma node `1989:9006`): left = `StartHereCard` + `EarnedCard` stacked, `flex-1` (node `1989:9007`); right = `StakeCard`, fixed 189px wide, 224px tall.
 4. `RecentActivityCard` — shown only when connected with a non-empty mobile home state (States B/C). Per issue #466 answer Q6: if there is no activity the entire block is hidden on mobile.

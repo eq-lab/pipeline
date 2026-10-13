@@ -63,7 +63,8 @@ has not connected a wallet.
   30%-alpha ink, with no trailing icon.
 - Step 6: `QnaSection` renders unchanged, spanning the full 1136px content width.
 - Across the whole grid: the white panel spans the 1200px content column edge to edge, so the cards
-  measure 1136px across and the welcome heading sits 32px to the left of the first card.
+  measure 1136px across and the welcome heading, which reads "Welcome back" (signed-in,
+  disconnected; matches frame `6701:97540`, #1475), sits 32px to the left of the first card.
 
 ---
 

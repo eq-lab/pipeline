@@ -60,6 +60,7 @@ account), and whose connected wallet holds neither PLUSD nor sPLUSD.
 - Step 6: `QnaSection` renders unchanged, spanning the full 1136px content width.
 - Step 7: the header shows the account icon (Figma `7149:16828`), not Sign In / Sign Up — shipped
   by #1458; this issue only verifies it is not regressed.
+- Across the whole grid: the welcome heading reads "Welcome back" (#1475).
 
 ---
 
@@ -144,8 +145,8 @@ account), and whose connected wallet holds neither PLUSD nor sPLUSD.
 - The mobile block branches on `isConnected` alone, never on `homeState`, so this visitor already
   renders `mobileHomeState === "empty"` (State A): `PortfolioPlaceholderCard` with `$0.00`,
   `StartHereCard` + `EarnedCard` left, `StakeCard` with a disabled "Nothing to Stake" right, no
-  `RecentActivityCard`, `HomeStatsStrip` at the bottom. The heading reads "Welcome back" (mobile
-  keys the greeting on `isConnected`, independent of session).
+  `RecentActivityCard`, `HomeStatsStrip` at the bottom. The heading reads "Welcome back" (the
+  heading keys on `isAuthenticated || isAnyConnected` at every breakpoint, #1475).
 - The only visible difference from a signed-in State A visitor is the absence of a
   `Verify your account` card, for which no mobile frame exists — not a gap introduced by this
   issue.
