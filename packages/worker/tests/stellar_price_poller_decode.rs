@@ -9,8 +9,11 @@ use base64::Engine;
 use bigdecimal::BigDecimal;
 use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract};
 use stellar_xdr::curr::{
-    HostFunction, Int128Parts, Limits, OperationBody, ReadXdr, ScVal, TransactionEnvelope, WriteXdr,
+    Hash, HostFunction, Int128Parts, Limits, OperationBody, ReadXdr, ScAddress, ScVal,
+    TransactionEnvelope, WriteXdr,
 };
+
+use pipeline_worker::stellar::scval::{scval_contract, scval_u32};
 
 use pipeline_worker::stellar::tx::{build_invoke_envelope, envelope_to_base64};
 
@@ -142,4 +145,58 @@ fn normalize_price_one_to_one() {
 
     let expected: BigDecimal = "1".parse().unwrap();
     assert_eq!(price, expected);
+}
+
+// ── no-arg view envelopes and u32 / Address decoders ─────────────────────────
+
+fn invoked_function(function: &str) -> (String, usize) {
+    let envelope = build_invoke_envelope(
+        &Ed25519Pub([0u8; 32]),
+        0,
+        0,
+        &fixture_vault(),
+        function,
+        vec![],
+        vec![],
+        None,
+    );
+    let TransactionEnvelope::Tx(env) = &envelope else {
+        panic!("expected Tx envelope");
+    };
+    let OperationBody::InvokeHostFunction(ihf) = &env.tx.operations[0].body else {
+        panic!("expected InvokeHostFunction");
+    };
+    let HostFunction::InvokeContract(args) = &ihf.host_function else {
+        panic!("expected InvokeContract");
+    };
+    (args.function_name.0.to_utf8_string_lossy(), args.args.len())
+}
+
+#[test]
+fn decimals_and_query_asset_envelopes_have_no_args() {
+    assert_eq!(invoked_function("decimals"), ("decimals".to_owned(), 0));
+    assert_eq!(
+        invoked_function("query_asset"),
+        ("query_asset".to_owned(), 0)
+    );
+}
+
+#[test]
+fn scval_u32_decodes_only_u32() {
+    assert_eq!(scval_u32(&ScVal::U32(7)), Some(7));
+    assert_eq!(scval_u32(&ScVal::I128(Int128Parts { hi: 0, lo: 7 })), None);
+    assert_eq!(scval_u32(&ScVal::Void), None);
+}
+
+#[test]
+fn scval_contract_decodes_only_contract_addresses() {
+    let vault = fixture_vault();
+    let contract = ScVal::Address(ScAddress::Contract(Hash(vault.0).into()));
+    assert_eq!(scval_contract(&contract), Some(vault));
+
+    let account = ScVal::Address(ScAddress::Account(stellar_xdr::curr::AccountId(
+        stellar_xdr::curr::PublicKey::PublicKeyTypeEd25519(stellar_xdr::curr::Uint256([0u8; 32])),
+    )));
+    assert_eq!(scval_contract(&account), None);
+    assert_eq!(scval_contract(&ScVal::U32(1)), None);
 }

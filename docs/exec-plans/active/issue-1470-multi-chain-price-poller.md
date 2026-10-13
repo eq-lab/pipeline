@@ -369,3 +369,24 @@ and `stellar_config`, which share `CHAIN_<id>_*` key space.
   dispatch.
 - **`scripts/check-chain-env-names.sh`** header — step 8.
 - No `docs/exec-plans/tech-debt-tracker.md` or `known-bugs.md` entry (Q1 resolved as (a)).
+
+## Progress
+
+- [x] 1. `PositionRepo::upsert_vault`
+- [x] 2. Stellar decoders `scval_u32`, `scval_contract`
+- [x] 3. Settings rewrite (`price_poller/config.rs`)
+- [x] 4. EVM arm moved to `price_poller/evm/`
+- [x] 5. Stellar arm (`simulate_view`, bootstrap, single-vault loop)
+- [x] 6. `price_poller/mod.rs` reduced
+- [x] 7. `main.rs` entry point renamed
+- [x] 8. Rename guard extended
+- [x] 9. `.env.example`
+- [x] 10. Tests (`price_poller_config.rs` new; `price_poller.rs`, `stellar_price_poller_decode.rs` extended; `stellar_price_poller_config.rs` deleted; `chain_config.rs` trimmed)
+- [x] 11. Docs (`staking.md`, env-naming spec, `ARCHITECTURE.md`)
+- [x] 12. Verify (clippy, `cargo test --all`, guard script, lint-docs)
+
+## Decision Log
+
+- `simulate_view` returns `latest_ledger` as `u64` (the RPC type), not `u32` as the plan wrote; `fetch_share_price` still converts with `i64::try_from`.
+- EVM decimals convert with `i16::from(u8)` (infallible) instead of `i16::try_from`; Stellar `u32` decimals use `i16::try_from`.
+- The EVM address check requires a `0x` prefix explicitly, because `Address::from_str` also accepts unprefixed hex and the spec says `0x…`.

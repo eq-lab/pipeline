@@ -6,7 +6,7 @@
 ///
 /// Indexer-specific log-shape parsers (e.g. `parse_vault_deposit`) remain in
 /// `indexer/stellar/parsers.rs` — only the generic protocol-level decoders live here.
-use stellar_xdr::curr::{Limits, ReadXdr, ScVal};
+use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
 /// Decode a base64-encoded XDR `ScVal::I128` into an `i128`.
 pub fn extract_i128(b64: &str) -> Option<i128> {
@@ -21,4 +21,18 @@ pub fn extract_i128(b64: &str) -> Option<i128> {
 /// `hi` sign-extends on the shift; `lo` is `u64` so the `or` cannot collide with it.
 pub fn i128_from_parts(hi: i64, lo: u64) -> i128 {
     ((hi as i128) << 64) | (lo as i128)
+}
+
+pub fn scval_u32(val: &ScVal) -> Option<u32> {
+    match val {
+        ScVal::U32(v) => Some(*v),
+        _ => None,
+    }
+}
+
+pub fn scval_contract(val: &ScVal) -> Option<stellar_strkey::Contract> {
+    match val {
+        ScVal::Address(ScAddress::Contract(id)) => Some(stellar_strkey::Contract(id.0 .0)),
+        _ => None,
+    }
 }
