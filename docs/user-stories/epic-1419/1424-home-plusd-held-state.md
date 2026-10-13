@@ -81,6 +81,7 @@ staked any of it yet.
   bottom-right). `EarnedCard` is the compact 313.14 × 82 card: "Earnings" over "Tracked once you
   stake" (no served PnL total yet) or the served total once #1313 lands.
 - Step 6: `QnaSection` renders unchanged — the FAQ strip at (32, 682).
+- Across the whole grid: the welcome heading reads "Welcome back" (#1475).
 
 ---
 

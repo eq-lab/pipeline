@@ -1,9 +1,9 @@
 // spec: docs/frontend/account-page.md#route
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ENV } from "@/lib/env";
 import { useAuthSession } from "@/auth";
-import { useWalletPresence } from "@/wallet";
+import { useWalletPresence, useWalletView } from "@/wallet";
 import { AccountPage } from "@/components/account/AccountPage";
 import {
   parseAccountStatePreview,
@@ -21,7 +21,18 @@ function AccountRoute() {
   const { state } = Route.useSearch();
   const navigate = useNavigate();
   const { isAuthenticated, signOut } = useAuthSession();
-  const { isAnyConnected, isSettled, disconnectAll } = useWalletPresence();
+  const { isAnyConnected, isSettled, onlyConnectedKind, disconnectAll } =
+    useWalletPresence();
+  const { kind, setKind } = useWalletView();
+  const entryTabChosen = useRef(false);
+
+  useLayoutEffect(() => {
+    if (entryTabChosen.current || !isSettled) return;
+    entryTabChosen.current = true;
+    if (onlyConnectedKind && onlyConnectedKind !== kind) {
+      setKind(onlyConnectedKind);
+    }
+  }, [isSettled, onlyConnectedKind, kind, setKind]);
 
   const blocked = !ENV.IS_DEV && !isAuthenticated && !isAnyConnected;
 

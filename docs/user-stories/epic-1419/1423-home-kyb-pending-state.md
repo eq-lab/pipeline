@@ -81,7 +81,7 @@ wallet, and holds no PLUSD and no sPLUSD.
   cells.
 - Across the whole grid: the white panel spans the 1200px content column edge to edge, so the cards
   measure 1136px across; row 1 is 274px tall, row 2 is 344px, and the welcome heading ("Welcome
-  back", 48px) sits 32px to the left of the first card with the 492×40 stats cell at its right.
+  back", 48px; #1475, matches the frame) sits 32px to the left of the first card with the 492×40 stats cell at its right.
 
 ---
 

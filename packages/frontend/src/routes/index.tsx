@@ -14,6 +14,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useWalletPresence,
   useConnectModal,
   useStellarDepositManagerAddresses,
   useStellarSacToken,
@@ -61,6 +62,7 @@ function Home() {
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
+  const { isAnyConnected } = useWalletPresence();
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
   const pnl = usePnl();
@@ -220,7 +222,7 @@ function Home() {
         data-testid="home-main"
       >
         <WelcomeHeader
-          isConnected={isConnected}
+          isReturning={isAuthenticated || isAnyConnected}
           data-testid="home-welcome-header"
         />
 

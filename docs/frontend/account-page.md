@@ -85,6 +85,8 @@ data instead of their own documents.
 `signOut()`; a wallet-only visitor calls `useWalletPresence().disconnectAll()` instead. Either way
 it navigates to `/`.
 
+The route also owns the one-shot entry-tab selection ([Entry tab](#wallet-card)).
+
 ## Page composition
 
 `AccountPage.tsx` (shell) → `AccountWalletCard.tsx`, `AccountEmailCard.tsx`,
@@ -120,6 +122,8 @@ is `false` and the route gate has already admitted the visitor (i.e. a wallet is
 again), since the gate already guarantees one of the two. In that branch `AccountPageContent`
 renders with `walletOnly` and **does not call `useAccountPage()`**, so there is no
 `GET /v1/lps/me` request for a visitor with no session.
+
+The wallet card opens on the connected namespace's tab ([Entry tab](#wallet-card), #1475).
 
 Composition (frame `6701:98137`, "No Verified Account"): the heading, `AccountWalletCard` (its
 connected state — [Wallet card](#wallet-card)), `Corporate email` with an `Add email` row, the
@@ -157,6 +161,22 @@ so it is exercised live rather than through a dev-only preview — per the proje
 nothing about this variant is faked.
 
 ## Wallet card
+
+**Entry tab (#1475).** On entering `/account`, the card's tab is chosen once from
+`useWalletPresence().onlyConnectedKind`:
+
+| Connected namespaces | Entry tab |
+|---|---|
+| EVM only | `evm` |
+| Stellar only | `stellar` |
+| both | persisted view (`useWalletView().kind`, unchanged) |
+| none | persisted view (unchanged) |
+
+The decision is taken in `AccountRoute` by a ref-guarded layout effect on the first render where
+`isSettled` is true, so a hard refresh waits for wallet reconnection and a client-side entry
+commits before paint. The choice is persisted via `setKind`; it is not a sync, so tabs stay a view
+switch and a later tab click is never undone. It applies to the signed-in, wallet-only and `?state=`
+preview branches alike (the preview only overrides the Documents card).
 
 `AccountWalletCard.tsx` is a *view switch* over the existing `useWalletView()` (`kind: "evm" |
 "stellar"`, persisted at `pipeline.wallet.view.kind`) — the same state `AccountDropdown`'s
