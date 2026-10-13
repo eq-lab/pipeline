@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-140.**
+**Next free number: TD-142.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -318,16 +318,16 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a `chain_id` parameter/filter to `fetch_unverified_transfers` and
   pass the EVM relayer's `chain_id`, mirroring `fetch_unverified_transfers_for_chain`.
 
-### TD-31: Stellar KYT disallow is DB-only (no on-chain deauthorize)
+### TD-31: KYT disallow is DB-only on both chains (no on-chain deauthorize)
 
-- **Date:** 2026-07-06
-- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar` disallow pass
-- **Gap:** When a Stellar profile becomes KYT-failed (`kyt_status = 2`), the relayer sets
-  `on_chain_allowed = FALSE` in the DB but submits no on-chain `set_authorized(addr, false)`
-  transaction — the `StellarWhitelister` exposes no deauthorize path today. A previously
-  authorized, now-sanctioned wallet retains on-chain authorization until an admin revokes it.
-  This is **symmetric with EVM** (`phase_sync_whitelist`'s `process_disallows` is also
-  deferred to a separate admin flow), so it is not a Stellar-specific regression.
+- **Date:** 2026-07-06 (widened to EVM 2026-10-08)
+- **Location:** the disallow passes of `packages/worker/src/relayer/stellar/whitelist.rs` (`phase_sync_whitelist_stellar`) and `packages/worker/src/relayer/evm/whitelist.rs` (`phase_sync_whitelist_evm`)
+- **Gap:** When a profile becomes KYT-failed (`kyt_status = 2`), the relayer sets
+  `on_chain_allowed = FALSE` in the DB but submits no on-chain revocation. Stellar has no
+  `set_authorized(addr, false)` path; EVM does not call `WhitelistRegistry.disallow`, although
+  the relayer's `WHITELIST_MANAGER_ROLE` covers it. The EVM pass mirrors the Stellar one
+  deliberately (`docs/exec-plans/active/evm-relayer-v5.md`). A previously authorized, now-sanctioned
+  wallet keeps on-chain access until an admin revokes it.
 - **Impact:** Automated relayer does not revoke on-chain access on a KYT failure; requires a
   manual/admin revocation flow (same as EVM).
 - **Suggested fix:** Add a `set_authorized(addr, false)` submission path to `StellarWhitelister`
@@ -1696,6 +1696,33 @@ line, whichever section it lands in.
   start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
   and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
+### TD-140: The BitGo client and the EVM-only yield-mint outbox methods have no caller
+
+- **Date:** 2026-10-08
+- **Location:** `packages/shared/src/bitgo/`; `packages/shared/src/yield_mint_outbox_repo.rs`
+  (`discover_pending`, `OutboxStore::mark_submitted`). Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
+- **Gap:** The EVM yield-mint phase was their only consumer and is deleted: the reworked EVM
+  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. Both
+  were kept because the outbox trait is shared with the Stellar yield-mint phase, and BitGo is the
+  architecture's named MPC vendor. Any EVM rows already in `yield_mint_outbox` are inert.
+- **Impact:** Dead code that still compiles and reads like a live path; `BITGO_*` env vars are
+  gone from `.env.example`, so the client cannot be configured from it.
+- **Suggested fix:** Delete `shared::bitgo`, `discover_pending` and `mark_submitted` (updating the
+  Stellar test fake that implements `OutboxStore`), or reconnect them when a BitGo signer returns.
+
+### TD-141: An EVM `allow` stuck in the mempool blocks every later one
+
+- **Date:** 2026-10-08
+- **Location:** `packages/worker/src/relayer/evm/whitelist.rs` — `EvmWhitelister::submit_allow`.
+- **Gap:** There is no fee bumping or replacement. alloy's default `SimpleNonceManager` reads the
+  `pending` nonce, so after a 120 s confirmation timeout the stuck transaction keeps its nonce and
+  every later `allow` queues behind it.
+- **Impact:** A gas spike can stall whitelisting on that chain until the stuck transaction is mined
+  or dropped. Each tick logs a timeout per candidate; the database is left untouched, so nothing is
+  lost once it clears.
+- **Suggested fix:** On timeout, rebroadcast the same nonce with bumped fees, or keep a per-chain
+  nonce in the relayer and replace stale transactions explicitly.
+
 ---
 
 ## Post-MVP
@@ -1915,13 +1942,14 @@ line, whichever section it lands in.
 - **Impact:** A `PaymentRecorded` row that is never indexed (RPC gap, a `start_block` set past existing payments, a parser regression) leaves those six fields permanently understated, with no on-chain read to correct them. Not reachable today — no EVM chain runs (see TD-131) — but live the day one does.
 - **Suggested fix:** A reconciliation job comparing `loanMoney().accruedInterest` against `gross − (senior_interest + mgmt_fee + perf_fee) + interest_adjustment` would detect drift; not part of this Issue.
 
-### TD-130: EVM relayer's yield-mint phase targets a contract that no longer exists
+### TD-130: EVM relayer's yield-mint phase targets a contract that no longer exists [RESOLVED 2026-10-13 / feature/evm-relayer]
 
 - **Date:** 2026-10-08
 - **Location:** `relayer/config.rs:27-29` (`yield_minter_address` doc comment), `relayer/yield_mint/mod.rs` — Issue #1434, finding F14.
 - **Gap:** Both still document and submit against `PipelineYieldMinter`, which does not exist anywhere in `pipeline-contracts/src/` — it was replaced by `PipelineMinter` in the contracts rework.
 - **Impact:** Latent, not live — no EVM chain runs today (TD-131), so this relayer phase never executes against a real deployment. Will need a rewrite before any EVM relayer goes live.
 - **Suggested fix:** Out of epic #1431 scope (decision 4) — track as its own issue once the relayer's EVM arm is scheduled for work.
+- **Resolution:** The phase is deleted rather than rewritten: the reworked contracts mint yield inside `PipelineMinter.repay`, so there is nothing for a relayer to submit (`docs/exec-plans/active/evm-relayer-v5.md`, D1). `relayer/yield_mint/` and its `yield_minter_address` setting are gone; the orphaned BitGo client is TD-140.
 
 ### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
 
@@ -1939,13 +1967,14 @@ line, whichever section it lands in.
 - **Impact:** Unverified whether the two converge in every state transition; not touched by #1434 because `loanMoney()` (the contract's getter for its definition) has no consumer and was deliberately not called (F4).
 - **Suggested fix:** A reconciliation check or an explicit doc note on which definition each Trustee surface uses and why.
 
-### TD-133: EVM `WireInMatcher` (not yet written) has a `receiver` casing trap waiting for it
+### TD-133: EVM `WireInMatcher` (not yet written) has a `receiver` casing trap waiting for it [RESOLVED 2026-10-13 / feature/evm-relayer]
 
 - **Date:** 2026-10-08
 - **Location:** Future `relayer/evm/wire_in_match.rs` (does not exist yet); precedent at `relayer/stellar/wire_in_match.rs` — Issue #1434, finding F12.
 - **Gap:** The EVM Minter parser writes `receiver` as `to_checksum(None)` (mixed-case EIP-55); `CHAIN_<id>_YIELD_MINTER_CONTRACTS` is typically configured lowercase in env. A matcher ported verbatim from the Stellar arm's `l.params->>'receiver' <> $2` string comparison would be true for every row.
 - **Impact:** Latent — no EVM `WireInMatcher` exists yet, and no EVM chain runs (TD-131). Recorded so its author does not inherit a silent bug.
 - **Suggested fix:** Lowercase (or checksum) both sides of the comparison before the EVM matcher is written.
+- **Resolution:** The EVM relayer reuses the shared `phase_match_wire_ins` and binds the minter as `EvmRelayerSettings::minter_id()`, which re-renders `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` with `to_checksum(None)` whatever case it is configured in, so both sides of `receiver <> minter` and the `contract_address` filter are EIP-55. Pinned by `tests/evm_relayer_config.rs`; exercised end to end on a Hoodi v5 fork, where an escrowed wire (receiver = minter) stayed unmatched until its `WireInAssigned`.
 
 ### TD-134: The EVM indexer sleeps `POLLING_INTERVAL_MS` twice per cycle, so the effective cadence is double the configured value
 

@@ -1,7 +1,7 @@
 # Yield-Minter Relayer (Phase 4) — Design Spec
 
 **Date:** 2026-06-02
-**Status:** Approved, awaiting implementation plan
+**Status:** Superseded. `PipelineYieldMinter` was removed by the `pipeline-contracts` rework (#41–#50), and the phase was deleted with it. See `docs/exec-plans/active/evm-relayer-v5.md`.
 **Implements:** `PipelineYieldMinter.mintYield` automation
 **Branch:** `fix/442-loan-registry-indexer-events` (built on top of Issue #442 work)
 

@@ -1,4 +1,6 @@
-//! Wire-in matching phase (#1416).
+//! Wire-in matching phase (#1416), run by both the Soroban and the EVM relayer.
+//! The EVM indexer must write the Soroban row shape — see
+//! `docs/exec-plans/active/evm-relayer-v5.md` (D3).
 //!
 //! Joins indexed minter events to `lp_bank_deposits` by `ref_hash` —
 //! `sha256(payment_reference)`, written by `POST /v1/lps/{id}/bank-deposits`

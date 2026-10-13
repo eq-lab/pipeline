@@ -12,7 +12,6 @@
 pub mod job;
 pub mod sim_decode;
 pub mod whitelist;
-pub mod wire_in_match;
 pub mod yield_mint;
 
 pub use whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};

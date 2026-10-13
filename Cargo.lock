@@ -3643,7 +3643,6 @@ dependencies = [
  "sqlx",
  "stellar-strkey 0.0.16",
  "stellar-xdr",
- "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
