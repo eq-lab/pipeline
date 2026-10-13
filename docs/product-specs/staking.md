@@ -119,11 +119,15 @@ The sPLUSD vault holds no custom on-chain state beyond the standard ERC-4626 / E
 
 ### Share-price sampling — Stellar/Soroban
 
-On the Stellar chain, share prices are sampled from the `staked_pipeline_usd` (`FungibleVault`) contract at the **current** Soroban ledger every `JOB_PRICE_POLLER_POLL_INTERVAL_SECS` seconds (default 60s) by calling `convert_to_assets(10^decimals)` via `simulateTransaction`. The result is normalized and written to the same `share_prices` table the EVM price-poller uses, partitioned by `chain_id`.
+On the Stellar chain, share prices are sampled from the `staked_pipeline_usd` (`FungibleVault`) contract at the **current** Soroban ledger every `CHAIN_<id>_STELLAR_PRICE_POLLER_POLL_INTERVAL_SECS` seconds (default 60s) by calling `convert_to_assets(10^decimals)` via `simulateTransaction`. The result is normalized and written to the same `share_prices` table the EVM price-poller uses, partitioned by `chain_id`.
 
 Historical backfill is **not possible** on Soroban: the RPC exposes no historical-state replay. Downtime gaps appear as missing rows in `share_prices`; the existing `get_avg_prices` time-bucket aggregation tolerates sparse rows gracefully.
 
-Vault discovery is DB-driven via the `vaults` table (same pattern as EVM). No `…_VAULT_ID` env var is needed; the Stellar section in `.env.example` only configures RPC connectivity and polling cadence.
+The vault sampled is the one named by `CHAIN_<id>_<TYPE>_PRICE_POLLER_STAKED_PLUSD_ADDRESS` (required, one sPLUSD vault per chain). At task start the poller reads the vault's and its asset's decimals from chain and upserts the row into `vaults` for the API; a failed bootstrap is retried every poll interval.
+
+### Share-price sampling — EVM
+
+On EVM chains the poller walks from its stored cursor to the chain head in steps of `CHAIN_<id>_EVM_PRICE_POLLER_BLOCK_INTERVAL` blocks (default 300), starting at `CHAIN_<id>_EVM_PRICE_POLLER_START_BLOCK` (falling back to `CHAIN_<id>_EVM_START_BLOCK`, then 0), calling `convertToAssets(10^decimals)` at each grid block and writing the result to `share_prices`. The vault address and decimals bootstrap work as on Stellar.
 
 ---
 

@@ -1,6 +1,6 @@
-//! Per-chain config-parsing tests for indexer / price-poller / relayer.
+//! Per-chain config-parsing tests for indexer / relayer.
 //!
-//! All three modules read `CHAINS` + `CHAIN_<id>_*` env vars, so the tests
+//! Both modules read `CHAINS` + `CHAIN_<id>_*` env vars, so the tests
 //! must serialize their env-var mutations on a single mutex. Each
 //! integration test file is its own binary; cross-binary tests don't share
 //! process env vars, so the lock only needs to cover this file.
@@ -8,7 +8,6 @@
 use std::sync::Mutex;
 
 use pipeline_worker::indexer::config::{parse_chains_env, IndexerJobSettings};
-use pipeline_worker::price_poller::config::EvmPricePollerSettings;
 use pipeline_worker::relayer::config::EvmRelayerSettings;
 
 /// Mutex used to serialize env-var mutations across tests in this binary.
@@ -64,19 +63,6 @@ fn indexer_from_chain_env_missing_rpc_url_is_error() {
     }
     assert!(IndexerJobSettings::from_chain_env(77777).is_err());
     unsafe { std::env::remove_var("CHAINS") };
-}
-
-// ── PricePollerSettings ──────────────────────────────────────────────────────
-
-#[test]
-fn price_poller_from_chain_env_missing_rpc_url_is_error() {
-    let _guard = ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    unsafe {
-        std::env::remove_var("CHAIN_88888_EVM_RPC_URL");
-    }
-    assert!(EvmPricePollerSettings::from_chain_env(88888).is_err());
 }
 
 // ── EvmRelayerSettings ───────────────────────────────────────────────────────
