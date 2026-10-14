@@ -79,3 +79,51 @@ fn required_keys_still_error_when_missing() {
         );
     }
 }
+
+mod boot_check {
+    use alloy::primitives::Address;
+    use pipeline_worker::indexer::parse_collateral_registry_contracts;
+
+    const A: &str = "0x00000000000000000000000000000000000000aB";
+
+    fn others() -> Vec<Address> {
+        vec![
+            "0x0000000000000000000000000000000000000001"
+                .parse()
+                .unwrap(),
+            A.parse().unwrap(),
+        ]
+    }
+
+    #[test]
+    fn unset_ships_dark() {
+        assert!(parse_collateral_registry_contracts(7, None, &others())
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn duplicate_is_rejected_case_insensitively_naming_key() {
+        let err = parse_collateral_registry_contracts(
+            7,
+            Some("0x00000000000000000000000000000000000000AB"),
+            &others(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("CHAIN_7_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS"));
+        let lower = A.to_lowercase();
+        assert!(parse_collateral_registry_contracts(7, Some(&lower), &others()).is_err());
+    }
+
+    #[test]
+    fn distinct_is_accepted() {
+        let got = parse_collateral_registry_contracts(
+            7,
+            Some("0x0000000000000000000000000000000000000002"),
+            &others(),
+        )
+        .unwrap();
+        assert_eq!(got.len(), 1);
+    }
+}

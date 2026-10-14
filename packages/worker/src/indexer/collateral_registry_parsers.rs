@@ -277,8 +277,22 @@ pub fn parse_cr_margin_call(log: &Log) -> Option<ContractLog> {
     )
 }
 
+const CR_TOPICS: [(B256, &str); 11] = [
+    (cr::Pledged::SIGNATURE_HASH, "Pledged"),
+    (cr::HaircutSet::SIGNATURE_HASH, "HaircutSet"),
+    (cr::FloorSet::SIGNATURE_HASH, "FloorSet"),
+    (cr::Revalued::SIGNATURE_HASH, "Revalued"),
+    (cr::StageUpdated::SIGNATURE_HASH, "StageUpdated"),
+    (cr::ControlUpdated::SIGNATURE_HASH, "ControlUpdated"),
+    (cr::DocAdded::SIGNATURE_HASH, "DocAdded"),
+    (cr::QuantityAdjusted::SIGNATURE_HASH, "QuantityAdjusted"),
+    (cr::Released::SIGNATURE_HASH, "Released"),
+    (cr::Liquidated::SIGNATURE_HASH, "Liquidated"),
+    (cr::MarginCall::SIGNATURE_HASH, "MarginCall"),
+];
+
 pub fn parse_collateral_registry_log(log: &Log) -> Option<ContractLog> {
-    parse_cr_pledged(log)
+    let parsed = parse_cr_pledged(log)
         .or_else(|| parse_cr_haircut_set(log))
         .or_else(|| parse_cr_floor_set(log))
         .or_else(|| parse_cr_revalued(log))
@@ -288,5 +302,19 @@ pub fn parse_collateral_registry_log(log: &Log) -> Option<ContractLog> {
         .or_else(|| parse_cr_quantity_adjusted(log))
         .or_else(|| parse_cr_released(log))
         .or_else(|| parse_cr_liquidated(log))
-        .or_else(|| parse_cr_margin_call(log))
+        .or_else(|| parse_cr_margin_call(log));
+    if parsed.is_none() {
+        if let Some((_, name)) = log
+            .topic0()
+            .and_then(|t0| CR_TOPICS.iter().find(|(t, _)| t == t0))
+        {
+            tracing::warn!(
+                contract_address = %log.address(),
+                event_name = %name,
+                tx_hash = ?log.transaction_hash,
+                "CollateralRegistry event failed to decode; dropped"
+            );
+        }
+    }
+    parsed
 }

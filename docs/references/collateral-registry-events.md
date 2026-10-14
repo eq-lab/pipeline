@@ -66,8 +66,10 @@ registry. A known topic that fails to decode is dropped with a `tracing::warn!` 
   current state, so a `lot()` read at index time would return later state during any catch-up. A
   ledger-accurate enrichment is tracked as tech debt.
 - Implicit stage changes are not materialised as `StageUpdated` rows. A consumer derives them:
-  - a `Released` or `Liquidated` that brings the remaining quantity to zero moves the lot to
-    `Delivered`, `Sold` or `Paid`;
+  - a `Released` or `Liquidated` that brings the remaining lot quantity to zero moves the lot to
+    `Delivered`, `Sold` or `Paid`. This is not derivable from indexed rows alone: no stored row
+    carries the remaining quantity, and the lot quantity comes from the `Pledged` lot read, which
+    is not indexed (tech debt TD-140 / TD-141 for Stellar, TD-144 for EVM);
   - `ControlUpdated` with `kind = Acknowledged` on an `Assigned` receivable moves it to
     `Acknowledged`.
 - `MarginCall` is stored as emitted. Repeats from the permissionless `check_coverage`, or from the
@@ -94,7 +96,7 @@ snapshot, no on-chain reads).
 `CHAIN_<id>_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS` (optional). Unset or whitespace means the
 feature ships dark: the handler contributes no addresses to the `eth_getLogs` filter (the other
 handlers always do, so the filter never goes empty) and no rows are written. When set, the value must
-be a valid EVM address or startup aborts naming the chain key. The `PipelineCollateralRegistry` proxy
+be a valid EVM address and distinct from every other configured EVM indexer contract address (deposit manager, withdrawal queue, staked PLUSD, loan registry, minter) or startup aborts naming the chain key. The EVM cursor is shared per chain, so enabling the key on a running chain does not backfill earlier CollateralRegistry events; to index them, rewind the chain cursor or set the key from the start block. The `PipelineCollateralRegistry` proxy
 is deployed on hoodi (`pipeline-contracts/deployments/hoodi-v5.json`), but no environment runs the
 EVM indexer arm yet, so the key stays unset everywhere.
 

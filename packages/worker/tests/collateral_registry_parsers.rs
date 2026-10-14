@@ -581,3 +581,20 @@ fn truncated_data_returns_none() {
     let truncated = LogData::new(data.topics().to_vec(), cut).unwrap();
     assert!(parse_collateral_registry_log(&log_from(truncated)).is_none());
 }
+
+#[test]
+fn malformed_known_topic_returns_none() {
+    let mut data = Pledged {
+        loanId: u(1),
+        lotId: u(2),
+    }
+    .encode_log_data();
+    data = LogData::new_unchecked(vec![data.topics()[0], h(1)], data.data.clone());
+    assert!(parse_collateral_registry_log(&log_from(data)).is_none());
+}
+
+#[test]
+fn unrelated_topic_returns_none() {
+    let data = LogData::new_unchecked(vec![h(0xee), h(1)], Default::default());
+    assert!(parse_collateral_registry_log(&log_from(data)).is_none());
+}

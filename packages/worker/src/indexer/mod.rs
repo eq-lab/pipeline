@@ -31,6 +31,24 @@ use loan_metadata::{
 use loan_registry_reader::LoanRegistryReader;
 use poller::EvmEventPollerBuilder;
 
+pub fn parse_collateral_registry_contracts(
+    chain_id: i64,
+    raw: Option<&str>,
+    others: &[Address],
+) -> Result<Vec<Address>> {
+    let Some(raw) = raw else {
+        return Ok(vec![]);
+    };
+    let key = format!("CHAIN_{chain_id}_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS");
+    let addr: Address = raw
+        .parse()
+        .with_context(|| format!("{key} must be a valid EVM address, got '{raw}'"))?;
+    if others.contains(&addr) {
+        anyhow::bail!("{key} must differ from every other configured indexer contract address");
+    }
+    Ok(vec![addr])
+}
+
 pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Result<()> {
     let repo = Arc::new(EventRepo::new(pool.clone()));
     let chain_id = settings.chain_id;
@@ -78,10 +96,17 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         &settings.loan_registry_address,
     )?];
     let yield_minter_contracts = vec![parse_address("MINTER_ADDRESS", &settings.minter_address)?];
-    let collateral_registry_contracts = match settings.collateral_registry_address.as_deref() {
-        Some(raw) => vec![parse_address("COLLATERAL_REGISTRY_ADDRESS", raw)?],
-        None => vec![],
-    };
+    let collateral_registry_contracts = parse_collateral_registry_contracts(
+        settings.chain_id,
+        settings.collateral_registry_address.as_deref(),
+        &[
+            dm_contracts[0],
+            wq_contracts[0],
+            splusd_contracts[0],
+            loan_registry_contracts[0],
+            yield_minter_contracts[0],
+        ],
+    )?;
 
     // Shared deps for loan mappers.
     // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.
