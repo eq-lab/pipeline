@@ -266,8 +266,14 @@ config swap, no network store, no query re-keying, and no wallet-kit re-coordina
 networks" means navigating to a sibling deployment's URL, and the separate origin naturally
 isolates everything else (a fresh page load, a wallet that must reconnect on the new origin).
 
-1. **Current-network identity** is derived from the deployment's own existing Stellar network
-   passphrase — no new var needed for this half. `networkIdFromPassphrase` maps
+1. **Current-network identity** follows the active view (`useActiveChain().kind`, #1497). The
+   Stellar view derives it from the deployment's own existing Stellar network passphrase — no new
+   var needed for this half. The EVM view uses `networkIdFromEvmChainId(VITE_EVM_CHAIN_ID)` through
+   the [chain registry](#chain-registry): chain `1` → `{ id: "mainnet", label: "Mainnet" }`, `560048`
+   → `{ id: "testnet", label: "Testnet" }`, any other id → testnet-styled with the label
+   `Chain <id>`. The mainnet gate (`isMainnetNetwork(kind)` / `useIsMainnetNetwork()`) follows the
+   same view and drives the `HomeStatsStrip` TVL gate, the `TopBar` / `MobileNavMenu` Dashboard
+   link and the `/dashboard` route guard. `networkIdFromPassphrase` maps
    `"Test SDF Network ; September 2015"` → `{ id: "testnet", label: "Testnet" }` and
    `"Public Global Stellar Network ; September 2015"` → `{ id: "mainnet", label: "Mainnet" }`.
    Any other passphrase (futurenet, standalone, …) is treated as **testnet-styled** (no
@@ -315,7 +321,7 @@ isolates everything else (a fresh page load, a wallet that must reconnect on the
    the pending-link state in `useNetworkSwitch()` (`packages/frontend/src/wallet/useNetworkSwitch.ts`);
    the trustee inlines the same two-state flow in `AccountMenu`.
 5. **Shared vs. per-app.** The parsing/identity/navigate/gate logic (`parseNetworkLinks`,
-   `networkIdFromPassphrase`, `navigateToNetworkLink`, `shouldConfirmNetworkSwitch`) and the
+   `networkIdFromPassphrase`, `networkIdFromEvmChainId`, `navigateToNetworkLink`, `shouldConfirmNetworkSwitch`) and the
    confirm dialog (`NetworkSwitchDialog`, `@pipeline/ui`) live once in shared packages so both
    apps run the same implementation. The thin composition that reads each app's own `ENV` and
    combines it with those helpers (`getNetworkSwitcherState`) is duplicated per app (mirrors the
@@ -332,7 +338,65 @@ default (static label only), not an error.
 
 ## EVM integration
 
-_Scaffold — to be migrated from `packages/frontend/src/wallet/evm/**` under #995._
+_Scaffold — the hook-level migration from `packages/frontend/src/wallet/evm/**` is owned by #1504
+(and #995); this section currently documents the chain registry and wrong-network rules (#1497)._
+
+### Chain registry
+
+**Source:** `packages/wallet-connect/src/evm/chains.ts`, consumed by the shared slice
+(`getEvmChain()` in `evm/chain.ts`) and by the LP app (`wallet/evm/chain.ts` exports
+`evmChain = defineEvmChain(ENV.EVM_CHAIN_ID, ENV.EVM_RPC_URL)`). Each slice keeps its own thin
+wrapper (the LP slice is not yet re-pointed at the shared package, #1349); both wrappers are kept in
+lockstep. The chain is selected by `VITE_EVM_CHAIN_ID` / `WalletConnectConfig.evmChainId`.
+
+| Chain id | Name             | Explorer                                   | Native | `testnet` |
+| -------- | ---------------- | ------------------------------------------ | ------ | --------- |
+| `1`      | `Ethereum`       | `Etherscan` — `https://etherscan.io`       | `ETH`  | `false`   |
+| `560048` | `Hoodi`          | `Etherscan` — `https://hoodi.etherscan.io` | `ETH`  | `true`    |
+| other    | `EVM chain <id>` | none                                       | `ETH`  | `true`    |
+
+- **Generic fallback.** Any other id is testnet-styled (never shown as real funds), mirroring the
+  unknown-passphrase rule of `networkIdFromPassphrase`.
+- **RPC from config.** The RPC URL always comes from `VITE_EVM_RPC_URL` /
+  `WalletConnectConfig.evmRpcUrl`, never from the registry.
+- **API.** `evmChainInfo(id)` returns the registry entry (or the generic one);
+  `defineEvmChain(id, rpcUrl)` builds the `@reown/appkit/networks` chain, including
+  `nativeCurrency`, `rpcUrls` and `blockExplorers`, so wallets that lack the chain can add it
+  (`wallet_addEthereumChain`). It is memoized per `chainId|rpcUrl` so repeated calls return the same
+  object (AppKit and wagmi compare networks by reference).
+- **Lazy config.** The shared slice reads the injected config inside `getEvmChain()`, never at
+  module scope (config is set in the app's `main.tsx`, after imports are evaluated).
+
+### Wrong network
+
+Applies in the EVM view only (`useActiveChain().kind === "evm"`) with a connected EVM wallet whose
+chain id differs from `ENV.EVM_CHAIN_ID`. The wallet's chain is read through
+`useAccount().chainId` in both `useEvmWallet` copies (`useChainId()` returns the configured chain,
+never the wallet's, so it could not detect a mismatch). `pipeline.mock.wallet.chainId` overrides it.
+`useEvmNetworkGuard()` (`wallet/evm/useEvmNetworkGuard.ts`) exposes `{ expectedChain,
+currentChainId, isWrongNetwork, switchNetwork, isSwitching, switchError }`.
+
+1. **Auto-prompt.** Right after an EVM wallet connects or is restored on the wrong chain, the app
+   calls wagmi `switchChain({ chainId: ENV.EVM_CHAIN_ID })` once per connection (the wallet adds the
+   chain first when it does not know it, e.g. Hoodi in MetaMask). A rejection, or a wallet that
+   refuses unknown chains, leaves the app on the inline fallback; it does not re-prompt until the
+   next connection.
+2. **Inline fallback.** While `isWrongNetwork`, the deposit / withdraw (`useDepositFlow`) and
+   stake / unstake (`useStakeFlow`) steps cards disable every step action and show a one-line row
+   "Switch your wallet to {chain name}" with a **Switch** button (testid
+   `steps-card-chain-notice`), in the steps-card row styling
+   ([`ui-components.md#stepscard`](./ui-components.md#stepscard)). Switching in the wallet clears
+   the row and re-enables the steps; a failed switch surfaces a danger toast through `toUserError`
+   (toast id `evm-switch-chain`). There is no standalone banner.
+3. **Pill.** The `NetworkSwitcher` pill shows a wrong-network state (`--color-pipeline-danger`
+   dot, label "Wrong network", `data-state="wrong-network"`); its menu's first row
+   (`topbar-network-switch-chain`) is "Switch to {chain name}".
+4. **Write backstop.** Every wagmi `writeContract` call under `wallet/evm/**` passes
+   `chainId: ENV.EVM_CHAIN_ID`, so wagmi throws a chain-mismatch error rather than sending a
+   transaction on the wrong chain.
+5. **Mock mode.** With `pipeline.mock.wallet.address` set, "Switch" only logs a `console.warn`
+   naming `pipeline.mock.wallet.chainId`; no auto-prompt fires and nothing is written to
+   localStorage.
 
 ## Stellar integration
 

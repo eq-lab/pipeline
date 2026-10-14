@@ -1467,6 +1467,7 @@ __metadata:
     "@creit.tech/stellar-wallets-kit": "npm:2.2.0"
     "@eslint/js": "npm:9.39.4"
     "@pipeline/ui": "workspace:^"
+    "@pipeline/wallet-connect": "workspace:^"
     "@reown/appkit": "npm:^1.8.19"
     "@reown/appkit-adapter-wagmi": "npm:^1.8.19"
     "@stellar/stellar-sdk": "npm:15.1.0"

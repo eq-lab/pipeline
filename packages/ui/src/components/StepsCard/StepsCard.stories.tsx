@@ -158,3 +158,26 @@ export const Step1Loading: Story = {
     ],
   },
 };
+
+export const WrongNetwork: Story = {
+  name: "Wrong network (chain notice)",
+  args: {
+    notice: {
+      label: "Switch your wallet to Hoodi",
+      actionLabel: "Switch",
+      onAction: () => undefined,
+    },
+    steps: [
+      {
+        label: "Allow contract to use USDC",
+        actionLabel: "Approve",
+        disabled: true,
+      },
+      {
+        label: "Confirm and receive PLUSD",
+        actionLabel: "Convert",
+        disabled: true,
+      },
+    ],
+  },
+};

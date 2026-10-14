@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { Route } from "./dashboard";
 
-const { mockIsMainnet } = vi.hoisted(() => ({
+const { mockIsMainnet, mockKinds } = vi.hoisted(() => ({
   mockIsMainnet: { value: false },
+  mockKinds: [] as string[],
 }));
 
 vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
@@ -10,7 +11,10 @@ vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
     await importOriginal<typeof import("@/wallet/networkSwitcher")>();
   return {
     ...original,
-    isMainnetDeployment: () => mockIsMainnet.value,
+    isMainnetNetwork: (kind: string) => {
+      mockKinds.push(kind);
+      return mockIsMainnet.value;
+    },
   };
 });
 
@@ -37,6 +41,12 @@ describe("/dashboard route — mainnet redirect guard (#1243)", () => {
     mockIsMainnet.value = true;
     const redirected = captureBeforeLoad();
     expect(redirected?.options.to).toBe("/");
+  });
+
+  it("evaluates the gate for the default (Stellar) view, since no wallet is connected at route load", () => {
+    mockKinds.length = 0;
+    captureBeforeLoad();
+    expect(mockKinds).toEqual(["stellar"]);
   });
 
   it("does not redirect on testnet", () => {

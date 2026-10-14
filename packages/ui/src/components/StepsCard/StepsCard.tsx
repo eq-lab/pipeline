@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "../Button";
 import { Card } from "../Card";
 import { StepRow } from "../StepRow/StepRow";
 
@@ -26,7 +27,15 @@ export interface StepItem {
   errorDetails?: string;
 }
 
+export interface StepsCardNotice {
+  label: string;
+  actionLabel: string;
+  onAction: () => void;
+  loading?: boolean;
+}
+
 export interface StepsCardProps extends React.HTMLAttributes<HTMLDivElement> {
+  notice?: StepsCardNotice;
   /**
    * Ordered list of steps to render. Each item maps 1:1 to a `StepRow`.
    * Step numbers are derived from the array index (1-based).
@@ -35,7 +44,7 @@ export interface StepsCardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
-  function StepsCard({ steps, className, ...rest }, ref) {
+  function StepsCard({ steps, notice, className, ...rest }, ref) {
     return (
       <Card
         ref={ref}
@@ -51,6 +60,27 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
         {...rest}
       >
         <div data-testid="steps-list" className="flex flex-col gap-2">
+          {notice && (
+            <div
+              data-testid="steps-card-chain-notice"
+              className="flex w-full items-center gap-3"
+            >
+              <div className="min-w-0 flex-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-negative)]">
+                {notice.label}
+              </div>
+              <div className="shrink-0 p-1">
+                <Button
+                  variant="primary-dark"
+                  data-testid="steps-card-chain-notice-action"
+                  disabled={notice.loading}
+                  onClick={notice.onAction}
+                  className="!h-8 w-22 min-w-0 text-[length:var(--text-pipeline-body)]"
+                >
+                  {notice.actionLabel}
+                </Button>
+              </div>
+            </div>
+          )}
           {steps.map(
             (
               {

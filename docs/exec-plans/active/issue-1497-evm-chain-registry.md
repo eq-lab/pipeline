@@ -126,6 +126,29 @@ wrong-network banner and pill visuals).
    `pipeline.mock.wallet.chainId` key to change, and it does not write to localStorage. Should
    the mock switch rewrite `pipeline.mock.wallet.chainId` to `ENV.EVM_CHAIN_ID` instead?
 
+## Decision Log
+
+User answers (issue #1497 comment, 2026-10-14) amend the steps below:
+
+1. **No standalone `WrongNetworkBanner`** (Step 8 and the banner routing in Step 9 are replaced):
+   - Auto-prompt: `<EvmChainAutoSwitch />` (mounted once in `main.tsx`) calls wagmi `switchChain` once per connection when an EVM wallet connects or restores on a chain other than `ENV.EVM_CHAIN_ID`. wagmi's injected connector adds the chain (Hoodi in MetaMask) first.
+   - Inline fallback: `useDepositFlow` / `useStakeFlow` expose `wrongNetwork`; the steps cards disable every step action and show a one-line "Switch your wallet to {chain}" row with a Switch button (`StepsCard` `notice` prop, `useChainNotice` in the routes), styled like the disabled / inline-error steps (#1024 / #1034).
+   - The `chainId` backstop on every `writeContract` is kept; the pill keeps its wrong-network state.
+2. Pill label in the EVM view is Testnet / Mainnet (`networkIdFromEvmChainId`).
+3. TopBar / MobileNavMenu nav links and the `/dashboard` guard follow the active view.
+4. Mock mode: Switch logs a `console.warn`; the auto-prompt never fires for a mocked wallet.
+
+Deviations from the plan after rebasing on #1512 / #1498:
+
+- "Active view" is `useActiveChain().kind` (added by #1498), not `useWalletView().kind`; `HomeStatsStrip` uses `isMainnetNetwork(kind)` with the `kind` it already reads.
+- `kind` is no longer persisted (#1512), so `readStoredWalletViewKind` is not added. The `/dashboard` `beforeLoad` gate evaluates the default (Stellar) view and the component additionally redirects when `useIsMainnetNetwork()` is true.
+- The view-aware hooks (`useNetworkSwitcherState`, `useIsMainnetNetwork`) live in `wallet/useNetworkIdentity.ts` so `networkSwitcher.ts` stays a pure module.
+- `useEvmNetworkGuard` also returns `wrongNetwork` (the `WrongNetworkInfo` the flows hand to the steps card).
+- `isKnownEvmChain` is exported from `chains.ts` (used by `networkIdFromEvmChainId` for the `Chain <id>` label).
+- The gas / simulate header comments are reworded only for "Hoodi" in `gas.ts`.
+
+Status: all steps implemented; the plan's banner tests are replaced by steps-card notice tests.
+
 ## Implementation Steps
 
 1. **Shared registry: `packages/wallet-connect/src/evm/chains.ts` (new).**

@@ -484,6 +484,7 @@ describe("useRequestDeposit — args pass-through (no mock, non-zero address)", 
         address: dmAddr,
         args: [123n],
         gas: 1_200_000n, // 1_000_000n * 12 / 10
+        chainId: 560048,
       }),
     );
   });
@@ -750,6 +751,7 @@ describe("useClaim — args pass-through (no mock, non-zero address)", () => {
         address: dmAddr,
         args: [99n, "0xdeadbeef"],
         gas: 1_200_000n, // 1_000_000n * 12 / 10
+        chainId: 560048,
       }),
     );
   });

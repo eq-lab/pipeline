@@ -9,7 +9,7 @@
  * decoupled from any particular app's Vite env plumbing.
  */
 export interface WalletConnectConfig {
-  /** EVM chain id (e.g. 560048 for Hoodi). */
+  /** EVM chain id; selects the chain-registry entry (1 = Ethereum, 560048 = Hoodi). */
   evmChainId: number;
   /** EVM RPC URL for the configured chain. */
   evmRpcUrl: string;

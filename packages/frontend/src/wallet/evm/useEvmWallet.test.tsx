@@ -3,6 +3,7 @@ import React from "react";
 import { renderHook, act } from "@testing-library/react";
 import { EvmWalletProvider } from "./EvmWalletProvider";
 import { WalletGateProvider } from "../WalletGateProvider";
+import { useAccount } from "wagmi";
 import { useEvmWallet, useEvmConnectors } from "./useEvmWallet";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
@@ -20,7 +21,6 @@ vi.mock("wagmi", async (importOriginal) => {
       address: undefined,
       isConnected: false,
     })),
-    useChainId: vi.fn(() => 1),
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
     useReadContract: vi.fn(() => ({
       data: undefined,
@@ -110,6 +110,34 @@ describe("useEvmWallet — no mocks, no real wallet", () => {
     const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(false);
     expect(result.current.address).toBeUndefined();
+  });
+});
+
+describe("useEvmWallet — chainId", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("is undefined when disconnected", () => {
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    expect(result.current.chainId).toBeUndefined();
+  });
+
+  it("reads the connected wallet's chain from useAccount, and the mock key overrides it", () => {
+    vi.mocked(useAccount).mockReturnValue({
+      address: "0x1234000000000000000000000000000000000000",
+      isConnected: true,
+      chainId: 1,
+    } as unknown as ReturnType<typeof useAccount>);
+    const first = renderHook(() => useEvmWallet(), { wrapper });
+    expect(first.result.current.chainId).toBe(1);
+
+    localStorage.setItem("pipeline.mock.wallet.chainId", "560048");
+    const second = renderHook(() => useEvmWallet(), { wrapper });
+    expect(second.result.current.chainId).toBe(560048);
+
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+    } as unknown as ReturnType<typeof useAccount>);
   });
 });
 

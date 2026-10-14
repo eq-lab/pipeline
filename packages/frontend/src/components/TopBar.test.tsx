@@ -60,7 +60,7 @@ vi.mock("@/wallet", async (importOriginal) => {
 });
 
 // ── Network switcher mock (issue #1032) ───────────────────────────────────────
-// Same pattern as AccountDropdown.test.tsx: only `getNetworkSwitcherState` is
+// Same pattern as AccountDropdown.test.tsx: only `useNetworkSwitcherState` is
 // stubbed (controllable per test); `navigateToNetworkLink` stays real.
 
 const { mockNetworkSwitcherState, mockIsMainnet } = vi.hoisted(() => ({
@@ -71,14 +71,27 @@ const { mockNetworkSwitcherState, mockIsMainnet } = vi.hoisted(() => ({
   mockIsMainnet: { value: false },
 }));
 
-vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
+vi.mock("@/wallet/useNetworkIdentity", () => ({
+  useNetworkSwitcherState: () => mockNetworkSwitcherState,
+  useIsMainnetNetwork: () => mockIsMainnet.value,
+}));
+const { guardState } = vi.hoisted(() => ({
+  guardState: {
+    value: {
+      expectedChain: { id: 560048, name: "Hoodi" },
+      currentChainId: 560048 as number | undefined,
+      isWrongNetwork: false,
+      switchNetwork: vi.fn(),
+      isSwitching: false,
+      switchError: null as Error | null,
+    },
+  },
+}));
+
+vi.mock("@/wallet/evm/useEvmNetworkGuard", async (importOriginal) => {
   const original =
-    await importOriginal<typeof import("@/wallet/networkSwitcher")>();
-  return {
-    ...original,
-    getNetworkSwitcherState: () => mockNetworkSwitcherState,
-    isMainnetDeployment: () => mockIsMainnet.value,
-  };
+    await importOriginal<typeof import("@/wallet/evm/useEvmNetworkGuard")>();
+  return { ...original, useEvmNetworkGuard: () => guardState.value };
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -681,6 +694,63 @@ describe("TopBar — network switcher static badge", () => {
         "Mainnet",
       ),
     );
+  });
+});
+
+// ── Tests: network pill wrong-network state (#1497) ───────────────────────────
+
+describe("TopBar — network pill wrong-network state (#1497)", () => {
+  beforeEach(() => {
+    guardState.value = {
+      ...guardState.value,
+      isWrongNetwork: true,
+      currentChainId: 1,
+      switchNetwork: vi.fn(),
+    };
+  });
+
+  afterEach(() => {
+    clearMocks();
+    guardState.value = {
+      ...guardState.value,
+      isWrongNetwork: false,
+      currentChainId: 560048,
+      isSwitching: false,
+    };
+    localStorage.clear();
+  });
+
+  it("shows the Wrong network label and state on the pill", async () => {
+    renderTopBar("/");
+    const badge = await screen.findByTestId("topbar-network-badge");
+    expect(badge).toHaveTextContent("Wrong network");
+    expect(badge).toHaveAttribute("data-state", "wrong-network");
+  });
+
+  it("offers a switch row that calls switchNetwork", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+    await user.click(await screen.findByTestId("topbar-network-badge"));
+    const row = screen.getByTestId("topbar-network-switch-chain");
+    expect(row).toHaveTextContent("Switch to Hoodi");
+    await user.click(row);
+    expect(guardState.value.switchNetwork).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the switch row while switching", async () => {
+    guardState.value = { ...guardState.value, isSwitching: true };
+    const user = userEvent.setup();
+    renderTopBar("/");
+    await user.click(await screen.findByTestId("topbar-network-badge"));
+    expect(screen.getByTestId("topbar-network-switch-chain")).toBeDisabled();
+  });
+
+  it("keeps the normal pill when the chain is right", async () => {
+    guardState.value = { ...guardState.value, isWrongNetwork: false };
+    renderTopBar("/");
+    const badge = await screen.findByTestId("topbar-network-badge");
+    expect(badge).toHaveTextContent("Testnet");
+    expect(badge).not.toHaveAttribute("data-state");
   });
 });
 

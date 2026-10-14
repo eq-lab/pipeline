@@ -14,6 +14,7 @@
   "dependencies": {
     "@creit.tech/stellar-wallets-kit": "2.2.0",
     "@pipeline/ui": "workspace:^",
+    "@pipeline/wallet-connect": "workspace:^",
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-wagmi": "^1.8.19",
     "@stellar/stellar-sdk": "15.1.0",

@@ -19,7 +19,6 @@
  */
 import {
   useAccount,
-  useChainId,
   useDisconnect,
   useReadContract,
   useConnect,
@@ -63,8 +62,11 @@ export interface WalletState {
 }
 
 export function useEvmWallet(): WalletState {
-  const { address: realAddress, isConnected: realIsConnected } = useAccount();
-  const realChainId = useChainId();
+  const {
+    address: realAddress,
+    isConnected: realIsConnected,
+    chainId: realChainId,
+  } = useAccount();
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const { open } = useAppKit();
   const { openGate } = useWalletGate();

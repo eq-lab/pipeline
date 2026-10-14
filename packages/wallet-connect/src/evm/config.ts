@@ -23,7 +23,7 @@ import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import type { Config } from "@wagmi/core";
 import { http } from "viem";
 import { getWalletConnectConfig } from "../config";
-import { getHoodiChain } from "./chain";
+import { getEvmChain } from "./chain";
 
 /** Read a CSS custom property from :root (safe for non-DOM environments). */
 function cssVar(name: string): string | undefined {
@@ -46,19 +46,19 @@ export function initEvmWalletConnect(): Config {
 
   const walletConnectConfig = getWalletConnectConfig();
   const projectId = walletConnectConfig.walletConnectProjectId;
-  const hoodi = getHoodiChain();
+  const chain = getEvmChain();
 
   const wagmiAdapter = new WagmiAdapter({
-    networks: [hoodi],
+    networks: [chain],
     projectId,
     transports: {
-      [hoodi.id]: http(walletConnectConfig.evmRpcUrl),
+      [chain.id]: http(walletConnectConfig.evmRpcUrl),
     },
   });
 
   createAppKit({
     adapters: [wagmiAdapter],
-    networks: [hoodi],
+    networks: [chain],
     projectId,
     metadata: {
       name: walletConnectConfig.appName,

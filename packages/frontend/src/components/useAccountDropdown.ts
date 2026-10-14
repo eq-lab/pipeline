@@ -4,7 +4,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { truncateAddress } from "@/utils/truncateAddress";
 import {
-  getNetworkSwitcherState,
+  useNetworkSwitcherState,
   type NetworkIdentity,
   type NetworkLink,
 } from "@/wallet";
@@ -91,7 +91,7 @@ export function useAccountDropdown({
     }
   }, [pathname, onClose]);
 
-  const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+  const { currentNetwork, otherNetworks } = useNetworkSwitcherState();
   const networkSwitch = useNetworkSwitch();
 
   return {

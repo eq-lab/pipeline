@@ -971,6 +971,12 @@ component accepts any number. Each item forwards `label`, `actionLabel`, `disabl
 `loading`, `state`, `errorMessage`, and `errorDetails` to `StepRow` (see [StepRow](#steprow) for
 their semantics; the error slot is specified in [`error-handling.md`](./error-handling.md)).
 
+`notice` — optional `{ label, actionLabel, onAction, loading? }` (#1497). Renders a one-line row
+(`data-testid="steps-card-chain-notice"`) above the steps: label text in the `StepRow` label
+typography (negative ink) and a compact action button in the `StepRow` action slot. The LP app uses
+it for the wrong-network "Switch your wallet to {chain}" row; its styling follows the disabled /
+inline-error steps (#1024 / #1034), with no new design surface.
+
 ## TextField
 
 **Source:** `packages/ui/src/components/TextField/TextField.tsx` + `useTextField.ts`.

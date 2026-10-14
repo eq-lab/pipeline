@@ -573,8 +573,9 @@ box-and-arrow external-link icon from Figma node `1497:94558` (24×24, #1110) �
 node's `#383735` @ 0.6 fill exactly.
 
 **Mainnet gate (#1243):** the TVL cell, Current APY cell, and the dashboard link button are
-omitted entirely (not just visually hidden) on a mainnet deployment (`isMainnetDeployment()`,
-`@/wallet/networkSwitcher`) — Exchange rate is the only cell left, and the whole bordered wrapper
+omitted entirely (not just visually hidden) when the active view's network is mainnet
+(`isMainnetNetwork(kind)`, `@/wallet/networkSwitcher`, #1497 — see
+[`wallet-flows.md`](./wallet-flows.md#design-issue-1032)) — Exchange rate is the only cell left, and the whole bordered wrapper
 `<div>` for each hidden cell is skipped so no hairline separator dangles next to the now-lone
 Exchange rate cell. Testnet and unknown passphrases render all three cells as before.
 
@@ -748,10 +749,16 @@ Dashboard at `/dashboard` and is separated from Activity by a vertical divider (
 `data-testid="topbar-nav-divider"`).
 
 **Mainnet gate (#1243):** the Overview slot and its divider are omitted from `NAV_ITEMS` entirely
-on a mainnet deployment (`isMainnetDeployment()`, `@/wallet/networkSwitcher` — reuses the #1032
-`networkIdFromPassphrase(ENV.STELLAR_NETWORK_PASSPHRASE)` identity, no new env var). Testnet and
-unknown passphrases are unaffected. Temporary until mainnet has real generated data; un-hiding is
-a one-line change at the `isMainnetDeployment` call site.
+when the active view's network is mainnet (`useIsMainnetNetwork()`, `@/wallet/networkSwitcher` —
+the Stellar passphrase identity in the Stellar view, the chain-registry identity of
+`VITE_EVM_CHAIN_ID` in the EVM view, #1497; no new env var). Testnet and unknown ids are
+unaffected. Temporary until mainnet has real generated data; un-hiding is a one-line change at the
+`useIsMainnetNetwork` call site.
+
+**Network pill wrong-network state (#1497):** in the EVM view with a connected wallet on a chain
+other than `VITE_EVM_CHAIN_ID`, the `NetworkSwitcher` pill shows a danger dot and "Wrong network"
+(`data-state="wrong-network"`); its menu's first row `topbar-network-switch-chain` switches the
+wallet's chain. Rules: [`wallet-flows.md#wrong-network`](./wallet-flows.md#wrong-network).
 
 ### RiskBanner
 
@@ -849,8 +856,8 @@ first focusable element on open; focus is trapped inside while open; Escape clos
 `useMobileNavMenu`); scrim click closes.
 
 **Mainnet gate (#1243):** the Dashboard item and its preceding divider are omitted on a mainnet
-deployment (`isMainnetDeployment()`, `@/wallet/networkSwitcher`), same derivation as `TopBar`.
-Testnet and unknown passphrases are unaffected.
+view (`useIsMainnetNetwork()`, `@/wallet/networkSwitcher`), same derivation as `TopBar`.
+Testnet and unknown ids are unaffected.
 
 **`useMobileNavMenu` hook** is intentionally narrow: it owns only the open/close boolean toggle and
 its side effects (body-scroll lock, Escape-to-close). The host component (`TopBar`) holds the auth
@@ -1801,6 +1808,13 @@ Merged three/four-step conversion page. Direction is driven by the `?direction=d
 
 **Chain-aware wiring** (issue #552): the page reacts to `useWalletView().kind`. When the connected wallet is Stellar (`kind` is derived, #1512), the `useDepositFlow` adapter switches all data and actions to the Stellar/Soroban stack (trustline step, SAC balances, XLM fee, etc.); disconnecting and connecting an EVM wallet restores the EVM behavior. All hooks are called unconditionally per React's Rules of Hooks.
 
+**Wrong network (#1497, EVM only):** when `flow.wrongNetwork` is set (EVM wallet connected on a
+chain other than `VITE_EVM_CHAIN_ID`), the steps card stays rendered but every step action is
+disabled and the card shows the one-line `steps-card-chain-notice` row "Switch your wallet to
+{chain}" with a Switch button (rules: [`wallet-flows.md#wrong-network`](./wallet-flows.md#wrong-network)).
+It needs a connected wallet, so "Wallet not connected" still outranks it, and it is not a banner
+that replaces the card.
+
 **Step sequences per chain/direction:**
 
 | Step | EVM deposit                          | EVM withdraw                          | Stellar deposit & withdraw                                                    |
@@ -1861,6 +1875,8 @@ Amount is reset on chain switch via the same `prevKindRef` pattern used by `depo
 
 Wallet-not-connected banner uses the same Figma node as the deposit page (`1994-7226`).
 
+**Wrong network (#1497, EVM only):** same behaviour as the deposit page — the steps card (both tabs) stays rendered with every step action disabled and the `steps-card-chain-notice` "Switch your wallet to {chain}" row (`stakeFlow.wrongNetwork`); see [`wallet-flows.md#wrong-network`](./wallet-flows.md#wrong-network).
+
 **No-XLM banner** — the same `XlmFundingBanner` component as the deposit page (precedence item 3 there) replaces the StepsCard on **both tabs** when `stakeFlow.needsXlmFunding` is true: every Stellar step (trustline enable, vault deposit/redeem) needs XLM for the network fee (#1196, #1130).
 
 Figma references: [disconnected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-7280), [init](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95311), [approved](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-101158).
@@ -1910,9 +1926,10 @@ Token discipline (per `FRONTEND.md`): no raw hex/font names; all colors and typo
 Figma references: [desktop](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-12098&m=dev), [responsive](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387&m=dev).
 
 **Mainnet gate (#1243):** hidden nav links are not access control, so the route itself is guarded —
-`beforeLoad` throws `redirect({ to: "/" })` when `isMainnetDeployment()` (`@/wallet/networkSwitcher`)
-is true, so a typed `/dashboard` URL cannot reach the page on mainnet. Testnet and unknown
-passphrases load the route normally.
+`beforeLoad` throws `redirect({ to: "/" })` when `isMainnetNetwork("stellar")` (`@/wallet/networkSwitcher`,
+the no-wallet default view) is true, and the component renders `<Navigate to="/" replace />` when
+`useIsMainnetNetwork()` (the connected wallet's view, #1497) is true, so a typed `/dashboard` URL
+cannot reach the page on mainnet in either view. Testnet and unknown ids load the route normally.
 
 ### Diagnostics route
 

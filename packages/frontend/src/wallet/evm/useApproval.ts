@@ -14,6 +14,7 @@
  * See `packages/frontend/src/wallet/README.md` for mock key details and
  * DevTools console snippets.
  */
+import { ENV } from "@/lib/env";
 import { useEffect, useState, useCallback } from "react";
 import {
   useReadContract,
@@ -301,6 +302,7 @@ export function useApproval({
           functionName: "approve",
           args: [spender, amount],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },
