@@ -355,6 +355,18 @@ The CollateralRegistry's 11 business events are collected on EVM when
 `CHAIN_<id>_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set (unset ships dark) and stored as raw
 `contract_logs` rows; see [collateral-registry-events.md](./collateral-registry-events.md).
 
+**EVM Minter.** The EVM poller routes every `PipelineMinter` log (address from
+`CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`) through `parse_minter_event`, which stores sixteen
+events under their Solidity names: `WireIn` (from `WireInRecorded`), `WireInAssigned`,
+`WireInReturned`, `CashDisbursed`, `CashDisbursementReversed`, `CashRepaid`,
+`CashRepaymentReversed`, `WireOutRequested`, `WireOutSettled`, `WireOutCancelled`,
+`RampOpened`, `RampClosed`, `CashRecorded`, `CashCorrected`, `MintCorrected` and
+`LossAbsorbed` (#1483). Params use snake_case keys, decimal strings for amounts, ids, signed
+deltas and `value_date`, lowercase hex hashes with no `0x`, and enum names (`direction`,
+`reason`, `"Unknown"` for an unmapped ordinal). The shapes align with the Stellar minter
+(#1480), except that EVM stores corrections as `CashCorrected` where Stellar stores
+`CashRecorded` with `reason = "Correction"`; consumers read both.
+
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
 #### EVM DealTokenFactory (#1485)

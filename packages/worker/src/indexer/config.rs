@@ -348,7 +348,7 @@ pub struct IndexerJobSettings {
     pub withdrawal_queue_address: String,
     pub staked_plusd_address: String,
     pub loan_registry_address: String,
-    /// The Minter contract (`PipelineMinter`, successor to `PipelineYieldMinter`); indexes `WireIn`/`WireInAssigned` (#1434).
+    /// The Minter contract (`PipelineMinter`, successor to `PipelineYieldMinter`); indexes its wire, cash, ramp, and mint-correction events (#1434, #1483).
     pub minter_address: String,
     pub collateral_registry_address: Option<String>,
     pub deal_token_factory_address: Option<String>,
