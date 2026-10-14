@@ -39,11 +39,9 @@ is also reachable for this visitor as of #1458 (its wallet-only variant —
 **State 7's exact condition** is `!hasSession && isConnected && plusdIsZero && splusdIsZero`,
 evaluated ahead of state 1 in `deriveHomeState`. The balance test is the same #1186 displayed-zero
 rule (`isDisplayZero`) that drives `stakeDisabled`/`sellDisabled` elsewhere on the grid. `isConnected`
-here is the **active wallet view's** connection (`useWalletView().kind` → EVM or Stellar) — the same
-input states 3/4/6 use — not `useWalletPresence().isAnyConnected`, which only the header uses; a
-Stellar-connected visitor whose active view is EVM still sees state 1, since the balances, activity
-and chart are all read from the active view's chain (tracked as tech debt — see
-[`tech-debt-tracker.md`](../exec-plans/tech-debt-tracker.md)). The balance inputs' conservative
+here is the connected wallet's connection (`useWalletView().kind` is derived from the single connected
+wallet — EVM or Stellar, #1512) — the same input states 3/4/6 use — and the balances, activity and
+chart are all read from that chain. The balance inputs' conservative
 `false` defaults mean an unresolved or omitted balance keeps a sessionless visitor in state 1, not
 state 7. A connected wallet with a non-zero balance and no session is still undesigned and keeps
 falling through to state 1 until a frame exists.

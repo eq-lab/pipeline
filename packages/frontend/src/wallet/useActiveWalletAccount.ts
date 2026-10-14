@@ -12,7 +12,6 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export interface UseActiveWalletAccountResult {
   kind: WalletViewKind;
-  setKind: (k: WalletViewKind) => void;
   isConnected: boolean;
   address: string | undefined;
   truncatedAddress: string | undefined;
@@ -22,7 +21,7 @@ export interface UseActiveWalletAccountResult {
 }
 
 export function useActiveWalletAccount(): UseActiveWalletAccountResult {
-  const { kind, setKind } = useWalletView();
+  const { kind } = useWalletView();
 
   const evm = useEvmWallet();
   const { usdc: usdcAddress } = useDepositManagerAddresses();
@@ -50,7 +49,6 @@ export function useActiveWalletAccount(): UseActiveWalletAccountResult {
 
   return {
     kind,
-    setKind,
     isConnected,
     address,
     truncatedAddress: address ? truncateAddress(address) : undefined,

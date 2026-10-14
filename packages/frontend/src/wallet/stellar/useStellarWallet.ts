@@ -28,7 +28,11 @@ import {
   RABET_ID,
 } from "./config";
 import { networkPassphrase } from "./chain";
-import { useMockStellarAddress, useMockStellarIsConnected } from "./mock";
+import {
+  useMockStellarAddress,
+  useMockStellarIsConnected,
+  useBothWalletMocksConnected,
+} from "./mock";
 import { readTermsAcknowledged } from "../useTermsAcknowledgement";
 import { useWalletGate } from "../WalletGateContext";
 import {
@@ -98,6 +102,7 @@ export function useStellarWallet(): StellarWalletState {
 
   const mockAddress = useMockStellarAddress();
   const mockIsConnected = useMockStellarIsConnected();
+  const bothMocksConnected = useBothWalletMocksConnected();
   const { openGate } = useWalletGate();
   const connectionSettled = useStellarConnectionSettled();
 
@@ -125,8 +130,9 @@ export function useStellarWallet(): StellarWalletState {
 
   // Resolved values — mock wins over real (same precedence as EVM).
   const address = mockAddress ?? realAddress;
-  const isConnected =
-    mockIsConnected !== undefined
+  const isConnected = bothMocksConnected
+    ? false
+    : mockIsConnected !== undefined
       ? mockIsConnected
       : mockAddress !== undefined
         ? true

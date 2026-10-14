@@ -26,6 +26,7 @@ import { ConnectModalContext } from "./ConnectModalContext";
 import { ConnectWalletModal } from "../components/ConnectWalletModal";
 import { useWalletGate } from "./WalletGateContext";
 import { readTermsAcknowledged } from "./useTermsAcknowledgement";
+import { useWalletPresence } from "./useWalletPresence";
 import heroUrl from "../assets/connect-hero-ship.webp?url";
 
 function warmHeroImage() {
@@ -40,6 +41,7 @@ export function ConnectModalProvider({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { openGate } = useWalletGate();
+  const { isAnyConnected } = useWalletPresence();
 
   useEffect(() => {
     if (typeof requestIdleCallback === "function") {
@@ -56,12 +58,13 @@ export function ConnectModalProvider({
 
   // Public: route through the gate first when terms have not been acknowledged.
   const open = useCallback(() => {
+    if (isAnyConnected) return;
     if (readTermsAcknowledged()) {
       openModal();
     } else {
       openGate(openModal);
     }
-  }, [openGate, openModal]);
+  }, [isAnyConnected, openGate, openModal]);
 
   const close = useCallback(() => setIsOpen(false), []);
 

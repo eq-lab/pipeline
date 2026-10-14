@@ -445,6 +445,8 @@ localStorage.removeItem("pipeline.mock.api.GET./v1/withdrawals/77/voucher");
 
 For wallet mock keys (`pipeline.mock.wallet.*`) see
 [`src/wallet/README.md`](../wallet/README.md).
+Setting both the EVM and Stellar wallet mocks to connected is invalid (one wallet at a time, #1512):
+both report disconnected and a one-time console warning is logged.
 
 ### Stellar network fee mock keys
 

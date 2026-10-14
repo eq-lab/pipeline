@@ -1,10 +1,10 @@
 // spec: docs/frontend/dashboard-components.md#home-route
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import React, { useEffect } from "react";
+import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
-import { WalletViewProvider, useWalletView } from "@/wallet";
+import { WalletViewProvider } from "@/wallet";
 import { Route } from "./index";
 
 const mockOpen = vi.fn();
@@ -215,22 +215,12 @@ function renderHome() {
   );
 }
 
-function StellarViewSwitcher({ children }: { children: React.ReactNode }) {
-  const { setKind } = useWalletView();
-  useEffect(() => {
-    setKind("stellar");
-  }, [setKind]);
-  return <>{children}</>;
-}
-
 function renderHomeStellar() {
   const HomePage = Route.options.component as React.ComponentType;
   return render(
     <EvmWalletProvider>
       <WalletViewProvider>
-        <StellarViewSwitcher>
-          <HomePage />
-        </StellarViewSwitcher>
+        <HomePage />
       </WalletViewProvider>
     </EvmWalletProvider>,
   );
@@ -943,7 +933,7 @@ describe("Home page — Stellar-only connected (regression #684)", () => {
   });
 });
 
-describe("Home page — EVM-only connected, Stellar view (view-kind semantics)", () => {
+describe("Home page — EVM-only connected, derived view is EVM (#1512)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
@@ -955,16 +945,15 @@ describe("Home page — EVM-only connected, Stellar view (view-kind semantics)",
     localStorage.clear();
   });
 
-  it("shows disconnected promo card when Stellar view active but Stellar not connected", async () => {
+  it("shows the connected layout through WalletViewProvider (view follows the connected wallet)", async () => {
     renderHomeStellar();
     await waitFor(() => {
-      const headings = screen.getAllByRole("heading", {
-        name: "Connect Wallet",
-      });
-      expect(headings.length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByTestId("home-portfolio-placeholder").length,
+      ).toBeGreaterThanOrEqual(1);
     });
     expect(
-      screen.queryByTestId("home-portfolio-placeholder"),
+      screen.queryByRole("heading", { name: "Connect Wallet" }),
     ).not.toBeInTheDocument();
   });
 });
@@ -990,7 +979,7 @@ describe("Home page — EVM-only connected, EVM view (no regression)", () => {
   });
 });
 
-describe("Home page — neither connected, Stellar view (disconnected promo)", () => {
+describe("Home page — neither connected (disconnected promo)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
@@ -1000,7 +989,7 @@ describe("Home page — neither connected, Stellar view (disconnected promo)", (
     localStorage.clear();
   });
 
-  it("shows disconnected promo card when neither chain is connected (Stellar view)", async () => {
+  it("shows disconnected promo card when neither chain is connected", async () => {
     renderHomeStellar();
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
@@ -1010,7 +999,7 @@ describe("Home page — neither connected, Stellar view (disconnected promo)", (
     });
   });
 
-  it("PortfolioPlaceholderCard absent when disconnected (Stellar view)", async () => {
+  it("PortfolioPlaceholderCard absent when disconnected", async () => {
     renderHomeStellar();
     await waitFor(() => {
       expect(screen.queryByText("Total Balance")).not.toBeInTheDocument();

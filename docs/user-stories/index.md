@@ -259,3 +259,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1332 Delete dead evm/WalletGateContext.ts legacy no-arg openGate variant](https://github.com/eq-lab/pipeline/issues/1332) | [1332-delete-dead-evm-wallet-gate-context.md](./epic-1494/1332-delete-dead-evm-wallet-gate-context.md) | Initial |
 | [#1496 EVM claim vouchers: send chain_id from useDepositVoucher and useWithdrawalVoucher](https://github.com/eq-lab/pipeline/issues/1496) | [1496-evm-voucher-chain-id.md](./epic-1494/1496-evm-voucher-chain-id.md) | Initial |
+| [#1512 Account: single connected wallet — remove the Ethereum/Stellar tabs](https://github.com/eq-lab/pipeline/issues/1512) | [1512-single-connected-wallet.md](./epic-1494/1512-single-connected-wallet.md) | Initial |

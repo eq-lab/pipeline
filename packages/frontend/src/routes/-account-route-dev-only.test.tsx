@@ -36,7 +36,6 @@ vi.mock("@/wallet", async (importOriginal) => {
     }),
     useActiveWalletAccount: () => ({
       kind: "evm" as const,
-      setKind: vi.fn(),
       isConnected: mockWalletPresenceState.isAnyConnected,
       address: undefined,
       truncatedAddress: undefined,
