@@ -351,6 +351,7 @@ pub struct IndexerJobSettings {
     /// The Minter contract (`PipelineMinter`, successor to `PipelineYieldMinter`); indexes `WireIn`/`WireInAssigned` (#1434).
     pub minter_address: String,
     pub collateral_registry_address: Option<String>,
+    pub deal_token_factory_address: Option<String>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
     pub log_confirmations_delay: u64,
@@ -376,6 +377,10 @@ impl IndexerJobSettings {
                 .ok()
                 .map(|v| v.trim().to_owned())
                 .filter(|v| !v.is_empty()),
+            deal_token_factory_address: match env::var(format!("{ip}DEAL_TOKEN_FACTORY_ADDRESS")) {
+                Ok(raw) if !raw.trim().is_empty() => Some(raw.trim().to_owned()),
+                _ => None,
+            },
             polling_block_range: require_nonzero(
                 chain_id,
                 ChainKind::Evm,

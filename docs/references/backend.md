@@ -357,6 +357,23 @@ The CollateralRegistry's 11 business events are collected on EVM when
 
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
+#### EVM DealTokenFactory (#1485)
+
+`PipelineDealTokenFactory` mints a DEBT and a CARGO `DealToken` per loan (`registerDeal`, CREATE2, salt = `loanId`). The indexer records the factory's three deal events and every DealToken `Transfer`. It is enabled by the optional `CHAIN_<id>_EVM_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS`; unset or blank ships dark (no handler, no extra `eth_getLogs` addresses, no seed query). A malformed value fails startup naming `DEAL_TOKEN_FACTORY_ADDRESS`.
+
+| `event_name` | `contract_address` | `params` keys |
+|---|---|---|
+| `DealRegistered` | factory | `loan_id`, `debt`, `cargo` |
+| `DebtSynced` | factory | `loan_id`, `target`, `previous`, `minted`, `clawed` |
+| `CargoSynced` | factory | `loan_id`, `target`, `previous`, `minted`, `burned` |
+| `DealTokenTransfer` | the DEBT / CARGO token | `loan_id`, `token_kind` (`"debt"` or `"cargo"`), `token`, `from`, `to`, `amount` |
+
+`loan_id` and every amount are decimal strings; addresses are EIP-55 checksummed. `DealTokenTransfer.from` is JSON `null` on a mint and `to` is JSON `null` on a burn (the zero address is never stored); `token` repeats `contract_address`. `amount` is the raw on-chain integer (the EVM DealToken has 6 decimals, the Stellar SAC 7); nothing is normalised at write time. The Stellar indexer (#1482) writes the same shapes. The name is deliberately not `Transfer` / `AssetTransfer`: those consumers filter on `event_name` without `contract_address`, so sharing a name would fold deal-token supply into USDC custody balances. A DealToken only ever emits mint and burn transfers (`_update` reverts otherwise). `DebtSynced` / `CargoSynced` are permissionless and are emitted even when nothing moves, so rows with `minted = clawed / burned = 0` are stored as emitted.
+
+**Runtime address discovery.** Token addresses are known only from `DealRegistered` (never from `debtAddress()` / `cargoAddress()`, which recompute from the current creation code). `DealTokenRegistry` (`indexer/deal_tokens.rs`) is a `DynamicAddressSource` of `EvmEventPoller`: at startup it is seeded from every indexed `DealRegistered` row on the chain (`ContractLogsRepo::list_deal_registrations`, regardless of `contract_address`, so a factory address change keeps watching earlier tokens); during a poll each chunk is fetched with one `eth_getLogs` over the static (core) addresses only, then the registry's token addresses go in separate `eth_getLogs` calls over the same range, at most `MAX_DYNAMIC_ADDRESSES_PER_REQUEST` (25) addresses each, so a growing token list never hits a provider's address limit or touches the core filter; any failed call fails the chunk. When that fetch reveals a new `DealRegistered`, the same batched fetch over just the new token addresses covers the same range, so a mint in the registering block or transaction is not missed. The merged logs are sorted by `(block_number, log_index)`. The second fetch never runs with an empty address list. The token decoder returns `None` unless the log's emitter is a registered token, because the sPLUSD vault's ERC-20 `Transfer` shares the same topic.
+
+**Limitation.** There is no `deal(loanId)` sweep: deals registered before the factory was indexed are not discovered. Set the factory address at deploy time, or rewind the chain cursor to at or before the factory's first `registerDeal`. Deal token addresses are fetched in separate `eth_getLogs` batches of at most 25, so a large deal count does not enlarge the core filter.
+
 **Stellar asset-transfer tracking.** The Stellar indexer can additionally track a single asset's (SAC / SEP-41 token) `transfer` events. It persists **raw** transfers only (`from` / `to` / `amount` in `contract_logs.params`, amount as an i128 string) under `event_name = "AssetTransfer"`. No role/direction labeling — downstream consumers classify against address lists. Configured **job-level** (applies to every Stellar chain), read once at startup:
 
 - `JOB_INDEXER_STELLAR_ASSET_ID` — Soroban `C…` id of the asset (SAC) to watch. Set alone, this is **sufficient to enable tracking** for any chain that also configures a `CHAIN_<id>_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` (see below). Unset → the whole feature ships dark.

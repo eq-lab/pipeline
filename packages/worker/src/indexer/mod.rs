@@ -1,6 +1,8 @@
 pub mod chain_poller;
 pub mod collateral_registry_parsers;
 pub mod config;
+pub mod deal_token_parsers;
+pub mod deal_tokens;
 pub mod evm_parsers;
 pub mod loan_mapper;
 pub mod loan_metadata;
@@ -127,6 +129,31 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         settings.polling_interval_ms,
     );
 
+    let deal_tokens = match settings.deal_token_factory_address.as_deref() {
+        Some(raw) => {
+            let factory = parse_address("DEAL_TOKEN_FACTORY_ADDRESS", raw)?;
+            let mut core = vec![
+                ("DEPOSIT_MANAGER_ADDRESS", dm_contracts[0]),
+                ("WITHDRAWAL_QUEUE_ADDRESS", wq_contracts[0]),
+                ("STAKED_PLUSD_ADDRESS", splusd_contracts[0]),
+                ("LOAN_REGISTRY_ADDRESS", loan_registry_contracts[0]),
+                ("MINTER_ADDRESS", yield_minter_contracts[0]),
+            ];
+            core.extend(
+                collateral_registry_contracts
+                    .iter()
+                    .map(|a| ("COLLATERAL_REGISTRY_ADDRESS", *a)),
+            );
+            deal_tokens::reject_core_collision(chain_id, factory, &core)?;
+            let registry = Arc::new(deal_tokens::DealTokenRegistry::new(factory));
+            let rows = contract_logs_repo.list_deal_registrations(chain_id).await?;
+            let deals = registry.seed(&rows);
+            tracing::info!(chain_id, deals, "deal-token registry seeded");
+            Some(registry)
+        }
+        None => None,
+    };
+
     let poller = register_evm_handlers(
         base_builder,
         chain_id,
@@ -147,6 +174,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             immutable_resolver,
             mutable_resolver,
         },
+        deal_tokens,
     )
     .build();
 

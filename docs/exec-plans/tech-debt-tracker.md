@@ -2047,3 +2047,11 @@ line, whichever section it lands in.
 - **Gap:** `Pledged` carries only ids (a block-pinned `lot()` read would be needed for lot details); implicit stage changes (release or liquidate to zero, `setControl` moving Assigned to Acknowledged) emit no event and are not synthesised; `Released` and `Liquidated` carry no remaining quantity; `MarginCall` can repeat and nothing fires on recovery; `value_per_unit` and quantities are stored raw at 6 decimals on EVM versus 7 on Stellar.
 - **Impact:** A consumer of `contract_logs` alone cannot reconstruct lot state or compare values across chain kinds without per-chain scaling and read-time derivation.
 - **Suggested fix:** Enrich `Pledged` with a block-pinned `lot()` read, derive implicit stages at read time (see `docs/references/collateral-registry-events.md`), and scale by chain kind in the consumer.
+
+### TD-146: EVM deal-token discovery has no backfill sweep and grows every `eth_getLogs` address list
+
+- **Date:** 2026-10-14
+- **Location:** `packages/worker/src/indexer/deal_tokens.rs`, `packages/worker/src/indexer/poller.rs` (`fetch_chunk_logs`) — Issue #1485.
+- **Gap:** The deal-token registry is seeded only from indexed `DealRegistered` rows (no `deal(loanId)` sweep), so deals registered before the factory was indexed are never tracked. Each deal also adds two addresses to every chunk's token fetch; the address-limit failure mode is resolved (#1493): token addresses are fetched in separate `eth_getLogs` calls of at most 25, apart from the core contracts, so only the per-chunk call count grows (one extra call per 25 tokens).
+- **Impact:** Operators must set the factory address at deploy time or rewind the cursor to recover earlier deals. Request count per chunk grows linearly with the number of deal tokens.
+- **Suggested fix:** An optional startup sweep over `deal(loanId)` for known loan ids.
