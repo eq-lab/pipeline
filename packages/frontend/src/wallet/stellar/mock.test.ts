@@ -1,9 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
 import {
   STELLAR_MOCK_KEYS,
   parseStellarAddress,
   readMockStellarAddress,
   readMockStellarIsConnected,
+  useBothWalletMocksConnected,
+  _resetBothMocksWarningForTests,
 } from "./mock";
 import { readMock, parseBoolean } from "../evm/mock";
 
@@ -104,5 +107,52 @@ describe("readMock with parseBoolean (shared from evm/mock)", () => {
   it("parses isConnected key correctly", () => {
     localStorage.setItem(STELLAR_MOCK_KEYS.isConnected, "true");
     expect(readMock(STELLAR_MOCK_KEYS.isConnected, parseBoolean)).toBe(true);
+  });
+});
+
+describe("useBothWalletMocksConnected (#1512)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    _resetBothMocksWarningForTests();
+  });
+
+  const evmKeys = () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0x1234000000000000000000000000000000000001",
+    );
+  };
+  const stellarKeys = () => {
+    localStorage.setItem(
+      STELLAR_MOCK_KEYS.address,
+      "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    );
+  };
+
+  it("is false when only one chain is mocked", () => {
+    evmKeys();
+    const { result } = renderHook(() => useBothWalletMocksConnected());
+    expect(result.current).toBe(false);
+  });
+
+  it("is true with a single warning when both chains are mocked connected", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    evmKeys();
+    stellarKeys();
+    const { result, rerender } = renderHook(() =>
+      useBothWalletMocksConnected(),
+    );
+    rerender();
+    expect(result.current).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("is false when one mock is explicitly disconnected", () => {
+    evmKeys();
+    stellarKeys();
+    localStorage.setItem(STELLAR_MOCK_KEYS.isConnected, "false");
+    const { result } = renderHook(() => useBothWalletMocksConnected());
+    expect(result.current).toBe(false);
   });
 });

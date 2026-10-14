@@ -1,13 +1,8 @@
 // spec: docs/frontend/account-page.md#accountwalletcard
-import { Button, CoinIcon, SegmentedTabs } from "@pipeline/ui";
+import { Button, CoinIcon } from "@pipeline/ui";
 import { useActiveWalletAccount } from "@/wallet";
 import { AccountIconTile } from "./AccountIconTile";
 import { AccountListRow } from "./AccountListRow";
-
-const NAMESPACE_TABS = [
-  { id: "evm", label: "Ethereum" },
-  { id: "stellar", label: "Stellar" },
-];
 
 function WalletGlyph({ size }: { size: number }) {
   return (
@@ -47,8 +42,6 @@ function CopyIcon() {
 
 export function AccountWalletCard() {
   const {
-    kind,
-    setKind,
     isConnected,
     address,
     truncatedAddress,
@@ -73,16 +66,6 @@ export function AccountWalletCard() {
       data-testid="account-wallet-card"
       data-node-id={isConnected ? "6701:98142" : "6701:98104"}
     >
-      <div className="flex w-full flex-col items-start px-2">
-        <SegmentedTabs
-          tabs={NAMESPACE_TABS}
-          activeId={kind}
-          onSelect={(id) => setKind(id as "evm" | "stellar")}
-          variant="track"
-          data-node-id="6701:98144"
-        />
-      </div>
-
       {isConnected ? (
         <div
           className="flex w-full flex-col items-start gap-0"

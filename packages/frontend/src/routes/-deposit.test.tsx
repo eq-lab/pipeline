@@ -36,11 +36,11 @@
  *  24. Clicking swap clears the amount input.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import React, { useEffect } from "react";
+import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
-import { WalletViewProvider, useWalletView } from "@/wallet";
+import { WalletViewProvider } from "@/wallet";
 import { ToastProvider } from "@/lib/toast";
 import { Route } from "./deposit";
 
@@ -533,28 +533,14 @@ function renderDeposit() {
   );
 }
 
-/**
- * Helper that switches the WalletViewContext to "stellar" before rendering
- * the Deposit page. Uses WalletViewProvider so the context is real — no spying.
- */
-function StellarViewSwitcher({ children }: { children: React.ReactNode }) {
-  const { setKind } = useWalletView();
-  useEffect(() => {
-    setKind("stellar");
-  }, [setKind]);
-  return <>{children}</>;
-}
-
 function renderDepositStellar() {
   const DepositPage = Route.options.component as React.ComponentType;
   return render(
     <EvmWalletProvider>
       <WalletViewProvider>
-        <StellarViewSwitcher>
-          <ToastProvider>
-            <DepositPage />
-          </ToastProvider>
-        </StellarViewSwitcher>
+        <ToastProvider>
+          <DepositPage />
+        </ToastProvider>
       </WalletViewProvider>
     </EvmWalletProvider>,
   );
@@ -2552,7 +2538,7 @@ describe("Deposit page — isDataPending: disconnected + loading → connect-wal
 // ── Stellar trustline tests ────────────────────────────────────────────────────
 //
 // These tests use renderDepositStellar() which wraps the page in WalletViewProvider
-// and switches to "stellar" via StellarViewSwitcher.
+// (the view follows the connected Stellar mock wallet).
 // Stellar mock keys:
 //   pipeline.mock.wallet.stellar.address   — activates the Stellar wallet mock
 //   pipeline.mock.wallet.stellar.isConnected — true = connected

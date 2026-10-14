@@ -213,6 +213,25 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
   misleading. While the share asset is loading or errored, the step stays "idle" and staking is
   blocked — never a false-ready state.
 
+## Single connected wallet
+
+Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee app) is unchanged.
+
+- **One wallet at a time.** While an EVM or Stellar wallet is connected, no connect entry point for
+  the other chain is offered: every connect CTA keys on the active `kind`'s wallet, and
+  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`. Nothing is
+  auto-disconnected on connect; the LP disconnects, then connects again (the connect modal keeps its
+  EVM / Soroban tabs for that choice).
+- **`kind` is derived**, never stored: see [`hooks.md`](./hooks.md) (`useWalletView`). The
+  `pipeline.wallet.view.kind` key and `setKind` no longer exist.
+- **Legacy both-connected state.** If both kits come back connected (a session restored from before
+  this change, or both `pipeline.mock.wallet.*` and `pipeline.mock.wallet.stellar.*` set), the app
+  disconnects **both** once `useWalletPresence().isSettled` is true and leaves the LP disconnected to
+  connect exactly one — no "stored kind wins" or "Stellar wins" rule. The cleanup also deletes the
+  legacy `pipeline.wallet.view.kind` key. Real sessions are disconnected through each kit; for the
+  mock layer, when both mock wallets are connected each reports disconnected and a one-time
+  `console.warn` explains the conflict (see `packages/frontend/src/wallet/README.md`).
+
 ## Network switcher (cross-deployment links)
 
 **Source:** `packages/wallet-connect/src/network/links.ts` (shared helpers); per-app glue in

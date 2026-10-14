@@ -418,6 +418,12 @@ conditions prevent the write from proceeding.
 
 > For API mock keys (`pipeline.mock.api.*`) see [`src/api/README.md`](../api/README.md).
 
+> **One wallet at a time (#1512).** Setting both the EVM (`pipeline.mock.wallet.address` /
+> `isConnected`) and the Stellar (`pipeline.mock.wallet.stellar.address` / `isConnected`) mocks to a
+> connected state is invalid: both mock wallets report disconnected and a one-time `console.warn` is
+> logged. Clear one chain's keys. See
+> [`wallet-flows.md#single-connected-wallet`](../../../../docs/frontend/wallet-flows.md#single-connected-wallet).
+
 ### Quick start — work without a real wallet
 
 Run the dev server, open the browser DevTools console, and paste:

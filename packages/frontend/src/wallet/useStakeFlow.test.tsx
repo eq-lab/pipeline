@@ -172,7 +172,6 @@ vi.mock("./WalletViewContext", async (importOriginal) => {
     ...actual,
     useWalletView: vi.fn(() => ({
       kind: "stellar" as const,
-      setKind: vi.fn(),
     })),
   };
 });

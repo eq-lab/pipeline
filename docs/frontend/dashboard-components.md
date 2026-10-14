@@ -670,11 +670,11 @@ wallet-connect entry points still live" below for what replaces the removed head
 session sees the same account icon as a signed-in LP, reactively (flipping either source re-renders
 the right slot without a remount). This closes the gap where a wallet-only visitor used to see Sign
 In / Sign Up with nowhere to see the wallet they just connected. `isAnyConnected` is `evm.isConnected
-|| stellar.isConnected` — **any namespace**, not the active `useWalletView().kind` tab — so a
-visitor connected on EVM who switches to the Account page's Stellar tab does not lose the account
+|| stellar.isConnected` — **any namespace** (at most one is connected since #1512, so it agrees with
+`useWalletView().kind`) — so the visitor does not lose the account
 icon or get bounced by the route gate (see
-[`account-page.md#route-gate`](./account-page.md#route-gate)). The `/account` wallet **card** keeps
-its own per-tab view semantics unchanged — only the header and the route gate use "any connected".
+[`account-page.md#route-gate`](./account-page.md#route-gate)). The `/account` wallet **card** shows the
+single connected wallet (no tabs, #1512).
 
 **Signed-out state** (Figma node `6701:98403`, now gated on `!showAccount`): renders
 `Button variant="secondary"` "Sign In" (`topbar-sign-in-button`) and `Button variant="primary-dark"`
@@ -1773,7 +1773,7 @@ Merged three/four-step conversion page. Direction is driven by the `?direction=d
 
 `/withdraw` (`withdraw.tsx`) is a one-time `redirect` to `/deposit?direction=withdraw`, kept only so external links/bookmarks to `/withdraw` continue to work — the actual page lives at `/deposit`. `replace: true` keeps the redirect out of the back-button history (reload does not flash `/withdraw` before `/deposit`, and back-button does not accumulate redirect hops). Incoming search params are preserved.
 
-**Chain-aware wiring** (issue #552): the page reacts to `useWalletView().kind`. When Stellar is active, the `useDepositFlow` adapter switches all data and actions to the Stellar/Soroban stack (trustline step, SAC balances, XLM fee, etc.); flipping back to EVM restores the original behavior. All hooks are called unconditionally per React's Rules of Hooks.
+**Chain-aware wiring** (issue #552): the page reacts to `useWalletView().kind`. When the connected wallet is Stellar (`kind` is derived, #1512), the `useDepositFlow` adapter switches all data and actions to the Stellar/Soroban stack (trustline step, SAC balances, XLM fee, etc.); disconnecting and connecting an EVM wallet restores the EVM behavior. All hooks are called unconditionally per React's Rules of Hooks.
 
 **Step sequences per chain/direction:**
 

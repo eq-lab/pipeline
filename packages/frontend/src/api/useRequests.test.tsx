@@ -69,7 +69,6 @@ const mockUseStellarWallet = vi.fn(() => ({
 
 const mockUseWalletView = vi.fn(() => ({
   kind: "evm" as "evm" | "stellar",
-  setKind: vi.fn(),
 }));
 
 // connectionStore.ts subscribes to addressUpdatedEvent and disconnectEvent at
@@ -180,7 +179,7 @@ function setConnectedWallet() {
     address: WALLET_ADDRESS,
     isConnected: true,
   });
-  mockUseWalletView.mockReturnValue({ kind: "evm", setKind: vi.fn() });
+  mockUseWalletView.mockReturnValue({ kind: "evm" });
   mockUseStellarWallet.mockReturnValue({
     address: undefined,
     isConnected: false,
@@ -191,7 +190,7 @@ function setConnectedWallet() {
 
 function setDisconnectedWallet() {
   mockUseAccount.mockReturnValue({ address: undefined, isConnected: false });
-  mockUseWalletView.mockReturnValue({ kind: "evm", setKind: vi.fn() });
+  mockUseWalletView.mockReturnValue({ kind: "evm" });
   mockUseStellarWallet.mockReturnValue({
     address: undefined,
     isConnected: false,
@@ -200,7 +199,7 @@ function setDisconnectedWallet() {
 
 function setConnectedStellarWallet() {
   mockUseAccount.mockReturnValue({ address: undefined, isConnected: false });
-  mockUseWalletView.mockReturnValue({ kind: "stellar", setKind: vi.fn() });
+  mockUseWalletView.mockReturnValue({ kind: "stellar" });
   mockUseStellarWallet.mockReturnValue({
     address: STELLAR_ADDRESS,
     isConnected: true,

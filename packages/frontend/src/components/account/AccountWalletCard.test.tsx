@@ -6,7 +6,6 @@ import { AccountWalletCard } from "./AccountWalletCard";
 const mockUseActiveWalletAccount = vi.fn();
 const mockConnect = vi.fn();
 const mockDisconnect = vi.fn();
-const setKind = vi.fn();
 
 vi.mock("@/wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/wallet")>();
@@ -24,7 +23,6 @@ describe("AccountWalletCard — connected", () => {
   it("renders the truncated address and the USDC balance", () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
-      setKind,
       isConnected: true,
       address: "0x8493333333333333333333333333333333b92a",
       truncatedAddress: "0x8493…b92a",
@@ -48,7 +46,6 @@ describe("AccountWalletCard — connected", () => {
   it("renders — when the balance is missing", () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
-      setKind,
       isConnected: true,
       address: "0x8493333333333333333333333333333333b92a",
       truncatedAddress: "0x8493…b92a",
@@ -63,7 +60,6 @@ describe("AccountWalletCard — connected", () => {
   it("renders the divider and Disconnect row after the wallet rows, which calls disconnect (issue #1458)", async () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
-      setKind,
       isConnected: true,
       address: "0x8493333333333333333333333333333333b92a",
       truncatedAddress: "0x8493…b92a",
@@ -87,7 +83,6 @@ describe("AccountWalletCard — disconnected", () => {
   it("renders the 72px circle and Connect Wallet, which calls connect", async () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
-      setKind,
       isConnected: false,
       address: undefined,
       truncatedAddress: undefined,
@@ -105,7 +100,6 @@ describe("AccountWalletCard — disconnected", () => {
   it("renders no divider and no Disconnect row", () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
-      setKind,
       isConnected: false,
       address: undefined,
       truncatedAddress: undefined,
@@ -120,11 +114,30 @@ describe("AccountWalletCard — disconnected", () => {
   });
 });
 
-describe("AccountWalletCard — namespace tabs", () => {
-  it("selecting the Stellar tab calls setKind and never calls disconnect", async () => {
+describe("AccountWalletCard — no namespace tabs (#1512)", () => {
+  it.each(["evm", "stellar"])(
+    "renders no tablist when %s is connected",
+    (kind) => {
+      mockUseActiveWalletAccount.mockReturnValue({
+        kind,
+        isConnected: true,
+        address: "0x8493333333333333333333333333333333b92a",
+        truncatedAddress: "0x8493…b92a",
+        formattedBalance: "$10,000.00",
+        connect: mockConnect,
+        disconnect: mockDisconnect,
+      });
+      render(<AccountWalletCard />);
+      expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+      expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+      expect(screen.queryByText("Ethereum")).not.toBeInTheDocument();
+      expect(screen.queryByText("Stellar")).not.toBeInTheDocument();
+    },
+  );
+
+  it("renders no tablist when disconnected", () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
-      setKind,
       isConnected: false,
       address: undefined,
       truncatedAddress: undefined,
@@ -133,8 +146,6 @@ describe("AccountWalletCard — namespace tabs", () => {
       disconnect: mockDisconnect,
     });
     render(<AccountWalletCard />);
-    await userEvent.click(screen.getByRole("tab", { name: "Stellar" }));
-    expect(setKind).toHaveBeenCalledWith("stellar");
-    expect(mockDisconnect).not.toHaveBeenCalled();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 });

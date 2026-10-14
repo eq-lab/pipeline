@@ -1,60 +1,58 @@
-/**
- * WalletViewContext — unit tests.
- *
- * Covers:
- *   - `useWalletView` returns safe default `{ kind: 'evm', setKind: no-op }`
- *     when called outside a WalletViewProvider (no throw).
- *   - Inside WalletViewProvider: returns `{ kind: 'evm' }` initially.
- *   - `setKind('stellar')` updates `kind` to `'stellar'`.
- *   - Switching back with `setKind('evm')` restores `kind` to `'evm'`.
- */
-import { describe, it, expect } from "vitest";
+// spec: docs/frontend/hooks.md#usewalletview
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { WalletViewProvider, useWalletView } from "./WalletViewContext";
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+const { evm, stellar } = vi.hoisted(() => ({
+  evm: { isConnected: false },
+  stellar: { isConnected: false },
+}));
 
-describe("useWalletView — outside provider (safe default)", () => {
-  it("returns kind: 'evm' without throwing", () => {
-    const { result } = renderHook(() => useWalletView());
-    expect(result.current.kind).toBe("evm");
-  });
+vi.mock("./evm/useEvmWallet", () => ({ useEvmWallet: () => evm }));
+vi.mock("./stellar/useStellarWallet", () => ({
+  useStellarWallet: () => stellar,
+}));
+vi.mock("./useSingleWalletInvariant", () => ({
+  useSingleWalletInvariant: () => {},
+}));
 
-  it("setKind is a no-op function (does not throw)", () => {
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <WalletViewProvider>{children}</WalletViewProvider>;
+}
+
+beforeEach(() => {
+  evm.isConnected = false;
+  stellar.isConnected = false;
+});
+
+describe("useWalletView — outside provider", () => {
+  it("returns kind: 'evm' without throwing and exposes no setter", () => {
     const { result } = renderHook(() => useWalletView());
-    expect(() => result.current.setKind("stellar")).not.toThrow();
+    expect(result.current).toEqual({ kind: "evm" });
   });
 });
 
-describe("useWalletView — inside WalletViewProvider", () => {
-  function wrapper({ children }: { children: React.ReactNode }) {
-    return <WalletViewProvider>{children}</WalletViewProvider>;
-  }
-
-  it("starts with kind: 'evm'", () => {
+describe("useWalletView — derived from the connected wallet", () => {
+  it("defaults to evm when nothing is connected", () => {
     const { result } = renderHook(() => useWalletView(), { wrapper });
     expect(result.current.kind).toBe("evm");
   });
 
-  it("setKind('stellar') updates kind to 'stellar'", () => {
+  it("is evm when the EVM wallet is connected", () => {
+    evm.isConnected = true;
     const { result } = renderHook(() => useWalletView(), { wrapper });
-    act(() => {
-      result.current.setKind("stellar");
-    });
+    expect(result.current.kind).toBe("evm");
+  });
+
+  it("is stellar when only the Stellar wallet is connected", () => {
+    stellar.isConnected = true;
+    const { result } = renderHook(() => useWalletView(), { wrapper });
     expect(result.current.kind).toBe("stellar");
   });
 
-  it("switching back with setKind('evm') restores kind to 'evm'", () => {
+  it("does not expose setKind", () => {
     const { result } = renderHook(() => useWalletView(), { wrapper });
-    act(() => {
-      result.current.setKind("stellar");
-    });
-    expect(result.current.kind).toBe("stellar");
-
-    act(() => {
-      result.current.setKind("evm");
-    });
-    expect(result.current.kind).toBe("evm");
+    expect("setKind" in result.current).toBe(false);
   });
 });

@@ -85,8 +85,6 @@ data instead of their own documents.
 `signOut()`; a wallet-only visitor calls `useWalletPresence().disconnectAll()` instead. Either way
 it navigates to `/`.
 
-The route also owns the one-shot entry-tab selection ([Entry tab](#wallet-card)).
-
 ## Page composition
 
 `AccountPage.tsx` (shell) → `AccountWalletCard.tsx`, `AccountEmailCard.tsx`,
@@ -123,7 +121,7 @@ again), since the gate already guarantees one of the two. In that branch `Accoun
 renders with `walletOnly` and **does not call `useAccountPage()`**, so there is no
 `GET /v1/lps/me` request for a visitor with no session.
 
-The wallet card opens on the connected namespace's tab ([Entry tab](#wallet-card), #1475).
+The wallet card shows the single connected wallet ([Wallet card](#wallet-card), #1512).
 
 Composition (frame `6701:98137`, "No Verified Account"): the heading, `AccountWalletCard` (its
 connected state — [Wallet card](#wallet-card)), `Corporate email` with an `Add email` row, the
@@ -151,9 +149,7 @@ so the frame's disabled `Save` renders as-is; `Submit for review` does not rende
 `false` here).
 
 `Log Out` disconnects every connected namespace (`useWalletPresence().disconnectAll()`, not just
-the active tab's wallet) and navigates to `/` — so the stated outcome (the header reverts to Sign
-In / Sign Up) holds even when the visitor is sitting on a tab whose namespace is not the connected
-one. The signed-in variant's `Log Out` is unchanged (`signOut()` + navigate; the wallet, if any, is
+the connected wallet) and navigates to `/` — so the header reverts to Sign In / Sign Up. The signed-in variant's `Log Out` is unchanged (`signOut()` + navigate; the wallet, if any, is
 left connected — the `Disconnect` row handles that separately).
 
 No new `?state=` fixture: the variant is fully reachable for real (connect a wallet, no session),
@@ -162,38 +158,30 @@ nothing about this variant is faked.
 
 ## Wallet card
 
-**Entry tab (#1475).** On entering `/account`, the card's tab is chosen once from
-`useWalletPresence().onlyConnectedKind`:
+**Single connected wallet (#1512).** The LP holds at most one wallet connection at a time, and the
+card has no `Ethereum`/`Stellar` tabs. It reverses the #444 "both namespaces stay live" decision
+and removes #1475's entry-tab selection (the route no longer chooses a tab). `useWalletView().kind`
+is derived — `evm` when the EVM wallet is connected, else `stellar` when the Stellar wallet is
+connected, else the deployment default (`evm`) — so there is no `setKind` and no persisted
+`pipeline.wallet.view.kind`. Rules and the legacy both-connected cleanup live in
+[`wallet-flows.md#single-connected-wallet`](./wallet-flows.md#single-connected-wallet).
 
-| Connected namespaces | Entry tab |
+| Card state | Renders |
 |---|---|
-| EVM only | `evm` |
-| Stellar only | `stellar` |
-| both | persisted view (`useWalletView().kind`, unchanged) |
-| none | persisted view (unchanged) |
+| Wallet connected (`6701:98142`) | the connected block: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect` |
+| No wallet connected (`6701:98104`) | the full-width `Connect Wallet` CTA |
 
-The decision is taken in `AccountRoute` by a ref-guarded layout effect on the first render where
-`isSettled` is true, so a hard refresh waits for wallet reconnection and a client-side entry
-commits before paint. The choice is persisted via `setKind`; it is not a sync, so tabs stay a view
-switch and a later tab click is never undone. It applies to the signed-in, wallet-only and `?state=`
-preview branches alike (the preview only overrides the Documents card).
-
-`AccountWalletCard.tsx` is a *view switch* over the existing `useWalletView()` (`kind: "evm" |
-"stellar"`, persisted at `pipeline.wallet.view.kind`) — the same state `AccountDropdown`'s
-segmented control drives. It does **not** own a second wallet system. `packages/frontend/src/wallet/useActiveWalletAccount.ts`
-is the extracted derivation (see [Hooks](./hooks.md)): `kind`/`setKind` from `useWalletView()`,
+The card keeps its outer classes and both state blocks unchanged (sizes, paddings, node ids); only
+the tabs wrapper (`6701:98144` and its `px-2` container) was removed. `AccountWalletCard.tsx` does
+**not** own a second wallet system: `packages/frontend/src/wallet/useActiveWalletAccount.ts` is the
+extracted derivation (see [Hooks](./hooks.md)): `kind` from `useWalletView()`,
 `isConnected`/`address` from `useEvmWallet()`/`useStellarWallet()` per `kind` (all hooks called
-unconditionally, branched only in the derivation — the shape `TopBar.tsx` already used inline),
-`truncatedAddress` via `@/utils/truncateAddress`, `formattedBalance` from `useEvmToken`/
-`useStellarToken`, `connect` = `useConnectModal().open` (routes through the shared
-first-connection terms gate, same as `TopBar`, the home promo card, and the deposit/stake
-banners), and `disconnect` (issue #1458) = the active namespace's own `disconnect()`. Selecting a
-namespace tab is a *view* switch only — it never disconnects the other namespace, and the card
-keeps today's per-tab semantics for a wallet-only visitor too: looking at the other namespace's tab
-shows that tab's own `Connect Wallet` state with no `Disconnect` row, even though the header still
-shows the account icon (the header and the route gate key on "any namespace connected", not the
-active tab — see [Route gate](#route-gate) and
-[`dashboard-components.md#topbar`](./dashboard-components.md#topbar)).
+unconditionally, branched only in the derivation), `truncatedAddress` via
+`@/utils/truncateAddress`, `formattedBalance` from `useEvmToken`/`useStellarToken`, `connect` =
+`useConnectModal().open` (routes through the shared first-connection terms gate; a no-op while any
+wallet is connected), and `disconnect` (issue #1458) = the connected wallet's own `disconnect()`.
+To switch chains the LP disconnects and connects the other wallet through the connect modal, which
+keeps its EVM / Soroban tabs for that choice.
 
 **`Disconnect` row (issue #1458, closes TD-111).** Every connected state of the card renders a
 24px divider (`7127:15564`, a centered 1px `--color-pipeline-line` rule) followed by a full-width
@@ -201,7 +189,7 @@ active tab — see [Route gate](#route-gate) and
 connected Account frame (`6701:97942`, `6701:97982`, `6701:98022`, `6701:98137`, `6701:98061`,
 each with its own divider id). It is a plain `<button>`, not an `AccountListRow` (that primitive
 requires `leading`/`caption`) — body-typography text only, no leading tile, no trailing control.
-Clicking it calls `useActiveWalletAccount().disconnect` for the **active namespace** (not
+Clicking it calls `useActiveWalletAccount().disconnect` for the connected wallet (not
 `disconnectAll`) — with no session left, the header's account icon reverts to Sign In / Sign Up
 and the home route falls back to the zero state. This ships for signed-in LPs too, since the row
 lives in the card's shared connected branch — there was previously no UI anywhere to disconnect a
@@ -215,9 +203,8 @@ from the header entirely, and #1458 added back a presence-only read (`useWalletP
 balance, no token reads) for the header icon rule — see
 [`dashboard-components.md#topbar`](./dashboard-components.md#topbar).
 
-`SegmentedTabs` (`@pipeline/ui`, `variant="track"`) renders the `Ethereum`/`Stellar` tabs —
-its documented anatomy (2px-padded `--color-pipeline-fill-muted` track at radius 6, equal-width
-32px tabs at radius 4) already matches the frame. Connected state shows two rows (`Wallet` +
+The frame's `Ethereum`/`Stellar` tabs row (`6701:98144`) is intentionally not built (#1512). Connected state shows two
+rows (`Wallet` +
 truncated address + copy button; `USDC balance` + `CoinIcon token="usdc" size="lg"` + formatted
 balance); disconnected shows a 72px `--color-pipeline-fill-muted` circle with a generic wallet
 glyph and a full-width 48px `Button variant="primary-dark"` labelled `Connect Wallet`. A missing
@@ -226,8 +213,7 @@ balance renders `—`, never a computed or placeholder number.
 **The wallet row's leading icon in the frame is a literal MetaMask fox logo** (`get_design_context`
 emits it as an `imgMetamask` asset on node `I6701:98146;8905:4082`) — scratch/placeholder art from
 whoever mocked the frame, the same category of design-file artifact as the "Verify your
-identity"/"Verify your account" inconsistency below. This row renders for **either** namespace tab
-(`Ethereum` or `Stellar`), so a brand-locked browser-extension logo would be product-wrong; the
+identity"/"Verify your account" inconsistency below. This row renders for **either** chain's wallet, so a brand-locked browser-extension logo would be product-wrong; the
 generic ink-colored `WalletGlyph` (`AccountWalletCard.tsx`) is intentional and unchanged. Logged as
 a designer ask, not a defect.
 
@@ -357,7 +343,7 @@ home-route unobservability note in
 
 ## Verbatim copy
 
-Page chrome: `Account` · `Ethereum` · `Stellar` · `Connect Wallet` · `Wallet` · `USDC balance` ·
+Page chrome: `Account` · `Connect Wallet` · `Wallet` · `USDC balance` ·
 `Disconnect` · `Corporate email` · `Email` · `Add email` · `Documents` · `Log Out`.
 
 Banners: `Verify your account` · `Verify your identity` (staged state only — a design-file
@@ -470,7 +456,7 @@ fill is stale, not the target.
 | --- | --- |
 | `kybFileValidation.ts` (`isAcceptedFile`, `MAX_FILE_BYTES`) | **Reused verbatim.** `{pdf, jpeg, png}` + 10 MB is exactly the frame's rule. |
 | `UploadedFileRow.tsx` | **Reused, with an additive `className` prop** (issue #1293) — 40×40 leading tile, title/caption order, and the 32×32 cross-circle remove control are exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). Second consumer: `CompanyDocsModal` (#1278, no `className`). |
-| `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Reused** — anatomy matches the frame's wallet tabs exactly. |
+| `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Not used by the wallet card (#1512)** — the tabs row was removed; the component stays in `@pipeline/ui`. |
 | `COMPANY_DOCUMENT_SLOTS` | **Retired (#1278).** The five labels are now inlined directly into `KYB_DOCUMENT_REQUIREMENTS` (`kybDocumentRequirements.ts`); the `{ id, label }` tuple and `CompanyDocumentSlotId` type had no other purpose once the raw-upload model dropped per-slot structure everywhere. |
 | `FileDropZone.tsx` | **Deleted (#1278).** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. No sub-issue of epic #1247 gained a consumer for it. |
 | `KybInfoBanner.tsx` | **Deleted (#1278).** It is a neutral white surface with centred single-line text and a tooltip; the frames need a tinted, bordered, 72px two-line banner with a 32px status icon and an optional trailing button (`AccountStatusBanner.tsx`) — a rewrite, not a variant. No sub-issue of epic #1247 gained a consumer for it. |

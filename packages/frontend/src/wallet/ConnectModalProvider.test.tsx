@@ -40,6 +40,14 @@ vi.mock("../components/ConnectWalletModal", () => ({
     ) : null,
 }));
 
+const { presence } = vi.hoisted(() => ({
+  presence: { isAnyConnected: false },
+}));
+
+vi.mock("./useWalletPresence", () => ({
+  useWalletPresence: () => presence,
+}));
+
 // ── Mock FirstConnectionModal ─────────────────────────────────────────────────
 // Capture gate props so tests can trigger Continue / Dismiss without rendering
 // the real modal UI (which has portal / DOM setup issues in unit tests).
@@ -345,5 +353,36 @@ describe("ConnectModalProvider — renderHook integration", () => {
 
     expect(result.current.open).toBe(open1);
     expect(result.current.close).toBe(close1);
+  });
+});
+
+describe("ConnectModalProvider — single connected wallet (#1512)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    presence.isAnyConnected = false;
+  });
+
+  it("open() does nothing while a wallet is connected", async () => {
+    presence.isAnyConnected = true;
+    render(
+      <Providers>
+        <ConsumerButton />
+      </Providers>,
+    );
+    await userEvent.click(screen.getByText("Open Modal"));
+    expect(
+      screen.queryByTestId("connect-wallet-modal"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("open() opens the modal when no wallet is connected", async () => {
+    render(
+      <Providers>
+        <ConsumerButton />
+      </Providers>,
+    );
+    await userEvent.click(screen.getByText("Open Modal"));
+    expect(screen.getByTestId("connect-wallet-modal")).toBeInTheDocument();
   });
 });

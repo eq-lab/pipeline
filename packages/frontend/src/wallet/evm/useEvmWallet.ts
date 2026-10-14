@@ -22,6 +22,7 @@ import {
   parseNumber,
   parseJson,
 } from "./mock";
+import { useBothWalletMocksConnected } from "../stellar/mock";
 import { readTermsAcknowledged } from "../useTermsAcknowledgement";
 import { useWalletGate } from "../WalletGateContext";
 
@@ -60,11 +61,13 @@ export function useEvmWallet(): WalletState {
   const mockAddress = useMock(KEYS.address, parseAddress);
   const mockIsConnected = useMock(KEYS.isConnected, parseBoolean);
   const mockChainId = useMock(KEYS.chainId, parseNumber);
+  const bothMocksConnected = useBothWalletMocksConnected();
 
   const address = mockAddress ?? realAddress;
   // If the mock address is set but isConnected key is absent → default true.
-  const isConnected =
-    mockIsConnected !== undefined
+  const isConnected = bothMocksConnected
+    ? false
+    : mockIsConnected !== undefined
       ? mockIsConnected
       : mockAddress !== undefined
         ? true

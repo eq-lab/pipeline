@@ -226,6 +226,42 @@ export function useMockStellarIsConnected(): boolean | undefined {
   return useMock(STELLAR_MOCK_KEYS.isConnected, parseBoolean);
 }
 
+// ── Both-wallet-mocks guard (#1512) ───────────────────────────────────────────
+
+const EVM_MOCK_ADDRESS_KEY = "pipeline.mock.wallet.address";
+const EVM_MOCK_CONNECTED_KEY = "pipeline.mock.wallet.isConnected";
+
+let bothMocksWarned = false;
+
+/** Reactive: `true` when the EVM and Stellar wallet mocks are both in a connected state. */
+export function useBothWalletMocksConnected(): boolean {
+  const evmAddress = useMock(EVM_MOCK_ADDRESS_KEY, (raw) => raw);
+  const evmConnected = useMock(EVM_MOCK_CONNECTED_KEY, parseBoolean);
+  const stellarAddress = useMockStellarAddress();
+  const stellarConnected = useMockStellarIsConnected();
+
+  const evmOn =
+    evmConnected !== undefined ? evmConnected : evmAddress !== undefined;
+  const stellarOn =
+    stellarConnected !== undefined
+      ? stellarConnected
+      : stellarAddress !== undefined;
+  const both = evmOn && stellarOn;
+
+  if (both && !bothMocksWarned) {
+    bothMocksWarned = true;
+    console.warn(
+      "[wallet mock] EVM and Stellar wallet mocks are both connected; only one wallet can be connected at a time, so both report disconnected. Clear one chain's pipeline.mock.wallet.* keys.",
+    );
+  }
+  return both;
+}
+
+/** FOR TESTS ONLY — re-arm the one-time both-mocks warning. */
+export function _resetBothMocksWarningForTests(): void {
+  bothMocksWarned = false;
+}
+
 // ── DepositManager non-reactive readers ───────────────────────────────────────
 
 /**

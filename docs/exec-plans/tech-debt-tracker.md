@@ -2008,6 +2008,7 @@ line, whichever section it lands in.
 - **Impact:** Visually inconsistent combination, first observable once #1460 shipped state 7 (a sessionless zero/wallet-only split that depends on the active view). No functional breakage — the header's affordances (account icon → `/account`) still work.
 - **Suggested fix:** Either derive the header's icon from the active view too, or derive the home grid's connection from any-wallet presence and resolve balances/activity across both namespaces. Both are product decisions, not mechanical fixes.
 - **Narrowed by #1475 (2026-10-13):** entering `/account` now persists the single connected namespace as the active view, so the grid agrees with the header from then on, and the home heading keys on the header condition (`isAuthenticated || isAnyConnected`). Remaining gap: a visitor who connects one namespace and never opens `/account` still sees the zero-state grid under the account icon.
+- **Resolved by #1512 (2026-10-14):** `useWalletView().kind` is derived from the connected wallet, so the grid, the header and `/account` always agree.
 
 ### TD-139: Completing Add email from the wallet-only state (#1460) lands the visitor in `"legacy"`, not a designed state
 
