@@ -22,7 +22,7 @@ line, whichever section it lands in.
 
 ## Known Gaps
 
-### TD-142: Stellar deal-token polling fans out one `getEvents` request per 25 registered tokens
+### TD-144: Stellar deal-token polling fans out one `getEvents` request per 25 registered tokens
 
 - **Date:** 2026-10-14
 - **Location:** `packages/worker/src/indexer/stellar/poller.rs` (phase 2 of `poll`), `packages/worker/src/indexer/stellar/rpc.rs` (`get_events`) — Issue #1482.
