@@ -1,10 +1,14 @@
 use std::sync::Arc;
 
-use alloy::primitives::{Address, U256};
+use alloy::{
+    primitives::{Address, U256},
+    rpc::types::Log,
+};
 
 use shared::{contract_logs_repo::ContractLogsRepo, db::EventRepo};
 
 use super::{
+    collateral_registry_parsers::parse_collateral_registry_log,
     loan_mapper::{LoanEvent, LoanEventMapper},
     loan_metadata::{ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver},
     mappers::ContractLogMapper,
@@ -26,6 +30,7 @@ pub struct EvmContractAddresses {
     pub splusd_contracts: Vec<Address>,
     pub loan_registry_contracts: Vec<Address>,
     pub yield_minter_contracts: Vec<Address>,
+    pub collateral_registry_contracts: Vec<Address>,
 }
 
 /// Shared DB repositories used by EVM event handlers.
@@ -39,6 +44,11 @@ pub struct EvmLoanDeps {
     pub fetcher: Arc<dyn LoanMetadataFetcher>,
     pub immutable_resolver: Arc<dyn ImmutableDataResolver<Address, U256>>,
     pub mutable_resolver: Arc<dyn MutableDataResolver<Address, U256>>,
+}
+
+/// True when `log` was emitted by one of `addresses`.
+pub fn is_emitted_by(log: &Log, addresses: &[Address]) -> bool {
+    addresses.contains(&log.address())
 }
 
 /// Register all EVM event handlers for a single chain onto the given builder.
@@ -59,6 +69,8 @@ pub fn register_evm_handlers(
     let splusd_repo = repos.repo.clone();
     let loan_event_repo = repos.repo.clone();
     let minter_repo = repos.repo.clone();
+    let cr_repo = repos.repo.clone();
+    let cr_addrs = contracts.collateral_registry_contracts.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
     let fetcher = loan_deps.fetcher;
@@ -132,5 +144,14 @@ pub fn register_evm_handlers(
                     Box::new(ContractLogMapper::new(ev, chain_id, minter_repo.clone()))
                         as Box<dyn shared::log_mapper::LogMapper>
                 })
+        })
+        .add_event_handler(contracts.collateral_registry_contracts, move |log| {
+            if !is_emitted_by(log, &cr_addrs) {
+                return None;
+            }
+            parse_collateral_registry_log(log).map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, cr_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
+            })
         })
 }

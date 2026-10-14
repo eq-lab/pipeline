@@ -82,3 +82,58 @@ registry. A known topic that fails to decode is dropped with a `tracing::warn!` 
   enabled are not indexed, and there is no backfill.
 - Enabling the key on a running chain does not backfill: the per-chain cursor is shared by every
   Stellar contract, so indexing starts at the current cursor.
+
+## EVM arm
+
+Issue #1484. Source of truth: `pipeline-contracts` `src/collateralRegistry/CollateralRegistryUpgradeable.sol`
+at `3b74e98`. Parser: `packages/worker/src/indexer/collateral_registry_parsers.rs`
+(`parse_collateral_registry_log`, an `.or_else` chain over the 11 events), registered as one more
+handler in `packages/worker/src/indexer/evm_parsers.rs` through the plain `ContractLogMapper` (no loan
+snapshot, no on-chain reads).
+
+### Configuration
+
+`CHAIN_<id>_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS` (optional). Unset or whitespace means the
+feature ships dark: the handler contributes no addresses to the `eth_getLogs` filter (the other
+handlers always do, so the filter never goes empty) and no rows are written. When set, the value must
+be a valid EVM address and distinct from every other configured EVM indexer contract address (deposit manager, withdrawal queue, staked PLUSD, loan registry, minter) or startup aborts naming the chain key. The EVM cursor is shared per chain, so enabling the key on a running chain does not backfill earlier CollateralRegistry events; to index them, rewind the chain cursor or set the key from the start block. The `PipelineCollateralRegistry` proxy
+is deployed on hoodi (`pipeline-contracts/deployments/hoodi-v5.json`), but no environment runs the
+EVM indexer arm yet, so the key stays unset everywhere.
+
+### EVM field mapping
+
+`params` keys are the snake_case of the Solidity field names (`valuePerUnit` is `value_per_unit`,
+`reportHash` is `report_hash`, `oldQuantity` is `old_quantity`, ...). Enum fields are declared as `uint8` in the decoder, so an ordinal
+outside the table below is stored as `"Unknown"` rather than failing the decode. The `ref` of `Control`
+is a Rust keyword and is decoded as `reference`, stored under `ref`.
+
+EVM ordinals (decoding is positional, so this order is load-bearing and pinned by tests):
+
+| Enum | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `LotStage` | Pledged | Afloat | InStorage | Delivered | Sold | Assigned | Acknowledged | Presented | Paid | |
+| `LocationType` | Vessel | Warehouse | TankFarm | Other | | | | | | |
+| `ControlKind` | None | EblToOrderOfTrust | NegotiableWr | Cma | Acknowledged | | | | | |
+| `DocKind` | Ebl | WarehouseReceipt | Assay | Insurance | SupplyContract | OfftakeContract | NoticeOfAssignment | LC | Inspection | Other |
+| `ReleaseReason` | Payment | LCAcceptance | LOIDischarge | Substitution | Loss | ConsentedSale | | | | |
+
+`benchmark` is an on-chain `bytes32` (EVM `PAR_BENCHMARK = "PAR"`). It is stored as the ASCII string
+with trailing zero bytes trimmed. When the trimmed bytes are empty, contain an interior NUL, or are not
+printable ASCII, the full 32 bytes are stored as 64 lowercase hex characters.
+
+### EVM-only notes
+
+- Events are routed by topic0 only; the handler does not check the emitting address. None of the 11
+  signatures collides with another indexed signature. Pocket's
+  `Released(uint256 indexed,uint256,uint256,uint256)` has a different topic0 and is rejected (pinned by a
+  test), and Pocket is not indexed on EVM anyway.
+- `StageUpdated` emits the caller's calldata `location` even when `hasLocation` is false (the contract
+  deletes the stored location but echoes the argument). The parser keys off `hasLocation` and stores
+  `location: null`, never testing whether the tuple is zeroed.
+- `value_per_unit` and quantities are stored raw. EVM uses 6 decimals (`PAR_VALUE = 1_000_000`),
+  Stellar 7 (`PAR_VALUE = 10_000_000`), so a consumer must scale per chain kind.
+- The automatic USD par mark emits no `Revalued`, and `checkCoverage` is permissionless, so a
+  `MarginCall` can repeat. Nothing fires on recovery. Each repeat is a distinct
+  `(block_number, log_index)` row; only a re-polled log is deduplicated.
+- No row is read back by an existing query: the audit-log allowlist and every `params->>'loan_id'`
+  query filter on `event_name`, and none of the 11 names appears in them.

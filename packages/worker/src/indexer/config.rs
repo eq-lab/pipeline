@@ -350,6 +350,7 @@ pub struct IndexerJobSettings {
     pub loan_registry_address: String,
     /// The Minter contract (`PipelineMinter`, successor to `PipelineYieldMinter`); indexes `WireIn`/`WireInAssigned` (#1434).
     pub minter_address: String,
+    pub collateral_registry_address: Option<String>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
     pub log_confirmations_delay: u64,
@@ -371,6 +372,10 @@ impl IndexerJobSettings {
             staked_plusd_address: env_require(&format!("{ip}STAKED_PLUSD_ADDRESS"))?,
             loan_registry_address: env_require(&format!("{ip}LOAN_REGISTRY_ADDRESS"))?,
             minter_address: env_require(&format!("{ip}MINTER_ADDRESS"))?,
+            collateral_registry_address: env::var(format!("{ip}COLLATERAL_REGISTRY_ADDRESS"))
+                .ok()
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty()),
             polling_block_range: require_nonzero(
                 chain_id,
                 ChainKind::Evm,
