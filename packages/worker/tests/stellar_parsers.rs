@@ -429,6 +429,7 @@ fn dispatch_deposit_requested_from_dm_succeeds() {
         None,
         None,
         None,
+        None,
     )
     .expect("DM-emitted deposit_requested should decode");
     assert_eq!(log.event_name, "DepositRequested");
@@ -447,6 +448,7 @@ fn dispatch_deposit_requested_from_wq_rejected() {
         SPLUSD_CONTRACT,
         None,
         None,
+        None,
         None
     )
     .is_none());
@@ -463,6 +465,7 @@ fn dispatch_withdrawal_requested_from_wq_succeeds() {
         None,
         None,
         None,
+        None,
     )
     .expect("WQ-emitted withdrawal_requested should decode");
     assert_eq!(log.event_name, "WithdrawalRequested");
@@ -476,6 +479,7 @@ fn dispatch_request_claimed_from_dm_succeeds() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None,
@@ -497,6 +501,7 @@ fn dispatch_request_claimed_from_wq_succeeds() {
         None,
         None,
         None,
+        None,
     )
     .expect("WQ-emitted request_claimed should decode");
     assert_eq!(log.event_name, "RequestClaimed");
@@ -510,6 +515,7 @@ fn dispatch_vault_deposit_from_splusd_succeeds() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None,
@@ -531,6 +537,7 @@ fn dispatch_vault_deposit_from_dm_rejected() {
         SPLUSD_CONTRACT,
         None,
         None,
+        None,
         None
     )
     .is_none());
@@ -544,6 +551,7 @@ fn dispatch_unknown_contract_returns_none() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None
@@ -561,6 +569,7 @@ fn dispatch_withdrawal_requested_from_dm_rejected() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None
@@ -581,6 +590,7 @@ fn dispatch_request_claimed_from_splusd_rejected() {
         SPLUSD_CONTRACT,
         None,
         None,
+        None,
         None
     )
     .is_none());
@@ -596,6 +606,7 @@ fn dispatch_vault_withdraw_from_dm_rejected() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None
@@ -695,6 +706,7 @@ fn loan_registry_branch_routes_to_parsers() {
         Some(LR_CONTRACT),
         None,
         None,
+        None,
     )
     .expect("loan_drawn from LR contract should decode");
     assert_eq!(log.event_name, "LoanDrawn");
@@ -713,6 +725,7 @@ fn unconfigured_loan_registry_id_skips_branch() {
             DM_CONTRACT,
             WQ_CONTRACT,
             SPLUSD_CONTRACT,
+            None,
             None,
             None,
             None
@@ -935,6 +948,7 @@ fn dispatch_transfer_from_splusd_is_share_transfer() {
         None,
         None,
         Some(ASSET_CONTRACT),
+        None,
     )
     .expect("vault-emitted transfer should decode");
     assert_eq!(log.event_name, "ShareTransfer");
@@ -958,6 +972,7 @@ fn dispatch_transfer_from_asset_is_asset_transfer() {
         None,
         None,
         Some(ASSET_CONTRACT),
+        None,
     )
     .expect("asset-emitted transfer should decode");
     assert_eq!(log.event_name, "AssetTransfer");
@@ -978,6 +993,7 @@ fn dispatch_share_transfer_needs_no_asset_config() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None,
@@ -1002,6 +1018,7 @@ fn dispatch_vault_mint_event_is_not_parsed() {
         DM_CONTRACT,
         WQ_CONTRACT,
         SPLUSD_CONTRACT,
+        None,
         None,
         None,
         None
@@ -1055,6 +1072,7 @@ fn asset_id_branch_routes_to_transfer_parser() {
         None,
         None,
         Some(ASSET_CONTRACT),
+        None,
     )
     .expect("transfer from asset contract should decode");
     assert_eq!(log.event_name, "AssetTransfer");
@@ -1077,6 +1095,7 @@ fn unconfigured_asset_id_skips_branch() {
             DM_CONTRACT,
             WQ_CONTRACT,
             SPLUSD_CONTRACT,
+            None,
             None,
             None,
             None

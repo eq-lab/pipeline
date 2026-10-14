@@ -230,6 +230,13 @@ pub struct RecordedPaymentRow {
     pub oet_alloc: BigDecimal,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, sqlx::FromRow)]
+pub struct DealRegistrationRow {
+    pub loan_id: String,
+    pub debt: String,
+    pub cargo: String,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -1130,5 +1137,25 @@ impl ContractLogsRepo {
         .fetch_all(conn)
         .await?;
         Ok(ids)
+    }
+
+    pub async fn list_deal_registrations(
+        &self,
+        chain_id: i64,
+    ) -> anyhow::Result<Vec<DealRegistrationRow>> {
+        let rows = sqlx::query_as::<_, DealRegistrationRow>(
+            "SELECT params->>'loan_id' AS loan_id, params->>'debt' AS debt, params->>'cargo' AS cargo
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'DealRegistered'
+               AND params->>'loan_id' IS NOT NULL
+               AND params->>'debt' IS NOT NULL
+               AND params->>'cargo' IS NOT NULL
+             ORDER BY block_number ASC, log_index ASC",
+        )
+        .bind(chain_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 }

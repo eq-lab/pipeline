@@ -73,3 +73,43 @@ fn each_filter_is_a_contract_filter_and_ids_are_preserved() {
         .collect();
     assert_eq!(flattened, input);
 }
+
+// ── Per-request chunking ─────────────────────────────────────────────────────
+
+use pipeline_worker::indexer::stellar::rpc::chunk_contract_ids_per_request;
+
+fn chunk_sizes(n: usize) -> Vec<usize> {
+    chunk_contract_ids_per_request(&ids(n))
+        .iter()
+        .map(Vec::len)
+        .collect()
+}
+
+#[test]
+fn no_ids_issue_no_request() {
+    assert!(chunk_contract_ids_per_request(&[]).is_empty());
+}
+
+#[test]
+fn twenty_five_ids_fit_one_request() {
+    assert_eq!(chunk_sizes(25), vec![25]);
+}
+
+#[test]
+fn twenty_six_ids_split_into_two_requests() {
+    assert_eq!(chunk_sizes(26), vec![25, 1]);
+}
+
+#[test]
+fn sixty_ids_split_into_three_requests() {
+    assert_eq!(chunk_sizes(60), vec![25, 25, 10]);
+}
+
+#[test]
+fn every_request_chunk_fits_five_filters_of_five_ids() {
+    for chunk in chunk_contract_ids_per_request(&ids(60)) {
+        let filters = build_contract_filters(&chunk);
+        assert!(filters.len() <= 5);
+        assert!(filter_sizes(&filters).iter().all(|n| *n <= 5));
+    }
+}

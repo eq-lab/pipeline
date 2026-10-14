@@ -48,6 +48,7 @@ pub struct StellarIndexerSettings {
     /// Read from `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
     pub yield_minter_id: Option<String>,
     pub collateral_registry_id: Option<String>,
+    pub deal_token_factory_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
     /// `Some` enables asset-transfer polling outright — when `withdrawal_queue_wallet_id`
     /// is also set, every transfer touching it (one-sided: either side, any
@@ -136,6 +137,17 @@ impl StellarIndexerSettings {
                 let validated = validate_contract_id(&cr_key, raw)?;
                 stellar_strkey::Contract::from_string(&validated)
                     .map_err(|e| anyhow::anyhow!("{cr_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let dtf_key = format!("{ip}DEAL_TOKEN_FACTORY_ADDRESS");
+        let deal_token_factory_id = match env::var(&dtf_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&dtf_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{dtf_key} failed Strkey parse: {e}"))?;
                 Some(validated)
             }
             _ => None,
@@ -238,6 +250,9 @@ impl StellarIndexerSettings {
         if let Some(id) = &collateral_registry_id {
             roles.push(("COLLATERAL_REGISTRY_ADDRESS", id));
         }
+        if let Some(id) = &deal_token_factory_id {
+            roles.push(("DEAL_TOKEN_FACTORY_ADDRESS", id));
+        }
         // Include the asset id when transfer tracking is enabled — it is polled
         // alongside the other roles and routed by the same if/else dispatch ladder.
         if let Some(id) = &asset_id {
@@ -267,6 +282,7 @@ impl StellarIndexerSettings {
             loan_registry_id,
             yield_minter_id,
             collateral_registry_id,
+            deal_token_factory_id,
             asset_id,
             custody_addresses,
             ramp_addresses,

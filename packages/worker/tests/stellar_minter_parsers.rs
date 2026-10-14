@@ -284,6 +284,7 @@ fn dispatched_event_name(raw: &RawEvent, minter_id: Option<&str>) -> Option<Stri
         None,
         minter_id,
         None,
+        None,
     )
     .map(|log| log.event_name)
 }

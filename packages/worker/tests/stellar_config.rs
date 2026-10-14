@@ -673,3 +673,92 @@ fn yield_minter_id_rejects_a_bad_strkey_checksum() {
         std::env::remove_var(format!("{p}INDEXER_MINTER_ADDRESS"));
     }
 }
+
+// ── DEAL_TOKEN_FACTORY_ADDRESS ───────────────────────────────────────────────
+
+const DTF_FACTORY: &str = "CAIBACM665EPLGJTVC4IXWTDV7PTJH7NSLY5TGRDAMHQZX7TCQ74OSIP";
+
+fn with_dtf_env(
+    id: i64,
+    factory: Option<&str>,
+    minter: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+    let p = format!("CHAIN_{id}_STELLAR_");
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(
+            format!("{p}INDEXER_DEPOSIT_MANAGER_ADDRESS"),
+            "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
+        );
+        std::env::set_var(
+            format!("{p}INDEXER_WITHDRAWAL_QUEUE_ADDRESS"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}INDEXER_STAKED_PLUSD_ADDRESS"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        match factory {
+            Some(v) => std::env::set_var(format!("{p}INDEXER_DEAL_TOKEN_FACTORY_ADDRESS"), v),
+            None => std::env::remove_var(format!("{p}INDEXER_DEAL_TOKEN_FACTORY_ADDRESS")),
+        }
+        match minter {
+            Some(v) => std::env::set_var(format!("{p}INDEXER_MINTER_ADDRESS"), v),
+            None => std::env::remove_var(format!("{p}INDEXER_MINTER_ADDRESS")),
+        }
+    }
+    let result = StellarIndexerSettings::from_chain_env(id).map(|s| s.deal_token_factory_id);
+    unsafe {
+        for k in [
+            "RPC_URL",
+            "NETWORK_PASSPHRASE",
+            "INDEXER_DEPOSIT_MANAGER_ADDRESS",
+            "INDEXER_WITHDRAWAL_QUEUE_ADDRESS",
+            "INDEXER_STAKED_PLUSD_ADDRESS",
+            "INDEXER_DEAL_TOKEN_FACTORY_ADDRESS",
+            "INDEXER_MINTER_ADDRESS",
+        ] {
+            std::env::remove_var(format!("{p}{k}"));
+        }
+    }
+    result
+}
+
+#[test]
+fn deal_token_factory_unset_or_blank_is_none() {
+    assert_eq!(with_dtf_env(99_000_482, None, None).unwrap(), None);
+    assert_eq!(with_dtf_env(99_000_483, Some("  "), None).unwrap(), None);
+}
+
+#[test]
+fn deal_token_factory_valid_is_some() {
+    assert_eq!(
+        with_dtf_env(99_000_484, Some(DTF_FACTORY), None)
+            .unwrap()
+            .as_deref(),
+        Some(DTF_FACTORY)
+    );
+}
+
+#[test]
+fn deal_token_factory_bad_checksum_names_the_key() {
+    let mut c: Vec<char> = DTF_FACTORY.chars().collect();
+    c.swap(10, 11);
+    let bad: String = c.into_iter().collect();
+    let err = with_dtf_env(99_000_485, Some(&bad), None).unwrap_err();
+    assert!(
+        err.to_string().contains("DEAL_TOKEN_FACTORY_ADDRESS"),
+        "{err}"
+    );
+}
+
+#[test]
+fn deal_token_factory_duplicating_another_role_is_rejected() {
+    let err = with_dtf_env(99_000_486, Some(DTF_FACTORY), Some(DTF_FACTORY)).unwrap_err();
+    assert!(err.to_string().contains("duplicates"), "{err}");
+}
