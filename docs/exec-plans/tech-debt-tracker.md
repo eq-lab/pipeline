@@ -227,14 +227,6 @@ line, whichever section it lands in.
 - **Impact:** Any future change to chain-selection logic (e.g. a third chain) must be applied in three places.
 - **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
 
-### TD-21: `packages/frontend/src/wallet/evm/WalletGateContext.ts` is dead code — legacy no-arg `openGate()` variant
-
-- **Date:** 2026-06-18
-- **Location:** `packages/frontend/src/wallet/evm/WalletGateContext.ts`
-- **Gap:** This file defines a different `WalletGateContextValue` interface (no `onProceed` callback) from the live one at `packages/frontend/src/wallet/WalletGateContext.ts`. `useEvmWallet.ts` imports from `../WalletGateContext` (the correct live path). The `evm/WalletGateContext.ts` file is not imported by anything except itself.
-- **Impact:** Confusing dual-file situation; the dead file could mislead future contributors.
-- **Suggested fix:** Confirm with `grep -rn "evm/WalletGateContext"` that no import exists, then delete the file.
-
 ### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23]
 
 - **Date:** 2026-06-22 (incident 2026-06-23)
