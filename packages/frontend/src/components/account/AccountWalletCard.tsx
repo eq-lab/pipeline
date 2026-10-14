@@ -40,8 +40,47 @@ function CopyIcon() {
   );
 }
 
+function ChainLogo({ kind }: { kind: "evm" | "stellar" }) {
+  const label = kind === "evm" ? "Ethereum" : "Stellar";
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox={kind === "evm" ? "0 0 16 16" : "70 376 440 440"}
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label={label}
+      data-testid="account-wallet-chain-logo"
+      data-chain={kind}
+      className="shrink-0 text-[color:var(--color-pipeline-ink)]"
+    >
+      {kind === "evm" ? (
+        <>
+          <path d="M8 0.5L3.2 8.2L8 6.1L12.8 8.2L8 0.5Z" fill="#8A92B2" />
+          <path d="M8 6.1L3.2 8.2L8 11L12.8 8.2L8 6.1Z" fill="#62688F" />
+          <path d="M3.2 9.3L8 15.5L12.8 9.3L8 12.1L3.2 9.3Z" fill="#8A92B2" />
+        </>
+      ) : (
+        <>
+          <path
+            d="M128 610A162 162 0 0 1 372 458M452 575A162 162 0 0 1 205 733"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="38"
+          />
+          <path
+            fill="currentColor"
+            d="M78 650L503 435V470L78 688ZM78 725L503 510V547L78 761Z"
+          />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function AccountWalletCard() {
   const {
+    kind,
     isConnected,
     address,
     truncatedAddress,
@@ -67,71 +106,98 @@ export function AccountWalletCard() {
       data-node-id={isConnected ? "6701:98142" : "6701:98104"}
     >
       {isConnected ? (
-        <div
-          className="flex w-full flex-col items-start gap-0"
-          data-node-id="6701:98145"
-        >
-          <AccountListRow
-            variant="plain"
-            leading={
-              <AccountIconTile>
-                <WalletGlyph size={20} />
-              </AccountIconTile>
-            }
-            caption="Wallet"
-            title={truncatedAddress ?? "—"}
-            trailing={
-              <div className="flex size-10 shrink-0 items-center justify-center p-1">
-                <button
-                  type="button"
-                  aria-label="Copy wallet address"
-                  onClick={handleCopy}
-                  className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-pill)] text-[color:var(--color-pipeline-ink)]"
-                >
-                  <CopyIcon />
-                </button>
-              </div>
-            }
-            data-node-id="6701:98146"
-          />
-          <AccountListRow
-            variant="plain"
-            leading={<CoinIcon token="usdc" size="lg" aria-hidden />}
-            caption="USDC balance"
-            title={formattedBalance ?? "—"}
-            data-node-id="6701:98147"
-          />
-          <div
-            aria-hidden="true"
-            className="flex h-6 w-full items-center"
-            data-node-id="7127:15564"
-          >
-            <span className="h-px w-full bg-[color:var(--color-pipeline-line)]" />
-          </div>
-          <button
-            type="button"
-            onClick={disconnect}
-            className={[
-              "flex w-full items-center gap-3 rounded-[var(--radius-pipeline-card)] p-2 text-left",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-              "focus-visible:ring-[var(--color-pipeline-brand)]",
-            ].join(" ")}
-            data-testid="account-disconnect-row"
-            data-node-id="7127:15570"
-          >
-            <span
-              className={[
-                "flex min-h-6 items-center",
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-body)]",
-                "leading-[var(--text-pipeline-body--line-height)]",
-                "text-[color:var(--color-pipeline-ink)]",
-              ].join(" ")}
+        <>
+          <div className="flex w-full flex-col items-start px-2">
+            <div
+              className="flex w-full items-center rounded-[6px] bg-[var(--color-pipeline-fill-muted)] p-0.5"
+              data-testid="account-wallet-provider"
+              data-node-id="6701:98144"
             >
-              Disconnect
-            </span>
-          </button>
-        </div>
+              <div
+                className={[
+                  "flex h-8 flex-1 items-center justify-center gap-2 px-1.5",
+                  "rounded-[var(--radius-pipeline-button)]",
+                  "bg-[var(--color-pipeline-surface)]",
+                  "font-[family-name:var(--font-body)]",
+                  "text-[length:var(--text-pipeline-caption)]",
+                  "leading-[var(--text-pipeline-caption--line-height)]",
+                  "font-[var(--font-weight-medium)]",
+                  "text-[color:var(--color-pipeline-ink)]",
+                ].join(" ")}
+              >
+                <ChainLogo kind={kind} />
+                <span data-testid="account-wallet-provider-name">
+                  {kind === "evm" ? "Ethereum" : "Stellar"}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div
+            className="flex w-full flex-col items-start gap-0"
+            data-node-id="6701:98145"
+          >
+            <AccountListRow
+              variant="plain"
+              leading={
+                <AccountIconTile>
+                  <WalletGlyph size={20} />
+                </AccountIconTile>
+              }
+              caption="Wallet"
+              title={truncatedAddress ?? "—"}
+              trailing={
+                <div className="flex size-10 shrink-0 items-center justify-center p-1">
+                  <button
+                    type="button"
+                    aria-label="Copy wallet address"
+                    onClick={handleCopy}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-pill)] text-[color:var(--color-pipeline-ink)]"
+                  >
+                    <CopyIcon />
+                  </button>
+                </div>
+              }
+              data-node-id="6701:98146"
+            />
+            <AccountListRow
+              variant="plain"
+              leading={<CoinIcon token="usdc" size="lg" aria-hidden />}
+              caption="USDC balance"
+              title={formattedBalance ?? "—"}
+              data-node-id="6701:98147"
+            />
+            <div
+              aria-hidden="true"
+              className="flex h-6 w-full items-center"
+              data-node-id="7127:15564"
+            >
+              <span className="h-px w-full bg-[color:var(--color-pipeline-line)]" />
+            </div>
+            <button
+              type="button"
+              onClick={disconnect}
+              className={[
+                "flex w-full items-center gap-3 rounded-[var(--radius-pipeline-card)] p-2 text-left",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+                "focus-visible:ring-[var(--color-pipeline-brand)]",
+              ].join(" ")}
+              data-testid="account-disconnect-row"
+              data-node-id="7127:15570"
+            >
+              <span
+                className={[
+                  "flex min-h-6 items-center",
+                  "font-[family-name:var(--font-body)]",
+                  "text-[length:var(--text-pipeline-body)]",
+                  "leading-[var(--text-pipeline-body--line-height)]",
+                  "text-[color:var(--color-pipeline-ink)]",
+                ].join(" ")}
+              >
+                Disconnect
+              </span>
+            </button>
+          </div>
+        </>
       ) : (
         <div
           className="flex w-full flex-col items-center gap-10 px-2 pt-4 pb-2"

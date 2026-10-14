@@ -168,11 +168,22 @@ connected, else the deployment default (`evm`) — so there is no `setKind` and 
 
 | Card state | Renders |
 |---|---|
-| Wallet connected (`6701:98142`) | the connected block: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect` |
+| Wallet connected (`6701:98142`) | the chain block (below), then the connected block: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect` |
 | No wallet connected (`6701:98104`) | the full-width `Connect Wallet` CTA |
 
-The card keeps its outer classes and both state blocks unchanged (sizes, paddings, node ids); only
-the tabs wrapper (`6701:98144` and its `px-2` container) was removed. `AccountWalletCard.tsx` does
+**Chain block (`6701:98144`, #1512 follow-up).** The track area where the `Ethereum`/`Stellar`
+tabs used to sit is kept, with the same size and style as the former `SegmentedTabs variant="track"`
+(`px-2` wrapper, full-width `p-0.5` `rounded-[6px]` `--color-pipeline-fill-muted` track, one
+`h-8` `--color-pipeline-surface` pill, caption/medium ink text) but it is a static label, not tabs:
+a 16px chain logo (`ChainLogo`, inline SVG in `AccountWalletCard.tsx`; `data-testid="account-wallet-chain-logo"`,
+`data-chain`) followed by the chain name (`data-testid="account-wallet-provider-name"`), derived purely
+from `useActiveWalletAccount().kind`: `Ethereum` for `evm`, `Stellar` for `stellar` (never the wallet
+app's name). The Ethereum logo is the two-tone diamond; the Stellar logo is the official circular mark
+(circle with two diagonal bars, no wordmark) redrawn as `currentColor` paths so it takes the ink token.
+It renders only while a wallet is connected; the disconnected state is unchanged (no block). No
+`tablist` role.
+
+The card keeps its outer classes and both state blocks unchanged (sizes, paddings, node ids). `AccountWalletCard.tsx` does
 **not** own a second wallet system: `packages/frontend/src/wallet/useActiveWalletAccount.ts` is the
 extracted derivation (see [Hooks](./hooks.md)): `kind` from `useWalletView()`,
 `isConnected`/`address` from `useEvmWallet()`/`useStellarWallet()` per `kind` (all hooks called
@@ -203,7 +214,7 @@ from the header entirely, and #1458 added back a presence-only read (`useWalletP
 balance, no token reads) for the header icon rule — see
 [`dashboard-components.md#topbar`](./dashboard-components.md#topbar).
 
-The frame's `Ethereum`/`Stellar` tabs row (`6701:98144`) is intentionally not built (#1512). Connected state shows two
+The frame's `Ethereum`/`Stellar` tabs row (`6701:98144`) is built as the static chain block above (#1512), not as tabs. Connected state shows two
 rows (`Wallet` +
 truncated address + copy button; `USDC balance` + `CoinIcon token="usdc" size="lg"` + formatted
 balance); disconnected shows a 72px `--color-pipeline-fill-muted` circle with a generic wallet
@@ -456,7 +467,7 @@ fill is stale, not the target.
 | --- | --- |
 | `kybFileValidation.ts` (`isAcceptedFile`, `MAX_FILE_BYTES`) | **Reused verbatim.** `{pdf, jpeg, png}` + 10 MB is exactly the frame's rule. |
 | `UploadedFileRow.tsx` | **Reused, with an additive `className` prop** (issue #1293) — 40×40 leading tile, title/caption order, and the 32×32 cross-circle remove control are exactly what the frame shows. The leading element is a glyph tile rather than a rendered PDF thumbnail (TD-63, pre-existing, not new debt here). Second consumer: `CompanyDocsModal` (#1278, no `className`). |
-| `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Not used by the wallet card (#1512)** — the tabs row was removed; the component stays in `@pipeline/ui`. |
+| `SegmentedTabs` (`@pipeline/ui`, `variant="track"`) | **Not used by the wallet card (#1512)** — its track styling is reproduced by the static chain block; the component stays in `@pipeline/ui`. |
 | `COMPANY_DOCUMENT_SLOTS` | **Retired (#1278).** The five labels are now inlined directly into `KYB_DOCUMENT_REQUIREMENTS` (`kybDocumentRequirements.ts`); the `{ id, label }` tuple and `CompanyDocumentSlotId` type had no other purpose once the raw-upload model dropped per-slot structure everywhere. |
 | `FileDropZone.tsx` | **Deleted (#1278).** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. No sub-issue of epic #1247 gained a consumer for it. |
 | `KybInfoBanner.tsx` | **Deleted (#1278).** It is a neutral white surface with centred single-line text and a tooltip; the frames need a tinted, bordered, 72px two-line banner with a 32px status icon and an optional trailing button (`AccountStatusBanner.tsx`) — a rewrite, not a variant. No sub-issue of epic #1247 gained a consumer for it. |

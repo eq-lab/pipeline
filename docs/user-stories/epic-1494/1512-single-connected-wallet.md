@@ -23,7 +23,8 @@ card: [`account-page.md#wallet-card`](../../frontend/account-page.md#wallet-card
 
 **Then:**
 
-- The wallet card shows one full-width block: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect`
+- The wallet card shows, at the top, the former tabs' track block (same size and style) holding the Ethereum logo and the label `Ethereum`
+- Below it: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect`
 - No `Ethereum` / `Stellar` tabs are rendered
 - No `Connect Wallet` button is offered on Account, home, deposit, stake or transactions
 
@@ -37,8 +38,8 @@ card: [`account-page.md#wallet-card`](../../frontend/account-page.md#wallet-card
 
 **Then:**
 
-- After `Disconnect` the card shows the `Connect Wallet` button
-- After connecting, the card shows the Stellar wallet's block
+- After `Disconnect` the card shows the `Connect Wallet` button and no chain block
+- After connecting, the card shows the Stellar wallet's block, with the Stellar logo and the label `Stellar` in the top block
 - Home, deposit and stake follow Stellar (balances, steps and activity come from the Stellar chain)
 
 ---

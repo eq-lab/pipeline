@@ -43,6 +43,47 @@ describe("AccountWalletCard — connected", () => {
     expect(copyButton.parentElement).toHaveClass("size-10", "p-1");
   });
 
+  it("renders the Ethereum label and logo, with no tabs", () => {
+    mockUseActiveWalletAccount.mockReturnValue({
+      kind: "evm",
+      isConnected: true,
+      address: "0x8493333333333333333333333333333333b92a",
+      truncatedAddress: "0x8493…b92a",
+      formattedBalance: "$10,000.00",
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    });
+    render(<AccountWalletCard />);
+    expect(
+      screen.getByTestId("account-wallet-provider-name"),
+    ).toHaveTextContent("Ethereum");
+    expect(screen.getByTestId("account-wallet-chain-logo")).toHaveAttribute(
+      "data-chain",
+      "evm",
+    );
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("renders the Stellar label and logo", () => {
+    mockUseActiveWalletAccount.mockReturnValue({
+      kind: "stellar",
+      isConnected: true,
+      address: "GABC",
+      truncatedAddress: "GABC",
+      formattedBalance: "$1.00",
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    });
+    render(<AccountWalletCard />);
+    expect(
+      screen.getByTestId("account-wallet-provider-name"),
+    ).toHaveTextContent("Stellar");
+    expect(screen.getByTestId("account-wallet-chain-logo")).toHaveAttribute(
+      "data-chain",
+      "stellar",
+    );
+  });
+
   it("renders — when the balance is missing", () => {
     mockUseActiveWalletAccount.mockReturnValue({
       kind: "evm",
@@ -130,8 +171,6 @@ describe("AccountWalletCard — no namespace tabs (#1512)", () => {
       render(<AccountWalletCard />);
       expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
       expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-      expect(screen.queryByText("Ethereum")).not.toBeInTheDocument();
-      expect(screen.queryByText("Stellar")).not.toBeInTheDocument();
     },
   );
 
@@ -147,5 +186,7 @@ describe("AccountWalletCard — no namespace tabs (#1512)", () => {
     });
     render(<AccountWalletCard />);
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("account-wallet-provider")).toBeNull();
+    expect(screen.queryByTestId("account-wallet-chain-logo")).toBeNull();
   });
 });
