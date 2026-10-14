@@ -442,6 +442,19 @@ fn absorb_ignores_other_logs_and_malformed_params() {
 }
 
 #[test]
+fn absorb_rejects_non_contract_token_addresses() {
+    let mut set = DealTokenSet::default();
+    let mut account = parse_deal_registered(&deal_registered_event()).unwrap();
+    account.params["cargo"] = json!(HOLDER);
+    assert!(!set.absorb_deal_registered(&account));
+
+    let mut garbage = parse_deal_registered(&deal_registered_event()).unwrap();
+    garbage.params["debt"] = json!("not-a-contract-id");
+    assert!(!set.absorb_deal_registered(&garbage));
+    assert!(set.is_empty());
+}
+
+#[test]
 fn contract_ids_are_sorted_and_reinsert_is_idempotent() {
     let mut set = DealTokenSet::default();
     assert_eq!(set.insert_deal("1", DEBT_2, CARGO_2), 2);

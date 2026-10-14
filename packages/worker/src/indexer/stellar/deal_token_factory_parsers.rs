@@ -61,9 +61,7 @@ impl DealTokenSet {
     pub fn seed(&mut self, rows: &[DealRegistrationRow]) -> usize {
         let mut added = 0;
         for row in rows {
-            let valid = stellar_strkey::Contract::from_string(&row.debt).is_ok()
-                && stellar_strkey::Contract::from_string(&row.cargo).is_ok();
-            if !valid {
+            if !is_contract_pair(&row.debt, &row.cargo) {
                 tracing::warn!(
                     loan_id = %row.loan_id,
                     debt = %row.debt,
@@ -105,9 +103,23 @@ impl DealTokenSet {
         else {
             return false;
         };
+        if !is_contract_pair(debt, cargo) {
+            tracing::warn!(
+                loan_id,
+                debt,
+                cargo,
+                "not tracking DealRegistered whose debt/cargo is not a Stellar contract id"
+            );
+            return false;
+        }
         self.insert_deal(loan_id, debt, cargo);
         true
     }
+}
+
+fn is_contract_pair(debt: &str, cargo: &str) -> bool {
+    stellar_strkey::Contract::from_string(debt).is_ok()
+        && stellar_strkey::Contract::from_string(cargo).is_ok()
 }
 
 fn base_log(raw: &RawEvent, event_name: &str, params: Value) -> StellarLog {
