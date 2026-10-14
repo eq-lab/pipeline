@@ -221,7 +221,7 @@ describe("useWithdrawalVoucher — mock-key path", () => {
       signature: "0xdeadbeef",
     };
     localStorage.setItem(
-      `pipeline.mock.api.GET./v1/withdrawals/77/voucher?wallet=${WALLET_ADDRESS}`,
+      `pipeline.mock.api.GET./v1/withdrawals/77/voucher?wallet=${WALLET_ADDRESS}&chain_id=560048`,
       JSON.stringify(perWalletFixture),
     );
     localStorage.setItem(
@@ -270,7 +270,7 @@ describe("useWithdrawalVoucher — real-fetch path", () => {
 
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        `/v1/withdrawals/77/voucher?wallet=${WALLET_ADDRESS}`,
+        `/v1/withdrawals/77/voucher?wallet=${WALLET_ADDRESS}&chain_id=560048`,
       ),
       undefined,
     );

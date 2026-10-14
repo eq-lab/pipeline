@@ -1,6 +1,6 @@
 /**
  * React Query hook — fetches a withdrawal voucher (verifier signature) from the
- * Pipeline API (`GET /v1/withdrawals/{request_id}/voucher?wallet=<address>`).
+ * Pipeline API (`GET /v1/withdrawals/{request_id}/voucher?wallet=<address>&chain_id=<id>`).
  *
  * The voucher contains the `signature` needed to call `useClaimWithdrawal.write()`.
  * The hook is disabled when `requestId` is `undefined` or the wallet is
@@ -11,7 +11,7 @@
  * The hook is reactive to changes in `pipeline.mock.api.*` localStorage keys.
  * Two mock keys are checked (most-specific first):
  *
- *   1. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<addr>`
+ *   1. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<addr>&chain_id=<id>`
  *   2. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`
  *
  * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useEvmWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
+import { ENV } from "@/lib/env";
 import { apiFetch } from "./client";
 import { isRetriableVoucherError, VOUCHER_RETRY_LIMIT } from "./voucherRetry";
 
@@ -87,12 +88,13 @@ export function useWithdrawalVoucher(
   );
 
   const enabled = !!requestId && isConnected && !!address;
+  const chainId = ENV.EVM_CHAIN_ID;
 
   const query = useQuery<WithdrawalVoucherResponse, Error>({
-    queryKey: ["withdrawal-voucher", requestId, address, mockVer],
+    queryKey: ["withdrawal-voucher", requestId, address, chainId, mockVer],
     queryFn: () =>
       apiFetch<WithdrawalVoucherResponse>(
-        `/v1/withdrawals/${requestId}/voucher?wallet=${address ?? ""}`,
+        `/v1/withdrawals/${requestId}/voucher?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled,
     refetchInterval: (query) => {
