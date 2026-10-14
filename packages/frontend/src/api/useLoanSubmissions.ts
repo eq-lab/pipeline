@@ -35,7 +35,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -167,9 +166,11 @@ export interface UseLoanSubmissionsResult {
  *   (`docs/FRONTEND.md`).
  * - Returns all statuses; the caller renders each row's `status`.
  */
-export function useLoanSubmissions(): UseLoanSubmissionsResult {
-  // Protocol Dashboard is Stellar-scoped — query the Stellar chain (99000001).
-  const chainId = ENV.STELLAR_CHAIN_ID;
+export function useLoanSubmissions({
+  chainId,
+}: {
+  chainId: number;
+}): UseLoanSubmissionsResult {
   const query = useQuery<SubmissionView[], Error>({
     queryKey: ["loan-submissions", chainId],
     queryFn: () =>

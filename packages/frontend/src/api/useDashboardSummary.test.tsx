@@ -102,9 +102,12 @@ describe("useDashboardSummary — mock-key path", () => {
       JSON.stringify(FIXTURE_FULL),
     );
 
-    const { result } = renderHook(() => useDashboardSummary(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useDashboardSummary({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.data).toEqual(FIXTURE_FULL);
@@ -119,9 +122,12 @@ describe("useDashboardSummary — mock-key path", () => {
       JSON.stringify(FIXTURE_NULL_FIELDS),
     );
 
-    const { result } = renderHook(() => useDashboardSummary(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useDashboardSummary({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.data).toEqual(FIXTURE_NULL_FIELDS);
@@ -151,9 +157,12 @@ describe("useDashboardSummary — real fetch path", () => {
       new Response(JSON.stringify(FIXTURE_FULL), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useDashboardSummary(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useDashboardSummary({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.data).toEqual(FIXTURE_FULL);
@@ -170,15 +179,17 @@ describe("useDashboardSummary — real fetch path", () => {
       new Response(JSON.stringify(FIXTURE_FULL), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useDashboardSummary(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useDashboardSummary({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.data).toBeDefined();
     });
 
-    // Dashboard is Stellar-scoped → chain_id is the Stellar chain (99000001).
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("chain_id=99000001"),
       undefined,
@@ -190,9 +201,12 @@ describe("useDashboardSummary — real fetch path", () => {
       new Response(JSON.stringify(FIXTURE_FULL), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useDashboardSummary(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useDashboardSummary({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.data).toBeDefined();
@@ -211,14 +225,54 @@ describe("useDashboardSummary — real fetch path", () => {
       }),
     );
 
-    const { result } = renderHook(() => useDashboardSummary(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useDashboardSummary({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.error).not.toBeNull();
     });
 
     expect(result.current.data).toBeUndefined();
+  });
+});
+
+describe("useDashboardSummary — chain scoping", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it.each([560048, 99_000_001])("sends chain_id=%i", async (chainId) => {
+    renderHook(() => useDashboardSummary({ chainId }), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/dashboard/summary");
+    expect(url).toContain(`chain_id=${chainId}`);
+  });
+
+  it("fetches separately per chainId", async () => {
+    const { rerender } = renderHook(
+      ({ chainId }) => useDashboardSummary({ chainId }),
+      { wrapper: makeWrapper(), initialProps: { chainId: 560048 } },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ chainId: 99_000_001 });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("chain_id=99000001");
   });
 });

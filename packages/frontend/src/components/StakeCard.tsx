@@ -4,6 +4,7 @@ import { formatUnits } from "viem";
 import { Button, Card, CoinIcon } from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 import { useStats, formatApy } from "@/api";
+import { useActiveChain } from "@/wallet/useActiveChain";
 
 type MobileHomeState = "empty" | "plusd" | "splusd";
 
@@ -104,7 +105,8 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
     const instanceId = React.useId();
     const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
-    const { data: statsData } = useStats();
+    const { chainId } = useActiveChain();
+    const { data: statsData } = useStats({ chainId });
     const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`;
 
     const isStakeCtaDisabled =

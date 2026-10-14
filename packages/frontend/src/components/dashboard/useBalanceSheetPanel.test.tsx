@@ -40,13 +40,41 @@ let mockPlusdData: string | undefined = undefined;
 // USDC: Soroban returns raw i128 bigint at 7-decimal SAC scale
 let mockUsdcData: bigint | undefined = undefined;
 
-vi.mock("@/api/useFinancialPosition", () => ({
-  useFinancialPosition: () => ({
-    data: mockRestData,
-    isLoading: mockRestIsLoading,
-    error: mockRestError,
-    refetch: mockRestRefetch,
+let mockEvmPlusd: string | undefined = undefined;
+let mockEvmUsdc: string | undefined = undefined;
+let mockChain: { kind: "evm" | "stellar"; chainId: number } = {
+  kind: "stellar",
+  chainId: 99_000_001,
+};
+const mockFinancialPosition = vi.fn();
+
+vi.mock("./useDashboardChain", () => ({
+  useDashboardChain: () => mockChain,
+}));
+
+vi.mock("@/wallet/evm/useEvmFinancialPositionReads", () => ({
+  useEvmPlusdTotalSupply: () => ({
+    data: mockEvmPlusd,
+    isLoading: false,
+    error: null,
   }),
+  useEvmUsdcCustodyBalance: () => ({
+    data: mockEvmUsdc,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock("@/api/useFinancialPosition", () => ({
+  useFinancialPosition: (args: unknown) => {
+    mockFinancialPosition(args);
+    return {
+      data: mockRestData,
+      isLoading: mockRestIsLoading,
+      error: mockRestError,
+      refetch: mockRestRefetch,
+    };
+  },
 }));
 
 vi.mock("@/wallet/stellar/useStellarFinancialPositionReads", () => ({
@@ -114,6 +142,10 @@ beforeEach(() => {
   mockRestData = null;
   mockPlusdData = undefined;
   mockUsdcData = undefined;
+  mockEvmPlusd = undefined;
+  mockEvmUsdc = undefined;
+  mockChain = { kind: "stellar", chainId: 99_000_001 };
+  mockFinancialPosition.mockClear();
   mockRestRefetch.mockClear();
 });
 
@@ -409,6 +441,55 @@ describe("useBalanceSheetPanel — totals disclaimer", () => {
     });
 
     // USYC and off-chain USD are always —
+    expect(result.current.showTotalsDisclaimer).toBe(true);
+  });
+});
+
+describe("useBalanceSheetPanel — EVM dashboard chain", () => {
+  beforeEach(() => {
+    mockChain = { kind: "evm", chainId: 560048 };
+    mockRestData = REST_FIXTURE;
+  });
+
+  it("requests the financial position for the dashboard chainId", () => {
+    renderHook(() => useBalanceSheetPanel(), { wrapper: makeWrapper() });
+    expect(mockFinancialPosition).toHaveBeenCalledWith({ chainId: 560048 });
+  });
+
+  it("shows the EVM PLUSD and USDC reads and ignores the Stellar ones", () => {
+    mockEvmPlusd = "9000";
+    mockEvmUsdc = "10000";
+    mockPlusdData = "1.0";
+    mockUsdcData = 5_000_000_000n;
+    const { result } = renderHook(() => useBalanceSheetPanel(), {
+      wrapper: makeWrapper(),
+    });
+    const cash = result.current.assets.liquid.find(
+      (r) => r.testId === "bs-cash-usdc",
+    );
+    const plusd = result.current.liabilities.seniorClaims.find(
+      (r) => r.testId === "bs-plusd-outstanding",
+    );
+    expect(cash?.value).toBe("$10.0K");
+    expect(plusd?.value).toBe("$9.0K");
+  });
+
+  it("renders — for both rows and flags the disclaimer when the reads are absent", () => {
+    mockPlusdData = "1.0";
+    mockUsdcData = 5_000_000_000n;
+    const { result } = renderHook(() => useBalanceSheetPanel(), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.state).toBe("ready");
+    expect(
+      result.current.assets.liquid.find((r) => r.testId === "bs-cash-usdc")
+        ?.value,
+    ).toBe("—");
+    expect(
+      result.current.liabilities.seniorClaims.find(
+        (r) => r.testId === "bs-plusd-outstanding",
+      )?.value,
+    ).toBe("—");
     expect(result.current.showTotalsDisclaimer).toBe(true);
   });
 });

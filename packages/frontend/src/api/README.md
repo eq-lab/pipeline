@@ -183,12 +183,26 @@ Reactive to `pipeline.mock.api.*` localStorage key changes.
 
 ---
 
-### `useStats()`
+### Protocol hooks take `chainId` (#1498)
 
-React Query hook that fetches protocol vault statistics from `GET /v1/stats`.
+`useStats`, `useDashboardSummary`, `useLoanBook`, `useLoanSubmissions`, `useWithdrawalQueue`,
+`useFinancialPosition`, `useDashboardTvlHistory` and `useDashboardYieldHistory` all take a required
+`{ chainId: number }`, send `chain_id=<chainId>` and include it in their query key. None falls back
+to a Stellar constant. Get the value from `useActiveChain()` (`@/wallet`) or, in the Protocol
+Dashboard, `useDashboardChain()`:
 
 ```ts
-const { data, isLoading, error } = useStats();
+const { chainId } = useActiveChain();
+const { data: summary } = useDashboardSummary({ chainId });
+const { data: stats } = useStats({ chainId });
+```
+
+### `useStats({ chainId })`
+
+React Query hook that fetches protocol vault statistics from `GET /v1/stats?chain_id`.
+
+```ts
+const { data, isLoading, error } = useStats({ chainId });
 // data?.vaults[0]?.apy — APY as a decimal fraction string, or null
 ```
 
@@ -205,12 +219,12 @@ formatApy(null); // → "—"
 formatApy(undefined); // → "—"
 ```
 
-### `useLoanBook()`
+### `useLoanBook({ chainId })`
 
-React Query hook that fetches the protocol active loan book from `GET /v1/loan-book`.
+React Query hook that fetches the protocol active loan book from `GET /v1/loan-book?chain_id`.
 
 ```ts
-const { data, isLoading, error, refetch } = useLoanBook();
+const { data, isLoading, error, refetch } = useLoanBook({ chainId });
 // data?.summary.total_deployed — base-6 decimal string in human units (e.g. "8000000.000000" = $8M)
 // data?.loans — LoanBookEntry[]
 ```

@@ -169,6 +169,32 @@ when `spender` is omitted.
 Thin wrapper around wagmi's `useReadContract` that checks the mock layer
 before delegating to the real read. Returns `{ data, isLoading, error }`.
 
+### `useActiveChain()`
+
+```ts
+const { kind, chainId } = useActiveChain();
+```
+
+Chain for protocol-level reads (stats, TVL, APY, Protocol Dashboard, home exchange rate). EVM wallet
+connected → `evm` / `ENV.EVM_CHAIN_ID`; Stellar wallet connected → `stellar` /
+`ENV.STELLAR_CHAIN_ID`; none connected → `stellar` / `ENV.STELLAR_CHAIN_ID`. Derived from
+`useEvmWallet().isConnected` / `useStellarWallet().isConnected`; `useWalletView().kind` only breaks a
+both-connected tie. Spec: `docs/frontend/wallet-flows.md#active-chain-for-protocol-reads`.
+
+### `useEvmPlusdTotalSupply()` / `useEvmUsdcCustodyBalance()`
+
+```ts
+const { data, isLoading, error } = useEvmPlusdTotalSupply({ enabled });
+const { data, isLoading, error } = useEvmUsdcCustodyBalance({ enabled });
+```
+
+Protocol reads for the EVM balance sheet (not wallet-gated, polled every 30 s). `data` is a
+human-decimal string via `formatUnits(raw, decimals())` with the token's live `decimals()`:
+`PLUSD.totalSupply()` and `USDC.balanceOf(DepositManager.custodian())` (token addresses from
+`useDepositManagerAddresses()`). `data` is `undefined` — never a throw — for a zero-address
+DepositManager, a missing address, a reverted `custodian()` or any read error. `enabled: false`
+(default `true`) skips every RPC call.
+
 ### `useDepositManagerAddresses()`
 
 ```ts

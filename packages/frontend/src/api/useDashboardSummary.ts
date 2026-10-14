@@ -24,7 +24,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,12 +73,11 @@ export interface UseDashboardSummaryResult {
  * - Polls every 30 s per the dashboard "Real-time updates" convention.
  * - No vault address required — protocol-level endpoint.
  */
-export function useDashboardSummary(): UseDashboardSummaryResult {
-  // The Protocol Dashboard is Stellar-scoped: its real/tested data lives on the
-  // Stellar chain (99000001). The EVM chain (560048/Hoodi) carries malformed test
-  // data (see #765), so the dashboard queries Stellar.
-  const chainId = ENV.STELLAR_CHAIN_ID;
-
+export function useDashboardSummary({
+  chainId,
+}: {
+  chainId: number;
+}): UseDashboardSummaryResult {
   const query = useQuery<DashboardSummary, Error>({
     queryKey: ["dashboard-summary", chainId],
     queryFn: () => {

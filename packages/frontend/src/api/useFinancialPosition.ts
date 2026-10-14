@@ -110,11 +110,17 @@ export interface UseFinancialPositionResult {
  * units**. Use `formatCompactUsd` (not `formatUsdc`) to display them.
  * `null` fields are overridden by on-chain reads in `useBalanceSheetPanel`.
  */
-export function useFinancialPosition(): UseFinancialPositionResult {
+export function useFinancialPosition({
+  chainId,
+}: {
+  chainId: number;
+}): UseFinancialPositionResult {
   const query = useQuery<FinancialPositionResponse, Error>({
-    queryKey: ["financial-position"],
+    queryKey: ["financial-position", chainId],
     queryFn: () =>
-      apiFetch<FinancialPositionResponse>("/v1/financial-position"),
+      apiFetch<FinancialPositionResponse>(
+        `/v1/financial-position?chain_id=${chainId}`,
+      ),
     refetchInterval: 30_000,
   });
 

@@ -232,6 +232,23 @@ Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee ap
   mock layer, when both mock wallets are connected each reports disconnected and a one-time
   `console.warn` explains the conflict (see `packages/frontend/src/wallet/README.md`).
 
+## Active chain for protocol reads
+
+`useActiveChain()` (`wallet/useActiveChain.ts`, #1498) returns `{ kind, chainId }` for protocol-level
+reads (stats, TVL, APY, the Protocol Dashboard, the home exchange rate). One rule, derived from the
+connection flags so it holds whatever `useWalletView().kind` defaults to:
+
+- EVM wallet connected → `evm`, `chainId = ENV.EVM_CHAIN_ID`.
+- Stellar wallet connected → `stellar`, `chainId = ENV.STELLAR_CHAIN_ID`.
+- No wallet connected → `stellar` (`ENV.STELLAR_CHAIN_ID`); the default stays Stellar until the
+  backend serves chain-agnostic data for non-connected visitors.
+- Both connected (a transient legacy state, see above) → `useWalletView().kind` breaks the tie.
+
+Every protocol-stats API hook (`useStats`, `useDashboardSummary`, `useLoanBook`,
+`useLoanSubmissions`, `useWithdrawalQueue`, `useFinancialPosition`, the TVL / yield history hooks)
+takes `chainId` from its caller and includes it in its query key; none falls back to a Stellar
+constant. The Protocol Dashboard reads the rule through `useDashboardChain`.
+
 ## Network switcher (cross-deployment links)
 
 **Source:** `packages/wallet-connect/src/network/links.ts` (shared helpers); per-app glue in

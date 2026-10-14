@@ -25,6 +25,13 @@ export const depositManagerAbi = [
   },
   {
     type: "function",
+    name: "custodian",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
     name: "minDeposit",
     stateMutability: "view",
     inputs: [],

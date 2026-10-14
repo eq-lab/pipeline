@@ -28,7 +28,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -75,14 +74,12 @@ export interface UseDashboardYieldHistoryResult {
 export function useDashboardYieldHistory({
   chainId,
 }: UseDashboardYieldHistoryParams): UseDashboardYieldHistoryResult {
-  const resolvedChainId = chainId || ENV.STELLAR_CHAIN_ID;
-
   const query = useQuery<YieldHistoryResponse, Error>({
-    queryKey: ["dashboard-yield-history", resolvedChainId],
+    queryKey: ["dashboard-yield-history", chainId],
     queryFn: () => {
       // Full history (omit `days`) at the backend default daily interval
       // (omit `interval`) — charts render daily data.
-      const params = new URLSearchParams({ chain_id: String(resolvedChainId) });
+      const params = new URLSearchParams({ chain_id: String(chainId) });
       return apiFetch<YieldHistoryResponse>(
         `/v1/dashboard/yield-history?${params.toString()}`,
       );

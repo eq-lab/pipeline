@@ -26,6 +26,19 @@ import type { FinancialPositionResponse } from "@/api/useFinancialPosition";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+const { dashboardChain } = vi.hoisted(() => ({
+  dashboardChain: {
+    value: { kind: "stellar", chainId: 99_000_001 } as {
+      kind: "evm" | "stellar";
+      chainId: number;
+    },
+  },
+}));
+
+vi.mock("./useDashboardChain", () => ({
+  useDashboardChain: () => dashboardChain.value,
+}));
+
 vi.mock("@/wallet", () => ({
   useWalletView: () => ({ kind: "evm" }),
   useEvmWallet: () => ({ address: undefined, isConnected: false }),
@@ -472,5 +485,39 @@ describe("useWithdrawalQueuePanel — row expand", () => {
 
     expect(result.current.hasMore).toBe(false);
     expect(result.current.visibleRows).toHaveLength(2);
+  });
+});
+
+describe("useWithdrawalQueuePanel — dashboard chain", () => {
+  afterEach(() => {
+    dashboardChain.value = { kind: "stellar", chainId: 99_000_001 };
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("sends the dashboard chainId on every request", async () => {
+    localStorage.clear();
+    dashboardChain.value = { kind: "evm", chainId: 560048 };
+    const fetchStub = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+
+    renderHook(() => useWithdrawalQueuePanel(), { wrapper: makeWrapper() });
+
+    await waitFor(() => expect(fetchStub).toHaveBeenCalled());
+    const urls = fetchStub.mock.calls.map((c) => String(c[0]));
+    expect(
+      urls.some(
+        (u) =>
+          u.includes("/v1/withdrawal-queue") && u.includes("chain_id=560048"),
+      ),
+    ).toBe(true);
+    expect(
+      urls.some(
+        (u) =>
+          u.includes("/v1/financial-position") && u.includes("chain_id=560048"),
+      ),
+    ).toBe(true);
   });
 });

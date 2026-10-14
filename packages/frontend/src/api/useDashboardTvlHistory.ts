@@ -24,7 +24,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -71,14 +70,12 @@ export interface UseDashboardTvlHistoryResult {
 export function useDashboardTvlHistory({
   chainId,
 }: UseDashboardTvlHistoryParams): UseDashboardTvlHistoryResult {
-  const resolvedChainId = chainId || ENV.STELLAR_CHAIN_ID;
-
   const query = useQuery<TvlHistoryResponse, Error>({
-    queryKey: ["dashboard-tvl-history", resolvedChainId],
+    queryKey: ["dashboard-tvl-history", chainId],
     queryFn: () => {
       // Full history (omit `days`) at the backend default daily interval
       // (omit `interval`) — charts render daily data.
-      const params = new URLSearchParams({ chain_id: String(resolvedChainId) });
+      const params = new URLSearchParams({ chain_id: String(chainId) });
       return apiFetch<TvlHistoryResponse>(
         `/v1/dashboard/tvl-history?${params.toString()}`,
       );

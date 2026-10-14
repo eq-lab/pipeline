@@ -93,10 +93,17 @@ export interface UseWithdrawalQueueResult {
  * All monetary string fields are base-6 decimal strings **already in human
  * units**. Use `formatCompactUsd` (not `formatUsdc`) to display them.
  */
-export function useWithdrawalQueue(): UseWithdrawalQueueResult {
+export function useWithdrawalQueue({
+  chainId,
+}: {
+  chainId: number;
+}): UseWithdrawalQueueResult {
   const query = useQuery<WithdrawalQueueResponse, Error>({
-    queryKey: ["withdrawal-queue"],
-    queryFn: () => apiFetch<WithdrawalQueueResponse>("/v1/withdrawal-queue"),
+    queryKey: ["withdrawal-queue", chainId],
+    queryFn: () =>
+      apiFetch<WithdrawalQueueResponse>(
+        `/v1/withdrawal-queue?chain_id=${chainId}`,
+      ),
     refetchInterval: 30_000,
   });
 

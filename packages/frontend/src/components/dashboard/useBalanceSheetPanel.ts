@@ -10,11 +10,16 @@ import {
   useStellarPlusdTotalSupply,
   useStellarUsdcCustodyBalance,
 } from "@/wallet/stellar/useStellarFinancialPositionReads";
+import {
+  useEvmPlusdTotalSupply,
+  useEvmUsdcCustodyBalance,
+} from "@/wallet/evm/useEvmFinancialPositionReads";
 import { sacRawToDisplay } from "@/wallet/stellar/useStellarSacToken";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
 import { toUserError } from "@/utils/userError";
 import { convertUsycToUsdc } from "./usycNav";
 import type { PanelState } from "./PanelContainer";
+import { useDashboardChain } from "./useDashboardChain";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -154,14 +159,21 @@ function emptyLiabilities(): BalanceSheetLiabilitiesSection {
  * spec: docs/frontend/dashboard-components.md#balancesheetpanel (panel state rules).
  */
 export function useBalanceSheetPanel(): BalanceSheetPanelState {
+  const { kind, chainId } = useDashboardChain();
   const {
     data: rest,
     isLoading: restLoading,
     error: restError,
     refetch,
-  } = useFinancialPosition();
+  } = useFinancialPosition({ chainId });
   const { data: plusdSupplyStr } = useStellarPlusdTotalSupply();
   const { data: usdcCustodyRaw } = useStellarUsdcCustodyBalance();
+  const { data: evmPlusdSupplyStr } = useEvmPlusdTotalSupply({
+    enabled: kind === "evm",
+  });
+  const { data: evmUsdcCustodyStr } = useEvmUsdcCustodyBalance({
+    enabled: kind === "evm",
+  });
 
   // ── Panel-level state ─────────────────────────────────────────────────────
   if (restLoading) {
@@ -200,10 +212,15 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     rest?.liabilities.subordinated_capital.junior_tranche,
   );
 
-  const plusdOutstandingHuman = parseHuman(plusdSupplyStr);
+  const isEvm = kind === "evm";
 
-  const usdcCustodyHuman =
-    usdcCustodyRaw !== undefined
+  const plusdOutstandingHuman = parseHuman(
+    isEvm ? evmPlusdSupplyStr : plusdSupplyStr,
+  );
+
+  const usdcCustodyHuman = isEvm
+    ? parseHuman(evmUsdcCustodyStr)
+    : usdcCustodyRaw !== undefined
       ? parseHuman(sacRawToDisplay(usdcCustodyRaw))
       : undefined;
 

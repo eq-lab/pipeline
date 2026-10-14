@@ -36,10 +36,10 @@ import {
   sacDisplayToRaw,
   useStellarNetworkFeeEstimate,
   parseUnits,
-  formatUnits,
 } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { formatUsdc } from "@/lib/usdc";
+import { formatUnits4 } from "@/utils/formatUnits4";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -143,17 +143,6 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const EVM_CONVERT_DECIMALS = 18;
 
 // ── Format helpers ────────────────────────────────────────────────────────────
-
-/**
- * Formats a bigint to exactly 4 decimal places (truncated, not rounded).
- * Used for exchange-rate display rows.
- */
-function formatUnits4(value: bigint, decimals: number): string {
-  const full = formatUnits(value, decimals);
-  const [integer, fraction = ""] = full.split(".");
-  const truncated = (fraction + "0000").slice(0, 4);
-  return `${integer}.${truncated}`;
-}
 
 /**
  * Formats a Stellar SAC raw balance to a plain decimal string (no $ prefix).
