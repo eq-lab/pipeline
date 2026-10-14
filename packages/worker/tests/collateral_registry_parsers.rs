@@ -9,6 +9,7 @@ use pipeline_worker::indexer::collateral_registry_parsers::{
     benchmark_string, control_kind_name, doc_kind_name, location_type_name, lot_stage_name,
     parse_collateral_registry_log, release_reason_name,
 };
+use pipeline_worker::indexer::evm_parsers::is_emitted_by;
 
 alloy::sol! {
     struct Location {
@@ -597,4 +598,19 @@ fn malformed_known_topic_returns_none() {
 fn unrelated_topic_returns_none() {
     let data = LogData::new_unchecked(vec![h(0xee), h(1)], Bytes::default());
     assert!(parse_collateral_registry_log(&log_from(data)).is_none());
+}
+
+#[test]
+fn registry_topic_from_other_address_is_not_claimed() {
+    let log = log_from(
+        Pledged {
+            loanId: u(7),
+            lotId: u(3),
+        }
+        .encode_log_data(),
+    );
+    let other = address!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    assert!(is_emitted_by(&log, &[CONTRACT]));
+    assert!(!is_emitted_by(&log, &[other]));
+    assert!(!is_emitted_by(&log, &[]));
 }

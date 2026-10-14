@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use alloy::primitives::{Address, U256};
+use alloy::{
+    primitives::{Address, U256},
+    rpc::types::Log,
+};
 
 use shared::{contract_logs_repo::ContractLogsRepo, db::EventRepo};
 
@@ -43,6 +46,11 @@ pub struct EvmLoanDeps {
     pub mutable_resolver: Arc<dyn MutableDataResolver<Address, U256>>,
 }
 
+/// True when `log` was emitted by one of `addresses`.
+pub fn is_emitted_by(log: &Log, addresses: &[Address]) -> bool {
+    addresses.contains(&log.address())
+}
+
 /// Register all EVM event handlers for a single chain onto the given builder.
 ///
 /// This function groups the parser registration that was previously inline in
@@ -62,6 +70,7 @@ pub fn register_evm_handlers(
     let loan_event_repo = repos.repo.clone();
     let minter_repo = repos.repo.clone();
     let cr_repo = repos.repo.clone();
+    let cr_addrs = contracts.collateral_registry_contracts.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
     let fetcher = loan_deps.fetcher;
@@ -137,6 +146,9 @@ pub fn register_evm_handlers(
                 })
         })
         .add_event_handler(contracts.collateral_registry_contracts, move |log| {
+            if !is_emitted_by(log, &cr_addrs) {
+                return None;
+            }
             parse_collateral_registry_log(log).map(|ev| {
                 Box::new(ContractLogMapper::new(ev, chain_id, cr_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>
