@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 
 use alloy::{
     primitives::Address,
     providers::{Provider, ProviderBuilder},
-    rpc::types::Filter,
+    rpc::types::{Filter, Log},
     transports::http::Http,
 };
 use anyhow::Result;
@@ -17,6 +18,95 @@ use super::chain_poller::ChainEventPoller;
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 type DecodeFn = Box<dyn Fn(&alloy::rpc::types::Log) -> Option<Box<dyn LogMapper>> + Send + Sync>;
 
+pub trait DynamicAddressSource: Send + Sync {
+    fn addresses(&self) -> Vec<Address>;
+    fn observe(&self, log: &Log) -> Vec<Address>;
+}
+
+#[async_trait::async_trait]
+pub trait LogFetcher: Send + Sync {
+    async fn get_logs(&self, addresses: Vec<Address>, from: u64, to: u64) -> Result<Vec<Log>>;
+}
+
+struct ProviderLogFetcher(HttpProvider);
+
+#[async_trait::async_trait]
+impl LogFetcher for ProviderLogFetcher {
+    async fn get_logs(&self, addresses: Vec<Address>, from: u64, to: u64) -> Result<Vec<Log>> {
+        let filter = Filter::new()
+            .address(addresses)
+            .from_block(from)
+            .to_block(to);
+        Ok(self.0.get_logs(&filter).await?)
+    }
+}
+
+pub const MAX_DYNAMIC_ADDRESSES_PER_REQUEST: usize = 25;
+
+async fn fetch_dynamic_batches(
+    fetcher: &dyn LogFetcher,
+    addresses: &[Address],
+    from: u64,
+    to: u64,
+) -> Result<Vec<Log>> {
+    let mut logs = Vec::new();
+    for batch in addresses.chunks(MAX_DYNAMIC_ADDRESSES_PER_REQUEST) {
+        logs.extend(fetcher.get_logs(batch.to_vec(), from, to).await?);
+    }
+    Ok(logs)
+}
+
+pub async fn fetch_chunk_logs(
+    fetcher: &dyn LogFetcher,
+    static_addresses: &[Address],
+    sources: &[Arc<dyn DynamicAddressSource>],
+    from: u64,
+    to: u64,
+) -> Result<Vec<Log>> {
+    let mut seen: HashSet<Address> = HashSet::new();
+    let core: Vec<Address> = static_addresses
+        .iter()
+        .copied()
+        .filter(|a| seen.insert(*a))
+        .collect();
+    let dynamic: Vec<Address> = sources
+        .iter()
+        .flat_map(|s| s.addresses())
+        .filter(|a| seen.insert(*a))
+        .collect();
+
+    let mut logs = if core.is_empty() {
+        vec![]
+    } else {
+        fetcher.get_logs(core, from, to).await?
+    };
+    logs.extend(fetch_dynamic_batches(fetcher, &dynamic, from, to).await?);
+
+    if !sources.is_empty() {
+        let mut discovered: Vec<Address> = Vec::new();
+        for log in logs.iter().filter(|l| !l.removed) {
+            for source in sources {
+                for addr in source.observe(log) {
+                    if seen.insert(addr) {
+                        discovered.push(addr);
+                    }
+                }
+            }
+        }
+        if !discovered.is_empty() {
+            logs.extend(fetch_dynamic_batches(fetcher, &discovered, from, to).await?);
+        }
+    }
+
+    logs.sort_by_key(|l| {
+        (
+            l.block_number.unwrap_or(u64::MAX),
+            l.log_index.unwrap_or(u64::MAX),
+        )
+    });
+    Ok(logs)
+}
+
 pub struct HandlerEntry {
     pub addresses: Vec<Address>,
     pub decode: DecodeFn,
@@ -25,6 +115,7 @@ pub struct HandlerEntry {
 pub struct EvmEventPoller {
     provider: HttpProvider,
     handlers: Vec<HandlerEntry>,
+    dynamic_sources: Vec<Arc<dyn DynamicAddressSource>>,
     block_range: u64,
     interval_ms: u64,
 }
@@ -32,6 +123,7 @@ pub struct EvmEventPoller {
 pub struct EvmEventPollerBuilder {
     provider: HttpProvider,
     handlers: Vec<HandlerEntry>,
+    dynamic_sources: Vec<Arc<dyn DynamicAddressSource>>,
     block_range: u64,
     interval_ms: u64,
 }
@@ -42,6 +134,7 @@ impl EvmEventPollerBuilder {
         Self {
             provider,
             handlers: vec![],
+            dynamic_sources: vec![],
             block_range,
             interval_ms,
         }
@@ -65,10 +158,16 @@ impl EvmEventPollerBuilder {
         self
     }
 
+    pub fn add_dynamic_address_source(mut self, source: Arc<dyn DynamicAddressSource>) -> Self {
+        self.dynamic_sources.push(source);
+        self
+    }
+
     pub fn build(self) -> EvmEventPoller {
         EvmEventPoller {
             provider: self.provider,
             handlers: self.handlers,
+            dynamic_sources: self.dynamic_sources,
             block_range: self.block_range,
             interval_ms: self.interval_ms,
         }
@@ -85,24 +184,27 @@ impl EvmEventPoller {
     /// Logs with `removed = true` (reorg) are skipped.
     /// Block timestamps are fetched via `eth_getBlockByNumber` and cached per block number.
     pub async fn poll(&self, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn LogMapper>>> {
-        let all_addresses: Vec<Address> = self
+        let static_addresses: Vec<Address> = self
             .handlers
             .iter()
             .flat_map(|h| h.addresses.iter().copied())
             .collect();
 
+        let fetcher = ProviderLogFetcher(self.provider.clone());
         let mut result: Vec<Box<dyn LogMapper>> = vec![];
         let mut current = from_block;
 
         while current <= to_block {
             let chunk_end = (current + self.block_range - 1).min(to_block);
 
-            let filter = Filter::new()
-                .address(all_addresses.clone())
-                .from_block(current)
-                .to_block(chunk_end);
-
-            let logs = self.provider.get_logs(&filter).await?;
+            let logs = fetch_chunk_logs(
+                &fetcher,
+                &static_addresses,
+                &self.dynamic_sources,
+                current,
+                chunk_end,
+            )
+            .await?;
 
             for log in &logs {
                 if log.removed {

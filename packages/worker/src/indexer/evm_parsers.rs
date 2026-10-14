@@ -9,6 +9,10 @@ use shared::{contract_logs_repo::ContractLogsRepo, db::EventRepo};
 
 use super::{
     collateral_registry_parsers::parse_collateral_registry_log,
+    deal_token_parsers::{
+        parse_cargo_synced, parse_deal_registered, parse_deal_token_transfer, parse_debt_synced,
+    },
+    deal_tokens::DealTokenRegistry,
     loan_mapper::{LoanEvent, LoanEventMapper},
     loan_metadata::{ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver},
     mappers::ContractLogMapper,
@@ -63,6 +67,7 @@ pub fn register_evm_handlers(
     contracts: EvmContractAddresses,
     repos: EvmRepos,
     loan_deps: EvmLoanDeps,
+    deal_tokens: Option<Arc<DealTokenRegistry>>,
 ) -> EvmEventPollerBuilder {
     let dm_repo = repos.repo.clone();
     let wq_repo = repos.repo.clone();
@@ -77,7 +82,7 @@ pub fn register_evm_handlers(
     let immutable_resolver = loan_deps.immutable_resolver;
     let mutable_resolver = loan_deps.mutable_resolver;
 
-    builder
+    let builder = builder
         .add_event_handler(contracts.dm_contracts, move |log| {
             parse_deposit_requested(log)
                 .or_else(|| parse_request_claimed(log))
@@ -153,5 +158,44 @@ pub fn register_evm_handlers(
                 Box::new(ContractLogMapper::new(ev, chain_id, cr_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>
             })
+        });
+
+    match deal_tokens {
+        Some(registry) => register_deal_token_handlers(builder, chain_id, &repos.repo, registry),
+        None => builder,
+    }
+}
+
+fn register_deal_token_handlers(
+    builder: EvmEventPollerBuilder,
+    chain_id: i64,
+    repo: &Arc<EventRepo>,
+    registry: Arc<DealTokenRegistry>,
+) -> EvmEventPollerBuilder {
+    let factory = registry.factory();
+    let factory_repo = repo.clone();
+    let token_repo = repo.clone();
+    let token_registry = registry.clone();
+
+    builder
+        .add_event_handler(vec![factory], move |log| {
+            if log.address() != factory {
+                return None;
+            }
+            parse_deal_registered(log)
+                .or_else(|| parse_debt_synced(log))
+                .or_else(|| parse_cargo_synced(log))
+                .map(|ev| {
+                    Box::new(ContractLogMapper::new(ev, chain_id, factory_repo.clone()))
+                        as Box<dyn shared::log_mapper::LogMapper>
+                })
         })
+        .add_event_handler(vec![], move |log| {
+            let info = token_registry.lookup(&log.address())?;
+            parse_deal_token_transfer(log, &info).map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, token_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
+            })
+        })
+        .add_dynamic_address_source(registry)
 }
