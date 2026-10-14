@@ -184,12 +184,12 @@ _None_
 
 ## Implementation Steps
 
-1. **Pre-flight alignment check.** Read #1481's plan and compare its params table with
+1. [x] **Pre-flight alignment check.** Read #1481's plan and compare its params table with
    **Cross-arm params contract** and **Resolved decisions**. If anything differs, stop and
    report; do not pick a side.
-2. **Expose the log-meta helper.** In `packages/worker/src/indexer/parsers.rs`, change
+2. [x] **Expose the log-meta helper.** In `packages/worker/src/indexer/parsers.rs`, change
    `fn extract_log_meta` to `pub(crate) fn extract_log_meta`. No other change to this file.
-3. **New module `packages/worker/src/indexer/collateral_registry_parsers.rs`.** Add
+3. [x] **New module `packages/worker/src/indexer/collateral_registry_parsers.rs`.** Add
    `pub mod collateral_registry_parsers;` in `indexer/mod.rs`. Contents:
    - A private `mod cr { alloy::sol! { ... } }` declaring the 11 events exactly as in
      **Ground truth**, with every enum-typed field declared as `uint8`, and
@@ -213,27 +213,27 @@ _None_
      `.or_else` chain over all 11 parsers, so the handler and tests share one entry point.
    - The file header is a single 2–3 line spec pointer (to `docs/references/backend.md`'s CR
      section). Add no other comments (AGENTS.md comment-less rule).
-4. **Config.** In `packages/worker/src/indexer/config.rs`, `IndexerJobSettings`:
+4. [x] **Config.** In `packages/worker/src/indexer/config.rs`, `IndexerJobSettings`:
    - Add `pub collateral_registry_address: Option<String>`.
    - In `from_chain_env`, read `{ip}COLLATERAL_REGISTRY_ADDRESS` and map it to `None` when it
      is unset or `trim().is_empty()`, and to `Some(trimmed)` otherwise (mirroring the Stellar
      `loan_registry_id` optional pattern). Leave the existing `env_require` keys untouched.
-5. **Wire the address.** In `packages/worker/src/indexer/mod.rs::run_indexer_job`, build
+5. [x] **Wire the address.** In `packages/worker/src/indexer/mod.rs::run_indexer_job`, build
    `collateral_registry_contracts: Vec<Address>`. Use
    `parse_address("COLLATERAL_REGISTRY_ADDRESS", raw)` when the setting is `Some` (an invalid
    address aborts startup with the chain-named key, as for the other roles), and `vec![]`
    when it is `None`. Pass it in `EvmContractAddresses`.
-6. **Register the handler.** In `packages/worker/src/indexer/evm_parsers.rs`:
+6. [x] **Register the handler.** In `packages/worker/src/indexer/evm_parsers.rs`:
    - Add `pub collateral_registry_contracts: Vec<Address>` to `EvmContractAddresses`.
    - In `register_evm_handlers`, clone `repos.repo` into `cr_repo` and append
      `.add_event_handler(contracts.collateral_registry_contracts, move |log| parse_collateral_registry_log(log).map(|ev| Box::new(ContractLogMapper::new(ev, chain_id, cr_repo.clone())) as Box<dyn shared::log_mapper::LogMapper>))`.
      `Released` is reachable only through this handler (Issue note).
-7. **`.env.example`.** Under the EVM block, after `CHAIN_1_EVM_INDEXER_MINTER_ADDRESS`, add
+7. [x] **`.env.example`.** Under the EVM block, after `CHAIN_1_EVM_INDEXER_MINTER_ADDRESS`, add
    `# CHAIN_1_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS=      # optional — PipelineCollateralRegistry; unset ships dark`.
-8. **Docs.** See **Docs to Update**.
-9. **Lint and test.** Run `cargo clippy --all -- -D warnings`, `cargo test -p pipeline-worker`
+8. [x] **Docs.** See **Docs to Update**.
+9. [x] **Lint and test.** Run `cargo clippy --all -- -D warnings`, `cargo test -p pipeline-worker`
    and `npx tsx scripts/lint-docs.ts`.
-10. **Optional manual spot-check (not CI).** If a hoodi RPC is at hand, fetch one log from
+10. [ ] **Optional manual spot-check (not CI).** If a hoodi RPC is at hand, fetch one log from
     the hoodi-v5 CR proxy (F1) and confirm that `parse_collateral_registry_log` decodes it.
     Record the outcome in the PR description; skip it if no RPC is available.
 

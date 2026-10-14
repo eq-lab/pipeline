@@ -2040,3 +2040,10 @@ line, whichever section it lands in.
 - **Gap:** Release or liquidation to zero quantity (lot becomes `Delivered` / `Sold` / `Paid`) and `set_control(Acknowledged)` on an `Assigned` receivable change the stage without a `stage_updated` event; the indexer stores events as emitted and derives nothing.
 - **Impact:** A consumer reading only `StageUpdated` rows sees a stale stage.
 - **Suggested fix:** Derive the stage at read time using the rules in `docs/references/collateral-registry-events.md`, or add a materialised lot-state projection once enrichment (TD-142) exists.
+
+### TD-144: EVM CollateralRegistry rows are raw events
+- **Date:** 2026-10-14
+- **Location:** `packages/worker/src/indexer/collateral_registry_parsers.rs` — Issue #1484.
+- **Gap:** `Pledged` carries only ids (a block-pinned `lot()` read would be needed for lot details); implicit stage changes (release or liquidate to zero, `setControl` moving Assigned to Acknowledged) emit no event and are not synthesised; `Released` and `Liquidated` carry no remaining quantity; `MarginCall` can repeat and nothing fires on recovery; `value_per_unit` and quantities are stored raw at 6 decimals on EVM versus 7 on Stellar.
+- **Impact:** A consumer of `contract_logs` alone cannot reconstruct lot state or compare values across chain kinds without per-chain scaling and read-time derivation.
+- **Suggested fix:** Enrich `Pledged` with a block-pinned `lot()` read, derive implicit stages at read time (see `docs/references/collateral-registry-events.md`), and scale by chain kind in the consumer.

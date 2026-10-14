@@ -351,6 +351,10 @@ The token set is discovered at runtime. It is seeded once at startup from every 
 
 Limitations: a deal registered before the indexer saw its `DealRegistered` is not tracked (remedy: rewind the cursor to before the registration, within RPC retention); history older than Soroban RPC retention is not backfilled (the next `DebtSynced` / `CargoSynced` carries the absolute `target`).
 
+The CollateralRegistry's 11 business events are collected on EVM when
+`CHAIN_<id>_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set (unset ships dark) and stored as raw
+`contract_logs` rows; see [collateral-registry-events.md](./collateral-registry-events.md).
+
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
 **Stellar asset-transfer tracking.** The Stellar indexer can additionally track a single asset's (SAC / SEP-41 token) `transfer` events. It persists **raw** transfers only (`from` / `to` / `amount` in `contract_logs.params`, amount as an i128 string) under `event_name = "AssetTransfer"`. No role/direction labeling — downstream consumers classify against address lists. Configured **job-level** (applies to every Stellar chain), read once at startup:

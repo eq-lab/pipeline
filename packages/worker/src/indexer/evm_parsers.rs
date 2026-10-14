@@ -5,6 +5,7 @@ use alloy::primitives::{Address, U256};
 use shared::{contract_logs_repo::ContractLogsRepo, db::EventRepo};
 
 use super::{
+    collateral_registry_parsers::parse_collateral_registry_log,
     loan_mapper::{LoanEvent, LoanEventMapper},
     loan_metadata::{ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver},
     mappers::ContractLogMapper,
@@ -26,6 +27,7 @@ pub struct EvmContractAddresses {
     pub splusd_contracts: Vec<Address>,
     pub loan_registry_contracts: Vec<Address>,
     pub yield_minter_contracts: Vec<Address>,
+    pub collateral_registry_contracts: Vec<Address>,
 }
 
 /// Shared DB repositories used by EVM event handlers.
@@ -59,6 +61,7 @@ pub fn register_evm_handlers(
     let splusd_repo = repos.repo.clone();
     let loan_event_repo = repos.repo.clone();
     let minter_repo = repos.repo.clone();
+    let cr_repo = repos.repo.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
     let fetcher = loan_deps.fetcher;
@@ -132,5 +135,11 @@ pub fn register_evm_handlers(
                     Box::new(ContractLogMapper::new(ev, chain_id, minter_repo.clone()))
                         as Box<dyn shared::log_mapper::LogMapper>
                 })
+        })
+        .add_event_handler(contracts.collateral_registry_contracts, move |log| {
+            parse_collateral_registry_log(log).map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, cr_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
+            })
         })
 }

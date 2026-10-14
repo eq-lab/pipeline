@@ -1,4 +1,5 @@
 pub mod chain_poller;
+pub mod collateral_registry_parsers;
 pub mod config;
 pub mod evm_parsers;
 pub mod loan_mapper;
@@ -77,6 +78,10 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         &settings.loan_registry_address,
     )?];
     let yield_minter_contracts = vec![parse_address("MINTER_ADDRESS", &settings.minter_address)?];
+    let collateral_registry_contracts = match settings.collateral_registry_address.as_deref() {
+        Some(raw) => vec![parse_address("COLLATERAL_REGISTRY_ADDRESS", raw)?],
+        None => vec![],
+    };
 
     // Shared deps for loan mappers.
     // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.
@@ -106,6 +111,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             splusd_contracts,
             loan_registry_contracts,
             yield_minter_contracts,
+            collateral_registry_contracts,
         },
         evm_parsers::EvmRepos {
             repo: repo.clone(),

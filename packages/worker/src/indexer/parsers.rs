@@ -54,7 +54,7 @@ mod minter {
     }
 }
 
-fn extract_log_meta(log: &Log) -> Option<(Address, u64, alloy::primitives::B256, u64)> {
+pub(crate) fn extract_log_meta(log: &Log) -> Option<(Address, u64, alloy::primitives::B256, u64)> {
     Some((
         log.address(),
         log.block_number?,
