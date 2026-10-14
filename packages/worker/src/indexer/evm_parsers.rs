@@ -19,9 +19,9 @@ use super::{
     parsers::{
         parse_deposit_requested, parse_disbursed, parse_economics_amended, parse_interest_adjusted,
         parse_loan_closed, parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over,
-        parse_loan_status_updated, parse_loan_written_down, parse_payment_recorded,
-        parse_payment_unrecorded, parse_request_claimed, parse_staking_deposit,
-        parse_staking_withdraw, parse_undisbursed, parse_wire_in, parse_wire_in_assigned,
+        parse_loan_status_updated, parse_loan_written_down, parse_minter_event,
+        parse_payment_recorded, parse_payment_unrecorded, parse_request_claimed,
+        parse_staking_deposit, parse_staking_withdraw, parse_undisbursed,
         parse_withdrawal_requested,
     },
     poller::EvmEventPollerBuilder,
@@ -75,6 +75,7 @@ pub fn register_evm_handlers(
     let loan_event_repo = repos.repo.clone();
     let minter_repo = repos.repo.clone();
     let cr_repo = repos.repo.clone();
+    let minter_addrs = contracts.yield_minter_contracts.clone();
     let cr_addrs = contracts.collateral_registry_contracts.clone();
 
     let contract_logs_repo = repos.contract_logs_repo;
@@ -143,12 +144,13 @@ pub fn register_evm_handlers(
                 })
         })
         .add_event_handler(contracts.yield_minter_contracts, move |log| {
-            parse_wire_in(log)
-                .or_else(|| parse_wire_in_assigned(log))
-                .map(|ev| {
-                    Box::new(ContractLogMapper::new(ev, chain_id, minter_repo.clone()))
-                        as Box<dyn shared::log_mapper::LogMapper>
-                })
+            if !is_emitted_by(log, &minter_addrs) {
+                return None;
+            }
+            parse_minter_event(log).map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, minter_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
+            })
         })
         .add_event_handler(contracts.collateral_registry_contracts, move |log| {
             if !is_emitted_by(log, &cr_addrs) {

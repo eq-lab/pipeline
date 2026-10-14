@@ -51,6 +51,20 @@ mod minter {
     sol! {
         event WireInRecorded(uint256 indexed id, address indexed receiver, uint256 amount, uint64 valueDate, bytes32 refHash);
         event WireInAssigned(uint256 indexed id, address indexed receiver);
+        event WireInReturned(uint256 indexed id, uint256 amount, bytes32 refHash);
+        event CashDisbursed(uint256 indexed loanId, uint256 entryId, uint256 amount, uint64 valueDate, bytes32 refHash);
+        event CashDisbursementReversed(uint256 indexed loanId, uint256 entryId, uint256 originalId, uint256 amount, bytes32 refHash);
+        event CashRepaid(uint256 indexed loanId, uint256 repaymentId, uint256 saleId, uint256 cash, uint256 interestMinted, uint256 feeShares, uint64 valueDate, bytes32 refHash);
+        event CashRepaymentReversed(uint256 indexed loanId, uint256 repaymentId, uint256 cash, bytes32 refHash);
+        event WireOutRequested(uint256 indexed id, address indexed lp, uint256 amount);
+        event WireOutSettled(uint256 indexed id, uint256 amount, uint64 valueDate, bytes32 refHash);
+        event WireOutCancelled(uint256 indexed id);
+        event RampOpened(uint256 indexed id, uint8 direction, uint256 amount, bytes32 refHash);
+        event RampClosed(uint256 indexed id, uint256 received, uint256 loss, bytes32 refHash);
+        event CashRecorded(uint8 indexed reason, uint256 entryId, int256 delta, uint64 valueDate, bytes32 refHash);
+        event CashCorrected(uint256 indexed originalId, uint256 entryId, int256 delta, bytes32 reasonHash);
+        event MintCorrected(uint256 amount, bytes32 refHash);
+        event LossAbsorbed(uint256 requested, uint256 pulled);
     }
 }
 
@@ -438,4 +452,249 @@ pub fn parse_wire_in_assigned(log: &Log) -> Option<ContractLog> {
             "receiver": decoded.receiver.to_checksum(None),
         }),
     })
+}
+
+fn minter_log(log: &Log, event_name: &str, params: serde_json::Value) -> Option<ContractLog> {
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+    Some(ContractLog {
+        contract_address,
+        event_name: event_name.to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params,
+    })
+}
+
+pub fn cash_reason_name(ordinal: u8) -> &'static str {
+    match ordinal {
+        0 => "Disbursed",
+        1 => "DisbursementReversed",
+        2 => "Income",
+        3 => "Expense",
+        4 => "Correction",
+        _ => "Unknown",
+    }
+}
+
+pub fn ramp_direction_name(ordinal: u8) -> &'static str {
+    match ordinal {
+        0 => "UsdcToBank",
+        1 => "BankToUsdc",
+        _ => "Unknown",
+    }
+}
+
+pub fn parse_wire_in_returned(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::WireInReturned::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "WireInReturned",
+        json!({
+                "id": decoded.id.to_string(),
+                "amount": decoded.amount.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_cash_disbursed(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::CashDisbursed::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "CashDisbursed",
+        json!({
+                "loan_id": decoded.loanId.to_string(),
+                "entry_id": decoded.entryId.to_string(),
+                "amount": decoded.amount.to_string(),
+                "value_date": decoded.valueDate.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_cash_disbursement_reversed(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::CashDisbursementReversed::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "CashDisbursementReversed",
+        json!({
+                "loan_id": decoded.loanId.to_string(),
+                "entry_id": decoded.entryId.to_string(),
+                "original_id": decoded.originalId.to_string(),
+                "amount": decoded.amount.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_cash_repaid(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::CashRepaid::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "CashRepaid",
+        json!({
+                "loan_id": decoded.loanId.to_string(),
+                "repayment_id": decoded.repaymentId.to_string(),
+                "sale_id": decoded.saleId.to_string(),
+                "cash": decoded.cash.to_string(),
+                "interest_minted": decoded.interestMinted.to_string(),
+                "fee_shares": decoded.feeShares.to_string(),
+                "value_date": decoded.valueDate.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_cash_repayment_reversed(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::CashRepaymentReversed::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "CashRepaymentReversed",
+        json!({
+                "loan_id": decoded.loanId.to_string(),
+                "repayment_id": decoded.repaymentId.to_string(),
+                "cash": decoded.cash.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_wire_out_requested(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::WireOutRequested::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "WireOutRequested",
+        json!({
+                "id": decoded.id.to_string(),
+                "lp": decoded.lp.to_checksum(None),
+                "amount": decoded.amount.to_string(),
+        }),
+    )
+}
+
+pub fn parse_wire_out_settled(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::WireOutSettled::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "WireOutSettled",
+        json!({
+                "id": decoded.id.to_string(),
+                "amount": decoded.amount.to_string(),
+                "value_date": decoded.valueDate.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_wire_out_cancelled(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::WireOutCancelled::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "WireOutCancelled",
+        json!({
+                "id": decoded.id.to_string(),
+        }),
+    )
+}
+
+pub fn parse_ramp_opened(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::RampOpened::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "RampOpened",
+        json!({
+                "id": decoded.id.to_string(),
+                "direction": ramp_direction_name(decoded.direction),
+                "amount": decoded.amount.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_ramp_closed(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::RampClosed::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "RampClosed",
+        json!({
+                "id": decoded.id.to_string(),
+                "received": decoded.received.to_string(),
+                "loss": decoded.loss.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_cash_recorded(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::CashRecorded::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "CashRecorded",
+        json!({
+                "reason": cash_reason_name(decoded.reason),
+                "entry_id": decoded.entryId.to_string(),
+                "delta": decoded.delta.to_string(),
+                "value_date": decoded.valueDate.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_cash_corrected(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::CashCorrected::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "CashCorrected",
+        json!({
+                "original_id": decoded.originalId.to_string(),
+                "entry_id": decoded.entryId.to_string(),
+                "delta": decoded.delta.to_string(),
+                "reason_hash": hex::encode(decoded.reasonHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_mint_corrected(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::MintCorrected::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "MintCorrected",
+        json!({
+                "amount": decoded.amount.to_string(),
+                "ref_hash": hex::encode(decoded.refHash.as_slice()),
+        }),
+    )
+}
+
+pub fn parse_loss_absorbed(log: &Log) -> Option<ContractLog> {
+    let decoded = minter::LossAbsorbed::decode_log(log.as_ref(), true).ok()?;
+    minter_log(
+        log,
+        "LossAbsorbed",
+        json!({
+                "requested": decoded.requested.to_string(),
+                "pulled": decoded.pulled.to_string(),
+        }),
+    )
+}
+
+pub fn parse_minter_event(log: &Log) -> Option<ContractLog> {
+    parse_wire_in(log)
+        .or_else(|| parse_wire_in_assigned(log))
+        .or_else(|| parse_wire_in_returned(log))
+        .or_else(|| parse_cash_disbursed(log))
+        .or_else(|| parse_cash_disbursement_reversed(log))
+        .or_else(|| parse_cash_repaid(log))
+        .or_else(|| parse_cash_repayment_reversed(log))
+        .or_else(|| parse_wire_out_requested(log))
+        .or_else(|| parse_wire_out_settled(log))
+        .or_else(|| parse_wire_out_cancelled(log))
+        .or_else(|| parse_ramp_opened(log))
+        .or_else(|| parse_ramp_closed(log))
+        .or_else(|| parse_cash_recorded(log))
+        .or_else(|| parse_cash_corrected(log))
+        .or_else(|| parse_mint_corrected(log))
+        .or_else(|| parse_loss_absorbed(log))
 }
