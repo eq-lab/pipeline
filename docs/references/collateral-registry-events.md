@@ -66,8 +66,10 @@ registry. A known topic that fails to decode is dropped with a `tracing::warn!` 
   current state, so a `lot()` read at index time would return later state during any catch-up. A
   ledger-accurate enrichment is tracked as tech debt.
 - Implicit stage changes are not materialised as `StageUpdated` rows. A consumer derives them:
-  - a `Released` or `Liquidated` that brings the remaining quantity to zero moves the lot to
-    `Delivered`, `Sold` or `Paid`;
+  - a `Released` or `Liquidated` that brings the remaining lot quantity to zero moves the lot to
+    `Delivered`, `Sold` or `Paid`. This is not derivable from indexed rows alone: no stored row
+    carries the remaining quantity, and the lot quantity comes from the `Pledged` lot read, which
+    is not indexed (tech debt TD-140 / TD-141 for Stellar, TD-144 for EVM);
   - `ControlUpdated` with `kind = Acknowledged` on an `Assigned` receivable moves it to
     `Acknowledged`.
 - `MarginCall` is stored as emitted. Repeats from the permissionless `check_coverage`, or from the
