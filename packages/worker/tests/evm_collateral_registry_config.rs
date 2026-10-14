@@ -38,7 +38,9 @@ fn cr_key() -> String {
 
 #[test]
 fn unset_key_is_none() {
-    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     reset();
     let s = IndexerJobSettings::from_chain_env(CHAIN_ID).unwrap();
     assert_eq!(s.collateral_registry_address, None);
@@ -46,7 +48,9 @@ fn unset_key_is_none() {
 
 #[test]
 fn blank_key_is_none() {
-    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     reset();
     for v in ["", "   ", "\t"] {
         unsafe { std::env::set_var(cr_key(), v) };
@@ -57,7 +61,9 @@ fn blank_key_is_none() {
 
 #[test]
 fn set_key_is_trimmed() {
-    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     reset();
     unsafe { std::env::set_var(cr_key(), "  0xb3D45A8E4816321F806a5eDCB62330CAaC23b26f  ") };
     let s = IndexerJobSettings::from_chain_env(CHAIN_ID).unwrap();
@@ -69,7 +75,9 @@ fn set_key_is_trimmed() {
 
 #[test]
 fn required_keys_still_error_when_missing() {
-    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     for key in REQUIRED {
         reset();
         unsafe { std::env::remove_var(format!("{}{key}", ip())) };

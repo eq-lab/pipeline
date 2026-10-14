@@ -1,5 +1,5 @@
 use alloy::{
-    primitives::{address, b256, keccak256, Address, FixedBytes, LogData, B256, U256},
+    primitives::{address, b256, keccak256, Address, Bytes, FixedBytes, LogData, B256, U256},
     rpc::types::Log,
     sol_types::SolEvent,
 };
@@ -595,6 +595,6 @@ fn malformed_known_topic_returns_none() {
 
 #[test]
 fn unrelated_topic_returns_none() {
-    let data = LogData::new_unchecked(vec![h(0xee), h(1)], Default::default());
+    let data = LogData::new_unchecked(vec![h(0xee), h(1)], Bytes::default());
     assert!(parse_collateral_registry_log(&log_from(data)).is_none());
 }
