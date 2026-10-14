@@ -5,7 +5,6 @@
  * spec: docs/frontend/dashboard-components.md#yieldhistorypanel
  * (endpoints, chain-scoping decision, business rules for each field).
  */
-import { ENV } from "@/lib/env";
 import { useDashboardSummary } from "@/api/useDashboardSummary";
 import { useDashboardTvlHistory } from "@/api/useDashboardTvlHistory";
 import { useDashboardYieldHistory } from "@/api/useDashboardYieldHistory";
@@ -17,6 +16,7 @@ import {
   formatOneDecimalRate,
 } from "@/utils/formatCompactUsd";
 import type { PanelState } from "./PanelContainer";
+import { useDashboardChain } from "./useDashboardChain";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
 import type { AxisTicks } from "@/utils/chartAxis";
 
@@ -89,12 +89,12 @@ const EMPTY_TVL_SUMMARY: TvlSummary = {
  * - `ready`   → derived headline + bar arrays + metric cards are available.
  */
 export function useYieldHistoryPanel(): YieldHistoryPanelState {
-  const chainId = ENV.STELLAR_CHAIN_ID;
+  const { chainId } = useDashboardChain();
 
   // ── Fetch all three dashboard endpoints ─────────────────────────────────────
   // The two series show full history at the default daily interval (no selector).
 
-  const summaryQuery = useDashboardSummary();
+  const summaryQuery = useDashboardSummary({ chainId });
 
   const tvlHistoryQuery = useDashboardTvlHistory({ chainId });
 

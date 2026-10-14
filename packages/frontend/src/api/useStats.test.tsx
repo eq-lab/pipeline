@@ -152,7 +152,7 @@ describe("useStats — mock-key path", () => {
       JSON.stringify(FIXTURE_WITH_APY),
     );
 
-    const { result } = renderHook(() => useStats(), {
+    const { result } = renderHook(() => useStats({ chainId: 99_000_001 }), {
       wrapper: makeWrapper(),
     });
 
@@ -169,7 +169,7 @@ describe("useStats — mock-key path", () => {
       JSON.stringify(FIXTURE_NULL_APY),
     );
 
-    const { result } = renderHook(() => useStats(), {
+    const { result } = renderHook(() => useStats({ chainId: 99_000_001 }), {
       wrapper: makeWrapper(),
     });
 
@@ -199,7 +199,7 @@ describe("useStats — real fetch path", () => {
       new Response(JSON.stringify(FIXTURE_WITH_APY), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useStats(), {
+    const { result } = renderHook(() => useStats({ chainId: 99_000_001 }), {
       wrapper: makeWrapper(),
     });
 
@@ -221,7 +221,7 @@ describe("useStats — real fetch path", () => {
       }),
     );
 
-    const { result } = renderHook(() => useStats(), {
+    const { result } = renderHook(() => useStats({ chainId: 99_000_001 }), {
       wrapper: makeWrapper(),
     });
 
@@ -230,5 +230,40 @@ describe("useStats — real fetch path", () => {
     });
 
     expect(result.current.data).toBeUndefined();
+  });
+});
+
+describe("useStats — chain scoping", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it.each([560048, 99_000_001])("sends chain_id=%i", async (chainId) => {
+    renderHook(() => useStats({ chainId }), { wrapper: makeWrapper() });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/stats");
+    expect(url).toContain(`chain_id=${chainId}`);
+  });
+
+  it("fetches separately per chainId", async () => {
+    const { rerender } = renderHook(({ chainId }) => useStats({ chainId }), {
+      wrapper: makeWrapper(),
+      initialProps: { chainId: 560048 },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ chainId: 99_000_001 });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("chain_id=99000001");
   });
 });

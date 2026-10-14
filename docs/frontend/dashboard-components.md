@@ -484,7 +484,8 @@ Right-column card on the home dashboard. Renders in two states:
   `showList`.
 
 Active-chain gating (Issue #644): `isConnected` is keyed off the active chain
-(`useWalletView().kind`) rather than EVM unconditionally, mirroring `useRequests`. (Tech-debt: this
+(`useWalletView().kind`) rather than EVM unconditionally, mirroring `useRequests`. Protocol stats
+(not wallet data) resolve their chain through the shared `useActiveChain()` (#1498). (Tech-debt: this
 chain-selection derivation is duplicated in `useRequests` and `transactions.tsx`; a shared hook is
 tracked in tech-debt-tracker.md.)
 
@@ -537,8 +538,9 @@ breakpoint: "Welcome back" when `true`, "Welcome" otherwise (Figma connected fra
 `1988:7074`, `1984:6501`, `1886:46777`). The home route supplies it as
 `isAuthenticated || isAnyConnected` (#1475); the header takes no wallet hooks.
 
-The exchange rate and APY stats are live, sourced from `HomeStatsStrip` (`useStakedPlusdConvertToAssets`
-and `useStats`). TVL remains hardcoded pending a separate issue.
+The exchange rate, TVL and APY stats are live, sourced from `HomeStatsStrip`
+(`useStakedPlusdConvertToAssets` / `useStellarUnstakeConvertToAssets`, `useDashboardSummary` and
+`useStats`).
 
 ### HomeStatsStrip
 
@@ -549,6 +551,14 @@ from the on-chain `convertToAssets` read, APY from `GET /v1/stats`, and TVL (#12
 dashboard TVL card, formatted with `formatCompactUsd` (`"$19.0M"`), rendering `—` while loading or
 when the field is null (never a hardcoded value; the strip previously shipped the Figma mock
 `$28,812,044.93` as a literal).
+
+**Active chain (#1498).** The strip reads `useActiveChain()` (connected wallet's chain, else
+Stellar — see [`wallet-flows.md`](./wallet-flows.md#active-chain-for-protocol-reads)). The exchange
+rate is the EVM `useStakedPlusdConvertToAssets(1e18)` formatted at 18 dp, or the Stellar
+`useStellarUnstakeConvertToAssets(1e7)` formatted at 7 dp, both through `formatUnits4` (truncated,
+not rounded, to 4 dp); the other chain's convert hook is passed `undefined` and makes no read. A
+missing rate renders `—`. TVL and APY are fetched with `useDashboardSummary({ chainId })` and
+`useStats({ chainId })`; `StakeCard`'s "Earn X% p.a." uses the same `useStats({ chainId })`.
 
 - **Desktop:** inside `WelcomeHeader`, right side of the heading row.
 - **Mobile:** a horizontally-scrollable strip at the bottom of the home page (`routes/index.tsx`)
@@ -1019,10 +1029,14 @@ Per-element Figma bindings:
 
 ### useBalanceSheetPanel
 
-Blends REST `GET /v1/financial-position` + on-chain reads:
+Blends REST `GET /v1/financial-position?chain_id` + on-chain reads of the dashboard chain
+(`useDashboardChain().kind`). All four on-chain hooks are called every render; the pair matching
+`kind` is used and the EVM pair is disabled (no RPC) on Stellar:
 
-- PLUSD outstanding → `useStellarPlusdTotalSupply()` (Horizon decimal string)
-- Cash — stablecoins → `useStellarUsdcCustodyBalance()` (Soroban raw i128 bigint)
+- PLUSD outstanding → Stellar `useStellarPlusdTotalSupply()` (Horizon decimal string) or EVM
+  `useEvmPlusdTotalSupply()` (`PLUSD.totalSupply()`, human-decimal string)
+- Cash — stablecoins → Stellar `useStellarUsdcCustodyBalance()` (Soroban raw i128 bigint) or EVM
+  `useEvmUsdcCustodyBalance()` (`USDC.balanceOf(DepositManager.custodian())`, human-decimal string)
 - Deployed / Junior tranche → REST base-6 decimal strings
 - USYC → `convertUsycToUsdc` seam → `—` (no holding in v1)
 - Off-chain USD → `—` (off-chain, no source)
@@ -1033,6 +1047,9 @@ Blends REST `GET /v1/financial-position` + on-chain reads:
   directly, no SAC scaling needed.
 - USDC: Soroban `balance()` returns a raw i128 bigint at 7-decimal SAC scale — use
   `sacRawToDisplay(bigint)` → human string → `parseFloat()`.
+- EVM reads: `formatUnits(raw, decimals())` with the token's live `decimals()` inside the hook,
+  returning a human-decimal string — `parseFloat` it directly. An unavailable read (reverted
+  `custodian()`, zero-address config) is `undefined` → the row renders `—` and counts as unsourced.
 - REST rows are base-6 decimal strings — pass directly to `formatCompactUsd()`.
 
 **Totals:** section totals are CLIENT-RECOMPUTED (the REST roll-up excludes on-chain leaves). Only
@@ -1506,9 +1523,16 @@ matching the inner card treatment in `DeploymentMonitorPanel`/`LoanBookSummary`.
 Figma: top row `node-id=3283-67619`, TVL card `node-id=3283-67622`, yield `node-id=3283-68333`,
 mobile `node-id=3283-72387`.
 
+### useDashboardChain
+
+`components/dashboard/useDashboardChain.ts` — the single seam deciding which chain every Protocol
+Dashboard panel hook reads (`useYieldHistoryPanel`, `useDeploymentMonitorPanel`,
+`useWithdrawalQueuePanel`, `useBalanceSheetPanel`). Returns `{ kind, chainId }` and today is
+`useActiveChain()` (#1498): the connected wallet's chain, else the default chain (Stellar).
+
 ### useYieldHistoryPanel
 
-Resolves chain from ENV defaults (no wallet connection on the Protocol Dashboard), fans out API calls
+Reads its chain from `useDashboardChain()`, fans out API calls
 to the three `/v1/dashboard/*` endpoints, and derives panel state + formatted values for the view
 layer.
 
@@ -1529,8 +1553,10 @@ reads `…data?.series ?? []` (not `…data ?? []`); `min` goes unused (see the 
 
 **Decisions (issue #760):**
 
-- `chainId` = `ENV.STELLAR_CHAIN_ID` — the Protocol Dashboard is Stellar-scoped (real data lives on
-  chain `99000001`; the EVM chain carries malformed test data, #765).
+- `chainId` comes from `useDashboardChain()` (#1498), which returns `useActiveChain()`: the connected
+  wallet's chain, else Stellar. There is no chain selector. The same hook feeds
+  `useDeploymentMonitorPanel`, `useWithdrawalQueuePanel` and `useBalanceSheetPanel`, so every panel
+  and every `chain_id` request on `/dashboard` follows one rule.
 - All three endpoints are protocol-level (no vault address needed). The zero-address vault guard from
   the pre-#760 version has been dropped — these endpoints are unconditionally enabled (wallet-less,
   and the panel's empty state handles `200 []`).

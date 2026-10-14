@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useWithdrawalQueue } from "@/api";
 import { useFinancialPosition } from "@/api/useFinancialPosition";
 import type { PanelState } from "./PanelContainer";
+import { useDashboardChain } from "./useDashboardChain";
 import { truncateAddress } from "@/utils/truncateAddress";
 import { toUserError } from "@/utils/userError";
 import {
@@ -78,10 +79,11 @@ const EMPTY_SUMMARY: WithdrawalQueueSummaryFormatted = {
  * spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel (panel state, row expand).
  */
 export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
-  const { data, isLoading, error, refetch } = useWithdrawalQueue();
+  const { chainId } = useDashboardChain();
+  const { data, isLoading, error, refetch } = useWithdrawalQueue({ chainId });
   const [expanded, setExpanded] = useState(false);
   // Liquid Cover numerator — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
-  const { data: fp } = useFinancialPosition();
+  const { data: fp } = useFinancialPosition({ chainId });
 
   if (isLoading) {
     return {

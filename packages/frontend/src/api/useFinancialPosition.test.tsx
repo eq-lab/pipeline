@@ -134,9 +134,12 @@ describe("useFinancialPosition — mock-key path", () => {
   });
 
   it("returns fixture data from mock key without calling fetch", async () => {
-    const { result } = renderHook(() => useFinancialPosition(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useFinancialPosition({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.data).toBeDefined();
@@ -152,9 +155,12 @@ describe("useFinancialPosition — mock-key path", () => {
   });
 
   it("returns null for unconfigured REST fields (plusd_outstanding)", async () => {
-    const { result } = renderHook(() => useFinancialPosition(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useFinancialPosition({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => expect(result.current.data).toBeDefined());
 
@@ -186,9 +192,12 @@ describe("useFinancialPosition — real fetch path", () => {
       }),
     );
 
-    const { result } = renderHook(() => useFinancialPosition(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useFinancialPosition({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => expect(result.current.data).toBeDefined());
 
@@ -220,9 +229,12 @@ describe("useFinancialPosition — error path", () => {
       }),
     );
 
-    const { result } = renderHook(() => useFinancialPosition(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useFinancialPosition({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => {
       expect(result.current.error).not.toBeNull();
@@ -249,9 +261,12 @@ describe("useFinancialPosition — loading state", () => {
   it("returns loading state while query is in-flight", () => {
     fetchMock.mockImplementationOnce(() => new Promise(() => {}));
 
-    const { result } = renderHook(() => useFinancialPosition(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useFinancialPosition({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeUndefined();
@@ -280,12 +295,52 @@ describe("useFinancialPosition — always enabled", () => {
       }),
     );
 
-    const { result } = renderHook(() => useFinancialPosition(), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useFinancialPosition({ chainId: 99_000_001 }),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => expect(result.current.data).toBeDefined());
 
     expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+describe("useFinancialPosition — chain scoping", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it.each([560048, 99_000_001])("sends chain_id=%i", async (chainId) => {
+    renderHook(() => useFinancialPosition({ chainId }), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/financial-position");
+    expect(url).toContain(`chain_id=${chainId}`);
+  });
+
+  it("fetches separately per chainId", async () => {
+    const { rerender } = renderHook(
+      ({ chainId }) => useFinancialPosition({ chainId }),
+      { wrapper: makeWrapper(), initialProps: { chainId: 560048 } },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ chainId: 99_000_001 });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("chain_id=99000001");
   });
 });

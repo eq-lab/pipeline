@@ -208,3 +208,40 @@ describe("useDashboardYieldHistory — real fetch path", () => {
     expect(result.current.data).toBeUndefined();
   });
 });
+
+describe("useDashboardYieldHistory — chain scoping", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it.each([560048, 99_000_001])("sends chain_id=%i", async (chainId) => {
+    renderHook(() => useDashboardYieldHistory({ chainId }), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/dashboard/yield-history");
+    expect(url).toContain(`chain_id=${chainId}`);
+  });
+
+  it("fetches separately per chainId", async () => {
+    const { rerender } = renderHook(
+      ({ chainId }) => useDashboardYieldHistory({ chainId }),
+      { wrapper: makeWrapper(), initialProps: { chainId: 560048 } },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ chainId: 99_000_001 });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("chain_id=99000001");
+  });
+});

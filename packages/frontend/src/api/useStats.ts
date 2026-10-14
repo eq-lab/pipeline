@@ -53,10 +53,10 @@ export interface UseStatsResult {
  *
  * To read the APY for display, use `formatApy(data?.vaults[0]?.apy)`.
  */
-export function useStats(): UseStatsResult {
+export function useStats({ chainId }: { chainId: number }): UseStatsResult {
   const query = useQuery<StatsResponse, Error>({
-    queryKey: ["stats"],
-    queryFn: () => apiFetch<StatsResponse>("/v1/stats"),
+    queryKey: ["stats", chainId],
+    queryFn: () => apiFetch<StatsResponse>(`/v1/stats?chain_id=${chainId}`),
   });
 
   return {

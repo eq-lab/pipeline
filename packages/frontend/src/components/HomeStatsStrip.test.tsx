@@ -29,20 +29,52 @@ vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
 
 afterEach(() => {
   mockIsMainnet.value = false;
+  chainState.value = { kind: "stellar", chainId: 99_000_001 };
+  rateState.evm = undefined;
+  rateState.stellar = undefined;
+  statsSpy.mockClear();
+  summarySpy.mockClear();
 });
 
-vi.mock("@/wallet/evm/useStakedPlusd", () => ({
-  useStakedPlusdConvertToAssets: () => ({ data: undefined }),
+const { chainState, rateState, summaryState, statsSpy, summarySpy } =
+  vi.hoisted(() => ({
+    chainState: {
+      value: { kind: "stellar", chainId: 99_000_001 } as {
+        kind: "evm" | "stellar";
+        chainId: number;
+      },
+    },
+    rateState: {
+      evm: undefined as bigint | undefined,
+      stellar: undefined as bigint | undefined,
+    },
+    summaryState: { data: undefined as { tvl: string } | undefined },
+    statsSpy: vi.fn(),
+    summarySpy: vi.fn(),
+  }));
+
+vi.mock("@/wallet/useActiveChain", () => ({
+  useActiveChain: () => chainState.value,
 }));
 
-const { summaryState } = vi.hoisted(() => ({
-  summaryState: { data: undefined as { tvl: string } | undefined },
+vi.mock("@/wallet/evm/useStakedPlusd", () => ({
+  useStakedPlusdConvertToAssets: () => ({ data: rateState.evm }),
+}));
+
+vi.mock("@/wallet/stellar/useStellarStakedPlusd", () => ({
+  useStellarUnstakeConvertToAssets: () => ({ data: rateState.stellar }),
 }));
 
 vi.mock("@/api", () => ({
-  useStats: () => ({ data: undefined }),
+  useStats: (args: unknown) => {
+    statsSpy(args);
+    return { data: undefined };
+  },
   formatApy: () => "8.42%",
-  useDashboardSummary: () => ({ data: summaryState.data }),
+  useDashboardSummary: (args: unknown) => {
+    summarySpy(args);
+    return { data: summaryState.data };
+  },
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -92,6 +124,42 @@ describe("HomeStatsStrip", () => {
     render(<HomeStatsStrip />);
     const tvlLabel = screen.getByText("Total Value Locked");
     expect(tvlLabel.parentElement).toHaveTextContent("—");
+  });
+});
+
+describe("HomeStatsStrip — active chain", () => {
+  it("formats the EVM rate at 18 dp", () => {
+    chainState.value = { kind: "evm", chainId: 560048 };
+    rateState.evm = 1042100000000000000n;
+    render(<HomeStatsStrip />);
+    expect(screen.getByText("1 sPLUSD = 1.0421 PLUSD")).toBeInTheDocument();
+  });
+
+  it("formats the Stellar rate at 7 dp", () => {
+    rateState.stellar = 10400000n;
+    render(<HomeStatsStrip />);
+    expect(screen.getByText("1 sPLUSD = 1.0400 PLUSD")).toBeInTheDocument();
+  });
+
+  it("truncates instead of rounding", () => {
+    chainState.value = { kind: "evm", chainId: 560048 };
+    rateState.evm = 1042199999999999999n;
+    render(<HomeStatsStrip />);
+    expect(screen.getByText("1 sPLUSD = 1.0421 PLUSD")).toBeInTheDocument();
+  });
+
+  it("ignores the other chain's rate", () => {
+    rateState.evm = 1042100000000000000n;
+    render(<HomeStatsStrip />);
+    const label = screen.getByText("Exchange rate");
+    expect(label.parentElement).toHaveTextContent("—");
+  });
+
+  it("passes the active chainId to useStats and useDashboardSummary", () => {
+    chainState.value = { kind: "evm", chainId: 560048 };
+    render(<HomeStatsStrip />);
+    expect(statsSpy).toHaveBeenCalledWith({ chainId: 560048 });
+    expect(summarySpy).toHaveBeenCalledWith({ chainId: 560048 });
   });
 });
 

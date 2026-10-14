@@ -13,6 +13,7 @@ import {
 } from "@/api";
 import type { LoanBookSummary, LoanBookEntry } from "@/api";
 import type { PanelState } from "./PanelContainer";
+import { useDashboardChain } from "./useDashboardChain";
 import type { LoanBookSummaryProps } from "./LoanBookSummary";
 import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
 import type { OriginationTableRow } from "./originationRow";
@@ -114,8 +115,11 @@ const EMPTY_HEADER_AGGREGATES: LoanBookHeaderAggregates = {};
  * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel (panel/tab state rules).
  */
 export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
-  const { data, isLoading, error, refetch } = useLoanBook();
-  const submissions = useLoanSubmissions();
+  const { chainId } = useDashboardChain();
+  const { data, isLoading, error, refetch } = useLoanBook({
+    chainId,
+  });
+  const submissions = useLoanSubmissions({ chainId });
   const [activeTab, setActiveTab] = useState<LoanBookTab>("active");
 
   // ── In Origination tab — independent of the Active Loans query ───────────────

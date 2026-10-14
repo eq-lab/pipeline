@@ -46,6 +46,13 @@ and every other state presupposes a session.
 
 The summary strip at the top of the Protocol Dashboard: TVL card, Cumulative Yield card, Current APY Net to sPLUSD, and Loan Book Yield KPIs. All fields derive from already-indexed contract events. Served by three endpoints in the `GET /v1/dashboard/*` group.
 
+**Chain scope (#1498).** Every Protocol Dashboard panel and the home stats strip send `chain_id`
+of the connected wallet's chain (EVM wallet → `VITE_EVM_CHAIN_ID`, Stellar wallet →
+`VITE_STELLAR_CHAIN_ID`); with no wallet connected they use the default chain, which is Stellar for
+now. There is no chain selector. The rule lives in one hook (`useActiveChain`, see
+[`wallet-flows.md`](../frontend/wallet-flows.md#active-chain-for-protocol-reads)); the dashboard
+reads it through `useDashboardChain`.
+
 ### `GET /v1/dashboard/summary?chain_id`
 
 Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, `loan_book_yield`, `cumulative_yield_total`). USDC amounts are 6dp strings; rates are decimal-fraction strings (e.g. `"0.104000"` = 10.4 %); unavailable fields are `null`.
@@ -111,29 +118,9 @@ tranche — the total Originator first-loss margin across active loans (authorit
 is the trustee feed, not yet indexed). In v1 the entire `liquid` block and `plusd_outstanding` are `null` from the REST
 endpoint — the Capital-Wallet USDC / USYC / in-transit balances are not indexed,
 and PLUSD `totalSupply` has no reliable indexed source (no `Transfer`/mint/burn
-events). The frontend overrides the two REST `null` leaves with direct
-Stellar/Soroban on-chain reads:
-
-- **PLUSD outstanding** (LIABILITY) — total PLUSD in circulation, read from Horizon:
-  `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → `balances.authorized`.
-  The PLUSD SAC has no Soroban `total_supply()` method; Horizon `/assets` is the only
-  source. Returns a Horizon human-decimal string (no SAC bigint scaling). The `1:1
-  redeemable` caption is displayed on the PLUSD row. Configured via
-  `VITE_STELLAR_PLUSD_ISSUER_ID`.
-- **Cash — stablecoins (USDC)** (ASSET) — ONLY the USDC in Pipeline's custody
-  account, read via a direct Soroban contract call: `usdc_SAC.balance(usdcCustodyId)`.
-  Returns a raw i128 bigint at 7-decimal SAC scale; `sacRawToDisplay` converts to
-  a human number before formatting. Sentinel guard: if the call returns i64 max
-  (~9.2e18), the row renders `—` (issuer account guard). Configured via
-  `VITE_STELLAR_USDC_ID` (SAC contract) and `VITE_STELLAR_USDC_CUSTODY_ID`
-  (custody G-account); both must be set for a real value to display.
-- **USYC (Tokenized T-bills)** — the identity seam `convertUsycToUsdc` (1:1 stub)
-  is in place; with no USYC holding configured, the row renders `—`.
-- **Off-chain USD** — renders `—` (off-chain, no source).
-
-Section totals are client-recomputed from sourced rows only (REST deployed/junior +
-on-chain USDC/PLUSD). A muted footnote "Excludes assets pending a data source" is
-shown while USYC and off-chain USD remain unsourced.
+events). The frontend overrides the two REST `null` leaves with direct on-chain reads of the
+dashboard chain (Stellar/Soroban or EVM): see
+[dashboards-balance-sheet-sources.md](./dashboards-balance-sheet-sources.md).
 
 Note: the Liquidity Ratio band, Reconciliation Indicator, and Exchange-Rate line
 described above are not implemented in v1 — the panel is exactly the two-column

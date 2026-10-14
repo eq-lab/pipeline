@@ -2,6 +2,9 @@ import React from "react";
 import { Link } from "@tanstack/react-router";
 import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
+import { useStellarUnstakeConvertToAssets } from "@/wallet/stellar/useStellarStakedPlusd";
+import { useActiveChain } from "@/wallet/useActiveChain";
+import { formatUnits4 } from "@/utils/formatUnits4";
 import { useStats, formatApy, useDashboardSummary } from "@/api";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
 import { isMainnetDeployment } from "@/wallet/networkSwitcher";
@@ -51,16 +54,23 @@ const iconButtonClasses = [
 export type HomeStatsStripProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
-  const { data: rateRaw } = useStakedPlusdConvertToAssets(10n ** 18n);
+  const { kind, chainId } = useActiveChain();
+  const { data: evmRate } = useStakedPlusdConvertToAssets(
+    kind === "evm" ? 10n ** 18n : undefined,
+  );
+  const { data: stellarRate } = useStellarUnstakeConvertToAssets(
+    kind === "stellar" ? 10n ** 7n : undefined,
+  );
+  const rateRaw = kind === "evm" ? evmRate : stellarRate;
   const exchangeRateValue =
     rateRaw !== undefined
-      ? `1 sPLUSD = ${(Number(rateRaw) / 1e18).toFixed(4)} PLUSD`
+      ? `1 sPLUSD = ${formatUnits4(rateRaw, kind === "evm" ? 18 : 7)} PLUSD`
       : "—";
 
-  const { data: statsData } = useStats();
+  const { data: statsData } = useStats({ chainId });
   const apyValue = formatApy(statsData?.vaults[0]?.apy);
 
-  const { data: summary } = useDashboardSummary();
+  const { data: summary } = useDashboardSummary({ chainId });
   const tvlValue = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
 
   // spec: docs/frontend/dashboard-components.md#homestatsstrip (mainnet gate, Issue #1243)

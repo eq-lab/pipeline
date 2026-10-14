@@ -56,7 +56,18 @@ Out of scope:
 - **Overlap with #1497.** #1497 touches `HomeStatsStrip` (`isMainnetDeployment` consumers) and `networkSwitcher.ts`. Merge conflicts in `HomeStatsStrip.tsx` are likely; whichever PR merges second rebases. This plan does not change the gate.
 - **Query-key churn.** Adding `chainId` to keys means a view flip refetches every protocol panel. That is intended. With the 30 s polling hooks there is a brief loading state on flip, which the existing `PanelLoading` covers.
 
-## Open Questions
+## Decision Log
+
+Answers from the user on Issue #1498 (2026-10-14):
+
+- **Q1 (dashboard scope): option (a), no chain selector.** The Protocol Dashboard sends `chain_id` from the connected wallet's chain; with no wallet it shows the default chain (Stellar for now). `useDashboardChain()` returns `useActiveChain()`.
+- **Q2 (no wallet): the default chain is Stellar** (`ENV.STELLAR_CHAIN_ID`), until the backend changes endpoints for that case.
+- **One rule for `useActiveChain()`:** EVM wallet connected → `ENV.EVM_CHAIN_ID`; Stellar wallet connected → `ENV.STELLAR_CHAIN_ID`; none → `ENV.STELLAR_CHAIN_ID`. Derived from `useEvmWallet().isConnected` / `useStellarWallet().isConnected`; `useWalletView().kind` only breaks a both-connected tie, so it is correct before and after #1512/#1513.
+- **Q3 (close #765): the user's call; not acted on here.** The `#765` comments in the API hooks and the Stellar-scoped wording in `dashboard-components.md` were removed regardless.
+- **Step 2 (refactor `usePnl` / `usePositionsHistory` onto `useActiveChain`) skipped.** Both are wallet-gated on the active namespace and unchanged; it stays optional cleanup.
+- **EVM reads take `{ enabled }`** (default `true`); `useBalanceSheetPanel` passes `kind === "evm"` so a Stellar dashboard makes no EVM RPC calls.
+
+## Open Questions (resolved — see Decision Log)
 
 1. **Protocol Dashboard chain scope (product decision, per issue item 3).** Should `/dashboard` (a) follow the active wallet view like the home strip, or (b) stay Stellar-scoped with an explicit chain selector?
 
@@ -73,6 +84,8 @@ Out of scope:
 3. **#765.** May the coder (or manager) close #765 with a comment carrying the 2026-10-14 evidence above, as "obsolete — the pre-rework Hoodi data is gone", or should it stay open until a `hoodi-v5` loan exists to re-verify the rate scale? **Recommended: close as obsolete.** If a new EVM loan shows bad scale, that is a new bug against `hoodi-v5`.
 
 ## Implementation Steps
+
+All steps completed (step 2 skipped, see Decision Log).
 
 1. **`useActiveChain` resolver.** Create `packages/frontend/src/wallet/useActiveChain.ts`, exporting `useActiveChain(): { kind: WalletViewKind; chainId: number }`.
    - It reads `useWalletView().kind`, plus `useEvmWallet().isConnected` if Open Question 2 is answered with the recommended rule.

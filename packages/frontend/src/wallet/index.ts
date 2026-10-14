@@ -59,6 +59,11 @@ export type {
   StakeResult,
   UnstakeResult,
 } from "./evm/useStakedPlusd";
+export {
+  useEvmPlusdTotalSupply,
+  useEvmUsdcCustodyBalance,
+} from "./evm/useEvmFinancialPositionReads";
+export type { UseEvmTokenReadResult } from "./evm/useEvmFinancialPositionReads";
 export { useApproval } from "./evm/useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./evm/useApproval";
 export { useEvmToken } from "./evm/useEvmToken";
@@ -164,6 +169,10 @@ export type {
   WalletViewKind,
   WalletViewContextValue,
 } from "./WalletViewContext";
+
+// ── Active chain for protocol reads (issue #1498) ─────────────────────────────
+export { useActiveChain } from "./useActiveChain";
+export type { UseActiveChainResult } from "./useActiveChain";
 
 // ── Active-namespace wallet derivation (issue #1284) ──────────────────────────
 export { useActiveWalletAccount } from "./useActiveWalletAccount";
