@@ -315,6 +315,11 @@ the wire-in pair, and no deployment emits both. The minter's other events —
 `WireInReturned`, the `Cash*` family, `WireOut*`, `Ramp*`, `Snapshot` and the
 admin setters — are not collected yet.
 
+The CollateralRegistry's 11 business events are collected when
+`CHAIN_<id>_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set. They are routed by contract id in
+the poller and stored with the EVM event names; see
+[collateral-registry-events.md](./collateral-registry-events.md).
+
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
 **Stellar asset-transfer tracking.** The Stellar indexer can additionally track a single asset's (SAC / SEP-41 token) `transfer` events. It persists **raw** transfers only (`from` / `to` / `amount` in `contract_logs.params`, amount as an i128 string) under `event_name = "AssetTransfer"`. No role/direction labeling — downstream consumers classify against address lists. Configured **job-level** (applies to every Stellar chain), read once at startup:

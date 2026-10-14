@@ -2017,3 +2017,17 @@ line, whichever section it lands in.
 - **Gap:** After `Start Verification` → Add email → OTP → session, the visitor is signed-in + connected + `lpRead: "absent"` (no LP profile submitted yet). `deriveHomeState`'s `"unverified"` branch requires `!isConnected`, so this combination falls through to `"legacy"` — today's pre-#1419 taller-card layout, with no `AddUsdCard` at all, dropping the "Verify your account" card the visitor just acted on.
 - **Impact:** The one-click registration path #1460 opened up lands the visitor on a layout with no verification CTA, immediately after they asked to verify. Documented as the expected follow-on in the #1460 user-stories doc so QA does not file it as a defect.
 - **Suggested fix:** Design state "signed in, connected, KYB not started" (session + connected + `NotStarted`/absent) as its own home state, the same way states 2–7 were each designed individually.
+
+### TD-140: Stellar `Pledged` rows carry only ids, not the pledged lot's details
+- **Date:** 2026-10-14
+- **Location:** `packages/worker/src/indexer/stellar/collateral_registry_parsers.rs` — Issue #1481.
+- **Gap:** The `pledged` event has no data fields, and Soroban `simulateTransaction` reads only current state, so a `lot()` read at index time would return later state during catch-up. The row stores `{loan_id, lot_id}` only.
+- **Impact:** Consumers cannot see the original quantity, kind or valuation of a lot from `contract_logs` alone.
+- **Suggested fix:** Enrich from the pledge transaction's `resultMetaXdr` ledger-entry diff, which is ledger-accurate. Decoding the `pledge` invocation args is more fragile when a multisig or admin contract wraps the call.
+
+### TD-141: Implicit lot stage transitions are not materialised in `contract_logs`
+- **Date:** 2026-10-14
+- **Location:** `packages/worker/src/indexer/stellar/collateral_registry_parsers.rs` — Issue #1481.
+- **Gap:** Release or liquidation to zero quantity (lot becomes `Delivered` / `Sold` / `Paid`) and `set_control(Acknowledged)` on an `Assigned` receivable change the stage without a `stage_updated` event; the indexer stores events as emitted and derives nothing.
+- **Impact:** A consumer reading only `StageUpdated` rows sees a stale stage.
+- **Suggested fix:** Derive the stage at read time using the rules in `docs/references/collateral-registry-events.md`, or add a materialised lot-state projection once enrichment (TD-140) exists.

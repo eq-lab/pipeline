@@ -24,6 +24,7 @@ use crate::indexer::{
         HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
     },
     stellar::{
+        collateral_registry_parsers::dispatch_collateral_registry,
         loan_registry_parsers::stellar_log_to_loan_event,
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
@@ -80,6 +81,7 @@ pub struct StellarEventPoller {
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
     yield_minter_id: Option<String>,
+    collateral_registry_id: Option<String>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
     asset_id: Option<String>,
@@ -101,6 +103,7 @@ impl StellarEventPoller {
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
         yield_minter_id: Option<String>,
+        collateral_registry_id: Option<String>,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
         loan_mapper_deps: Option<LoanMapperDeps>,
@@ -115,6 +118,7 @@ impl StellarEventPoller {
             staked_plusd_id,
             loan_registry_id,
             yield_minter_id,
+            collateral_registry_id,
             asset_id,
             tracked_addresses,
             loan_mapper_deps,
@@ -140,6 +144,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(ym_id) = &self.yield_minter_id {
             contract_ids.push(ym_id.clone());
         }
+        if let Some(cr_id) = &self.collateral_registry_id {
+            contract_ids.push(cr_id.clone());
+        }
         if let Some(asset_id) = &self.asset_id {
             contract_ids.push(asset_id.clone());
         }
@@ -150,15 +157,21 @@ impl ChainEventPoller for StellarEventPoller {
 
         let mut mappers: Vec<Box<dyn LogMapper>> = Vec::new();
         for raw in raw_events {
-            if let Some(log) = dispatch_parser(
-                &raw,
-                &self.deposit_manager_id,
-                &self.withdrawal_queue_id,
-                &self.staked_plusd_id,
-                self.loan_registry_id.as_deref(),
-                self.yield_minter_id.as_deref(),
-                self.asset_id.as_deref(),
-            ) {
+            let parsed = if self.collateral_registry_id.as_deref() == Some(raw.contract_id.as_str())
+            {
+                dispatch_collateral_registry(&raw)
+            } else {
+                dispatch_parser(
+                    &raw,
+                    &self.deposit_manager_id,
+                    &self.withdrawal_queue_id,
+                    &self.staked_plusd_id,
+                    self.loan_registry_id.as_deref(),
+                    self.yield_minter_id.as_deref(),
+                    self.asset_id.as_deref(),
+                )
+            };
+            if let Some(log) = parsed {
                 // Asset transfers are persisted when either:
                 // - one side is the Withdrawal Queue Wallet — the MPC custody
                 //   address that actually holds the USDC, not the accounting
@@ -281,6 +294,14 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         None
     };
 
+    if let Some(cr_id) = &settings.collateral_registry_id {
+        tracing::info!(
+            collateral_registry_id = %cr_id,
+            chain_id,
+            "Stellar CollateralRegistry indexer enabled"
+        );
+    }
+
     // Asset-transfer tracking (custody/ramp flows). `asset_id` is `Some` only when
     // fully configured (asset id + custody + ramp addresses); the union of both
     // address lists is the membership filter applied in `poll`.
@@ -311,6 +332,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
         settings.yield_minter_id.clone(),
+        settings.collateral_registry_id.clone(),
         settings.asset_id.clone(),
         tracked_addresses,
         loan_mapper_deps,
