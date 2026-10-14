@@ -253,6 +253,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ---
 
+<<<<<<< HEAD
 ## Epic #1494 — EVM support for the LP app
 
 | Issue | Doc | Status |
@@ -263,9 +264,15 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ---
 
+=======
+>>>>>>> 1ccf2e1e (Implement #1480: Stellar indexer: index the remaining minter cash events)
 ## Epic #1478 — Index the remaining contract events
 
 | Issue | Doc | Status |
 | --- | --- | --- |
+<<<<<<< HEAD
 | [#1481 Stellar indexer: index collateral-registry events](https://github.com/eq-lab/pipeline/issues/1481) | [1481-stellar-collateral-registry-events.md](./epic-1478/1481-stellar-collateral-registry-events.md) | Initial |
 | [#1482 Stellar indexer: index deal-token-factory events and DEBT/CARGO token movements](https://github.com/eq-lab/pipeline/issues/1482) | [1482-stellar-deal-token-factory-events.md](./epic-1478/1482-stellar-deal-token-factory-events.md) | Initial |
+=======
+| [#1480 Stellar indexer: index the remaining minter cash events](https://github.com/eq-lab/pipeline/issues/1480) | [1480-stellar-minter-cash-events.md](./epic-1478/1480-stellar-minter-cash-events.md) | Initial |
+>>>>>>> 1ccf2e1e (Implement #1480: Stellar indexer: index the remaining minter cash events)

@@ -24,10 +24,35 @@ use crate::indexer::stellar::loan_registry_parsers::{
     parse_payment_unrecorded, parse_status_updated, parse_undisbursed,
 };
 
+use crate::indexer::stellar::minter_parsers::{
+    parse_cash_disbursed, parse_cash_disbursement_reversed, parse_cash_recorded, parse_cash_repaid,
+    parse_cash_repayment_reversed, parse_loss_absorbed, parse_mint_corrected, parse_ramp_closed,
+    parse_ramp_opened, parse_wire_in_returned, parse_wire_out_cancelled, parse_wire_out_requested,
+    parse_wire_out_settled,
+};
+
 pub use crate::stellar::scval::extract_i128;
 use crate::stellar::scval::i128_from_parts;
 
 use crate::indexer::stellar::rpc::RawEvent;
+
+const MINTER_COLLECTED_EVENTS: &[&str] = &[
+    "wire_in",
+    "wire_in_assigned",
+    "wire_in_returned",
+    "cash_disbursed",
+    "cash_disbursement_reversed",
+    "cash_repaid",
+    "cash_repayment_reversed",
+    "wire_out_requested",
+    "wire_out_settled",
+    "wire_out_cancelled",
+    "ramp_opened",
+    "ramp_closed",
+    "cash_recorded",
+    "mint_corrected",
+    "loss_absorbed",
+];
 
 /// A fully-decoded Soroban contract event, ready to be persisted as a `contract_logs` row.
 pub struct StellarLog {
@@ -507,8 +532,8 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// (ships dark — the new branch is a no-op until the env var is set).
 ///
 /// `yield_minter_id` is `None` when the minter contract has not yet been deployed to
-/// this chain. When set, `WireIn` / `WireInAssigned` events are collected and routed
-/// to `StellarLogMapper` (contract_logs) for the relayer's wire-in matching (#1416).
+/// this chain. When set, the minter's business events (`MINTER_COLLECTED_EVENTS`) are
+/// collected and routed to `StellarLogMapper` (contract_logs) (#1416, #1480).
 /// `YieldMinted` is retired (#1433) — it belonged to a pre-#33 deployment this field
 /// no longer targets.
 ///
@@ -560,18 +585,30 @@ pub fn dispatch_parser(
             .or_else(|| parse_loan_rolled_over(raw))
             .or_else(|| parse_economics_amended(raw))
     } else if yield_minter_id == Some(raw.contract_id.as_str()) {
-        // The minter contract, under its former name (see the config field). It is
-        // deployed (#36 lists `minter: CAPL5WN3…`): `YieldMinted` is retired (#1433)
-        // since the rework stopped emitting it, so only `WireIn` / `WireInAssigned`
-        // (#1416) are collected here now. The minter's other 19 events are
-        // deliberately not collected yet and fall through as `None`.
-        let parsed = parse_wire_in(raw).or_else(|| parse_wire_in_assigned(raw));
-        // A `None` here is normally one of the 19 events we do not collect. But
-        // for the two we do, it means the on-chain encoding differs from what the
-        // parsers expect. Silence would be indistinguishable from "no wires have
-        // arrived yet", for as long as it took someone to notice every deposit
-        // stuck at `is_minted = false`.
-        if parsed.is_none() && matches!(raw.event_name.as_str(), "wire_in" | "wire_in_assigned") {
+        // The minter contract, under its former name (see the config field). `YieldMinted`
+        // is retired (#1433). Its config/role events and the diagnostic `snapshot` are the
+        // only ones not collected; they fall through as `None` without a warn.
+        let parsed = match raw.event_name.as_str() {
+            "wire_in" => parse_wire_in(raw),
+            "wire_in_assigned" => parse_wire_in_assigned(raw),
+            "wire_in_returned" => parse_wire_in_returned(raw),
+            "cash_disbursed" => parse_cash_disbursed(raw),
+            "cash_disbursement_reversed" => parse_cash_disbursement_reversed(raw),
+            "cash_repaid" => parse_cash_repaid(raw),
+            "cash_repayment_reversed" => parse_cash_repayment_reversed(raw),
+            "wire_out_requested" => parse_wire_out_requested(raw),
+            "wire_out_settled" => parse_wire_out_settled(raw),
+            "wire_out_cancelled" => parse_wire_out_cancelled(raw),
+            "ramp_opened" => parse_ramp_opened(raw),
+            "ramp_closed" => parse_ramp_closed(raw),
+            "cash_recorded" => parse_cash_recorded(raw),
+            "mint_corrected" => parse_mint_corrected(raw),
+            "loss_absorbed" => parse_loss_absorbed(raw),
+            _ => None,
+        };
+        // A `None` for a collected topic means the on-chain encoding differs from what the
+        // parser expects; silence would be indistinguishable from "no events yet".
+        if parsed.is_none() && MINTER_COLLECTED_EVENTS.contains(&raw.event_name.as_str()) {
             tracing::warn!(
                 contract_id = %raw.contract_id,
                 event_name = %raw.event_name,
