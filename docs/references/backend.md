@@ -300,20 +300,34 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
 `worker/src/indexer/stellar/parsers.rs`, each contract's id supplied by a
 `CHAIN_<id>_STELLAR_*_ID` variable; a contract whose id is unset has no branch at
 all, so an un-deployed contract ships dark rather than warning every cycle. The
-minter contributes two of its twenty-one events (#1416):
+minter contributes 15 of its 22 events (#1416, #1480):
 
 | Contract | Event (topic) | Stored as | Why |
 |---|---|---|---|
 | Minter | `wire_in` | `WireIn` | Carries `ref_hash` = `sha256(payment_reference)`, the key that ties an on-chain mint back to a recorded bank deposit |
 | Minter | `wire_in_assigned` | `WireInAssigned` | An escrowed wire reaching its LP; carries no reference of its own, so it is joined to its `WireIn` by wire id |
+| Minter | `wire_in_returned` | `WireInReturned` | An escrowed wire sent back to the bank; the terminal state TD-116 needs |
+| Minter | `cash_disbursed` / `cash_disbursement_reversed` | `CashDisbursed` / `CashDisbursementReversed` | Bank cash booked out to a loan, and its reversal |
+| Minter | `cash_repaid` / `cash_repayment_reversed` | `CashRepaid` / `CashRepaymentReversed` | A loan repayment (`sale_id = "0"` means not a sale) and its reversal |
+| Minter | `wire_out_requested` / `wire_out_settled` / `wire_out_cancelled` | `WireOutRequested` / `WireOutSettled` / `WireOutCancelled` | The LP wire-out lifecycle |
+| Minter | `ramp_opened` / `ramp_closed` | `RampOpened` / `RampClosed` | USDC/bank ramp lifecycle; `direction` is `UsdcToBank` or `BankToUsdc` |
+| Minter | `cash_recorded` | `CashRecorded` | A cash-ledger entry; topic field `kind` is stored as `reason` (`Disbursed`, `DisbursementReversed`, `Income`, `Expense`, `Correction`), `delta` is signed. A Stellar `Correction` is stored as `CashRecorded` with `reason = "Correction"`, where EVM emits `CashCorrected` |
+| Minter | `mint_corrected` / `loss_absorbed` | `MintCorrected` / `LossAbsorbed` | Supply correction and loss absorption |
 
-They are enabled by `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` — the minter under its
+The new events store `event_name` as the EVM PascalCase name and `params` keys as the EVM snake_case
+field names, so both arms are queried alike. All ids (`id`, `loan_id`, `entry_id`, `original_id`,
+`repayment_id`, `sale_id`), amounts and dates are decimal strings (signed amounts keep their sign);
+`ref_hash` is 64-char lowercase hex; enums are their variant name; amounts are raw on-chain values
+(7 decimals). Known drift: Stellar `WireIn` / `WireInAssigned` keep `params.id` as a JSON number;
+on `close_ramp` with a loss Stellar books the `Expense` entry silently, so the loss is visible only
+as `RampClosed.loss`.
+
+They are enabled by `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` — the minter under its
 former name. `pipeline-stellar-contracts` #33 renamed `yield-minter` to `minter`
 and rewrote it, deleting `mint_yield` and `YieldMinted`, so one id covers both
 event families: a pre-#33 deployment emits `YieldMinted`, a post-#33 one emits
-the wire-in pair, and no deployment emits both. The minter's other events —
-`WireInReturned`, the `Cash*` family, `WireOut*`, `Ramp*`, `Snapshot` and the
-admin setters — are not collected yet.
+the wire-in pair, and no deployment emits both. `snapshot` (diagnostic, callable by
+anyone) and the config/role setters are not collected.
 
 The CollateralRegistry's 11 business events are collected when
 `CHAIN_<id>_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set. They are routed by contract id in

@@ -15,6 +15,7 @@ pub mod deal_token_factory_parsers;
 pub mod loan_registry_parsers;
 pub mod loan_registry_reader;
 pub mod mappers;
+pub mod minter_parsers;
 pub mod parsers;
 pub mod poller;
 pub mod rpc;

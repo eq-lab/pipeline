@@ -1608,6 +1608,7 @@ line, whichever section it lands in.
   new ScVal helper) and give the deposit a terminal state rather than a single boolean: the three
   on-chain outcomes do not fit one flag. A nullable `minted_at` plus a `returned_at`, or a status
   column, both work; the choice belongs with whatever first needs to display it.
+- **Update (#1480):** `WireInReturned` is now indexed; the remaining gap is only the deposit's terminal state in `lp_bank_deposits` / the matching phase.
 
 ---
 

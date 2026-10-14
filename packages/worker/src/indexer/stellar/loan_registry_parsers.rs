@@ -561,6 +561,11 @@ pub fn extract_repayment_data_from_map(b64: &str, key: &str) -> Option<Repayment
 /// Returns the variant name string.
 fn extract_enum_variant_name(b64: &str) -> Option<String> {
     let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
+    enum_variant_name(&val)
+}
+
+/// Variant name of a unit-variant `#[contracttype]` enum already decoded to an `ScVal`.
+pub fn enum_variant_name(val: &ScVal) -> Option<String> {
     match val {
         ScVal::Vec(Some(vec_inner)) if vec_inner.0.len() == 1 => {
             if let ScVal::Symbol(sym) = &vec_inner.0[0] {
