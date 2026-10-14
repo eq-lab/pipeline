@@ -14,6 +14,9 @@
 use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
+use crate::indexer::stellar::deal_token_factory_parsers::{
+    parse_cargo_synced, parse_deal_registered, parse_debt_synced, DEAL_TOKEN_FACTORY_EVENT_TOPICS,
+};
 use crate::indexer::stellar::loan_registry_parsers::{
     extract_u32, extract_u64_from_map, get_map_entry, parse_disbursed, parse_economics_amended,
     parse_interest_adjusted, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
@@ -514,6 +517,7 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `"AssetTransfer"` logs; the poller then filters them — one-sided against the
 /// WithdrawalQueue, and/or both-sides against the custody/ramp set — before
 /// persisting.
+#[allow(clippy::too_many_arguments)]
 pub fn dispatch_parser(
     raw: &RawEvent,
     deposit_manager_id: &str,
@@ -522,6 +526,7 @@ pub fn dispatch_parser(
     loan_registry_id: Option<&str>,
     yield_minter_id: Option<&str>,
     asset_id: Option<&str>,
+    deal_token_factory_id: Option<&str>,
 ) -> Option<StellarLog> {
     if raw.contract_id == deposit_manager_id {
         parse_deposit_requested(raw).or_else(|| parse_request_claimed(raw))
@@ -572,6 +577,21 @@ pub fn dispatch_parser(
                 event_name = %raw.event_name,
                 tx_hash = %raw.tx_hash,
                 "minter event recognised by name but not decodable — its field \
+                 encoding differs from what the parser expects; no contract_logs \
+                 row was written"
+            );
+        }
+        parsed
+    } else if deal_token_factory_id == Some(raw.contract_id.as_str()) {
+        let parsed = parse_deal_registered(raw)
+            .or_else(|| parse_debt_synced(raw))
+            .or_else(|| parse_cargo_synced(raw));
+        if parsed.is_none() && DEAL_TOKEN_FACTORY_EVENT_TOPICS.contains(&raw.event_name.as_str()) {
+            tracing::warn!(
+                contract_id = %raw.contract_id,
+                event_name = %raw.event_name,
+                tx_hash = %raw.tx_hash,
+                "deal-token-factory event recognised by name but not decodable — its field \
                  encoding differs from what the parser expects; no contract_logs \
                  row was written"
             );

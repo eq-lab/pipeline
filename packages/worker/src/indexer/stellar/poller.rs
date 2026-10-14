@@ -25,6 +25,7 @@ use crate::indexer::{
     },
     stellar::{
         collateral_registry_parsers::dispatch_collateral_registry,
+        deal_token_factory_parsers::{route_deal_token_events, DealTokenSet},
         loan_registry_parsers::stellar_log_to_loan_event,
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
@@ -82,6 +83,8 @@ pub struct StellarEventPoller {
     loan_registry_id: Option<String>,
     yield_minter_id: Option<String>,
     collateral_registry_id: Option<String>,
+    deal_token_factory_id: Option<String>,
+    deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
     asset_id: Option<String>,
@@ -104,6 +107,8 @@ impl StellarEventPoller {
         loan_registry_id: Option<String>,
         yield_minter_id: Option<String>,
         collateral_registry_id: Option<String>,
+        deal_token_factory_id: Option<String>,
+        deal_tokens: DealTokenSet,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
         loan_mapper_deps: Option<LoanMapperDeps>,
@@ -119,6 +124,8 @@ impl StellarEventPoller {
             loan_registry_id,
             yield_minter_id,
             collateral_registry_id,
+            deal_token_factory_id,
+            deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
             tracked_addresses,
             loan_mapper_deps,
@@ -150,6 +157,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(asset_id) = &self.asset_id {
             contract_ids.push(asset_id.clone());
         }
+        if let Some(factory_id) = &self.deal_token_factory_id {
+            contract_ids.push(factory_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -169,9 +179,16 @@ impl ChainEventPoller for StellarEventPoller {
                     self.loan_registry_id.as_deref(),
                     self.yield_minter_id.as_deref(),
                     self.asset_id.as_deref(),
+                    self.deal_token_factory_id.as_deref(),
                 )
             };
             if let Some(log) = parsed {
+                if log.event_name == "DealRegistered" {
+                    self.deal_tokens
+                        .lock()
+                        .expect("deal_tokens lock poisoned")
+                        .absorb_deal_registered(&log);
+                }
                 // Asset transfers are persisted when either:
                 // - one side is the Withdrawal Queue Wallet — the MPC custody
                 //   address that actually holds the USDC, not the accounting
@@ -215,6 +232,31 @@ impl ChainEventPoller for StellarEventPoller {
                     // If no loan_mapper_deps (shouldn't happen if dispatch returned a loan
                     // event with None loan_registry_id, but guard against config drift).
                 } else {
+                    mappers.push(Box::new(StellarLogMapper::new(
+                        log,
+                        self.chain_id,
+                        self.repo.clone(),
+                    )));
+                }
+            }
+        }
+
+        if self.deal_token_factory_id.is_some() {
+            let token_ids = self
+                .deal_tokens
+                .lock()
+                .expect("deal_tokens lock poisoned")
+                .contract_ids();
+            if !token_ids.is_empty() {
+                let filter = EventFilter {
+                    contract_ids: token_ids,
+                };
+                let (token_events, _latest) = self.rpc.get_events(from, to, &filter).await?;
+                let logs = {
+                    let set = self.deal_tokens.lock().expect("deal_tokens lock poisoned");
+                    route_deal_token_events(&token_events, &set)
+                };
+                for log in logs {
                     mappers.push(Box::new(StellarLogMapper::new(
                         log,
                         self.chain_id,
@@ -322,6 +364,20 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    let mut deal_tokens = DealTokenSet::default();
+    if settings.deal_token_factory_id.is_some() {
+        let rows = ContractLogsRepo::new(pool.clone())
+            .list_deal_registrations(chain_id)
+            .await?;
+        deal_tokens.seed(&rows);
+        tracing::info!(
+            chain_id,
+            deals = rows.len(),
+            tokens = deal_tokens.len(),
+            "Stellar deal-token set seeded from contract_logs"
+        );
+    }
+
     let poller = StellarEventPoller::new(
         rpc,
         chain_id,
@@ -333,6 +389,8 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.loan_registry_id.clone(),
         settings.yield_minter_id.clone(),
         settings.collateral_registry_id.clone(),
+        settings.deal_token_factory_id.clone(),
+        deal_tokens,
         settings.asset_id.clone(),
         tracked_addresses,
         loan_mapper_deps,

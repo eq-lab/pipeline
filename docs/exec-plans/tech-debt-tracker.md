@@ -22,6 +22,14 @@ line, whichever section it lands in.
 
 ## Known Gaps
 
+### TD-142: Stellar deal-token polling fans out one `getEvents` request per 25 registered tokens
+
+- **Date:** 2026-10-14
+- **Location:** `packages/worker/src/indexer/stellar/poller.rs` (phase 2 of `poll`), `packages/worker/src/indexer/stellar/rpc.rs` (`get_events`) — Issue #1482.
+- **Gap:** The DEBT/CARGO token set grows by two contracts per registered deal, and every poll asks `getEvents` for all of them, batched 25 contract ids per request.
+- **Impact:** Requests per poll grow as `ceil(2N / 25)` for N deals (about 8 per ledger at 100 deals). Closed loans stay in the set forever.
+- **Suggested fix:** Query CARGO movements through a topic filter on the factory address instead of per-token contract ids, and prune tokens of closed loans whose DEBT synced to 0.
+
 ### TD-129: EVM cumulative-repayment reconstruction mixes two points in time
 
 - **Where:** `packages/worker/src/indexer/loan_mapper.rs` — `reconstruct_cumulative`.

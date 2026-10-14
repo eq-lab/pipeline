@@ -73,11 +73,36 @@ impl StellarRpc {
         end_ledger: u64,
         filter: &EventFilter,
     ) -> Result<(Vec<RawEvent>, u64)> {
+        let mut out = Vec::new();
+        let mut latest_ledger = end_ledger;
+        for (i, chunk) in chunk_contract_ids_per_request(&filter.contract_ids)
+            .iter()
+            .enumerate()
+        {
+            let (events, latest) = self
+                .get_events_single(start_ledger, end_ledger, chunk)
+                .await?;
+            out.extend(events);
+            latest_ledger = if i == 0 {
+                latest
+            } else {
+                latest_ledger.max(latest)
+            };
+        }
+        Ok((out, latest_ledger))
+    }
+
+    async fn get_events_single(
+        &self,
+        start_ledger: u64,
+        end_ledger: u64,
+        contract_ids: &[String],
+    ) -> Result<(Vec<RawEvent>, u64)> {
         const PAGE_LIMIT: u64 = 10_000;
 
         // Soroban `getEvents` caps each filter at 5 contract IDs, so split our
         // contract set across multiple `contract` filters (the RPC unions them).
-        let filters = build_contract_filters(&filter.contract_ids);
+        let filters = build_contract_filters(contract_ids);
 
         let mut out = Vec::new();
         let mut latest_ledger = end_ledger;
@@ -438,6 +463,14 @@ struct SorobanEventJson {
 
 /// Maximum contract IDs Soroban `getEvents` allows in a single `contract` filter.
 const MAX_CONTRACT_IDS_PER_FILTER: usize = 5;
+
+pub const MAX_CONTRACT_IDS_PER_REQUEST: usize = 25;
+
+pub fn chunk_contract_ids_per_request(ids: &[String]) -> Vec<Vec<String>> {
+    ids.chunks(MAX_CONTRACT_IDS_PER_REQUEST)
+        .map(<[String]>::to_vec)
+        .collect()
+}
 
 /// Build the `getEvents` `filters` array from a set of contract IDs.
 ///

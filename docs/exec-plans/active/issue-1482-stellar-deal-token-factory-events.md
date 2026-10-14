@@ -162,7 +162,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Config** — `packages/worker/src/indexer/config.rs`
+1. [x] **Config** — `packages/worker/src/indexer/config.rs`
    - Add `pub deal_token_factory_id: Option<String>` to `StellarIndexerSettings` (after
      `yield_minter_id`).
    - In `from_chain_env`, read `{ip}DEAL_TOKEN_FACTORY_ADDRESS`; blank/unset → `None`;
@@ -171,7 +171,7 @@ _None_
    - Push `("DEAL_TOKEN_FACTORY_ADDRESS", id)` into the distinctness `roles` list.
    - Set the field in the `Ok(Self { … })` literal.
 
-2. **RPC: requests beyond 25 ids** — `packages/worker/src/indexer/stellar/rpc.rs`
+2. [x] **RPC: requests beyond 25 ids** — `packages/worker/src/indexer/stellar/rpc.rs`
    - Add `pub const MAX_CONTRACT_IDS_PER_REQUEST: usize = 25;` and a pure
      `pub fn chunk_contract_ids_per_request(ids: &[String]) -> Vec<Vec<String>>` (chunks of
      ≤ 25; empty input → empty output).
@@ -181,7 +181,7 @@ _None_
      there are no chunks — an empty id list must issue **no** request).
    - Existing callers are unaffected (≤ 25 ids → exactly one request, same as today).
 
-3. **Seed query (shared with #1485)** — `packages/shared/src/contract_logs_repo.rs`
+3. [x] **Seed query (shared with #1485)** — `packages/shared/src/contract_logs_repo.rs`
    - If #1485 has not merged yet, add exactly what its plan specifies:
      `pub struct DealRegistrationRow { pub loan_id: String, pub debt: String, pub cargo: String }`
      and `pub async fn list_deal_registrations(&self, chain_id: i64) ->
@@ -191,7 +191,7 @@ _None_
      (no `contract_address` filter — all factories on the chain). If #1485 merged first, reuse
      it unchanged. No new reader, no on-chain sweep.
 
-4. **Parsers** — new `packages/worker/src/indexer/stellar/deal_token_factory_parsers.rs`
+4. [x] **Parsers** — new `packages/worker/src/indexer/stellar/deal_token_factory_parsers.rs`
    (one 2–3-line spec-pointer header, no other comments, per AGENTS.md).
    - Types:
      ```rust
@@ -236,7 +236,7 @@ _None_
    - Register in `stellar/mod.rs` (`pub mod deal_token_factory_parsers;`) and update the
      module doc list.
 
-5. **Dispatch** — `packages/worker/src/indexer/stellar/parsers.rs`
+5. [x] **Dispatch** — `packages/worker/src/indexer/stellar/parsers.rs`
    - Add trailing param `deal_token_factory_id: Option<&str>` to `dispatch_parser`.
    - New branch before the `asset_id` branch: when `deal_token_factory_id ==
      Some(raw.contract_id)`, try `parse_deal_registered` → `parse_debt_synced` →
@@ -247,7 +247,7 @@ _None_
    - Token events are **not** routed through `dispatch_parser` (they come from a separate
      request, see step 6), so the `else` "unexpected contract" warning stays meaningful.
 
-6. **Poller** — `packages/worker/src/indexer/stellar/poller.rs`
+6. [x] **Poller** — `packages/worker/src/indexer/stellar/poller.rs`
    - New fields: `deal_token_factory_id: Option<String>`,
      `deal_tokens: std::sync::Mutex<DealTokenSet>` (never hold the lock across `.await`).
    - `poll(from, to)`:
@@ -269,10 +269,10 @@ _None_
      pass the factory id + set into `StellarEventPoller::new`. When `None`, no query runs and
      the set stays empty.
 
-7. **Env example** — `.env.example`: one line after the `MINTER_ADDRESS` line (line 128):
+7. [x] **Env example** — `.env.example`: one line after the `MINTER_ADDRESS` line (line 128):
    `# CHAIN_99000001_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS=CAIBACM665EPLGJTVC4IXWTDV7PTJH7NSLY5TGRDAMHQZX7TCQ74OSIP   # optional — DealRegistered/DebtSynced/CargoSynced + per-deal DEBT/CARGO movements`
 
-8. **Lint** — `cargo clippy --all -- -D warnings`; `cargo fmt --all`;
+8. [x] **Lint** — `cargo clippy --all -- -D warnings`; `cargo fmt --all`;
    `npx tsx scripts/lint-docs.ts` (docs touched).
 
 ## Test Strategy

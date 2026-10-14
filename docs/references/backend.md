@@ -320,6 +320,23 @@ The CollateralRegistry's 11 business events are collected when
 the poller and stored with the EVM event names; see
 [collateral-registry-events.md](./collateral-registry-events.md).
 
+#### Stellar deal-token-factory indexing
+
+Enabled by `CHAIN_<id>_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (#1482); unset ships dark — no factory polling, no seed query, no token polling. Rows land in `contract_logs` only; amounts and ids are decimal strings, and the shapes are identical on the EVM arm.
+
+| Source | Event (topic) | Stored as | `params` |
+|---|---|---|---|
+| Factory | `deal_registered` | `DealRegistered` | `loan_id`, `debt`, `cargo` |
+| Factory | `debt_synced` | `DebtSynced` | `loan_id`, `target`, `previous`, `minted`, `clawed` |
+| Factory | `cargo_synced` | `CargoSynced` | `loan_id`, `target`, `previous`, `minted`, `burned` |
+| Per-deal DEBT / CARGO token | `mint`, `clawback`, `burn`, `transfer` | `DealTokenTransfer` | `loan_id`, `token_kind` (`"debt"` / `"cargo"`), `token`, `from`, `to`, `amount` |
+
+In `DealTokenTransfer` the absent side is JSON `null`, never a zero address: `mint` has `from: null`, `clawback` / `burn` have `to: null`, `transfer` has both. `amount` is stored raw at the token's scale (7 decimals for a Stellar SAC). `debt_synced` / `cargo_synced` are stored as emitted, including no-ops (`minted`, `clawed`, `burned` all `"0"`); consumers filter on that.
+
+The token set is discovered at runtime. It is seeded once at startup from every `DealRegistered` row already in `contract_logs` for the chain (`ContractLogsRepo::list_deal_registrations`, any factory address, no on-chain sweep) and grows from each newly indexed `DealRegistered`. A poll is two-phase: the configured contracts plus the factory first, then the token set including tokens just discovered in that range, split into `getEvents` requests of at most 25 contract ids. A seed-query failure aborts the Stellar indexer task.
+
+Limitations: a deal registered before the indexer saw its `DealRegistered` is not tracked (remedy: rewind the cursor to before the registration, within RPC retention); history older than Soroban RPC retention is not backfilled (the next `DebtSynced` / `CargoSynced` carries the absolute `target`).
+
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
 **Stellar asset-transfer tracking.** The Stellar indexer can additionally track a single asset's (SAC / SEP-41 token) `transfer` events. It persists **raw** transfers only (`from` / `to` / `amount` in `contract_logs.params`, amount as an i128 string) under `event_name = "AssetTransfer"`. No role/direction labeling — downstream consumers classify against address lists. Configured **job-level** (applies to every Stellar chain), read once at startup:
