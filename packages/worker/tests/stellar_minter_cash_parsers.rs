@@ -348,7 +348,7 @@ fn cases() -> Vec<Case> {
 }
 
 fn dispatch(ev: &RawEvent, minter: Option<&str>, registry: Option<&str>) -> Option<String> {
-    dispatch_parser(ev, DM, WQ, SPLUSD, registry, minter, None).map(|l| l.event_name)
+    dispatch_parser(ev, DM, WQ, SPLUSD, registry, minter, None, None).map(|l| l.event_name)
 }
 
 // ── Happy path ────────────────────────────────────────────────────────────────
