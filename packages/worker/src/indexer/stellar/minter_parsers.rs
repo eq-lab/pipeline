@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1480-stellar-minter-cash-events.md
+// spec: docs/exec-plans/completed/issue-1480-stellar-minter-cash-events.md
 use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScVal};
 
