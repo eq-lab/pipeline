@@ -26,6 +26,12 @@ export type {
   UseEvmConnectorsResult,
   EvmWalletConnectorId,
 } from "./evm/useEvmWallet";
+export { EvmChainAutoSwitch } from "./evm/EvmChainAutoSwitch";
+export { useEvmNetworkGuard } from "./evm/useEvmNetworkGuard";
+export type {
+  EvmNetworkGuard,
+  WrongNetworkInfo,
+} from "./evm/useEvmNetworkGuard";
 export {
   useDepositManagerAddresses,
   useDepositManagerMinDeposit,
@@ -229,9 +235,14 @@ export type { UseWalletPresenceResult } from "./useWalletPresence";
 // ── Network switcher (cross-deployment links, issue #1032) ───────────────────
 export {
   getNetworkSwitcherState,
+  isMainnetNetwork,
   navigateToNetworkLink,
   shouldConfirmNetworkSwitch,
 } from "./networkSwitcher";
+export {
+  useNetworkSwitcherState,
+  useIsMainnetNetwork,
+} from "./useNetworkIdentity";
 export type {
   NetworkSwitcherState,
   NetworkIdentity,

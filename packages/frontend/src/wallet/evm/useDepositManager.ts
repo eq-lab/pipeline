@@ -425,6 +425,7 @@ export function useRequestDeposit(): RequestDepositResult {
           functionName: "requestDeposit",
           args: [amount],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },
@@ -613,6 +614,7 @@ export function useClaim(): ClaimResult {
           functionName: "claimDeposit",
           args: [requestId, verifierSignature],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },

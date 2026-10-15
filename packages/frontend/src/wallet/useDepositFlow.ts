@@ -11,6 +11,7 @@ import {
   useWalletView,
   // EVM
   useEvmWallet,
+  useEvmNetworkGuard,
   useDepositManagerAddresses,
   useDepositManagerMinDeposit,
   useEvmToken,
@@ -41,6 +42,7 @@ import {
   clearInflightWithdrawal,
   useStellarNetworkFeeEstimate,
 } from "@/wallet";
+import type { WrongNetworkInfo } from "@/wallet";
 import {
   useRequests,
   useDepositVoucher,
@@ -200,6 +202,8 @@ export interface FlowState {
   trustlines: TrustlineInfo[];
 
   needsXlmFunding: boolean;
+
+  wrongNetwork: WrongNetworkInfo | undefined;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -295,6 +299,8 @@ export function useDepositFlow(
 
   const evmRequestWithdrawal = useRequestWithdrawal();
   const evmClaimWithdrawal = useClaimWithdrawal();
+
+  const { wrongNetwork } = useEvmNetworkGuard();
 
   const { feeEth: depositFeeEth } = useNetworkFeeEstimate("deposit");
   const { feeEth: withdrawFeeEth } = useNetworkFeeEstimate("withdraw");
@@ -942,7 +948,7 @@ export function useDepositFlow(
         actionLabel: "Approve",
         state: evmStep1State,
         loading: isDeposit ? isDepositApprovePending : isWithdrawApprovePending,
-        disabled: !canEvmApprove,
+        disabled: !canEvmApprove || wrongNetwork !== undefined,
         onAction: () => {
           const approve = isDeposit ? depositApprove : withdrawApprove;
           approve?.(amountBig);
@@ -965,7 +971,7 @@ export function useDepositFlow(
               !evmWithdrawRequestIsConfirmed &&
               evmWithdrawActiveRequest === null) ||
             evmVoucher.status === "pending",
-        disabled: !canEvmConfirm,
+        disabled: !canEvmConfirm || wrongNetwork !== undefined,
         onAction: () => {
           if (isDeposit) evmRequestDeposit.write(amountBig);
           else evmRequestWithdrawal.write(amountBig);
@@ -980,7 +986,7 @@ export function useDepositFlow(
         actionLabel: "Claim",
         state: evmStep3State,
         loading: isDeposit ? evmClaim.isPending : evmClaimWithdrawal.isPending,
-        disabled: !canEvmClaim,
+        disabled: !canEvmClaim || wrongNetwork !== undefined,
         onAction: () => {
           if (evmRequestId === undefined || !evmVoucher.data?.signature) return;
           if (isDeposit) {
@@ -1038,6 +1044,7 @@ export function useDepositFlow(
       onQuickAmount: onEvmDepositQuickAmount,
       trustlines: [],
       needsXlmFunding: false,
+      wrongNetwork,
     };
   }
 
@@ -1441,5 +1448,6 @@ export function useDepositFlow(
       },
     ],
     needsXlmFunding: stellarNeedsXlmFunding,
+    wrongNetwork: undefined,
   };
 }

@@ -6,7 +6,7 @@ import { NetworkSwitcher } from "./NetworkSwitcher";
 import { AccountGlyph } from "./AccountGlyph";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
-import { isMainnetDeployment } from "@/wallet/networkSwitcher";
+import { useIsMainnetNetwork } from "@/wallet/useNetworkIdentity";
 import { useWalletPresence } from "@/wallet";
 
 // spec: docs/frontend/dashboard-components.md#topbar
@@ -43,7 +43,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
     // spec: docs/frontend/dashboard-components.md#topbar (mainnet gate, Issue #1243)
-    const navItems = isMainnetDeployment()
+    const isMainnet = useIsMainnetNetwork();
+    const navItems = isMainnet
       ? NAV_ITEMS.filter((item) => item.key !== "overview")
       : NAV_ITEMS;
 

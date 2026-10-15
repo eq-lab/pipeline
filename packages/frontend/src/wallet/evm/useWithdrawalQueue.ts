@@ -229,6 +229,7 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
           functionName: "requestWithdrawal",
           args: [amount],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },
@@ -422,6 +423,7 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
           functionName: "claimWithdrawal",
           args: [requestId, verifierSignature],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },

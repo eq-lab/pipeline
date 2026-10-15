@@ -15,7 +15,7 @@ import { HomeStatsStrip } from "./HomeStatsStrip";
 // ── Mainnet gate mock (Issue #1243) ──────────────────────────────────────────
 
 const { mockIsMainnet } = vi.hoisted(() => ({
-  mockIsMainnet: { value: false },
+  mockIsMainnet: { stellar: false, evm: false },
 }));
 
 vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
@@ -23,12 +23,13 @@ vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
     await importOriginal<typeof import("@/wallet/networkSwitcher")>();
   return {
     ...original,
-    isMainnetDeployment: () => mockIsMainnet.value,
+    isMainnetNetwork: (kind: "stellar" | "evm") => mockIsMainnet[kind],
   };
 });
 
 afterEach(() => {
-  mockIsMainnet.value = false;
+  mockIsMainnet.stellar = false;
+  mockIsMainnet.evm = false;
   chainState.value = { kind: "stellar", chainId: 99_000_001 };
   rateState.evm = undefined;
   rateState.stellar = undefined;
@@ -167,7 +168,7 @@ describe("HomeStatsStrip — active chain", () => {
 
 describe("HomeStatsStrip — mainnet dashboard gate (#1243)", () => {
   it("hides TVL, Current APY, and the dashboard link on mainnet, keeping Exchange rate", () => {
-    mockIsMainnet.value = true;
+    mockIsMainnet.stellar = true;
     render(<HomeStatsStrip />);
 
     expect(screen.getByText("Exchange rate")).toBeInTheDocument();
@@ -178,6 +179,17 @@ describe("HomeStatsStrip — mainnet dashboard gate (#1243)", () => {
     ).not.toBeInTheDocument();
 
     expect(screen.getByTestId("home-stats-strip").children).toHaveLength(1);
+  });
+
+  it("follows the active view: EVM mainnet hides the cells in the EVM view only", () => {
+    mockIsMainnet.evm = true;
+    const { unmount } = render(<HomeStatsStrip />);
+    expect(screen.getByText("Total Value Locked")).toBeInTheDocument();
+    unmount();
+
+    chainState.value = { kind: "evm", chainId: 560048 };
+    render(<HomeStatsStrip />);
+    expect(screen.queryByText("Total Value Locked")).not.toBeInTheDocument();
   });
 
   it("shows all three stat cells and the dashboard link on testnet", () => {

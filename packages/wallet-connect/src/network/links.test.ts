@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   networkIdFromPassphrase,
+  networkIdFromEvmChainId,
   parseNetworkLinks,
   navigateToNetworkLink,
   shouldConfirmNetworkSwitch,
@@ -179,5 +180,28 @@ describe("navigateToNetworkLink", () => {
   it("shouldConfirmNetworkSwitch is true only for mainnet", () => {
     expect(shouldConfirmNetworkSwitch(mainnetLink)).toBe(true);
     expect(shouldConfirmNetworkSwitch(testnetLink)).toBe(false);
+  });
+});
+
+describe("networkIdFromEvmChainId", () => {
+  it("maps Ethereum mainnet to mainnet", () => {
+    expect(networkIdFromEvmChainId(1)).toEqual({
+      id: "mainnet",
+      label: "Mainnet",
+    });
+  });
+
+  it("maps Hoodi to testnet", () => {
+    expect(networkIdFromEvmChainId(560048)).toEqual({
+      id: "testnet",
+      label: "Testnet",
+    });
+  });
+
+  it("treats unknown ids as testnet-styled with a Chain <id> label", () => {
+    expect(networkIdFromEvmChainId(31337)).toEqual({
+      id: "testnet",
+      label: "Chain 31337",
+    });
   });
 });

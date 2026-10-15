@@ -9,6 +9,7 @@ import {
   ErrorDetailsDialog,
 } from "@pipeline/ui";
 import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
+import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
@@ -78,6 +79,7 @@ function Deposit() {
     setAmountInput,
     dismissedDepositId,
   );
+  const chainNotice = useChainNotice(flow.wrongNetwork);
 
   // Latch the first successful data load. The bottom section is hidden while
   // chain/API data is still pending — but only on the *first* page load. Once
@@ -733,6 +735,7 @@ function Deposit() {
                 errorDetails: flow.step3.errorDetails,
               },
             ]}
+            notice={chainNotice}
           />
         )}
       </main>

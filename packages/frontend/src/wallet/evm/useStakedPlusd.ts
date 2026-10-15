@@ -479,6 +479,7 @@ export function useStake(): StakeResult {
           functionName: "deposit",
           args: [amount, address],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },
@@ -669,6 +670,7 @@ export function useUnstake(): UnstakeResult {
           functionName: "redeem",
           args: [shares, address, address],
           gas: result.gas,
+          chainId: ENV.EVM_CHAIN_ID,
         });
       })();
     },

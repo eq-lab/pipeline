@@ -56,6 +56,8 @@ export type {
   UseEvmConnectorsResult,
   EvmWalletConnectorId,
 } from "./evm/useEvmWallet";
+export { evmChainInfo, defineEvmChain } from "./evm/chains";
+export type { EvmChainInfo } from "./evm/chains";
 export {
   isMockKeyPresent,
   readMock,
@@ -205,6 +207,7 @@ export type { ConnectWalletModalProps, WalletTab } from "./ConnectWalletModal";
  */
 export {
   networkIdFromPassphrase,
+  networkIdFromEvmChainId,
   parseNetworkLinks,
   navigateToNetworkLink,
   shouldConfirmNetworkSwitch,

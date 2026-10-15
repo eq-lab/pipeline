@@ -63,6 +63,7 @@ export type { DepositHeaderProps } from "./components/DepositHeader/DepositHeade
 export { StepsCard } from "./components/StepsCard/StepsCard";
 export type {
   StepsCardProps,
+  StepsCardNotice,
   StepItem,
 } from "./components/StepsCard/StepsCard";
 export { ActivityIcon } from "./components/ActivityIcon/ActivityIcon";

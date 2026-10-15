@@ -7,7 +7,7 @@ import { useActiveChain } from "@/wallet/useActiveChain";
 import { formatUnits4 } from "@/utils/formatUnits4";
 import { useStats, formatApy, useDashboardSummary } from "@/api";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
-import { isMainnetDeployment } from "@/wallet/networkSwitcher";
+import { isMainnetNetwork } from "@/wallet/networkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#homestatsstrip (desktop/mobile reuse, Figma frame 1989:8292).
 
@@ -74,7 +74,7 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
   const tvlValue = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
 
   // spec: docs/frontend/dashboard-components.md#homestatsstrip (mainnet gate, Issue #1243)
-  const mainnet = isMainnetDeployment();
+  const mainnet = isMainnetNetwork(kind);
 
   const composed = ["flex items-center gap-4", "shrink-0", className]
     .filter(Boolean)

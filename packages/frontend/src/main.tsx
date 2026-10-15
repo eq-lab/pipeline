@@ -5,6 +5,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import {
   ConnectModalProvider,
+  EvmChainAutoSwitch,
   EvmWalletProvider,
   StellarWalletProvider,
   WalletGateProvider,
@@ -32,6 +33,7 @@ createRoot(rootElement).render(
           <ConnectModalProvider>
             <AuthFlowProvider>
               <WalletViewProvider>
+                <EvmChainAutoSwitch />
                 <ToastProvider>
                   <RouterProvider router={router} />
                 </ToastProvider>

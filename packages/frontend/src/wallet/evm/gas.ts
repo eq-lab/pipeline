@@ -1,7 +1,7 @@
 /**
  * Gas estimation utilities for wallet write hooks.
  *
- * The target chain (Hoodi) enforces a per-tx gas cap of 0x1000000 (16,777,216).
+ * The target chain enforces a per-tx gas cap of 0x1000000 (16,777,216).
  * viem's fallback when gas estimation fails is 21,000,000 — which exceeds the
  * cap and causes the RPC to reject the tx before broadcast.
  *
@@ -18,7 +18,7 @@
  */
 
 /**
- * Per-tx gas cap on the target chain (Hoodi): 0x1000000 - 1.
+ * Per-tx gas cap on the target chain: 0x1000000 - 1.
  * Hard-coded — the cap is a chain constant, not an env parameter.
  * Encoded as `cap - 1` so a buffered estimate landing exactly on the cap
  * still passes without needing a strictly-less-than comparison.

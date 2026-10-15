@@ -4,7 +4,7 @@ import { Button, Logo, NavIcon } from "@pipeline/ui";
 import type { NavIconName } from "@pipeline/ui";
 import { NetworkSwitcher } from "./NetworkSwitcher";
 import { AccountGlyph } from "./AccountGlyph";
-import { isMainnetDeployment } from "@/wallet/networkSwitcher";
+import { useIsMainnetNetwork } from "@/wallet/useNetworkIdentity";
 
 // spec: docs/frontend/dashboard-components.md#mobilenavmenu (disconnected/connected states, Figma nodes 1989:9231 / 1993:6527).
 
@@ -235,6 +235,7 @@ export function MobileNavMenu({
 }: MobileNavMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "mobile-nav-menu-heading";
+  const isMainnet = useIsMainnetNetwork();
 
   useEffect(() => {
     if (open) {
@@ -371,7 +372,7 @@ export function MobileNavMenu({
           </nav>
 
           {/* Dashboard item + preceding divider — hidden on mainnet, Issue #1243 */}
-          {!isMainnetDeployment() && (
+          {!isMainnet && (
             <>
               <div className="flex w-full items-center justify-center py-3">
                 <MenuDivider />

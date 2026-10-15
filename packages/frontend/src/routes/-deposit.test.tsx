@@ -67,6 +67,7 @@ const stableWriteContractState = {
   reset: mockWagmiReset,
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
+const mockSwitchChain = vi.hoisted(() => vi.fn());
 
 // Mock publicClient for gas estimation.
 const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
@@ -82,6 +83,11 @@ vi.mock("wagmi", async (importOriginal) => {
     ),
     useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
     useChainId: vi.fn(() => 560048),
+    useSwitchChain: () => ({
+      mutate: mockSwitchChain,
+      isPending: false,
+      error: null,
+    }),
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
@@ -905,6 +911,66 @@ describe("Deposit page — quick-amount chips", () => {
 
     const input = screen.getByRole("textbox", { name: /USDC amount/i });
     expect((input as HTMLInputElement).value).toBe("5000.00");
+  });
+});
+
+describe("Deposit page — wrong network (#1497)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockSwitchChain.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    seedBaseMocks({ allowance: "10000000000" });
+    localStorage.setItem("pipeline.mock.wallet.chainId", "1");
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("keeps the steps card, disables every step action and shows the switch row", async () => {
+    renderDeposit();
+    const notice = await screen.findByTestId("steps-card-chain-notice");
+    expect(notice).toHaveTextContent("Switch your wallet to Hoodi");
+    expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
+    for (const name of ["Approve", "Confirm", "Claim"]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+  });
+
+  it("in mock mode the Switch button only logs a warning naming the mock key", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    renderDeposit();
+    await user.click(
+      await screen.findByTestId("steps-card-chain-notice-action"),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("pipeline.mock.wallet.chainId"),
+    );
+    expect(mockSwitchChain).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("shows no switch row on the expected chain", async () => {
+    localStorage.setItem("pipeline.mock.wallet.chainId", "560048");
+    renderDeposit();
+    await screen.findByTestId("deposit-steps-card");
+    expect(
+      screen.queryByTestId("steps-card-chain-notice"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still shows the connect banner, not the switch row, when disconnected", async () => {
+    localStorage.clear();
+    seedBaseMocks({ connected: false });
+    localStorage.setItem("pipeline.mock.wallet.chainId", "1");
+    renderDeposit();
+    await screen.findByTestId("connect-wallet-banner");
+    expect(
+      screen.queryByTestId("steps-card-chain-notice"),
+    ).not.toBeInTheDocument();
   });
 });
 

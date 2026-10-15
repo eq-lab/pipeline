@@ -12,7 +12,7 @@ import { createAppKit } from "@reown/appkit/react";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { http } from "viem";
 import { ENV } from "@/lib/env";
-import { hoodi } from "./chain";
+import { evmChain } from "./chain";
 
 const projectId = ENV.WALLETCONNECT_PROJECT_ID;
 
@@ -26,16 +26,16 @@ function cssVar(name: string): string | undefined {
 }
 
 export const wagmiAdapter = new WagmiAdapter({
-  networks: [hoodi],
+  networks: [evmChain],
   projectId,
   transports: {
-    [hoodi.id]: http(ENV.EVM_RPC_URL),
+    [evmChain.id]: http(ENV.EVM_RPC_URL),
   },
 });
 
 createAppKit({
   adapters: [wagmiAdapter],
-  networks: [hoodi],
+  networks: [evmChain],
   projectId,
   metadata: {
     name: "Pipeline",

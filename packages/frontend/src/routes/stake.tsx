@@ -14,6 +14,7 @@ import {
 } from "@pipeline/ui";
 import { useWalletView, useConnectModal } from "@/wallet";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
+import { useChainNotice } from "@/components/useChainNotice";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
 import { toUserError } from "@/utils/userError";
@@ -59,6 +60,7 @@ function Stake() {
 
   // ── Flow adapter ──────────────────────────────────────────────────────
   const flow = useStakeFlow(activeTab, amountBig, setAmountInput);
+  const chainNotice = useChainNotice(flow.wrongNetwork);
 
   // Update lastDecimals whenever flow.decimals changes.
   useEffect(() => {
@@ -351,6 +353,7 @@ function Stake() {
               isStakeTab ? "stake-steps-card" : "stake-unstake-steps"
             }
             steps={flow.steps}
+            notice={chainNotice}
           />
         )}
       </main>

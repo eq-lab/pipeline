@@ -407,6 +407,7 @@ describe("useApproval — approve args pass-through (no mock, non-zero, connecte
         functionName: "approve",
         args: [SPENDER_ADDRESS, 123n],
         gas: 1_200_000n, // 1_000_000n * 12 / 10
+        chainId: 560048,
       }),
     );
   });

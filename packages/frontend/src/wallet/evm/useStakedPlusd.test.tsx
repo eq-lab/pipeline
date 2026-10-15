@@ -843,6 +843,7 @@ describe("useStake — args pass-through (no mock, non-zero address)", () => {
         address: SP_ADDR,
         args: [1_000_000_000_000_000_000n, walletAddr],
         gas: 1_200_000n, // 1_000_000n * 12 / 10
+        chainId: 560048,
       }),
     );
   });
@@ -1080,6 +1081,7 @@ describe("useUnstake — args pass-through (no mock, non-zero address)", () => {
         address: SP_ADDR,
         args: [500_000_000_000_000_000n, walletAddr, walletAddr],
         gas: 1_200_000n, // 1_000_000n * 12 / 10
+        chainId: 560048,
       }),
     );
   });

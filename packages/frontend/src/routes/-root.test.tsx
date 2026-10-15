@@ -44,10 +44,35 @@ vi.mock("@/wallet", async (importOriginal) => {
   };
 });
 
-vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
+vi.mock("@/wallet/useNetworkIdentity", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/wallet/networkSwitcher")>();
-  return { ...actual, isMainnetDeployment: () => false };
+    await importOriginal<typeof import("@/wallet/useNetworkIdentity")>();
+  return {
+    ...actual,
+    useIsMainnetNetwork: () => false,
+    useNetworkSwitcherState: () => ({
+      currentNetwork: { id: "testnet", label: "Testnet" },
+      otherNetworks: [],
+    }),
+  };
+});
+const { guardState } = vi.hoisted(() => ({
+  guardState: {
+    value: {
+      expectedChain: { id: 560048, name: "Hoodi" },
+      currentChainId: 560048 as number | undefined,
+      isWrongNetwork: false,
+      switchNetwork: vi.fn(),
+      isSwitching: false,
+      switchError: null as Error | null,
+    },
+  },
+}));
+
+vi.mock("@/wallet/evm/useEvmNetworkGuard", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/wallet/evm/useEvmNetworkGuard")>();
+  return { ...original, useEvmNetworkGuard: () => guardState.value };
 });
 
 const fetchMock = vi.fn<typeof fetch>();

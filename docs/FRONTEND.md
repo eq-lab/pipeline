@@ -182,7 +182,10 @@ Other routes (stake, transactions, ops) currently use desktop-only layouts. Mobi
   connected wallet via wagmi `useWriteContract` (in future issues that consume `useEvmWallet()`).
 - **No proxy:** contract interactions for LPs go direct from browser wallet to chain — no backend relayer.
 - **Chain:** Hoodi testnet (chain id 560048) by default; configurable via `VITE_EVM_CHAIN_ID` /
-  `VITE_EVM_RPC_URL` at runtime using `vite-plugin-runtime-env`.
+  `VITE_EVM_RPC_URL` at runtime using `vite-plugin-runtime-env`. The id selects an entry of the
+  chain registry (`1` = Ethereum mainnet, `560048` = Hoodi; any other id gets a generic
+  testnet-styled definition); see
+  [`frontend/wallet-flows.md#chain-registry`](./frontend/wallet-flows.md#chain-registry).
 
 ## Deployment image and runtime configuration
 
@@ -206,7 +209,7 @@ Supported runtime keys:
 | Key                             | Default when unset                           |
 | ------------------------------- | -------------------------------------------- |
 | `VITE_API_BASE_URL`             | `http://localhost:8080`                      |
-| `VITE_EVM_CHAIN_ID`             | `560048`                                     |
+| `VITE_EVM_CHAIN_ID`             | `560048` (selects the chain-registry entry)  |
 | `VITE_EVM_RPC_URL`              | `https://ethereum-hoodi-rpc.publicnode.com`  |
 | `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` |
 | `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` |

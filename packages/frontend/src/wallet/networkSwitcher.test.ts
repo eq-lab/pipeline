@@ -1,17 +1,10 @@
-/**
- * Unit tests for `getNetworkSwitcherState` (issue #1032).
- *
- * The underlying parsing/identity logic (`parseNetworkLinks`,
- * `networkIdFromPassphrase`) is covered directly in
- * `@pipeline/wallet-connect`'s `network/links.test.ts`; these tests cover
- * only this module's composition: deriving the current network from env and
- * filtering it out of the sibling-links list.
- */
+// spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links
 import { describe, it, expect, vi } from "vitest";
 
 const { mockEnv } = vi.hoisted(() => ({
   mockEnv: {
     STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
+    EVM_CHAIN_ID: 560048,
     NETWORK_LINKS: "",
   },
 }));
@@ -20,28 +13,29 @@ vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
 }));
 
-import {
-  getNetworkSwitcherState,
-  isMainnetDeployment,
-} from "./networkSwitcher";
+import { getNetworkSwitcherState, isMainnetNetwork } from "./networkSwitcher";
+
+const LINKS =
+  "mainnet=https://app.pipeline.one,testnet=https://pipeline.stage.eqlab.net";
 
 describe("getNetworkSwitcherState", () => {
-  it("returns the static-label case (no other networks) when NETWORK_LINKS is unset", () => {
+  it("returns the static-label case when NETWORK_LINKS is unset", () => {
     mockEnv.STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
     mockEnv.NETWORK_LINKS = "";
 
-    const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+    const { currentNetwork, otherNetworks } =
+      getNetworkSwitcherState("stellar");
 
     expect(currentNetwork).toEqual({ id: "testnet", label: "Testnet" });
     expect(otherNetworks).toEqual([]);
   });
 
-  it("excludes the current network from otherNetworks when links are configured", () => {
+  it("excludes the current network from otherNetworks", () => {
     mockEnv.STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
-    mockEnv.NETWORK_LINKS =
-      "mainnet=https://app.pipeline.one,testnet=https://pipeline.stage.eqlab.net";
+    mockEnv.NETWORK_LINKS = LINKS;
 
-    const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+    const { currentNetwork, otherNetworks } =
+      getNetworkSwitcherState("stellar");
 
     expect(currentNetwork).toEqual({ id: "testnet", label: "Testnet" });
     expect(otherNetworks).toEqual([
@@ -49,13 +43,13 @@ describe("getNetworkSwitcherState", () => {
     ]);
   });
 
-  it("on a mainnet deployment, offers testnet as the other network", () => {
+  it("on Stellar mainnet, offers testnet as the other network", () => {
     mockEnv.STELLAR_NETWORK_PASSPHRASE =
       "Public Global Stellar Network ; September 2015";
-    mockEnv.NETWORK_LINKS =
-      "mainnet=https://app.pipeline.one,testnet=https://pipeline.stage.eqlab.net";
+    mockEnv.NETWORK_LINKS = LINKS;
 
-    const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+    const { currentNetwork, otherNetworks } =
+      getNetworkSwitcherState("stellar");
 
     expect(currentNetwork).toEqual({ id: "mainnet", label: "Mainnet" });
     expect(otherNetworks).toEqual([
@@ -66,23 +60,41 @@ describe("getNetworkSwitcherState", () => {
       },
     ]);
   });
+
+  it("in the EVM view, derives the identity from the EVM chain id", () => {
+    mockEnv.STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
+    mockEnv.EVM_CHAIN_ID = 1;
+    mockEnv.NETWORK_LINKS = LINKS;
+
+    const { currentNetwork, otherNetworks } = getNetworkSwitcherState("evm");
+
+    expect(currentNetwork).toEqual({ id: "mainnet", label: "Mainnet" });
+    expect(otherNetworks.map((l) => l.id)).toEqual(["testnet"]);
+    mockEnv.EVM_CHAIN_ID = 560048;
+  });
 });
 
-describe("isMainnetDeployment", () => {
-  it("is false on a testnet passphrase", () => {
+describe("isMainnetNetwork", () => {
+  it("follows the Stellar passphrase in the Stellar view", () => {
     mockEnv.STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
-    expect(isMainnetDeployment()).toBe(false);
-  });
-
-  it("is true on the mainnet passphrase", () => {
+    expect(isMainnetNetwork("stellar")).toBe(false);
     mockEnv.STELLAR_NETWORK_PASSPHRASE =
       "Public Global Stellar Network ; September 2015";
-    expect(isMainnetDeployment()).toBe(true);
+    expect(isMainnetNetwork("stellar")).toBe(true);
   });
 
-  it("is false on an unknown passphrase (maps to testnet identity)", () => {
+  it("treats an unknown passphrase as testnet", () => {
     mockEnv.STELLAR_NETWORK_PASSPHRASE =
       "Test SDF Future Network ; October 2022";
-    expect(isMainnetDeployment()).toBe(false);
+    expect(isMainnetNetwork("stellar")).toBe(false);
+  });
+
+  it("follows the EVM chain id in the EVM view, independent of the passphrase", () => {
+    mockEnv.STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
+    mockEnv.EVM_CHAIN_ID = 1;
+    expect(isMainnetNetwork("evm")).toBe(true);
+    expect(isMainnetNetwork("stellar")).toBe(false);
+    mockEnv.EVM_CHAIN_ID = 560048;
+    expect(isMainnetNetwork("evm")).toBe(false);
   });
 });

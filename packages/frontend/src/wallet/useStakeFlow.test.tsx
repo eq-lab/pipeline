@@ -113,6 +113,11 @@ vi.mock("wagmi", async (importOriginal) => {
     ...original,
     useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
     useChainId: vi.fn(() => 560048),
+    useSwitchChain: vi.fn(() => ({
+      mutate: vi.fn(),
+      isPending: false,
+      error: null,
+    })),
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
     useReadContract: vi.fn(() => ({
       data: undefined,

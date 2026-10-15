@@ -1,9 +1,10 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { Navigate, createFileRoute, redirect } from "@tanstack/react-router";
 import { BalanceSheetPanel } from "@/components/dashboard/BalanceSheetPanel";
 import { DeploymentMonitorPanel } from "@/components/dashboard/DeploymentMonitorPanel";
 import { WithdrawalQueuePanel } from "@/components/dashboard/WithdrawalQueuePanel";
 import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
-import { isMainnetDeployment } from "@/wallet/networkSwitcher";
+import { isMainnetNetwork } from "@/wallet/networkSwitcher";
+import { useIsMainnetNetwork } from "@/wallet/useNetworkIdentity";
 
 // spec: docs/frontend/dashboard-components.md#dashboard-route
 // (layout, panel order, entry point, Figma references).
@@ -19,6 +20,8 @@ const titleClasses = [
 ].join(" ");
 
 function Dashboard() {
+  const isMainnet = useIsMainnetNetwork();
+  if (isMainnet) return <Navigate to="/" replace />;
   return (
     <div
       data-testid="dashboard-page-root"
@@ -57,7 +60,7 @@ function Dashboard() {
 export const Route = createFileRoute("/dashboard")({
   // spec: docs/frontend/dashboard-components.md#dashboard-route (mainnet gate, Issue #1243)
   beforeLoad: () => {
-    if (isMainnetDeployment()) {
+    if (isMainnetNetwork("stellar")) {
       throw redirect({ to: "/" });
     }
   },

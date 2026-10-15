@@ -1,7 +1,8 @@
 // spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links
 import { useEffect, useRef, useState } from "react";
 import { NetworkSwitchDialog } from "@pipeline/ui";
-import { getNetworkSwitcherState } from "@/wallet/networkSwitcher";
+import { useEvmNetworkGuard } from "@/wallet";
+import { useNetworkSwitcherState } from "@/wallet/useNetworkIdentity";
 import { useNetworkSwitch } from "@/wallet/useNetworkSwitch";
 
 /**
@@ -12,7 +13,9 @@ import { useNetworkSwitch } from "@/wallet/useNetworkSwitch";
  * Renders as a non-interactive pill when no siblings are configured.
  */
 export function NetworkSwitcher() {
-  const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+  const { currentNetwork, otherNetworks } = useNetworkSwitcherState();
+  const guard = useEvmNetworkGuard();
+  const wrongNetwork = guard.isWrongNetwork;
   const { pendingLink, requestSwitch, confirmSwitch, cancelSwitch } =
     useNetworkSwitch();
   const [open, setOpen] = useState(false);
@@ -35,21 +38,24 @@ export function NetworkSwitcher() {
   }, [open]);
 
   const isMainnet = currentNetwork.id === "mainnet";
-  const hasMenu = otherNetworks.length > 0;
+  const hasMenu = wrongNetwork || otherNetworks.length > 0;
+  const pillLabel = wrongNetwork ? "Wrong network" : currentNetwork.label;
 
   const pillInner = (
     <>
       <span
         className={[
           "size-2 shrink-0 rounded-full",
-          isMainnet
-            ? "bg-[color:var(--color-pipeline-warning)]"
-            : "bg-[color:var(--color-pipeline-positive)]",
+          wrongNetwork
+            ? "bg-[color:var(--color-pipeline-danger)]"
+            : isMainnet
+              ? "bg-[color:var(--color-pipeline-warning)]"
+              : "bg-[color:var(--color-pipeline-positive)]",
         ].join(" ")}
         aria-hidden="true"
       />
       <span className="text-[15px] leading-none font-[var(--font-weight-medium)] whitespace-nowrap text-[color:var(--color-pipeline-ink)]">
-        {currentNetwork.label}
+        {pillLabel}
       </span>
     </>
   );
@@ -68,6 +74,7 @@ export function NetworkSwitcher() {
         <button
           type="button"
           data-testid="topbar-network-badge"
+          data-state={wrongNetwork ? "wrong-network" : undefined}
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
@@ -99,7 +106,7 @@ export function NetworkSwitcher() {
       ) : (
         <div
           data-testid="topbar-network-badge"
-          title={currentNetwork.label}
+          title={pillLabel}
           className={pillClasses}
         >
           {pillInner}
@@ -113,6 +120,25 @@ export function NetworkSwitcher() {
           data-testid="topbar-network-menu"
           className="absolute right-0 z-40 mt-2 flex min-w-[180px] flex-col rounded-[var(--radius-pipeline-card)] border border-[color:var(--color-pipeline-line)] bg-white py-1.5 shadow-[0px_8px_28px_0px_rgba(0,0,40,0.14)]"
         >
+          {wrongNetwork && (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="topbar-network-switch-chain"
+              disabled={guard.isSwitching}
+              onClick={() => {
+                setOpen(false);
+                guard.switchNetwork();
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 text-left font-[family-name:var(--font-body)] text-[15px] whitespace-nowrap text-[color:var(--color-pipeline-ink)] transition-colors hover:bg-[color:var(--color-pipeline-line)]/30 disabled:opacity-50"
+            >
+              <span
+                className="size-2 shrink-0 rounded-full bg-[color:var(--color-pipeline-danger)]"
+                aria-hidden="true"
+              />
+              Switch to {guard.expectedChain.name}
+            </button>
+          )}
           {otherNetworks.map((link) => (
             <button
               key={link.id}

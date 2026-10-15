@@ -36,7 +36,7 @@ import { AccountDropdown } from "./AccountDropdown";
 import type { WalletViewKind } from "@/wallet";
 
 // ── Network switcher mock (issue #1032) ───────────────────────────────────────
-// Only `getNetworkSwitcherState` is stubbed (controllable per test); the real
+// Only `useNetworkSwitcherState` is stubbed (controllable per test); the real
 // `navigateToNetworkLink` (confirm + navigate) runs unmocked so the mainnet
 // confirm behavior is exercised end-to-end — tests observe it via
 // `window.confirm` / `window.location.assign` spies.
@@ -48,14 +48,10 @@ const { mockNetworkSwitcherState } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("@/wallet/networkSwitcher")>();
-  return {
-    ...original,
-    getNetworkSwitcherState: () => mockNetworkSwitcherState,
-  };
-});
+vi.mock("@/wallet/useNetworkIdentity", () => ({
+  useNetworkSwitcherState: () => mockNetworkSwitcherState,
+  useIsMainnetNetwork: () => false,
+}));
 
 // jsdom's `Location.prototype.assign` is non-configurable, so `vi.spyOn`
 // cannot redefine it directly — replace `window.location` itself with a

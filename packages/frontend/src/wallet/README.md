@@ -40,6 +40,7 @@ import {
   // EVM namespace
   EvmWalletProvider,
   useEvmWallet,
+  useEvmNetworkGuard,
   useEvmToken,
   useContractRead,
   useApproval,
@@ -104,13 +105,35 @@ mock bridge (which covers ALL `pipeline.mock.*` keys, including Stellar).
 const { address, isConnected, chainId, connect, disconnect } = useEvmWallet();
 ```
 
-| Field          | Type                       | Description                                 |
-| -------------- | -------------------------- | ------------------------------------------- |
-| `address`      | `0x${string} \| undefined` | Connected wallet address, or `undefined`    |
-| `isConnected`  | `boolean`                  | True when a wallet is connected (or mocked) |
-| `chainId`      | `number \| undefined`      | Current chain id                            |
-| `connect()`    | `() => void`               | Opens the AppKit wallet modal               |
-| `disconnect()` | `() => void`               | Disconnects the wallet                      |
+| Field          | Type                       | Description                                                                         |
+| -------------- | -------------------------- | ----------------------------------------------------------------------------------- |
+| `address`      | `0x${string} \| undefined` | Connected wallet address, or `undefined`                                            |
+| `isConnected`  | `boolean`                  | True when a wallet is connected (or mocked)                                         |
+| `chainId`      | `number \| undefined`      | Connected wallet's chain id (`useAccount().chainId`), `undefined` when disconnected |
+| `connect()`    | `() => void`               | Opens the AppKit wallet modal                                                       |
+| `disconnect()` | `() => void`               | Disconnects the wallet                                                              |
+
+### `useEvmNetworkGuard()`
+
+```ts
+const {
+  expectedChain,
+  currentChainId,
+  isWrongNetwork,
+  wrongNetwork,
+  switchNetwork,
+  isSwitching,
+  switchError,
+} = useEvmNetworkGuard();
+```
+
+`isWrongNetwork` is true in the EVM view with a connected wallet on a chain other than
+`VITE_EVM_CHAIN_ID` (`pipeline.mock.wallet.chainId` overrides the wallet's chain).
+`switchNetwork()` calls wagmi `switchChain` (a `console.warn` only in mock mode). `wrongNetwork` is
+the `{ chainName, switchNetwork, isSwitching, switchError }` view that `useDepositFlow` /
+`useStakeFlow` expose to the steps card. `<EvmChainAutoSwitch />` (mounted once in `main.tsx`)
+prompts the switch once per connection. Spec:
+[`wallet-flows.md#wrong-network`](../../../../docs/frontend/wallet-flows.md#wrong-network).
 
 ### `useEvmToken({ token, spender? })`
 
@@ -507,7 +530,7 @@ the absence of a key is its own off-switch.
 | ----------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pipeline.mock.wallet.address`                                    | `string` (`0x…`)                                                | Sets the connected wallet address                                                                                                                                                                 |
 | `pipeline.mock.wallet.isConnected`                                | `"true"` or `"false"`                                           | Defaults to `"true"` when `address` is set                                                                                                                                                        |
-| `pipeline.mock.wallet.chainId`                                    | numeric string e.g. `"560048"`                                  | Overrides `useChainId()`                                                                                                                                                                          |
+| `pipeline.mock.wallet.chainId`                                    | numeric string e.g. `"560048"`                                  | Overrides the connected chain id (`useAccount().chainId`); a value other than `VITE_EVM_CHAIN_ID` triggers the wrong-network state                                                                |
 | `pipeline.mock.wallet.contract.<token>.decimals`                  | numeric string e.g. `"6"`                                       | Mock `decimals()` for `useToken`; `<token>` is the token address (lowercased).                                                                                                                    |
 | `pipeline.mock.wallet.contract.<token>.symbol`                    | string e.g. `"USDC"`                                            | Mock `symbol()` for `useToken`; `<token>` is the token address (lowercased).                                                                                                                      |
 | `pipeline.mock.wallet.balance.<token>`                            | decimal bigint string e.g. `"1000000000"` (= 1000 USDC at 6 dp) | Mock `balanceOf(owner)` for `useToken`; `<token>` is the token address (lowercased). Replaces the removed `pipeline.mock.wallet.balance.usdc`.                                                    |

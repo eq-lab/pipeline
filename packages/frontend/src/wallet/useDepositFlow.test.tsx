@@ -35,6 +35,7 @@ const mockXlmState = vi.hoisted(() => ({
 vi.mock("@/wallet", () => ({
   useWalletView: () => ({ kind: mockXlmState.kind }),
 
+  useEvmNetworkGuard: () => ({ wrongNetwork: undefined }),
   // EVM (unused on the Stellar path, but called unconditionally)
   useEvmWallet: () => ({
     address: undefined,

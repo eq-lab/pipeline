@@ -1,3 +1,5 @@
+import { evmChainInfo, isKnownEvmChain } from "../evm/chains";
+
 /**
  * Cross-deployment network switcher (issue #1032).
  *
@@ -53,6 +55,19 @@ export function networkIdFromPassphrase(passphrase: string): NetworkIdentity {
     return { id: "mainnet", label: "Mainnet" };
   }
   return { id: "testnet", label: passphrase };
+}
+
+/**
+ * Derives the network identity of an EVM chain id from the chain registry.
+ * Unknown ids are testnet-styled with a `Chain <id>` label.
+ */
+export function networkIdFromEvmChainId(chainId: number): NetworkIdentity {
+  const info = evmChainInfo(chainId);
+  if (!info.testnet) return { id: "mainnet", label: "Mainnet" };
+  if (!isKnownEvmChain(chainId)) {
+    return { id: "testnet", label: `Chain ${chainId}` };
+  }
+  return { id: "testnet", label: "Testnet" };
 }
 
 /**

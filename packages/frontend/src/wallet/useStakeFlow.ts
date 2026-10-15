@@ -12,6 +12,7 @@ import {
   useWalletView,
   // EVM
   useEvmWallet,
+  useEvmNetworkGuard,
   useEvmToken,
   useStakedPlusdAsset,
   useStake,
@@ -37,6 +38,7 @@ import {
   useStellarNetworkFeeEstimate,
   parseUnits,
 } from "@/wallet";
+import type { WrongNetworkInfo } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { formatUsdc } from "@/lib/usdc";
 import { formatUnits4 } from "@/utils/formatUnits4";
@@ -133,6 +135,8 @@ export interface StakeFlowState {
   onQuickAmount: (idx: number) => void;
 
   needsXlmFunding: boolean;
+
+  wrongNetwork: WrongNetworkInfo | undefined;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -180,6 +184,7 @@ export function useStakeFlow(
     isConnected: isEvmConnected,
     connect: evmConnect,
   } = useEvmWallet();
+  const { wrongNetwork } = useEvmNetworkGuard();
 
   const { plusd: plusdFromVault } = useStakedPlusdAsset();
   const plusdAddr = (plusdFromVault ?? ZERO_ADDRESS) as `0x${string}`;
@@ -587,7 +592,7 @@ export function useStakeFlow(
             actionLabel: "Approve",
             state: evmStep1State,
             loading: evmPlusdToken.isApprovePending,
-            disabled: !evmCanApprove,
+            disabled: !evmCanApprove || wrongNetwork !== undefined,
             onAction: () => evmPlusdToken.approve?.(amountBig),
             errorMessage:
               evmStep1State === "error"
@@ -603,7 +608,7 @@ export function useStakeFlow(
             actionLabel: "Stake",
             state: evmStep2State,
             loading: evmStake.isPending,
-            disabled: !evmCanStake,
+            disabled: !evmCanStake || wrongNetwork !== undefined,
             onAction: () => evmStake.write(amountBig),
             errorMessage:
               evmStep2State === "error"
@@ -621,7 +626,7 @@ export function useStakeFlow(
             actionLabel: "Unstake",
             state: evmUnstakeStepState,
             loading: evmUnstake.isPending,
-            disabled: !evmCanUnstake,
+            disabled: !evmCanUnstake || wrongNetwork !== undefined,
             onAction: () => evmUnstake.write(amountBig),
             errorMessage:
               evmUnstakeStepState === "error"
@@ -673,6 +678,7 @@ export function useStakeFlow(
       },
       onQuickAmount: onEvmQuickAmount,
       needsXlmFunding: false,
+      wrongNetwork,
     };
   }
 
@@ -791,5 +797,6 @@ export function useStakeFlow(
     },
     onQuickAmount: onStellarQuickAmount,
     needsXlmFunding: stellarNeedsXlmFunding,
+    wrongNetwork: undefined,
   };
 }

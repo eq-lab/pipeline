@@ -77,6 +77,11 @@ vi.mock("wagmi", async (importOriginal) => {
     ),
     useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
     useChainId: vi.fn(() => 560048),
+    useSwitchChain: () => ({
+      mutate: vi.fn(),
+      isPending: false,
+      error: null,
+    }),
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
@@ -977,6 +982,51 @@ describe("Stake page — cross-tab reset regression", () => {
 });
 
 // ── Tests — disconnected wallet ───────────────────────────────────────────────
+
+describe("Stake page — wrong network (#1497)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    seedBaseMocks({
+      balance: BALANCE_100_PLUSD,
+      splusdBalance: BALANCE_50_SPLUSD,
+      allowance: "0",
+      includeUnstakeMock: true,
+    });
+    localStorage.setItem("pipeline.mock.wallet.chainId", "1");
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("keeps the steps card with disabled actions and the switch row (Stake tab)", async () => {
+    renderStake();
+    expect(
+      await screen.findByTestId("steps-card-chain-notice"),
+    ).toHaveTextContent("Switch your wallet to Hoodi");
+    expect(screen.getByTestId("stake-steps-card")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stake" })).toBeDisabled();
+  });
+
+  it("shows the switch row and a disabled Unstake action (Unstake tab)", async () => {
+    mockTab = "unstake";
+    renderStake();
+    expect(
+      await screen.findByTestId("steps-card-chain-notice"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unstake" })).toBeDisabled();
+  });
+
+  it("shows no switch row on the expected chain", async () => {
+    localStorage.setItem("pipeline.mock.wallet.chainId", "560048");
+    renderStake();
+    await screen.findByTestId("stake-steps-card");
+    expect(
+      screen.queryByTestId("steps-card-chain-notice"),
+    ).not.toBeInTheDocument();
+  });
+});
 
 describe("Stake page — disconnected wallet", () => {
   beforeEach(() => {
