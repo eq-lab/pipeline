@@ -9,11 +9,12 @@
 //! - `interest` / `fees` are **realized to date** — the cumulative repayment
 //!   `senior_interest` and `mgmt_fee + perf_fee`, matching the "realized gross"
 //!   set used by `routes::dashboard`. They exclude `oet_alloc` and
-//!   `equity_distributed`.
-//! - `minted_yield` is attributed per loan via `yield_mint_outbox` confirmed rows
-//!   joined to `YieldMinted` events by `tx_hash` (see
-//!   `ContractLogsRepo::minted_yield_for_loan`).
-//! - `not_minted_yield` = `(interest + fees) − minted_yield`, clamped at 0.
+//!   `equity_distributed`; `not_minted_yield` still counts `oet_alloc` (below).
+//! - `minted_yield` = legacy `YieldMinted` (via `yield_mint_outbox`) + Minter
+//!   `CashRepaid` interest and fee PLUSD net of `CashRepaymentReversed` (see
+//!   `shared::minted_yield`).
+//! - `not_minted_yield` = `(interest + fees + oet_alloc) − minted_yield`, clamped at 0 —
+//!   `minted_yield` already includes the `oet_alloc` fee leg, so both sides count it.
 //! - `offtaker_outstanding` = `original_offtaker_price − repayment.offtaker_received`.
 
 use std::str::FromStr;
@@ -64,10 +65,10 @@ pub struct LoanFinancialsResponse {
     /// Realized fees to date (cumulative `mgmt_fee + perf_fee`).
     pub fees: String,
 
-    /// Yield minted to sPLUSD for this loan's confirmed repayments (Σ of the
-    /// matching `YieldMinted.s_plusd_amount`).
+    /// Yield minted for this loan: legacy `YieldMinted` plus Minter `CashRepaid`
+    /// interest and fee PLUSD, net of reversed repayments.
     pub minted_yield: String,
-    /// Realized interest + fees not yet minted: `(interest + fees) − minted_yield`,
+    /// Realized interest + fees + OET not yet minted: `(interest + fees + oet_alloc) − minted_yield`,
     /// clamped at 0.
     pub not_minted_yield: String,
 
@@ -165,10 +166,27 @@ async fn get_loan_financials(
             ApiError::NotFound(format!("loan {loan_id} not indexed on chain {chain_id}"))
         })?;
 
-    let minted_yield = state
-        .contract_logs_repo
-        .minted_yield_for_loan(&state.pool, chain_id, &loan_id)
-        .await?;
+    let (legacy_minted, repayment_mints) = tokio::try_join!(
+        state.contract_logs_repo.legacy_yield_minted_raw_for_loan(
+            &state.pool,
+            chain_id,
+            &loan_id,
+            registry
+        ),
+        state.contract_logs_repo.list_repayment_mints(
+            &state.pool,
+            chain_id,
+            Some(&loan_id),
+            now,
+            registry
+        ),
+    )?;
+    let minted_yield = shared::minted_yield::loan_minted_yield(
+        shared::chains::parse_chain_type(chain_id)?,
+        &legacy_minted,
+        &repayment_mints,
+        now,
+    );
 
     let economics_events = state
         .contract_logs_repo
@@ -214,10 +232,10 @@ pub fn build_response(
     let interest = &s.repayment.senior_interest;
     let fees = &s.repayment.mgmt_fee + &s.repayment.perf_fee;
 
-    // Realized interest + fees not yet minted. Clamp at 0: `minted_yield`
-    // (net senior coupon) and `interest + fees` come from different on-chain
-    // sources, so a transient over-count must not surface a negative figure.
-    let realized_gross = interest + &fees;
+    // Realized interest + fees + OET not yet minted (`minted_yield` includes the OET
+    // leg). Clamp at 0: the two sides come from different on-chain sources, so a
+    // transient over-count must not surface a negative figure.
+    let realized_gross = interest + &fees + &s.repayment.oet_alloc;
     let not_minted = (&realized_gross - minted_yield).max(BigDecimal::from(0));
 
     let offtaker_outstanding = &s.original_offtaker_price - &s.repayment.offtaker_received;

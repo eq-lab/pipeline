@@ -2061,6 +2061,14 @@ line, whichever section it lands in.
 - **Impact:** Operators must set the factory address at deploy time or rewind the cursor to recover earlier deals. Request count per chunk grows linearly with the number of deal tokens.
 - **Suggested fix:** An optional startup sweep over `deal(loanId)` for known loan ids.
 
+### TD-148: `not_minted_yield` is structurally about 0 for minter-era repayments and its fee inputs disagree
+
+- **Date:** 2026-10-15
+- **Location:** `packages/api/src/routes/loan_financials.rs` (`build_response`), `packages/shared/src/minted_yield.rs` — Issue #1525.
+- **Gap:** Minter repayments mint interest and fees atomically, so `not_minted_yield = (interest + fees) - minted_yield` is about 0 once a repayment is indexed. The `fees` field still excludes `oet_alloc`, but `not_minted_yield` now counts `oet_alloc` on the realized side, like the minted fee leg (`mgmt_fee + perf_fee + oet_alloc` from `PaymentRecorded`).
+- **Impact:** The field carries no signal for minter-era loans and its inputs are not like for like.
+- **Suggested fix:** Revisit the field's semantics and likely retire it (and the trustee close gate that reads it) in a later issue.
+
 ### TD-149: Non-LoanBook API groups still read loan snapshots unscoped by LoanRegistry address
 
 - **Date:** 2026-10-15

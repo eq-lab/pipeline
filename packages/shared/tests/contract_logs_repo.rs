@@ -1,8 +1,8 @@
 // spec: docs/exec-plans/completed/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
 use shared::contract_logs_repo::{
-    LATEST_STATUS_BY_LOANS_SQL, LATEST_WATCHLIST_ENTRY_SQL, LIST_LATEST_LOAN_SNAPSHOTS_SQL,
-    LOAN_ECONOMICS_EVENTS_SQL, LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES,
-    LOAN_SNAPSHOT_AS_OF_SQL,
+    LATEST_STATUS_BY_LOANS_SQL, LATEST_WATCHLIST_ENTRY_SQL, LEGACY_YIELD_MINTED_SQL,
+    LIST_LATEST_LOAN_SNAPSHOTS_SQL, LIST_REPAYMENT_MINTS_SQL, LOAN_ECONOMICS_EVENTS_SQL,
+    LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES, LOAN_SNAPSHOT_AS_OF_SQL,
 };
 
 fn normalized(sql: &str) -> String {
@@ -89,4 +89,41 @@ fn latest_watchlist_entry_sql_is_registry_scoped() {
 #[test]
 fn loan_economics_events_sql_is_registry_scoped() {
     assert_registry_scoped(LOAN_ECONOMICS_EVENTS_SQL, 4);
+}
+
+#[test]
+fn list_repayment_mints_sql_requires_registry_scoped_payment_recorded() {
+    let sql = normalized(LIST_REPAYMENT_MINTS_SQL);
+    assert!(
+        sql.contains("JOIN LATERAL ( SELECT (p.params->'event'->>'mgmt_fee')"),
+        "PaymentRecorded match must be an inner join: {sql}"
+    );
+    assert!(
+        !sql.contains("LEFT JOIN LATERAL ( SELECT (p.params"),
+        "PaymentRecorded match must not be optional: {sql}"
+    );
+    assert!(
+        sql.contains("AND p.contract_address = $4 AND p.tx_hash = r.tx_hash AND p.event_name = 'PaymentRecorded'"),
+        "expected p.contract_address = $4 on PaymentRecorded: {sql}"
+    );
+    assert!(sql.contains("WHERE r.chain_id = $1"), "{sql}");
+}
+
+#[test]
+fn legacy_yield_minted_sql_requires_registry_scoped_payment_recorded() {
+    let sql = normalized(LEGACY_YIELD_MINTED_SQL);
+    assert!(
+        sql.contains("AND EXISTS ( SELECT 1 FROM contract_logs p"),
+        "{sql}"
+    );
+    assert!(sql.contains("AND p.contract_address = $3"), "{sql}");
+    assert!(sql.contains("p.event_name = 'PaymentRecorded'"), "{sql}");
+    assert!(
+        sql.contains("(p.params->>'loan_id')::numeric = o.loan_id"),
+        "{sql}"
+    );
+    assert!(
+        sql.contains("(p.params->'event'->>'repayment_id')::numeric = o.repayment_id"),
+        "{sql}"
+    );
 }

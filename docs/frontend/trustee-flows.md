@@ -673,8 +673,8 @@ item is green:
    indexer). The unmet row shows the current outstanding amount.
 2. **Nothing left to mint on either leg** — hard gate, **no manual override**. Green when the
    financials' `not_minted_yield` is `0` (the aggregate covers both mint legs — no per-leg field
-   is served). After recording a final payment this stays red until the relayer mints the
-   recorded yield; the unmet row shows the unminted amount.
+   is served). Minter repayments mint atomically, so after recording a final payment
+   this clears once the repayment is indexed; the unmet row shows the unminted amount.
 3. **Remaining offtaker balance acknowledged** — auto-green when the received cash covers the
    contracted price (`offtaker_outstanding` is `0`). Otherwise (early payoff or waiver) the row
    renders a checkbox the trustee ticks manually; the tick is page-local and does not persist a

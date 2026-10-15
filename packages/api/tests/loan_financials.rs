@@ -133,6 +133,28 @@ fn not_minted_yield_clamps_at_zero() {
 }
 
 #[test]
+fn not_minted_yield_is_zero_when_minted_covers_interest_and_all_fee_legs() {
+    let mut repaid = repayment(50_000_000, 30_000_000, 20_000_000, 0);
+    repaid.oet_alloc = BigDecimal::from(5_000_000);
+    let snap = snapshot("Performing", 100_000_000, 0, 100_000_000, repaid);
+    let resp = build_response(&row(snap), &BigDecimal::from(105_000_000), &[], true, 0);
+    assert_eq!(resp.minted_yield, "105.000000");
+    assert_eq!(resp.not_minted_yield, "0.000000");
+}
+
+#[test]
+fn not_minted_yield_counts_oet_alloc_on_the_realized_side() {
+    let mut repaid = repayment(50_000_000, 30_000_000, 20_000_000, 0);
+    repaid.oet_alloc = BigDecimal::from(5_000_000);
+    let snap = snapshot("Performing", 100_000_000, 0, 100_000_000, repaid);
+    let resp = build_response(&row(snap), &BigDecimal::from(100_000_000), &[], true, 0);
+    assert_eq!(resp.interest, "50.000000");
+    assert_eq!(resp.fees, "50.000000");
+    // (50 + 50 + 5) − 100 = 5
+    assert_eq!(resp.not_minted_yield, "5.000000");
+}
+
+#[test]
 fn epoch_folds_rollover_then_amendment() {
     // Epoch 1: draw at 2026-01-01, matures 2026-04-01, 1_000 bps.
     let mut snap = snapshot(

@@ -106,6 +106,66 @@ pub const LOAN_ECONOMICS_EVENTS_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
 
+pub const LEGACY_YIELD_MINTED_SQL: &str =
+    "SELECT COALESCE(SUM((cl.params->>'s_plusd_amount')::numeric), 0)
+     FROM contract_logs cl
+     WHERE cl.chain_id = $1
+       AND cl.event_name = 'YieldMinted'
+       AND cl.tx_hash IN (
+           SELECT DISTINCT o.tx_hash
+           FROM yield_mint_outbox o
+           WHERE o.chain_id = $1
+             AND o.loan_id = $2
+             AND o.status = 'confirmed'
+             AND o.tx_hash IS NOT NULL
+             AND EXISTS (
+                 SELECT 1
+                 FROM contract_logs p
+                 WHERE p.chain_id = o.chain_id
+                   AND p.contract_address = $3
+                   AND p.event_name = 'PaymentRecorded'
+                   AND (p.params->>'loan_id')::numeric = o.loan_id
+                   AND (p.params->'event'->>'repayment_id')::numeric = o.repayment_id
+             )
+       )";
+
+pub const LIST_REPAYMENT_MINTS_SQL: &str = "SELECT (r.params->>'loan_id')::numeric AS loan_id,
+            (r.params->>'repayment_id')::numeric AS repayment_id,
+            r.block_timestamp,
+            COALESCE((r.params->>'interest_minted')::numeric, 0) AS interest_minted,
+            pr.fee_amount,
+            rv.reversed_at
+     FROM contract_logs r
+     JOIN LATERAL (
+         SELECT (p.params->'event'->>'mgmt_fee')::numeric
+              + (p.params->'event'->>'perf_fee')::numeric
+              + (p.params->'event'->>'oet_alloc')::numeric AS fee_amount
+         FROM contract_logs p
+         WHERE p.chain_id = r.chain_id
+           AND p.contract_address = $4
+           AND p.tx_hash = r.tx_hash
+           AND p.event_name = 'PaymentRecorded'
+           AND (p.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
+           AND (p.params->'event'->>'repayment_id')::numeric = (r.params->>'repayment_id')::numeric
+         ORDER BY p.log_index DESC
+         LIMIT 1
+     ) pr ON true
+     LEFT JOIN LATERAL (
+         SELECT MIN(v.block_timestamp) AS reversed_at
+         FROM contract_logs v
+         WHERE v.chain_id = r.chain_id
+           AND v.contract_address = r.contract_address
+           AND v.event_name = 'CashRepaymentReversed'
+           AND (v.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
+           AND (v.params->>'repayment_id')::numeric = (r.params->>'repayment_id')::numeric
+           AND v.block_timestamp <= $3
+     ) rv ON true
+     WHERE r.chain_id = $1
+       AND r.event_name = 'CashRepaid'
+       AND ($2::numeric IS NULL OR (r.params->>'loan_id')::numeric = $2)
+       AND r.block_timestamp <= $3
+     ORDER BY r.block_number, r.log_index";
+
 fn decode_snapshot_rows(
     chain_id: i64,
     rows: Vec<sqlx::postgres::PgRow>,
@@ -209,6 +269,16 @@ pub struct YieldMintRow {
     pub block_timestamp: i64,
     /// PLUSD minted to the sPLUSD vault in this event (6-decimal base units).
     pub s_plusd_amount: BigDecimal,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RepaymentMintRow {
+    pub loan_id: BigDecimal,
+    pub repayment_id: BigDecimal,
+    pub block_timestamp: i64,
+    pub interest_minted: BigDecimal,
+    pub fee_amount: Option<BigDecimal>,
+    pub reversed_at: Option<i64>,
 }
 
 /// One indexed Stellar `AssetTransfer` event row.
@@ -775,8 +845,8 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
-    /// Sum of `YieldMinted.s_plusd_amount` attributable to a single loan, in USDC
-    /// base units (6-decimal).
+    /// Raw sum of the legacy `YieldMinted.s_plusd_amount` attributable to a single
+    /// loan, in on-chain base units (not normalised; see `shared::minted_yield`).
     ///
     /// Per-loan attribution goes through `yield_mint_outbox`: each confirmed mint
     /// job carries the `tx_hash` of the mint transaction, and on Soroban a mint tx
@@ -785,39 +855,58 @@ impl ContractLogsRepo {
     /// `confirmed` outbox rows. `DISTINCT` guards a batch tx that would otherwise be
     /// double-counted if several outbox rows shared a `tx_hash`.
     ///
-    /// Returns `0` when the loan has no confirmed mints. Chain-scoped; the
-    /// yield-minter address is not needed because `(chain_id, loan_id)` already
-    /// pins the outbox rows.
-    pub async fn minted_yield_for_loan<'e, E>(
+    /// The outbox row only counts when the same `(chain_id, loan_id, repayment_id)`
+    /// has a `PaymentRecorded` row on `loan_registry_address`, so a redeployed
+    /// registry that reuses loan ids does not inherit the old registry's mints.
+    ///
+    /// Returns `0` when the loan has no confirmed mints.
+    pub async fn legacy_yield_minted_raw_for_loan<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
         loan_id: &BigDecimal,
+        loan_registry_address: &str,
     ) -> anyhow::Result<BigDecimal>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let minted: BigDecimal = sqlx::query_scalar(
-            "SELECT COALESCE(SUM((cl.params->>'s_plusd_amount')::numeric), 0)
-             FROM contract_logs cl
-             WHERE cl.chain_id = $1
-               AND cl.event_name = 'YieldMinted'
-               AND cl.tx_hash IN (
-                   SELECT DISTINCT o.tx_hash
-                   FROM yield_mint_outbox o
-                   WHERE o.chain_id = $1
-                     AND o.loan_id = $2
-                     AND o.status = 'confirmed'
-                     AND o.tx_hash IS NOT NULL
-               )",
-        )
-        .bind(chain_id)
-        .bind(loan_id)
-        .fetch_one(executor)
-        .await?;
-        // `contract_logs` stores the raw on-chain value; normalize to the canonical
-        // 6-decimal scale here (read time only — see #901).
-        Ok(normalize_usdc_amount(parse_chain_type(chain_id)?, &minted))
+        let minted: BigDecimal = sqlx::query_scalar(LEGACY_YIELD_MINTED_SQL)
+            .bind(chain_id)
+            .bind(loan_id)
+            .bind(loan_registry_address)
+            .fetch_one(executor)
+            .await?;
+        Ok(minted)
+    }
+
+    /// Minter `CashRepaid` rows (optionally for one loan) up to `to_unix`, each
+    /// carrying the fee leg (`mgmt_fee + perf_fee + oet_alloc`) of the matching
+    /// `PaymentRecorded` row and the earliest matching `CashRepaymentReversed`
+    /// timestamp. Raw on-chain scale.
+    /// Chain-scoped; the `PaymentRecorded` match (same `tx_hash`, `loan_id`,
+    /// `repayment_id`) is required and must come from `loan_registry_address`, so a
+    /// `CashRepaid` row with no such record is excluded entirely. A reversal must
+    /// come from the same Minter address as its `CashRepaid` row. See
+    /// `shared::minted_yield` for the netting arithmetic.
+    pub async fn list_repayment_mints<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        loan_id: Option<&BigDecimal>,
+        to_unix: i64,
+        loan_registry_address: &str,
+    ) -> anyhow::Result<Vec<RepaymentMintRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, RepaymentMintRow>(LIST_REPAYMENT_MINTS_SQL)
+            .bind(chain_id)
+            .bind(loan_id)
+            .bind(to_unix)
+            .bind(loan_registry_address)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows)
     }
 
     /// The `LoanRolledOver` and `EconomicsAmended` events for a single loan,
