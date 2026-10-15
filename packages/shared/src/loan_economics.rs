@@ -92,11 +92,8 @@ pub fn economics_rate_to_bps(new_rate: i64) -> u32 {
 }
 
 /// A structurally-invalid epoch found in a timeline about to be used for accrual math:
-/// its `maturity` does not lie strictly after its `start`. The canonical cause is a
-/// `LoanRolledOver`/`EconomicsAmended` event whose `new_maturity_timestamp` param is
-/// missing/malformed and resolves to `0` (defensively `COALESCE`d in
-/// `ContractLogsRepo::list_loan_economics_events`) — see issue #930. `ordinal` is the
-/// epoch's 1-based position in the timeline.
+/// its `maturity` does not lie strictly after its `start` (see issue #930). `ordinal` is
+/// the epoch's 1-based position in the timeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidEpoch {
     pub ordinal: usize,

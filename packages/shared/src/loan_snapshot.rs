@@ -49,11 +49,7 @@ pub struct LoanSnapshot {
     /// boundary to preserve existing yield-computation semantics. `current_maturity_timestamp`
     /// is stored for informational/future use.
     pub current_maturity_timestamp: i64,
-    /// Basis points. The contract reports this as a fraction of `ONE = 1_000_000`
-    /// (both arms share this accrual formula); each reader must divide the raw value
-    /// by 100 to reach basis points, as the Stellar reader already does for
-    /// `senior_interest_rate_bps`. The Stellar arm populates it (#1433); the EVM arm
-    /// still writes a placeholder until #1434 realigns its `sol!` block.
+    /// Basis points on both arms; the readers convert from the contract's `ONE = 1_000_000` scale.
     /// `#[serde(default)]`: pre-rework rows predate this field.
     #[serde(default)]
     pub current_rate: u32,

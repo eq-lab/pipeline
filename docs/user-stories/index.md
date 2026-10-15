@@ -276,3 +276,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1483 EVM indexer: index the remaining Minter cash events](https://github.com/eq-lab/pipeline/issues/1483) | [1483-evm-minter-cash-events.md](./epic-1478/1483-evm-minter-cash-events.md) | Initial |
 | [#1484 EVM indexer: index collateral-registry events](https://github.com/eq-lab/pipeline/issues/1484) | [1484-evm-collateral-registry-events.md](./epic-1478/1484-evm-collateral-registry-events.md) | Initial |
 | [#1485 EVM indexer: index DealTokenFactory events and DealToken Transfer](https://github.com/eq-lab/pipeline/issues/1485) | [1485-evm-deal-token-factory-events.md](./epic-1478/1485-evm-deal-token-factory-events.md) | Initial |
+
+---
+
+## Epic #1520 — Loan Book readers follow the indexed params shape
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1523 LoanBook readers: read loan-event fields from params.event (watchlist, economics epochs)](https://github.com/eq-lab/pipeline/issues/1523) | [1523-loanbook-readers-params-event.md](./epic-1520/1523-loanbook-readers-params-event.md) | Initial |

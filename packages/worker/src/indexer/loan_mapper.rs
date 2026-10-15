@@ -340,7 +340,7 @@ pub async fn maybe_fetch_refreshed_json(
 }
 
 // ---------------------------------------------------------------------------
-// LoanEventMapper — single mapper for all 9 emitted loan event types
+// LoanEventMapper — single mapper for all emitted loan event types
 // Generic over <A: LoanAddress, Id: LoanId> so the same struct handles both
 // EVM (Address, U256) and Stellar (StellarAddress, u32).
 // ---------------------------------------------------------------------------
@@ -350,8 +350,7 @@ pub async fn maybe_fetch_refreshed_json(
 ///   cumulativeRepaymentData@block) + IPFS fetch, then one `contract_logs` insert with
 ///   a fully populated `{loan_id, event, snapshot}` params JSONB.
 /// - Lifecycle events (`PaymentRecorded`, `LoanDefaulted`, `LoanClosed`,
-///   `LoanStatusUpdated`, `LoanCCRUpdated`, `LoanLocationUpdated`,
-///   `LoanRolledOver`, `EconomicsAmended`): fetch the most recent prior snapshot from
+///   `LoanStatusUpdated`, `LoanRolledOver`, `EconomicsAmended`): fetch the most recent prior snapshot from
 ///   `contract_logs`, carry forward IPFS + immutable fields, overwrite mutable fields
 ///   from block-pinned calls, then insert.
 ///
@@ -645,26 +644,11 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
             self.snapshot_for_lifecycle(conn, &loan_id).await?
         };
 
-        // Collect the parser-emitted event-specific fields (everything except loan_id)
-        // and move them under the "event" key.
-        let event_fields: serde_json::Map<String, serde_json::Value> = self
-            .event
-            .params
-            .as_object()
-            .map(|m| {
-                m.iter()
-                    .filter(|(k, _)| k.as_str() != "loan_id")
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        // Build the enriched params: {loan_id, event: {...}, snapshot: {...}}
-        let enriched_params = serde_json::json!({
-            "loan_id": loan_id.to_string(),
-            "event": event_fields,
-            "snapshot": snapshot,
-        });
+        let enriched_params = shared::loan_event_params::build_loan_event_params(
+            &loan_id,
+            &self.event.params,
+            &snapshot,
+        );
 
         // Write to contract_logs via the alloy-free EventRow path.
         let row = EventRow {

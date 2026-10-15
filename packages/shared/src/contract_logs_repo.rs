@@ -4,6 +4,7 @@ use bigdecimal::BigDecimal;
 use sqlx::PgPool;
 
 use crate::chains::{normalize_usdc_amount, parse_chain_type};
+use crate::loan_event_params::json_i64;
 use crate::loan_snapshot::LoanSnapshot;
 
 /// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
@@ -28,6 +29,27 @@ pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
     "LoanWrittenDown",
     "InterestAdjusted",
 ];
+
+pub const LATEST_WATCHLIST_ENTRY_SQL: &str = "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
+         (params->>'loan_id')::numeric AS loan_id,
+         block_timestamp
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND event_name = 'LoanStatusUpdated'
+       AND params->'event'->>'status' = 'WatchList'
+       AND block_timestamp <= $2
+     ORDER BY (params->>'loan_id')::numeric, block_timestamp DESC, log_index DESC";
+
+pub const LOAN_ECONOMICS_EVENTS_SQL: &str = "SELECT
+         event_name,
+         params->'event' AS event,
+         block_timestamp
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND event_name IN ('LoanRolledOver', 'EconomicsAmended')
+       AND (params->>'loan_id')::numeric = $2
+       AND block_timestamp <= $3
+     ORDER BY block_number, log_index";
 
 /// A loan-end event row fetched from `contract_logs`.
 ///
@@ -159,10 +181,9 @@ impl AssetTransferRow {
     }
 }
 
-/// One `LoanRolledOver` or `EconomicsAmended` event for a single loan, projected
-/// from the top-level `params` keys the indexer emits (`new_rate`,
-/// `new_maturity_timestamp`) — see the EVM/Stellar `parse_loan_rolled_over` /
-/// `parse_economics_amended` parsers, whose tests lock this shape.
+/// One `LoanRolledOver` or `EconomicsAmended` event for a single loan, decoded from
+/// `params.event` (`new_rate`, `new_maturity_timestamp`) of the mapper's
+/// `{loan_id, event, snapshot}` row shape.
 ///
 /// Used to reconstruct the loan's economics-epoch timeline: epoch 1 is seeded from
 /// the loan's origination data, then these events are folded on in chronological
@@ -171,10 +192,10 @@ impl AssetTransferRow {
 ///
 /// `new_rate` is the contract's fixed-point rate (scaled by `ONE = 1_000_000`, so
 /// `150_000` = 15%) — note this differs from the snapshot's `senior_interest_rate_bps`
-/// bps scale. `new_maturity_timestamp` is Unix seconds. Both are `->>` text-extracted
-/// then cast, so the EVM (JSON number) and Stellar (JSON string) encodings decode
-/// identically.
-#[derive(Debug, Clone, sqlx::FromRow)]
+/// bps scale. `new_maturity_timestamp` is Unix seconds. The EVM (JSON number) and
+/// Stellar (JSON string) encodings decode identically via `json_i64`; a missing or
+/// unparseable field decodes to `0`.
+#[derive(Debug, Clone)]
 pub struct EconomicsEventRow {
     /// `"LoanRolledOver"` or `"EconomicsAmended"`.
     pub event_name: String,
@@ -182,11 +203,29 @@ pub struct EconomicsEventRow {
     pub new_rate: i64,
     /// New maturity timestamp (Unix seconds).
     pub new_maturity_timestamp: i64,
-    /// The event's own on-chain block timestamp (Unix seconds) — lets a caller look
-    /// up the loan's on-chain snapshot immediately before this event fired (via
-    /// `ContractLogsRepo::get_loan_snapshot_as_of`), independent of this row's own
-    /// (possibly `COALESCE`-defaulted) `new_maturity_timestamp`/`new_rate` params.
+    /// The event's own on-chain block timestamp (Unix seconds).
     pub block_timestamp: i64,
+}
+
+impl EconomicsEventRow {
+    pub fn from_event_json(
+        event_name: String,
+        event: Option<&serde_json::Value>,
+        block_timestamp: i64,
+    ) -> Self {
+        let field = |key: &str| {
+            event
+                .and_then(|e| e.get(key))
+                .and_then(json_i64)
+                .unwrap_or(0)
+        };
+        Self {
+            event_name,
+            new_rate: field("new_rate"),
+            new_maturity_timestamp: field("new_maturity_timestamp"),
+            block_timestamp,
+        }
+    }
 }
 
 /// One `contract_logs` row projected for the Trustee **Audit Log** feed
@@ -513,9 +552,9 @@ impl ContractLogsRepo {
 
     /// Per-loan timestamp of the most recent `LoanStatusUpdated` transition into
     /// `WatchList`, at or before `to_unix`. Absent for a loan with no such transition.
-    /// Backs the Loan Book `days_on_watchlist` field — `LoanStatusUpdated.params` is
-    /// FLAT (`params->>'status'`), unlike other event types' nested
-    /// `params->'snapshot'->>'status'` (see `latest_status_by_loans`).
+    /// Backs the Loan Book `days_on_watchlist` field. The status is the one the event
+    /// carried, `params->'event'->>'status'`, not the snapshot's status (see
+    /// `latest_status_by_loans`).
     pub async fn latest_watchlist_entry_by_chain<'e, E>(
         &self,
         executor: E,
@@ -525,21 +564,11 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let rows = sqlx::query_as::<_, (bigdecimal::BigDecimal, i64)>(
-            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
-                 (params->>'loan_id')::numeric AS loan_id,
-                 block_timestamp
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = 'LoanStatusUpdated'
-               AND params->>'status' = 'WatchList'
-               AND block_timestamp <= $2
-             ORDER BY (params->>'loan_id')::numeric, block_timestamp DESC, log_index DESC",
-        )
-        .bind(chain_id)
-        .bind(to_unix)
-        .fetch_all(executor)
-        .await?;
+        let rows = sqlx::query_as::<_, (bigdecimal::BigDecimal, i64)>(LATEST_WATCHLIST_ENTRY_SQL)
+            .bind(chain_id)
+            .bind(to_unix)
+            .fetch_all(executor)
+            .await?;
         Ok(rows)
     }
 
@@ -766,10 +795,8 @@ impl ContractLogsRepo {
     ///
     /// Callers fold these onto the loan's origination data to rebuild the
     /// economics-epoch timeline (see [`EconomicsEventRow`]). `new_rate` /
-    /// `new_maturity_timestamp` are read from the top-level `params` keys the
-    /// indexer emits — the parser tests in `packages/worker/tests/` lock that
-    /// shape. `COALESCE(…, 0)` guards a malformed row missing either field so a
-    /// NULL cannot fail-decode the whole query.
+    /// `new_maturity_timestamp` are read from `params.event`, the nested shape the
+    /// mapper writes; the row mapping lives in [`EconomicsEventRow::from_event_json`].
     /// `to_unix` bounds the events to `block_timestamp <= to_unix` so a caller
     /// reconstructing the epoch timeline as of a past instant (e.g. a backdated
     /// waterfall repayment) doesn't see a rollover/amendment that happened later.
@@ -783,26 +810,23 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let rows = sqlx::query_as::<_, EconomicsEventRow>(
-            "SELECT
-                 event_name,
-                 COALESCE((params->>'new_rate')::numeric, 0)::bigint AS new_rate,
-                 COALESCE((params->>'new_maturity_timestamp')::numeric, 0)::bigint
-                     AS new_maturity_timestamp,
-                 block_timestamp
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name IN ('LoanRolledOver', 'EconomicsAmended')
-               AND (params->>'loan_id')::numeric = $2
-               AND block_timestamp <= $3
-             ORDER BY block_number, log_index",
-        )
-        .bind(chain_id)
-        .bind(loan_id)
-        .bind(to_unix)
-        .fetch_all(executor)
-        .await?;
-        Ok(rows)
+        use sqlx::Row;
+        let rows = sqlx::query(LOAN_ECONOMICS_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(loan_id)
+            .bind(to_unix)
+            .fetch_all(executor)
+            .await?;
+        rows.iter()
+            .map(|row| {
+                let event: Option<serde_json::Value> = row.try_get("event")?;
+                Ok(EconomicsEventRow::from_event_json(
+                    row.try_get("event_name")?,
+                    event.as_ref(),
+                    row.try_get("block_timestamp")?,
+                ))
+            })
+            .collect()
     }
 
     /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
