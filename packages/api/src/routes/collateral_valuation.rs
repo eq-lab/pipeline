@@ -19,7 +19,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bigdecimal::{BigDecimal, RoundingMode};
+use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
@@ -342,8 +342,9 @@ async fn get_collateral_valuation(
         .collect();
 
     // Outstanding senior principal (USD) from the loan snapshot, for the CCR
-    // denominator. `None` when the loan has not been indexed.
-    let outstanding_senior = loan_snapshot_senior_usd(&state, chain_id, &loan_id).await?;
+    // denominator. `snapshot_found` is false only when the loan has not been indexed.
+    let (snapshot_found, outstanding_senior) =
+        loan_snapshot_senior_usd(&state, chain_id, &loan_id).await?;
 
     build_response(
         &anchor,
@@ -351,18 +352,20 @@ async fn get_collateral_valuation(
         offtake.as_ref(),
         &prices,
         outstanding_senior.as_ref(),
+        snapshot_found,
     )
     .map(Json)
 }
 
-/// Outstanding senior principal in USD = `(original_senior_tranche -
-/// senior_principal_repaid) / 1e6`, read from the latest loan snapshot. `None`
-/// when the loan has no snapshot (never indexed).
+/// Outstanding senior principal in USD = `(disbursed - repaid -
+/// written_down) / 1e6`, read from the latest loan snapshot. Returns
+/// `(snapshot_found, usd)`: `usd` is `None` when nothing is outstanding or the loan
+/// has no snapshot; `snapshot_found` distinguishes the two.
 async fn loan_snapshot_senior_usd(
     state: &AppState,
     chain_id: i64,
     loan_id: &BigDecimal,
-) -> Result<Option<BigDecimal>, ApiError> {
+) -> Result<(bool, Option<BigDecimal>), ApiError> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -375,12 +378,20 @@ async fn loan_snapshot_senior_usd(
         .await?;
 
     let Some(row) = snapshots.into_iter().find(|r| &r.loan_id == loan_id) else {
-        return Ok(None);
+        return Ok((false, None));
     };
 
-    let outstanding_micro =
-        &row.snapshot.original_senior_tranche - &row.snapshot.repayment.senior_principal_repaid;
-    Ok(Some(outstanding_micro / BigDecimal::from(USDC_SCALE)))
+    Ok((
+        true,
+        outstanding_senior_usd(row.snapshot.outstanding_senior_principal()),
+    ))
+}
+
+pub fn outstanding_senior_usd(outstanding_micro: BigDecimal) -> Option<BigDecimal> {
+    if outstanding_micro.is_zero() {
+        return None;
+    }
+    Some(outstanding_micro / BigDecimal::from(USDC_SCALE))
 }
 
 // ── Submission handlers (assay / offtake) ───────────────────────────────────────
@@ -769,12 +780,14 @@ fn usd(v: &BigDecimal) -> String {
         .to_plain_string()
 }
 
-fn build_response(
+#[allow(clippy::implicit_hasher)]
+pub fn build_response(
     anchor: &CollateralValuationRow,
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
     prices: &HashMap<String, BigDecimal>,
     outstanding_senior: Option<&BigDecimal>,
+    snapshot_found: bool,
 ) -> Result<CollateralValuationResponse, ApiError> {
     let is_concentrate = anchor.valuation_mode == ValuationMode::MetalConcentrate;
 
@@ -846,8 +859,9 @@ fn build_response(
                 .to_plain_string(),
         })
     } else {
-        // Collateral computed but no snapshot ⇒ CCR unavailable; flag the reason.
-        if collateral_value.is_some() && outstanding_senior.is_none() {
+        // Collateral computed but the loan has no snapshot ⇒ flag it. Zero outstanding
+        // (undrawn / fully repaid) leaves CCR undefined without a missing input.
+        if collateral_value.is_some() && !snapshot_found {
             missing.push("loan_snapshot".to_owned());
         }
         None

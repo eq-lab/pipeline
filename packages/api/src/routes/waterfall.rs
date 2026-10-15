@@ -15,8 +15,8 @@
 //!    piecewise sum across the loan's economics-epoch timeline (`shared::loan_economics`) —
 //!    a rollover or economics amendment changes the rate/maturity from that point on, and
 //!    accrual stops at each epoch's own maturity if it isn't rolled over.
-//!    `senior_deployed = originalSeniorTranche − senior_principal_repaid` (the outstanding
-//!    balance, declining as principal is repaid) — matching the on-chain
+//!    `senior_deployed = disbursed − repaid − written_down` (the contract's outstanding
+//!    balance, declining as principal is repaid or written down) — matching the on-chain
 //!    `calculate_max_interest`'s declining-balance model; see the `senior_deployed`
 //!    binding below for the approximation this implies for a loan repaid across
 //!    multiple rollovers instead of one bullet payment. Each rate compounds via real
@@ -27,7 +27,7 @@
 //!    endpoint's figures no longer match either of those by construction; see
 //!    `compound_growth`'s doc comment for why and its precision tradeoff. Fees compound the
 //!    same way, over the same piecewise-capped tenor, at their single (non-epoch) rate:
-//!    - `senior_gross_interest = Σ epochs: compound_growth(senior_deployed, epoch.rate, epoch.capped_seconds)`
+//!    - `senior_gross_interest = max(0, Σ epochs: compound_growth(senior_deployed, epoch.rate, epoch.capped_seconds) + interest_adjustment)` (signed; a waiver is negative)
 //!    - `management_fee_cum    = compound_growth(senior_deployed, mgmt_rate, capped_seconds)`
 //!    - `performance_fee_cum   = (senior_gross_interest − management_fee_cum) × perf_rate`
 //!    - `senior_coupon_net_cum = senior_gross_interest − management_fee_cum − performance_fee_cum`
@@ -81,8 +81,8 @@
 //!
 //!    `senior_principal_returned = min(outstanding_senior_principal, remaining)` is
 //!    second to last, where `remaining` is `amount` less whatever higher-priority tiers
-//!    already consumed — this cap is what keeps cumulative `senior_principal_repaid` from
-//!    ever exceeding `original_senior_tranche`, the same ceiling principle as stage 3,
+//!    already consumed — this cap is what keeps cumulative `repaid + written_down` from
+//!    ever exceeding `disbursed`, the same ceiling principle as stage 3,
 //!    just against a different genesis field. `equity_distributed` is last and uncapped
 //!    (per `docs/product-specs/loans.md`, "The Equity tranche has no fixed rate and
 //!    receives the residual") — it simply absorbs whatever remains, which stage 3's
@@ -121,6 +121,8 @@ use crate::AppState;
 
 /// Basis-points denominator (`10_000` bps = 100%).
 const BPS_DENOM: i64 = 10_000;
+
+pub const ASSUMED_MAX_FEE_BPS: i64 = 5_000;
 
 /// How the loan's offtaker price behaves as a repayment ceiling (issue #963).
 ///
@@ -194,9 +196,9 @@ pub struct WaterfallResponse {
     /// bucket above, last in the cascade and uncapped (see module docs stage 4).
     /// → `recordPayment.equityAmount`.
     pub equity_distributed: String,
-    /// `true` when this payment's `senior_principal_returned` brings cumulative
-    /// `senior_principal_repaid` to (or past) `original_senior_tranche` — the senior debt
-    /// is fully retired by this payment.
+    /// `true` when the full planned senior tranche was disbursed and this payment's
+    /// `senior_principal_returned` brings outstanding senior principal
+    /// (`disbursed − repaid − written_down`) to zero — the senior debt is fully retired.
     pub senior_principal_fully_repaid: bool,
     /// `true` when this payment's `amount` brings cumulative `offtaker_received` to (or
     /// past — never past, per stage 3's rejection) `original_offtaker_price` — the
@@ -426,8 +428,8 @@ pub fn compute_waterfall(
     })?;
     let capped_seconds = piecewise_capped_seconds(&epochs, as_of);
 
-    // Accrual base is the outstanding senior principal (original tranche less what's
-    // already been repaid) — matching the on-chain `calculate_max_interest`'s
+    // Accrual base is the outstanding senior principal (disbursed less what's
+    // been repaid or written down) — matching the on-chain `calculate_max_interest`'s
     // declining-balance model, not a fixed original-tranche base held for the loan's
     // whole life. Applies to interest, management fee, and OET alike, since all three
     // compound off the same `senior_deployed` variable.
@@ -440,16 +442,16 @@ pub fn compute_waterfall(
     // tranche or already near-final for every historical epoch); would understate
     // older epochs' interest for a loan whose principal was repaid incrementally
     // across multiple rollovers, a pattern this product doesn't currently exercise.
-    let outstanding_senior = &s.original_senior_tranche - &s.repayment.senior_principal_repaid;
-    // Never negative — the on-chain repaid counter can't exceed the tranche.
-    let outstanding = outstanding_senior.max(BigDecimal::zero());
+    let outstanding = s.outstanding_senior_principal();
     let senior_deployed = &outstanding;
 
     // Cumulative targets, origination → `as_of` (stage 1 — see module docs). Gross
     // interest is the piecewise sum across epochs (rate-change-aware, each epoch
     // compounding independently — see `piecewise_interest`); fees compound the same way
     // over the same piecewise-capped tenor at their single (non-epoch) rate.
-    let senior_gross_interest_cum = trunc(&piecewise_interest(&epochs, senior_deployed, as_of));
+    let senior_gross_interest_cum = (trunc(&piecewise_interest(&epochs, senior_deployed, as_of))
+        + &s.interest_adjustment)
+        .max(BigDecimal::zero());
     let management_fee_cum = trunc(&compound_growth(
         senior_deployed,
         fees.mgmt_fee_rate_bps as i64,
@@ -515,10 +517,13 @@ pub fn compute_waterfall(
             trunc(&(&interest_payment * &target_performance_fee / &target_total_interest)),
         )
     };
+    let (management_fee, performance_fee) =
+        cap_interest_fees(&senior_coupon_net, management_fee, performance_fee);
     remaining -= &senior_coupon_net;
     remaining -= &management_fee;
     remaining -= &performance_fee;
-    let oet_allocation = trunc(&target_oet_allocation.min(remaining.clone()));
+    let oet_room = oet_room_under_cap(&senior_coupon_net, &management_fee, &performance_fee);
+    let oet_allocation = trunc(&target_oet_allocation.min(remaining.clone()).min(oet_room));
     remaining -= &oet_allocation;
     // Truncated to a whole base unit like every other component, so a fractional
     // `amount` can't leak sub-base-unit precision into the output.
@@ -528,8 +533,8 @@ pub fn compute_waterfall(
     // 3's rejection already bounds this from absorbing an implausible, unvalidated figure.
     let equity_distributed = trunc(&remaining);
 
-    let senior_principal_fully_repaid =
-        &outstanding - &senior_principal_returned <= BigDecimal::zero();
+    let senior_principal_fully_repaid = s.disbursed >= s.original_senior_tranche
+        && &outstanding - &senior_principal_returned <= BigDecimal::zero();
     let offtaker_fully_received = &outstanding_offtaker - amount <= BigDecimal::zero();
 
     Ok(WaterfallBreakdown {
@@ -543,6 +548,40 @@ pub fn compute_waterfall(
         offtaker_fully_received,
         offtaker_overpaid,
     })
+}
+
+fn cap_interest_fees(
+    coupon: &BigDecimal,
+    management_fee: BigDecimal,
+    performance_fee: BigDecimal,
+) -> (BigDecimal, BigDecimal) {
+    if ASSUMED_MAX_FEE_BPS >= BPS_DENOM {
+        return (management_fee, performance_fee);
+    }
+    let fees = &management_fee + &performance_fee;
+    let limit = trunc(
+        &(coupon * BigDecimal::from(ASSUMED_MAX_FEE_BPS)
+            / BigDecimal::from(BPS_DENOM - ASSUMED_MAX_FEE_BPS)),
+    );
+    if fees <= limit {
+        return (management_fee, performance_fee);
+    }
+    (
+        trunc(&(&limit * &management_fee / &fees)),
+        trunc(&(&limit * &performance_fee / &fees)),
+    )
+}
+
+fn oet_room_under_cap(
+    coupon: &BigDecimal,
+    management_fee: &BigDecimal,
+    performance_fee: &BigDecimal,
+) -> BigDecimal {
+    let fees = management_fee + performance_fee;
+    let cap = trunc(
+        &((coupon + &fees) * BigDecimal::from(ASSUMED_MAX_FEE_BPS) / BigDecimal::from(BPS_DENOM)),
+    );
+    (cap - fees).max(BigDecimal::zero())
 }
 
 /// Map the computed split to the response DTO. Pure and unit-testable.

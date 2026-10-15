@@ -115,6 +115,6 @@ Access to the record follows the same authority as the on-chain loan. The Team a
 
 ## How it feeds CCR
 
-CCR = `collateral_value / outstanding_senior_principal`, in basis points, where 14000 means 140%. Outstanding senior principal is the genesis senior tranche less senior principal repaid, mirrored from LoanRegistry.
+CCR = `collateral_value / outstanding_senior_principal`, in basis points, where 14000 means 140%. Outstanding senior principal is `disbursed − repaid − writtenDown` (floored at zero), mirrored from LoanRegistry's outstanding.
 
 The relayer recomputes CCR on every price tick and asks the Trustee to write `ccr` on-chain only when a monitoring threshold is crossed. The thresholds (watchlist at 130%, maintenance margin call at 120%, margin call at 110%), the notification recipients, and the batched on-chain write are defined in [price-feed.md](./price-feed.md). CCR is informational. It does not gate mints and does not move sPLUSD share price. A hard on-chain CCR floor would require a contract change and is out of scope for the first deal.

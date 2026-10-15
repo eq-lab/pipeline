@@ -1,4 +1,4 @@
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use serde::{Deserialize, Serialize};
 
 /// The "snapshot" portion of `contract_logs.params` for any loan-related event.
@@ -79,6 +79,10 @@ pub struct LoanSnapshot {
 }
 
 impl LoanSnapshot {
+    pub fn outstanding_senior_principal(&self) -> BigDecimal {
+        (&self.disbursed - &self.repaid - &self.written_down).max(BigDecimal::zero())
+    }
+
     /// Normalize every USDC-denominated field for **display/API use only** — never
     /// call this before persisting a row to `contract_logs` (the worker's decode and
     /// carry-forward paths must keep the raw on-chain value). See
