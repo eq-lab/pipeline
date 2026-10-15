@@ -1,10 +1,19 @@
 use std::str::FromStr;
 
+use std::sync::Arc;
+
+use axum::extract::{FromRequestParts, Query};
+use axum::http::request::Parts;
+use axum::http::Uri;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::openapi::path::{Parameter, ParameterBuilder, ParameterIn};
+use utoipa::openapi::schema::{KnownFormat, ObjectBuilder, SchemaFormat, SchemaType, Type};
+use utoipa::openapi::Required;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::{Claims, TRUSTEE_ROLE};
+use crate::config::ConfiguredChain;
 use crate::error::ApiError;
 use crate::AppState;
 
@@ -70,4 +79,126 @@ pub(crate) async fn trustee_indexed_loan_guard(
     }
 
     Ok((chain_id, loan_id))
+}
+
+#[derive(Deserialize)]
+struct RawChainParam {
+    chain_id: Option<String>,
+}
+
+/// Optional `chain_id` query parameter parsed from the URI; `None` means all configured chains.
+pub fn parse_chain_filter(
+    uri: &Uri,
+    chains: &[ConfiguredChain],
+) -> Result<Option<ConfiguredChain>, ApiError> {
+    let Query(raw) = Query::<RawChainParam>::try_from_uri(uri).map_err(|e| {
+        let detail = if e.body_text().contains("duplicate field") {
+            "must appear at most once"
+        } else {
+            "malformed query string"
+        };
+        ApiError::BadRequest(format!("invalid chain_id: {detail}"))
+    })?;
+    let Some(raw) = raw.chain_id else {
+        return Ok(None);
+    };
+    let id = i64::from_str(raw.trim()).map_err(|_| {
+        let shown: String = raw.trim().chars().take(32).collect();
+        ApiError::BadRequest(format!("invalid chain_id: {shown}"))
+    })?;
+    chains
+        .iter()
+        .find(|c| c.chain_id == id)
+        .copied()
+        .map(Some)
+        .ok_or_else(|| {
+            let configured = chains
+                .iter()
+                .map(|c| c.chain_id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            ApiError::BadRequest(format!("unknown chain_id: {id} (configured: {configured})"))
+        })
+}
+
+/// Required `chain_id` query parameter parsed from the URI.
+pub fn parse_required_chain(
+    uri: &Uri,
+    chains: &[ConfiguredChain],
+) -> Result<ConfiguredChain, ApiError> {
+    parse_chain_filter(uri, chains)?
+        .ok_or_else(|| ApiError::BadRequest("chain_id is required".into()))
+}
+
+/// Optional `chain_id` filter validated against `CHAINS`; `None` means all configured chains.
+pub struct ChainFilter(pub Option<ConfiguredChain>);
+
+/// Required `chain_id` validated against `CHAINS`.
+pub struct RequiredChain(pub ConfiguredChain);
+
+impl ChainFilter {
+    pub fn chain_id(&self) -> Option<i64> {
+        self.0.map(|c| c.chain_id)
+    }
+
+    pub fn resolve<'a>(&'a self, all: &'a [ConfiguredChain]) -> &'a [ConfiguredChain] {
+        match &self.0 {
+            Some(c) => std::slice::from_ref(c),
+            None => all,
+        }
+    }
+}
+
+impl FromRequestParts<Arc<AppState>> for ChainFilter {
+    type Rejection = ApiError;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> impl std::future::Future<Output = Result<Self, ApiError>> + Send {
+        std::future::ready(parse_chain_filter(&parts.uri, &state.chains).map(Self))
+    }
+}
+
+impl FromRequestParts<Arc<AppState>> for RequiredChain {
+    type Rejection = ApiError;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> impl std::future::Future<Output = Result<Self, ApiError>> + Send {
+        std::future::ready(parse_required_chain(&parts.uri, &state.chains).map(Self))
+    }
+}
+
+fn chain_id_param(required: Required, description: &str) -> Vec<Parameter> {
+    vec![ParameterBuilder::new()
+        .name("chain_id")
+        .parameter_in(ParameterIn::Query)
+        .required(required)
+        .description(Some(description))
+        .schema(Some(
+            ObjectBuilder::new()
+                .schema_type(SchemaType::Type(Type::Integer))
+                .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int64))),
+        ))
+        .build()]
+}
+
+impl IntoParams for ChainFilter {
+    fn into_params(_: impl Fn() -> Option<ParameterIn>) -> Vec<Parameter> {
+        chain_id_param(
+            Required::False,
+            "Chain ID to filter by. Optional — omit for all configured chains (CHAINS). An id not in CHAINS → 400.",
+        )
+    }
+}
+
+impl IntoParams for RequiredChain {
+    fn into_params(_: impl Fn() -> Option<ParameterIn>) -> Vec<Parameter> {
+        chain_id_param(
+            Required::True,
+            "Chain ID the loan lives on. Required — loan_id is only unique within a chain. Missing, malformed, or not in CHAINS → 400.",
+        )
+    }
 }

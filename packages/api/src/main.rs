@@ -141,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
         position_repo,
         contract_logs_repo,
         default_chain_id: chains_config.default_chain_id,
+        chains: chains_config.chains,
         sumsub_client,
         sumsub_settings,
         voucher_signers,

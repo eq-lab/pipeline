@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use alloy::signers::local::PrivateKeySigner;
 
+use pipeline_api::config::ConfiguredChain;
 use pipeline_api::routes::vouchers::{
     normalise_wallet, resolve_evm_voucher_signing, resolve_stellar_voucher_signing, VoucherError,
 };
@@ -57,6 +58,10 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         position_repo: PositionRepo::new(pool.clone()),
         contract_logs_repo: ContractLogsRepo::new(pool.clone()),
         default_chain_id: chain_id,
+        chains: vec![ConfiguredChain {
+            chain_id,
+            kind: ChainKind::Evm,
+        }],
         sumsub_client: None,
         sumsub_settings: None,
         voucher_signers,
