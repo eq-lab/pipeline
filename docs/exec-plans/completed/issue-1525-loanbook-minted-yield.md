@@ -228,4 +228,12 @@ confirm `not_minted_yield` drops to ~0.
 
 ## Addendum (human, 2026-10-15, integration review)
 
-OET counts on both sides of `not_minted_yield`. `minted_yield` already includes the `oet_alloc` fee leg, while `realized_gross` was `senior_interest + mgmt_fee + perf_fee`, so the difference compared unlike sets. `realized_gross` in `packages/api/src/routes/loan_financials.rs` is now `senior_interest + mgmt_fee + perf_fee + oet_alloc`. The only response field affected is `not_minted_yield`; `interest` and `fees` keep excluding `oet_alloc`. The module doc, `docs/references/backend.md` "Minted yield" and the tech-debt entry were updated. Registry-address scoping of minted yield is decided separately and follows once #1526 is merged.
+OET counts on both sides of `not_minted_yield`. `minted_yield` already includes the `oet_alloc` fee leg, while `realized_gross` was `senior_interest + mgmt_fee + perf_fee`, so the difference compared unlike sets. `realized_gross` in `packages/api/src/routes/loan_financials.rs` is now `senior_interest + mgmt_fee + perf_fee + oet_alloc`. The only response field affected is `not_minted_yield`; `interest` and `fees` keep excluding `oet_alloc`. The module doc, `docs/references/backend.md` "Minted yield" and the tech-debt entry were updated. Registry-address scoping of minted yield is the next addendum.
+
+## Addendum (human, 2026-10-15): minted yield scoped to the configured LoanRegistry
+
+After a LoanRegistry redeploy on the same chain loan ids restart, so loan N on the new registry must not pick up loan N's yield from an old registry. `routes::common::loan_registry_address` is passed to both minted-yield queries (supersedes the earlier "stays chain-scoped" note):
+
+- `list_repayment_mints` takes the registry address (bound last, `$4`). The `PaymentRecorded` lateral join is now an inner join and requires `p.contract_address = <registry>` (plus the existing `chain_id`, `tx_hash`, `loan_id`, `repayment_id` match). A `CashRepaid` row with no `PaymentRecorded` on the configured registry is excluded entirely, interest included. The "CashRepaid without PaymentRecorded" warning and `repayments_without_payment_record` are removed: such rows are now filtered out in SQL, so the count would always be 0.
+- `legacy_yield_minted_raw_for_loan` takes the registry address (`$3`). A confirmed `yield_mint_outbox` row (keyed by `chain_id`, `yield_minter_address`, `loan_id`, `repayment_id`; it stores no registry) counts only when a `PaymentRecorded` row on the configured registry exists for the same `(chain_id, loan_id, repayment_id)`.
+- Tests are pure SQL-text assertions in `packages/shared/tests/contract_logs_repo.rs`.

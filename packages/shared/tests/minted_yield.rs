@@ -2,9 +2,7 @@
 use bigdecimal::BigDecimal;
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::RepaymentMintRow;
-use shared::minted_yield::{
-    loan_minted_yield, net_repayment_minted_raw, repayments_without_payment_record,
-};
+use shared::minted_yield::{loan_minted_yield, net_repayment_minted_raw};
 
 fn bd(n: i64) -> BigDecimal {
     BigDecimal::from(n)
@@ -87,14 +85,13 @@ fn repayment_after_as_of_is_excluded() {
 }
 
 #[test]
-fn missing_payment_record_counts_zero_fees_and_is_flagged() {
+fn null_fee_amount_counts_zero_fees() {
     let rows = [
         row(10, 100, None, None),
         row(11, 100, Some(0), None),
         row(12, 100, None, Some(20)),
     ];
     assert_eq!(net_repayment_minted_raw(&rows, 11), bd(200));
-    assert_eq!(repayments_without_payment_record(&rows), 1);
 }
 
 #[test]

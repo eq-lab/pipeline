@@ -167,17 +167,20 @@ async fn get_loan_financials(
         })?;
 
     let (legacy_minted, repayment_mints) = tokio::try_join!(
-        state
-            .contract_logs_repo
-            .legacy_yield_minted_raw_for_loan(&state.pool, chain_id, &loan_id),
-        state
-            .contract_logs_repo
-            .list_repayment_mints(&state.pool, chain_id, Some(&loan_id), now),
+        state.contract_logs_repo.legacy_yield_minted_raw_for_loan(
+            &state.pool,
+            chain_id,
+            &loan_id,
+            registry
+        ),
+        state.contract_logs_repo.list_repayment_mints(
+            &state.pool,
+            chain_id,
+            Some(&loan_id),
+            now,
+            registry
+        ),
     )?;
-    let unmatched = shared::minted_yield::repayments_without_payment_record(&repayment_mints);
-    if unmatched > 0 {
-        tracing::warn!(chain_id, %loan_id, unmatched, "CashRepaid rows without a matching PaymentRecorded fee leg");
-    }
     let minted_yield = shared::minted_yield::loan_minted_yield(
         shared::chains::parse_chain_type(chain_id)?,
         &legacy_minted,

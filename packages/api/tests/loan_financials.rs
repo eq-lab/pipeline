@@ -137,14 +137,7 @@ fn not_minted_yield_is_zero_when_minted_covers_interest_and_all_fee_legs() {
     let mut repaid = repayment(50_000_000, 30_000_000, 20_000_000, 0);
     repaid.oet_alloc = BigDecimal::from(5_000_000);
     let snap = snapshot("Performing", 100_000_000, 0, 100_000_000, repaid);
-    let resp = build_response(
-        &row(snap),
-        &BigDecimal::from(105_000_000),
-        &[],
-        true,
-        0,
-        None,
-    );
+    let resp = build_response(&row(snap), &BigDecimal::from(105_000_000), &[], true, 0);
     assert_eq!(resp.minted_yield, "105.000000");
     assert_eq!(resp.not_minted_yield, "0.000000");
 }
@@ -154,14 +147,7 @@ fn not_minted_yield_counts_oet_alloc_on_the_realized_side() {
     let mut repaid = repayment(50_000_000, 30_000_000, 20_000_000, 0);
     repaid.oet_alloc = BigDecimal::from(5_000_000);
     let snap = snapshot("Performing", 100_000_000, 0, 100_000_000, repaid);
-    let resp = build_response(
-        &row(snap),
-        &BigDecimal::from(100_000_000),
-        &[],
-        true,
-        0,
-        None,
-    );
+    let resp = build_response(&row(snap), &BigDecimal::from(100_000_000), &[], true, 0);
     assert_eq!(resp.interest, "50.000000");
     assert_eq!(resp.fees, "50.000000");
     // (50 + 50 + 5) − 100 = 5

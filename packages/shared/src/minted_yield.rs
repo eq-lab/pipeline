@@ -15,12 +15,6 @@ pub fn net_repayment_minted_raw(rows: &[RepaymentMintRow], as_of: i64) -> BigDec
         .sum()
 }
 
-pub fn repayments_without_payment_record(rows: &[RepaymentMintRow]) -> usize {
-    rows.iter()
-        .filter(|r| r.reversed_at.is_none() && r.fee_amount.is_none())
-        .count()
-}
-
 pub fn loan_minted_yield(
     kind: ChainKind,
     legacy_raw: &BigDecimal,

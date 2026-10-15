@@ -344,17 +344,21 @@ by 10, rounding down):
   parses `YieldMinted` any more);
 - for every Minter `CashRepaid` row of the loan, `interest_minted` (counted for carved-out
   loans too, even when it is minted to the Pocket); and
-- the fee leg, `mgmt_fee + perf_fee + oet_alloc` from `params->'event'` of the LoanRegistry
-  `PaymentRecorded` row of the same repayment (matched on `chain_id`, `tx_hash`, `loan_id`,
-  `repayment_id`; decimal strings on both chain arms). USDC and PLUSD share one scale per chain
+- the fee leg, `mgmt_fee + perf_fee + oet_alloc` from `params->'event'` of the
+  `PaymentRecorded` row of the same repayment on the configured LoanRegistry (matched on
+  `chain_id`, `contract_address`, `tx_hash`, `loan_id`, `repayment_id`; decimal strings on both
+  chain arms). USDC and PLUSD share one scale per chain
   (6 dp EVM, 7 dp Stellar), so the legs sum raw. `CashRepaid.fee_shares` is an sPLUSD share
   count and is never summed.
 
 A repayment with a `CashRepaymentReversed` row (same Minter address, same
-`(loan_id, repayment_id)`) is excluded entirely, interest and fees. A live `CashRepaid` row with
-no matching `PaymentRecorded` contributes 0 to the fee leg and the route logs a warning with the
-count.
-Minter rows are chain-scoped (no configured-address filter). `not_minted_yield` =
+`(loan_id, repayment_id)`) is excluded entirely, interest and fees. A `CashRepaid` row with no
+matching `PaymentRecorded` on the configured LoanRegistry is excluded entirely too (the match is
+required), so a registry redeployed on the same chain with restarted loan ids does not pick up
+the old registry's yield. The legacy `YieldMinted` total counts a confirmed `yield_mint_outbox`
+row only when the same `(chain_id, loan_id, repayment_id)` has a `PaymentRecorded` row on the
+configured LoanRegistry (the outbox stores no registry). Minter rows are otherwise chain-scoped
+(no configured Minter address filter). `not_minted_yield` =
 `(senior_interest + mgmt_fee + perf_fee + oet_alloc) − minted_yield` clamped at 0, so the OET
 leg counts on both sides; for minter-era repayments it is structurally about 0. The `interest` and
 `fees` fields are unchanged (they exclude `oet_alloc`). The query and arithmetic live in
