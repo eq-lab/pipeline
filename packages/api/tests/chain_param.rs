@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1528-loanbook-chain-param.md
+// spec: docs/exec-plans/completed/issue-1528-loanbook-chain-param.md
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use pipeline_api::config::ConfiguredChain;
