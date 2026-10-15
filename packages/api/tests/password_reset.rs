@@ -172,7 +172,11 @@ fn a_base_url_with_a_path_prefix_is_kept() {
 
 #[test]
 fn a_base_url_that_is_not_http_is_rejected() {
-    for raw in ["app.pipeline.one", "ftp://app.pipeline.one", "javascript:alert(1)"] {
+    for raw in [
+        "app.pipeline.one",
+        "ftp://app.pipeline.one",
+        "javascript:alert(1)",
+    ] {
         assert!(
             config(&[("APP_BASE_URL", raw)], false).is_err(),
             "{raw} accepted"
@@ -182,7 +186,10 @@ fn a_base_url_that_is_not_http_is_rejected() {
 
 #[test]
 fn a_base_url_carrying_a_query_or_fragment_is_rejected() {
-    for raw in ["https://app.pipeline.one/?x=1", "https://app.pipeline.one/#x"] {
+    for raw in [
+        "https://app.pipeline.one/?x=1",
+        "https://app.pipeline.one/#x",
+    ] {
         assert!(
             config(&[("APP_BASE_URL", raw)], false).is_err(),
             "{raw} accepted"

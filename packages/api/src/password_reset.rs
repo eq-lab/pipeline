@@ -67,12 +67,12 @@ impl PasswordResetConfig {
 
         let ttl_minutes = match get("PASSWORD_RESET_TTL_MINUTES").filter(|v| !v.trim().is_empty()) {
             None => DEFAULT_PASSWORD_RESET_TTL_MINUTES,
-            Some(raw) => raw
-                .trim()
-                .parse::<u32>()
-                .with_context(|| format!("PASSWORD_RESET_TTL_MINUTES is not a whole number: {raw}"))?,
+            Some(raw) => raw.trim().parse::<u32>().with_context(|| {
+                format!("PASSWORD_RESET_TTL_MINUTES is not a whole number: {raw}")
+            })?,
         };
-        if !(MIN_PASSWORD_RESET_TTL_MINUTES..=MAX_PASSWORD_RESET_TTL_MINUTES).contains(&ttl_minutes) {
+        if !(MIN_PASSWORD_RESET_TTL_MINUTES..=MAX_PASSWORD_RESET_TTL_MINUTES).contains(&ttl_minutes)
+        {
             bail!(
                 "PASSWORD_RESET_TTL_MINUTES must be between {MIN_PASSWORD_RESET_TTL_MINUTES} \
                  and {MAX_PASSWORD_RESET_TTL_MINUTES}, got {ttl_minutes}"

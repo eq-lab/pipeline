@@ -284,6 +284,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1523 LoanBook readers: read loan-event fields from params.event (watchlist, economics epochs)](https://github.com/eq-lab/pipeline/issues/1523) | [1523-loanbook-readers-params-event.md](./epic-1520/1523-loanbook-readers-params-event.md) | Initial |
+| [#1526 LoanBook readers: scope loan snapshot queries to the configured LoanRegistry address](https://github.com/eq-lab/pipeline/issues/1526) | [1526-loanbook-registry-scope.md](./epic-1520/1526-loanbook-registry-scope.md) | Initial |
 
 ---
 

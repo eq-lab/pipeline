@@ -67,6 +67,10 @@ pub struct ConfiguredChain {
 /// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...                 # in_transit
 /// CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID=G...          # withdrawal_queue
 /// CHAIN_<id>_API_STELLAR_ASSET_DECIMALS=7                         # shared, default 7
+/// # LoanRegistry the LoanBook readers are scoped to (required per chain; must equal the
+/// # indexer's CHAIN_<id>_{EVM,STELLAR}_INDEXER_LOAN_REGISTRY_ADDRESS):
+/// CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS=0x...                  # EVM chains
+/// CHAIN_<id>_STELLAR_API_LOAN_REGISTRY_ADDRESS=C...               # Stellar chains
 /// ```
 pub struct ChainsConfig {
     pub default_chain_id: i64,
@@ -91,6 +95,10 @@ pub struct ChainsConfig {
     /// for every Stellar chain (default 7), independent of whether custody/ramp or
     /// the withdrawal queue wallet are configured.
     pub asset_decimals: HashMap<i64, u32>,
+    /// LoanRegistry address keyed by chain_id, in the form the indexer writes to
+    /// `contract_logs.contract_address` (EIP-55 on EVM, `C…` Strkey on Stellar).
+    /// Every configured chain has an entry (startup fails otherwise).
+    pub loan_registry_addresses: HashMap<i64, String>,
 }
 
 /// Custody + ramp Stellar address sets used to classify indexed `AssetTransfer`
@@ -146,6 +154,7 @@ impl ChainsConfig {
         let mut transfer_addresses = HashMap::new();
         let mut withdrawal_queue_wallets = HashMap::new();
         let mut asset_decimals = HashMap::new();
+        let mut loan_registry_addresses = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -157,6 +166,7 @@ impl ChainsConfig {
                 chain_id,
                 kind: chain_kind,
             });
+            load_loan_registry_address(chain_id, chain_kind, &mut loan_registry_addresses)?;
 
             match chain_kind {
                 ChainKind::Evm => {
@@ -205,8 +215,44 @@ impl ChainsConfig {
             transfer_addresses,
             withdrawal_queue_wallets,
             asset_decimals,
+            loan_registry_addresses,
         })
     }
+}
+
+/// Load the LoanRegistry address the LoanBook readers are scoped to from
+/// `CHAIN_<id>_{EVM,STELLAR}_API_LOAN_REGISTRY_ADDRESS` (required), normalized to the
+/// form the indexer stores in `contract_logs.contract_address`.
+fn load_loan_registry_address(
+    chain_id: i64,
+    kind: ChainKind,
+    out: &mut HashMap<i64, String>,
+) -> Result<()> {
+    let key = match kind {
+        ChainKind::Evm => format!("CHAIN_{chain_id}_EVM_API_LOAN_REGISTRY_ADDRESS"),
+        ChainKind::Stellar => format!("CHAIN_{chain_id}_STELLAR_API_LOAN_REGISTRY_ADDRESS"),
+    };
+    let raw = env::var(&key).unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        anyhow::bail!(
+            "{key} is required for chain {chain_id} (LoanRegistry address the LoanBook readers are scoped to)"
+        );
+    }
+    let normalized = match kind {
+        ChainKind::Evm => raw
+            .parse::<alloy::primitives::Address>()
+            .with_context(|| format!("{key} must be a valid 0x… EVM address"))?
+            .to_checksum(None),
+        ChainKind::Stellar => {
+            let contract = stellar_strkey::Contract::from_string(raw)
+                .map_err(|e| anyhow::anyhow!("{key} must be a valid C… contract Strkey: {e}"))?;
+            format!("{contract}")
+        }
+    };
+    tracing::info!(chain_id, loan_registry = %normalized, "API LoanRegistry scope loaded");
+    out.insert(chain_id, normalized);
+    Ok(())
 }
 
 /// Load custody/ramp address sets for one Stellar chain from the API-specific

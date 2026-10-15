@@ -64,7 +64,11 @@ pub async fn forgot_password(
     if let Some(ip) = client_ip(&headers) {
         let requests = state
             .login_attempt_repo
-            .record(AttemptScope::PasswordResetIp, &ip, RESET_REQUEST_WINDOW_SECS)
+            .record(
+                AttemptScope::PasswordResetIp,
+                &ip,
+                RESET_REQUEST_WINDOW_SECS,
+            )
             .await?;
         if !within_reset_request_limit(requests) {
             return Err(ApiError::TooManyRequests(
