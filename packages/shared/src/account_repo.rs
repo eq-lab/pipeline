@@ -12,6 +12,8 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::otp_repo::PURPOSE_PASSWORD_RESET;
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Account {
     pub id: Uuid,
@@ -29,6 +31,12 @@ pub struct Account {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AccountSession {
+    pub status: String,
+    pub password_changed_at: Option<DateTime<Utc>>,
 }
 
 pub fn is_active_status(status: &str) -> bool {
@@ -77,6 +85,15 @@ impl AccountRepo {
             .fetch_optional(&self.pool)
             .await?;
         Ok(row.map(|r| r.0))
+    }
+
+    pub async fn find_session(&self, id: Uuid) -> Result<Option<AccountSession>, sqlx::Error> {
+        sqlx::query_as::<_, AccountSession>(
+            "SELECT status, password_changed_at FROM accounts WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
     }
 
     /// Create an unverified email account with **no password**. The submitted
@@ -157,5 +174,48 @@ impl AccountRepo {
         .execute(&mut *tx)
         .await?;
         tx.commit().await
+    }
+
+    pub async fn reset_password_consuming_token(
+        &self,
+        token_hash: &str,
+        password_hash: &str,
+        changed_at: DateTime<Utc>,
+    ) -> Result<Option<Account>, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let claimed: Option<(Uuid,)> = sqlx::query_as(
+            "UPDATE otp_codes SET consumed_at = now(), attempts = attempts + 1 \
+             WHERE code_hash = $1 AND purpose = $2 \
+               AND consumed_at IS NULL AND expires_at > now() \
+             RETURNING account_id",
+        )
+        .bind(token_hash)
+        .bind(PURPOSE_PASSWORD_RESET)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((account_id,)) = claimed else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+
+        let account = sqlx::query_as::<_, Account>(&format!(
+            "UPDATE accounts \
+             SET password_hash = $2, password_changed_at = $3, updated_at = now() \
+             WHERE id = $1 AND status = 'Active' AND email_verified_at IS NOT NULL \
+             RETURNING {COLUMNS}"
+        ))
+        .bind(account_id)
+        .bind(password_hash)
+        .bind(changed_at)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(account) = account else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+
+        tx.commit().await?;
+        Ok(Some(account))
     }
 }

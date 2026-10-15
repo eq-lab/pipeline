@@ -30,6 +30,8 @@ fn the_auth_openapi_bundle_builds_and_documents_every_route() {
         "/v1/auth/verify-otp",
         "/v1/auth/resend-otp",
         "/v1/auth/login",
+        "/v1/auth/forgot-password",
+        "/v1/auth/reset-password",
     ] {
         assert!(
             documented.contains(&expected),

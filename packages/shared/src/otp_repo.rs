@@ -1,4 +1,4 @@
-//! Outstanding email-verification passcodes
+//! Outstanding email-verification passcodes and password-reset tokens
 //! (`packages/shared/migrations/20260922000001_accounts_email_password_auth.sql`).
 //!
 //! Codes are stored hashed and are single-use. Issuing a new code supersedes any
@@ -20,9 +20,8 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-/// The only passcode purpose today; the column is an enum so password-reset codes
-/// can share the table without a schema change.
 pub const PURPOSE_EMAIL_VERIFICATION: &str = "EmailVerification";
+pub const PURPOSE_PASSWORD_RESET: &str = "PasswordReset";
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct OtpCode {
@@ -65,6 +64,44 @@ impl OtpRepo {
         ttl_secs: i32,
         cooldown_secs: i32,
     ) -> Result<bool, sqlx::Error> {
+        self.issue_for(
+            PURPOSE_EMAIL_VERIFICATION,
+            account_id,
+            code_hash,
+            Some(pending_password_hash),
+            ttl_secs,
+            cooldown_secs,
+        )
+        .await
+    }
+
+    pub async fn issue_password_reset(
+        &self,
+        account_id: Uuid,
+        token_hash: &str,
+        ttl_secs: i32,
+        cooldown_secs: i32,
+    ) -> Result<bool, sqlx::Error> {
+        self.issue_for(
+            PURPOSE_PASSWORD_RESET,
+            account_id,
+            token_hash,
+            None,
+            ttl_secs,
+            cooldown_secs,
+        )
+        .await
+    }
+
+    async fn issue_for(
+        &self,
+        purpose: &str,
+        account_id: Uuid,
+        code_hash: &str,
+        pending_password_hash: Option<&str>,
+        ttl_secs: i32,
+        cooldown_secs: i32,
+    ) -> Result<bool, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
         sqlx::query("SELECT 1 FROM accounts WHERE id = $1 FOR UPDATE")
@@ -82,7 +119,7 @@ impl OtpRepo {
              LIMIT 1",
         )
         .bind(account_id)
-        .bind(PURPOSE_EMAIL_VERIFICATION)
+        .bind(purpose)
         .bind(cooldown_secs)
         .fetch_optional(&mut *tx)
         .await?;
@@ -96,7 +133,7 @@ impl OtpRepo {
              WHERE account_id = $1 AND purpose = $2 AND consumed_at IS NULL",
         )
         .bind(account_id)
-        .bind(PURPOSE_EMAIL_VERIFICATION)
+        .bind(purpose)
         .execute(&mut *tx)
         .await?;
 
@@ -108,13 +145,26 @@ impl OtpRepo {
         .bind(account_id)
         .bind(code_hash)
         .bind(pending_password_hash)
-        .bind(PURPOSE_EMAIL_VERIFICATION)
+        .bind(purpose)
         .bind(ttl_secs)
         .execute(&mut *tx)
         .await?;
 
         tx.commit().await?;
         Ok(true)
+    }
+
+    pub async fn is_live_password_reset(&self, token_hash: &str) -> Result<bool, sqlx::Error> {
+        let live: Option<(i32,)> = sqlx::query_as(
+            "SELECT 1 FROM otp_codes \
+             WHERE code_hash = $1 AND purpose = $2 \
+               AND consumed_at IS NULL AND expires_at > now()",
+        )
+        .bind(token_hash)
+        .bind(PURPOSE_PASSWORD_RESET)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(live.is_some())
     }
 
     /// Burn a passcode outright. Called when a supplied code does not match: the

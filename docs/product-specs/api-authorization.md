@@ -35,11 +35,9 @@ role, so registering an account confers no privilege beyond starting KYB.
    reconstructs the message from the nonce **currently stored** for that user,
    verifies the signature against the claimed address, and — on success — clears
    the nonce (single-use, so the challenge cannot be replayed) and issues a JWT.
-4. **Authorize.** The client sends the token as `Authorization: Bearer <jwt>` to
-   protected endpoints. The token is validated (signature + expiry), the named
-   account must have `status = 'Active'` (else `403 account_suspended`), and
-   its claims become available to the handler. A required **role** the token
-   lacks is a separate `403 Forbidden`.
+4. **Authorize.** The client sends `Authorization: Bearer <jwt>`. The token is validated
+   (signature, expiry, not older than the account's last password reset), the account must be
+   `Active` (else `403 account_suspended`), and a required **role** it lacks is a `403`.
 
 The challenge message is the single source of truth for the signed bytes and is
 identical between issuance and verification. It is a **single line** (no newlines)
@@ -60,6 +58,8 @@ Welcome to Pipeline! Sign this message to authenticate. This request will not tr
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
 | `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403 account_suspended` for a suspended one, `429` past the attempt limit. |
+| `POST` | `/v1/auth/forgot-password` | none | Body `{ email, captcha_token }`. Always `202`; a reset link is mailed only to a verified, active account, at most once per 60 seconds. `403`/`503` per the captcha, `429` past 10 requests per hour per client address. See [api-authorization-password-reset.md](./api-authorization-password-reset.md). |
+| `POST` | `/v1/auth/reset-password` | none | Body `{ token, password }`. `204` on success, with no token issued; every token the account held before is rejected from then on. `400` for a password failing the policy, `401` for every link failure, with one shared message. |
 | `POST` | `/v1/loan-book/loan` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](#loan-submission)). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
 | `GET`  | `/v1/loan-book/submissions?status` | bearer + `trustee` role | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. `400` on an unknown status value. |
 | `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
@@ -72,16 +72,13 @@ the chain, exactly as before — `account_id` is purely additive, so existing
 clients are unaffected. An email token's `sub` is the account id and its
 `chain_id` is `null`.
 
-Tokens still cannot be revoked individually (TD-80): no refresh token, no
-session table, no logout, and a password reset does not end a live session.
-Suspension differs: `accounts.status` is read every request, so `Suspended`
-bites next request, not next login. `account_id` being required (not
-optional) meant the accounts migration signed every active session out once.
+Tokens cannot be revoked one by one (TD-80: no refresh token, session table or logout),
+but `accounts.status` and `password_changed_at` are read every request, so suspension or
+a password reset ends every session at once. Requiring `account_id` signed everyone out once.
 
-Protect a new endpoint by taking `AuthClaims`: it rejects `401` for an invalid
-token and `403 account_suspended` for a suspended account, inherited for
-free. Require a role via `claims.has_role("…")`, returning `403 Forbidden`
-when absent (see `routes::loan_book::submit_loan`).
+Protect a new endpoint by taking `AuthClaims`: it rejects `401` for an invalid token and
+`403 account_suspended` for a suspended account. Require a role via `claims.has_role("…")`,
+returning `403 Forbidden` when absent (see `routes::loan_book::submit_loan`).
 
 ## Data Model
 
@@ -93,6 +90,7 @@ when absent (see `routes::loan_book::submit_loan`).
 | `email` | `TEXT` | unique, lowercase (enforced by check constraint); `NULL` for a wallet-only account |
 | `password_hash` | `TEXT` | Argon2id PHC string; `NULL` until a password is set |
 | `email_verified_at` | `TIMESTAMPTZ` | `NULL` until the passcode is verified; login is refused while it is |
+| `password_changed_at` | `TIMESTAMPTZ` | `NULL` until the first password reset; tokens issued before it are rejected |
 | `status` | `TEXT` | `Active` \| `Suspended` |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` | bookkeeping |
 
@@ -196,4 +194,4 @@ manually like any other role).
   `JWT_ES256_PUBLIC_KEY_PEM`) are unset, the auth endpoints are unavailable and
   every protected endpoint rejects with `401`; the rest of the API is unaffected.
 - **Short lifetime.** Tokens expire 24h after issuance with no refresh or revocation
-  list: a *role* change waits for login; *suspension*, read fresh each request, bites immediately (TD-80).
+  list: a *role* change waits for login; *suspension* and *reset* bite immediately (TD-80).

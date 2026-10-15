@@ -5,6 +5,7 @@ use axum::Router;
 use pipeline_api::auth::JwtKeys;
 use pipeline_api::captcha::TurnstileVerifier;
 use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig, KybStorageConfig};
+use pipeline_api::password_reset::PasswordResetConfig;
 use pipeline_api::AppState;
 use shared::account_repo::AccountRepo;
 use shared::auth_user_repo::AuthUserRepo;
@@ -78,7 +79,10 @@ async fn main() -> anyhow::Result<()> {
     let kyb_limits = kyb_storage.limits;
     let object_store = kyb_storage.object_store();
     // Same required-not-optional pattern as kyb_storage above (docs/product-specs/api-authorization-email.md#email-delivery).
-    let email_sender = EmailConfig::from_env()?.sender();
+    let email_config = EmailConfig::from_env()?;
+    let password_reset =
+        PasswordResetConfig::from_env(matches!(email_config, EmailConfig::DevLog))?;
+    let email_sender = email_config.sender();
     let account_repo = AccountRepo::new(pool.clone());
     let otp_repo = OtpRepo::new(pool.clone());
     let login_attempt_repo = LoginAttemptRepo::new(pool.clone());
@@ -168,6 +172,7 @@ async fn main() -> anyhow::Result<()> {
         captcha,
         email_sender,
         login_attempt_repo,
+        password_reset,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();

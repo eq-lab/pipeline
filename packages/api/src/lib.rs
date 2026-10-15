@@ -13,6 +13,7 @@ pub mod intervals;
 mod middleware;
 pub mod otp;
 pub mod password;
+pub mod password_reset;
 pub mod routes;
 
 use std::collections::HashMap;
@@ -46,6 +47,7 @@ use shared::sumsub::config::SumsubSettings;
 use crate::auth::JwtKeys;
 use crate::captcha::CaptchaVerifier;
 use crate::config::{KybLimits, StellarVoucherChainConfig, TransferAddressSets};
+use crate::password_reset::PasswordResetConfig;
 
 pub struct AppState {
     pub pool: sqlx::PgPool,
@@ -121,7 +123,7 @@ pub struct AppState {
     /// The API's principals (`accounts`) — what both the wallet and the
     /// email/password credential resolve to.
     pub account_repo: AccountRepo,
-    /// Outstanding email-verification passcodes (`otp_codes`).
+    /// Outstanding email-verification passcodes and password-reset tokens (`otp_codes`).
     pub otp_repo: OtpRepo,
     /// Bot defense on the unauthenticated auth endpoints. Trait object so
     /// handlers can be exercised without a network round-trip, and so the
@@ -133,4 +135,5 @@ pub struct AppState {
     /// Failed sign-in counters (`login_attempts`) — `login`'s only bound, since
     /// it carries no captcha.
     pub login_attempt_repo: LoginAttemptRepo,
+    pub password_reset: PasswordResetConfig,
 }

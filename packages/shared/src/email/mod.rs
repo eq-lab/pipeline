@@ -42,6 +42,37 @@ pub fn render_duplicate_signup_email(to: &str) -> OutboundEmail {
     }
 }
 
+pub fn render_password_reset_email(to: &str, link: &str, ttl_minutes: u32) -> OutboundEmail {
+    let lifetime = if ttl_minutes == 1 {
+        "1 minute".to_owned()
+    } else {
+        format!("{ttl_minutes} minutes")
+    };
+    OutboundEmail {
+        to: to.to_owned(),
+        subject: "Reset your Pipeline password".to_owned(),
+        body: format!(
+            "Someone asked to reset the password for the Pipeline account registered to \
+             this address. To choose a new password, open this link:\n\n\
+             {link}\n\n\
+             It expires in {lifetime} and works once. If you did not ask for this, ignore \
+             this email: your password has not changed."
+        ),
+    }
+}
+
+pub fn render_password_changed_email(to: &str) -> OutboundEmail {
+    OutboundEmail {
+        to: to.to_owned(),
+        subject: "Your Pipeline password was changed".to_owned(),
+        body: "The password for your Pipeline account was just changed, and every device \
+               that was signed in to it has been signed out.\n\n\
+               If this was you, nothing more is needed. If it was not, reply to this message \
+               or contact Pipeline straight away."
+            .to_owned(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RejectedDocument<'a> {
     pub filename: &'a str,
