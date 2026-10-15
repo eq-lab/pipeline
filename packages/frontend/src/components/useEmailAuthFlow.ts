@@ -1,6 +1,13 @@
 // spec: docs/frontend/auth-components.md#emailauthflow
 import { useEffect, useRef, useState } from "react";
-import { ApiError, login, resendOtp, signup, verifyOtp } from "@/api";
+import {
+  ApiError,
+  forgotPassword,
+  login,
+  resendOtp,
+  signup,
+  verifyOtp,
+} from "@/api";
 import { saveSession } from "@/auth/session";
 import type { TurnstileHandle, TurnstileStatus } from "@/components/Turnstile";
 
@@ -8,6 +15,7 @@ export type EmailAuthScreen =
   | "sign-in"
   | "create-account"
   | "forgot-password"
+  | "reset-link-sent"
   | "otp"
   | "add-email";
 
@@ -34,7 +42,7 @@ const CAPTCHA_UNAVAILABLE_MESSAGE =
 
 type AutoResendResult = { id: number; status: "success" | "error" };
 
-function describeApiError(error: unknown): string {
+export function describeApiError(error: unknown): string {
   if (error instanceof ApiError) return error.message || NETWORK_ERROR_MESSAGE;
   return NETWORK_ERROR_MESSAGE;
 }
@@ -65,6 +73,11 @@ export function useEmailAuthFlow({
   const autoResendIdRef = useRef(0);
   const signupTurnstileRef = useRef<TurnstileHandle>(null);
   const otpTurnstileRef = useRef<TurnstileHandle>(null);
+  const [forgotCaptchaToken, setForgotCaptchaToken] = useState<string>();
+  const [forgotCaptchaStatus, setForgotCaptchaStatus] =
+    useState<TurnstileStatus>("loading");
+  const [forgotFormError, setForgotFormError] = useState<string>();
+  const forgotTurnstileRef = useRef<TurnstileHandle>(null);
 
   function clearSignInErrors() {
     setPasswordServerError(undefined);
@@ -82,6 +95,7 @@ export function useEmailAuthFlow({
     setPendingEmail("");
     clearSignInErrors();
     setSignupFormError(undefined);
+    setForgotFormError(undefined);
     setOtpBackScreen("sign-in");
     setAutoResendResult(undefined);
     setOtpCaptchaToken(undefined);
@@ -93,13 +107,16 @@ export function useEmailAuthFlow({
     if (open) return;
     setSignupCaptchaToken(undefined);
     setOtpCaptchaToken(undefined);
+    setForgotCaptchaToken(undefined);
     setSignupCaptchaStatus("loading");
     setOtpCaptchaStatus("loading");
+    setForgotCaptchaStatus("loading");
     setAutoResendResult(undefined);
     autoResendPendingRef.current = false;
     flowGenerationRef.current += 1;
     signupTurnstileRef.current?.reset();
     otpTurnstileRef.current?.reset();
+    forgotTurnstileRef.current?.reset();
   }, [open]);
 
   useEffect(() => {
@@ -265,6 +282,35 @@ export function useEmailAuthFlow({
     }
   }
 
+  async function handleForgotPasswordSubmit({ email }: { email: string }) {
+    setForgotFormError(undefined);
+    const captchaToken = forgotCaptchaToken;
+    if (!captchaToken) {
+      setForgotFormError(
+        forgotCaptchaStatus === "loading"
+          ? CAPTCHA_NOT_READY_MESSAGE
+          : undefined,
+      );
+      return;
+    }
+    const generation = flowGenerationRef.current;
+    try {
+      await forgotPassword({ email, captchaToken });
+      if (generation !== flowGenerationRef.current) return;
+      setPendingEmail(email);
+      setScreen("reset-link-sent");
+    } catch (error) {
+      if (generation !== flowGenerationRef.current) return;
+      setForgotFormError(describeApiError(error));
+      throw error;
+    } finally {
+      if (generation === flowGenerationRef.current) {
+        forgotTurnstileRef.current?.reset();
+        setForgotCaptchaToken(undefined);
+      }
+    }
+  }
+
   function goToSignIn() {
     flowGenerationRef.current += 1;
     autoResendPendingRef.current = false;
@@ -283,6 +329,7 @@ export function useEmailAuthFlow({
   function goToForgotPassword() {
     flowGenerationRef.current += 1;
     clearSignInErrors();
+    setForgotFormError(undefined);
     setScreen("forgot-password");
   }
 
@@ -313,9 +360,12 @@ export function useEmailAuthFlow({
     signupCaptchaReady: signupCaptchaToken !== undefined,
     signupCaptchaStatus,
     otpCaptchaStatus,
+    forgotCaptchaStatus,
+    forgotFormError,
     autoResendResult,
     signupTurnstileRef,
     otpTurnstileRef,
+    forgotTurnstileRef,
     onSignupToken: (token: string) => {
       setSignupCaptchaToken(token || undefined);
       if (token) {
@@ -337,7 +387,22 @@ export function useEmailAuthFlow({
     },
     retrySignupCaptcha: () => signupTurnstileRef.current?.retry(),
     retryOtpCaptcha: () => otpTurnstileRef.current?.retry(),
+    onForgotToken: (token: string) => {
+      setForgotCaptchaToken(token || undefined);
+      if (token) {
+        setForgotCaptchaStatus("ready");
+        setForgotFormError((current) =>
+          current === CAPTCHA_NOT_READY_MESSAGE ? undefined : current,
+        );
+      }
+    },
+    onForgotCaptchaStatus: (status: TurnstileStatus) => {
+      setForgotCaptchaStatus(status);
+      if (status !== "ready") setForgotCaptchaToken(undefined);
+    },
+    retryForgotCaptcha: () => forgotTurnstileRef.current?.retry(),
     handleSignInSubmit,
+    handleForgotPasswordSubmit,
     handleCreateAccountSubmit,
     handleAddEmailSubmit,
     handleOtpVerify,

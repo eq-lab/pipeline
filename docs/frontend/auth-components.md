@@ -7,7 +7,9 @@ area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds fou
 `trustee-flows.md`. #1252 (Owners) shipped and was later retired — see `### OwnersModal` below.
 #1265 wired `SignInModal`/`CreateAccountModal`/`OtpModal` to the real backend auth endpoints via
 a new orchestrator, `EmailAuthFlow` — see `### EmailAuthFlow`, `### Turnstile`, and `### Session
-module` below.
+module` below. #1359 wired `ForgotPasswordModal` to the password-reset endpoints and added the two
+screens after it, `ResetLinkSentModal` and the `/reset-password` route's `ResetPasswordModal` — see
+those sections below.
 
 #1253's Issue body also named a "review banner" deliverable. It does not exist in the
 source-of-truth Figma section — see `### AccountInReviewModal` below and TD-69
@@ -97,6 +99,15 @@ rule now diverges** via an opt-in `passwordRule?: "non-empty" | "policy"` option
 #1281), defaulting to `"non-empty"` so `SignInModal` renders byte-identical without passing it.
 See "SignInModal" → **Validation** and "CreateAccountModal" → **Validation error** below for the
 two rules.
+
+`CaptchaStatusNotice` (#1359) is the one captcha status block the captcha-gated screens share —
+`CreateAccountModal`, `AddEmailModal`, and `ForgotPasswordModal` all render it under their
+`turnstileSlot`. Props: `status: TurnstileStatus`, `loadingMessage` (the only per-screen copy),
+`onRetry`. It renders nothing for `"ready"`; a `role="status"` muted caption for `"loading"`; a
+`role="alert"` negative caption for `"unavailable"` ("Verification is unavailable. Please contact
+support."), `"expired"` ("Verification expired. Try again.") and `"error"` ("Verification failed to
+load. Try again."), the last two with a "Retry verification" button. `OtpModal` keeps its own
+variant (different wording, no body font class) — see "OtpModal".
 
 ### SignInModal
 
@@ -368,14 +379,21 @@ asserted as a regression guard in `AuthFlowProvider.setup.test.tsx`.
 ### ForgotPasswordModal
 
 `packages/frontend/src/components/ForgotPasswordModal.tsx` + `useForgotPasswordForm.ts`. The
-email-only password-reset request screen — presentational only, **no network call**; `onSubmit`
-is a no-op seam for #1265, matching the pattern every other screen in this epic uses.
+email-only password-reset request screen. Built presentationally by #1280; wired by #1359 to
+`POST /v1/auth/forgot-password` (`packages/api/src/routes/auth/password_reset.rs`, spec
+`docs/product-specs/api-authorization-password-reset.md`) through `EmailAuthFlow` — the modal itself
+still makes no network call. Its `onSubmit` may return a promise; while it is pending the submit is
+disabled, and the form releases on settle (resolve or reject), the same contract as
+`useAuthCredentialsForm`.
 
 **One frame, one state.** Figma (`6704-107100`, section `6486:81556` "V1.0 — KYB & Wire
 transfers") has no `— Enable` and no `— Validation error` companion for this screen, and no
 confirmation / "check your email" / "set a new password" frame exists anywhere in the section (a
-full child enumeration was done during planning). A flow connector (`6704:107291`) runs
-Sign in → Forgot Password; nothing leaves Forgot Password in the design.
+full child enumeration was done during planning for #1280 and repeated for #1359 on 2026-10-15). A
+flow connector (`6704:107291`) runs Sign in → Forgot Password; nothing leaves Forgot Password in the
+design. The two screens that follow it in the shipped flow — `ResetLinkSentModal` and
+`ResetPasswordModal` below — are therefore stand-ins derived from the shell's designed siblings
+(TD-71).
 
 Composition inside `AuthModalShell` (heading "Reset your password", `headingId`
 `forgot-password-modal-heading`, `testId` `forgot-password-modal`, `align="center"` — the only
@@ -383,17 +401,23 @@ non-default shell prop), top to bottom:
 
 1. **Email field** — one `TextField` (`type="email"`, placeholder "Enter corporate email"), no
    label, no helper text, no password field.
-2. **Submit** — `Button variant="primary-blue" type="submit"`, full width, label "Send Reset
-   Link", disabled at `opacity-[0.32]` until the email is well-formed — same treatment as
-   `SignInModal`'s submit.
-3. **Footer** — one caption line, centered: `"Remembered it? "` (`--color-pipeline-ink-muted`,
+2. **Captcha** (#1359) — the `turnstileSlot` prop, then `CaptchaStatusNotice` (see "Shared form
+   parts") driven by `captchaStatus`/`onCaptchaRetry`, loading copy "Verification is loading. You
+   can complete it before requesting a link." Figma has no slot for the widget; it sits inside the
+   32px column gap exactly as on `CreateAccountModal`.
+3. **Form error** (#1359) — `formError`, rendered as a `role="alert"` body-s line in
+   `--color-pipeline-negative-strong`, same markup as `SignInModal`'s.
+4. **Submit** — `Button variant="primary-blue" type="submit"`, full width, label "Send Reset
+   Link", disabled at `opacity-[0.32]` until the email is well-formed and while a submit is
+   pending — same treatment as `SignInModal`'s submit.
+5. **Footer** — one caption line, centered: `"Remembered it? "` (`--color-pipeline-ink-muted`,
    trailing space is part of the string) + an inline `<button type="button"
    onClick={onBackToSignIn}>Back to sign in</button>` (`--color-pipeline-ink`, **regular**
    weight — Figma renders it without `--font-weight-emphasized`, unlike `SignInModal`'s "Create
    account" span).
 
-**No wallet button and no OR divider.** `AuthModalParts` is not imported — both parts
-`SignInModal`/`CreateAccountModal` share are absent from this frame.
+**No wallet button and no OR divider.** Neither `ContinueWithWalletButton` nor `OrDivider` is
+imported — both parts `SignInModal`/`CreateAccountModal` share are absent from this frame.
 
 **Figma → token mapping.** Every value on the frame maps onto tokens already in
 `packages/ui/src/styles/theme.css` (`--color-pipeline-paper`, `--color-pipeline-surface`,
@@ -409,7 +433,7 @@ column's `padding-bottom`).
 **Validation** — identical rule to `useAuthCredentialsForm`'s email check, reused via the shared
 `EMAIL_PATTERN`/`EMAIL_ERROR_MESSAGE` exports: format-checked on blur or on submit attempt, no
 error while the field is empty, error copy verbatim "Enter the correct email address". All local
-state resets when the modal reopens.
+state (including the submitting flag) resets when the modal reopens.
 
 **Undesigned states are derived, not invented (TD-72).** The enabled submit is the same button
 at full opacity (from Sign in's `— Enable` frame `6486:81576`); the validation-error treatment is
@@ -417,12 +441,6 @@ at full opacity (from Sign in's `— Enable` frame `6486:81576`); the validation
 `6486:81595`); hover/focus on the two un-inerted links (`SignInModal`'s "Forgot password?" and
 this screen's "Back to sign in") have no Figma state and use `hover:underline` plus the shell's
 existing focus-visible outline token.
-
-**Out of scope — no designed post-submit state (TD-71).** No confirmation, no reset-link landing
-screen, and no "set a new password" screen exist anywhere in the V1.0 Figma section, and no
-connector leaves `6704:107100`. The `/test` preview shows a stand-in line and closes the modal —
-the same treatment #1250 used for the missing OTP success frame. #1265 cannot wire a real reset
-flow until a designer supplies those screens.
 
 **Copy is verbatim** — heading "Reset your password" (note: the component/file name and the
 Issue are "Forgot Password"; the rendered heading differs — this is intentional, not a copy
@@ -432,6 +450,67 @@ defect), placeholder "Enter corporate email", submit "Send Reset Link", footer "
 **Accessibility:** same contract as `SignInModal` — `aria-invalid` on `TextField`'s `<input>`;
 both "Back to sign in" and (since #1280) `SignInModal`'s "Forgot password?" are focusable
 buttons with the shell's `focus-visible` outline treatment.
+
+### ResetLinkSentModal
+
+`packages/frontend/src/components/ResetLinkSentModal.tsx` (#1359). The confirmation shown after a
+reset-link request is accepted. **No Figma frame exists for it (TD-71)** — the chrome is the OTP
+screen's (`6486:81665`, the section's one designed "Check your inbox" screen): `AuthModalShell` with
+heading "Check your inbox", `showImagePanel={false}`, `showCloseButton={false}`, a back arrow
+(`onBack` → `onBackToSignIn`), `align="center"`, `testId` `reset-link-sent-modal`. Escape is
+`onDismiss` (closes the flow), unlike OTP where Escape is also "back".
+
+**The copy is enumeration-safe by construction.** `forgot-password` answers `202` whether or not the
+address belongs to an account (see the spec), so the screen must not claim a link was sent:
+description "If an account exists for `<email>`, a password reset link is on its way. Follow it to
+set a new password." (`that address` when `email` is unknown — only reachable from the diagnostics
+trigger). No link lifetime is quoted: the TTL is a backend setting (`PASSWORD_RESET_TTL_MINUTES`) and
+the email states it.
+
+Body: a full-width primary "Back to sign in" (`onBackToSignIn`) and the caption `"Didn’t get it? "`
+(muted) + `Try again` button (`onTryAgain`). There is no resend here: the backend cools each account
+down for 60 s silently, and a re-request needs a fresh single-use Turnstile token, which only the
+request screen's widget can produce — so "Try again" returns to `ForgotPasswordModal`, which remounts
+its widget and starts with an empty field.
+
+### ResetPasswordModal
+
+`packages/frontend/src/components/ResetPasswordModal.tsx` + `useResetPasswordForm.ts` +
+`useResetPasswordFlow.ts` + `packages/frontend/src/routes/reset-password.tsx` (#1359). The landing for
+the emailed link `{APP_BASE_URL}/reset-password#token=<64 hex>`. **No Figma frame exists (TD-71)** —
+the chrome is the Forgot Password frame's (`6704:107100`): image panel, close button, centered 400px
+column, `testId` `reset-password-modal`. One component, three `view`s:
+
+- `form` — heading "Set a new password", description "Choose a new password for your account.", one
+  password `TextField` (`autoComplete="new-password"`, placeholder "New password"), submit "Save new
+  password". Validation is the signup policy (`meetsPasswordPolicy`, exported from
+  `useAuthCredentialsForm.ts`) with `PASSWORD_POLICY_ERROR_MESSAGE`, shown on blur (once the field
+  is non-empty) or on a submit attempt; submit is disabled until valid and while pending.
+  `passwordServerError` renders under the field (the backend's `400` text verbatim — the client
+  validates first, so this only appears if the two policies disagree); `onPasswordEdit` fires on every
+  keystroke so the route can clear it. `formError` is the `role="alert"` body-s line.
+- `expired` — heading "This link has expired", description "Password reset links work once and
+  expire after a short while. Request a new one to continue.", primary "Request a new link"
+  (`onRequestNewLink`), caption `"Remembered it? "` + "Back to sign in" (`onSignIn`). Shown for a
+  missing/malformed fragment **and** for every `401` — the backend deliberately collapses unknown,
+  expired, used, superseded and ineligible-account into one answer, so the UI does too.
+- `done` — heading "Password updated", description "Your password has been changed and every other
+  session was signed out. Sign in with your new password to continue.", primary "Sign in"
+  (`onSignIn`). The reset issues no session (spec decision 10), so the only way forward is sign-in.
+
+**Route** (`/reset-password`, public, no gate). `useResetPasswordFlow()` reads `token` from
+`window.location.hash` once on first render (`readResetToken`: the `token` param of the fragment, kept
+only if it is 64 hex characters — the backend's own `is_well_formed_reset_token`), starts in `form` or
+`expired` accordingly, and strips the fragment with `history.replaceState` in a mount effect so the
+token does not linger in the address bar, in a shared screenshot, or in the next page's `Referer`.
+`submit` → `resetPassword({ token, password })`; `204` → `clearSession()` (the backend has already
+ended every session, including this browser's — dropping the stale token avoids tripping the
+`401` → "session expired" toast on the next authenticated call) then `view = "done"`; `401` →
+`expired`; `400` → `passwordServerError`; anything else → `formError` via `describeApiError`
+(exported from `useEmailAuthFlow.ts`). The route renders the modal `open` over an empty `<main>`
+(`data-testid` `reset-password-route`); × / Escape navigate to `/`; "Sign in" navigates to `/` then
+`useAuthFlow().open("sign-in")`; "Request a new link" navigates to `/` then `open("forgot-password")`.
+`useAuthFlow()` throws outside `AuthFlowProvider`, so tests mock `@/auth` as `-account.test.tsx` does.
 
 ### OtpModal
 
@@ -777,14 +856,15 @@ both states.
 ### EmailAuthFlow
 
 `packages/frontend/src/components/EmailAuthFlow.tsx` + `useEmailAuthFlow.ts` (#1265, widened by
-#1459). The orchestrator that turns `SignInModal`, `CreateAccountModal`, `AddEmailModal`, `OtpModal`,
-and `ForgotPasswordModal` into one wired flow against `packages/api/src/routes/auth/password.rs`. It
-is the only consumer of the five modals' `onSubmit`/`verify`/`resend` network seams; the modals
-themselves stay presentational (see their individual sections above).
+#1459 and #1359). The orchestrator that turns `SignInModal`, `CreateAccountModal`, `AddEmailModal`,
+`OtpModal`, `ForgotPasswordModal`, and `ResetLinkSentModal` into one wired flow against
+`packages/api/src/routes/auth/password.rs` and `password_reset.rs`. It is the only consumer of the
+modals' `onSubmit`/`verify`/`resend` network seams; the modals themselves stay presentational (see
+their individual sections above).
 
 Props: `open`, `initialScreen?: EmailAuthScreen` (`"sign-in" | "create-account" |
-"forgot-password" | "otp" | "add-email"`, default `"sign-in"`), `onClose`, `onAuthenticated?`,
-`onConnectWallet?`, `onForgotPasswordSubmit?: (payload: { email: string }) => void`. Internal
+"forgot-password" | "reset-link-sent" | "otp" | "add-email"`, default `"sign-in"`), `onClose`,
+`onAuthenticated?`, `onConnectWallet?`. Internal
 `screen` state resets to `initialScreen` whenever `open` transitions `false → true` **or**
 `initialScreen` itself changes while already open (a caller re-pointing an already-open flow at a
 different screen) — never on the modals' own internal cross-link navigation, which only updates
@@ -864,15 +944,27 @@ Wiring, screen by screen:
 - **Continue with wallet** (from either `SignInModal` or `CreateAccountModal`) → closes the auth
   flow (`onClose`) then calls `onConnectWallet?.()`. The `/test` preview wires this to
   `ConnectWalletModal`.
-- **Forgot password submit** → calls `onForgotPasswordSubmit?.(payload)` then closes the flow.
-  `ForgotPasswordModal.onSubmit` has no real backend yet (see "ForgotPasswordModal" above; #1358
-  ships the backend, #1359 the frontend wiring) — this stays a stand-in, same as before #1265.
+- **Forgot password submit** (#1359) → `forgotPassword({ email, captchaToken })` with the request
+  screen's own Turnstile token (`forgotTurnstileRef` / `forgotCaptchaToken` / `forgotCaptchaStatus`
+  — a third trio rather than a reuse of signup's, because this is a different request and the OTP
+  precedent is one widget per request kind). No token yet → stays on the form with the not-ready
+  message when the widget is still loading, or with no message otherwise (the captcha block already
+  explains), and makes no request; the not-ready message clears itself when the token arrives, other
+  errors stay until the next submit. `202` → `pendingEmail` is set and `screen` becomes
+  `reset-link-sent`; the flow does **not** close. Any rejection → `forgotFormError` from
+  `describeApiError` (the backend's `429` "too many reset requests — try again later", a captcha
+  `403`, or the network copy) and the form stays. Either way the widget is reset and its token
+  cleared (single-use).
+- **Reset link sent** (#1359) → "Back to sign in" and the back arrow go to `sign-in`; "Try again"
+  goes to `forgot-password` (fresh widget, empty field); Escape closes the flow. `pendingEmail` is
+  cleared on the next open like every other screen's state.
 - **Add email back arrow** (#1459) → `flow.dismiss`, i.e. `onClose` directly, not a `goTo*`
   cross-link — the screen has no sibling to return to, so "back" and "dismiss the flow" are the
   same action, matching the Issue's "back closes the flow and returns to `/account`." Escape does
   the same via `AuthModalShell`'s `onDismiss`.
-- **Cross-links** (`onForgotPassword`, `onCreateAccount`, `onSignIn`, `onBackToSignIn`) move `screen`
-  between the sign-in-family values. OTP's back arrow is `goBackFromOtp()` (#1459, see above), not a
+- **Cross-links** (`onForgotPassword`, `onCreateAccount`, `onSignIn`, `onBackToSignIn`, `onTryAgain`)
+  move `screen` between the sign-in-family values; `goToForgotPassword()` also clears
+  `forgotFormError`. OTP's back arrow is `goBackFromOtp()` (#1459, see above), not a
   fixed cross-link — it returns to `sign-in` or to `add-email` depending on `otpBackScreen`.
 
 ### AuthFlowProvider

@@ -1186,13 +1186,14 @@ line, whichever section it lands in.
   Password frame (`6704:107100`). Submitting on `/test` shows a stand-in confirmation line and
   closes the modal instead — the same treatment #1250 used for the missing OTP success frame,
   approved 2026-09-18. Same shape as TD-60.
-- **Impact:** #1265 cannot wire a real password-reset flow until a designer supplies the missing
-  screens; the current preview is a dead end by design. The backend side now exists (2026-10-14,
-  `docs/product-specs/api-authorization-password-reset.md`): the screens needed are a "check
-  your email" confirmation after `forgot-password`, and a "set a new password" screen at
-  `/reset-password` reading `token` from the URL fragment.
-- **Suggested fix:** Raise a design request / follow-up sub-issue on epic #1247 for the missing
-  screens before #1265 attempts the real wiring.
+- **Impact:** The backend exists (2026-10-14,
+  `docs/product-specs/api-authorization-password-reset.md`) and #1359 (2026-10-15) wired the flow
+  end-to-end **without** designs: `ResetLinkSentModal` ("Check your inbox") borrows the OTP frame's
+  chrome and `ResetPasswordModal` (`/reset-password`, form / expired-link / done views) borrows the
+  Forgot Password frame's — see `docs/frontend/auth-components.md`. Both are stand-ins; their copy
+  and layout are implementer-chosen.
+- **Suggested fix:** A designer pass adds the two frames (plus `— Enable` / error companions) to
+  the V1.0 section; the QA Figma comparison should not file the stand-ins as bugs until then.
 
 ### TD-72: `ForgotPasswordModal` enabled/error/hover states are derived, not designed
 
@@ -1783,7 +1784,7 @@ line, whichever section it lands in.
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/routes/auth/password.rs`, `packages/shared/src/account_repo.rs`
 - **Gap:** `#1266` shipped without password reset (descoped) and without change-password. **Reset closed 2026-10-14:** `POST /v1/auth/forgot-password` + `/reset-password` (`packages/api/src/routes/auth/password_reset.rs`) recover a verified account by a single-use emailed link, so the forgotten-password, mistyped-at-signup and overwritten-pending-password dead ends all have a way out. Change-password for an authenticated caller is still missing.
-- **Impact:** A signed-in user who wants to rotate their password has to sign out and go through "forgot password", which also ends every session they hold. The frontend is not wired either: `ForgotPasswordModal` (#1280) is still inert until TD-71's screens exist.
+- **Impact:** A signed-in user who wants to rotate their password has to sign out and go through "forgot password" (wired end-to-end by #1359, 2026-10-15), which also ends every session they hold.
 - **Suggested fix:** `POST /v1/auth/change-password` behind `AuthClaims`, taking the current and the new password, verifying the current one under `login`'s attempt limit, and stamping `password_changed_at` like a reset does (so other sessions end).
 
 ### TD-86: `login_attempts` rows are never collected

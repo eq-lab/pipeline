@@ -4,6 +4,7 @@ import { CreateAccountModal } from "@/components/CreateAccountModal";
 import { AddEmailModal } from "@/components/AddEmailModal";
 import { OtpModal } from "@/components/OtpModal";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
+import { ResetLinkSentModal } from "@/components/ResetLinkSentModal";
 import { Turnstile } from "@/components/Turnstile";
 import {
   useEmailAuthFlow,
@@ -16,7 +17,6 @@ export interface EmailAuthFlowProps {
   onClose: () => void;
   onAuthenticated?: () => void;
   onConnectWallet?: () => void;
-  onForgotPasswordSubmit?: (payload: { email: string }) => void;
 }
 
 export function EmailAuthFlow({
@@ -25,7 +25,6 @@ export function EmailAuthFlow({
   onClose,
   onAuthenticated,
   onConnectWallet,
-  onForgotPasswordSubmit,
 }: EmailAuthFlowProps) {
   const flow = useEmailAuthFlow({
     open,
@@ -109,10 +108,26 @@ export function EmailAuthFlow({
         open={open && flow.screen === "forgot-password"}
         onDismiss={flow.dismiss}
         onBackToSignIn={flow.goToSignIn}
-        onSubmit={(payload) => {
-          onForgotPasswordSubmit?.(payload);
-          flow.dismiss();
-        }}
+        onSubmit={flow.handleForgotPasswordSubmit}
+        formError={flow.forgotFormError}
+        captchaStatus={flow.forgotCaptchaStatus}
+        onCaptchaRetry={flow.retryForgotCaptcha}
+        turnstileSlot={
+          open && flow.screen === "forgot-password" ? (
+            <Turnstile
+              ref={flow.forgotTurnstileRef}
+              onToken={flow.onForgotToken}
+              onStatusChange={flow.onForgotCaptchaStatus}
+            />
+          ) : null
+        }
+      />
+      <ResetLinkSentModal
+        open={open && flow.screen === "reset-link-sent"}
+        onDismiss={flow.dismiss}
+        onBackToSignIn={flow.goToSignIn}
+        onTryAgain={flow.goToForgotPassword}
+        email={flow.pendingEmail}
       />
     </>
   );

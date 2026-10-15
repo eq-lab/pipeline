@@ -7,13 +7,14 @@ import {
 
 export interface UseForgotPasswordFormOptions {
   open: boolean;
-  onSubmit?: (payload: { email: string }) => void;
+  onSubmit?: (payload: { email: string }) => void | Promise<void>;
 }
 
 export interface UseForgotPasswordFormResult {
   email: string;
   setEmail: (next: string) => void;
   isValid: boolean;
+  isSubmitting: boolean;
   emailError: string | undefined;
   handleEmailBlur: () => void;
   handleSubmit: (e: React.FormEvent) => void;
@@ -26,12 +27,14 @@ export function useForgotPasswordForm({
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setEmail("");
       setEmailTouched(false);
       setSubmitAttempted(false);
+      setIsSubmitting(false);
     }
   }, [open]);
 
@@ -47,8 +50,12 @@ export function useForgotPasswordForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
-    if (isValid) {
-      onSubmit?.({ email });
+    if (!isValid || isSubmitting) return;
+
+    const result = onSubmit?.({ email });
+    if (result && typeof result.then === "function") {
+      setIsSubmitting(true);
+      result.catch(() => {}).finally(() => setIsSubmitting(false));
     }
   }
 
@@ -56,6 +63,7 @@ export function useForgotPasswordForm({
     email,
     setEmail,
     isValid,
+    isSubmitting,
     emailError: showEmailError ? EMAIL_ERROR_MESSAGE : undefined,
     handleEmailBlur,
     handleSubmit,

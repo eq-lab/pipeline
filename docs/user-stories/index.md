@@ -179,7 +179,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1252 KYB: Owners step](https://github.com/eq-lab/pipeline/issues/1252) | [1252-kyb-owners.md](./epic-1247/1252-kyb-owners.md) | Superseded (retired 2026-09-21, #1279) |
 | [#1253 KYB: Account-in-review screen](https://github.com/eq-lab/pipeline/issues/1253) | [1253-kyb-account-in-review.md](./epic-1247/1253-kyb-account-in-review.md) | Initial |
 | [#1265 KYB: wire auth screens to backend auth](https://github.com/eq-lab/pipeline/issues/1265) | [1265-wire-kyb-auth.md](./epic-1247/1265-wire-kyb-auth.md) | Initial |
-| [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Initial |
+| [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Amended by #1359 |
 | [#1281 KYB: create-account validation-error state](https://github.com/eq-lab/pipeline/issues/1281) | [1281-create-account-error.md](./epic-1247/1281-create-account-error.md) | Initial |
 | [#1284 LP: Account page — wallet, corporate email, KYB documents hub](https://github.com/eq-lab/pipeline/issues/1284) | [1284-lp-account-page.md](./epic-1247/1284-lp-account-page.md) | Initial |
 | [#1283 LP: Add Funds wire-transfer modal + bank-transfer home states](https://github.com/eq-lab/pipeline/issues/1283) | [1283-lp-add-funds.md](./epic-1247/1283-lp-add-funds.md) | Initial |
@@ -196,6 +196,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
 | [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
+| [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 
 ---
 
