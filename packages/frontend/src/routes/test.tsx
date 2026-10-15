@@ -713,7 +713,6 @@ function AuthTab(): React.JSX.Element {
   const [companyDocsSubmitted, setCompanyDocsSubmitted] = React.useState(false);
   const [accountInReviewOpen, setAccountInReviewOpen] = React.useState(false);
   const [wentToApp, setWentToApp] = React.useState(false);
-  const [resetLinkRequested, setResetLinkRequested] = React.useState(false);
   const [fundingDetailsOpen, setFundingDetailsOpen] = React.useState(false);
   const [wireStandIn, setWireStandIn] = React.useState<
     "withdraw" | "start-verification" | "view-status" | null
@@ -849,6 +848,13 @@ function AuthTab(): React.JSX.Element {
         <Button
           variant="secondary"
           className="w-fit"
+          onClick={() => openAuthFlow("reset-link-sent")}
+        >
+          Open Reset-link-sent screen
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
           onClick={() => openAuthFlow("create-account")}
         >
           Open Create Account modal
@@ -875,15 +881,13 @@ function AuthTab(): React.JSX.Element {
           Open Account-in-review screen
         </Button>
       </div>
-      {resetLinkRequested && (
-        <p
-          data-testid="auth-forgot-password-submitted"
-          className="text-sm text-[color:var(--color-pipeline-positive)]"
-        >
-          Reset link requested — #1358/#1359 wire this to a real password-reset
-          endpoint.
-        </p>
-      )}
+      <a
+        href={`/reset-password#token=${"0".repeat(64)}`}
+        className="w-fit text-sm text-[color:var(--color-pipeline-ink)] underline underline-offset-2"
+      >
+        Open Reset Password screen (well-formed token the API refuses — shows
+        the form, then the expired-link view)
+      </a>
       {companyDocsSubmitted && (
         <p
           data-testid="auth-company-docs-submitted"
@@ -906,7 +910,6 @@ function AuthTab(): React.JSX.Element {
         initialScreen={authFlowScreen}
         onClose={() => setAuthFlowOpen(false)}
         onConnectWallet={() => setConnectWalletOpen(true)}
-        onForgotPasswordSubmit={() => setResetLinkRequested(true)}
       />
       {connectWalletOpen && (
         <ConnectWalletModal

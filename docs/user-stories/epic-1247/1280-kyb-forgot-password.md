@@ -4,15 +4,17 @@ Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1280](https://github.com/eq-lab/pipeline/issues/1280)
 Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md)
 
-This is a presentational modal — no network call, no persistence. `ForgotPasswordModal` is
-reachable only from `/test?tab=auth`; it is not wired to any production entry point.
+This doc covers the presentational modal as built by #1280. **Amended by #1359 (2026-10-15):**
+the modal is now wired to `POST /v1/auth/forgot-password` through `EmailAuthFlow`, and the
+production entry point is the Sign in modal's "Forgot password?" link (#1362). Story 4 below is
+superseded — the end-to-end behaviour (captcha, "Check your inbox", the `/reset-password`
+landing) lives in [1359-forgot-password-wiring.md](./1359-forgot-password-wiring.md).
 Styling-only stories (spacing, colors, radius) are out of scope here — visual fidelity is
 verified separately by the QA agent's Figma comparison against Figma node `6704-107100`.
 
-**Tech debt to be aware of while executing these stories:** the design has no confirmation, no
-reset-link landing screen, and no "set a new password" screen (TD-71,
-`docs/exec-plans/tech-debt-tracker.md`) — submitting shows a stand-in line instead of a real
-result. This is intentional, not a bug to file.
+**Tech debt to be aware of while executing these stories:** the design has no confirmation and
+no "set a new password" screen (TD-71, `docs/exec-plans/tech-debt-tracker.md`) — the screens that
+follow a submit are implementer-derived stand-ins. This is intentional, not a bug to file.
 
 ---
 
@@ -71,23 +73,11 @@ result. This is intentional, not a bug to file.
 
 ---
 
-## Story 4: Submitting closes the modal and shows the stand-in line
+## Story 4: Submitting requests a reset link (superseded by #1359)
 
-**Persona:** LP requesting a reset link.
-
-**Pre-conditions:** Forgot Password screen open, a well-formed email entered.
-
-**Steps:**
-
-1. Click "Send Reset Link".
-2. Observe the browser's Network tab throughout.
-
-**Expected outcomes:**
-
-- The modal closes.
-- The preview page shows "Reset link requested — #1265 wires this to the real password-reset
-  endpoint."
-- No HTTP request is made — this issue ships no reset-request endpoint call (deferred to #1265).
+Superseded on 2026-10-15. Submitting now posts to the backend and advances to "Check your inbox" —
+see [1359-forgot-password-wiring.md](./1359-forgot-password-wiring.md) stories 1–3. The former
+stand-in line on `/test` no longer exists.
 
 ---
 

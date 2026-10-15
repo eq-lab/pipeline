@@ -1,5 +1,6 @@
 // spec: docs/frontend/auth-components.md#shared-form-parts
 import { Button } from "@pipeline/ui";
+import type { TurnstileStatus } from "@/components/Turnstile";
 
 function WalletIcon() {
   return (
@@ -68,6 +69,50 @@ export function OrDivider() {
         OR
       </span>
       <div className="h-px flex-1 bg-[color:var(--color-pipeline-ink-subtle)]" />
+    </div>
+  );
+}
+
+export function CaptchaStatusNotice({
+  status,
+  loadingMessage,
+  onRetry,
+}: {
+  status: TurnstileStatus;
+  loadingMessage: string;
+  onRetry?: () => void;
+}) {
+  if (status === "ready") return null;
+  return (
+    <div className="flex w-full flex-col items-center gap-2 text-center">
+      <p
+        role={status === "loading" ? "status" : "alert"}
+        className={[
+          "font-[family-name:var(--font-body)]",
+          "text-[length:var(--text-pipeline-caption)]",
+          "leading-[var(--text-pipeline-caption--line-height)]",
+          status === "loading"
+            ? "text-[color:var(--color-pipeline-ink-muted)]"
+            : "text-[color:var(--color-pipeline-negative-strong)]",
+        ].join(" ")}
+      >
+        {status === "loading"
+          ? loadingMessage
+          : status === "unavailable"
+            ? "Verification is unavailable. Please contact support."
+            : status === "expired"
+              ? "Verification expired. Try again."
+              : "Verification failed to load. Try again."}
+      </p>
+      {status === "error" || status === "expired" ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="cursor-pointer text-[color:var(--color-pipeline-ink)] underline"
+        >
+          Retry verification
+        </button>
+      ) : null}
     </div>
   );
 }

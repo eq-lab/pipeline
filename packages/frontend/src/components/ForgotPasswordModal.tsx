@@ -1,15 +1,22 @@
 // spec: docs/frontend/auth-components.md#forgotpasswordmodal
+import type { ReactNode } from "react";
 import { Button, TextField } from "@pipeline/ui";
 import { AuthModalShell } from "@/components/AuthModalShell";
+import { CaptchaStatusNotice } from "@/components/AuthModalParts";
 import { useForgotPasswordForm } from "@/components/useForgotPasswordForm";
+import type { TurnstileStatus } from "@/components/Turnstile";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface ForgotPasswordModalProps {
   open: boolean;
   onDismiss: () => void;
-  onSubmit?: (payload: { email: string }) => void;
+  onSubmit?: (payload: { email: string }) => void | Promise<void>;
   onBackToSignIn?: () => void;
+  formError?: string;
+  captchaStatus?: TurnstileStatus;
+  onCaptchaRetry?: () => void;
+  turnstileSlot?: ReactNode;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -19,12 +26,17 @@ export function ForgotPasswordModal({
   onDismiss,
   onSubmit,
   onBackToSignIn,
+  formError,
+  captchaStatus = "ready",
+  onCaptchaRetry,
+  turnstileSlot,
 }: ForgotPasswordModalProps) {
   const headingId = "forgot-password-modal-heading";
   const {
     email,
     setEmail,
     isValid,
+    isSubmitting,
     emailError,
     handleEmailBlur,
     handleSubmit,
@@ -55,10 +67,33 @@ export function ForgotPasswordModal({
           error={emailError}
         />
 
+        {turnstileSlot}
+
+        <CaptchaStatusNotice
+          status={captchaStatus}
+          loadingMessage="Verification is loading. You can complete it before requesting a link."
+          onRetry={onCaptchaRetry}
+        />
+
+        {formError ? (
+          <p
+            role="alert"
+            className={[
+              "w-full text-center",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body-s)]",
+              "leading-[var(--text-pipeline-body-s--line-height)]",
+              "text-[color:var(--color-pipeline-negative-strong)]",
+            ].join(" ")}
+          >
+            {formError}
+          </p>
+        ) : null}
+
         <Button
           type="submit"
           variant="primary-blue"
-          disabled={!isValid}
+          disabled={!isValid || isSubmitting}
           className="!w-full !min-w-0 disabled:opacity-[0.32]"
         >
           Send Reset Link

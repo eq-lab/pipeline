@@ -49,6 +49,31 @@ export async function resendOtp(params: {
   });
 }
 
+export async function forgotPassword(params: {
+  email: string;
+  captchaToken: string;
+}): Promise<void> {
+  await apiFetch<undefined>("/v1/auth/forgot-password", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      email: params.email,
+      captcha_token: params.captchaToken,
+    }),
+  });
+}
+
+export async function resetPassword(params: {
+  token: string;
+  password: string;
+}): Promise<void> {
+  await apiFetch<undefined>("/v1/auth/reset-password", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ token: params.token, password: params.password }),
+  });
+}
+
 export async function login(params: {
   email: string;
   password: string;

@@ -10,6 +10,7 @@ const mockSignup = vi.fn();
 const mockVerifyOtp = vi.fn();
 const mockResendOtp = vi.fn();
 const mockLogin = vi.fn();
+const mockForgotPassword = vi.fn();
 const captchaControl = vi.hoisted(() => ({
   autoToken: true,
   onToken: undefined as undefined | ((token: string) => void),
@@ -23,6 +24,7 @@ vi.mock("@/api", async () => {
     verifyOtp: (...args: unknown[]) => mockVerifyOtp(...args),
     resendOtp: (...args: unknown[]) => mockResendOtp(...args),
     login: (...args: unknown[]) => mockLogin(...args),
+    forgotPassword: (...args: unknown[]) => mockForgotPassword(...args),
   };
 });
 
@@ -58,6 +60,7 @@ beforeEach(() => {
   mockVerifyOtp.mockReset();
   mockResendOtp.mockReset();
   mockLogin.mockReset();
+  mockForgotPassword.mockReset();
   captchaControl.autoToken = true;
   captchaControl.onToken = undefined;
 });
@@ -331,18 +334,15 @@ describe("EmailAuthFlow — cross-link navigation", () => {
       screen.getByRole("heading", { name: "Sign in" }),
     ).toBeInTheDocument();
   });
+});
 
-  it("forgot password submit calls onForgotPasswordSubmit and closes the flow", async () => {
+describe("EmailAuthFlow — forgot password (#1359)", () => {
+  it("submit posts { email, captchaToken } and advances to Check your inbox with the email; the flow stays open", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    const onForgotPasswordSubmit = vi.fn();
+    mockForgotPassword.mockResolvedValue(undefined);
     render(
-      <EmailAuthFlow
-        open
-        initialScreen="forgot-password"
-        onClose={onClose}
-        onForgotPasswordSubmit={onForgotPasswordSubmit}
-      />,
+      <EmailAuthFlow open initialScreen="forgot-password" onClose={onClose} />,
     );
 
     await user.type(
@@ -351,10 +351,102 @@ describe("EmailAuthFlow — cross-link navigation", () => {
     );
     await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
 
-    expect(onForgotPasswordSubmit).toHaveBeenCalledWith({
+    expect(mockForgotPassword).toHaveBeenCalledWith({
       email: "lp@example.com",
+      captchaToken: "test-captcha-token",
     });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByRole("heading", { name: "Check your inbox" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/If an account exists for lp@example.com,/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a rejected request shows the error and stays on the request screen", async () => {
+    const user = userEvent.setup();
+    mockForgotPassword.mockRejectedValue(
+      new ApiError(429, "too many reset requests — try again later"),
+    );
+    render(
+      <EmailAuthFlow open initialScreen="forgot-password" onClose={vi.fn()} />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "too many reset requests — try again later",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Reset your password" }),
+    ).toBeInTheDocument();
+  });
+
+  it("without a captcha token the submit makes no request and explains that verification is loading", async () => {
+    const user = userEvent.setup();
+    captchaControl.autoToken = false;
+    try {
+      render(
+        <EmailAuthFlow
+          open
+          initialScreen="forgot-password"
+          onClose={vi.fn()}
+        />,
+      );
+      await user.type(
+        screen.getByPlaceholderText("Enter corporate email"),
+        "lp@example.com",
+      );
+      await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
+      expect(mockForgotPassword).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Verification is still loading — please try again in a moment.",
+      );
+    } finally {
+      captchaControl.autoToken = true;
+    }
+  });
+
+  it("Check your inbox: Try again returns to the request screen, Back to sign in returns to Sign in", async () => {
+    const user = userEvent.setup();
+    mockForgotPassword.mockResolvedValue(undefined);
+    render(
+      <EmailAuthFlow open initialScreen="forgot-password" onClose={vi.fn()} />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
+    await screen.findByRole("heading", { name: "Check your inbox" });
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("heading", { name: "Reset your password" }),
+    ).toBeInTheDocument();
+    expect(
+      (screen.getByPlaceholderText("Enter corporate email") as HTMLInputElement)
+        .value,
+    ).toBe("");
+
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
+    await screen.findByRole("heading", { name: "Check your inbox" });
+    await user.click(screen.getByRole("button", { name: "Back to sign in" }));
+    expect(
+      screen.getByRole("heading", { name: "Sign in" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 });
 

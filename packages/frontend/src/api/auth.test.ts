@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { signup, verifyOtp, resendOtp, login } from "./auth";
+import {
+  signup,
+  verifyOtp,
+  resendOtp,
+  login,
+  forgotPassword,
+  resetPassword,
+} from "./auth";
 
 vi.mock("@/lib/env", () => ({
   ENV: {
@@ -118,5 +125,72 @@ describe("login", () => {
     await expect(
       login({ email: "lp@example.com", password: "wrong" }),
     ).rejects.toMatchObject({ status: 401, message: "invalid credentials" });
+  });
+});
+
+describe("forgotPassword", () => {
+  it("POSTs snake_case body and resolves on 202 with no body", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 202 }));
+
+    await expect(
+      forgotPassword({ email: "lp@example.com", captchaToken: "tok" }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/v1/auth/forgot-password",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "lp@example.com", captcha_token: "tok" }),
+      }),
+    );
+  });
+
+  it("propagates ApiError with status on 429", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: "too many reset requests — try again later" }),
+        { status: 429 },
+      ),
+    );
+
+    await expect(
+      forgotPassword({ email: "lp@example.com", captchaToken: "tok" }),
+    ).rejects.toMatchObject({
+      status: 429,
+      message: "too many reset requests — try again later",
+    });
+  });
+});
+
+describe("resetPassword", () => {
+  it("POSTs { token, password } and resolves on 204 with no body", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(
+      resetPassword({ token: "ab".repeat(32), password: "hunter2!A" }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/v1/auth/reset-password",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ token: "ab".repeat(32), password: "hunter2!A" }),
+      }),
+    );
+  });
+
+  it("propagates ApiError with status on 401", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid or expired reset link" }), {
+        status: 401,
+      }),
+    );
+
+    await expect(
+      resetPassword({ token: "ab".repeat(32), password: "hunter2!A" }),
+    ).rejects.toMatchObject({
+      status: 401,
+      message: "invalid or expired reset link",
+    });
   });
 });

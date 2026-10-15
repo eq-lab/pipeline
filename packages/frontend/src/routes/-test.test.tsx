@@ -356,8 +356,11 @@ describe("TestPage — tab param routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("submitting a valid email on Forgot Password closes it and shows the stand-in line", async () => {
+  it("submitting on Forgot Password without a captcha token stays on the modal and makes no request", async () => {
     const user = userEvent.setup();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 202 }));
     renderTestPage("auth");
     fireEvent.click(
       screen.getByRole("button", { name: /open forgot password screen/i }),
@@ -368,11 +371,26 @@ describe("TestPage — tab param routing", () => {
     );
     await user.click(screen.getByRole("button", { name: "Send Reset Link" }));
     expect(
-      screen.getByTestId("auth-forgot-password-submitted"),
-    ).toHaveTextContent(
-      "Reset link requested — #1358/#1359 wire this to a real password-reset endpoint.",
+      screen.getByRole("dialog", { name: "Reset your password" }),
+    ).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/v1/auth/forgot-password"),
+      expect.anything(),
     );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fetchSpy.mockRestore();
+  });
+
+  it("?tab=auth shows an Open Reset-link-sent screen trigger and a Reset Password route link", () => {
+    renderTestPage("auth");
+    fireEvent.click(
+      screen.getByRole("button", { name: /open reset-link-sent screen/i }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Check your inbox" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /open reset password screen/i }),
+    ).toHaveAttribute("href", `/reset-password#token=${"0".repeat(64)}`);
   });
 
   it("?tab=auth shows an Open Create Account modal button", () => {

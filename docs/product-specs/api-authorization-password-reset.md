@@ -86,6 +86,22 @@ never delays a passcode or the reverse.
 
 ## Frontend
 
-Backend-only so far. `ForgotPasswordModal` (#1280) is built but inert; wiring it
-needs a Turnstile token on its request, a `/reset-password` route that reads
-`token` from the URL fragment, and the screens Figma does not have yet (TD-71).
+Wired by #1359 (`docs/frontend/auth-components.md`, sections `ForgotPasswordModal`,
+`ResetLinkSentModal`, `ResetPasswordModal`). Typed wrappers `forgotPassword` / `resetPassword`
+live in `packages/frontend/src/api/auth.ts`.
+
+**Request.** `ForgotPasswordModal` posts `{ email, captcha_token }` from its own Turnstile widget
+(single-use; reset after every attempt) and, on `202`, shows a "Check your inbox" screen whose copy
+is enumeration-safe — "If an account exists for `<email>`, a password reset link is on its way" —
+with no resend: "Try again" returns to the request form. A `429` or captcha `403` shows the
+backend's message on the form.
+
+**Reset.** The `/reset-password` route reads `token` from the URL fragment on first render, keeps
+it only if it is 64 hex characters, and strips the fragment from the address bar. It validates the
+new password with the signup policy client-side, posts `{ token, password }`, and on `204` clears
+any locally stored session (the backend has already ended it) and offers "Sign in". Every `401`
+and a missing or malformed token show one "This link has expired" screen with "Request a new
+link", which reopens the request form.
+
+No Figma frames exist for the confirmation or the set-new-password screen (TD-71); both are
+derived from the shell's designed siblings.

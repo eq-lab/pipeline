@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ForgotPasswordModal } from "./ForgotPasswordModal";
 
@@ -246,5 +252,102 @@ describe("ForgotPasswordModal (#1280)", () => {
 
     fireEvent.keyDown(document, { key: "Tab" });
     expect(document.activeElement).toBe(first);
+  });
+});
+
+describe("ForgotPasswordModal (#1359 wiring props)", () => {
+  afterEach(() => {
+    document.body.style.overflow = "";
+  });
+
+  it("renders formError as an alert inside the dialog", () => {
+    renderModal({
+      formError: "Network error — check your connection and try again.",
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Network error — check your connection and try again.",
+    );
+  });
+
+  it("renders the turnstile slot inside the dialog", () => {
+    renderModal({ turnstileSlot: <div data-testid="slot" /> });
+    expect(
+      screen.getByRole("dialog").querySelector('[data-testid="slot"]'),
+    ).toBeInTheDocument();
+  });
+
+  it("captchaStatus=loading shows the loading status line without a retry", () => {
+    renderModal({ captchaStatus: "loading" });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Verification is loading. You can complete it before requesting a link.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Retry verification" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("captchaStatus=error shows the alert and Retry verification calls onCaptchaRetry", async () => {
+    const user = userEvent.setup();
+    const onCaptchaRetry = vi.fn();
+    renderModal({ captchaStatus: "error", onCaptchaRetry });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verification failed to load. Try again.",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Retry verification" }),
+    );
+    expect(onCaptchaRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("captchaStatus=unavailable shows the unavailable copy", () => {
+    renderModal({ captchaStatus: "unavailable" });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verification is unavailable. Please contact support.",
+    );
+  });
+
+  it("captchaStatus=ready (default) renders no status or alert", () => {
+    renderModal();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("submit is disabled while a pending onSubmit promise is outstanding", async () => {
+    const user = userEvent.setup();
+    let resolveSubmit: () => void = () => {};
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    renderModal({ onSubmit });
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    const submit = screen.getByRole("button", { name: "Send Reset Link" });
+    await user.click(submit);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(submit).toBeDisabled();
+    await user.click(submit);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveSubmit();
+    });
+    expect(submit).not.toBeDisabled();
+  });
+
+  it("submit re-enables after a rejected onSubmit promise", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(() => Promise.reject(new Error("boom")));
+    renderModal({ onSubmit });
+    await user.type(
+      screen.getByPlaceholderText("Enter corporate email"),
+      "lp@example.com",
+    );
+    const submit = screen.getByRole("button", { name: "Send Reset Link" });
+    await user.click(submit);
+    await waitFor(() => expect(submit).not.toBeDisabled());
   });
 });

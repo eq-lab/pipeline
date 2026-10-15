@@ -8,7 +8,7 @@ export const PASSWORD_ERROR_MESSAGE = "Enter the correct password";
 export const PASSWORD_POLICY_ERROR_MESSAGE =
   "At least 8 characters, including a number and a special character";
 
-function meetsPasswordPolicy(password: string): boolean {
+export function meetsPasswordPolicy(password: string): boolean {
   return (
     password.length >= 8 && /\d/.test(password) && /[^A-Za-z0-9]/.test(password)
   );

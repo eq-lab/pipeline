@@ -13,6 +13,7 @@ import { Route as WithdrawRouteImport } from './routes/withdraw'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TestRouteImport } from './routes/test'
 import { Route as StakeRouteImport } from './routes/stake'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as DepositRouteImport } from './routes/deposit'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AccountRouteImport } from './routes/account'
@@ -36,6 +37,11 @@ const TestRoute = TestRouteImport.update({
 const StakeRoute = StakeRouteImport.update({
   id: '/stake',
   path: '/stake',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DepositRoute = DepositRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/dashboard': typeof DashboardRoute
   '/deposit': typeof DepositRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/stake': typeof StakeRoute
   '/test': typeof TestRoute
   '/transactions': typeof TransactionsRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/dashboard': typeof DashboardRoute
   '/deposit': typeof DepositRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/stake': typeof StakeRoute
   '/test': typeof TestRoute
   '/transactions': typeof TransactionsRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/dashboard': typeof DashboardRoute
   '/deposit': typeof DepositRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/stake': typeof StakeRoute
   '/test': typeof TestRoute
   '/transactions': typeof TransactionsRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/dashboard'
     | '/deposit'
+    | '/reset-password'
     | '/stake'
     | '/test'
     | '/transactions'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/dashboard'
     | '/deposit'
+    | '/reset-password'
     | '/stake'
     | '/test'
     | '/transactions'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/dashboard'
     | '/deposit'
+    | '/reset-password'
     | '/stake'
     | '/test'
     | '/transactions'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   DashboardRoute: typeof DashboardRoute
   DepositRoute: typeof DepositRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   StakeRoute: typeof StakeRoute
   TestRoute: typeof TestRoute
   TransactionsRoute: typeof TransactionsRoute
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/stake'
       fullPath: '/stake'
       preLoaderRoute: typeof StakeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/deposit': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   DashboardRoute: DashboardRoute,
   DepositRoute: DepositRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   StakeRoute: StakeRoute,
   TestRoute: TestRoute,
   TransactionsRoute: TransactionsRoute,

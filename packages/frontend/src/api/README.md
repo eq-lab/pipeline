@@ -65,19 +65,36 @@ try {
 ### Auth module (`src/api/auth.ts`)
 
 Typed wrappers over the email/password auth endpoints
-(`packages/api/src/routes/auth/password.rs`; see
-`docs/product-specs/api-authorization-email.md`). All four map camelCase params
-to the backend's snake_case JSON body.
+(`packages/api/src/routes/auth/password.rs` and `password_reset.rs`; see
+`docs/product-specs/api-authorization-email.md` and
+`docs/product-specs/api-authorization-password-reset.md`). All six map camelCase
+params to the backend's snake_case JSON body.
 
 ```ts
-import { signup, verifyOtp, resendOtp, login } from "@/api";
+import {
+  signup,
+  verifyOtp,
+  resendOtp,
+  login,
+  forgotPassword,
+  resetPassword,
+} from "@/api";
 import type { TokenResponse } from "@/api";
 
 await signup({ email, password, captchaToken }); // always 202, no body
 const { token, expires_in }: TokenResponse = await verifyOtp({ email, code });
 await resendOtp({ email, captchaToken }); // always 202, no body
 const session: TokenResponse = await login({ email, password });
+await forgotPassword({ email, captchaToken }); // always 202, no body
+await resetPassword({ token, password }); // 204, no body, no session issued
 ```
+
+`forgotPassword` rejects with `ApiError` on `403`/`503` (captcha) and `429`
+(per-client limit); a `202` says nothing about whether the address exists.
+`resetPassword` rejects with `400` (password fails the policy) and `401` for every
+link failure (unknown, expired, used, superseded, account no longer eligible) —
+one message, by design. A `204` ends every session the account held; the
+frontend clears its own stored session and sends the user to sign in.
 
 `login` rejects with `ApiError` on `401` (bad credentials), `403` (`account_suspended`,
 or `email_not_verified` — the frontend routes this one back to the OTP

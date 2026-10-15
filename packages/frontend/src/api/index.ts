@@ -14,7 +14,14 @@ export {
   ACCOUNT_SUSPENDED,
   subscribeSessionEnded,
 } from "./client";
-export { signup, verifyOtp, resendOtp, login } from "./auth";
+export {
+  signup,
+  verifyOtp,
+  resendOtp,
+  login,
+  forgotPassword,
+  resetPassword,
+} from "./auth";
 export type { SessionEndReason } from "./client";
 export type { TokenResponse } from "./auth";
 export {
