@@ -1,5 +1,8 @@
 # Issue #1359: KYB: wire Forgot Password screen to backend reset
 
+**Status: implemented (2026-10-15)** — all steps below and the Test Strategy are complete;
+frontend lint/build/test and `lint-docs` green (154 files, 2456 tests). See PR #1549.
+
 Source: https://github.com/eq-lab/pipeline/issues/1359
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247).
