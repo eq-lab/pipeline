@@ -41,7 +41,7 @@ export interface LoanFinancialsResponse {
   fees: string;
   /** Yield minted to sPLUSD for this loan's confirmed repayments. */
   minted_yield: string;
-  /** Realized interest + fees not yet minted: `(interest + fees) − minted_yield`, ≥ 0. */
+  /** Realized interest + fees + OET not yet minted: `(interest + fees + oet_alloc) − minted_yield`, ≥ 0. */
   not_minted_yield: string;
   /** Offtaker amount still owed: `offtaker − offtaker_received`. */
   offtaker_outstanding: string;

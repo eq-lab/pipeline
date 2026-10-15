@@ -308,7 +308,7 @@ minter contributes 15 of its 22 events (#1416, #1480):
 | Minter | `wire_in_assigned` | `WireInAssigned` | An escrowed wire reaching its LP; carries no reference of its own, so it is joined to its `WireIn` by wire id |
 | Minter | `wire_in_returned` | `WireInReturned` | An escrowed wire sent back to the bank; the terminal state TD-116 needs |
 | Minter | `cash_disbursed` / `cash_disbursement_reversed` | `CashDisbursed` / `CashDisbursementReversed` | Bank cash booked out to a loan, and its reversal |
-| Minter | `cash_repaid` / `cash_repayment_reversed` | `CashRepaid` / `CashRepaymentReversed` | A loan repayment (`sale_id = "0"` means not a sale) and its reversal |
+| Minter | `cash_repaid` / `cash_repayment_reversed` | `CashRepaid` / `CashRepaymentReversed` | A loan repayment (`sale_id = "0"` means not a sale) and its reversal. `fee_shares` is an sPLUSD share count and is never summed; `/financials` `minted_yield` consumes both events (see "Minted yield" below) |
 | Minter | `wire_out_requested` / `wire_out_settled` / `wire_out_cancelled` | `WireOutRequested` / `WireOutSettled` / `WireOutCancelled` | The LP wire-out lifecycle |
 | Minter | `ramp_opened` / `ramp_closed` | `RampOpened` / `RampClosed` | USDC/bank ramp lifecycle; `direction` is `UsdcToBank` or `BankToUsdc` |
 | Minter | `cash_recorded` | `CashRecorded` | A cash-ledger entry; topic field `kind` is stored as `reason` (`Disbursed`, `DisbursementReversed`, `Income`, `Expense`, `Correction`), `delta` is signed. A Stellar `Correction` is stored as `CashRecorded` with `reason = "Correction"`, where EVM emits `CashCorrected` |
@@ -333,6 +333,33 @@ The CollateralRegistry's 11 business events are collected when
 `CHAIN_<id>_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set. They are routed by contract id in
 the poller and stored with the EVM event names; see
 [collateral-registry-events.md](./collateral-registry-events.md).
+
+#### Minted yield
+
+`GET /v1/loan-book/{loan_id}/financials` serves `minted_yield` as the sum of three parts,
+summed raw and then normalised once to 6 decimals per chain kind (Stellar 7-dp amounts divide
+by 10, rounding down):
+
+- the legacy `YieldMinted` total joined through `yield_mint_outbox` (history; neither indexer
+  parses `YieldMinted` any more);
+- for every Minter `CashRepaid` row of the loan, `interest_minted` (counted for carved-out
+  loans too, even when it is minted to the Pocket); and
+- the fee leg, `mgmt_fee + perf_fee + oet_alloc` from `params->'event'` of the LoanRegistry
+  `PaymentRecorded` row of the same repayment (matched on `chain_id`, `tx_hash`, `loan_id`,
+  `repayment_id`; decimal strings on both chain arms). USDC and PLUSD share one scale per chain
+  (6 dp EVM, 7 dp Stellar), so the legs sum raw. `CashRepaid.fee_shares` is an sPLUSD share
+  count and is never summed.
+
+A repayment with a `CashRepaymentReversed` row (same Minter address, same
+`(loan_id, repayment_id)`) is excluded entirely, interest and fees. A live `CashRepaid` row with
+no matching `PaymentRecorded` contributes 0 to the fee leg and the route logs a warning with the
+count.
+Minter rows are chain-scoped (no configured-address filter). `not_minted_yield` =
+`(senior_interest + mgmt_fee + perf_fee + oet_alloc) − minted_yield` clamped at 0, so the OET
+leg counts on both sides; for minter-era repayments it is structurally about 0. The `interest` and
+`fees` fields are unchanged (they exclude `oet_alloc`). The query and arithmetic live in
+`shared::contract_logs_repo::list_repayment_mints` and `shared::minted_yield` for reuse by the
+dashboard cumulative yield (#1533).
 
 #### Stellar deal-token-factory indexing
 

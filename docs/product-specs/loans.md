@@ -139,7 +139,7 @@ but its USDC off-ramp not yet marked complete — the default until a trustee fl
 table) and `Past Due` (now is past `currentMaturityDate` and the loan is still Performing /
 Watchlist — the API equivalent of the on-chain `Matured` state). Terminal states are never
 overridden and `Disbursing` outranks `Past Due`. Past-maturity loans stay in the loan book
-as `Past Due` until an explicit close/default removes them.
+as `Past Due` until an explicit close/default removes them. `/financials.minted_yield` = legacy `YieldMinted` + Minter `CashRepaid` interest and fee PLUSD, net of `CashRepaymentReversed` (`docs/references/backend.md` "Minted yield").
 
 ### Rollover
 
