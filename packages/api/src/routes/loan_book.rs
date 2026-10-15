@@ -118,7 +118,7 @@ pub struct LoanBookSummary {
     /// Also backs the Trustee "Loans" page **Weighted tenor** tile (same
     /// principal-weighted definition over the active set).
     pub avg_duration_days: Option<i64>,
-    /// Σ **outstanding** senior (original senior − senior principal repaid) over active
+    /// Σ **outstanding** senior (`disbursed − repaid − written_down`, floored at 0) over active
     /// loans, USDC (6-decimal string). Distinct from `total_deployed` (senior + equity,
     /// original). Backs the Trustee "Loans" page **Deployed senior** tile; shares the
     /// outstanding-senior basis with the Senior-outst. column and the at-risk/concentration figures.
@@ -132,7 +132,7 @@ pub struct LoanBookSummary {
     /// **Weighted tenor** tile. Same value as `avg_duration_days`; `null` when no
     /// loans are active.
     pub weighted_tenor_days: Option<i64>,
-    /// Σ outstanding senior (`original_senior_tranche − senior_principal_repaid`) of
+    /// Σ outstanding senior (`disbursed − repaid − written_down`, floored at 0) of
     /// at-risk loans — status `WatchList` or `Default`, over all open (originated,
     /// non-closed) loans, **including defaulted loans excluded from the active set**.
     /// USDC 6-decimal string; `"0.000000"` when none. Backs the **At-risk (WL +
@@ -187,12 +187,12 @@ pub struct LoanBookEntry {
     pub commodity: String,
     /// Principal = senior tranche + equity tranche, USDC (6-decimal string).
     pub principal: String,
-    /// Outstanding senior = `original_senior_tranche − senior_principal_repaid`, USDC
+    /// Outstanding senior = `disbursed − repaid − written_down` (floored at 0; zero until disbursed), USDC
     /// (6-decimal string). Backs the Trustee Loans table **Senior outst.** column
     /// (distinct from `principal`, which is the original senior + equity).
     pub senior_outstanding: String,
     /// Original senior tranche (deployed), USDC (6-decimal string) — distinct from
-    /// `senior_outstanding` (net of repayment) and from `LoanBookSummary.deployed_senior`
+    /// `senior_outstanding` (net of repayment and write-down; zero until disbursed) and from `LoanBookSummary.deployed_senior`
     /// (the book-wide Σ *outstanding* senior). Backs the "Facility / senior" tile pairing
     /// with `principal`.
     pub original_senior_tranche: String,
@@ -1381,11 +1381,9 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
     .with_scale_round(6, RoundingMode::HalfUp)
     .to_plain_string();
 
-    // Outstanding senior = original senior tranche − senior principal repaid,
-    // floored at zero. Drives the "Senior outst." column, the CCR denominator,
-    // deployed_senior, and the top-concentration tile.
-    let outstanding_senior =
-        (&s.original_senior_tranche - &s.repayment.senior_principal_repaid).max(zero.clone());
+    // Outstanding senior = disbursed − repaid − written_down, floored at zero. Drives the
+    // "Senior outst." column, the CCR denominator, deployed_senior, and the top-concentration tile.
+    let outstanding_senior = s.outstanding_senior_principal();
 
     // Collateral value (micro-USDC) from the valuation record, keyed by loan_id.
     // Absent → null; present-but-zero → value 0 with null LTV/CCR (no division).
@@ -1625,9 +1623,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         if !at_risk {
             continue;
         }
-        // Floor at zero so an over-repaid / anomalous snapshot can't subtract.
-        at_risk_wl_and_default_senior +=
-            (&s.original_senior_tranche - &s.repayment.senior_principal_repaid).max(zero.clone());
+        at_risk_wl_and_default_senior += s.outstanding_senior_principal();
         // Add collateral of at-risk loans not already summed into total_collateral.
         let key = loan_key(&loan.loan_id);
         if !active_keys.contains(&key) {

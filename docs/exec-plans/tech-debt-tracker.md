@@ -1964,13 +1964,14 @@ line, whichever section it lands in.
 - **Impact:** Blocks #1436 (Ethereum mainnet config) in substance, not just in config — there is nothing to point a new chain config at until a post-rework deployment exists.
 - **Suggested fix:** Stand up a deploy pipeline and environment mapping for `pipeline-contracts`, analogous to what `pipeline-stellar-contracts` already has for `test.yaml`'s deployment-id references.
 
-### TD-132: `outstanding` is defined two ways between the EVM contract and the API
+### TD-132: `outstanding` is defined two ways between the EVM contract and the API [PARTIALLY RESOLVED 2026-10-15 / #1524]
 
 - **Date:** 2026-10-08
 - **Location:** `LoanRegistryUpgradeable.sol:657` (`_outstanding = disbursed − repaid − writtenDown`) vs. `packages/api/src/routes/loan_book.rs:1374` (`original_senior_tranche − senior_principal_repaid`) — Issue #1434, finding F4.
 - **Gap:** The two values are not interchangeable — one nets off write-downs and gross disbursed, the other nets off original tranche size and cumulative principal repaid — and nothing in either codebase states this is deliberate.
 - **Impact:** Unverified whether the two converge in every state transition; not touched by #1434 because `loanMoney()` (the contract's getter for its definition) has no consumer and was deliberately not called (F4).
 - **Suggested fix:** A reconciliation check or an explicit doc note on which definition each Trustee surface uses and why.
+- **Resolution (partial):** All LoanBook readers (`loan_book.rs`, `ccr_history.rs`, `collateral_valuation.rs`, `waterfall.rs`) now use `LoanSnapshot::outstanding_senior_principal()` = `disbursed − repaid − written_down`, the contract definition. The remaining sites (`portfolio.rs`, `capital_allocation.rs`, `financial_position.rs`) are tracked by #1534.
 
 ### TD-133: EVM `WireInMatcher` (not yet written) has a `receiver` casing trap waiting for it [RESOLVED 2026-10-13 / feature/evm-relayer]
 

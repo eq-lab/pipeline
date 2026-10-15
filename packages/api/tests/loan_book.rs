@@ -86,7 +86,7 @@ fn make_loan(
             current_rate: rate_bps,
             closure_reason: "None".to_owned(),
             carved_out: false,
-            disbursed: BigDecimal::from(0_i64),
+            disbursed: usdc(senior_k * 1_000),
             repaid: BigDecimal::from(0_i64),
             written_down: BigDecimal::from(0_i64),
             interest_adjustment: BigDecimal::from(0_i64),
@@ -593,9 +593,10 @@ fn empty_book_defaults_the_trustee_metric_fields() {
 // ── Loans table per-loan columns (senior outstanding, maturity, spot) ──
 
 #[test]
-fn entry_senior_outstanding_nets_repaid_from_original() {
-    // Loan A senior 80k, with 30k senior principal already repaid → outstanding 50k.
+fn entry_senior_outstanding_nets_repaid_from_disbursed() {
+    // Loan A senior 80k fully disbursed, with 30k senior principal repaid → outstanding 50k.
     let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(30_000);
     loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
     let r = at(0, &loans, &[]); // day 0: only loan A active
     assert_eq!(r.loans[0].principal, "100000.000000"); // original senior + equity
@@ -682,6 +683,7 @@ fn at_risk_pct_clamps_at_100_percent() {
 fn deployed_senior_and_concentration_use_outstanding_senior() {
     // Loan A senior 80k with 30k repaid → outstanding 50k; only A active at day 0.
     let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(30_000);
     loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
     let r = at(0, &loans, &[]);
     // deployed_senior nets the repaid principal (50k), not the original 80k.
@@ -807,6 +809,7 @@ fn watchlist_entry(entries: &[(i64, i64)]) -> HashMap<String, i64> {
 fn original_senior_tranche_is_distinct_from_outstanding() {
     // Loan A senior 80k with 30k repaid → outstanding 50k, original stays 80k.
     let mut loans = fixture_loans();
+    loans[0].snapshot.repaid = usdc(30_000);
     loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
     let r = at(0, &loans, &[]);
     assert_eq!(r.loans[0].original_senior_tranche, "80000.000000");
@@ -976,4 +979,62 @@ fn next_payment_tracks_rollover_adjusted_maturity() {
     assert_eq!(a.next_payment_timestamp, 250 * DAY);
     assert_eq!(a.next_payment_timestamp, a.maturity);
     assert_eq!(a.days_overdue, None);
+}
+
+// ── Outstanding = disbursed − repaid − written_down ────────────────────────────
+
+#[test]
+fn approved_loan_has_zero_outstanding_and_null_ccr() {
+    let mut loans = fixture_loans();
+    loans[0] = with_status(loans[0].clone(), "Approved");
+    loans[0].snapshot.disbursed = BigDecimal::from(0_i64);
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &loans, &[], &collateral);
+    assert_eq!(r.loans[0].senior_outstanding, "0.000000");
+    assert_eq!(r.loans[0].ccr_bps, None);
+    assert_eq!(r.summary.deployed_senior, "0.000000");
+    assert_eq!(r.loans[0].original_senior_tranche, "80000.000000");
+}
+
+#[test]
+fn partly_disbursed_loan_outstanding_is_disbursed_part() {
+    let mut loans = fixture_loans();
+    loans[0].snapshot.disbursed = usdc(30_000);
+    let collateral = collateral_map(&[(1, usdc(60_000))]);
+    let r = at_with(0, &loans, &[], &collateral);
+    assert_eq!(r.loans[0].senior_outstanding, "30000.000000");
+    assert_eq!(r.loans[0].ccr_bps, Some(20_000));
+}
+
+#[test]
+fn undisbursed_lowers_deployed_senior() {
+    let mut loans = fixture_loans();
+    loans[0].snapshot.disbursed = usdc(60_000);
+    let r = at(60, &loans, &[]);
+    assert_eq!(r.summary.deployed_senior, "100000.000000");
+    let top = r.summary.top_concentration.expect("present");
+    assert_eq!(top.commodity, "Copper Concentrate");
+    assert_eq!(top.share, "0.6000");
+}
+
+#[test]
+fn written_down_default_loan_reduces_at_risk_senior() {
+    let mut loans = fixture_loans();
+    let mut defaulted = with_status(
+        make_loan(3, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
+        "Default",
+    );
+    defaulted.snapshot.written_down = usdc(10_000);
+    loans.push(defaulted);
+    let events = vec![event("LoanDefaulted", 3, 50)];
+    let r = at(60, &loans, &events);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "20000.000000");
+}
+
+#[test]
+fn outstanding_ignores_stale_cumulative_senior_principal_repaid() {
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let r = at(0, &loans, &[]);
+    assert_eq!(r.loans[0].senior_outstanding, "80000.000000");
 }

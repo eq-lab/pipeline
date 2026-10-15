@@ -10,7 +10,7 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::waterfall::{
-    build_response, compute_waterfall, PricingBasis, WaterfallDoc,
+    build_response, compute_waterfall, PricingBasis, WaterfallDoc, ASSUMED_MAX_FEE_BPS,
 };
 use shared::collateral_valuation_repo::ValuationMode;
 use shared::contract_logs_repo::EconomicsEventRow;
@@ -86,8 +86,8 @@ fn snapshot_with_repayment(
         current_rate: rate_bps,
         closure_reason: String::new(),
         carved_out: false,
-        disbursed: dec("0"),
-        repaid: dec("0"),
+        disbursed: dec(senior_tranche),
+        repaid: repayment.senior_principal_repaid.clone(),
         written_down: dec("0"),
         interest_adjustment: dec("0"),
         metadata_uri_onchain: String::new(),
@@ -991,4 +991,197 @@ fn openapi_doc_registers_path() {
     let doc = WaterfallDoc::openapi();
     let json = serde_json::to_string(&doc).unwrap();
     assert!(json.contains("/v1/loan-book/{loan_id}/waterfall"));
+}
+
+// ── Outstanding = disbursed − repaid − written_down; interest_adjustment ───────
+
+fn run(s: &LoanSnapshot, amount: &str) -> pipeline_api::routes::waterfall::WaterfallBreakdown {
+    compute_waterfall(
+        s,
+        &dec(amount),
+        ONE_YEAR_LATER,
+        &fees(100, 2000, 50),
+        &[],
+        PricingBasis::Fixed,
+    )
+    .unwrap()
+}
+
+#[test]
+fn partly_disbursed_loan_accrues_and_caps_principal_on_disbursed() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.disbursed = dec("500000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.management_fee, dec("5000"));
+    assert_eq!(b.performance_fee, dec("11000"));
+    assert_eq!(b.senior_coupon_net, dec("44000"));
+    assert_eq!(b.oet_allocation, dec("2500"));
+    assert_eq!(b.senior_principal_returned, dec("500000"));
+    assert!(!b.senior_principal_fully_repaid);
+}
+
+#[test]
+fn approved_loan_accrues_nothing_and_returns_no_principal() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.disbursed = dec("0");
+    let b = run(&s, "1000000");
+    assert_eq!(b.senior_coupon_net, dec("0"));
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(b.equity_distributed, dec("1000000"));
+}
+
+#[test]
+fn written_down_amount_is_excluded_from_principal_cap_and_accrual_base() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.written_down = dec("400000");
+    let b = run(&s, "5000000");
+    assert_eq!(
+        b.senior_coupon_net + &b.management_fee + &b.performance_fee,
+        dec("72000")
+    );
+    assert_eq!(b.senior_principal_returned, dec("600000"));
+}
+
+#[test]
+fn undisbursed_amount_is_excluded() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.disbursed = dec("700000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.senior_principal_returned, dec("700000"));
+    assert_eq!(b.management_fee, dec("7000"));
+}
+
+#[test]
+fn interest_waiver_reduces_coupon_and_performance_fee_not_management_fee() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.interest_adjustment = dec("-20000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.performance_fee, dec("18000"));
+    assert_eq!(b.senior_coupon_net, dec("72000"));
+    assert_eq!(b.oet_allocation, dec("5000"));
+}
+
+#[test]
+fn positive_interest_adjustment_increases_gross() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.interest_adjustment = dec("10000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.performance_fee, dec("24000"));
+    assert_eq!(b.senior_coupon_net, dec("96000"));
+}
+
+#[test]
+fn waiver_exceeding_gross_clamps_gross_at_zero() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.interest_adjustment = dec("-150000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.senior_coupon_net, dec("0"));
+    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.equity_distributed, dec("4000000"));
+}
+
+#[test]
+fn undrawn_approved_loan_is_not_fully_repaid() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.disbursed = dec("0");
+    assert!(!run(&s, "1000000").senior_principal_fully_repaid);
+}
+
+#[test]
+fn fully_drawn_and_repaid_loan_is_fully_repaid() {
+    let s = snapshot("1000000", "0", 1200);
+    assert!(run(&s, "5000000").senior_principal_fully_repaid);
+}
+
+#[test]
+fn fully_drawn_loan_with_principal_left_is_not_fully_repaid() {
+    let s = snapshot("1000000", "0", 1200);
+    assert!(!run(&s, "100000").senior_principal_fully_repaid);
+}
+
+fn assert_within_fee_cap(b: &pipeline_api::routes::waterfall::WaterfallBreakdown) {
+    let cap = (&b.senior_coupon_net + &b.management_fee + &b.performance_fee)
+        * BigDecimal::from(ASSUMED_MAX_FEE_BPS)
+        / BigDecimal::from(10_000);
+    let fees = &b.management_fee + &b.performance_fee + &b.oet_allocation;
+    assert!(fees <= cap.with_scale_round(0, bigdecimal::RoundingMode::Down));
+}
+
+#[test]
+fn standard_schedule_is_untouched_by_the_fee_cap() {
+    let s = snapshot("1000000", "0", 1200);
+    let b = run(&s, "5000000");
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.performance_fee, dec("22000"));
+    assert_eq!(b.oet_allocation, dec("5000"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn heavy_waiver_scales_fees_to_the_cap_and_frees_the_rest_to_equity() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.interest_adjustment = dec("-100000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.senior_coupon_net, dec("8000"));
+    assert_eq!(b.management_fee, dec("6666"));
+    assert_eq!(b.performance_fee, dec("1333"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_within_fee_cap(&b);
+    let total = &b.senior_principal_returned
+        + &b.senior_coupon_net
+        + &b.management_fee
+        + &b.performance_fee
+        + &b.oet_allocation
+        + &b.equity_distributed;
+    assert_eq!(total, dec("5000000"));
+}
+
+#[test]
+fn oet_is_trimmed_to_the_room_left_under_the_cap() {
+    let mut s = snapshot("1000000", "0", 1200);
+    s.interest_adjustment = dec("-60000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.performance_fee, dec("10000"));
+    assert_eq!(b.senior_coupon_net, dec("40000"));
+    assert_eq!(b.oet_allocation, dec("5000"));
+    assert_within_fee_cap(&b);
+}
+
+#[test]
+fn interest_adjustment_is_cumulative_against_recorded_interest() {
+    let mut s = snapshot_with_repayment(
+        "1000000",
+        RepaymentSnapshot {
+            offtaker_received: dec("0"),
+            senior_principal_repaid: dec("0"),
+            senior_interest: dec("50000"),
+            equity_distributed: dec("0"),
+            mgmt_fee: dec("0"),
+            perf_fee: dec("0"),
+            oet_alloc: dec("0"),
+        },
+        1200,
+    );
+    s.interest_adjustment = dec("-20000");
+    let b = run(&s, "5000000");
+    assert_eq!(b.senior_coupon_net, dec("22000"));
+}
+
+#[test]
+fn stellar_raw_scale_interest_adjustment_is_not_normalised() {
+    let mut s = snapshot("10000000", "0", 1200);
+    s.interest_adjustment = dec("-200000");
+    let b = run(&s, "50000000");
+    assert_eq!(b.management_fee, dec("100000"));
+    assert_eq!(b.performance_fee, dec("180000"));
+    assert_eq!(b.senior_coupon_net, dec("720000"));
+    assert_eq!(b.oet_allocation, dec("50000"));
 }

@@ -47,13 +47,9 @@ use shared::collateral_valuation_repo::{
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
 use crate::formatting::iso_utc_from_unix;
+use crate::routes::collateral_valuation::outstanding_senior_usd;
 use crate::routes::common::{loan_registry_address, resolve_chain};
 use crate::AppState;
-
-/// On-chain USDC fixed-point scale (`1e6`). Senior principal is stored base-6 but the
-/// CCR ratio is taken against a plain-USD collateral value, so it is scaled down first
-/// (matches `routes::collateral_valuation::USDC_SCALE`).
-const USDC_SCALE: i64 = 1_000_000;
 
 /// Upper bound on grid points per request. Each point runs a full collateral
 /// valuation, so an unbounded `(to - from) / step` would be a cheap way to burn CPU.
@@ -215,8 +211,8 @@ async fn get_ccr_history(
     .map(Json)
 }
 
-/// Outstanding senior principal in USD = `(original_senior_tranche -
-/// senior_principal_repaid) / 1e6`, read from the latest loan snapshot. `None` when the
+/// Outstanding senior principal in USD = `(disbursed - repaid -
+/// written_down) / 1e6`, read from the latest loan snapshot. `None` when the
 /// loan has no snapshot (never indexed). Mirrors
 /// `routes::collateral_valuation::loan_snapshot_senior_usd`.
 async fn loan_snapshot_senior_usd(
@@ -235,9 +231,9 @@ async fn loan_snapshot_senior_usd(
         return Ok(None);
     };
 
-    let outstanding_micro =
-        &row.snapshot.original_senior_tranche - &row.snapshot.repayment.senior_principal_repaid;
-    Ok(Some(outstanding_micro / BigDecimal::from(USDC_SCALE)))
+    Ok(outstanding_senior_usd(
+        row.snapshot.outstanding_senior_principal(),
+    ))
 }
 
 /// Convert Unix seconds to a UTC datetime, rejecting an out-of-range value.

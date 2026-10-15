@@ -2,10 +2,16 @@
 //! (`validate_assay`, `validate_offtake`). Pure — no HTTP/DB layer (matches the
 //! project-wide convention: all tests in `tests/`, no live Postgres).
 
+use std::collections::HashMap;
+
+use bigdecimal::BigDecimal;
+use chrono::Utc;
+use pipeline_api::routes::collateral_valuation::build_response;
 use pipeline_api::routes::collateral_valuation::{
     validate_assay, validate_offtake, AssayMetalInput, DeleteriousInput, PayableTermInput,
     PenaltyTierInput, RefiningChargeInput, SubmitAssayRequest, SubmitOfftakeRequest,
 };
+use shared::collateral_valuation_repo::{CollateralValuationRow, ValuationMode};
 
 fn valid_assay() -> SubmitAssayRequest {
     SubmitAssayRequest {
@@ -332,4 +338,95 @@ fn penalty_unit_defaults_to_pct_when_omitted() {
     let req: SubmitOfftakeRequest = serde_json::from_str(body).expect("valid offtake body");
     assert_eq!(req.penalty_schedule[0].unit, "Pct");
     assert!(validate_offtake(&req).is_ok());
+}
+
+// ── outstanding_senior_usd ──────────────────────────────────────────────────────
+
+mod outstanding_usd {
+    use bigdecimal::BigDecimal;
+    use pipeline_api::routes::collateral_valuation::outstanding_senior_usd;
+
+    fn micro(v: &str) -> BigDecimal {
+        v.parse().unwrap()
+    }
+
+    #[test]
+    fn zero_outstanding_means_no_ccr() {
+        assert_eq!(outstanding_senior_usd(micro("0")), None);
+    }
+
+    #[test]
+    fn positive_outstanding_is_scaled_to_usd() {
+        assert_eq!(outstanding_senior_usd(micro("4000000")), Some(micro("4")));
+    }
+}
+
+// ── build_response: loan_snapshot missing input ─────────────────────────────────
+
+fn standard_goods_anchor() -> CollateralValuationRow {
+    CollateralValuationRow {
+        chain_id: 1,
+        loan_id: BigDecimal::from(42),
+        submitted_loan_id: 1,
+        commodity: "Coffee".to_owned(),
+        valuation_mode: ValuationMode::StandardGoods,
+        asset: "KC".to_owned(),
+        price_provider: "ICE".to_owned(),
+        haircut_pct: "0.20".parse().unwrap(),
+        quantity_dmt: "1000".parse().unwrap(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+fn kc_prices() -> HashMap<String, BigDecimal> {
+    HashMap::from([("KC".to_owned(), "1000".parse().unwrap())])
+}
+
+#[test]
+fn no_snapshot_reports_loan_snapshot_missing() {
+    let resp = build_response(
+        &standard_goods_anchor(),
+        None,
+        None,
+        &kc_prices(),
+        None,
+        false,
+    )
+    .unwrap();
+    assert!(resp.collateral_value.is_some());
+    assert!(resp.ccr.is_none());
+    assert!(resp.missing_inputs.contains(&"loan_snapshot".to_owned()));
+}
+
+#[test]
+fn zero_outstanding_with_snapshot_does_not_report_loan_snapshot_missing() {
+    let resp = build_response(
+        &standard_goods_anchor(),
+        None,
+        None,
+        &kc_prices(),
+        None,
+        true,
+    )
+    .unwrap();
+    assert!(resp.collateral_value.is_some());
+    assert!(resp.ccr.is_none());
+    assert!(!resp.missing_inputs.contains(&"loan_snapshot".to_owned()));
+}
+
+#[test]
+fn positive_outstanding_computes_ccr_without_missing_inputs() {
+    let senior: BigDecimal = "500000".parse().unwrap();
+    let resp = build_response(
+        &standard_goods_anchor(),
+        None,
+        None,
+        &kc_prices(),
+        Some(&senior),
+        true,
+    )
+    .unwrap();
+    assert_eq!(resp.ccr.unwrap().ccr_bps, 16_000);
+    assert!(resp.missing_inputs.is_empty());
 }

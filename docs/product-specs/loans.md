@@ -104,7 +104,7 @@ The following fields are updated during the loan's life by the `TRUSTEE` (Truste
 - `offtakerReceivedTotal`, cumulative USDC received from the offtaker against
   `originalOfftakerPrice`, incremented on each `recordPayment` call
 - `seniorPrincipalRepaid`, cumulative Senior-tranche principal repaid. Outstanding Senior
-  principal is `originalSeniorTranche − seniorPrincipalRepaid`
+  principal is `disbursed − repaid − writtenDown`
 - `seniorInterestRecorded`, cumulative net Senior coupon recorded for delivery to the vault
 - `mgmtFeeRecorded`, `perfFeeRecorded`, `oetAllocRecorded`, the cumulative fee carve-outs
   recorded for delivery to the Treasury Wallet
