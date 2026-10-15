@@ -44,6 +44,17 @@ pub fn resolve_chain(state: &AppState, chain_id: Option<i64>) -> i64 {
     chain_id.unwrap_or(state.default_chain_id)
 }
 
+/// LoanRegistry address the LoanBook readers are scoped to on `chain_id`.
+/// Startup guarantees every configured chain has one, so the error is reachable only
+/// for a chain that is not configured.
+pub fn loan_registry_address(state: &AppState, chain_id: i64) -> Result<&str, ApiError> {
+    state
+        .loan_registry_addresses
+        .get(&chain_id)
+        .map(String::as_str)
+        .ok_or_else(|| ApiError::BadRequest(format!("unknown chain_id: {chain_id}")))
+}
+
 /// Shared guard for trustee-only per-loan writes/reads on `/v1/loan-book/{loan_id}/…`:
 /// trustee role → 403, malformed loan id → 400, loan with no indexed events on the
 /// resolved chain → 404 (via the latest-status lookup). Returns the resolved
@@ -66,11 +77,18 @@ pub(crate) async fn trustee_indexed_loan_guard(
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
+    let registry = loan_registry_address(state, chain_id)?;
+
     // 404 when the loan isn't indexed on this chain (no on-chain snapshot). Reuses
     // the latest-status lookup: an empty result means the loan has no indexed events.
     let indexed = state
         .contract_logs_repo
-        .latest_status_by_loans(&state.pool, chain_id, std::slice::from_ref(&loan_id))
+        .latest_status_by_loans(
+            &state.pool,
+            chain_id,
+            registry,
+            std::slice::from_ref(&loan_id),
+        )
         .await?;
     if indexed.is_empty() {
         return Err(ApiError::NotFound(format!(

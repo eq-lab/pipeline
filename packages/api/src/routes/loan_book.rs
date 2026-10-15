@@ -33,7 +33,9 @@ use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, Submitted
 use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
-use crate::routes::common::{resolve_chain, trustee_indexed_loan_guard, ChainQuery};
+use crate::routes::common::{
+    loan_registry_address, resolve_chain, trustee_indexed_loan_guard, ChainQuery,
+};
 use crate::AppState;
 /// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
 /// initial CCR must be at least 100 % (`>= ONE`), mirroring `draw_loan`.
@@ -797,9 +799,13 @@ async fn list_submissions(
     }
     let mut onchain_status: HashMap<(i64, String), String> = HashMap::new();
     for (chain_id, loan_ids) in &ids_by_chain {
+        // A historical chain_id that is no longer configured keeps its stored status.
+        let Ok(registry) = loan_registry_address(&state, *chain_id) else {
+            continue;
+        };
         for (loan_id, status) in state
             .contract_logs_repo
-            .latest_status_by_loans(&state.pool, *chain_id, loan_ids)
+            .latest_status_by_loans(&state.pool, *chain_id, registry, loan_ids)
             .await?
         {
             onchain_status.insert((*chain_id, loan_key(&loan_id)), status);
@@ -1074,7 +1080,10 @@ pub async fn validate_metadata_uri(
     })
 }
 
-async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookResponse, ApiError> {
+pub async fn handle_loan_book(
+    state: &AppState,
+    chain_id: i64,
+) -> Result<LoanBookResponse, ApiError> {
     // As-of "now" — this endpoint reports the current loan book, matching the
     // window-ends-at-now semantics of the other read endpoints.
     let to = std::time::SystemTime::now()
@@ -1082,9 +1091,14 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         .unwrap_or_default()
         .as_secs() as i64;
 
+    // A chain the API is not configured for has no registry to read: empty book, not 400.
+    let Some(registry) = state.loan_registry_addresses.get(&chain_id) else {
+        return Ok(empty_response());
+    };
+
     let loans = state
         .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
+        .list_latest_loan_snapshots(&state.pool, chain_id, registry, to)
         .await?;
 
     if loans.is_empty() {
@@ -1093,7 +1107,7 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
 
     let events = state
         .contract_logs_repo
-        .list_loan_lifecycle_events(&state.pool, chain_id, to)
+        .list_loan_lifecycle_events_for_registry(&state.pool, chain_id, registry, to)
         .await?;
 
     // Fetch the shared inputs ONCE and pass into both builders (they both key off the
@@ -1127,7 +1141,7 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
     // Backs `days_on_watchlist` — absent → no known transition (null field).
     let watchlist_entry_by_loan: HashMap<String, i64> = state
         .contract_logs_repo
-        .latest_watchlist_entry_by_chain(&state.pool, chain_id, to)
+        .latest_watchlist_entry_by_chain(&state.pool, chain_id, registry, to)
         .await?
         .into_iter()
         .map(|(loan_id, ts)| (loan_key(&loan_id), ts))

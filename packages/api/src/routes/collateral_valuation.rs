@@ -34,7 +34,7 @@ use shared::collateral_valuation_repo::{
 
 use crate::auth::{AuthClaims, SecurityAddon, TRUSTEE_ROLE};
 use crate::error::ApiError;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::{loan_registry_address, resolve_chain, ChainQuery};
 use crate::AppState;
 
 /// On-chain USDC fixed-point scale (`1e6`). Loan tranches are stored base-6, but
@@ -368,9 +368,10 @@ async fn loan_snapshot_senior_usd(
         .unwrap_or_default()
         .as_secs() as i64;
 
+    let registry = loan_registry_address(state, chain_id)?;
     let snapshots = state
         .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, now)
+        .list_latest_loan_snapshots(&state.pool, chain_id, registry, now)
         .await?;
 
     let Some(row) = snapshots.into_iter().find(|r| &r.loan_id == loan_id) else {

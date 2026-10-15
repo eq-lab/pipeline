@@ -47,7 +47,7 @@ use shared::collateral_valuation_repo::{
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
 use crate::formatting::iso_utc_from_unix;
-use crate::routes::common::resolve_chain;
+use crate::routes::common::{loan_registry_address, resolve_chain};
 use crate::AppState;
 
 /// On-chain USDC fixed-point scale (`1e6`). Senior principal is stored base-6 but the
@@ -225,9 +225,10 @@ async fn loan_snapshot_senior_usd(
     loan_id: &BigDecimal,
     now: i64,
 ) -> Result<Option<BigDecimal>, ApiError> {
+    let registry = loan_registry_address(state, chain_id)?;
     let snapshots = state
         .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, now)
+        .list_latest_loan_snapshots(&state.pool, chain_id, registry, now)
         .await?;
 
     let Some(row) = snapshots.into_iter().find(|r| &r.loan_id == loan_id) else {

@@ -126,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
     // capital-allocation withdrawal_queue bucket.
     let withdrawal_queue_wallets = chains_config.withdrawal_queue_wallets;
     let asset_decimals = chains_config.asset_decimals;
+    let loan_registry_addresses = chains_config.loan_registry_addresses;
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -151,6 +152,7 @@ async fn main() -> anyhow::Result<()> {
         transfer_addresses,
         withdrawal_queue_wallets,
         asset_decimals,
+        loan_registry_addresses,
         crystal_enabled,
         elliptic_enabled,
         auth_user_repo,

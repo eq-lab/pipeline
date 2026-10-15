@@ -77,6 +77,9 @@ pub struct AppState {
     /// Tracked asset's on-chain decimal scale keyed by chain_id, shared by the
     /// `in_transit` and `withdrawal_queue` buckets for normalization.
     pub asset_decimals: HashMap<i64, u32>,
+    /// LoanRegistry address keyed by chain_id (EIP-55 / Strkey, as the indexer writes it);
+    /// scopes the LoanBook readers. Every configured chain has an entry.
+    pub loan_registry_addresses: HashMap<i64, String>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.

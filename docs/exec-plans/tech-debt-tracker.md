@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-147.**
+**Next free number: TD-150.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2059,3 +2059,11 @@ line, whichever section it lands in.
 - **Gap:** The deal-token registry is seeded only from indexed `DealRegistered` rows (no `deal(loanId)` sweep), so deals registered before the factory was indexed are never tracked. Each deal also adds two addresses to every chunk's token fetch; the address-limit failure mode is resolved (#1493): token addresses are fetched in separate `eth_getLogs` calls of at most 25, apart from the core contracts, so only the per-chunk call count grows (one extra call per 25 tokens).
 - **Impact:** Operators must set the factory address at deploy time or rewind the cursor to recover earlier deals. Request count per chunk grows linearly with the number of deal tokens.
 - **Suggested fix:** An optional startup sweep over `deal(loanId)` for known loan ids.
+
+### TD-149: Non-LoanBook API groups still read loan snapshots unscoped by LoanRegistry address
+
+- **Date:** 2026-10-15
+- **Location:** `packages/shared/src/contract_logs_repo.rs` (`list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`), `packages/api/src/routes/{portfolio,dashboard,capital_allocation,financial_position}.rs` — Issue #1526.
+- **Gap:** LoanBook routes use the registry-scoped repo methods, while portfolio, dashboard, capital allocation and financial position keep the chain-only variants, so each query pair is duplicated.
+- **Impact:** After a LoanRegistry redeploy on the same chain, those four groups can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
+- **Suggested fix:** #1538 migrates the four groups to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.

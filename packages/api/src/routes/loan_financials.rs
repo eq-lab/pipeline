@@ -33,7 +33,7 @@ use shared::loan_snapshot::LoanSnapshot;
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::{loan_registry_address, resolve_chain, ChainQuery};
 use crate::routes::loan_book::display_status;
 use crate::AppState;
 
@@ -151,9 +151,11 @@ async fn get_loan_financials(
         .unwrap_or_default()
         .as_secs() as i64;
 
+    let registry = loan_registry_address(&state, chain_id)?;
+
     let snapshots = state
         .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, now)
+        .list_latest_loan_snapshots(&state.pool, chain_id, registry, now)
         .await?;
 
     let row = snapshots
@@ -170,7 +172,7 @@ async fn get_loan_financials(
 
     let economics_events = state
         .contract_logs_repo
-        .list_loan_economics_events(&state.pool, chain_id, &loan_id, now)
+        .list_loan_economics_events(&state.pool, chain_id, registry, &loan_id, now)
         .await?;
 
     // USDC off-ramp completion, for the `Disbursing` status override. Absent → false.

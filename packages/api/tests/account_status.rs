@@ -6,8 +6,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use uuid::Uuid;
 
 use pipeline_api::account_status::{
-    gate_request, gate_session, gate_token_issue, RequestRefusal, TokenRefusal,
-    ACCOUNT_SUSPENDED,
+    gate_request, gate_session, gate_token_issue, RequestRefusal, TokenRefusal, ACCOUNT_SUSPENDED,
 };
 use pipeline_api::auth::TRUSTEE_ROLE;
 use pipeline_api::error::ApiError;
@@ -85,12 +84,18 @@ fn unix(at: DateTime<Utc>) -> usize {
 
 #[test]
 fn a_session_with_no_password_change_may_act() {
-    assert_eq!(gate_session(Some(&session("Active", None)), unix(now())), None);
+    assert_eq!(
+        gate_session(Some(&session("Active", None)), unix(now())),
+        None
+    );
 }
 
 #[test]
 fn a_session_naming_no_account_is_refused() {
-    assert_eq!(gate_session(None, unix(now())), Some(RequestRefusal::UnknownAccount));
+    assert_eq!(
+        gate_session(None, unix(now())),
+        Some(RequestRefusal::UnknownAccount)
+    );
 }
 
 #[test]

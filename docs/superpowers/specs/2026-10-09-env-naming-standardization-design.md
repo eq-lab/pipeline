@@ -203,6 +203,8 @@ The Stellar interval deviates from the mapping originally drafted here (`…_INT
 | `CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES` | `CHAIN_<id>_STELLAR_API_RAMP_ADDRESSES` |
 | `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` | `CHAIN_<id>_STELLAR_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS` |
 | `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS` | `CHAIN_<id>_STELLAR_API_ASSET_DECIMALS` |
+| — | `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` (new key, implemented in #1526, required) |
+| — | `CHAIN_<id>_STELLAR_API_LOAN_REGISTRY_ADDRESS` (new key, implemented in #1526, required) |
 
 Job-level `JOB_*` variables are untouched: they are not per-chain, so the scheme does not apply.
 

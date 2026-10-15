@@ -116,7 +116,7 @@ use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
-use crate::routes::common::resolve_chain;
+use crate::routes::common::{loan_registry_address, resolve_chain};
 use crate::AppState;
 
 /// Basis-points denominator (`10_000` bps = 100%).
@@ -283,9 +283,10 @@ async fn get_waterfall(
     // `block_timestamp` — those two clocks aren't guaranteed to agree (see its doc
     // comment), and `compute_waterfall` below still rejects `as_of` truly before
     // `origination_date`.
+    let registry = loan_registry_address(&state, chain_id)?;
     let row = state
         .contract_logs_repo
-        .get_loan_snapshot_as_of(&state.pool, chain_id, &loan_id, as_of)
+        .get_loan_snapshot_as_of(&state.pool, chain_id, registry, &loan_id, as_of)
         .await?
         .ok_or_else(|| {
             ApiError::NotFound(format!("loan {loan_id} not indexed on chain {chain_id}"))
@@ -305,7 +306,7 @@ async fn get_waterfall(
     // so a backdated repayment doesn't fold in a rollover that happened after it.
     let economics_events = state
         .contract_logs_repo
-        .list_loan_economics_events(&state.pool, chain_id, &loan_id, as_of)
+        .list_loan_economics_events(&state.pool, chain_id, registry, &loan_id, as_of)
         .await?;
 
     // Pricing basis (issue #963): a metal concentrate settles on a quotational-period
