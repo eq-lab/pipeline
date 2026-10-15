@@ -338,8 +338,79 @@ default (static label only), not an error.
 
 ## EVM integration
 
-_Scaffold — the hook-level migration from `packages/frontend/src/wallet/evm/**` is owned by #1504
-(and #995); this section currently documents the chain registry and wrong-network rules (#1497)._
+Hook behaviours of `packages/frontend/src/wallet/evm/**` against the deployed contracts
+([evm-requests-queue.md](../product-specs/evm-requests-queue.md)), the chain registry and the
+wrong-network rules.
+
+### Hooks and contract surface
+
+| Hook (`wallet/evm/`) | Calls |
+| --- | --- |
+| `useDepositManagerAddresses` / `useDepositManagerMinDeposit` | `plUsd()`, `usdc()`, `minDeposit()` on `VITE_DEPOSIT_MANAGER_ADDRESS`; read once per page lifetime (`CACHE_FOREVER`) |
+| `useRequestDeposit` / `useClaim` | `requestDeposit(amount)`, `claimDeposit(requestId, verifierSignature)` |
+| `useRequestWithdrawal` / `useClaimWithdrawal` | `requestWithdrawal(amount)`, `claimWithdrawal(requestId, verifierSignature)` on `VITE_WITHDRAWAL_QUEUE_ADDRESS` |
+| `useStakedPlusd*`, `useStake` / `useUnstake` | ERC-4626 `asset`, `convertToShares`, `convertToAssets`, `deposit`, `redeem` on `VITE_STAKED_PLUSD_ADDRESS` |
+| `useApproval({ token, spender })` / `useToken` | ERC-20 `allowance`, `approve`, `decimals`, `symbol`, `balanceOf` |
+
+- **PLUSD / USDC addresses.** Both directions take them from the DepositManager (`plUsd()` /
+  `usdc()`); the withdrawal queue's own accessors are not used.
+- **Zero-address short-circuit.** When a configured contract address is the zero address, reads
+  return `undefined` without an RPC call and writes fail with a "not configured" error (stake
+  hooks: `StakedPLUSD not configured`; disconnected wallet: `Wallet not connected`).
+- **Write return values.** `useWriteContract` resolves to a tx hash only, so the real path returns
+  `{ hash }`; `requestId`, `queued`, `amount`, `shares` are not decoded from the receipt. The
+  request id comes from the indexer / voucher API (see the voucher polling rule above).
+- **Approval.** Deposit needs USDC approved to the DepositManager; withdraw needs PLUSD approved to
+  the WithdrawalQueue; stake needs PLUSD approved to the vault; unstake needs none
+  (steps: `[Approve, Request/Stake]` as in the step tables above).
+- **Voucher.** `useDepositVoucher` / `useWithdrawalVoucher` call
+  `GET /v1/{deposits|withdrawals}/{requestId}/voucher?wallet=&chain_id=ENV.EVM_CHAIN_ID`; the
+  `signature` is passed unchanged to `claimDeposit` / `claimWithdrawal`. `deadline` is absent.
+
+### Write pipeline
+
+Every write runs `simulateOrFail` (`eth_call`) → `estimateGasCapped` → `writeContract`, and stops
+at the first failure, surfacing it on the hook's `error`.
+
+1. **Simulate.** Detects reverts with decoded custom-error names (some public RPCs, e.g. Hoodi
+   `publicnode`, strip revert data from `eth_estimateGas` but not `eth_call`); missing client or
+   account returns `RPC not ready` / `Wallet not connected`.
+2. **Gas.** `estimateContractGas` plus a +20 % buffer (`gas * 12 / 10`), clamped to
+   `EVM_TX_GAS_CAP = 16_777_215` (the chain's per-tx cap is `0x1000000`; viem's 21M fallback would
+   be rejected before broadcast). The clamped value is passed as `gas`.
+3. **Receipt.** `isPending` runs from broadcast until the receipt is mined; `isSuccess` is true only
+   for receipt status `success`.
+
+### Network fee estimate
+
+`useNetworkFeeEstimate(direction)` returns a `~0.00053 ETH`-style string (5 decimals, ETH only) for
+the representative call: deposit `requestDeposit(max(1000 USDC, minDeposit))`, withdraw
+`requestWithdrawal(1000 PLUSD)`, stake `deposit(1000 PLUSD)`, unstake `redeem(1000 sPLUSD)`. It is
+`estimateContractGas` (no `stateOverride`) with the +20 % buffer, unclamped, times live `gasPrice`.
+On a revert (missing allowance or balance) it falls back to 250 000 / 180 000 / 200 000 / 200 000
+gas (deposit / withdraw / stake / unstake). Disconnected, unconfigured or unresolved returns
+`feeEth: undefined` (rendered `—`). Refreshes every 60 s. No USD figure (#506, #542).
+
+### Terms acknowledgement
+
+`useTermsAcknowledgement` gates AppKit `open()` per wallet address with the jurisdiction
+self-attestation. State is `localStorage["pipeline.wallet.termsAcknowledged.<address>"] === "true"`;
+other tabs sync through the `storage` event, the current tab updates directly in `acknowledge()`.
+`readTermsAcknowledged(address)` is the non-hook variant for event handlers (`useWallet.connect()`).
+
+### Mock layer
+
+Dev-only overrides under `localStorage` keys `pipeline.mock.wallet.*`; a present key skips the real
+wagmi / viem call. Reads are reactive (`useMock`); write hooks read the key at call time. Precedence
+for contract reads: named alias (`…contract.depositManager.*`, `…withdrawalQueue.*`,
+`…stakedPlusd.*`), then generic `…contract.<address>.<fn>`, then zero-address short-circuit, then
+real calls. Keys: `address`, `isConnected`, `chainId`, `balance.<token>`, `allowance.<token>.<spender>`,
+`contract.<token>.{decimals,symbol,approve}`, `…depositManager.{plusd,usdc,minDeposit,requestDeposit,claim}`,
+`…withdrawalQueue.{requestWithdrawal,claimWithdrawal}`, `…stakedPlusd.{asset,convertToShares,convertToAssets,stake,unstake}`,
+`networkFeeEstimate.{deposit,withdraw,stake,unstake}`. Write mocks are JSON (`{ "hash": "0x…",
+"requestId"?: "…" }`). `convertToShares` / `convertToAssets` mocks hold one 1e18-scaled rate `r`;
+the output is `n * r / 1e18`. The schema and console snippets live in
+`packages/frontend/src/wallet/README.md`.
 
 ### Chain registry
 

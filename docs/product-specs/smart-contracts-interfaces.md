@@ -38,9 +38,9 @@ Since these three functions are the only entry points that change `totalSupply`,
 
 ---
 
-## DepositManager
+## DepositManager (designed v2.3, not deployed on EVM)
 
-`DepositManager` runs the two-step deposit flow. `deposit` parks USDC in the Intake Wallet and writes a ticket. The Relayer runs KYT off-chain and signs a `ClaimAttestation`. The lender submits the attestation to `claim`, which verifies the signature, enrols the lender in `WhitelistRegistry`, and mints PLUSD. The Relayer never writes to DepositManager directly. See `deposits.md` for the full behavior spec.
+The deployed EVM `PipelineDepositManager` is documented in [evm-requests-queue.md](./evm-requests-queue.md). The designed `DepositManager` runs the two-step deposit flow. `deposit` parks USDC in the Intake Wallet and writes a ticket. The Relayer runs KYT off-chain and signs a `ClaimAttestation`. The lender submits the attestation to `claim`, which verifies the signature, enrols the lender in `WhitelistRegistry`, and mints PLUSD. The Relayer never writes to DepositManager directly. See `deposits.md` for the full behavior spec.
 
 Lifecycle: `Pending -> Claimed | Refunded`.
 
@@ -75,31 +75,13 @@ struct ClaimAttestation {
 
 A compromised `kytAttestor` can sign valid attestations for any depositId, but `claim` requires a real `Pending` ticket (which requires the lender to have already deposited USDC into the Intake Wallet). The blast radius of a key compromise is AML bypass on real deposits, not unbacked minting.
 
-### Deposit rate-limit parameters
+### Deposit rate-limit parameters (designed)
 
-All deposit caps are enforced inside `DepositManager`, not inside PLUSD. PLUSD is unaware of windows or supply ceilings.
+All caps are enforced inside `DepositManager`, not PLUSD: `maxPerWindow`, `maxPerLPPerWindow` (fixed 24h windows), `maxTotalSupply` (hard ceiling on `totalSupply + outstandingTickets`, a mutable phased-launch circuit breaker) and `claimWindow` (30 days before a `Pending` ticket is refundable). Tightening is instant; loosening is ADMIN, 48h-delayed and GUARDIAN-cancellable.
 
-| Cap | Enforced | Loosening |
-|---|---|---|
-| `maxPerWindow` | Aggregate USDC accepted across all lenders per fixed 24h window | ADMIN, 48h delay |
-| `maxPerLPPerWindow` | Per-lender USDC accepted per fixed 24h window | ADMIN, 48h delay |
-| `maxTotalSupply` | Hard ceiling on `PLUSD.totalSupply() + outstandingClaimable`, circuit breaker for phased launch | ADMIN, 48h delay |
-| `claimWindow` | Time after `deposit` before a `Pending` ticket becomes refundable by the lender (default 30 days) | ADMIN, 48h delay |
+### Intake Wallet allowances (designed)
 
-The window is a **fixed 24h window**, not a rolling one. The counters `windowDeposited` and `lenderWindowDeposited[lp]` reset whenever `block.timestamp` crosses a `windowStart + 24h` boundary. Worst case is `2 * maxPerWindow` over a boundary (last second of window N plus first second of window N+1). This is acceptable because `maxTotalSupply` and the custody MPC policy engine's independent cap on transfers from the Intake Wallet both bound the worst-case blast radius. The fixed-window algorithm is materially simpler than a sliding-window counter.
-
-`maxTotalSupply` reserves headroom against `outstandingClaimable` so a lender holding a `Claimable` ticket cannot be blocked at claim time by other claimants exhausting the cap.
-
-`maxTotalSupply` is implemented as a custom mutable cap (OZ `ERC20Capped` is immutable and therefore unsuitable). Rationale: phased-launch bound and blast-radius circuit breaker during the period before PoR lands. In a later version this cap may be removed once custody MPC policy plus rolling PoR provide equivalent bounds.
-
-### Intake Wallet allowances
-
-The Intake Wallet grants two standing USDC allowances to `DepositManager`:
-
-- One for `claim` payouts to the Capital Wallet.
-- One for `refund` payouts to the original lender.
-
-Both allowances can be revoked by the custody-side hardware circuit breaker independently of any on-chain governance action. The `mark*` functions do not require these allowances.
+The Intake Wallet grants two standing USDC allowances to `DepositManager` (claim payouts to the Capital Wallet, refund payouts to the lender), both revocable by the custody-side hardware circuit breaker. The `mark*` functions do not use them.
 
 ---
 
@@ -168,7 +150,9 @@ EIP-712 domain is the WhitelistRegistry contract's domain, distinct from Deposit
 
 ---
 
-## WithdrawalQueue
+## WithdrawalQueue (designed v2.3, not deployed on EVM)
+
+The deployed EVM `PipelineWithdrawalQueue` is documented in [evm-requests-queue.md](./evm-requests-queue.md).
 
 Lifecycle: `Pending -> Claimed | AdminReleased`.
 
