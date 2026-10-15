@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1523-loanbook-readers-params-event.md#test-strategy
+// spec: docs/exec-plans/completed/issue-1523-loanbook-readers-params-event.md#test-strategy
 use std::str::FromStr;
 
 use alloy::{

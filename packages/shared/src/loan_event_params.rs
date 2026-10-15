@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1523-loanbook-readers-params-event.md#implementation-steps
+// spec: docs/exec-plans/completed/issue-1523-loanbook-readers-params-event.md#implementation-steps
 use bigdecimal::BigDecimal;
 
 use crate::loan_snapshot::LoanSnapshot;

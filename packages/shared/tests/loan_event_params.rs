@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1523-loanbook-readers-params-event.md#test-strategy
+// spec: docs/exec-plans/completed/issue-1523-loanbook-readers-params-event.md#test-strategy
 use serde_json::json;
 use shared::contract_logs_repo::EconomicsEventRow;
 use shared::loan_event_params::json_i64;
