@@ -48,6 +48,10 @@ Out of scope:
 - **Financials maturity source.** `current_epoch` keeps `maturity_date = s.current_maturity_timestamp`, the #928 fix, because the latest snapshot is authoritative for "now". Only its comment, which references the COALESCE fallback, is removed. Removing `current_epoch_start_override` also removes one `get_loan_snapshot_as_of` DB round-trip per financials call.
 - **No dependency blockers.** #1434 (EVM `current_rate`) has already landed: `loan_registry_reader.rs:99` uses `ppm_to_bps`. The `loan_snapshot.rs` comment is just stale.
 
+## Addendum (human, 2026-10-15, integration review)
+
+Step 5 is reverted: `LoanCCRUpdated` and `LoanLocationUpdated` stay in `LOAN_LIFECYCLE_EVENT_NAMES`. No current parser emits them, but rows written before #1444 still exist in the test database and carry snapshots; dropping the names changed the "latest snapshot" chosen by non-LoanBook readers (portfolio, dashboard, capital allocation, financial position) and by the worker's carry-forward lookup. Keeping them preserves main's behaviour exactly.
+
 ## Open Questions
 
 _None_

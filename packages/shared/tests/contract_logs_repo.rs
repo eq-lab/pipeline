@@ -6,6 +6,8 @@ fn loan_lifecycle_event_names_covers_every_stored_loan_event() {
     let expected = [
         "LoanDrawn",
         "LoanStatusUpdated",
+        "LoanCCRUpdated",
+        "LoanLocationUpdated",
         "LoanDefaulted",
         "LoanClosed",
         "PaymentRecorded",

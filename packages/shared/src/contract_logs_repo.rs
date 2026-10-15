@@ -16,6 +16,8 @@ use crate::loan_snapshot::LoanSnapshot;
 pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
     "LoanDrawn",
     "LoanStatusUpdated",
+    "LoanCCRUpdated",
+    "LoanLocationUpdated",
     "LoanDefaulted",
     "LoanClosed",
     "PaymentRecorded",
