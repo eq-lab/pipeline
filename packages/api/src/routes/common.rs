@@ -93,17 +93,19 @@ pub fn parse_chain_filter(
 ) -> Result<Option<ConfiguredChain>, ApiError> {
     let Query(raw) = Query::<RawChainParam>::try_from_uri(uri).map_err(|e| {
         let detail = if e.body_text().contains("duplicate field") {
-            "must appear at most once".to_owned()
+            "must appear at most once"
         } else {
-            e.body_text()
+            "malformed query string"
         };
         ApiError::BadRequest(format!("invalid chain_id: {detail}"))
     })?;
     let Some(raw) = raw.chain_id else {
         return Ok(None);
     };
-    let id = i64::from_str(raw.trim())
-        .map_err(|_| ApiError::BadRequest(format!("invalid chain_id: {raw}")))?;
+    let id = i64::from_str(raw.trim()).map_err(|_| {
+        let shown: String = raw.trim().chars().take(32).collect();
+        ApiError::BadRequest(format!("invalid chain_id: {shown}"))
+    })?;
     chains
         .iter()
         .find(|c| c.chain_id == id)
@@ -150,22 +152,22 @@ impl ChainFilter {
 impl FromRequestParts<Arc<AppState>> for ChainFilter {
     type Rejection = ApiError;
 
-    async fn from_request_parts(
+    fn from_request_parts(
         parts: &mut Parts,
         state: &Arc<AppState>,
-    ) -> Result<Self, ApiError> {
-        parse_chain_filter(&parts.uri, &state.chains).map(Self)
+    ) -> impl std::future::Future<Output = Result<Self, ApiError>> + Send {
+        std::future::ready(parse_chain_filter(&parts.uri, &state.chains).map(Self))
     }
 }
 
 impl FromRequestParts<Arc<AppState>> for RequiredChain {
     type Rejection = ApiError;
 
-    async fn from_request_parts(
+    fn from_request_parts(
         parts: &mut Parts,
         state: &Arc<AppState>,
-    ) -> Result<Self, ApiError> {
-        parse_required_chain(&parts.uri, &state.chains).map(Self)
+    ) -> impl std::future::Future<Output = Result<Self, ApiError>> + Send {
+        std::future::ready(parse_required_chain(&parts.uri, &state.chains).map(Self))
     }
 }
 
