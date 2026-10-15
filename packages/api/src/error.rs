@@ -36,10 +36,10 @@ pub enum ApiError {
     /// per-request file-count limits are tighter than the body limit that
     /// admitted the request.
     PayloadTooLarge(String),
-    /// 429 Too Many Requests. The caller is rate-limited. No handler returns it
-    /// yet — the auth endpoints deliberately answer `202` and skip the work
-    /// instead, so that a refusal cannot be used to probe which addresses exist.
-    /// Reserved for the per-IP limiting in TD-81, which has no such constraint.
+    /// 429 Too Many Requests. The caller is rate-limited — `login` past its
+    /// attempt limit, and `forgot-password` past its per-client limit. Both are
+    /// counted before the address is looked up, so a refusal says nothing about
+    /// which addresses exist.
     TooManyRequests(String),
     /// 500 Internal Server Error. The wrapped `anyhow::Error` is logged but never
     /// returned to the caller — the response body is a generic `"internal error"`.

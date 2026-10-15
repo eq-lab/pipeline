@@ -1,6 +1,6 @@
 // spec: docs/product-specs/api-authorization.md#security
 
-use shared::account_repo::{is_active_status, Account};
+use shared::account_repo::{is_active_status, Account, AccountSession};
 
 use crate::error::ApiError;
 
@@ -16,6 +16,7 @@ pub enum TokenRefusal {
 pub enum RequestRefusal {
     Suspended,
     UnknownAccount,
+    IssuedBeforePasswordChange,
 }
 
 pub fn gate_token_issue(account: &Account, require_verified_email: bool) -> Option<TokenRefusal> {
@@ -36,6 +37,19 @@ pub fn gate_request(status: Option<&str>) -> Option<RequestRefusal> {
     }
 }
 
+pub fn gate_session(session: Option<&AccountSession>, issued_at: usize) -> Option<RequestRefusal> {
+    let Some(session) = session else {
+        return Some(RequestRefusal::UnknownAccount);
+    };
+    if let Some(refusal) = gate_request(Some(&session.status)) {
+        return Some(refusal);
+    }
+    let issued_before_change = session
+        .password_changed_at
+        .is_some_and(|changed| (issued_at as i64) < changed.timestamp());
+    issued_before_change.then_some(RequestRefusal::IssuedBeforePasswordChange)
+}
+
 impl From<TokenRefusal> for ApiError {
     fn from(refusal: TokenRefusal) -> Self {
         match refusal {
@@ -49,7 +63,7 @@ impl From<RequestRefusal> for ApiError {
     fn from(refusal: RequestRefusal) -> Self {
         match refusal {
             RequestRefusal::Suspended => ApiError::Forbidden(ACCOUNT_SUSPENDED.to_owned()),
-            RequestRefusal::UnknownAccount => {
+            RequestRefusal::UnknownAccount | RequestRefusal::IssuedBeforePasswordChange => {
                 ApiError::Unauthorized("invalid or expired token".to_owned())
             }
         }

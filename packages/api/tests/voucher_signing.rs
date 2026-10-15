@@ -115,6 +115,10 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         captcha: Box::new(pipeline_api::captcha::DisabledCaptcha),
         email_sender: std::sync::Arc::new(shared::email::LoggingEmailSender),
         login_attempt_repo: shared::login_attempt_repo::LoginAttemptRepo::new(pool),
+        password_reset: pipeline_api::password_reset::PasswordResetConfig {
+            app_base_url: pipeline_api::password_reset::DEV_APP_BASE_URL.to_owned(),
+            ttl_minutes: pipeline_api::password_reset::DEFAULT_PASSWORD_RESET_TTL_MINUTES,
+        },
     }
 }
 

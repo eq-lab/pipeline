@@ -426,7 +426,7 @@ pub async fn login(
 /// `remoteip` as optional, so an absent or unparseable header simply omits it
 /// rather than failing the check — and the socket peer is deliberately not used
 /// as a fallback, since behind a proxy that is the proxy's own address.
-fn client_ip(headers: &HeaderMap) -> Option<String> {
+pub(super) fn client_ip(headers: &HeaderMap) -> Option<String> {
     headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
@@ -436,7 +436,7 @@ fn client_ip(headers: &HeaderMap) -> Option<String> {
         .map(str::to_owned)
 }
 
-async fn verify_captcha(
+pub(super) async fn verify_captcha(
     state: &AppState,
     token: &str,
     headers: &HeaderMap,

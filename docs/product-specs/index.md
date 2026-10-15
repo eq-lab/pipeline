@@ -38,6 +38,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [relayer-service.md](./relayer-service.md) | Relayer Service | Event listening, MPC auto-signing, minting, USYC rebalancing, role assignments, security |
 | [relayer-service-internals.md](./relayer-service-internals.md) | Relayer Service | Service decomposition architecture, blast radius analysis |
 | [api-authorization-email.md](./api-authorization-email.md) | API Authorization | LP self-serve email/password signup, OTP verification, Turnstile bot defense |
+| [api-authorization-password-reset.md](./api-authorization-password-reset.md) | API Authorization | Forgot/reset password by single-use emailed link, session cut-off on reset |
 | [operations-console.md](./operations-console.md) | Operations Console | Overview, shared operator authentication and account lifecycle |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
 | [trustee-dashboard.md](./trustee-dashboard.md) | Operations Console | Trustee dashboard technical-assignment spec: business flows by signing rail, data layer, API contracts |

@@ -1187,7 +1187,10 @@ line, whichever section it lands in.
   closes the modal instead — the same treatment #1250 used for the missing OTP success frame,
   approved 2026-09-18. Same shape as TD-60.
 - **Impact:** #1265 cannot wire a real password-reset flow until a designer supplies the missing
-  screens; the current preview is a dead end by design.
+  screens; the current preview is a dead end by design. The backend side now exists (2026-10-14,
+  `docs/product-specs/api-authorization-password-reset.md`): the screens needed are a "check
+  your email" confirmation after `forgot-password`, and a "set a new password" screen at
+  `/reset-password` reading `token` from the URL fragment.
 - **Suggested fix:** Raise a design request / follow-up sub-issue on epic #1247 for the missing
   screens before #1265 attempts the real wiring.
 
@@ -1740,14 +1743,14 @@ line, whichever section it lands in.
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/auth.rs`, `packages/api/src/routes/auth/password.rs`
 - **Gap:** Email logins issue the same stateless 24h ES256 JWT as wallet logins. There is still no refresh token, no `sessions` table, and no logout endpoint, so an issued token cannot be invalidated before it expires.
-- **Impact:** A password reset still does not end an attacker's existing session — the single most common reason a user resets a password; that half of this entry is untouched. **Closed by #1380:** suspension no longer waits for the token to expire. `AuthClaims` (`packages/api/src/auth.rs`) reads `accounts.status` on every bearer-authenticated request via `account_status::gate_request`, and both mint paths (`POST /v1/auth/login`, `POST /v1/auth/verify`) refuse a suspended account via `account_status::gate_token_issue`, so `Suspended` — from a terminal KYB refusal or an operator action — bites on the account's very next request.
-- **Suggested fix:** A 15-minute access token plus a rotating opaque refresh token in a `sessions` table — this also buys logout and "sign out everywhere", the remaining case for it now being password-reset and sign-out-everywhere revocation rather than suspension. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
+- **Impact:** No logout and no "sign out everywhere" on demand. **Closed by the password-reset work (2026-10-14):** a reset now ends every session on the account — `AuthClaims` refuses any token whose `iat` predates `accounts.password_changed_at` (`account_status::gate_session`). **Closed by #1380:** suspension no longer waits for the token to expire. `AuthClaims` (`packages/api/src/auth.rs`) reads `accounts.status` on every bearer-authenticated request via `account_status::gate_request`, and both mint paths (`POST /v1/auth/login`, `POST /v1/auth/verify`) refuse a suspended account via `account_status::gate_token_issue`, so `Suspended` — from a terminal KYB refusal or an operator action — bites on the account's very next request.
+- **Suggested fix:** A 15-minute access token plus a rotating opaque refresh token in a `sessions` table — this also buys logout and "sign out everywhere", the remaining case for it now being per-session logout rather than suspension or password reset. Decided against for #1266 in favour of reusing the existing token; revisit before real LP traffic.
 
 ### TD-81: No rate limiting on signup / resend-otp
 
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/routes/auth/password.rs`
-- **Gap:** `POST /v1/auth/login` is now bounded (3 attempts per 60s per address and per client, `login_attempts`), but `signup` and `resend-otp` still have only the Turnstile captcha plus the per-account OTP cooldown. There is no per-client or global limit on either.
+- **Gap:** `POST /v1/auth/login` is now bounded (3 attempts per 60s per address and per client, `login_attempts`), and so is `forgot-password` (10 per hour per client, scope `password_reset_ip`), but `signup` and `resend-otp` still have only the Turnstile captcha plus the per-account OTP cooldown. There is no per-client or global limit on either.
 - **Impact:** Signup floods are bounded only by the captcha — and when `TURNSTILE_SECRET_KEY` is unset the captcha is a no-op, so both endpoints are entirely open. Once email delivery is real, a flood also burns send quota and sender reputation. The per-account OTP cooldown caps mail *per address*, not the rate at which an attacker walks new addresses.
 - **Suggested fix:** Reuse `LoginAttemptRepo` — it is already scope-keyed and replica-safe. Add an `ip` counter on `signup`/`resend-otp` with a looser limit than login's. Note the same `X-Forwarded-For` dependency: with no proxy in front there is no client address to key on. An in-process `governor` limiter is one line but is per-replica, so it bounds nothing if the API runs more than one instance; a Postgres- or Redis-backed counter is the version that actually holds.
 
@@ -1775,19 +1778,19 @@ line, whichever section it lands in.
 - **Impact:** Harmless today, because every role-holder (trustee, originator) signs in by wallet and no role-holder has a password. It stops being harmless the moment one of them sets one: they would authenticate successfully and then be silently unauthorized, which reads as a broken permission system rather than a missing role. It also means "grant this person the trustee role" has no answer for an email-only account.
 - **Suggested fix:** Move `roles` to `accounts` and have both paths read it from there, leaving `auth_users` as pure credential material. The migration is mechanical (`accounts.roles TEXT[]`, backfilled as the union of the account's `auth_users` rows); the work is auditing the `has_role` call sites. Do this before issuing a password to anyone holding a role.
 
-### TD-85: A verified account's password can never be changed
+### TD-85: A signed-in user cannot change their password
 
 - **Date:** 2026-09-22
 - **Location:** `packages/api/src/routes/auth/password.rs`, `packages/shared/src/account_repo.rs`
-- **Gap:** `#1266` shipped without password reset (descoped) and without change-password. The password has no writer of its own: the submitted password rides on the passcode and is installed by `AccountRepo::verify_email_consuming_code` (`password_hash = COALESCE($2, password_hash)`), a path reachable only while the account is still unverified. After verification the stored hash can never be written again.
-- **Impact:** Three concrete dead ends. A user who forgets their password has no recovery at all. A user who mistyped it at signup recovers only by re-running signup *before* verifying. And because that same path lets anyone who solves the captcha overwrite a *pending* password, an attacker can leave a real owner verified into an account whose password they never chose — the owner cannot log in and cannot reset. `ForgotPasswordModal` (#1280) is already built and inert, so the UI implies a recovery that does not exist.
-- **Suggested fix:** `POST /v1/auth/forgot-password` + `/reset-password`, reusing the `otp_codes` table (the `purpose` column exists for exactly this) and the same captcha and always-202 rules as signup. Add change-password for authenticated callers at the same time. This should land before self-serve signup is exposed to real users, not after.
+- **Gap:** `#1266` shipped without password reset (descoped) and without change-password. **Reset closed 2026-10-14:** `POST /v1/auth/forgot-password` + `/reset-password` (`packages/api/src/routes/auth/password_reset.rs`) recover a verified account by a single-use emailed link, so the forgotten-password, mistyped-at-signup and overwritten-pending-password dead ends all have a way out. Change-password for an authenticated caller is still missing.
+- **Impact:** A signed-in user who wants to rotate their password has to sign out and go through "forgot password", which also ends every session they hold. The frontend is not wired either: `ForgotPasswordModal` (#1280) is still inert until TD-71's screens exist.
+- **Suggested fix:** `POST /v1/auth/change-password` behind `AuthClaims`, taking the current and the new password, verifying the current one under `login`'s attempt limit, and stamping `password_changed_at` like a reset does (so other sessions end).
 
 ### TD-86: `login_attempts` rows are never collected
 
 - **Date:** 2026-09-22
 - **Location:** `packages/shared/migrations/20260922000002_login_attempts.sql`, `packages/shared/src/login_attempt_repo.rs`
-- **Gap:** The table is keyed rather than appended, so it holds one row per distinct `(scope, key)` — but a key is only removed when that caller later signs in successfully. An address or client that fails and never returns leaves its row behind for good.
+- **Gap:** The table is keyed rather than appended, so it holds one row per distinct `(scope, key)` — but a key is only removed when that caller later signs in successfully. An address or client that fails and never returns leaves its row behind for good. `password_reset_ip` rows (`forgot-password`, 2026-10-14) are never cleared at all, since that endpoint has no success to clear on.
 - **Impact:** Unbounded growth proportional to distinct addresses and client addresses attempted, which under a credential-stuffing run is exactly the set an attacker controls. No correctness impact (an expired window restarts in place), purely storage and index bloat.
 - **Suggested fix:** A periodic `DELETE FROM login_attempts WHERE window_start < now() - interval '1 hour'` — `idx_login_attempts_window` already supports it. Either a worker job or an opportunistic sweep on a small fraction of calls; do not run it on every request.
 

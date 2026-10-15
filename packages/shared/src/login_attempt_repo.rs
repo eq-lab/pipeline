@@ -15,6 +15,7 @@ pub enum AttemptScope {
     Email,
     /// The client address — bounds credential stuffing across many accounts.
     Ip,
+    PasswordResetIp,
 }
 
 impl AttemptScope {
@@ -22,6 +23,7 @@ impl AttemptScope {
         match self {
             AttemptScope::Email => "email",
             AttemptScope::Ip => "ip",
+            AttemptScope::PasswordResetIp => "password_reset_ip",
         }
     }
 }

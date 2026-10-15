@@ -6,11 +6,12 @@ use chrono::{DateTime, TimeZone, Utc};
 use uuid::Uuid;
 
 use pipeline_api::account_status::{
-    gate_request, gate_token_issue, RequestRefusal, TokenRefusal, ACCOUNT_SUSPENDED,
+    gate_request, gate_session, gate_token_issue, RequestRefusal, TokenRefusal,
+    ACCOUNT_SUSPENDED,
 };
 use pipeline_api::auth::TRUSTEE_ROLE;
 use pipeline_api::error::ApiError;
-use shared::account_repo::Account;
+use shared::account_repo::{Account, AccountSession};
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,67 @@ fn a_token_naming_no_account_is_refused() {
     assert_eq!(gate_request(None), Some(RequestRefusal::UnknownAccount));
 }
 
+// ── gate_session (the extractor's decision, with the reset cut-off) ─────────────
+
+fn session(status: &str, password_changed_at: Option<DateTime<Utc>>) -> AccountSession {
+    AccountSession {
+        status: status.to_owned(),
+        password_changed_at,
+    }
+}
+
+fn unix(at: DateTime<Utc>) -> usize {
+    at.timestamp() as usize
+}
+
+#[test]
+fn a_session_with_no_password_change_may_act() {
+    assert_eq!(gate_session(Some(&session("Active", None)), unix(now())), None);
+}
+
+#[test]
+fn a_session_naming_no_account_is_refused() {
+    assert_eq!(gate_session(None, unix(now())), Some(RequestRefusal::UnknownAccount));
+}
+
+#[test]
+fn a_suspended_session_is_refused_as_suspended_even_after_a_reset() {
+    let changed = now() - chrono::Duration::hours(1);
+    assert_eq!(
+        gate_session(Some(&session("Suspended", Some(changed))), unix(now())),
+        Some(RequestRefusal::Suspended)
+    );
+}
+
+#[test]
+fn a_token_issued_before_the_reset_is_refused() {
+    let changed = now();
+    let issued = now() - chrono::Duration::seconds(1);
+    assert_eq!(
+        gate_session(Some(&session("Active", Some(changed))), unix(issued)),
+        Some(RequestRefusal::IssuedBeforePasswordChange)
+    );
+}
+
+#[test]
+fn a_token_issued_after_the_reset_may_act() {
+    let changed = now();
+    let issued = now() + chrono::Duration::seconds(5);
+    assert_eq!(
+        gate_session(Some(&session("Active", Some(changed))), unix(issued)),
+        None
+    );
+}
+
+#[test]
+fn a_token_issued_later_in_the_same_second_as_the_reset_may_act() {
+    let changed = now() + chrono::Duration::milliseconds(700);
+    assert_eq!(
+        gate_session(Some(&session("Active", Some(changed))), unix(now())),
+        None
+    );
+}
+
 // ── gate_token_issue (both mint paths) ───────────────────────────────────────────
 
 #[test]
@@ -124,6 +186,19 @@ fn an_unknown_account_is_a_401() {
         other => panic!("expected Unauthorized, got {other:?}"),
     }
     let response = ApiError::from(RequestRefusal::UnknownAccount).into_response();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn a_token_predating_a_reset_is_a_401_like_an_expired_one() {
+    let (ApiError::Unauthorized(revoked), ApiError::Unauthorized(unknown)) = (
+        ApiError::from(RequestRefusal::IssuedBeforePasswordChange),
+        ApiError::from(RequestRefusal::UnknownAccount),
+    ) else {
+        panic!("expected both refusals to be Unauthorized");
+    };
+    assert_eq!(revoked, unknown);
+    let response = ApiError::from(RequestRefusal::IssuedBeforePasswordChange).into_response();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 

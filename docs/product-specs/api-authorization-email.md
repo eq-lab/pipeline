@@ -93,7 +93,7 @@ mailing any address Pipeline already has on file.
 
 ## Bot defense
 
-`signup` and `resend-otp` require a **Cloudflare Turnstile** token, verified
+`signup`, `resend-otp` and `forgot-password` require a **Cloudflare Turnstile** token, verified
 server-side against `challenges.cloudflare.com/turnstile/v0/siteverify` with a
 5-second timeout. Verification **fails closed**: a provider outage returns `503`
 rather than admitting the request, since an attacker able to break the verify
@@ -106,8 +106,8 @@ requirement**, because unset means open signup rather than a safe default.
 
 Captcha is the second layer, not the first. It does not bound credential
 stuffing against `login`, which carries no captcha, and it does not bound a
-distributed signup flood. Per-IP and global rate limiting is not yet
-implemented — see TD-81.
+distributed signup flood. `forgot-password` carries its own per-client limit;
+`signup` and `resend-otp` have no per-IP or global limit yet — see TD-81.
 
 ## Email delivery
 
@@ -118,7 +118,7 @@ logging live passcodes in production is worse than refusing to start. `EMAIL_DEV
 is the dev/test escape hatch; `SENDGRID_FROM` is required alongside the key (no default);
 `SENDGRID_BASE_URL` (EU residency) is config, not code. Also requires Domain
 Authentication/DMARC on `pipeline.one`, or mail is spam-foldered. A send failure surfaces
-as `500`; see **TD-96** / **TD-97** for the accepted consequences of not swallowing it.
+as `500` (accepted: **TD-96** / **TD-97**) — except password-reset mail, which only logs it.
 
 ## Data Model
 

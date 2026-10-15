@@ -24,7 +24,7 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, ToSchema};
 use uuid::Uuid;
 
-use crate::account_status::gate_request;
+use crate::account_status::gate_session;
 use crate::error::ApiError;
 use crate::AppState;
 
@@ -191,9 +191,10 @@ impl JwtKeys {
 
 /// Extractor that authenticates a request via its `Authorization: Bearer <jwt>`
 /// header. Yields the decoded [`Claims`]; rejects with `401` when the header is
-/// missing/malformed, the token is invalid/expired, or auth is not configured,
-/// and with `403 {"error":"account_suspended"}` when the account behind the
-/// token is not `Active` — see `crate::account_status`.
+/// missing/malformed, the token is invalid/expired, the token predates the
+/// account's last password reset, or auth is not configured, and with
+/// `403 {"error":"account_suspended"}` when the account behind the token is not
+/// `Active` — see `crate::account_status`.
 ///
 /// Reference usage — protect a handler by taking this as an argument:
 /// ```ignore
@@ -212,8 +213,8 @@ impl FromRequestParts<Arc<AppState>> for AuthClaims {
         let state = state.clone();
         async move {
             let AuthClaims(claims) = decoded?;
-            let status = state.account_repo.find_status(claims.account_id).await?;
-            if let Some(refusal) = gate_request(status.as_deref()) {
+            let session = state.account_repo.find_session(claims.account_id).await?;
+            if let Some(refusal) = gate_session(session.as_ref(), claims.iat) {
                 return Err(refusal.into());
             }
             Ok(AuthClaims(claims))
