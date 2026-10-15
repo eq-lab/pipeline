@@ -40,11 +40,18 @@ pub struct StellarVoucherChainConfig {
     pub domain_wq: StellarVoucherDomain,
 }
 
+/// A chain listed in `CHAINS`, with its parsed kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfiguredChain {
+    pub chain_id: i64,
+    pub kind: ChainKind,
+}
+
 /// Multi-chain API configuration parsed from environment variables.
 ///
 /// Environment variables:
 /// ```text
-/// CHAINS=1,99999               # comma-separated chain IDs; required, non-empty
+/// CHAINS=1,99999               # comma-separated chain IDs; required, non-empty; ids must be unique
 /// DEFAULT_CHAIN_ID=1           # required, must be a member of CHAINS
 /// # Per EVM chain (replace <id> with each value from CHAINS):
 /// CHAIN_<id>_SIGNER_KEY=0x...  # optional; if set, DM_ADDRESS and WQ_ADDRESS are required
@@ -63,6 +70,8 @@ pub struct StellarVoucherChainConfig {
 /// ```
 pub struct ChainsConfig {
     pub default_chain_id: i64,
+    /// Every configured chain, in `CHAINS` order.
+    pub chains: Vec<ConfiguredChain>,
     /// EVM voucher signing config keyed by chain_id.
     pub voucher: HashMap<i64, VoucherChainConfig>,
     /// Stellar voucher signing config keyed by chain_id.
@@ -123,8 +132,15 @@ pub fn ipfs_gateway_url_from_env() -> String {
 impl ChainsConfig {
     pub fn from_env() -> Result<Self> {
         let chains = parse_chains_env()?;
+        let mut unique_ids = HashSet::new();
+        for &id in &chains {
+            if !unique_ids.insert(id) {
+                anyhow::bail!("CHAINS contains duplicate chain id {id}");
+            }
+        }
         let default_chain_id = parse_default_chain_id(&chains)?;
 
+        let mut configured = Vec::with_capacity(chains.len());
         let mut voucher = HashMap::new();
         let mut stellar_voucher = HashMap::new();
         let mut transfer_addresses = HashMap::new();
@@ -137,6 +153,10 @@ impl ChainsConfig {
         for &chain_id in &chains {
             let chain_kind = parse_chain_type(chain_id)?;
             validate_chain_kind_keys(chain_id, chain_kind)?;
+            configured.push(ConfiguredChain {
+                chain_id,
+                kind: chain_kind,
+            });
 
             match chain_kind {
                 ChainKind::Evm => {
@@ -179,6 +199,7 @@ impl ChainsConfig {
 
         Ok(Self {
             default_chain_id,
+            chains: configured,
             voucher,
             stellar_voucher,
             transfer_addresses,

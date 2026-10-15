@@ -56,6 +56,7 @@ pub struct AppState {
     pub contract_logs_repo: ContractLogsRepo,
     /// The fallback chain ID used when no explicit `chain_id` query param is supplied.
     pub default_chain_id: i64,
+    pub chains: Vec<crate::config::ConfiguredChain>,
     pub sumsub_client: Option<SumsubClient>,
     pub sumsub_settings: Option<SumsubSettings>,
     /// EVM voucher signers keyed by chain_id. Only chains with a configured signer appear here.

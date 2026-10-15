@@ -284,3 +284,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1523 LoanBook readers: read loan-event fields from params.event (watchlist, economics epochs)](https://github.com/eq-lab/pipeline/issues/1523) | [1523-loanbook-readers-params-event.md](./epic-1520/1523-loanbook-readers-params-event.md) | Initial |
+
+---
+
+## Epic #1521 — LoanBook API: multi-chain
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1528 LoanBook API: chain parameter foundation](https://github.com/eq-lab/pipeline/issues/1528) | [1528-loanbook-chain-param.md](./epic-1521/1528-loanbook-chain-param.md) | Initial |

@@ -7,7 +7,8 @@
 
 use std::sync::Mutex;
 
-use pipeline_api::config::ChainsConfig;
+use pipeline_api::config::{ChainsConfig, ConfiguredChain};
+use shared::chains::ChainKind;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -89,4 +90,44 @@ fn chain_without_signer_key_produces_no_voucher_entry() {
             );
         },
     );
+}
+
+#[test]
+fn chains_are_recorded_in_chains_order_with_kind() {
+    with_env(
+        &[("CHAINS", "1,2"), ("DEFAULT_CHAIN_ID", "1")],
+        &[
+            "CHAIN_1_TYPE",
+            "CHAIN_2_TYPE",
+            "CHAIN_1_SIGNER_KEY",
+            "CHAIN_2_SIGNER_KEY",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("config");
+            assert_eq!(
+                cfg.chains,
+                vec![
+                    ConfiguredChain {
+                        chain_id: 1,
+                        kind: ChainKind::Evm
+                    },
+                    ConfiguredChain {
+                        chain_id: 2,
+                        kind: ChainKind::Evm
+                    },
+                ]
+            );
+        },
+    );
+}
+
+#[test]
+fn duplicate_chain_ids_are_error() {
+    with_env(&[("CHAINS", "1,1"), ("DEFAULT_CHAIN_ID", "1")], &[], || {
+        let msg = ChainsConfig::from_env()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(msg.contains("duplicate"), "unexpected error message: {msg}");
+    });
 }
