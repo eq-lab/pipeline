@@ -201,9 +201,7 @@ pub struct EconomicsEventRow {
     pub new_rate: i64,
     /// New maturity timestamp (Unix seconds).
     pub new_maturity_timestamp: i64,
-    /// The event's own on-chain block timestamp (Unix seconds) — lets a caller look
-    /// up the loan's on-chain snapshot immediately before this event fired (via
-    /// `ContractLogsRepo::get_loan_snapshot_as_of`).
+    /// The event's own on-chain block timestamp (Unix seconds).
     pub block_timestamp: i64,
 }
 
