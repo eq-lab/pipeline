@@ -419,9 +419,7 @@ pub fn compute_waterfall(
         s.senior_interest_rate_bps,
         economics_events,
     );
-    // Refuse rather than silently understate: a corrupt (`0`/malformed) epoch maturity
-    // would make the piecewise accrual below contribute zero interest/fees for that
-    // epoch's whole duration (issue #930). Fail loudly so a bad repayment can't be minted.
+    // Fail loudly on a non-increasing epoch.
     validate_epochs_for_accrual(&epochs).map_err(|e| {
         ApiError::UnprocessableEntity(format!("refusing to compute repayment accrual: {e}"))
     })?;

@@ -24,6 +24,7 @@ pub mod loan_asset_price_repo;
 pub mod loan_capital_transfers_repo;
 pub mod loan_disbursement_repo;
 pub mod loan_economics;
+pub mod loan_event_params;
 pub mod loan_fee_schedule_repo;
 pub mod loan_metadata;
 pub mod loan_snapshot;
