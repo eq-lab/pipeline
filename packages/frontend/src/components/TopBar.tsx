@@ -58,7 +58,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const mobileMenu = useMobileNavMenu();
 
     // ── Active nav derivation from URL ────────────────────────────────────
-    const derivedActive: NavItem["key"] =
+    const derivedActive: NavItem["key"] | "account" =
       pathname === "/deposit"
         ? "deposit"
         : pathname === "/transactions"
@@ -67,9 +67,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             ? "stats"
             : pathname === "/dashboard"
               ? "overview"
-              : pathname === "/"
-                ? "home"
+              : pathname === "/account"
+                ? "account"
                 : "home";
+    const accountActive = derivedActive === "account";
 
     const composed = [
       "flex items-center justify-between",
@@ -145,13 +146,17 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             <button
               type="button"
               aria-label="Account"
+              aria-pressed={accountActive || undefined}
+              data-active={accountActive ? "true" : "false"}
               onClick={() =>
                 void navigate({ to: "/account", search: { state: undefined } })
               }
               className={[
                 "flex size-12 shrink-0 items-center justify-center",
                 "rounded-[var(--radius-pipeline-button)]",
-                "text-[color:var(--color-pipeline-ink-muted)]",
+                accountActive
+                  ? "text-[color:var(--color-pipeline-brand)]"
+                  : "text-[color:var(--color-pipeline-ink-muted)]",
                 "transition-colors hover:bg-[color-mix(in_oklab,var(--color-pipeline-ink)_8%,transparent)]",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
                 "focus-visible:ring-[var(--color-pipeline-brand)]",

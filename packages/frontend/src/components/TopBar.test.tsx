@@ -175,6 +175,45 @@ describe("TopBar — route-driven active state", () => {
 
   afterEach(() => {
     localStorage.clear();
+    clearMocks();
+  });
+
+  it("highlights the account icon on /account and no nav item (#1556)", async () => {
+    mockAuthState.isAuthenticated = true;
+    renderTopBar("/account");
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-account-button")).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByTestId("topbar-account-button")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("topbar-account-button").className).toContain(
+      "text-[color:var(--color-pipeline-brand)]",
+    );
+    for (const name of ["Home", "Convert", "Earn", "Activity"]) {
+      expect(screen.getByRole("button", { name })).toHaveAttribute(
+        "data-active",
+        "false",
+      );
+    }
+  });
+
+  it("the account icon is inactive on / (#1556)", async () => {
+    mockAuthState.isAuthenticated = true;
+    renderTopBar("/");
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-account-button")).toHaveAttribute(
+        "data-active",
+        "false",
+      ),
+    );
+    expect(screen.getByTestId("topbar-account-button")).not.toHaveAttribute(
+      "aria-pressed",
+    );
   });
 
   it("highlights Home on /", async () => {
