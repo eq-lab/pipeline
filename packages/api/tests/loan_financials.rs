@@ -340,3 +340,18 @@ fn days_overdue_counts_whole_days_past_the_payment() {
     assert_eq!(resp.next_payment_timestamp, 86_400);
     assert_eq!(resp.days_overdue, Some(3));
 }
+
+#[test]
+fn response_echoes_the_rows_chain_id() {
+    let snap = snapshot(
+        "Performing",
+        800_000_000,
+        100_000_000,
+        1_000_000_000,
+        repayment(0, 0, 0, 0),
+    );
+    let mut stellar_row = row(snap);
+    stellar_row.chain_id = 99_000_001;
+    let resp = build_response(&stellar_row, &BigDecimal::from(0), &[], true, 0);
+    assert_eq!(resp.chain_id, 99_000_001);
+}

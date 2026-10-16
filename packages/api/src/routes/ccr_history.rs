@@ -48,7 +48,7 @@ use crate::auth::SecurityAddon;
 use crate::error::ApiError;
 use crate::formatting::iso_utc_from_unix;
 use crate::routes::collateral_valuation::outstanding_senior_usd;
-use crate::routes::common::{loan_registry_address, resolve_chain};
+use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::AppState;
 
 /// Upper bound on grid points per request. Each point runs a full collateral
@@ -72,8 +72,6 @@ pub struct CcrHistoryQuery {
     /// Sampling interval (dt) in **seconds**. Optional — defaults to 86400 (one day);
     /// must be ≥ 1.
     pub step: Option<i64>,
-    /// Chain ID (optional — defaults to `DEFAULT_CHAIN_ID`).
-    pub chain_id: Option<i64>,
 }
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
@@ -121,11 +119,12 @@ pub fn router() -> Router<Arc<AppState>> {
     path = "/v1/loan-book/{loan_id}/ccr-history",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
+        RequiredChain,
         CcrHistoryQuery,
     ),
     responses(
         (status = 200, description = "Per-loan CCR time series", body = CcrHistoryResponse),
-        (status = 400, description = "Malformed loan id or invalid from/step/to range"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id; or invalid from/step/to range"),
         (status = 404, description = "No valuation anchor for this loan"),
         (status = 500, description = "Internal server error"),
     ),
@@ -134,9 +133,10 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn get_ccr_history(
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<CcrHistoryQuery>,
 ) -> Result<Json<CcrHistoryResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 

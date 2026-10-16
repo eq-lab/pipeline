@@ -116,7 +116,7 @@ use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
-use crate::routes::common::{loan_registry_address, resolve_chain};
+use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::AppState;
 
 /// Basis-points denominator (`10_000` bps = 100%).
@@ -168,8 +168,6 @@ pub struct WaterfallQuery {
     /// interest/fee tenor (origination → this instant); must be ≥ the loan's
     /// origination date.
     pub as_of: Option<i64>,
-    /// Chain ID (optional — defaults to `DEFAULT_CHAIN_ID`).
-    pub chain_id: Option<i64>,
 }
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
@@ -178,6 +176,7 @@ pub struct WaterfallQuery {
 /// integer string (see the module docs on units) and maps 1:1 to a `recordPayment` argument.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WaterfallResponse {
+    pub chain_id: i64,
     /// Portion amortising outstanding senior principal: `min(outstanding_senior_principal,
     /// remaining)`, last in the cascade priority order (see module docs) — cascade-capped
     /// by `amount` behind every other bucket on a shortfall. → `recordPayment.seniorPrincipal`.
@@ -243,11 +242,12 @@ pub fn router() -> Router<Arc<AppState>> {
     path = "/v1/loan-book/{loan_id}/waterfall",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
+        RequiredChain,
         WaterfallQuery,
     ),
     responses(
         (status = 200, description = "Repayment waterfall breakdown", body = WaterfallResponse),
-        (status = 400, description = "Malformed loan id / amount, or (fixed-price loans only) amount exceeds the loan's outstanding offtaker balance"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id / amount, or (fixed-price loans only) amount exceeds the loan's outstanding offtaker balance"),
         (status = 404, description = "Loan not indexed as of the repayment instant"),
         (status = 422, description = "The loan's economics epoch timeline is corrupt (e.g. a rolled-over epoch with a zero maturity) and cannot be used for accrual"),
         (status = 500, description = "Internal server error"),
@@ -257,9 +257,10 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn get_waterfall(
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<WaterfallQuery>,
 ) -> Result<Json<WaterfallResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
@@ -332,7 +333,7 @@ async fn get_waterfall(
         pricing_basis,
     )?;
 
-    Ok(Json(build_response(&breakdown)))
+    Ok(Json(build_response(chain_id, &breakdown)))
 }
 
 // ── Pure core (testable: no DB, no clock) ───────────────────────────────────────
@@ -585,8 +586,9 @@ fn oet_room_under_cap(
 }
 
 /// Map the computed split to the response DTO. Pure and unit-testable.
-pub fn build_response(b: &WaterfallBreakdown) -> WaterfallResponse {
+pub fn build_response(chain_id: i64, b: &WaterfallBreakdown) -> WaterfallResponse {
     WaterfallResponse {
+        chain_id,
         senior_principal_returned: b.senior_principal_returned.to_plain_string(),
         senior_coupon_net: b.senior_coupon_net.to_plain_string(),
         management_fee: b.management_fee.to_plain_string(),

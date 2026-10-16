@@ -20,7 +20,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
@@ -34,7 +34,7 @@ use shared::loan_snapshot::LoanSnapshot;
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
-use crate::routes::common::{loan_registry_address, resolve_chain, ChainQuery};
+use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::routes::loan_book::display_status;
 use crate::AppState;
 
@@ -47,6 +47,7 @@ const SECS_PER_DAY: i64 = 86_400;
 /// Response for `GET /v1/loan-book/{loan_id}/financials`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoanFinancialsResponse {
+    pub chain_id: i64,
     /// On-chain loan id (string; may exceed JS safe-int range).
     pub loan_id: String,
     /// Displayed loan status: the raw on-chain status (`Performing`, `WatchList`,
@@ -127,11 +128,11 @@ pub fn router() -> Router<Arc<AppState>> {
     path = "/v1/loan-book/{loan_id}/financials",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Per-loan realized financials", body = LoanFinancialsResponse),
-        (status = 400, description = "Malformed loan id"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or malformed loan id"),
         (status = 404, description = "Loan not indexed on this chain"),
         (status = 500, description = "Internal server error"),
     ),
@@ -140,9 +141,9 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn get_loan_financials(
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
 ) -> Result<Json<LoanFinancialsResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
@@ -247,6 +248,7 @@ pub fn build_response(
         (now > next_payment_timestamp).then(|| (now - next_payment_timestamp) / SECS_PER_DAY);
 
     LoanFinancialsResponse {
+        chain_id: row.chain_id,
         loan_id: row.loan_id.to_string(),
         status: display_status(
             &s.status,

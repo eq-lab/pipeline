@@ -9,7 +9,7 @@
 //!
 //! Three buckets are driven by the Trustee-entered per-loan capital-transfers
 //! record (`loan_capital_transfers`, written via
-//! `POST /v1/loan-book/{loan_id}/transfers` — see `routes::loan_transfers`); the
+//! `POST /v1/loan-book/{loan_id}/transfers`, LoanBook tag, `chain_id` required — see `routes::loan_transfers`); the
 //! rest are served as `null` with a TODO pointing at their eventual source:
 //!
 //! - **`deployed`** — Σ `original_senior_tranche` over loans that are **both**

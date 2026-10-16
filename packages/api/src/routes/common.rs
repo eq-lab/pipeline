@@ -55,29 +55,41 @@ pub fn loan_registry_address(state: &AppState, chain_id: i64) -> Result<&str, Ap
         .ok_or_else(|| ApiError::BadRequest(format!("unknown chain_id: {chain_id}")))
 }
 
-/// Shared guard for trustee-only per-loan writes/reads on `/v1/loan-book/{loan_id}/…`:
-/// trustee role → 403, malformed loan id → 400, loan with no indexed events on the
-/// resolved chain → 404 (via the latest-status lookup). Returns the resolved
-/// `(chain_id, loan_id)`. Used by `routes::loan_book::complete_disbursement` and
-/// both `routes::loan_transfers` handlers so the 400/403/404 semantics cannot
-/// drift between them.
-pub(crate) async fn trustee_indexed_loan_guard(
+/// Pure pre-checks of the trustee per-loan guard (no I/O): trustee role → 403, malformed
+/// loan id → 400, then the LoanRegistry address scoped to `chain_id`. Returns the parsed
+/// loan id and the registry address.
+pub fn trustee_loan_precheck<'a>(
     claims: &Claims,
-    state: &AppState,
+    state: &'a AppState,
+    chain_id: i64,
     loan_id: &str,
-    query: &ChainQuery,
-) -> Result<(i64, BigDecimal), ApiError> {
+) -> Result<(BigDecimal, &'a str), ApiError> {
     if !claims.has_role(TRUSTEE_ROLE) {
         return Err(ApiError::Forbidden(format!(
             "this endpoint requires the `{TRUSTEE_ROLE}` role"
         )));
     }
 
-    let chain_id = resolve_chain(state, query.chain_id);
-    let loan_id = BigDecimal::from_str(loan_id.trim())
+    let parsed = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
     let registry = loan_registry_address(state, chain_id)?;
+    Ok((parsed, registry))
+}
+
+/// Shared guard for trustee-only per-loan writes/reads on `/v1/loan-book/{loan_id}/…`.
+/// The chain is already resolved by `RequiredChain` before the guard runs. Checks, in
+/// order: trustee role → 403, malformed loan id → 400, loan with no indexed events on
+/// `chain_id` → 404 (via the latest-status lookup). Returns the parsed loan id. Used by
+/// `routes::loan_book::complete_disbursement` and both `routes::loan_transfers` handlers
+/// so the 400/403/404 semantics cannot drift between them.
+pub(crate) async fn trustee_indexed_loan_guard(
+    claims: &Claims,
+    state: &AppState,
+    chain_id: i64,
+    loan_id: &str,
+) -> Result<BigDecimal, ApiError> {
+    let (loan_id, registry) = trustee_loan_precheck(claims, state, chain_id, loan_id)?;
 
     // 404 when the loan isn't indexed on this chain (no on-chain snapshot). Reuses
     // the latest-status lookup: an empty result means the loan has no indexed events.
@@ -96,7 +108,7 @@ pub(crate) async fn trustee_indexed_loan_guard(
         )));
     }
 
-    Ok((chain_id, loan_id))
+    Ok(loan_id)
 }
 
 #[derive(Deserialize)]

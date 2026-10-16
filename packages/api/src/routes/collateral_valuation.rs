@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -34,7 +34,7 @@ use shared::collateral_valuation_repo::{
 
 use crate::auth::{AuthClaims, SecurityAddon, TRUSTEE_ROLE};
 use crate::error::ApiError;
-use crate::routes::common::{loan_registry_address, resolve_chain, ChainQuery};
+use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::AppState;
 
 /// On-chain USDC fixed-point scale (`1e6`). Loan tranches are stored base-6, but
@@ -300,11 +300,11 @@ pub fn router() -> Router<Arc<AppState>> {
     path = "/v1/loan-book/{loan_id}/valuations",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Loan collateral valuation and CCR", body = CollateralValuationResponse),
-        (status = 400, description = "Malformed loan id"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or malformed loan id"),
         (status = 404, description = "No valuation anchor for this loan"),
         (status = 500, description = "Internal server error"),
     ),
@@ -313,9 +313,9 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn get_collateral_valuation(
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
 ) -> Result<Json<CollateralValuationResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
@@ -408,12 +408,12 @@ pub fn outstanding_senior_usd(outstanding_micro: BigDecimal) -> Option<BigDecima
     path = "/v1/loan-book/{loan_id}/assay",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     request_body = SubmitAssayRequest,
     responses(
         (status = 201, description = "Assay recorded", body = SubmitAssayResponse),
-        (status = 400, description = "Payload failed validation, or the loan's valuation_mode is not MetalConcentrate"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id; payload failed validation; or the loan's valuation_mode is not MetalConcentrate"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No valuation anchor for this loan"),
@@ -425,7 +425,7 @@ async fn submit_assay(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
     Json(payload): Json<SubmitAssayRequest>,
 ) -> Result<(StatusCode, Json<SubmitAssayResponse>), ApiError> {
     if !claims.has_role(TRUSTEE_ROLE) {
@@ -434,7 +434,7 @@ async fn submit_assay(
         )));
     }
 
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
@@ -503,12 +503,12 @@ async fn submit_assay(
     path = "/v1/loan-book/{loan_id}/offtake",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     request_body = SubmitOfftakeRequest,
     responses(
         (status = 201, description = "Offtake terms recorded", body = SubmitOfftakeResponse),
-        (status = 400, description = "Payload failed validation, or the loan's valuation_mode is not MetalConcentrate"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id; payload failed validation; or the loan's valuation_mode is not MetalConcentrate"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No valuation anchor for this loan"),
@@ -520,7 +520,7 @@ async fn submit_offtake(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
     Json(payload): Json<SubmitOfftakeRequest>,
 ) -> Result<(StatusCode, Json<SubmitOfftakeResponse>), ApiError> {
     if !claims.has_role(TRUSTEE_ROLE) {
@@ -529,7 +529,7 @@ async fn submit_offtake(
         )));
     }
 
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let loan_id = BigDecimal::from_str(loan_id.trim())
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 

@@ -883,7 +883,8 @@ fn quotational_accepts_a_qp_repriced_final_settlement() {
     assert_eq!(b.equity_distributed, dec("1764807")); // overage → equity (truncated)
 
     // The flag round-trips through the response DTO.
-    assert!(build_response(&b).offtaker_overpaid);
+    assert!(build_response(1, &b).offtaker_overpaid);
+    assert_eq!(build_response(99_000_001, &b).chain_id, 99_000_001);
 }
 
 /// A quotational payment that stays within the contracted price behaves exactly like a
@@ -971,7 +972,7 @@ fn response_maps_the_components() {
     let amount = dec("1125000");
     let f = fees(100, 2000, 50);
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[], PricingBasis::Fixed).unwrap();
-    let resp = build_response(&b);
+    let resp = build_response(1, &b);
 
     assert_eq!(resp.senior_principal_returned, "1000000");
     assert_eq!(resp.senior_coupon_net, "88000");

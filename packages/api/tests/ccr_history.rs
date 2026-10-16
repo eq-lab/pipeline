@@ -93,7 +93,7 @@ fn grid_points_before_first_price_are_none() {
 // ── OpenAPI param requiredness (regression: Swagger marked optionals required) ──
 
 #[test]
-fn openapi_marks_from_required_and_step_to_chain_optional() {
+fn openapi_marks_from_and_chain_required_and_step_to_optional() {
     let spec = serde_json::to_value(CcrHistoryDoc::openapi()).unwrap();
     let params = spec["paths"]["/v1/loan-book/{loan_id}/ccr-history"]["get"]["parameters"]
         .as_array()
@@ -114,7 +114,7 @@ fn openapi_marks_from_required_and_step_to_chain_optional() {
         "step must be optional (defaults to one day)"
     );
     assert!(!required_of("to"), "to must be optional");
-    assert!(!required_of("chain_id"), "chain_id must be optional");
+    assert!(required_of("chain_id"), "chain_id must be required");
 }
 
 // ── validate_window ──────────────────────────────────────────────────────────
