@@ -5,8 +5,8 @@
  * (senior principal returned, net senior coupon → vault, and the mgmt / perf /
  * OET fees). Read-only preview; the on-chain write is `useRecordPayment`.
  *
- * Mirrors `useLoanFinancials` / `useLoanCcrHistory`: Stellar-scoped (`chain_id`
- * from ENV), `apiFetch` REST call, hand-mirrored DTO (TD-42). `amount` and the
+ * Mirrors `useLoanFinancials` / `useLoanCcrHistory`: the loan's own `chain_id`
+ * (#1537), `apiFetch` REST call, hand-mirrored DTO (TD-42). `amount` and the
  * response fields are raw on-chain base-unit integer strings. Route presenters
  * convert operator-entered USD to raw units before calling this hook and divide
  * response fields by the configured decimals for display. The query stays
@@ -14,7 +14,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
-import { ENV } from "@/lib/env";
 
 /**
  * The five carve-outs, each a whole-base-unit integer string, mapping 1:1 to a
@@ -47,11 +46,11 @@ export interface UseLoanWaterfallResult {
  *                tenor); defaults to now on the backend
  */
 export function useLoanWaterfall(
+  chainId: number,
   loanId: string,
   amount: string,
   asOf: number | null,
 ): UseLoanWaterfallResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
   const enabled =
     loanId.length > 0 && /^[0-9]+$/.test(amount) && amount !== "0";
 

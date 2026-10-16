@@ -8,6 +8,7 @@
 import { useMemo } from "react";
 import { useAuditLog, type AuditLogItem } from "@/api/useAuditLog";
 import { useLoanBook } from "@/api/useLoanBook";
+import { ENV } from "@/lib/env";
 import { formatAuditTimestamp } from "@/utils/formatDate";
 import { toUserError } from "@/utils/userError";
 
@@ -65,6 +66,7 @@ export function useAuditLogView(): UseAuditLogView {
   const loanNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const loan of loanBook.data?.loans ?? []) {
+      if (loan.chain_id !== ENV.STELLAR_CHAIN_ID) continue;
       map.set(loan.loan_id, `${loan.originator} — ${loan.commodity}`);
     }
     return map;

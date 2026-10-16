@@ -93,6 +93,10 @@ import { Route } from "./loans.$id";
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4488",
 });
+(Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+  () => ({
+    chain: 99_000_001,
+  });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -111,6 +115,7 @@ function makeResult(
     rollover: null,
     maturityDate: "30 Jun 2026",
     documents: [],
+    onChainBlockedReason: null,
     hero: {
       backLabel: "‹ Loans",
       title: "Helios Metals · Lithium",
@@ -608,6 +613,7 @@ describe("Loan detail route — Matured variant (#866)", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id/record-coupon",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
 
     // "Escalate to default" → the existing Escalate-to-Default route.
@@ -615,7 +621,68 @@ describe("Loan detail route — Matured variant (#866)", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/risk-council/escalate/$id",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
+  });
+
+  it("disables Roll over for a non-Stellar loan (#1537)", () => {
+    mockUseLoanDetail.mockReturnValue({
+      ...maturedResult(),
+      onChainBlockedReason: "On-chain actions run on Stellar only",
+    });
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-rollover-action")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    expect(screen.queryByTestId("rollover-dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — non-Stellar loan gate (#1537)", () => {
+  const REASON =
+    "On-chain actions run on Stellar only — this loan lives on Hoodi, and signing them from the Trustee app is not supported yet.";
+
+  it("disables the on-chain actions, shows the reason, and keeps Escalate enabled", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ onChainBlockedReason: REASON }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-onchain-blocked")).toHaveTextContent(
+      REASON,
+    );
+    expect(
+      screen.getByTestId("loan-detail-action-Update lifecycle"),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId("loan-detail-action-Record coupon"),
+    ).toBeDisabled();
+    expect(screen.getByTestId("loan-detail-action-Close loan")).toBeDisabled();
+    expect(
+      screen.getByTestId("loan-detail-action-Escalate to Risk Council"),
+    ).toBeEnabled();
+
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByTestId("loan-detail-action-Escalate to Risk Council"),
+    );
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/risk-council/escalate/$id",
+      params: { id: "4488" },
+      search: { chain: 99_000_001 },
+    });
+  });
+
+  it("renders no blocked line for a Stellar loan", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-onchain-blocked"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("loan-detail-action-Update lifecycle"),
+    ).toBeEnabled();
   });
 });
 
@@ -669,7 +736,7 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
     fireEvent.click(screen.getByTestId("disbursement-confirm-submit"));
     expect(mockComplete.mutate).toHaveBeenCalledWith(
-      { loanId: "4488" },
+      { chainId: 99_000_001, loanId: "4488" },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
   });
@@ -790,6 +857,7 @@ describe("Loan detail route — Record coupon (#882)", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id/record-coupon",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
     // Unlike Update lifecycle, this is a full-page destination — no modal opens.
     expect(
@@ -806,6 +874,7 @@ describe("Loan detail route — Close loan (#884)", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id/record-repayment",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
     // This is a full-page destination — no modal opens.
     expect(
@@ -824,6 +893,7 @@ describe("Loan detail route — Escalate to Risk Council (#782)", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/risk-council/escalate/$id",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
     // Unlike Update lifecycle, this is a full-page destination — no modal opens.
     expect(

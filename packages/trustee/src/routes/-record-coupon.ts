@@ -14,6 +14,8 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
+import { findLoanEntry } from "@/lib/loanRoute";
+import { stellarOnlyActionReason } from "@/lib/targetChains";
 import {
   formatBpsRate,
   formatFullUsd,
@@ -238,6 +240,7 @@ export interface RecordCouponView {
    * passes this to `useRecordPayment` on confirm (#882).
    */
   recordPaymentInput: RepaymentInput | null;
+  onChainBlockedReason: string | null;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -247,9 +250,12 @@ export interface RecordCouponView {
  * financials (coupon period + offtaker outstanding), and the waterfall
  * preview for the trustee-entered amount/date, for `loanId`.
  */
-export function useRecordCoupon(loanId: string): RecordCouponView {
+export function useRecordCoupon(
+  chainId: number,
+  loanId: string,
+): RecordCouponView {
   const loanBook = useLoanBook();
-  const financials = useLoanFinancials(loanId);
+  const financials = useLoanFinancials(chainId, loanId);
 
   const [amountInput, setAmountInput] = useState("");
   // Date is fixed to today and not editable (#916) — no calendar/date picker.
@@ -274,9 +280,17 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     return Number.isFinite(parsed) ? parsed : Math.floor(Date.now() / 1000);
   }, [dateInput]);
 
-  const waterfall = useLoanWaterfall(loanId, amountBaseUnits, asOfSeconds);
+  const waterfall = useLoanWaterfall(
+    chainId,
+    loanId,
+    amountBaseUnits,
+    asOfSeconds,
+  );
 
-  const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
+  const onChainBlockedReason = entry
+    ? stellarOnlyActionReason(entry.chain_id)
+    : null;
 
   const state: RecordCouponView["state"] = loanBook.isLoading
     ? "loading"
@@ -442,6 +456,10 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     },
     summaryText,
     isTerminal,
-    recordPaymentInput: buildRepaymentInput(amountBaseUnits, waterfall.data),
+    recordPaymentInput:
+      onChainBlockedReason === null
+        ? buildRepaymentInput(amountBaseUnits, waterfall.data)
+        : null,
+    onChainBlockedReason,
   };
 }

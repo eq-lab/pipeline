@@ -243,9 +243,11 @@ describe("loanAttentionLabel / mapLoanToNeedsAttentionRow (#867)", () => {
       "Watchlist",
     );
     expect(row).toEqual({
+      key: "99000001:4471",
       loanId: "4471",
+      chainId: 99_000_001,
       title: "Delta · Coffee",
-      subtitle: "Watchlist · loan #4471",
+      subtitle: "Watchlist · loan #4471 · Stellar",
     });
   });
 });

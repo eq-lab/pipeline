@@ -16,6 +16,8 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
+import { findLoanEntry } from "@/lib/loanRoute";
+import { stellarOnlyActionReason } from "@/lib/targetChains";
 import { formatFullUsd, formatUsdInputValue } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
@@ -180,6 +182,7 @@ export interface RecordRepaymentView {
    * page passes this to `useRecordPayment` on confirm (#884).
    */
   recordPaymentInput: RepaymentInput | null;
+  onChainBlockedReason: string | null;
   /**
    * `true` when the financials' `offtaker_outstanding` is `0` — the offtaker
    * owes nothing, so there is nothing left to record (#1090). The page renders
@@ -218,9 +221,12 @@ export interface RecordRepaymentView {
  * loan's financials (final period + offtaker outstanding), and the waterfall
  * preview for the trustee-entered amount/date, for `loanId`.
  */
-export function useRecordRepayment(loanId: string): RecordRepaymentView {
+export function useRecordRepayment(
+  chainId: number,
+  loanId: string,
+): RecordRepaymentView {
   const loanBook = useLoanBook();
-  const financials = useLoanFinancials(loanId);
+  const financials = useLoanFinancials(chainId, loanId);
 
   const [amountInput, setAmountInput] = useState("");
   const [offtakerAck, setOfftakerAck] = useState(false);
@@ -254,9 +260,17 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     return Number.isFinite(parsed) ? parsed : Math.floor(Date.now() / 1000);
   }, [dateInput]);
 
-  const waterfall = useLoanWaterfall(loanId, amountBaseUnits, asOfSeconds);
+  const waterfall = useLoanWaterfall(
+    chainId,
+    loanId,
+    amountBaseUnits,
+    asOfSeconds,
+  );
 
-  const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
+  const onChainBlockedReason = entry
+    ? stellarOnlyActionReason(entry.chain_id)
+    : null;
 
   const state: RecordRepaymentView["state"] = loanBook.isLoading
     ? "loading"
@@ -413,9 +427,11 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
       rows,
     },
     summaryText,
-    recordPaymentInput,
+    recordPaymentInput:
+      onChainBlockedReason === null ? recordPaymentInput : null,
+    onChainBlockedReason,
     offtakerFullyPaid,
     closeChecklist,
-    closureReason: reason,
+    closureReason: onChainBlockedReason === null ? reason : null,
   };
 }

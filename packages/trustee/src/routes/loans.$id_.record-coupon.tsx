@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import { useRecordCoupon, type WaterfallRow } from "./-record-coupon";
 import { useRecordPayment } from "@/api/useRecordPayment";
 import { toUserError } from "@/utils/userError";
@@ -136,7 +137,8 @@ function WaterfallRowView({
 
 function RecordCoupon() {
   const { id } = Route.useParams();
-  const view = useRecordCoupon(id);
+  const { chain } = Route.useSearch();
+  const view = useRecordCoupon(chain, id);
   const navigate = useNavigate();
   const record = useRecordPayment();
   // Not threaded through `-record-coupon.ts` — `record` is a page-level
@@ -151,7 +153,9 @@ function RecordCoupon() {
     record.reset();
     void record
       .mutateAsync({ loanId: Number(id), repayment: view.recordPaymentInput })
-      .then(() => navigate({ to: "/loans/$id", params: { id } }))
+      .then(() =>
+        navigate({ to: "/loans/$id", params: { id }, search: { chain } }),
+      )
       .catch(() => {
         // Error surfaces inline via `record.error`; stay on the page to retry.
       });
@@ -183,6 +187,7 @@ function RecordCoupon() {
         <Link
           to="/loans/$id"
           params={{ id }}
+          search={{ chain }}
           className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
         >
           {view.backLabel}
@@ -222,6 +227,7 @@ function RecordCoupon() {
         <Link
           to="/loans/$id"
           params={{ id }}
+          search={{ chain }}
           className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
         >
           {view.backLabel}
@@ -449,6 +455,15 @@ function RecordCoupon() {
                 />
               </div>
             )}
+            {view.onChainBlockedReason && (
+              <p
+                data-testid="record-coupon-onchain-blocked"
+                className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+                style={{ color: INK_MUTED }}
+              >
+                {view.onChainBlockedReason}
+              </p>
+            )}
             <button
               type="button"
               data-testid="record-coupon-submit"
@@ -476,5 +491,6 @@ function RecordCoupon() {
 }
 
 export const Route = createFileRoute("/loans/$id_/record-coupon")({
+  validateSearch: parseLoanRouteSearch,
   component: RecordCoupon,
 });

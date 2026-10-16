@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   useRiskCouncilEscalate,
   type LedgerView,
@@ -320,7 +321,8 @@ function ProposalBuilderCard({
 
 function RiskCouncilEscalate() {
   const { id } = Route.useParams();
-  const view = useRiskCouncilEscalate(id);
+  const { chain } = Route.useSearch();
+  const view = useRiskCouncilEscalate(chain, id);
 
   if (view.state === "error") {
     return (
@@ -445,5 +447,6 @@ function RiskCouncilEscalate() {
 }
 
 export const Route = createFileRoute("/risk-council/escalate/$id")({
+  validateSearch: parseLoanRouteSearch,
   component: RiskCouncilEscalate,
 });

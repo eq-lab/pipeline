@@ -10,6 +10,7 @@
  */
 import { useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
+import { findLoanEntry } from "@/lib/loanRoute";
 import type { TopConcentration } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
@@ -229,24 +230,25 @@ export interface RiskCouncilEscalateView {
  * and the local mock Draft→Submitted proposal state.
  */
 export function useRiskCouncilEscalate(
+  chainId: number,
   loanId: string,
 ): RiskCouncilEscalateView {
   const loanBook = useLoanBook();
-  const financials = useLoanFinancials(loanId);
+  const financials = useLoanFinancials(chainId, loanId);
   const [status, setStatus] = useState<ProposalStatus>("draft");
   const [proposalName, setProposalName] = useState("");
   const [proposalText, setProposalText] = useState("");
   const canSubmit =
     proposalName.trim().length > 0 && proposalText.trim().length > 0;
 
-  const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
   // CCR-history series (#879) — from the loan's origination through now, daily.
   // Mirrors `-useLoanDetail.ts`'s `ccrFrom` computation; the hook self-disables
   // until `from` is known.
   const ccrFrom =
     entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
-  const ccrHistory = useLoanCcrHistory(loanId, ccrFrom);
+  const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
 
   const state: RiskCouncilEscalateView["state"] = loanBook.isLoading
     ? "loading"
