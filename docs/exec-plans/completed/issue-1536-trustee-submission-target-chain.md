@@ -1,5 +1,8 @@
 # Issue #1536: Trustee: loan submission form selects the target chain
 
+**Status: implemented (2026-10-16)** — every step and the Test Strategy are complete; trustee
+lint/build/test (70 files, 1019 tests) and `lint-docs` green. See PR #1561.
+
 Source: https://github.com/eq-lab/pipeline/issues/1536
 
 Frontend follow-up of epic #1521 (backend-only, merged: #1542 chain foundation, #1550 submissions
