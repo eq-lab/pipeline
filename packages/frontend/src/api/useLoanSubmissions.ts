@@ -165,18 +165,12 @@ export interface UseLoanSubmissionsResult {
  * - Polls every 30 s per the dashboard "Real-time updates" convention
  *   (`docs/FRONTEND.md`).
  * - Returns all statuses; the caller renders each row's `status`.
+ * - Sends no `chain_id`: the In Origination tab shows submissions for every target chain.
  */
-export function useLoanSubmissions({
-  chainId,
-}: {
-  chainId: number;
-}): UseLoanSubmissionsResult {
+export function useLoanSubmissions(): UseLoanSubmissionsResult {
   const query = useQuery<SubmissionView[], Error>({
-    queryKey: ["loan-submissions", chainId],
-    queryFn: () =>
-      apiFetch<SubmissionView[]>(
-        `/v1/loan-book/submissions?chain_id=${chainId}`,
-      ),
+    queryKey: ["loan-submissions"],
+    queryFn: () => apiFetch<SubmissionView[]>("/v1/loan-book/submissions"),
     refetchInterval: 30_000,
   });
 

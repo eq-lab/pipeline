@@ -60,10 +60,10 @@ Welcome to Pipeline! Sign this message to authenticate. This request will not tr
 | `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403 account_suspended` for a suspended one, `429` past the attempt limit. |
 | `POST` | `/v1/auth/forgot-password` | none | Body `{ email, captcha_token }`. Always `202`; a reset link is mailed only to a verified, active account, at most once per 60 seconds. `403`/`503` per the captcha, `429` past 10 requests per hour per client address. See [api-authorization-password-reset.md](./api-authorization-password-reset.md). |
 | `POST` | `/v1/auth/reset-password` | none | Body `{ token, password }`. `204` on success, with no token issued; every token the account held before is rejected from then on. `400` for a password failing the policy, `401` for every link failure, with one shared message. |
-| `POST` | `/v1/loan-book/loan` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](#loan-submission)). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
-| `GET`  | `/v1/loan-book/submissions?status` | bearer + `trustee` role | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. `400` on an unknown status value. |
+| `POST` | `/v1/loan-book/loan?chain_id` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](./api-authorization-loan-submission.md)). Optional `chain_id` is the target chain (defaults to `DEFAULT_CHAIN_ID`; not in `CHAINS` → `400`). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
+| `GET`  | `/v1/loan-book/submissions?status&chain_id` | none (public) | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. Optional `chain_id` filters by target chain; omitted returns all submissions, a configured id filters by target, a well-formed id not in `CHAINS` is `200` with an empty list. `400` on an unknown status value or a malformed/repeated `chain_id`. Each item carries `target_chain_id` and the nullable drawn `chain_id` / `loan_id`. |
 | `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
-| `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`. `200 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |
+| `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`; the target chain is kept. `200 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |
 
 Tokens are **ES256** (P-256) signed, expire **24 hours** after issuance
 (`expires_in = 86400`), and carry `sub`, `chain_id`, `account_id`, `roles`,
@@ -117,69 +117,8 @@ are history only, `NULL` for email registrations, and read by nothing (TD-82).
 ## Loan submission
 
 Originators submit loan applications that trustees review before a loan is drawn
-on-chain. The flow is intentionally two-staged: submission only **persists and
-validates** the application; calling `draw_loan` on an approved submission is a
-separate, later step (not yet wired).
-
-**Lifecycle.** A submission is `InReview` on insert. `Approved` and `Rejected`
-are terminal — no further review is accepted once either is reached.
-`ChangesRequested` is **non-final**: a submission left `ChangesRequested` can be
-reviewed again, moving to `Approved`, `Rejected`, or another round of
-`ChangesRequested`.
-
-```
-InReview ──────────approve──────────▶ Approved (terminal)
-         ──────────reject───────────▶ Rejected (terminal, carries a reason)
-         ──request changes──▶ ChangesRequested (carries a reason) ─┐
-              ▲                                                    │
-              └───────────── request changes again ────────────────┘
-ChangesRequested ──approve─────────▶ Approved (terminal)
-                 ──reject──────────▶ Rejected (terminal, carries a reason)
-                 ──resubmit────────▶ InReview (originator replaces the payload)
-```
-
-Only `InReview` or `ChangesRequested` submissions can be reviewed; reviewing a
-submission already `Approved`/`Rejected` returns `409 Conflict`. Each new review
-decision overwrites the single `reason` column — there is no history of prior
-`ChangesRequested` feedback text.
-
-**Resubmission.** When a trustee requests changes, the originator acts on the
-feedback via `POST /v1/loan-book/submissions/{id}/resubmit` — the counterpart to
-the trustee's review action. It carries the full submission payload (same shape as
-`POST /v1/loan-book/loan`), re-runs the same validation, and does a full replace of
-`loan_data`, the valuation anchor, and the fee schedule, then resets the submission
-to `InReview` (clearing `reason`) for another review round. Only `ChangesRequested`
-submissions may be resubmitted: `InReview` is already open, and the terminal
-`Approved`/`Rejected` states return `409 Conflict`. There is no partial edit — a
-resubmission is a complete new payload.
-
-**Payload.** `POST /v1/loan-book/loan` carries every input to the on-chain
-`draw_loan`: the holder `to`, the on-chain `metadata_uri`, the off-chain metadata
-document fields (`originator`, `borrower_id`, `commodity`, `corridor`,
-`governing_law`, `protection`, optional `secondary_metadata_uri`, and
-`documents` — an array of `{ name, uri }` links such as the Agreement,
-License, and Terms & Conditions), the
-`economics` block (`ImmutableLoanData` — base-6 USDC amount strings, bps rate,
-origination/maturity timestamps), `initial_ccr`, and `initial_location`
-(`LocationUpdate`). The whole payload is stored verbatim as JSONB. Submission
-validation mirrors the contract invariants: tranches sum to the facility size,
-maturity is after origination, offtaker price covers the facility, `initial_ccr`
-is at least `1_000_000` (100 %), and `location_type` is one of
-`Vessel`/`Warehouse`/`TankFarm`/`Other`.
-
-`submitted_loans` — one row per application:
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `BIGINT` (identity) | surrogate PK — the submission id used by the review endpoint. **Not** the on-chain `loan_id`, which does not exist until the loan is drawn |
-| `loan_data` | `JSONB` | the full submitted payload, verbatim |
-| `status` | `TEXT` | `InReview` \| `Approved` \| `Rejected` \| `ChangesRequested` (CHECK-constrained) |
-| `reason` | `TEXT` | rejection/feedback reason; present **iff** `status IN (Rejected, ChangesRequested)` (CHECK-enforced) |
-| `originator` | `TEXT` | the submitter's authenticated address (JWT `sub`) |
-| `created_at` / `updated_at` | `TIMESTAMPTZ` | bookkeeping |
-
-The `originator` / `trustee` roles are granted via `auth_users.roles` (seeded
-manually like any other role).
+on-chain. Lifecycle, target chain, payload and the `submitted_loans` table are in
+[api-authorization-loan-submission.md](./api-authorization-loan-submission.md).
 
 ## Security
 

@@ -665,27 +665,33 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
             .insert_row(conn, &row, self.chain_id)
             .await?;
 
-        // Thin bridge (Approach A): when a loan is drawn, point its open submission at
-        // the new on-chain loan by matching `metadata_uri`. Pointer only — no on-chain
-        // state is copied into `submitted_loans`. Runs in the same transaction as the
-        // contract_logs write. A missing submission is normal (loan drawn with no prior
-        // submission) and must not fail indexing.
+        // Thin bridge: link the open submission by target chain + `metadata_uri`; a
+        // non-link is logged and never fails indexing.
         if self.event.event_name == "LoanDrawn" {
-            let linked = SubmittedLoanRepo::link_drawn(
+            let outcome = SubmittedLoanRepo::link_drawn(
                 conn,
                 &snapshot.metadata_uri_onchain,
                 self.chain_id,
                 &loan_id,
             )
             .await?;
-            tracing::info!(
-                chain_id = self.chain_id,
-                loan_id = %loan_id,
-                metadata_uri = %snapshot.metadata_uri_onchain,
-                linked,
-                "LoanDrawn: {} submission by metadata_uri",
-                if linked { "linked" } else { "no matching" }
-            );
+            if outcome.is_unexpected() {
+                tracing::warn!(
+                    chain_id = self.chain_id,
+                    loan_id = %loan_id,
+                    metadata_uri = %snapshot.metadata_uri_onchain,
+                    ?outcome,
+                    "LoanDrawn: submission not linked"
+                );
+            } else {
+                tracing::info!(
+                    chain_id = self.chain_id,
+                    loan_id = %loan_id,
+                    metadata_uri = %snapshot.metadata_uri_onchain,
+                    ?outcome,
+                    "LoanDrawn: submission link"
+                );
+            }
 
             // Seed the disbursement flag: a freshly-drawn loan starts in `Disbursing`
             // (off_ramp_complete = FALSE) until a trustee marks the USDC off-ramp

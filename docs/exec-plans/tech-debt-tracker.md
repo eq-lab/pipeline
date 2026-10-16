@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-150.**
+**Next free number: TD-151.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2076,3 +2076,11 @@ line, whichever section it lands in.
 - **Gap:** LoanBook routes use the registry-scoped repo methods, while portfolio, dashboard, capital allocation and financial position keep the chain-only variants, so each query pair is duplicated.
 - **Impact:** After a LoanRegistry redeploy on the same chain, those four groups can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
 - **Suggested fix:** #1538 migrates the four groups to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.
+
+### TD-150: The submission link is not LoanRegistry-scoped
+
+- **Date:** 2026-10-16
+- **Location:** `packages/shared/src/submitted_loan_repo.rs` (`link_drawn`), `packages/shared/migrations/20261015000001_submitted_loans_target_chain.sql` (`submitted_loans_chain_loan_uk`) — Issue #1529.
+- **Gap:** `submitted_loans.(chain_id, loan_id)` carries no registry address, so it cannot tell two LoanRegistry deployments on one chain apart (the #1526 rationale).
+- **Impact:** After a redeploy on the same chain, a reused `loan_id` collides with the old registry's link. `link_drawn` skips it, the indexer logs a `warn`, and the new submission stays unlinked until an operator unlinks the stale row.
+- **Suggested fix:** #1545 adds the registry address to the link and the unique index.

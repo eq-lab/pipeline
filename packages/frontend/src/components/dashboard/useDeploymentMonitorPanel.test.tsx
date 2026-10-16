@@ -517,7 +517,7 @@ describe("useDeploymentMonitorPanel — dashboard chain", () => {
     localStorage.clear();
   });
 
-  it("sends the dashboard chainId on every request", async () => {
+  it("sends the dashboard chainId on loan-book requests but not on submissions", async () => {
     localStorage.clear();
     dashboardChain.value = { kind: "evm", chainId: 560048 };
     const fetchStub = vi.fn<typeof fetch>(() =>
@@ -534,12 +534,10 @@ describe("useDeploymentMonitorPanel — dashboard chain", () => {
         (u) => u.includes("/v1/loan-book?") && u.includes("chain_id=560048"),
       ),
     ).toBe(true);
-    expect(
-      urls.some(
-        (u) =>
-          u.includes("/v1/loan-book/submissions") &&
-          u.includes("chain_id=560048"),
-      ),
-    ).toBe(true);
+    const submissionUrls = urls.filter((u) =>
+      u.includes("/v1/loan-book/submissions"),
+    );
+    expect(submissionUrls.length).toBeGreaterThan(0);
+    expect(submissionUrls.every((u) => !u.includes("chain_id"))).toBe(true);
   });
 });

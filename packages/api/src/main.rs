@@ -45,7 +45,6 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("POSTGRES_URL is not set"))?;
 
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
-    sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
     let sumsub = match SumsubSettings::from_env() {
         Ok(settings) => {
@@ -103,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Parse multi-chain config (CHAINS, DEFAULT_CHAIN_ID, per-chain signer keys).
     let chains_config = ChainsConfig::from_env()?;
+    shared::migrations::run(&pool, Some(chains_config.default_chain_id)).await?;
 
     let (sumsub_client, sumsub_settings) = match sumsub {
         Some((client, settings)) => (Some(client), Some(settings)),

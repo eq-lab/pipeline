@@ -1,6 +1,6 @@
 //! Originator-submitted loan applications awaiting trustee review.
 //!
-//! Backs the loan-submission workflow (see `docs/product-specs/api-authorization.md`
+//! Backs the loan-submission workflow (see `docs/product-specs/api-authorization-loan-submission.md`
 //! and `routes::loan_book`). An originator submits the full set of `draw_loan`
 //! inputs, stored verbatim as JSONB in `loan_data`; a trustee then approves or
 //! rejects each submission. The surrogate `id` is the submission identifier — the
@@ -63,6 +63,104 @@ impl FromStr for SubmissionStatus {
     }
 }
 
+pub const INSERT_SUBMISSION_SQL: &str =
+    "INSERT INTO submitted_loans (loan_data, originator, target_chain_id) \
+     VALUES ($1, $2, $3) RETURNING id";
+
+pub const LIST_SUBMISSIONS_SQL: &str =
+    "SELECT id, loan_data, status, reason, originator, target_chain_id, \
+     chain_id, loan_id, created_at, updated_at \
+     FROM submitted_loans \
+     WHERE ($1::text IS NULL OR status = $1) AND ($2::bigint IS NULL OR target_chain_id = $2) \
+     ORDER BY created_at DESC, id DESC";
+
+pub const FIND_SUBMISSION_SQL: &str =
+    "SELECT id, loan_data, status, reason, originator, target_chain_id, \
+     chain_id, loan_id, created_at, updated_at \
+     FROM submitted_loans WHERE id = $1";
+
+pub const RESUBMIT_SQL: &str = "UPDATE submitted_loans \
+        SET loan_data = $2, status = 'InReview', reason = NULL, updated_at = now() \
+      WHERE id = $1 AND status = 'ChangesRequested'";
+
+pub const LINK_DRAWN_SQL: &str = "UPDATE submitted_loans \
+        SET chain_id = $2, loan_id = $3, updated_at = now() \
+      WHERE loan_data->>'metadata_uri' = $1 \
+        AND loan_id IS NULL \
+        AND target_chain_id = $2 \
+        AND NOT EXISTS (SELECT 1 FROM submitted_loans o WHERE o.chain_id = $2 AND o.loan_id = $3) \
+     RETURNING id";
+
+pub const UNLINKED_DRAW_CANDIDATES_SQL: &str =
+    "SELECT id, target_chain_id, chain_id, loan_id FROM submitted_loans \
+      WHERE (chain_id = $2 AND loan_id = $3) \
+         OR (loan_data->>'metadata_uri' = $1 AND loan_id IS NULL)";
+
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct LinkCandidate {
+    pub id: i64,
+    pub target_chain_id: i64,
+    pub chain_id: Option<i64>,
+    pub loan_id: Option<BigDecimal>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkOutcome {
+    Linked {
+        submission_id: i64,
+    },
+    NoSubmission,
+    AlreadyLinked {
+        submission_id: i64,
+    },
+    TargetMismatch {
+        submission_id: i64,
+        target_chain_id: i64,
+    },
+    Conflict {
+        linked_submission_id: i64,
+        candidate_submission_id: i64,
+    },
+}
+
+impl LinkOutcome {
+    pub fn is_unexpected(&self) -> bool {
+        matches!(
+            self,
+            LinkOutcome::TargetMismatch { .. } | LinkOutcome::Conflict { .. }
+        )
+    }
+}
+
+pub fn classify_unlinked_draw(
+    candidates: &[LinkCandidate],
+    chain_id: i64,
+    loan_id: &BigDecimal,
+) -> LinkOutcome {
+    let linked = candidates
+        .iter()
+        .find(|c| c.chain_id == Some(chain_id) && c.loan_id.as_ref() == Some(loan_id));
+    let open = candidates.iter().find(|c| c.loan_id.is_none());
+    match (linked, open) {
+        (Some(l), Some(o)) if o.target_chain_id == chain_id => LinkOutcome::Conflict {
+            linked_submission_id: l.id,
+            candidate_submission_id: o.id,
+        },
+        (Some(l), _) => LinkOutcome::AlreadyLinked {
+            submission_id: l.id,
+        },
+        (None, Some(o)) if o.target_chain_id == chain_id => LinkOutcome::Conflict {
+            linked_submission_id: o.id,
+            candidate_submission_id: o.id,
+        },
+        (None, Some(o)) => LinkOutcome::TargetMismatch {
+            submission_id: o.id,
+            target_chain_id: o.target_chain_id,
+        },
+        (None, None) => LinkOutcome::NoSubmission,
+    }
+}
+
 /// One row of `submitted_loans`.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SubmittedLoanRow {
@@ -76,6 +174,7 @@ pub struct SubmittedLoanRow {
     pub reason: Option<String>,
     /// The authenticated submitter (JWT `sub`).
     pub originator: String,
+    pub target_chain_id: i64,
     /// Chain the linked loan was drawn on; `None` until drawn (pre-drawn).
     pub chain_id: Option<i64>,
     /// On-chain loan id once the loan is drawn and linked (by `metadata_uri`);
@@ -104,14 +203,14 @@ impl SubmittedLoanRepo {
         conn: &mut PgConnection,
         loan_data: &Value,
         originator: &str,
+        target_chain_id: i64,
     ) -> Result<i64, sqlx::Error> {
-        let id: i64 = sqlx::query_scalar(
-            "INSERT INTO submitted_loans (loan_data, originator) VALUES ($1, $2) RETURNING id",
-        )
-        .bind(loan_data)
-        .bind(originator)
-        .fetch_one(conn)
-        .await?;
+        let id: i64 = sqlx::query_scalar(INSERT_SUBMISSION_SQL)
+            .bind(loan_data)
+            .bind(originator)
+            .bind(target_chain_id)
+            .fetch_one(conn)
+            .await?;
         Ok(id)
     }
 
@@ -123,42 +222,21 @@ impl SubmittedLoanRepo {
     pub async fn list(
         &self,
         status: Option<SubmissionStatus>,
+        target_chain_id: Option<i64>,
     ) -> Result<Vec<SubmittedLoanRow>, sqlx::Error> {
-        match status {
-            Some(s) => {
-                sqlx::query_as::<_, SubmittedLoanRow>(
-                    "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
-                     created_at, updated_at \
-                     FROM submitted_loans WHERE status = $1 \
-                     ORDER BY created_at DESC, id DESC",
-                )
-                .bind(s.as_str())
-                .fetch_all(&self.pool)
-                .await
-            }
-            None => {
-                sqlx::query_as::<_, SubmittedLoanRow>(
-                    "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
-                     created_at, updated_at \
-                     FROM submitted_loans \
-                     ORDER BY created_at DESC, id DESC",
-                )
-                .fetch_all(&self.pool)
-                .await
-            }
-        }
+        sqlx::query_as::<_, SubmittedLoanRow>(LIST_SUBMISSIONS_SQL)
+            .bind(status.map(|s| s.as_str()))
+            .bind(target_chain_id)
+            .fetch_all(&self.pool)
+            .await
     }
 
     /// Fetch a single submission by `id` (any stage — pre- or post-drawn).
     pub async fn find(&self, id: i64) -> Result<Option<SubmittedLoanRow>, sqlx::Error> {
-        sqlx::query_as::<_, SubmittedLoanRow>(
-            "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
-             created_at, updated_at \
-             FROM submitted_loans WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
+        sqlx::query_as::<_, SubmittedLoanRow>(FIND_SUBMISSION_SQL)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
     }
 
     /// Apply a trustee decision to a submission still open for review. Only rows in
@@ -203,47 +281,44 @@ impl SubmittedLoanRepo {
         id: i64,
         loan_data: &Value,
     ) -> Result<bool, sqlx::Error> {
-        let affected = sqlx::query(
-            "UPDATE submitted_loans \
-                SET loan_data = $2, status = 'InReview', reason = NULL, updated_at = now() \
-              WHERE id = $1 AND status = 'ChangesRequested'",
-        )
-        .bind(id)
-        .bind(loan_data)
-        .execute(conn)
-        .await?
-        .rows_affected();
+        let affected = sqlx::query(RESUBMIT_SQL)
+            .bind(id)
+            .bind(loan_data)
+            .execute(conn)
+            .await?
+            .rows_affected();
         Ok(affected > 0)
     }
 
     /// Thin bridge: point an open submission at its freshly-drawn on-chain loan,
-    /// matching by `metadata_uri` against the unlinked submission (`loan_id IS NULL`).
-    /// Sets **only** the `chain_id` / `loan_id` pointer — the submission's review
-    /// `status` is left frozen at its last pre-chain value, and on-chain state is NOT
-    /// copied here (Approach A: derive it from `contract_logs` at read time).
+    /// matching the draw chain against `target_chain_id` and `metadata_uri` against the
+    /// unlinked submission (`loan_id IS NULL`). Sets **only** the `chain_id` / `loan_id`
+    /// pointer; on-chain state is never copied here (derive it from `contract_logs`).
     ///
     /// Takes a caller-supplied connection so it runs inside the indexer's transaction.
-    /// Returns whether a submission was linked — `false` (no match) is normal (a loan
-    /// may be drawn with no prior submission), so callers must not fail indexing on it.
-    /// The partial unique index on `(loan_data->>'metadata_uri') WHERE loan_id IS NULL`
-    /// guarantees at most one row matches.
+    /// Never links a `(chain_id, loan_id)` that is already linked. A non-link is
+    /// reported through [`LinkOutcome`] and must not fail indexing.
     pub async fn link_drawn(
         conn: &mut PgConnection,
         metadata_uri: &str,
         chain_id: i64,
         loan_id: &BigDecimal,
-    ) -> Result<bool, sqlx::Error> {
-        let affected = sqlx::query(
-            "UPDATE submitted_loans \
-                SET chain_id = $2, loan_id = $3, updated_at = now() \
-              WHERE loan_data->>'metadata_uri' = $1 AND loan_id IS NULL",
-        )
-        .bind(metadata_uri)
-        .bind(chain_id)
-        .bind(loan_id)
-        .execute(&mut *conn)
-        .await?
-        .rows_affected();
-        Ok(affected > 0)
+    ) -> Result<LinkOutcome, sqlx::Error> {
+        let linked: Option<i64> = sqlx::query_scalar(LINK_DRAWN_SQL)
+            .bind(metadata_uri)
+            .bind(chain_id)
+            .bind(loan_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        if let Some(submission_id) = linked {
+            return Ok(LinkOutcome::Linked { submission_id });
+        }
+        let candidates = sqlx::query_as::<_, LinkCandidate>(UNLINKED_DRAW_CANDIDATES_SQL)
+            .bind(metadata_uri)
+            .bind(chain_id)
+            .bind(loan_id)
+            .fetch_all(&mut *conn)
+            .await?;
+        Ok(classify_unlinked_draw(&candidates, chain_id, loan_id))
     }
 }

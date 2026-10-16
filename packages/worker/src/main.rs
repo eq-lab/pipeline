@@ -29,7 +29,8 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("POSTGRES_URL is not set"))?;
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
 
-    sqlx::migrate!("../shared/migrations").run(&pool).await?;
+    let default_chain_id = shared::migrations::default_chain_id_from_env()?;
+    shared::migrations::run(&pool, default_chain_id).await?;
 
     if env_bool("JOB_INDEXER_ENABLED") {
         let settings_per_chain = IndexerSettings::all_from_env()?;
