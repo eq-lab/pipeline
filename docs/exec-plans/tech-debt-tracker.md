@@ -2084,3 +2084,11 @@ line, whichever section it lands in.
 - **Gap:** `submitted_loans.(chain_id, loan_id)` carries no registry address, so it cannot tell two LoanRegistry deployments on one chain apart (the #1526 rationale).
 - **Impact:** After a redeploy on the same chain, a reused `loan_id` collides with the old registry's link. `link_drawn` skips it, the indexer logs a `warn`, and the new submission stays unlinked until an operator unlinks the stale row.
 - **Suggested fix:** #1545 adds the registry address to the link and the unique index.
+
+### TD-151: No EVM `draw_loan` from the Trustee app — Approve is gated to Stellar-targeted submissions
+
+- **Date:** 2026-10-16
+- **Location:** `packages/trustee/src/routes/-useOriginationReview.ts` (`approveBlockedReason`), `packages/trustee/src/api/useDrawLoan.ts`
+- **Gap:** Submissions can now target an EVM chain (#1529 backend, #1536 form), but the trustee's chain-first Approve (#831) only knows the Stellar executor → `draw_loan` path. #1536 therefore disables Approve for a non-Stellar target with an explanatory line; Reject / Request changes still work.
+- **Impact:** An EVM-targeted submission cannot be approved from the Trustee app until an EVM draw path exists (the LoanRegistry `mintLoan`/draw call signed by the trustee's EVM wallet, plus the same simulate-then-sign ordering and idempotency guard). Until then such submissions sit `InReview` or are drawn out-of-band and linked by the indexer.
+- **Suggested fix:** An EVM `useDrawLoan` arm selected by `target_chain_id`, reusing the `@pipeline/wallet-connect` EVM wallet; drop the gate once it lands.

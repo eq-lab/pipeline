@@ -8,7 +8,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -115,6 +114,11 @@ export interface SubmissionView {
   reason: string | null;
   /** The submitter (authenticated address). */
   originator: string;
+  /** Chain the submission is meant to be drawn on (#1536). */
+  target_chain_id?: number;
+  /** Chain and id of the drawn loan once the indexer links it; null until then. */
+  chain_id?: number | null;
+  loan_id?: string | null;
   /** Submission timestamp (RFC 3339). */
   created_at: string;
   /** Last update timestamp (RFC 3339). */
@@ -186,15 +190,12 @@ export interface UseLoanSubmissionsOptions {
 export function useLoanSubmissions(
   options?: UseLoanSubmissionsOptions,
 ): UseLoanSubmissionsResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
   const status = options?.status;
   const query = useQuery<SubmissionView[], Error>({
-    queryKey: ["loan-submissions", chainId, status ?? "all"],
+    queryKey: ["loan-submissions", status ?? "all"],
     queryFn: () =>
       apiFetch<SubmissionView[]>(
-        `/v1/loan-book/submissions?chain_id=${chainId}${
-          status ? `&status=${status}` : ""
-        }`,
+        `/v1/loan-book/submissions${status ? `?status=${status}` : ""}`,
       ),
     refetchInterval: 30_000,
   });

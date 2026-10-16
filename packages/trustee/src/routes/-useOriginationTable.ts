@@ -16,6 +16,7 @@ import { formatBpsRate, formatCompactUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 import { toUserError } from "@/utils/userError";
+import { targetChainLabel } from "@/lib/targetChains";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ export type OriginationRowStatus =
 export interface OriginationTableRow {
   id: number;
   originator: string;
+  chain: string;
   commodity: string;
   facility: string;
   corridor: string;
@@ -109,6 +111,7 @@ export function mapSubmissionToRow(
   return {
     id: submission.id,
     originator: safeString(loanData.originator),
+    chain: targetChainLabel(submission.target_chain_id),
     commodity: safeString(loanData.commodity),
     facility: formatCompactUsd(
       economicsBaseUnitsToUsdDecimal(economics.original_facility_size),

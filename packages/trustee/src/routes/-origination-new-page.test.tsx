@@ -251,8 +251,12 @@ describe("Submit a loan page — validation + submit", () => {
     fireEvent.click(screen.getByTestId("submit-loan-submit"));
 
     expect(mockSubmit.mutateAsync).toHaveBeenCalledTimes(1);
-    const payload = vi.mocked(mockSubmit.mutateAsync).mock.calls[0]![0];
-    expect(payload).toMatchObject({
+    const variables = vi.mocked(mockSubmit.mutateAsync).mock.calls[0]![0] as {
+      chainId: number;
+      input: unknown;
+    };
+    expect(variables.chainId).toBe(99_000_001);
+    expect(variables.input).toMatchObject({
       to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
       protection: "LC at sight",
       initial_ccr: 1500000,
@@ -306,5 +310,48 @@ describe("Submit a loan page — documents", () => {
     expect(
       screen.queryByTestId("submit-loan-document-name-0"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Submit a loan page — target chain (#1536)", () => {
+  it("renders the selector first in Loan & metadata with Stellar selected and both configured chains", () => {
+    renderRoute();
+    const select = screen.getByTestId(
+      "submit-loan-field-target_chain_id",
+    ) as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    expect(select.value).toBe("99000001");
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Stellar",
+      "Hoodi",
+    ]);
+    expect(
+      screen.getByText("Mint to (address on the target chain)"),
+    ).toBeInTheDocument();
+  });
+
+  it("choosing the EVM chain sends its id as chainId and survives a JSON import", async () => {
+    renderRoute();
+    fireEvent.change(screen.getByTestId("submit-loan-field-target_chain_id"), {
+      target: { value: "560048" },
+    });
+    importJson(EXAMPLE_JSON);
+    fillMissingBlocks();
+    expect(
+      (
+        screen.getByTestId(
+          "submit-loan-field-target_chain_id",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("560048");
+    fireEvent.click(screen.getByTestId("submit-loan-submit"));
+
+    const variables = vi.mocked(mockSubmit.mutateAsync).mock.calls[0]![0] as {
+      chainId: number;
+    };
+    expect(variables.chainId).toBe(560048);
+    await vi.waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({ to: "/origination" }),
+    );
   });
 });

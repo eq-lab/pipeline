@@ -2,7 +2,7 @@
  * Tests for `src/api/useLoanSubmissions.ts`.
  *
  * Covers:
- *   - The request URL includes chain_id=99000001 (Stellar-scoped).
+ *   - The request URL carries no chain_id (#1536: every target chain).
  *   - The bearer header is attached (via apiFetch/sessionStore).
  *   - Success path returns the parsed SubmissionView[].
  *   - Error path populates `error`.
@@ -126,7 +126,7 @@ describe("normalizeOriginationSubmissionStatus", () => {
 });
 
 describe("useLoanSubmissions", () => {
-  it("calls fetch with /v1/loan-book/submissions and chain_id=99000001", async () => {
+  it("calls fetch with /v1/loan-book/submissions and no chain_id (#1536: all target chains)", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE_SUBMISSIONS), { status: 200 }),
     );
@@ -140,8 +140,8 @@ describe("useLoanSubmissions", () => {
     });
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
-    expect(url).toContain("/v1/loan-book/submissions");
-    expect(url).toContain("chain_id=99000001");
+    expect(url).toBe("http://localhost:8080/v1/loan-book/submissions");
+    expect(url).not.toContain("chain_id");
   });
 
   it("attaches the Authorization bearer header", async () => {
@@ -213,7 +213,7 @@ describe("useLoanSubmissions", () => {
     expect(url).not.toContain("status=");
   });
 
-  it("(#818) issues a request with status=InReview and chain_id=99000001 when filtered", async () => {
+  it("(#818) issues a request with status=InReview and still no chain_id when filtered", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE_SUBMISSIONS), { status: 200 }),
     );
@@ -228,7 +228,8 @@ describe("useLoanSubmissions", () => {
     });
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
-    expect(url).toContain("status=InReview");
-    expect(url).toContain("chain_id=99000001");
+    expect(url).toBe(
+      "http://localhost:8080/v1/loan-book/submissions?status=InReview",
+    );
   });
 });

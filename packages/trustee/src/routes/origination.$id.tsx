@@ -155,6 +155,7 @@ function DealDetailsCard({
         Deal Details
       </h2>
       <div>
+        <TermRow label="Target chain" value={dealDetails.targetChain} />
         <TermRow label="Originator" value={dealDetails.originator} />
         <TermRow label="Commodity" value={dealDetails.commodity} />
         <TermRow label="Corridor" value={dealDetails.corridor} />
@@ -208,6 +209,8 @@ interface ActionButtonsProps {
   /** Opens the request-changes reason dialog (#1017). */
   onRequestChanges: () => void;
   isPending: boolean;
+  /** #1536: set when the submission targets a chain the app cannot draw on. */
+  approveBlockedReason: string | null;
   errorMessage: string | null;
   errorDetails: string | null;
 }
@@ -219,11 +222,21 @@ function ActionButtons({
   onReject,
   onRequestChanges,
   isPending,
+  approveBlockedReason,
   errorMessage,
   errorDetails,
 }: ActionButtonsProps) {
+  const approveDisabled = isPending || approveBlockedReason !== null;
   return (
     <div className="flex flex-col items-start gap-[20px] pt-[4px]">
+      {approveBlockedReason && (
+        <p
+          data-testid="origination-detail-approve-blocked"
+          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)]"
+        >
+          {approveBlockedReason}
+        </p>
+      )}
       {errorMessage && (
         <div data-testid="origination-detail-review-error">
           <InlineError
@@ -236,8 +249,8 @@ function ActionButtons({
       <div className="flex items-start gap-[10px]">
         <button
           type="button"
-          disabled={isPending}
-          aria-disabled={isPending}
+          disabled={approveDisabled}
+          aria-disabled={approveDisabled}
           onClick={onApprove}
           data-testid="origination-detail-approve"
           className="h-[40px] rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -347,6 +360,7 @@ function DetailFooter({
   onReject,
   onRequestChanges,
   isPending,
+  approveBlockedReason,
   errorMessage,
   errorDetails,
 }: {
@@ -358,6 +372,7 @@ function DetailFooter({
   onReject: () => void;
   onRequestChanges: () => void;
   isPending: boolean;
+  approveBlockedReason: string | null;
   errorMessage: string | null;
   errorDetails: string | null;
 }) {
@@ -381,6 +396,7 @@ function DetailFooter({
       onReject={onReject}
       onRequestChanges={onRequestChanges}
       isPending={isPending}
+      approveBlockedReason={approveBlockedReason}
       errorMessage={errorMessage}
       errorDetails={errorDetails}
     />
@@ -489,6 +505,7 @@ function OriginationDetail() {
           onReject={review.openReject}
           onRequestChanges={review.openRequestChanges}
           isPending={review.isPending}
+          approveBlockedReason={review.approveBlockedReason}
           // While any dialog is open, its own error surface (below) owns
           // the mutation error — avoid rendering it twice.
           errorMessage={

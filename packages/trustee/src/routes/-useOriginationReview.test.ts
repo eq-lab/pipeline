@@ -635,3 +635,36 @@ describe("useOriginationReview", () => {
     });
   });
 });
+
+describe("useOriginationReview — target chain gate (#1536)", () => {
+  it("a Stellar (or legacy, field-less) target can approve", () => {
+    mockSubmissions = [makeSubmission({ target_chain_id: 99_000_001 })];
+    expect(
+      renderHook(() => useOriginationReview("7")).result.current
+        .approveBlockedReason,
+    ).toBeNull();
+    mockSubmissions = [makeSubmission()];
+    expect(
+      renderHook(() => useOriginationReview("7")).result.current
+        .approveBlockedReason,
+    ).toBeNull();
+  });
+
+  it("an EVM target blocks Approve: reason set, approve()/openApprove() neither draw nor review nor open the dialog", async () => {
+    mockSubmissions = [makeSubmission({ target_chain_id: 560048 })];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain("Hoodi");
+    expect(result.current.approveBlockedReason).toContain("Stellar only");
+
+    await act(async () => {
+      result.current.openApprove();
+      result.current.approve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.approveOpen).toBe(false);
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+});

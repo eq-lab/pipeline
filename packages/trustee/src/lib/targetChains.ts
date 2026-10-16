@@ -1,0 +1,34 @@
+// spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100 (Target chain).
+import { ENV } from "@/lib/env";
+
+export interface TargetChainOption {
+  id: number;
+  label: string;
+}
+
+const EVM_CHAIN_NAMES: Readonly<Record<number, string>> = {
+  1: "Ethereum",
+  560048: "Hoodi",
+};
+
+export const TARGET_CHAINS: ReadonlyArray<TargetChainOption> = [
+  { id: ENV.STELLAR_CHAIN_ID, label: "Stellar" },
+  {
+    id: ENV.EVM_CHAIN_ID,
+    label: EVM_CHAIN_NAMES[ENV.EVM_CHAIN_ID] ?? `EVM chain ${ENV.EVM_CHAIN_ID}`,
+  },
+];
+
+export const DEFAULT_TARGET_CHAIN_ID: number = ENV.STELLAR_CHAIN_ID;
+
+export function targetChainLabel(chainId: number | null | undefined): string {
+  if (chainId == null) return "—";
+  return (
+    TARGET_CHAINS.find((chain) => chain.id === chainId)?.label ??
+    `Chain ${chainId}`
+  );
+}
+
+export function isStellarTarget(chainId: number | null | undefined): boolean {
+  return chainId == null || chainId === ENV.STELLAR_CHAIN_ID;
+}

@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { useReviewSubmission } from "@/api/useReviewSubmission";
 import { useDrawLoan, type DrawLoanStage } from "@/api/useDrawLoan";
+import { isStellarTarget, targetChainLabel } from "@/lib/targetChains";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
@@ -26,6 +27,11 @@ export interface UseOriginationReviewResult {
    * page's Approve button (see `openApprove`).
    */
   approve: () => void;
+  /**
+   * Why Approve is unavailable for this submission (#1536: the on-chain draw
+   * runs on Stellar only), or `null` when it can proceed.
+   */
+  approveBlockedReason: string | null;
   /** Opens the approve & mint confirmation dialog (issue #838). */
   openApprove: () => void;
   /** Closes the approve & mint dialog without minting. */
@@ -150,6 +156,12 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   // never triggers a second network fetch.
   const { data: submissions } = useLoanSubmissions();
   const submission = submissions?.find((s) => s.id === submissionId);
+  const approveBlockedReason =
+    submission && !isStellarTarget(submission.target_chain_id)
+      ? `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(
+          submission.target_chain_id,
+        )} from the Trustee app is not supported yet. Reject or request changes instead.`
+      : null;
 
   // Fires the review call and, on success, closes the approve dialog (issue
   // #838) — the footer then flips to the Approved banner via the existing
@@ -162,7 +174,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   }
 
   function approve() {
-    if (!submission) return;
+    if (!submission || approveBlockedReason) return;
     // No-double-mint guard: an already-Approved submission needs no further
     // on-chain action.
     if (submission.status === "Approved") return;
@@ -186,6 +198,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   }
 
   function openApprove() {
+    if (approveBlockedReason) return;
     reviewMutation.reset();
     setApproveOpen(true);
   }
@@ -262,6 +275,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
 
   return {
     approve,
+    approveBlockedReason,
     openApprove,
     cancelApprove,
     openReject,
