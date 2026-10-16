@@ -9,6 +9,7 @@
  * (flow, real-vs-mock data sourcing).
  */
 import { useLoanBook } from "@/api/useLoanBook";
+import { findLoanEntry } from "@/lib/loanRoute";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
@@ -92,11 +93,14 @@ export interface RiskCouncilRetermView {
  * financials (current epoch coupon) for `loanId`, composed with the still-mock
  * proposed-amendment section. Read-only — no submit.
  */
-export function useRiskCouncilReterm(loanId: string): RiskCouncilRetermView {
+export function useRiskCouncilReterm(
+  chainId: number,
+  loanId: string,
+): RiskCouncilRetermView {
   const loanBook = useLoanBook();
-  const financials = useLoanFinancials(loanId);
+  const financials = useLoanFinancials(chainId, loanId);
 
-  const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
   const state: RiskCouncilRetermView["state"] = loanBook.isLoading
     ? "loading"

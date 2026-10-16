@@ -9,6 +9,7 @@ import {
   type LoansSummaryView,
 } from "./-useLoansTable";
 import { InlineError } from "@pipeline/ui";
+import { TARGET_CHAINS } from "@/lib/targetChains";
 
 /**
  * Loans — the Trustee list page at `/loans`; the sibling detail page lives at
@@ -34,10 +35,11 @@ const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 // Flexible column tracks (Figma's relative proportions) + a fixed 34px
 // trailing chevron column — same approach as the Origination table.
 const GRID_TEMPLATE_COLUMNS =
-  "minmax(0,1.3fr) minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,1fr) minmax(0,1.15fr) 34px";
+  "minmax(0,1.1fr) 90px minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,1fr) minmax(0,1.15fr) 34px";
 
 const COLUMN_HEADERS = [
   "Originator",
+  "Chain",
   "Commodity · spot",
   "Senior outst.",
   "Collateral",
@@ -184,6 +186,45 @@ function TabBar({
   );
 }
 
+// ── Chain filter ─────────────────────────────────────────────────────────────
+
+const ALL_CHAINS = "all";
+
+function ChainFilter({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (chainId: number | null) => void;
+}) {
+  return (
+    <label className="flex items-center gap-[8px] font-[family-name:var(--font-body)] text-[14px] text-[color:var(--color-pipeline-ink-muted)]">
+      Chain
+      <select
+        data-testid="loans-chain-filter"
+        aria-label="Chain filter"
+        value={value == null ? ALL_CHAINS : String(value)}
+        onChange={(e) =>
+          onChange(
+            e.target.value === ALL_CHAINS
+              ? null
+              : Number.parseInt(e.target.value, 10),
+          )
+        }
+        className="rounded-[4px] bg-[color:var(--color-pipeline-surface)] px-[12px] py-[9px] text-[16px] text-[color:var(--color-pipeline-ink)]"
+        style={{ border: `1px solid ${LINE_COLOR}` }}
+      >
+        <option value={ALL_CHAINS}>All chains</option>
+        {TARGET_CHAINS.map((chain) => (
+          <option key={chain.id} value={String(chain.id)}>
+            {chain.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 function CommodityCell({ row }: { row: LoanTableRow }) {
@@ -275,6 +316,14 @@ function LoanRow({
         className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] font-semibold text-ellipsis text-[color:var(--color-pipeline-ink)]`}
       >
         {row.originator}
+      </div>
+      <div
+        role="cell"
+        data-testid={`loans-chain-cell-${row.key}`}
+        title={row.chain}
+        className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] text-ellipsis text-[color:var(--color-pipeline-ink)]`}
+      >
+        {row.chain}
       </div>
       <CommodityCell row={row} />
       <div
@@ -429,12 +478,17 @@ function CcrFootnote() {
 
 function LoansIndex() {
   const [activeTab, setActiveTab] = useState<LoanTab>("All");
+  const [chainFilter, setChainFilter] = useState<number | null>(null);
   const navigate = useNavigate();
   const { state, errorMessage, errorDetails, summary, counts, rows } =
-    useLoansTable(activeTab);
+    useLoansTable(activeTab, chainFilter);
 
   const openLoan = (row: LoanTableRow) =>
-    void navigate({ to: "/loans/$id", params: { id: row.loanId } });
+    void navigate({
+      to: "/loans/$id",
+      params: { id: row.loanId },
+      search: { chain: row.chainId },
+    });
 
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-[26px] px-4 py-12 md:px-8">
@@ -469,11 +523,14 @@ function LoansIndex() {
       ) : (
         <>
           <SummaryCards summary={summary} />
-          <TabBar
-            activeTab={activeTab}
-            counts={counts}
-            onSelect={setActiveTab}
-          />
+          <div className="flex w-full flex-wrap items-center justify-between gap-[12px]">
+            <TabBar
+              activeTab={activeTab}
+              counts={counts}
+              onSelect={setActiveTab}
+            />
+            <ChainFilter value={chainFilter} onChange={setChainFilter} />
+          </div>
           {/* White surface card (Figma "Background" 4116:10040) — the "Payments
               due" banner + "Record coupon" action are OMITTED (resolved Open
               Question 3: no /v1/loan-book data source). */}

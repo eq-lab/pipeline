@@ -10,18 +10,17 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 export interface CompleteDisbursementInput {
+  chainId: number;
   loanId: string;
 }
 
 export function useCompleteDisbursement() {
   const queryClient = useQueryClient();
-  const chainId = ENV.STELLAR_CHAIN_ID;
 
   return useMutation<void, Error, CompleteDisbursementInput>({
-    mutationFn: async ({ loanId }) => {
+    mutationFn: async ({ chainId, loanId }) => {
       await apiFetch<unknown>(
         `/v1/loan-book/${encodeURIComponent(loanId)}/disbursement/complete?chain_id=${chainId}`,
         { method: "POST" },

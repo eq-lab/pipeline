@@ -8,7 +8,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types (port of the backend DTO) ─────────────────────────────────────────
 
@@ -113,13 +112,14 @@ export interface UseLoanValuationResult {
  *
  * - Public endpoint — always enabled once a `loanId` is present (disabled while
  *   the id is empty, so it never fires on a half-mounted route).
- * - Always sends `chain_id=ENV.STELLAR_CHAIN_ID` — the Trustee app is
- *   Stellar-scoped, matching `useLoanBook`.
+ * - Sends the loan's own `chain_id` (#1537) — per-loan routes require it.
  * - Polls every 30 s per the dashboard "Real-time updates" convention
  *   (`docs/FRONTEND.md`), consistent with `useLoanBook`.
  */
-export function useLoanValuation(loanId: string): UseLoanValuationResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
+export function useLoanValuation(
+  chainId: number,
+  loanId: string,
+): UseLoanValuationResult {
   const query = useQuery<LoanValuationResponse, Error>({
     queryKey: ["loan-valuation", chainId, loanId],
     queryFn: () =>

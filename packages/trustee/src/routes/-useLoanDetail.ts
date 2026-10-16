@@ -30,6 +30,8 @@ import {
 } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import { formatNearestPayment } from "./-useLoansTable";
+import { findLoanEntry } from "@/lib/loanRoute";
+import { stellarOnlyActionReason, targetChainLabel } from "@/lib/targetChains";
 import { toUserError } from "@/utils/userError";
 import {
   CLOSED_OTHER_ACTIONS,
@@ -176,6 +178,7 @@ export interface UseLoanDetailResult {
   maturityDate: string | null;
   /** Documents card rows. Spec: `docs/frontend/trustee-flows.md#documents`. */
   documents: DocumentDisplay[];
+  onChainBlockedReason: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -346,9 +349,11 @@ export function buildHero(
       : np.overdue
         ? `payment ${np.text.toLowerCase()}`
         : `next payment ${np.text}`;
-  const metaParts = [`Loan #${entry.loan_id}`, paymentClause].filter(
-    (p): p is string => p != null,
-  );
+  const metaParts = [
+    `Loan #${entry.loan_id}`,
+    targetChainLabel(entry.chain_id),
+    paymentClause,
+  ].filter((p): p is string => p != null);
   return {
     backLabel: BACK_LABEL,
     title: `${entry.originator} · ${entry.commodity}`,
@@ -703,18 +708,21 @@ export function buildCcrTrend(
 
 // Wires loan-book (hero source, top-level `state`) + valuation + financials
 // (each with their own `state`) for `loanId`. spec: trustee-flows.md#loan-detail.
-export function useLoanDetail(loanId: string): UseLoanDetailResult {
+export function useLoanDetail(
+  chainId: number,
+  loanId: string,
+): UseLoanDetailResult {
   const loanBook = useLoanBook();
-  const valuation = useLoanValuation(loanId);
-  const financials = useLoanFinancials(loanId);
+  const valuation = useLoanValuation(chainId, loanId);
+  const financials = useLoanFinancials(chainId, loanId);
 
-  const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
   // CCR-trend series (#879), origination through now, daily. Self-disables
   // until `from` is known; only built for the Watchlist variant.
   const ccrFrom =
     entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
-  const ccrHistory = useLoanCcrHistory(loanId, ccrFrom);
+  const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
 
   const state: LoanDetailState = loanBook.isLoading
     ? "loading"
@@ -763,5 +771,8 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
     documents: buildDocuments(entry),
+    onChainBlockedReason: entry
+      ? stellarOnlyActionReason(entry.chain_id)
+      : null,
   };
 }

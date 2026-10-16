@@ -2,7 +2,7 @@
  * Tests for `src/api/useLoanBook.ts` (issue #843).
  *
  * Covers (mirrors `-useLoanSubmissions.test.tsx`):
- *   - The request URL is `/v1/loan-book?chain_id=99000001` (Stellar-scoped).
+ *   - The request URL is `/v1/loan-book` (every chain) unless a chain filter is given (#1537).
  *   - The bearer header is attached (via apiFetch/sessionStore).
  *   - Success returns the parsed LoanBookResponse.
  *   - Error path populates `error`.
@@ -80,7 +80,7 @@ afterEach(() => {
 // ── useLoanBook ────────────────────────────────────────────────────────────────
 
 describe("useLoanBook", () => {
-  it("calls fetch with /v1/loan-book and chain_id=99000001", async () => {
+  it("calls fetch with /v1/loan-book and no chain_id by default", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE), { status: 200 }),
     );
@@ -95,7 +95,24 @@ describe("useLoanBook", () => {
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(url).toContain("/v1/loan-book");
-    expect(url).toContain("chain_id=99000001");
+    expect(url).not.toContain("chain_id");
+  });
+
+  it("sends chain_id when a chain filter is given", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(FIXTURE), { status: 200 }),
+    );
+
+    const { result } = renderHook(() => useLoanBook(560048), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE);
+    });
+
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/loan-book?chain_id=560048");
   });
 
   it("attaches the Authorization bearer header", async () => {

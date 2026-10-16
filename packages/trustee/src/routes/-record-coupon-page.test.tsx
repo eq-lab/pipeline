@@ -88,6 +88,10 @@ const mockUseLoanWaterfall = vi.mocked(useLoanWaterfall);
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4488",
 });
+(Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+  () => ({
+    chain: 99_000_001,
+  });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -449,8 +453,9 @@ describe("Record Coupon route — ready state", () => {
         mockUseLoanWaterfall.mock.calls[
           mockUseLoanWaterfall.mock.calls.length - 1
         ]!;
-      expect(lastCall[0]).toBe("4488");
-      expect(lastCall[1]).toBe("1234567800");
+      expect(lastCall[0]).toBe(99_000_001);
+      expect(lastCall[1]).toBe("4488");
+      expect(lastCall[2]).toBe("1234567800");
     });
   });
 

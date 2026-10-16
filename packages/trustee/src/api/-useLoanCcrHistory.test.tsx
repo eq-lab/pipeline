@@ -62,23 +62,26 @@ describe("useLoanCcrHistory", () => {
       new Response(JSON.stringify(FIXTURE), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useLoanCcrHistory("5", 1_746_057_600), {
-      wrapper: makeWrapper(),
-    });
+    const { result } = renderHook(
+      () => useLoanCcrHistory(560048, "5", 1_746_057_600),
+      {
+        wrapper: makeWrapper(),
+      },
+    );
 
     await waitFor(() => expect(result.current.data).toEqual(FIXTURE));
     const url = String(fetchMock.mock.calls[0]?.[0]);
     expect(url).toContain("/v1/loan-book/5/ccr-history");
     expect(url).toContain("from=1746057600");
     expect(url).toContain("step=86400");
-    expect(url).toContain("chain_id=99000001");
+    expect(url).toContain("chain_id=560048");
   });
 
   it("sends a custom step", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE), { status: 200 }),
     );
-    renderHook(() => useLoanCcrHistory("5", 1_746_057_600, 3_600), {
+    renderHook(() => useLoanCcrHistory(560048, "5", 1_746_057_600, 3_600), {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -86,14 +89,14 @@ describe("useLoanCcrHistory", () => {
   });
 
   it("stays disabled (no fetch) until `from` is known", () => {
-    renderHook(() => useLoanCcrHistory("5", null), {
+    renderHook(() => useLoanCcrHistory(560048, "5", null), {
       wrapper: makeWrapper(),
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("stays disabled when the loan id is empty", () => {
-    renderHook(() => useLoanCcrHistory("", 1_746_057_600), {
+    renderHook(() => useLoanCcrHistory(560048, "", 1_746_057_600), {
       wrapper: makeWrapper(),
     });
     expect(fetchMock).not.toHaveBeenCalled();

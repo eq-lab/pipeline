@@ -300,3 +300,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1530 LoanBook API: GET /v1/loan-book across all chains](https://github.com/eq-lab/pipeline/issues/1530) | [1530-loan-book-all-chains.md](./epic-1521/1530-loan-book-all-chains.md) | Initial |
 | [#1531 LoanBook API: per-loan endpoints require chain_id](https://github.com/eq-lab/pipeline/issues/1531) | [1531-per-loan-chain-required.md](./epic-1521/1531-per-loan-chain-required.md) | Initial |
 | [#1536 Trustee: loan submission form selects the target chain](https://github.com/eq-lab/pipeline/issues/1536) | [1536-trustee-submission-target-chain.md](./epic-1521/1536-trustee-submission-target-chain.md) | Initial |
+| [#1537 Trustee: loan book across all chains; per-loan calls send the loan's own chain_id](https://github.com/eq-lab/pipeline/issues/1537) | [1537-trustee-loan-book-all-chains.md](./epic-1521/1537-trustee-loan-book-all-chains.md) | Initial |

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   useRiskCouncilReterm,
   type RetermCurrentTerms,
@@ -192,7 +193,8 @@ function BackLink() {
 
 function RiskCouncilReterm() {
   const { id } = Route.useParams();
-  const view = useRiskCouncilReterm(id);
+  const { chain } = Route.useSearch();
+  const view = useRiskCouncilReterm(chain, id);
 
   if (view.state === "error") {
     return (
@@ -347,5 +349,6 @@ function RiskCouncilReterm() {
 }
 
 export const Route = createFileRoute("/risk-council/reterm/$id")({
+  validateSearch: parseLoanRouteSearch,
   component: RiskCouncilReterm,
 });

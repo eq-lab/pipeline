@@ -26,7 +26,7 @@ import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 import { toUserError } from "@/utils/userError";
-import { targetChainLabel } from "@/lib/targetChains";
+import { DEFAULT_TARGET_CHAIN_ID, targetChainLabel } from "@/lib/targetChains";
 
 // ── Router state augmentation ────────────────────────────────────────────────
 
@@ -159,6 +159,7 @@ export interface OriginationDetailResult {
   dealDetails: DealDetailsDisplay;
   /** Drives the status-conditional footer (issue #823) — mirrors `statusChip.kind`. */
   statusKind: StatusChip["kind"];
+  targetChainId: number;
   /** `formatSubmittedDate(submission.updated_at)`, e.g. "2 Jan". "—" if absent. */
   reviewedDate: string;
   /**
@@ -361,6 +362,7 @@ export function useOriginationDetail(
           documents: [],
         },
         statusKind: "unknown",
+        targetChainId: DEFAULT_TARGET_CHAIN_ID,
         reviewedDate: "—",
         rejectionReason: "—",
         transactionPreview: EMPTY_TRANSACTION_PREVIEW,
@@ -379,6 +381,10 @@ export function useOriginationDetail(
       loanTerms: mapLoanTerms(submission),
       dealDetails: mapDealDetails(submission),
       statusKind: statusChip.kind,
+      targetChainId:
+        submission.chain_id ??
+        submission.target_chain_id ??
+        DEFAULT_TARGET_CHAIN_ID,
       reviewedDate: formatSubmittedDate(submission.updated_at),
       rejectionReason: safeString(submission.reason),
       transactionPreview: mapTransactionPreview(submission),

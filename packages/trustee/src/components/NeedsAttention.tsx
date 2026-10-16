@@ -101,7 +101,7 @@ export function NeedsAttention() {
           <div className="flex w-full flex-col gap-3">
             {loanRows.map((row) => (
               <div
-                key={row.loanId}
+                key={row.key}
                 data-testid="needs-attention-loan-row"
                 className={ROW_CLASS}
                 style={ROW_STYLE}
@@ -110,6 +110,7 @@ export function NeedsAttention() {
                 <Link
                   to="/loans/$id"
                   params={{ id: row.loanId }}
+                  search={{ chain: row.chainId }}
                   aria-label={`Open ${row.title}`}
                   data-testid="needs-attention-open"
                   className={ACTION_CLASS}

@@ -18,6 +18,8 @@ import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { useLoanBook } from "@/api/useLoanBook";
 import type { LoanBookEntry } from "@/api/useLoanBook";
 import { formatSubmittedDate } from "@/utils/formatDate";
+import { loanRowKey } from "@/lib/loanRoute";
+import { targetChainLabel } from "@/lib/targetChains";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,7 +41,9 @@ export interface NeedsAttentionRow {
  * **Watchlist** or **Matured**, linking to `/loans/$id`.
  */
 export interface LoanNeedsAttentionRow {
+  key: string;
   loanId: string;
+  chainId: number;
   title: string;
   subtitle: string;
 }
@@ -128,9 +132,11 @@ export function mapLoanToNeedsAttentionRow(
   label: string,
 ): LoanNeedsAttentionRow {
   return {
+    key: loanRowKey(entry.chain_id, entry.loan_id),
     loanId: entry.loan_id,
+    chainId: entry.chain_id,
     title: `${safeString(entry.originator) ?? "—"} · ${safeString(entry.commodity) ?? "—"}`,
-    subtitle: `${label} · loan #${entry.loan_id}`,
+    subtitle: `${label} · loan #${entry.loan_id} · ${targetChainLabel(entry.chain_id)}`,
   };
 }
 

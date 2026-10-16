@@ -2,7 +2,7 @@
  * Tests for `src/api/useCompleteDisbursement.ts` (issue #862). Mirrors the
  * `-useLoanValuation.test.tsx` fetch-mock + QueryClient setup, but for a
  * mutation:
- *   - POSTs `/v1/loan-book/{loan_id}/disbursement/complete?chain_id=99000001`.
+ *   - POSTs `/v1/loan-book/{loan_id}/disbursement/complete?chain_id=560048`.
  *   - Sends the bearer header (via apiFetch/sessionStore).
  *   - Resolves on a 200 empty body; invalidates the loan-book/financials/valuation
  *     queries on success.
@@ -60,7 +60,7 @@ describe("useCompleteDisbursement", () => {
       wrapper: makeWrapper(makeClient()),
     });
 
-    result.current.mutate({ loanId: "4488" });
+    result.current.mutate({ chainId: 560048, loanId: "4488" });
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
@@ -69,7 +69,7 @@ describe("useCompleteDisbursement", () => {
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(url).toContain("/v1/loan-book/4488/disbursement/complete");
-    expect(url).toContain("chain_id=99000001");
+    expect(url).toContain("chain_id=560048");
     expect(init?.method).toBe("POST");
     const headers = new Headers(init?.headers);
     expect(headers.get("Authorization")).toBe("Bearer test-token");
@@ -83,7 +83,7 @@ describe("useCompleteDisbursement", () => {
     const { result } = renderHook(() => useCompleteDisbursement(), {
       wrapper: makeWrapper(client),
     });
-    result.current.mutate({ loanId: "4488" });
+    result.current.mutate({ chainId: 560048, loanId: "4488" });
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
@@ -112,7 +112,7 @@ describe("useCompleteDisbursement", () => {
     const { result } = renderHook(() => useCompleteDisbursement(), {
       wrapper: makeWrapper(makeClient()),
     });
-    result.current.mutate({ loanId: "4488" });
+    result.current.mutate({ chainId: 560048, loanId: "4488" });
 
     await waitFor(() => {
       expect(result.current.isError).toBe(true);

@@ -40,6 +40,14 @@ import {
 import { CcrTrendChart } from "./-CcrTrendChart";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
+import { parseLoanRouteSearch } from "@/lib/loanRoute";
+
+const ON_CHAIN_ACTIONS: ReadonlySet<string> = new Set([
+  "Update lifecycle",
+  "Roll over",
+  "Record coupon",
+  "Close loan",
+]);
 
 /** Minimal mapped-error shape shared by the three on-chain action dialogs below. */
 interface DialogError {
@@ -505,9 +513,11 @@ function CurrentStageCard({
 
 function OtherActionsCard({
   otherActions,
+  blockedReason,
   onAction,
 }: {
   otherActions: ReturnType<typeof useLoanDetail>["otherActions"];
+  blockedReason: string | null;
   /** Fired with the button label when clicked; wired actions (e.g. "Update lifecycle") open a modal. */
   onAction?: (label: string) => void;
 }) {
@@ -530,14 +540,24 @@ function OtherActionsCard({
               key={label}
               type="button"
               data-testid={`loan-detail-action-${label}`}
+              disabled={blockedReason !== null && ON_CHAIN_ACTIONS.has(label)}
               onClick={() => onAction?.(label)}
-              className="inline-flex h-[40px] items-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
+              className="inline-flex h-[40px] items-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-[0.32]"
               style={{ borderColor: LINE_COLOR }}
             >
               {label}
             </button>
           ))}
         </div>
+      )}
+      {blockedReason && (
+        <p
+          data-testid="loan-detail-onchain-blocked"
+          className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+          style={{ color: INK_MUTED }}
+        >
+          {blockedReason}
+        </p>
       )}
       {otherActions.note && (
         <p
@@ -678,10 +698,12 @@ function DisbursementConfirmDialog({
 function MaturedRolloverCard({
   rollover,
   maturityDate,
+  blockedReason,
   onRollover,
 }: {
   rollover: RolloverCardData;
   maturityDate: string | null;
+  blockedReason: string | null;
   /** Opens the rollover confirmation modal (#870). */
   onRollover: () => void;
 }) {
@@ -711,8 +733,9 @@ function MaturedRolloverCard({
       <button
         type="button"
         data-testid="loan-detail-rollover-action"
+        disabled={blockedReason !== null}
         onClick={onRollover}
-        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
+        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-[0.32]"
         style={{ backgroundColor: BRAND }}
       >
         {rollover.actionLabel}
@@ -1184,8 +1207,9 @@ function PastDueNotice({
 
 function LoanDetail() {
   const { id } = Route.useParams();
+  const { chain } = Route.useSearch();
   const navigate = useNavigate();
-  const detail = useLoanDetail(id);
+  const detail = useLoanDetail(chain, id);
   const completeDisbursement = useCompleteDisbursement();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rolloverMutation = useRollover();
@@ -1194,6 +1218,9 @@ function LoanDetail() {
   const [updateOpen, setUpdateOpen] = useState(false);
 
   const onOtherAction = (label: string) => {
+    if (detail.onChainBlockedReason !== null && ON_CHAIN_ACTIONS.has(label)) {
+      return;
+    }
     if (label === "Update lifecycle") {
       updateLifecycle.reset();
       setUpdateOpen(true);
@@ -1206,18 +1233,30 @@ function LoanDetail() {
     } else if (label === "Record coupon") {
       // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
       // so this navigates rather than opening a dialog like the other actions.
-      void navigate({ to: "/loans/$id/record-coupon", params: { id } });
+      void navigate({
+        to: "/loans/$id/record-coupon",
+        params: { id },
+        search: { chain },
+      });
     } else if (label === "Close loan") {
       // Full-page destination (issue #884, Figma `4116-11621`) — this action
       // does NOT close the loan directly; it opens the Record Repayment page,
       // where the trustee records the final principal repayment and only
       // then closes the loan from there.
-      void navigate({ to: "/loans/$id/record-repayment", params: { id } });
+      void navigate({
+        to: "/loans/$id/record-repayment",
+        params: { id },
+        search: { chain },
+      });
     } else if (label === "Escalate to Risk Council") {
       // Full-page destination (issue #782, Figma `4116-12953`) — the first of
       // the three Type-3 RISK_COUNCIL proposal screens (Escalate to Default).
       // Not a modal: drafting/submitting a Safe proposal is its own page.
-      void navigate({ to: "/risk-council/escalate/$id", params: { id } });
+      void navigate({
+        to: "/risk-council/escalate/$id",
+        params: { id },
+        search: { chain },
+      });
     }
   };
 
@@ -1272,6 +1311,7 @@ function LoanDetail() {
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
+            blockedReason={detail.onChainBlockedReason}
             onAction={onOtherAction}
           />
         </>
@@ -1293,6 +1333,7 @@ function LoanDetail() {
               <MaturedRolloverCard
                 rollover={detail.rollover}
                 maturityDate={detail.maturityDate}
+                blockedReason={detail.onChainBlockedReason}
                 onRollover={() => {
                   rolloverMutation.reset();
                   setRolloverOpen(true);
@@ -1303,6 +1344,7 @@ function LoanDetail() {
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
+            blockedReason={detail.onChainBlockedReason}
             onAction={onOtherAction}
           />
           <RolloverDialog
@@ -1351,6 +1393,7 @@ function LoanDetail() {
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
+            blockedReason={detail.onChainBlockedReason}
             onAction={onOtherAction}
           />
           <DisbursementConfirmDialog
@@ -1368,7 +1411,7 @@ function LoanDetail() {
             onCancel={() => setConfirmOpen(false)}
             onConfirm={() =>
               completeDisbursement.mutate(
-                { loanId: id },
+                { chainId: chain, loanId: id },
                 { onSuccess: () => setConfirmOpen(false) },
               )
             }
@@ -1406,5 +1449,6 @@ function LoanDetail() {
 }
 
 export const Route = createFileRoute("/loans/$id")({
+  validateSearch: parseLoanRouteSearch,
   component: LoanDetail,
 });

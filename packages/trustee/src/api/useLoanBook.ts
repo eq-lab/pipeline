@@ -7,7 +7,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -209,17 +208,18 @@ export interface UseLoanBookResult {
  *
  * - Always enabled — no wallet connection required (public endpoint), same
  *   as `useLoanSubmissions`.
- * - Always sends `chain_id=ENV.STELLAR_CHAIN_ID` — the Trustee app is
- *   Stellar-scoped like the LP Protocol Dashboard.
+ * - `chainId` omitted = every configured chain (#1537); a configured id
+ *   narrows the fetch server-side so `summary` stays server-computed.
  * - Polls every 30 s per the dashboard "Real-time updates" convention
  *   (`docs/FRONTEND.md`).
  */
-export function useLoanBook(): UseLoanBookResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
+export function useLoanBook(chainId?: number | null): UseLoanBookResult {
   const query = useQuery<LoanBookResponse, Error>({
-    queryKey: ["loan-book", chainId],
+    queryKey: ["loan-book", chainId ?? "all"],
     queryFn: () =>
-      apiFetch<LoanBookResponse>(`/v1/loan-book?chain_id=${chainId}`),
+      apiFetch<LoanBookResponse>(
+        chainId == null ? "/v1/loan-book" : `/v1/loan-book?chain_id=${chainId}`,
+      ),
     refetchInterval: 30_000,
   });
 

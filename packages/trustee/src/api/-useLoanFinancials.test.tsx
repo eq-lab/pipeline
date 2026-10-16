@@ -1,7 +1,7 @@
 /**
  * Tests for `src/api/useLoanFinancials.ts` (issue #852). Mirrors
  * `-useLoanValuation.test.tsx`:
- *   - The request URL is `/v1/loan-book/{loan_id}/financials?chain_id=99000001`.
+ *   - The request URL is `/v1/loan-book/{loan_id}/financials?chain_id=560048`.
  *   - The bearer header is attached (via apiFetch/sessionStore).
  *   - Success returns the parsed LoanFinancialsResponse.
  *   - Error path populates `error`.
@@ -73,12 +73,12 @@ afterEach(() => {
 });
 
 describe("useLoanFinancials", () => {
-  it("calls fetch with /v1/loan-book/{id}/financials and chain_id=99000001", async () => {
+  it("calls fetch with /v1/loan-book/{id}/financials and chain_id=560048", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useLoanFinancials("4488"), {
+    const { result } = renderHook(() => useLoanFinancials(560048, "4488"), {
       wrapper: makeWrapper(),
     });
 
@@ -88,7 +88,7 @@ describe("useLoanFinancials", () => {
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(url).toContain("/v1/loan-book/4488/financials");
-    expect(url).toContain("chain_id=99000001");
+    expect(url).toContain("chain_id=560048");
   });
 
   it("attaches the Authorization bearer header", async () => {
@@ -96,7 +96,7 @@ describe("useLoanFinancials", () => {
       new Response(JSON.stringify(FIXTURE), { status: 200 }),
     );
 
-    const { result } = renderHook(() => useLoanFinancials("4488"), {
+    const { result } = renderHook(() => useLoanFinancials(560048, "4488"), {
       wrapper: makeWrapper(),
     });
 
@@ -117,7 +117,7 @@ describe("useLoanFinancials", () => {
       }),
     );
 
-    const { result } = renderHook(() => useLoanFinancials("4488"), {
+    const { result } = renderHook(() => useLoanFinancials(560048, "4488"), {
       wrapper: makeWrapper(),
     });
 
@@ -127,7 +127,7 @@ describe("useLoanFinancials", () => {
   });
 
   it("does not fetch while the loan id is empty (disabled query)", () => {
-    const { result } = renderHook(() => useLoanFinancials(""), {
+    const { result } = renderHook(() => useLoanFinancials(560048, ""), {
       wrapper: makeWrapper(),
     });
 

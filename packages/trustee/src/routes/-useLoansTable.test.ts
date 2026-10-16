@@ -169,9 +169,10 @@ describe("formatSpot", () => {
 describe("mapEntryToRow", () => {
   it("displays senior AND collateral as served (issue #906), maps the served CCR as-is", () => {
     const row = mapEntryToRow(makeEntry());
-    // The served loan_id is both the stable list key and the /loans/$id nav param.
-    expect(row.key).toBe("4488");
+    expect(row.key).toBe("99000001:4488");
     expect(row.loanId).toBe("4488");
+    expect(row.chainId).toBe(99_000_001);
+    expect(row.chain).toBe("Stellar");
     expect(row.originator).toBe("Delta Commodities");
     expect(row.commodity).toBe("Coffee");
     // senior_outstanding "1840.000000" ⇒ $1.84K, two-decimal compact, as served.

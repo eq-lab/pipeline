@@ -9,6 +9,7 @@
  * (flow, real-vs-mock data sourcing).
  */
 import { useLoanBook } from "@/api/useLoanBook";
+import { findLoanEntry } from "@/lib/loanRoute";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -91,10 +92,11 @@ export interface RiskCouncilWritedownView {
  * sections. Read-only — no close/submit action on this flow.
  */
 export function useRiskCouncilWritedown(
+  chainId: number,
   loanId: string,
 ): RiskCouncilWritedownView {
   const loanBook = useLoanBook();
-  const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
   const state: RiskCouncilWritedownView["state"] = loanBook.isLoading
     ? "loading"

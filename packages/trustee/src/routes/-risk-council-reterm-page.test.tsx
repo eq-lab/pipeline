@@ -49,6 +49,10 @@ const mockUseLoanFinancials = vi.mocked(useLoanFinancials);
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4471",
 });
+(Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+  () => ({
+    chain: 99_000_001,
+  });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
