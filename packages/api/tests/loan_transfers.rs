@@ -6,7 +6,9 @@
 
 use bigdecimal::BigDecimal;
 
-use pipeline_api::routes::loan_transfers::{validate_loan_transfers, UpsertLoanTransfersRequest};
+use pipeline_api::routes::loan_transfers::{
+    validate_loan_transfers, LoanTransfersResponse, UpsertLoanTransfersRequest,
+};
 
 fn valid_request() -> UpsertLoanTransfersRequest {
     UpsertLoanTransfersRequest {
@@ -159,4 +161,33 @@ fn trailing_zeros_do_not_count_toward_scale() {
         ..valid_request()
     };
     assert!(validate_loan_transfers(&req).is_ok());
+}
+
+#[test]
+fn defaults_echo_the_resolved_chain_and_zero_amounts() {
+    let resp = LoanTransfersResponse::defaults(99_000_001, &BigDecimal::from(7));
+    assert_eq!(resp.chain_id, 99_000_001);
+    assert_eq!(resp.loan_id, "7");
+    assert!(!resp.is_loan_deployed);
+    assert_eq!(resp.on_ramp_transferred, "0");
+    assert!(resp.recorded_by.is_none());
+}
+
+#[test]
+fn from_row_echoes_the_rows_chain_id() {
+    let row = shared::loan_capital_transfers_repo::LoanCapitalTransfersRow {
+        chain_id: 99_000_001,
+        loan_id: BigDecimal::from(7),
+        is_loan_deployed: true,
+        on_ramp_transferred: BigDecimal::from(1),
+        off_ramp_transferred: BigDecimal::from(2),
+        trust_account_deposit: BigDecimal::from(3),
+        trust_account_withdrawal: BigDecimal::from(4),
+        recorded_by: "trustee".to_owned(),
+        updated_at: chrono::Utc::now(),
+    };
+    let resp = LoanTransfersResponse::from_row(row);
+    assert_eq!(resp.chain_id, 99_000_001);
+    assert_eq!(resp.loan_id, "7");
+    assert!(resp.is_loan_deployed);
 }

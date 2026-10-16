@@ -4,7 +4,7 @@
 //! portfolio-level summary cards plus the active-loan table. Conventions match
 //! `routes::stats` / `routes::portfolio` — Axum handler, utoipa schema, base-6
 //! decimal strings for USDC amounts, decimal-fraction strings for rates, and
-//! `chain_id?` defaulting to `DEFAULT_CHAIN_ID`.
+//! `chain_id?` defaulting to `DEFAULT_CHAIN_ID` (per-loan routes require `chain_id`).
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -34,7 +34,7 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{
-    loan_registry_address, resolve_chain, trustee_indexed_loan_guard, ChainQuery,
+    loan_registry_address, resolve_chain, trustee_indexed_loan_guard, ChainQuery, RequiredChain,
 };
 use crate::AppState;
 /// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
@@ -891,11 +891,11 @@ async fn review_submission(
     path = "/v1/loan-book/{loan_id}/disbursement/complete",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Off-ramp marked complete"),
-        (status = 400, description = "Malformed loan id"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or malformed loan id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "Loan not indexed on this chain"),
@@ -907,11 +907,12 @@ async fn complete_disbursement(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
 ) -> Result<StatusCode, ApiError> {
     // Trustee 403 / malformed-id 400 / not-indexed 404 — shared with
     // `routes::loan_transfers` so the guard semantics cannot drift (#1027).
-    let (chain_id, loan_id) = trustee_indexed_loan_guard(&claims, &state, &loan_id, &query).await?;
+    let chain_id = chain.chain_id;
+    let loan_id = trustee_indexed_loan_guard(&claims, &state, chain_id, &loan_id).await?;
 
     state
         .loan_disbursement_repo

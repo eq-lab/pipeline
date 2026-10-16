@@ -6,7 +6,7 @@
 //! `routes::capital_allocation` and `shared::loan_capital_transfers_repo` for the
 //! bucket math. Conventions match the other trustee-gated loan-book write
 //! (`routes::loan_book::complete_disbursement`): Axum handler, utoipa schema,
-//! `chain_id?` defaulting to `DEFAULT_CHAIN_ID`, 404 when the loan has no indexed
+//! required `chain_id` (`RequiredChain`), 404 when the loan has no indexed
 //! events on the chain.
 //!
 //! `POST` is a **full upsert** (decision 3 on #1027): the body always carries all
@@ -19,7 +19,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
@@ -31,7 +31,7 @@ use shared::loan_capital_transfers_repo::{LoanCapitalTransfersRow, LoanCapitalTr
 use crate::auth::{AuthClaims, SecurityAddon};
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
-use crate::routes::common::{trustee_indexed_loan_guard, ChainQuery};
+use crate::routes::common::{trustee_indexed_loan_guard, RequiredChain};
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -61,6 +61,7 @@ pub struct UpsertLoanTransfersRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoanTransfersResponse {
     pub loan_id: String,
+    pub chain_id: i64,
     pub is_loan_deployed: bool,
     pub on_ramp_transferred: String,
     pub off_ramp_transferred: String,
@@ -73,9 +74,10 @@ pub struct LoanTransfersResponse {
 }
 
 impl LoanTransfersResponse {
-    fn from_row(row: LoanCapitalTransfersRow) -> Self {
+    pub fn from_row(row: LoanCapitalTransfersRow) -> Self {
         Self {
             loan_id: row.loan_id.to_plain_string(),
+            chain_id: row.chain_id,
             is_loan_deployed: row.is_loan_deployed,
             on_ramp_transferred: row.on_ramp_transferred.to_plain_string(),
             off_ramp_transferred: row.off_ramp_transferred.to_plain_string(),
@@ -89,9 +91,10 @@ impl LoanTransfersResponse {
     /// The defaults served when nothing has been recorded for the loan yet:
     /// not deployed, all amounts zero (absence-as-default, mirrors
     /// `loan_disbursement`).
-    fn defaults(loan_id: &BigDecimal) -> Self {
+    pub fn defaults(chain_id: i64, loan_id: &BigDecimal) -> Self {
         Self {
             loan_id: loan_id.to_plain_string(),
+            chain_id,
             is_loan_deployed: false,
             on_ramp_transferred: "0".to_owned(),
             off_ramp_transferred: "0".to_owned(),
@@ -103,9 +106,9 @@ impl LoanTransfersResponse {
     }
 }
 
-/// OpenAPI doc bundle for the loan-transfers routes. Tagged `CapitalAllocation`
-/// because these records back the capital-allocation buckets, not the loan-book
-/// aggregation.
+/// OpenAPI doc bundle for the loan-transfers routes. Tagged `LoanBook` because
+/// they are per-loan resources, although the records back the capital-allocation
+/// buckets.
 #[derive(OpenApi)]
 #[openapi(
     paths(get_loan_transfers, upsert_loan_transfers),
@@ -130,25 +133,26 @@ pub fn router() -> Router<Arc<AppState>> {
     path = "/v1/loan-book/{loan_id}/transfers",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "The loan's capital-transfers record (defaults when nothing recorded yet)", body = LoanTransfersResponse),
-        (status = 400, description = "Malformed loan id"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or malformed loan id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "Loan not indexed on this chain"),
     ),
     security(("bearer_auth" = [])),
-    tag = "CapitalAllocation"
+    tag = "LoanBook"
 )]
 async fn get_loan_transfers(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
 ) -> Result<Json<LoanTransfersResponse>, ApiError> {
-    let (chain_id, loan_id) = trustee_indexed_loan_guard(&claims, &state, &loan_id, &query).await?;
+    let chain_id = chain.chain_id;
+    let loan_id = trustee_indexed_loan_guard(&claims, &state, chain_id, &loan_id).await?;
 
     let row = state
         .loan_capital_transfers_repo
@@ -157,7 +161,7 @@ async fn get_loan_transfers(
 
     Ok(Json(match row {
         Some(row) => LoanTransfersResponse::from_row(row),
-        None => LoanTransfersResponse::defaults(&loan_id),
+        None => LoanTransfersResponse::defaults(chain_id, &loan_id),
     }))
 }
 
@@ -166,27 +170,28 @@ async fn get_loan_transfers(
     path = "/v1/loan-book/{loan_id}/transfers",
     params(
         ("loan_id" = String, Path, description = "On-chain loan id"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     request_body = UpsertLoanTransfersRequest,
     responses(
         (status = 200, description = "Record created or replaced; the stored record", body = LoanTransfersResponse),
-        (status = 400, description = "Malformed loan id or payload failed validation"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id; or payload failed validation"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "Loan not indexed on this chain"),
     ),
     security(("bearer_auth" = [])),
-    tag = "CapitalAllocation"
+    tag = "LoanBook"
 )]
 async fn upsert_loan_transfers(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(loan_id): Path<String>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
     Json(payload): Json<UpsertLoanTransfersRequest>,
 ) -> Result<Json<LoanTransfersResponse>, ApiError> {
-    let (chain_id, loan_id) = trustee_indexed_loan_guard(&claims, &state, &loan_id, &query).await?;
+    let chain_id = chain.chain_id;
+    let loan_id = trustee_indexed_loan_guard(&claims, &state, chain_id, &loan_id).await?;
 
     let values = validate_loan_transfers(&payload).map_err(ApiError::BadRequest)?;
 

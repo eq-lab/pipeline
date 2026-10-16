@@ -135,7 +135,7 @@ limbo where there is nothing to mint.
 **API-derived display statuses.** The read API (`GET /v1/loan-book`, `/financials`) layers
 two computed statuses over the raw on-chain status, at read time: `Disbursing` (loan drawn
 but its USDC off-ramp not yet marked complete — the default until a trustee flips it via
-`POST /v1/loan-book/{loan_id}/disbursement/complete`, backed by the `loan_disbursement`
+`POST /v1/loan-book/{loan_id}/disbursement/complete?chain_id=<id>` (`chain_id` required), backed by the `loan_disbursement`
 table) and `Past Due` (now is past `currentMaturityDate` and the loan is still Performing /
 Watchlist — the API equivalent of the on-chain `Matured` state). Terminal states are never
 overridden and `Disbursing` outranks `Past Due`. Past-maturity loans stay in the loan book
