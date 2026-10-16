@@ -81,9 +81,12 @@ gates `state` behind `ENV.IS_DEV` explicitly (`parseAccountStatePreview` only ru
 `ENV.IS_DEV`) — otherwise a real LP could append `?state=verified` in production and see fixture
 data instead of their own documents.
 
-`onLogOut` (passed down from the route) branches on `isAuthenticated`: an authenticated LP calls
-`signOut()`; a wallet-only visitor calls `useWalletPresence().disconnectAll()` instead. Either way
-it navigates to `/`.
+`onLogOut` (passed down from the route) ends everything the visitor is identified by (#1553): an
+authenticated LP's session is cleared with `signOut()`, **and** every connected wallet namespace is
+disconnected with `useWalletPresence().disconnectAll()` — for a wallet-only visitor only the latter
+applies. Either way it navigates to `/`, so the header reverts to Sign In / Sign Up and the home
+page shows the zero state. The forced session-end path (expiry, `401`, suspension — see
+`auth-components.md#session-module`) is different: it keeps wallets connected.
 
 ## Page composition
 
@@ -149,8 +152,10 @@ so the frame's disabled `Save` renders as-is; `Submit for review` does not rende
 `false` here).
 
 `Log Out` disconnects every connected namespace (`useWalletPresence().disconnectAll()`, not just
-the connected wallet) and navigates to `/` — so the header reverts to Sign In / Sign Up. The signed-in variant's `Log Out` is unchanged (`signOut()` + navigate; the wallet, if any, is
-left connected — the `Disconnect` row handles that separately).
+the connected wallet) and navigates to `/` — so the header reverts to Sign In / Sign Up. Since
+#1553 the signed-in variant does the same on top of `signOut()` — a connected wallet no longer
+survives a log out (the `Disconnect` row still exists for dropping the wallet while staying signed
+in).
 
 No new `?state=` fixture: the variant is fully reachable for real (connect a wallet, no session),
 so it is exercised live rather than through a dev-only preview — per the project's no-mocks rule,

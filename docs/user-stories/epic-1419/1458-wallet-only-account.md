@@ -233,6 +233,6 @@ mock layer).
 - The header reverts to Sign In / Sign Up: the stated outcome ("logging out returns to the signed-
   out header") holds even when the visitor was sitting on a tab whose namespace was not the only
   one connected.
-- The signed-in variant's `Log Out` is unchanged: it calls `signOut()` and navigates to `/`,
-  leaving any connected wallet untouched (the `Disconnect` row handles that separately, per Story
-  8).
+- The signed-in variant's `Log Out` (amended by #1553) calls `signOut()` **and** `disconnectAll()`
+  before navigating to `/` — a connected wallet does not survive a log out. The `Disconnect` row
+  (Story 8) remains the way to drop the wallet while staying signed in.

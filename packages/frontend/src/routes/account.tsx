@@ -35,7 +35,7 @@ function AccountRoute() {
       previewState={state}
       onLogOut={() => {
         if (isAuthenticated) signOut();
-        else disconnectAll();
+        disconnectAll();
         void navigate({ to: "/" });
       }}
     />
