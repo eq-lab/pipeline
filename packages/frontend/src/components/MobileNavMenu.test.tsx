@@ -360,6 +360,27 @@ describe("MobileNavMenu — active nav derivation", () => {
     await waitFor(() => expect(screen.getByText("Earn")).toBeInTheDocument());
   });
 
+  it("marks the Account row active on pathname=/account and no nav row (#1556)", async () => {
+    renderMenu({ open: true, pathname: "/account", showAccount: true });
+    const account = await screen.findByTestId("mobile-account-button");
+    expect(account).toHaveAttribute("data-active", "true");
+    expect(screen.getByText("Account").className).toContain(
+      "text-[color:var(--color-pipeline-brand)]",
+    );
+    expect(screen.getByText("Home").className).not.toContain(
+      "text-[color:var(--color-pipeline-brand)]",
+    );
+  });
+
+  it("the Account row is inactive on pathname=/ (#1556)", async () => {
+    renderMenu({ open: true, pathname: "/", showAccount: true });
+    const account = await screen.findByTestId("mobile-account-button");
+    expect(account).toHaveAttribute("data-active", "false");
+    expect(screen.getByText("Home").className).toContain(
+      "text-[color:var(--color-pipeline-brand)]",
+    );
+  });
+
   it("marks no nav row active on pathname=/dashboard (Dashboard owns it)", async () => {
     renderMenu({ open: true, pathname: "/dashboard" });
     await waitFor(() =>

@@ -741,6 +741,7 @@ was the only always-visible "Connect Wallet" entry point. After removing it:
 | `/stake`                                                                                          | `"stats"` (Earn)         |
 | `/transactions`                                                                                   | `"history"` (Activity)   |
 | `/dashboard`                                                                                      | `"overview"` (Overview)  |
+| `/account`                                                                                        | `"account"` (#1556) — no nav item matches; the right-slot account icon renders active instead (`--color-pipeline-brand`, `aria-pressed`, `data-active="true"`), as does the mobile menu's `Account` row |
 | other                                                                                             | `"home"` (safe fallback) |
 
 The fifth slot — **Overview** (#1125, Figma node `5915:77655`) — navigates to the Protocol
@@ -845,6 +846,8 @@ Full-screen slide-in nav panel for mobile viewports. Shown when the user taps th
   Each closes the menu then calls `onSignIn`/`onSignUp` (→ `useAuthFlow().open(...)` from `TopBar`).
 - Signed in: one row, dark-circle `AccountGlyph` + "Account" label (`mobile-account-button`),
   closes the menu and navigates to `/account` — the mobile equivalent of the desktop account icon.
+  On `/account` the row is the active one (brand-coloured label, `data-active="true"`) and no nav
+  row is highlighted (#1556).
 - The previous connected/disconnected wallet section (address row, USDC balance row, Connect/
   Disconnect buttons) was removed along with `TopBar`'s wallet UI — see `### TopBar`'s "Where
   wallet-connect entry points still live" note; the same reasoning applies to mobile (the

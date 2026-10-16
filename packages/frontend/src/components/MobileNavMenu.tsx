@@ -259,7 +259,7 @@ export function MobileNavMenu({
   }, [open]);
 
   // Derive active nav from pathname (same logic as TopBar).
-  const activeKey: MenuNavItem["key"] =
+  const activeKey: MenuNavItem["key"] | "account" =
     pathname === "/deposit"
       ? "deposit"
       : pathname === "/transactions"
@@ -268,7 +268,9 @@ export function MobileNavMenu({
           ? "stats"
           : pathname === "/dashboard"
             ? "overview"
-            : "home";
+            : pathname === "/account"
+              ? "account"
+              : "home";
 
   const handleNavClick = useCallback(
     (to: string) => {
@@ -448,6 +450,7 @@ export function MobileNavMenu({
               ].join(" ")}
               data-testid="mobile-account-button"
               data-node-id="6701:97941"
+              data-active={activeKey === "account" ? "true" : "false"}
             >
               <div
                 className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-pipeline-ink)] text-white"
@@ -461,7 +464,9 @@ export function MobileNavMenu({
                   "text-[length:var(--text-pipeline-body)]",
                   "leading-[var(--text-pipeline-body--line-height)]",
                   "font-[var(--font-weight-regular)]",
-                  "text-[color:var(--color-pipeline-ink-muted)]",
+                  activeKey === "account"
+                    ? "text-[color:var(--color-pipeline-brand)]"
+                    : "text-[color:var(--color-pipeline-ink-muted)]",
                   "truncate",
                 ].join(" ")}
               >
