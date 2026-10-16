@@ -1,4 +1,4 @@
-// spec: docs/exec-plans/active/issue-1531-per-loan-chain-required.md#test-strategy
+// spec: docs/exec-plans/completed/issue-1531-per-loan-chain-required.md#test-strategy
 use std::collections::HashMap;
 use std::sync::Arc;
 

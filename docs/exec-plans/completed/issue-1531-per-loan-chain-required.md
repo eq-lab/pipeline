@@ -241,7 +241,7 @@ _None_
 
 All tests are pure. They use no DB, read no `DATABASE_URL` / `POSTGRES_URL`, and put nothing in
 inline `#[cfg(test)]`. Tests go in `packages/api/tests/<topic>.rs`. Each new test file starts
-with `// spec: docs/exec-plans/active/issue-1531-per-loan-chain-required.md#test-strategy`.
+with `// spec: docs/exec-plans/completed/issue-1531-per-loan-chain-required.md#test-strategy`.
 
 **New file `packages/api/tests/loan_chain_required.rs`.**
 
