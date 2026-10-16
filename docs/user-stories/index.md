@@ -296,4 +296,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1528 LoanBook API: chain parameter foundation](https://github.com/eq-lab/pipeline/issues/1528) | [1528-loanbook-chain-param.md](./epic-1521/1528-loanbook-chain-param.md) | Initial |
+| [#1530 LoanBook API: GET /v1/loan-book across all chains](https://github.com/eq-lab/pipeline/issues/1530) | [1530-loan-book-all-chains.md](./epic-1521/1530-loan-book-all-chains.md) | Initial |
 | [#1531 LoanBook API: per-loan endpoints require chain_id](https://github.com/eq-lab/pipeline/issues/1531) | [1531-per-loan-chain-required.md](./epic-1521/1531-per-loan-chain-required.md) | Initial |

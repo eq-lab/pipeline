@@ -4,7 +4,7 @@
 //! portfolio-level summary cards plus the active-loan table. Conventions match
 //! `routes::stats` / `routes::portfolio` — Axum handler, utoipa schema, base-6
 //! decimal strings for USDC amounts, decimal-fraction strings for rates, and
-//! `chain_id?` defaulting to `DEFAULT_CHAIN_ID` (per-loan routes require `chain_id`).
+//! `chain_id?` — omitted = all configured chains (per-loan routes require `chain_id`).
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -34,7 +34,7 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{
-    loan_registry_address, resolve_chain, trustee_indexed_loan_guard, ChainQuery, RequiredChain,
+    loan_registry_address, trustee_indexed_loan_guard, LenientChainFilter, RequiredChain,
 };
 use crate::AppState;
 /// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
@@ -148,7 +148,7 @@ pub struct LoanBookSummary {
     pub top_concentration: Option<TopConcentration>,
 }
 
-/// Per-loan spot-price inputs, keyed by `loan_key`. Assembled by the handler from
+/// Per-loan spot-price inputs, keyed by `loan_ref`. Assembled by the handler from
 /// the loan's collateral-valuation anchor (asset + provider) and the price series,
 /// then passed into [`compute_loan_book`] so the pure computation stays DB-free.
 #[derive(Debug, Clone, Default)]
@@ -552,21 +552,21 @@ pub fn router() -> Router<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/v1/loan-book",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "Loan book aggregates (active loans only) and the loan table (active loans, then terminal Default/Closed loans)", body = LoanBookResponse),
+        (status = 200, description = "Loan book aggregates (active loans only) and the loan table (active loans, then terminal Default/Closed loans) for the selected chain, or for all configured chains when `chain_id` is omitted", body = LoanBookResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "LoanBook"
 )]
 async fn get_loan_book(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    chain: LenientChainFilter,
 ) -> Result<Json<LoanBookResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-    handle_loan_book(&state, chain_id).await.map(Json)
+    handle_loan_book(&state, &chain.chain_ids(&state.chains))
+        .await
+        .map(Json)
 }
 
 /// Submit loan data. Restricted to callers holding the `originator` role
@@ -1083,7 +1083,7 @@ pub async fn validate_metadata_uri(
 
 pub async fn handle_loan_book(
     state: &AppState,
-    chain_id: i64,
+    chain_ids: &[i64],
 ) -> Result<LoanBookResponse, ApiError> {
     // As-of "now" — this endpoint reports the current loan book, matching the
     // window-ends-at-now semantics of the other read endpoints.
@@ -1092,31 +1092,86 @@ pub async fn handle_loan_book(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    // A chain the API is not configured for has no registry to read: empty book, not 400.
-    let Some(registry) = state.loan_registry_addresses.get(&chain_id) else {
-        return Ok(empty_response());
-    };
+    let mut loans: Vec<LoanSnapshotRow> = Vec::new();
+    let mut events: Vec<LifecycleRow> = Vec::new();
+    let mut anchors: Vec<CollateralValuationRow> = Vec::new();
+    let mut assays: HashMap<LoanRef, AssayRow> = HashMap::new();
+    let mut offtakes: HashMap<LoanRef, OfftakeTermsRow> = HashMap::new();
+    let mut disbursement_by_loan: HashMap<LoanRef, bool> = HashMap::new();
+    let mut watchlist_entry_by_loan: HashMap<LoanRef, i64> = HashMap::new();
 
-    let loans = state
-        .contract_logs_repo
-        .list_latest_loan_snapshots(&state.pool, chain_id, registry, to)
-        .await?;
+    // Sequential per-chain reads: latency grows linearly with the configured chain count.
+    for &chain_id in chain_ids {
+        // A chain the API is not configured for has no registry to read: skipped, not 400.
+        let Some(registry) = state.loan_registry_addresses.get(&chain_id) else {
+            continue;
+        };
+
+        let chain_loans = state
+            .contract_logs_repo
+            .list_latest_loan_snapshots(&state.pool, chain_id, registry, to)
+            .await?;
+        if chain_loans.is_empty() {
+            continue;
+        }
+
+        events.extend(
+            state
+                .contract_logs_repo
+                .list_loan_lifecycle_events_for_registry(&state.pool, chain_id, registry, to)
+                .await?,
+        );
+
+        let chain_anchors = state
+            .collateral_valuation_repo
+            .all_anchors(chain_id)
+            .await?;
+        if !chain_anchors.is_empty() {
+            let repo = &state.collateral_valuation_repo;
+            assays.extend(
+                repo.latest_assays(chain_id)
+                    .await?
+                    .into_iter()
+                    .map(|r| (loan_ref(r.chain_id, &r.loan_id), r)),
+            );
+            offtakes.extend(
+                repo.latest_offtakes(chain_id)
+                    .await?
+                    .into_iter()
+                    .map(|r| (loan_ref(r.chain_id, &r.loan_id), r)),
+            );
+        }
+
+        // Per-loan USDC off-ramp completion. Absent → not complete (Disbursing).
+        disbursement_by_loan.extend(
+            state
+                .loan_disbursement_repo
+                .list_for_chain(chain_id)
+                .await?
+                .into_iter()
+                .map(|(loan_id, complete)| (loan_ref(chain_id, &loan_id), complete)),
+        );
+
+        // Per-loan timestamp of the most recent WatchList entry. Backs
+        // `days_on_watchlist` — absent → no known transition (null field).
+        watchlist_entry_by_loan.extend(
+            state
+                .contract_logs_repo
+                .latest_watchlist_entry_by_chain(&state.pool, chain_id, registry, to)
+                .await?
+                .into_iter()
+                .map(|(loan_id, ts)| (loan_ref(chain_id, &loan_id), ts)),
+        );
+
+        loans.extend(chain_loans);
+        anchors.extend(chain_anchors);
+    }
 
     if loans.is_empty() {
         return Ok(empty_response());
     }
 
-    let events = state
-        .contract_logs_repo
-        .list_loan_lifecycle_events_for_registry(&state.pool, chain_id, registry, to)
-        .await?;
-
-    // Fetch the shared inputs ONCE and pass into both builders (they both key off the
-    // valuation anchors + the latest price series).
-    let anchors = state
-        .collateral_valuation_repo
-        .all_anchors(chain_id)
-        .await?;
+    // Prices are global (not chain-scoped): fetched ONCE and shared by both builders.
     let latest_prices: HashMap<(String, String), BigDecimal> = state
         .loan_asset_price_repo
         .latest_prices()
@@ -1125,28 +1180,8 @@ pub async fn handle_loan_book(
         .map(|(asset, provider, price)| ((asset, provider), price))
         .collect();
 
-    let collateral_by_loan = collateral_by_loan(state, chain_id, &anchors, &latest_prices).await?;
+    let collateral_by_loan = collateral_by_loan(&anchors, &assays, &offtakes, &latest_prices)?;
     let spot_by_loan = spot_by_loan(state, to, &anchors, &latest_prices).await?;
-
-    // Per-loan USDC off-ramp completion, keyed by loan_key. Absent → not complete
-    // (Disbursing). Backs the `Disbursing` status override.
-    let disbursement_by_loan: HashMap<String, bool> = state
-        .loan_disbursement_repo
-        .list_for_chain(chain_id)
-        .await?
-        .into_iter()
-        .map(|(loan_id, complete)| (loan_key(&loan_id), complete))
-        .collect();
-
-    // Per-loan timestamp of the most recent WatchList entry, keyed by loan_key.
-    // Backs `days_on_watchlist` — absent → no known transition (null field).
-    let watchlist_entry_by_loan: HashMap<String, i64> = state
-        .contract_logs_repo
-        .latest_watchlist_entry_by_chain(&state.pool, chain_id, registry, to)
-        .await?
-        .into_iter()
-        .map(|(loan_id, ts)| (loan_key(&loan_id), ts))
-        .collect();
 
     Ok(compute_loan_book(
         &loans,
@@ -1159,7 +1194,7 @@ pub async fn handle_loan_book(
     ))
 }
 
-/// Build the per-loan spot map: `loan_id → { latest price, trailing 7-day change }`,
+/// Build the per-loan spot map: `(chain_id, loan_id) → { latest price, trailing 7-day change }`,
 /// for the underlying asset each loan's collateral-valuation anchor names (asset +
 /// price provider). `latest` is the pre-fetched latest price per (asset, provider);
 /// the 7-day change compares it against the newest price in the window
@@ -1171,7 +1206,7 @@ async fn spot_by_loan(
     to: i64,
     anchors: &[CollateralValuationRow],
     latest: &HashMap<(String, String), BigDecimal>,
-) -> Result<HashMap<String, LoanSpot>, ApiError> {
+) -> Result<HashMap<LoanRef, LoanSpot>, ApiError> {
     if anchors.is_empty() {
         return Ok(HashMap::new());
     }
@@ -1204,7 +1239,7 @@ async fn spot_by_loan(
                 .to_plain_string()
         });
         map.insert(
-            loan_key(&anchor.loan_id),
+            loan_ref(anchor.chain_id, &anchor.loan_id),
             LoanSpot {
                 // Full precision — the change above is derived from this same value,
                 // and sub-dollar assets must not be truncated to 2 decimals.
@@ -1216,39 +1251,25 @@ async fn spot_by_loan(
     Ok(map)
 }
 
-/// Build the per-loan collateral map: `loan_id → collateral in micro-USDC`, valued
+/// Build the per-loan collateral map: `(chain_id, loan_id) → collateral in micro-USDC`, valued
 /// from the collateral-valuation record (anchor, which carries quantity, plus latest
 /// assay / offtake) and the latest reference price via [`compute_collateral`].
 /// Collateral comes out in USD; the `×1e6` scales it to the base-6 units of the
 /// on-chain tranche amounts so `compute_loan_book` can format and ratio it against
 /// principal.
 ///
-/// `anchors` and `latest_prices` are pre-fetched by the handler (shared with
-/// `spot_by_loan`). Loans whose record is incomplete (missing assay/offtake/price for
+/// `anchors`, `assays`, `offtakes` and `latest_prices` are pre-fetched by the handler
+/// (anchors and prices shared with `spot_by_loan`). Loans whose record is incomplete (missing assay/offtake/price for
 /// their mode) are simply absent from the map (→ `null`).
-async fn collateral_by_loan(
-    state: &AppState,
-    chain_id: i64,
+fn collateral_by_loan(
     anchors: &[CollateralValuationRow],
+    assays: &HashMap<LoanRef, AssayRow>,
+    offtakes: &HashMap<LoanRef, OfftakeTermsRow>,
     latest_prices: &HashMap<(String, String), BigDecimal>,
-) -> Result<HashMap<String, BigDecimal>, ApiError> {
+) -> Result<HashMap<LoanRef, BigDecimal>, ApiError> {
     if anchors.is_empty() {
         return Ok(HashMap::new());
     }
-    let repo = &state.collateral_valuation_repo;
-
-    let assays: HashMap<String, AssayRow> = repo
-        .latest_assays(chain_id)
-        .await?
-        .into_iter()
-        .map(|r| (loan_key(&r.loan_id), r))
-        .collect();
-    let offtakes: HashMap<String, OfftakeTermsRow> = repo
-        .latest_offtakes(chain_id)
-        .await?
-        .into_iter()
-        .map(|r| (loan_key(&r.loan_id), r))
-        .collect();
     // Regroup the flat (asset, provider)→price table into provider→(asset→price), so each
     // loan can be priced against every asset its provider serves. A concentrate prices
     // each payable metal by its own asset (gold→XAU, silver→XAG); standard goods uses the
@@ -1265,7 +1286,7 @@ async fn collateral_by_loan(
     let scale = BigDecimal::from(1_000_000);
     let mut map = HashMap::new();
     for anchor in anchors {
-        let key = loan_key(&anchor.loan_id);
+        let key = loan_ref(anchor.chain_id, &anchor.loan_id);
         let prices = prices_by_provider
             .get(anchor.price_provider.as_str())
             .unwrap_or(&empty);
@@ -1285,6 +1306,13 @@ pub fn loan_key(loan_id: &BigDecimal) -> String {
     loan_id
         .with_scale_round(0, RoundingMode::Down)
         .to_plain_string()
+}
+
+/// Loan identity across chains: loan ids are only unique within a chain.
+pub type LoanRef = (i64, String);
+
+pub fn loan_ref(chain_id: i64, loan_id: &BigDecimal) -> LoanRef {
+    (chain_id, loan_key(loan_id))
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -1309,6 +1337,7 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
         .iter()
         .filter(|e| {
             (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
+                && e.chain_id == loan.chain_id
                 && e.loan_id == loan.loan_id
         })
         .map(|e| e.block_timestamp)
@@ -1331,16 +1360,16 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// event never perturbs the book's headline figures. Terminal loans still feed the
 /// separate `at_risk_wl_and_default_*` metrics below, same as before.
 ///
-/// `collateral_by_loan` maps `loan_key(loan_id)` → collateral value in micro-USDC
+/// `collateral_by_loan` maps `loan_ref(chain_id, loan_id)` → collateral value in micro-USDC
 /// (the valuation record's collateral value × 1e6); loans absent from the map have no
 /// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
 /// `senior_debt_coverage` are `null` when no active loan has a value.
 ///
-/// `disbursement_by_loan` maps `loan_key(loan_id)` → `off_ramp_complete`. Loans absent
+/// `disbursement_by_loan` maps `loan_ref(chain_id, loan_id)` → `off_ramp_complete`. Loans absent
 /// from the map are treated as NOT complete (still `Disbursing`), matching the
 /// "default after draw" semantics.
 ///
-/// `watchlist_entry_by_loan` maps `loan_key(loan_id)` → the Unix timestamp of the
+/// `watchlist_entry_by_loan` maps `loan_ref(chain_id, loan_id)` → the Unix timestamp of the
 /// loan's most recent `LoanStatusUpdated` transition into `WatchList`. Backs
 /// `days_on_watchlist`; only consulted for loans whose current `status` is
 /// `WatchList` — absent for any other loan, and absent (→ `null`) even for a
@@ -1367,13 +1396,14 @@ struct EntryComputation {
 fn build_loan_entry<S: std::hash::BuildHasher>(
     loan: &LoanSnapshotRow,
     to: i64,
-    collateral_by_loan: &HashMap<String, BigDecimal, S>,
-    spot_by_loan: &HashMap<String, LoanSpot, S>,
-    disbursement_by_loan: &HashMap<String, bool, S>,
-    watchlist_entry_by_loan: &HashMap<String, i64, S>,
+    collateral_by_loan: &HashMap<LoanRef, BigDecimal, S>,
+    spot_by_loan: &HashMap<LoanRef, LoanSpot, S>,
+    disbursement_by_loan: &HashMap<LoanRef, bool, S>,
+    watchlist_entry_by_loan: &HashMap<LoanRef, i64, S>,
 ) -> EntryComputation {
     let zero = BigDecimal::from(0);
     let s = &loan.snapshot;
+    let key = loan_ref(loan.chain_id, &loan.loan_id);
     let principal = principal_of(loan);
     let duration_days = ((s.original_maturity_date - s.origination_date) / SECS_PER_DAY).max(0);
     // bps → decimal fraction: 1120 bps → "0.112000" (matches the API's apy format).
@@ -1390,29 +1420,25 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
     // Absent → null; present-but-zero → value 0 with null LTV/CCR (no division).
     // CCR = collateral / outstanding senior principal (both micro-USDC, so the
     // ratio is unit-free).
-    let (collateral, ltv, ccr, collateral_raw) =
-        match collateral_by_loan.get(&loan_key(&loan.loan_id)) {
-            Some(c) => {
-                let ltv = (c > &zero).then(|| {
-                    (&principal / c)
-                        .with_scale_round(4, RoundingMode::HalfUp)
-                        .to_plain_string()
-                });
-                let ccr = (c > &zero && outstanding_senior > zero)
-                    .then(|| ccr_bps(c, &outstanding_senior));
-                (Some(base6_to_decimal_string(c)), ltv, ccr, Some(c.clone()))
-            }
-            None => (None, None, None, None),
-        };
+    let (collateral, ltv, ccr, collateral_raw) = match collateral_by_loan.get(&key) {
+        Some(c) => {
+            let ltv = (c > &zero).then(|| {
+                (&principal / c)
+                    .with_scale_round(4, RoundingMode::HalfUp)
+                    .to_plain_string()
+            });
+            let ccr =
+                (c > &zero && outstanding_senior > zero).then(|| ccr_bps(c, &outstanding_senior));
+            (Some(base6_to_decimal_string(c)), ltv, ccr, Some(c.clone()))
+        }
+        None => (None, None, None, None),
+    };
 
-    let spot = spot_by_loan.get(&loan_key(&loan.loan_id));
+    let spot = spot_by_loan.get(&key);
 
     // Displayed status = raw on-chain status with the Disbursing / Past Due
     // overrides layered on. Absent disbursement row → not complete (Disbursing).
-    let off_ramp_complete = disbursement_by_loan
-        .get(&loan_key(&loan.loan_id))
-        .copied()
-        .unwrap_or(false);
+    let off_ramp_complete = disbursement_by_loan.get(&key).copied().unwrap_or(false);
     let status = display_status(
         &s.status,
         off_ramp_complete,
@@ -1424,11 +1450,7 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
     // CURRENTLY WatchList — a stale entry timestamp from a loan that has since
     // left WatchList must not leak through as a non-null value.
     let watchlist_entered_at = (s.status == "WatchList")
-        .then(|| {
-            watchlist_entry_by_loan
-                .get(&loan_key(&loan.loan_id))
-                .copied()
-        })
+        .then(|| watchlist_entry_by_loan.get(&key).copied())
         .flatten();
     let days_on_watchlist = watchlist_entered_at.map(|entered_at| (to - entered_at) / SECS_PER_DAY);
 
@@ -1489,17 +1511,23 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
     to: i64,
-    collateral_by_loan: &HashMap<String, BigDecimal, S>,
-    spot_by_loan: &HashMap<String, LoanSpot, S>,
-    disbursement_by_loan: &HashMap<String, bool, S>,
-    watchlist_entry_by_loan: &HashMap<String, i64, S>,
+    collateral_by_loan: &HashMap<LoanRef, BigDecimal, S>,
+    spot_by_loan: &HashMap<LoanRef, LoanSpot, S>,
+    disbursement_by_loan: &HashMap<LoanRef, bool, S>,
+    watchlist_entry_by_loan: &HashMap<LoanRef, i64, S>,
 ) -> LoanBookResponse {
     // Active loan set, sorted by principal (senior + equity) descending.
     let mut active: Vec<&LoanSnapshotRow> = loans
         .iter()
         .filter(|loan| loan.snapshot.origination_date <= to && to < effective_end(loan, events))
         .collect();
-    active.sort_by_key(|loan| std::cmp::Reverse(principal_of(loan)));
+    active.sort_by_cached_key(|loan| {
+        (
+            std::cmp::Reverse(principal_of(loan)),
+            loan.chain_id,
+            loan.loan_id.clone(),
+        )
+    });
 
     // Terminal loan set (Default/Closed, already originated) — visible as rows but
     // excluded from every summary aggregate below, sorted separately by principal
@@ -1508,7 +1536,13 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         .iter()
         .filter(|loan| loan.snapshot.origination_date <= to && to >= effective_end(loan, events))
         .collect();
-    terminal.sort_by_key(|loan| std::cmp::Reverse(principal_of(loan)));
+    terminal.sort_by_cached_key(|loan| {
+        (
+            std::cmp::Reverse(principal_of(loan)),
+            loan.chain_id,
+            loan.loan_id.clone(),
+        )
+    });
 
     if active.is_empty() && terminal.is_empty() {
         return empty_response();
@@ -1605,7 +1639,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     // not yet closed/defaulted — a past-maturity WatchList loan is `Past Due` and still
     // at risk); Default counts until the loan is explicitly closed (`LoanClosed`), even
     // though defaults drop out of the `active` set.
-    let active_keys: HashSet<String> = active.iter().map(|l| loan_key(&l.loan_id)).collect();
+    let active_keys: HashSet<LoanRef> = active
+        .iter()
+        .map(|l| loan_ref(l.chain_id, &l.loan_id))
+        .collect();
     let mut at_risk_wl_and_default_senior = BigDecimal::from(0);
     // NAV denominator spans the same book the numerator draws from: active-loan
     // collateral (total_collateral) plus the collateral of at-risk loans that fell out
@@ -1626,7 +1663,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         }
         at_risk_wl_and_default_senior += s.outstanding_senior_principal();
         // Add collateral of at-risk loans not already summed into total_collateral.
-        let key = loan_key(&loan.loan_id);
+        let key = loan_ref(loan.chain_id, &loan.loan_id);
         if !active_keys.contains(&key) {
             if let Some(c) = collateral_by_loan.get(&key) {
                 at_risk_extra_collateral += c;
@@ -1693,7 +1730,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
 /// open, at-risk position until it is explicitly closed.
 fn is_closed(loan: &LoanSnapshotRow, events: &[LifecycleRow], to: i64) -> bool {
     events.iter().any(|e| {
-        e.loan_id == loan.loan_id && e.event_name == "LoanClosed" && e.block_timestamp <= to
+        e.chain_id == loan.chain_id
+            && e.loan_id == loan.loan_id
+            && e.event_name == "LoanClosed"
+            && e.block_timestamp <= to
     })
 }
 

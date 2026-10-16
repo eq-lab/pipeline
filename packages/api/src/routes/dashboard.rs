@@ -46,7 +46,7 @@ use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::Interval;
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::routes::financial_position::compute_financial_position;
-use crate::routes::loan_book::{compute_loan_book, LoanSpot};
+use crate::routes::loan_book::{compute_loan_book, LoanRef, LoanSpot};
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -356,10 +356,10 @@ pub fn compute_summary(
 
     // Loan book (only avg_yield is needed here; collateral + spot + disbursement +
     // watchlist maps are irrelevant — they only affect per-loan display fields).
-    let empty_collateral: HashMap<String, BigDecimal> = HashMap::new();
-    let empty_spot: HashMap<String, LoanSpot> = HashMap::new();
-    let empty_disbursement: HashMap<String, bool> = HashMap::new();
-    let empty_watchlist_entry: HashMap<String, i64> = HashMap::new();
+    let empty_collateral: HashMap<LoanRef, BigDecimal> = HashMap::new();
+    let empty_spot: HashMap<LoanRef, LoanSpot> = HashMap::new();
+    let empty_disbursement: HashMap<LoanRef, bool> = HashMap::new();
+    let empty_watchlist_entry: HashMap<LoanRef, i64> = HashMap::new();
     let lb = compute_loan_book(
         loans,
         events,

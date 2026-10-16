@@ -31,6 +31,7 @@ pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
 ];
 
 pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
+         chain_id,
          event_name,
          block_timestamp,
          (params->>'loan_id')::numeric AS loan_id
@@ -200,6 +201,7 @@ fn decode_snapshot_rows(
 /// `min(scheduled_maturity, earliest LoanClosed / LoanDefaulted block_timestamp)`.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LifecycleRow {
+    pub chain_id: i64,
     pub event_name: String,
     pub block_timestamp: i64,
     pub loan_id: BigDecimal,
@@ -455,6 +457,7 @@ impl ContractLogsRepo {
         let event_names = vec!["LoanClosed", "LoanDefaulted"];
         let rows = sqlx::query_as::<_, LifecycleRow>(
             "SELECT
+                 chain_id,
                  event_name,
                  block_timestamp,
                  (params->>'loan_id')::numeric AS loan_id

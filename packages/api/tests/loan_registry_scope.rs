@@ -120,10 +120,12 @@ async fn unconfigured_chain_is_bad_request() {
 #[tokio::test]
 async fn loan_book_for_unconfigured_chain_is_empty_not_error() {
     let state = two_chain_state();
-    let book = handle_loan_book(&state, 560_048).await.unwrap();
-    assert!(book.loans.is_empty());
-    assert_eq!(book.summary.total_deployed, "0.000000");
-    assert_eq!(book.summary.deployed_senior, "0.000000");
-    assert!(book.summary.total_collateral.is_none());
-    assert!(book.summary.top_concentration.is_none());
+    for ids in [&[560_048_i64][..], &[][..]] {
+        let book = handle_loan_book(&state, ids).await.unwrap();
+        assert!(book.loans.is_empty());
+        assert_eq!(book.summary.total_deployed, "0.000000");
+        assert_eq!(book.summary.deployed_senior, "0.000000");
+        assert!(book.summary.total_collateral.is_none());
+        assert!(book.summary.top_concentration.is_none());
+    }
 }
