@@ -11,8 +11,8 @@
 //! `AuthClaims` extractor (see e.g. `routes::loan_book`).
 //!
 //! EVM signatures are verified with EIP-191 personal_sign; Stellar signatures
-//! with SEP-0053 (Freighter `signMessage`). Dispatch is by `chain_id` via
-//! `shared::chains::parse_chain_type`.
+//! with SEP-0053 (Freighter `signMessage`). `chain_id` is required on both calls and
+//! dispatch is by the kind of the matching configured chain (`AppState.chains`).
 
 use std::sync::Arc;
 
@@ -23,13 +23,13 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use shared::chains::{parse_chain_type, ChainKind};
+use shared::chains::ChainKind;
 use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 
 use crate::account_status::gate_request;
 use crate::auth::TOKEN_TTL_SECS;
 use crate::error::ApiError;
-use crate::routes::common::resolve_chain;
+use crate::routes::common::{require_chain_id, RequiredChain};
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -38,8 +38,6 @@ use crate::AppState;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ChallengeQuery {
-    /// Chain ID (optional — defaults to the server's `DEFAULT_CHAIN_ID`).
-    pub chain_id: Option<i64>,
     /// Wallet address requesting a challenge (EVM `0x…` or Stellar `G…`).
     pub address: String,
 }
@@ -57,7 +55,8 @@ pub struct ChallengeResponse {
 /// Request body for `POST /v1/auth/verify`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct VerifyRequest {
-    /// Chain ID (optional — defaults to the server's `DEFAULT_CHAIN_ID`).
+    /// Chain ID. Required; a missing or unconfigured id is a 400.
+    #[schema(required = true)]
     pub chain_id: Option<i64>,
     /// Wallet address that produced the signature.
     pub address: String,
@@ -116,9 +115,10 @@ fn normalize_address(chain_kind: ChainKind, address: &str) -> String {
 #[utoipa::path(
     get,
     path = "/v1/auth/challenge",
-    params(ChallengeQuery),
+    params(RequiredChain, ChallengeQuery),
     responses(
         (status = 200, description = "Challenge to sign", body = ChallengeResponse),
+        (status = 400, description = "Missing, malformed, or unknown chain_id"),
         (status = 401, description = "Address is not authorized"),
         (status = 500, description = "Internal server error"),
     ),
@@ -126,10 +126,11 @@ fn normalize_address(chain_kind: ChainKind, address: &str) -> String {
 )]
 pub async fn challenge(
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<ChallengeQuery>,
 ) -> Result<Json<ChallengeResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-    let chain_kind = parse_chain_type(chain_id).map_err(ApiError::Internal)?;
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
     let address = normalize_address(chain_kind, &query.address);
 
     // Reject unknown addresses — only the manually-seeded allow-list may log in.
@@ -160,6 +161,7 @@ pub async fn challenge(
     request_body = VerifyRequest,
     responses(
         (status = 200, description = "Signature verified; JWT issued", body = VerifyResponse),
+        (status = 400, description = "Missing or unknown chain_id"),
         (status = 401, description = "Unknown address, no outstanding challenge, or bad signature"),
         (status = 403, description = "The account behind this wallet is suspended (account_suspended)"),
         (status = 500, description = "Internal server error"),
@@ -170,8 +172,9 @@ pub async fn verify(
     State(state): State<Arc<AppState>>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, req.chain_id);
-    let chain_kind = parse_chain_type(chain_id).map_err(ApiError::Internal)?;
+    let chain = require_chain_id(&state.chains, req.chain_id)?;
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
     let address = normalize_address(chain_kind, &req.address);
 
     let user = state

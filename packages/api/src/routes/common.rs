@@ -142,11 +142,15 @@ pub fn parse_chain_filter(
     let Some(id) = parse_chain_id_param(uri)? else {
         return Ok(None);
     };
+    lookup_chain(chains, id).map(Some)
+}
+
+/// The configured chain with `id`, or the `unknown chain_id` 400 naming the configured ids.
+pub fn lookup_chain(chains: &[ConfiguredChain], id: i64) -> Result<ConfiguredChain, ApiError> {
     chains
         .iter()
         .find(|c| c.chain_id == id)
         .copied()
-        .map(Some)
         .ok_or_else(|| {
             let configured = chains
                 .iter()
@@ -155,6 +159,15 @@ pub fn parse_chain_filter(
                 .join(", ");
             ApiError::BadRequest(format!("unknown chain_id: {id} (configured: {configured})"))
         })
+}
+
+/// Required `chain_id` from a request body: `None` → `chain_id is required`, else `lookup_chain`.
+pub fn require_chain_id(
+    chains: &[ConfiguredChain],
+    id: Option<i64>,
+) -> Result<ConfiguredChain, ApiError> {
+    let id = id.ok_or_else(|| ApiError::BadRequest("chain_id is required".into()))?;
+    lookup_chain(chains, id)
 }
 
 /// Chain selection for endpoints that answer an empty result for a well-formed id outside `CHAINS`.

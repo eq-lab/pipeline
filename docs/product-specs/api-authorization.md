@@ -8,8 +8,8 @@ server-issued challenge, from an address on the manually-curated `auth_users`
 allow-list (this spec); or **email and password**, LP self-serve and open to
 anyone (see [api-authorization-email.md](./api-authorization-email.md)). The
 wallet flow supports **EVM** chains (EIP-191 `personal_sign`, secp256k1) and
-**Stellar** chains (SEP-0053, ed25519), resolved from `chain_id` and defaulting
-to the server's `DEFAULT_CHAIN_ID`.
+**Stellar** chains (SEP-0053, ed25519), resolved from the required
+`chain_id`, which must be one of the configured `CHAINS` (no default).
 
 Both resolve to the same principal: a row in **`accounts`**. A wallet is a
 credential *of* an account, not an identity in its own right, and one human may
@@ -52,8 +52,8 @@ Welcome to Pipeline! Sign this message to authenticate. This request will not tr
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
-| `POST` | `/v1/auth/verify` | none | Body `{ chain_id?, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
+| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
+| `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
