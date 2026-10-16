@@ -199,6 +199,7 @@ fn matured_loans_are_excluded() {
 fn loan_closed_before_maturity_is_excluded_from_effective_end() {
     // Loan A closed on day 90 → excluded at day 100 even though maturity is day 180.
     let events = vec![LifecycleRow {
+        chain_id: 1,
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(1_i64),

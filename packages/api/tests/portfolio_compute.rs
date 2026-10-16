@@ -181,6 +181,7 @@ fn apy_at_day_180_no_active_loans() {
 fn early_close_stops_accrual() {
     // Loan B closes at day 90 (before its scheduled day-120 end).
     let events = vec![LifecycleRow {
+        chain_id: 1,
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(2_i64),
@@ -200,6 +201,7 @@ fn early_close_stops_accrual() {
 #[test]
 fn default_stops_accrual_like_close() {
     let events = vec![LifecycleRow {
+        chain_id: 1,
         event_name: "LoanDefaulted".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(2_i64),
@@ -214,6 +216,7 @@ fn lifecycle_event_after_scheduled_maturity_does_not_extend_loan() {
     // LoanClosed at day 130 (AFTER Loan B's scheduled day-120 end). `min(scheduled,
     // lifecycle)` picks the scheduled end — accrual doesn't extend.
     let events = vec![LifecycleRow {
+        chain_id: 1,
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 130 * DAY,
         loan_id: BigDecimal::from(2_i64),

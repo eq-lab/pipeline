@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::loan_book::{
-    compute_loan_book, display_status, loan_key, LoanBookResponse, LoanSpot,
+    compute_loan_book, display_status, loan_ref, LoanBookResponse, LoanRef, LoanSpot,
 };
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
@@ -22,11 +22,11 @@ fn usdc(whole: i64) -> BigDecimal {
 
 /// Build a `loan_id → collateral (micro-USDC)` map keyed the same way the handler
 /// does, so compute-layer tests can supply collateral without the DB.
-fn collateral_map(entries: &[(i64, BigDecimal)]) -> HashMap<String, BigDecimal> {
+fn collateral_map(entries: &[(i64, BigDecimal)]) -> HashMap<LoanRef, BigDecimal> {
     entries
         .iter()
         .cloned()
-        .map(|(id, micro)| (loan_key(&BigDecimal::from(id)), micro))
+        .map(|(id, micro)| (loan_ref(1, &BigDecimal::from(id)), micro))
         .collect()
 }
 
@@ -119,8 +119,11 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
 /// reflects the raw on-chain status (Performing / WatchList) plus the Past Due
 /// override — not Disbursing. Tests exercising the Disbursing override pass their own
 /// map instead.
-fn all_complete(loans: &[LoanSnapshotRow]) -> HashMap<String, bool> {
-    loans.iter().map(|l| (loan_key(&l.loan_id), true)).collect()
+fn all_complete(loans: &[LoanSnapshotRow]) -> HashMap<LoanRef, bool> {
+    loans
+        .iter()
+        .map(|l| (loan_ref(l.chain_id, &l.loan_id), true))
+        .collect()
 }
 
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> LoanBookResponse {
@@ -140,7 +143,7 @@ fn at_with(
     t_day: i64,
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
-    collateral: &HashMap<String, BigDecimal>,
+    collateral: &HashMap<LoanRef, BigDecimal>,
 ) -> LoanBookResponse {
     compute_loan_book(
         loans,
@@ -157,7 +160,7 @@ fn at_with(
 fn at_with_spot(
     t_day: i64,
     loans: &[LoanSnapshotRow],
-    spot: &HashMap<String, LoanSpot>,
+    spot: &HashMap<LoanRef, LoanSpot>,
 ) -> LoanBookResponse {
     compute_loan_book(
         loans,
@@ -171,12 +174,12 @@ fn at_with_spot(
 }
 
 /// Build a `loan_id → LoanSpot` map keyed like the handler.
-fn spot_map(entries: &[(i64, Option<&str>, Option<&str>)]) -> HashMap<String, LoanSpot> {
+fn spot_map(entries: &[(i64, Option<&str>, Option<&str>)]) -> HashMap<LoanRef, LoanSpot> {
     entries
         .iter()
         .map(|(id, price, change)| {
             (
-                loan_key(&BigDecimal::from(*id)),
+                loan_ref(1, &BigDecimal::from(*id)),
                 LoanSpot {
                     price: price.map(str::to_owned),
                     change_7d: change.map(str::to_owned),
@@ -324,6 +327,7 @@ fn closed_loan_visible_but_excluded_from_active_aggregates() {
     let mut loans = fixture_loans();
     loans[0] = with_status(loans[0].clone(), "Closed"); // A: Open Mineral
     let events = vec![LifecycleRow {
+        chain_id: 1,
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 100 * DAY,
         loan_id: BigDecimal::from(1_i64),
@@ -470,6 +474,7 @@ fn with_status(mut row: LoanSnapshotRow, status: &str) -> LoanSnapshotRow {
 
 fn event(name: &str, loan_id: i64, day: i64) -> LifecycleRow {
     LifecycleRow {
+        chain_id: 1,
         event_name: name.to_owned(),
         block_timestamp: day * DAY,
         loan_id: BigDecimal::from(loan_id),
@@ -698,10 +703,10 @@ fn deployed_senior_and_concentration_use_outstanding_senior() {
 
 /// Disbursement map marking the given loan ids complete; ids absent from the map
 /// default to incomplete (Disbursing).
-fn disbursement(complete_ids: &[i64]) -> HashMap<String, bool> {
+fn disbursement(complete_ids: &[i64]) -> HashMap<LoanRef, bool> {
     complete_ids
         .iter()
-        .map(|id| (loan_key(&BigDecimal::from(*id)), true))
+        .map(|id| (loan_ref(1, &BigDecimal::from(*id)), true))
         .collect()
 }
 
@@ -798,10 +803,10 @@ fn display_status_precedence_matrix() {
 //    days_on_watchlist ─────────────────────────────────────────────────────────
 
 /// Build a `loan_id → WatchList-entry timestamp` map, keyed like the handler.
-fn watchlist_entry(entries: &[(i64, i64)]) -> HashMap<String, i64> {
+fn watchlist_entry(entries: &[(i64, i64)]) -> HashMap<LoanRef, i64> {
     entries
         .iter()
-        .map(|(id, ts)| (loan_key(&BigDecimal::from(*id)), *ts))
+        .map(|(id, ts)| (loan_ref(1, &BigDecimal::from(*id)), *ts))
         .collect()
 }
 
@@ -1037,4 +1042,329 @@ fn outstanding_ignores_stale_cumulative_senior_principal_repaid() {
     loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
     let r = at(0, &loans, &[]);
     assert_eq!(r.loans[0].senior_outstanding, "80000.000000");
+}
+
+#[test]
+fn single_chain_output_is_byte_identical() {
+    let mut loans = fixture_loans();
+    loans.push(make_loan(
+        3,
+        40,
+        10,
+        1500,
+        30,
+        120,
+        "Trafalgar",
+        "Alumina",
+        "",
+    ));
+    loans.push(with_status(
+        make_loan(4, 25, 5, 1100, 0, 300, "WatchCo", "Cocoa", "LC at sight"),
+        "WatchList",
+    ));
+    loans.push(with_status(
+        make_loan(10, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
+        "Default",
+    ));
+    loans.push(with_status(
+        make_loan(9, 60, 0, 900, 0, 100, "ClosedCo", "Zinc", ""),
+        "Closed",
+    ));
+    let events = vec![event("LoanDefaulted", 10, 50), event("LoanClosed", 9, 40)];
+    let collateral = collateral_map(&[(1, usdc(125_000)), (4, usdc(40_000)), (10, usdc(20_000))]);
+    let spot = spot_map(&[(1, Some("8500.50"), Some("0.0123")), (4, None, None)]);
+    let mut disbursement = all_complete(&loans);
+    disbursement.insert(loan_ref(1, &BigDecimal::from(3_i64)), false);
+    let watchlist = watchlist_entry(&[(4, 10 * DAY)]);
+
+    let r = compute_loan_book(
+        &loans,
+        &events,
+        60 * DAY,
+        &collateral,
+        &spot,
+        &disbursement,
+        &watchlist,
+    );
+    let actual = serde_json::to_string(&r).unwrap();
+    let expected = "{\"summary\":{\"total_deployed\":\"230000.000000\",\"total_collateral\":\"165000.000000\",\"senior_debt_coverage\":\"0.89\",\"avg_yield\":\"0.131739\",\"avg_duration_days\":157,\"deployed_senior\":\"185000.000000\",\"weighted_rate\":\"0.131739\",\"weighted_tenor_days\":157,\"at_risk_wl_and_default_senior\":\"55000.000000\",\"at_risk_wl_and_default_pct\":\"0.2973\",\"top_concentration\":{\"commodity\":\"Alumina\",\"share\":\"0.4324\"}},\"loans\":[{\"chain_id\":1,\"loan_id\":\"1\",\"originator\":\"Open Mineral\",\"borrower\":\"borrower-1\",\"commodity\":\"Copper Concentrate\",\"principal\":\"100000.000000\",\"senior_outstanding\":\"80000.000000\",\"original_senior_tranche\":\"80000.000000\",\"maturity\":15552000,\"next_payment_timestamp\":15552000,\"days_overdue\":null,\"spot_price\":\"8500.50\",\"spot_change_7d\":\"0.0123\",\"collateral\":\"125000.000000\",\"ltv\":\"0.8000\",\"ccr_bps\":15625,\"duration_days\":180,\"rate\":\"0.120000\",\"protection\":\"LC at sight\",\"status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"2\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-2\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"3\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-3\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Disbursing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":false,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"4\",\"originator\":\"WatchCo\",\"borrower\":\"borrower-4\",\"commodity\":\"Cocoa\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"25000.000000\",\"original_senior_tranche\":\"25000.000000\",\"maturity\":25920000,\"next_payment_timestamp\":25920000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"40000.000000\",\"ltv\":\"0.7500\",\"ccr_bps\":16000,\"duration_days\":300,\"rate\":\"0.110000\",\"protection\":\"LC at sight\",\"status\":\"WatchList\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":50,\"watchlist_entered_at\":864000},{\"chain_id\":1,\"loan_id\":\"9\",\"originator\":\"ClosedCo\",\"borrower\":\"borrower-9\",\"commodity\":\"Zinc\",\"principal\":\"60000.000000\",\"senior_outstanding\":\"60000.000000\",\"original_senior_tranche\":\"60000.000000\",\"maturity\":8640000,\"next_payment_timestamp\":8640000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":100,\"rate\":\"0.090000\",\"protection\":null,\"status\":\"Closed\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"10\",\"originator\":\"DefaultCo\",\"borrower\":\"borrower-10\",\"commodity\":\"Coffee\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"30000.000000\",\"original_senior_tranche\":\"30000.000000\",\"maturity\":17280000,\"next_payment_timestamp\":17280000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"20000.000000\",\"ltv\":\"1.5000\",\"ccr_bps\":6667,\"duration_days\":200,\"rate\":\"0.100000\",\"protection\":null,\"status\":\"Default\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null}]}";
+    assert_eq!(actual, expected);
+}
+
+// ── Multi-chain union ────────────────────────────────────────────────────────
+
+const CHAIN_B: i64 = 99_000_001;
+
+fn on_chain(mut row: LoanSnapshotRow, chain_id: i64) -> LoanSnapshotRow {
+    row.chain_id = chain_id;
+    row
+}
+
+fn chain_event(chain_id: i64, name: &str, loan_id: i64, day: i64) -> LifecycleRow {
+    LifecycleRow {
+        chain_id,
+        ..event(name, loan_id, day)
+    }
+}
+
+struct Inputs {
+    loans: Vec<LoanSnapshotRow>,
+    collateral: HashMap<LoanRef, BigDecimal>,
+    spot: HashMap<LoanRef, LoanSpot>,
+    disbursement: HashMap<LoanRef, bool>,
+    watchlist: HashMap<LoanRef, i64>,
+}
+
+fn two_chain_inputs() -> Inputs {
+    let loans = vec![
+        make_loan(
+            1,
+            80,
+            20,
+            1200,
+            0,
+            180,
+            "Open Mineral",
+            "Copper Concentrate",
+            "LC at sight",
+        ),
+        make_loan(2, 40, 10, 1500, 30, 120, "Trafalgar", "Alumina", ""),
+        with_status(
+            on_chain(
+                make_loan(
+                    1,
+                    30,
+                    10,
+                    900,
+                    0,
+                    90,
+                    "Stellar Co",
+                    "Copper Concentrate",
+                    "",
+                ),
+                CHAIN_B,
+            ),
+            "WatchList",
+        ),
+    ];
+    let mut disbursement = all_complete(&loans);
+    disbursement.insert(loan_ref(CHAIN_B, &BigDecimal::from(1_i64)), false);
+    Inputs {
+        collateral: HashMap::from([
+            (loan_ref(1, &BigDecimal::from(1_i64)), usdc(125_000)),
+            (loan_ref(CHAIN_B, &BigDecimal::from(1_i64)), usdc(60_000)),
+        ]),
+        spot: HashMap::from([
+            (
+                loan_ref(1, &BigDecimal::from(1_i64)),
+                LoanSpot {
+                    price: Some("100".to_owned()),
+                    change_7d: Some("0.0100".to_owned()),
+                },
+            ),
+            (
+                loan_ref(CHAIN_B, &BigDecimal::from(1_i64)),
+                LoanSpot {
+                    price: Some("200".to_owned()),
+                    change_7d: None,
+                },
+            ),
+        ]),
+        watchlist: HashMap::from([(loan_ref(CHAIN_B, &BigDecimal::from(1_i64)), 10 * DAY)]),
+        disbursement,
+        loans,
+    }
+}
+
+fn run(inputs: &Inputs, events: &[LifecycleRow], day: i64) -> LoanBookResponse {
+    compute_loan_book(
+        &inputs.loans,
+        events,
+        day * DAY,
+        &inputs.collateral,
+        &inputs.spot,
+        &inputs.disbursement,
+        &inputs.watchlist,
+    )
+}
+
+fn find(r: &LoanBookResponse, chain_id: i64, loan_id: &str) -> usize {
+    r.loans
+        .iter()
+        .position(|e| e.chain_id == chain_id && e.loan_id == loan_id)
+        .unwrap()
+}
+
+#[test]
+fn overlapping_ids_keep_per_chain_inputs() {
+    let r = run(&two_chain_inputs(), &[], 60);
+    assert_eq!(r.loans.len(), 3);
+
+    let a = &r.loans[find(&r, 1, "1")];
+    assert_eq!(a.commodity, "Copper Concentrate");
+    assert_eq!(a.collateral.as_deref(), Some("125000.000000"));
+    assert_eq!(a.ltv.as_deref(), Some("0.8000"));
+    assert_eq!(a.ccr_bps, Some(15_625));
+    assert_eq!(a.spot_price.as_deref(), Some("100"));
+    assert_eq!(a.status, "Performing");
+    assert!(a.disbursed);
+    assert_eq!(a.days_on_watchlist, None);
+
+    let b = &r.loans[find(&r, CHAIN_B, "1")];
+    assert_eq!(b.principal, "40000.000000");
+    assert_eq!(b.collateral.as_deref(), Some("60000.000000"));
+    assert_eq!(b.ltv.as_deref(), Some("0.6667"));
+    assert_eq!(b.ccr_bps, Some(20_000));
+    assert_eq!(b.spot_price.as_deref(), Some("200"));
+    assert_eq!(b.spot_change_7d, None);
+    assert_eq!(b.status, "Disbursing");
+    assert!(!b.disbursed);
+    assert_eq!(b.days_on_watchlist, Some(50));
+}
+
+#[test]
+fn lifecycle_event_is_chain_scoped() {
+    let mut inputs = two_chain_inputs();
+    inputs.loans[0] = with_status(inputs.loans[0].clone(), "Closed");
+    let r = run(&inputs, &[chain_event(1, "LoanClosed", 1, 50)], 60);
+
+    assert_eq!(r.loans.len(), 3);
+    assert_eq!(r.loans[2].chain_id, 1);
+    assert_eq!(r.loans[2].loan_id, "1");
+    assert_eq!(r.loans[2].status, "Closed");
+    assert_ne!(r.loans[find(&r, CHAIN_B, "1")].status, "Closed");
+    assert_eq!(r.summary.total_deployed, "90000.000000");
+}
+
+#[test]
+fn at_risk_extra_collateral_is_chain_scoped() {
+    let mut inputs = two_chain_inputs();
+    inputs.loans[0] = with_status(inputs.loans[0].clone(), "WatchList");
+    inputs.loans[2] = with_status(inputs.loans[2].clone(), "Default");
+    inputs.collateral = HashMap::from([
+        (loan_ref(1, &BigDecimal::from(1_i64)), usdc(100_000)),
+        (loan_ref(CHAIN_B, &BigDecimal::from(1_i64)), usdc(20_000)),
+    ]);
+    let r = run(&inputs, &[chain_event(CHAIN_B, "LoanDefaulted", 1, 50)], 60);
+
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("100000.000000"));
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "110000.000000");
+    assert_eq!(
+        r.summary.at_risk_wl_and_default_pct.as_deref(),
+        Some("0.9167")
+    );
+}
+
+#[test]
+fn union_summary_recomputed() {
+    let r = run(&two_chain_inputs(), &[], 60);
+    let s = &r.summary;
+    assert_eq!(s.total_deployed, "190000.000000");
+    assert_eq!(s.deployed_senior, "150000.000000");
+    assert_eq!(s.total_collateral.as_deref(), Some("185000.000000"));
+    assert_eq!(s.senior_debt_coverage.as_deref(), Some("1.23"));
+    assert_eq!(s.avg_yield.as_deref(), Some("0.121579"));
+    assert_eq!(s.weighted_rate, s.avg_yield);
+    assert_eq!(s.avg_duration_days, Some(137));
+    assert_eq!(s.at_risk_wl_and_default_senior, "30000.000000");
+    assert_eq!(s.at_risk_wl_and_default_pct.as_deref(), Some("0.1622"));
+    let top = s.top_concentration.as_ref().unwrap();
+    assert_eq!(top.commodity, "Copper Concentrate");
+    assert_eq!(top.share, "0.7333");
+}
+
+#[test]
+fn ordering_tie_break_chain_then_loan() {
+    let equal = |id: i64, chain: i64, status: &str| {
+        with_status(
+            on_chain(make_loan(id, 40, 10, 1000, 0, 100, "Co", "Zinc", ""), chain),
+            status,
+        )
+    };
+    let order = |r: &LoanBookResponse| -> Vec<(i64, String)> {
+        r.loans
+            .iter()
+            .map(|e| (e.chain_id, e.loan_id.clone()))
+            .collect()
+    };
+    let expected = vec![
+        (1, "9".to_owned()),
+        (1, "10".to_owned()),
+        (CHAIN_B, "1".to_owned()),
+    ];
+
+    let active = vec![
+        equal(1, CHAIN_B, "Performing"),
+        equal(10, 1, "Performing"),
+        equal(9, 1, "Performing"),
+    ];
+    let r = at(10, &active, &[]);
+    assert_eq!(order(&r), expected);
+
+    let terminal = vec![
+        equal(1, CHAIN_B, "Closed"),
+        equal(10, 1, "Closed"),
+        equal(9, 1, "Closed"),
+    ];
+    let events = vec![
+        chain_event(CHAIN_B, "LoanClosed", 1, 5),
+        chain_event(1, "LoanClosed", 10, 5),
+        chain_event(1, "LoanClosed", 9, 5),
+    ];
+    let r = at(10, &terminal, &events);
+    assert_eq!(order(&r), expected);
+}
+
+#[test]
+fn union_entries_match_single_chain_entries() {
+    let inputs = two_chain_inputs();
+    let union = run(&inputs, &[], 60);
+
+    for chain in [1, CHAIN_B] {
+        let only = Inputs {
+            loans: inputs
+                .loans
+                .iter()
+                .filter(|l| l.chain_id == chain)
+                .cloned()
+                .collect(),
+            collateral: inputs
+                .collateral
+                .iter()
+                .filter(|(k, _)| k.0 == chain)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            spot: inputs
+                .spot
+                .iter()
+                .filter(|(k, _)| k.0 == chain)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            disbursement: inputs
+                .disbursement
+                .iter()
+                .filter(|(k, _)| k.0 == chain)
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
+            watchlist: inputs
+                .watchlist
+                .iter()
+                .filter(|(k, _)| k.0 == chain)
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
+        };
+        let single = run(&only, &[], 60);
+        let from_union: Vec<String> = union
+            .loans
+            .iter()
+            .filter(|e| e.chain_id == chain)
+            .map(|e| serde_json::to_string(e).unwrap())
+            .collect();
+        let alone: Vec<String> = single
+            .loans
+            .iter()
+            .map(|e| serde_json::to_string(e).unwrap())
+            .collect();
+        assert_eq!(from_union, alone);
+    }
 }

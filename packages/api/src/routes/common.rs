@@ -116,11 +116,7 @@ struct RawChainParam {
     chain_id: Option<String>,
 }
 
-/// Optional `chain_id` query parameter parsed from the URI; `None` means all configured chains.
-pub fn parse_chain_filter(
-    uri: &Uri,
-    chains: &[ConfiguredChain],
-) -> Result<Option<ConfiguredChain>, ApiError> {
+fn parse_chain_id_param(uri: &Uri) -> Result<Option<i64>, ApiError> {
     let Query(raw) = Query::<RawChainParam>::try_from_uri(uri).map_err(|e| {
         let detail = if e.body_text().contains("duplicate field") {
             "must appear at most once"
@@ -132,10 +128,20 @@ pub fn parse_chain_filter(
     let Some(raw) = raw.chain_id else {
         return Ok(None);
     };
-    let id = i64::from_str(raw.trim()).map_err(|_| {
+    i64::from_str(raw.trim()).map(Some).map_err(|_| {
         let shown: String = raw.trim().chars().take(32).collect();
         ApiError::BadRequest(format!("invalid chain_id: {shown}"))
-    })?;
+    })
+}
+
+/// Optional `chain_id` query parameter parsed from the URI; `None` means all configured chains.
+pub fn parse_chain_filter(
+    uri: &Uri,
+    chains: &[ConfiguredChain],
+) -> Result<Option<ConfiguredChain>, ApiError> {
+    let Some(id) = parse_chain_id_param(uri)? else {
+        return Ok(None);
+    };
     chains
         .iter()
         .find(|c| c.chain_id == id)
@@ -149,6 +155,25 @@ pub fn parse_chain_filter(
                 .join(", ");
             ApiError::BadRequest(format!("unknown chain_id: {id} (configured: {configured})"))
         })
+}
+
+/// Chain selection for endpoints that answer an empty result for a well-formed id outside `CHAINS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainScope {
+    All,
+    One(ConfiguredChain),
+    Unconfigured(i64),
+}
+
+/// Like `parse_chain_filter`, but a well-formed id outside `CHAINS` is `Unconfigured`, not a 400.
+pub fn parse_chain_scope(uri: &Uri, chains: &[ConfiguredChain]) -> Result<ChainScope, ApiError> {
+    Ok(match parse_chain_id_param(uri)? {
+        None => ChainScope::All,
+        Some(id) => match chains.iter().find(|c| c.chain_id == id) {
+            Some(c) => ChainScope::One(*c),
+            None => ChainScope::Unconfigured(id),
+        },
+    })
 }
 
 /// Required `chain_id` query parameter parsed from the URI.
@@ -165,6 +190,19 @@ pub struct ChainFilter(pub Option<ConfiguredChain>);
 
 /// Required `chain_id` validated against `CHAINS`.
 pub struct RequiredChain(pub ConfiguredChain);
+
+/// Optional `chain_id` that tolerates an id outside `CHAINS` (see `ChainScope`).
+pub struct LenientChainFilter(pub ChainScope);
+
+impl LenientChainFilter {
+    pub fn chain_ids(&self, all: &[ConfiguredChain]) -> Vec<i64> {
+        match self.0 {
+            ChainScope::All => all.iter().map(|c| c.chain_id).collect(),
+            ChainScope::One(c) => vec![c.chain_id],
+            ChainScope::Unconfigured(id) => vec![id],
+        }
+    }
+}
 
 impl ChainFilter {
     pub fn chain_id(&self) -> Option<i64> {
@@ -187,6 +225,17 @@ impl FromRequestParts<Arc<AppState>> for ChainFilter {
         state: &Arc<AppState>,
     ) -> impl std::future::Future<Output = Result<Self, ApiError>> + Send {
         std::future::ready(parse_chain_filter(&parts.uri, &state.chains).map(Self))
+    }
+}
+
+impl FromRequestParts<Arc<AppState>> for LenientChainFilter {
+    type Rejection = ApiError;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> impl std::future::Future<Output = Result<Self, ApiError>> + Send {
+        std::future::ready(parse_chain_scope(&parts.uri, &state.chains).map(Self))
     }
 }
 
@@ -220,6 +269,15 @@ impl IntoParams for ChainFilter {
         chain_id_param(
             Required::False,
             "Chain ID to filter by. Optional — omit for all configured chains (CHAINS). An id not in CHAINS → 400.",
+        )
+    }
+}
+
+impl IntoParams for LenientChainFilter {
+    fn into_params(_: impl Fn() -> Option<ParameterIn>) -> Vec<Parameter> {
+        chain_id_param(
+            Required::False,
+            "Chain ID to filter by. Optional — omit for all configured chains (CHAINS). An id not in CHAINS returns an empty loan book; a malformed or repeated value → 400.",
         )
     }
 }
