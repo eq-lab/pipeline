@@ -119,7 +119,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   const { data, isLoading, error, refetch } = useLoanBook({
     chainId,
   });
-  const submissions = useLoanSubmissions({ chainId });
+  const submissions = useLoanSubmissions();
   const [activeTab, setActiveTab] = useState<LoanBookTab>("active");
 
   // ── In Origination tab — independent of the Active Loans query ───────────────

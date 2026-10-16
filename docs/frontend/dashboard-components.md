@@ -1092,7 +1092,8 @@ selectable and carry a live count badge:
 
 - Active Loans → `loans.length` from `GET /v1/loan-book`.
 - In Origination → **in-flight** submission count from `GET /v1/loan-book/submissions` (issue #1053 —
-  see `useDeploymentMonitorPanel` below for the filter).
+  see `useDeploymentMonitorPanel` below for the filter). The request carries no `chain_id`, so the
+  tab shows submissions for all target chains regardless of the dashboard chain.
 
 The In Origination tab renders its own `OriginationTable` (issue #814, Figma node `4116-9155`) — a
 distinct 7-column field set (Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status, #1104 dropped Originator)
@@ -1136,7 +1137,7 @@ Maps raw `useLoanBook` + `useLoanSubmissions` data → formatted summary cards, 
 Origination rows, per-tab state, and the selected-tab state machine.
 
 **Tabs (issue #755):** Active Loans → `useLoanBook` (`GET /v1/loan-book`); In Origination →
-`useLoanSubmissions` (`GET /v1/loan-book/submissions`). The panel-level `state` follows the Active
+`useLoanSubmissions` (`GET /v1/loan-book/submissions`, no `chain_id` — all target chains; the Active Loans query alone follows the dashboard chain). The panel-level `state` follows the Active
 Loans query (drives the summary cards + shared `PanelContainer` chrome). The In Origination tab
 carries its own `originationState` (`loading`/`error`/`empty`/`ready`) so a slow/failed submissions
 fetch never blanks the whole panel. Panel-level `ready` fires even with zero active loans, so the

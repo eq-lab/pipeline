@@ -54,7 +54,7 @@ function makeWrapper() {
   return wrapper;
 }
 
-describe("useLoanSubmissions — chain scoping", () => {
+describe("useLoanSubmissions — no chain scoping", () => {
   beforeEach(() => {
     localStorage.clear();
     fetchMock.mockReset();
@@ -67,26 +67,12 @@ describe("useLoanSubmissions — chain scoping", () => {
     localStorage.clear();
   });
 
-  it.each([560048, 99_000_001])("sends chain_id=%i", async (chainId) => {
-    renderHook(() => useLoanSubmissions({ chainId }), {
-      wrapper: makeWrapper(),
-    });
+  it("requests all submissions without chain_id", async () => {
+    renderHook(() => useLoanSubmissions(), { wrapper: makeWrapper() });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(url).toContain("/v1/loan-book/submissions");
-    expect(url).toContain(`chain_id=${chainId}`);
-  });
-
-  it("fetches separately per chainId", async () => {
-    const { rerender } = renderHook(
-      ({ chainId }) => useLoanSubmissions({ chainId }),
-      { wrapper: makeWrapper(), initialProps: { chainId: 560048 } },
-    );
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-
-    rerender({ chainId: 99_000_001 });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("chain_id=99000001");
+    expect(url).not.toContain("chain_id");
   });
 });

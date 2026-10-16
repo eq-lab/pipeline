@@ -277,7 +277,7 @@ impl IntoParams for LenientChainFilter {
     fn into_params(_: impl Fn() -> Option<ParameterIn>) -> Vec<Parameter> {
         chain_id_param(
             Required::False,
-            "Chain ID to filter by. Optional — omit for all configured chains (CHAINS). An id not in CHAINS returns an empty loan book; a malformed or repeated value → 400.",
+            "Chain ID to filter by. Optional — omit for all configured chains (CHAINS). An id not in CHAINS returns an empty result; a malformed or repeated value → 400.",
         )
     }
 }

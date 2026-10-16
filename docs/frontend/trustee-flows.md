@@ -1068,7 +1068,7 @@ render function.
 
 ### Data layer (`useLoanSubmissions`)
 
-`GET /v1/loan-book/submissions`, Stellar-scoped `chain_id`, 30 s poll — mirrors the LP frontend's
+`GET /v1/loan-book/submissions`, Stellar `chain_id` (filters by the submission's target chain; an unconfigured id returns `200` empty), 30 s poll — mirrors the LP frontend's
 `useLoanSubmissions` conventions and the trustee's own `useCapitalAllocation.ts`. The trustee app
 does not depend on `@pipeline/frontend` (epic #775), so the types are a self-contained port
 (TD-42). Optional server-side `status` filter (#818) is included in the query key so filtered and

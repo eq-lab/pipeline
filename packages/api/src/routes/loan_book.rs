@@ -34,7 +34,8 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{
-    loan_registry_address, trustee_indexed_loan_guard, LenientChainFilter, RequiredChain,
+    loan_registry_address, trustee_indexed_loan_guard, ChainFilter, ChainScope, LenientChainFilter,
+    RequiredChain,
 };
 use crate::AppState;
 /// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
@@ -427,6 +428,7 @@ pub struct SubmissionView {
     pub reason: Option<String>,
     /// The submitter (authenticated address).
     pub originator: String,
+    pub target_chain_id: i64,
     /// Chain the linked loan was drawn on; `null` while pre-drawn.
     pub chain_id: Option<i64>,
     /// On-chain loan id (`uint256`, decimal string) once the submission's loan is drawn
@@ -463,6 +465,7 @@ impl From<SubmittedLoanRow> for SubmissionView {
             status: r.status,
             reason: r.reason,
             originator: r.originator,
+            target_chain_id: r.target_chain_id,
             chain_id: r.chain_id,
             loan_id: r.loan_id.map(|id| loan_key(&id)),
             created_at: r.created_at.to_rfc3339(),
@@ -579,10 +582,11 @@ async fn get_loan_book(
 #[utoipa::path(
     post,
     path = "/v1/loan-book/loan",
+    params(("chain_id" = Option<i64>, Query, description = "Target chain for the submission. Optional — defaults to DEFAULT_CHAIN_ID. Malformed or not in CHAINS → 400.")),
     request_body = SubmitLoanRequest,
     responses(
         (status = 201, description = "Submission accepted; awaiting trustee review", body = SubmitLoanResponse),
-        (status = 400, description = "Payload failed validation"),
+        (status = 400, description = "Payload failed validation, or unknown/malformed chain_id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
     ),
@@ -592,6 +596,7 @@ async fn get_loan_book(
 async fn submit_loan(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
+    chain: ChainFilter,
     Json(payload): Json<SubmitLoanRequest>,
 ) -> Result<(StatusCode, Json<SubmitLoanResponse>), ApiError> {
     if !claims.has_role(ORIGINATOR_ROLE) {
@@ -617,12 +622,17 @@ async fn submit_loan(
     // together or not at all.
     let mut tx = state.pool.begin().await?;
 
-    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub).await?;
+    let target_chain_id = resolve_target_chain(&chain, state.default_chain_id);
+    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub, target_chain_id).await?;
     insert_valuation_and_fee_rows(&mut tx, id, &payload).await?;
 
     tx.commit().await?;
 
     Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
+}
+
+pub fn resolve_target_chain(chain: &ChainFilter, default_chain_id: i64) -> i64 {
+    chain.chain_id().unwrap_or(default_chain_id)
 }
 
 /// Parse a validated submission's typed valuation / fee fields and write its
@@ -766,15 +776,19 @@ async fn resubmit_loan(
 #[utoipa::path(
     get,
     path = "/v1/loan-book/submissions",
-    params(SubmissionsQuery),
+    params(
+        SubmissionsQuery,
+        ("chain_id" = Option<i64>, Query, description = "Filter by target chain. Optional — omit for all submissions. A well-formed id not in CHAINS → 200 with an empty list. Malformed or repeated → 400.")
+    ),
     responses(
-        (status = 200, description = "Submissions (filtered by status if provided)", body = [SubmissionView]),
-        (status = 400, description = "Unknown `status` filter value"),
+        (status = 200, description = "Submissions (filtered by status and target chain if provided)", body = [SubmissionView]),
+        (status = 400, description = "Unknown `status` filter value, or malformed/repeated chain_id"),
     ),
     tag = "LoanBook"
 )]
 async fn list_submissions(
     State(state): State<Arc<AppState>>,
+    LenientChainFilter(scope): LenientChainFilter,
     Query(query): Query<SubmissionsQuery>,
 ) -> Result<Json<Vec<SubmissionView>>, ApiError> {
     let status = match query.status.as_deref() {
@@ -782,7 +796,13 @@ async fn list_submissions(
         Some(s) => Some(SubmissionStatus::from_str(s).map_err(ApiError::BadRequest)?),
     };
 
-    let rows = state.submitted_loan_repo.list(status).await?;
+    let target_chain = match scope {
+        ChainScope::All => None,
+        ChainScope::One(c) => Some(c.chain_id),
+        ChainScope::Unconfigured(_) => return Ok(Json(Vec::new())),
+    };
+
+    let rows = state.submitted_loan_repo.list(status, target_chain).await?;
 
     // Weak bridge: a drawn submission's live status lives in `contract_logs`, not on
     // the submission row (whose stored `status` is frozen at the review outcome). Derive
