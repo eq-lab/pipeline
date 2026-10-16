@@ -147,6 +147,8 @@ LP route), unauthenticated.
 - The app navigates to `/`.
 - The header's right slot immediately shows "Sign In" / "Sign Up" again (signed-out state) — no
   reload needed.
+- Any wallet that was connected is disconnected too (#1553) — the home page shows the zero state,
+  not the wallet-only state. See `1553-logout-disconnects-wallet.md`.
 - Reloading confirms the session is actually gone: `/account` is unreachable again (dev
   deployments still reach it via the `ENV.IS_DEV` bypass — see Story 7).
 

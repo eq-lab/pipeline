@@ -8,9 +8,12 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { LpResponse } from "@/api";
-import { clearSession, saveSession } from "@/auth/session";
+import { clearSession, readSession, saveSession } from "@/auth/session";
 
 const mockGet = vi.fn();
+const mockDisconnectAll = vi.fn();
+const mockNavigate = vi.fn();
+const presence = { isAnyConnected: false };
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
@@ -31,9 +34,9 @@ vi.mock("@/wallet", async (importOriginal) => {
       disconnect: vi.fn(),
     }),
     useWalletPresence: () => ({
-      isAnyConnected: false,
+      isAnyConnected: presence.isAnyConnected,
       isSettled: true,
-      disconnectAll: vi.fn(),
+      disconnectAll: mockDisconnectAll,
     }),
   };
 });
@@ -57,7 +60,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...original,
-    useNavigate: vi.fn(() => vi.fn()),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -145,5 +148,40 @@ describe("/account route — production ChangesRequested routing (#1426)", () =>
       expect(screen.getByText("Re-upload your document")).toBeInTheDocument(),
     );
     expect(screen.queryByText("Verify your account")).not.toBeInTheDocument();
+  });
+});
+
+describe("/account route — Log Out (#1553)", () => {
+  afterEach(() => {
+    clearSession();
+    mockGet.mockReset();
+    mockDisconnectAll.mockReset();
+    mockNavigate.mockReset();
+    presence.isAnyConnected = false;
+  });
+
+  it("signed in with a wallet connected: clears the session, disconnects every wallet, navigates home", async () => {
+    const user = userEvent.setup();
+    saveSession({ token: "token", expires_in: 3600, email: "lp@example.com" });
+    presence.isAnyConnected = true;
+    mockGet.mockResolvedValue(lp());
+    renderAccountRoute(undefined);
+
+    await user.click(await screen.findByRole("button", { name: "Log Out" }));
+
+    expect(readSession()).toBeNull();
+    expect(mockDisconnectAll).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+  });
+
+  it("wallet-only visitor: disconnects every wallet and navigates home", async () => {
+    const user = userEvent.setup();
+    presence.isAnyConnected = true;
+    renderAccountRoute(undefined);
+
+    await user.click(screen.getByRole("button", { name: "Log Out" }));
+
+    expect(mockDisconnectAll).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
   });
 });
