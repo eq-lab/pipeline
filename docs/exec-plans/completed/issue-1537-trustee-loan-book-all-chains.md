@@ -1,5 +1,8 @@
 # Issue #1537: Trustee: loan book across all chains; per-loan calls send the loan's own chain_id
 
+**Status: implemented (2026-10-16)** — every step and the Test Strategy are complete; trustee
+lint/build/test (72 files, 1035 tests) and `lint-docs` green. See PR #1562.
+
 Source: https://github.com/eq-lab/pipeline/issues/1537
 
 Frontend follow-up of epic #1521 (backend-only, merged: #1550 submissions target chain, #1551 loan
