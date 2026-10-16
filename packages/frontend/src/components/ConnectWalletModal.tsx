@@ -700,9 +700,10 @@ export function ConnectWalletModal({
             "absolute top-4 right-4 z-10",
             "flex h-8 w-8 items-center justify-center",
             "rounded-[var(--radius-pipeline-card)]",
-            "text-[color:var(--color-pipeline-ink)]",
-            "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
+            "text-[color:var(--color-pipeline-ink)] lg:text-[color:var(--color-pipeline-on-dark)]",
+            "transition-colors hover:bg-[rgba(56,55,53,0.08)] lg:hover:bg-[rgba(255,255,255,0.16)]",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
+            "lg:focus-visible:outline-[var(--color-pipeline-on-dark)]",
           ].join(" ")}
         >
           <CloseIcon />

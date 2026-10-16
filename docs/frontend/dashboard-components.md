@@ -921,6 +921,10 @@ Entry point: called from `TopBar` (replaces `ConnectChooserModal`).
 
 Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss, body-scroll lock.
 Dismissal is via the × button and Escape only — no scrim click (unlike `ConnectChooserModal`).
+The × is absolutely positioned top-right of the whole modal, so from `lg` it sits on the hero
+image panel and renders `--color-pipeline-on-dark` with a white hover tint (#1555, the same
+treatment `AuthModalShell` gives its ×); below `lg`, where the panel is hidden and it sits on
+paper, it stays `--color-pipeline-ink`.
 
 **KYB sign-in (#1248):** `SignInModal` (see [`auth-components.md`](./auth-components.md)) reuses
 this modal's two-pane shell — extracted verbatim into `AuthModalShell` — and, as of #1362, is also

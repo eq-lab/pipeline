@@ -324,6 +324,16 @@ describe("ConnectWalletModal — dismissal", () => {
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(onDismiss).toHaveBeenCalledOnce();
   });
+
+  it("Close (×) is ink below lg and on-dark from lg, where it sits on the image panel (#1555)", async () => {
+    renderModal();
+    const close = await screen.findByRole("button", { name: "Close" });
+    expect(close.className).toContain("text-[color:var(--color-pipeline-ink)]");
+    expect(close.className).toContain(
+      "lg:text-[color:var(--color-pipeline-on-dark)]",
+    );
+    expect(close.className).toContain("lg:hover:bg-[rgba(255,255,255,0.16)]");
+  });
 });
 
 // ── Right image panel ─────────────────────────────────────────────────────────
