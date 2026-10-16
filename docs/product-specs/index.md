@@ -23,14 +23,15 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 |------|--------|-------------|
 | [lp-onboarding.md](./lp-onboarding.md) | LP Onboarding & Compliance | KYT screening, three whitelist enrolment paths, freshness window, manual review |
 | [kyb-lp-verification.md](./kyb-lp-verification.md) | LP Onboarding & Compliance | KYB entity registration, document review lifecycle, notifications, settlement address |
-| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | Two-step deposit (Intake Wallet, KYT-gated claim), ticket book, refund paths |
+| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed |
+| [evm-requests-queue.md](./evm-requests-queue.md) | Deposits & PLUSD Minting | Deployed EVM VerifiedRequestsQueue: DepositManager, WithdrawalQueue, `VerifiedRequests` EIP-712 voucher, rate limiter, voucher API |
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
-| [withdrawals.md](./withdrawals.md) | Withdrawals | FIFO queue, partial fills, automated payout, Treasury redemption |
+| [withdrawals.md](./withdrawals.md) | Withdrawals | EVM `requestWithdrawal` / `claimWithdrawal` (voucher-gated, FIFO-funded), Treasury redemption; designed attestation queue marked not deployed |
 | [smart-contracts.md](./smart-contracts.md) | Smart Contracts | Overview, governance, contracts table, security considerations, actor glossary |
-| [smart-contracts-interfaces.md](./smart-contracts-interfaces.md) | Smart Contracts | PLUSD, DepositManager, YieldMinter, sPLUSD, WhitelistRegistry, WithdrawalQueue interfaces |
+| [smart-contracts-interfaces.md](./smart-contracts-interfaces.md) | Smart Contracts | PLUSD, YieldMinter, sPLUSD, WhitelistRegistry interfaces; designed (not deployed) DepositManager and WithdrawalQueue |
 | [smart-contracts-registry.md](./smart-contracts-registry.md) | Smart Contracts | LoanRegistry, ShutdownController interfaces, Shutdown Mode, data models |
 | [smart-contracts-operations.md](./smart-contracts-operations.md) | Smart Contracts | Role assignments, upgradeability, emergency response, deferred features |
 | [security.md](./security.md) | Security & Threat Model | Threat model, peer comparison, known properties, accepted trust assumptions, internal rug containment |
