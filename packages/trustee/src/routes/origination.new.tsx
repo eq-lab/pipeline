@@ -48,15 +48,30 @@ function FieldInput({
         <span className={FIELD_LABEL_CLASS} style={{ color: INK_MUTED }}>
           {field.label}
         </span>
-        <input
-          type="text"
-          inputMode={field.numeric ? "numeric" : undefined}
-          data-testid={`submit-loan-field-${field.path}`}
-          value={value}
-          placeholder={field.placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          className={FIELD_INPUT_CLASS}
-        />
+        {field.options ? (
+          <select
+            data-testid={`submit-loan-field-${field.path}`}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className={FIELD_INPUT_CLASS}
+          >
+            {field.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            inputMode={field.numeric ? "numeric" : undefined}
+            data-testid={`submit-loan-field-${field.path}`}
+            value={value}
+            placeholder={field.placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            className={FIELD_INPUT_CLASS}
+          />
+        )}
       </label>
       {error && (
         <p
@@ -81,11 +96,11 @@ function OriginationNew() {
     : null;
 
   const onSubmit = () => {
-    const input = form.buildForSubmit();
-    if (input == null) return;
+    const variables = form.buildForSubmit();
+    if (variables == null) return;
     submit.reset();
     void submit
-      .mutateAsync(input)
+      .mutateAsync(variables)
       .then(() => navigate({ to: "/origination" }))
       .catch(() => undefined);
   };

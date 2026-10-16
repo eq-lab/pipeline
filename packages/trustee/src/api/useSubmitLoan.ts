@@ -64,18 +64,29 @@ export interface SubmitLoanResponse {
   id: number;
 }
 
-async function postLoan(input: SubmitLoanInput): Promise<SubmitLoanResponse> {
-  return apiFetch<SubmitLoanResponse>("/v1/loan-book/loan", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+export interface SubmitLoanVariables {
+  chainId: number;
+  input: SubmitLoanInput;
+}
+
+async function postLoan({
+  chainId,
+  input,
+}: SubmitLoanVariables): Promise<SubmitLoanResponse> {
+  return apiFetch<SubmitLoanResponse>(
+    `/v1/loan-book/loan?chain_id=${chainId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function useSubmitLoan() {
   const queryClient = useQueryClient();
 
-  return useMutation<SubmitLoanResponse, Error, SubmitLoanInput>({
+  return useMutation<SubmitLoanResponse, Error, SubmitLoanVariables>({
     mutationFn: postLoan,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["loan-submissions"] });

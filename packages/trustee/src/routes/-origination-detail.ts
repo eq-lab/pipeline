@@ -26,6 +26,7 @@ import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 import { toUserError } from "@/utils/userError";
+import { targetChainLabel } from "@/lib/targetChains";
 
 // ── Router state augmentation ────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ export interface DocumentDisplay {
 }
 
 export interface DealDetailsDisplay {
+  targetChain: string;
   originator: string;
   commodity: string;
   corridor: string;
@@ -224,6 +226,7 @@ function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
     submission.loan_data ?? {};
 
   return {
+    targetChain: targetChainLabel(submission.target_chain_id),
     originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
     corridor: formatCorridor(loanData.corridor),
@@ -348,6 +351,7 @@ export function useOriginationDetail(
           maturityDate: "—",
         },
         dealDetails: {
+          targetChain: "—",
           originator: "—",
           commodity: "—",
           corridor: "—",

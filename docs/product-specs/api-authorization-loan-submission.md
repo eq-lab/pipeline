@@ -45,7 +45,7 @@ drawn on. It is set at submission from the optional `?chain_id` query parameter
 `loan_data`, and is kept on resubmit. `GET /v1/loan-book/submissions` is public: omitted
 `chain_id` returns all rows, a configured id filters by target, a well-formed id not in
 `CHAINS` returns `200` with an empty list, and a malformed or repeated one returns `400`.
-Loans drawn on Hoodi (test) stay unlinked until #1536 sends the target chain. When the indexer sees `LoanDrawn`, it links the
+The Trustee form sends the target chain since #1536. When the indexer sees `LoanDrawn`, it links the
 submission by `metadata_uri` only if the draw chain equals `target_chain_id`. A draw on
 another chain leaves the submission unlinked and is logged at `warn`; so is a draw whose
 `(chain_id, loan_id)` is already linked to another submission. The submission link is not

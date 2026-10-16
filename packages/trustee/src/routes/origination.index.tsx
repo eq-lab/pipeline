@@ -18,13 +18,14 @@ const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/origination")!;
 
 // spec: docs/frontend/trustee-flows.md#origination-table-origination-issue-813 (Layout).
 const GRID_TEMPLATE_COLUMNS =
-  "minmax(0,1.2fr) minmax(0,1.6fr) 100px minmax(0,1.6fr) 80px 120px 100px 210px";
+  "minmax(0,1.2fr) 90px minmax(0,1.6fr) 100px minmax(0,1.6fr) 80px 120px 100px 210px";
 
 // Exact Figma literal, inline `style` so it always paints (Tailwind v4 ordering quirk).
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
 
 const COLUMN_HEADERS = [
   "Originator",
+  "Chain",
   "Commodity",
   "Facility",
   "Corridor",
@@ -250,6 +251,14 @@ function OriginationTable() {
                 className={`${BODY_CELL_CLASS} font-semibold text-[color:var(--color-pipeline-ink)]`}
               >
                 {row.originator}
+              </div>
+              <div
+                role="cell"
+                title={row.chain}
+                data-testid={`origination-chain-cell-${row.id}`}
+                className={`${BODY_CELL_CLASS} text-[color:var(--color-pipeline-ink)]`}
+              >
+                {row.chain}
               </div>
               <div
                 role="cell"

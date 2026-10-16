@@ -615,3 +615,19 @@ describe("useOriginationDetail — refetch fallback (no router state)", () => {
     expect(result.current.statusKind).toBe("approved");
   });
 });
+
+describe("useOriginationDetail — target chain (#1536)", () => {
+  it("maps target_chain_id to its label, '—' when absent", () => {
+    mockSubmissions([{ ...FULL_SUBMISSION, target_chain_id: 560048 }]);
+    const { result } = renderHook(() =>
+      useOriginationDetail(String(FULL_SUBMISSION.id), undefined),
+    );
+    expect(result.current.dealDetails.targetChain).toBe("Hoodi");
+
+    mockSubmissions([FULL_SUBMISSION]);
+    const absent = renderHook(() =>
+      useOriginationDetail(String(FULL_SUBMISSION.id), undefined),
+    );
+    expect(absent.result.current.dealDetails.targetChain).toBe("—");
+  });
+});

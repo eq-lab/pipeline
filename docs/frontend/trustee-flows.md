@@ -1068,7 +1068,9 @@ render function.
 
 ### Data layer (`useLoanSubmissions`)
 
-`GET /v1/loan-book/submissions`, Stellar `chain_id` (filters by the submission's target chain; an unconfigured id returns `200` empty), 30 s poll — mirrors the LP frontend's
+`GET /v1/loan-book/submissions` with **no** `chain_id` (#1536: every configured target chain —
+each `SubmissionView` carries `target_chain_id`, plus the nullable drawn `chain_id` / `loan_id`,
+all declared optional so fixtures and defensive rendering stay honest), 30 s poll — mirrors the LP frontend's
 `useLoanSubmissions` conventions and the trustee's own `useCapitalAllocation.ts`. The trustee app
 does not depend on `@pipeline/frontend` (epic #775), so the types are a self-contained port
 (TD-42). Optional server-side `status` filter (#818) is included in the query key so filtered and
@@ -1096,8 +1098,15 @@ to resubmit — so it is preserved, not folded into `Approved` (#950).
 
 ### Origination table (`/origination`, issue #813)
 
-Columns: Originator · Commodity · Facility · Corridor · Rate · Maturity · Submitted ·
+Columns: Originator · Chain · Commodity · Facility · Corridor · Rate · Maturity · Submitted ·
 Status/action.
+
+- **Chain** (#1536, no Figma — a 90px track after Originator) ← `target_chain_id` via
+  `targetChainLabel` (`packages/trustee/src/lib/targetChains.ts`): "Stellar" for
+  `ENV.STELLAR_CHAIN_ID`, the EVM chain's registry name for `ENV.EVM_CHAIN_ID` ("Hoodi" on staging,
+  "Ethereum" on prod — a two-entry local copy of `@pipeline/wallet-connect`'s `evmChainInfo` names,
+  since importing that package pulls the wallet runtime into every test), `Chain <id>` for an
+  unconfigured id, `—` when absent.
 
 **Row set (#1056):** the table lists **all** submissions, newest first — `Approved` rows
 (including backend merged/lifecycle statuses, which normalize to `Approved` per #892) render
@@ -1161,8 +1170,16 @@ complete `SubmitLoanRequest` contract of `POST /v1/loan-book/loan` (mirrored fie
 No Figma exists for this screen (product decision on #1100) — it reuses the Record
 Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
 
+- **Target chain (#1536):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
+  `FieldInput` renders a select instead of a text input when set) listing this deployment's two
+  configured chains from `TARGET_CHAINS` — Stellar (`ENV.STELLAR_CHAIN_ID`, the default) and the
+  EVM chain (`ENV.EVM_CHAIN_ID`, labelled by name). The value is **not** part of the body: the
+  builder returns `{ chainId, input }` and `useSubmitLoan` posts to
+  `POST /v1/loan-book/loan?chain_id=<id>` (`SubmitLoanVariables`). An id the API does not have
+  in `CHAINS` is a `400` rendered inline like any other rejection. The `to` label reads "Mint to
+  (address on the target chain)" — no client-side address-format check (the split below).
 - **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
-  Loan & metadata (`to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
+  Loan & metadata (`target_chain_id`, `to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
   `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
   (four 6-decimal amount strings + rate bps + two unix-second dates), Collateral (`initial_ccr`
   + `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
@@ -1176,7 +1193,9 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   "missing" warning) — and the document rows are replaced (cleared when the payload has none).
   **Required paths absent from the JSON are listed in a warning banner** while the rest
   autofills (the #1100 example payload warns exactly the `collateral_valuation.*` +
-  `fee_schedule.*` paths). Malformed JSON or a non-object root keeps the dialog open with an
+  `fee_schedule.*` paths). A `target_chain_id` in the JSON sets the selector when it is one of
+  the configured ids; otherwise the selector keeps its current value and is never listed as
+  missing (#1536). Malformed JSON or a non-object root keeps the dialog open with an
   inline parse error and touches nothing — a single JSON object is required (resolved open
   question: wrapped/array fixture forms are not accepted).
 - **Validation split:** client-side checks are shape-only — required fields non-empty, numeric
@@ -1305,6 +1324,16 @@ guard all reject step 1 — the review call is skipped entirely, the submission 
 and a mapped, retryable error message renders. **No signature is ever requested when the simulate
 step fails.** An already-`Approved` submission's `approve()` is a no-op (defensive — the
 InReview-only footer shouldn't normally allow this call, but guards a stale render/race).
+
+**Target-chain gate (#1536).** The draw above runs on Stellar only. A submission whose
+`target_chain_id` is not `ENV.STELLAR_CHAIN_ID` (`isStellarTarget`, `lib/targetChains.ts`) gets
+`approveBlockedReason` — "Approve & draw runs on Stellar only — drawing on `<chain>` from the
+Trustee app is not supported yet. Reject or request changes instead." — rendered as a muted line
+above the footer buttons (`origination-detail-approve-blocked`); Approve is disabled and both
+`openApprove()` and `approve()` are no-ops, so neither the dialog nor the Stellar draw can run
+against an EVM-targeted submission. Reject and Request changes are unaffected. A missing
+`target_chain_id` is treated as Stellar (the pre-#1529 default). The Deal Details card shows the
+target as its first row ("Target chain"). An EVM draw from the Trustee app is TD-151.
 
 **Idempotency guard — re-click after a mint-succeeded/review-failed retry:** `useDrawLoan`'s
 underlying mutation retains its `isSuccess`/`data` state for as long as the review hook instance

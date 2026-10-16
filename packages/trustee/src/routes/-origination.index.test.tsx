@@ -130,6 +130,7 @@ const SUBMISSION: SubmissionView = {
 const APPROVED_ROW: OriginationTableRow = {
   id: 2,
   originator: "Helios Metals",
+  chain: "Stellar",
   commodity: "Lithium carbonate",
   facility: "$6M",
   corridor: "CL → KR",
@@ -143,6 +144,7 @@ const APPROVED_ROW: OriginationTableRow = {
 const IN_REVIEW_ROW: OriginationTableRow = {
   id: 1,
   originator: "Auric Andes",
+  chain: "Stellar",
   commodity: "Gold pyrite concentrate",
   facility: "$3.5M",
   corridor: "PE → CN",
@@ -156,6 +158,7 @@ const IN_REVIEW_ROW: OriginationTableRow = {
 const REJECTED_ROW: OriginationTableRow = {
   id: 3,
   originator: "Delta Ore",
+  chain: "Stellar",
   commodity: "Copper cathode",
   facility: "$1.2M",
   corridor: "CL → US",
@@ -173,6 +176,7 @@ const REJECTED_ROW: OriginationTableRow = {
 const CHANGES_REQUESTED_ROW: OriginationTableRow = {
   id: 5,
   originator: "Epsilon Grain",
+  chain: "Stellar",
   commodity: "Wheat",
   facility: "$800K",
   corridor: "UA → EG",
@@ -190,6 +194,7 @@ const CHANGES_REQUESTED_ROW: OriginationTableRow = {
 const MISSING_FIELD_ROW: OriginationTableRow = {
   id: 4,
   originator: "—",
+  chain: "Stellar",
   commodity: "—",
   facility: "—",
   corridor: "—",
@@ -531,5 +536,28 @@ describe("Origination route", () => {
         expect(row.getAttribute("aria-label")).toMatch(/^Open .+ submission$/);
       }
     });
+  });
+});
+
+describe("Origination table — target chain column (#1536)", () => {
+  it("renders a Chain header after Originator and the row's chain label", async () => {
+    mockTable({
+      state: "ready",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [IN_REVIEW_ROW, { ...APPROVED_ROW, chain: "Hoodi" }],
+    });
+    renderRoute();
+
+    const headers = (await screen.findAllByRole("columnheader")).map(
+      (el) => el.textContent,
+    );
+    expect(headers.slice(0, 3)).toEqual(["Originator", "Chain", "Commodity"]);
+    expect(screen.getByTestId("origination-chain-cell-1")).toHaveTextContent(
+      "Stellar",
+    );
+    expect(screen.getByTestId("origination-chain-cell-2")).toHaveTextContent(
+      "Hoodi",
+    );
   });
 });

@@ -346,3 +346,19 @@ describe("useOriginationTable", () => {
     });
   });
 });
+
+describe("mapSubmissionToRow — target chain (#1536)", () => {
+  it("labels the configured chains and renders '—' when the field is absent", () => {
+    expect(
+      mapSubmissionToRow({ ...FULL_SUBMISSION, target_chain_id: 99_000_001 })
+        .chain,
+    ).toBe("Stellar");
+    expect(
+      mapSubmissionToRow({ ...FULL_SUBMISSION, target_chain_id: 560048 }).chain,
+    ).toBe("Hoodi");
+    expect(
+      mapSubmissionToRow({ ...FULL_SUBMISSION, target_chain_id: 7 }).chain,
+    ).toBe("Chain 7");
+    expect(mapSubmissionToRow(FULL_SUBMISSION).chain).toBe("—");
+  });
+});

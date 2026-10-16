@@ -3,7 +3,12 @@
  * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100.
  */
 import { useState } from "react";
-import type { LoanDocumentInput, SubmitLoanInput } from "@/api/useSubmitLoan";
+import type {
+  LoanDocumentInput,
+  SubmitLoanInput,
+  SubmitLoanVariables,
+} from "@/api/useSubmitLoan";
+import { DEFAULT_TARGET_CHAIN_ID, TARGET_CHAINS } from "@/lib/targetChains";
 
 // ── Field model ───────────────────────────────────────────────────────────────
 
@@ -13,7 +18,10 @@ export interface FieldDef {
   numeric?: boolean;
   required: boolean;
   placeholder?: string;
+  options?: ReadonlyArray<{ value: string; label: string }>;
 }
+
+export const TARGET_CHAIN_FIELD = "target_chain_id";
 
 export interface SectionDef {
   title: string;
@@ -24,7 +32,20 @@ export const FORM_SECTIONS: SectionDef[] = [
   {
     title: "Loan & metadata",
     fields: [
-      { path: "to", label: "Mint to (Stellar address)", required: true },
+      {
+        path: TARGET_CHAIN_FIELD,
+        label: "Target chain",
+        required: true,
+        options: TARGET_CHAINS.map((chain) => ({
+          value: String(chain.id),
+          label: chain.label,
+        })),
+      },
+      {
+        path: "to",
+        label: "Mint to (address on the target chain)",
+        required: true,
+      },
       { path: "metadata_uri", label: "Metadata URI", required: true },
       {
         path: "secondary_metadata_uri",
@@ -181,7 +202,10 @@ export const FORM_SECTIONS: SectionDef[] = [
 const ALL_FIELDS: FieldDef[] = FORM_SECTIONS.flatMap((s) => s.fields);
 
 export function emptyFormValues(): Record<string, string> {
-  return Object.fromEntries(ALL_FIELDS.map((f) => [f.path, ""]));
+  return {
+    ...Object.fromEntries(ALL_FIELDS.map((f) => [f.path, ""])),
+    [TARGET_CHAIN_FIELD]: String(DEFAULT_TARGET_CHAIN_ID),
+  };
 }
 
 // ── Import from JSON ──────────────────────────────────────────────────────────
@@ -220,8 +244,19 @@ export function parseSubmissionJson(text: string): ParsedSubmissionJson {
   const missingFields: string[] = [];
   for (const field of ALL_FIELDS) {
     const raw = readPath(root, field.path);
-    if (typeof raw === "string" || typeof raw === "number") {
-      values[field.path] = String(raw);
+    const candidate =
+      typeof raw === "string" || typeof raw === "number"
+        ? String(raw)
+        : undefined;
+    if (field.options) {
+      if (
+        candidate !== undefined &&
+        field.options.some((option) => option.value === candidate)
+      ) {
+        values[field.path] = candidate;
+      }
+    } else if (candidate !== undefined) {
+      values[field.path] = candidate;
     } else if (field.required) {
       missingFields.push(field.path);
     }
@@ -245,7 +280,7 @@ export function parseSubmissionJson(text: string): ParsedSubmissionJson {
 // ── Form → request payload ────────────────────────────────────────────────────
 
 export type BuiltSubmission =
-  | { ok: true; input: SubmitLoanInput }
+  | { ok: true; chainId: number; input: SubmitLoanInput }
   | {
       ok: false;
       fieldErrors: Record<string, string>;
@@ -278,6 +313,7 @@ export function buildSubmitLoanInput(
 
   return {
     ok: true,
+    chainId: Number.parseInt(get(TARGET_CHAIN_FIELD), 10),
     input: {
       to: get("to"),
       metadata_uri: get("metadata_uri"),
@@ -336,7 +372,7 @@ export interface OriginationNewForm {
   importWarning: string[] | null;
   importFromJson: (text: string) => string | null;
   fieldErrors: Record<string, string>;
-  buildForSubmit: () => SubmitLoanInput | null;
+  buildForSubmit: () => SubmitLoanVariables | null;
 }
 
 export function useOriginationNewForm(): OriginationNewForm {
@@ -358,7 +394,12 @@ export function useOriginationNewForm(): OriginationNewForm {
   const importFromJson = (text: string): string | null => {
     const parsed = parseSubmissionJson(text);
     if (!parsed.ok) return parsed.error;
-    setValues({ ...emptyFormValues(), ...parsed.values });
+    setValues((prev) => ({
+      ...emptyFormValues(),
+      [TARGET_CHAIN_FIELD]:
+        prev[TARGET_CHAIN_FIELD] ?? String(DEFAULT_TARGET_CHAIN_ID),
+      ...parsed.values,
+    }));
     setDocuments(parsed.documents ?? []);
     setImportWarning(
       parsed.missingFields.length > 0 ? parsed.missingFields : null,
@@ -367,14 +408,14 @@ export function useOriginationNewForm(): OriginationNewForm {
     return null;
   };
 
-  const buildForSubmit = (): SubmitLoanInput | null => {
+  const buildForSubmit = (): SubmitLoanVariables | null => {
     const built = buildSubmitLoanInput(values, documents);
     if (!built.ok) {
       setFieldErrors(built.fieldErrors);
       return null;
     }
     setFieldErrors({});
-    return built.input;
+    return { chainId: built.chainId, input: built.input };
   };
 
   return {

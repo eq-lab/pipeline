@@ -126,6 +126,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     rejectOpen: false,
     requestChangesOpen: false,
     mintedLoanId: null,
+    approveBlockedReason: null,
     ...overrides,
   });
 }
@@ -156,6 +157,7 @@ const READY_RESULT: OriginationDetailResult = {
     maturityDate: "15 Dec 2026",
   },
   dealDetails: {
+    targetChain: "Stellar",
     originator: "Auric Andes S.A.C.",
     commodity: "Gold pyrite concentrate",
     corridor: "Peru → China",
@@ -228,10 +230,15 @@ describe("Origination details route", () => {
     expect(loanTerms.textContent).toContain("15 Dec 2026");
   });
 
-  it("renders the Deal Details card's six rows plus the documents list", () => {
+  it("renders the Deal Details card's seven rows plus the documents list", () => {
     mockDetail(READY_RESULT);
     renderRoute();
     const dealDetails = screen.getByTestId("origination-detail-deal-details");
+    expect(dealDetails.textContent).toContain("Target chain");
+    expect(dealDetails.textContent).toContain("Stellar");
+    expect(dealDetails.textContent!.indexOf("Target chain")).toBeLessThan(
+      dealDetails.textContent!.indexOf("Originator"),
+    );
     expect(dealDetails.textContent).toContain("Originator");
     expect(dealDetails.textContent).toContain("Auric Andes S.A.C.");
     expect(dealDetails.textContent).toContain("Commodity");
@@ -811,5 +818,25 @@ describe("Origination details route", () => {
         "Finalizing approval…",
       );
     });
+  });
+});
+
+describe("Origination detail — Approve gate for non-Stellar targets (#1536)", () => {
+  it("InReview on an EVM target: Approve disabled with the reason line, Reject and Request changes enabled", () => {
+    mockDetail(READY_RESULT);
+    mockReview({
+      approveBlockedReason:
+        "Approve & draw runs on Stellar only — drawing on Hoodi from the Trustee app is not supported yet. Reject or request changes instead.",
+    });
+    renderRoute();
+
+    expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
+    expect(
+      screen.getByTestId("origination-detail-approve-blocked"),
+    ).toHaveTextContent("drawing on Hoodi");
+    expect(screen.getByTestId("origination-detail-reject")).not.toBeDisabled();
+    expect(
+      screen.getByTestId("origination-detail-request-changes"),
+    ).not.toBeDisabled();
   });
 });
