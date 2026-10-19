@@ -60,13 +60,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** #1250's `OtpInput.stories.tsx` avoided the same trap by defaulting `value: ""` and `onChange: () => {}` in `meta.args`, so per-story `args` can freely omit or override them. Applying the same default pair to `TextField.stories.tsx`'s `meta.args` would fix this without changing runtime behavior (the `Controlled` wrapper's own `value`/`onChange` still win at render time). Not fixed inline — out of scope for #1250, which didn't touch `TextField`.
 - **Impact:** `yarn workspace @pipeline/ui lint` (eslint + prettier) passes regardless — this is a `tsc`-only gap, so it doesn't block CI unless a `tsc --noEmit` step is added to it.
 
-### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
-- **Date:** 2026-08-19
-- **Location:** `packages/trustee/src/routes/-origination-new-page.test.tsx` lines 9, 106, 274 (shipped with #1101, commit `069c4e2`).
-- **Symptom:** `yarn lint` in `packages/trustee` exits non-zero: `@typescript-eslint/no-unused-vars` × 3 — `'_input' is defined but never used`.
-- **Root cause:** Mock callbacks declare an `_input` parameter they never read; the trustee eslint config doesn't set `argsIgnorePattern: "^_"`, so the underscore convention isn't honored.
-- **Workaround:** None needed for CI (found while running the lint gate for #1119, which doesn't touch this file). Fix is either dropping the params or adding `argsIgnorePattern` to the eslint config.
-
 ### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
 - **Tracked:** #1064
 - **Date:** 2026-08-07
@@ -108,6 +101,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
+- **Date:** 2026-08-19
+- **Location:** `packages/trustee/src/routes/-origination-new-page.test.tsx` lines 9, 106, 274 (shipped with #1101, commit `069c4e2`).
+- **Symptom:** `yarn lint` in `packages/trustee` exits non-zero: `@typescript-eslint/no-unused-vars` × 3 — `'_input' is defined but never used`.
+- **Root cause:** Mock callbacks declare an `_input` parameter they never read; the trustee eslint config doesn't set `argsIgnorePattern: "^_"`, so the underscore convention isn't honored.
+- **Workaround:** None needed for CI (found while running the lint gate for #1119, which doesn't touch this file). Fix is either dropping the params or adding `argsIgnorePattern` to the eslint config.
+- **Resolved:** 2026-10-19 — `yarn workspace @pipeline/trustee lint` is green on `main` (the unused `_input` params were removed in a later test rewrite); verified while auditing for #1579.
 
 ### BUG-24: Tech-debt tracker has two divergent `## Post-MVP` sections, and five TD numbers each name two different things
 - **Resolved:** 2026-10-01 by #1390 (PR #1406) — the two `## Post-MVP` blocks were merged entry by entry with every contested claim re-checked against the code. TD-80 kept the second block's text (it records #1380's `account_status` gating, which the code confirms); TD-81 took the first block's, so the second block's verified-false "credential stuffing against `login` is unthrottled" is gone, with the second block's rejected-`governor` reasoning appended; the first block's TD-82 was a byte-identical stray of the `## Known Gaps` copy and was dropped. One `## Post-MVP` section remains. The collision set was **13 numbers, not the five named in the heading and Symptom above** — TD-7, TD-73 and TD-83 through TD-88 collided too; the 13 frontend / `## Known Gaps` members moved to TD-100…TD-112, leaving TD-1…TD-112 each held exactly once, and `## Format` now carries a single `**Next free number:**` authority so the next appender cannot re-collide. All 8 live inbound references (code and docs) were re-pointed by reading each one's surrounding prose rather than matching the number. Archived plans under `docs/exec-plans/completed/` keep the old numbers by design. Separately, this pass corrected TD-85's cited mechanism: `AccountRepo::set_password_hash` does not exist in the workspace.
