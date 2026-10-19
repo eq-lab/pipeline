@@ -1,5 +1,5 @@
 //! Voucher signing endpoints — supports both EVM EIP-712 secp256k1 and
-//! Stellar Soroban ed25519 depending on the `chain_id` query parameter.
+//! Stellar Soroban ed25519 depending on the kind of the required `chain_id` query parameter's configured chain.
 //!
 //! EVM: signs a `VerifiedRequests` struct via EIP-712.
 //! Stellar: reproduces the on-chain `request-queue::crypto::digest` and signs
@@ -17,11 +17,11 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::chains::{parse_chain_type, ChainKind};
+use shared::chains::ChainKind;
 use shared::eip712::Eip712Domain;
 
 use crate::config::StellarVoucherChainConfig;
-use crate::routes::common::resolve_chain;
+use crate::routes::common::RequiredChain;
 use crate::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -43,8 +43,6 @@ pub struct VouchersDoc;
 #[derive(Deserialize, ToSchema)]
 pub struct WalletQuery {
     pub wallet: String,
-    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -156,11 +154,11 @@ fn internal_error_response(msg: &str) -> axum::response::Response {
     params(
         ("request_id" = String, Path, description = "Deposit request ID"),
         ("wallet" = String, Query, description = "Wallet address (0x… for EVM, G… for Stellar)"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Voucher with signature", body = VoucherResponse),
-        (status = 400, description = "Voucher signing not configured for the requested chain or invalid wallet"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; voucher signing not configured for the chain; or invalid wallet"),
         (status = 404, description = "Deposit request not found"),
         (status = 403, description = "KYT screening not passed or profile not allowed"),
         (status = 409, description = "Already claimed"),
@@ -170,17 +168,11 @@ fn internal_error_response(msg: &str) -> axum::response::Response {
 async fn deposit_voucher(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<String>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<WalletQuery>,
 ) -> impl IntoResponse {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
-    let chain_kind = match parse_chain_type(chain_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::error!(error = %e, chain_id, "failed to determine chain type");
-            return internal_error_response("invalid chain type configuration");
-        }
-    };
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
 
     let wallet = match normalise_wallet(chain_kind, &query.wallet) {
         Ok(w) => w,
@@ -201,11 +193,11 @@ async fn deposit_voucher(
     params(
         ("request_id" = String, Path, description = "Withdrawal request ID"),
         ("wallet" = String, Query, description = "Wallet address (0x… for EVM, G… for Stellar)"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Voucher with signature", body = VoucherResponse),
-        (status = 400, description = "Voucher signing not configured for the requested chain or invalid wallet"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; voucher signing not configured for the chain; or invalid wallet"),
         (status = 404, description = "Withdrawal request not found"),
         (status = 403, description = "KYT screening not passed"),
         (status = 409, description = "Already claimed"),
@@ -215,17 +207,11 @@ async fn deposit_voucher(
 async fn withdrawal_voucher(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<String>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<WalletQuery>,
 ) -> impl IntoResponse {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
-    let chain_kind = match parse_chain_type(chain_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::error!(error = %e, chain_id, "failed to determine chain type");
-            return internal_error_response("invalid chain type configuration");
-        }
-    };
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
 
     let wallet = match normalise_wallet(chain_kind, &query.wallet) {
         Ok(w) => w,

@@ -67,7 +67,7 @@ USDC moves to the **custodian** (an MPC custody address, not a contract-held bal
 
 ## Voucher API
 
-`GET /v1/deposits/{request_id}/voucher` and `GET /v1/withdrawals/{request_id}/voucher`, with `wallet=<0x…>` and `chain_id=<evm chain id>` (required for an EVM chain; the API otherwise resolves the default Stellar chain and rejects a `0x` wallet). Response `{ request_id, amount, user, signature }`; `deadline` is absent on EVM.
+`GET /v1/deposits/{request_id}/voucher` and `GET /v1/withdrawals/{request_id}/voucher`, with `wallet=<0x…>` and `chain_id=<chain id>` (required on both routes: missing, malformed, or not in `CHAINS` is `400` with `chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`, with no default-chain fallback; the wallet format is checked against the kind of the configured chain, so a `0x` wallet on a Stellar chain is `400`; a configured chain with no signer config is `400` `voucher signing not configured for chain <id>`). Response `{ request_id, amount, user, signature }`; `deadline` is absent on EVM.
 
 | Status | Meaning |
 |---|---|

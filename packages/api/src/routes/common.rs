@@ -299,7 +299,7 @@ impl IntoParams for RequiredChain {
     fn into_params(_: impl Fn() -> Option<ParameterIn>) -> Vec<Parameter> {
         chain_id_param(
             Required::True,
-            "Chain ID the loan lives on. Required — loan_id is only unique within a chain. Missing, malformed, or not in CHAINS → 400.",
+            "Chain ID the request targets. Required. Missing, malformed, or not in CHAINS → 400.",
         )
     }
 }
