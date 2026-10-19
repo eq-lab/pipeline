@@ -191,13 +191,14 @@ line, whichever section it lands in.
 - **Impact:** The seed is exposed in environment configuration; key rotation requires a restart. Acceptable for the initial iteration (Issue #562), not for mainnet production use. The relayer signer also holds the `executor` role on the access-manager, so a leak lets an attacker whitelist arbitrary addresses.
 - **Suggested fix:** Introduce a KMS-backed signer behind the `StellarRelayerSettings.signing_key` field (e.g. fetch the seed from AWS KMS at startup). Pair with TD-14 in a single migration if possible.
 
-### TD-13: CI does not run the frontend unit test suite (vitest)
+### TD-13: CI does not run the frontend unit test suite (vitest) [RESOLVED 2026-10-19 / #1579]
 
 - **Date:** 2026-06-04
 - **Location:** `.github/workflows/` — Lint workflow runs docs lint, Rust clippy, TS typecheck; Tests workflow runs Rust unit tests only
 - **Gap:** `yarn workspace @pipeline/frontend test` (778 vitest tests) is not executed by any CI check, so PRs can merge with a red frontend suite.
 - **Impact:** Already happened: #476 (PR #488) merged green CI but broke `src/routes/-index.test.tsx` ("clicking Sell navigates…") — tracked as Issue #492. Regressions surface only when someone runs the suite locally.
 - **Suggested fix:** Add a frontend-tests job (`yarn workspace @pipeline/frontend test --run`) to the Tests workflow and make it a required check.
+- **Resolution (2026-10-19, #1579):** CI runs the JS unit suites: `.github/workflows/tests.yml` executes `yarn workspace @pipeline/frontend test`, `@pipeline/wallet-connect test` and `@pipeline/trustee test`.
 
 ### TD-18: Stellar price-poller uses Utc::now() instead of canonical ledger close-time
 
@@ -219,13 +220,14 @@ line, whichever section it lands in.
 - **Suggested fix:** Replace `className="!h-8 ..."` in `StepRow.tsx` with `size="compact"` on
   the `Button` prop; adjust any test assertions that relied on the className value directly.
 
-### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal`
+### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal` [RESOLVED 2026-10-19 / #1579]
 
 - **Date:** 2026-06-18
 - **Location:** `packages/frontend/src/components/ConnectChooserModal.tsx` (and its test)
 - **Gap:** `ConnectChooserModal` is no longer imported from any non-test production file since `ConnectWalletModal` replaced it (Issue #558). Its own test file exercises it in isolation only.
 - **Impact:** Dead code accumulates maintenance overhead; any future token or style changes must be applied in two places.
 - **Suggested fix:** Delete `ConnectChooserModal.tsx` and `ConnectChooserModal.test.tsx` after confirming via `grep -rn ConnectChooserModal` that no production import exists. Update the `ConnectWalletModal.tsx` JSDoc comment that still references it.
+- **Resolution (2026-10-19, #1579):** `ConnectChooserModal` and its test no longer exist under `packages/frontend/src/components/`.
 
 ### TD-22: Active-chain `isConnected` derivation is duplicated across three files
 
@@ -996,7 +998,7 @@ line, whichever section it lands in.
   the existing `--color-pipeline-negative`, or the existing negative/danger tokens should be
   updated to `#b20000` repo-wide, in a dedicated design-system pass.
 
-### TD-60: `OtpModal`'s verification is a hardcoded mock (`MOCK_VALID_CODE`)
+### TD-60: `OtpModal`'s verification is a hardcoded mock (`MOCK_VALID_CODE`) [RESOLVED 2026-10-19 / #1579]
 
 - **Date:** 2026-09-17 (revised 2026-09-18 per the change request on #1250)
 - **Location:** `packages/frontend/src/components/useOtpModal.ts`.
@@ -1011,6 +1013,7 @@ line, whichever section it lands in.
   which reads like a bug unless this doc/tracker entry is read first.
 - **Suggested fix:** #1254 (auth session/orchestration/wiring) replaces the mock timer with a
   real verification call once the backend endpoint exists.
+- **Resolution (2026-10-19, #1579):** `MOCK_VALID_CODE` is gone — `useOtpModal` verifies against the real passcode endpoint since the auth wiring (#1362).
 
 ### TD-61: `AuthModalShell` top-aligns while every KYB Figma frame centres its content column
 
@@ -1227,7 +1230,7 @@ line, whichever section it lands in.
   row into `lp_bank_deposits` and appends the paired `lp_ledger` row — reusing
   `LpBankDepositRepo::insert` + `LpLedgerRepo::insert_deposit`'s shared-transaction shape.
 
-### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart
+### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart [RESOLVED 2026-10-19 / #1579]
 
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/components/useAuthCredentialsForm.ts`
@@ -1248,8 +1251,9 @@ line, whichever section it lands in.
   reconcile `meetsPasswordPolicy` against the server's actual validation rule — either by mirroring
   the server's regex exactly or by moving complexity validation server-side only and using the
   client-side rule purely as an early, best-effort hint.
+- **Resolution (2026-10-19, #1579):** `packages/api/src/password.rs::validate_password_policy` enforces exactly the frontend rule (≥ 8 UTF-16 code units, a digit, a non-alphanumeric character); `ResetPasswordModal` and `CreateAccountModal` share `meetsPasswordPolicy`, and a server `400` is still surfaced inline as a fallback.
 
-### TD-74: `/account`'s dev-only guard must be removed when #1282 wires the header account icon
+### TD-74: `/account`'s dev-only guard must be removed when #1282 wires the header account icon [RESOLVED 2026-10-19 / #1579]
 
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/routes/account.tsx` (`beforeLoad`).
@@ -1259,6 +1263,7 @@ line, whichever section it lands in.
 - **Impact:** Until #1282 lands, `/account` is unreachable outside the dev server, and `?state=`
   preview links are dev-only as a side effect of the same guard.
 - **Suggested fix:** #1282 removes the guard in the same change that adds the header link.
+- **Resolution (2026-10-19, #1579):** `routes/account.tsx` now guards with `!ENV.IS_DEV && !isAuthenticated && !isAnyConnected` (#1458): the route is reachable in production for authenticated or wallet-connected users; the dev-only redirect is gone.
 
 ### TD-75: Account-page Save has no real transition; needs #1267 + #1273, wired by #1254
 
