@@ -20,6 +20,7 @@ import {
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 import { getAuthChallenge, postAuthVerify } from "@/api/auth";
+import { ApiError } from "@/api/client";
 import {
   useSessionState,
   setSession,
@@ -48,6 +49,17 @@ export function useTrusteeSession(): TrusteeSessionContextValue {
 
 function isNotAuthorized(err: unknown): boolean {
   return err instanceof Error && err.name === "ApiUnauthorizedError";
+}
+
+const UNSUPPORTED_NETWORK_MESSAGE =
+  "This network isn't supported by the sign-in server. Contact your administrator.";
+
+function isUnsupportedNetwork(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    err.status === 400 &&
+    err.message.startsWith("unknown chain_id")
+  );
 }
 
 function isSignUnsupported(err: unknown): boolean {
@@ -98,7 +110,9 @@ export function TrusteeSessionProvider({
           "unauthorized",
           isNotAuthorized(err)
             ? "This wallet is not authorized to sign in. Contact your administrator."
-            : "Could not reach the sign-in service. Please try again.",
+            : isUnsupportedNetwork(err)
+              ? UNSUPPORTED_NETWORK_MESSAGE
+              : "Could not reach the sign-in service. Please try again.",
         );
         return;
       }
@@ -129,12 +143,14 @@ export function TrusteeSessionProvider({
           expiresAt: Date.now() + verified.expiresIn * 1000,
         });
         // No navigation — the render-level gate swaps the UI (#1008).
-      } catch {
+      } catch (err) {
         // A verify 401 can't distinguish unknown-address from bad-signature,
         // so it is framed as a verification failure, not "not authorized".
         setSessionStatus(
           "unauthorized",
-          "Sign-in verification failed. Please try again.",
+          isUnsupportedNetwork(err)
+            ? UNSUPPORTED_NETWORK_MESSAGE
+            : "Sign-in verification failed. Please try again.",
         );
       }
     },

@@ -1733,7 +1733,11 @@ unauthorized-error states).
    unsupported surfaces an explanatory `unauthorized` error ("This wallet cannot sign
    authentication messages…"), while a true decline stays silent per spec.
 2. `GET /v1/auth/challenge?address=&chain_id=` — `401` = address not on the server allow-list →
-   `unauthorized` + explanatory error (authorization is entirely server-side); other failures →
+   `unauthorized` + explanatory error (authorization is entirely server-side); a `400` whose
+   message starts with `unknown chain_id` (the Trustee's configured chain is not in the API's
+   `CHAINS`, #1568 — e.g. Trustee EVM chain `1` against an API configured for `99000002`) →
+   `unauthorized` + "This network isn't supported by the sign-in server. Contact your
+   administrator." (`isUnsupportedNetwork`, never the raw API error); other failures →
    "could not reach the sign-in service".
 3. The wallet signs the challenge `message` (EVM `personal_sign` hex / Stellar SEP-0053 base64 via
    `@pipeline/wallet-connect`). A rejection returns to `unauthenticated` **silently** — a user
@@ -1741,7 +1745,8 @@ unauthorized-error states).
 4. `POST /v1/auth/verify` — on success the token is stored (`setSession`) and `status` flips to
    `authenticated`; **no navigation happens anywhere in the flow** (layer 1 swaps the UI, layer 2
    tidies the URL). A `401` here (nonce race / signature mismatch) surfaces as
-   "verification failed".
+   "verification failed"; the `400 unknown chain_id` case maps to the same network-not-supported
+   message as step 2.
 
 `signOut()` clears the stored token, disconnects both wallets, and navigates to `/sign-in`. There
 is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
@@ -1865,8 +1870,13 @@ tracked in `docs/exec-plans/tech-debt-tracker.md`.
 ### Auth endpoint wrappers (`api/auth.ts`)
 
 Typed wrappers over `GET /v1/auth/challenge` / `POST /v1/auth/verify` (#791). Contract source of
-truth: `packages/api/src/routes/auth.rs` and `docs/product-specs/api-authorization.md`. A `401`
-from `challenge` means the address is not on the server allow-list — the sign-in flow renders it
-as "not authorized" (see [Sign-in card](#sign-in-card-figma-node-417433891-frame-4174-31660-unauthenticated-overlay));
+truth: `packages/api/src/routes/auth/wallet.rs` and `docs/product-specs/api-authorization.md`.
+Both calls **require a configured `chain_id`** (#1559): `getAuthChallenge(address, chainId)` and
+`VerifyRequest.chainId: number` (no optional form, so no caller can omit it, #1568); the value is
+the deployment's `ENV.EVM_CHAIN_ID` / `ENV.STELLAR_CHAIN_ID` for the picked chain. A missing id is
+a `400 chain_id is required`; an id not in the API's `CHAINS` is a `400 unknown chain_id: <id>
+(configured: …)`. A `401` from `challenge` means the address is not on the server allow-list —
+the sign-in flow renders it as "not authorized" (see
+[Sign-in card](#sign-in-card-figma-node-417433891-frame-4174-31660-unauthenticated-overlay));
 a `401` from `verify` means an unknown address, no outstanding challenge, or a bad signature
 (usually an expired or already-consumed nonce).

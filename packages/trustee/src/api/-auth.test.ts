@@ -54,14 +54,18 @@ describe("postAuthVerify", () => {
     expect(result).toEqual({ token: "jwt", expiresIn: 86400 });
   });
 
-  it("omits chain_id from the body when not provided", async () => {
+  it("always sends chain_id in the body (#1559: the server rejects a missing one)", async () => {
     mockApiFetch.mockResolvedValue({ token: "jwt", expires_in: 86400 });
 
-    await postAuthVerify({ address: "0xabc", signature: "0xdead" });
+    await postAuthVerify({
+      chainId: 560048,
+      address: "0xabc",
+      signature: "0xdead",
+    });
 
     const [, init] = mockApiFetch.mock.calls[0]!;
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.chain_id).toBeUndefined();
+    expect(body.chain_id).toBe(560048);
     expect(body.address).toBe("0xabc");
   });
 });

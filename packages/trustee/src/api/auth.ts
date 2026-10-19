@@ -14,8 +14,8 @@ export interface ChallengeResponse {
 }
 
 export interface VerifyRequest {
-  /** Chain id — optional; the server defaults to `DEFAULT_CHAIN_ID` when omitted. */
-  chainId?: number;
+  /** Chain id — required (#1559): missing → 400, not in the API's `CHAINS` → 400 `unknown chain_id`. */
+  chainId: number;
   address: string;
   /** EVM: hex (optional `0x`). Stellar: base64 (Stellar-native) or hex. */
   signature: string;
@@ -28,7 +28,7 @@ export interface VerifyResponse {
   expiresIn: number;
 }
 
-/** `GET /v1/auth/challenge?address=<0x…|G…>&chain_id=<optional>`. */
+/** `GET /v1/auth/challenge?address=<0x…|G…>&chain_id=<required, configured>` (#1559). */
 export async function getAuthChallenge(
   address: string,
   chainId: number,
