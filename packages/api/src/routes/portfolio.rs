@@ -14,6 +14,7 @@ use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::{Interval, MAX_SAMPLES};
+use crate::routes::common::RequiredChain;
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -28,8 +29,6 @@ const SECS_PER_DAY: i64 = 86_400;
 /// (no historical-window override) at a fixed bucketed resolution.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct YieldQuery {
-    /// Chain ID (required).
-    pub chain_id: i64,
     /// Number of days to look back from now (omit for full history starting at the
     /// earliest `origination_date` for the chain).
     pub days: Option<u32>,
@@ -80,26 +79,30 @@ pub fn router() -> Router<Arc<AppState>> {
     get,
     path = "/v1/stats/yield",
     params(
-        ("chain_id" = i64, Query, description = "Chain ID (required)"),
         ("days" = Option<u32>, Query, description = "Number of days to look back from now (omit for full history)"),
         ("interval" = Option<String>, Query, description = "Sample interval: \"hourly\", \"daily\" (default), or \"weekly\""),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Portfolio yield time series", body = Vec<SamplePoint>),
-        (status = 400, description = "Invalid query parameters"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or invalid query parameters"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Yield"
 )]
 async fn get_yield(
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<YieldQuery>,
 ) -> Result<Json<Vec<SamplePoint>>, ApiError> {
-    handle_yield(&state, query).await.map(Json)
+    handle_yield(&state, chain.chain_id, query).await.map(Json)
 }
 
-async fn handle_yield(state: &AppState, query: YieldQuery) -> Result<Vec<SamplePoint>, ApiError> {
-    let chain_id = query.chain_id;
+async fn handle_yield(
+    state: &AppState,
+    chain_id: i64,
+    query: YieldQuery,
+) -> Result<Vec<SamplePoint>, ApiError> {
     let step = query.interval.step_secs();
 
     // The window always ends at the current server time — this API doesn't expose
