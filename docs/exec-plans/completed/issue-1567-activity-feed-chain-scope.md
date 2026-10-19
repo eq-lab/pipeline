@@ -1,5 +1,7 @@
 # Issue #1567: LP: activity feed scoped to the active wallet view's chain
 
+**Status: implemented (2026-10-19)** — all steps done; frontend lint/build/test (154 files, 2462 tests) and `lint-docs` green. See PR #1581. Backend PR #1566 was still open at implementation time; the `chain_id` query is ignored by the current API and takes effect when it merges.
+
 Source: https://github.com/eq-lab/pipeline/issues/1567
 
 Frontend follow-up of epic #1521, after backend #1565 (PR #1566: `GET /v1/requests` takes an
