@@ -55,6 +55,7 @@ pub struct RequestInfo {
 
 #[derive(sqlx::FromRow)]
 pub struct RequestEventRow {
+    pub chain_id: i64,
     pub event_name: String,
     pub request_id: Option<bigdecimal::BigDecimal>,
     pub amount: Option<bigdecimal::BigDecimal>,
@@ -68,6 +69,7 @@ pub struct RequestEventRow {
 
 #[derive(serde::Serialize)]
 pub struct GroupedRequest {
+    pub chain_id: i64,
     #[serde(rename = "type")]
     pub request_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -119,6 +121,7 @@ impl GroupedRequest {
             .unwrap_or_default();
 
         Self {
+            chain_id: row.chain_id,
             request_type: request_type.to_owned(),
             request_id: row.request_id.map(|r| r.to_string()),
             amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
@@ -872,17 +875,17 @@ impl KycRepo {
         Ok(row.is_some())
     }
 
-    /// Get deposit/withdrawal/staking requests for a wallet across all chains.
+    /// Get deposit/withdrawal/staking requests for a wallet.
     ///
-    /// NOTE: this method is intentionally chain-agnostic (reads across all chains).
-    /// The `/v1/requests` analytics endpoint aggregates activity for a wallet regardless
-    /// of chain, which is the desired behaviour for the activity feed. See
-    /// docs/design-docs/multi-chain-kyc-sharding.md for the rationale.
+    /// `chain_id = None` reads across all chains (the activity-feed default); `Some(id)`
+    /// restricts to that chain's rows. `RequestClaimed` lookups always match on chain.
+    /// See docs/design-docs/multi-chain-kyc-sharding.md for the rationale.
     pub async fn get_all_requests(
         &self,
         wallet: &str,
         pending_only: bool,
         crystal_enabled: bool,
+        chain_id: Option<i64>,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
         // Derive the "sender" from params depending on the event type.
         // DepositRequested / RequestClaimed  -> params->>'user'
@@ -900,8 +903,14 @@ impl KycRepo {
             r.params->>'owner',
             CASE WHEN r.event_name = 'StakingDeposit' THEN r.params->>'from' END
         )";
+        let chain_clause = if chain_id.is_some() {
+            " AND r.chain_id = $2"
+        } else {
+            ""
+        };
         let base = format!(
-            "SELECT r.event_name,
+            "SELECT r.chain_id,
+                           r.event_name,
                            (r.params->>'request_id')::numeric AS request_id,
                            COALESCE(
                                (r.params->>'assets')::numeric,
@@ -916,13 +925,14 @@ impl KycRepo {
                                WHERE c2.event_name = 'RequestClaimed'
                                  AND c2.params->>'request_id' = r.params->>'request_id'
                                  AND c2.contract_address = r.contract_address
+                                 AND c2.chain_id = r.chain_id
                            ) AS is_claimed,
                            COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed
                     FROM contract_logs r
                     LEFT JOIN lp_profiles p ON p.chain_id = r.chain_id
                         AND LOWER(p.wallet_address) = LOWER({sender_expr})
                     WHERE LOWER({sender_expr}) = $1
-                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal')"
+                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal'){chain_clause}"
         );
 
         let query = if pending_only {
@@ -933,6 +943,7 @@ impl KycRepo {
                           WHERE c2.event_name = 'RequestClaimed'
                             AND c2.params->>'request_id' = r.params->>'request_id'
                             AND c2.contract_address = r.contract_address
+                            AND c2.chain_id = r.chain_id
                       )
                       AND r.event_name NOT IN ('StakingDeposit', 'StakingWithdrawal')
                     ORDER BY r.block_timestamp DESC, r.id DESC"
@@ -941,10 +952,11 @@ impl KycRepo {
             format!("{base} ORDER BY r.block_timestamp DESC, r.id DESC")
         };
 
-        let rows = sqlx::query_as::<_, RequestEventRow>(&query)
-            .bind(wallet)
-            .fetch_all(&self.pool)
-            .await?;
+        let mut q = sqlx::query_as::<_, RequestEventRow>(&query).bind(wallet);
+        if let Some(id) = chain_id {
+            q = q.bind(id);
+        }
+        let rows = q.fetch_all(&self.pool).await?;
         Ok(rows
             .into_iter()
             .map(|row| GroupedRequest::from_row(row, crystal_enabled))

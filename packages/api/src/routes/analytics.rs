@@ -8,6 +8,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use crate::routes::common::{ChainScope, LenientChainFilter};
 use crate::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -35,6 +36,8 @@ pub struct RequestsQuery {
 /// A single request or staking event in the activity feed.
 #[derive(Serialize, ToSchema)]
 pub struct RequestItem {
+    /// Chain the request or staking event was indexed on.
+    pub chain_id: i64,
     /// Event type: "Deposit", "Withdraw", "Stake", or "Unstake".
     #[serde(rename = "type")]
     pub request_type: String,
@@ -67,29 +70,44 @@ pub struct RequestsResponse {
     params(
         ("wallet" = String, Query, description = "Wallet address"),
         ("status" = Option<String>, Query, description = "Filter: \"all\" (default) or \"pending\" (unclaimed only)"),
+        LenientChainFilter,
     ),
     responses(
         (status = 200, description = "List of requests and staking events", body = RequestsResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Analytics"
 )]
 async fn get_requests(
     State(state): State<Arc<AppState>>,
+    LenientChainFilter(scope): LenientChainFilter,
     Query(query): Query<RequestsQuery>,
 ) -> impl IntoResponse {
     let wallet = query.wallet.to_lowercase();
     let pending_only = query.status.as_deref() == Some("pending");
 
+    let chain_id = match scope {
+        ChainScope::All => None,
+        ChainScope::One(c) => Some(c.chain_id),
+        ChainScope::Unconfigured(_) => {
+            return Json(RequestsResponse {
+                requests: Vec::new(),
+            })
+            .into_response();
+        }
+    };
+
     match state
         .kyc_repo
-        .get_all_requests(&wallet, pending_only, state.crystal_enabled)
+        .get_all_requests(&wallet, pending_only, state.crystal_enabled, chain_id)
         .await
     {
         Ok(events) => {
             let items: Vec<RequestItem> = events
                 .into_iter()
                 .map(|e| RequestItem {
+                    chain_id: e.chain_id,
                     request_type: e.request_type,
                     request_id: e.request_id,
                     amount: e.amount,
