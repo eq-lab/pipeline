@@ -97,6 +97,10 @@ const mockUseLoanWaterfall = vi.mocked(useLoanWaterfall);
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4488",
 });
+(Route as unknown as { useSearch: () => { chain: number } }).useSearch =
+  () => ({
+    chain: 99_000_001,
+  });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -509,6 +513,7 @@ describe("Record Repayment route — ready state", () => {
       expect(mockNavigate).toHaveBeenCalledWith({
         to: "/loans/$id",
         params: { id: "4488" },
+        search: { chain: 99_000_001 },
       }),
     );
     nowSpy.mockRestore();

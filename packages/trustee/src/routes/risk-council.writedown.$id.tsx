@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   useRiskCouncilWritedown,
   type ClosePayload,
@@ -236,7 +237,8 @@ function BackLink() {
 
 function RiskCouncilWritedown() {
   const { id } = Route.useParams();
-  const view = useRiskCouncilWritedown(id);
+  const { chain } = Route.useSearch();
+  const view = useRiskCouncilWritedown(chain, id);
 
   if (view.state === "error") {
     return (
@@ -388,5 +390,6 @@ function RiskCouncilWritedown() {
 }
 
 export const Route = createFileRoute("/risk-council/writedown/$id")({
+  validateSearch: parseLoanRouteSearch,
   component: RiskCouncilWritedown,
 });

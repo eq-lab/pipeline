@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-151.**
+**Next free number: TD-153.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2092,3 +2092,11 @@ line, whichever section it lands in.
 - **Gap:** Submissions can now target an EVM chain (#1529 backend, #1536 form), but the trustee's chain-first Approve (#831) only knows the Stellar executor → `draw_loan` path. #1536 therefore disables Approve for a non-Stellar target with an explanatory line; Reject / Request changes still work.
 - **Impact:** An EVM-targeted submission cannot be approved from the Trustee app until an EVM draw path exists (the LoanRegistry `mintLoan`/draw call signed by the trustee's EVM wallet, plus the same simulate-then-sign ordering and idempotency guard). Until then such submissions sit `InReview` or are drawn out-of-band and linked by the indexer.
 - **Suggested fix:** An EVM `useDrawLoan` arm selected by `target_chain_id`, reusing the `@pipeline/wallet-connect` EVM wallet; drop the gate once it lands.
+
+### TD-152: Trustee on-chain loan actions are Stellar-only — gated for non-Stellar loans
+
+- **Date:** 2026-10-16
+- **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
+- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
+- **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
+- **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land.

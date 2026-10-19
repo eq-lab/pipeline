@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import { useRecordRepayment, type WaterfallRow } from "./-record-repayment";
 import { useRecordPayment } from "@/api/useRecordPayment";
 import { useCloseLoan } from "@/api/useCloseLoan";
@@ -205,7 +206,8 @@ function ChecklistRow({
 
 function RecordRepayment() {
   const { id } = Route.useParams();
-  const view = useRecordRepayment(id);
+  const { chain } = Route.useSearch();
+  const view = useRecordRepayment(chain, id);
   const navigate = useNavigate();
   const record = useRecordPayment();
   const closeLoan = useCloseLoan();
@@ -243,7 +245,9 @@ function RecordRepayment() {
     closeLoan.reset();
     void closeLoan
       .mutateAsync({ loanId: Number(id), reason: view.closureReason })
-      .then(() => navigate({ to: "/loans/$id", params: { id } }))
+      .then(() =>
+        navigate({ to: "/loans/$id", params: { id }, search: { chain } }),
+      )
       .catch(() => {
         // Error surfaces inline via `closeLoan.error`; stay on the page to retry.
       });
@@ -275,6 +279,7 @@ function RecordRepayment() {
         <Link
           to="/loans/$id"
           params={{ id }}
+          search={{ chain }}
           className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
         >
           {view.backLabel}
@@ -314,6 +319,7 @@ function RecordRepayment() {
         <Link
           to="/loans/$id"
           params={{ id }}
+          search={{ chain }}
           className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
         >
           {view.backLabel}
@@ -532,6 +538,15 @@ function RecordRepayment() {
                 />
               </div>
             )}
+            {view.onChainBlockedReason && (
+              <p
+                data-testid="record-repayment-onchain-blocked"
+                className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+                style={{ color: INK_MUTED }}
+              >
+                {view.onChainBlockedReason}
+              </p>
+            )}
             {!showFullyPaid && (
               <button
                 type="button"
@@ -624,5 +639,6 @@ function RecordRepayment() {
 }
 
 export const Route = createFileRoute("/loans/$id_/record-repayment")({
+  validateSearch: parseLoanRouteSearch,
   component: RecordRepayment,
 });

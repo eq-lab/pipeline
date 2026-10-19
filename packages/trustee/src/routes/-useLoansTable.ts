@@ -15,6 +15,8 @@ import type {
   LoanBookResponse,
   LoanBookSummary,
 } from "@/api/useLoanBook";
+import { targetChainLabel } from "@/lib/targetChains";
+import { loanRowKey } from "@/lib/loanRoute";
 import { formatCompactUsd, formatCompactUsd2dp } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
 import { toUserError } from "@/utils/userError";
@@ -74,10 +76,11 @@ export interface CcrCell {
 
 /** One formatted, display-ready row of the active-loan table. */
 export interface LoanTableRow {
-  /** Stable list key — the served on-chain `loan_id`. */
   key: string;
   /** On-chain loan id; the `/loans/$id` route param for the row-click navigation. */
   loanId: string;
+  chainId: number;
+  chain: string;
   originator: string;
   commodity: string;
   /** Spot sub-line, or `null` when the asset is unpriced (no sub-line). */
@@ -221,8 +224,10 @@ export function mapEntryToRow(entry: LoanBookEntry): LoanTableRow {
         };
 
   return {
-    key: entry.loan_id,
+    key: loanRowKey(entry.chain_id, entry.loan_id),
     loanId: entry.loan_id,
+    chainId: entry.chain_id,
+    chain: targetChainLabel(entry.chain_id),
     originator: safeString(entry.originator),
     commodity: safeString(entry.commodity),
     spot: formatSpot(entry.spot_price, entry.spot_change_7d),
@@ -305,8 +310,11 @@ const EMPTY_COUNTS: Record<LoanTab, number> = {
  * empty (`loans.length === 0`) — the summary cards still render from `summary`;
  * the table shows a per-tab empty message.
  */
-export function useLoansTable(activeTab: LoanTab): UseLoansTableResult {
-  const { data, isLoading, error } = useLoanBook();
+export function useLoansTable(
+  activeTab: LoanTab,
+  chainFilter: number | null = null,
+): UseLoansTableResult {
+  const { data, isLoading, error } = useLoanBook(chainFilter);
 
   if (isLoading) {
     return {

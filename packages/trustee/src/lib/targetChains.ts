@@ -32,3 +32,10 @@ export function targetChainLabel(chainId: number | null | undefined): string {
 export function isStellarTarget(chainId: number | null | undefined): boolean {
   return chainId == null || chainId === ENV.STELLAR_CHAIN_ID;
 }
+
+export function stellarOnlyActionReason(
+  chainId: number | null | undefined,
+): string | null {
+  if (isStellarTarget(chainId)) return null;
+  return `On-chain actions run on Stellar only — this loan lives on ${targetChainLabel(chainId)}, and signing them from the Trustee app is not supported yet.`;
+}

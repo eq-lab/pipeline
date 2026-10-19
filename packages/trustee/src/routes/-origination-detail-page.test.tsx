@@ -167,6 +167,7 @@ const READY_RESULT: OriginationDetailResult = {
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
   statusKind: "in-review",
+  targetChainId: 99_000_001,
   reviewedDate: "2 Jan",
   rejectionReason: "—",
   transactionPreview: {

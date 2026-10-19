@@ -134,12 +134,13 @@ describe("Loans list route (ready)", () => {
     expect(screen.getByRole("heading", { name: "Loans" })).toBeInTheDocument();
   });
 
-  it("navigates to /loans/$id with the loan_id when a row is clicked", () => {
+  it("navigates to /loans/$id with the loan_id and the row's chain when a row is clicked", () => {
     renderRoute();
     fireEvent.click(screen.getAllByTestId("loans-row")[0]!);
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
   });
 
@@ -149,7 +150,38 @@ describe("Loans list route (ready)", () => {
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id",
       params: { id: "4488" },
+      search: { chain: 99_000_001 },
     });
+  });
+
+  it("renders a Chain column after Originator with the row's chain label (#1537)", () => {
+    renderRoute();
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers.slice(0, 3)).toEqual([
+      "Originator",
+      "Chain",
+      "Commodity · spot",
+    ]);
+    expect(
+      screen.getByTestId("loans-chain-cell-99000001:4488"),
+    ).toHaveTextContent("Stellar");
+  });
+
+  it("fetches every chain by default and one chain when the filter is set (#1537)", async () => {
+    renderRoute();
+    expect(mockUseLoanBook).toHaveBeenLastCalledWith(null);
+    await userEvent.selectOptions(
+      screen.getByTestId("loans-chain-filter"),
+      "560048",
+    );
+    expect(mockUseLoanBook).toHaveBeenLastCalledWith(560048);
+    await userEvent.selectOptions(
+      screen.getByTestId("loans-chain-filter"),
+      "all",
+    );
+    expect(mockUseLoanBook).toHaveBeenLastCalledWith(null);
   });
 
   it("renders the five summary cards with the Figma values", () => {

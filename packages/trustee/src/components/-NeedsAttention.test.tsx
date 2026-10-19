@@ -107,7 +107,9 @@ const ROW_CHANGES_REQUESTED: NeedsAttentionRow = {
 };
 
 const LOAN_ROW: LoanNeedsAttentionRow = {
+  key: "99000001:4471",
   loanId: "4471",
+  chainId: 99_000_001,
   title: "Delta Commodities · Coffee",
   subtitle: "Watchlist · loan #4471",
 };
@@ -233,7 +235,7 @@ describe("NeedsAttention", () => {
     expect(screen.getByText("Loans")).toBeInTheDocument();
     expect(screen.getByText("Delta Commodities · Coffee")).toBeInTheDocument();
     const open = screen.getByTestId("needs-attention-open");
-    expect(open).toHaveAttribute("href", "/loans/4471");
+    expect(open).toHaveAttribute("href", "/loans/4471?chain=99000001");
     expect(open).toHaveTextContent("Open");
     // Origination group is absent when there are no in-review submissions.
     expect(

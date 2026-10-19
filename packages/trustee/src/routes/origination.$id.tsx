@@ -286,9 +286,11 @@ function ActionButtons({
 function ApprovedBanner({
   date,
   loanId,
+  chainId,
 }: {
   date: string;
   loanId: number | null;
+  chainId: number;
 }) {
   return (
     <div
@@ -307,6 +309,7 @@ function ApprovedBanner({
         <Link
           to="/loans/$id"
           params={{ id: String(loanId) }}
+          search={{ chain: chainId }}
           data-testid="origination-detail-view-loan-link"
           className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)] underline"
         >
@@ -356,6 +359,7 @@ function DetailFooter({
   reviewedDate,
   rejectionReason,
   mintedLoanId,
+  mintedChainId,
   onApprove,
   onReject,
   onRequestChanges,
@@ -368,6 +372,7 @@ function DetailFooter({
   reviewedDate: string;
   rejectionReason: string;
   mintedLoanId: number | null;
+  mintedChainId: number;
   onApprove: () => void;
   onReject: () => void;
   onRequestChanges: () => void;
@@ -377,7 +382,13 @@ function DetailFooter({
   errorDetails: string | null;
 }) {
   if (statusKind === "approved") {
-    return <ApprovedBanner date={reviewedDate} loanId={mintedLoanId} />;
+    return (
+      <ApprovedBanner
+        date={reviewedDate}
+        loanId={mintedLoanId}
+        chainId={mintedChainId}
+      />
+    );
   }
   if (statusKind === "rejected") {
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
@@ -501,6 +512,7 @@ function OriginationDetail() {
           reviewedDate={detail.reviewedDate}
           rejectionReason={detail.rejectionReason}
           mintedLoanId={review.mintedLoanId}
+          mintedChainId={detail.targetChainId}
           onApprove={review.openApprove}
           onReject={review.openReject}
           onRequestChanges={review.openRequestChanges}

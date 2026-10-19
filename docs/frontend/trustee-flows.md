@@ -37,7 +37,8 @@ reads a single presenter hook, `useAuditLogView`.
   (`packages/api/src/routes/audit_log.rs`, #1000) — TD-42 convention, the trustee app does not
   depend on `@pipeline/frontend`.
 - `useAuditLogView` (`routes/-useAuditLog.ts`) — presenter. The feed is the **source of truth for
-  state**; the loan book (`useLoanBook`) is **enrichment only**: a loan-scoped row shows the
+  state**; the loan book (`useLoanBook`) is **enrichment only** (Stellar rows only — the feed is
+  Stellar-scoped and loan ids repeat across chains, #1537): a loan-scoped row shows the
   friendly `"Originator — Commodity"` name, falling back to the server-supplied `scope.label`
   (`"Loan #<id>"` / `"Protocol"`) until the loan book loads or when an id isn't in it. Each item
   maps to a display row: `formatAuditTimestamp` time (UTC), resolved scope label, and a truncated
@@ -192,8 +193,17 @@ route is JSX/styling only; `useLoansTable` owns the `useLoanBook` call, the summ
 view-model, the per-row mapping, CCR classification, and the client-side status filter — mirrors
 `-useOriginationTable.ts`.
 
-- `useLoanBook` (`api/`) — React Query hook over `GET /v1/loan-book`, Stellar-scoped `chain_id`,
-  30 s poll. A self-contained hand-mirror of the backend shape
+- `useLoanBook(chainId?)` (`api/`) — React Query hook over `GET /v1/loan-book`, 30 s poll. No
+  `chain_id` by default (#1537: every configured chain, `summary` server-computed over the union,
+  each row carrying its own `chain_id`); the Loans page's **chain filter** (All chains / Stellar /
+  `<EVM chain>`, `TARGET_CHAINS`) passes a configured id so the narrowing — and the summary tiles —
+  stay server-side (no client-side recomputation, [[no-frontend-computed-metrics]]). Query key
+  `["loan-book", chainId ?? "all"]`; `invalidateQueries({ queryKey: ["loan-book"] })` prefixes hit
+  every variant. Loan ids repeat across chains, so the row key is `` `${chain_id}:${loan_id}` ``
+  (`loanRowKey`, `lib/loanRoute.ts`) and the row-click navigation carries
+  `search: { chain: row.chainId }`. A **Chain** column (90px, after Originator, no Figma — the
+  #1536 Origination-table pattern) shows `targetChainLabel(chain_id)`. A self-contained hand-mirror
+  of the backend shape
   (`packages/api/src/routes/loan_book.rs`, post-#833/#834) — TD-42 convention, a fourth
   hand-mirroring pair alongside the existing trustee/LP ones (see
   `docs/exec-plans/tech-debt-tracker.md`); the trustee app deliberately does not depend on
@@ -324,7 +334,14 @@ DOM (mirrors `-useLoansTable.ts`).
 **Data sources:**
 
 - **Hero identity** ← the matching `/v1/loan-book` row (originator, commodity, on-chain status),
-  keyed by `loan_id`. The status bar carries no dates (maturity is a key number, not a status
+  keyed by `(chain_id, loan_id)` (`findLoanEntry`, `lib/loanRoute.ts`, #1537). The chain comes
+  from the route's validated `chain` search param (`parseLoanRouteSearch`: a positive integer,
+  else `DEFAULT_TARGET_CHAIN_ID` = Stellar, so pre-#1537 URLs still resolve); the same param is
+  carried by every link into `/loans/$id`, `/loans/$id/record-coupon`,
+  `/loans/$id/record-repayment` and `/risk-council/{escalate,reterm,writedown}/$id`, and every
+  per-loan hook (`useLoanValuation`, `useLoanFinancials`, `useLoanCcrHistory`, `useLoanWaterfall`,
+  `useCompleteDisbursement`) takes it as its first argument and sends it as `chain_id`. The status
+  bar carries no dates (maturity is a key number, not a status
   field — design assignment §S5); the chip maps the raw on-chain status via `statusToChip` (§3.2).
 - **Price & collateral** ← `GET /v1/loan-book/{loan_id}/valuations` (`useLoanValuation`).
 - **Loan-lifecycle stepper** ← derived from the on-chain status (`buildLifecycle`); no longer a
@@ -400,15 +417,15 @@ An absent status (no loan-book row) leaves every step pending — never fabricat
 Rendered by the shared `DetailHero` ([`components/detail/`](#shared-detail-primitives)) with
 `backTo="/loans"` and the `loan-detail-status-chip` / `loan-detail-meta` test ids.
 Degrades to the loan id only when no matching loan-book row is found (e.g. a direct URL to a
-non-active loan) — identity is never fabricated. The meta line prints the loan id + the
-**maturity date** (both layouts, #859; a real served field, `entry.maturity`) plus the
+non-active loan) — identity is never fabricated. The meta line prints the loan id, the chain
+label (`targetChainLabel(chain_id)`, #1537), the **maturity date** (both layouts, #859; a real served field, `entry.maturity`) plus the
 **Nearest payment** clause (#941/#953): "next payment `<date>`" when upcoming, or "payment N days
 late" / "payment due today" when overdue — dropped entirely when no next-payment timestamp is
 served. The Figma hero corridor (`Colombia → Italy`) has no backend source and is omitted.
 
 ### Price & collateral card
 
-`useLoanValuation` — `GET /v1/loan-book/{loan_id}/valuations`, Stellar-scoped, 30 s poll; a
+`useLoanValuation` — `GET /v1/loan-book/{loan_id}/valuations`, the loan's own `chain_id` (#1537), 30 s poll; a
 self-contained port of the backend DTO (`packages/api/src/routes/collateral_valuation.rs`) — a
 fifth TD-42 hand-mirroring pair. This endpoint recomputes collateral value and CCR in **plain
 USD**, so its money fields (`collateral_value`, `ccr.collateral_value`,
@@ -429,7 +446,7 @@ each independently `—` when its input is absent. The spot line pairs the valua
 
 ### Registry state & derived (#852)
 
-`useLoanFinancials` — `GET /v1/loan-book/{loan_id}/financials`, Stellar-scoped, 30 s poll; a
+`useLoanFinancials` — `GET /v1/loan-book/{loan_id}/financials`, the loan's own `chain_id` (#1537), 30 s poll; a
 self-contained port of the backend DTO (`packages/api/src/routes/loan_financials.rs`) — a sixth
 TD-42 hand-mirroring pair. Money fields display exactly as served, via plain `formatCompactUsd`
 (no rescaling, project-wide since #906). `Epochs` formats as `"1 · 10.0% · 18 Jun 2026 → 19 Aug 2029"`
@@ -524,6 +541,15 @@ own border/title).
   "to draw the Trustee's attention that they either need to record the payment or escalate to
   default." The banner surfaces both paths directly (Record payment / Escalate to default), wired
   to the existing actions. Amber (attention) tokens — not red, which is reserved for Default.
+- **Stellar-only gate (#1537, TD-152)** — Roll over, Update lifecycle, Record coupon and Close loan
+  are trustee-wallet Stellar signatures (`LoanRegistry.*` via `@pipeline/wallet-connect`). For a
+  loan whose `chain_id` is not `ENV.STELLAR_CHAIN_ID`, `useLoanDetail` returns
+  `onChainBlockedReason` (`stellarOnlyActionReason`, `lib/targetChains.ts`): the actions card
+  disables those four buttons (`ON_CHAIN_ACTIONS`) and prints the reason
+  (`loan-detail-onchain-blocked`), the Matured rollover button is disabled, `onOtherAction` is a
+  no-op for them, and the Record Coupon / Record Repayment pages null their
+  `recordPaymentInput` / `closureReason` and print the same line. Escalate to Risk Council
+  (read-only page) and Disbursement complete (DB-only) stay available.
 
 ### Figma → token / px mapping (`4116:10549`)
 
@@ -701,7 +727,9 @@ with no `<Outlet/>` of its own, so a plain `loans.$id.record-coupon.tsx` would t
 and fail to register (same class of issue `loans.tsx`'s own doc comment describes for `/loans/$id`
 itself). Per `docs/FRONTEND.md` rule 2, each `.tsx` is JSX/styling only; all data wiring lives in
 the colocated `-record-*.ts` view-model hook (mirrors `origination.$id.tsx` /
-`-origination-detail.ts`).
+`-origination-detail.ts`). Both routes validate the `chain` search param (`parseLoanRouteSearch`,
+#1537) and pass it to `useRecordCoupon(chainId, loanId)` / `useRecordRepayment(chainId, loanId)`;
+the back link and the post-success navigation keep it.
 
 The "Close loan" other-action does **not** close the loan directly — it opens the Record Repayment
 page, where the trustee records the final principal repayment and only then closes the loan
@@ -1408,7 +1436,9 @@ three flow pages. Without this layout, TanStack's generated route tree would ref
 route with no `<Outlet/>`, so a child would fail to register — the same class of issue `loans.tsx`
 fixes for `/loans/$id`. Escalate/reterm/writedown register at `/risk-council/{escalate,reterm,
 writedown}/$id` without the `$id_` trailing-underscore escape (unlike
-`loans.$id_.record-coupon.tsx`) because there is no leaf file they'd otherwise collide with.
+`loans.$id_.record-coupon.tsx`) because there is no leaf file they'd otherwise collide with. All
+three validate the `chain` search param (`parseLoanRouteSearch`, #1537) and pass it to their
+presenter hook as the first argument.
 
 ### Escalate to Default (flow 10) — proposal builder, not a typed payload
 
@@ -1600,7 +1630,9 @@ Two groups, both defensively read (`loan_data` is `serde_json::Value` on the wir
   originator-actionable (#949/#950); #1046 reversed that — an origination awaiting a resubmit
   stays visible on the Overview.
 - **Loans** — Watchlist + Matured loans from `useLoanBook` (#867): `WatchList`/`Watchlist` →
-  "Watchlist"; past-maturity (`Past Due`, legacy `Matured`) → "Matured". Links to `/loans/$id`.
+  "Watchlist"; past-maturity (`Past Due`, legacy `Matured`) → "Matured". Links to `/loans/$id`
+  with `search: { chain: row.chainId }`; the subtitle ends with the chain label and the row key is
+  `${chain_id}:${loan_id}` (#1537).
 
 **Scope (#818, cross-linked to #799):** the Loans — Payments Due, Cash Management, and Risk
 Council groups (Figma nodes `4116:9018`+) are deliberately omitted — no backend endpoints exist

@@ -205,7 +205,7 @@ describe("buildHero", () => {
     expect(hero.title).toBe("Helios Metals · Lithium");
     expect(hero.status).toEqual({ label: "Active", band: "positive" });
     // Not overdue → the next-payment date (next_payment_timestamp = 30 Jun 2026).
-    expect(hero.meta).toBe("Loan #4488 · next payment 30 Jun 2026");
+    expect(hero.meta).toBe("Loan #4488 · Stellar · next payment 30 Jun 2026");
     expect(hero.backLabel).toBe("‹ Loans");
   });
 
@@ -215,7 +215,7 @@ describe("buildHero", () => {
       makeEntry({ status: "Matured", days_overdue: 5 }),
     );
     expect(hero.status).toEqual({ label: "Matured", band: "attention" });
-    expect(hero.meta).toBe("Loan #4488 · payment 5 days late");
+    expect(hero.meta).toBe("Loan #4488 · Stellar · payment 5 days late");
   });
 
   it("degrades to the loan id only when no row is found (never fabricates)", () => {
@@ -227,7 +227,15 @@ describe("buildHero", () => {
 
   it("omits the payment clause when no next-payment timestamp is served (no fabrication)", () => {
     const hero = buildHero("4488", makeEntry({ next_payment_timestamp: 0 }));
-    expect(hero.meta).toBe("Loan #4488");
+    expect(hero.meta).toBe("Loan #4488 · Stellar");
+  });
+
+  it("labels an EVM-chain loan with its chain name (#1537)", () => {
+    const hero = buildHero(
+      "7",
+      makeEntry({ loan_id: "7", chain_id: 560048, next_payment_timestamp: 0 }),
+    );
+    expect(hero.meta).toBe("Loan #7 · Hoodi");
   });
 });
 
