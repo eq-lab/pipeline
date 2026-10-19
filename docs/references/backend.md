@@ -447,7 +447,7 @@ The `position_events` view normalises all three position-bearing row shapes — 
 
 Note that the running balance is only correct from the point share transfers began being indexed. Any holder who sent or received shares before this shipped needs an indexer resync over the vault to rebuild their chain.
 
-**`GET /v1/positions/history`.** Position history for a wallet, reading `position_events` via `PositionRepo::get_position_history`. The period surface mirrors `/v1/stats/prices` — `days` (omit for all history), `interval` (`hourly` | `daily` | `weekly`, default `daily`), `chain_id` — plus `wallet` (required). The shared `intervals::MAX_SAMPLES` cap (1_000 buckets) applies, rejecting over-wide requests with a 400 that names the estimate.
+**`GET /v1/positions/history`.** Position history for a wallet, reading `position_events` via `PositionRepo::get_position_history`. The period surface mirrors `/v1/stats/prices` — `days` (omit for all history), `interval` (`hourly` | `daily` | `weekly`, default `daily`), `chain_id` (required; missing, malformed or not in `CHAINS` → 400, no `DEFAULT_CHAIN_ID` fallback — the chain kind comes from `CHAINS`) — plus `wallet` (required). `GET /v1/pnl` likewise requires `chain_id`. The shared `intervals::MAX_SAMPLES` cap (1_000 buckets) applies, rejecting over-wide requests with a 400 that names the estimate.
 
 It takes **no `vault` parameter**: the protocol runs a single vault (sPLUSD), so `chain_id` identifies it. The response is a flat series — `{ wallet, vault_address, interval, history[] }` — matching the shape of `/v1/stats/prices`.
 

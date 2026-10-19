@@ -14,10 +14,9 @@ use utoipa::{OpenApi, ToSchema};
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
-use crate::routes::common::{resolve_chain, SeriesStat};
+use crate::routes::common::{RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
-use shared::chains::parse_chain_type;
 use shared::position_repo::PositionHistoryBucket;
 
 /// Serves two path prefixes: `/pnl` (point-in-time profit and loss, including
@@ -54,8 +53,6 @@ pub struct PnlDoc;
 #[derive(Deserialize, ToSchema)]
 pub struct PnlQuery {
     pub wallet: String,
-    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -86,31 +83,22 @@ pub struct PnlResponse {
     path = "/v1/pnl",
     params(
         ("wallet" = String, Query, description = "Wallet address"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Staking PnL for the wallet", body = PnlResponse),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or invalid wallet"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "PnL"
 )]
 async fn get_pnl(
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<PnlQuery>,
 ) -> impl IntoResponse {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
-    let chain_kind = match parse_chain_type(chain_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::error!(error = %e, chain_id, "failed to determine chain type");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "invalid chain type configuration"})),
-            )
-                .into_response();
-        }
-    };
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
 
     let wallet = match normalise_wallet(chain_kind, &query.wallet) {
         Ok(w) => w,
@@ -220,8 +208,6 @@ pub struct PositionHistoryQuery {
     /// Time grouping: "hourly", "daily" (default), or "weekly".
     #[serde(default)]
     pub interval: Interval,
-    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -281,27 +267,23 @@ pub struct PositionHistoryResponse {
         ("wallet" = String, Query, description = "Wallet address"),
         ("days" = Option<u32>, Query, description = "Number of days to look back (omit for all history)"),
         ("interval" = Option<String>, Query, description = "Time grouping: \"hourly\", \"daily\" (default), or \"weekly\""),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Position history grouped by interval", body = PositionHistoryResponse),
-        (status = 400, description = "Invalid query parameters"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; invalid wallet; or invalid query parameters"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Positions"
 )]
 async fn get_position_history(
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<PositionHistoryQuery>,
 ) -> Result<Json<PositionHistoryResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
 
-    let chain_kind = parse_chain_type(chain_id).map_err(|e| {
-        tracing::error!(error = %e, chain_id, "failed to determine chain type");
-        ApiError::Internal(anyhow::anyhow!("invalid chain type configuration"))
-    })?;
-
-    let wallet = normalise_wallet(chain_kind, &query.wallet)
+    let wallet = normalise_wallet(chain.kind, &query.wallet)
         .map_err(|(_, msg)| ApiError::BadRequest(msg))?;
 
     // One `now` for the whole request: the sample cap, the grid end and the
