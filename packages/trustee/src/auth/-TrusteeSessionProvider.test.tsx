@@ -34,6 +34,7 @@ import {
   useTrusteeSession,
 } from "./TrusteeSessionProvider";
 import { _resetSessionStoreForTests, getSessionToken } from "./sessionStore";
+import { ApiError } from "@/api/client";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -238,6 +239,45 @@ describe("TrusteeSessionProvider — 401 on challenge", () => {
   });
 });
 
+describe("TrusteeSessionProvider — unsupported network (#1568)", () => {
+  it("maps a 400 `unknown chain_id` on challenge to the network-not-supported message", async () => {
+    mockGetAuthChallenge.mockRejectedValue(
+      new ApiError("unknown chain_id: 1 (configured: 99000002)", 400),
+    );
+    evmState = { isConnected: true, address: "0xabc" };
+
+    renderProvider();
+    act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "This network isn't supported by the sign-in server.",
+    );
+    expect(mockPostAuthVerify).not.toHaveBeenCalled();
+  });
+
+  it("keeps the generic copy for any other 400 on challenge", async () => {
+    mockGetAuthChallenge.mockRejectedValue(
+      new ApiError("malformed address", 400),
+    );
+    evmState = { isConnected: true, address: "0xabc" };
+
+    renderProvider();
+    act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "Could not reach the sign-in service.",
+    );
+  });
+});
+
 describe("TrusteeSessionProvider — signature rejected", () => {
   it("returns to unauthenticated without an error when the user rejects the signature", async () => {
     mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
@@ -308,6 +348,27 @@ describe("TrusteeSessionProvider — 401 on verify", () => {
     expect(screen.getByTestId("error")).toHaveTextContent(
       "Sign-in verification failed",
     );
+  });
+
+  it("maps a 400 `unknown chain_id` on verify to the network-not-supported message (#1568)", async () => {
+    mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
+    mockEvmSignMessage.mockResolvedValue({ signature: "0xsig" });
+    mockPostAuthVerify.mockRejectedValue(
+      new ApiError("unknown chain_id: 1 (configured: 99000002)", 400),
+    );
+    evmState = { isConnected: true, address: "0xabc" };
+
+    renderProvider();
+    act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "This network isn't supported by the sign-in server.",
+    );
+    expect(getSessionToken()).toBeUndefined();
   });
 });
 

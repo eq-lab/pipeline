@@ -304,3 +304,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1559 Wallet auth: chain_id is required on challenge and verify](https://github.com/eq-lab/pipeline/issues/1559) | [1559-auth-chain-required.md](./epic-1521/1559-auth-chain-required.md) | Initial |
 | [#1563 Vouchers API: deposit/withdrawal vouchers require a configured chain_id](https://github.com/eq-lab/pipeline/issues/1563) | [1563-vouchers-chain-required.md](./epic-1521/1563-vouchers-chain-required.md) | Initial |
 | [#1567 LP: activity feed scoped to the active wallet view's chain](https://github.com/eq-lab/pipeline/issues/1567) | [1567-activity-feed-chain-scope.md](./epic-1521/1567-activity-feed-chain-scope.md) | Initial |
+| [#1568 Trustee: wallet auth always sends chain_id; clear error for an unsupported network](https://github.com/eq-lab/pipeline/issues/1568) | [1568-trustee-auth-chain-required.md](./epic-1521/1568-trustee-auth-chain-required.md) | Initial |
