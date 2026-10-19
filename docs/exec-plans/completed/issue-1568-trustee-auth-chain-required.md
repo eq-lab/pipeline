@@ -1,5 +1,7 @@
 # Issue #1568: Trustee: wallet auth always sends chain_id; clear error for an unsupported network
 
+**Status: implemented (2026-10-19)** — all steps done; trustee lint/build/test (72 files, 1038 tests) and `lint-docs` green. See PR #1582.
+
 Source: https://github.com/eq-lab/pipeline/issues/1568
 
 Frontend follow-up of epic #1521, after backend #1559 (PR #1560, merged): `GET /v1/auth/challenge`
