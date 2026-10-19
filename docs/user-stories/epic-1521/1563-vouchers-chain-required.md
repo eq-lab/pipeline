@@ -46,4 +46,4 @@ Automated coverage is in `packages/api/tests/vouchers_chain_required.rs` (400 me
 **Then:**
 
 - A signed voucher is returned with the same response shape as before
-- A `0x` wallet on the Stellar chain, or a `G…` wallet on the EVM chain, is rejected with 400
+- A `0x` wallet on the Stellar chain is rejected with 400 `invalid Stellar wallet address` (the EVM path only lowercases the wallet, so a `G…` wallet there is not a 400 — it finds no matching request)
