@@ -56,6 +56,7 @@ const FIXTURE_3: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "1000000000", // 1,000 USDC at 6 decimals
       request_id: "1",
       status: "Completed",
@@ -63,6 +64,7 @@ const FIXTURE_3: RequestsResponse = {
     },
     {
       type: "Withdraw",
+      chain_id: 560048,
       amount: "1000000000", // 1,000 USDC at 6 decimals
       request_id: "2",
       status: "PendingClaim",
@@ -70,6 +72,7 @@ const FIXTURE_3: RequestsResponse = {
     },
     {
       type: "Stake",
+      chain_id: 560048,
       amount: "1000000000000000000000", // 1,000 PLUSD at 18 decimals
       assets: "1000000000000000000000",
       shares: "999500000000000000000", // 999.5 sPLUSD at 18 decimals
@@ -84,6 +87,7 @@ const FIXTURE_5: RequestsResponse = {
     ...FIXTURE_3.requests,
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "2000000000", // 2,000 USDC at 6 decimals
       request_id: "4",
       status: "Completed",
@@ -91,6 +95,7 @@ const FIXTURE_5: RequestsResponse = {
     },
     {
       type: "Withdraw",
+      chain_id: 560048,
       amount: "3000000000", // 3,000 USDC at 6 decimals
       request_id: "5",
       status: "Completed",
@@ -103,6 +108,7 @@ const FIXTURE_6: RequestsResponse = {
     ...FIXTURE_5.requests,
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "4000000000", // 4,000 USDC at 6 decimals
       request_id: "6",
       status: "Completed",
@@ -395,6 +401,7 @@ const STELLAR_FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "30000000000", // 3,000 USDC at 7 decimals (SAC_DECIMALS)
       request_id: "stellar-1",
       status: "Completed",
@@ -497,6 +504,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
     requests: [
       {
         type: "Deposit",
+        chain_id: 560048,
         amount: "10000000", // 1.0 PLUSD at 7 decimals
         request_id: "s674-1",
         status: "Completed",
@@ -504,6 +512,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
       },
       {
         type: "Stake",
+        chain_id: 560048,
         amount: "10000000",
         assets: "10000000", // 1.0 PLUSD at 7 decimals
         shares: "9900000", // 0.99 sPLUSD at 7 decimals

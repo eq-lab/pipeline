@@ -484,7 +484,10 @@ Right-column card on the home dashboard. Renders in two states:
   `showList`.
 
 Active-chain gating (Issue #644): `isConnected` is keyed off the active chain
-(`useWalletView().kind`) rather than EVM unconditionally, mirroring `useRequests`. Protocol stats
+(`useWalletView().kind`) rather than EVM unconditionally, mirroring `useRequests` — which since
+#1567 also sends the active view's `chain_id` (`ENV.EVM_CHAIN_ID` / `ENV.STELLAR_CHAIN_ID`, the
+`usePnl` pattern), so with several EVM chains configured the feed shows only the connected chain's
+requests and switching the view refetches. Protocol stats
 (not wallet data) resolve their chain through the shared `useActiveChain()` (#1498). (Tech-debt: this
 chain-selection derivation is duplicated in `useRequests` and `transactions.tsx`; a shared hook is
 tracked in tech-debt-tracker.md.)
@@ -1911,7 +1914,7 @@ Activity page wired to `GET /v1/requests`.
 - Mobile (< 768px, Figma node `1993-9958`): illustration (240×240) and caption are top-anchored just below the tab bar with natural spacing; no tall centering wrapper.
 - Desktop (≥ 768px, Figma node `1497-94912`): illustration is vertically centred inside a `min-h-[400px]` wrapper. The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`) to gate the desktop centering treatment without affecting mobile.
 
-**Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does.
+**Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does. The feed itself is chain-scoped too (#1567): `useRequests` sends `chain_id` for the active view and keys its query on it, so the rows are the active chain's requests only (see `src/api/README.md#userequests`).
 
 Figma references: [desktop](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev), [mobile with data](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9592&m=dev), [mobile empty](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9958&m=dev).
 

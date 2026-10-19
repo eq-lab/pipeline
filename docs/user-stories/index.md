@@ -303,3 +303,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1537 Trustee: loan book across all chains; per-loan calls send the loan's own chain_id](https://github.com/eq-lab/pipeline/issues/1537) | [1537-trustee-loan-book-all-chains.md](./epic-1521/1537-trustee-loan-book-all-chains.md) | Initial |
 | [#1559 Wallet auth: chain_id is required on challenge and verify](https://github.com/eq-lab/pipeline/issues/1559) | [1559-auth-chain-required.md](./epic-1521/1559-auth-chain-required.md) | Initial |
 | [#1563 Vouchers API: deposit/withdrawal vouchers require a configured chain_id](https://github.com/eq-lab/pipeline/issues/1563) | [1563-vouchers-chain-required.md](./epic-1521/1563-vouchers-chain-required.md) | Initial |
+| [#1567 LP: activity feed scoped to the active wallet view's chain](https://github.com/eq-lab/pipeline/issues/1567) | [1567-activity-feed-chain-scope.md](./epic-1521/1567-activity-feed-chain-scope.md) | Initial |
