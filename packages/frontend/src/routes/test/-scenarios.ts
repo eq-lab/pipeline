@@ -128,6 +128,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "10000000",
             request_id: "42",
             status: "PendingVerification",
@@ -153,6 +154,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "10000000",
             request_id: "42",
             status: "PendingClaim",
@@ -185,6 +187,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "10000000",
             request_id: "42",
             status: "VerificationFailed",
@@ -209,6 +212,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "100000000",
             request_id: "10",
             status: "Completed",
@@ -216,6 +220,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "50000000",
             request_id: "11",
             status: "Completed",
@@ -223,6 +228,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
           {
             type: "Withdraw",
+            chain_id: 560048,
             amount: "20000000",
             request_id: "12",
             status: "Completed",
@@ -247,6 +253,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "100000000",
             request_id: "20",
             status: "Completed",
@@ -254,6 +261,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
           {
             type: "Withdraw",
+            chain_id: 560048,
             amount: "50000000",
             request_id: "21",
             status: "PendingVerification",
@@ -261,6 +269,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
           {
             type: "Stake",
+            chain_id: 560048,
             amount: "1000000000000000000000",
             assets: "1000000000000000000000",
             shares: "999500000000000000000",
@@ -270,6 +279,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
           {
             type: "Unstake",
+            chain_id: 560048,
             amount: "500000000000000000000",
             assets: "500000000000000000000",
             shares: "499750000000000000000",
@@ -279,6 +289,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "25000000",
             request_id: "24",
             status: "PendingClaim",
@@ -305,6 +316,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Withdraw",
+            chain_id: 560048,
             amount: "10000000000000000000", // 10 PLUSD at 18 decimals
             request_id: "77",
             status: "PendingClaim",
@@ -391,6 +403,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Withdraw",
+            chain_id: 560048,
             amount: "10000000000000000000",
             request_id: "77",
             status: "PendingVerification",
@@ -417,6 +430,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         requests: [
           {
             type: "Withdraw",
+            chain_id: 560048,
             amount: "10000000000000000000",
             request_id: "77",
             status: "VerificationFailed",

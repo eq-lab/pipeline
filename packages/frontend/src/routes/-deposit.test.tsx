@@ -1274,6 +1274,7 @@ describe("Deposit page — three-step flow", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "2000000000",
           status: "PendingClaim",
@@ -1297,6 +1298,7 @@ describe("Deposit page — three-step flow", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "2000000000",
           status: "PendingVerification",
@@ -1344,6 +1346,7 @@ describe("Deposit page — three-step flow", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "2000000000",
           status: "PendingClaim",
@@ -1372,6 +1375,7 @@ describe("Deposit page — three-step flow", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "2000000000",
           status: "PendingClaim",
@@ -1428,6 +1432,7 @@ describe("Deposit page — completed (claimed) deposit reset", () => {
 
   const COMPLETED_DEPOSIT = {
     type: "Deposit" as const,
+    chain_id: 560048,
     request_id: "42",
     amount: "2000000000",
     status: "Completed" as const,
@@ -1512,6 +1517,7 @@ describe("Deposit page — locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "5000000",
           status: "PendingVerification",
@@ -1535,6 +1541,7 @@ describe("Deposit page — locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "99",
           amount: "5000000",
           status: "PendingClaim",
@@ -1557,6 +1564,7 @@ describe("Deposit page — locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "5000000",
           status: "PendingVerification",
@@ -1581,6 +1589,7 @@ describe("Deposit page — locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "5000000",
           status: "PendingVerification",
@@ -1608,6 +1617,7 @@ describe("Deposit page — locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "5000000",
           status: "VerificationFailed",
@@ -1902,6 +1912,7 @@ describe("Deposit page — direction=withdraw — PendingVerification mock", () 
       requests: [
         {
           type: "Withdraw",
+          chain_id: 560048,
           request_id: "77",
           amount: AMOUNT_10_PLUSD,
           status: "PendingVerification",
@@ -1960,6 +1971,7 @@ describe("Deposit page — direction=withdraw — PendingClaim with voucher read
       requests: [
         {
           type: "Withdraw",
+          chain_id: 560048,
           request_id: "77",
           amount: AMOUNT_10_PLUSD,
           status: "PendingClaim",
@@ -2953,6 +2965,7 @@ describe("Deposit page — Stellar locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "77",
           amount: "20000000000",
           status: "PendingClaim",
@@ -2982,6 +2995,7 @@ describe("Deposit page — Stellar locked amount on active request", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "78",
           amount: "10000000000", // 1000 USDC at 7 dp
           status: "PendingClaim",
@@ -3118,6 +3132,7 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "99",
           amount: "10000000000",
           status: "PendingClaim",
@@ -3154,6 +3169,7 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "100",
           amount: "10000000000",
           status: "PendingClaim",
@@ -3189,6 +3205,7 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
       requests: [
         {
           type: "Withdraw",
+          chain_id: 560048,
           request_id: "101",
           amount: "10000000000",
           status: "PendingClaim",
@@ -3242,6 +3259,7 @@ describe("Deposit page — Stellar claim click triggers write", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "100",
           amount: "10000000000",
           status: "PendingClaim",
@@ -3279,6 +3297,7 @@ describe("Deposit page — Stellar claim click triggers write", () => {
       requests: [
         {
           type: "Withdraw",
+          chain_id: 560048,
           request_id: "101",
           amount: "10000000000",
           status: "PendingClaim",
@@ -3337,6 +3356,7 @@ describe("Deposit page — Stellar completed (claimed) deposit reset", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           request_id: "42",
           amount: "20000000000", // 2000 USDC at 7 dp
           status: "Completed",

@@ -57,6 +57,7 @@ const STELLAR_FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "20000000000",
       request_id: "stellar-1",
       status: "Completed",
@@ -69,6 +70,7 @@ const FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "1000000000",
       request_id: "1",
       status: "Completed",
@@ -76,6 +78,7 @@ const FIXTURE: RequestsResponse = {
     },
     {
       type: "Withdraw",
+      chain_id: 560048,
       amount: "1000000000",
       request_id: "2",
       status: "PendingClaim",
@@ -83,6 +86,7 @@ const FIXTURE: RequestsResponse = {
     },
     {
       type: "Stake",
+      chain_id: 560048,
       amount: "1000000000000000000000",
       assets: "1000000000000000000000",
       shares: "999500000000000000000",
@@ -315,6 +319,7 @@ describe("Transactions page — tab-level empty state", () => {
         requests: [
           {
             type: "Deposit",
+            chain_id: 560048,
             amount: "1000000000",
             request_id: "1",
             status: "Completed",
@@ -610,6 +615,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("returns a non-null element for a pending Deposit row", () => {
     const pendingDeposit: RequestItem = {
       type: "Deposit",
+      chain_id: 560048,
       amount: "500000000",
       request_id: "99",
       status: "PendingVerification",
@@ -623,6 +629,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("returns a non-null element for an Unstake row", () => {
     const unstake: RequestItem = {
       type: "Unstake",
+      chain_id: 560048,
       amount: "500000000000000000000",
       assets: "500000000000000000000",
       shares: "499750000000000000000",
@@ -638,6 +645,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("renders Stake with correct PLUSD and sPLUSD amounts when assets and shares are present", () => {
     const stake: RequestItem = {
       type: "Stake",
+      chain_id: 560048,
       amount: "1000000000000000000000",
       assets: "1000000000000000000000",
       shares: "999500000000000000000",
@@ -652,6 +660,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("renders Unstake with correct PLUSD and sPLUSD amounts when assets and shares are present", () => {
     const unstake: RequestItem = {
       type: "Unstake",
+      chain_id: 560048,
       amount: "500000000000000000000",
       assets: "500000000000000000000",
       shares: "499750000000000000000",
@@ -666,6 +675,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("renders Stake with em-dash when assets is missing (fail-loud)", () => {
     const stake: RequestItem = {
       type: "Stake",
+      chain_id: 560048,
       amount: "1000000000000000000000",
       status: "Completed",
       created_at: "2026-05-05T10:00:00Z",
@@ -680,6 +690,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("renders Unstake with em-dash when assets is missing (fail-loud)", () => {
     const unstake: RequestItem = {
       type: "Unstake",
+      chain_id: 560048,
       amount: "500000000000000000000",
       status: "Completed",
       created_at: "2026-05-06T10:00:00Z",
@@ -694,6 +705,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("renders Stake with em-dash for shares when only shares is missing (fail-loud)", () => {
     const stake: RequestItem = {
       type: "Stake",
+      chain_id: 560048,
       amount: "1000000000000000000000",
       assets: "1000000000000000000000",
       status: "Completed",
@@ -709,6 +721,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("Completed Deposit row shows PLUSD label (not USDC)", () => {
     const deposit: RequestItem = {
       type: "Deposit",
+      chain_id: 560048,
       amount: "1000000000",
       request_id: "676-dep",
       status: "Completed",
@@ -723,6 +736,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("Pending Deposit row shows PLUSD label (not USDC)", () => {
     const deposit: RequestItem = {
       type: "Deposit",
+      chain_id: 560048,
       amount: "1000000000",
       request_id: "676-dep-pending",
       status: "PendingVerification",
@@ -737,6 +751,7 @@ describe("Shared renderRequestRow helper — contract", () => {
   it("Completed Withdraw row shows USDC label (not PLUSD)", () => {
     const withdraw: RequestItem = {
       type: "Withdraw",
+      chain_id: 560048,
       amount: "1000000000",
       request_id: "676-wdw",
       status: "Completed",
@@ -758,6 +773,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     requests: [
       {
         type: "Deposit",
+        chain_id: 560048,
         amount: "10000000",
         request_id: "s1",
         status: "Completed",
@@ -765,6 +781,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
       },
       {
         type: "Stake",
+        chain_id: 560048,
         amount: "10000000",
         assets: "10000000",
         shares: "9900000",
@@ -853,6 +870,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
   it("renderRequestRow — Stellar chainKind: 10000000 Deposit renders '+1.00 PLUSD'", () => {
     const deposit: RequestItem = {
       type: "Deposit",
+      chain_id: 560048,
       amount: "10000000",
       request_id: "s-d1",
       status: "Completed",
@@ -865,6 +883,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
   it("renderRequestRow — Stellar chainKind: 10000000/9900000 Stake renders non-zero PLUSD/sPLUSD", () => {
     const stake: RequestItem = {
       type: "Stake",
+      chain_id: 560048,
       amount: "10000000",
       assets: "10000000",
       shares: "9900000",

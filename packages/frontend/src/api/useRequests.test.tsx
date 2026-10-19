@@ -126,6 +126,7 @@ const FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
+      chain_id: 560048,
       amount: "1000000",
       request_id: "42",
       status: "PendingClaim",
@@ -133,6 +134,7 @@ const FIXTURE: RequestsResponse = {
     },
     {
       type: "Withdraw",
+      chain_id: 560048,
       amount: "500000",
       request_id: "43",
       status: "PendingVerification",
@@ -140,6 +142,7 @@ const FIXTURE: RequestsResponse = {
     },
     {
       type: "Stake",
+      chain_id: 560048,
       amount: "1000000000000000000000",
       assets: "1000000000000000000000",
       shares: "999500000000000000000",
@@ -240,7 +243,7 @@ describe("useRequests — mock-key path", () => {
   it("per-wallet mock key takes priority over the alias key", async () => {
     const perWalletFixture: RequestsResponse = { requests: [] };
     localStorage.setItem(
-      `pipeline.mock.api.GET./v1/requests?wallet=${WALLET_ADDRESS}`,
+      `pipeline.mock.api.GET./v1/requests?wallet=${WALLET_ADDRESS}&chain_id=560048`,
       JSON.stringify(perWalletFixture),
     );
     localStorage.setItem(
@@ -286,9 +289,36 @@ describe("useRequests — real fetch path", () => {
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`/v1/requests?wallet=${WALLET_ADDRESS}`),
+      expect.stringContaining(
+        `/v1/requests?wallet=${WALLET_ADDRESS}&chain_id=560048`,
+      ),
       undefined,
     );
+  });
+
+  it("refetches with the Stellar chain id when the wallet view switches (#1567)", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(FIXTURE), { status: 200 }),
+    );
+
+    const { result, rerender } = renderHook(() => useRequests(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE);
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    setConnectedStellarWallet();
+    rerender();
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+    const url = String(fetchSpy.mock.calls[1]?.[0] ?? "");
+    expect(url).toContain(`wallet=${STELLAR_ADDRESS}`);
+    expect(url).toContain("chain_id=99000001");
+    expect(url).not.toContain("chain_id=560048");
   });
 });
 
@@ -337,6 +367,7 @@ describe("useRequests — mock-key reactivity", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           amount: "1000000",
           request_id: "1",
           status: "Completed",
@@ -397,6 +428,7 @@ describe("useRequests — Stellar wallet view", () => {
       requests: [
         {
           type: "Deposit",
+          chain_id: 560048,
           amount: "10000000",
           request_id: "99",
           status: "PendingClaim",
@@ -436,7 +468,9 @@ describe("useRequests — Stellar wallet view", () => {
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`/v1/requests?wallet=${STELLAR_ADDRESS}`),
+      expect.stringContaining(
+        `/v1/requests?wallet=${STELLAR_ADDRESS}&chain_id=99000001`,
+      ),
       undefined,
     );
   });

@@ -1,16 +1,17 @@
 /**
  * React Query hook — fetches the connected wallet's request history from the
- * Pipeline API (`GET /v1/requests?wallet=<address>`).
+ * Pipeline API (`GET /v1/requests?wallet=<address>&chain_id=<id>`).
  *
- * Chain awareness (OQ1 resolution)
- * ---------------------------------
- * The hook switches the wallet address based on the active wallet view
- * (`useWalletView().kind`):
- *   - EVM view  → uses the EVM wallet address (`0x…`)
- *   - Stellar view → uses the Stellar wallet address (`G…`)
- * No `chain_id` query parameter is added; the backend dispatches by wallet
- * address format. React Query keys differ per address, so switching the view
- * automatically invalidates the prior chain's data.
+ * Chain awareness (#552, #1567)
+ * -----------------------------
+ * The hook follows the active wallet view (`useWalletView().kind`), the same
+ * way `usePnl` does:
+ *   - EVM view     → `wallet=<0x…>&chain_id=<ENV.EVM_CHAIN_ID>`
+ *   - Stellar view → `wallet=<G…>&chain_id=<ENV.STELLAR_CHAIN_ID>`
+ * The backend filters by `chain_id` (omitted = every chain, #1565), so the
+ * same `0x…` address never pulls in another EVM chain's requests. The query
+ * key carries the view kind, the address and the chain id, so switching the
+ * view refetches.
  *
  * Mock layer
  * ----------
@@ -26,6 +27,7 @@ import { useSyncExternalStore } from "react";
 import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 import { subscribeMock } from "@/wallet";
 import { apiFetch } from "./client";
+import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ export type RequestType = "Deposit" | "Withdraw" | "Stake" | "Unstake";
 
 export interface RequestItem {
   type: RequestType;
+  chain_id: number;
   /** Omitted for Stake / Unstake */
   request_id?: string;
   /** Raw bigint string: USDC = 6 dp for Deposit/Withdraw; PLUSD = 18 dp for Stake/Unstake */
@@ -115,6 +118,7 @@ export function useRequests(
   // Select address and connection state based on the active wallet view.
   const address = kind === "stellar" ? stellarAddress : evmAddress;
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
+  const chainId = kind === "stellar" ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
 
   // Subscribe to mock-key changes — version is included in queryKey to force
   // React Query to issue a fresh fetch when mock data is written.
@@ -125,9 +129,11 @@ export function useRequests(
   );
 
   const query = useQuery<RequestsResponse, Error>({
-    queryKey: ["requests", address, mockVer],
+    queryKey: ["requests", kind, address, chainId, mockVer],
     queryFn: () =>
-      apiFetch<RequestsResponse>(`/v1/requests?wallet=${address ?? ""}`),
+      apiFetch<RequestsResponse>(
+        `/v1/requests?wallet=${address ?? ""}&chain_id=${chainId}`,
+      ),
     enabled: isConnected && !!address,
     ...(options.refetchInterval !== undefined
       ? { refetchInterval: options.refetchInterval }

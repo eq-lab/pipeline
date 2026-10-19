@@ -133,11 +133,13 @@ const { data, isLoading, error, refetch } = useRequests();
 Disabled when the wallet is disconnected. Automatically refetches when any
 `pipeline.mock.*` key changes (same-tab DevTools writes).
 
-**Chain-aware (issue #552).** When `useWalletView().kind === "stellar"`, the hook
-selects the Stellar G… address (`useStellarWallet().address`) instead of the EVM
-`0x…` address. The query key changes with the address so EVM and Stellar histories
-never mix in the React Query cache. No `chain_id` parameter is added — the backend
-dispatch is handled by the voucher hooks.
+**Chain-aware (issues #552, #1567).** The hook follows `useWalletView().kind` the
+same way `usePnl` does: the EVM view sends `wallet=<0x…>&chain_id=<ENV.EVM_CHAIN_ID>`,
+the Stellar view sends `wallet=<G…>&chain_id=<ENV.STELLAR_CHAIN_ID>`. The backend
+filters by `chain_id` (omitted = every chain, #1565), so with several EVM chains
+configured the same `0x…` address only sees the active chain's requests. The query
+key is `["requests", kind, address, chainId, mockVer]`, so switching the view
+refetches and the two histories never mix in the React Query cache.
 
 ### Types
 
@@ -334,10 +336,10 @@ localStorage.setItem(
 
 ### `useRequests` mock keys
 
-| Key                                                | Type                       | Purpose                                                                         |
-| -------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
-| `pipeline.mock.api.GET./v1/requests`               | JSON `{ requests: [...] }` | Bypasses the real fetch — `useRequests` returns this immediately for any wallet |
-| `pipeline.mock.api.GET./v1/requests?wallet=<addr>` | JSON `{ requests: [...] }` | Per-wallet override; takes priority over the un-keyed alias above               |
+| Key                                                              | Type                       | Purpose                                                                                          |
+| ---------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `pipeline.mock.api.GET./v1/requests`                             | JSON `{ requests: [...] }` | Bypasses the real fetch — `useRequests` returns this immediately for any wallet / chain          |
+| `pipeline.mock.api.GET./v1/requests?wallet=<addr>&chain_id=<id>` | JSON `{ requests: [...] }` | Per-wallet/per-chain override (exact match, #1567); takes priority over the un-keyed alias above |
 
 **Lookup order:** with-query-string key → without-query-string key → real fetch.
 
