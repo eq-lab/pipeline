@@ -344,3 +344,153 @@ fn duplicate_chain_ids_are_error() {
         assert!(msg.contains("duplicate"), "unexpected error message: {msg}");
     });
 }
+
+const EVM_CUSTODY: &str = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+const EVM_RAMP: &str = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB";
+const EVM_WALLET: &str = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb";
+
+#[test]
+fn evm_capital_sources_are_stored_as_eip55_with_default_decimals() {
+    let custody = EVM_CUSTODY.to_lowercase();
+    let ramp = EVM_RAMP.to_lowercase();
+    let wallet = EVM_WALLET.to_lowercase();
+    with_env(
+        &[
+            ("CHAINS", "7101"),
+            ("DEFAULT_CHAIN_ID", "7101"),
+            ("CHAIN_7101_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7101_EVM_API_CUSTODY_ADDRESSES", &custody),
+            ("CHAIN_7101_EVM_API_RAMP_ADDRESSES", &format!(" {ramp} ,")),
+            (
+                "CHAIN_7101_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS",
+                &wallet,
+            ),
+        ],
+        &["CHAIN_7101_TYPE", "CHAIN_7101_EVM_API_ASSET_DECIMALS"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with EVM capital sources");
+            let sets = &cfg.transfer_addresses[&7101];
+            assert!(sets.custody.contains(EVM_CUSTODY));
+            assert!(sets.ramp.contains(EVM_RAMP));
+            assert_eq!(sets.asset_decimals, 6);
+            assert_eq!(cfg.withdrawal_queue_wallets[&7101], EVM_WALLET);
+            assert_eq!(cfg.asset_decimals[&7101], 6);
+        },
+    );
+}
+
+#[test]
+fn evm_asset_decimals_override_is_shared_with_the_address_sets() {
+    with_env(
+        &[
+            ("CHAINS", "7102"),
+            ("DEFAULT_CHAIN_ID", "7102"),
+            ("CHAIN_7102_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7102_EVM_API_CUSTODY_ADDRESSES", EVM_CUSTODY),
+            ("CHAIN_7102_EVM_API_RAMP_ADDRESSES", EVM_RAMP),
+            ("CHAIN_7102_EVM_API_ASSET_DECIMALS", "18"),
+        ],
+        &["CHAIN_7102_TYPE"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with EVM decimals");
+            assert_eq!(cfg.asset_decimals[&7102], 18);
+            assert_eq!(cfg.transfer_addresses[&7102].asset_decimals, 18);
+        },
+    );
+}
+
+#[test]
+fn evm_chain_without_capital_sources_has_decimals_only() {
+    with_env(
+        &[
+            ("CHAINS", "7103"),
+            ("DEFAULT_CHAIN_ID", "7103"),
+            ("CHAIN_7103_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7103_EVM_API_CUSTODY_ADDRESSES", EVM_CUSTODY),
+        ],
+        &[
+            "CHAIN_7103_TYPE",
+            "CHAIN_7103_EVM_API_RAMP_ADDRESSES",
+            "CHAIN_7103_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with partial EVM sources");
+            assert!(!cfg.transfer_addresses.contains_key(&7103));
+            assert!(!cfg.withdrawal_queue_wallets.contains_key(&7103));
+            assert_eq!(cfg.asset_decimals[&7103], 6);
+        },
+    );
+}
+
+#[test]
+fn evm_invalid_capital_source_address_is_error() {
+    with_env(
+        &[
+            ("CHAINS", "7104"),
+            ("DEFAULT_CHAIN_ID", "7104"),
+            ("CHAIN_7104_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            (
+                "CHAIN_7104_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS",
+                STELLAR_ACCOUNT,
+            ),
+        ],
+        &["CHAIN_7104_TYPE"],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_7104_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS"),
+                "unexpected error message: {msg}"
+            );
+        },
+    );
+}
+
+#[test]
+fn stellar_chain_with_evm_capital_source_key_is_error() {
+    with_env(
+        &[
+            ("CHAINS", "99000003"),
+            ("DEFAULT_CHAIN_ID", "99000003"),
+            ("CHAIN_99000003_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000003_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000003_EVM_API_CUSTODY_ADDRESSES", EVM_CUSTODY),
+        ],
+        &[],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_99000003_EVM_API_CUSTODY_ADDRESSES"),
+                "unexpected error message: {msg}"
+            );
+        },
+    );
+}
+
+#[test]
+fn stellar_chain_keeps_seven_decimal_default() {
+    with_env(
+        &[
+            ("CHAINS", "99000004"),
+            ("DEFAULT_CHAIN_ID", "99000004"),
+            ("CHAIN_99000004_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000004_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+        ],
+        &[
+            "CHAIN_99000004_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000004_API_STELLAR_WQ_CONTRACT_ID",
+            "CHAIN_99000004_API_STELLAR_ASSET_DECIMALS",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with stellar defaults");
+            assert_eq!(cfg.asset_decimals[&99_000_004], 7);
+        },
+    );
+}

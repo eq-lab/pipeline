@@ -1,3 +1,4 @@
+pub mod asset_transfers;
 pub mod chain_poller;
 pub mod collateral_registry_parsers;
 pub mod config;
@@ -129,22 +130,24 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         settings.polling_interval_ms,
     );
 
+    let mut core_roles = vec![
+        ("DEPOSIT_MANAGER_ADDRESS", dm_contracts[0]),
+        ("WITHDRAWAL_QUEUE_ADDRESS", wq_contracts[0]),
+        ("STAKED_PLUSD_ADDRESS", splusd_contracts[0]),
+        ("LOAN_REGISTRY_ADDRESS", loan_registry_contracts[0]),
+        ("MINTER_ADDRESS", yield_minter_contracts[0]),
+    ];
+    core_roles.extend(
+        collateral_registry_contracts
+            .iter()
+            .map(|a| ("COLLATERAL_REGISTRY_ADDRESS", *a)),
+    );
+
     let deal_tokens = match settings.deal_token_factory_address.as_deref() {
         Some(raw) => {
             let factory = parse_address("DEAL_TOKEN_FACTORY_ADDRESS", raw)?;
-            let mut core = vec![
-                ("DEPOSIT_MANAGER_ADDRESS", dm_contracts[0]),
-                ("WITHDRAWAL_QUEUE_ADDRESS", wq_contracts[0]),
-                ("STAKED_PLUSD_ADDRESS", splusd_contracts[0]),
-                ("LOAN_REGISTRY_ADDRESS", loan_registry_contracts[0]),
-                ("MINTER_ADDRESS", yield_minter_contracts[0]),
-            ];
-            core.extend(
-                collateral_registry_contracts
-                    .iter()
-                    .map(|a| ("COLLATERAL_REGISTRY_ADDRESS", *a)),
-            );
-            deal_tokens::reject_core_collision(chain_id, factory, &core)?;
+            deal_tokens::reject_core_collision(chain_id, factory, &core_roles)?;
+            core_roles.push(("DEAL_TOKEN_FACTORY_ADDRESS", factory));
             let registry = Arc::new(deal_tokens::DealTokenRegistry::new(factory));
             let rows = contract_logs_repo.list_deal_registrations(chain_id).await?;
             let deals = registry.seed(&rows);
@@ -154,7 +157,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         None => None,
     };
 
-    let poller = register_evm_handlers(
+    let builder = register_evm_handlers(
         base_builder,
         chain_id,
         evm_parsers::EvmContractAddresses {
@@ -175,8 +178,27 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             mutable_resolver,
         },
         deal_tokens,
-    )
-    .build();
+    );
+    let builder = match settings.asset_tracking.clone() {
+        Some(tracking) => {
+            asset_transfers::reject_asset_collision(chain_id, tracking.asset, &core_roles)?;
+            tracing::info!(
+                chain_id,
+                asset = %tracking.asset,
+                withdrawal_queue_wallet = ?tracking.withdrawal_queue_wallet,
+                tracked = tracking.tracked.len(),
+                "EVM asset-transfer tracking enabled"
+            );
+            asset_transfers::register_asset_transfer_handler(
+                builder,
+                chain_id,
+                tracking,
+                repo.clone(),
+            )
+        }
+        None => builder,
+    };
+    let poller = builder.build();
 
     index_loop(
         "indexer",

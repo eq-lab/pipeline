@@ -97,13 +97,20 @@ Returns `[{ timestamp, cumulative_yield }]` (oldest first). `cumulative_yield(t)
 - USDC balance (units and USD value).
 - USYC holding (units and current USD value at issuer's published NAV), shown as a separate line.
 - USDC deployed on active loans (from the trustee feed). `GET /v1/capital-allocation`: `deployed` = Σ senior tranche over loans that are inside the active window **and** Trustee-flagged `is_loan_deployed` (#1027).
-- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation` (#1027): `in_transit` = gross Trustee-approved custody↔ramp flow of the tracked asset (both legs, absolute, 6-decimal-normalized) minus the per-loan confirmed transfers (`Σ(on_ramp_transferred + off_ramp_transferred)`); `null` unless custody/ramp sets are configured, **not clamped** — may go negative. `trust_account` = `sum(trust_account_deposit) − sum(trust_account_withdrawal)` over the chain's Trustee-entered `loan_capital_transfers` records (chain-scoped, not clamped — see route module docs). The per-loan records are written via the trustee-only full-upsert `POST /v1/loan-book/{loan_id}/transfers` (read back via `GET` on the same path).
+- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation` (#1027): `in_transit` = gross Trustee-approved custody↔ramp flow of the tracked asset (both legs, absolute, 6-decimal-normalized) minus the per-loan confirmed transfers (`Σ(on_ramp_transferred + off_ramp_transferred)`); `null` unless custody/ramp sets are configured, **not clamped** — may go negative. `trust_account` = `sum(trust_account_deposit) − sum(trust_account_withdrawal)` over the in-scope chains' Trustee-entered `loan_capital_transfers` records (not clamped — see route module docs). `withdrawal_queue` = the withdrawal-queue wallet's indexed USDC balance (on EVM the WithdrawalQueue's `assetHolder`), `null` unless the wallet is configured. The per-loan records are written via the trustee-only full-upsert `POST /v1/loan-book/{loan_id}/transfers` (read back via `GET` on the same path).
 
 **Liquidity ratio**
 - Current USDC ratio vs 15% target, with upper band (20%) and lower band (10%) indicators.
 
 **Reconciliation indicator**
 - The backing invariant (`PLUSD totalSupply == USDC in Capital Wallet + USYC NAV + USDC out on loans + USDC in transit`) displayed with green / amber / red status (green < 0.01% drift, amber 0.01%–1%, red > 1%).
+
+**Chain scope (financial endpoints).** `GET /v1/financial-position`, `GET /v1/capital-allocation`
+and `GET /v1/withdrawal-queue` follow the `GET /v1/loan-book` `chain_id` rule (#1530): omitted = the
+union over every configured chain, a configured id = that chain, a well-formed unconfigured id =
+200 with an empty or zeroed response, malformed or repeated = 400. Lifecycle events and Trustee
+flags only apply to loans on their own chain. `in_transit` and `withdrawal_queue` are normalized
+per chain, then summed over the chains that source them (`null` only when none does).
 
 Served by `GET /v1/financial-position` (aggregate statement of financial position).
 Response: `assets` (`liquid` → `cash_stablecoins`, `tokenized_tbills`, `off_chain_usd`;
@@ -168,8 +175,9 @@ Reads loan identity and immutable parameters from the LoanRegistry on-chain. Rea
 Served by `GET /v1/withdrawal-queue` (aggregate, sourced from `contract_logs`
 `WithdrawalRequested` + `RequestClaimed`). Response: `summary` (`in_queue_usd`,
 `requests_count`, `estimated_wait_days`, `liquid_cover`) and `items[]`
-(`account`, `amount`, `status` ∈ {`Queued`, `Completed`}, newest first). A request is
-`Queued` until a matching `RequestClaimed` exists, then `Completed`; `in_queue_usd` sums
+(`chain_id`, `account`, `amount`, `status` ∈ {`Queued`, `Completed`}, newest first, ties by
+`(chain_id, request_id)`). A request is `Queued` until a `RequestClaimed` on the same chain and
+contract exists, then `Completed`; `in_queue_usd` sums
 each queued request's `amount`. (The event's `queued` field is a global all-time
 cumulative counter, not a per-request magnitude, and is not used for depth.)
 `liquid_cover` is served as `null` until a Capital-Wallet USDC-available source exists

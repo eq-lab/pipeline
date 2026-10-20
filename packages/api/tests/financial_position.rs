@@ -231,3 +231,54 @@ fn no_active_loans_yields_zero_deployed_and_liabilities() {
     assert_eq!(r.assets.liquid.total, None);
     assert_eq!(r.liabilities.senior_claims.plusd_outstanding, None);
 }
+
+// ── Multi-chain union ────────────────────────────────────────────────────────────
+
+fn loan_on(chain_id: i64, row: LoanSnapshotRow) -> LoanSnapshotRow {
+    LoanSnapshotRow { chain_id, ..row }
+}
+
+#[test]
+fn union_sums_the_same_loan_id_on_two_chains() {
+    let loans = vec![
+        loan_on(1, make_loan(1, 80, 20, 5, 0, 180)),
+        loan_on(2, make_loan(1, 40, 10, 3, 0, 180)),
+    ];
+    let r = at(60, &loans, &[]);
+    assert_eq!(
+        r.assets.deployed.secured_loans_outstanding,
+        Some("150000.000000".to_owned())
+    );
+    assert_eq!(
+        r.assets.deployed.accrued_interest_receivable,
+        Some("8000.000000".to_owned())
+    );
+    assert_eq!(
+        r.liabilities.subordinated_capital.junior_tranche,
+        Some("30000.000000".to_owned())
+    );
+    assert_eq!(r.assets.total, Some("158000.000000".to_owned()));
+}
+
+#[test]
+fn loan_closed_on_one_chain_does_not_end_the_same_loan_id_on_another() {
+    let loans = vec![
+        loan_on(1, make_loan(1, 80, 20, 5, 0, 180)),
+        loan_on(2, make_loan(1, 40, 10, 3, 0, 180)),
+    ];
+    let events = vec![LifecycleRow {
+        chain_id: 2,
+        event_name: "LoanClosed".to_owned(),
+        block_timestamp: 10 * DAY,
+        loan_id: BigDecimal::from(1_i64),
+    }];
+    let r = at(60, &loans, &events);
+    assert_eq!(
+        r.assets.deployed.secured_loans_outstanding,
+        Some("100000.000000".to_owned())
+    );
+    assert_eq!(
+        r.liabilities.subordinated_capital.junior_tranche,
+        Some("20000.000000".to_owned())
+    );
+}

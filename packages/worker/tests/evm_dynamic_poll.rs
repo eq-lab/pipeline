@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use alloy::{
     primitives::{Address, U256},
-    rpc::types::Log,
+    rpc::types::{Filter, Log},
 };
 use async_trait::async_trait;
 use deal_token_support::*;
@@ -51,6 +51,10 @@ impl LogFetcher for FakeFetcher {
             })
             .cloned()
             .collect())
+    }
+
+    async fn get_filtered_logs(&self, _filter: Filter) -> anyhow::Result<Vec<Log>> {
+        Ok(vec![])
     }
 }
 
@@ -174,6 +178,10 @@ impl LogFetcher for FailingFetcher {
         if *n == self.fail_on {
             anyhow::bail!("address limit exceeded");
         }
+        Ok(vec![])
+    }
+
+    async fn get_filtered_logs(&self, _filter: Filter) -> anyhow::Result<Vec<Log>> {
         Ok(vec![])
     }
 }

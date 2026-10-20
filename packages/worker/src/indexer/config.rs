@@ -1,5 +1,6 @@
 use std::env;
 
+use alloy::primitives::Address;
 use anyhow::{Context, Result};
 
 pub use shared::chains::{
@@ -352,6 +353,7 @@ pub struct IndexerJobSettings {
     pub minter_address: String,
     pub collateral_registry_address: Option<String>,
     pub deal_token_factory_address: Option<String>,
+    pub asset_tracking: Option<EvmAssetTracking>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
     pub log_confirmations_delay: u64,
@@ -381,6 +383,7 @@ impl IndexerJobSettings {
                 Ok(raw) if !raw.trim().is_empty() => Some(raw.trim().to_owned()),
                 _ => None,
             },
+            asset_tracking: evm_asset_tracking_from_env(chain_id)?,
             polling_block_range: require_nonzero(
                 chain_id,
                 ChainKind::Evm,
@@ -414,6 +417,95 @@ impl IndexerJobSettings {
             .map(IndexerJobSettings::from_chain_env)
             .collect()
     }
+}
+
+/// USDC `Transfer` tracking on one EVM chain, from `CHAIN_<id>_EVM_INDEXER_ASSET_ADDRESS`,
+/// `…_WITHDRAWAL_QUEUE_WALLET_ADDRESS` and the `…_CUSTODY_ADDRESSES` / `…_RAMP_ADDRESSES` pair;
+/// `tracked` is custody ∪ ramp, empty unless both lists are set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvmAssetTracking {
+    pub asset: Address,
+    pub withdrawal_queue_wallet: Option<Address>,
+    pub tracked: Vec<Address>,
+}
+
+fn evm_asset_tracking_from_env(chain_id: i64) -> Result<Option<EvmAssetTracking>> {
+    let ip = format!("CHAIN_{chain_id}_EVM_INDEXER_");
+    let asset_key = format!("{ip}ASSET_ADDRESS");
+    let wallet_key = format!("{ip}WITHDRAWAL_QUEUE_WALLET_ADDRESS");
+    let custody_key = format!("{ip}CUSTODY_ADDRESSES");
+    let ramp_key = format!("{ip}RAMP_ADDRESSES");
+
+    let Some(asset_raw) = env_nonblank(&asset_key) else {
+        if [&wallet_key, &custody_key, &ramp_key]
+            .iter()
+            .any(|k| env_nonblank(k).is_some())
+        {
+            tracing::warn!(
+                chain_id,
+                "asset-transfer addresses configured without {asset_key} — ignored, \
+                 asset-transfer tracking is off"
+            );
+        }
+        return Ok(None);
+    };
+    let asset = parse_evm_address(&asset_key, &asset_raw)?;
+    let withdrawal_queue_wallet = env_nonblank(&wallet_key)
+        .map(|raw| parse_evm_address(&wallet_key, &raw))
+        .transpose()?;
+
+    let custody_raw = split_csv_raw(env::var(&custody_key).ok().as_deref());
+    let ramp_raw = split_csv_raw(env::var(&ramp_key).ok().as_deref());
+    let tracked = match (custody_raw.is_empty(), ramp_raw.is_empty()) {
+        (false, false) => {
+            let mut tracked = Vec::new();
+            let entries = custody_raw
+                .iter()
+                .map(|raw| (&custody_key, raw))
+                .chain(ramp_raw.iter().map(|raw| (&ramp_key, raw)));
+            for (key, raw) in entries {
+                let addr = parse_evm_address(key, raw)?;
+                if !tracked.contains(&addr) {
+                    tracked.push(addr);
+                }
+            }
+            tracked
+        }
+        (true, true) => Vec::new(),
+        (custody_empty, _) => {
+            let missing = if custody_empty {
+                &custody_key
+            } else {
+                &ramp_key
+            };
+            tracing::warn!(
+                chain_id,
+                missing,
+                "custody/ramp internal-movement tracking partially configured — disabled; \
+                 set both CUSTODY_ADDRESSES and RAMP_ADDRESSES to enable \
+                 (withdrawal-queue tracking is unaffected)"
+            );
+            Vec::new()
+        }
+    };
+
+    Ok(Some(EvmAssetTracking {
+        asset,
+        withdrawal_queue_wallet,
+        tracked,
+    }))
+}
+
+fn parse_evm_address(key: &str, raw: &str) -> Result<Address> {
+    raw.parse()
+        .with_context(|| format!("{key} must be a valid EVM address, got '{raw}'"))
+}
+
+fn env_nonblank(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty())
 }
 
 fn env_require(key: &str) -> Result<String> {

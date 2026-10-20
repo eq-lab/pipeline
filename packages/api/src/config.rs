@@ -67,6 +67,11 @@ pub struct ConfiguredChain {
 /// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...                 # in_transit
 /// CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID=G...          # withdrawal_queue
 /// CHAIN_<id>_API_STELLAR_ASSET_DECIMALS=7                         # shared, default 7
+/// # Capital Allocation bucket sourcing (optional, per EVM chain):
+/// CHAIN_<id>_EVM_API_CUSTODY_ADDRESSES=0x...,0x...                # in_transit
+/// CHAIN_<id>_EVM_API_RAMP_ADDRESSES=0x...,0x...                   # in_transit
+/// CHAIN_<id>_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS=0x...        # withdrawal_queue
+/// CHAIN_<id>_EVM_API_ASSET_DECIMALS=6                             # shared, default 6
 /// # LoanRegistry the LoanBook readers are scoped to (required per chain; must equal the
 /// # indexer's CHAIN_<id>_{EVM,STELLAR}_INDEXER_LOAN_REGISTRY_ADDRESS):
 /// CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS=0x...                  # EVM chains
@@ -83,17 +88,19 @@ pub struct ChainsConfig {
     /// Custody + ramp address sets keyed by chain_id, for the Capital Allocation
     /// `in_transit` bucket. Only present for chains where BOTH lists are configured.
     pub transfer_addresses: HashMap<i64, TransferAddressSets>,
-    /// Withdrawal Queue Wallet Strkey (`G…`) keyed by chain_id, for the Capital
-    /// Allocation `withdrawal_queue` bucket (Issue #933). Only present for chains
-    /// where `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` is configured;
+    /// Withdrawal Queue Wallet address (Stellar `G…` Strkey, EVM EIP-55) keyed by
+    /// chain_id, for the Capital Allocation `withdrawal_queue` bucket (Issue #933).
+    /// Only present for chains where `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID`
+    /// / `CHAIN_<id>_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS` is configured;
     /// independent of `transfer_addresses` (custody/ramp).
     pub withdrawal_queue_wallets: HashMap<i64, String>,
     /// The tracked asset's on-chain decimal scale (e.g. 7 for the Stellar USDC
     /// SAC), keyed by chain_id — shared by the `in_transit` and `withdrawal_queue`
     /// buckets to normalize raw on-chain amounts to the endpoint's canonical
     /// 6-decimal USD base units. Read from `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS`
-    /// for every Stellar chain (default 7), independent of whether custody/ramp or
-    /// the withdrawal queue wallet are configured.
+    /// (default 7) / `CHAIN_<id>_EVM_API_ASSET_DECIMALS` (default 6) for every chain,
+    /// independent of whether custody/ramp or the withdrawal queue wallet are
+    /// configured.
     pub asset_decimals: HashMap<i64, u32>,
     /// LoanRegistry address keyed by chain_id, in the form the indexer writes to
     /// `contract_logs.contract_address` (EIP-55 on EVM, `C…` Strkey on Stellar).
@@ -101,15 +108,18 @@ pub struct ChainsConfig {
     pub loan_registry_addresses: HashMap<i64, String>,
 }
 
-/// Custody + ramp Stellar address sets used to classify indexed `AssetTransfer`
+/// Custody + ramp address sets used to classify indexed `AssetTransfer`
 /// events into the `in_transit` bucket's gross approved ramp flow (both legs,
 /// absolute — #1027).
 ///
 /// Parsed from per-chain, API-specific env vars (parallel to the worker's
-/// job-level `JOB_INDEXER_STELLAR_*` vars — the API and worker are decoupled):
+/// indexer vars — the API and worker are decoupled), in the form the indexer
+/// writes (`G…`/`C…` Strkey on Stellar, EIP-55 on EVM):
 /// ```text
 /// CHAIN_<id>_API_STELLAR_CUSTODY_ADDRESSES=G...,C...
 /// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...
+/// CHAIN_<id>_EVM_API_CUSTODY_ADDRESSES=0x...
+/// CHAIN_<id>_EVM_API_RAMP_ADDRESSES=0x...
 /// ```
 /// Both address lists must be set for `in_transit` to be sourced; otherwise it
 /// stays `null`. `asset_decimals` mirrors `ChainsConfig::asset_decimals` for this
@@ -167,16 +177,16 @@ impl ChainsConfig {
                 kind: chain_kind,
             });
             load_loan_registry_address(chain_id, chain_kind, &mut loan_registry_addresses)?;
+            let decimals = load_asset_decimals(chain_id, chain_kind)?;
+            load_transfer_addresses(chain_id, chain_kind, decimals, &mut transfer_addresses)?;
+            load_withdrawal_queue_wallet(chain_id, chain_kind, &mut withdrawal_queue_wallets)?;
+            asset_decimals.insert(chain_id, decimals);
 
             match chain_kind {
                 ChainKind::Evm => {
                     load_evm_voucher_config(chain_id, &mut voucher)?;
                 }
                 ChainKind::Stellar => {
-                    let decimals = load_asset_decimals(chain_id)?;
-                    load_transfer_addresses(chain_id, decimals, &mut transfer_addresses)?;
-                    load_withdrawal_queue_wallet(chain_id, &mut withdrawal_queue_wallets)?;
-                    asset_decimals.insert(chain_id, decimals);
                     // Load STELLAR_VERIFIER_SECRET once and cache the raw seed bytes.
                     if stellar_seed_cache.is_none() {
                         let secret = env::var("STELLAR_VERIFIER_SECRET").with_context(|| {
@@ -255,19 +265,30 @@ fn load_loan_registry_address(
     Ok(())
 }
 
-/// Load custody/ramp address sets for one Stellar chain from the API-specific
-/// `CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES` vars. Both must be non-empty
+/// API env key for one capital-allocation source on a chain: the legacy
+/// `CHAIN_<id>_API_STELLAR_<stellar>` on Stellar, `CHAIN_<id>_EVM_API_<evm>` on EVM.
+fn capital_source_key(chain_id: i64, kind: ChainKind, stellar: &str, evm: &str) -> String {
+    match kind {
+        ChainKind::Stellar => format!("CHAIN_{chain_id}_API_STELLAR_{stellar}"),
+        ChainKind::Evm => format!("CHAIN_{chain_id}_EVM_API_{evm}"),
+    }
+}
+
+/// Load custody/ramp address sets for one chain from the API-specific
+/// `CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES` /
+/// `CHAIN_<id>_EVM_API_{CUSTODY,RAMP}_ADDRESSES` vars. Both must be non-empty
 /// for `in_transit` to be sourced; a partial config is disabled with a warning
 /// (matches the worker's all-or-nothing behaviour for the same real accounts).
 fn load_transfer_addresses(
     chain_id: i64,
+    kind: ChainKind,
     asset_decimals: u32,
     out: &mut HashMap<i64, TransferAddressSets>,
 ) -> Result<()> {
-    let custody_key = format!("CHAIN_{chain_id}_API_STELLAR_CUSTODY_ADDRESSES");
-    let ramp_key = format!("CHAIN_{chain_id}_API_STELLAR_RAMP_ADDRESSES");
-    let custody = parse_stellar_address_csv(&custody_key)?;
-    let ramp = parse_stellar_address_csv(&ramp_key)?;
+    let custody_key = capital_source_key(chain_id, kind, "CUSTODY_ADDRESSES", "CUSTODY_ADDRESSES");
+    let ramp_key = capital_source_key(chain_id, kind, "RAMP_ADDRESSES", "RAMP_ADDRESSES");
+    let custody = parse_address_csv(kind, &custody_key)?;
+    let ramp = parse_address_csv(kind, &ramp_key)?;
 
     match (custody.is_empty(), ramp.is_empty()) {
         (false, false) => {
@@ -291,32 +312,47 @@ fn load_transfer_addresses(
     Ok(())
 }
 
-/// Load the Withdrawal Queue Wallet address for one Stellar chain from
-/// `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` (optional; parallel to the
-/// worker's `CHAIN_<id>_STELLAR_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` — API and
+/// Load the Withdrawal Queue Wallet address for one chain from
+/// `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` /
+/// `CHAIN_<id>_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS` (optional; parallel to the
+/// worker's `CHAIN_<id>_<TYPE>_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` — API and
 /// worker are decoupled). Unset → the `withdrawal_queue` bucket stays `null`.
-fn load_withdrawal_queue_wallet(chain_id: i64, out: &mut HashMap<i64, String>) -> Result<()> {
-    let key = format!("CHAIN_{chain_id}_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID");
+fn load_withdrawal_queue_wallet(
+    chain_id: i64,
+    kind: ChainKind,
+    out: &mut HashMap<i64, String>,
+) -> Result<()> {
+    let key = capital_source_key(
+        chain_id,
+        kind,
+        "WITHDRAWAL_QUEUE_WALLET_ID",
+        "WITHDRAWAL_QUEUE_WALLET_ADDRESS",
+    );
     if let Ok(raw) = env::var(&key) {
         if !raw.trim().is_empty() {
-            out.insert(chain_id, validate_stellar_address(&key, raw)?);
+            out.insert(chain_id, parse_chain_address(kind, &key, raw.trim())?);
         }
     }
     Ok(())
 }
 
-/// The tracked asset's on-chain decimal scale for one Stellar chain, from
-/// `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS` (default 7 = Stellar USDC SAC).
-/// Independent of custody/ramp/withdrawal-queue-wallet configuration — always
-/// resolved for every Stellar chain so either bucket can normalize amounts.
-fn load_asset_decimals(chain_id: i64) -> Result<u32> {
-    let decimals_key = format!("CHAIN_{chain_id}_API_STELLAR_ASSET_DECIMALS");
+/// The tracked asset's on-chain decimal scale for one chain, from
+/// `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS` (default 7 = Stellar USDC SAC) /
+/// `CHAIN_<id>_EVM_API_ASSET_DECIMALS` (default 6 = ERC-20 USDC). Independent of
+/// custody/ramp/withdrawal-queue-wallet configuration — always resolved for every
+/// chain so either bucket can normalize amounts.
+fn load_asset_decimals(chain_id: i64, kind: ChainKind) -> Result<u32> {
+    let decimals_key = capital_source_key(chain_id, kind, "ASSET_DECIMALS", "ASSET_DECIMALS");
+    let default = match kind {
+        ChainKind::Stellar => 7,
+        ChainKind::Evm => CANONICAL_AMOUNT_DECIMALS,
+    };
     let asset_decimals: u32 = match env::var(&decimals_key) {
         Ok(v) => v
             .trim()
             .parse()
             .with_context(|| format!("{decimals_key} must be a non-negative integer"))?,
-        Err(_) => 7,
+        Err(_) => default,
     };
     if asset_decimals > 18 {
         anyhow::bail!("{decimals_key} must be ≤ 18 (got {asset_decimals})");
@@ -324,17 +360,29 @@ fn load_asset_decimals(chain_id: i64) -> Result<u32> {
     Ok(asset_decimals)
 }
 
-/// Parse an optional CSV of Stellar addresses (`G…` or `C…`) from `key`, validated
-/// and normalized via `validate_stellar_address`. Unset/empty → empty set.
-fn parse_stellar_address_csv(key: &str) -> Result<HashSet<String>> {
+/// Parse an optional CSV of chain addresses from `key`, validated and normalized via
+/// `parse_chain_address`. Unset/empty → empty set.
+fn parse_address_csv(kind: ChainKind, key: &str) -> Result<HashSet<String>> {
     let Ok(val) = env::var(key) else {
         return Ok(HashSet::new());
     };
     val.split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(|s| validate_stellar_address(key, s.to_owned()))
+        .map(|s| parse_chain_address(kind, key, s))
         .collect()
+}
+
+/// Validate one address and normalize it to the form the indexer writes to
+/// `contract_logs.params`: a `G…`/`C…` Strkey on Stellar, EIP-55 on EVM.
+fn parse_chain_address(kind: ChainKind, key: &str, raw: &str) -> Result<String> {
+    match kind {
+        ChainKind::Stellar => validate_stellar_address(key, raw.to_owned()),
+        ChainKind::Evm => Ok(raw
+            .parse::<alloy::primitives::Address>()
+            .with_context(|| format!("{key} must contain valid 0x… EVM addresses"))?
+            .to_checksum(None)),
+    }
 }
 
 fn load_evm_voucher_config(

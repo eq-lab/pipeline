@@ -215,6 +215,14 @@ impl LenientChainFilter {
             ChainScope::Unconfigured(id) => vec![id],
         }
     }
+
+    pub fn configured<'a>(&'a self, all: &'a [ConfiguredChain]) -> &'a [ConfiguredChain] {
+        match &self.0 {
+            ChainScope::All => all,
+            ChainScope::One(c) => std::slice::from_ref(c),
+            ChainScope::Unconfigured(_) => &[],
+        }
+    }
 }
 
 impl ChainFilter {

@@ -12,7 +12,7 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::config::TransferAddressSets;
 use pipeline_api::routes::capital_allocation::{
-    compute_capital_allocation, CapitalAllocationResponse,
+    compute_capital_allocation, CapitalAllocationResponse, ChainCapitalInputs,
 };
 use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 use shared::loan_capital_transfers_repo::LoanCapitalTransfersRow;
@@ -119,13 +119,39 @@ fn deployed_flag(loan_id: i64) -> LoanCapitalTransfersRow {
     ct_row(loan_id, true, 0, 0, 0, 0)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn one_chain(
+    loans: &[LoanSnapshotRow],
+    events: &[LifecycleRow],
+    to: i64,
+    transfers: &[AssetTransferRow],
+    addr: Option<&TransferAddressSets>,
+    asset_decimals: u32,
+    withdrawal_queue_balance: Option<&BigDecimal>,
+    capital_transfers: &[LoanCapitalTransfersRow],
+) -> CapitalAllocationResponse {
+    compute_capital_allocation(
+        loans,
+        events,
+        to,
+        &[ChainCapitalInputs {
+            chain_id: 1,
+            transfers,
+            addr,
+            asset_decimals,
+            withdrawal_queue_balance,
+            capital_transfers,
+        }],
+    )
+}
+
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> CapitalAllocationResponse {
     // Default: both fixture loans flagged deployed (so the windowing tests keep
     // exercising the active-window check), no asset transfers, no custody/ramp
     // config (in_transit null), no withdrawal-queue wallet configured
     // (withdrawal_queue null), canonical 6-decimal asset scale, zero
     // trust-account amounts (trust_account = 0).
-    compute_capital_allocation(
+    one_chain(
         loans,
         events,
         t_day * DAY,
@@ -168,7 +194,7 @@ fn total_equals_deployed_while_other_buckets_are_null() {
 #[test]
 fn deployed_excludes_active_loan_without_deployed_flag() {
     // Only loan A is flagged; loan B is active but not flagged (#1027) → 80k.
-    let r = compute_capital_allocation(
+    let r = one_chain(
         &fixture_loans(),
         &[],
         60 * DAY,
@@ -184,7 +210,7 @@ fn deployed_excludes_active_loan_without_deployed_flag() {
 #[test]
 fn deployed_excludes_loan_with_unset_flag_row() {
     // A row exists for loan B but with is_loan_deployed = false → same as no row.
-    let r = compute_capital_allocation(
+    let r = one_chain(
         &fixture_loans(),
         &[],
         60 * DAY,
@@ -201,7 +227,7 @@ fn deployed_excludes_loan_with_unset_flag_row() {
 fn deployed_is_zero_without_capital_transfers_rows() {
     // Active loans but nothing Trustee-recorded → deployed 0 (#1027: the flag
     // gates inclusion; there is no flag-less fallback).
-    let r = compute_capital_allocation(&fixture_loans(), &[], 60 * DAY, &[], None, 6, None, &[]);
+    let r = one_chain(&fixture_loans(), &[], 60 * DAY, &[], None, 6, None, &[]);
     assert_eq!(r.buckets.deployed, Some("0.000000".to_owned()));
 }
 
@@ -253,7 +279,7 @@ fn no_active_loans_yields_zero_deployed_and_null_buckets() {
 
 #[test]
 fn trust_account_zero_without_recorded_amounts() {
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &[], None, 6, None, &[]);
     assert_eq!(r.buckets.trust_account, Some("0.000000".to_owned()));
 }
 
@@ -264,7 +290,7 @@ fn trust_account_sums_deposits_minus_withdrawals_across_loans() {
         ct_row(1, false, 0, 0, 500, 120),
         ct_row(2, false, 0, 0, 0, 30),
     ];
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &rows);
+    let r = one_chain(&[], &[], 0, &[], None, 6, None, &rows);
     assert_eq!(r.buckets.trust_account, Some("350.000000".to_owned()));
 }
 
@@ -273,7 +299,7 @@ fn trust_account_negative_balance_is_not_clamped() {
     // Withdrawals exceed deposits → negative balance surfaces as-is (a real
     // bookkeeping error should be visible).
     let rows = vec![ct_row(1, false, 0, 0, 10, 50)];
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &rows);
+    let r = one_chain(&[], &[], 0, &[], None, 6, None, &rows);
     assert_eq!(r.buckets.trust_account, Some("-40.000000".to_owned()));
 }
 
@@ -285,7 +311,7 @@ fn trust_account_folds_into_total_alongside_deployed_and_in_transit() {
     // Day 60: deployed 120k, in_transit 100 (gross, nothing confirmed),
     // trust_account 50 → total 120150.
     let rows = vec![ct_row(1, true, 0, 0, 50, 0), deployed_flag(2)];
-    let r = compute_capital_allocation(
+    let r = one_chain(
         &fixture_loans(),
         &[],
         60 * DAY,
@@ -342,15 +368,15 @@ fn rejected_transfer(from: &str, to: &str, whole: i64) -> AssetTransferRow {
     }
 }
 
-/// Custody/ramp address sets. `asset_decimals` is a separate top-level argument
-/// to `compute_capital_allocation` (shared with `withdrawal_queue`), not part of
+/// Custody/ramp address sets. `asset_decimals` is a separate per-chain field of
+/// `ChainCapitalInputs` (shared with `withdrawal_queue`), not part of
 /// `TransferAddressSets` — pass it alongside these sets.
 fn addr_sets() -> TransferAddressSets {
     TransferAddressSets {
         custody: [CUSTODY.to_owned()].into_iter().collect::<HashSet<_>>(),
         ramp: [RAMP.to_owned()].into_iter().collect::<HashSet<_>>(),
         // Unused by compute_capital_allocation (asset_decimals is passed as its
-        // own argument) — only routes::ramp reads this field.
+        // own field) — only routes::ramp reads this field.
         asset_decimals: 6,
     }
 }
@@ -366,7 +392,7 @@ fn in_transit_sums_both_approved_legs_gross() {
         transfer(CUSTODY, EXTERNAL, 999),      // untracked counterparty: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
     assert_eq!(r.buckets.in_transit, Some("130.000000".to_owned()));
     // deployed 0 (no loans) + in_transit 130.
     assert_eq!(r.total, Some("130.000000".to_owned()));
@@ -382,7 +408,7 @@ fn in_transit_subtracts_confirmed_per_loan_transfers() {
     ];
     let sets = addr_sets();
     let rows = vec![ct_row(1, false, 60, 0, 0, 0), ct_row(2, false, 0, 40, 0, 0)];
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &rows);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &rows);
     assert_eq!(r.buckets.in_transit, Some("50.000000".to_owned()));
     assert_eq!(r.total, Some("50.000000".to_owned()));
 }
@@ -394,7 +420,7 @@ fn in_transit_goes_negative_when_confirmed_exceeds_gross() {
     let transfers = vec![approved_transfer(CUSTODY, RAMP, 50)];
     let sets = addr_sets();
     let rows = vec![ct_row(1, false, 80, 0, 0, 0)];
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &rows);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &rows);
     assert_eq!(r.buckets.in_transit, Some("-30.000000".to_owned()));
     assert_eq!(r.total, Some("-30.000000".to_owned()));
 }
@@ -407,7 +433,7 @@ fn in_transit_ignores_unapproved_on_ramp() {
         transfer(RAMP, CUSTODY, 30),           // pending: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
 }
 
@@ -419,7 +445,7 @@ fn in_transit_ignores_rejected_on_ramp() {
         rejected_transfer(RAMP, CUSTODY, 30),  // rejected: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
 }
 
@@ -432,7 +458,7 @@ fn in_transit_ignores_unapproved_off_ramp() {
         approved_transfer(RAMP, CUSTODY, 30), // approved: +30
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
     assert_eq!(r.buckets.in_transit, Some("30.000000".to_owned()));
 }
 
@@ -443,7 +469,7 @@ fn in_transit_ignores_rejected_off_ramp() {
         approved_transfer(RAMP, CUSTODY, 30),  // approved: +30
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 6, None, &[]);
     assert_eq!(r.buckets.in_transit, Some("30.000000".to_owned()));
 }
 
@@ -453,7 +479,7 @@ fn in_transit_is_null_when_unconfigured() {
     // config → in_transit stays null (the confirmed sums alone don't create it).
     let transfers = vec![transfer(CUSTODY, RAMP, 100)];
     let rows = vec![ct_row(1, false, 60, 40, 0, 0)];
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, None, 6, None, &rows);
+    let r = one_chain(&[], &[], 0, &transfers, None, 6, None, &rows);
     assert_eq!(r.buckets.in_transit, None);
     assert_eq!(r.total, Some("0.000000".to_owned()));
 }
@@ -463,7 +489,7 @@ fn in_transit_adds_to_total_alongside_deployed() {
     let transfers = vec![approved_transfer(CUSTODY, RAMP, 100)];
     let sets = addr_sets();
     // Day 60: both fixture loans active + flagged → deployed 120k; in_transit 100.
-    let r = compute_capital_allocation(
+    let r = one_chain(
         &fixture_loans(),
         &[],
         60 * DAY,
@@ -496,7 +522,7 @@ fn in_transit_normalizes_7_decimal_usdc_sac_to_6_decimal() {
         reviewed_at: Some(chrono::Utc::now()),
     }];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 7, None, &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 7, None, &[]);
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
     assert_eq!(r.total, Some("100.000000".to_owned()));
 }
@@ -523,7 +549,7 @@ fn normalize_floors_sub_base_unit_fractions_not_rounds() {
         reviewed_at: Some(chrono::Utc::now()),
     }];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 7, Some(&raw), &[]);
+    let r = one_chain(&[], &[], 0, &transfers, Some(&sets), 7, Some(&raw), &[]);
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
     assert_eq!(r.buckets.withdrawal_queue, Some("100.000000".to_owned()));
     // Pre-fix this was 200.000001 — two leaked 0.5 base units summing to a phantom unit.
@@ -534,7 +560,7 @@ fn normalize_floors_sub_base_unit_fractions_not_rounds() {
 
 #[test]
 fn withdrawal_queue_is_null_when_unconfigured() {
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &[]);
+    let r = one_chain(&[], &[], 0, &[], None, 6, None, &[]);
     assert_eq!(r.buckets.withdrawal_queue, None);
     assert_eq!(r.total, Some("0.000000".to_owned()));
 }
@@ -542,7 +568,7 @@ fn withdrawal_queue_is_null_when_unconfigured() {
 #[test]
 fn withdrawal_queue_reads_through_at_canonical_scale() {
     let balance = usdc(250); // already 6-decimal base units
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, Some(&balance), &[]);
+    let r = one_chain(&[], &[], 0, &[], None, 6, Some(&balance), &[]);
     assert_eq!(r.buckets.withdrawal_queue, Some("250.000000".to_owned()));
 }
 
@@ -550,7 +576,7 @@ fn withdrawal_queue_reads_through_at_canonical_scale() {
 fn withdrawal_queue_normalizes_7_decimal_usdc_sac_to_6_decimal() {
     // Same 7-decimal SAC normalization as in_transit, applied to the wallet balance.
     let raw_7dec = BigDecimal::from(1_000_000_000_i64); // 100.0000000 at 7 decimals
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 7, Some(&raw_7dec), &[]);
+    let r = one_chain(&[], &[], 0, &[], None, 7, Some(&raw_7dec), &[]);
     assert_eq!(r.buckets.withdrawal_queue, Some("100.000000".to_owned()));
 }
 
@@ -559,7 +585,7 @@ fn withdrawal_queue_negative_balance_is_not_clamped() {
     // A negative wallet balance is a real tracking gap and must surface as-is,
     // not be floored at zero (mirrors trust_account's rationale).
     let balance = usdc(-30);
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, Some(&balance), &[]);
+    let r = one_chain(&[], &[], 0, &[], None, 6, Some(&balance), &[]);
     assert_eq!(r.buckets.withdrawal_queue, Some("-30.000000".to_owned()));
     assert_eq!(r.total, Some("-30.000000".to_owned()));
 }
@@ -570,7 +596,7 @@ fn withdrawal_queue_adds_to_total_alongside_deployed_and_in_transit() {
     let sets = addr_sets();
     let wq_balance = usdc(50);
     // Day 60: deployed 120k, in_transit 100, withdrawal_queue 50 → total 120150.
-    let r = compute_capital_allocation(
+    let r = one_chain(
         &fixture_loans(),
         &[],
         60 * DAY,
@@ -584,4 +610,230 @@ fn withdrawal_queue_adds_to_total_alongside_deployed_and_in_transit() {
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
     assert_eq!(r.buckets.withdrawal_queue, Some("50.000000".to_owned()));
     assert_eq!(r.total, Some("120150.000000".to_owned()));
+}
+
+// ── Multi-chain union ────────────────────────────────────────────────────────────
+
+fn loan_on(
+    chain_id: i64,
+    loan_id: i64,
+    senior_k: i64,
+    start_day: i64,
+    end_day: i64,
+) -> LoanSnapshotRow {
+    LoanSnapshotRow {
+        chain_id,
+        ..make_loan(loan_id, senior_k, 0, start_day, end_day)
+    }
+}
+
+fn ct_on(chain_id: i64, row: LoanCapitalTransfersRow) -> LoanCapitalTransfersRow {
+    LoanCapitalTransfersRow { chain_id, ..row }
+}
+
+fn closed(chain_id: i64, loan_id: i64, day: i64) -> LifecycleRow {
+    LifecycleRow {
+        chain_id,
+        event_name: "LoanClosed".to_owned(),
+        block_timestamp: day * DAY,
+        loan_id: BigDecimal::from(loan_id),
+    }
+}
+
+fn chain<'a>(
+    chain_id: i64,
+    transfers: &'a [AssetTransferRow],
+    addr: Option<&'a TransferAddressSets>,
+    asset_decimals: u32,
+    withdrawal_queue_balance: Option<&'a BigDecimal>,
+    capital_transfers: &'a [LoanCapitalTransfersRow],
+) -> ChainCapitalInputs<'a> {
+    ChainCapitalInputs {
+        chain_id,
+        transfers,
+        addr,
+        asset_decimals,
+        withdrawal_queue_balance,
+        capital_transfers,
+    }
+}
+
+#[test]
+fn deployed_flag_only_deploys_the_loan_on_its_own_chain() {
+    let loans = vec![loan_on(1, 1, 80, 0, 180), loan_on(2, 1, 40, 0, 180)];
+    let ct1 = vec![ct_on(1, deployed_flag(1))];
+    let r = compute_capital_allocation(
+        &loans,
+        &[],
+        60 * DAY,
+        &[
+            chain(1, &[], None, 7, None, &ct1),
+            chain(2, &[], None, 6, None, &[]),
+        ],
+    );
+    assert_eq!(r.buckets.deployed, Some("80000.000000".to_owned()));
+}
+
+#[test]
+fn deployed_sums_flagged_active_loans_across_chains() {
+    let loans = vec![loan_on(1, 1, 80, 0, 180), loan_on(2, 1, 40, 0, 180)];
+    let ct1 = vec![ct_on(1, deployed_flag(1))];
+    let ct2 = vec![ct_on(2, deployed_flag(1))];
+    let r = compute_capital_allocation(
+        &loans,
+        &[],
+        60 * DAY,
+        &[
+            chain(1, &[], None, 7, None, &ct1),
+            chain(2, &[], None, 6, None, &ct2),
+        ],
+    );
+    assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
+    assert_eq!(r.total, Some("120000.000000".to_owned()));
+}
+
+#[test]
+fn loan_closed_on_one_chain_does_not_end_the_same_loan_id_on_another() {
+    let loans = vec![loan_on(1, 1, 80, 0, 180), loan_on(2, 1, 40, 0, 180)];
+    let ct1 = vec![ct_on(1, deployed_flag(1))];
+    let ct2 = vec![ct_on(2, deployed_flag(1))];
+    let r = compute_capital_allocation(
+        &loans,
+        &[closed(2, 1, 10)],
+        60 * DAY,
+        &[
+            chain(1, &[], None, 7, None, &ct1),
+            chain(2, &[], None, 6, None, &ct2),
+        ],
+    );
+    assert_eq!(r.buckets.deployed, Some("80000.000000".to_owned()));
+}
+
+#[test]
+fn chain_buckets_are_normalized_per_chain_before_summing() {
+    let sets = addr_sets();
+    let stellar_transfers = vec![AssetTransferRow {
+        amount: BigDecimal::from(1_000_000_000_i64),
+        ..approved_transfer(CUSTODY, RAMP, 0)
+    }];
+    let stellar_wallet = BigDecimal::from(500_000_000_i64);
+    let evm_transfers = vec![AssetTransferRow {
+        chain_id: 2,
+        ..approved_transfer(RAMP, CUSTODY, 30)
+    }];
+    let evm_wallet = usdc(20);
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[
+            chain(
+                1,
+                &stellar_transfers,
+                Some(&sets),
+                7,
+                Some(&stellar_wallet),
+                &[],
+            ),
+            chain(2, &evm_transfers, Some(&sets), 6, Some(&evm_wallet), &[]),
+        ],
+    );
+    assert_eq!(r.buckets.in_transit, Some("130.000000".to_owned()));
+    assert_eq!(r.buckets.withdrawal_queue, Some("70.000000".to_owned()));
+    assert_eq!(r.total, Some("200.000000".to_owned()));
+}
+
+#[test]
+fn bucket_sums_only_the_chains_that_source_it() {
+    let sets = addr_sets();
+    let transfers = vec![approved_transfer(CUSTODY, RAMP, 100)];
+    let unsourced_transfers = vec![AssetTransferRow {
+        chain_id: 2,
+        ..approved_transfer(CUSTODY, RAMP, 999)
+    }];
+    let unsourced_ct = vec![ct_on(2, ct_row(1, false, 500, 0, 0, 0))];
+    let wallet = usdc(20);
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[
+            chain(1, &transfers, Some(&sets), 6, None, &[]),
+            chain(
+                2,
+                &unsourced_transfers,
+                None,
+                6,
+                Some(&wallet),
+                &unsourced_ct,
+            ),
+        ],
+    );
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
+    assert_eq!(r.buckets.withdrawal_queue, Some("20.000000".to_owned()));
+    assert_eq!(r.total, Some("120.000000".to_owned()));
+}
+
+#[test]
+fn confirmed_transfers_only_offset_their_own_chain() {
+    let sets = addr_sets();
+    let t1 = vec![approved_transfer(CUSTODY, RAMP, 100)];
+    let t2 = vec![AssetTransferRow {
+        chain_id: 2,
+        ..approved_transfer(CUSTODY, RAMP, 50)
+    }];
+    let ct2 = vec![ct_on(2, ct_row(1, false, 80, 0, 0, 0))];
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[
+            chain(1, &t1, Some(&sets), 6, None, &[]),
+            chain(2, &t2, Some(&sets), 6, None, &ct2),
+        ],
+    );
+    assert_eq!(r.buckets.in_transit, Some("70.000000".to_owned()));
+}
+
+#[test]
+fn bucket_is_null_when_no_chain_sources_it() {
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[
+            chain(1, &[], None, 7, None, &[]),
+            chain(2, &[], None, 6, None, &[]),
+        ],
+    );
+    assert_eq!(r.buckets.in_transit, None);
+    assert_eq!(r.buckets.withdrawal_queue, None);
+    assert_eq!(r.total, Some("0.000000".to_owned()));
+}
+
+#[test]
+fn trust_account_sums_across_chains() {
+    let ct1 = vec![ct_row(1, false, 0, 0, 500, 120)];
+    let ct2 = vec![ct_on(2, ct_row(1, false, 0, 0, 100, 0))];
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[
+            chain(1, &[], None, 7, None, &ct1),
+            chain(2, &[], None, 6, None, &ct2),
+        ],
+    );
+    assert_eq!(r.buckets.trust_account, Some("480.000000".to_owned()));
+    assert_eq!(r.total, Some("480.000000".to_owned()));
+}
+
+#[test]
+fn no_chain_in_scope_is_all_zero_and_null() {
+    let r = compute_capital_allocation(&[], &[], 0, &[]);
+    assert_eq!(r.buckets.deployed, Some("0.000000".to_owned()));
+    assert_eq!(r.buckets.trust_account, Some("0.000000".to_owned()));
+    assert_eq!(r.buckets.in_transit, None);
+    assert_eq!(r.buckets.withdrawal_queue, None);
+    assert_eq!(r.total, Some("0.000000".to_owned()));
 }

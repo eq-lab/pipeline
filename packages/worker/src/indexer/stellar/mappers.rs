@@ -16,17 +16,16 @@
 /// For `AssetTransfer` events that touch the configured Withdrawal Queue
 /// Wallet, a running `wallet_balance_after` field is computed the same way
 /// (Issue #933) — see `compute_wallet_balance_field`.
-use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bigdecimal::BigDecimal;
-use serde_json::Value;
 use sqlx::PgConnection;
 
 use shared::{db::EventRepo, events::EventRow, log_mapper::LogMapper};
 
-use crate::indexer::mappers::{compute_position_fields, is_position_event_name};
+use crate::indexer::mappers::{
+    compute_position_fields, compute_wallet_balance_field, is_position_event_name,
+};
 use crate::indexer::stellar::parsers::StellarLog;
 
 pub struct StellarLogMapper {
@@ -116,78 +115,4 @@ impl LogMapper for StellarLogMapper {
     /// `0` from `StellarEventPoller::get_block_timestamp` (which doesn't have access
     /// to the per-event close time). The pre-populated value is authoritative.
     fn set_block_timestamp(&mut self, _ts: u64) {}
-}
-
-/// Compute a running USDC balance for `wallet` (the Withdrawal Queue Wallet)
-/// and write it into `params.wallet_balance_after` (Issue #933) — same
-/// pre-insert pattern as `compute_position_fields` for staking, so the current
-/// (or as-of-any-block) balance is queryable straight from `contract_logs`
-/// without re-summing every transfer at read time.
-///
-/// No-op (leaves `params` untouched) when neither `from` nor `to` is `wallet`
-/// — this also covers custody/ramp-only rows persisted by the `#[789]`
-/// internal-movement filter, which don't touch the wallet at all.
-async fn compute_wallet_balance_field(
-    conn: &mut PgConnection,
-    chain_id: i64,
-    asset_address: &str,
-    wallet: &str,
-    params: &mut Value,
-) -> anyhow::Result<()> {
-    let from = params.get("from").and_then(|v| v.as_str()).unwrap_or("");
-    let to = params.get("to").and_then(|v| v.as_str()).unwrap_or("");
-    let is_in = to == wallet;
-    let is_out = from == wallet;
-    if !is_in && !is_out {
-        return Ok(());
-    }
-
-    let zero = BigDecimal::from(0i64);
-    let amount = params
-        .get("amount")
-        .and_then(|v| v.as_str())
-        .and_then(|s| BigDecimal::from_str(s).ok())
-        .unwrap_or_else(|| zero.clone());
-
-    // Query through the transaction connection so uncommitted inserts in the
-    // same batch are visible, mirroring `compute_position_fields`.
-    let prev: Option<String> = sqlx::query_scalar(
-        "SELECT params->>'wallet_balance_after'
-         FROM contract_logs
-         WHERE chain_id = $1
-           AND contract_address = $2
-           AND event_name = 'AssetTransfer'
-           AND (params->>'from' = $3 OR params->>'to' = $3)
-           AND params ? 'wallet_balance_after'
-         ORDER BY block_number DESC, log_index DESC
-         LIMIT 1",
-    )
-    .bind(chain_id)
-    .bind(asset_address)
-    .bind(wallet)
-    .fetch_optional(&mut *conn)
-    .await?;
-
-    let prev_balance = match prev {
-        Some(s) => BigDecimal::from_str(&s).unwrap_or_else(|_| zero.clone()),
-        None => zero.clone(),
-    };
-
-    // A self-transfer (from == to == wallet) nets to zero — both arms apply.
-    let mut new_balance = prev_balance;
-    if is_in {
-        new_balance += &amount;
-    }
-    if is_out {
-        new_balance -= &amount;
-    }
-
-    if let Some(obj) = params.as_object_mut() {
-        obj.insert(
-            "wallet_balance_after".to_owned(),
-            serde_json::Value::String(new_balance.to_string()),
-        );
-    }
-
-    Ok(())
 }

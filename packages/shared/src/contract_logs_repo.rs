@@ -167,6 +167,27 @@ pub const LIST_REPAYMENT_MINTS_SQL: &str = "SELECT (r.params->>'loan_id')::numer
        AND r.block_timestamp <= $3
      ORDER BY r.block_number, r.log_index";
 
+pub const LIST_WITHDRAWAL_QUEUE_ROWS_SQL: &str = "SELECT r.chain_id,
+            r.params->>'request_id'        AS request_id,
+            r.params->>'withdrawer'        AS withdrawer,
+            (r.params->>'amount')::numeric AS amount,
+            r.block_timestamp              AS requested_at,
+            claim.claimed_at
+     FROM contract_logs r
+     LEFT JOIN LATERAL (
+         SELECT c.block_timestamp AS claimed_at
+         FROM contract_logs c
+         WHERE c.chain_id = r.chain_id
+           AND c.contract_address = r.contract_address
+           AND c.event_name = 'RequestClaimed'
+           AND c.params->>'request_id' = r.params->>'request_id'
+         ORDER BY c.block_timestamp DESC, c.log_index DESC
+         LIMIT 1
+     ) claim ON TRUE
+     WHERE r.chain_id = $1
+       AND r.event_name = 'WithdrawalRequested'
+       AND r.block_timestamp <= $2";
+
 fn decode_snapshot_rows(
     chain_id: i64,
     rows: Vec<sqlx::postgres::PgRow>,
@@ -218,9 +239,11 @@ pub struct LifecycleRow {
 /// while the request is still outstanding. The claim match is **contract-scoped**:
 /// `RequestClaimed` is emitted by both the DepositManager and the WithdrawalQueue and
 /// `request_id` is not unique across them, so the join is keyed on
-/// `(request_id, contract_address)`.
+/// `(chain_id, contract_address, request_id)` — the same contract address can exist
+/// on two chains.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct WithdrawalQueueRow {
+    pub chain_id: i64,
     pub request_id: String,
     /// The withdrawing account (`params->>'withdrawer'`).
     pub withdrawer: String,
@@ -700,7 +723,7 @@ impl ContractLogsRepo {
 
     /// All `WithdrawalRequested` events for a chain with `block_timestamp <= to_unix`,
     /// each left-joined to its latest matching `RequestClaimed` (scoped to the same
-    /// `contract_address`, since `request_id` is not unique across contracts).
+    /// `chain_id` and `contract_address`, since `request_id` is not unique across contracts).
     ///
     /// Returns raw rows; aggregation into queue depth / counts / item table is done by
     /// the pure `compute_withdrawal_queue` in the API layer. Generic over
@@ -714,30 +737,11 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let rows = sqlx::query_as::<_, WithdrawalQueueRow>(
-            "SELECT r.params->>'request_id'        AS request_id,
-                    r.params->>'withdrawer'        AS withdrawer,
-                    (r.params->>'amount')::numeric AS amount,
-                    r.block_timestamp              AS requested_at,
-                    claim.claimed_at
-             FROM contract_logs r
-             LEFT JOIN LATERAL (
-                 SELECT c.block_timestamp AS claimed_at
-                 FROM contract_logs c
-                 WHERE c.event_name = 'RequestClaimed'
-                   AND c.params->>'request_id' = r.params->>'request_id'
-                   AND c.contract_address = r.contract_address
-                 ORDER BY c.block_timestamp DESC, c.log_index DESC
-                 LIMIT 1
-             ) claim ON TRUE
-             WHERE r.chain_id = $1
-               AND r.event_name = 'WithdrawalRequested'
-               AND r.block_timestamp <= $2",
-        )
-        .bind(chain_id)
-        .bind(to_unix)
-        .fetch_all(executor)
-        .await?;
+        let rows = sqlx::query_as::<_, WithdrawalQueueRow>(LIST_WITHDRAWAL_QUEUE_ROWS_SQL)
+            .bind(chain_id)
+            .bind(to_unix)
+            .fetch_all(executor)
+            .await?;
         // `contract_logs` stores the raw on-chain value; normalize to the canonical
         // 6-decimal scale here (read time only — see #901).
         let chain_kind = parse_chain_type(chain_id)?;
