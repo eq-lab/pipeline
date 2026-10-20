@@ -2,6 +2,8 @@
 
 Source: https://github.com/eq-lab/pipeline/issues/1576 (TD-121, LP-read half; epic #1419)
 
+**Status: implemented (2026-10-20)** — all steps done; frontend lint/build/test (153 files, 2449 tests) and `lint-docs` green. See PR #1588.
+
 Branch: `feat/1576-home-loading-state`.
 
 ## Scope
