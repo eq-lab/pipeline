@@ -477,7 +477,7 @@ fill is stale, not the target.
 | `FileDropZone.tsx` | **Deleted (#1278).** There is no dashed drop zone anywhere in V1.0; the "flat upload area" is a plain list-item row (tile + text + bordered secondary `Upload` button), which `AccountUploadRow.tsx` implements directly. No sub-issue of epic #1247 gained a consumer for it. |
 | `KybInfoBanner.tsx` | **Deleted (#1278).** It is a neutral white surface with centred single-line text and a tooltip; the frames need a tinted, bordered, 72px two-line banner with a 32px status icon and an optional trailing button (`AccountStatusBanner.tsx`) — a rewrite, not a variant. No sub-issue of epic #1247 gained a consumer for it. |
 | `AccountUploadRow.tsx` / `AccountRequirementsList.tsx` | **Second consumer added (#1278).** Both gained additive optional `dataNodeId`/`testId` props (and `AccountRequirementsList` gained `className`, default `"px-2 pb-6"`) whose defaults reproduce this page's DOM byte-for-byte — `AccountDocumentsCard.test.tsx` is the regression guard. `CompanyDocsModal` passes its own node ids and, for the requirements list, `className="px-2"` (no bottom padding — its card supplies the gap instead). |
-| `useAccountDocuments` | **Second consumer added (#1278).** `CompanyDocsModal` calls it as `useAccountDocuments({ onSave: onSubmit })` — the same `{ files, rejected, addFiles, removeFile, canSave, handleSave }` surface this page uses. |
+| `useAccountDocuments` | **Second consumer added (#1278).** `CompanyDocsModal` calls it as `useAccountDocuments({ onSave: onSubmit })` — the same `{ files, rejected, addFiles, removeFile, canSave, handleSave }` surface this page uses. Since #1572 both consumers also share `reconcileUploads.ts` (`reconcileUploadedDocuments` + `reconciliationMessage`), so the uncertain-upload rule below is one implementation. |
 
 ## Production actions and remaining seams
 
@@ -485,8 +485,9 @@ fill is stale, not the target.
 and coordinates full-replace profile writes, ordered file uploads, and id-based deletion. A
 document Save uploads staged files and does not save an existing LP's unsaved profile draft. For a
 404 LP it first creates the valid profile using the session email. A failed network upload is
-reconciled against newly returned document ids before retry; if reconciliation fails, retry is
-blocked until Check uploads succeeds. During that read, file selection and staged removal are
+reconciled against newly returned document ids before retry (the pure `reconcileUploadedDocuments`
+in `components/account/reconcileUploads.ts`, shared with `CompanyDocsModal` since #1572); if
+reconciliation fails, retry is blocked until Check uploads succeeds. During that read, file selection and staged removal are
 locked. If new server documents and staged files share a duplicate filename, the page keeps all
 ambiguous staged copies and blocks retry. The LP must explicitly discard those staged copies,
 review the returned documents, and select any missing files again. Rejected rows use Re-upload to delete the rejected original,

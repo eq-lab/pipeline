@@ -19,6 +19,10 @@ import {
   type SubmissionResult,
 } from "./submitLpForReview";
 import { useAccountDocuments } from "./useAccountDocuments";
+import {
+  reconcileUploadedDocuments,
+  reconciliationMessage,
+} from "./reconcileUploads";
 
 type ReadState = "loading" | "loaded" | "absent" | "error";
 type Profile = { legalName: string; country: string };
@@ -292,42 +296,12 @@ export function useAccountPage(enabled = true) {
     const added = refreshed.documents.filter(
       (document) => !idsBefore.includes(document.id),
     );
-    const stagedCounts = new Map<string, number>();
-    const addedCounts = new Map<string, number>();
-    files.forEach((file) =>
-      stagedCounts.set(file.name, (stagedCounts.get(file.name) ?? 0) + 1),
-    );
-    added.forEach((document) =>
-      addedCounts.set(
-        document.original_filename,
-        (addedCounts.get(document.original_filename) ?? 0) + 1,
-      ),
-    );
-    const ambiguous = [...stagedCounts.keys()].filter(
-      (name) =>
-        (addedCounts.get(name) ?? 0) > 0 &&
-        ((stagedCounts.get(name) ?? 0) > 1 || (addedCounts.get(name) ?? 0) > 1),
-    );
-    const matched: number[] = [];
-    for (const document of added) {
-      if (ambiguous.includes(document.original_filename)) continue;
-      const index = files.findIndex(
-        (file, i) =>
-          !matched.includes(i) && file.name === document.original_filename,
-      );
-      if (index >= 0) matched.push(index);
-    }
-    documents.removeFilesAt(matched);
+    const result = reconcileUploadedDocuments(added, files);
+    documents.removeFilesAt(result.matched);
     adopt(refreshed, expected);
-    setAmbiguousNames(ambiguous);
-    if (ambiguous.length === 0) setUncertainIds(null);
-    setActionError(
-      ambiguous.length
-        ? "New uploaded documents match staged files with duplicate names. We cannot tell which copy uploaded. Discard the uncertain staged files, review the uploaded list, then select any missing files again."
-        : matched.length
-          ? "Some files were uploaded before the connection failed. Review the remaining files and save again."
-          : "No new files were found. You can retry the upload.",
-    );
+    setAmbiguousNames(result.ambiguousNames);
+    if (result.ambiguousNames.length === 0) setUncertainIds(null);
+    setActionError(reconciliationMessage(result, "save"));
   }
 
   async function saveDocuments() {
