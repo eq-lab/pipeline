@@ -879,7 +879,7 @@ line, whichever section it lands in.
   `format:check` CI step so drift can't silently return. Alternatively scope the hook's
   Prettier check to staged files (lint-staged) so unrelated debt doesn't block commits.
 
-### TD-54: No lint guard against spec-style comments creeping back into frontend source
+### TD-54: No lint guard against spec-style comments creeping back into frontend source [RESOLVED 2026-10-20 / #1355]
 
 - **Date:** 2026-08-11 (#998, epic #991)
 - **Location:** `packages/frontend/src`, `packages/trustee/src`, `packages/ui/src` — enforcement of
@@ -893,6 +893,7 @@ line, whichever section it lands in.
 - **Suggested fix:** A lightweight lint (ESLint rule or a `scripts/` check like `lint-docs.ts`)
   flagging header docblocks over ~N lines in `packages/*/src/**` that lack a `spec:` pointer, plus
   flagging Figma node IDs (`\d{3,}[:-]\d{3,}`) in comments outside `docs/`.
+- **Resolution (2026-10-20, #1355):** `scripts/lint-comments.ts` (`yarn lint:comments`, pre-commit, CI) errors on header docblocks > 3 lines without a `spec:` pointer and on Figma node ids in comments, ratcheting against `scripts/lint-comments.baseline.json` (211 spec-less headers and 59 node-id comments on landing); baselined files may only improve, new files are held to the full rule. Paying the baseline down is ongoing hygiene, not a tracked gap — see `docs/FRONTEND.md` rule 6.
 
 ### TD-55: `CollateralValuationInput::asset` is stored un-normalized
 
