@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1355 (TD-54, epic #991 follow-up).
 Branch: `feat/1355-comment-lint-guard`.
 
+**Status: implemented (2026-10-20)** — all steps done; `lint-comments` green on the branch (0 errors, 1 debt warning), planted violations and a stale baseline entry each fail as designed, `lint-docs` green. See PR #1590.
+
 ## Scope
 
 - `scripts/lint-comments.ts` (run with `npx tsx`, like `lint-docs.ts`) over `packages/frontend/src`,
