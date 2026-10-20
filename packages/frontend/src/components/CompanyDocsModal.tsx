@@ -21,6 +21,10 @@ import {
   type SubmissionResult,
 } from "@/components/account/submitLpForReview";
 import { useAccountDocuments } from "@/components/account/useAccountDocuments";
+import {
+  reconcileUploadedDocuments,
+  reconciliationMessage,
+} from "@/components/account/reconcileUploads";
 
 export interface CompanyDocsModalProps {
   open: boolean;
@@ -83,6 +87,7 @@ export function CompanyDocsModal({
   const submitPending = useRef(false);
   const [uncertainSubmission, setUncertainSubmission] = useState(false);
   const [uncertainIds, setUncertainIds] = useState<number[] | null>(null);
+  const [ambiguousNames, setAmbiguousNames] = useState<string[]>([]);
   const {
     files,
     rejected,
@@ -121,12 +126,13 @@ export function CompanyDocsModal({
     writable &&
     !busy &&
     !uncertainIds &&
+    ambiguousNames.length === 0 &&
     (preview ||
       (Boolean(email) &&
         (!serverLp ||
           ["NotStarted", "ChangesRequested"].includes(serverLp.kyb_status))));
 
-  async function reconcile(idsBefore: number[]) {
+  async function reconcile(idsBefore: number[], staged: File[]) {
     const expected = readSession()?.token;
     if (!expected) return;
     const refreshed = await getMyLp();
@@ -134,22 +140,26 @@ export function CompanyDocsModal({
     const added = refreshed.documents.filter(
       (document) => !idsBefore.includes(document.id),
     );
-    const matched: number[] = [];
-    for (const document of added) {
-      const index = files.findIndex(
-        (file, i) =>
-          !matched.includes(i) && file.name === document.original_filename,
-      );
-      if (index >= 0) matched.push(index);
-    }
-    removeFilesAt(matched);
+    const result = reconcileUploadedDocuments(added, staged);
+    removeFilesAt(result.matched);
     setServerLp(refreshed);
     onLpChange?.(refreshed);
+    setAmbiguousNames(result.ambiguousNames);
+    if (result.ambiguousNames.length === 0) setUncertainIds(null);
+    setError(reconciliationMessage(result, "submit"));
+  }
+
+  function discardAmbiguous() {
+    if (busy || ambiguousNames.length === 0) return;
+    removeFilesAt(
+      files.flatMap((file, index) =>
+        ambiguousNames.includes(file.name) ? [index] : [],
+      ),
+    );
+    setAmbiguousNames([]);
     setUncertainIds(null);
     setError(
-      matched.length
-        ? "Some files were uploaded before the connection failed. Review the remaining files and submit again."
-        : "No new files were found. You can retry the upload.",
+      "Uncertain staged files were discarded. Review the uploaded list and select any missing files again.",
     );
   }
 
@@ -206,7 +216,7 @@ export function CompanyDocsModal({
         if (!(uploadError instanceof ApiError)) {
           setUncertainIds(idsBefore);
           try {
-            await reconcile(idsBefore);
+            await reconcile(idsBefore, files);
           } catch {
             if (readSession()?.token !== token) return;
             setError(
@@ -254,7 +264,7 @@ export function CompanyDocsModal({
     if (!expected || !uncertainIds || busy) return;
     setBusy(true);
     try {
-      await reconcile(uncertainIds);
+      await reconcile(uncertainIds, files);
     } catch (requestError) {
       if (readSession()?.token === expected)
         setError(errorMessage(requestError));
@@ -446,13 +456,22 @@ export function CompanyDocsModal({
         {!preview && serverLp?.kyb_status === "Passed" && (
           <p role="status">Your account is verified.</p>
         )}
-        {uncertainIds && (
+        {uncertainIds && ambiguousNames.length === 0 && (
           <Button
             variant="secondary"
             disabled={busy}
             onClick={() => void checkUploads()}
           >
             Check uploads
+          </Button>
+        )}
+        {ambiguousNames.length > 0 && (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={discardAmbiguous}
+          >
+            Discard uncertain staged files
           </Button>
         )}
         <Button

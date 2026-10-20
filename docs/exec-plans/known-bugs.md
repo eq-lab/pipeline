@@ -31,13 +31,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** `DateTime::from_timestamp(unix_secs as i64, 0)` — the `as i64` cast wraps rather than failing, so `u64::MAX` arrives as `-1`, a perfectly valid timestamp that `from_timestamp` accepts. The `ok_or_else` branch can therefore never fire.
 - **Workaround:** None needed in practice (no real caller sends such a value), and not fixed here — a different endpoint's file. The fix is `i64::try_from(unix_secs).ok().and_then(|secs| DateTime::from_timestamp(secs, 0))`; taking the timestamp as an ISO-8601 string, the way `routes::lp_bank_deposits` now does, sidesteps the cast entirely.
 
-### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
-- **Date:** 2026-09-29
-- **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx` (`reconcile`, introduced by #1371).
-- **Symptom:** After a network failure during an upload of two different files with the same filename, server read-back may remove the wrong staged file, leaving the accepted one queued for a duplicate retry and losing the failed one from the draft. The modal also permits staged-file removal while its `Check uploads` read is pending, so stale index removal can drop a different file.
-- **Root cause:** Reconciliation matches returned documents to staged files by filename and then removes staged entries by array index, without locking staging or resolving duplicate-name ambiguity.
-- **Workaround:** Avoid selecting duplicate filenames in one batch. After an uncertain upload, inspect the saved document list before retrying and reselect any missing files. Fix the modal reconciliation separately from Account page issue #1373.
-
 ### BUG-22: `cargo clippy --all -- -D warnings` fails on `main` — unknown lint `clippy::duration_suboptimal_units`
 - **Date:** 2026-09-24
 - **Location:** `packages/worker/src/asset_price_collector/mod.rs:42` (`#[allow(clippy::duration_suboptimal_units)]`, added by #1023). Found while running the `test-fast` gate for #1265, a frontend-only change with zero Rust files touched.
@@ -101,6 +94,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-23: Account setup modal can discard the wrong staged file after an uncertain upload
+- **Date:** 2026-09-29
+- **Location:** `packages/frontend/src/components/CompanyDocsModal.tsx` (`reconcile`, introduced by #1371).
+- **Symptom:** After a network failure during an upload of two different files with the same filename, server read-back may remove the wrong staged file, leaving the accepted one queued for a duplicate retry and losing the failed one from the draft. The modal also permits staged-file removal while its `Check uploads` read is pending, so stale index removal can drop a different file.
+- **Root cause:** Reconciliation matches returned documents to staged files by filename and then removes staged entries by array index, without locking staging or resolving duplicate-name ambiguity.
+- **Workaround:** Avoid selecting duplicate filenames in one batch. After an uncertain upload, inspect the saved document list before retrying and reselect any missing files. Fix the modal reconciliation separately from Account page issue #1373.
+- **Resolved:** 2026-10-20 by #1572 — `CompanyDocsModal` now reconciles through the shared `components/account/reconcileUploads.ts` helper the Account page already used: duplicate names on either side are kept as ambiguous (nothing removed, Submit blocked, "Discard uncertain staged files" offered) instead of removing the first same-name copy; the staged list passed to `reconcile` is the one the request was issued for, and the rows stay disabled for the whole request window.
 
 ### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
 - **Date:** 2026-08-19

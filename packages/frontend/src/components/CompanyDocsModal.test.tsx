@@ -594,3 +594,92 @@ describe("CompanyDocsModal — production requests", () => {
     expect(mockUpload).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("CompanyDocsModal — uncertain upload with duplicate filenames (#1572, BUG-23)", () => {
+  beforeEach(() => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+  });
+
+  function uncertainUpload(staged: File[]) {
+    mockUpsert.mockResolvedValueOnce(lp());
+    mockUpload.mockRejectedValueOnce(new TypeError("Connection lost"));
+    renderModal({ lp: lp() });
+    upload(staged);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+  }
+
+  it("keeps both same-name copies, blocks Submit, and offers Discard when the read-back cannot tell them apart", async () => {
+    mockGet.mockResolvedValueOnce(
+      lp([{ ...makeDocument(21), original_filename: "same.pdf" }]),
+    );
+    uncertainUpload([
+      makeFile("same.pdf", "application/pdf", 10),
+      makeFile("same.pdf", "application/pdf", 20),
+    ]);
+    const discard = await screen.findByRole("button", {
+      name: "Discard uncertain staged files",
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "cannot tell which copy uploaded",
+    );
+    expect(screen.getAllByText("same.pdf")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Check uploads" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(discard);
+    await waitFor(() =>
+      expect(screen.getAllByText("same.pdf")).toHaveLength(1),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Discard uncertain staged files" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Uncertain staged files were discarded",
+    );
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats two returned same-name documents as ambiguous too — the LP discards the staged copies", async () => {
+    mockGet.mockResolvedValueOnce(
+      lp([
+        { ...makeDocument(21), original_filename: "same.pdf" },
+        { ...makeDocument(22), original_filename: "same.pdf" },
+      ]),
+    );
+    uncertainUpload([
+      makeFile("same.pdf", "application/pdf", 10),
+      makeFile("same.pdf", "application/pdf", 20),
+    ]);
+    const discard = await screen.findByRole("button", {
+      name: "Discard uncertain staged files",
+    });
+    expect(screen.getAllByText("same.pdf")).toHaveLength(4);
+    fireEvent.click(discard);
+    await waitFor(() =>
+      expect(screen.getAllByText("same.pdf")).toHaveLength(2),
+    );
+    expect(
+      screen.getByRole("button", { name: "Submit for review" }),
+    ).toBeEnabled();
+  });
+
+  it("removes exactly the matched staged file and keeps the differently named one staged", async () => {
+    mockGet.mockResolvedValueOnce(
+      lp([{ ...makeDocument(21), original_filename: "b.pdf" }]),
+    );
+    uncertainUpload([
+      makeFile("a.pdf", "application/pdf"),
+      makeFile("b.pdf", "application/pdf"),
+    ]);
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Review the remaining files and submit again",
+      ),
+    );
+    expect(screen.getAllByText("a.pdf")).toHaveLength(1);
+    expect(screen.getAllByText("b.pdf")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+  });
+});
