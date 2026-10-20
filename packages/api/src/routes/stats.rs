@@ -11,7 +11,7 @@ use utoipa::{OpenApi, ToSchema};
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
-use crate::routes::common::resolve_chain;
+use crate::routes::common::{ChainScope, LenientChainFilter, RequiredChain};
 use crate::AppState;
 
 /// Maximum value the `/stats` endpoint accepts for the `apy_days` query parameter.
@@ -29,7 +29,7 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_stats, get_daily_prices, get_vaults),
-    components(schemas(StatsQuery, StatsResponse, VaultStatsItem, PricesQuery, Interval, PricesResponse, PriceItem, VaultsQuery, VaultsResponse, VaultItem)),
+    components(schemas(StatsQuery, StatsResponse, VaultStatsItem, PricesQuery, Interval, PricesResponse, PriceItem, VaultsResponse, VaultItem)),
     tags(
         (name = "Stats", description = "Protocol-level vault statistics"),
         (name = "Prices", description = "Share price history"),
@@ -43,8 +43,6 @@ pub struct StatsQuery {
     /// Number of days for APY calculation window (default 30).
     #[serde(default = "default_apy_days")]
     pub apy_days: u32,
-    /// Chain ID (optional — defaults to the server's DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
 }
 
 fn default_apy_days() -> u32 {
@@ -53,6 +51,8 @@ fn default_apy_days() -> u32 {
 
 #[derive(Serialize, ToSchema)]
 pub struct VaultStatsItem {
+    /// Chain the vault is deployed on.
+    pub chain_id: i64,
     pub vault_address: String,
     /// Current share price (assets per 1 share).
     pub share_price: String,
@@ -71,17 +71,18 @@ pub struct StatsResponse {
     path = "/v1/stats",
     params(
         ("apy_days" = Option<u32>, Query, description = "Number of days for APY calculation window (default 30, max 1000). Uses the oldest available price within this window."),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        LenientChainFilter,
     ),
     responses(
-        (status = 200, description = "Protocol vault statistics", body = StatsResponse),
-        (status = 400, description = "Invalid query parameters"),
+        (status = 200, description = "Protocol vault statistics for the selected chain, or for all configured chains (in CHAINS order) when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields an empty list", body = StatsResponse),
+        (status = 400, description = "Invalid query parameters; or malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Stats"
 )]
 async fn get_stats(
     State(state): State<Arc<AppState>>,
+    LenientChainFilter(scope): LenientChainFilter,
     Query(query): Query<StatsQuery>,
 ) -> Result<Json<StatsResponse>, ApiError> {
     if query.apy_days > MAX_APY_DAYS {
@@ -90,9 +91,17 @@ async fn get_stats(
         )));
     }
     let apy_days = query.apy_days.max(1);
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_ids = match scope {
+        ChainScope::All => state.chains.iter().map(|c| c.chain_id).collect(),
+        ChainScope::One(c) => vec![c.chain_id],
+        ChainScope::Unconfigured(_) => Vec::new(),
+    };
 
-    Ok(Json(compute_stats(&state, chain_id, apy_days).await?))
+    let mut vaults = Vec::new();
+    for chain_id in chain_ids {
+        vaults.extend(compute_stats(&state, chain_id, apy_days).await?.vaults);
+    }
+    Ok(Json(StatsResponse { vaults }))
 }
 
 async fn compute_stats(
@@ -130,6 +139,7 @@ async fn compute_stats(
             });
 
         vaults.push(VaultStatsItem {
+            chain_id,
             vault_address: v.address.clone(),
             share_price: latest.price.to_string(),
             apy: apy.map(|v| format!("{v:.6}")),
@@ -148,8 +158,6 @@ pub struct PricesQuery {
     /// Time grouping: "hourly", "daily" (default), or "weekly".
     #[serde(default)]
     pub interval: Interval,
-    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -174,20 +182,21 @@ pub struct PricesResponse {
         ("vault" = String, Query, description = "Vault address"),
         ("days" = Option<u32>, Query, description = "Number of days to look back (omit for all history)"),
         ("interval" = Option<String>, Query, description = "Time grouping: \"hourly\", \"daily\" (default), or \"weekly\""),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "Average share prices grouped by interval", body = PricesResponse),
-        (status = 400, description = "Invalid query parameters"),
+        (status = 400, description = "Missing, malformed, or unknown chain_id; or invalid query parameters"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Prices"
 )]
 async fn get_daily_prices(
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
     Query(query): Query<PricesQuery>,
 ) -> Result<Json<PricesResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let chain_id = chain.chain_id;
     let step = query.interval.step_secs();
 
     // Resolve the lookback window. With `days = Some(d)` the start is `now - d × 86400`.
@@ -236,12 +245,6 @@ async fn get_daily_prices(
     }))
 }
 
-#[derive(Deserialize, ToSchema, Default)]
-pub struct VaultsQuery {
-    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
-}
-
 #[derive(Serialize, ToSchema)]
 pub struct VaultItem {
     pub chain_id: i64,
@@ -260,31 +263,34 @@ pub struct VaultsResponse {
 #[utoipa::path(
     get,
     path = "/v1/stats/vaults",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "List of registered vaults", body = VaultsResponse),
+        (status = 200, description = "List of registered vaults on the selected chain, or on all configured chains (in CHAINS order) when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields an empty list", body = VaultsResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Vaults"
 )]
 async fn get_vaults(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<VaultsQuery>,
+    LenientChainFilter(scope): LenientChainFilter,
 ) -> Result<Json<VaultsResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-    let rows = state.position_repo.get_vaults(chain_id).await?;
-    let vaults = rows
-        .into_iter()
-        .map(|v| VaultItem {
+    let chain_ids: Vec<i64> = match scope {
+        ChainScope::All => state.chains.iter().map(|c| c.chain_id).collect(),
+        ChainScope::One(c) => vec![c.chain_id],
+        ChainScope::Unconfigured(_) => Vec::new(),
+    };
+    let mut vaults = Vec::new();
+    for chain_id in chain_ids {
+        let rows = state.position_repo.get_vaults(chain_id).await?;
+        vaults.extend(rows.into_iter().map(|v| VaultItem {
             chain_id: v.chain_id,
             address: v.address,
             name: v.name,
             asset_decimals: v.asset_decimals,
             share_decimals: v.share_decimals,
-        })
-        .collect();
+        }));
+    }
     Ok(Json(VaultsResponse { vaults }))
 }
 
