@@ -2,6 +2,8 @@
 
 Source: https://github.com/eq-lab/pipeline/issues/1577 (TD-122; epic #1419 states)
 
+**Status: implemented (2026-10-20)** — all steps done; the before/after grid markup diff was empty for all seven states; frontend lint/build/test (153 files, 2444 tests) and `lint-docs` green. See PR #1587.
+
 Branch: `feat/1577-home-grid-shared-layout`. Pure refactor — **no visible change**; every one of the
 seven `homeState` compositions must render byte-identical markup.
 
