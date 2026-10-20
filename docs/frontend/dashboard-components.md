@@ -783,48 +783,6 @@ in scope; that would be a separate issue. "Always visible" means always mounted 
 page, not pinned: the banner is **non-sticky** and scrolls away in normal flow while the LP
 `TopBar` below it pins (#1238).
 
-### AccountDropdown
-
-**Status: orphaned by #1362, no longer composed anywhere (TD-112).** `TopBar` stopped rendering the
-`WalletPill` trigger + this dropdown when the header's right slot switched to the auth-state
-matrix (Sign In/Sign Up ↔ account icon) — see `### TopBar` above. The component and its test file
-are left in the tree (not deleted, to keep this change reviewable) rather than removed outright;
-logged as tech debt (`docs/exec-plans/tech-debt-tracker.md`, TD-112), a candidate for deletion.
-`AccountWalletCard` gained its own `Disconnect` row directly (#1458, closed TD-111) rather than
-reusing this component's namespace-toggle/disconnect pattern, so TD-112 is now purely "delete this
-dead code," unrelated to TD-111. The rest of this section documents the component as it existed
-before #1362, kept for history.
-
-**Source:** `AccountDropdown.tsx` + `useAccountDropdown.ts`.
-
-The panel that opened when the user clicked the `WalletPill`. Anchored under the pill (absolute,
-right-aligned), dark surface. Figma node `1506:104728` inside `Header / Connected` (`1497:94752`).
-Was composed inside `TopBar`; not exported from `@pipeline/ui` (single-component-owner rule per
-FRONTEND.md rule 2).
-
-**Props contract:**
-
-| Prop                       | Behavior                                                                                                                                                                                           |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kind` / `onKindChange`    | Active namespace (`evm`/`stellar`); tab click switches it.                                                                                                                                         |
-| `address`                  | Connected address for the active namespace, `undefined` when not connected.                                                                                                                        |
-| `formattedBalance`         | Pre-formatted USDC balance (e.g. `"$1,000.00"`), `undefined` when disconnected/loading.                                                                                                            |
-| `stellarPlusdBalance`      | Pre-formatted PLUSD balance. Only passed when Stellar is active **and** balance is non-zero; `undefined` hides the PLUSD row entirely (Issue #675: zero/no-trustline rows are hidden, not zeroed). |
-| `stellarSplusdBalance`     | sPLUSD token count string. Same non-zero/Stellar-only gating and hide-when-absent rule as PLUSD (#675).                                                                                            |
-| `onConnect`                | "Connect {namespace}" affordance in the not-connected state.                                                                                                                                       |
-| `onClose` / `onDisconnect` | Panel dismissal / disconnect action.                                                                                                                                                               |
-
-EVM header stays USDC-only — the PLUSD/sPLUSD rows only ever render for the Stellar namespace.
-
-**Dark panel styling:** the panel has no dedicated "dark surface" token in `theme.css`, so it
-reuses `--color-pipeline-ink` (#262524, near-black — otherwise used for primary CTA buttons) as the
-closest match, with `--color-pipeline-on-dark` (#ffffff) for text. The divider between rows is a
-thin low-opacity white line, matching the Figma separator between blocks.
-
-**`useAccountDropdown` hook** owns: address truncation (via the shared `truncateAddress` util),
-clipboard copy with a 1.5 s `copied` affordance, and outside-click / Escape / route-change dismissal
-effects.
-
 ### MobileNavMenu
 
 **Source:** `MobileNavMenu.tsx` + `useMobileNavMenu.ts`.

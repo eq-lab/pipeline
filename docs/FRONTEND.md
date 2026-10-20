@@ -151,7 +151,7 @@ Breakpoint: Tailwind `md` (768px). Below 768px is the mobile layout; 768px and a
 
 **Desktop (md and above):**
 
-- `TopBar` shows the inline icon nav and "Connect Wallet" / `WalletPill` on the right; hamburger is hidden. When a **Stellar** wallet is connected, clicking the `WalletPill` opens `AccountDropdown` which additionally lists non-zero PLUSD and sPLUSD balances below the USDC row (Issue #675). EVM header stays USDC-only.
+- `TopBar` shows the inline icon nav and, on the right, the auth entry (Sign Up / Sign In, or the account icon once signed in or wallet-connected — #1362/#1458); hamburger is hidden. Wallet balances live on `/account` and the home cards, not in the header (the former `WalletPill` + `AccountDropdown` were removed by #1362 and deleted in #1575).
 - Home page renders a white `Card` with the 7-column grid layout (Figma frame `1497:94556`).
 - `WelcomeHeader` shows the 64px title and the stats strip on the right.
 
