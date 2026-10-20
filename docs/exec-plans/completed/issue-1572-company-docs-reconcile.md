@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1572 — `docs/exec-plans/known-bugs.md` BUG-23
 (introduced by #1371; epic #1247). Branch: `fix/1572-company-docs-reconcile`.
 
+**Status: implemented (2026-10-20)** — all steps done; frontend lint/build/test (154 files, 2458 tests) and `lint-docs` green. See PR #1589.
+
 ## Scope
 
 `packages/frontend` only.
