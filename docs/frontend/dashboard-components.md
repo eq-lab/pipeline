@@ -1585,9 +1585,23 @@ itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` 
 
 ### Home route
 
-**Source:** `packages/frontend/src/routes/index.tsx`
+**Source:** `packages/frontend/src/routes/index.tsx` (page composition) +
+`packages/frontend/src/routes/-HomeDashboardGrid.tsx` (the desktop grid shell, #1577).
 
 Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
+
+**Desktop grid shell (#1577, closed TD-122).** Every `homeState` composition below renders through
+one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
+(`home-dashboard-grid`), the absolutely-filled Recent-activity slot (col 5–7, `row-span-2`;
+`activityPadding="md"` for the six compact states, omitted for `"legacy"`), the Balances stack
+wrapper (col 1–2, row 2, `data-node-id` per state via `balancesNodeId`) and the `QnaSection`
+footer (col 1–7, row 3). The route supplies the varying parts as slots: `hero` (col 1–4, row 1),
+`balances` (the stack's children) and `third` (col 3–4, row 2 — a `CompactAddUsdStack`, which
+appends the compact `EarnedCard`, for the six compact states; the bare `StakeCard` for
+`"legacy"`). `CompactBalances` renders the compact `StartHereCard` + `StakeCard` pair from the
+per-state handlers. The per-state tables below are unchanged: the refactor was verified
+byte-identical for all seven states (grid `outerHTML` diffed before/after), and every
+`data-node-id` / `data-testid` sits on the same element as before.
 
 **Desktop (md+) visual structure, top → bottom:**
 

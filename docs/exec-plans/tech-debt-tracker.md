@@ -1891,13 +1891,14 @@ line, whichever section it lands in.
 - **Suggested fix:** A designed loading state for the home grid (skeleton or the `"zero"` composition held briefly) would remove the flash, but Figma has not designed one; revisit once states 3–6 make the full state machine's loading behavior worth designing once rather than per state.
 - **Extended 2026-10-07 (#1423):** the same shape now applies to the **balance** reads. `deriveHomeState`'s `plusdIsZero`/`splusdIsZero` inputs come from `isDisplayZero`, and `isDisplayZero(undefined, d)` is `true`, so a connected `UnderReview` LP that actually holds PLUSD renders state 3 for one balance round-trip before the grid falls back to `"legacy"` — the inverse of the LP-read flash above, and fixed by the same designed loading state.
 
-### TD-122: Four near-identical desktop home-grid branches in `routes/index.tsx`
+### TD-122: Four near-identical desktop home-grid branches in `routes/index.tsx` [RESOLVED 2026-10-20 / #1577]
 
 - **Date:** 2026-10-07
 - **Location:** `packages/frontend/src/routes/index.tsx` (`Home`'s `homeState === "zero" | "unverified" | "kyb-pending" | "legacy"` ternary) — Issues #1422 and #1423, following #1421's precedent of adding a branch rather than refactoring.
 - **Gap:** The four branches share the same 7-column grid shape (`grid-cols-7 gap-4`, the same `RecentActivityCard` absolute-position wrapper, the same `QnaSection` footer slot) and differ only in which card fills each of the two left-hand slots and which handlers get wired to the shared cards. Nothing is extracted — each branch is a full, separately-maintained copy.
 - **Impact:** A shared-structure change (grid gap, `RecentActivityCard` positioning, `QnaSection` wrapper) now needs editing in four places, and that cost grows again once states 4–6 (#1424–#1426) land as further branches.
 - **Suggested fix:** Extract the shared grid shell (RecentActivityCard slot, QnaSection footer, grid classes) into a small composer that takes the two left-hand slots as render props or children, once states 4–6 make seven near-identical branches the alternative.
+- **Resolution (2026-10-20, #1577):** By then seven branches. The shell (grid container, Recent-activity slot, Balances wrapper, `QnaSection` footer) lives in `routes/-HomeDashboardGrid.tsx` (`HomeDashboardGrid` with `hero` / `balances` / `third` slots, plus `CompactBalances` and `CompactAddUsdStack`); `routes/index.tsx` picks the slot contents per state. Verified byte-identical for all seven states by diffing the grid's `outerHTML` before and after.
 
 ### TD-123: Both loan-registry readers construct the six new mutable-data fields as zero placeholders [RESOLVED 2026-10-08 / #1433, #1434]
 
