@@ -1734,9 +1734,19 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 
 Only meaningful when `isConnected === true`; callers short-circuit to the disconnected layout otherwise.
 
-**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460):**
+**Loading composition (#1576).** For `"loading"` the route renders the shared `HomeDashboardGrid`
+with `aria-busy` and neutral blocks (`LoadingBlock`: `animate-pulse`,
+`--color-pipeline-surface-muted`, card radius, `aria-hidden`, `data-testid="home-loading-block"`)
+in the three LP-dependent slots, sized to the compact states' geometry so the swap to the resolved
+state is layout-stable: hero 274px (col 1–4, row 1), Balances 164 + 164px, third slot 246 + 82px.
+Recent activity and the FAQ strip render normally (neither depends on the LP read); no CTA renders
+during the window; the Balances wrapper carries no `data-node-id`. No Figma loading frame exists —
+the skeleton is derived from the cards' own heights. The mobile stack is unaffected (it never reads
+`homeState`), and `lpRead === "error"` still falls back to `"legacy"`.
+
+**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460/#1576):**
 `packages/frontend/src/components/homeState.ts` exports
-`HomeState = "zero" | "wallet-only" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
+`HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
 `deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
@@ -1745,14 +1755,16 @@ Both balance inputs default to `false` so an unpassed input can never promote a 
 precedence clause) is evaluated in order: when `hasSession` is `false`, `"wallet-only"` if
 `isConnected && plusdIsZero && splusdIsZero`, else `"zero"` (this is the one short-circuit #1460
 changed — every sessionless caller still resolves to exactly one of these two, and can never reach
-the KYB branches below); else `"unverified"` when `!isConnected` and either `lpRead === "absent"` or
+the KYB branches below); else `"loading"` when `lpRead === "unknown"` — the `GET /v1/lps/me` read
+has not resolved (#1576, closes the LP-read half of TD-121; see "Loading composition" below); else
+`"unverified"` when `!isConnected` and either `lpRead === "absent"` or
 (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
 `"kyb-pending"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "UnderReview"` and both
 `plusdIsZero` and `splusdIsZero`; else `"plusd-held"` when `isConnected`, `lpRead === "loaded"`,
 `kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"kyb-problem"` when
 `lpRead === "loaded"` and `kybStatus` is `"ChangesRequested"` or `"Failed"` — **no `isConnected` or
 balance check**, unlike the two branches above it; else `"legacy"` (covers a disconnected wallet, a
-non-zero sPLUSD balance, `lpRead` `"unknown"`/`"error"`, and every other `kyb_status`, including the
+non-zero sPLUSD balance, `lpRead` `"error"`, and every other `kyb_status`, including the
 unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for `hasSession`,
 `lpRead`/`kybStatus` from `useAuthFlow()`, and feeds the two balance inputs from
 `isDisplayZero(plusdBalanceActive, activeDecimals)` / `isDisplayZero(splusdSharesActive,

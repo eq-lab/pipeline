@@ -74,7 +74,7 @@ const {
 } = vi.hoisted(() => ({
   mockAuthState: {
     isAuthenticated: true,
-    lpRead: "unknown" as "unknown" | "absent" | "loaded" | "error",
+    lpRead: "loaded" as "unknown" | "absent" | "loaded" | "error",
     kybStatus: undefined as string | undefined,
   },
   mockAuthFlowOpen: vi.fn(),
@@ -229,7 +229,7 @@ function renderHomeStellar() {
 beforeEach(() => {
   mockPnlData.current = undefined;
   mockAuthState.isAuthenticated = true;
-  mockAuthState.lpRead = "unknown";
+  mockAuthState.lpRead = "loaded";
   mockAuthState.kybStatus = undefined;
   mockAuthFlowOpen.mockClear();
   mockOpenAccountSetup.mockClear();
@@ -1534,16 +1534,17 @@ describe("Home page — unverified-state regressions (#1422)", () => {
     localStorage.clear();
   });
 
-  it("lpRead: 'unknown' (in-flight read) keeps the legacy disconnected layout", async () => {
+  it("lpRead: 'unknown' (in-flight read) renders the loading skeleton on the desktop grid, not the legacy layout (#1576)", async () => {
     mockAuthState.lpRead = "unknown";
     renderHome();
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("heading", { name: "Connect Wallet" }).length,
-      ).toBeGreaterThanOrEqual(1);
-    });
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).toHaveAttribute("aria-busy", "true");
+    expect(within(grid).getAllByTestId("home-loading-block")).toHaveLength(5);
     expect(
-      screen.queryByRole("button", { name: "Connect wallet" }),
+      within(grid).queryByRole("heading", { name: "Connect Wallet" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(grid).queryByTestId("home-start-here-card"),
     ).not.toBeInTheDocument();
   });
 
@@ -1814,15 +1815,21 @@ describe("Home page — KYB-pending regressions (#1423)", () => {
     },
   );
 
-  it.each(["unknown", "error"] as const)(
-    "lpRead %s keeps the legacy connected layout",
-    async (lpRead) => {
-      connect();
-      mockAuthState.lpRead = lpRead;
-      renderHome();
-      await expectLegacyConnectedLayout();
-    },
-  );
+  it("lpRead error keeps the legacy connected layout", async () => {
+    connect();
+    mockAuthState.lpRead = "error";
+    renderHome();
+    await expectLegacyConnectedLayout();
+  });
+
+  it("lpRead unknown renders the loading skeleton instead (#1576)", async () => {
+    connect();
+    mockAuthState.lpRead = "unknown";
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).toHaveAttribute("aria-busy", "true");
+    expect(within(grid).getAllByTestId("home-loading-block")).toHaveLength(5);
+  });
 
   it("UnderReview with the wallet disconnected keeps the legacy disconnected layout", async () => {
     renderHome();
@@ -2012,18 +2019,26 @@ describe("Home page — plusd-held regressions (#1424)", () => {
     });
   });
 
-  it.each(["unknown", "error"] as const)(
-    "lpRead %s keeps the legacy connected layout",
-    async (lpRead) => {
-      connectWithPlusd();
-      mockAuthState.lpRead = lpRead;
-      renderHome();
-      const grid = await screen.findByTestId("home-dashboard-grid");
-      expect(
-        within(grid).getByTestId("home-portfolio-placeholder"),
-      ).toHaveAttribute("data-node-id", "1497:95048");
-    },
-  );
+  it("lpRead error keeps the legacy connected layout", async () => {
+    connectWithPlusd();
+    mockAuthState.lpRead = "error";
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(
+      within(grid).getByTestId("home-portfolio-placeholder"),
+    ).toHaveAttribute("data-node-id", "1497:95048");
+  });
+
+  it("lpRead unknown renders the loading skeleton instead (#1576)", async () => {
+    connectWithPlusd();
+    mockAuthState.lpRead = "unknown";
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(grid).queryByTestId("home-portfolio-placeholder"),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("Home page — KYB-problem state (#1426)", () => {
@@ -2350,5 +2365,66 @@ describe("Home page — heading per state (#1475)", () => {
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
     renderHome();
     await waitFor(() => expect(heading()).toBe("Welcome back"));
+  });
+});
+
+describe("Home page — loading state while GET /v1/lps/me is in flight (#1576)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockAuthFlowOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockAuthState.isAuthenticated = true;
+    mockAuthState.lpRead = "unknown";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("keeps the shared grid shell: Recent activity and the FAQ strip render around the skeleton", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(
+      within(grid).getByTestId("home-recent-activity-card"),
+    ).toBeInTheDocument();
+    expect(within(grid).getByTestId("home-qna-wrapper")).toBeInTheDocument();
+    expect(within(grid).getByTestId("home-balances-stack")).not.toHaveAttribute(
+      "data-node-id",
+    );
+  });
+
+  it("shows no CTA during the window — nothing to sign up for, connect or verify", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(within(grid).queryByRole("button")).not.toBeInTheDocument();
+    expect(
+      within(grid).queryByTestId("home-add-usd-card"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(grid).queryByTestId("home-portfolio-placeholder"),
+    ).not.toBeInTheDocument();
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
+  });
+
+  it("applies to a connected wallet too (the LP read is independent of the wallet)", async () => {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).toHaveAttribute("aria-busy", "true");
+    expect(within(grid).getAllByTestId("home-loading-block")).toHaveLength(5);
+  });
+
+  it("lpRead: 'error' still falls back to the legacy layout, not the skeleton", async () => {
+    mockAuthState.lpRead = "error";
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).not.toHaveAttribute("aria-busy");
+    expect(
+      within(grid).queryByTestId("home-loading-block"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(grid).getByTestId("home-start-here-card"),
+    ).toBeInTheDocument();
   });
 });

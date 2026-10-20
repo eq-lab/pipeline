@@ -1882,7 +1882,7 @@ line, whichever section it lands in.
 - **Impact:** An LP that opted in to hear the outcome of its review can be told nothing, and neither the LP nor a trustee can see that it happened. `ChangesRequested` is the costly case: the record sits unfrozen awaiting a correction the LP does not know was asked for, and the cycle stalls until someone opens the app. The inline send also puts SendGrid's 10s client timeout on the trustee's request latency.
 - **Suggested fix:** A durable outbox table written in the same transaction as the decision, drained by a worker with retry and a dead-letter state. One change covers TD-96 and TD-97 as well — the auth emails have the same shape of problem from the other direction (they propagate where they should swallow), and an outbox removes the choice.
 
-### TD-121: The home route briefly flashes the legacy layout while `GET /v1/lps/me` is in flight
+### TD-121: The home route briefly flashes the legacy layout while `GET /v1/lps/me` is in flight [PARTIALLY RESOLVED 2026-10-20 / #1576]
 
 - **Date:** 2026-10-07
 - **Location:** `packages/frontend/src/routes/index.tsx`, `packages/frontend/src/auth/AuthFlowProvider.tsx` — Issue #1422.
@@ -1890,6 +1890,7 @@ line, whichever section it lands in.
 - **Impact:** A one-RTT layout flash on every fresh load for exactly the population this state targets (signed in, KYB bypassed or incomplete, no wallet). Cosmetic, not a data-correctness issue — nothing fabricated renders during the window.
 - **Suggested fix:** A designed loading state for the home grid (skeleton or the `"zero"` composition held briefly) would remove the flash, but Figma has not designed one; revisit once states 3–6 make the full state machine's loading behavior worth designing once rather than per state.
 - **Extended 2026-10-07 (#1423):** the same shape now applies to the **balance** reads. `deriveHomeState`'s `plusdIsZero`/`splusdIsZero` inputs come from `isDisplayZero`, and `isDisplayZero(undefined, d)` is `true`, so a connected `UnderReview` LP that actually holds PLUSD renders state 3 for one balance round-trip before the grid falls back to `"legacy"` — the inverse of the LP-read flash above, and fixed by the same designed loading state.
+- **Partial resolution (2026-10-20, #1576):** the LP-read half is closed — `deriveHomeState` returns `"loading"` while `lpRead === "unknown"` and the route renders a skeleton through `HomeDashboardGrid` (compact-state geometry, `aria-busy`, no CTA), so the legacy layout no longer flashes before `GET /v1/lps/me` resolves. The **balance-read** flash in the 2026-10-07 extension (unresolved balances read as displayed-zero, so a PLUSD-holding `UnderReview`/`Passed` LP renders state 3 / `"legacy"` for one balance round-trip) remains open.
 
 ### TD-122: Four near-identical desktop home-grid branches in `routes/index.tsx` [RESOLVED 2026-10-20 / #1577]
 
