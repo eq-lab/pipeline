@@ -75,7 +75,7 @@ pub fn reject_asset_collision(
 ) -> Result<()> {
     if let Some((role, _)) = core.iter().find(|(_, addr)| *addr == asset) {
         bail!(
-            "CHAIN_{chain_id}_EVM_INDEXER_ASSET_ADDRESS must not equal CHAIN_{chain_id}_EVM_INDEXER_{role} ({asset})"
+            "JOB_INDEXER_EVM_{chain_id}_ASSET_ADDRESS must not equal CHAIN_{chain_id}_EVM_INDEXER_{role} ({asset})"
         );
     }
     Ok(())

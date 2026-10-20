@@ -315,7 +315,8 @@ fn load_transfer_addresses(
 /// Load the Withdrawal Queue Wallet address for one chain from
 /// `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` /
 /// `CHAIN_<id>_EVM_API_WITHDRAWAL_QUEUE_WALLET_ADDRESS` (optional; parallel to the
-/// worker's `CHAIN_<id>_<TYPE>_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` — API and
+/// worker's `CHAIN_<id>_STELLAR_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` /
+/// `JOB_INDEXER_EVM_<id>_WITHDRAWAL_QUEUE_WALLET_ADDRESS` — API and
 /// worker are decoupled). Unset → the `withdrawal_queue` bucket stays `null`.
 fn load_withdrawal_queue_wallet(
     chain_id: i64,

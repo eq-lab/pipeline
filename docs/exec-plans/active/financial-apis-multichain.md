@@ -33,6 +33,14 @@ Backend only (API + worker). No Figma reference.
    Arbitrum, …) under the per-chain `CHAIN_<id>_EVM_*` keys. A chain id without that config is
    ignored: tracking stays off in the worker, and the API skips it or returns empty.
 
+8. **Worker asset-tracking keys use `JOB_INDEXER_EVM_<id>_*` (2026-10-20).** This deliberately
+   departs from the #1456 `CHAIN_<id>_<TYPE>_INDEXER_*` scheme. The keys are grouped under the job
+   prefix next to Stellar's `JOB_INDEXER_STELLAR_*` asset-tracking keys, so one role can be
+   compared across chains. They keep the chain id because each EVM chain has its own USDC and MPC
+   addresses. Trade-off: `validate_chain_kind_keys` only scans `CHAIN_<id>_<TYPE>_` prefixes, so a
+   `JOB_INDEXER_EVM_<id>_*` key set for a Stellar chain id is ignored rather than rejected at
+   startup. The API keys stay `CHAIN_<id>_EVM_API_*`, since the API is not a job.
+
 ## Open questions
 
 _None_
@@ -144,9 +152,9 @@ _None_
 ### Part B — EVM sources
 
 1. **Worker config** (`indexer/config.rs`, `IndexerJobSettings`), all optional:
-   - `CHAIN_<id>_EVM_INDEXER_ASSET_ADDRESS`: the USDC ERC-20. Setting it enables tracking.
-   - `CHAIN_<id>_EVM_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS`: the `assetHolder`.
-   - `CHAIN_<id>_EVM_INDEXER_CUSTODY_ADDRESSES` and `CHAIN_<id>_EVM_INDEXER_RAMP_ADDRESSES`
+   - `JOB_INDEXER_EVM_<id>_ASSET_ADDRESS`: the USDC ERC-20. Setting it enables tracking.
+   - `JOB_INDEXER_EVM_<id>_WITHDRAWAL_QUEUE_WALLET_ADDRESS`: the `assetHolder`.
+   - `JOB_INDEXER_EVM_<id>_CUSTODY_ADDRESSES` and `JOB_INDEXER_EVM_<id>_RAMP_ADDRESSES`
      (CSV): set both or neither. A partial pair warns and disables only that pair, as on Stellar.
    - Validate them as EVM addresses. Reject an asset address that collides with a core contract
      (`deal_tokens::reject_core_collision` pattern).

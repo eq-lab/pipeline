@@ -17,6 +17,10 @@ fn key(suffix: &str) -> String {
     format!("CHAIN_{CHAIN_ID}_EVM_{suffix}")
 }
 
+fn tracking_key(suffix: &str) -> String {
+    format!("JOB_INDEXER_EVM_{CHAIN_ID}_{suffix}")
+}
+
 fn addr(s: &str) -> Address {
     s.parse().unwrap()
 }
@@ -26,10 +30,10 @@ fn with_tracking_env<F: FnOnce()>(set: &[(&str, &str)], f: F) {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let tracking_keys = [
-        "INDEXER_ASSET_ADDRESS",
-        "INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS",
-        "INDEXER_CUSTODY_ADDRESSES",
-        "INDEXER_RAMP_ADDRESSES",
+        "ASSET_ADDRESS",
+        "WITHDRAWAL_QUEUE_WALLET_ADDRESS",
+        "CUSTODY_ADDRESSES",
+        "RAMP_ADDRESSES",
     ];
     unsafe {
         std::env::set_var(key("RPC_URL"), "http://localhost:8545");
@@ -43,29 +47,26 @@ fn with_tracking_env<F: FnOnce()>(set: &[(&str, &str)], f: F) {
             std::env::set_var(key(&format!("INDEXER_{role}")), CORE);
         }
         for k in tracking_keys {
-            std::env::remove_var(key(k));
+            std::env::remove_var(tracking_key(k));
         }
         for (k, v) in set {
-            std::env::set_var(key(k), v);
+            std::env::set_var(tracking_key(k), v);
         }
     }
     f();
     unsafe {
         for k in tracking_keys {
-            std::env::remove_var(key(k));
+            std::env::remove_var(tracking_key(k));
         }
     }
 }
 
 #[test]
 fn tracking_is_off_without_asset_address() {
-    with_tracking_env(
-        &[("INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS", WALLET)],
-        || {
-            let s = IndexerJobSettings::from_chain_env(CHAIN_ID).unwrap();
-            assert_eq!(s.asset_tracking, None);
-        },
-    );
+    with_tracking_env(&[("WITHDRAWAL_QUEUE_WALLET_ADDRESS", WALLET)], || {
+        let s = IndexerJobSettings::from_chain_env(CHAIN_ID).unwrap();
+        assert_eq!(s.asset_tracking, None);
+    });
 }
 
 #[test]
@@ -73,13 +74,10 @@ fn full_config_parses_wallet_and_deduped_custody_ramp_union() {
     let custody = format!("{}, {}", CUSTODY.to_lowercase(), RAMP);
     with_tracking_env(
         &[
-            (
-                "INDEXER_ASSET_ADDRESS",
-                &format!(" {} ", USDC.to_lowercase()),
-            ),
-            ("INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS", WALLET),
-            ("INDEXER_CUSTODY_ADDRESSES", &custody),
-            ("INDEXER_RAMP_ADDRESSES", RAMP),
+            ("ASSET_ADDRESS", &format!(" {} ", USDC.to_lowercase())),
+            ("WITHDRAWAL_QUEUE_WALLET_ADDRESS", WALLET),
+            ("CUSTODY_ADDRESSES", &custody),
+            ("RAMP_ADDRESSES", RAMP),
         ],
         || {
             let t = IndexerJobSettings::from_chain_env(CHAIN_ID)
@@ -97,9 +95,9 @@ fn full_config_parses_wallet_and_deduped_custody_ramp_union() {
 fn partial_custody_ramp_pair_is_disabled_but_wallet_kept() {
     with_tracking_env(
         &[
-            ("INDEXER_ASSET_ADDRESS", USDC),
-            ("INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS", WALLET),
-            ("INDEXER_CUSTODY_ADDRESSES", "not-an-address"),
+            ("ASSET_ADDRESS", USDC),
+            ("WITHDRAWAL_QUEUE_WALLET_ADDRESS", WALLET),
+            ("CUSTODY_ADDRESSES", "not-an-address"),
         ],
         || {
             let t = IndexerJobSettings::from_chain_env(CHAIN_ID)
@@ -114,7 +112,7 @@ fn partial_custody_ramp_pair_is_disabled_but_wallet_kept() {
 
 #[test]
 fn asset_without_wallet_or_pair_tracks_nothing() {
-    with_tracking_env(&[("INDEXER_ASSET_ADDRESS", USDC)], || {
+    with_tracking_env(&[("ASSET_ADDRESS", USDC)], || {
         let t = IndexerJobSettings::from_chain_env(CHAIN_ID)
             .unwrap()
             .asset_tracking
@@ -127,23 +125,20 @@ fn asset_without_wallet_or_pair_tracks_nothing() {
 #[test]
 fn invalid_addresses_are_rejected_with_their_key() {
     for (bad_key, set) in [
+        ("ASSET_ADDRESS", vec![("ASSET_ADDRESS", "0x123")]),
         (
-            "INDEXER_ASSET_ADDRESS",
-            vec![("INDEXER_ASSET_ADDRESS", "0x123")],
-        ),
-        (
-            "INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS",
+            "WITHDRAWAL_QUEUE_WALLET_ADDRESS",
             vec![
-                ("INDEXER_ASSET_ADDRESS", USDC),
-                ("INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS", "GABC"),
+                ("ASSET_ADDRESS", USDC),
+                ("WITHDRAWAL_QUEUE_WALLET_ADDRESS", "GABC"),
             ],
         ),
         (
-            "INDEXER_RAMP_ADDRESSES",
+            "RAMP_ADDRESSES",
             vec![
-                ("INDEXER_ASSET_ADDRESS", USDC),
-                ("INDEXER_CUSTODY_ADDRESSES", CUSTODY),
-                ("INDEXER_RAMP_ADDRESSES", "0xnope"),
+                ("ASSET_ADDRESS", USDC),
+                ("CUSTODY_ADDRESSES", CUSTODY),
+                ("RAMP_ADDRESSES", "0xnope"),
             ],
         ),
     ] {
@@ -152,7 +147,7 @@ fn invalid_addresses_are_rejected_with_their_key() {
                 .err()
                 .map(|e| e.to_string())
                 .unwrap_or_default();
-            assert!(err.contains(&key(bad_key)), "{bad_key}: {err}");
+            assert!(err.contains(&tracking_key(bad_key)), "{bad_key}: {err}");
         });
     }
 }

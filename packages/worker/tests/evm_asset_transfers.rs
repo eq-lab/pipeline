@@ -177,7 +177,7 @@ fn asset_equal_to_core_contract_is_rejected() {
     let msg = reject_asset_collision(1, USDC, &roles)
         .unwrap_err()
         .to_string();
-    assert!(msg.contains("CHAIN_1_EVM_INDEXER_ASSET_ADDRESS"), "{msg}");
+    assert!(msg.contains("JOB_INDEXER_EVM_1_ASSET_ADDRESS"), "{msg}");
     assert!(msg.contains("MINTER_ADDRESS"), "{msg}");
     assert!(reject_asset_collision(1, USDC, &[("MINTER_ADDRESS", RAMP)]).is_ok());
 }

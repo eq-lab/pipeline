@@ -419,7 +419,7 @@ impl IndexerJobSettings {
     }
 }
 
-/// USDC `Transfer` tracking on one EVM chain, from `CHAIN_<id>_EVM_INDEXER_ASSET_ADDRESS`,
+/// USDC `Transfer` tracking on one EVM chain, from `JOB_INDEXER_EVM_<id>_ASSET_ADDRESS`,
 /// `…_WITHDRAWAL_QUEUE_WALLET_ADDRESS` and the `…_CUSTODY_ADDRESSES` / `…_RAMP_ADDRESSES` pair;
 /// `tracked` is custody ∪ ramp, empty unless both lists are set.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -430,7 +430,7 @@ pub struct EvmAssetTracking {
 }
 
 fn evm_asset_tracking_from_env(chain_id: i64) -> Result<Option<EvmAssetTracking>> {
-    let ip = format!("CHAIN_{chain_id}_EVM_INDEXER_");
+    let ip = format!("JOB_INDEXER_EVM_{chain_id}_");
     let asset_key = format!("{ip}ASSET_ADDRESS");
     let wallet_key = format!("{ip}WITHDRAWAL_QUEUE_WALLET_ADDRESS");
     let custody_key = format!("{ip}CUSTODY_ADDRESSES");
