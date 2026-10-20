@@ -53,27 +53,28 @@ needs one.
 connected wallet with `kyb_status: "NotStarted"` is a combination not yet designed and falls
 through to `"legacy"` until it is. An absent LP record (`GET /v1/lps/me` returning 404) is
 equivalent to `NotStarted` for this rule: a user who dismissed account setup without ever
-submitting a profile has, by definition, not completed KYB. An unknown or failed LP read (the
-request is in flight, or it errored) renders `"legacy"` rather than guessing — there is no
-designed loading state for the home grid, and request failures do not imply an empty account (see
-[kyb-lp-verification.md](./kyb-lp-verification.md)).
+submitting a profile has, by definition, not completed KYB. An LP read still in flight renders the
+`"loading"` skeleton composition (#1576: no designed loading frame exists, so the grid keeps the
+compact states' geometry with neutral blocks and no call to action until the read resolves). A
+failed LP read renders `"legacy"` rather than guessing — request failures do not imply an empty
+account (see [kyb-lp-verification.md](./kyb-lp-verification.md)).
 
 **State 3 (KYB pending, empty)** requires all five of: an auth session, a **connected** wallet,
 `lpRead === "loaded"`, `kyb_status === "UnderReview"`, and **both** PLUSD and sPLUSD rendering as
 zero at two decimal places (the #1186 displayed-zero rule, `isDisplayZero` in
 `packages/frontend/src/lib/format.ts`, the same rule that drives the Buy/Sell/Stake CTA disabling).
 `UnderReview` with a non-zero balance, or with no wallet connected, is a combination the product
-has not designed and falls through to `"legacy"`; an unknown or failed LP read still renders
-`"legacy"`, as for state 2. Because an unresolved balance reads as displayed-zero, a connected
+has not designed and falls through to `"legacy"`; an in-flight LP read renders `"loading"` and a
+failed one `"legacy"`, as for state 2. Because an unresolved balance reads as displayed-zero, a connected
 `UnderReview` LP that actually holds PLUSD can render state 3 for the moment before the balance
 resolves — the same in-flight shape tracked as TD-121.
 
 **State 4 (verified, holds PLUSD)** requires all five of: an auth session, a **connected** wallet,
 `lpRead === "loaded"`, `kyb_status === "Passed"`, and PLUSD rendering **non**-zero while sPLUSD
 renders zero at two decimal places (the same #1186 displayed-zero rule as state 3). `Passed` with
-PLUSD also display-zero, `Passed` with sPLUSD non-zero, `Passed` with no wallet connected, and an
-unknown/failed/absent LP read all fall through to `"legacy"` — none of these combinations is
-designed. As with state 3, an unresolved PLUSD balance reads as displayed-zero (TD-121), so a
+PLUSD also display-zero, `Passed` with sPLUSD non-zero, `Passed` with no wallet connected, and a
+failed/absent LP read all fall through to `"legacy"` (an in-flight read renders `"loading"`) — none
+of these combinations is designed. As with state 3, an unresolved PLUSD balance reads as displayed-zero (TD-121), so a
 `Passed` LP who actually holds PLUSD can render briefly as `"legacy"` before the balance resolves.
 "Bank transfer unlocked" is not an independently served field — it is the
 `AddUsdCard variant="unlocked"` rendering, gated by the same `kyb_status === "Passed"` that defines

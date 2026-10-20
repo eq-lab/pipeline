@@ -26,16 +26,26 @@ describe("deriveHomeState", () => {
     ).toBe("wallet-only");
   });
 
-  it("returns legacy when a session is present, wallet disconnected, lpRead unknown", () => {
+  it("returns loading when a session is present, wallet disconnected, lpRead unknown (in-flight read, #1576)", () => {
     expect(deriveHomeState({ hasSession: true, isConnected: false })).toBe(
-      "legacy",
+      "loading",
     );
   });
 
-  it("returns legacy when a session is present and wallet connected", () => {
+  it("returns loading when a session is present and wallet connected but the LP read has not resolved (#1576)", () => {
     expect(deriveHomeState({ hasSession: true, isConnected: true })).toBe(
-      "legacy",
+      "loading",
     );
+  });
+
+  it("returns legacy when a session is present, wallet connected, LP loaded with an undesigned status", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "loaded",
+      }),
+    ).toBe("legacy");
   });
 
   it("returns unverified when signed in, disconnected, and the LP is absent (404)", () => {
@@ -59,14 +69,14 @@ describe("deriveHomeState", () => {
     ).toBe("unverified");
   });
 
-  it("returns legacy when signed in, disconnected, lpRead unknown (in-flight read)", () => {
+  it("returns loading when signed in, disconnected, lpRead unknown (in-flight read, #1576)", () => {
     expect(
       deriveHomeState({
         hasSession: true,
         isConnected: false,
         lpRead: "unknown",
       }),
-    ).toBe("legacy");
+    ).toBe("loading");
   });
 
   it("returns legacy when signed in, disconnected, lpRead error", () => {
@@ -145,7 +155,11 @@ describe("deriveHomeState — kyb-pending (#1423)", () => {
     expect(deriveHomeState({ ...base, isConnected: false })).toBe("legacy");
   });
 
-  it.each(["unknown", "error", "absent"] as const)(
+  it("returns loading when UnderReview but lpRead is unknown (#1576)", () => {
+    expect(deriveHomeState({ ...base, lpRead: "unknown" })).toBe("loading");
+  });
+
+  it.each(["error", "absent"] as const)(
     "returns legacy when UnderReview but lpRead is %s",
     (lpRead) => {
       expect(deriveHomeState({ ...base, lpRead })).toBe("legacy");
@@ -220,7 +234,11 @@ describe("deriveHomeState — plusd-held (#1424)", () => {
     expect(deriveHomeState({ ...base, isConnected: false })).toBe("legacy");
   });
 
-  it.each(["unknown", "error", "absent"] as const)(
+  it("returns loading when Passed but lpRead is unknown (#1576)", () => {
+    expect(deriveHomeState({ ...base, lpRead: "unknown" })).toBe("loading");
+  });
+
+  it.each(["error", "absent"] as const)(
     "returns legacy when Passed but lpRead is %s",
     (lpRead) => {
       expect(deriveHomeState({ ...base, lpRead })).toBe("legacy");
@@ -287,7 +305,16 @@ describe("deriveHomeState — kyb-problem (#1426)", () => {
     ).toBe("wallet-only");
   });
 
-  it.each(["unknown", "error", "absent"] as const)(
+  it.each(["ChangesRequested", "Failed"])(
+    "returns loading when %s but lpRead is unknown (#1576)",
+    (kybStatus) => {
+      expect(
+        deriveHomeState({ ...connectedZero, lpRead: "unknown", kybStatus }),
+      ).toBe("loading");
+    },
+  );
+
+  it.each(["error", "absent"] as const)(
     "returns legacy when ChangesRequested but lpRead is %s",
     (lpRead) => {
       expect(
@@ -300,7 +327,7 @@ describe("deriveHomeState — kyb-problem (#1426)", () => {
     },
   );
 
-  it.each(["unknown", "error", "absent"] as const)(
+  it.each(["error", "absent"] as const)(
     "returns legacy when Failed but lpRead is %s",
     (lpRead) => {
       expect(
@@ -367,9 +394,9 @@ describe("deriveHomeState — wallet-only (#1460)", () => {
     expect(deriveHomeState({ ...base, kybStatus })).toBe("wallet-only");
   });
 
-  it("returns legacy when signed in, connected, zero balances, lpRead unknown", () => {
+  it("returns loading when signed in, connected, zero balances, lpRead unknown (#1576)", () => {
     expect(
       deriveHomeState({ ...base, hasSession: true, lpRead: "unknown" }),
-    ).toBe("legacy");
+    ).toBe("loading");
   });
 });

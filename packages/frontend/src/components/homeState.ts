@@ -2,6 +2,7 @@
 export type HomeState =
   | "zero"
   | "wallet-only"
+  | "loading"
   | "unverified"
   | "kyb-pending"
   | "plusd-held"
@@ -30,6 +31,7 @@ export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
   if (!hasSession) {
     return isConnected && plusdIsZero && splusdIsZero ? "wallet-only" : "zero";
   }
+  if (lpRead === "unknown") return "loading";
   const unverified =
     lpRead === "absent" || (lpRead === "loaded" && kybStatus === "NotStarted");
   if (!isConnected && unverified) return "unverified";

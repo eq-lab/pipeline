@@ -9,9 +9,10 @@ import { EarnedCard } from "@/components/EarnedCard";
 export interface HomeDashboardGridProps {
   hero: ReactNode;
   activityPadding?: "md";
-  balancesNodeId: string;
+  balancesNodeId?: string;
   balances: ReactNode;
   third: ReactNode;
+  busy?: boolean;
 }
 
 export function HomeDashboardGrid({
@@ -20,11 +21,13 @@ export function HomeDashboardGrid({
   balancesNodeId,
   balances,
   third,
+  busy,
 }: HomeDashboardGridProps) {
   return (
     <div
       className="grid w-full grid-cols-7 gap-4"
       data-testid="home-dashboard-grid"
+      {...(busy ? { "aria-busy": true } : {})}
     >
       {hero}
 
@@ -38,7 +41,7 @@ export function HomeDashboardGrid({
 
       <div
         className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
-        data-node-id={balancesNodeId}
+        {...(balancesNodeId ? { "data-node-id": balancesNodeId } : {})}
         data-testid="home-balances-stack"
       >
         {balances}
@@ -53,6 +56,16 @@ export function HomeDashboardGrid({
         <QnaSection />
       </div>
     </div>
+  );
+}
+
+export function LoadingBlock({ className }: { className: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="home-loading-block"
+      className={`w-full animate-pulse rounded-[var(--radius-pipeline-card)] bg-[color:var(--color-pipeline-surface-muted)] ${className}`}
+    />
   );
 }
 

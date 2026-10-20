@@ -42,6 +42,7 @@ import {
   CompactAddUsdStack,
   CompactBalances,
   HomeDashboardGrid,
+  LoadingBlock,
 } from "./-HomeDashboardGrid";
 import { FundingDetailsModal } from "@/components/FundingDetailsModal";
 import { usePnl, usePositionsHistory } from "@/api";
@@ -335,7 +336,27 @@ function Home() {
           data-node-id="1497:94565"
           data-testid="home-dashboard-card"
         >
-          {homeState === "zero" ? (
+          {homeState === "loading" ? (
+            <HomeDashboardGrid
+              busy
+              hero={
+                <LoadingBlock className="col-span-4 row-start-1 h-[274px]" />
+              }
+              activityPadding="md"
+              balances={
+                <>
+                  <LoadingBlock className="h-[164px]" />
+                  <LoadingBlock className="h-[164px]" />
+                </>
+              }
+              third={
+                <div className="col-span-2 col-start-3 row-start-2 flex flex-col gap-4">
+                  <LoadingBlock className="h-[246px]" />
+                  <LoadingBlock className="h-[82px]" />
+                </div>
+              }
+            />
+          ) : homeState === "zero" ? (
             <HomeDashboardGrid
               hero={
                 <ConnectWalletPromoCard
