@@ -1,6 +1,6 @@
 //! Ramp API group (`/v1/ramp/*`, #936).
 //!
-//! Backs the Stellar on/off-ramp workflow: the indexer (#789) records every
+//! Backs the on/off-ramp workflow (Stellar and EVM): the indexer (#789) records every
 //! `AssetTransfer` touching a configured custody or ramp address; this module
 //! surfaces the configured ramp addresses, lists **pending** ramp-boundary events
 //! (on-ramp `ramp→custody` AND off-ramp `custody→ramp`) awaiting Trustee review,
@@ -38,7 +38,8 @@ use crate::AppState;
 /// Response for `GET /v1/ramp/addresses`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RampAddressesResponse {
-    /// The chain's configured ramp addresses (`CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES`).
+    /// The chain's configured ramp addresses (`CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES` /
+    /// `CHAIN_<id>_EVM_API_RAMP_ADDRESSES`).
     /// Empty when the chain has no custody+ramp address sets configured.
     pub ramp_addresses: Vec<String>,
 }
@@ -111,7 +112,7 @@ pub struct RampReviewRequest {
         RampReviewDecision
     )),
     modifiers(&SecurityAddon),
-    tags((name = "Ramp", description = "Stellar on/off-ramp addresses and ramp-event review"))
+    tags((name = "Ramp", description = "On/off-ramp addresses and ramp-event review"))
 )]
 pub struct RampDoc;
 

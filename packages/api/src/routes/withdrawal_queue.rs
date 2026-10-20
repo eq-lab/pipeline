@@ -3,8 +3,8 @@
 //! Protocol-level (aggregate, not per-wallet) read backing Panel C of the Protocol
 //! Dashboard. Sourced entirely from `contract_logs` (`WithdrawalRequested` joined to
 //! its latest `RequestClaimed`). Conventions match `routes::loan_book` — Axum handler,
-//! utoipa schema, base-6 decimal strings for amounts, `chain_id?` defaulting to
-//! `DEFAULT_CHAIN_ID`.
+//! utoipa schema, base-6 decimal strings for amounts, `chain_id?` — omitted = the union
+//! over all configured chains, a well-formed unconfigured id = an empty queue.
 //!
 //! A request is **Queued** while it has no matching `RequestClaimed`; once claimed it is
 //! **Completed**. `in_queue_usd` sums each queued request's `amount` (the value owed to
@@ -13,9 +13,11 @@
 //! Capital-Wallet USDC, which is not yet in `contract_logs`, so it is served as `null`
 //! until the Panel A reserves endpoint exists.
 
+use std::cmp::Reverse;
+use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::{BigDecimal, RoundingMode};
@@ -26,7 +28,7 @@ use shared::contract_logs_repo::WithdrawalQueueRow;
 
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::LenientChainFilter;
 use crate::AppState;
 
 /// Seconds per day, for `estimated_wait_days`.
@@ -54,6 +56,8 @@ pub struct WithdrawalQueueSummary {
 /// One row of the Withdrawal Queue table.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WithdrawalQueueItem {
+    /// Chain the request was made on.
+    pub chain_id: i64,
     /// The withdrawing account address.
     pub account: String,
     /// Withdrawal amount requested, USDC (6-decimal string).
@@ -66,7 +70,8 @@ pub struct WithdrawalQueueItem {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WithdrawalQueueResponse {
     pub summary: WithdrawalQueueSummary,
-    /// All withdrawal requests, ordered by request timestamp descending (newest first).
+    /// All withdrawal requests, ordered by request timestamp descending (newest first),
+    /// ties broken by `(chain_id, request_id)` ascending.
     pub items: Vec<WithdrawalQueueItem>,
 }
 
@@ -90,31 +95,33 @@ pub fn router() -> Router<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/v1/withdrawal-queue",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "Withdrawal queue summary and item table", body = WithdrawalQueueResponse),
+        (status = 200, description = "Withdrawal queue summary and item table for the selected chain, or for all configured chains when `chain_id` is omitted", body = WithdrawalQueueResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "WithdrawalQueue"
 )]
 async fn get_withdrawal_queue(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    chain: LenientChainFilter,
 ) -> Result<Json<WithdrawalQueueResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
     // As-of "now" — matches the window-ends-at-now semantics of the other read endpoints.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let rows = state
-        .contract_logs_repo
-        .list_withdrawal_queue_rows(&state.pool, chain_id, now)
-        .await?;
+    let mut rows = Vec::new();
+    for c in chain.configured(&state.chains) {
+        rows.extend(
+            state
+                .contract_logs_repo
+                .list_withdrawal_queue_rows(&state.pool, c.chain_id, now)
+                .await?,
+        );
+    }
 
     Ok(Json(compute_withdrawal_queue(&rows)))
 }
@@ -133,7 +140,8 @@ fn is_queued(row: &WithdrawalQueueRow) -> bool {
 /// **Completed**. `in_queue_usd` sums each queued row's `amount`; `requests_count` counts
 /// queued rows. `estimated_wait_days` is the mean `claimed_at − requested_at` over
 /// completed rows that carry a claim timestamp, in days. `liquid_cover` is `null` pending
-/// a USDC source. Items are ordered by `requested_at` descending (newest first).
+/// a USDC source. Items are ordered by `requested_at` descending (newest first), ties
+/// broken by `(chain_id, request_id)` ascending (`request_id` compared numerically).
 ///
 /// Public so the compute-layer test in `packages/api/tests/withdrawal_queue.rs` can
 /// exercise it without the HTTP/DB layers.
@@ -164,10 +172,17 @@ pub fn compute_withdrawal_queue(rows: &[WithdrawalQueueRow]) -> WithdrawalQueueR
 
     // Items: every request, newest first, labelled Queued vs Completed.
     let mut items: Vec<&WithdrawalQueueRow> = rows.iter().collect();
-    items.sort_by_key(|r| std::cmp::Reverse(r.requested_at));
+    items.sort_by_cached_key(|r| {
+        (
+            Reverse(r.requested_at),
+            r.chain_id,
+            BigDecimal::from_str(&r.request_id).ok(),
+        )
+    });
     let items = items
         .into_iter()
         .map(|r| WithdrawalQueueItem {
+            chain_id: r.chain_id,
             account: r.withdrawer.clone(),
             amount: base6_to_decimal_string(&r.amount),
             status: if is_queued(r) { "Queued" } else { "Completed" }.to_owned(),

@@ -18,6 +18,7 @@ fn usdc(whole: i64) -> BigDecimal {
 /// A queued (unclaimed) request.
 fn queued(request_id: &str, account: &str, amount: i64, requested_at: i64) -> WithdrawalQueueRow {
     WithdrawalQueueRow {
+        chain_id: 1,
         request_id: request_id.to_owned(),
         withdrawer: account.to_owned(),
         amount: usdc(amount),
@@ -35,6 +36,7 @@ fn completed(
     claimed_at: i64,
 ) -> WithdrawalQueueRow {
     WithdrawalQueueRow {
+        chain_id: 1,
         request_id: request_id.to_owned(),
         withdrawer: account.to_owned(),
         amount: usdc(amount),
@@ -135,4 +137,41 @@ fn estimated_wait_days_none_without_completed() {
     let rows = vec![queued("1", "0xaaa", 100, 1_000)];
     let resp = compute_withdrawal_queue(&rows);
     assert_eq!(resp.summary.estimated_wait_days, None);
+}
+
+// ── Multi-chain union ────────────────────────────────────────────────────────────
+
+fn on_chain(chain_id: i64, row: WithdrawalQueueRow) -> WithdrawalQueueRow {
+    WithdrawalQueueRow { chain_id, ..row }
+}
+
+#[test]
+fn union_aggregates_both_chains_and_items_carry_chain_id() {
+    let rows = vec![
+        on_chain(1, queued("1", "GAAA", 100, 1_000)),
+        on_chain(2, queued("1", "0xaaa", 40, 2_000)),
+        on_chain(2, completed("2", "0xbbb", 10, 0, 2 * 86_400)),
+    ];
+    let resp = compute_withdrawal_queue(&rows);
+    assert_eq!(resp.summary.in_queue_usd, "140.000000");
+    assert_eq!(resp.summary.requests_count, 2);
+    assert_eq!(resp.summary.estimated_wait_days, Some("2.0".to_owned()));
+    let ids: Vec<(i64, &str)> = resp
+        .items
+        .iter()
+        .map(|i| (i.chain_id, i.account.as_str()))
+        .collect();
+    assert_eq!(ids, vec![(2, "0xaaa"), (1, "GAAA"), (2, "0xbbb")]);
+}
+
+#[test]
+fn equal_timestamps_break_ties_by_chain_then_numeric_request_id() {
+    let rows = vec![
+        on_chain(2, queued("1", "c2-r1", 10, 5_000)),
+        on_chain(1, queued("10", "c1-r10", 10, 5_000)),
+        on_chain(1, queued("9", "c1-r9", 10, 5_000)),
+    ];
+    let resp = compute_withdrawal_queue(&rows);
+    let accounts: Vec<&str> = resp.items.iter().map(|i| i.account.as_str()).collect();
+    assert_eq!(accounts, vec!["c1-r9", "c1-r10", "c2-r1"]);
 }

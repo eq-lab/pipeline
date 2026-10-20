@@ -3,11 +3,14 @@ use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use pipeline_api::config::ConfiguredChain;
 use pipeline_api::error::ApiError;
+use pipeline_api::routes::capital_allocation::CapitalAllocationDoc;
 use pipeline_api::routes::common::{
     parse_chain_filter, parse_chain_scope, parse_required_chain, ChainFilter, ChainScope,
     LenientChainFilter, RequiredChain,
 };
+use pipeline_api::routes::financial_position::FinancialPositionDoc;
 use pipeline_api::routes::loan_book::LoanBookDoc;
+use pipeline_api::routes::withdrawal_queue::WithdrawalQueueDoc;
 use shared::chains::ChainKind;
 use utoipa::{IntoParams, OpenApi};
 
@@ -242,4 +245,37 @@ fn loan_book_openapi_declares_chain_param() {
     assert_eq!(chain.len(), 1);
     assert_eq!(chain[0]["required"], false);
     assert!(get["responses"]["400"].is_object());
+}
+
+#[test]
+fn lenient_configured_per_variant() {
+    let all = chains();
+    assert_eq!(
+        LenientChainFilter(ChainScope::All).configured(&all),
+        &all[..]
+    );
+    assert_eq!(
+        LenientChainFilter(ChainScope::One(STELLAR)).configured(&all),
+        &[STELLAR][..]
+    );
+    assert!(LenientChainFilter(ChainScope::Unconfigured(7))
+        .configured(&all)
+        .is_empty());
+}
+
+#[test]
+fn financial_endpoints_openapi_declare_optional_chain_param() {
+    for (doc, path) in [
+        (FinancialPositionDoc::openapi(), "/v1/financial-position"),
+        (CapitalAllocationDoc::openapi(), "/v1/capital-allocation"),
+        (WithdrawalQueueDoc::openapi(), "/v1/withdrawal-queue"),
+    ] {
+        let doc = serde_json::to_value(doc).unwrap();
+        let get = &doc["paths"][path]["get"];
+        let params = get["parameters"].as_array().unwrap();
+        let chain: Vec<_> = params.iter().filter(|p| p["name"] == "chain_id").collect();
+        assert_eq!(chain.len(), 1, "{path}");
+        assert_eq!(chain[0]["required"], false, "{path}");
+        assert!(get["responses"]["400"].is_object(), "{path}");
+    }
 }

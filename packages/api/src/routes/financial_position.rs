@@ -4,7 +4,8 @@
 //! balance-sheet view: assets (liquid plus deployed) against liabilities (senior
 //! claims plus subordinated capital). Conventions match `routes::loan_book` and
 //! `routes::withdrawal_queue` — Axum handler, utoipa schema, base-6 decimal strings
-//! for amounts, `chain_id?` defaulting to `DEFAULT_CHAIN_ID`.
+//! for amounts, `chain_id?` — omitted = the union over all configured chains, a
+//! well-formed unconfigured id = an all-zero statement.
 //!
 //! ## Data availability (v1)
 //!
@@ -28,11 +29,12 @@
 //!
 //! The active-loan set (`origination_date ≤ now < effective_end`) mirrors
 //! `routes::loan_book` / `routes::portfolio` so the deployed figures are consistent
-//! across endpoints.
+//! across endpoints. Like `routes::loan_book`, each chain is read through its configured
+//! LoanRegistry address, and lifecycle events only end loans on their own chain.
 
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
@@ -43,7 +45,7 @@ use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::LenientChainFilter;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -140,35 +142,45 @@ pub fn router() -> Router<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/v1/financial-position",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "Statement of financial position", body = FinancialPositionResponse),
+        (status = 200, description = "Statement of financial position for the selected chain, or for all configured chains when `chain_id` is omitted", body = FinancialPositionResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "FinancialPosition"
 )]
 async fn get_financial_position(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    chain: LenientChainFilter,
 ) -> Result<Json<FinancialPositionResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
     // As-of "now" — matches the window-ends-at-now semantics of the other read endpoints.
     let to = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let loans = state
-        .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
-        .await?;
-    let events = state
-        .contract_logs_repo
-        .list_loan_lifecycle_events(&state.pool, chain_id, to)
-        .await?;
+    let mut loans = Vec::new();
+    let mut events = Vec::new();
+    for c in chain.configured(&state.chains) {
+        let Some(registry) = state.loan_registry_addresses.get(&c.chain_id) else {
+            continue;
+        };
+        let chain_loans = state
+            .contract_logs_repo
+            .list_latest_loan_snapshots(&state.pool, c.chain_id, registry, to)
+            .await?;
+        if chain_loans.is_empty() {
+            continue;
+        }
+        events.extend(
+            state
+                .contract_logs_repo
+                .list_loan_lifecycle_events_for_registry(&state.pool, c.chain_id, registry, to)
+                .await?,
+        );
+        loans.extend(chain_loans);
+    }
 
     Ok(Json(compute_financial_position(&loans, &events, to)))
 }
@@ -176,13 +188,14 @@ async fn get_financial_position(
 // ── Compute ──────────────────────────────────────────────────────────────────
 
 /// Effective end of a loan: `min(original_maturity_date, earliest LoanClosed /
-/// LoanDefaulted timestamp)`. Mirrors `routes::loan_book` / `routes::portfolio` so the
-/// active-loan set is identical across endpoints.
+/// LoanDefaulted timestamp on the loan's own chain)`. Mirrors `routes::loan_book` /
+/// `routes::portfolio` so the active-loan set is identical across endpoints.
 fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
     let lifecycle_end = events
         .iter()
         .filter(|e| {
             (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
+                && e.chain_id == loan.chain_id
                 && e.loan_id == loan.loan_id
         })
         .map(|e| e.block_timestamp)

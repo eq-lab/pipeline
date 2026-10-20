@@ -26,6 +26,7 @@ pub trait DynamicAddressSource: Send + Sync {
 #[async_trait::async_trait]
 pub trait LogFetcher: Send + Sync {
     async fn get_logs(&self, addresses: Vec<Address>, from: u64, to: u64) -> Result<Vec<Log>>;
+    async fn get_filtered_logs(&self, filter: Filter) -> Result<Vec<Log>>;
 }
 
 struct ProviderLogFetcher(HttpProvider);
@@ -37,6 +38,10 @@ impl LogFetcher for ProviderLogFetcher {
             .address(addresses)
             .from_block(from)
             .to_block(to);
+        Ok(self.0.get_logs(&filter).await?)
+    }
+
+    async fn get_filtered_logs(&self, filter: Filter) -> Result<Vec<Log>> {
         Ok(self.0.get_logs(&filter).await?)
     }
 }
@@ -98,13 +103,36 @@ pub async fn fetch_chunk_logs(
         }
     }
 
+    sort_logs(&mut logs);
+    Ok(logs)
+}
+
+pub async fn fetch_filtered_logs(
+    fetcher: &dyn LogFetcher,
+    filters: &[Filter],
+    from: u64,
+    to: u64,
+) -> Result<Vec<Log>> {
+    let mut seen = HashSet::new();
+    let mut logs = Vec::new();
+    for filter in filters {
+        let ranged = filter.clone().from_block(from).to_block(to);
+        for log in fetcher.get_filtered_logs(ranged).await? {
+            if seen.insert((log.transaction_hash, log.log_index)) {
+                logs.push(log);
+            }
+        }
+    }
+    Ok(logs)
+}
+
+fn sort_logs(logs: &mut [Log]) {
     logs.sort_by_key(|l| {
         (
             l.block_number.unwrap_or(u64::MAX),
             l.log_index.unwrap_or(u64::MAX),
         )
     });
-    Ok(logs)
 }
 
 pub struct HandlerEntry {
@@ -116,6 +144,7 @@ pub struct EvmEventPoller {
     provider: HttpProvider,
     handlers: Vec<HandlerEntry>,
     dynamic_sources: Vec<Arc<dyn DynamicAddressSource>>,
+    log_filters: Vec<Filter>,
     block_range: u64,
     interval_ms: u64,
 }
@@ -124,6 +153,7 @@ pub struct EvmEventPollerBuilder {
     provider: HttpProvider,
     handlers: Vec<HandlerEntry>,
     dynamic_sources: Vec<Arc<dyn DynamicAddressSource>>,
+    log_filters: Vec<Filter>,
     block_range: u64,
     interval_ms: u64,
 }
@@ -135,6 +165,7 @@ impl EvmEventPollerBuilder {
             provider,
             handlers: vec![],
             dynamic_sources: vec![],
+            log_filters: vec![],
             block_range,
             interval_ms,
         }
@@ -163,11 +194,28 @@ impl EvmEventPollerBuilder {
         self
     }
 
+    pub fn add_filtered_event_handler(
+        mut self,
+        filters: Vec<Filter>,
+        decode_fn: impl Fn(&alloy::rpc::types::Log) -> Option<Box<dyn LogMapper>>
+            + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        self.log_filters.extend(filters);
+        self.handlers.push(HandlerEntry {
+            addresses: vec![],
+            decode: Box::new(decode_fn),
+        });
+        self
+    }
+
     pub fn build(self) -> EvmEventPoller {
         EvmEventPoller {
             provider: self.provider,
             handlers: self.handlers,
             dynamic_sources: self.dynamic_sources,
+            log_filters: self.log_filters,
             block_range: self.block_range,
             interval_ms: self.interval_ms,
         }
@@ -197,7 +245,7 @@ impl EvmEventPoller {
         while current <= to_block {
             let chunk_end = (current + self.block_range - 1).min(to_block);
 
-            let logs = fetch_chunk_logs(
+            let mut logs = fetch_chunk_logs(
                 &fetcher,
                 &static_addresses,
                 &self.dynamic_sources,
@@ -205,6 +253,12 @@ impl EvmEventPoller {
                 chunk_end,
             )
             .await?;
+            if !self.log_filters.is_empty() {
+                logs.extend(
+                    fetch_filtered_logs(&fetcher, &self.log_filters, current, chunk_end).await?,
+                );
+                sort_logs(&mut logs);
+            }
 
             for log in &logs {
                 if log.removed {

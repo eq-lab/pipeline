@@ -13,6 +13,7 @@ pub struct ContractLogMapper {
     chain_id: i64,
     repo: Arc<EventRepo>,
     track_position: bool,
+    withdrawal_queue_wallet: Option<String>,
 }
 
 impl ContractLogMapper {
@@ -22,11 +23,17 @@ impl ContractLogMapper {
             chain_id,
             repo,
             track_position: false,
+            withdrawal_queue_wallet: None,
         }
     }
 
     pub fn with_position_tracking(mut self) -> Self {
         self.track_position = true;
+        self
+    }
+
+    pub fn with_withdrawal_queue_wallet(mut self, wallet: Option<String>) -> Self {
+        self.withdrawal_queue_wallet = wallet;
         self
     }
 }
@@ -46,24 +53,39 @@ impl LogMapper for ContractLogMapper {
     }
 
     async fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<()> {
-        let mut event_copy;
-        let event_ref = if self.track_position && is_position_event_name(&self.event.event_name) {
-            event_copy = clone_contract_log(&self.event);
-            let vault_address = event_copy.contract_address.to_checksum(None);
+        let track_position = self.track_position && is_position_event_name(&self.event.event_name);
+        let wallet = self
+            .withdrawal_queue_wallet
+            .as_deref()
+            .filter(|_| self.event.event_name == "AssetTransfer");
+        if !track_position && wallet.is_none() {
+            return self.repo.insert_log(conn, &self.event, self.chain_id).await;
+        }
+
+        let mut event = clone_contract_log(&self.event);
+        let contract_address = event.contract_address.to_checksum(None);
+        if track_position {
             compute_position_fields(
                 conn,
                 self.chain_id,
-                &vault_address,
-                &event_copy.event_name,
-                &mut event_copy.params,
+                &contract_address,
+                &event.event_name,
+                &mut event.params,
             )
             .await?;
-            &event_copy
-        } else {
-            &self.event
-        };
+        }
+        if let Some(wallet) = wallet {
+            compute_wallet_balance_field(
+                conn,
+                self.chain_id,
+                &contract_address,
+                wallet,
+                &mut event.params,
+            )
+            .await?;
+        }
 
-        self.repo.insert_log(conn, event_ref, self.chain_id).await
+        self.repo.insert_log(conn, &event, self.chain_id).await
     }
 
     fn block_number(&self) -> u64 {
@@ -387,6 +409,80 @@ async fn compute_transfer_position_fields(
             Value::String(next.avg_price_to.to_string()),
         );
         obj.insert("realized_pnl".to_owned(), Value::String("0".to_owned()));
+    }
+
+    Ok(())
+}
+
+/// Compute a running USDC balance for `wallet` (the Withdrawal Queue Wallet)
+/// and write it into `params.wallet_balance_after` (Issue #933) — same
+/// pre-insert pattern as `compute_position_fields` for staking, so the current
+/// (or as-of-any-block) balance is queryable straight from `contract_logs`
+/// without re-summing every transfer at read time.
+///
+/// No-op (leaves `params` untouched) when neither `from` nor `to` is `wallet`
+/// — this also covers custody/ramp-only rows persisted by the `#[789]`
+/// internal-movement filter, which don't touch the wallet at all.
+pub async fn compute_wallet_balance_field(
+    conn: &mut PgConnection,
+    chain_id: i64,
+    asset_address: &str,
+    wallet: &str,
+    params: &mut Value,
+) -> anyhow::Result<()> {
+    let from = params.get("from").and_then(|v| v.as_str()).unwrap_or("");
+    let to = params.get("to").and_then(|v| v.as_str()).unwrap_or("");
+    let is_in = to == wallet;
+    let is_out = from == wallet;
+    if !is_in && !is_out {
+        return Ok(());
+    }
+
+    let zero = BigDecimal::from(0i64);
+    let amount = params
+        .get("amount")
+        .and_then(|v| v.as_str())
+        .and_then(|s| BigDecimal::from_str(s).ok())
+        .unwrap_or_else(|| zero.clone());
+
+    // Query through the transaction connection so uncommitted inserts in the
+    // same batch are visible, mirroring `compute_position_fields`.
+    let prev: Option<String> = sqlx::query_scalar(
+        "SELECT params->>'wallet_balance_after'
+         FROM contract_logs
+         WHERE chain_id = $1
+           AND contract_address = $2
+           AND event_name = 'AssetTransfer'
+           AND (params->>'from' = $3 OR params->>'to' = $3)
+           AND params ? 'wallet_balance_after'
+         ORDER BY block_number DESC, log_index DESC
+         LIMIT 1",
+    )
+    .bind(chain_id)
+    .bind(asset_address)
+    .bind(wallet)
+    .fetch_optional(&mut *conn)
+    .await?;
+
+    let prev_balance = match prev {
+        Some(s) => BigDecimal::from_str(&s).unwrap_or_else(|_| zero.clone()),
+        None => zero.clone(),
+    };
+
+    // A self-transfer (from == to == wallet) nets to zero — both arms apply.
+    let mut new_balance = prev_balance;
+    if is_in {
+        new_balance += &amount;
+    }
+    if is_out {
+        new_balance -= &amount;
+    }
+
+    if let Some(obj) = params.as_object_mut() {
+        obj.insert(
+            "wallet_balance_after".to_owned(),
+            serde_json::Value::String(new_balance.to_string()),
+        );
     }
 
     Ok(())

@@ -1,8 +1,9 @@
 // spec: docs/exec-plans/completed/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
 use shared::contract_logs_repo::{
     LATEST_STATUS_BY_LOANS_SQL, LATEST_WATCHLIST_ENTRY_SQL, LEGACY_YIELD_MINTED_SQL,
-    LIST_LATEST_LOAN_SNAPSHOTS_SQL, LIST_REPAYMENT_MINTS_SQL, LOAN_ECONOMICS_EVENTS_SQL,
-    LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES, LOAN_SNAPSHOT_AS_OF_SQL,
+    LIST_LATEST_LOAN_SNAPSHOTS_SQL, LIST_REPAYMENT_MINTS_SQL, LIST_WITHDRAWAL_QUEUE_ROWS_SQL,
+    LOAN_ECONOMICS_EVENTS_SQL, LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES,
+    LOAN_SNAPSHOT_AS_OF_SQL,
 };
 
 fn normalized(sql: &str) -> String {
@@ -126,4 +127,15 @@ fn legacy_yield_minted_sql_requires_registry_scoped_payment_recorded() {
         sql.contains("(p.params->'event'->>'repayment_id')::numeric = o.repayment_id"),
         "{sql}"
     );
+}
+
+#[test]
+fn list_withdrawal_queue_rows_sql_matches_claims_on_the_same_chain_and_contract() {
+    let sql = normalized(LIST_WITHDRAWAL_QUEUE_ROWS_SQL);
+    assert!(sql.starts_with("SELECT r.chain_id,"), "{sql}");
+    assert!(
+        sql.contains("WHERE c.chain_id = r.chain_id AND c.contract_address = r.contract_address AND c.event_name = 'RequestClaimed'"),
+        "{sql}"
+    );
+    assert!(sql.contains("WHERE r.chain_id = $1"), "{sql}");
 }
