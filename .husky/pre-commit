@@ -159,6 +159,10 @@ fi
 step "doc lint"
 run "doc lint ok" npx tsx scripts/lint-docs.ts
 
+# ── 5. Comment lint (spec-style comments in UI source, #1355) ───────
+step "comment lint"
+run "comment lint ok" npx tsx scripts/lint-comments.ts
+
 # ── 6. Rust unit tests (nextest) ────────────────────────────────────
 step "unit tests"
 run "unit tests ok" cargo nextest run --workspace --no-tests=pass

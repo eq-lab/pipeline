@@ -70,6 +70,8 @@ These rules apply to everything under `packages/frontend/` and `packages/ui/`. T
 
    When you move a spec out of the source, leave at most a one-line pointer to the doc (e.g. `// spec: docs/frontend/wallet-flows.md#deposit-adapter`), and extract-then-trim — a comment is only deleted once its content lives in a doc, never trimmed on the hope of documenting it later.
 
+   **Mechanical guard (#1355, `scripts/lint-comments.ts`).** Run as `yarn lint:comments`, in the pre-commit hook and in CI over `packages/{frontend,trustee,ui}/src` (`*.ts`/`*.tsx`, excluding generated and `.d.ts` files). It inspects real comments only (TypeScript scanner — string literals and JSX attributes such as `data-node-id` never count) and errors on two things: a **header docblock** (the comment run before the first statement) longer than 3 lines that carries no `spec:` pointer, and a **Figma node id** (`1497:94565` / `1497-94565` as a standalone token) in any comment line that is not a `spec:` pointer (doc anchors legitimately embed node ids). The rule ratchets rather than flag-days: `scripts/lint-comments.baseline.json` lists the files that already violated it when the guard landed (per-file header length and node-id count); a baselined file only errors when it gets worse, a file that improves must shrink its entry (`npx tsx scripts/lint-comments.ts --update-baseline`, commit the smaller baseline — the lint fails on a stale entry so the debt can only go down), and any file not in the baseline is held to the full rule. When you touch a baselined file, move its header prose into the owning `docs/frontend/*.md` section and leave the one-line pointer.
+
 See [`docs/frontend/index.md`](./frontend/index.md) for the catalogue index.
 
 ## Toast notifications

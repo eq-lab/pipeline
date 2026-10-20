@@ -1,0 +1,950 @@
+{
+  "packages/frontend/src/__mocks__/freighter-api.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/client.test.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/client.ts": {
+    "header": 32,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/index.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDashboardSummary.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDashboardSummary.ts": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDashboardTvlHistory.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDashboardTvlHistory.ts": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDashboardYieldHistory.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDashboardYieldHistory.ts": {
+    "header": 28,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useDepositVoucher.ts": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useFinancialPosition.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useFinancialPosition.ts": {
+    "header": 27,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useLoanBook.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useLoanBook.ts": {
+    "header": 27,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useLoanSubmissions.ts": {
+    "header": 35,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/usePnl.ts": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useRequests.test.tsx": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useRequests.ts": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStats.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStats.ts": {
+    "header": 17,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStatsPrices.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStatsYield.test.tsx": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStatsYield.ts": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStellarDepositVoucher.ts": {
+    "header": 20,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useStellarWithdrawalVoucher.ts": {
+    "header": 20,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useWithdrawalQueue.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useWithdrawalQueue.ts": {
+    "header": 29,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useWithdrawalVoucher.test.tsx": {
+    "header": 13,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/api/useWithdrawalVoucher.ts": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/ActivityHeader.test.tsx": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/Card.danger.test.tsx": {
+    "header": 20,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/ChartDatesRow.tsx": {
+    "header": 0,
+    "nodeIds": 2
+  },
+  "packages/frontend/src/components/CoinIcon.test.tsx": {
+    "header": 21,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/ConnectWalletModal.test.tsx": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/ConnectWalletPromoCard.tsx": {
+    "header": 0,
+    "nodeIds": 3
+  },
+  "packages/frontend/src/components/ConversionCard.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/ErrorDetailsDialog.dom.test.tsx": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/FirstConnectionModal.test.tsx": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/Footer.test.tsx": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/HeroIcon.test.tsx": {
+    "header": 28,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/HomeStatsStrip.test.tsx": {
+    "header": 9,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/InfoRow.test.tsx": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/InlineError.dom.test.tsx": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/Logo.test.tsx": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/MobileNavMenu.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/QuickAmountChip.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/StepRow.dom.test.tsx": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/TokenAmountDisplay.test.tsx": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/TokenInput.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/TopBar.test.tsx": {
+    "header": 14,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/TopBar.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/XlmFundingBanner.tsx": {
+    "header": 0,
+    "nodeIds": 2
+  },
+  "packages/frontend/src/components/dashboard/DeploymentMonitorPanel.test.tsx": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/dashboard/OriginationTable.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/dashboard/TvlCard.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/dashboard/YieldHistoryPanel.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/dashboard/originationRow.test.ts": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/dashboard/originationRow.ts": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/components/dashboard/useBalanceSheetPanel.test.tsx": {
+    "header": 23,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.test.tsx": {
+    "header": 13,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/dashboard/useWithdrawalQueuePanel.test.tsx": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/dashboard/useYieldHistoryPanel.test.tsx": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/components/dashboard/usycNav.test.ts": {
+    "header": 6,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/env.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/format.test.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/format.ts": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/toast/Toast.dom.test.tsx": {
+    "header": 13,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/toast/useToast.test.tsx": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/usdc.test.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/lib/usdc.ts": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/routes/-account.test.tsx": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/routes/-dashboard.test.tsx": {
+    "header": 24,
+    "nodeIds": 8
+  },
+  "packages/frontend/src/routes/-deposit.test.tsx": {
+    "header": 37,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/routes/-stake.test.tsx": {
+    "header": 33,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/routes/-test.test.tsx": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/routes/-withdraw-redirect.test.tsx": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/routes/test.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/routes/test/-scenarios.test.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/formatCompactUsd.test.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/formatCompactUsd.ts": {
+    "header": 28,
+    "nodeIds": 1
+  },
+  "packages/frontend/src/utils/formatDate.test.ts": {
+    "header": 4,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/formatDate.ts": {
+    "header": 16,
+    "nodeIds": 2
+  },
+  "packages/frontend/src/utils/statsPeriod.test.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/statsPeriod.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/truncateAddress.test.ts": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/truncateAddress.ts": {
+    "header": 22,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/userError.test.ts": {
+    "header": 6,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/yieldSeries.test.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/utils/yieldSeries.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/ConnectModalContext.ts": {
+    "header": 21,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/ConnectModalProvider.test.tsx": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/ConnectModalProvider.tsx": {
+    "header": 23,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/WalletGateContext.ts": {
+    "header": 17,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/WalletGateProvider.tsx": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/abis/depositManager.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/abis/erc20.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/abis/stakedPlusd.ts": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/abis/withdrawalQueue.ts": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/cache.ts": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/config.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/estimateGas.ts": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/gas.ts": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/mock.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/simulate.ts": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/units.ts": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useApproval.ts": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useDepositManager.ts": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useEvmToken.ts": {
+    "header": 20,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useEvmWallet.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useNetworkFeeEstimate.test.tsx": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useNetworkFeeEstimate.ts": {
+    "header": 49,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useStakedPlusd.ts": {
+    "header": 32,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useTermsAcknowledgement.test.tsx": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useTermsAcknowledgement.ts": {
+    "header": 17,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/evm/useWithdrawalQueue.ts": {
+    "header": 22,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/index.ts": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/StellarWalletProvider.tsx": {
+    "header": 17,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/chain.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/config.ts": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/connectionStore.test.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/connectionStore.ts": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/depositManager.test.ts": {
+    "header": 17,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/depositManager.ts": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/stakedPlusd.test.ts": {
+    "header": 29,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/stakedPlusd.ts": {
+    "header": 28,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/token.test.ts": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/token.ts": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/contracts/withdrawalQueue.ts": {
+    "header": 17,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/mock.ts": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarDepositManager.test.tsx": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarDepositManager.ts": {
+    "header": 29,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarDepositManagerAddresses.test.tsx": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarDepositManagerAddresses.ts": {
+    "header": 30,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarFinancialPositionReads.test.tsx": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarFinancialPositionReads.ts": {
+    "header": 27,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarNetworkFeeEstimate.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarNetworkFeeEstimate.ts": {
+    "header": 32,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarSacToken.test.tsx": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarSacToken.ts": {
+    "header": 46,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarStakedPlusd.test.tsx": {
+    "header": 34,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarStakedPlusd.ts": {
+    "header": 53,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarToken.test.tsx": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarToken.ts": {
+    "header": 34,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarWallet.ts": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.test.tsx": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.ts": {
+    "header": 29,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/useDepositFlow.test.tsx": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/useStakeFlow.test.tsx": {
+    "header": 22,
+    "nodeIds": 0
+  },
+  "packages/frontend/src/wallet/useTermsAcknowledgement.ts": {
+    "header": 26,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-auth.test.ts": {
+    "header": 6,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-client.test.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useCapitalAllocation.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useCompleteDisbursement.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useDrawLoan.test.tsx": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useLoanBook.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useLoanCcrHistory.test.tsx": {
+    "header": 6,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useLoanFinancials.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useLoanSubmissions.test.tsx": {
+    "header": 16,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useLoanValuation.test.tsx": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useReviewSubmission.test.tsx": {
+    "header": 13,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useRollover.test.tsx": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/-useUpdateLifecycle.test.tsx": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/client.ts": {
+    "header": 23,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/useLoanCcrHistory.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/useLoanWaterfall.ts": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/api/useRampAddresses.ts": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/auth/-TrusteeSessionProvider.test.tsx": {
+    "header": 29,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/auth/-authGate.test.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/auth/-sessionStore.test.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/auth/-useAuthRedirect.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/-CapitalAllocationCard.test.tsx": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/-NeedsAttention.test.tsx": {
+    "header": 21,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/-SignInOverlay.test.tsx": {
+    "header": 10,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/components/-TrusteeShell.test.tsx": {
+    "header": 6,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/-TrusteeSidebar.test.tsx": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/-useCapitalAllocationCard.test.ts": {
+    "header": 15,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/-useNeedsAttention.test.ts": {
+    "header": 18,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/components/DocumentIcon.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/components/LockIcon.tsx": {
+    "header": 0,
+    "nodeIds": 2
+  },
+  "packages/trustee/src/components/SignInOverlay.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/components/TrusteeNavIcons.tsx": {
+    "header": 12,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/components/TrusteeShell.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/lib/env.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/lib/networkSwitcher.test.ts": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/lib/truncateAddress.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-ApproveMintDialog.test.tsx": {
+    "header": 21,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-CcrTrendChart.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-RejectReasonDialog.test.tsx": {
+    "header": 22,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-RequestChangesDialog.test.tsx": {
+    "header": 24,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-audit-log.test.tsx": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-cash-management-page.test.tsx": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-cash-management-tbills.test.ts": {
+    "header": 6,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-cash-management-withdrawals.test.ts": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-cash-management.test.ts": {
+    "header": 4,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-index.test.tsx": {
+    "header": 32,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-loanDetailStatic.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-loans.$id.test.tsx": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-loans.index.test.tsx": {
+    "header": 11,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-origination-detail-page.test.tsx": {
+    "header": 40,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-origination-detail.test.ts": {
+    "header": 35,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-origination-detail.ts": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-origination.index.test.tsx": {
+    "header": 19,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-record-coupon-page.test.tsx": {
+    "header": 18,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-record-coupon.test.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-record-repayment-page.test.tsx": {
+    "header": 15,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-record-repayment.test.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-risk-council-escalate-page.test.tsx": {
+    "header": 20,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-risk-council-escalate.test.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-risk-council-reterm-page.test.tsx": {
+    "header": 11,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-risk-council-reterm.test.ts": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-risk-council-writedown-page.test.tsx": {
+    "header": 11,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/-risk-council-writedown.test.ts": {
+    "header": 4,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-risk-council.index.test.tsx": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-useAuditLog.test.ts": {
+    "header": 8,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-useLoanDetail.test.ts": {
+    "header": 9,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-useLoansTable.test.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-useOriginationReview.test.ts": {
+    "header": 36,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-useOriginationTable.test.ts": {
+    "header": 14,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/-useRejectReasonDialog.test.ts": {
+    "header": 12,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/routes/cash-management.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/loans.$id.tsx": {
+    "header": 0,
+    "nodeIds": 3
+  },
+  "packages/trustee/src/routes/loans.$id_.record-coupon.tsx": {
+    "header": 0,
+    "nodeIds": 2
+  },
+  "packages/trustee/src/routes/loans.$id_.record-repayment.tsx": {
+    "header": 0,
+    "nodeIds": 2
+  },
+  "packages/trustee/src/routes/loans.index.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/routes/origination.index.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/utils/-formatDate.test.ts": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/utils/-formatUsd.test.ts": {
+    "header": 7,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/utils/-userError.test.ts": {
+    "header": 10,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/utils/formatDate.ts": {
+    "header": 12,
+    "nodeIds": 1
+  },
+  "packages/trustee/src/utils/formatUsd.ts": {
+    "header": 33,
+    "nodeIds": 0
+  },
+  "packages/trustee/src/utils/stellarSacUnits.ts": {
+    "header": 5,
+    "nodeIds": 0
+  },
+  "packages/ui/src/components/HeroIcon/HeroIcon.stories.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/ui/src/components/Stat/Stat.stories.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/ui/src/components/StepsCard/StepsCard.stories.tsx": {
+    "header": 0,
+    "nodeIds": 2
+  },
+  "packages/ui/src/components/Switch/Switch.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  },
+  "packages/ui/src/typography/Typography.stories.tsx": {
+    "header": 0,
+    "nodeIds": 1
+  }
+}
