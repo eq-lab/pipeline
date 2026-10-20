@@ -1309,7 +1309,7 @@ line, whichever section it lands in.
 - **Impact:** None — rendered `aria-hidden`, not a button, so it has no dead-end click target.
 - **Suggested fix:** Designer ask: a document-detail frame, or drop the chevron.
 
-### TD-79: `useActiveWalletAccount` duplicates `TopBar`'s inline wallet derivation
+### TD-79: `useActiveWalletAccount` duplicates `TopBar`'s inline wallet derivation [RESOLVED 2026-10-20 / #1575]
 
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/wallet/useActiveWalletAccount.ts` vs.
@@ -1318,6 +1318,7 @@ line, whichever section it lands in.
   but `TopBar` itself was left untouched (touching it would collide with #1282's header rewrite).
 - **Impact:** Two copies of the same logic until #1282 lands.
 - **Suggested fix:** #1282 adopts `useActiveWalletAccount` when it rewrites the header.
+- **Resolution (2026-10-20, #1575):** Obsolete — the #1458/#1556 header rework replaced `TopBar`'s inline derivation with `useWalletPresence().isAnyConnected`; `TopBar` no longer derives an active-wallet account at all, so there is nothing left to deduplicate.
 
 ### TD-102: Wallet-namespace labels diverge three ways across the app
 
@@ -1501,7 +1502,7 @@ line, whichever section it lands in.
   state — signed-in and wallet-only alike. See
   [`account-page.md#wallet-card`](../frontend/account-page.md#wallet-card).
 
-### TD-112: `AccountDropdown` is orphaned dead code after #1362
+### TD-112: `AccountDropdown` is orphaned dead code after #1362 [RESOLVED 2026-10-20 / #1575]
 
 - **Date:** 2026-09-24
 - **Location:** `packages/frontend/src/components/AccountDropdown.tsx`,
@@ -1517,6 +1518,7 @@ line, whichever section it lands in.
   code," unblocked by nothing.
 
 ---
+- **Resolution (2026-10-20, #1575):** `AccountDropdown.tsx`, `useAccountDropdown.ts` and `AccountDropdown.test.tsx` deleted; `dashboard-components.md#accountdropdown` removed and the remaining doc references rewritten.
 
 ### TD-113: Nothing stops the same wire being recorded twice as two deposits
 

@@ -253,9 +253,9 @@ constant. The Protocol Dashboard reads the rule through `useDashboardChain`.
 
 **Source:** `packages/wallet-connect/src/network/links.ts` (shared helpers); per-app glue in
 `packages/frontend/src/wallet/networkSwitcher.ts` and `packages/trustee/src/lib/networkSwitcher.ts`.
-**Consumers:** the LP `AccountDropdown` (`packages/frontend/src/components/AccountDropdown.tsx` +
-its `useAccountDropdown.ts` hook) and its `TopBar`; the trustee `TrusteeSidebar`'s account chip and
-`⋯` `AccountMenu` popover.
+**Consumers:** the LP `TopBar` (its always-visible `NetworkSwitcher` pill; the former
+`AccountDropdown` menu row was deleted with the component in #1575); the trustee `TrusteeSidebar`'s
+account chip and `⋯` `AccountMenu` popover.
 
 ### Design (issue #1032)
 
@@ -298,8 +298,8 @@ isolates everything else (a fresh page load, a wallet that must reconnect on the
      "Switch to …" rows; with none it renders as a non-interactive pill. Chrome matches the
      restyled wallet chip (#1210, following #1185): 48 px tall, `--radius-pipeline-card` 4 px
      corners, **no border** — white surface on testnet, the amber `warning`/10 tint alone
-     carrying the mainnet real-funds signal. The LP `AccountDropdown`
-     keeps its network row too (same behavior, both routes through the confirm flow).
+     carrying the mainnet real-funds signal. (The LP `AccountDropdown`, which carried a second
+     network row, was deleted in #1575.)
      Mounts (#1125): on desktop the pill lives **inside** `TopBar`'s wallet slot
      (`topbar-wallet-slot`, `min-w-40 justify-end gap-2`) so the gap to the wallet pill is a
      fixed 8px regardless of the balance's width; on mobile it renders as a "Network" row in

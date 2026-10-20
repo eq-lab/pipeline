@@ -1243,8 +1243,8 @@ Renders a small `CoinIcon` at the `sm` size (20 px) alongside a pre-formatted ba
 Supported tokens: `"usdc"`, `"plusd"`, `"splusd"`.
 
 This is a purely visual element (`<div>`); interactive behaviour (click to open the wallet menu)
-was deferred to a later issue — desktop `AccountDropdown` behavior is described in
-`docs/FRONTEND.md` → Responsive behavior.
+was deferred to a later issue — the desktop header's account entry is described in
+`docs/frontend/dashboard-components.md` → TopBar (the former `AccountDropdown` was deleted in #1575).
 
 ### Layout and tokens
 

@@ -60,7 +60,7 @@ vi.mock("@/wallet", async (importOriginal) => {
 });
 
 // ── Network switcher mock (issue #1032) ───────────────────────────────────────
-// Same pattern as AccountDropdown.test.tsx: only `useNetworkSwitcherState` is
+// Only `useNetworkSwitcherState` is
 // stubbed (controllable per test); `navigateToNetworkLink` stays real.
 
 const { mockNetworkSwitcherState, mockIsMainnet } = vi.hoisted(() => ({

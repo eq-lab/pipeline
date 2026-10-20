@@ -1,8 +1,7 @@
 /**
  * truncateAddress — shared wallet address truncation utility.
  *
- * Extracted from `useAccountDropdown.ts` per FRONTEND.md rule 3 (helper used
- * in 2+ places — lift to a shared util).
+ * A shared util per FRONTEND.md rule 3 (a helper used in 2+ places).
  *
  * EVM (0x…):    slices to `0xXXXX…XXXX` (6 + 4 chars).
  * Stellar (G…): slices to `GABCDE…WXYZ` (6 + 4 chars).

@@ -104,10 +104,7 @@ describe("ErrorDetailsDialog", () => {
     // — so the custom `navigator.clipboard` mock MUST be (re)installed AFTER
     // `userEvent.setup()` in each test, not before, or `.setup()` silently
     // clobbers it and every `writeText` call resolves via user-event's own
-    // stub instead of `mockWriteText` (verified empirically; not documented
-    // in the AccountDropdown.test.tsx precedent, which never asserts the
-    // mock was called with a specific value, so the same clobbering there is
-    // latent, not exercised).
+    // stub instead of `mockWriteText` (verified empirically).
     const mockWriteText = vi.fn();
 
     function installClipboardMock() {
