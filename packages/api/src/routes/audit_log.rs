@@ -214,12 +214,29 @@ pub fn build_response(mut rows: Vec<AuditLogRow>, chains: &[ConfiguredChain]) ->
     });
     let items = rows
         .into_iter()
+        .filter(|row| !is_noop_sync(&row.event_name, &row.params))
         .filter_map(|row| {
             let kind = chains.iter().find(|c| c.chain_id == row.chain_id)?.kind;
             Some(map_item(row, kind))
         })
         .collect();
     AuditLogResponse { items }
+}
+
+/// A permissionless `DebtSynced` (`minted` and `clawed`) / `CargoSynced` (`minted` and
+/// `burned`) that moved nothing: both raw amounts are present and zero. A missing or
+/// unparseable amount keeps the row.
+fn is_noop_sync(event_name: &str, params: &Value) -> bool {
+    let keys: [&str; 2] = match event_name {
+        "DebtSynced" => ["minted", "clawed"],
+        "CargoSynced" => ["minted", "burned"],
+        _ => return false,
+    };
+    keys.iter().all(|k| {
+        param_str(params, k)
+            .and_then(|raw| BigDecimal::from_str(&raw).ok())
+            .is_some_and(|v| v == 0)
+    })
 }
 
 /// Map one raw row to an API item, rendering the action string, scope, and friendly
@@ -528,7 +545,7 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             let reason = param_str(params, "reason");
             let delta = param_amount(params, "delta", chain_kind);
             let action = match (&reason, &delta) {
-                (Some(r), Some(d)) => format!("Cash recorded — {r} ${d}"),
+                (Some(r), Some(d)) => format!("Cash recorded — {r} {}", dollars(d)),
                 _ => "Cash recorded".to_owned(),
             };
             (
@@ -744,6 +761,14 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
     }
 }
 
+/// `$12.34`, or `-$12.34` for a negative decimal string.
+fn dollars(amount: &str) -> String {
+    match amount.strip_prefix('-') {
+        Some(abs) => format!("-${abs}"),
+        None => format!("${amount}"),
+    }
+}
+
 /// `{key: string}` for each of `keys` (numbers stringified), `null` when absent.
 fn pass(params: &Value, keys: &[&str]) -> Value {
     let mut details = serde_json::Map::new();
@@ -764,7 +789,7 @@ fn with_amount(
 ) -> (String, Value) {
     let amount = param_amount(params, amount_key, chain_kind);
     let action = match &amount {
-        Some(a) => format!("{label} — ${a}"),
+        Some(a) => format!("{label} — {}", dollars(a)),
         None => label.to_owned(),
     };
     let mut details = pass(params, extra);

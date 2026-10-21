@@ -43,7 +43,7 @@ Automated coverage is in `packages/api/tests/dashboard_auditlog_chain.rs` (chain
 
 **Then:**
 
-- `cumulative_yield_total` = historical `YieldMinted` + the live `CashRepaid` (`interest_minted` + fee leg); the reversed repayment is excluded after its reversal and the series steps down at the reversal time
+- `cumulative_yield_total` = historical `YieldMinted` + the live `CashRepaid` (`interest_minted` + fee leg), normalised per loan by chain kind (EVM 6, Stellar 7) and rounded exactly like the LoanBook `minted_yield`, so it equals the sum of the per-loan `minted_yield` figures; the reversed repayment is excluded after its reversal and the series steps down at the reversal time
 
 ## Story 4 — Chain selection and errors
 
@@ -73,7 +73,7 @@ Automated coverage is in `packages/api/tests/dashboard_auditlog_chain.rs` (chain
 
 **Then:**
 
-- The Minter cash events, the eleven CollateralRegistry events and `DealRegistered` / `DebtSynced` / `CargoSynced` each render an `action` and `details`; rows with a `loan_id` have scope `Loan #<id>`, the others `Protocol`
+- The Minter cash events, the eleven CollateralRegistry events and `DealRegistered` / `DebtSynced` / `CargoSynced` each render an `action` and `details`; rows with a `loan_id` have scope `Loan #<id>`, the others `Protocol`; permissionless `DebtSynced` / `CargoSynced` rows that moved nothing (`minted` and `clawed` / `burned` both zero) are omitted; negative cash amounts render as `-$12.34`
 - No `DealTokenTransfer` row appears
 - Historical `YieldMinted`, `LoanCCRUpdated` and `LoanLocationUpdated` rows still render
 

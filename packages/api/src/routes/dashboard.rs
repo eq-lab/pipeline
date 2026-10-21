@@ -19,7 +19,7 @@
 //! malformed or repeated = 400 (`LenientChainFilter`, same as `routes::financial_position`).
 //! Every amount is base-6 USDC before summing: the repo readers normalise flow, legacy
 //! yield and loan-snapshot amounts by chain kind, and `CashRepaid` mints (raw) are
-//! normalised with the chain's `asset_decimals`. Loan data is read through each chain's
+//! normalised per loan by chain kind exactly like LoanBook's `minted_yield`. Loan data is read through each chain's
 //! LoanRegistry address. Rates (`loan_book_yield`, `current_apy_net_to_splusd`) are
 //! computed over the union of active loans, i.e. principal-weighted across chains. The
 //! series share one time grid and are summed point-wise; `max`/`min`/`average` come from
@@ -43,7 +43,7 @@
 //! - `null` when data unavailable (e.g. no active loans → `current_apy_net_to_splusd`).
 //! - `days`/`interval`/`MAX_SAMPLES` cap mirrors `/v1/stats/yield` (`portfolio.rs`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -53,6 +53,7 @@ use bigdecimal::{BigDecimal, RoundingMode};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::contract_logs_repo::{
     FlowEventRow, LifecycleRow, LoanSnapshotRow, RepaymentMintRow, YieldMintRow,
 };
@@ -60,7 +61,6 @@ use shared::contract_logs_repo::{
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::Interval;
-use crate::routes::capital_allocation::normalize_to_canonical;
 use crate::routes::common::LenientChainFilter;
 use crate::routes::financial_position::compute_financial_position;
 use crate::routes::loan_book::{compute_loan_book, LoanRef, LoanSpot};
@@ -199,24 +199,22 @@ async fn get_summary(
     let mut yield_parts = Vec::new();
     for c in chain.configured(&state.chains) {
         let chain_id = c.chain_id;
-        let reads = read_chain(&state, chain_id, to).await?;
+        let Some(registry) = state.loan_registry_addresses.get(&chain_id) else {
+            continue;
+        };
+        let reads = read_chain(&state, chain_id, c.kind, registry, to).await?;
         let (chain_loans, chain_events) = tokio::try_join!(
             async {
                 state
                     .contract_logs_repo
-                    .list_latest_loan_snapshots(&state.pool, chain_id, &reads.registry, to)
+                    .list_latest_loan_snapshots(&state.pool, chain_id, registry, to)
                     .await
                     .map_err(ApiError::from)
             },
             async {
                 state
                     .contract_logs_repo
-                    .list_loan_lifecycle_events_for_registry(
-                        &state.pool,
-                        chain_id,
-                        &reads.registry,
-                        to,
-                    )
+                    .list_loan_lifecycle_events_for_registry(&state.pool, chain_id, registry, to)
                     .await
                     .map_err(ApiError::from)
             },
@@ -317,7 +315,10 @@ async fn get_yield_history(
 
     let mut yield_parts = Vec::new();
     for c in chain.configured(&state.chains) {
-        yield_parts.push(read_chain_yield(&state, c.chain_id, to).await?);
+        let Some(registry) = state.loan_registry_addresses.get(&c.chain_id) else {
+            continue;
+        };
+        yield_parts.push(read_chain_yield(&state, c.chain_id, c.kind, registry, to).await?);
     }
     let mints = merge_yield_deltas(yield_parts);
 
@@ -348,23 +349,19 @@ fn now_unix() -> i64 {
         .as_secs() as i64
 }
 
-/// One chain's flow + yield reads for the summary, with the registry the loan readers use.
+/// One chain's flow + yield reads for the summary.
 struct ChainReads {
-    registry: String,
     flows: Vec<FlowEventRow>,
     yield_deltas: Vec<YieldMintRow>,
 }
 
-async fn read_chain(state: &AppState, chain_id: i64, to: i64) -> Result<ChainReads, ApiError> {
-    let registry = state
-        .loan_registry_addresses
-        .get(&chain_id)
-        .cloned()
-        .ok_or_else(|| {
-            ApiError::Internal(anyhow::anyhow!(
-                "no loan registry address configured for chain {chain_id}"
-            ))
-        })?;
+async fn read_chain(
+    state: &AppState,
+    chain_id: i64,
+    kind: ChainKind,
+    registry: &str,
+    to: i64,
+) -> Result<ChainReads, ApiError> {
     let (flows, yield_deltas) = tokio::try_join!(
         async {
             state
@@ -373,10 +370,9 @@ async fn read_chain(state: &AppState, chain_id: i64, to: i64) -> Result<ChainRea
                 .await
                 .map_err(ApiError::from)
         },
-        read_chain_yield(state, chain_id, to),
+        read_chain_yield(state, chain_id, kind, registry, to),
     )?;
     Ok(ChainReads {
-        registry,
         flows,
         yield_deltas,
     })
@@ -387,25 +383,10 @@ async fn read_chain(state: &AppState, chain_id: i64, to: i64) -> Result<ChainRea
 async fn read_chain_yield(
     state: &AppState,
     chain_id: i64,
+    kind: ChainKind,
+    registry: &str,
     to: i64,
 ) -> Result<Vec<YieldMintRow>, ApiError> {
-    let registry = state
-        .loan_registry_addresses
-        .get(&chain_id)
-        .ok_or_else(|| {
-            ApiError::Internal(anyhow::anyhow!(
-                "no loan registry address configured for chain {chain_id}"
-            ))
-        })?;
-    let asset_decimals = state
-        .asset_decimals
-        .get(&chain_id)
-        .copied()
-        .ok_or_else(|| {
-            ApiError::Internal(anyhow::anyhow!(
-                "no asset decimals configured for chain {chain_id}"
-            ))
-        })?;
     let (legacy, repayments) = tokio::try_join!(
         async {
             state
@@ -422,37 +403,57 @@ async fn read_chain_yield(
                 .map_err(ApiError::from)
         },
     )?;
-    Ok(chain_yield_deltas(&legacy, &repayments, asset_decimals))
+    Ok(chain_yield_deltas(kind, &legacy, &repayments))
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
 
 /// One chain's cumulative-yield step events in base-6 USDC: the historical `YieldMinted`
-/// rows (already normalised by the repo) plus, per `CashRepaid` row,
-/// `interest_minted + fee_amount` normalised with `asset_decimals` as `+amount` at the
-/// mint and `-amount` at its `CashRepaymentReversed`. A reversal at or before the mint
+/// rows (already normalised by the repo) plus the `CashRepaid` mints. Per loan, the
+/// running raw `interest_minted + fee_amount` (`+` at the mint, `-` at its
+/// `CashRepaymentReversed`) is normalised with `normalize_usdc_amount(kind, …)` and only
+/// its change is emitted, so the sum of the deltas up to `t` equals the sum over loans of
+/// `shared::minted_yield::loan_minted_yield` at `t`. A reversal at or before the mint
 /// leaves the row never live, matching `shared::minted_yield::is_live_at`.
 pub fn chain_yield_deltas(
+    kind: ChainKind,
     legacy: &[YieldMintRow],
     repayments: &[RepaymentMintRow],
-    asset_decimals: u32,
 ) -> Vec<YieldMintRow> {
-    let mut out: Vec<YieldMintRow> = legacy.to_vec();
+    let mut by_loan: BTreeMap<String, Vec<(i64, BigDecimal)>> = BTreeMap::new();
     for r in repayments {
         if r.reversed_at.is_some_and(|rev| rev <= r.block_timestamp) {
             continue;
         }
         let raw = &r.interest_minted + r.fee_amount.clone().unwrap_or_default();
-        let amount = normalize_to_canonical(raw, asset_decimals);
-        out.push(YieldMintRow {
-            block_timestamp: r.block_timestamp,
-            s_plusd_amount: amount.clone(),
-        });
+        let steps = by_loan.entry(r.loan_id.to_string()).or_default();
+        steps.push((r.block_timestamp, raw.clone()));
         if let Some(rev) = r.reversed_at {
-            out.push(YieldMintRow {
-                block_timestamp: rev,
-                s_plusd_amount: -amount,
-            });
+            steps.push((rev, -raw));
+        }
+    }
+
+    let mut out: Vec<YieldMintRow> = legacy.to_vec();
+    for mut steps in by_loan.into_values() {
+        steps.sort_by_key(|(t, _)| *t);
+        let mut raw_total = BigDecimal::from(0);
+        let mut emitted = BigDecimal::from(0);
+        let mut i = 0;
+        while i < steps.len() {
+            let t = steps[i].0;
+            while i < steps.len() && steps[i].0 == t {
+                raw_total += &steps[i].1;
+                i += 1;
+            }
+            let normalised = normalize_usdc_amount(kind, &raw_total);
+            let delta = &normalised - &emitted;
+            if delta != 0 {
+                out.push(YieldMintRow {
+                    block_timestamp: t,
+                    s_plusd_amount: delta,
+                });
+            }
+            emitted = normalised;
         }
     }
     out.sort_by_key(|m| m.block_timestamp);
@@ -752,7 +753,8 @@ pub fn compute_yield_history(
 /// Max/min/time-weighted-average of a cumulative step function over
 /// `[from, to]`, given `(timestamp, delta)` events sorted ascending by
 /// timestamp (ties are fine — they fold in together, with zero width between
-/// them). The step function is right-continuous: its value at `t` is the sum
+/// them, and only the value after the last event at a timestamp counts towards
+/// max/min). The step function is right-continuous: its value at `t` is the sum
 /// of every delta with `timestamp <= t`, matching `compute_tvl_series` /
 /// `compute_yield_series`.
 ///
@@ -779,6 +781,11 @@ fn window_stats(events: &[(i64, BigDecimal)], from: i64, to: i64) -> SeriesStatV
         let (t, delta) = &events[idx];
         integral += &running * BigDecimal::from(t - prev_t);
         running += delta;
+        idx += 1;
+        while idx < events.len() && events[idx].0 == *t {
+            running += &events[idx].1;
+            idx += 1;
+        }
         if running > max {
             max = running.clone();
         }
@@ -786,7 +793,6 @@ fn window_stats(events: &[(i64, BigDecimal)], from: i64, to: i64) -> SeriesStatV
             min = running.clone();
         }
         prev_t = *t;
-        idx += 1;
     }
     integral += &running * BigDecimal::from(to - prev_t);
 

@@ -19,6 +19,7 @@ use shared::contract_logs_repo::{
 };
 use shared::kyc_repo::KycRepo;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
+use shared::minted_yield::loan_minted_yield;
 use shared::minted_yield::net_repayment_minted_raw;
 use shared::position_repo::PositionRepo;
 use tower::ServiceExt;
@@ -228,6 +229,19 @@ fn cash_repaid(
     }
 }
 
+fn loan_repaid(
+    loan: i64,
+    ts_day: i64,
+    interest_raw: i64,
+    fee_raw: Option<i64>,
+    reversed_day: Option<i64>,
+) -> RepaymentMintRow {
+    RepaymentMintRow {
+        loan_id: BigDecimal::from(loan),
+        ..cash_repaid(ts_day, interest_raw, fee_raw, reversed_day)
+    }
+}
+
 fn to_json<T: serde::Serialize>(v: &T) -> Value {
     serde_json::to_value(v).unwrap()
 }
@@ -293,11 +307,15 @@ async fn dashboard_unconfigured_chain_id_is_200_zeroed_without_db() {
 
 #[test]
 fn repayment_mints_normalise_per_chain_decimals_before_summing() {
-    let evm = chain_yield_deltas(&[], &[cash_repaid(1, 2_000_000, Some(1_000_000), None)], 6);
+    let evm = chain_yield_deltas(
+        ChainKind::Evm,
+        &[],
+        &[cash_repaid(1, 2_000_000, Some(1_000_000), None)],
+    );
     let stellar = chain_yield_deltas(
+        ChainKind::Stellar,
         &[],
         &[cash_repaid(2, 30_000_000, Some(10_000_000), None)],
-        7,
     );
     let merged = merge_yield_deltas(vec![evm, stellar]);
     let summary = compute_summary(&[], &[], &[], &merged, 5 * DAY);
@@ -311,7 +329,7 @@ fn cumulative_yield_is_legacy_plus_cash_repaid_net_of_reversal() {
         cash_repaid(2, 8_000_000, Some(2_000_000), Some(4)),
         cash_repaid(3, 1_000_000, None, None),
     ];
-    let deltas = chain_yield_deltas(&legacy, &repaid, 6);
+    let deltas = chain_yield_deltas(ChainKind::Evm, &legacy, &repaid);
 
     let before_reversal = compute_summary(&[], &[], &[], &deltas, 3 * DAY);
     assert_eq!(before_reversal.cumulative_yield_total, "16.000000");
@@ -348,7 +366,7 @@ fn yield_deltas_match_shared_net_repayment_arithmetic() {
     for as_of_day in [1, 2, 3, 4, 5] {
         let as_of = as_of_day * DAY;
         let expected = net_repayment_minted_raw(&repaid, as_of);
-        let deltas = chain_yield_deltas(&[], &repaid, 6);
+        let deltas = chain_yield_deltas(ChainKind::Evm, &[], &repaid);
         let got: BigDecimal = deltas
             .iter()
             .filter(|d| d.block_timestamp <= as_of)
@@ -359,8 +377,72 @@ fn yield_deltas_match_shared_net_repayment_arithmetic() {
 }
 
 #[test]
+fn stellar_dashboard_yield_equals_sum_of_per_loan_minted_yield() {
+    let repaid = vec![
+        loan_repaid(1, 1, 5, Some(4), None),
+        loan_repaid(1, 2, 5, Some(4), None),
+        loan_repaid(1, 3, 5, Some(4), Some(5)),
+        loan_repaid(2, 1, 7, None, None),
+        loan_repaid(2, 2, 7, Some(1), Some(4)),
+        loan_repaid(3, 2, 6, Some(6), None),
+        loan_repaid(3, 4, 9, None, None),
+    ];
+    let deltas = chain_yield_deltas(ChainKind::Stellar, &[], &repaid);
+    let zero = BigDecimal::from(0);
+    for as_of_day in 0..=6 {
+        let as_of = as_of_day * DAY;
+        let dashboard: BigDecimal = deltas
+            .iter()
+            .filter(|d| d.block_timestamp <= as_of)
+            .map(|d| d.s_plusd_amount.clone())
+            .sum();
+        let per_loan: BigDecimal = (1..=3)
+            .map(|loan| {
+                let rows: Vec<RepaymentMintRow> = repaid
+                    .iter()
+                    .filter(|r| r.loan_id == loan)
+                    .cloned()
+                    .collect();
+                loan_minted_yield(ChainKind::Stellar, &zero, &rows, as_of)
+            })
+            .sum();
+        assert_eq!(dashboard, per_loan, "as_of day {as_of_day}");
+    }
+    let per_row_floor: BigDecimal = repaid
+        .iter()
+        .filter(|r| r.reversed_at.is_none())
+        .map(|r| {
+            shared::chains::normalize_usdc_amount(
+                ChainKind::Stellar,
+                &(&r.interest_minted + r.fee_amount.clone().unwrap_or_default()),
+            )
+        })
+        .sum();
+    let at_end: BigDecimal = deltas.iter().map(|d| d.s_plusd_amount.clone()).sum();
+    assert_ne!(at_end, per_row_floor);
+}
+
+#[test]
+fn same_timestamp_up_then_down_does_not_register_a_transient_extreme() {
+    let deltas = vec![
+        legacy_mint(1, 5),
+        legacy_mint(2, 10),
+        legacy_mint(2, -10),
+        legacy_mint(3, -4),
+        legacy_mint(3, 4),
+    ];
+    let hist = compute_yield_history(&deltas, 0, 4 * DAY, DAY);
+    assert_eq!(hist.max, "5.000000");
+    assert_eq!(hist.min, "0.000000");
+}
+
+#[test]
 fn reversal_at_or_before_the_mint_leaves_the_row_out() {
-    let deltas = chain_yield_deltas(&[], &[cash_repaid(3, 5_000_000, None, Some(3))], 6);
+    let deltas = chain_yield_deltas(
+        ChainKind::Evm,
+        &[],
+        &[cash_repaid(3, 5_000_000, None, Some(3))],
+    );
     assert!(deltas.is_empty());
 }
 
@@ -379,22 +461,36 @@ fn tvl_series_sums_chains_on_one_grid_with_stats_from_the_summed_series() {
 
 #[test]
 fn single_chain_merge_is_the_identity() {
-    let flows = vec![flow("deposit", 0, 100), flow("withdrawal", 3, 10)];
+    let flows = vec![
+        flow("deposit", 0, 100),
+        flow("withdrawal", 3, 10),
+        flow("deposit", 3, 7),
+        flow("deposit", 5, 1),
+    ];
     let merged = merge_flows(vec![flows.clone()]);
+    let key = |f: &FlowEventRow| (f.block_timestamp, f.kind.clone(), f.amount.clone());
     assert_eq!(
-        to_json(&compute_tvl_history(&merged, 0, 10 * DAY, DAY)),
-        to_json(&compute_tvl_history(&flows, 0, 10 * DAY, DAY)),
+        merged.iter().map(key).collect::<Vec<_>>(),
+        flows.iter().map(key).collect::<Vec<_>>()
     );
-    let deltas = vec![legacy_mint(1, 5), legacy_mint(2, 7)];
+
+    let deltas = vec![
+        legacy_mint(1, 5),
+        legacy_mint(2, 7),
+        legacy_mint(2, -3),
+        legacy_mint(4, 2),
+    ];
     let merged = merge_yield_deltas(vec![deltas.clone()]);
+    let key = |m: &YieldMintRow| (m.block_timestamp, m.s_plusd_amount.clone());
     assert_eq!(
-        to_json(&compute_yield_history(&merged, 0, 10 * DAY, DAY)),
-        to_json(&compute_yield_history(&deltas, 0, 10 * DAY, DAY)),
+        merged.iter().map(key).collect::<Vec<_>>(),
+        deltas.iter().map(key).collect::<Vec<_>>()
     );
+
     let loans = vec![make_loan(1, 1, 100_000, 0, 1000, 0, 180)];
     let summary = compute_summary(&loans, &[], &flows, &deltas, 90 * DAY);
-    assert_eq!(summary.tvl, "90.000000");
-    assert_eq!(summary.cumulative_yield_total, "12.000000");
+    assert_eq!(summary.tvl, "98.000000");
+    assert_eq!(summary.cumulative_yield_total, "11.000000");
     assert_eq!(summary.loan_book_yield.as_deref(), Some("0.100000"));
 }
 
@@ -733,7 +829,7 @@ fn ramp_cash_and_supply_events_render() {
         json!({ "reason": "Expense", "entry_id": "8", "delta": "-2000000", "value_date": "1700000000", "ref_hash": "ab" }),
         ChainKind::Evm,
     );
-    assert_eq!(a, "Cash recorded — Expense $-2.000000");
+    assert_eq!(a, "Cash recorded — Expense -$2.000000");
     assert_eq!(d["delta"], "-2.000000");
 
     let (a, d) = act(
@@ -986,4 +1082,107 @@ fn audit_log_openapi_marks_chain_id_optional_with_400_and_item_chain_id() {
         .unwrap()
         .iter()
         .any(|v| v == "chain_id"));
+}
+
+// ── AuditLog: no-op syncs, signed amounts ───────────────────────────────────
+
+#[test]
+fn no_op_debt_and_cargo_syncs_are_dropped_from_the_feed() {
+    let chains = [EVM, STELLAR];
+    let rows = vec![
+        log_row(
+            1,
+            1,
+            (1, 1, 0),
+            "DebtSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "5", "previous": "5", "minted": "0", "clawed": "0" }),
+        ),
+        log_row(
+            2,
+            1,
+            (2, 1, 0),
+            "DebtSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "5", "previous": "4", "minted": "1000000", "clawed": "0" }),
+        ),
+        log_row(
+            3,
+            1,
+            (3, 1, 0),
+            "CargoSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "5", "previous": "5", "minted": "0", "burned": "0" }),
+        ),
+        log_row(
+            4,
+            1,
+            (4, 1, 0),
+            "CargoSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "3", "previous": "5", "minted": "0", "burned": "2" }),
+        ),
+        log_row(
+            5,
+            99_000_001,
+            (5, 1, 0),
+            "DebtSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "50", "previous": "50", "minted": "0", "clawed": "0" }),
+        ),
+        log_row(
+            6,
+            99_000_001,
+            (6, 1, 0),
+            "DebtSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "50", "previous": "50", "minted": "0", "clawed": "10000000" }),
+        ),
+        log_row(
+            7,
+            99_000_001,
+            (7, 1, 0),
+            "CargoSynced",
+            Some("7"),
+            json!({ "loan_id": "7", "target": "50", "previous": "50", "minted": "0", "burned": "0" }),
+        ),
+        log_row(
+            8,
+            99_000_001,
+            (8, 1, 0),
+            "DebtSynced",
+            Some("7"),
+            json!({ "loan_id": "7" }),
+        ),
+    ];
+    let items = build_response(rows, &chains).items;
+    let kept: Vec<(i64, &str)> = items
+        .iter()
+        .map(|i| (i.chain_id, i.event_name.as_str()))
+        .collect();
+    assert_eq!(
+        kept,
+        [
+            (99_000_001, "DebtSynced"),
+            (99_000_001, "DebtSynced"),
+            (1, "CargoSynced"),
+            (1, "DebtSynced"),
+        ]
+    );
+}
+
+#[test]
+fn negative_cash_amounts_put_the_sign_before_the_dollar() {
+    let (a, _) = act(
+        "CashCorrected",
+        json!({ "original_id": "8", "entry_id": "9", "delta": "-12340000", "reason_hash": "ab" }),
+        ChainKind::Evm,
+    );
+    assert_eq!(a, "Cash corrected — -$12.340000");
+    let (a, _) = act(
+        "CashRecorded",
+        json!({ "reason": "Fee", "entry_id": "1", "delta": "-123400000" }),
+        ChainKind::Stellar,
+    );
+    assert_eq!(a, "Cash recorded — Fee -$12.340000");
 }
