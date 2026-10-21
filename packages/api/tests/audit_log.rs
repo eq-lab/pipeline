@@ -6,8 +6,8 @@
 //! feature-named, no inline `#[cfg(test)]` in `src/`). Pure unit tests — no
 //! `DATABASE_URL` / Postgres connection.
 //!
-//! `format_action` reads flat top-level `params` fields, unchanged from before #1094 —
-//! the `params->'event'` nesting fix is tracked separately as #1096. The `reference`
+//! `format_action` reads `params` fields from the top level or from the nested `event`
+//! object (#1096). The `reference`
 //! field (friendly loan name, sourced from `params->'snapshot'`) is exercised in the
 //! `build_response` section below.
 //!
@@ -19,6 +19,7 @@
 
 use serde_json::{json, Value};
 
+use pipeline_api::config::ConfiguredChain;
 use pipeline_api::routes::audit_log::{build_response, format_action, AuditLogDoc};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::AuditLogRow;
@@ -26,14 +27,24 @@ use utoipa::OpenApi;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
+fn evm_chain() -> [ConfiguredChain; 1] {
+    [ConfiguredChain {
+        chain_id: 1,
+        kind: ChainKind::Evm,
+    }]
+}
+
 /// Build a fixture row with a given id, event name, optional loan id, and params.
 /// `originator`/`commodity` default to `None` (protocol-scoped / no-snapshot rows);
 /// use [`row_with_snapshot`] for loan-scoped rows that carry a name.
 fn row(id: i64, event_name: &str, loan_id: Option<&str>, params: Value) -> AuditLogRow {
     AuditLogRow {
         id,
+        chain_id: 1,
         event_name: event_name.to_owned(),
         block_timestamp: 1_700_000_000, // fixed instant; timestamp formatting tested elsewhere
+        block_number: 100,
+        log_index: id,
         tx_hash: format!("0xhash{id}"),
         loan_id: loan_id.map(str::to_owned),
         originator: None,
@@ -393,7 +404,7 @@ fn evm_amount_is_unaffected_by_chain_kind() {
 
 #[test]
 fn empty_feed_maps_to_no_items() {
-    let resp = build_response(vec![], ChainKind::Evm);
+    let resp = build_response(vec![], &evm_chain());
     assert!(resp.items.is_empty());
 }
 
@@ -406,7 +417,7 @@ fn every_row_is_returned_in_input_order() {
         row(8, "LoanClosed", Some("8"), json!({})),
         row(7, "LoanDefaulted", Some("7"), json!({})),
     ];
-    let resp = build_response(rows, ChainKind::Evm);
+    let resp = build_response(rows, &evm_chain());
     assert_eq!(resp.items.len(), 3);
     assert_eq!(resp.items[0].event_name, "LoanDrawn");
     assert_eq!(resp.items[1].event_name, "LoanClosed");
@@ -417,7 +428,7 @@ fn every_row_is_returned_in_input_order() {
 fn loan_scoped_row_gets_loan_label_and_id() {
     let resp = build_response(
         vec![row(1, "PaymentRecorded", Some("4492"), json!({}))],
-        ChainKind::Evm,
+        &evm_chain(),
     );
     let scope = &resp.items[0].scope;
     assert_eq!(scope.loan_id.as_deref(), Some("4492"));
@@ -427,7 +438,7 @@ fn loan_scoped_row_gets_loan_label_and_id() {
 #[test]
 fn protocol_scoped_row_has_no_loan_id() {
     // YieldMinted carries no loan_id → protocol scope.
-    let resp = build_response(vec![row(1, "YieldMinted", None, json!({}))], ChainKind::Evm);
+    let resp = build_response(vec![row(1, "YieldMinted", None, json!({}))], &evm_chain());
     let scope = &resp.items[0].scope;
     assert_eq!(scope.loan_id, None);
     assert_eq!(scope.label, "Protocol");
@@ -437,7 +448,7 @@ fn protocol_scoped_row_has_no_loan_id() {
 fn item_carries_timestamp_and_event_name() {
     let resp = build_response(
         vec![row(5, "LoanDrawn", Some("1"), json!({}))],
-        ChainKind::Evm,
+        &evm_chain(),
     );
     let item = &resp.items[0];
     assert_eq!(item.event_name, "LoanDrawn");
@@ -455,7 +466,7 @@ fn loan_scoped_row_with_snapshot_gets_friendly_reference_name() {
             Some("Copper Concentrate"),
             json!({}),
         )],
-        ChainKind::Evm,
+        &evm_chain(),
     );
     let item = &resp.items[0];
     assert_eq!(item.reference, "Open Mineral — Copper Concentrate");
@@ -466,7 +477,7 @@ fn loan_scoped_row_with_snapshot_gets_friendly_reference_name() {
 #[test]
 fn protocol_scoped_row_has_empty_reference() {
     // YieldMinted has no snapshot at all → both fields None → reference "".
-    let resp = build_response(vec![row(1, "YieldMinted", None, json!({}))], ChainKind::Evm);
+    let resp = build_response(vec![row(1, "YieldMinted", None, json!({}))], &evm_chain());
     assert_eq!(resp.items[0].reference, "");
 }
 
@@ -482,7 +493,7 @@ fn loan_row_missing_commodity_has_empty_reference() {
             None,
             json!({}),
         )],
-        ChainKind::Evm,
+        &evm_chain(),
     );
     assert_eq!(resp.items[0].reference, "");
 }
@@ -499,7 +510,7 @@ fn loan_row_with_empty_originator_has_empty_reference() {
             Some("Copper Concentrate"),
             json!({}),
         )],
-        ChainKind::Evm,
+        &evm_chain(),
     );
     assert_eq!(resp.items[0].reference, "");
 }
@@ -519,7 +530,7 @@ fn closed_loan_event_still_gets_a_name_from_its_own_snapshot() {
             Some("Lithium"),
             params,
         )],
-        ChainKind::Evm,
+        &evm_chain(),
     );
     let item = &resp.items[0];
     assert_eq!(item.reference, "Trafigura — Lithium");

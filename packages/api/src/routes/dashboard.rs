@@ -2,17 +2,31 @@
 //!
 //! Three endpoints that back the summary strip at the top of the Protocol Dashboard:
 //!
-//! - `GET /v1/dashboard/summary?chain_id` — headline KPI cards (TVL,
+//! - `GET /v1/dashboard/summary?chain_id?` — headline KPI cards (TVL,
 //!   outstanding in loans, current net APY to sPLUSD, loan-book yield, cumulative
 //!   yield total).
-//! - `GET /v1/dashboard/tvl-history?days&interval&chain_id` — running cumulative
+//! - `GET /v1/dashboard/tvl-history?days&interval&chain_id?` — running cumulative
 //!   TVL time series plus `max`/`min`/`average` over the window
 //!   (`{ series: [{ timestamp, tvl }], max, min, average }`).
-//! - `GET /v1/dashboard/yield-history?days&interval&chain_id` — running cumulative
+//! - `GET /v1/dashboard/yield-history?days&interval&chain_id?` — running cumulative
 //!   net yield minted time series plus `max`/`min`/`average` over the window
 //!   (`{ series: [{ timestamp, cumulative_yield }], max, min, average }`).
 //!
+//! ## Chain scope
+//!
+//! `chain_id?` — omitted = the union over all configured chains, a configured id = that
+//! chain, a well-formed unconfigured id = a zeroed / empty response with no DB call,
+//! malformed or repeated = 400 (`LenientChainFilter`, same as `routes::financial_position`).
+//! Every amount is base-6 USDC before summing: the repo readers normalise flow, legacy
+//! yield and loan-snapshot amounts by chain kind, and `CashRepaid` mints (raw) are
+//! normalised with the chain's `asset_decimals`. Loan data is read through each chain's
+//! LoanRegistry address. Rates (`loan_book_yield`, `current_apy_net_to_splusd`) are
+//! computed over the union of active loans, i.e. principal-weighted across chains. The
+//! series share one time grid and are summed point-wise; `max`/`min`/`average` come from
+//! the summed step function.
+//!
 //! ## Data sources
+//!
 //!
 //! | Field | Source |
 //! |---|---|
@@ -20,7 +34,7 @@
 //! | `outstanding_in_loans` | `financial_position::compute_financial_position` → `assets.deployed.secured_loans_outstanding` |
 //! | `loan_book_yield` | `loan_book::compute_loan_book` → `summary.avg_yield` |
 //! | `current_apy_net_to_splusd` | effective-haircut net rate: `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))` |
-//! | `cumulative_yield_total` | Σ `YieldMinted.s_plusd_amount` |
+//! | `cumulative_yield_total` | historical Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid` (`interest_minted` + `PaymentRecorded` fee leg) net of `CashRepaymentReversed` |
 //!
 //! ## Conventions
 //!
@@ -39,12 +53,15 @@ use bigdecimal::{BigDecimal, RoundingMode};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::contract_logs_repo::{FlowEventRow, LifecycleRow, LoanSnapshotRow, YieldMintRow};
+use shared::contract_logs_repo::{
+    FlowEventRow, LifecycleRow, LoanSnapshotRow, RepaymentMintRow, YieldMintRow,
+};
 
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::Interval;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::capital_allocation::normalize_to_canonical;
+use crate::routes::common::LenientChainFilter;
 use crate::routes::financial_position::compute_financial_position;
 use crate::routes::loan_book::{compute_loan_book, LoanRef, LoanSpot};
 use crate::AppState;
@@ -63,10 +80,8 @@ const SECS_PER_DAY: i64 = 86_400;
 /// Query parameters for the two time-series endpoints.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DashboardSeriesQuery {
-    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
-    pub chain_id: Option<i64>,
     /// Number of days to look back from now (omit for full history starting at
-    /// the earliest flow/yield event for the chain).
+    /// the earliest flow/yield event in scope).
     pub days: Option<u32>,
     /// Sample interval: `"hourly"`, `"daily"` (default), or `"weekly"`.
     #[serde(default)]
@@ -164,49 +179,61 @@ pub fn router() -> Router<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/v1/dashboard/summary",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "Protocol Dashboard header KPIs", body = DashboardSummaryResponse),
+        (status = 200, description = "Protocol Dashboard header KPIs for the selected chain, or aggregated over all configured chains when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields zeroed values", body = DashboardSummaryResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Dashboard"
 )]
 async fn get_summary(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    chain: LenientChainFilter,
 ) -> Result<Json<DashboardSummaryResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
+    let to = now_unix();
 
-    let to = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
+    let mut loans = Vec::new();
+    let mut events = Vec::new();
+    let mut flow_parts = Vec::new();
+    let mut yield_parts = Vec::new();
+    for c in chain.configured(&state.chains) {
+        let chain_id = c.chain_id;
+        let reads = read_chain(&state, chain_id, to).await?;
+        let (chain_loans, chain_events) = tokio::try_join!(
+            async {
+                state
+                    .contract_logs_repo
+                    .list_latest_loan_snapshots(&state.pool, chain_id, &reads.registry, to)
+                    .await
+                    .map_err(ApiError::from)
+            },
+            async {
+                state
+                    .contract_logs_repo
+                    .list_loan_lifecycle_events_for_registry(
+                        &state.pool,
+                        chain_id,
+                        &reads.registry,
+                        to,
+                    )
+                    .await
+                    .map_err(ApiError::from)
+            },
+        )?;
+        loans.extend(chain_loans);
+        events.extend(chain_events);
+        flow_parts.push(reads.flows);
+        yield_parts.push(reads.yield_deltas);
+    }
 
-    // Concurrent fetches: four independent reads, each acquiring its own pooled
-    // connection. Consistency as-of slightly different indexer checkpoints is
-    // acceptable — matches `portfolio.rs` semantics.
-    let (loans, events, flow_events, yield_mints) = tokio::try_join!(
-        state
-            .contract_logs_repo
-            .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to),
-        state
-            .contract_logs_repo
-            .list_loan_lifecycle_events(&state.pool, chain_id, to),
-        state
-            .contract_logs_repo
-            .list_flow_events(&state.pool, chain_id, to),
-        state
-            .contract_logs_repo
-            .list_yield_mints(&state.pool, chain_id, to),
-    )?;
-
+    let flows = merge_flows(flow_parts);
+    let yield_deltas = merge_yield_deltas(yield_parts);
     Ok(Json(compute_summary(
         &loans,
         &events,
-        &flow_events,
-        &yield_mints,
+        &flows,
+        &yield_deltas,
         to,
     )))
 }
@@ -215,33 +242,35 @@ async fn get_summary(
     get,
     path = "/v1/dashboard/tvl-history",
     params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        LenientChainFilter,
         ("days" = Option<u32>, Query, description = "Number of days to look back from now (omit for full history)"),
         ("interval" = Option<String>, Query, description = "Sample interval: \"hourly\", \"daily\" (default), or \"weekly\""),
     ),
     responses(
-        (status = 200, description = "TVL time series plus max/min/average over the window", body = TvlHistoryResponse),
-        (status = 400, description = "Too many samples — reduce `days` or use a coarser `interval`"),
+        (status = 200, description = "TVL time series plus max/min/average over the window, summed over the selected chain or over all configured chains when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields an empty series", body = TvlHistoryResponse),
+        (status = 400, description = "Malformed or repeated chain_id, or too many samples — reduce `days` or use a coarser `interval`"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Dashboard"
 )]
 async fn get_tvl_history(
     State(state): State<Arc<AppState>>,
+    chain: LenientChainFilter,
     Query(query): Query<DashboardSeriesQuery>,
 ) -> Result<Json<TvlHistoryResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
     let step = query.interval.step_secs();
+    let to = now_unix();
 
-    let to = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-
-    let flows = state
-        .contract_logs_repo
-        .list_flow_events(&state.pool, chain_id, to)
-        .await?;
+    let mut flow_parts = Vec::new();
+    for c in chain.configured(&state.chains) {
+        flow_parts.push(
+            state
+                .contract_logs_repo
+                .list_flow_events(&state.pool, c.chain_id, to)
+                .await?,
+        );
+    }
+    let flows = merge_flows(flow_parts);
 
     // Determine window start.
     let from = match query.days {
@@ -267,40 +296,37 @@ async fn get_tvl_history(
     get,
     path = "/v1/dashboard/yield-history",
     params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        LenientChainFilter,
         ("days" = Option<u32>, Query, description = "Number of days to look back from now (omit for full history)"),
         ("interval" = Option<String>, Query, description = "Sample interval: \"hourly\", \"daily\" (default), or \"weekly\""),
     ),
     responses(
-        (status = 200, description = "Cumulative yield time series plus max/min/average over the window", body = YieldHistoryResponse),
-        (status = 400, description = "Too many samples — reduce `days` or use a coarser `interval`"),
+        (status = 200, description = "Cumulative yield time series plus max/min/average over the window, summed over the selected chain or over all configured chains when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields an empty series", body = YieldHistoryResponse),
+        (status = 400, description = "Malformed or repeated chain_id, or too many samples — reduce `days` or use a coarser `interval`"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Dashboard"
 )]
 async fn get_yield_history(
     State(state): State<Arc<AppState>>,
+    chain: LenientChainFilter,
     Query(query): Query<DashboardSeriesQuery>,
 ) -> Result<Json<YieldHistoryResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
     let step = query.interval.step_secs();
+    let to = now_unix();
 
-    let to = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-
-    let mints = state
-        .contract_logs_repo
-        .list_yield_mints(&state.pool, chain_id, to)
-        .await?;
+    let mut yield_parts = Vec::new();
+    for c in chain.configured(&state.chains) {
+        yield_parts.push(read_chain_yield(&state, c.chain_id, to).await?);
+    }
+    let mints = merge_yield_deltas(yield_parts);
 
     // Determine window start.
     let from = match query.days {
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match mints.iter().map(|r| r.block_timestamp).min() {
             Some(earliest) => earliest,
-            None => return Ok(Json(empty_yield_history())), // no YieldMinted events yet
+            None => return Ok(Json(empty_yield_history())), // no yield events yet
         },
     };
 
@@ -315,7 +341,137 @@ async fn get_yield_history(
     Ok(Json(compute_yield_history(&mints, from, to, step)))
 }
 
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// One chain's flow + yield reads for the summary, with the registry the loan readers use.
+struct ChainReads {
+    registry: String,
+    flows: Vec<FlowEventRow>,
+    yield_deltas: Vec<YieldMintRow>,
+}
+
+async fn read_chain(state: &AppState, chain_id: i64, to: i64) -> Result<ChainReads, ApiError> {
+    let registry = state
+        .loan_registry_addresses
+        .get(&chain_id)
+        .cloned()
+        .ok_or_else(|| {
+            ApiError::Internal(anyhow::anyhow!(
+                "no loan registry address configured for chain {chain_id}"
+            ))
+        })?;
+    let (flows, yield_deltas) = tokio::try_join!(
+        async {
+            state
+                .contract_logs_repo
+                .list_flow_events(&state.pool, chain_id, to)
+                .await
+                .map_err(ApiError::from)
+        },
+        read_chain_yield(state, chain_id, to),
+    )?;
+    Ok(ChainReads {
+        registry,
+        flows,
+        yield_deltas,
+    })
+}
+
+/// One chain's cumulative-yield step events: historical `YieldMinted` plus `CashRepaid`
+/// mints (netted against reversals), all base-6.
+async fn read_chain_yield(
+    state: &AppState,
+    chain_id: i64,
+    to: i64,
+) -> Result<Vec<YieldMintRow>, ApiError> {
+    let registry = state
+        .loan_registry_addresses
+        .get(&chain_id)
+        .ok_or_else(|| {
+            ApiError::Internal(anyhow::anyhow!(
+                "no loan registry address configured for chain {chain_id}"
+            ))
+        })?;
+    let asset_decimals = state
+        .asset_decimals
+        .get(&chain_id)
+        .copied()
+        .ok_or_else(|| {
+            ApiError::Internal(anyhow::anyhow!(
+                "no asset decimals configured for chain {chain_id}"
+            ))
+        })?;
+    let (legacy, repayments) = tokio::try_join!(
+        async {
+            state
+                .contract_logs_repo
+                .list_yield_mints(&state.pool, chain_id, to)
+                .await
+                .map_err(ApiError::from)
+        },
+        async {
+            state
+                .contract_logs_repo
+                .list_repayment_mints(&state.pool, chain_id, None, to, registry)
+                .await
+                .map_err(ApiError::from)
+        },
+    )?;
+    Ok(chain_yield_deltas(&legacy, &repayments, asset_decimals))
+}
+
 // ── Compute ──────────────────────────────────────────────────────────────────
+
+/// One chain's cumulative-yield step events in base-6 USDC: the historical `YieldMinted`
+/// rows (already normalised by the repo) plus, per `CashRepaid` row,
+/// `interest_minted + fee_amount` normalised with `asset_decimals` as `+amount` at the
+/// mint and `-amount` at its `CashRepaymentReversed`. A reversal at or before the mint
+/// leaves the row never live, matching `shared::minted_yield::is_live_at`.
+pub fn chain_yield_deltas(
+    legacy: &[YieldMintRow],
+    repayments: &[RepaymentMintRow],
+    asset_decimals: u32,
+) -> Vec<YieldMintRow> {
+    let mut out: Vec<YieldMintRow> = legacy.to_vec();
+    for r in repayments {
+        if r.reversed_at.is_some_and(|rev| rev <= r.block_timestamp) {
+            continue;
+        }
+        let raw = &r.interest_minted + r.fee_amount.clone().unwrap_or_default();
+        let amount = normalize_to_canonical(raw, asset_decimals);
+        out.push(YieldMintRow {
+            block_timestamp: r.block_timestamp,
+            s_plusd_amount: amount.clone(),
+        });
+        if let Some(rev) = r.reversed_at {
+            out.push(YieldMintRow {
+                block_timestamp: rev,
+                s_plusd_amount: -amount,
+            });
+        }
+    }
+    out.sort_by_key(|m| m.block_timestamp);
+    out
+}
+
+/// Merge per-chain (already base-6) flow events into one list ordered by time.
+pub fn merge_flows(parts: Vec<Vec<FlowEventRow>>) -> Vec<FlowEventRow> {
+    let mut out: Vec<FlowEventRow> = parts.into_iter().flatten().collect();
+    out.sort_by_key(|f| f.block_timestamp);
+    out
+}
+
+/// Merge per-chain (already base-6) yield step events into one list ordered by time.
+pub fn merge_yield_deltas(parts: Vec<Vec<YieldMintRow>>) -> Vec<YieldMintRow> {
+    let mut out: Vec<YieldMintRow> = parts.into_iter().flatten().collect();
+    out.sort_by_key(|m| m.block_timestamp);
+    out
+}
 
 /// Pure computation: no DB calls. Assembles the summary KPIs from pre-fetched data.
 ///
@@ -341,10 +497,10 @@ pub fn compute_summary(
         base6_to_decimal_string(&sum)
     };
 
-    // cumulative_yield_total = Σ YieldMinted.s_plusd_amount
+    // cumulative_yield_total = Σ step events (historical YieldMinted + net CashRepaid mints)
     let cumulative_yield_total = {
         let mut sum = BigDecimal::from(0);
-        for m in yield_mints {
+        for m in yield_mints.iter().filter(|m| m.block_timestamp <= to) {
             sum += &m.s_plusd_amount;
         }
         base6_to_decimal_string(&sum)
@@ -470,7 +626,8 @@ pub fn compute_tvl_series(flows: &[FlowEventRow], from: i64, to: i64, step: i64)
 }
 
 /// Pure computation: no DB calls. Walks the sample grid and emits the running
-/// cumulative net yield minted (Σ `YieldMinted.s_plusd_amount`) at each grid point.
+/// cumulative net yield minted (Σ of the yield step events — historical `YieldMinted`
+/// plus netted `CashRepaid` mints, see `chain_yield_deltas`) at each grid point.
 ///
 /// Grid: same as `compute_tvl_series`. Events with `block_timestamp > t` are
 /// excluded from the running sum at `t`. Empty `mints` → `[]`.
@@ -564,7 +721,7 @@ pub fn compute_tvl_history(
 }
 
 /// `compute_yield_series` plus `max`/`min`/`average` over `[from, to]`, computed
-/// exactly from the underlying `YieldMinted` events. See `compute_tvl_history`.
+/// exactly from the underlying yield step events. See `compute_tvl_history`.
 ///
 /// Public so `packages/api/tests/dashboard.rs` can exercise it without the
 /// HTTP/DB layers.

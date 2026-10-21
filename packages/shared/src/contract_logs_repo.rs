@@ -418,10 +418,13 @@ impl EconomicsEventRow {
 #[derive(Debug, Clone)]
 pub struct AuditLogRow {
     pub id: i64,
+    pub chain_id: i64,
     pub event_name: String,
     pub block_timestamp: i64,
+    pub block_number: i64,
+    pub log_index: i64,
     pub tx_hash: String,
-    /// `params->>'loan_id'` — `None` for protocol-scoped events (e.g. `YieldMinted`).
+    /// `params->>'loan_id'` — `None` for protocol-scoped events (e.g. `WireOutRequested`).
     pub loan_id: Option<String>,
     /// `params->'snapshot'->>'originator'` — `None` for protocol-scoped events (no
     /// snapshot, e.g. `YieldMinted`). Used by the API layer to build the friendly
@@ -1161,9 +1164,9 @@ impl ContractLogsRepo {
     }
 
     /// The full Trustee Audit Log feed for a chain, filtered to `event_names` and ordered
-    /// newest-first (`id DESC`, i.e. insertion order — `block_timestamp` is not unique
-    /// across events in the same block). Returns every matching row; the feed is not
-    /// paginated.
+    /// newest-first (`block_timestamp`, `block_number`, `log_index`, then `id`, all
+    /// descending — the same key the API uses to merge chains). Returns every matching
+    /// row; the feed is not paginated.
     pub async fn list_audit_log<'e, E>(
         &self,
         executor: E,
@@ -1177,8 +1180,11 @@ impl ContractLogsRepo {
         let rows = sqlx::query(
             "SELECT
                  id,
+                 chain_id,
                  event_name,
                  block_timestamp,
+                 block_number,
+                 log_index::bigint AS log_index,
                  tx_hash,
                  params->>'loan_id' AS loan_id,
                  params->'snapshot'->>'originator' AS originator,
@@ -1187,7 +1193,7 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND event_name = ANY($2)
-             ORDER BY id DESC",
+             ORDER BY block_timestamp DESC, block_number DESC, log_index DESC, id DESC",
         )
         .bind(chain_id)
         .bind(event_names)
@@ -1198,8 +1204,11 @@ impl ContractLogsRepo {
             .map(|row| {
                 Ok(AuditLogRow {
                     id: row.try_get("id")?,
+                    chain_id: row.try_get("chain_id")?,
                     event_name: row.try_get("event_name")?,
                     block_timestamp: row.try_get("block_timestamp")?,
+                    block_number: row.try_get("block_number")?,
+                    log_index: row.try_get("log_index")?,
                     tx_hash: row.try_get("tx_hash")?,
                     loan_id: row.try_get("loan_id")?,
                     originator: row.try_get("originator")?,
