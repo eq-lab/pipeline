@@ -53,7 +53,7 @@ now. There is no chain selector. The rule lives in one hook (`useActiveChain`, s
 [`wallet-flows.md`](../frontend/wallet-flows.md#active-chain-for-protocol-reads)); the dashboard
 reads it through `useDashboardChain`.
 
-### `GET /v1/dashboard/summary?chain_id`
+### `GET /v1/dashboard/summary?chain_id?`
 
 Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, `loan_book_yield`, `cumulative_yield_total`). USDC amounts are 6dp strings; rates are decimal-fraction strings (e.g. `"0.104000"` = 10.4 %); unavailable fields are `null`.
 
@@ -63,7 +63,9 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 | `outstanding_in_loans` | Σ (senior + equity tranche) over active loans | `compute_financial_position` |
 | `current_apy_net_to_splusd` | Gross book rate × realized net/gross haircut (see below). `null` when no active loans | derived |
 | `loan_book_yield` | Principal-weighted gross senior rate. `null` when no active loans | `compute_loan_book` |
-| `cumulative_yield_total` | Σ `YieldMinted.s_plusd_amount` (net minted to sPLUSD vault; EVM incl. T-bill leg, Stellar loan-repayment-only — see Multi-chain note) | `contract_logs` |
+| `cumulative_yield_total` | Historical Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid` (`interest_minted` + the matching `PaymentRecorded` fee leg `mgmt_fee + perf_fee + oet_alloc`) net of `CashRepaymentReversed` — see Yield source below | `contract_logs` |
+
+**Chain scope (#1595).** `chain_id` is optional on all three endpoints, aggregated the way the financial endpoints are (#1530): omitted = the union over every configured chain; a configured id = that chain only; a well-formed id outside `CHAINS` = `200` with a zeroed summary / empty series and no DB call; malformed or repeated = `400`. There is no `DEFAULT_CHAIN_ID` fallback. Amounts (`tvl`, `outstanding_in_loans`, `cumulative_yield_total`, series points) are base-6 USDC per chain, then summed. The rates (`loan_book_yield`, `current_apy_net_to_splusd`) are computed over the union of active loans, so they are principal-weighted across chains and `null` only when no chain has an active loan. Loan snapshots and lifecycle events are read through each chain's `CHAIN_<id>_<TYPE>_API_LOAN_REGISTRY_ADDRESS`. The LP frontend always sends `chain_id`, so it keeps seeing single-chain numbers.
 
 `target_net_to_splusd` is out of scope — no endpoint serves it, so the frontend keeps a static `"8–12%"` label for the "Target Net to sPLUSD" card (#738 seam).
 
@@ -71,19 +73,22 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 
 **Frontend status (issue #760):** the frontend now consumes all three endpoints. "Current APY Net to sPLUSD" maps to `summary.current_apy_net_to_splusd` (the effective-haircut rate); "Loan Book Yield" maps to `summary.loan_book_yield`. The TVL card replaces the prior "TVL chart — Coming soon" placeholder. The cumulative yield series is backed by `/v1/dashboard/yield-history` (net minted), distinct from the prior `/v1/stats/yield` gross-accrual estimate. The deployment ratio (`outstanding_in_loans / tvl`) is displayed as a progress bar — an approved client-side computation of two backend-served values.
 
-### `GET /v1/dashboard/tvl-history?days&interval&chain_id`
+### `GET /v1/dashboard/tvl-history?days&interval&chain_id?`
 
-Returns `[{ timestamp, tvl }]` (oldest first). `tvl(t)` is the running cumulative net flow (Σ deposits − Σ withdrawals up to `t`). `days`/`interval` (`hourly`/`daily`/`weekly`) mirror `/v1/stats/yield`; the sample cap is `MAX_SAMPLES = 1000` (HTTP 400 on overflow); `days=None` → full history from earliest flow event; no events → `200 []`. Final point equals summary `tvl`.
+Returns `{ series: [{ timestamp, tvl }], max, min, average }` (series oldest first). `tvl(t)` is the running cumulative net flow (Σ deposits − Σ withdrawals up to `t`). `days`/`interval` (`hourly`/`daily`/`weekly`) mirror `/v1/stats/yield`; the sample cap is `MAX_SAMPLES = 1000` (HTTP 400 on overflow); `days=None` → full history from earliest flow event; no events → an empty series with zero stats. Final point equals summary `tvl`. Across chains every point is the sum of the per-chain running totals on one grid (the window ends at now); `max` / `min` / `average` are time-weighted over the summed series.
 
-### `GET /v1/dashboard/yield-history?days&interval&chain_id`
+### `GET /v1/dashboard/yield-history?days&interval&chain_id?`
 
-Returns `[{ timestamp, cumulative_yield }]` (oldest first). `cumulative_yield(t)` = Σ `YieldMinted.s_plusd_amount` up to `t`. Same query/cap contract as `tvl-history`. Final point equals `cumulative_yield_total`. Distinct from `/v1/stats/yield` (which is a gross accrual estimate — this is net minted).
+Returns `{ series: [{ timestamp, cumulative_yield }], max, min, average }` (series oldest first). `cumulative_yield(t)` = the yield source below up to `t`, summed over the chains in scope; a repayment reversed at `r` drops out of the series from `r` on. Same query/cap contract as `tvl-history`. Final point equals `cumulative_yield_total`. Distinct from `/v1/stats/yield` (which is a gross accrual estimate — this is net minted).
 
-### Multi-chain `YieldMinted` indexing
+### Yield source (#1533, #1595)
 
-`YieldMinted` is indexed on both **EVM** and **Stellar** chains. The `list_yield_mints` repo query (`params->>'s_plusd_amount'`) reads identically on both, but the raw stored scale differs: Stellar's native 7-decimal value is normalized to the canonical 6-decimal scale only when `ContractLogsRepo::list_yield_mints` reads it back out — `contract_logs` itself always keeps the raw on-chain value (#901).
+`YieldMinted` is no longer indexed on either arm (#1433, #1434), so reading it alone froze the figure. The cumulative yield is now, per chain:
 
-**Stellar leg:** on Stellar today, `YieldMinted` is emitted only on loan repayment (`s_plusd_amount = repayment.senior_interest`, the net senior coupon; `treasury_amount = mgmt_fee + perf_fee + oet_alloc`). There is no T-bill vault leg on Stellar currently. The Stellar YieldMinter is configured via `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` (optional; ships dark when unset).
+- the historical `YieldMinted.s_plusd_amount` rows already in `contract_logs` (kept; `ContractLogsRepo::list_yield_mints`, normalized to base-6 when read, #901), plus
+- every Minter `CashRepaid` row from `ContractLogsRepo::list_repayment_mints` (protocol-wide, i.e. no loan filter): `interest_minted` + the fee leg of the matching `PaymentRecorded` row on the chain's LoanRegistry (`mgmt_fee + perf_fee + oet_alloc`), net of the earliest `CashRepaymentReversed` for the same Minter and repayment. A `CashRepaid` with no matching `PaymentRecorded` is excluded, as in the loan-book `minted_yield` (#1525, `shared::minted_yield`).
+
+`CashRepaid` amounts are raw on-chain values, normalized with the chain's `asset_decimals` (`CHAIN_<id>_STELLAR_API_ASSET_DECIMALS` default 7, `CHAIN_<id>_EVM_API_ASSET_DECIMALS` default 6) per row. The portfolio `GET /v1/stats/yield` still reads the gross-accrual estimate and has no chain aggregation yet (TD-149).
 
 ---
 

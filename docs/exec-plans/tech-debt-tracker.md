@@ -1926,13 +1926,14 @@ line, whichever section it lands in.
 - **Impact:** The QA pass for epic #1247 executes every user-stories doc under `docs/user-stories/epic-1247/`; #1250's stories dead-end at step 1 and have to be re-derived by hand against the production path each time, or get skipped. #1442's new doc writes its stories against the production entry point instead, so the two docs now disagree on how to reach the same screen.
 - **Suggested fix:** Rewrite #1250's pre-conditions against the production entry point, and sweep the other epic-1247 docs for the same stale `/test?tab=auth` trigger (`1265-wire-kyb-auth.md` names it too) in one pass rather than per issue.
 
-### TD-126: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion
+### TD-126: `LoanRolledOver`/`EconomicsAmended` store `new_rate` in the contract's raw `ONE` scale with no conversion [RESOLVED 2026-10-21 / #1595]
 
 - **Date:** 2026-10-08. **Widened 2026-10-08 (#1434)** — confirmed the same gap on the EVM arm.
 - **Location:** `packages/worker/src/indexer/stellar/loan_registry_parsers.rs` and `packages/worker/src/indexer/parsers.rs` (`parse_loan_rolled_over`, `parse_economics_amended` on both arms), `packages/api/src/routes/audit_log.rs` (`format_action` arms for both events) — Issue #1433 finding F8, Issue #1434 finding F16.
-- **Gap:** Both contracts' `new_rate` is the same `ONE = 1_000_000` fixed-point value as `current_rate`/`senior_interest_rate` (Stellar: `lib.rs:30`, `storage.rs:344`; EVM: `LoanRegistryUpgradeable.sol:17`), but every parser on both arms writes it into `params.new_rate` with no conversion, and `audit_log.rs` projects it verbatim into the Trustee feed's `details`.
-- **Impact:** A 10% rate renders as `100000` in the audit feed rather than `1000` (bps) or `10` (percent), on either chain. Low urgency — it is a `params` display value, not a snapshot field read by any computation.
-- **Suggested fix:** Decide the target unit (bps, to match `current_rate`'s convention) and divide at parse time on both arms; existing stored `params.new_rate` rows would then be back-compat-inconsistent with newly written ones, so the fix needs a decision on already-stored rows (ignore vs. backfill) before landing.
+- **Gap:** Both contracts' `new_rate` is the same `ONE = 1_000_000` fixed-point value as `current_rate`/`senior_interest_rate` (Stellar: `lib.rs:30`, `storage.rs:344`; EVM: `LoanRegistryUpgradeable.sol:17`), and every parser on both arms writes it into the event params unconverted. The loan mapper stores those params under `params.event`, but `audit_log.rs` read `new_rate` / `new_maturity_timestamp` at the top level of `params`, so both fields rendered `null` in the Trustee feed (#1532) — the raw-scale value was never actually visible there.
+- **Impact:** The rollover / amendment rows showed no rate or maturity at all; once read from the nested object the raw value would have rendered a 10% rate as `100000`.
+- **Suggested fix:** Read the nested `event` object and convert at read time, so already-stored rows need no backfill.
+- **Resolution:** `format_action` reads `params.event.new_rate` / `new_maturity_timestamp` and renders `details.new_rate_bps` through `shared::loan_economics::economics_rate_to_bps` (ppm to bps, e.g. `150000` to `1500`). The parsers still store the raw 1e6-scaled value, which `EconomicsEventRow` and the waterfall epoch timeline rely on.
 
 ### TD-127: `docs/product-specs/loans-data.md` "Key events" section is v1 design-era drift
 
@@ -1966,6 +1967,7 @@ line, whichever section it lands in.
 - **Impact:** Latent, not live — no EVM chain runs today (TD-131), so this relayer phase never executes against a real deployment. Will need a rewrite before any EVM relayer goes live.
 - **Suggested fix:** Out of epic #1431 scope (decision 4) — track as its own issue once the relayer's EVM arm is scheduled for work.
 - **Resolution:** The phase is deleted rather than rewritten: the reworked contracts mint yield inside `PipelineMinter.repay`, so there is nothing for a relayer to submit (`docs/exec-plans/active/evm-relayer-v5.md`, D1). `relayer/yield_mint/` and its `yield_minter_address` setting are gone; the orphaned BitGo client is TD-140.
+- **Follow-up (#1595):** `YieldMinted` is no longer indexed, so the Dashboard's `cumulative_yield_total` and `/v1/dashboard/yield-history` froze; they now add Minter `CashRepaid` mints (net of `CashRepaymentReversed`) to the historical `YieldMinted` rows (#1533), as the LoanBook `minted_yield` does (#1525). The portfolio `GET /v1/stats/yield` is a separate gross-accrual estimate and is unaffected.
 
 ### TD-131: No EVM deployment exists for the current contracts, and no environment mapping exists to produce one
 
@@ -2080,13 +2082,14 @@ line, whichever section it lands in.
 - **Impact:** The field carries no signal for minter-era loans and its inputs are not like for like.
 - **Suggested fix:** Revisit the field's semantics and likely retire it (and the trustee close gate that reads it) in a later issue.
 
-### TD-149: Non-LoanBook API groups still read loan snapshots unscoped by LoanRegistry address
+### TD-149: Portfolio still reads loan snapshots unscoped by LoanRegistry address [PARTIALLY RESOLVED 2026-10-21 / #1595]
 
 - **Date:** 2026-10-15
-- **Location:** `packages/shared/src/contract_logs_repo.rs` (`list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`), `packages/api/src/routes/{portfolio,dashboard,capital_allocation,financial_position}.rs` — Issue #1526.
-- **Gap:** LoanBook routes use the registry-scoped repo methods, while portfolio, dashboard, capital allocation and financial position keep the chain-only variants, so each query pair is duplicated.
-- **Impact:** After a LoanRegistry redeploy on the same chain, those four groups can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
-- **Suggested fix:** #1538 migrates the four groups to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.
+- **Location:** `packages/shared/src/contract_logs_repo.rs` (`list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`), `packages/api/src/routes/portfolio.rs` — Issue #1526.
+- **Gap:** LoanBook, financial position, capital allocation (#1586) and the dashboard (#1595) use the registry-scoped repo methods, while `GET /v1/stats/yield` in `portfolio.rs` keeps the chain-only variants, so each query pair is duplicated.
+- **Impact:** After a LoanRegistry redeploy on the same chain, portfolio yield can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
+- **Suggested fix:** #1538 migrates the portfolio to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.
+- **Status:** financial position and capital allocation migrated in #1586, the dashboard in #1595. Portfolio (`/v1/stats/yield`) is still open under #1538.
 
 ### TD-150: The submission link is not LoanRegistry-scoped
 

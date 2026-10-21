@@ -3,8 +3,11 @@
 //! Read-only, paginated, reverse-chronological feed backing Surface 17 ("Audit Log") of
 //! the Trustee dashboard. Sourced entirely from `contract_logs` — the indexed on-chain
 //! event store — matching the sourcing of the other Trustee reads (`loan_book`,
-//! `withdrawal_queue`, `ccr_history`). Conventions match `routes::withdrawal_queue`:
-//! Axum handler, utoipa schema, `chain_id?` defaulting to `DEFAULT_CHAIN_ID`.
+//! `withdrawal_queue`, `ccr_history`). Conventions match `routes::financial_position`:
+//! Axum handler, utoipa schema, `chain_id?` — omitted = every configured chain merged
+//! newest-first (`block_timestamp`, then block / log order), a configured id = that chain,
+//! a well-formed unconfigured id = `{"items":[]}` with no DB call, malformed or repeated = 400.
+//! Each item carries its `chain_id`, and amounts are rendered with that row's chain kind.
 //!
 //! **On-chain only (v1).** The full protocol audit log (see
 //! `docs/product-specs/audit-logging.md`) also records off-chain relayer/operator actions
@@ -16,17 +19,20 @@
 //! curated `details` object (the same scalars the action string is built from), the
 //! resolved `scope` (`Loan #<id>` / `Protocol`), an ISO-8601 `timestamp`, and `reference`
 //! — the friendly loan name (`"<originator> — <commodity>"`, sourced from the loan
-//! snapshot), empty string for protocol-scoped events or loans missing either field. The
-//! response shape is unchanged from before #1094 (still a `reference: String` field); only
-//! its *value* changed from the on-chain tx hash to the friendly loan name. `format_action`
-//! is unchanged — the `params` nesting fix is tracked separately as #1096.
+//! snapshot), empty string for protocol-scoped events, for loans missing either field, and
+//! for Minter / CollateralRegistry / DealTokenFactory rows (no snapshot).
+//!
+//! Besides the loan lifecycle, the feed carries the Minter cash events, the
+//! CollateralRegistry lot events and the DealTokenFactory events (#1478); per-transfer
+//! `DealTokenTransfer` rows are deliberately left out. Historical `YieldMinted`,
+//! `LoanCCRUpdated` and `LoanLocationUpdated` rows are no longer indexed but keep rendering.
 //!
 //! The feed is returned in full (newest first) — it is not paginated.
 
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
@@ -34,19 +40,23 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::chains::{parse_chain_type, ChainKind};
+use shared::chains::ChainKind;
 use shared::contract_logs_repo::AuditLogRow;
+use shared::loan_economics::economics_rate_to_bps;
 
+use crate::config::ConfiguredChain;
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::LenientChainFilter;
 use crate::AppState;
 
-/// On-chain events surfaced in the Trustee audit feed (loan lifecycle + yield). LP-facing
-/// events (deposits, withdrawals, staking, raw transfers) are deliberately excluded as
-/// low-signal for the Trustee. This allow-list also gates the action formatter — an
-/// `event_name` outside it never reaches `format_action`.
-const AUDIT_EVENT_NAMES: &[&str] = &[
+/// On-chain events surfaced in the Trustee audit feed: loan lifecycle, Minter cash,
+/// CollateralRegistry and DealTokenFactory events, plus the historical `YieldMinted` /
+/// `LoanCCRUpdated` / `LoanLocationUpdated` rows. LP-facing events (deposits, withdrawals,
+/// staking, raw transfers) and `DealTokenTransfer` are deliberately excluded as low-signal.
+/// This allow-list also gates the action formatter — an `event_name` outside it never
+/// reaches `format_action`.
+pub const AUDIT_EVENT_NAMES: &[&str] = &[
     "LoanDrawn",
     "PaymentRecorded",
     "YieldMinted",
@@ -62,6 +72,34 @@ const AUDIT_EVENT_NAMES: &[&str] = &[
     "PaymentUnrecorded",
     "LoanWrittenDown",
     "InterestAdjusted",
+    "CashDisbursed",
+    "CashDisbursementReversed",
+    "CashRepaid",
+    "CashRepaymentReversed",
+    "WireInReturned",
+    "WireOutRequested",
+    "WireOutSettled",
+    "WireOutCancelled",
+    "RampOpened",
+    "RampClosed",
+    "CashRecorded",
+    "CashCorrected",
+    "MintCorrected",
+    "LossAbsorbed",
+    "Pledged",
+    "HaircutSet",
+    "FloorSet",
+    "Revalued",
+    "StageUpdated",
+    "ControlUpdated",
+    "DocAdded",
+    "QuantityAdjusted",
+    "Released",
+    "Liquidated",
+    "MarginCall",
+    "DealRegistered",
+    "DebtSynced",
+    "CargoSynced",
 ];
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -70,7 +108,7 @@ const AUDIT_EVENT_NAMES: &[&str] = &[
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuditScope {
     /// On-chain loan id (`uint256`, decimal string) for loan-scoped events; `null` for
-    /// protocol-scoped events (e.g. `YieldMinted`).
+    /// protocol-scoped events (e.g. `WireOutRequested`).
     pub loan_id: Option<String>,
     /// Human-readable scope label, e.g. `"Loan #4492"` or `"Protocol"`. This is the
     /// loan **number** — see `AuditLogItem::reference` for the loan **name**.
@@ -80,6 +118,8 @@ pub struct AuditScope {
 /// One row of the Audit Log table.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuditLogItem {
+    /// Chain the event was indexed on.
+    pub chain_id: i64,
     /// Event time, ISO-8601 UTC (from the on-chain block timestamp).
     pub timestamp: String,
     /// Server-rendered, human-readable description of the action.
@@ -88,7 +128,8 @@ pub struct AuditLogItem {
     pub scope: AuditScope,
     /// Friendly loan name, `"<originator> — <commodity>"` (e.g. `"Open Mineral — Copper
     /// Concentrate"`), sourced from the loan's on-chain snapshot. Empty string for
-    /// protocol-scoped events (e.g. `YieldMinted`, which has no snapshot) and for any
+    /// rows without a snapshot (protocol-scoped, Minter, CollateralRegistry,
+    /// DealTokenFactory) and for any
     /// loan-scoped row missing either the originator or the commodity. This is
     /// deliberately distinct from `scope.label` (`"Loan #<id>"` / `"Protocol"`), which
     /// is the loan number, not the loan name.
@@ -104,7 +145,7 @@ pub struct AuditLogItem {
 /// Response for `GET /v1/audit-log`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuditLogResponse {
-    /// All log entries, newest first.
+    /// All log entries, newest first (all configured chains merged when `chain_id` is omitted).
     pub items: Vec<AuditLogItem>,
 }
 
@@ -128,44 +169,74 @@ pub fn router() -> Router<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/v1/audit-log",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "The full audit log feed, newest first", body = AuditLogResponse),
+        (status = 200, description = "The full audit log feed, newest first, for the selected chain or merged over all configured chains when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields an empty list", body = AuditLogResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "AuditLog"
 )]
 async fn get_audit_log(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    chain: LenientChainFilter,
 ) -> Result<Json<AuditLogResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-    let chain_kind = parse_chain_type(chain_id)?;
+    let chains = chain.configured(&state.chains);
+    let mut rows = Vec::new();
+    for c in chains {
+        rows.extend(
+            state
+                .contract_logs_repo
+                .list_audit_log(&state.pool, c.chain_id, AUDIT_EVENT_NAMES)
+                .await?,
+        );
+    }
 
-    let rows = state
-        .contract_logs_repo
-        .list_audit_log(&state.pool, chain_id, AUDIT_EVENT_NAMES)
-        .await?;
-
-    Ok(Json(build_response(rows, chain_kind)))
+    Ok(Json(build_response(rows, chains)))
 }
 
 // ── Compute (pure — unit-tested without DB/HTTP) ──────────────────────────────
 
-/// Map a fetched slab of rows (already newest-first) into the response. `chain_kind`
-/// drives the amount scale (`param_amount`) — Stellar's Soroban contracts store
-/// monetary fields at 7 decimals vs. EVM's 6 (#901) — resolved once by the caller
-/// from the feed's `chain_id` rather than re-derived per row.
+/// Order `rows` newest-first (`block_timestamp`, then `block_number`, then `log_index`,
+/// then `chain_id`) and map them into the response. Each row's amount scale comes from
+/// its own chain's kind in `chains` (Stellar's Soroban contracts store monetary fields at
+/// 7 decimals vs. EVM's 6, #901); a row whose chain is not in `chains` is dropped.
 ///
 /// Public so `packages/api/tests/audit_log.rs` can exercise the mapping without a DB.
-pub fn build_response(rows: Vec<AuditLogRow>, chain_kind: ChainKind) -> AuditLogResponse {
+pub fn build_response(mut rows: Vec<AuditLogRow>, chains: &[ConfiguredChain]) -> AuditLogResponse {
+    rows.sort_by(|a, b| {
+        (b.block_timestamp, b.block_number, b.log_index, b.chain_id).cmp(&(
+            a.block_timestamp,
+            a.block_number,
+            a.log_index,
+            a.chain_id,
+        ))
+    });
     let items = rows
         .into_iter()
-        .map(|row| map_item(row, chain_kind))
+        .filter(|row| !is_noop_sync(&row.event_name, &row.params))
+        .filter_map(|row| {
+            let kind = chains.iter().find(|c| c.chain_id == row.chain_id)?.kind;
+            Some(map_item(row, kind))
+        })
         .collect();
     AuditLogResponse { items }
+}
+
+/// A permissionless `DebtSynced` (`minted` and `clawed`) / `CargoSynced` (`minted` and
+/// `burned`) that moved nothing: both raw amounts are present and zero. A missing or
+/// unparseable amount keeps the row.
+fn is_noop_sync(event_name: &str, params: &Value) -> bool {
+    let keys: [&str; 2] = match event_name {
+        "DebtSynced" => ["minted", "clawed"],
+        "CargoSynced" => ["minted", "burned"],
+        _ => return false,
+    };
+    keys.iter().all(|k| {
+        param_str(params, k)
+            .and_then(|raw| BigDecimal::from_str(&raw).ok())
+            .is_some_and(|v| v == 0)
+    })
 }
 
 /// Map one raw row to an API item, rendering the action string, scope, and friendly
@@ -185,6 +256,7 @@ fn map_item(row: AuditLogRow, chain_kind: ChainKind) -> AuditLogItem {
     let reference = build_reference_name(row.originator.as_deref(), row.commodity.as_deref())
         .unwrap_or_default();
     AuditLogItem {
+        chain_id: row.chain_id,
         timestamp: iso_utc_from_unix(row.block_timestamp),
         action,
         scope,
@@ -221,6 +293,20 @@ fn param_str(params: &Value, key: &str) -> Option<String> {
     match value {
         Value::String(s) => Some(s.clone()),
         Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+fn param_value<'a>(params: &'a Value, key: &str) -> Option<&'a Value> {
+    params
+        .get(key)
+        .or_else(|| params.get("event").and_then(|event| event.get(key)))
+}
+
+fn param_i64(params: &Value, key: &str) -> Option<i64> {
+    match param_value(params, key)? {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.parse().ok(),
         _ => None,
     }
 }
@@ -264,6 +350,7 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             )
         }
 
+        // Historical rows only (no longer indexed); yield now arrives as `CashRepaid`.
         "YieldMinted" => {
             let vault = param_amount(params, "s_plusd_amount", chain_kind);
             let treasury = param_amount(params, "treasury_amount", chain_kind);
@@ -274,9 +361,8 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             (action, json!({ "vault": vault, "treasury": treasury }))
         }
 
-        // CCR scale on-chain is ambiguous between the 1e6 (`CCR_ONE`) and bps conventions,
-        // so we do NOT render a possibly-wrong percentage here — the raw value is passed
-        // through for the client (which knows the scale) to render.
+        // Historical rows only (no longer indexed). CCR scale is ambiguous between the 1e6
+        // (`CCR_ONE`) and bps conventions, so the raw value is passed through unrendered.
         "LoanCCRUpdated" => (
             "CCR written on-chain".to_owned(),
             json!({ "new_ccr": params.get("new_ccr") }),
@@ -318,22 +404,11 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             ("Loan defaulted".to_owned(), details)
         }
 
-        "LoanRolledOver" => (
-            "Loan rolled over".to_owned(),
-            json!({
-                "new_rate": params.get("new_rate"),
-                "new_maturity_timestamp": params.get("new_maturity_timestamp"),
-            }),
-        ),
+        "LoanRolledOver" => ("Loan rolled over".to_owned(), economics_details(params)),
 
-        "EconomicsAmended" => (
-            "Economics amended".to_owned(),
-            json!({
-                "new_rate": params.get("new_rate"),
-                "new_maturity_timestamp": params.get("new_maturity_timestamp"),
-            }),
-        ),
+        "EconomicsAmended" => ("Economics amended".to_owned(), economics_details(params)),
 
+        // Historical rows only (no longer indexed).
         "LoanLocationUpdated" => ("Collateral location updated".to_owned(), json!({})),
 
         "Disbursed" => {
@@ -383,8 +458,350 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             ("Interest adjusted".to_owned(), json!({ "delta": delta }))
         }
 
+        "CashDisbursed" => with_amount(
+            "Cash disbursed",
+            params,
+            chain_kind,
+            "amount",
+            &["entry_id", "value_date"],
+        ),
+
+        "CashDisbursementReversed" => with_amount(
+            "Cash disbursement reversed",
+            params,
+            chain_kind,
+            "amount",
+            &["entry_id", "original_id"],
+        ),
+
+        "CashRepaid" => {
+            let interest = param_amount(params, "interest_minted", chain_kind);
+            let (action, mut details) = with_amount(
+                "Cash repaid",
+                params,
+                chain_kind,
+                "cash",
+                &["repayment_id", "sale_id", "value_date", "fee_shares"],
+            );
+            details["interest_minted"] = json!(interest);
+            (action, details)
+        }
+
+        "CashRepaymentReversed" => with_amount(
+            "Cash repayment reversed",
+            params,
+            chain_kind,
+            "cash",
+            &["repayment_id"],
+        ),
+
+        "WireInReturned" => with_amount("Wire-in returned", params, chain_kind, "amount", &["id"]),
+
+        "WireOutRequested" => with_amount(
+            "Wire-out requested",
+            params,
+            chain_kind,
+            "amount",
+            &["id", "lp"],
+        ),
+
+        "WireOutSettled" => with_amount(
+            "Wire-out settled",
+            params,
+            chain_kind,
+            "amount",
+            &["id", "value_date"],
+        ),
+
+        "WireOutCancelled" => ("Wire-out cancelled".to_owned(), pass(params, &["id"])),
+
+        "RampOpened" => {
+            let direction = param_str(params, "direction");
+            let amount = param_amount(params, "amount", chain_kind);
+            let action = match (&direction, &amount) {
+                (Some(d), Some(a)) => format!("Ramp opened — {d} ${a}"),
+                _ => "Ramp opened".to_owned(),
+            };
+            (
+                action,
+                json!({ "id": param_str(params, "id"), "direction": direction, "amount": amount }),
+            )
+        }
+
+        "RampClosed" => {
+            let received = param_amount(params, "received", chain_kind);
+            let loss = param_amount(params, "loss", chain_kind);
+            let action = match (&received, &loss) {
+                (Some(r), Some(l)) => format!("Ramp closed — received ${r}, loss ${l}"),
+                _ => "Ramp closed".to_owned(),
+            };
+            (
+                action,
+                json!({ "id": param_str(params, "id"), "received": received, "loss": loss }),
+            )
+        }
+
+        "CashRecorded" => {
+            let reason = param_str(params, "reason");
+            let delta = param_amount(params, "delta", chain_kind);
+            let action = match (&reason, &delta) {
+                (Some(r), Some(d)) => format!("Cash recorded — {r} {}", dollars(d)),
+                _ => "Cash recorded".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "reason": reason,
+                    "delta": delta,
+                    "entry_id": param_str(params, "entry_id"),
+                    "value_date": param_str(params, "value_date"),
+                }),
+            )
+        }
+
+        "CashCorrected" => with_amount(
+            "Cash corrected",
+            params,
+            chain_kind,
+            "delta",
+            &["entry_id", "original_id"],
+        ),
+
+        "MintCorrected" => with_amount("Mint corrected", params, chain_kind, "amount", &[]),
+
+        "LossAbsorbed" => {
+            let requested = param_amount(params, "requested", chain_kind);
+            let pulled = param_amount(params, "pulled", chain_kind);
+            let action = match (&requested, &pulled) {
+                (Some(r), Some(p)) => format!("Loss absorbed — ${p} of ${r} requested"),
+                _ => "Loss absorbed".to_owned(),
+            };
+            (action, json!({ "requested": requested, "pulled": pulled }))
+        }
+
+        "Pledged" => ("Collateral pledged".to_owned(), pass(params, &["lot_id"])),
+
+        "HaircutSet" => {
+            let bps = param_str(params, "bps");
+            let action = match &bps {
+                Some(b) => format!("Haircut set — {b} bps"),
+                None => "Haircut set".to_owned(),
+            };
+            (action, pass(params, &["lot_id", "bps"]))
+        }
+
+        "FloorSet" => {
+            let bps = param_str(params, "bps");
+            let action = match &bps {
+                Some(b) => format!("Coverage floor set — {b} bps"),
+                None => "Coverage floor set".to_owned(),
+            };
+            (action, pass(params, &["bps"]))
+        }
+
+        "Revalued" => {
+            let value = param_amount(params, "value_per_unit", chain_kind);
+            let benchmark = param_str(params, "benchmark");
+            let action = match (&value, &benchmark) {
+                (Some(v), Some(b)) => format!("Collateral revalued — ${v}/unit ({b})"),
+                (Some(v), None) => format!("Collateral revalued — ${v}/unit"),
+                _ => "Collateral revalued".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "lot_id": param_str(params, "lot_id"),
+                    "value_per_unit": value,
+                    "benchmark": benchmark,
+                    "report_hash": param_str(params, "report_hash"),
+                }),
+            )
+        }
+
+        "StageUpdated" => {
+            let stage = param_str(params, "stage");
+            let action = match &stage {
+                Some(s) => format!("Lot stage updated → {s}"),
+                None => "Lot stage updated".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "lot_id": param_str(params, "lot_id"),
+                    "stage": stage,
+                    "location": param_value(params, "location"),
+                }),
+            )
+        }
+
+        "ControlUpdated" => {
+            let control = param_value(params, "control");
+            let kind = control
+                .and_then(|c| c.get("kind"))
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let action = match &kind {
+                Some(k) => format!("Lot control updated → {k}"),
+                None => "Lot control updated".to_owned(),
+            };
+            (
+                action,
+                json!({ "lot_id": param_str(params, "lot_id"), "control": control }),
+            )
+        }
+
+        "DocAdded" => {
+            let kind = param_str(params, "kind");
+            let action = match &kind {
+                Some(k) => format!("Document added — {k}"),
+                None => "Document added".to_owned(),
+            };
+            (action, pass(params, &["lot_id", "kind", "hash"]))
+        }
+
+        "QuantityAdjusted" => {
+            let old = param_amount(params, "old_quantity", chain_kind);
+            let new = param_amount(params, "new_quantity", chain_kind);
+            let action = match (&old, &new) {
+                (Some(o), Some(n)) => format!("Quantity adjusted — {o} → {n}"),
+                _ => "Quantity adjusted".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "lot_id": param_str(params, "lot_id"),
+                    "old_quantity": old,
+                    "new_quantity": new,
+                    "reason": param_str(params, "reason"),
+                    "hash": param_str(params, "hash"),
+                }),
+            )
+        }
+
+        "Released" => {
+            let reason = param_str(params, "reason");
+            let action = match &reason {
+                Some(r) => format!("Collateral released — {r}"),
+                None => "Collateral released".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "lot_id": param_str(params, "lot_id"),
+                    "quantity": param_amount(params, "quantity", chain_kind),
+                    "reason": reason,
+                    "ref_hash": param_str(params, "ref_hash"),
+                }),
+            )
+        }
+
+        "Liquidated" => (
+            "Collateral liquidated".to_owned(),
+            json!({
+                "lot_id": param_str(params, "lot_id"),
+                "sale_id": param_str(params, "sale_id"),
+                "quantity": param_amount(params, "quantity", chain_kind),
+            }),
+        ),
+
+        "MarginCall" => {
+            let coverage = param_str(params, "coverage_bps");
+            let floor = param_str(params, "floor_bps");
+            let action = match (&coverage, &floor) {
+                (Some(c), Some(f)) => format!("Margin call — coverage {c} bps vs floor {f} bps"),
+                _ => "Margin call".to_owned(),
+            };
+            (action, pass(params, &["coverage_bps", "floor_bps"]))
+        }
+
+        "DealRegistered" => (
+            "Deal tokens registered".to_owned(),
+            pass(params, &["debt", "cargo"]),
+        ),
+
+        "DebtSynced" => {
+            let minted = param_amount(params, "minted", chain_kind);
+            let clawed = param_amount(params, "clawed", chain_kind);
+            let action = match (&minted, &clawed) {
+                (Some(m), Some(c)) => format!("Debt token synced — minted {m}, clawed back {c}"),
+                _ => "Debt token synced".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "target": param_amount(params, "target", chain_kind),
+                    "previous": param_amount(params, "previous", chain_kind),
+                    "minted": minted,
+                    "clawed": clawed,
+                }),
+            )
+        }
+
+        "CargoSynced" => {
+            let minted = param_amount(params, "minted", chain_kind);
+            let burned = param_amount(params, "burned", chain_kind);
+            let action = match (&minted, &burned) {
+                (Some(m), Some(b)) => format!("Cargo token synced — minted {m}, burned {b}"),
+                _ => "Cargo token synced".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "target": param_amount(params, "target", chain_kind),
+                    "previous": param_amount(params, "previous", chain_kind),
+                    "minted": minted,
+                    "burned": burned,
+                }),
+            )
+        }
+
         // Unreachable in practice — the SQL allow-list filters these out before they get
         // here — but keep it total rather than panicking on an unexpected event.
         other => (other.to_owned(), json!({})),
     }
+}
+
+/// `$12.34`, or `-$12.34` for a negative decimal string.
+fn dollars(amount: &str) -> String {
+    match amount.strip_prefix('-') {
+        Some(abs) => format!("-${abs}"),
+        None => format!("${amount}"),
+    }
+}
+
+/// `{key: string}` for each of `keys` (numbers stringified), `null` when absent.
+fn pass(params: &Value, keys: &[&str]) -> Value {
+    let mut details = serde_json::Map::new();
+    for key in keys {
+        details.insert((*key).to_owned(), json!(param_str(params, key)));
+    }
+    Value::Object(details)
+}
+
+/// `"<label> — $<amount>"` (just `<label>` when the amount is missing) plus details with
+/// the normalised `amount_key` and the pass-through `extra` keys.
+fn with_amount(
+    label: &str,
+    params: &Value,
+    chain_kind: ChainKind,
+    amount_key: &str,
+    extra: &[&str],
+) -> (String, Value) {
+    let amount = param_amount(params, amount_key, chain_kind);
+    let action = match &amount {
+        Some(a) => format!("{label} — {}", dollars(a)),
+        None => label.to_owned(),
+    };
+    let mut details = pass(params, extra);
+    details[amount_key] = json!(amount);
+    (action, details)
+}
+
+/// Rollover / amendment details: `new_rate_bps` (the event's 1e6-scaled rate converted to
+/// bps) and `new_maturity_timestamp`, read from the top level or the nested `event`.
+fn economics_details(params: &Value) -> Value {
+    json!({
+        "new_rate_bps": param_i64(params, "new_rate").map(economics_rate_to_bps),
+        "new_maturity_timestamp": param_i64(params, "new_maturity_timestamp"),
+    })
 }
