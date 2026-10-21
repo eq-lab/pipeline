@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1346 — `docs/exec-plans/known-bugs.md` BUG-20
 (epic #1247). Branch: `fix/1346-auth-submit-attempt-dead-path`.
 
+**Status: implemented (2026-10-21)** — all steps done; frontend lint/build/test (154 files, 2459 tests), `lint-docs` and `lint-comments` green. See PR #1598.
+
 ## Decision
 
 The issue offers two fixes: enable the submit button unconditionally and validate in the handler,
