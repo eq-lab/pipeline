@@ -595,3 +595,36 @@ describe("EmailAuthFlow — OTP focus through a rejected code (#1442)", () => {
     expect(screen.getByLabelText("Verification code")).toHaveFocus();
   });
 });
+
+describe("EmailAuthFlow — OTP resend without a captcha token (#1571, TD-88)", () => {
+  it("makes no resend-otp request, explains that verification is loading, and does not restart the countdown", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const user = userEvent.setup();
+      captchaControl.autoToken = false;
+      mockLogin.mockRejectedValue(new ApiError(403, "email_not_verified"));
+      render(<EmailAuthFlow open onClose={vi.fn()} />);
+
+      await fillCredentials(user);
+      await user.click(screen.getByRole("button", { name: "Sign In" }));
+      expect(await screen.findByText("Resend in 00:59")).toBeInTheDocument();
+      expect(mockResendOtp).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      await user.click(screen.getByRole("button", { name: "Resend" }));
+
+      await waitFor(() =>
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Verification is still loading",
+        ),
+      );
+      expect(mockResendOtp).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Resend" })).toBeEnabled();
+      expect(screen.queryByText(/Resend in/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
