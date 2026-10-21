@@ -22,8 +22,8 @@ agent's Figma comparison against nodes `6701-96852` (empty) and `6701-96881` (up
   `CompanyDocsModal` stays mounted.
 
 Also note: BUG-19 (`packages/ui` `tsc --noEmit` on `TextField.stories.tsx`) and BUG-20
-(`SignInModal`/`CreateAccountModal` submit-attempt path unreachable in a browser) are pre-existing
-and unrelated to this issue.
+(`SignInModal`/`CreateAccountModal` submit-attempt path unreachable in a browser; resolved by
+#1346) are pre-existing and unrelated to this issue.
 
 See `docs/exec-plans/tech-debt-tracker.md` for full detail on each entry.
 
