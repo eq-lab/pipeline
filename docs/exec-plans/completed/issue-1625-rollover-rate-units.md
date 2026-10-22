@@ -3,7 +3,7 @@
 Source: https://github.com/eq-lab/pipeline/issues/1625 — medium (wrong rate on-chain), found in the
 2026-10-22 calculations review. Branch: `fix/1625-rollover-rate-units`.
 
-Status: Completed 2026-10-22 — PR pending (see issue).
+Status: Completed 2026-10-22 — PR #1644.
 
 ## Root cause
 
