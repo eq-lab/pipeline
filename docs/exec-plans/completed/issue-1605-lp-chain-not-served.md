@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1605 — follow-up to #1564 / #1566 / #1584 /
 #1586 / #1597. Branch: `feat/1605-lp-chain-not-served`.
 
+**Status: implemented (2026-10-22)** — all surfaces gated; frontend lint/build/test (155 files, 2473 tests), `lint-docs` and `lint-comments` green. See PR #1619.
+
 ## Detection — a probe, since there is no configured-chains endpoint
 
 The API still exposes no chain list, so the signal is the one the issue names: a required-chain
