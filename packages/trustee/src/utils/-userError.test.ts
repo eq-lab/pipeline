@@ -11,10 +11,11 @@
 import { describe, it, expect } from "vitest";
 import { ApiError, ApiUnauthorizedError } from "@/api/client";
 import {
+  isChainIdError,
+  mapWaterfallError,
+  parseSorobanContractErrorCode,
   toError,
   toUserError,
-  parseSorobanContractErrorCode,
-  mapWaterfallError,
 } from "./userError";
 
 const GENERIC_MESSAGE = "Something went wrong. Please try again.";
@@ -262,5 +263,56 @@ describe("mapWaterfallError (consolidated, D5)", () => {
 
   it("returns null when there is no error", () => {
     expect(mapWaterfallError(null)).toBeNull();
+  });
+});
+
+describe("toUserError — chain_id 400s (#1602)", () => {
+  it.each([
+    "unknown chain_id: 1 (configured: 99000002)",
+    "chain_id is required",
+    "invalid chain_id: abc",
+  ])(
+    "maps %s to the network-not-enabled copy and keeps the raw text in details",
+    (raw) => {
+      const result = toUserError(new ApiError(raw, 400));
+      expect(result.message).toBe(
+        "This network isn't enabled on the server. Contact your administrator.",
+      );
+      expect(result.details).toBe(raw);
+      expect(result.isSpecific).toBe(true);
+      expect(isChainIdError(new ApiError(raw, 400))).toBe(true);
+    },
+  );
+
+  it("leaves other 400s on the generic invalid-request copy", () => {
+    const result = toUserError(new ApiError("metadata_uri is required", 400));
+    expect(result.message).toBe("This request was invalid.");
+    expect(isChainIdError(new ApiError("metadata_uri is required", 400))).toBe(
+      false,
+    );
+  });
+
+  it("does not treat a chain_id message with another status as a chain error", () => {
+    expect(isChainIdError(new ApiError("unknown chain_id: 1", 404))).toBe(
+      false,
+    );
+    expect(isChainIdError(new Error("unknown chain_id: 1"))).toBe(false);
+  });
+});
+
+describe("mapWaterfallError — chain_id 400s fall through (#1602)", () => {
+  it("does not say 'amount too high' for a chain_id 400; uses the network copy with details", () => {
+    const result = mapWaterfallError(
+      new ApiError("unknown chain_id: 1 (configured: 99000002)", 400),
+    );
+    expect(result?.message).toBe(
+      "This network isn't enabled on the server. Contact your administrator.",
+    );
+    expect(result?.details).toBe("unknown chain_id: 1 (configured: 99000002)");
+  });
+
+  it("still maps an ordinary 4xx to the amount copy", () => {
+    const result = mapWaterfallError(new ApiError("not found", 404));
+    expect(result?.message).toMatch(/amount is too high/);
   });
 });
