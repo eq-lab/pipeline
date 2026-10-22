@@ -40,7 +40,7 @@ import {
 } from "@/wallet";
 import type { WrongNetworkInfo } from "@/wallet";
 import { ENV } from "@/lib/env";
-import { formatUsdc } from "@/lib/usdc";
+import { formatUsdc, formatUsdcInput } from "@/lib/usdc";
 import { formatUnits4 } from "@/utils/formatUnits4";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
@@ -109,6 +109,7 @@ export interface StakeFlowState {
   // ── Input derivations ──────────────────────────────────────────────────
   isReady: boolean;
   hasBalance: boolean;
+  exceedsBalance: boolean;
 
   // ── Preview ────────────────────────────────────────────────────────────
   previewOutputValue: string;
@@ -551,7 +552,7 @@ export function useStakeFlow(
       else if (idx === 2) next = (bal * 75n) / 100n;
       else if (idx === 3) next = bal;
       else return;
-      setAmountInput(formatUsdc(next, dec).replace(/,/g, ""));
+      setAmountInput(formatUsdcInput(next, dec));
     },
     [evmBalance, evmDecimals, setAmountInput],
   );
@@ -566,7 +567,7 @@ export function useStakeFlow(
       else if (idx === 2) next = (bal * 75n) / 100n;
       else if (idx === 3) next = bal;
       else return;
-      setAmountInput(formatUsdc(next, SAC_DECIMALS).replace(/,/g, ""));
+      setAmountInput(formatUsdcInput(next, SAC_DECIMALS));
     },
     [stellarInputBalance, setAmountInput],
   );
@@ -654,6 +655,7 @@ export function useStakeFlow(
       balance: evmBalance,
       isReady: evmIsReady,
       hasBalance: evmHasBalance,
+      exceedsBalance: evmBalance !== undefined && amountBig > evmBalance,
       previewOutputValue: evmPreviewOutputValue,
       exchangeRateText: evmExchangeRateText,
       networkFee: evmNetworkFee,
@@ -771,6 +773,8 @@ export function useStakeFlow(
     balance: stellarInputBalance,
     isReady: stellarIsReady,
     hasBalance: stellarHasBalance,
+    exceedsBalance:
+      stellarInputBalance !== undefined && amountBig > stellarInputBalance,
     previewOutputValue: stellarPreviewOutputValue,
     exchangeRateText: stellarExchangeRateText,
     networkFee: stellarNetworkFee,

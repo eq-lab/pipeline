@@ -512,7 +512,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(chip25);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("25.00");
+    expect((input as HTMLInputElement).value).toBe("25");
   });
 
   it("Max chip sets input to the live balance (100 PLUSD)", async () => {
@@ -523,7 +523,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("100.00");
+    expect((input as HTMLInputElement).value).toBe("100");
   });
 
   it("50% chip sets input to 50 PLUSD", async () => {
@@ -534,7 +534,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(chip50);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("50.00");
+    expect((input as HTMLInputElement).value).toBe("50");
   });
 
   it("75% chip sets input to 75 PLUSD", async () => {
@@ -545,7 +545,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(chip75);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("75.00");
+    expect((input as HTMLInputElement).value).toBe("75");
   });
 });
 
@@ -827,7 +827,7 @@ describe("Stake page — Unstake tab", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /sPLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("50.00");
+    expect((input as HTMLInputElement).value).toBe("50");
   });
 });
 
@@ -1221,5 +1221,40 @@ describe("Stake page — no nested border on token-amount-display (Issue #615)",
       const display = screen.getByTestId("token-amount-display");
       expect(display.style.padding).toBe("0px");
     });
+  });
+});
+
+describe("Stake page — chips stay within the balance (#1628)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Max fills the exact balance with no Insufficient balance message", async () => {
+    seedBaseMocks({ balance: "1234567891234567891235", allowance: "0" });
+    const user = userEvent.setup();
+    renderStake();
+
+    await user.click(await screen.findByRole("button", { name: "Max" }));
+
+    const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
+    expect((input as HTMLInputElement).value).toBe("1234.567891234567891235");
+    expect(screen.queryByText("Insufficient balance")).toBeNull();
+  });
+
+  it("shows Insufficient balance when the typed amount exceeds the balance", async () => {
+    seedBaseMocks({ balance: BALANCE_100_PLUSD, allowance: "0" });
+    const user = userEvent.setup();
+    renderStake();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "100.01");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Insufficient balance",
+    );
   });
 });

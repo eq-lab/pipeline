@@ -12,7 +12,7 @@
  * `no-restricted-imports` ESLint rule forbids direct viem imports outside
  * `src/wallet/**`, so we consume them through the wallet module boundary.
  */
-import { parseUnits } from "@/wallet";
+import { parseUnits, formatUnits } from "@/wallet";
 import { formatTokenAmount, formatTokenAmountWhole } from "./format";
 
 /**
@@ -112,4 +112,8 @@ export function formatUsdcCurrencyCompact(
     return `$${compactCurrencyFormatter.format(dollars)}`;
   }
   return `$${formatUsdc(value, decimals)}`;
+}
+
+export function formatUsdcInput(value: bigint, decimals: number): string {
+  return formatUnits(value, decimals);
 }

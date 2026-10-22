@@ -11,6 +11,7 @@ import {
   StepsCard,
   TokenAmountDisplay,
   TokenInput,
+  InlineError,
 } from "@pipeline/ui";
 import { useWalletView, useConnectModal } from "@/wallet";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
@@ -295,6 +296,12 @@ function Stake() {
               ]}
               onQuickAmountClick={flow.onQuickAmount}
             />
+            {flow.exceedsBalance && (
+              <InlineError
+                message="Insufficient balance"
+                className="self-end"
+              />
+            )}
           </div>
 
           {/* Output sub-section */}
