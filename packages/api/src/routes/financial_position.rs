@@ -27,10 +27,10 @@
 //! - **`plusd_outstanding`** — PLUSD `totalSupply` has no reliable indexed source (no
 //!   `Transfer`/mint/burn events), so `null` rather than a stitched approximation.
 //!
-//! The active-loan set (`origination_date ≤ now < effective_end`) mirrors
-//! `routes::loan_book` / `routes::portfolio` so the deployed figures are consistent
-//! across endpoints. Like `routes::loan_book`, each chain is read through its configured
-//! LoanRegistry address, and lifecycle events only end loans on their own chain.
+//! The active-loan set is `shared::loan_status` (originated and Approved / Performing /
+//! WatchList at `now`), the one rule every loan-money endpoint uses. Like
+//! `routes::loan_book`, each chain is read through its configured LoanRegistry address,
+//! and status events only apply to loans on their own chain.
 
 use std::sync::Arc;
 
@@ -42,6 +42,7 @@ use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::loan_status::is_active_at;
 
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
@@ -187,30 +188,10 @@ async fn get_financial_position(
 
 // ── Compute ──────────────────────────────────────────────────────────────────
 
-/// Effective end of a loan: `min(original_maturity_date, earliest LoanClosed /
-/// LoanDefaulted timestamp on the loan's own chain)`. Mirrors `routes::loan_book` /
-/// `routes::portfolio` so the active-loan set is identical across endpoints.
-fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
-    let lifecycle_end = events
-        .iter()
-        .filter(|e| {
-            (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
-                && e.chain_id == loan.chain_id
-                && e.loan_id == loan.loan_id
-        })
-        .map(|e| e.block_timestamp)
-        .min();
-
-    match lifecycle_end {
-        Some(lc) => loan.snapshot.original_maturity_date.min(lc),
-        None => loan.snapshot.original_maturity_date,
-    }
-}
-
 /// Pure computation: no DB calls. Builds the statement of financial position from
 /// pre-fetched loan snapshots and lifecycle events as-of `to`.
 ///
-/// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
+/// "Active" = `shared::loan_status::is_active_at(to)`, matching `routes::loan_book`.
 /// Deployed assets and subordinated capital are summed over the active set; liquid
 /// assets and `plusd_outstanding` are `null` (no source).
 ///
@@ -227,7 +208,7 @@ pub fn compute_financial_position(
 
     for loan in loans {
         let s = &loan.snapshot;
-        if s.origination_date <= to && to < effective_end(loan, events) {
+        if is_active_at(loan, events, to) {
             secured_loans += &s.original_senior_tranche + &s.original_equity_tranche;
             accrued_interest += &s.repayment.senior_interest;
             junior_tranche += &s.original_equity_tranche;

@@ -12,6 +12,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::book_weighting::{outstanding_at, rate_bps_at, weighted_mean};
 use shared::contract_logs_repo::{LifecycleRow, LoanRateEventRow, LoanSnapshotRow};
+use shared::loan_status::LoanTimeline;
 
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
@@ -180,8 +181,8 @@ struct LoanView<'a> {
     row: &'a LoanSnapshotRow,
     /// This loan's outstanding- and rate-changing events, in chain order.
     rate_events: Vec<&'a LoanRateEventRow>,
-    /// Effective end of this loan: `min(original_maturity_date, earliest LoanClosed or LoanDefaulted timestamp)`.
-    end_at: i64,
+    /// Status timeline of this loan (`shared::loan_status`).
+    timeline: LoanTimeline,
 }
 
 /// Pure computation: no DB calls. Takes pre-fetched loans and lifecycle events,
@@ -190,16 +191,18 @@ struct LoanView<'a> {
 /// # Formulas
 ///
 /// **Weighted-average APY (decimal fraction)** — computed over *active* loans at `t`
-/// (`originationᵢ <= t < endᵢ`), weighted by each loan's outstanding senior at `t`
+/// (originated and Approved / Performing / WatchList at `t`), weighted by each loan's outstanding senior at `t`
 /// (`Oᵢ(t)`, the `outstanding` of its latest outstanding-changing event, else 0) at the
 /// rate in force at `t` (`R_bps_i(t)`: genesis rate updated by `EconomicsAmended` /
 /// `LoanRolledOver`). `None` when no loans are active or `Σᵢ Oᵢ(t) = 0`.
 /// `apy = (Σᵢ Oᵢ(t) · R_bps_i(t) / Σᵢ Oᵢ(t)) / 10_000`.
 ///
 /// **Cumulative accrued senior interest** (USDC, 6dp decimal string) — summed over all
-/// loans that have *started* by `t` (`originationᵢ <= t`), including matured loans
-/// which contribute their final accrual frozen at `endᵢ`.
-/// `accrued = Σᵢ Pᵢ · Rᵢ · (min(t, endᵢ) − startᵢ) / (365 · 86_400)`.
+/// loans that have *started* by `t` (`originationᵢ <= t`), including closed loans
+/// which contribute their final accrual frozen at the close. Only active time counts:
+/// accrual runs past maturity, pauses in Default, resumes after a cure and stops at Close.
+/// `accrued = Σᵢ Pᵢ · Rᵢ · activeSecsᵢ(t) / (365 · 86_400)`, where `activeSecsᵢ(t)` is the
+/// length of the active `[from, until)` intervals clipped to `t`.
 ///
 /// **Principal outstanding** (USDC, 6dp decimal string) — `Σᵢ Pᵢ` over active loans.
 ///
@@ -221,24 +224,9 @@ pub fn compute_series(
             .push(e);
     }
 
-    // Pre-compute per-loan end_at (earliest LoanClosed / LoanDefaulted, else scheduled).
     let loan_views: Vec<LoanView> = loans
         .iter()
         .map(|loan| {
-            let lifecycle_end = events
-                .iter()
-                .filter(|e| {
-                    (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
-                        && e.loan_id == loan.loan_id
-                })
-                .map(|e| e.block_timestamp)
-                .min();
-
-            let end_at = match lifecycle_end {
-                Some(lc) => loan.snapshot.original_maturity_date.min(lc),
-                None => loan.snapshot.original_maturity_date,
-            };
-
             let rate_events = rate_events_by_loan
                 .get(&loan.loan_id.normalized().to_string())
                 .cloned()
@@ -247,7 +235,7 @@ pub fn compute_series(
             LoanView {
                 row: loan,
                 rate_events,
-                end_at,
+                timeline: LoanTimeline::for_loan(loan, events),
             }
         })
         .collect();
@@ -273,10 +261,9 @@ pub fn compute_series(
     let mut series: Vec<SamplePoint> = Vec::with_capacity(timestamps.len());
 
     for t in timestamps {
-        // Active loans: origination_date <= t < end_at
         let active: Vec<&LoanView> = loan_views
             .iter()
-            .filter(|lv| lv.row.snapshot.origination_date <= t && t < lv.end_at)
+            .filter(|lv| lv.timeline.is_active_at(t))
             .collect();
 
         let principal_sum: BigDecimal = active
@@ -303,10 +290,7 @@ pub fn compute_series(
             .iter()
             .filter(|lv| lv.row.snapshot.origination_date <= t)
             .map(|lv| {
-                // Defensive .max(0) — guards against pathological data (e.g. a
-                // re-org-artifact `LoanClosed.block_timestamp < origination_date`).
-                let active_secs =
-                    BigDecimal::from((t.min(lv.end_at) - lv.row.snapshot.origination_date).max(0));
+                let active_secs = BigDecimal::from(lv.timeline.active_secs_until(t));
                 lv.row.snapshot.original_senior_tranche.clone()
                     * BigDecimal::from(i64::from(lv.row.snapshot.senior_interest_rate_bps))
                     * active_secs

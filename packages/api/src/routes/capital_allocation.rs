@@ -19,8 +19,8 @@
 //! rest are served as `null` with a TODO pointing at their eventual source:
 //!
 //! - **`deployed`** — Σ `original_senior_tranche` over loans that are **both**
-//!   inside the active window (`origination_date ≤ now < effective_end`, mirroring
-//!   `routes::financial_position` / `routes::loan_book`) **and** flagged
+//!   active (`shared::loan_status`: originated and Approved / Performing / WatchList at
+//!   `now`, the rule shared with `routes::financial_position` / `routes::loan_book`) **and** flagged
 //!   `is_loan_deployed` by a Trustee. Senior-only — this differs from
 //!   `financial-position.secured_loans_outstanding`, which is senior + equity.
 //! - **`in_transit`** — gross approved ramp flow minus what Trustees have confirmed
@@ -67,6 +67,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 use shared::loan_capital_transfers_repo::LoanCapitalTransfersRow;
+use shared::loan_status::is_active_at;
 
 use crate::config::{TransferAddressSets, CANONICAL_AMOUNT_DECIMALS};
 use crate::error::ApiError;
@@ -250,27 +251,6 @@ async fn get_capital_allocation(
 
 // ── Compute ──────────────────────────────────────────────────────────────────
 
-/// Effective end of a loan: `min(original_maturity_date, earliest LoanClosed /
-/// LoanDefaulted timestamp on the loan's own chain)`. Mirrors
-/// `routes::financial_position` / `routes::loan_book` so the active-loan set is
-/// identical across endpoints.
-fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
-    let lifecycle_end = events
-        .iter()
-        .filter(|e| {
-            (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
-                && e.chain_id == loan.chain_id
-                && e.loan_id == loan.loan_id
-        })
-        .map(|e| e.block_timestamp)
-        .min();
-
-    match lifecycle_end {
-        Some(lc) => loan.snapshot.original_maturity_date.min(lc),
-        None => loan.snapshot.original_maturity_date,
-    }
-}
-
 /// Normalize a raw on-chain amount from `asset_decimals` scale to the endpoint's
 /// canonical 6-decimal base units. A 7-decimal USDC SAC amount is divided by 10;
 /// a 6-decimal amount is returned unchanged. Config bounds `asset_decimals ≤ 18`,
@@ -317,9 +297,9 @@ pub struct ChainCapitalInputs<'a> {
 /// loan snapshots and lifecycle events (any number of chains, each row carrying its
 /// own `chain_id`) plus each in-scope chain's `ChainCapitalInputs`, as-of `to`.
 ///
-/// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
+/// "Active" = `shared::loan_status::is_active_at(to)`, matching `routes::loan_book`.
 /// `deployed` = Σ senior tranche over active loans flagged `is_loan_deployed` on the
-/// loan's own chain (#1027 — the flag ANDs with the window, so a closed/matured loan
+/// loan's own chain (#1027 — the flag ANDs with the window, so a closed/defaulted loan
 /// drops out even if its flag was left set). Per chain, `in_transit` = gross approved
 /// custody↔ramp flow (both legs, absolute — only Trustee-Approved events count, #936),
 /// normalized from that chain's `asset_decimals`, minus that chain's
@@ -354,9 +334,7 @@ pub fn compute_capital_allocation(
     let mut deployed = BigDecimal::from(0);
     for loan in loans {
         let s = &loan.snapshot;
-        if s.origination_date <= to
-            && to < effective_end(loan, events)
-            && deployed_ids.contains(&(loan.chain_id, &loan.loan_id))
+        if is_active_at(loan, events, to) && deployed_ids.contains(&(loan.chain_id, &loan.loan_id))
         {
             deployed += &s.original_senior_tranche;
         }

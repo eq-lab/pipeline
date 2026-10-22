@@ -185,7 +185,7 @@ export interface LoanBookEntry {
 export interface LoanBookResponse {
   summary: LoanBookSummary;
   /**
-   * Active loans only (`origination_date <= now < effective_end`), sorted by
+   * Active loans only (originated and in an earning status at `now`), sorted by
    * principal descending — defaulted/closed loans are excluded (see RISK 2
    * in the exec plan; the Default/Closed tabs render with an empty state,
    * resolved Open Question 2).

@@ -30,11 +30,14 @@ pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
     "InterestAdjusted",
 ];
 
+pub const LOAN_STATUS_EVENT_NAMES: &[&str] = &["LoanStatusUpdated", "LoanDefaulted", "LoanClosed"];
+
 pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
          chain_id,
          event_name,
          block_timestamp,
-         (params->>'loan_id')::numeric AS loan_id
+         (params->>'loan_id')::numeric AS loan_id,
+         params->'event'->>'status' AS status
      FROM contract_logs
      WHERE chain_id = $1
        AND contract_address = $4
@@ -242,16 +245,16 @@ pub struct LoanRateEventRow {
     pub new_rate: Option<i64>,
 }
 
-/// A loan-end event row fetched from `contract_logs`.
-///
-/// Used by the portfolio yield endpoint to determine each loan's `effective_end`:
-/// `min(scheduled_maturity, earliest LoanClosed / LoanDefaulted block_timestamp)`.
+/// A loan status event row (`LoanStatusUpdated`, `LoanDefaulted`, `LoanClosed`) fetched
+/// from `contract_logs`; `status` is `params.event.status`, set only on `LoanStatusUpdated`.
+/// Input of `shared::loan_status::LoanTimeline`.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LifecycleRow {
     pub chain_id: i64,
     pub event_name: String,
     pub block_timestamp: i64,
     pub loan_id: BigDecimal,
+    pub status: Option<String>,
 }
 
 /// One `WithdrawalRequested` event joined to its latest `RequestClaimed` (if any),
@@ -492,7 +495,7 @@ impl ContractLogsRepo {
         Self { pool }
     }
 
-    /// Return all `LoanClosed` and `LoanDefaulted` events for a given `chain_id` with
+    /// Return all `LoanStatusUpdated`, `LoanDefaulted` and `LoanClosed` events for a given `chain_id` with
     /// `block_timestamp <= to_unix`, ordered by `(block_timestamp, log_index)`.
     ///
     /// Generic over `Executor` so callers can run this inside a transaction alongside
@@ -506,13 +509,14 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let event_names = vec!["LoanClosed", "LoanDefaulted"];
+        let event_names = LOAN_STATUS_EVENT_NAMES.to_vec();
         let rows = sqlx::query_as::<_, LifecycleRow>(
             "SELECT
                  chain_id,
                  event_name,
                  block_timestamp,
-                 (params->>'loan_id')::numeric AS loan_id
+                 (params->>'loan_id')::numeric AS loan_id,
+                 params->'event'->>'status' AS status
              FROM contract_logs
              WHERE chain_id = $1
                AND event_name = ANY($2)
@@ -539,7 +543,7 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let event_names = vec!["LoanClosed", "LoanDefaulted"];
+        let event_names = LOAN_STATUS_EVENT_NAMES.to_vec();
         let rows = sqlx::query_as::<_, LifecycleRow>(LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL)
             .bind(chain_id)
             .bind(&event_names)
