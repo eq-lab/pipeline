@@ -1,5 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100 (Target chain).
 import { ENV } from "@/lib/env";
+import { SAC_DECIMALS } from "@/utils/stellarSacUnits";
 
 export interface TargetChainOption {
   id: number;
@@ -38,4 +39,12 @@ export function stellarOnlyActionReason(
 ): string | null {
   if (isStellarTarget(chainId)) return null;
   return `On-chain actions run on Stellar only — this loan lives on ${targetChainLabel(chainId)}, and signing them from the Trustee app is not supported yet.`;
+}
+
+export const EVM_USDC_DECIMALS = 6;
+
+export function chainAmountDecimals(
+  chainId: number | null | undefined,
+): number {
+  return isStellarTarget(chainId) ? SAC_DECIMALS : EVM_USDC_DECIMALS;
 }

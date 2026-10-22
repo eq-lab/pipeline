@@ -48,6 +48,7 @@ describe("usdToBaseUnits", () => {
   it("converts entered USD to 7-decimal SAC base units", () => {
     expect(usdToBaseUnits("45000")).toBe("450000000000");
     expect(usdToBaseUnits("123.45678")).toBe("1234567800");
+    expect(usdToBaseUnits("123.45678", 6)).toBe("123456780");
   });
 
   it("accepts display-formatted input (#1048)", () => {

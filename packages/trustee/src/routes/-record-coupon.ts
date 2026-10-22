@@ -15,7 +15,10 @@ import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
 import { findLoanEntry } from "@/lib/loanRoute";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
+import {
+  chainAmountDecimals,
+  stellarOnlyActionReason,
+} from "@/lib/targetChains";
 import {
   formatBpsRate,
   formatFullUsd,
@@ -23,6 +26,7 @@ import {
 } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
+  SAC_DECIMALS,
   parsePositiveUsdInput,
   sacBaseUnitsToUsdDecimal,
   usdInputToSacBaseUnits,
@@ -51,13 +55,19 @@ export function parseUsdInput(input: string): number | null {
  * `/waterfall` endpoint expects. Invalid/empty/zero input returns `"0"` so
  * `useLoanWaterfall` remains disabled.
  */
-export function usdToBaseUnits(input: string | null): string {
-  return usdInputToSacBaseUnits(input) ?? "0";
+export function usdToBaseUnits(
+  input: string | null,
+  decimals: number = SAC_DECIMALS,
+): string {
+  return usdInputToSacBaseUnits(input, decimals) ?? "0";
 }
 
 /** Divides a raw 7-decimal SAC waterfall amount into display USD. */
-function baseUnitsToUsd(baseUnits: string | undefined): number | null {
-  const display = sacBaseUnitsToUsdDecimal(baseUnits);
+function baseUnitsToUsd(
+  baseUnits: string | undefined,
+  decimals: number = SAC_DECIMALS,
+): number | null {
+  const display = sacBaseUnitsToUsdDecimal(baseUnits, decimals);
   if (display == null) return null;
   const n = Number(display);
   return Number.isFinite(n) ? n : null;
@@ -255,6 +265,9 @@ export function useRecordCoupon(
   loanId: string,
 ): RecordCouponView {
   const loanBook = useLoanBook();
+  const decimals = chainAmountDecimals(chainId);
+  const toUsd = (baseUnits: string | undefined) =>
+    baseUnitsToUsd(baseUnits, decimals);
   const financials = useLoanFinancials(chainId, loanId);
 
   const [amountInput, setAmountInput] = useState("");
@@ -271,7 +284,7 @@ export function useRecordCoupon(
   }, [amountInput]);
 
   const enteredUsd = parseUsdInput(debouncedAmount);
-  const amountBaseUnits = usdToBaseUnits(debouncedAmount);
+  const amountBaseUnits = usdToBaseUnits(debouncedAmount, decimals);
   const asOfSeconds = useMemo(() => {
     if (!dateInput) return Math.floor(Date.now() / 1000);
     const parsed = Math.floor(
@@ -342,13 +355,13 @@ export function useRecordCoupon(
     ? usdFull(scheduledCouponUsd)
     : usdFull(offtakerOwedAfterUsd);
 
-  const seniorPrincipalReturnedUsd = baseUnitsToUsd(
+  const seniorPrincipalReturnedUsd = toUsd(
     waterfall.data?.senior_principal_returned,
   );
-  const managementFeeUsd = baseUnitsToUsd(waterfall.data?.management_fee);
-  const performanceFeeUsd = baseUnitsToUsd(waterfall.data?.performance_fee);
-  const oetAllocationUsd = baseUnitsToUsd(waterfall.data?.oet_allocation);
-  const netSeniorCouponUsd = baseUnitsToUsd(waterfall.data?.senior_coupon_net);
+  const managementFeeUsd = toUsd(waterfall.data?.management_fee);
+  const performanceFeeUsd = toUsd(waterfall.data?.performance_fee);
+  const oetAllocationUsd = toUsd(waterfall.data?.oet_allocation);
+  const netSeniorCouponUsd = toUsd(waterfall.data?.senior_coupon_net);
   const grossInterestBase = waterfall.data
     ? sumBaseUnits([
         waterfall.data.senior_coupon_net,
@@ -356,7 +369,7 @@ export function useRecordCoupon(
         waterfall.data.performance_fee,
       ])
     : null;
-  const grossInterestUsd = baseUnitsToUsd(grossInterestBase ?? undefined);
+  const grossInterestUsd = toUsd(grossInterestBase ?? undefined);
 
   const isCalculating =
     enteredUsdLive != null &&
