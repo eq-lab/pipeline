@@ -3,6 +3,8 @@ import { BalanceSheetPanel } from "@/components/dashboard/BalanceSheetPanel";
 import { DeploymentMonitorPanel } from "@/components/dashboard/DeploymentMonitorPanel";
 import { WithdrawalQueuePanel } from "@/components/dashboard/WithdrawalQueuePanel";
 import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
+import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
+import { useChainServed } from "@/api";
 import { isMainnetNetwork } from "@/wallet/networkSwitcher";
 import { useIsMainnetNetwork } from "@/wallet/useNetworkIdentity";
 
@@ -21,6 +23,7 @@ const titleClasses = [
 
 function Dashboard() {
   const isMainnet = useIsMainnetNetwork();
+  const { served, chainName } = useChainServed();
   if (isMainnet) return <Navigate to="/" replace />;
   return (
     <div
@@ -36,22 +39,25 @@ function Dashboard() {
           Protocol Dashboard
         </h1>
 
-        {/* spec: docs/frontend/dashboard-components.md#dashboard-route */}
-        <div
-          data-testid="dashboard-content-container"
-          className="rounded-[var(--radius-pipeline-card-lg)] bg-[color:var(--color-pipeline-surface)] p-4 md:p-8"
-        >
-          {/* spec: docs/frontend/dashboard-components.md#dashboard-route (panel order) */}
+        {served === false ? (
+          <ChainNotServedNotice chainName={chainName} />
+        ) : (
           <div
-            data-testid="dashboard-grid"
-            className="grid grid-cols-1 gap-12 md:gap-24"
+            data-testid="dashboard-content-container"
+            className="rounded-[var(--radius-pipeline-card-lg)] bg-[color:var(--color-pipeline-surface)] p-4 md:p-8"
           >
-            <YieldHistoryPanel />
-            <BalanceSheetPanel />
-            <DeploymentMonitorPanel />
-            <WithdrawalQueuePanel />
+            {/* spec: docs/frontend/dashboard-components.md#dashboard-route (panel order) */}
+            <div
+              data-testid="dashboard-grid"
+              className="grid grid-cols-1 gap-12 md:gap-24"
+            >
+              <YieldHistoryPanel />
+              <BalanceSheetPanel />
+              <DeploymentMonitorPanel />
+              <WithdrawalQueuePanel />
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );

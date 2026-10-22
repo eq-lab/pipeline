@@ -17,6 +17,8 @@ import {
   useStellarWallet,
   useWalletView,
 } from "@/wallet";
+import { useChainServed } from "@/api";
+import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 
 // spec: docs/frontend/dashboard-components.md#transactions-route
 // (responsive layout, empty-state behavior, active-chain gating, Figma refs).
@@ -40,6 +42,7 @@ function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
   const { data, isLoading, error, refetch } = useRequests();
   const { kind } = useWalletView();
+  const { served, chainName } = useChainServed();
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { open: openConnectModal } = useConnectModal();
   const { isConnected: isStellarConnected } = useStellarWallet();
@@ -63,79 +66,90 @@ function Transactions() {
         data-testid="transactions-main"
         className="mx-auto flex w-full max-w-[480px] flex-col gap-8 px-2 py-8"
       >
-        <ActivityHeader data-testid="transactions-activity-header" />
+        {served === false ? (
+          <ChainNotServedNotice chainName={chainName} />
+        ) : (
+          <>
+            <ActivityHeader data-testid="transactions-activity-header" />
 
-        <SegmentedTabs
-          data-testid="transactions-filter-tabs"
-          tabs={TABS}
-          activeId={activeTab}
-          onSelect={setActiveTab}
-        />
+            <SegmentedTabs
+              data-testid="transactions-filter-tabs"
+              tabs={TABS}
+              activeId={activeTab}
+              onSelect={setActiveTab}
+            />
 
-        <div
-          data-testid="transactions-rows-container"
-          className="flex flex-col"
-        >
-          {isLoading && !data && (
             <div
-              data-testid="transactions-loading-state"
-              className="text-[color:var(--color-pipeline-ink-muted)]"
+              data-testid="transactions-rows-container"
+              className="flex flex-col"
             >
-              Loading…
-            </div>
-          )}
-
-          {error && !data && (
-            <div
-              data-testid="transactions-error-state"
-              className="flex flex-col gap-2"
-            >
-              <span className="text-[color:var(--color-pipeline-ink-muted)]">
-                Couldn&apos;t load activity
-              </span>
-              <button
-                data-testid="transactions-retry-button"
-                onClick={refetch}
-                className="self-start text-[color:var(--color-pipeline-ink-muted)] underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
-          {shouldRenderEmpty && (
-            <div
-              data-testid="transactions-empty-state-wrapper"
-              className="flex flex-col items-center pt-8 md:min-h-[400px] md:justify-center md:pt-0"
-            >
-              <EmptyState
-                data-testid="transactions-empty-state"
-                illustration={
-                  <ActivityEmptyIllustration tone="muted" width={240} />
-                }
-                caption="You will see your transactions here"
-              />
-              {!isConnected && (
-                <Button
-                  variant="primary-dark"
-                  className="mt-4"
-                  onClick={openConnectModal}
-                  data-testid="transactions-connect-wallet-button"
+              {isLoading && !data && (
+                <div
+                  data-testid="transactions-loading-state"
+                  className="text-[color:var(--color-pipeline-ink-muted)]"
                 >
-                  Connect Wallet
-                </Button>
+                  Loading…
+                </div>
               )}
-            </div>
-          )}
 
-          {!shouldRenderEmpty &&
-            filtered.length > 0 &&
-            filtered.map((item, i) => (
-              <React.Fragment key={i}>
-                {renderRequestRow(item, kind, `transactions-row-${i}`, "pb-4")}
-              </React.Fragment>
-            ))}
-        </div>
+              {error && !data && (
+                <div
+                  data-testid="transactions-error-state"
+                  className="flex flex-col gap-2"
+                >
+                  <span className="text-[color:var(--color-pipeline-ink-muted)]">
+                    Couldn&apos;t load activity
+                  </span>
+                  <button
+                    data-testid="transactions-retry-button"
+                    onClick={refetch}
+                    className="self-start text-[color:var(--color-pipeline-ink-muted)] underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {shouldRenderEmpty && (
+                <div
+                  data-testid="transactions-empty-state-wrapper"
+                  className="flex flex-col items-center pt-8 md:min-h-[400px] md:justify-center md:pt-0"
+                >
+                  <EmptyState
+                    data-testid="transactions-empty-state"
+                    illustration={
+                      <ActivityEmptyIllustration tone="muted" width={240} />
+                    }
+                    caption="You will see your transactions here"
+                  />
+                  {!isConnected && (
+                    <Button
+                      variant="primary-dark"
+                      className="mt-4"
+                      onClick={openConnectModal}
+                      data-testid="transactions-connect-wallet-button"
+                    >
+                      Connect Wallet
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {!shouldRenderEmpty &&
+                filtered.length > 0 &&
+                filtered.map((item, i) => (
+                  <React.Fragment key={i}>
+                    {renderRequestRow(
+                      item,
+                      kind,
+                      `transactions-row-${i}`,
+                      "pb-4",
+                    )}
+                  </React.Fragment>
+                ))}
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

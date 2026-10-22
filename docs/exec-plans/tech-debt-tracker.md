@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-154.**
+**Next free number: TD-155.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2122,4 +2122,12 @@ line, whichever section it lands in.
 - **Gap:** Product rule (2026-10-22): a per-network Trustee page follows the chain the trustee signed in with (`useSessionState().chainId`, `auth/sessionStore.ts`), and only cross-network pages aggregate every chain. #1600 applied it to the Withdrawal Queue tab; the rest of Cash Management still reads Stellar unconditionally, so an EVM session sees a Hoodi withdrawal queue next to a Stellar custody balance and Stellar ramp events.
 - **Impact:** Inconsistent page for an EVM session until EVM cash management exists (the EVM arms of the custody read and the ramp endpoints are not built — see TD-151/TD-152 for the same shape on loans).
 - **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
+
+### TD-154: The LP detects an unserved chain by probing `/v1/pnl` with a synthetic wallet
+
+- **Date:** 2026-10-22
+- **Location:** `packages/frontend/src/api/useChainServed.ts` — Issue #1605 (PR #1619).
+- **Gap:** The API exposes no configured-chains list, so the LP learns whether the active EVM chain is served by issuing `GET /v1/pnl?wallet=0x000…0&chain_id=<id>` once per chain and reading a `400 unknown chain_id`. It works because `RequiredChain` validates `chain_id` before the wallet is parsed, but it is a workaround: a synthetic wallet on an analytics endpoint, one extra request per chain per session, and a coupling to that handler's argument order (if the wallet were parsed first, the probe would misreport an unserved chain as served — which the hook treats as the safe default, so the failure mode is "no notice", never a false notice).
+- **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
+- **Suggested fix:** #1608 (`GET /v1/chains`). Then `useChainServed` swaps its probe body for the endpoint and the Trustee hides unserved target chains — nothing else changes.
 

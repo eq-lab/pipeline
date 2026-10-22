@@ -37,6 +37,18 @@ import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
 import type { LoanBookResponse } from "@/api";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+vi.mock("@/api/useChainServed", () => ({
+  useChainServed: () => mockChainServed(),
+}));
+
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 // Mock wagmi + AppKit so the component tree can render without real providers.
@@ -1132,5 +1144,21 @@ describe("dashboard panel state presentations", () => {
     expect(screen.getByText("Couldn’t load this panel")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("active chain not served by the API (#1605)", () => {
+  it("replaces the page content with the not-available notice", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderDashboard();
+    expect(screen.getByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(screen.queryByTestId("dashboard-grid")).not.toBeInTheDocument();
   });
 });
