@@ -385,16 +385,91 @@ fn legacy_loan_without_events_uses_snapshot_status_from_origination() {
 }
 
 #[test]
-fn status_events_take_precedence_over_legacy_events() {
+fn old_registry_watchlist_then_legacy_closed_is_closed() {
     let loans = [base()];
     let events = [
-        status_ev(1, 50, "WatchList"),
+        status_ev(1, 30, "WatchList"),
+        legacy_ev(1, 70, "LoanClosed"),
+    ];
+    assert_eq!(
+        status_at(&loans[0], &events, 50 * DAY),
+        LoanStatus::WatchList
+    );
+    assert_eq!(status_at(&loans[0], &events, 80 * DAY), LoanStatus::Closed);
+    assert_eq!(
+        active_intervals(&loans[0], &events, 120 * DAY),
+        vec![(0, 70 * DAY)]
+    );
+}
+
+#[test]
+fn old_registry_watchlist_then_legacy_defaulted_is_default() {
+    let loans = [base()];
+    let events = [
+        status_ev(1, 30, "WatchList"),
         legacy_ev(1, 50, "LoanDefaulted"),
+    ];
+    assert_eq!(status_at(&loans[0], &events, 60 * DAY), LoanStatus::Default);
+    assert!(is_at_risk_at(&loans[0], &events, 60 * DAY));
+    assert_eq!(
+        active_intervals(&loans[0], &events, 120 * DAY),
+        vec![(0, 50 * DAY)]
+    );
+}
+
+#[test]
+fn new_registry_status_and_legacy_default_in_same_tx_match_status_only() {
+    let loans = [base()];
+    let both = [
+        status_ev(1, 50, "Default"),
+        legacy_ev(1, 50, "LoanDefaulted"),
+    ];
+    let only = [status_ev(1, 50, "Default")];
+    assert_eq!(
+        active_intervals(&loans[0], &both, 120 * DAY),
+        active_intervals(&loans[0], &only, 120 * DAY)
+    );
+    assert_eq!(status_at(&loans[0], &both, 60 * DAY), LoanStatus::Default);
+}
+
+#[test]
+fn new_registry_default_with_legacy_event_then_cure_is_active() {
+    let loans = [base()];
+    let events = [
+        status_ev(1, 50, "Default"),
+        legacy_ev(1, 50, "LoanDefaulted"),
+        status_ev(1, 70, "WatchList"),
+    ];
+    assert_eq!(
+        status_at(&loans[0], &events, 80 * DAY),
+        LoanStatus::WatchList
+    );
+    assert_eq!(
+        active_intervals(&loans[0], &events, 90 * DAY),
+        vec![(0, 50 * DAY), (70 * DAY, 90 * DAY)]
+    );
+}
+
+#[test]
+fn default_and_cure_in_the_same_second_keep_on_chain_order() {
+    let loans = [base()];
+    let events = [
+        status_ev(1, 50, "Default"),
+        legacy_ev(1, 50, "LoanDefaulted"),
+        status_ev(1, 50, "WatchList"),
     ];
     assert_eq!(
         status_at(&loans[0], &events, 60 * DAY),
         LoanStatus::WatchList
     );
+    assert!(is_active_at(&loans[0], &events, 60 * DAY));
+}
+
+#[test]
+fn unparseable_status_rows_fall_back_to_snapshot() {
+    let defaulted = loan(1, 8_000_000, 2_000_000, "Default");
+    let events = [status_ev(1, 10, "Bogus")];
+    assert!(!is_active_at(&defaulted, &events, 20 * DAY));
 }
 
 #[test]

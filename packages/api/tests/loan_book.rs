@@ -322,7 +322,7 @@ fn matured_loan_stays_active_as_past_due() {
 
 #[test]
 fn closed_loan_visible_but_excluded_from_active_aggregates() {
-    // LoanClosed for A at day 100 → effective_end = 100 (the close event).
+    // LoanClosed for A at day 100 → A is Closed from day 100.
     // At day 110: A closed (terminal, still visible), B still active (30–120).
     let mut loans = fixture_loans();
     loans[0] = with_status(loans[0].clone(), "Closed"); // A: Open Mineral
@@ -495,7 +495,7 @@ fn deployed_senior_sums_senior_tranche_only() {
 #[test]
 fn at_risk_includes_defaulted_loan_excluded_from_active_set() {
     // Loan 3: Default, originated day 0, maturity day 200, LoanDefaulted at day 50.
-    // At day 60 its effective_end = 50 (the default event) → excluded from `active`,
+    // At day 60 its status is Default (since day 50) → excluded from `active`,
     // but it is still an open, at-risk position (no LoanClosed).
     let mut loans = fixture_loans();
     loans.push(with_status(

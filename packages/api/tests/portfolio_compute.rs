@@ -193,7 +193,7 @@ fn apy_null_when_no_active_loans() {
     assert_eq!(s.apy, None);
     assert_eq!(s.principal_outstanding, "0.000000");
     // accrued is still the cumulative frozen total.
-    assert_ne!(s.accrued, "0.000000");
+    assert_eq!(s.accrued, "9493.150684");
 }
 
 #[test]

@@ -49,32 +49,27 @@ pub struct LoanTimeline {
 
 impl LoanTimeline {
     /// Builds the timeline from the loan's own events (`chain_id` + `loan_id` match).
-    /// `LoanStatusUpdated` rows drive it; when the loan has none (pre-rework), the
-    /// earliest-first `LoanDefaulted` / `LoanClosed` rows stand in, and a loan with no
-    /// event at all keeps its snapshot status.
+    /// `LoanStatusUpdated` rows and legacy `LoanDefaulted` / `LoanClosed` rows are merged;
+    /// a loan with no usable event keeps its snapshot status.
     pub fn for_loan(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> Self {
         let mine = || {
             events
                 .iter()
                 .filter(|e| e.chain_id == loan.chain_id && e.loan_id == loan.loan_id)
         };
+        // One pass in the readers' `(block_timestamp, log_index)` order, so events in the
+        // same second keep their on-chain order (e.g. a default and a cure in one ledger).
         let mut transitions: Vec<(i64, LoanStatus)> = mine()
-            .filter(|e| e.event_name == EVENT_STATUS_UPDATED)
-            .filter_map(|e| {
-                let st = LoanStatus::parse(e.status.as_deref()?)?;
-                Some((e.block_timestamp, st))
+            .filter_map(|e| match e.event_name.as_str() {
+                EVENT_STATUS_UPDATED => {
+                    LoanStatus::parse(e.status.as_deref()?).map(|st| (e.block_timestamp, st))
+                }
+                EVENT_DEFAULTED => Some((e.block_timestamp, LoanStatus::Default)),
+                EVENT_CLOSED => Some((e.block_timestamp, LoanStatus::Closed)),
+                _ => None,
             })
             .collect();
-        let has_status_events = mine().any(|e| e.event_name == EVENT_STATUS_UPDATED);
-        if !has_status_events {
-            transitions = mine()
-                .filter_map(|e| match e.event_name.as_str() {
-                    EVENT_DEFAULTED => Some((e.block_timestamp, LoanStatus::Default)),
-                    EVENT_CLOSED => Some((e.block_timestamp, LoanStatus::Closed)),
-                    _ => None,
-                })
-                .collect();
-        }
+        // Callers pass events in reader order; a stable sort only repairs out-of-order input.
         transitions.sort_by_key(|(ts, _)| *ts);
         if let Some(i) = transitions
             .iter()
@@ -83,10 +78,10 @@ impl LoanTimeline {
             transitions.truncate(i + 1);
         }
 
-        let initial = if has_status_events || !transitions.is_empty() {
-            LoanStatus::Approved
-        } else {
+        let initial = if transitions.is_empty() {
             LoanStatus::parse(&loan.snapshot.status).unwrap_or(LoanStatus::Performing)
+        } else {
+            LoanStatus::Approved
         };
         Self {
             origination: loan.snapshot.origination_date,
