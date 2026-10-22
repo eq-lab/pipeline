@@ -8,7 +8,7 @@ Protocol yield reaches LP stakers through two distinct paths: loan repayment yie
 (discrete events triggered by borrower wires) and T-bill yield (USYC NAV accrual distributed
 lazily on each sPLUSD stake/unstake). Both paths deliver fresh PLUSD minted into the sPLUSD
 vault via two-party attestation, accreting NAV for all stakers. Fees flow simultaneously to
-the Treasury Wallet.
+the Treasury Wallet. Book rate and tenor weighting: [book-rate-weighting.md](./book-rate-weighting.md).
 
 ---
 

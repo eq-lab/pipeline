@@ -6,6 +6,7 @@
 pub mod account_repo;
 pub mod auth_user_repo;
 pub mod bitgo;
+pub mod book_weighting;
 pub mod chains;
 pub mod collateral_valuation;
 pub mod collateral_valuation_repo;

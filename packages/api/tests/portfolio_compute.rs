@@ -8,7 +8,7 @@
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::portfolio::{compute_series, SamplePoint};
-use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::contract_logs_repo::{LifecycleRow, LoanRateEventRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 // Loan A: 100k USDC @ 12% (1200 bps), day 0 – 180
@@ -96,9 +96,22 @@ fn fixture_events() -> Vec<LifecycleRow> {
     vec![]
 }
 
+fn fixture_rate_events() -> Vec<LoanRateEventRow> {
+    [(1, 100_000, 0), (2, 50_000, 30), (3, 75_000, 60)]
+        .into_iter()
+        .map(|(loan_id, tranche, start_day)| LoanRateEventRow {
+            loan_id: BigDecimal::from(loan_id as i64),
+            event_name: "Disbursed".to_owned(),
+            block_timestamp: start_day * DAY,
+            outstanding: Some(usdc(tranche)),
+            new_rate: None,
+        })
+        .collect()
+}
+
 fn sample_at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> SamplePoint {
     let t = t_day * DAY;
-    let series = compute_series(loans, events, t, t, DAY);
+    let series = compute_series(loans, events, &fixture_rate_events(), t, t, DAY);
     assert_eq!(series.len(), 1);
     series.into_iter().next().unwrap()
 }
