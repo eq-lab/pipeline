@@ -650,9 +650,13 @@ submit/confirm action, only the live preview.
 
 - The `/waterfall` `amount` param and all response fields (`senior_principal_returned`,
   `senior_coupon_net`, `management_fee`, `performance_fee`, `oet_allocation`) are **raw base units
-  at 7-decimal USDC (Stellar SAC) scale**. `usdToBaseUnits` multiplies the entered USD amount by
-  10^7 before calling the endpoint; `baseUnitsToUsd` divides backend response fields by 10^7 for
-  display. The `recordPayment` payload uses backend raw fields unchanged.
+  at the loan's chain decimals** — 7 for Stellar SAC USDC, 6 for EVM USDC (#1603;
+  `chainAmountDecimals(chainId)` in `lib/targetChains.ts`). Both presenters resolve the decimals
+  from the route's `chain`: `usdToBaseUnits(input, decimals)` multiplies the entered USD amount by
+  10^decimals before calling the endpoint; `baseUnitsToUsd(value, decimals)` divides response
+  fields the same way for display. The preview renders for an EVM loan even though its on-chain
+  write is gated (TD-152), so it must use the right scale. The `recordPayment` payload uses backend
+  raw fields unchanged.
 - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding` (`useLoanFinancials`) are
   displayed **exactly as the backend serves them** — no client-side rescaling (issue #906; the
   former ×1000 `scaleRegistryAmount` workaround has been removed).

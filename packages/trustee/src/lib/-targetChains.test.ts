@@ -5,6 +5,7 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import {
+  chainAmountDecimals,
   DEFAULT_TARGET_CHAIN_ID,
   TARGET_CHAINS,
   isStellarTarget,
@@ -32,5 +33,14 @@ describe("targetChains (#1536)", () => {
     expect(isStellarTarget(99_000_001)).toBe(true);
     expect(isStellarTarget(undefined)).toBe(true);
     expect(isStellarTarget(560048)).toBe(false);
+  });
+});
+
+describe("chainAmountDecimals (#1603)", () => {
+  it("is 7 for the Stellar chain and 6 for an EVM chain", () => {
+    expect(chainAmountDecimals(99_000_001)).toBe(7);
+    expect(chainAmountDecimals(560048)).toBe(6);
+    expect(chainAmountDecimals(1)).toBe(6);
+    expect(chainAmountDecimals(null)).toBe(7);
   });
 });

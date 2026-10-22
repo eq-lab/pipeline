@@ -459,6 +459,39 @@ describe("Record Coupon route — ready state", () => {
     });
   });
 
+  it("converts with 6-decimal units for an EVM loan (#1603)", async () => {
+    const RouteWithSearch = Route as unknown as {
+      useSearch: () => { chain: number };
+    };
+    const previous = RouteWithSearch.useSearch;
+    RouteWithSearch.useSearch = () => ({ chain: 560048 });
+    mockUseLoanBook.mockReturnValue({
+      data: {
+        ...LOAN_BOOK_RESPONSE,
+        loans: [{ ...LOAN_BOOK_RESPONSE.loans[0]!, chain_id: 560048 }],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    try {
+      renderRoute();
+      fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+        target: { value: "123.45678" },
+      });
+      await waitFor(() => {
+        const lastCall =
+          mockUseLoanWaterfall.mock.calls[
+            mockUseLoanWaterfall.mock.calls.length - 1
+          ]!;
+        expect(lastCall[0]).toBe(560048);
+        expect(lastCall[2]).toBe("123456780");
+      });
+    } finally {
+      RouteWithSearch.useSearch = previous;
+    }
+  });
+
   it("renders the waterfall rows from the mocked useLoanWaterfall response", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
