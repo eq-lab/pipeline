@@ -548,8 +548,12 @@ own border/title).
   shared dialog shell (`-RejectReasonDialog.tsx`): `role="dialog"`, `aria-modal`, Escape +
   backdrop-click cancel (never a stray confirm), navy confirm button; pending disables both
   buttons and a failure (404 = loan not indexed) surfaces inline.
-- **Roll over** (Matured variant, S9, Figma node `4116:14050`, #870) — collects the new rate (bps)
-  + new maturity, then submits the on-chain `LoanRegistry.rollover` via `useRollover`. The
+- **Roll over** (Matured variant, S9, Figma node `4116:14050`, #870) — collects the new rate as a
+  **percent p.a.** (text input, 0.01–100, at most 2 decimals since 1 bp = 0.01%; converted exactly
+  to integer bps by `percentToBps` (`@/utils/rateUnits`) and echoed live as `= N bps`; anything
+  else shows the inline rate error and keeps Roll over disabled — #1625, which replaced a
+  `parseInt` on a "bps" field that turned `14.5` into 14 bps) + new maturity, then submits the
+  on-chain `LoanRegistry.rollover` via `useRollover` (bps; the Stellar encoder scales ×100). The
   mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
   on-chain at rollover, avoiding a fabricated transaction-effect number.
 - **Update lifecycle** (S10, Figma node `4116:14087`, #872) — collects the non-economic mutable

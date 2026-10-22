@@ -563,13 +563,16 @@ describe("Loan detail route — Matured variant (#866)", () => {
     expect(mockRollover.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it("submits the on-chain rollover with the entered rate + maturity", () => {
+  it("submits the on-chain rollover with the percent rate converted to bps + maturity (#1625)", () => {
     mockUseLoanDetail.mockReturnValue(maturedResult());
     renderRoute();
     fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
     fireEvent.change(screen.getByTestId("rollover-rate"), {
-      target: { value: "1450" },
+      target: { value: "14.5" },
     });
+    expect(screen.getByTestId("rollover-rate-bps")).toHaveTextContent(
+      "= 1450 bps",
+    );
     fireEvent.change(screen.getByTestId("rollover-maturity"), {
       target: { value: "2026-09-30" },
     });
@@ -582,6 +585,33 @@ describe("Loan detail route — Matured variant (#866)", () => {
       // 2026-09-30T00:00:00Z in Unix seconds.
       newMaturity: Math.floor(Date.parse("2026-09-30T00:00:00Z") / 1000),
     });
+  });
+
+  it("rejects a rate with more than two decimals or out of range and keeps submit disabled (#1625)", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    fireEvent.change(screen.getByTestId("rollover-maturity"), {
+      target: { value: "2026-09-30" },
+    });
+    for (const bad of ["14.555", "0", "101", "abc"]) {
+      fireEvent.change(screen.getByTestId("rollover-rate"), {
+        target: { value: bad },
+      });
+      expect(screen.getByTestId("rollover-rate-error")).toHaveTextContent(
+        "at most 2 decimals",
+      );
+      expect(screen.getByTestId("rollover-submit")).toBeDisabled();
+    }
+    fireEvent.change(screen.getByTestId("rollover-rate"), {
+      target: { value: "14" },
+    });
+    expect(screen.queryByTestId("rollover-rate-error")).toBeNull();
+    expect(screen.getByTestId("rollover-submit")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("rollover-submit"));
+    expect(mockRollover.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ newRateBps: 1400 }),
+    );
   });
 
   it("surfaces the friendly rollover mutation error inside the modal, raw text only in errorDetails (#1037)", async () => {
