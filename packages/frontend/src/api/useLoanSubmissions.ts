@@ -30,7 +30,7 @@
  * base-unit scale** (e.g. `"80000000000.000000"` = 80,000,000,000 base units
  * = $8,000.00) — NOT human-unit dollars (issue #912; corrects the prior
  * assumption here). Normalize ÷10^7 (BigInt-safe — never `Number`/`parseFloat`
- * on the raw string) via `economicsBaseUnitsToUsdDecimal` (`@/utils/formatCompactUsd`)
+ * on the raw string) via `economicsUsdDecimal` (`@/utils/formatCompactUsd`)
  * before `formatCompactUsd`.
  */
 import { useQuery } from "@tanstack/react-query";

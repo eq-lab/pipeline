@@ -46,26 +46,17 @@ export function parsePositiveUsdInput(input: string): number | null {
 }
 
 /**
- * Strips a decimal string's fractional suffix (base units always carry
- * `".000000"`) and converts the integer part from the on-chain 7-decimal
- * base-unit scale to a USD decimal string, via `sacBaseUnitsToUsdDecimal`.
- * BigInt-safe end to end — never `Number`/`parseFloat` on the raw base-unit
- * string, which can exceed `2^53`. Returns `null` for anything not a
- * well-formed non-negative decimal string.
- *
- * Used for the `/v1/loan-book/submissions` `loan_data.economics` monetary
- * fields (`original_facility_size` / `original_senior_tranche` /
- * `original_equity_tranche` / `original_offtaker_price`), which are served at
- * this 7-decimal base-unit scale (issue #912) — e.g. `"8000000000.000000"`
- * (8,000,000,000 base units) → `"800.0000000"` → formatted `$800` by
- * `formatFullUsd`.
+ * Normalizes one of the `/v1/loan-book/submissions` `loan_data.economics`
+ * monetary fields (`original_facility_size` / `original_senior_tranche` /
+ * `original_equity_tranche` / `original_offtaker_price`) for the formatters.
+ * These are human-unit USDC decimal strings (e.g. `"1200000.000000"` =
+ * $1,200,000) — #1620 supersedes the #912 base-unit reading; the draw path
+ * (`parseUsdcToU128`) scales them to the chain's base units. Returns the
+ * trimmed string, or `null` for anything not a well-formed non-negative
+ * decimal string.
  */
-export function economicsBaseUnitsToUsdDecimal(
-  raw: unknown,
-  decimals: number = SAC_DECIMALS,
-): string | null {
+export function economicsUsdDecimal(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  const intPart = /^(\d+)/.exec(raw.trim())?.[1];
-  if (intPart == null) return null;
-  return sacBaseUnitsToUsdDecimal(intPart, decimals);
+  const trimmed = raw.trim();
+  return /^\d+(?:\.\d+)?$/.test(trimmed) ? trimmed : null;
 }

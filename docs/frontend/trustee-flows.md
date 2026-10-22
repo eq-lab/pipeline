@@ -1135,12 +1135,16 @@ unfiltered variants cache independently.
 `SubmitLoanRequest` for convenience but not guaranteed to match at runtime), returned as a nested
 JSON object, not a JSON-encoded string. Its four monetary fields (`economics.
 original_facility_size` / `original_senior_tranche` / `original_equity_tranche` /
-`original_offtaker_price`) are served at the on-chain **7-decimal (10^7) base-unit scale** (e.g.
-`"8000000000.000000"` = 8,000,000,000 base units = $800.00) — not human-unit dollars (#912).
-Display consumers normalize ÷10^7 (BigInt-safe — never `Number`/`parseFloat` on the raw string)
-via `economicsBaseUnitsToUsdDecimal` (`@/utils/stellarSacUnits`) before `formatFullUsd`/
-`formatCompactUsd`. The `draw_loan` on-chain write sends these fields to the contract exactly as
-served, with no re-scaling. Every nested field access must be defensive — missing/malformed values
+`original_offtaker_price`) are **human-unit USDC decimal strings** (e.g. `"1200000.000000"` =
+$1,200,000; at most 6 fractional digits, which both chains represent exactly) — #1620, superseding
+the #912 "base-unit" reading that had the trustee form, the API doc and the draw path disagree and
+sent $1.2M on-chain as $0.12. Display consumers pass them through `economicsUsdDecimal`
+(`@/utils/stellarSacUnits`: validates a non-negative decimal, no scaling) before `formatFullUsd`/
+`formatCompactUsd`. The `draw_loan` on-chain write converts them to the target chain's base units
+exactly (`@pipeline/wallet-connect` `parseUsdcToU128`, ×10^7 on Stellar via `BigInt`; a string
+with more fractional digits than the scale holds throws, never truncates). Rows submitted under
+the old reading render 10^7× too large and must be re-entered. Every nested field access must be
+defensive — missing/malformed values
 render `—`, never fabricated.
 
 **Status normalization (#892/#949/#950):** `normalizeOriginationSubmissionStatus` maps the
@@ -1236,7 +1240,8 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
 - **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
   Loan & metadata (`target_chain_id`, `to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
   `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
-  (four 6-decimal amount strings + rate bps + two unix-second dates), Collateral (`initial_ccr`
+  (four human-unit USDC amount strings with at most 6 decimals, validated by `USDC_AMOUNT_PATTERN`
+  and labelled "USDC, up to 6 decimals" — #1620; rate bps + two unix-second dates), Collateral (`initial_ccr`
   + `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
   (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
 - **Unique-URI banner:** a standing attention banner states that `metadata_uri` must be unique
@@ -1277,7 +1282,8 @@ on-chain pre-mint, so there is no `loan_id` to call `GET /v1/loan-book/{loan_id}
 - Heading/breadcrumb/Deal-Details "Originator" → `loan_data.originator` (the human name), **not**
   `SubmissionView.originator` — same distinction as the table.
 - Start date → `economics.origination_date`. Maturity → `economics.original_maturity_date`.
-  Facility/tranches/offtaker price → `economics.*` (÷10^7 via `formatEconomicsUsd`, #912). Rate →
+  Facility/tranches/offtaker price → `economics.*` (human-unit USDC as served via
+  `formatEconomicsUsd`, #1620). Rate →
   `senior_interest_rate_bps` + " p.a." suffix (Figma "14.0% p.a.").
 - Corridor → `loan_data.corridor`, arrow-formatted (same regex as the table). Governing law →
   `loan_data.governing_law`. Protection → `loan_data.protection` (optional — `—` when absent).

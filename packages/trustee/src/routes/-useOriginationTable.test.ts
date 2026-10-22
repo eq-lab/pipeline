@@ -37,12 +37,12 @@ const FULL_SUBMISSION: SubmissionView = {
     corridor: "PE → CN",
     governing_law: "England",
     economics: {
-      // 7-decimal on-chain base-unit strings (issue #912) — displayed ÷10^7,
-      // so this facility value renders "$3.5M" (compact, #1015).
-      original_facility_size: "35000000000000.000000",
-      original_senior_tranche: "30000000000000.000000",
-      original_equity_tranche: "5000000000000.000000",
-      original_offtaker_price: "35000000000000.000000",
+      // Human-unit USDC strings (#1620) — rendered as served, so this
+      // facility value renders "$3.5M" (compact, #1015).
+      original_facility_size: "3500000.000000",
+      original_senior_tranche: "3000000.000000",
+      original_equity_tranche: "500000.000000",
+      original_offtaker_price: "3500000.000000",
       senior_interest_rate_bps: 1400,
       origination_date: 1_750_000_000,
       original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z
@@ -69,20 +69,18 @@ describe("mapSubmissionToRow", () => {
     expect(row.submitted).toBe("18 Jun");
   });
 
-  it("divides the facility by the FULL 10^7 (issue #912 regression) — 10000000000 base units -> $1,000, not $1M", () => {
+  it("renders the facility as served human-unit USDC — no base-unit division (#1620 supersedes #912)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
       loan_data: {
         ...FULL_SUBMISSION.loan_data,
         economics: {
           ...FULL_SUBMISSION.loan_data.economics,
-          original_facility_size: "10000000000.000000",
+          original_facility_size: "1000.000000",
         },
       },
     };
     const row = mapSubmissionToRow(submission);
-    // 10000000000 / 10^7 = 1000 -> formatCompactUsd("1000.0000000") = "$1K".
-    // A partial (e.g. 10^4) divisor would wrongly produce "$1M".
     expect(row.facility).toBe("$1K");
   });
 

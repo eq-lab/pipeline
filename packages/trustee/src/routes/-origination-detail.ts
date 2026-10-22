@@ -24,7 +24,7 @@ import {
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
-import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
+import { economicsUsdDecimal } from "@/utils/stellarSacUnits";
 import { toUserError } from "@/utils/userError";
 import { DEFAULT_TARGET_CHAIN_ID, targetChainLabel } from "@/lib/targetChains";
 
@@ -77,10 +77,10 @@ function formatLocation(value: unknown): string {
   return parts.length > 0 ? parts.join(" — ") : "—";
 }
 
-// 7-decimal base-unit scale, BigInt-safe ÷10^7 (issue #912). spec:
+// Human-unit USDC as served (#1620). spec:
 // docs/frontend/trustee-flows.md#data-layer-useloansubmissions.
 function formatEconomicsUsd(value: unknown): string {
-  return formatFullUsd(economicsBaseUnitsToUsdDecimal(value));
+  return formatFullUsd(economicsUsdDecimal(value));
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
