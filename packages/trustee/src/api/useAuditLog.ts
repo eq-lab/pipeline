@@ -8,15 +8,15 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
 
 export interface AuditScope {
-  // `loan_id`: null for protocol-scoped events (e.g. YieldMinted).
+  // `loan_id`: null for protocol-scoped events (wire, ramp, cash-ledger, supply).
   loan_id: string | null;
   label: string;
 }
 
 export interface AuditLogItem {
+  chain_id: number;
   timestamp: string;
   action: string;
   scope: AuditScope;
@@ -38,11 +38,9 @@ export interface UseAuditLogResult {
 }
 
 export function useAuditLog(): UseAuditLogResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
   const query = useQuery<AuditLogResponse, Error>({
-    queryKey: ["audit-log", chainId],
-    queryFn: () =>
-      apiFetch<AuditLogResponse>(`/v1/audit-log?chain_id=${chainId}`),
+    queryKey: ["audit-log", "all"],
+    queryFn: () => apiFetch<AuditLogResponse>("/v1/audit-log"),
     refetchInterval: 30_000,
   });
 

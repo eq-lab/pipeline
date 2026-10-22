@@ -23,8 +23,8 @@ Trustee product intent lives in `docs/product-specs/` (see the Trustee panel not
 **Consumer route:** `/audit-log`. **Surface 17** of epic #775; issue #1004; Figma node
 `4116:13770`.
 
-Surface 17 is an append-only, reverse-chronological (newest-first) table — Time · Action · Loan /
-scope · Reference — of on-chain Trustee actions.
+Surface 17 is an append-only, reverse-chronological (newest-first) table — Time · Chain · Action ·
+Loan / scope · Reference — of on-chain Trustee actions across every configured chain (#1599).
 
 ### Architecture
 
@@ -32,22 +32,28 @@ Follows the `loans.index.tsx` design language and the view/logic split of
 [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-rules): the `.tsx` view is JSX-only and
 reads a single presenter hook, `useAuditLogView`.
 
-- `useAuditLog` (`api/`) — React Query hook over `GET /v1/audit-log`, Stellar-scoped `chain_id`,
-  30 s poll. Its DTOs are a self-contained hand-mirror of the backend shape
-  (`packages/api/src/routes/audit_log.rs`, #1000) — TD-42 convention, the trustee app does not
-  depend on `@pipeline/frontend`.
+- `useAuditLog` (`api/`) — React Query hook over `GET /v1/audit-log` with **no `chain_id`**
+  (#1599, backend #1595): the API merges every configured chain newest-first and each item carries
+  its `chain_id`; key `["audit-log", "all"]`, 30 s poll. Its DTOs are a self-contained hand-mirror
+  of the backend shape (`packages/api/src/routes/audit_log.rs`, #1000) — TD-42 convention, the
+  trustee app does not depend on `@pipeline/frontend`.
 - `useAuditLogView` (`routes/-useAuditLog.ts`) — presenter. The feed is the **source of truth for
-  state**; the loan book (`useLoanBook`) is **enrichment only** (Stellar rows only — the feed is
-  Stellar-scoped and loan ids repeat across chains, #1537): a loan-scoped row shows the
-  friendly `"Originator — Commodity"` name, falling back to the server-supplied `scope.label`
-  (`"Loan #<id>"` / `"Protocol"`) until the loan book loads or when an id isn't in it. Each item
-  maps to a display row: `formatAuditTimestamp` time (UTC), resolved scope label, and a truncated
-  tx-hash reference (`<first6>…<last4>`, full hash in the cell `title`).
+  state**; the loan book (`useLoanBook`, all chains) is **enrichment only**, keyed by
+  `loanRowKey(chain_id, loan_id)` because loan ids repeat across chains (#1537): a loan-scoped row
+  shows the friendly `"Originator — Commodity"` name for its own `(chain_id, loan_id)`, falling
+  back to the server-supplied `scope.label` (`"Loan #<id>"` / `"Protocol"`) until the loan book
+  loads or when the pair isn't in it. Each item maps to a display row: `formatAuditTimestamp` time
+  (UTC), `targetChainLabel(chain_id)` ("Stellar" / "Hoodi" / `Chain <id>`), resolved scope label,
+  and `reference` rendered **in full** — since #1094 it is the server's friendly loan name
+  (`"<originator> — <commodity>"`), not a tx hash; `""` renders as `—` (#1599 fixed the
+  `first6…last4` truncation that turned "Open Mineral — Copper Concentrate" into "Open M…trate").
 
 ### Scope — on-chain only (resolved with the issue author, #1004)
 
-The endpoint serves on-chain loan-lifecycle + yield events only. **Rows are exactly what the
-endpoint returns — never fabricated** ([[no-frontend-computed-metrics]]). Two consequences vs. the
+The endpoint serves on-chain events only: loan lifecycle, Minter cash, CollateralRegistry and
+DealTokenFactory rows (#1595; no-op syncs filtered server-side), each with its server-rendered
+`action` text. **Rows are exactly what the endpoint returns — never fabricated**
+([[no-frontend-computed-metrics]]). Two consequences vs. the
 Figma mock:
 
 - The mock's off-chain rows ("Batch off-ramp co-signed", "Loan distributions wired (fiat)") and
@@ -81,10 +87,13 @@ Matches the `loans.index.tsx` precedent (raw Figma literals mapped to `--color-p
   the body box + inter-row separators (`LINE_COLOR` = `rgba(56,55,53,0.18)`, applied via inline
   `style` so it always paints regardless of Tailwind v4 utility ordering); the header row sits
   unbordered above the box.
-- Body cells `16px`, `py-[20px] px-[14px]`: Time + Reference ink-muted, Action + scope `#262524`
-  ink; Reference is monospace `14px`.
-- Action + Loan/scope **wrap** (a deliberate deviation from the Figma's single-line `nowrap` cells):
-  audit actions run long and must stay fully readable — never truncate served data.
+- Body cells `16px`, `py-[20px] px-[14px]`: Time + Reference ink-muted, Chain + Action + scope
+  `#262524` ink. Chain is a fixed 90px track after Time (no Figma — the #1536 Origination-table
+  pattern). Reference lost its monospace tx-hash styling in #1599: it is a loan name and wraps
+  like Action.
+- Action + Loan/scope + Reference **wrap** (a deliberate deviation from the Figma's single-line
+  `nowrap` cells): audit actions and loan names run long and must stay fully readable — never
+  truncate served data.
 - Caption `13px` / ink-muted, `leading-[18.2px]`, `pt-[16px]`.
 
 ## Cash Management — On/Off-ramp & T-Bills

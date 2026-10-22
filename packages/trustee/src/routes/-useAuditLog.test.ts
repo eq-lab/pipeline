@@ -1,55 +1,67 @@
-/**
- * Tests for the Audit Log presenter logic (`-useAuditLog.ts`, issue #1004).
- *
- * All pure — no DOM, no query layer. Covers scope-label resolution (friendly
- * loan name → server fallback → "Protocol"), reference truncation, and the
- * row mapping (rows are exactly what the feed serves, newest-first preserved,
- * never fabricated).
- */
+// spec: docs/frontend/trustee-flows.md#audit-log (all-chains feed, (chain_id, loan_id) scope names, loan-name reference, #1599).
 import { describe, it, expect } from "vitest";
 import type { AuditLogItem } from "@/api/useAuditLog";
 import {
   buildAuditRows,
+  formatReference,
   resolveScopeLabel,
-  truncateReference,
 } from "./-useAuditLog";
 
 function makeItem(overrides: Partial<AuditLogItem> = {}): AuditLogItem {
   return {
+    chain_id: 99_000_001,
     timestamp: "2026-06-24T07:12:00Z",
     action: "Repayment recorded — principal + final interest",
     scope: { loan_id: "4492", label: "Loan #4492" },
-    reference: "0xabc1234567890def1234567890abcdef12345678",
+    reference: "Helios Metals — Lithium",
     event_name: "PaymentRecorded",
     details: {},
     ...overrides,
   };
 }
 
-describe("truncateReference", () => {
-  it("truncates a long tx hash to first-6…last-4", () => {
-    expect(truncateReference("0xabc1234567890def1234567890abcdef")).toBe(
-      "0xabc1…cdef",
+const names = new Map([
+  ["99000001:4492", "Helios Metals — Lithium"],
+  ["560048:4492", "Hoodi Copper Co — Copper Concentrate"],
+]);
+
+describe("formatReference", () => {
+  it("renders the served loan name in full — it is not a tx hash", () => {
+    expect(formatReference("Open Mineral — Copper Concentrate")).toBe(
+      "Open Mineral — Copper Concentrate",
     );
   });
 
-  it("leaves a short reference untouched", () => {
-    expect(truncateReference("0xabc123")).toBe("0xabc123");
+  it("renders a dash for an empty reference", () => {
+    expect(formatReference("")).toBe("—");
   });
 });
 
 describe("resolveScopeLabel", () => {
-  const names = new Map([["4492", "Helios Metals — Lithium"]]);
-
-  it("uses the friendly loan name when the loan id is known", () => {
+  it("uses the friendly loan name for the item's own chain", () => {
     expect(resolveScopeLabel(makeItem(), names)).toBe(
       "Helios Metals — Lithium",
     );
   });
 
-  it("falls back to the server label when the loan id is unknown", () => {
+  it("keeps two loans with the same id on different chains apart (#1537 Story 5)", () => {
+    expect(resolveScopeLabel(makeItem({ chain_id: 560048 }), names)).toBe(
+      "Hoodi Copper Co — Copper Concentrate",
+    );
+  });
+
+  it("falls back to the server label when the (chain, loan) pair is unknown", () => {
     const item = makeItem({ scope: { loan_id: "9999", label: "Loan #9999" } });
     expect(resolveScopeLabel(item, names)).toBe("Loan #9999");
+    expect(
+      resolveScopeLabel(
+        makeItem({
+          chain_id: 1,
+          scope: { loan_id: "4492", label: "Loan #4492" },
+        }),
+        names,
+      ),
+    ).toBe("Loan #4492");
   });
 
   it("uses the server label for protocol-scoped events (null loan id)", () => {
@@ -59,27 +71,27 @@ describe("resolveScopeLabel", () => {
 });
 
 describe("buildAuditRows", () => {
-  const names = new Map([["4492", "Helios Metals — Lithium"]]);
-
-  it("maps each item to a display row, preserving order", () => {
+  it("maps each item to a display row with its chain label, preserving order", () => {
     const items = [
-      makeItem({
-        action: "A",
-        reference: "0xaaaa000000000000000000000000000000000001",
-      }),
+      makeItem({ action: "A" }),
       makeItem({
         action: "B",
-        reference: "0xbbbb000000000000000000000000000000000002",
+        chain_id: 560048,
+        reference: "",
+        event_name: "DealRegistered",
+        scope: { loan_id: null, label: "Protocol" },
       }),
     ];
     const rows = buildAuditRows(items, names);
     expect(rows).toHaveLength(2);
     const [first, second] = rows;
     expect(rows.map((r) => r.action)).toEqual(["A", "B"]);
+    expect(first!.chain).toBe("Stellar");
     expect(first!.scopeLabel).toBe("Helios Metals — Lithium");
-    expect(first!.reference).toBe("0xaaaa…0001");
-    expect(first!.referenceFull).toBe(items[0]!.reference);
-    // Time is formatted (day + short month + 24h); exact value is TZ-dependent.
+    expect(first!.reference).toBe("Helios Metals — Lithium");
+    expect(second!.chain).toBe("Hoodi");
+    expect(second!.scopeLabel).toBe("Protocol");
+    expect(second!.reference).toBe("—");
     expect(first!.time).toMatch(/\w{3}/);
     expect(first!.key).not.toBe(second!.key);
   });

@@ -855,10 +855,6 @@
     "header": 5,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-useAuditLog.test.ts": {
-    "header": 8,
-    "nodeIds": 0
-  },
   "packages/trustee/src/routes/-useLoanDetail.test.ts": {
     "header": 9,
     "nodeIds": 0
