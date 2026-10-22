@@ -59,6 +59,10 @@ export interface LoanBookSummary {
 
 /** One row in the active-loan table. */
 export interface LoanBookEntry {
+  /** Chain the loan is drawn on. */
+  chain_id: number;
+  /** On-chain loan id (`uint256`, decimal string — unique per chain only). */
+  loan_id: string;
   /** Originating party (e.g. `"Open Mineral"`). */
   originator: string;
   /** Borrower identifier. */

@@ -2,9 +2,9 @@
  * React Query hook — fetches cumulative yield history from the Pipeline API
  * (`GET /v1/dashboard/yield-history`).
  *
- * This endpoint serves the **net minted** yield series (Σ `YieldMinted.s_plusd_amount`),
- * distinct from `GET /v1/stats/yield` which is a gross accrual estimate. The final
- * point equals `summary.cumulative_yield_total`.
+ * This endpoint serves the **net minted** yield series (historical `YieldMinted` plus
+ * Minter `CashRepaid` mints net of `CashRepaymentReversed`, #1597), distinct from
+ * `GET /v1/stats/yield` (gross accrual estimate); the final point equals `summary.cumulative_yield_total`.
  *
  * The hook is always enabled (no wallet connection required — protocol-level).
  * Fetches the full history (omits `days`) at the backend default `daily`

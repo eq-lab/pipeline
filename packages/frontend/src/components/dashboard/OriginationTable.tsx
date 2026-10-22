@@ -38,6 +38,7 @@ const COLUMNS: {
   width?: string;
 }[] = [
   { key: "commodity", label: "Commodity", width: undefined },
+  { key: "chain", label: "Chain", width: "88px" },
   { key: "facility", label: "Facility", width: "120px" },
   { key: "corridor", label: "Corridor", width: "148px" },
   { key: "rate", label: "Rate", width: "84px" },

@@ -102,11 +102,13 @@ const FIXTURE_WITH_ITEMS: WithdrawalQueueResponse = {
   },
   items: [
     {
+      chain_id: 560048,
       account: "0x7a3f2b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f3f",
       amount: "620000.000000",
       status: "Completed",
     },
     {
+      chain_id: 560048,
       account: "0xabcdef1234567890abcdef1234567890abcdef12",
       amount: "480000.000000",
       status: "Queued",
@@ -124,31 +126,37 @@ const FIXTURE_SIX_ITEMS: WithdrawalQueueResponse = {
   },
   items: [
     {
+      chain_id: 560048,
       account: "0x1111111111111111111111111111111111111111",
       amount: "100000.000000",
       status: "Completed",
     },
     {
+      chain_id: 560048,
       account: "0x2222222222222222222222222222222222222222",
       amount: "200000.000000",
       status: "Queued",
     },
     {
+      chain_id: 560048,
       account: "0x3333333333333333333333333333333333333333",
       amount: "300000.000000",
       status: "Queued",
     },
     {
+      chain_id: 560048,
       account: "0x4444444444444444444444444444444444444444",
       amount: "400000.000000",
       status: "Completed",
     },
     {
+      chain_id: 560048,
       account: "0x5555555555555555555555555555555555555555",
       amount: "500000.000000",
       status: "Queued",
     },
     {
+      chain_id: 560048,
       account: "0x6666666666666666666666666666666666666666",
       amount: "600000.000000",
       status: "Queued",

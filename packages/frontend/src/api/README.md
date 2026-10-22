@@ -204,9 +204,11 @@ Reactive to `pipeline.mock.api.*` localStorage key changes.
 
 ### Protocol hooks take `chainId` (#1498)
 
-`useStats`, `useDashboardSummary`, `useLoanBook`, `useLoanSubmissions`, `useWithdrawalQueue`,
+`useStats`, `useDashboardSummary`, `useLoanBook`, `useWithdrawalQueue`,
 `useFinancialPosition`, `useDashboardTvlHistory` and `useDashboardYieldHistory` all take a required
-`{ chainId: number }`, send `chain_id=<chainId>` and include it in their query key. None falls back
+`{ chainId: number }`, send `chain_id=<chainId>` and include it in their query key.
+`useLoanSubmissions` is the exception: since #1550 it takes no `chainId` and lists submissions for
+every target chain (each row carries `target_chain_id`). None of the others falls back
 to a Stellar constant. Get the value from `useActiveChain()` (`@/wallet`) or, in the Protocol
 Dashboard, `useDashboardChain()`:
 
@@ -370,7 +372,8 @@ localStorage.setItem(
 
 `useStellarWithdrawalVoucher` uses the **same mock keys as `useWithdrawalVoucher`** — it
 hits the same `/v1/withdrawals/{request_id}/voucher` endpoint. The only difference is the
-real HTTP request appends `&chain_id=99000001` (Stellar synthetic chain id) so the API
+real HTTP request appends `&chain_id=<VITE_STELLAR_CHAIN_ID>` (the Stellar synthetic chain id —
+`99000001` on staging, `99000002` on prod) so the API
 dispatches to the ed25519 verifier path. The mock layer does not filter on `chain_id`,
 so the existing per-wallet and un-keyed alias keys work for both EVM and Stellar mocks.
 

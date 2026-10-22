@@ -14,10 +14,13 @@
  *     resolved Open Question, LP dashboard keeps its simple status label).
  */
 import { describe, it, expect } from "vitest";
-import { mapSubmissionToRow } from "./originationRow";
+import { mapSubmissionToRow, targetChainLabel } from "./originationRow";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 
 const FULL_SUBMISSION: SubmissionView = {
+  target_chain_id: 560048,
+  chain_id: null,
+  loan_id: null,
   id: 1,
   status: "InReview",
   reason: null,
@@ -169,5 +172,15 @@ describe("mapSubmissionToRow", () => {
     });
     expect(empty.status).toBe("Approved");
     expect(empty.statusLabel).toBe("Approved");
+  });
+});
+
+describe("targetChainLabel / row.chain (#1604)", () => {
+  it("labels Stellar, a known EVM chain, and an unknown id", () => {
+    expect(targetChainLabel(99_000_001)).toBe("Stellar");
+    expect(targetChainLabel(560048)).toBe("Hoodi");
+    expect(targetChainLabel(1)).toBe("Ethereum");
+    expect(targetChainLabel(424242)).toBe("Chain 424242");
+    expect(targetChainLabel(null)).toBe("—");
   });
 });
