@@ -331,6 +331,7 @@ fn closed_loan_visible_but_excluded_from_active_aggregates() {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 100 * DAY,
         loan_id: BigDecimal::from(1_i64),
+        status: None,
     }];
     let r = at(110, &loans, &events);
     assert_eq!(r.loans.len(), 2);
@@ -478,6 +479,7 @@ fn event(name: &str, loan_id: i64, day: i64) -> LifecycleRow {
         event_name: name.to_owned(),
         block_timestamp: day * DAY,
         loan_id: BigDecimal::from(loan_id),
+        status: None,
     }
 }
 

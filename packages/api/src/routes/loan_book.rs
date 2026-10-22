@@ -30,6 +30,7 @@ use shared::collateral_valuation_repo::{
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
+use shared::loan_status::LoanTimeline;
 use shared::price_provider::{is_known_provider, known_provider_keys};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
@@ -86,8 +87,8 @@ const SECS_PER_DAY: i64 = 86_400;
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
 /// Portfolio-level aggregates for the Loan Book header cards. Computed over the
-/// *active* loan set (`origination_date <= now < effective_end`), the same
-/// definition used by `routes::portfolio::compute_series`.
+/// *active* loan set (`shared::loan_status`: originated and Approved / Performing /
+/// WatchList at `now`), the same set every money/rate endpoint uses.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoanBookSummary {
     /// Total capital deployed = Σ (senior + equity tranche) over active loans,
@@ -1346,36 +1347,14 @@ fn principal_of(loan: &LoanSnapshotRow) -> BigDecimal {
     &loan.snapshot.original_senior_tranche + &loan.snapshot.original_equity_tranche
 }
 
-/// Effective end of a loan for the loan-book active set: the earliest `LoanClosed` /
-/// `LoanDefaulted` timestamp, or `i64::MAX` when the loan is neither closed nor
-/// defaulted.
-///
-/// Unlike `routes::portfolio`'s end-resolution, maturity does **not** bound the active
-/// set here: a loan past its maturity but not yet closed/defaulted stays active and
-/// surfaces as `Past Due` (see [`display_status`]). An explicit close/default moves a
-/// loan from the *active* set into the *terminal* set (see [`compute_loan_book`]) — it
-/// stays visible as a row in the response, just excluded from the active-set
-/// aggregates.
-fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
-    events
-        .iter()
-        .filter(|e| {
-            (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
-                && e.chain_id == loan.chain_id
-                && e.loan_id == loan.loan_id
-        })
-        .map(|e| e.block_timestamp)
-        .min()
-        .unwrap_or(i64::MAX)
-}
-
 /// Pure computation: no DB calls. Builds the Loan Book summary + loan table from
 /// pre-fetched loan snapshots and lifecycle events as-of `to`.
 ///
-/// "Active" = `origination_date <= to` and not yet closed/defaulted (`to <
-/// effective_end`). Unlike `routes::portfolio`, maturity does **not** remove a loan:
-/// a past-maturity, still-open loan stays active and surfaces as `Past Due`. Only
-/// `LoanClosed` / `LoanDefaulted` move a loan from active to **terminal**.
+/// "Active" = `origination_date <= to` and status at `to` is Approved / Performing /
+/// WatchList (`shared::loan_status`). Maturity does **not** remove a loan: a
+/// past-maturity, still-open loan stays active and surfaces as `Past Due`. Default and
+/// Closed move a loan from active to **terminal**; a cure (Default → WatchList) brings
+/// it back.
 ///
 /// The returned `loans` table includes *both* sets — active loans first (existing
 /// sort), then terminal loans appended after, each sorted by principal descending
@@ -1537,10 +1516,17 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     disbursement_by_loan: &HashMap<LoanRef, bool, S>,
     watchlist_entry_by_loan: &HashMap<LoanRef, i64, S>,
 ) -> LoanBookResponse {
+    let timelines: Vec<LoanTimeline> = loans
+        .iter()
+        .map(|loan| LoanTimeline::for_loan(loan, events))
+        .collect();
+
     // Active loan set, sorted by principal (senior + equity) descending.
     let mut active: Vec<&LoanSnapshotRow> = loans
         .iter()
-        .filter(|loan| loan.snapshot.origination_date <= to && to < effective_end(loan, events))
+        .zip(&timelines)
+        .filter(|(_, tl)| tl.is_active_at(to))
+        .map(|(loan, _)| loan)
         .collect();
     active.sort_by_cached_key(|loan| {
         (
@@ -1555,7 +1541,9 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     // descending and appended after the active entries.
     let mut terminal: Vec<&LoanSnapshotRow> = loans
         .iter()
-        .filter(|loan| loan.snapshot.origination_date <= to && to >= effective_end(loan, events))
+        .zip(&timelines)
+        .filter(|(_, tl)| tl.is_terminal_at(to))
+        .map(|(loan, _)| loan)
         .collect();
     terminal.sort_by_cached_key(|loan| {
         (
@@ -1652,10 +1640,9 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
 
     // ── Trustee "Loans" page metrics ──────────────────────────────────────────
     // At-risk = Σ outstanding senior of at-risk loans, computed over the FULL `loans`
-    // slice. WatchList counts while the loan is still open (`to < effective_end`, i.e.
-    // not yet closed/defaulted — a past-maturity WatchList loan is `Past Due` and still
-    // at risk); Default counts until the loan is explicitly closed (`LoanClosed`), even
-    // though defaults drop out of the `active` set.
+    // slice. At risk = status at `to` is WatchList or Default (a past-maturity WatchList
+    // loan is `Past Due` and still at risk); Default counts even though it drops out of
+    // the `active` set, until the loan is closed.
     let active_keys: HashSet<LoanRef> = active
         .iter()
         .map(|l| loan_ref(l.chain_id, &l.loan_id))
@@ -1666,16 +1653,9 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     // of the active set (defaults), so the ratio reflects whole-book NAV.
     let mut at_risk_extra_collateral = BigDecimal::from(0);
     let mut any_extra_collateral = false;
-    for loan in loans {
+    for (loan, timeline) in loans.iter().zip(&timelines) {
         let s = &loan.snapshot;
-        let at_risk = s.origination_date <= to
-            && !is_closed(loan, events, to)
-            && match s.status.as_str() {
-                "Default" => true,
-                "WatchList" => to < effective_end(loan, events),
-                _ => false,
-            };
-        if !at_risk {
+        if !timeline.is_at_risk_at(to) {
             continue;
         }
         at_risk_wl_and_default_senior += s.outstanding_senior_principal();
@@ -1740,18 +1720,6 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         },
         loans: entries,
     }
-}
-
-/// True when `loan` has a `LoanClosed` lifecycle event at or before `to`. A
-/// `LoanDefaulted` event does NOT count as closed — a defaulted loan is still an
-/// open, at-risk position until it is explicitly closed.
-fn is_closed(loan: &LoanSnapshotRow, events: &[LifecycleRow], to: i64) -> bool {
-    events.iter().any(|e| {
-        e.chain_id == loan.chain_id
-            && e.loan_id == loan.loan_id
-            && e.event_name == "LoanClosed"
-            && e.block_timestamp <= to
-    })
 }
 
 /// Empty loan book: zeroed deployed, null optionals, no rows. Returned when the

@@ -231,7 +231,7 @@ fn deployed_is_zero_without_capital_transfers_rows() {
     assert_eq!(r.buckets.deployed, Some("0.000000".to_owned()));
 }
 
-// ── Active-loan windowing (mirrors financial-position / loan-book) ──────────────
+// ── Active-loan windowing (shared::loan_status) ──────────────
 
 #[test]
 fn loans_not_yet_originated_are_excluded() {
@@ -242,15 +242,15 @@ fn loans_not_yet_originated_are_excluded() {
 }
 
 #[test]
-fn matured_loans_are_excluded_despite_deployed_flag() {
-    // At day 150 loan B has matured (ends day 120); its flag is still set but the
-    // window ANDs with it (#1027 decision 2) → only loan A: senior 80k.
+fn past_maturity_open_loans_stay_deployed() {
+    // At day 150 loan B is past its day-120 maturity but still open (#1632): it stays
+    // active, so deployed = A 80k + B 40k.
     let r = at(150, &fixture_loans(), &[]);
-    assert_eq!(r.buckets.deployed, Some("80000.000000".to_owned()));
+    assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
 }
 
 #[test]
-fn loan_closed_before_maturity_is_excluded_from_effective_end() {
+fn loan_closed_before_maturity_is_excluded() {
     // Loan A closed on day 90 → excluded at day 100 even though maturity is day
     // 180 and its deployed flag is still set.
     let events = vec![LifecycleRow {
@@ -258,6 +258,7 @@ fn loan_closed_before_maturity_is_excluded_from_effective_end() {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(1_i64),
+        status: None,
     }];
     let r = at(100, &fixture_loans(), &events);
     // Only loan B (day 30–120) active: senior 40k.
@@ -637,6 +638,7 @@ fn closed(chain_id: i64, loan_id: i64, day: i64) -> LifecycleRow {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: day * DAY,
         loan_id: BigDecimal::from(loan_id),
+        status: None,
     }
 }
 
