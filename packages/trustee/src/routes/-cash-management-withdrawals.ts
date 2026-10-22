@@ -6,6 +6,7 @@
  * spec: docs/frontend/trustee-flows.md#cash-management--withdrawal-queue.
  */
 import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
+import { targetChainLabel } from "@/lib/targetChains";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -13,6 +14,7 @@ export type WithdrawalQueueState = "loading" | "error" | "ready";
 
 export interface WithdrawalQueueView {
   state: WithdrawalQueueState;
+  chainLabel: string;
   errorMessage: string | null;
   errorDetails: string | null;
   walletBalanceDisplay: string;
@@ -23,7 +25,7 @@ export interface WithdrawalQueueView {
 }
 
 export function useWithdrawalQueueView(): WithdrawalQueueView {
-  const { data, isLoading, error } = useWithdrawalQueue();
+  const { chainId, data, isLoading, error } = useWithdrawalQueue();
 
   const state: WithdrawalQueueState = error
     ? "error"
@@ -37,6 +39,7 @@ export function useWithdrawalQueueView(): WithdrawalQueueView {
 
   return {
     state,
+    chainLabel: targetChainLabel(chainId),
     errorMessage: mapped?.message ?? null,
     errorDetails: mapped?.details ?? null,
     walletBalanceDisplay: "—",

@@ -916,16 +916,26 @@ function WithdrawalQueueSection({
     >
       <div className="flex flex-wrap items-center justify-between gap-[12px]">
         <div className="flex flex-col gap-[2px]">
-          <span
-            className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
-            style={{ color: INK }}
-          >
-            Withdrawal Queue
+          <span className="flex items-center gap-[10px]">
+            <span
+              className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
+              style={{ color: INK }}
+            >
+              Withdrawal Queue
+            </span>
+            <span
+              data-testid="cash-management-withdrawals-chain"
+              className="rounded-[4px] px-[8px] py-[2px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+              style={{ border: `1px solid ${LINE_COLOR}`, color: INK_MUTED }}
+            >
+              {withdrawals.chainLabel}
+            </span>
           </span>
           <span
             className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
             style={{ color: INK_MUTED }}
           >
+            {withdrawals.chainLabel} queue — the network you signed in with.
             Keep the Withdrawal Queue wallet funded to cover claimable requests;
             top up from the Capital Wallet.
           </span>

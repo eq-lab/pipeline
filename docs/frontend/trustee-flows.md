@@ -152,11 +152,22 @@ T-Bills swap forms.
 View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-rules): the tab and
 dialog are JSX-only and read `useWithdrawalQueueView`.
 
-- `useWithdrawalQueue` (`api/`) — React Query hook over `GET /v1/withdrawal-queue`, 30 s poll. A
-  self-contained hand-mirror of the backend shape (TD-42; the trustee app does not depend on
-  `@pipeline/frontend`, whose `useWithdrawalQueue` reads the same endpoint). `in_queue_usd`/`amount`
-  are base-6 decimal strings in human units — format with `@/utils/formatUsd`.
-- `useWithdrawalQueueView` (`-cash-management-withdrawals.ts`) — presenter.
+- `useWithdrawalQueue` (`api/`) — React Query hook over
+  `GET /v1/withdrawal-queue?chain_id=<session chain>`, key `["withdrawal-queue", chainId]`, 30 s
+  poll. **Scoped to the chain the trustee signed in with (#1600).** Product rule: a page that
+  aggregates across networks shows every chain; a per-network page follows the connected chain.
+  Cash Management is per-network, so the hook reads `useSessionState().chainId` (the chain picked at
+  sign-in, `auth/sessionStore.ts`; `ENV.STELLAR_CHAIN_ID` only as the no-session fallback) rather
+  than omitting `chain_id` (since backend #1586 that means every configured chain) or hardcoding
+  Stellar. The scope is explicit in the UI — a chain chip beside the tab heading and the sub-line
+  "<chain> queue — the network you signed in with." — and items carry `chain_id`. The Capital-Wallet
+  custody balance and the ramp hooks on the same page are still hardcoded to Stellar (TD-153).
+  A self-contained hand-mirror of the backend shape
+  (TD-42; the trustee app does not depend on `@pipeline/frontend`, whose `useWithdrawalQueue` reads
+  the same endpoint). `in_queue_usd`/`amount` are base-6 decimal strings in human units — format
+  with `@/utils/formatUsd`.
+- `useWithdrawalQueueView` (`-cash-management-withdrawals.ts`) — presenter; `chainLabel` =
+  `targetChainLabel(chainId)` from the hook's resolved chain.
 
 ### Scope — visual-only shell (served vs. `—`)
 

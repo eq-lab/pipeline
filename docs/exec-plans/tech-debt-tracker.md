@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-153.**
+**Next free number: TD-154.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2114,3 +2114,12 @@ line, whichever section it lands in.
 - **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land.
+
+### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain
+
+- **Date:** 2026-10-22
+- **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar `getSacBalance`), `packages/trustee/src/api/useRampEvents.ts`, `useRampAddresses.ts`, `useReviewRampEvent.ts`, `useCapitalAllocation.ts` (`chain_id=ENV.STELLAR_CHAIN_ID`) — Issue #1600.
+- **Gap:** Product rule (2026-10-22): a per-network Trustee page follows the chain the trustee signed in with (`useSessionState().chainId`, `auth/sessionStore.ts`), and only cross-network pages aggregate every chain. #1600 applied it to the Withdrawal Queue tab; the rest of Cash Management still reads Stellar unconditionally, so an EVM session sees a Hoodi withdrawal queue next to a Stellar custody balance and Stellar ramp events.
+- **Impact:** Inconsistent page for an EVM session until EVM cash management exists (the EVM arms of the custody read and the ramp endpoints are not built — see TD-151/TD-152 for the same shape on loans).
+- **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
+
