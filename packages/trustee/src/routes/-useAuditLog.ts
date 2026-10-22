@@ -8,17 +8,18 @@
 import { useMemo } from "react";
 import { useAuditLog, type AuditLogItem } from "@/api/useAuditLog";
 import { useLoanBook } from "@/api/useLoanBook";
-import { ENV } from "@/lib/env";
+import { loanRowKey } from "@/lib/loanRoute";
+import { targetChainLabel } from "@/lib/targetChains";
 import { formatAuditTimestamp } from "@/utils/formatDate";
 import { toUserError } from "@/utils/userError";
 
 export interface AuditRow {
   key: string;
   time: string;
+  chain: string;
   action: string;
   scopeLabel: string;
   reference: string;
-  referenceFull: string; // full tx hash, for the cell's `title` hover
 }
 
 export type AuditState = "loading" | "error" | "ready";
@@ -30,19 +31,20 @@ export interface UseAuditLogView {
   rows: AuditRow[];
 }
 
-/** Truncate a tx hash to `"<first6>…<last4>"`; leave short strings untouched. */
-export function truncateReference(reference: string): string {
-  if (reference.length <= 12) return reference;
-  return `${reference.slice(0, 6)}…${reference.slice(-4)}`;
+export function formatReference(reference: string): string {
+  return reference.length > 0 ? reference : "—";
 }
 
-/** Friendly loan name when the id is known, else the server fallback label. */
+/** Friendly loan name when `(chain_id, loan_id)` is known, else the server fallback label. */
 export function resolveScopeLabel(
   item: AuditLogItem,
   loanNames: Map<string, string>,
 ): string {
   if (item.scope.loan_id == null) return item.scope.label;
-  return loanNames.get(item.scope.loan_id) ?? item.scope.label;
+  return (
+    loanNames.get(loanRowKey(item.chain_id, item.scope.loan_id)) ??
+    item.scope.label
+  );
 }
 
 export function buildAuditRows(
@@ -50,12 +52,12 @@ export function buildAuditRows(
   loanNames: Map<string, string>,
 ): AuditRow[] {
   return items.map((item, i) => ({
-    key: `${item.timestamp}-${item.reference}-${i}`,
+    key: `${item.chain_id}-${item.timestamp}-${item.event_name}-${i}`,
     time: formatAuditTimestamp(item.timestamp),
+    chain: targetChainLabel(item.chain_id),
     action: item.action,
     scopeLabel: resolveScopeLabel(item, loanNames),
-    reference: truncateReference(item.reference),
-    referenceFull: item.reference,
+    reference: formatReference(item.reference),
   }));
 }
 
@@ -66,8 +68,10 @@ export function useAuditLogView(): UseAuditLogView {
   const loanNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const loan of loanBook.data?.loans ?? []) {
-      if (loan.chain_id !== ENV.STELLAR_CHAIN_ID) continue;
-      map.set(loan.loan_id, `${loan.originator} — ${loan.commodity}`);
+      map.set(
+        loanRowKey(loan.chain_id, loan.loan_id),
+        `${loan.originator} — ${loan.commodity}`,
+      );
     }
     return map;
   }, [loanBook.data]);

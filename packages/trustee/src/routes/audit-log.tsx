@@ -12,11 +12,16 @@ import { InlineError } from "@pipeline/ui";
 
 // Inline `style` (not a Tailwind class) so it always paints under v4 utility ordering.
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
-const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const GRID_TEMPLATE_COLUMNS =
-  "minmax(0,1.1fr) minmax(0,3.6fr) minmax(0,2.2fr) minmax(0,1.4fr)";
+  "minmax(0,1.1fr) 90px minmax(0,3.4fr) minmax(0,2fr) minmax(0,2fr)";
 
-const COLUMN_HEADERS = ["Time", "Action", "Loan / scope", "Reference"] as const;
+const COLUMN_HEADERS = [
+  "Time",
+  "Chain",
+  "Action",
+  "Loan / scope",
+  "Reference",
+] as const;
 
 const HEADER_CELL_CLASS =
   "flex flex-col items-start overflow-hidden px-[14px] pb-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)] whitespace-nowrap text-ellipsis";
@@ -53,6 +58,13 @@ const AuditRowView = memo(function AuditRowView({
       </div>
       <div
         role="cell"
+        data-testid="audit-chain-cell"
+        className={`${BODY_CELL_CLASS} whitespace-nowrap text-[color:var(--color-pipeline-ink)]`}
+      >
+        {row.chain}
+      </div>
+      <div
+        role="cell"
         className={`${BODY_CELL_CLASS} break-words text-[color:var(--color-pipeline-ink)]`}
       >
         {row.action}
@@ -65,9 +77,8 @@ const AuditRowView = memo(function AuditRowView({
       </div>
       <div
         role="cell"
-        title={row.referenceFull}
-        className={`${BODY_CELL_CLASS} text-[14px] leading-[19.6px] whitespace-nowrap text-[color:var(--color-pipeline-ink-muted)]`}
-        style={{ fontFamily: MONO_FONT }}
+        data-testid="audit-reference-cell"
+        className={`${BODY_CELL_CLASS} break-words text-[color:var(--color-pipeline-ink-muted)]`}
       >
         {row.reference}
       </div>
@@ -125,8 +136,9 @@ function AuditCaption() {
       className="pt-[16px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[color:var(--color-pipeline-ink-muted)]"
       data-testid="audit-caption"
     >
-      Append-only, newest first — on-chain loan-lifecycle and yield events
-      appear here as they are indexed.
+      Append-only, newest first, every configured chain — on-chain
+      loan-lifecycle, cash (Minter), collateral and deal-token events appear
+      here as they are indexed.
     </p>
   );
 }

@@ -3,7 +3,7 @@
  *
  * The presenter hook (`useAuditLogView`, which wraps the query layer) is mocked
  * so these exercise the view: heading, the ready-state table (rows rendered
- * exactly as supplied, truncated reference, resolved scope), and the loading /
+ * exactly as supplied, chain label, full loan-name reference, resolved scope), and the loading /
  * error / empty branches.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -40,7 +40,7 @@ describe("Audit Log page", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a row per served item with resolved scope and truncated reference", () => {
+  it("renders a row per served item with its chain, resolved scope and the full loan-name reference (#1599)", () => {
     mockView.mockReturnValue({
       state: "ready",
       errorMessage: null,
@@ -49,20 +49,33 @@ describe("Audit Log page", () => {
         {
           key: "k1",
           time: "24 Jun 07:12",
+          chain: "Hoodi",
           action: "Repayment recorded — principal + final interest",
-          scopeLabel: "Helios Metals — Lithium",
-          reference: "0xabc1…f4d9",
-          referenceFull: "0xabc1234567890def4d9",
+          scopeLabel: "Loan #7",
+          reference: "Open Mineral — Copper Concentrate",
         },
       ],
     });
     renderRoute();
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers).toEqual([
+      "Time",
+      "Chain",
+      "Action",
+      "Loan / scope",
+      "Reference",
+    ]);
     expect(screen.getAllByTestId("audit-row")).toHaveLength(1);
+    expect(screen.getByTestId("audit-chain-cell")).toHaveTextContent("Hoodi");
     expect(
       screen.getByText("Repayment recorded — principal + final interest"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Helios Metals — Lithium")).toBeInTheDocument();
-    expect(screen.getByText("0xabc1…f4d9")).toBeInTheDocument();
+    expect(screen.getByText("Loan #7")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-reference-cell")).toHaveTextContent(
+      "Open Mineral — Copper Concentrate",
+    );
   });
 
   it("shows an empty state when there are no rows", () => {
@@ -105,9 +118,9 @@ describe("Audit Log page", () => {
       key: `k${i}`,
       time: "24 Jun 07:12",
       action: `Action ${i}`,
+      chain: "Stellar",
       scopeLabel: "Protocol",
-      reference: "0xabc1…f4d9",
-      referenceFull: "0xabc1234567890def4d9",
+      reference: "—",
     }));
     mockView.mockReturnValue({
       state: "ready",
