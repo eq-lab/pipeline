@@ -45,9 +45,9 @@ export interface LoanBookSummary {
   total_collateral: string | null;
   /** `total_collateral / Σ senior_tranche`, 2-decimal string. Not rendered on this page. */
   senior_debt_coverage: string | null;
-  /** Principal-weighted senior interest rate, decimal-fraction string. Not rendered on this page. */
+  /** Outstanding-senior-weighted current senior interest rate, decimal-fraction string. Not rendered on this page. */
   avg_yield: string | null;
-  /** Principal-weighted loan term in days. Not rendered on this page. */
+  /** Outstanding-senior-weighted current full term in days. Not rendered on this page. */
   avg_duration_days: number | null;
   /**
    * Σ **outstanding** senior over active loans, USDC base-6 decimal string.
@@ -56,12 +56,12 @@ export interface LoanBookSummary {
    */
   deployed_senior: string;
   /**
-   * Principal-weighted senior interest rate, decimal-fraction string (e.g.
+   * Outstanding-senior-weighted current senior interest rate, decimal-fraction string (e.g.
    * `"0.131000"` = 13.1%). Not an amount; do NOT scale. Backs the
    * **Weighted rate** tile. `null` when no loans are active.
    */
   weighted_rate: string | null;
-  /** Principal-weighted loan term in days, rounded. Backs the **Weighted tenor** tile. */
+  /** Outstanding-senior-weighted current full term in days, rounded. Backs the **Weighted tenor** tile. */
   weighted_tenor_days: number | null;
   /**
    * Σ outstanding senior of at-risk (WatchList/Default) loans, USDC base-6

@@ -42,6 +42,18 @@ pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_timestamp, log_index";
 
+pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
+         (params->>'loan_id')::numeric AS loan_id,
+         event_name,
+         block_timestamp,
+         (params->'event'->>'outstanding')::numeric AS outstanding,
+         (params->'event'->>'new_rate')::bigint AS new_rate
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND event_name = ANY($2)
+       AND block_timestamp <= $3
+     ORDER BY block_timestamp, log_index";
+
 pub const LIST_LATEST_LOAN_SNAPSHOTS_SQL: &str =
     "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
          chain_id,
@@ -214,6 +226,20 @@ fn decode_snapshot_rows(
         });
     }
     Ok(result)
+}
+
+/// One outstanding-changing or rate-changing loan event (`Disbursed`, `Undisbursed`,
+/// `PaymentRecorded`, `PaymentUnrecorded`, `LoanDefaulted`, `LoanWrittenDown`,
+/// `EconomicsAmended`, `LoanRolledOver`). `outstanding` is `params.event.outstanding`
+/// (raw token units, `None` for the rate events); `new_rate` is `params.event.new_rate`
+/// (contract `ONE = 1_000_000` scale, `None` for the outstanding events).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LoanRateEventRow {
+    pub loan_id: BigDecimal,
+    pub event_name: String,
+    pub block_timestamp: i64,
+    pub outstanding: Option<BigDecimal>,
+    pub new_rate: Option<i64>,
 }
 
 /// A loan-end event row fetched from `contract_logs`.
@@ -519,6 +545,27 @@ impl ContractLogsRepo {
             .bind(&event_names)
             .bind(to_unix)
             .bind(contract_address)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Outstanding- and rate-changing loan events for a chain with `block_timestamp <=
+    /// to_unix`, ordered by `(block_timestamp, log_index)`. Backs the `/v1/stats/yield`
+    /// `apy` weighting (see `shared::book_weighting`).
+    pub async fn list_loan_rate_events<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanRateEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
+            .bind(to_unix)
             .fetch_all(executor)
             .await?;
         Ok(rows)
