@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1599 — epic #1521, follow-up to backend #1595
 (PR #1597, merged 2026-10-21). Branch: `feat/1599-trustee-audit-log-all-chains`.
 
+**Status: implemented (2026-10-22)** — all steps done; trustee lint/build/test (73 files, 1041 tests), `lint-docs` and `lint-comments` green. See PR #1606.
+
 Backend contract (`docs/product-specs/audit-logging.md`): `GET /v1/audit-log` — `chain_id`
 optional; omitted = every configured chain merged newest-first; unconfigured id = 200 empty;
 malformed/repeated = 400. Each item carries `chain_id`; `reference` is the friendly loan name
