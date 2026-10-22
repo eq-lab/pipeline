@@ -1219,8 +1219,13 @@ Figma refs: desktop `node-id=3283-14431`, table container `node-id=3283-14552`, 
 The In-Origination tab's submissions table for the Loan Book panel (issue #814, Figma node
 `4116-9155` — the same field set as the trustee Origination page, #813).
 
-Seven columns: Commodity · Facility · Corridor · Rate · Maturity · Submitted · Status (#1104 removed
-the Originator column; `loan_data.originator` keeps being served, just not rendered here).
+Eight columns: Commodity · Chain · Facility · Corridor · Rate · Maturity · Submitted · Status (#1104
+removed the Originator column; `loan_data.originator` keeps being served, just not rendered here).
+**Chain (#1604, no Figma — the #1536 trustee pattern):** the tab lists submissions for every
+target chain while the Active tab follows the dashboard chain, so each row names its
+`target_chain_id` via `targetChainLabel` (`originationRow.ts`): "Stellar" for `ENV.STELLAR_CHAIN_ID`,
+the EVM chain name from `@pipeline/wallet-connect`'s `evmChainInfo` for a known EVM id, `Chain <id>`
+otherwise. Product rule (2026-10-22): a cross-network list shows its chain.
 Rows come pre-formatted from `mapSubmissionToRow` (`originationRow.ts`) via
 `useDeploymentMonitorPanel`.
 

@@ -69,6 +69,7 @@ vi.mock("@/lib/env", () => ({
 const FIXTURE_WITH_APY: StatsResponse = {
   vaults: [
     {
+      chain_id: 560048,
       vault_address: "0xabcdef0000000000000000000000000000000001",
       share_price: "1.05",
       apy: "0.0842",
@@ -79,6 +80,7 @@ const FIXTURE_WITH_APY: StatsResponse = {
 const FIXTURE_NULL_APY: StatsResponse = {
   vaults: [
     {
+      chain_id: 560048,
       vault_address: "0xabcdef0000000000000000000000000000000001",
       share_price: "1.05",
       apy: null,

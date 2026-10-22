@@ -81,6 +81,8 @@ const FIXTURE_LOAN_BOOK: LoanBookResponse = {
   },
   loans: [
     {
+      chain_id: 560048,
+      loan_id: "1",
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
@@ -100,6 +102,9 @@ const MATURITY_120D = ORIGINATION_DATE + 120 * 86_400;
 
 const FIXTURE_SUBMISSIONS: SubmissionView[] = [
   {
+    target_chain_id: 560048,
+    chain_id: null,
+    loan_id: null,
     id: 1,
     status: "InReview",
     reason: null,
@@ -137,6 +142,9 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
     },
   },
   {
+    target_chain_id: 560048,
+    chain_id: null,
+    loan_id: null,
     id: 2,
     status: "ChangesRequested",
     reason: "Docs incomplete",
@@ -260,6 +268,8 @@ describe("useDeploymentMonitorPanel — panel state", () => {
       },
       loans: [
         {
+          chain_id: 560048,
+          loan_id: "1",
           originator: "Open Mineral",
           borrower: "Open Mineral",
           commodity: "Copper Concentrate",

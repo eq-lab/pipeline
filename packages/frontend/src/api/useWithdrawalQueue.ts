@@ -53,6 +53,8 @@ export interface WithdrawalQueueSummary {
 
 /** One row in the withdrawal queue table. */
 export interface WithdrawalQueueItem {
+  /** Chain the request was made on. */
+  chain_id: number;
   /** Withdrawer wallet address (EVM or Stellar). */
   account: string;
   /** Withdrawal amount, USDC — base-6 decimal string (human units). */

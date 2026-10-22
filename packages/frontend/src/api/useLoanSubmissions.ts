@@ -140,6 +140,12 @@ export interface SubmissionView {
   reason: string | null;
   /** The submitter (authenticated address). */
   originator: string;
+  /** Chain the submission is meant to be drawn on (#1529). */
+  target_chain_id: number;
+  /** Chain the linked loan was drawn on; `null` while pre-drawn. */
+  chain_id: number | null;
+  /** On-chain loan id (`uint256`, decimal string) once drawn; `null` before. */
+  loan_id: string | null;
   /** Submission timestamp (RFC 3339). */
   created_at: string;
   /** Last update timestamp (RFC 3339). */

@@ -16,6 +16,8 @@ import {
   formatCompactUsd,
 } from "@/utils/formatCompactUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
+import { evmChainInfo, isKnownEvmChain } from "@pipeline/wallet-connect";
+import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +33,8 @@ export const STATUS_LABELS: Record<OriginationSubmissionStatus, string> = {
 export interface OriginationTableRow {
   id: number;
   commodity: string;
+  /** Target chain label — "Stellar", the EVM chain name, or `Chain <id>` (#1604). */
+  chain: string;
   facility: string;
   corridor: string;
   rate: string;
@@ -47,6 +51,14 @@ export interface OriginationTableRow {
 /** `"—"` for anything not a non-empty string — never fabricates a value. */
 function safeString(value: unknown): string {
   return typeof value === "string" && value.length > 0 ? value : "—";
+}
+
+export function targetChainLabel(chainId: number | null | undefined): string {
+  if (chainId == null) return "—";
+  if (chainId === ENV.STELLAR_CHAIN_ID) return "Stellar";
+  return isKnownEvmChain(chainId)
+    ? evmChainInfo(chainId).name
+    : `Chain ${chainId}`;
 }
 
 /** `"—"` for anything not a finite number. */
@@ -72,6 +84,7 @@ export function mapSubmissionToRow(
   return {
     id: submission.id,
     commodity: safeString(loanData.commodity),
+    chain: targetChainLabel(submission.target_chain_id),
     // Facility scale/formatting — spec: docs/frontend/dashboard-components.md#originationtable
     facility: formatCompactUsd(
       economicsBaseUnitsToUsdDecimal(economics.original_facility_size ?? null),

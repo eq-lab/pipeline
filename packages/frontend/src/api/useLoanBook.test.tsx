@@ -59,6 +59,8 @@ const FIXTURE_WITH_LOANS: LoanBookResponse = {
   },
   loans: [
     {
+      chain_id: 560048,
+      loan_id: "1",
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",

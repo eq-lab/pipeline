@@ -48,6 +48,7 @@ function baseState(
     setActiveTab,
     originationRows: [
       {
+        chain: "Hoodi",
         id: 1,
         commodity: "Alumina",
         facility: "$8.0M",
@@ -102,9 +103,10 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     hookState = baseState({ activeTab: "origination" });
     render(<DeploymentMonitorPanel />);
 
-    // New 8-column header set.
+    // Column set — Chain added by #1604 (the tab lists every target chain).
     for (const header of [
       "Commodity",
+      "Chain",
       "Facility",
       "Corridor",
       "Rate",
@@ -140,24 +142,28 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
       activeTab: "origination",
       originationRows: [
         {
+          chain: "Hoodi",
           ...row,
           id: 1,
           status: "Approved",
           statusLabel: "Approved",
         },
         {
+          chain: "Hoodi",
           ...row,
           id: 2,
           status: "Rejected",
           statusLabel: "Rejected",
         },
         {
+          chain: "Hoodi",
           ...row,
           id: 3,
           status: "InReview",
           statusLabel: "In review",
         },
         {
+          chain: "Hoodi",
           ...row,
           id: 4,
           status: "ChangesRequested",

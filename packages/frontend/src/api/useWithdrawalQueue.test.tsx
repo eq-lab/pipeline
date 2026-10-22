@@ -56,11 +56,13 @@ const FIXTURE_WITH_ITEMS: WithdrawalQueueResponse = {
   },
   items: [
     {
+      chain_id: 560048,
       account: "0x7a3f2b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f3f",
       amount: "620000.000000",
       status: "Completed",
     },
     {
+      chain_id: 560048,
       account: "0xabcdef1234567890abcdef1234567890abcdef12",
       amount: "480000.000000",
       status: "Queued",

@@ -21,6 +21,8 @@ import { apiFetch } from "./client";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface VaultStatsItem {
+  /** Chain the vault is deployed on. */
+  chain_id: number;
   vault_address: string;
   /** Current share price (assets per 1 share). */
   share_price: string;
