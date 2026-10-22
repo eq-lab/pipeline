@@ -69,21 +69,26 @@ out of scope here — visual fidelity is verified separately by the QA agent's F
 
 ---
 
-## Story 4: An attempted submit with an empty password shows its error
+## Story 4: A submit with the form invalid does nothing; errors reveal on blur
 
-**Persona:** LP who submits before filling the password.
+**Rewritten by #1346 (BUG-20).** The former "attempted submit shows the password error" path was
+unreachable in a browser (the only submit button is disabled while the form is invalid, so
+implicit submission is a no-op) and has been removed; sign-in shows no inline password error.
 
-**Pre-conditions:** Sign In modal open, a well-formed email entered, password left empty.
+**Persona:** LP who tries to sign in before the form is valid.
+
+**Pre-conditions:** Sign In modal open, a malformed email typed (`dsfdffs`), password left empty.
 
 **Steps:**
 
-1. Trigger the form's submit (e.g. pressing Enter in the email field).
+1. Press Enter in the email field, then click the "Sign In" button.
+2. Click into the password field, then click back into the email field and tab out of it.
 
 **Expected outcomes:**
 
-- The password field shows the error "Enter the correct password", right-aligned below the
-  field.
-- The "Sign In" submit button remains disabled (the form is still invalid).
+- Step 1: nothing happens — no request, no error text, the "Sign In" button stays disabled.
+- Step 2: leaving the email field reveals "Enter the correct email address" under it; the
+  password field shows no error at any point; the button stays disabled until both fields are valid.
 
 ---
 

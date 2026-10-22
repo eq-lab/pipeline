@@ -26,22 +26,19 @@ export function useResetPasswordForm({
 }: UseResetPasswordFormOptions): UseResetPasswordFormResult {
   const [password, setPassword] = useState("");
   const [passwordTouched, setPasswordTouched] = useState(false);
-  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setPassword("");
       setPasswordTouched(false);
-      setSubmitAttempted(false);
       setIsSubmitting(false);
     }
   }, [open]);
 
   const isValid = meetsPasswordPolicy(password);
 
-  const showPasswordError =
-    ((passwordTouched && password !== "") || submitAttempted) && !isValid;
+  const showPasswordError = passwordTouched && password !== "" && !isValid;
 
   function handlePasswordBlur() {
     setPasswordTouched(true);
@@ -49,7 +46,6 @@ export function useResetPasswordForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitAttempted(true);
     if (!isValid || isSubmitting) return;
 
     const result = onSubmit?.({ password });

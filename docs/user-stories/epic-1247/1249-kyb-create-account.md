@@ -34,24 +34,25 @@ Figma comparison.
 
 ## Story 2: Filling both fields with a well-formed email enables submit
 
-**Superseded by #1281.** Create-account now enforces a password policy (≥8 characters, a digit,
-and a special character) — "any non-empty value" no longer enables submit. See
-[1281-create-account-error.md](./1281-create-account-error.md) Story 5 for the current boundary
-behavior.
+**Superseded by #1281 and #1346.** Create-account shows the password-policy copy ("At least 8
+characters, including a number and a special character"), not "Enter the correct password" —
+that copy no longer exists. The submit-attempt reveal was removed by #1346 (BUG-20): it was never
+reachable in a browser because the submit button is disabled whenever the form is invalid.
 
-**Persona:** LP filling out the create-account form.
+**Persona:** LP who submits before filling the password.
 
-**Pre-conditions:** Create Account modal open, both fields empty.
+**Pre-conditions:** Create Account modal open, a well-formed email entered, password left empty.
 
 **Steps:**
 
-1. Type a well-formed email (e.g. `lp@example.com`) into the email field.
-2. Type any non-empty value into the password field.
+1. Press Enter in the email field, then click into the password field and tab out of it.
 
 **Expected outcomes:**
 
-- The "Sign Up" submit button becomes enabled.
-- No validation error message is shown.
+- Nothing is submitted and no error appears: an empty password shows no inline error (the
+  disabled "Sign Up" button is the only gate); the policy copy appears only once a non-empty
+  password fails the policy and the field is blurred.
+- The "Sign Up" submit button remains disabled (the form is still invalid).
 
 ---
 

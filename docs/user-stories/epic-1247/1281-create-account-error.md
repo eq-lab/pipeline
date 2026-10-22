@@ -6,9 +6,9 @@ Spec: [docs/frontend/auth-components.md](../../frontend/auth-components.md)
 
 This is a presentational modal — no network call. `CreateAccountModal` is reachable only from
 `/test?tab=auth`; it is not wired to any production entry point. These stories exercise the
-**blur** path only — the submit-attempt path is not reachable in a real browser because the
+**blur** path only — the submit-attempt path was never reachable in a real browser because the
 `Sign Up` button is disabled whenever the form is invalid, so implicit form submission is a no-op
-(logged as **BUG-20**, `docs/exec-plans/known-bugs.md`; not fixed here). Styling-only assertions
+(BUG-20, removed as dead code by #1346; blur is now the only reveal by design). Styling-only assertions
 (exact colors, radii) are out of scope — visual fidelity is verified separately by the QA agent's
 Figma comparison against node `6585:75897`.
 

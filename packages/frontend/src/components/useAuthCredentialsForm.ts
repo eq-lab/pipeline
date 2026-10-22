@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const EMAIL_ERROR_MESSAGE = "Enter the correct email address";
-export const PASSWORD_ERROR_MESSAGE = "Enter the correct password";
 export const PASSWORD_POLICY_ERROR_MESSAGE =
   "At least 8 characters, including a number and a special character";
 
@@ -46,7 +45,6 @@ export function useAuthCredentialsForm({
   const [password, setPassword] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
-  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -55,7 +53,6 @@ export function useAuthCredentialsForm({
       setPassword("");
       setEmailTouched(false);
       setPasswordTouched(false);
-      setSubmitAttempted(false);
       setIsSubmitting(false);
     }
   }, [open]);
@@ -67,13 +64,12 @@ export function useAuthCredentialsForm({
       ? meetsPasswordPolicy(password)
       : password !== "");
 
-  const showEmailError =
-    (emailTouched || submitAttempted) && email !== "" && !isEmailWellFormed;
+  const showEmailError = emailTouched && email !== "" && !isEmailWellFormed;
   const showPasswordError =
-    passwordRule === "policy"
-      ? ((passwordTouched && password !== "") || submitAttempted) &&
-        !meetsPasswordPolicy(password)
-      : submitAttempted && password === "";
+    passwordRule === "policy" &&
+    passwordTouched &&
+    password !== "" &&
+    !meetsPasswordPolicy(password);
 
   function handleEmailBlur() {
     setEmailTouched(true);
@@ -85,7 +81,6 @@ export function useAuthCredentialsForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitAttempted(true);
     if (!isValid || isSubmitting) return;
 
     const result = onSubmit?.({ email, password });
@@ -104,9 +99,7 @@ export function useAuthCredentialsForm({
     isSubmitting,
     emailError: showEmailError ? EMAIL_ERROR_MESSAGE : undefined,
     passwordError: showPasswordError
-      ? passwordRule === "policy"
-        ? PASSWORD_POLICY_ERROR_MESSAGE
-        : PASSWORD_ERROR_MESSAGE
+      ? PASSWORD_POLICY_ERROR_MESSAGE
       : undefined,
     handleEmailBlur,
     handlePasswordBlur,

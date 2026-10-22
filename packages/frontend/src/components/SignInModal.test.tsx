@@ -83,20 +83,31 @@ describe("SignInModal (#1248)", () => {
     expect(screen.getByRole("button", { name: "Sign In" })).toBeDisabled();
   });
 
-  it("both error messages render with the exact Figma copy after an invalid submit, and submit stays disabled", () => {
-    renderModal();
+  it("an invalid submit reveals nothing and calls nothing — errors reveal on blur only (#1346)", () => {
+    const onSubmit = vi.fn();
+    renderModal({ onSubmit });
     const form = document.querySelector("form") as HTMLFormElement;
+    const emailInput = screen.getByPlaceholderText("Enter corporate email");
 
-    fireEvent.change(screen.getByPlaceholderText("Enter corporate email"), {
-      target: { value: "dsfdffs" },
-    });
+    fireEvent.change(emailInput, { target: { value: "dsfdffs" } });
     fireEvent.submit(form);
 
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Enter the correct email address"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Enter the correct password"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign In" })).toBeDisabled();
+
+    fireEvent.blur(emailInput);
     expect(
       screen.getByText("Enter the correct email address"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Enter the correct password")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign In" })).toBeDisabled();
+    expect(
+      screen.queryByText("Enter the correct password"),
+    ).not.toBeInTheDocument();
   });
 
   it("blurring an invalid password renders no error (sign-in has no password-complexity rule)", async () => {
@@ -153,11 +164,10 @@ describe("SignInModal (#1248)", () => {
         .parentElement as HTMLElement;
     expect(fieldRow().className).toContain("h-14");
 
-    const form = document.querySelector("form") as HTMLFormElement;
     fireEvent.change(screen.getByPlaceholderText("Enter corporate email"), {
       target: { value: "dsfdffs" },
     });
-    fireEvent.submit(form);
+    fireEvent.blur(screen.getByPlaceholderText("Enter corporate email"));
 
     expect(fieldRow().className).toContain("h-14");
 

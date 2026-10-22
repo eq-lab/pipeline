@@ -26,22 +26,19 @@ export function useForgotPasswordForm({
 }: UseForgotPasswordFormOptions): UseForgotPasswordFormResult {
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
-  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
       setEmail("");
       setEmailTouched(false);
-      setSubmitAttempted(false);
       setIsSubmitting(false);
     }
   }, [open]);
 
   const isValid = email !== "" && EMAIL_PATTERN.test(email);
 
-  const showEmailError =
-    (emailTouched || submitAttempted) && email !== "" && !isValid;
+  const showEmailError = emailTouched && email !== "" && !isValid;
 
   function handleEmailBlur() {
     setEmailTouched(true);
@@ -49,7 +46,6 @@ export function useForgotPasswordForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitAttempted(true);
     if (!isValid || isSubmitting) return;
 
     const result = onSubmit?.({ email });

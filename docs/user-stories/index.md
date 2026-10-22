@@ -193,6 +193,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1371 KYB: account setup and documents](https://github.com/eq-lab/pipeline/issues/1371) | [1371-account-setup-flow.md](./epic-1247/1371-account-setup-flow.md) | Initial |
 | [#1368 Backend: wire SendGrid as the transactional email provider (OTP delivery)](https://github.com/eq-lab/pipeline/issues/1368) | [1368-sendgrid-email-delivery.md](./epic-1247/1368-sendgrid-email-delivery.md) | Initial |
 | [#1572 Account setup modal: uncertain upload never discards the wrong staged file](https://github.com/eq-lab/pipeline/issues/1572) | [1572-company-docs-reconcile.md](./epic-1247/1572-company-docs-reconcile.md) | Initial |
+| [#1346 Auth modals: validation reveals on blur only (BUG-20)](https://github.com/eq-lab/pipeline/issues/1346) | [1346-auth-blur-validation.md](./epic-1247/1346-auth-blur-validation.md) | Initial |
 | [#1373 LP Account page: load and edit profile and documents from LP API](https://github.com/eq-lab/pipeline/issues/1373) | [1373-account-page-lp-api.md](./epic-1247/1373-account-page-lp-api.md) | Initial |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |

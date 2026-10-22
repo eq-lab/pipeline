@@ -87,14 +87,15 @@ describe("CreateAccountModal (#1249)", () => {
     expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
   });
 
-  it("both error messages render with the exact Figma copy after an invalid submit, and submit stays disabled", () => {
+  it("both error messages render with the exact Figma copy on blur, and submit stays disabled", () => {
     renderModal();
-    const form = document.querySelector("form") as HTMLFormElement;
+    const emailInput = screen.getByPlaceholderText("Enter corporate email");
+    const passwordInput = screen.getByPlaceholderText("Password");
 
-    fireEvent.change(screen.getByPlaceholderText("Enter corporate email"), {
-      target: { value: "dsfdffs" },
-    });
-    fireEvent.submit(form);
+    fireEvent.change(emailInput, { target: { value: "dsfdffs" } });
+    fireEvent.blur(emailInput);
+    fireEvent.change(passwordInput, { target: { value: "short" } });
+    fireEvent.blur(passwordInput);
 
     expect(
       screen.getByText("Enter the correct email address"),
@@ -110,22 +111,10 @@ describe("CreateAccountModal (#1249)", () => {
     expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
   });
 
-  it("the old sign-in password copy is never rendered by CreateAccountModal", () => {
-    renderModal();
-    const form = document.querySelector("form") as HTMLFormElement;
-    fireEvent.submit(form);
-
-    expect(screen.queryByText("Enter the correct password")).toBeNull();
-    expect(
-      screen.getByText(
-        "At least 8 characters, including a number and a special character",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("a submit attempt with a valid email and an empty password renders the policy copy and keeps submit disabled", async () => {
+  it("an invalid submit reveals nothing and calls nothing — errors reveal on blur only (#1346)", async () => {
     const user = userEvent.setup();
-    renderModal();
+    const onSubmit = vi.fn();
+    renderModal({ onSubmit });
     await user.type(
       screen.getByPlaceholderText("Enter corporate email"),
       "lp@example.com",
@@ -133,11 +122,25 @@ describe("CreateAccountModal (#1249)", () => {
     const form = document.querySelector("form") as HTMLFormElement;
     fireEvent.submit(form);
 
+    expect(onSubmit).not.toHaveBeenCalled();
     expect(
-      screen.getByText(
+      screen.queryByText(
         "At least 8 characters, including a number and a special character",
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Enter the correct password")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
+  });
+
+  it("an empty password shows no error even after blur — the disabled Sign Up button is the only gate", () => {
+    renderModal();
+    const passwordInput = screen.getByPlaceholderText("Password");
+    fireEvent.blur(passwordInput);
+    expect(
+      screen.queryByText(
+        "At least 8 characters, including a number and a special character",
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign Up" })).toBeDisabled();
   });
 

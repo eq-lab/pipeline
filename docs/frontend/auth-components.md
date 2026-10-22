@@ -196,9 +196,12 @@ shifts the 32px field-to-field rhythm.
 free-mail domains allowed; `CreateAccountModal` diverges — see its own **Validation error**
 section below):
 
-- Email: format-checked against `local@domain.tld` on blur or on submit attempt. No error while
-  the field is empty.
-- Password: only checked for emptiness, and only after a submit attempt.
+- Email: format-checked against `local@domain.tld` on blur. No error while the field is empty.
+- Password: no inline error on sign-in — emptiness is covered by the disabled submit button alone
+  (#1346: the former "Enter the correct password" submit-attempt reveal was unreachable in a
+  browser, because implicit form submission is a no-op while the only submit button is disabled;
+  it was removed rather than made reachable, since the disabled-until-valid button is the designed
+  state).
 - Submit is disabled until the email is non-empty and well-formed **and** the password is
   non-empty — including while showing a validation error, matching the Figma error frame (its
   submit button is also rendered disabled).
@@ -301,9 +304,9 @@ this modal — a signup form has no "correct" password yet):
 > At least 8 characters, including a number and a special character
 
 **Reveal timing** mirrors the email field for repo consistency (not specified by the frame):
-no error while the password field is empty and untouched; the error appears on blur and then
-updates live as the user keeps typing; a submit attempt also reveals it (including for an empty
-password). `isValid` (and therefore the disabled `Sign Up` submit) requires the policy to pass,
+no error while the password field is empty and untouched; the error appears on blur (once the
+field is non-empty) and then updates live as the user keeps typing. There is no submit-attempt
+reveal (#1346 — see Sign In's validation note). `isValid` (and therefore the disabled `Sign Up` submit) requires the policy to pass,
 matching both the error frame (weak password → disabled) and the enabled frame `6486:81640`
 (10-char password → enabled).
 
@@ -431,8 +434,8 @@ heading → field, 32px field → button, 32px button → footer link, 64px belo
 column's `padding-bottom`).
 
 **Validation** — identical rule to `useAuthCredentialsForm`'s email check, reused via the shared
-`EMAIL_PATTERN`/`EMAIL_ERROR_MESSAGE` exports: format-checked on blur or on submit attempt, no
-error while the field is empty, error copy verbatim "Enter the correct email address". All local
+`EMAIL_PATTERN`/`EMAIL_ERROR_MESSAGE` exports: format-checked on blur (no submit-attempt reveal,
+#1346), no error while the field is empty, error copy verbatim "Enter the correct email address". All local
 state (including the submitting flag) resets when the modal reopens.
 
 **Undesigned states are derived, not invented (TD-72).** The enabled submit is the same button
@@ -485,7 +488,7 @@ column, `testId` `reset-password-modal`. One component, three `view`s:
   password `TextField` (`autoComplete="new-password"`, placeholder "New password"), submit "Save new
   password". Validation is the signup policy (`meetsPasswordPolicy`, exported from
   `useAuthCredentialsForm.ts`) with `PASSWORD_POLICY_ERROR_MESSAGE`, shown on blur (once the field
-  is non-empty) or on a submit attempt; submit is disabled until valid and while pending.
+  is non-empty; no submit-attempt reveal, #1346); submit is disabled until valid and while pending.
   `passwordServerError` renders under the field (the backend's `400` text verbatim — the client
   validates first, so this only appears if the two policies disagree); `onPasswordEdit` fires on every
   keystroke so the route can clear it. `formError` is the `role="alert"` body-s line.
