@@ -186,23 +186,24 @@ fn loans_not_yet_originated_are_excluded() {
 }
 
 #[test]
-fn matured_loans_are_excluded() {
-    // At day 150 loan B has matured (ends day 120); only loan A remains.
+fn past_maturity_open_loans_stay_active() {
+    // At day 150 loan B is past its day-120 maturity but still open (#1632): A 100k + B 50k.
     let r = at(150, &fixture_loans(), &[]);
     assert_eq!(
         r.assets.deployed.secured_loans_outstanding,
-        Some("100000.000000".to_owned())
+        Some("150000.000000".to_owned())
     );
 }
 
 #[test]
-fn loan_closed_before_maturity_is_excluded_from_effective_end() {
+fn loan_closed_before_maturity_is_excluded() {
     // Loan A closed on day 90 → excluded at day 100 even though maturity is day 180.
     let events = vec![LifecycleRow {
         chain_id: 1,
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(1_i64),
+        status: None,
     }];
     let r = at(100, &fixture_loans(), &events);
     // Only loan B (day 30–120) active: senior 40k + equity 10k = 50k.
@@ -271,6 +272,7 @@ fn loan_closed_on_one_chain_does_not_end_the_same_loan_id_on_another() {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 10 * DAY,
         loan_id: BigDecimal::from(1_i64),
+        status: None,
     }];
     let r = at(60, &loans, &events);
     assert_eq!(

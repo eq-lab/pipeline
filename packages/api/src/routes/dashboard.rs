@@ -21,7 +21,7 @@
 //! yield and loan-snapshot amounts by chain kind, and `CashRepaid` mints (raw) are
 //! normalised per loan by chain kind exactly like LoanBook's `minted_yield`. Loan data is read through each chain's
 //! LoanRegistry address. Rates (`loan_book_yield`, `current_apy_net_to_splusd`) are
-//! computed over the union of active loans, i.e. principal-weighted across chains. The
+//! computed over the union of active loans, i.e. outstanding-senior-weighted across chains. The
 //! series share one time grid and are summed point-wise; `max`/`min`/`average` come from
 //! the summed step function.
 //!
@@ -40,7 +40,7 @@
 //!
 //! - USDC amounts as base-6 decimal strings (`"43140000.000000"`).
 //! - Rates as decimal-fraction strings (`"0.104000"` = 10.4 %).
-//! - `null` when data unavailable (e.g. no active loans → `current_apy_net_to_splusd`).
+//! - `null` when data unavailable (e.g. no active loans or nothing outstanding → `current_apy_net_to_splusd`).
 //! - `days`/`interval`/`MAX_SAMPLES` cap mirrors `/v1/stats/yield` (`portfolio.rs`).
 
 use std::collections::{BTreeMap, HashMap};
@@ -98,10 +98,10 @@ pub struct DashboardSummaryResponse {
     /// `null` when there are no active loans.
     pub outstanding_in_loans: Option<String>,
     /// Effective-haircut net APY accruing to sPLUSD holders (decimal-fraction string,
-    /// e.g. `"0.104000"` = 10.4 %). `null` when there are no active loans.
+    /// e.g. `"0.104000"` = 10.4 %). `null` when there are no active loans or nothing is outstanding.
     pub current_apy_net_to_splusd: Option<String>,
-    /// Principal-weighted gross senior interest rate (decimal-fraction string, e.g.
-    /// `"0.109000"` = 10.9 %). `null` when there are no active loans.
+    /// Outstanding-senior-weighted gross current senior interest rate (decimal-fraction string, e.g.
+    /// `"0.109000"` = 10.9 %). `null` when there are no active loans or nothing is outstanding.
     pub loan_book_yield: Option<String>,
     /// Cumulative net PLUSD minted to the sPLUSD vault (loan + T-bill legs) since
     /// inception. USDC (6-decimal string).
@@ -543,7 +543,7 @@ pub fn compute_summary(
 /// Effective-haircut net APY accruing to sPLUSD holders.
 ///
 /// ```text
-/// gross_book_rate = loan_book summary.avg_yield (principal-weighted gross senior rate)
+/// gross_book_rate = loan_book summary.avg_yield (outstanding-senior-weighted gross current senior rate)
 /// realized_net    = Σ repayment.senior_interest  (over ALL loans on chain)
 /// realized_gross  = Σ (senior_interest + mgmt_fee + perf_fee)
 /// haircut         = realized_gross > 0 ? realized_net / realized_gross : 1.0

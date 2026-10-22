@@ -30,14 +30,29 @@ pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
     "InterestAdjusted",
 ];
 
+pub const LOAN_STATUS_EVENT_NAMES: &[&str] = &["LoanStatusUpdated", "LoanDefaulted", "LoanClosed"];
+
 pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
          chain_id,
          event_name,
          block_timestamp,
-         (params->>'loan_id')::numeric AS loan_id
+         (params->>'loan_id')::numeric AS loan_id,
+         params->'event'->>'status' AS status
      FROM contract_logs
      WHERE chain_id = $1
        AND contract_address = $4
+       AND event_name = ANY($2)
+       AND block_timestamp <= $3
+     ORDER BY block_timestamp, log_index";
+
+pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
+         (params->>'loan_id')::numeric AS loan_id,
+         event_name,
+         block_timestamp,
+         (params->'event'->>'outstanding')::numeric AS outstanding,
+         (params->'event'->>'new_rate')::bigint AS new_rate
+     FROM contract_logs
+     WHERE chain_id = $1
        AND event_name = ANY($2)
        AND block_timestamp <= $3
      ORDER BY block_timestamp, log_index";
@@ -216,16 +231,30 @@ fn decode_snapshot_rows(
     Ok(result)
 }
 
-/// A loan-end event row fetched from `contract_logs`.
-///
-/// Used by the portfolio yield endpoint to determine each loan's `effective_end`:
-/// `min(scheduled_maturity, earliest LoanClosed / LoanDefaulted block_timestamp)`.
+/// One outstanding-changing or rate-changing loan event (`Disbursed`, `Undisbursed`,
+/// `PaymentRecorded`, `PaymentUnrecorded`, `LoanDefaulted`, `LoanWrittenDown`,
+/// `EconomicsAmended`, `LoanRolledOver`). `outstanding` is `params.event.outstanding`
+/// (raw token units, `None` for the rate events); `new_rate` is `params.event.new_rate`
+/// (contract `ONE = 1_000_000` scale, `None` for the outstanding events).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LoanRateEventRow {
+    pub loan_id: BigDecimal,
+    pub event_name: String,
+    pub block_timestamp: i64,
+    pub outstanding: Option<BigDecimal>,
+    pub new_rate: Option<i64>,
+}
+
+/// A loan status event row (`LoanStatusUpdated`, `LoanDefaulted`, `LoanClosed`) fetched
+/// from `contract_logs`; `status` is `params.event.status`, set only on `LoanStatusUpdated`.
+/// Input of `shared::loan_status::LoanTimeline`.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LifecycleRow {
     pub chain_id: i64,
     pub event_name: String,
     pub block_timestamp: i64,
     pub loan_id: BigDecimal,
+    pub status: Option<String>,
 }
 
 /// One `WithdrawalRequested` event joined to its latest `RequestClaimed` (if any),
@@ -466,7 +495,7 @@ impl ContractLogsRepo {
         Self { pool }
     }
 
-    /// Return all `LoanClosed` and `LoanDefaulted` events for a given `chain_id` with
+    /// Return all `LoanStatusUpdated`, `LoanDefaulted` and `LoanClosed` events for a given `chain_id` with
     /// `block_timestamp <= to_unix`, ordered by `(block_timestamp, log_index)`.
     ///
     /// Generic over `Executor` so callers can run this inside a transaction alongside
@@ -480,13 +509,14 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let event_names = vec!["LoanClosed", "LoanDefaulted"];
+        let event_names = LOAN_STATUS_EVENT_NAMES.to_vec();
         let rows = sqlx::query_as::<_, LifecycleRow>(
             "SELECT
                  chain_id,
                  event_name,
                  block_timestamp,
-                 (params->>'loan_id')::numeric AS loan_id
+                 (params->>'loan_id')::numeric AS loan_id,
+                 params->'event'->>'status' AS status
              FROM contract_logs
              WHERE chain_id = $1
                AND event_name = ANY($2)
@@ -513,12 +543,33 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let event_names = vec!["LoanClosed", "LoanDefaulted"];
+        let event_names = LOAN_STATUS_EVENT_NAMES.to_vec();
         let rows = sqlx::query_as::<_, LifecycleRow>(LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL)
             .bind(chain_id)
             .bind(&event_names)
             .bind(to_unix)
             .bind(contract_address)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Outstanding- and rate-changing loan events for a chain with `block_timestamp <=
+    /// to_unix`, ordered by `(block_timestamp, log_index)`. Backs the `/v1/stats/yield`
+    /// `apy` weighting (see `shared::book_weighting`).
+    pub async fn list_loan_rate_events<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanRateEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
+            .bind(to_unix)
             .fetch_all(executor)
             .await?;
         Ok(rows)

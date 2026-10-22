@@ -23,7 +23,7 @@ Automated coverage is in `packages/api/tests/dashboard_auditlog_chain.rs` (chain
 **Then:**
 
 - Without `chain_id`, `tvl`, `outstanding_in_loans` and `cumulative_yield_total` are the per-chain values (each in base-6 USDC) summed
-- `loan_book_yield` and `current_apy_net_to_splusd` are principal-weighted over the loans of both chains, and `null` when neither chain has an active loan
+- `loan_book_yield` and `current_apy_net_to_splusd` are outstanding-senior-weighted over the loans of both chains, and `null` when neither chain has an active loan with outstanding senior
 - With `chain_id=1`, the values equal chain 1's own
 
 ## Story 2 — Dashboard series share one grid

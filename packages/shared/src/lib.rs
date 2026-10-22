@@ -6,6 +6,7 @@
 pub mod account_repo;
 pub mod auth_user_repo;
 pub mod bitgo;
+pub mod book_weighting;
 pub mod chains;
 pub mod collateral_valuation;
 pub mod collateral_valuation_repo;
@@ -28,6 +29,7 @@ pub mod loan_event_params;
 pub mod loan_fee_schedule_repo;
 pub mod loan_metadata;
 pub mod loan_snapshot;
+pub mod loan_status;
 pub mod log_mapper;
 pub mod login_attempt_repo;
 pub mod lp_bank_deposit_repo;

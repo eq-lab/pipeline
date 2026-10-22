@@ -88,7 +88,7 @@ fn make_loan(
             current_rate: rate_bps,
             closure_reason: "None".to_owned(),
             carved_out: false,
-            disbursed: BigDecimal::from(0_i64),
+            disbursed: usdc(senior_usdc),
             repaid: BigDecimal::from(0_i64),
             written_down: BigDecimal::from(0_i64),
             interest_adjustment: BigDecimal::from(0_i64),

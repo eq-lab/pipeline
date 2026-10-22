@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . && prettier --check .",
     "preview": "vite preview",
-    "test": "TZ=UTC vitest run",
-    "test:watch": "TZ=UTC vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@creit.tech/stellar-wallets-kit": "2.2.0",

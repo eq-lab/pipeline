@@ -188,7 +188,7 @@ fn make_loan(
             current_rate: rate_bps,
             closure_reason: "None".to_owned(),
             carved_out: false,
-            disbursed: BigDecimal::from(0_i64),
+            disbursed: usdc(senior_usdc),
             repaid: BigDecimal::from(0_i64),
             written_down: BigDecimal::from(0_i64),
             interest_adjustment: BigDecimal::from(0_i64),
@@ -495,7 +495,7 @@ fn single_chain_merge_is_the_identity() {
 }
 
 #[test]
-fn summary_rates_are_principal_weighted_across_chains() {
+fn summary_rates_are_outstanding_weighted_across_chains() {
     let loans = vec![
         make_loan(1, 1, 100, 0, 1000, 0, 180),
         make_loan(99_000_001, 1, 300, 0, 2000, 0, 180),

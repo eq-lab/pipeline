@@ -14,7 +14,7 @@ import {
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatCompactUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
-import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
+import { economicsUsdDecimal } from "@/utils/stellarSacUnits";
 import { toUserError } from "@/utils/userError";
 import { targetChainLabel } from "@/lib/targetChains";
 
@@ -114,7 +114,7 @@ export function mapSubmissionToRow(
     chain: targetChainLabel(submission.target_chain_id),
     commodity: safeString(loanData.commodity),
     facility: formatCompactUsd(
-      economicsBaseUnitsToUsdDecimal(economics.original_facility_size),
+      economicsUsdDecimal(economics.original_facility_size),
     ),
     // Figma renders the corridor with an arrow separator ("PE → CN"); the
     // stored value uses a hyphen ("PE-CN"). Same data, design-matching glyph.

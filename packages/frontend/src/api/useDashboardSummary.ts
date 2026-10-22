@@ -46,7 +46,7 @@ export interface DashboardSummary {
    */
   current_apy_net_to_splusd: string | null;
   /**
-   * Principal-weighted gross senior rate — decimal-fraction string.
+   * Outstanding-senior-weighted gross current senior rate — decimal-fraction string.
    * `null` when no active loans.
    */
   loan_book_yield: string | null;

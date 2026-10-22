@@ -5,6 +5,8 @@ import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import runtimeEnv from "vite-plugin-runtime-env";
 import path from "path";
 
+process.env.TZ = "UTC";
+
 export default defineConfig({
   envDir: path.resolve(__dirname, "../.."),
   plugins: [

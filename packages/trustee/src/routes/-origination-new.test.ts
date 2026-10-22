@@ -228,3 +228,40 @@ describe("target chain (#1536)", () => {
     expect(absent.missingFields).not.toContain("target_chain_id");
   });
 });
+
+describe("USDC amount fields (#1620)", () => {
+  function withEconomics(overrides: Record<string, string>) {
+    return { ...completeValues(), ...overrides };
+  }
+
+  it("accepts human-unit USDC with up to 6 decimals and passes the string through unchanged", () => {
+    for (const value of ["1200000.000000", "1200000", "100.5", "0.000001"]) {
+      const built = buildSubmitLoanInput(
+        withEconomics({
+          "economics.original_facility_size": value,
+          "economics.original_senior_tranche": value,
+          "economics.original_equity_tranche": "0",
+          "economics.original_offtaker_price": value,
+        }),
+        [],
+      );
+      expect(built.ok).toBe(true);
+      if (built.ok)
+        expect(built.input.economics.original_facility_size).toBe(value);
+    }
+  });
+
+  it("rejects more than 6 decimals or a non-decimal instead of truncating", () => {
+    for (const value of ["0.1234567", "1,200,000", "$1200000", "abc", "-1"]) {
+      const built = buildSubmitLoanInput(
+        withEconomics({ "economics.original_facility_size": value }),
+        [],
+      );
+      expect(built.ok).toBe(false);
+      if (!built.ok)
+        expect(built.fieldErrors["economics.original_facility_size"]).toMatch(
+          /at most 6 decimals/,
+        );
+    }
+  });
+});

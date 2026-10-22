@@ -38,11 +38,11 @@
  *
  * Economics map (Soroban requires map keys in sorted order — see `scMap`):
  *   - `original_facility_size` / `original_senior_tranche` /
- *     `original_equity_tranche` / `original_offtaker_price`: the API already
- *     serves these at the contract's exact base-unit scale (7-decimal, e.g.
- *     `"8000000000.000000"` = 8,000,000,000 base units = $800.00) — sent to
- *     the contract EXACTLY as provided, no client-side re-scaling (see
- *     `parseUsdcBaseUnitsToU128`, issue #912).
+ *     `original_equity_tranche` / `original_offtaker_price`: human-unit USDC
+ *     decimal strings (e.g. `"1200000.000000"` = $1,200,000), converted to the
+ *     contract's 7-decimal base units exactly — `12_000_000_000_000` — by
+ *     `parseUsdcToU128`; a string with more fractional digits than the scale
+ *     holds is rejected, never truncated (#1620, supersedes the #912 reading).
  *   - `senior_interest_rate_bps` (bps) → contract `senior_interest_rate`
  *     `u32` = `bps × 100` (1000 bps → `100000`).
  *   - `origination_date`, `original_maturity_date`: `u64` pass-through (Unix
@@ -182,26 +182,32 @@ function u64(value: number | bigint): xdr.ScVal {
   return nativeToScVal(BigInt(value), { type: "u64" });
 }
 
+export const STELLAR_USDC_DECIMALS = 7;
+
 /**
- * Parses the API's economics decimal string (e.g. `"8000000000.000000"`) to
- * the exact on-chain `u128` base-unit value `draw_loan`'s economics map
- * expects — NO scaling. The API already serves these at the contract's
- * base-unit scale (7-decimal), so the integer part IS the base-unit value
- * (`"8000000000.000000"` → `8000000000n`, `"10000000000.000000"` →
- * `10000000000n`). The fractional part is always `.000000` for base units —
- * it is truncated, never multiplied in.
+ * Parses a human-unit USDC decimal string (e.g. `"1200000.000000"`) to the
+ * exact on-chain `u128` base-unit value at `decimals` (7 on Stellar SAC):
+ * `"1200000.000000"` → `12_000_000_000_000n`, `"100.5"` → `1_005_000_000n`.
  *
- * @throws if `decimalStr` is not a well-formed non-negative decimal string.
+ * @throws if the string is not a well-formed non-negative decimal, or carries
+ *   more fractional digits than `decimals` can represent (never truncated).
  */
-export function parseUsdcBaseUnitsToU128(decimalStr: string): bigint {
+export function parseUsdcToU128(
+  decimalStr: string,
+  decimals: number = STELLAR_USDC_DECIMALS,
+): bigint {
   const match = /^(\d+)(?:\.(\d*))?$/.exec(decimalStr.trim());
   if (!match) {
+    throw new Error(`parseUsdcToU128: invalid decimal string "${decimalStr}"`);
+  }
+  const [, intPart = "0", fracPart = ""] = match;
+  if (fracPart.length > decimals && /[1-9]/.test(fracPart.slice(decimals))) {
     throw new Error(
-      `parseUsdcBaseUnitsToU128: invalid decimal string "${decimalStr}"`,
+      `parseUsdcToU128: "${decimalStr}" has more than ${decimals} fractional digits`,
     );
   }
-  const [, intPart = "0"] = match;
-  return BigInt(intPart);
+  const frac = fracPart.slice(0, decimals).padEnd(decimals, "0");
+  return BigInt(intPart) * 10n ** BigInt(decimals) + BigInt(frac);
 }
 
 /**
@@ -212,20 +218,20 @@ function encodeEconomicsMap(economics: EconomicsInput): xdr.ScVal {
   return scMap([
     [
       "original_equity_tranche",
-      u128(parseUsdcBaseUnitsToU128(economics.original_equity_tranche)),
+      u128(parseUsdcToU128(economics.original_equity_tranche)),
     ],
     [
       "original_facility_size",
-      u128(parseUsdcBaseUnitsToU128(economics.original_facility_size)),
+      u128(parseUsdcToU128(economics.original_facility_size)),
     ],
     ["original_maturity_date", u64(economics.original_maturity_date)],
     [
       "original_offtaker_price",
-      u128(parseUsdcBaseUnitsToU128(economics.original_offtaker_price)),
+      u128(parseUsdcToU128(economics.original_offtaker_price)),
     ],
     [
       "original_senior_tranche",
-      u128(parseUsdcBaseUnitsToU128(economics.original_senior_tranche)),
+      u128(parseUsdcToU128(economics.original_senior_tranche)),
     ],
     ["origination_date", u64(economics.origination_date)],
     [

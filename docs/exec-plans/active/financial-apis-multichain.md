@@ -62,7 +62,7 @@ _None_
   - `in_queue_usd`, `requests_count` and `estimated_wait_days` are computed over the union.
     `liquid_cover` stays `null`.
 - **financial-position**
-  - `effective_end` matches `e.chain_id == loan.chain_id && e.loan_id == loan.loan_id`.
+  - The loan status timeline matches `e.chain_id == loan.chain_id && e.loan_id == loan.loan_id`.
   - The compute signature is unchanged, and `/v1/dashboard/summary` (single chain) keeps calling
     it as is.
 - **capital-allocation**
@@ -134,7 +134,7 @@ _None_
    - The handler loops over the chains. Each chain is skipped when it has no
      `loan_registry_addresses` entry. Snapshots and lifecycle events come from the
      registry-scoped readers (Open question 2).
-   - `effective_end` becomes chain-aware.
+   - The loan status timeline is chain-aware.
 4. **capital-allocation** (`routes/capital_allocation.rs`)
    - Introduce `pub struct ChainCapitalInputs { chain_id, transfers, addr, asset_decimals,
      withdrawal_queue_balance, capital_transfers }`.
@@ -221,7 +221,7 @@ Pure tests: no DB, no inline `#[cfg(test)]`.
 
 - [x] Part A: `LenientChainFilter::configured`, withdrawal-queue (chain-scoped claim join in
   `LIST_WITHDRAWAL_QUEUE_ROWS_SQL`, `chain_id` on items, tie-break), financial-position and
-  capital-allocation fan-out with registry-scoped readers, chain-aware `effective_end`, per-chain
+  capital-allocation fan-out with registry-scoped readers, chain-aware loan status timeline, per-chain
   `ChainCapitalInputs`.
 - [x] Part B: worker `EvmAssetTracking` config, `add_filtered_event_handler` /
   `fetch_filtered_logs`, `indexer/asset_transfers.rs`, the shared `compute_wallet_balance_field`,

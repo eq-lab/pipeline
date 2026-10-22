@@ -29,6 +29,8 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
+| [book-rate-weighting.md](./book-rate-weighting.md) | Yield Distribution | Outstanding-senior weighting of book rate and tenor across loan book, dashboard and yield series |
+| [loan-status-timeline.md](./loan-status-timeline.md) | Loans | One status-timeline rule for active, at-risk and accrual across loan book, dashboard, financial position, capital allocation and yield series |
 | [withdrawals.md](./withdrawals.md) | Withdrawals | EVM `requestWithdrawal` / `claimWithdrawal` (voucher-gated, FIFO-funded), Treasury redemption; designed attestation queue marked not deployed |
 | [smart-contracts.md](./smart-contracts.md) | Smart Contracts | Overview, governance, contracts table, security considerations, actor glossary |
 | [smart-contracts-interfaces.md](./smart-contracts-interfaces.md) | Smart Contracts | PLUSD, YieldMinter, sPLUSD, WhitelistRegistry interfaces; designed (not deployed) DepositManager and WithdrawalQueue |

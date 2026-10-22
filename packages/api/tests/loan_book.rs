@@ -207,15 +207,15 @@ fn total_deployed_sums_both_tranches_over_active_loans() {
 }
 
 #[test]
-fn avg_yield_is_principal_weighted() {
-    // Day 60: (100k·1200 + 50k·1500) / 150k = 1300 bps → 0.13.
+fn avg_yield_is_outstanding_weighted() {
+    // Day 60 (both fully outstanding, so weights equal tranches): (100k·1200 + 50k·1500) / 150k = 1300 bps → 0.13.
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.avg_yield.as_deref(), Some("0.130000"));
 }
 
 #[test]
-fn avg_duration_is_principal_weighted() {
-    // Day 60: terms A=180d, B=90d. (100k·180 + 50k·90) / 150k = 150.
+fn avg_duration_is_outstanding_weighted() {
+    // Day 60 (outstanding senior 100k / 50k): terms A=180d, B=90d. (100k·180 + 50k·90) / 150k = 150.
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.avg_duration_days, Some(150));
 }
@@ -223,7 +223,7 @@ fn avg_duration_is_principal_weighted() {
 #[test]
 fn weighted_rate_and_tenor_mirror_avg_fields() {
     // The Trustee-facing weighted_rate / weighted_tenor_days carry the same
-    // principal-weighted values as avg_yield / avg_duration_days.
+    // outstanding-weighted values as avg_yield / avg_duration_days.
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.weighted_rate, r.summary.avg_yield);
     assert_eq!(r.summary.weighted_rate.as_deref(), Some("0.130000"));
@@ -322,7 +322,7 @@ fn matured_loan_stays_active_as_past_due() {
 
 #[test]
 fn closed_loan_visible_but_excluded_from_active_aggregates() {
-    // LoanClosed for A at day 100 → effective_end = 100 (the close event).
+    // LoanClosed for A at day 100 → A is Closed from day 100.
     // At day 110: A closed (terminal, still visible), B still active (30–120).
     let mut loans = fixture_loans();
     loans[0] = with_status(loans[0].clone(), "Closed"); // A: Open Mineral
@@ -331,6 +331,7 @@ fn closed_loan_visible_but_excluded_from_active_aggregates() {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 100 * DAY,
         loan_id: BigDecimal::from(1_i64),
+        status: None,
     }];
     let r = at(110, &loans, &events);
     assert_eq!(r.loans.len(), 2);
@@ -478,6 +479,7 @@ fn event(name: &str, loan_id: i64, day: i64) -> LifecycleRow {
         event_name: name.to_owned(),
         block_timestamp: day * DAY,
         loan_id: BigDecimal::from(loan_id),
+        status: None,
     }
 }
 
@@ -493,7 +495,7 @@ fn deployed_senior_sums_senior_tranche_only() {
 #[test]
 fn at_risk_includes_defaulted_loan_excluded_from_active_set() {
     // Loan 3: Default, originated day 0, maturity day 200, LoanDefaulted at day 50.
-    // At day 60 its effective_end = 50 (the default event) → excluded from `active`,
+    // At day 60 its status is Default (since day 50) → excluded from `active`,
     // but it is still an open, at-risk position (no LoanClosed).
     let mut loans = fixture_loans();
     loans.push(with_status(
@@ -1087,7 +1089,7 @@ fn single_chain_output_is_byte_identical() {
         &watchlist,
     );
     let actual = serde_json::to_string(&r).unwrap();
-    let expected = "{\"summary\":{\"total_deployed\":\"230000.000000\",\"total_collateral\":\"165000.000000\",\"senior_debt_coverage\":\"0.89\",\"avg_yield\":\"0.131739\",\"avg_duration_days\":157,\"deployed_senior\":\"185000.000000\",\"weighted_rate\":\"0.131739\",\"weighted_tenor_days\":157,\"at_risk_wl_and_default_senior\":\"55000.000000\",\"at_risk_wl_and_default_pct\":\"0.2973\",\"top_concentration\":{\"commodity\":\"Alumina\",\"share\":\"0.4324\"}},\"loans\":[{\"chain_id\":1,\"loan_id\":\"1\",\"originator\":\"Open Mineral\",\"borrower\":\"borrower-1\",\"commodity\":\"Copper Concentrate\",\"principal\":\"100000.000000\",\"senior_outstanding\":\"80000.000000\",\"original_senior_tranche\":\"80000.000000\",\"maturity\":15552000,\"next_payment_timestamp\":15552000,\"days_overdue\":null,\"spot_price\":\"8500.50\",\"spot_change_7d\":\"0.0123\",\"collateral\":\"125000.000000\",\"ltv\":\"0.8000\",\"ccr_bps\":15625,\"duration_days\":180,\"rate\":\"0.120000\",\"protection\":\"LC at sight\",\"status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"2\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-2\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"3\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-3\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Disbursing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":false,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"4\",\"originator\":\"WatchCo\",\"borrower\":\"borrower-4\",\"commodity\":\"Cocoa\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"25000.000000\",\"original_senior_tranche\":\"25000.000000\",\"maturity\":25920000,\"next_payment_timestamp\":25920000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"40000.000000\",\"ltv\":\"0.7500\",\"ccr_bps\":16000,\"duration_days\":300,\"rate\":\"0.110000\",\"protection\":\"LC at sight\",\"status\":\"WatchList\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":50,\"watchlist_entered_at\":864000},{\"chain_id\":1,\"loan_id\":\"9\",\"originator\":\"ClosedCo\",\"borrower\":\"borrower-9\",\"commodity\":\"Zinc\",\"principal\":\"60000.000000\",\"senior_outstanding\":\"60000.000000\",\"original_senior_tranche\":\"60000.000000\",\"maturity\":8640000,\"next_payment_timestamp\":8640000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":100,\"rate\":\"0.090000\",\"protection\":null,\"status\":\"Closed\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"10\",\"originator\":\"DefaultCo\",\"borrower\":\"borrower-10\",\"commodity\":\"Coffee\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"30000.000000\",\"original_senior_tranche\":\"30000.000000\",\"maturity\":17280000,\"next_payment_timestamp\":17280000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"20000.000000\",\"ltv\":\"1.5000\",\"ccr_bps\":6667,\"duration_days\":200,\"rate\":\"0.100000\",\"protection\":null,\"status\":\"Default\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null}]}";
+    let expected = "{\"summary\":{\"total_deployed\":\"230000.000000\",\"total_collateral\":\"165000.000000\",\"senior_debt_coverage\":\"0.89\",\"avg_yield\":\"0.131622\",\"avg_duration_days\":157,\"deployed_senior\":\"185000.000000\",\"weighted_rate\":\"0.131622\",\"weighted_tenor_days\":157,\"at_risk_wl_and_default_senior\":\"55000.000000\",\"at_risk_wl_and_default_pct\":\"0.2973\",\"top_concentration\":{\"commodity\":\"Alumina\",\"share\":\"0.4324\"}},\"loans\":[{\"chain_id\":1,\"loan_id\":\"1\",\"originator\":\"Open Mineral\",\"borrower\":\"borrower-1\",\"commodity\":\"Copper Concentrate\",\"principal\":\"100000.000000\",\"senior_outstanding\":\"80000.000000\",\"original_senior_tranche\":\"80000.000000\",\"maturity\":15552000,\"next_payment_timestamp\":15552000,\"days_overdue\":null,\"spot_price\":\"8500.50\",\"spot_change_7d\":\"0.0123\",\"collateral\":\"125000.000000\",\"ltv\":\"0.8000\",\"ccr_bps\":15625,\"duration_days\":180,\"rate\":\"0.120000\",\"protection\":\"LC at sight\",\"status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"2\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-2\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Performing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"3\",\"originator\":\"Trafalgar\",\"borrower\":\"borrower-3\",\"commodity\":\"Alumina\",\"principal\":\"50000.000000\",\"senior_outstanding\":\"40000.000000\",\"original_senior_tranche\":\"40000.000000\",\"maturity\":10368000,\"next_payment_timestamp\":10368000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":90,\"rate\":\"0.150000\",\"protection\":null,\"status\":\"Disbursing\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":false,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"4\",\"originator\":\"WatchCo\",\"borrower\":\"borrower-4\",\"commodity\":\"Cocoa\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"25000.000000\",\"original_senior_tranche\":\"25000.000000\",\"maturity\":25920000,\"next_payment_timestamp\":25920000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"40000.000000\",\"ltv\":\"0.7500\",\"ccr_bps\":16000,\"duration_days\":300,\"rate\":\"0.110000\",\"protection\":\"LC at sight\",\"status\":\"WatchList\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":50,\"watchlist_entered_at\":864000},{\"chain_id\":1,\"loan_id\":\"9\",\"originator\":\"ClosedCo\",\"borrower\":\"borrower-9\",\"commodity\":\"Zinc\",\"principal\":\"60000.000000\",\"senior_outstanding\":\"60000.000000\",\"original_senior_tranche\":\"60000.000000\",\"maturity\":8640000,\"next_payment_timestamp\":8640000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":null,\"ltv\":null,\"ccr_bps\":null,\"duration_days\":100,\"rate\":\"0.090000\",\"protection\":null,\"status\":\"Closed\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null},{\"chain_id\":1,\"loan_id\":\"10\",\"originator\":\"DefaultCo\",\"borrower\":\"borrower-10\",\"commodity\":\"Coffee\",\"principal\":\"30000.000000\",\"senior_outstanding\":\"30000.000000\",\"original_senior_tranche\":\"30000.000000\",\"maturity\":17280000,\"next_payment_timestamp\":17280000,\"days_overdue\":null,\"spot_price\":null,\"spot_change_7d\":null,\"collateral\":\"20000.000000\",\"ltv\":\"1.5000\",\"ccr_bps\":6667,\"duration_days\":200,\"rate\":\"0.100000\",\"protection\":null,\"status\":\"Default\",\"documents\":[],\"repaid_to_date\":\"0.000000\",\"disbursed\":true,\"days_on_watchlist\":null,\"watchlist_entered_at\":null}]}";
     assert_eq!(actual, expected);
 }
 
@@ -1263,9 +1265,9 @@ fn union_summary_recomputed() {
     assert_eq!(s.deployed_senior, "150000.000000");
     assert_eq!(s.total_collateral.as_deref(), Some("185000.000000"));
     assert_eq!(s.senior_debt_coverage.as_deref(), Some("1.23"));
-    assert_eq!(s.avg_yield.as_deref(), Some("0.121579"));
+    assert_eq!(s.avg_yield.as_deref(), Some("0.122000"));
     assert_eq!(s.weighted_rate, s.avg_yield);
-    assert_eq!(s.avg_duration_days, Some(137));
+    assert_eq!(s.avg_duration_days, Some(138));
     assert_eq!(s.at_risk_wl_and_default_senior, "30000.000000");
     assert_eq!(s.at_risk_wl_and_default_pct.as_deref(), Some("0.1622"));
     let top = s.top_concentration.as_ref().unwrap();

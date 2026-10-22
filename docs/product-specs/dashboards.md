@@ -60,16 +60,16 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 | Field | Definition | Source |
 |---|---|---|
 | `tvl` | Σ `DepositRequested.amount` − Σ `WithdrawalRequested.amount` (request-side, v1 proxy) | `contract_logs` |
-| `outstanding_in_loans` | Σ (senior + equity tranche) over active loans | `compute_financial_position` |
-| `current_apy_net_to_splusd` | Gross book rate × realized net/gross haircut (see below). `null` when no active loans | derived |
-| `loan_book_yield` | Principal-weighted gross senior rate. `null` when no active loans | `compute_loan_book` |
+| `outstanding_in_loans` | Σ (senior + equity tranche) over active loans (status timeline, [loan-status-timeline.md](./loan-status-timeline.md); same set as `loan_book_yield`) | `compute_financial_position` |
+| `current_apy_net_to_splusd` | Gross book rate × realized net/gross haircut (see below). `null` when no active loans or nothing is outstanding | derived |
+| `loan_book_yield` | Outstanding-senior-weighted gross current senior rate: `Σ(outstanding_senior × current_rate) / Σ outstanding_senior` (see [book-rate-weighting.md](./book-rate-weighting.md)). `null` when no active loans or nothing is outstanding | `compute_loan_book` |
 | `cumulative_yield_total` | Historical Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid` (`interest_minted` + the matching `PaymentRecorded` fee leg `mgmt_fee + perf_fee + oet_alloc`) net of `CashRepaymentReversed` — see Yield source below | `contract_logs` |
 
-**Chain scope (#1595).** `chain_id` is optional on all three endpoints, aggregated the way the financial endpoints are (#1530): omitted = the union over every configured chain; a configured id = that chain only; a well-formed id outside `CHAINS` = `200` with a zeroed summary / empty series and no DB call; malformed or repeated = `400`. There is no `DEFAULT_CHAIN_ID` fallback. Amounts (`tvl`, `outstanding_in_loans`, `cumulative_yield_total`, series points) are base-6 USDC per chain, then summed. The rates (`loan_book_yield`, `current_apy_net_to_splusd`) are computed over the union of active loans, so they are principal-weighted across chains and `null` only when no chain has an active loan. Loan snapshots and lifecycle events are read through each chain's `CHAIN_<id>_<TYPE>_API_LOAN_REGISTRY_ADDRESS`. The LP frontend always sends `chain_id`, so it keeps seeing single-chain numbers.
+**Chain scope (#1595).** `chain_id` is optional on all three endpoints, aggregated the way the financial endpoints are (#1530): omitted = the union over every configured chain; a configured id = that chain only; a well-formed id outside `CHAINS` = `200` with a zeroed summary / empty series and no DB call; malformed or repeated = `400`. There is no `DEFAULT_CHAIN_ID` fallback. Amounts (`tvl`, `outstanding_in_loans`, `cumulative_yield_total`, series points) are base-6 USDC per chain, then summed. The rates (`loan_book_yield`, `current_apy_net_to_splusd`) are computed over the union of active loans, so they are outstanding-senior-weighted across chains and `null` only when no chain has an active loan with outstanding senior. Loan snapshots and lifecycle events are read through each chain's `CHAIN_<id>_<TYPE>_API_LOAN_REGISTRY_ADDRESS`. The LP frontend always sends `chain_id`, so it keeps seeing single-chain numbers.
 
 `target_net_to_splusd` is out of scope — no endpoint serves it, so the frontend keeps a static `"8–12%"` label for the "Target Net to sPLUSD" card (#738 seam).
 
-**`current_apy_net_to_splusd` formula:** `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))`. Sums run over all loans with repayment data; falls back to haircut = 1 (net = gross) when no repayments yet. `null` only when no active loans.
+**`current_apy_net_to_splusd` formula:** `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))`. Sums run over all loans with repayment data; falls back to haircut = 1 (net = gross) when no repayments yet. `null` when no active loans or nothing is outstanding.
 
 **Frontend status (issue #760):** the frontend now consumes all three endpoints. "Current APY Net to sPLUSD" maps to `summary.current_apy_net_to_splusd` (the effective-haircut rate); "Loan Book Yield" maps to `summary.loan_book_yield`. The TVL card replaces the prior "TVL chart — Coming soon" placeholder. The cumulative yield series is backed by `/v1/dashboard/yield-history` (net minted), distinct from the prior `/v1/stats/yield` gross-accrual estimate. The deployment ratio (`outstanding_in_loans / tvl`) is displayed as a progress bar — an approved client-side computation of two backend-served values.
 
@@ -101,7 +101,7 @@ Returns `{ series: [{ timestamp, cumulative_yield }], max, min, average }` (seri
 **Capital Wallet reserves**
 - USDC balance (units and USD value).
 - USYC holding (units and current USD value at issuer's published NAV), shown as a separate line.
-- USDC deployed on active loans (from the trustee feed). `GET /v1/capital-allocation`: `deployed` = Σ senior tranche over loans that are inside the active window **and** Trustee-flagged `is_loan_deployed` (#1027).
+- USDC deployed on active loans (from the trustee feed). `GET /v1/capital-allocation`: `deployed` = Σ senior tranche over loans that are active (originated and Approved / Performing / WatchList, see [loan-status-timeline.md](./loan-status-timeline.md)) **and** Trustee-flagged `is_loan_deployed` (#1027); a past-maturity open loan still counts.
 - USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation` (#1027): `in_transit` = gross Trustee-approved custody↔ramp flow of the tracked asset (both legs, absolute, 6-decimal-normalized) minus the per-loan confirmed transfers (`Σ(on_ramp_transferred + off_ramp_transferred)`); `null` unless custody/ramp sets are configured, **not clamped** — may go negative. `trust_account` = `sum(trust_account_deposit) − sum(trust_account_withdrawal)` over the in-scope chains' Trustee-entered `loan_capital_transfers` records (not clamped — see route module docs). `withdrawal_queue` = the withdrawal-queue wallet's indexed USDC balance (on EVM the WithdrawalQueue's `assetHolder`), `null` unless the wallet is configured. The per-loan records are written via the trustee-only full-upsert `POST /v1/loan-book/{loan_id}/transfers` (read back via `GET` on the same path).
 
 **Liquidity ratio**
@@ -122,8 +122,7 @@ Response: `assets` (`liquid` → `cash_stablecoins`, `tokenized_tbills`, `off_ch
 `deployed` → `secured_loans_outstanding`, `accrued_interest_receivable`), `liabilities`
 (`senior_claims` → `plusd_outstanding`; `subordinated_capital` → `junior_tranche`), each with
 a rolled-up `total`. Amounts are base-6 decimal strings; a field with no source is served as
-`null`. Deployed figures are summed over the active-loan set (same `origination_date ≤ now <
-effective_end` rule as the Loan Book): `secured_loans_outstanding` sums each active loan's
+`null`. Deployed figures are summed over the active-loan set (the same status-timeline rule as the Loan Book, [loan-status-timeline.md](./loan-status-timeline.md); maturity does not end a loan): `secured_loans_outstanding` sums each active loan's
 senior + equity tranche, `accrued_interest_receivable` sums cumulative `senior_interest`
 received (via `PaymentRecorded`), and `junior_tranche` sums the on-chain original equity
 tranche — the total Originator first-loss margin across active loans (authoritative figure
