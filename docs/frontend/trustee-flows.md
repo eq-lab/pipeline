@@ -152,11 +152,20 @@ T-Bills swap forms.
 View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-rules): the tab and
 dialog are JSX-only and read `useWithdrawalQueueView`.
 
-- `useWithdrawalQueue` (`api/`) — React Query hook over `GET /v1/withdrawal-queue`, 30 s poll. A
-  self-contained hand-mirror of the backend shape (TD-42; the trustee app does not depend on
-  `@pipeline/frontend`, whose `useWithdrawalQueue` reads the same endpoint). `in_queue_usd`/`amount`
-  are base-6 decimal strings in human units — format with `@/utils/formatUsd`.
-- `useWithdrawalQueueView` (`-cash-management-withdrawals.ts`) — presenter.
+- `useWithdrawalQueue` (`api/`) — React Query hook over
+  `GET /v1/withdrawal-queue?chain_id=<ENV.STELLAR_CHAIN_ID>`, key `["withdrawal-queue", chainId]`,
+  30 s poll. **Deliberately Stellar-scoped (#1600):** since backend #1586 an omitted `chain_id`
+  means every configured chain, but the rest of Cash Management is Stellar-only (the Capital-Wallet
+  custody balance is a Stellar SAC read, the ramp hooks send the Stellar id, and the tab's top-up is
+  a Stellar Capital-Wallet MPC transfer), so an all-chains "Total claimable" would mix books. The
+  scope is explicit in code, in the UI (a "Stellar" chip beside the tab heading plus the sub-line
+  "Stellar queue only, like the rest of Cash Management") and here; items carry `chain_id`. An EVM
+  queue view lands with EVM cash management. A self-contained hand-mirror of the backend shape
+  (TD-42; the trustee app does not depend on `@pipeline/frontend`, whose `useWithdrawalQueue` reads
+  the same endpoint). `in_queue_usd`/`amount` are base-6 decimal strings in human units — format
+  with `@/utils/formatUsd`.
+- `useWithdrawalQueueView` (`-cash-management-withdrawals.ts`) — presenter; `chainLabel` =
+  `targetChainLabel(ENV.STELLAR_CHAIN_ID)`.
 
 ### Scope — visual-only shell (served vs. `—`)
 

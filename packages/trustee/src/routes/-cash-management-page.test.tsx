@@ -181,6 +181,17 @@ describe("Cash Management route — shell", () => {
 describe("Cash Management route — Withdrawal Queue tab (#945)", () => {
   beforeEach(() => readyEvents());
 
+  it("labels the tab's chain scope as Stellar (#1600)", () => {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
+    expect(
+      screen.getByTestId("cash-management-withdrawals-chain"),
+    ).toHaveTextContent("Stellar");
+    expect(screen.getByTestId("cash-management-withdrawals")).toHaveTextContent(
+      "Stellar queue only",
+    );
+  });
+
   function openWithdrawals() {
     renderRoute();
     fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));

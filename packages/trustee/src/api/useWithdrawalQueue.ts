@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import { ENV } from "@/lib/env";
 
 export interface WithdrawalQueueSummary {
   // `in_queue_usd` = the doc's `totalClaimable`; base-6 decimal string in human
@@ -17,6 +18,7 @@ export interface WithdrawalQueueSummary {
 }
 
 export interface WithdrawalQueueItem {
+  chain_id: number;
   account: string;
   amount: string;
   status: "Queued" | "Completed" | (string & Record<never, never>);
@@ -35,9 +37,13 @@ export interface UseWithdrawalQueueResult {
 }
 
 export function useWithdrawalQueue(): UseWithdrawalQueueResult {
+  const chainId = ENV.STELLAR_CHAIN_ID;
   const query = useQuery<WithdrawalQueueResponse, Error>({
-    queryKey: ["withdrawal-queue"],
-    queryFn: () => apiFetch<WithdrawalQueueResponse>("/v1/withdrawal-queue"),
+    queryKey: ["withdrawal-queue", chainId],
+    queryFn: () =>
+      apiFetch<WithdrawalQueueResponse>(
+        `/v1/withdrawal-queue?chain_id=${chainId}`,
+      ),
     refetchInterval: 30_000,
   });
 

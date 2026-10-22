@@ -34,6 +34,7 @@ describe("useWithdrawalQueueView", () => {
     });
     const v = useWithdrawalQueueView();
     expect(v.state).toBe("ready");
+    expect(v.chainLabel).toBe("Stellar");
     expect(v.totalClaimableDisplay).toBe("$1,200,000");
     expect(v.requestsDisplay).toBe("6");
     // No served source for the wallet balance → never fabricated.
