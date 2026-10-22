@@ -12,6 +12,8 @@
  */
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
+import { ENV } from "@/lib/env";
+import { targetChainLabel } from "@/lib/targetChains";
 import { formatCompactUsd, formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -30,6 +32,8 @@ export interface AllocationLegendRow {
 }
 
 export interface UseCapitalAllocationCardResult {
+  /** The chain the card describes — the session's chain (#1601). */
+  chainLabel: string;
   isLoading: boolean;
   isError: boolean;
   errorMessage: string | null;
@@ -114,8 +118,10 @@ function computeBarFraction(
 }
 
 export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
-  const { data, isLoading, error } = useCapitalAllocation();
-  const { data: onChainCapitalWallet } = useUsdcCustodyBalance();
+  const { chainId, data, isLoading, error } = useCapitalAllocation();
+  const custody = useUsdcCustodyBalance();
+  const onChainCapitalWallet =
+    chainId === ENV.STELLAR_CHAIN_ID ? custody.data : undefined;
 
   const effectiveCapitalWallet =
     data?.buckets.capital_wallet ?? onChainCapitalWallet;
@@ -196,6 +202,7 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
     : null;
 
   return {
+    chainLabel: targetChainLabel(chainId),
     isLoading,
     // Only the backend query's error drives the card-level error surface —
     // a flaky on-chain read degrades just the Capital-Wallet legend value.

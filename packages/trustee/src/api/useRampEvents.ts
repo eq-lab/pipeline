@@ -43,8 +43,9 @@ export interface UseRampEventsResult {
 }
 
 /**
- * Fetches the pending ramp-event review queue for the Stellar chain. Always
- * sends `chain_id=ENV.STELLAR_CHAIN_ID` (the Trustee app is Stellar-scoped).
+ * Fetches the pending ramp-event review queue. Still hardcoded to
+ * `chain_id=ENV.STELLAR_CHAIN_ID` — ramp has no EVM arm yet (TD-153); the
+ * Cash Management page should follow the session chain once it does.
  */
 export function useRampEvents(): UseRampEventsResult {
   const chainId = ENV.STELLAR_CHAIN_ID;

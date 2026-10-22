@@ -28,6 +28,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
 
 function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
   const base: UseCapitalAllocationCardResult = {
+    chainLabel: "Stellar",
     isLoading: false,
     isError: false,
     errorMessage: null,
@@ -619,5 +620,23 @@ describe("CapitalAllocationCard", () => {
       expect(width).toBeGreaterThan(0);
       expect(width).toBeCloseTo((500_000 / 100_500_000) * 100, 5);
     });
+  });
+});
+
+describe("CapitalAllocationCard — chain chip (#1601)", () => {
+  it("shows the chain the card describes beside the title", () => {
+    vi.spyOn(hookModule, "useCapitalAllocationCard").mockReturnValue({
+      chainLabel: "Hoodi",
+      isLoading: false,
+      isError: false,
+      errorMessage: null,
+      errorDetails: null,
+      totalDisplay: "—",
+      legend: [],
+    });
+    render(<CapitalAllocationCard />);
+    expect(screen.getByTestId("capital-allocation-chain")).toHaveTextContent(
+      "Hoodi",
+    );
   });
 });

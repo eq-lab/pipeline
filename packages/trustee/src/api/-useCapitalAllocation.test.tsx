@@ -2,7 +2,7 @@
  * Tests for `src/api/useCapitalAllocation.ts`.
  *
  * Covers:
- *   - The request URL includes chain_id=99000001 (Stellar-scoped).
+ *   - The request URL carries the session's chain_id (Stellar fallback, #1601).
  *   - Success path returns the parsed CapitalAllocation.
  *   - Error path populates `error`.
  *   - refetchInterval is set to 30 s.
@@ -29,8 +29,18 @@ vi.mock("@/lib/env", () => ({
 
 // ── Mock @/auth/sessionStore (apiFetch reads the bearer token from here) ──────
 
+const sessionChain = vi.hoisted(() => ({
+  chainId: 560048 as number | undefined,
+}));
+
 vi.mock("@/auth/sessionStore", () => ({
   getSessionToken: () => "test-token",
+  useSessionState: () => ({
+    status: "authenticated",
+    address: "0xabc",
+    chainId: sessionChain.chainId,
+    error: undefined,
+  }),
 }));
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -87,7 +97,8 @@ afterEach(() => {
 // ── useCapitalAllocation ──────────────────────────────────────────────────────
 
 describe("useCapitalAllocation", () => {
-  it("calls fetch with /v1/capital-allocation and chain_id=99000001", async () => {
+  it("calls fetch with /v1/capital-allocation and the session's chain_id", async () => {
+    sessionChain.chainId = 560048;
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE_FULL), { status: 200 }),
     );
@@ -102,7 +113,27 @@ describe("useCapitalAllocation", () => {
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(url).toContain("/v1/capital-allocation");
+    expect(url).toContain("chain_id=560048");
+    expect(result.current.chainId).toBe(560048);
+  });
+
+  it("falls back to the Stellar chain_id without a session chain", async () => {
+    sessionChain.chainId = undefined;
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(FIXTURE_FULL), { status: 200 }),
+    );
+
+    const { result } = renderHook(() => useCapitalAllocation(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE_FULL);
+    });
+
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
     expect(url).toContain("chain_id=99000001");
+    expect(result.current.chainId).toBe(99_000_001);
   });
 
   it("returns parsed data on success", async () => {

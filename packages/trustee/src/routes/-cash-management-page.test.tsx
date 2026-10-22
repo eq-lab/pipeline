@@ -116,6 +116,7 @@ beforeEach(() => {
     error: null,
   });
   mockUseCapitalAllocation.mockReturnValue({
+    chainId: 99_000_001,
     data: {
       total: null,
       buckets: {

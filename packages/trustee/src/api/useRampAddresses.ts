@@ -1,12 +1,4 @@
-/**
- * React Query hook — the chain's configured on/off-ramp addresses
- * (`GET /v1/ramp/addresses`, issue #943, backend #936). Mirrors `useLoanBook.ts`
- * conventions (queryKey, `apiFetch`, Stellar-scoped `chain_id`).
- *
- * Contract source of truth: `packages/api/src/routes/ramp.rs`,
- * `get_ramp_addresses` — the ramp destination(s) an off-ramp transfer targets
- * (empty when the chain has no custody+ramp address sets configured).
- */
+// spec: docs/frontend/trustee-flows.md#onoff-ramp-tab (ramp addresses; still Stellar-hardcoded, TD-153).
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import { ENV } from "@/lib/env";

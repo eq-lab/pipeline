@@ -10,6 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import { ENV } from "@/lib/env";
+import { useSessionState } from "@/auth/sessionStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ export interface CapitalAllocation {
 }
 
 export interface UseCapitalAllocationResult {
+  /** The chain the breakdown was requested for (the session's chain, #1601). */
+  chainId: number;
   /** Raw response from the API; `undefined` while loading or on error. */
   data: CapitalAllocation | undefined;
   isLoading: boolean;
@@ -54,11 +57,11 @@ export interface UseCapitalAllocationResult {
  * Returns the Capital Allocation breakdown from `GET /v1/capital-allocation`.
  *
  * - Polls every 30 s per the dashboard "Real-time updates" convention.
- * - Always sends `chain_id=ENV.STELLAR_CHAIN_ID` — the Overview page is
- *   Stellar-scoped like the LP Protocol Dashboard.
+ * - Sends the chain the trustee signed in with (#1601; omitted would mean every
+ *   configured chain since #1586, and the card describes one chain's custody).
  */
 export function useCapitalAllocation(): UseCapitalAllocationResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
+  const chainId = useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID;
 
   const query = useQuery<CapitalAllocation, Error>({
     queryKey: ["capital-allocation", chainId],
@@ -74,6 +77,7 @@ export function useCapitalAllocation(): UseCapitalAllocationResult {
   });
 
   return {
+    chainId,
     data: query.data,
     isLoading: query.isLoading,
     error: query.error,

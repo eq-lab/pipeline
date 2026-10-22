@@ -20,6 +20,7 @@ export function CapitalAllocationCard({
   children,
 }: CapitalAllocationCardProps = {}) {
   const {
+    chainLabel,
     isLoading,
     isError,
     errorMessage,
@@ -38,8 +39,16 @@ export function CapitalAllocationCard({
     >
       <div className="flex w-full flex-col gap-4">
         <div className="flex w-full items-baseline justify-between">
-          <span className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]">
-            Capital Allocation
+          <span className="flex items-center gap-[10px]">
+            <span className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]">
+              Capital Allocation
+            </span>
+            <span
+              data-testid="capital-allocation-chain"
+              className="rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[8px] py-[2px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] text-[color:var(--color-pipeline-ink-muted)]"
+            >
+              {chainLabel}
+            </span>
           </span>
         </div>
 
