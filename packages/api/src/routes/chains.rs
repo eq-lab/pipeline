@@ -33,17 +33,21 @@ pub struct ChainItem {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ChainsResponse {
     pub chains: Vec<ChainItem>,
+    pub default_chain_id: i64,
 }
 
-pub fn chains_response(chains: &[ConfiguredChain]) -> ChainsResponse {
-    ChainsResponse {
-        chains: chains
-            .iter()
-            .map(|c| ChainItem {
-                chain_id: c.chain_id,
-                kind: c.kind,
-            })
-            .collect(),
+impl ChainsResponse {
+    pub fn new(chains: &[ConfiguredChain], default_chain_id: i64) -> Self {
+        Self {
+            chains: chains
+                .iter()
+                .map(|c| ChainItem {
+                    chain_id: c.chain_id,
+                    kind: c.kind,
+                })
+                .collect(),
+            default_chain_id,
+        }
     }
 }
 
@@ -51,10 +55,10 @@ pub fn chains_response(chains: &[ConfiguredChain]) -> ChainsResponse {
     get,
     path = "/v1/chains",
     responses(
-        (status = 200, description = "Every chain in `CHAINS`, in `CHAINS` order, with its kind. Public; a `chain_id` absent from this list is not served by the API", body = ChainsResponse),
+        (status = 200, description = "Every chain in `CHAINS`, in `CHAINS` order, with its kind, plus `DEFAULT_CHAIN_ID` (always one of `chains`). Public; a `chain_id` absent from this list is not served by the API", body = ChainsResponse),
     ),
     tag = "Chains"
 )]
 async fn get_chains(State(state): State<Arc<AppState>>) -> Json<ChainsResponse> {
-    Json(chains_response(&state.chains))
+    Json(ChainsResponse::new(&state.chains, state.default_chain_id))
 }

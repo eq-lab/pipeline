@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use pipeline_api::config::ConfiguredChain;
-use pipeline_api::routes::chains::{self, chains_response, ChainsDoc};
+use pipeline_api::routes::chains::{self, ChainsDoc, ChainsResponse};
 use pipeline_api::AppState;
 use serde_json::json;
 use shared::chains::ChainKind;
@@ -99,24 +99,25 @@ fn make_test_state() -> AppState {
 
 #[test]
 fn response_lists_chains_in_given_order_with_kind() {
-    let body = serde_json::to_value(chains_response(&[STELLAR, EVM])).unwrap();
+    let body = serde_json::to_value(ChainsResponse::new(&[STELLAR, EVM], 1)).unwrap();
     assert_eq!(
         body,
         json!({
             "chains": [
                 { "chain_id": 99_000_001, "kind": "stellar" },
                 { "chain_id": 1, "kind": "evm" },
-            ]
+            ],
+            "default_chain_id": 1,
         })
     );
 }
 
 #[test]
 fn response_for_single_chain() {
-    let body = serde_json::to_value(chains_response(&[EVM])).unwrap();
+    let body = serde_json::to_value(ChainsResponse::new(&[EVM], 1)).unwrap();
     assert_eq!(
         body,
-        json!({ "chains": [{ "chain_id": 1, "kind": "evm" }] })
+        json!({ "chains": [{ "chain_id": 1, "kind": "evm" }], "default_chain_id": 1 })
     );
 }
 
@@ -138,7 +139,8 @@ async fn get_chains_without_credentials_returns_configured_chains() {
             "chains": [
                 { "chain_id": 99_000_001, "kind": "stellar" },
                 { "chain_id": 1, "kind": "evm" },
-            ]
+            ],
+            "default_chain_id": 1,
         })
     );
 }
@@ -161,9 +163,8 @@ fn openapi_chain_item_schema() {
     for field in ["chain_id", "kind"] {
         assert!(required.iter().any(|v| v == field), "{field}");
     }
-    assert!(schemas["ChainsResponse"]["required"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|v| v == "chains"));
+    let required = schemas["ChainsResponse"]["required"].as_array().unwrap();
+    for field in ["chains", "default_chain_id"] {
+        assert!(required.iter().any(|v| v == field), "{field}");
+    }
 }

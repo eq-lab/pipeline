@@ -8,9 +8,9 @@
 
 ## Overview
 
-`GET /v1/chains` is a public, unauthenticated endpoint that lists the chains the API serves: every id in `CHAINS`, in `CHAINS` order, each with its kind from `CHAIN_<id>_TYPE`. The response is `{"chains":[{"chain_id":<id>,"kind":"evm"|"stellar"}]}`. It takes no parameters, makes no database call, and exposes no addresses or secrets.
+`GET /v1/chains` is a public, unauthenticated endpoint that lists the chains the API serves: every id in `CHAINS`, in `CHAINS` order, each with its kind from `CHAIN_<id>_TYPE`, plus `DEFAULT_CHAIN_ID`. The response is `{"chains":[{"chain_id":<id>,"kind":"evm"|"stellar"}],"default_chain_id":<id>}`. Both fields come from the same config the `chain_id` extractors validate against, so the list never disagrees with which ids get a `400 unknown chain_id`. It takes no parameters, makes no database call, and exposes no addresses or secrets.
 
-Optional-chain endpoints answer a well-formed but unconfigured `chain_id` with `200` and an empty or zeroed body. This endpoint lets a client tell that case apart from a configured chain with no data, so it can show "not available on this network" (#1605) or hide chains the API does not serve. Backend-only; no Figma reference. No frontend caller yet.
+Optional-chain endpoints answer a well-formed but unconfigured `chain_id` with `200` and an empty or zeroed body. This endpoint lets a client tell that case apart from a configured chain with no data, so it can show "not available on this network" (#1605) or hide chains the API does not serve. Backend-only; no Figma reference. No frontend caller yet: the LP `useChainServed` probe (#1605, TD-154) and the Trustee target-chain options (`lib/targetChains.ts`) are the intended consumers.
 
 Automated coverage is in `packages/api/tests/chains.rs` (response shape and order, unauthenticated `200` through the router, OpenAPI path and schemas).
 
@@ -18,14 +18,15 @@ Automated coverage is in `packages/api/tests/chains.rs` (response shape and orde
 
 ## Story 1 — A client lists the chains the API serves
 
-**Given** the API is configured with `CHAINS=99000001,1`, where `CHAIN_99000001_TYPE=stellar` and chain 1 has no `CHAIN_1_TYPE`
+**Given** the API is configured with `CHAINS=99000001,1` and `DEFAULT_CHAIN_ID=1`, where `CHAIN_99000001_TYPE=stellar` and chain 1 has no `CHAIN_1_TYPE`
 
 **When** `GET /v1/chains` is called with no `Authorization` header
 
 **Then:**
 
-- The response is 200 `{"chains":[{"chain_id":99000001,"kind":"stellar"},{"chain_id":1,"kind":"evm"}]}`
+- The response is 200 `{"chains":[{"chain_id":99000001,"kind":"stellar"},{"chain_id":1,"kind":"evm"}],"default_chain_id":1}`
 - The order follows `CHAINS`, not the numeric chain id
+- `default_chain_id` is `DEFAULT_CHAIN_ID`, not the first entry of `chains`
 - A chain without `CHAIN_<id>_TYPE` is reported as `evm`
 - No database access happens
 
