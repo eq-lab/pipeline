@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1602 — epic #1521, follow-up to #1528–#1531.
 Branch: `feat/1602-trustee-chain-id-400-copy`.
 
+**Status: implemented (2026-10-22)** — all steps done; trustee lint/build/test (74 files, 1058 tests), `lint-docs` and `lint-comments` green. See PR #1616.
+
 ## Scope
 
 `packages/trustee` only.
