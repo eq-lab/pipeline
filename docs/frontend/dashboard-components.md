@@ -1832,8 +1832,15 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 2. **Initial data load** — first load only: chain data / requests API still loading; renders nothing until first resolved (avoids re-hide flicker on background refetches). Not shown again on later background refetches.
 3. **No-XLM banner** (`XlmFundingBanner`, Figma frame `6090-8741`, card node `6093-75787`) — Stellar only, **both directions**, `flow.needsXlmFunding` (see [`wallet-flows.md` § XLM funding rule](./wallet-flows.md#xlm-funding-rule)). "Add funds to your XLM balance / You need XLM to pay the network fee" with a Copy Address action (copies the connected address; label flips to "Copied"). Outranks the USDC-trustline banner because adding a trustline itself requires XLM (#1196, #1130).
 4. **USDC trustline banner** — Stellar deposit, no USDC trustline, no USDC balance. Takes the place of the low-balance banner (same layout) but the action adds the USDC trustline instead of prompting to add funds — the account must hold a USDC trustline before it can hold or deposit USDC on Stellar.
-5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`.
+5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`
+   (balance below the minimum deposit).
 6. Otherwise, the steps card (four-step Stellar or three-step EVM, above).
+
+**Insufficient-balance line (#1628):** independent of the banner, while `flow.exceedsBalance` is true
+(typed amount above the live balance in either direction) an `InlineError` "Insufficient balance"
+renders right-aligned directly under the `ConversionCard`, and every step CTA stays disabled. Max
+fills the exact balance (`formatUsdcInput`); percentages floor in base units — see
+[`wallet-flows.md` § Business rules](./wallet-flows.md#business-rules).
 
 **Toast ids** are scoped per chain+direction so a stale toast from one direction/chain does not collide with a new one:
 
@@ -1868,6 +1875,11 @@ Chain-aware stake/unstake page driving two flows via the `useStakeFlow` adapter,
 - Stellar Unstake tab: 1. Enable PLUSD (`changeTrust` — receiver needs PLUSD trustline) → 2. Confirm and unstake sPLUSD (vault redeem)
 
 Amount is reset on chain switch via the same `prevKindRef` pattern used by `deposit.tsx`.
+
+**Insufficient-balance line (#1628):** while `flow.exceedsBalance` is true (typed amount above the
+active tab's input balance — PLUSD on Stake, sPLUSD on Unstake) an `InlineError` "Insufficient
+balance" renders right-aligned under the `TokenInput` and the step CTAs stay disabled. Max fills
+the exact balance and 25/50/75% floor in base units, so a chip never trips the gate.
 
 **URL contract:** `/stake?tab=unstake` deep-links the Unstake tab (e.g. the home `StakeCard`'s "Unstake" link). The URL only seeds the _initial_ tab — in-page switching is local state, so subsequent tab toggles do not push history entries.
 

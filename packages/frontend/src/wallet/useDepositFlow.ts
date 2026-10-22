@@ -51,7 +51,7 @@ import {
   useStellarWithdrawalVoucher,
 } from "@/api";
 import { ENV } from "@/lib/env";
-import { formatUsdc, formatUsdcCurrencyCompact } from "@/lib/usdc";
+import { formatUsdcCurrencyCompact, formatUsdcInput } from "@/lib/usdc";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -142,6 +142,7 @@ export interface FlowState {
   /** Deposit: balance >= minDeposit.  Withdraw: true when balance loaded. */
   hasBalance: boolean | undefined;
   meetsMin: boolean;
+  exceedsBalance: boolean;
   /** True while the active-direction balance query OR the requests API query is still loading,
    *  or while the wallet is connected but the active balance is still undefined
    *  (e.g. during the addresses-resolver window before the token query becomes enabled). */
@@ -592,7 +593,11 @@ export function useDepositFlow(
     amountBig > 0n &&
     depositAllowance < amountBig;
   const evmDepositMeetsMin =
-    evmMinDeposit !== undefined && amountBig > 0n && amountBig >= evmMinDeposit;
+    evmMinDeposit !== undefined &&
+    evmDepositBalance !== undefined &&
+    amountBig > 0n &&
+    amountBig >= evmMinDeposit &&
+    amountBig <= (evmDepositBalance as bigint);
   const evmCanWithdraw =
     evmWithdrawDecimals !== undefined &&
     evmWithdrawBalance !== undefined &&
@@ -636,7 +641,10 @@ export function useDepositFlow(
   const bothTrustlinesReady = !depositNeedsTrustline && !withdrawNeedsTrustline;
 
   const stellarDepositMeetsMin =
-    amountBig > 0n && amountBig >= STELLAR_MIN_DEPOSIT;
+    stellarUsdcBalanceRaw !== undefined &&
+    amountBig > 0n &&
+    amountBig >= STELLAR_MIN_DEPOSIT &&
+    amountBig <= stellarUsdcBalanceRaw;
   const stellarCanWithdraw =
     stellarPlusdBalanceRaw !== undefined &&
     amountBig > 0n &&
@@ -655,19 +663,14 @@ export function useDepositFlow(
       if (isDeposit) {
         if (evmDepositDecimals === undefined) return;
         if (idx === 0 && evmMinDeposit !== undefined) {
-          setAmountInput(
-            formatUsdc(evmMinDeposit, evmDepositDecimals).replace(/,/g, ""),
-          );
+          setAmountInput(formatUsdcInput(evmMinDeposit, evmDepositDecimals));
           return;
         }
         if (idx === 1) setAmountInput("5000");
         else if (idx === 2) setAmountInput("10000");
         else if (idx === 3 && evmDepositBalance !== undefined) {
           setAmountInput(
-            formatUsdc(evmDepositBalance as bigint, evmDepositDecimals).replace(
-              /,/g,
-              "",
-            ),
+            formatUsdcInput(evmDepositBalance as bigint, evmDepositDecimals),
           );
         }
       } else {
@@ -683,7 +686,7 @@ export function useDepositFlow(
           next = ((evmWithdrawBalance as bigint) * 75n) / 100n;
         else if (idx === 3) next = evmWithdrawBalance as bigint;
         else return;
-        setAmountInput(formatUsdc(next, evmWithdrawDecimals).replace(/,/g, ""));
+        setAmountInput(formatUsdcInput(next, evmWithdrawDecimals));
       }
     },
     [
@@ -701,17 +704,13 @@ export function useDepositFlow(
     (idx: number) => {
       if (isDeposit) {
         if (idx === 0) {
-          setAmountInput(
-            formatUsdc(STELLAR_MIN_DEPOSIT, SAC_DECIMALS).replace(/,/g, ""),
-          );
+          setAmountInput(formatUsdcInput(STELLAR_MIN_DEPOSIT, SAC_DECIMALS));
           return;
         }
         if (idx === 1) setAmountInput("5000");
         else if (idx === 2) setAmountInput("10000");
         else if (idx === 3 && stellarUsdcBalanceRaw !== undefined) {
-          setAmountInput(
-            formatUsdc(stellarUsdcBalanceRaw, SAC_DECIMALS).replace(/,/g, ""),
-          );
+          setAmountInput(formatUsdcInput(stellarUsdcBalanceRaw, SAC_DECIMALS));
         }
       } else {
         if (stellarPlusdBalanceRaw === undefined) return;
@@ -721,7 +720,7 @@ export function useDepositFlow(
         else if (idx === 2) next = (stellarPlusdBalanceRaw * 75n) / 100n;
         else if (idx === 3) next = stellarPlusdBalanceRaw;
         else return;
-        setAmountInput(formatUsdc(next, SAC_DECIMALS).replace(/,/g, ""));
+        setAmountInput(formatUsdcInput(next, SAC_DECIMALS));
       }
     },
     [isDeposit, stellarUsdcBalanceRaw, stellarPlusdBalanceRaw, setAmountInput],
@@ -918,6 +917,10 @@ export function useDepositFlow(
       isReady: isEvmReady,
       hasBalance: evmHasBalance,
       meetsMin: evmMeetsMin,
+      exceedsBalance:
+        evmActiveRequest === null &&
+        evmBalance !== undefined &&
+        amountBig > evmBalance,
       isDataPending: evmIsDataPending,
       isAmountLocked: evmActiveRequest !== null,
       lockedAmountRaw:
@@ -1284,6 +1287,10 @@ export function useDepositFlow(
     isReady: isStellarReady,
     hasBalance: stellarHasBalance,
     meetsMin: stellarMeetsMin,
+    exceedsBalance:
+      !stellarRequestIsConfirmed &&
+      stellarBalance !== undefined &&
+      amountBig > stellarBalance,
     isDataPending: stellarIsDataPending,
     isAmountLocked: stellarRequestIsConfirmed,
     lockedAmountRaw:

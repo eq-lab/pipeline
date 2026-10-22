@@ -7,11 +7,17 @@ import {
   StepsCard,
   Button,
   ErrorDetailsDialog,
+  InlineError,
 } from "@pipeline/ui";
 import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
-import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
+import {
+  parseUsdc,
+  formatUsdc,
+  formatUsdcInput,
+  formatUsdcWhole,
+} from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 import { toUserError } from "@/utils/userError";
 
@@ -131,11 +137,7 @@ function Deposit() {
     if (!flow.isAmountLocked) return;
     if (flow.decimals === undefined) return;
     if (!flow.lockedAmountRaw) return;
-    const formatted = formatUsdc(flow.lockedAmountRaw, flow.decimals).replace(
-      /,/g,
-      "",
-    );
-    setAmountInput(formatted);
+    setAmountInput(formatUsdcInput(flow.lockedAmountRaw, flow.decimals));
   }, [flow.isAmountLocked, flow.lockedAmountRaw, flow.decimals]);
 
   // ── Refetch balance after success ─────────────────────────────────────
@@ -552,6 +554,10 @@ function Deposit() {
           networkFee={flow.networkFee ?? "—"}
           onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
         />
+
+        {flow.exceedsBalance && (
+          <InlineError message="Insufficient balance" className="self-end" />
+        )}
 
         {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
         {!flow.isConnected ? (
