@@ -10,6 +10,8 @@ use std::env;
 
 use anyhow::{Context, Result};
 use bigdecimal::{BigDecimal, RoundingMode};
+use serde::Serialize;
+use utoipa::ToSchema;
 
 // ─── Chain-kind discriminator ─────────────────────────────────────────────────
 
@@ -17,7 +19,8 @@ use bigdecimal::{BigDecimal, RoundingMode};
 ///
 /// EVM is the implicit default when `CHAIN_<id>_TYPE` is unset or set to `"evm"`.
 /// Stellar is set when `CHAIN_<id>_TYPE=stellar`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum ChainKind {
     Evm,
     Stellar,
