@@ -27,6 +27,7 @@ beforeEach(() => mockUseWithdrawalQueue.mockReset());
 describe("useWithdrawalQueueView", () => {
   it("shows served total-claimable and requests; wallet balance is — and no top-up alert", () => {
     mockUseWithdrawalQueue.mockReturnValue({
+      chainId: 99_000_001,
       data: RESPONSE,
       isLoading: false,
       error: null,
@@ -35,6 +36,7 @@ describe("useWithdrawalQueueView", () => {
     const v = useWithdrawalQueueView();
     expect(v.state).toBe("ready");
     expect(v.chainLabel).toBe("Stellar");
+    expect(useWithdrawalQueue).toHaveBeenCalledOnce();
     expect(v.totalClaimableDisplay).toBe("$1,200,000");
     expect(v.requestsDisplay).toBe("6");
     // No served source for the wallet balance → never fabricated.
@@ -45,6 +47,7 @@ describe("useWithdrawalQueueView", () => {
 
   it("reports loading before data arrives", () => {
     mockUseWithdrawalQueue.mockReturnValue({
+      chainId: 99_000_001,
       data: undefined,
       isLoading: true,
       error: null,
@@ -58,6 +61,7 @@ describe("useWithdrawalQueueView", () => {
 
   it("surfaces the friendly error, raw text only in errorDetails (#1037)", () => {
     mockUseWithdrawalQueue.mockReturnValue({
+      chainId: 99_000_001,
       data: undefined,
       isLoading: false,
       error: new Error("boom"),
@@ -67,5 +71,18 @@ describe("useWithdrawalQueueView", () => {
     expect(v.state).toBe("error");
     expect(v.errorMessage).toBe("Failed to load the withdrawal queue.");
     expect(v.errorDetails).toBe("boom");
+  });
+});
+
+describe("useWithdrawalQueueView — session chain (#1600)", () => {
+  it("labels the queue with the chain the trustee signed in with", () => {
+    mockUseWithdrawalQueue.mockReturnValue({
+      chainId: 560048,
+      data: RESPONSE,
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    expect(useWithdrawalQueueView().chainLabel).toBe("Hoodi");
   });
 });

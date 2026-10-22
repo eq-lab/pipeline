@@ -27,6 +27,8 @@ export type SessionStatus =
 export interface SessionState {
   status: SessionStatus;
   address: string | undefined;
+  /** Chain the trustee signed in with (#1600: per-network pages follow it). */
+  chainId: number | undefined;
   /** Human-readable error surfaced on the sign-in card (e.g. "not authorized"). */
   error: string | undefined;
 }
@@ -145,18 +147,25 @@ export function getSessionToken(): string | undefined {
 // stable value when nothing has changed — otherwise it re-renders forever.
 // Cache the last snapshot and only allocate a new object when a field
 // actually changed.
-let cachedSnapshot: SessionState = { status, address: undefined, error };
+let cachedSnapshot: SessionState = {
+  status,
+  address: undefined,
+  chainId: undefined,
+  error,
+};
 
 function computeSnapshot(): SessionState {
   const address = session?.address;
+  const chainId = session?.chainId;
   if (
     cachedSnapshot.status === status &&
     cachedSnapshot.address === address &&
+    cachedSnapshot.chainId === chainId &&
     cachedSnapshot.error === error
   ) {
     return cachedSnapshot;
   }
-  cachedSnapshot = { status, address, error };
+  cachedSnapshot = { status, address, chainId, error };
   return cachedSnapshot;
 }
 
@@ -200,6 +209,7 @@ export function subscribeSession(listener: () => void): () => void {
 const SSR_SNAPSHOT: SessionState = {
   status: "unauthenticated",
   address: undefined,
+  chainId: undefined,
   error: undefined,
 };
 
@@ -218,7 +228,7 @@ export function _resetSessionStoreForTests(): void {
   session = undefined;
   status = "unauthenticated";
   error = undefined;
-  cachedSnapshot = { status, address: undefined, error };
+  cachedSnapshot = { status, address: undefined, chainId: undefined, error };
   listeners.clear();
   writeStorage(undefined);
 }

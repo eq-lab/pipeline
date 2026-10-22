@@ -935,9 +935,9 @@ function WithdrawalQueueSection({
             className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
             style={{ color: INK_MUTED }}
           >
-            {withdrawals.chainLabel} queue only, like the rest of Cash
-            Management. Keep the Withdrawal Queue wallet funded to cover
-            claimable requests; top up from the Capital Wallet.
+            {withdrawals.chainLabel} queue — the network you signed in with.
+            Keep the Withdrawal Queue wallet funded to cover claimable requests;
+            top up from the Capital Wallet.
           </span>
         </div>
         <button

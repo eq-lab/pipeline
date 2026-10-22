@@ -133,6 +133,7 @@ beforeEach(() => {
   });
   mockUseWithdrawalQueue.mockReset();
   mockUseWithdrawalQueue.mockReturnValue({
+    chainId: 99_000_001,
     data: {
       summary: {
         in_queue_usd: "1200000.000000",
@@ -181,15 +182,38 @@ describe("Cash Management route — shell", () => {
 describe("Cash Management route — Withdrawal Queue tab (#945)", () => {
   beforeEach(() => readyEvents());
 
-  it("labels the tab's chain scope as Stellar (#1600)", () => {
+  it("labels the tab with the chain the trustee signed in with (#1600)", () => {
     renderRoute();
     fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
     expect(
       screen.getByTestId("cash-management-withdrawals-chain"),
     ).toHaveTextContent("Stellar");
     expect(screen.getByTestId("cash-management-withdrawals")).toHaveTextContent(
-      "Stellar queue only",
+      "Stellar queue — the network you signed in with",
     );
+  });
+
+  it("follows an EVM session: the chip reads Hoodi (#1600)", () => {
+    mockUseWithdrawalQueue.mockReturnValue({
+      chainId: 560048,
+      data: {
+        summary: {
+          in_queue_usd: "10.000000",
+          requests_count: 1,
+          estimated_wait_days: null,
+          liquid_cover: null,
+        },
+        items: [],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
+    expect(
+      screen.getByTestId("cash-management-withdrawals-chain"),
+    ).toHaveTextContent("Hoodi");
   });
 
   function openWithdrawals() {

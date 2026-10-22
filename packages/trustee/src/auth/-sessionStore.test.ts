@@ -31,6 +31,7 @@ describe("sessionStore — basic get/set", () => {
     expect(getSessionState()).toEqual({
       status: "unauthenticated",
       address: undefined,
+      chainId: undefined,
       error: undefined,
     });
   });

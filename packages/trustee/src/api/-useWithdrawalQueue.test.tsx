@@ -17,8 +17,18 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
+const sessionChain = vi.hoisted(() => ({
+  chainId: 560048 as number | undefined,
+}));
+
 vi.mock("@/auth/sessionStore", () => ({
   getSessionToken: () => "test-token",
+  useSessionState: () => ({
+    status: "authenticated",
+    address: "0xabc",
+    chainId: sessionChain.chainId,
+    error: undefined,
+  }),
 }));
 
 const FIXTURE: WithdrawalQueueResponse = {
@@ -62,7 +72,8 @@ afterEach(() => {
 });
 
 describe("useWithdrawalQueue", () => {
-  it("fetches /v1/withdrawal-queue scoped to the Stellar chain (chain_id=99000001)", async () => {
+  it("fetches /v1/withdrawal-queue scoped to the chain the trustee signed in with", async () => {
+    sessionChain.chainId = 560048;
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE), { status: 200 }),
     );
@@ -76,8 +87,27 @@ describe("useWithdrawalQueue", () => {
     });
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
-    expect(url).toContain("/v1/withdrawal-queue?chain_id=99000001");
+    expect(url).toContain("/v1/withdrawal-queue?chain_id=560048");
+    expect(result.current.chainId).toBe(560048);
     expect(result.current.data?.items[0]?.chain_id).toBe(99_000_001);
+  });
+
+  it("falls back to the Stellar chain when no session chain is known", async () => {
+    sessionChain.chainId = undefined;
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(FIXTURE), { status: 200 }),
+    );
+
+    const { result } = renderHook(() => useWithdrawalQueue(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE);
+    });
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/withdrawal-queue?chain_id=99000001");
+    expect(result.current.chainId).toBe(99_000_001);
   });
 
   it("surfaces a non-2xx response as an error", async () => {
