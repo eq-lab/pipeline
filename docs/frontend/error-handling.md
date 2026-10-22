@@ -256,7 +256,8 @@ full normalized raw text — never truncated — on every branch, matched or not
    | 401 | "Your session has expired or is not authorized. Please sign in again." |
    | 409 | "This submission has already been reviewed. Refresh to see the latest status." |
    | 403 | "You are not authorized to review submissions." |
-   | 400 | "This request was invalid." |
+   | 400, `chain_id` shape (#1602) | "This network isn't enabled on the server. Contact your administrator." |
+   | 400, other | "This request was invalid." |
    | 404 | "That request could not be found. It may have already been processed." |
    | ≥500 | "The service is temporarily unavailable. Please try again." |
 
@@ -264,6 +265,12 @@ full normalized raw text — never truncated — on every branch, matched or not
    shipped for 401/403/409/400 (the origination review endpoint is the only place these were
    empirically observed); 404/5xx are new additions for the other surfaces that can now hit them.
    An unmapped status (e.g. a stray 418) falls through to the caller's `fallback`.
+   **`chain_id` 400s (#1602):** `isChainIdError` matches an `ApiError` 400 whose message starts
+   with `unknown chain_id`, `chain_id is required` or `invalid chain_id` — the three shapes the
+   API returns when a chain is not served (e.g. prod's submission form offering "Ethereum" while
+   the API's `CHAINS` is Stellar-only). The copy names the real cause instead of "invalid request";
+   the raw text stays in `details`. The sign-in flow reuses the same predicate for its own
+   "not supported by the sign-in server" copy (#1568).
 6. **Fallback** (`isSpecific: false`) — the caller-supplied `fallback`, or the generic default.
 
 ### Preserved origination-review copy (D3)
@@ -295,7 +302,9 @@ the other four on-chain hooks sharing `toUserError`.
 validation returning a client error means "this amount doesn't fit the loan's terms" — an
 **expected user-input** case (#916), not a diagnostic failure. That branch returns `details: ""` so
 `InlineError` renders no "View details" trigger — there is nothing to disclose. The non-4xx
-(unexpected) branch keeps its full `details`.
+(unexpected) branch keeps its full `details`. Exception (#1602): a `chain_id` 400 is not an
+amount problem — `mapWaterfallError` delegates it to `toUserError`, so it reads "This network
+isn't enabled on the server…" with the raw text under details.
 
 ## Out of scope (this issue)
 

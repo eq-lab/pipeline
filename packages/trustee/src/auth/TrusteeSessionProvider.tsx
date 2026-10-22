@@ -20,7 +20,7 @@ import {
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 import { getAuthChallenge, postAuthVerify } from "@/api/auth";
-import { ApiError } from "@/api/client";
+import { isChainIdError } from "@/utils/userError";
 import {
   useSessionState,
   setSession,
@@ -55,11 +55,7 @@ const UNSUPPORTED_NETWORK_MESSAGE =
   "This network isn't supported by the sign-in server. Contact your administrator.";
 
 function isUnsupportedNetwork(err: unknown): boolean {
-  return (
-    err instanceof ApiError &&
-    err.status === 400 &&
-    err.message.startsWith("unknown chain_id")
-  );
+  return isChainIdError(err);
 }
 
 function isSignUnsupported(err: unknown): boolean {

@@ -771,8 +771,11 @@ coupon (the common interest-only case) shows no principal-repayment copy at all.
 `mapWaterfallError` never surfaces the raw backend message or numbers. The backend's extended
 waterfall validates the amount against the loan's terms and returns a client error (4xx) when it
 doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding) — mapped to
-"This amount is too high for this loan. Enter a smaller amount." Anything else gets a generic
-retry message. The date input is fixed to today and not editable (#916) — no calendar/date picker.
+"This amount is too high for this loan. Enter a smaller amount." A `chain_id` 400 (the loan's
+chain is not served by the API) is the one 4xx that is **not** an amount problem: it falls
+through to `toUserError`'s "This network isn't enabled on the server…" copy (#1602). Anything else
+gets a generic retry message. The date input is fixed to today and not editable (#916) — no
+calendar/date picker.
 
 ## Mock keys (manual QA)
 

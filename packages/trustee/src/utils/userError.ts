@@ -105,6 +105,21 @@ function isSimulationErrorShape(raw: string): boolean {
 // Seeded with exactly the copy `-useOriginationReview.ts`'s `mapReviewError`
 // already ships (D3) — the only existing trustee-side status-driven mapping.
 
+const CHAIN_ID_ERROR_PATTERN =
+  /^(unknown chain_id|chain_id is required|invalid chain_id)/i;
+
+export const CHAIN_NOT_ENABLED_MESSAGE =
+  "This network isn't enabled on the server. Contact your administrator.";
+
+/** spec: docs/frontend/error-handling.md#trustee-mapping-layer (chain_id 400s, #1602). */
+export function isChainIdError(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    CHAIN_ID_ERROR_PATTERN.test(error.message)
+  );
+}
+
 function matchApiStatus(error: ApiError): string | null {
   switch (error.status) {
     case 401:
@@ -114,7 +129,9 @@ function matchApiStatus(error: ApiError): string | null {
     case 403:
       return "You are not authorized to review submissions.";
     case 400:
-      return "This request was invalid.";
+      return isChainIdError(error)
+        ? CHAIN_NOT_ENABLED_MESSAGE
+        : "This request was invalid.";
     case 404:
       return "That request could not be found. It may have already been processed.";
     default:
@@ -192,6 +209,7 @@ export function toUserError(
  */
 export function mapWaterfallError(error: Error | null): UserFacingError | null {
   if (error == null) return null;
+  if (isChainIdError(error)) return toUserError(error);
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
     return {
       message: "This amount is too high for this loan. Enter a smaller amount.",
