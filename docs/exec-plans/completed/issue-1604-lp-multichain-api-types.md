@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1604 — epic #1521, follow-up to #1550, #1584,
 #1586, #1597. Branch: `feat/1604-lp-multichain-api-types`.
 
+**Status: implemented (2026-10-22)** — all steps done; frontend lint/build/test (154 files, 2460 tests), wallet-connect lint/test, `lint-docs` and `lint-comments` green. See PR #1618.
+
 ## Scope
 
 `packages/frontend` only.
