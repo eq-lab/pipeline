@@ -20,7 +20,17 @@ const mockUseRequests = vi.fn(() => ({
   refetch: mockRefetch,
 }));
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+
 vi.mock("@/api", () => ({
+  useChainServed: () => mockChainServed(),
   useRequests: () => mockUseRequests(),
 }));
 
@@ -934,6 +944,24 @@ describe("Transactions page — disconnected Connect Wallet CTA (#1184)", () => 
     expect(screen.getByTestId("transactions-empty-state")).toBeInTheDocument();
     expect(
       screen.queryByTestId("transactions-connect-wallet-button"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Transactions — active chain not served by the API (#1605)", () => {
+  it("replaces the feed with the not-available notice", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderTransactions();
+    expect(screen.getByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(
+      screen.queryByTestId("transactions-filter-tabs"),
     ).not.toBeInTheDocument();
   });
 });

@@ -69,6 +69,12 @@ export type {
   UseStatsPricesResult,
 } from "./useStatsPrices";
 export { usePnl } from "./usePnl";
+export {
+  useChainServed,
+  isUnknownChainError,
+  chainDisplayName,
+} from "./useChainServed";
+export type { UseChainServedResult } from "./useChainServed";
 export type { PnlResponse, UsePnlResult, VaultPnl } from "./usePnl";
 export { useLoanBook } from "./useLoanBook";
 export type {

@@ -249,6 +249,21 @@ Every protocol-stats API hook (`useStats`, `useDashboardSummary`, `useLoanBook`,
 takes `chainId` from its caller and includes it in its query key; none falls back to a Stellar
 constant. The Protocol Dashboard reads the rule through `useDashboardChain`.
 
+**Chain-served probe (#1605).** The API exposes no configured-chains list, and when the active
+chain is not in its `CHAINS` the optional-chain endpoints answer with real-looking zeros and
+empties (TVL "$0", empty loans, empty feed) while the required-chain ones 400. `useChainServed()`
+(`api/useChainServed.ts`) turns that into one explicit signal: for the EVM view it issues
+`GET /v1/pnl?wallet=0x000…0&chain_id=<id>` once per chain id (`staleTime: Infinity`, `retry:
+false`) — `/v1/pnl` validates `chain_id` before it parses `wallet`, so the zero address is a
+side-effect-free probe; a 200 means served, a `400 unknown chain_id` means not served, any other
+failure counts as served so a flaky probe can never hide a working chain. The Stellar view is
+served by construction and skips the request. `served` is `undefined` while the probe is in
+flight. Consumers (home, `/dashboard`, `/transactions`, `/deposit`, `/stake`, `HomeStatsStrip`)
+render `ChainNotServedNotice` ("Not available on <chain> … Switch your wallet to a supported
+network") instead of their protocol widgets when `served === false`, and keep their loading
+states while it is `undefined`. When a configured-chains endpoint lands, the probe body is the
+only thing to replace.
+
 ## Network switcher (cross-deployment links)
 
 **Source:** `packages/wallet-connect/src/network/links.ts` (shared helpers); per-app glue in
