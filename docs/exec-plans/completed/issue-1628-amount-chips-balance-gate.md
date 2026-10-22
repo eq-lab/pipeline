@@ -3,7 +3,7 @@
 Source: https://github.com/eq-lab/pipeline/issues/1628 — high (reverted tx / silently disabled
 Confirm), found in the 2026-10-22 calculations review. Branch: `fix/1628-amount-chips-balance-gate`.
 
-Status: Completed 2026-10-22 — PR pending (see issue).
+Status: Completed 2026-10-22 — PR #1641.
 
 ## Root cause
 
