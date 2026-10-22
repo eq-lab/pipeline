@@ -173,17 +173,16 @@ export interface UseLoanSubmissionsOptions {
 /**
  * Returns loan submissions (the In Origination pipeline), newest first.
  *
- * - Always enabled — no wallet connection required (public endpoint), same
- *   as `useCapitalAllocation`.
- * - Always sends `chain_id=ENV.STELLAR_CHAIN_ID` — the Trustee app is
- *   Stellar-scoped like the LP Protocol Dashboard.
+ * - Always enabled — no wallet connection required (public endpoint).
+ * - Sends no `chain_id` (#1536): submissions for every configured target
+ *   chain, each carrying `target_chain_id`.
  * - Polls every 30 s per the dashboard "Real-time updates" convention
  *   (`docs/FRONTEND.md`).
  * - Returns all statuses by default; the caller renders each row's `status`.
  * - Optional `status` filter (issue #818): appends `&status=<value>` to the
  *   request URL — a real server-side filter (`packages/api/src/routes/loan_book.rs`'s
  *   `SubmissionsQuery.status`), not a client-side one — and is included in the
- *   query key (`["loan-submissions", chainId, status ?? "all"]`) so filtered
+ *   query key (`["loan-submissions", status ?? "all"]`) so filtered
  *   and unfiltered variants cache independently. Omitting `status` preserves
  *   the pre-#818 behavior exactly.
  */

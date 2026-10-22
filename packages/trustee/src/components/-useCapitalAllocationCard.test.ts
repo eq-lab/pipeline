@@ -27,6 +27,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
 
 function mockCapitalAllocation(overrides: Partial<UseCapitalAllocationResult>) {
   const base: UseCapitalAllocationResult = {
+    chainId: 99_000_001,
     data: undefined,
     isLoading: false,
     error: null,
@@ -619,5 +620,40 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
     expect(barFractionOf(result.current.legend, "deployed")).toBeCloseTo(
       96_000_000 / 104_400_000,
     );
+  });
+});
+
+describe("useCapitalAllocationCard — session chain scope (#1601)", () => {
+  const buckets = {
+    capital_wallet: null,
+    in_transit: null,
+    withdrawal_queue: null,
+    trust_account: null,
+    deployed: "96000000.000000",
+    tbills: null,
+  };
+
+  it("labels the card with the session chain and folds the Stellar custody read in on Stellar", () => {
+    mockCapitalAllocation({
+      chainId: 99_000_001,
+      data: { total: "96000000.000000", buckets },
+    });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
+    const result = useCapitalAllocationCard();
+    expect(result.chainLabel).toBe("Stellar");
+    expect(result.legend[0]!.value).toBe("$8.4M");
+    expect(result.totalDisplay).toBe("$104,400,000");
+  });
+
+  it("does not fold the Stellar custody read into an EVM session's card", () => {
+    mockCapitalAllocation({
+      chainId: 560048,
+      data: { total: "96000000.000000", buckets },
+    });
+    mockUsdcCustodyBalance({ data: "8400000.0000000" });
+    const result = useCapitalAllocationCard();
+    expect(result.chainLabel).toBe("Hoodi");
+    expect(result.legend[0]!.value).toBe("—");
+    expect(result.totalDisplay).toBe("$96,000,000");
   });
 });

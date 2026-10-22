@@ -663,10 +663,6 @@
     "header": 14,
     "nodeIds": 0
   },
-  "packages/trustee/src/api/useRampAddresses.ts": {
-    "header": 9,
-    "nodeIds": 0
-  },
   "packages/trustee/src/auth/-TrusteeSessionProvider.test.tsx": {
     "header": 29,
     "nodeIds": 0

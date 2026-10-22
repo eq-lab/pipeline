@@ -23,6 +23,7 @@ const mockAllocation = vi.mocked(useCapitalAllocation);
 
 function allocation(tbills: string | null) {
   return {
+    chainId: 99_000_001,
     data: {
       total: null,
       buckets: {

@@ -1534,9 +1534,18 @@ Attention section, issue #818, Figma node `4116:9004`).
 
 ### Capital Allocation card — data layer
 
-`useCapitalAllocation` — `GET /v1/capital-allocation`, Stellar-scoped `chain_id` (the EVM chain
-carries malformed test data, #765, so this hook always sends `chain_id` explicitly rather than
-relying on the endpoint's default), 30 s poll. Every bucket and `total` is a base-6 decimal string
+`useCapitalAllocation` — `GET /v1/capital-allocation?chain_id=<session chain>`, key
+`["capital-allocation", chainId]`, 30 s poll. **Scope (#1601): the chain the trustee signed in
+with** (`useSessionState().chainId`, `ENV.STELLAR_CHAIN_ID` only as the no-session fallback).
+Product rule (#1600): a surface that aggregates across networks shows every chain; a per-network
+surface follows the connected chain. The card describes one chain's deployment — Capital Wallet,
+Withdrawal Queue wallet, trust-account residuals, deployed senior and T-Bills are per-chain
+custody — so summing them across chains (what an omitted `chain_id` means since #1586) would blend
+two books into one total and one bar. The Overview therefore mixes scopes on purpose: Needs
+Attention and the loan book are cross-network work queues (#1537), this card is per-network, and a
+chain chip beside the card title (`capital-allocation-chain`) makes that visible. The earlier
+Stellar pin (#765, malformed Hoodi rates) is no longer the reason: readers are LoanRegistry-scoped
+since #1543 and an EVM session reads the EVM allocation by choice. Every bucket and `total` is a base-6 decimal string
 already in human units, or `null` when the backend has no source for that field yet (today only
 `deployed` is indexer-sourced) — render `—` for `null`, never derive a value client-side
 ([[no-frontend-computed-metrics]]).
@@ -1553,6 +1562,10 @@ human-decimal-string shape as the backend buckets so it can feed straight into t
 formatters/summing logic; a misconfigured custody id (pointing at the USDC issuer) surfaces as
 `error` via `getSacBalance`'s own sentinel guard, never a fabricated ~$922B balance. Returns
 `{data: undefined, isLoading: false, error: null}` when unconfigured — no RPC call is made.
+**Scope gate (#1601):** the read is a Stellar SAC balance, so `useCapitalAllocationCard` folds it
+into the Capital Wallet row and the guarded total only when the resolved chain is the Stellar
+chain; for an EVM session the row shows the backend `capital_wallet` bucket or `—` (the EVM
+custody read is TD-153).
 
 **Guarded total (human-approved, #805) — a documented exception to
 [[no-frontend-computed-metrics]]:**
