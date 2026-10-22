@@ -4,6 +4,8 @@ Source: https://github.com/eq-lab/pipeline/issues/1600 — epic #1521, follow-up
 (merged 2026-10-20: `GET /v1/withdrawal-queue` with `chain_id` omitted = every configured chain;
 items carry `chain_id`). Branch: `feat/1600-trustee-withdrawal-queue-chain-scope`.
 
+**Status: implemented (2026-10-22)** — all steps done; trustee lint/build/test (74 files, 1044 tests), `lint-docs` and `lint-comments` green. See PR #1607.
+
 ## Decision — option (a): Stellar-scoped, and say so
 
 The rest of Cash Management is Stellar-only: the Capital-Wallet custody balance is a Stellar SAC
