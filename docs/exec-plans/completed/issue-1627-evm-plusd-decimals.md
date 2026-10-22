@@ -3,7 +3,7 @@
 Source: https://github.com/eq-lab/pipeline/issues/1627 — critical for the EVM launch, found in the
 2026-10-22 calculations review. Branch: `fix/1627-evm-plusd-decimals`.
 
-Status: Completed 2026-10-22 — PR pending (see issue).
+Status: Completed 2026-10-22 — PR #1643.
 
 ## Root cause
 
