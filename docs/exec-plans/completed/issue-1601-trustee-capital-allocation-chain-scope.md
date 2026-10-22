@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1601 — epic #1521, follow-up to backend #1586 /
 #1551. Branch: `feat/1601-trustee-capital-allocation-chain-scope`.
 
+**Status: implemented (2026-10-22)** — all steps done; trustee lint/build/test (74 files, 1051 tests), `lint-docs` and `lint-comments` green. See PR #1615.
+
 ## Decision — per-network: the card follows the chain the trustee signed in with
 
 Product rule (2026-10-22, #1600): a page that aggregates across networks shows every chain; a
