@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1603 — epic #1521. Branch:
 `fix/1603-trustee-waterfall-chain-decimals`.
 
+**Status: implemented (2026-10-22)** — bug confirmed from code and fixed; trustee lint/build/test (74 files, 1060 tests), `lint-docs` and `lint-comments` green. See PR #1617.
+
 ## Verification
 
 Confirmed from the code (2026-10-22): `useRecordCoupon` / `useRecordRepayment` run
