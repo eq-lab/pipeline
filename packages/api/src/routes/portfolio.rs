@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -212,6 +213,14 @@ pub fn compute_series(
     to: i64,
     step: i64,
 ) -> Vec<SamplePoint> {
+    let mut rate_events_by_loan: HashMap<String, Vec<&LoanRateEventRow>> = HashMap::new();
+    for e in rate_events {
+        rate_events_by_loan
+            .entry(e.loan_id.normalized().to_string())
+            .or_default()
+            .push(e);
+    }
+
     // Pre-compute per-loan end_at (earliest LoanClosed / LoanDefaulted, else scheduled).
     let loan_views: Vec<LoanView> = loans
         .iter()
@@ -230,10 +239,10 @@ pub fn compute_series(
                 None => loan.snapshot.original_maturity_date,
             };
 
-            let rate_events = rate_events
-                .iter()
-                .filter(|e| e.loan_id == loan.loan_id)
-                .collect();
+            let rate_events = rate_events_by_loan
+                .get(&loan.loan_id.normalized().to_string())
+                .cloned()
+                .unwrap_or_default();
 
             LoanView {
                 row: loan,

@@ -70,6 +70,7 @@ pub fn bps_to_fraction_string(bps: &BigDecimal) -> String {
 }
 
 /// Outstanding senior of one loan at `t`: the `outstanding` of its latest outstanding event at or before `t`, else 0.
+/// Event `outstanding` is raw on-chain units (7 dp on Stellar, 6 on EVM): valid only for within-one-chain ratios, never sum across chains.
 pub fn outstanding_at(events: &[&LoanRateEventRow], t: i64) -> BigDecimal {
     events
         .iter()

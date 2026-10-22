@@ -40,7 +40,7 @@
 //!
 //! - USDC amounts as base-6 decimal strings (`"43140000.000000"`).
 //! - Rates as decimal-fraction strings (`"0.104000"` = 10.4 %).
-//! - `null` when data unavailable (e.g. no active loans → `current_apy_net_to_splusd`).
+//! - `null` when data unavailable (e.g. no active loans or nothing outstanding → `current_apy_net_to_splusd`).
 //! - `days`/`interval`/`MAX_SAMPLES` cap mirrors `/v1/stats/yield` (`portfolio.rs`).
 
 use std::collections::{BTreeMap, HashMap};
@@ -98,7 +98,7 @@ pub struct DashboardSummaryResponse {
     /// `null` when there are no active loans.
     pub outstanding_in_loans: Option<String>,
     /// Effective-haircut net APY accruing to sPLUSD holders (decimal-fraction string,
-    /// e.g. `"0.104000"` = 10.4 %). `null` when there are no active loans.
+    /// e.g. `"0.104000"` = 10.4 %). `null` when there are no active loans or nothing is outstanding.
     pub current_apy_net_to_splusd: Option<String>,
     /// Outstanding-senior-weighted gross current senior interest rate (decimal-fraction string, e.g.
     /// `"0.109000"` = 10.9 %). `null` when there are no active loans or nothing is outstanding.

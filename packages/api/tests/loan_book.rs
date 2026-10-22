@@ -208,14 +208,14 @@ fn total_deployed_sums_both_tranches_over_active_loans() {
 
 #[test]
 fn avg_yield_is_outstanding_weighted() {
-    // Day 60: (100k·1200 + 50k·1500) / 150k = 1300 bps → 0.13.
+    // Day 60 (both fully outstanding, so weights equal tranches): (100k·1200 + 50k·1500) / 150k = 1300 bps → 0.13.
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.avg_yield.as_deref(), Some("0.130000"));
 }
 
 #[test]
 fn avg_duration_is_outstanding_weighted() {
-    // Day 60: terms A=180d, B=90d. (100k·180 + 50k·90) / 150k = 150.
+    // Day 60 (outstanding senior 100k / 50k): terms A=180d, B=90d. (100k·180 + 50k·90) / 150k = 150.
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.avg_duration_days, Some(150));
 }

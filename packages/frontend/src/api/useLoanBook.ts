@@ -46,12 +46,12 @@ export interface LoanBookSummary {
    */
   senior_debt_coverage: string | null;
   /**
-   * Principal-weighted yield — decimal-fraction string (e.g. `"0.112000"` = 11.2%).
+   * Outstanding-senior-weighted current rate — decimal-fraction string (e.g. `"0.112000"` = 11.2%).
    * `null` when no active loans exist.
    */
   avg_yield: string | null;
   /**
-   * Principal-weighted average loan term in days.
+   * Outstanding-senior-weighted current full term in days.
    * `null` when no active loans exist.
    */
   avg_duration_days: number | null;
