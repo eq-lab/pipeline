@@ -80,8 +80,7 @@ const REPRESENTATIVE_SPLUSD = "1000"; // 1000 sPLUSD (for unstake/redeem)
 
 /**
  * USDC uses 6 decimals (stable across all deployments).
- * PLUSD also uses 6 decimals — confirmed from existing test mocks (18 decimals
- * are used for the mock test harness, but real PLUSD is 6). We read decimals
+ * PLUSD also uses 6 decimals (PipelineUSD.sol, #1627). We read decimals
  * from the token contract at call time when needed; for the representative-amount
  * path we always parse as 6 decimals (same as useToken.ts default).
  *

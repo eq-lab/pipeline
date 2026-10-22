@@ -44,7 +44,7 @@ export interface RequestItem {
   chain_id: number;
   /** Omitted for Stake / Unstake */
   request_id?: string;
-  /** Raw bigint string: USDC = 6 dp for Deposit/Withdraw; PLUSD = 18 dp for Stake/Unstake */
+  /** Raw bigint string at the token's decimals: USDC for Deposit/Withdraw, PLUSD for Stake/Unstake (6 on EVM, 7 on Stellar) */
   amount: string;
   /** Stake/Unstake only */
   assets?: string;

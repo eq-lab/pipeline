@@ -42,13 +42,13 @@ const WALLET_CONNECTED_BASE: Record<string, string> = {
   [`pipeline.mock.wallet.contract.${USDC_ADDRESS}.decimals`]: "6",
   [`pipeline.mock.wallet.contract.${USDC_ADDRESS}.symbol`]: "USDC",
   // PLUSD token metadata (needed by useToken + useApproval on /withdraw and /stake)
-  [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.decimals`]: "18",
+  [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.decimals`]: "6",
   [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.symbol`]: "PLUSD",
   // StakedPLUSD named alias — resolves PLUSD address from the vault's asset()
   // so useStakedPlusdAsset() returns the PLUSD address on /stake.
   "pipeline.mock.wallet.contract.stakedPlusd.asset": PLUSD_ADDRESS,
   // sPLUSD ERC-20 metadata (the share token)
-  [`pipeline.mock.wallet.contract.${SPLUSD_ADDRESS}.decimals`]: "18",
+  [`pipeline.mock.wallet.contract.${SPLUSD_ADDRESS}.decimals`]: "6",
   [`pipeline.mock.wallet.contract.${SPLUSD_ADDRESS}.symbol`]: "sPLUSD",
 };
 
@@ -270,9 +270,9 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           {
             type: "Stake",
             chain_id: 560048,
-            amount: "1000000000000000000000",
-            assets: "1000000000000000000000",
-            shares: "999500000000000000000",
+            amount: "1000000000",
+            assets: "1000000000",
+            shares: "999500000",
             request_id: "22",
             status: "Completed",
             created_at: "2026-05-13T18:00:00Z",
@@ -280,9 +280,9 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           {
             type: "Unstake",
             chain_id: 560048,
-            amount: "500000000000000000000",
-            assets: "500000000000000000000",
-            shares: "499750000000000000000",
+            amount: "500000000",
+            assets: "500000000",
+            shares: "499750000",
             request_id: "23",
             status: "Completed",
             created_at: "2026-05-12T08:00:00Z",
@@ -308,16 +308,15 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "Withdrawal verification passed; a claim voucher is available. Step 3 is enabled on /withdraw.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000", // 100 PLUSD at 18 decimals
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000", // 100 PLUSD at 6 decimals
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
-        "1000000000000000000000", // 1000 PLUSD allowance
+        "1000000000", // 1000 PLUSD allowance
       "pipeline.mock.api.GET./v1/requests": JSON.stringify({
         requests: [
           {
             type: "Withdraw",
             chain_id: 560048,
-            amount: "10000000000000000000", // 10 PLUSD at 18 decimals
+            amount: "10000000", // 10 PLUSD at 6 decimals
             request_id: "77",
             status: "PendingClaim",
             created_at: new Date().toISOString(),
@@ -326,7 +325,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       }),
       "pipeline.mock.api.GET./v1/withdrawals/77/voucher": JSON.stringify({
         request_id: "77",
-        amount: "10000000000000000000",
+        amount: "10000000",
         user: WALLET_ADDRESS,
         signature:
           "0xaabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd001122330011",
@@ -334,7 +333,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal":
         JSON.stringify({
           hash: "0xc1a100000000000000000000000000000000000000000000000000000000c1a1",
-          amount: "10000000000000000000",
+          amount: "10000000",
         }),
     },
   },
@@ -360,8 +359,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "PLUSD balance present but no WQ allowance. Approve is the live action on /deposit?direction=withdraw.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000", // 100 PLUSD
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]: "0",
     },
   },
@@ -374,10 +372,9 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "PLUSD balance and WQ allowance are sufficient. Confirm is the live action on /deposit?direction=withdraw. Clicking Confirm settles synchronously via the requestWithdrawal mock.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000", // 100 PLUSD
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
-        "1000000000000000000000", // 1000 PLUSD
+        "1000000000", // 1000 PLUSD
       "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal":
         JSON.stringify({
           hash: "0xab000000000000000000000000000000000000000000000000000000000000ab",
@@ -395,16 +392,15 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "A withdrawal is submitted and awaiting verifier review on /deposit?direction=withdraw.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000",
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000",
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
-        "1000000000000000000000",
+        "1000000000",
       "pipeline.mock.api.GET./v1/requests": JSON.stringify({
         requests: [
           {
             type: "Withdraw",
             chain_id: 560048,
-            amount: "10000000000000000000",
+            amount: "10000000",
             request_id: "77",
             status: "PendingVerification",
             created_at: new Date().toISOString(),
@@ -422,16 +418,15 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "Withdraw verification failed. The withdrawal input is still editable on /deposit?direction=withdraw.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000",
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000",
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
-        "1000000000000000000000",
+        "1000000000",
       "pipeline.mock.api.GET./v1/requests": JSON.stringify({
         requests: [
           {
             type: "Withdraw",
             chain_id: 560048,
-            amount: "10000000000000000000",
+            amount: "10000000",
             request_id: "77",
             status: "VerificationFailed",
             created_at: new Date().toISOString(),
@@ -449,8 +444,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "PLUSD balance present; no approval to the sPLUSD vault yet. Approve is the live action on /stake → Stake tab.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000", // 100 PLUSD
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${SPLUSD_ADDRESS}`]:
         "0",
       [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
@@ -471,10 +465,9 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "Allowance ≥ amount. Stake is the live action on /stake → Stake tab; clicking settles via the mock stake key.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000",
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000",
       [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${SPLUSD_ADDRESS}`]:
-        "1000000000000000000000",
+        "1000000000",
       [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
       "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
         "959600000000000000",
@@ -482,7 +475,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         "1042100000000000000",
       "pipeline.mock.wallet.contract.stakedPlusd.stake": JSON.stringify({
         hash: "0xabc1000000000000000000000000000000000000000000000000000000000abc",
-        shares: "9596000000000000000",
+        shares: "9596000",
       }),
     },
   },
@@ -496,15 +489,14 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     keys: {
       ...WALLET_CONNECTED_BASE,
       [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "0",
-      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]:
-        "50000000000000000000", // 50 sPLUSD
+      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "50000000", // 50 sPLUSD
       "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
         "959600000000000000",
       "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets":
         "1042100000000000000",
       "pipeline.mock.wallet.contract.stakedPlusd.unstake": JSON.stringify({
         hash: "0xde110000000000000000000000000000000000000000000000000000000000de",
-        assets: "52105000000000000000",
+        assets: "52105000",
       }),
     },
   },
@@ -535,8 +527,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
       "PLUSD balance is actionable; sPLUSD balance is zero. Stake tab is live; Unstake tab shows empty state with disabled CTA on /stake.",
     keys: {
       ...WALLET_CONNECTED_BASE,
-      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
-        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "100000000", // 100 PLUSD
       [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
       "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
         "959600000000000000",

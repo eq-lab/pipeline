@@ -557,10 +557,11 @@ when the field is null (never a hardcoded value; the strip previously shipped th
 
 **Active chain (#1498).** The strip reads `useActiveChain()` (connected wallet's chain, else
 Stellar — see [`wallet-flows.md`](./wallet-flows.md#active-chain-for-protocol-reads)). The exchange
-rate is the EVM `useStakedPlusdConvertToAssets(1e18)` formatted at 18 dp, or the Stellar
+rate is the EVM `useStakedPlusdConvertToAssets(10^sPLUSD decimals)` formatted at the PLUSD
+decimals (both 6 — read live via `useEvmStakeDecimals`, #1627), or the Stellar
 `useStellarUnstakeConvertToAssets(1e7)` formatted at 7 dp, both through `formatUnits4` (truncated,
 not rounded, to 4 dp); the other chain's convert hook is passed `undefined` and makes no read. A
-missing rate renders `—`. TVL and APY are fetched with `useDashboardSummary({ chainId })` and
+missing rate — or EVM decimals still loading — renders `—`. TVL and APY are fetched with `useDashboardSummary({ chainId })` and
 `useStats({ chainId })`; `StakeCard`'s "Earn X% p.a." uses the same `useStats({ chainId })`.
 
 - **Desktop:** inside `WelcomeHeader`, right side of the heading row.

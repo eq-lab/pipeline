@@ -73,6 +73,8 @@ export type { UseEvmTokenReadResult } from "./evm/useEvmFinancialPositionReads";
 export { useApproval } from "./evm/useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./evm/useApproval";
 export { useEvmToken } from "./evm/useEvmToken";
+export { useEvmStakeDecimals } from "./evm/useEvmStakeDecimals";
+export type { EvmStakeDecimals } from "./evm/useEvmStakeDecimals";
 export type { UseTokenArgs, UseTokenResult } from "./evm/useEvmToken";
 export {
   isMockKeyPresent,

@@ -37,6 +37,7 @@ vi.mock("@/wallet", async (importOriginal) => {
     useEvmWallet: () => mockUseWallet(),
     useStellarWallet: () => mockUseStellarWallet(),
     useWalletView: () => mockUseWalletView(),
+    useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
     useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
   };
 });
@@ -87,14 +88,16 @@ const FIXTURE: RequestsResponse = {
     {
       type: "Stake",
       chain_id: 560048,
-      amount: "1000000000000000000000",
-      assets: "1000000000000000000000",
-      shares: "999500000000000000000",
+      amount: "1000000000",
+      assets: "1000000000",
+      shares: "999500000",
       status: "Completed",
       created_at: "2026-05-13T18:00:00Z",
     },
   ],
 };
+
+const EVM_DECIMALS = { plusd: 6, splusd: 6 };
 
 function renderTransactions() {
   const TransactionsPage = Route.options.component as React.ComponentType;
@@ -600,14 +603,26 @@ describe("Shared renderRequestRow helper — contract", () => {
 
   it("returns a non-null React element for each FIXTURE row", () => {
     FIXTURE.requests.forEach((item: RequestItem) => {
-      const node = renderRequestRow(item, "evm");
+      const node = renderRequestRow(
+        item,
+        "evm",
+        undefined,
+        undefined,
+        EVM_DECIMALS,
+      );
       expect(node).not.toBeNull();
       expect(React.isValidElement(node)).toBe(true);
     });
   });
 
   it("forwards optional className to ActivityRow", () => {
-    const node = renderRequestRow(FIXTURE.requests[0]!, "evm", "row", "pb-4");
+    const node = renderRequestRow(
+      FIXTURE.requests[0]!,
+      "evm",
+      "row",
+      "pb-4",
+      EVM_DECIMALS,
+    );
     const { container } = render(<>{node}</>);
     expect(container.firstElementChild).toHaveClass("pb-4");
   });
@@ -621,7 +636,13 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "PendingVerification",
       created_at: "2026-05-01T10:00:00Z",
     };
-    const node = renderRequestRow(pendingDeposit, "evm");
+    const node = renderRequestRow(
+      pendingDeposit,
+      "evm",
+      undefined,
+      undefined,
+      EVM_DECIMALS,
+    );
     expect(node).not.toBeNull();
     expect(React.isValidElement(node)).toBe(true);
   });
@@ -630,14 +651,20 @@ describe("Shared renderRequestRow helper — contract", () => {
     const unstake: RequestItem = {
       type: "Unstake",
       chain_id: 560048,
-      amount: "500000000000000000000",
-      assets: "500000000000000000000",
-      shares: "499750000000000000000",
+      amount: "500000000",
+      assets: "500000000",
+      shares: "499750000",
       request_id: "100",
       status: "Completed",
       created_at: "2026-05-02T10:00:00Z",
     };
-    const node = renderRequestRow(unstake, "evm");
+    const node = renderRequestRow(
+      unstake,
+      "evm",
+      undefined,
+      undefined,
+      EVM_DECIMALS,
+    );
     expect(node).not.toBeNull();
     expect(React.isValidElement(node)).toBe(true);
   });
@@ -646,13 +673,15 @@ describe("Shared renderRequestRow helper — contract", () => {
     const stake: RequestItem = {
       type: "Stake",
       chain_id: 560048,
-      amount: "1000000000000000000000",
-      assets: "1000000000000000000000",
-      shares: "999500000000000000000",
+      amount: "1000000000",
+      assets: "1000000000",
+      shares: "999500000",
       status: "Completed",
       created_at: "2026-05-03T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
+    const { container } = render(
+      <>{renderRequestRow(stake, "evm", undefined, undefined, EVM_DECIMALS)}</>,
+    );
     expect(container.textContent).toContain("−1,000.00 PLUSD");
     expect(container.textContent).toContain("+999.50 sPLUSD");
   });
@@ -661,13 +690,17 @@ describe("Shared renderRequestRow helper — contract", () => {
     const unstake: RequestItem = {
       type: "Unstake",
       chain_id: 560048,
-      amount: "500000000000000000000",
-      assets: "500000000000000000000",
-      shares: "499750000000000000000",
+      amount: "500000000",
+      assets: "500000000",
+      shares: "499750000",
       status: "Completed",
       created_at: "2026-05-04T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(unstake, "evm")}</>);
+    const { container } = render(
+      <>
+        {renderRequestRow(unstake, "evm", undefined, undefined, EVM_DECIMALS)}
+      </>,
+    );
     expect(container.textContent).toContain("+500.00 PLUSD");
     expect(container.textContent).toContain("−499.75 sPLUSD");
   });
@@ -676,11 +709,13 @@ describe("Shared renderRequestRow helper — contract", () => {
     const stake: RequestItem = {
       type: "Stake",
       chain_id: 560048,
-      amount: "1000000000000000000000",
+      amount: "1000000000",
       status: "Completed",
       created_at: "2026-05-05T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
+    const { container } = render(
+      <>{renderRequestRow(stake, "evm", undefined, undefined, EVM_DECIMALS)}</>,
+    );
     const text = container.textContent ?? "";
     expect(text).toContain("−— PLUSD");
     expect(text).toContain("+— sPLUSD");
@@ -691,11 +726,15 @@ describe("Shared renderRequestRow helper — contract", () => {
     const unstake: RequestItem = {
       type: "Unstake",
       chain_id: 560048,
-      amount: "500000000000000000000",
+      amount: "500000000",
       status: "Completed",
       created_at: "2026-05-06T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(unstake, "evm")}</>);
+    const { container } = render(
+      <>
+        {renderRequestRow(unstake, "evm", undefined, undefined, EVM_DECIMALS)}
+      </>,
+    );
     const text = container.textContent ?? "";
     expect(text).toContain("+— PLUSD");
     expect(text).toContain("−— sPLUSD");
@@ -706,12 +745,14 @@ describe("Shared renderRequestRow helper — contract", () => {
     const stake: RequestItem = {
       type: "Stake",
       chain_id: 560048,
-      amount: "1000000000000000000000",
-      assets: "1000000000000000000000",
+      amount: "1000000000",
+      assets: "1000000000",
       status: "Completed",
       created_at: "2026-05-07T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
+    const { container } = render(
+      <>{renderRequestRow(stake, "evm", undefined, undefined, EVM_DECIMALS)}</>,
+    );
     const text = container.textContent ?? "";
     expect(text).toContain("−1,000.00 PLUSD");
     expect(text).toContain("+— sPLUSD");
@@ -727,7 +768,11 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-08T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(deposit, "evm")}</>);
+    const { container } = render(
+      <>
+        {renderRequestRow(deposit, "evm", undefined, undefined, EVM_DECIMALS)}
+      </>,
+    );
     const text = container.textContent ?? "";
     expect(text).toContain("PLUSD");
     expect(text).not.toContain("USDC");
@@ -742,7 +787,11 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "PendingVerification",
       created_at: "2026-05-08T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(deposit, "evm")}</>);
+    const { container } = render(
+      <>
+        {renderRequestRow(deposit, "evm", undefined, undefined, EVM_DECIMALS)}
+      </>,
+    );
     const text = container.textContent ?? "";
     expect(text).toContain("PLUSD");
     expect(text).not.toContain("USDC");
@@ -757,7 +806,11 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-08T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(withdraw, "evm")}</>);
+    const { container } = render(
+      <>
+        {renderRequestRow(withdraw, "evm", undefined, undefined, EVM_DECIMALS)}
+      </>,
+    );
     const text = container.textContent ?? "";
     expect(text).toContain("USDC");
     expect(text).not.toContain("PLUSD");
@@ -935,5 +988,30 @@ describe("Transactions page — disconnected Connect Wallet CTA (#1184)", () => 
     expect(
       screen.queryByTestId("transactions-connect-wallet-button"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Shared renderRequestRow helper — EVM decimals (#1627)", () => {
+  it("renders Stake amounts at the live 6-decimal scale", () => {
+    const stake = FIXTURE.requests.find((r) => r.type === "Stake")!;
+    const { container } = render(
+      <>{renderRequestRow(stake, "evm", undefined, undefined, EVM_DECIMALS)}</>,
+    );
+    expect(container.textContent).toContain("−1,000.00 PLUSD");
+    expect(container.textContent).toContain("+999.50 sPLUSD");
+  });
+
+  it("renders — for Stake amounts while the EVM token decimals are unknown", () => {
+    const stake = FIXTURE.requests.find((r) => r.type === "Stake")!;
+    const { container } = render(
+      <>
+        {renderRequestRow(stake, "evm", undefined, undefined, {
+          plusd: undefined,
+          splusd: undefined,
+        })}
+      </>,
+    );
+    expect(container.textContent).toContain("−— PLUSD");
+    expect(container.textContent).toContain("+— sPLUSD");
   });
 });

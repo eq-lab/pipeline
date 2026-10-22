@@ -55,10 +55,11 @@ type MobileHomeState = "empty" | "plusd" | "splusd";
 function deriveMobileHomeState(
   plusdBalance: bigint | undefined,
   splusdBalance: bigint | undefined,
-  decimals: number,
+  plusdDecimals: number | undefined,
+  splusdDecimals: number | undefined,
 ): MobileHomeState {
-  if (!isDisplayZero(splusdBalance, decimals)) return "splusd";
-  if (!isDisplayZero(plusdBalance, decimals)) return "plusd";
+  if (!isDisplayZero(splusdBalance, splusdDecimals)) return "splusd";
+  if (!isDisplayZero(plusdBalance, plusdDecimals)) return "plusd";
   return "empty";
 }
 
@@ -86,14 +87,18 @@ function Home() {
   } = useAuthFlow();
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-  const { balance: evmPlusdBalance, formattedBalance: evmPlusdFormatted } =
-    useEvmToken({
-      token: plusdAddress ?? ZERO_ADDRESS,
-    });
-
-  const { balance: evmSplusdBalance } = useEvmToken({
-    token: ENV.STAKED_PLUSD_ADDRESS,
+  const {
+    balance: evmPlusdBalance,
+    formattedBalance: evmPlusdFormatted,
+    decimals: evmPlusdDecimals,
+  } = useEvmToken({
+    token: plusdAddress ?? ZERO_ADDRESS,
   });
+
+  const { balance: evmSplusdBalance, decimals: evmSplusdDecimals } =
+    useEvmToken({
+      token: ENV.STAKED_PLUSD_ADDRESS,
+    });
 
   const { data: evmSplusdInPlusd } =
     useStakedPlusdConvertToAssets(evmSplusdBalance);
@@ -128,15 +133,16 @@ function Home() {
     ? stellarSplusdInPlusd
     : evmSplusdInPlusd;
 
-  const activeDecimals = isStellar ? SAC_DECIMALS : 18;
+  const plusdDecimals = isStellar ? SAC_DECIMALS : evmPlusdDecimals;
+  const splusdDecimals = isStellar ? SAC_DECIMALS : evmSplusdDecimals;
 
   const homeState = deriveHomeState({
     hasSession: isAuthenticated,
     isConnected,
     lpRead,
     kybStatus,
-    plusdIsZero: isDisplayZero(plusdBalanceActive, activeDecimals),
-    splusdIsZero: isDisplayZero(splusdSharesActive, activeDecimals),
+    plusdIsZero: isDisplayZero(plusdBalanceActive, plusdDecimals),
+    splusdIsZero: isDisplayZero(splusdSharesActive, splusdDecimals),
   });
 
   const plusdFormattedActive: string | undefined = isStellar
@@ -147,23 +153,23 @@ function Home() {
 
   const splusdBalanceFormatted = formatBigintCurrency(
     splusdSharesActive,
-    activeDecimals,
+    splusdDecimals,
   );
   const unrealizedPnlFormatted = formatRawDecimalUSD(
     pnl.data?.total_unrealized_pnl,
-    activeDecimals,
+    plusdDecimals,
     { signed: true, suffix: "unrealized" },
   );
 
   const portfolioSeries = buildSeries(
     positionsHistory.data?.history,
-    activeDecimals,
+    splusdDecimals,
   );
 
   const sharesStats = positionsHistory.data?.shares_balance;
   const portfolioAxisMax =
-    sharesStats?.max != null
-      ? Number(sharesStats.max) / 10 ** activeDecimals
+    sharesStats?.max != null && splusdDecimals !== undefined
+      ? Number(sharesStats.max) / 10 ** splusdDecimals
       : null;
   const portfolioAxis = computeAxisTicks(portfolioAxisMax);
 
@@ -171,22 +177,23 @@ function Home() {
     ? deriveMobileHomeState(
         plusdBalanceActive,
         splusdSharesActive,
-        activeDecimals,
+        plusdDecimals,
+        splusdDecimals,
       )
     : "empty";
 
   const earnedPnlLabel =
     mobileHomeState === "splusd" && pnl.data?.total_pnl != null
-      ? formatRawDecimalUSD(pnl.data.total_pnl, activeDecimals, {
+      ? formatRawDecimalUSD(pnl.data.total_pnl, plusdDecimals, {
           signed: true,
         })
       : undefined;
 
   const stakeDisabled =
-    isConnected && isDisplayZero(plusdBalanceActive, activeDecimals);
+    isConnected && isDisplayZero(plusdBalanceActive, plusdDecimals);
 
   const sellDisabled =
-    !isConnected || isDisplayZero(plusdBalanceActive, activeDecimals);
+    !isConnected || isDisplayZero(plusdBalanceActive, plusdDecimals);
 
   const onBuy = () => {
     if (!isConnected) {
@@ -313,7 +320,7 @@ function Home() {
               mobileSplusdShares={splusdSharesActive}
               mobileSplusdInPlusd={splusdInPlusdActive}
               splusdUsdValue={splusdBalanceFormatted}
-              splusdDecimals={activeDecimals}
+              splusdDecimals={splusdDecimals}
               data-testid="home-stake-card"
             />
           </div>
@@ -562,7 +569,7 @@ function Home() {
                   mobileSplusdShares={splusdSharesActive}
                   mobileSplusdInPlusd={splusdInPlusdActive}
                   splusdUsdValue={splusdBalanceFormatted}
-                  splusdDecimals={activeDecimals}
+                  splusdDecimals={splusdDecimals}
                   data-testid="home-stake-card"
                 />
               }
