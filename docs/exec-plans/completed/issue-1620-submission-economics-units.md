@@ -3,6 +3,8 @@
 Source: https://github.com/eq-lab/pipeline/issues/1620 — critical (wrong amount on-chain), found
 in the 2026-10-22 calculations review. Branch: `fix/1620-submission-economics-units`.
 
+Status: Completed 2026-10-22 — PR #1637.
+
 ## Root cause
 
 Three readings of the same four strings (`economics.original_facility_size` /

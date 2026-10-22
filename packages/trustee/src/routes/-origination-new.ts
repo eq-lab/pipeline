@@ -16,12 +16,15 @@ export interface FieldDef {
   path: string;
   label: string;
   numeric?: boolean;
+  usdc?: boolean;
   required: boolean;
   placeholder?: string;
   options?: ReadonlyArray<{ value: string; label: string }>;
 }
 
 export const TARGET_CHAIN_FIELD = "target_chain_id";
+
+export const USDC_AMOUNT_PATTERN = /^\d+(?:\.\d{1,6})?$/;
 
 export interface SectionDef {
   title: string;
@@ -70,24 +73,28 @@ export const FORM_SECTIONS: SectionDef[] = [
     fields: [
       {
         path: "economics.original_facility_size",
-        label: "Facility size (USDC, 6-decimal string)",
+        label: "Facility size (USDC, up to 6 decimals)",
         required: true,
-        placeholder: "1200000.000000",
+        usdc: true,
+        placeholder: "1200000.00",
       },
       {
         path: "economics.original_senior_tranche",
-        label: "Senior tranche (USDC, 6-decimal string)",
+        label: "Senior tranche (USDC, up to 6 decimals)",
         required: true,
+        usdc: true,
       },
       {
         path: "economics.original_equity_tranche",
-        label: "Equity tranche (USDC, 6-decimal string)",
+        label: "Equity tranche (USDC, up to 6 decimals)",
         required: true,
+        usdc: true,
       },
       {
         path: "economics.original_offtaker_price",
-        label: "Offtaker price (USDC, 6-decimal string)",
+        label: "Offtaker price (USDC, up to 6 decimals)",
         required: true,
+        usdc: true,
       },
       {
         path: "economics.senior_interest_rate_bps",
@@ -299,6 +306,9 @@ export function buildSubmitLoanInput(
       fieldErrors[field.path] = "Required.";
     } else if (field.numeric && value !== "" && !/^\d+$/.test(value)) {
       fieldErrors[field.path] = "Must be a whole non-negative number.";
+    } else if (field.usdc && value !== "" && !USDC_AMOUNT_PATTERN.test(value)) {
+      fieldErrors[field.path] =
+        "Must be a USDC amount with at most 6 decimals, e.g. 1200000.00.";
     }
   }
   for (const [i, doc] of documents.entries()) {
