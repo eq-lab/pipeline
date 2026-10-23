@@ -467,7 +467,11 @@ function RecordCoupon() {
             <button
               type="button"
               data-testid="record-coupon-submit"
-              disabled={view.recordPaymentInput == null || record.isPending}
+              disabled={
+                view.recordPaymentInput == null ||
+                view.waterfall.isCalculating ||
+                record.isPending
+              }
               onClick={onRecord}
               className="flex h-[48px] w-full items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
               style={{ backgroundColor: BRAND }}

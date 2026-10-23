@@ -196,11 +196,11 @@ export interface RecordRepaymentView {
     errorDetails: string | null;
     rows: WaterfallRow[];
   };
-  /** `"Components sum to received $<amount>"` — `null` until a positive amount is entered and the preview resolves. */
+  /** `"Components sum to received $<amount>"` — `null` until the entered amount has settled and its preview resolved. */
   summaryText: string | null;
   /**
    * The on-chain `RepaymentData` for `record_payment` (base-unit strings);
-   * `null` until a positive amount is entered and the preview resolves. The
+   * `null` until the entered amount has settled and its preview resolved. The
    * page passes this to `useRecordPayment` on confirm (#884).
    */
   recordPaymentInput: RepaymentInput | null;
@@ -398,8 +398,10 @@ export function useRecordRepayment(
         ]
       : [];
 
+  const amountSettled = amountInput === debouncedAmount;
+
   const summaryText =
-    enteredUsd != null && waterfall.data != null
+    amountSettled && enteredUsd != null && waterfall.data != null
       ? `Components sum to received ${usdFull(enteredUsd)}`
       : null;
 
@@ -448,7 +450,9 @@ export function useRecordRepayment(
     },
     summaryText,
     recordPaymentInput:
-      onChainBlockedReason === null ? recordPaymentInput : null,
+      onChainBlockedReason === null && amountSettled
+        ? recordPaymentInput
+        : null,
     onChainBlockedReason,
     offtakerFullyPaid,
     closeChecklist,

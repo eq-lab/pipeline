@@ -552,6 +552,7 @@ function RecordRepayment() {
                 data-testid="record-repayment-submit"
                 disabled={
                   view.recordPaymentInput == null ||
+                  view.waterfall.isCalculating ||
                   record.isPending ||
                   record.isSuccess
                 }

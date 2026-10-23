@@ -241,12 +241,12 @@ export interface RecordCouponView {
     errorDetails: string | null;
     rows: WaterfallRow[];
   };
-  /** `"Components sum to received $<amount>"` — `null` until a positive amount is entered and the preview resolves. */
+  /** `"Components sum to received $<amount>"` — `null` until the entered amount has settled and its preview resolved. */
   summaryText: string | null;
   isTerminal: boolean;
   /**
    * The on-chain `RepaymentData` for `record_payment` (base-unit strings);
-   * `null` until a positive amount is entered and the preview resolves. The page
+   * `null` until the entered amount has settled and its preview resolved. The page
    * passes this to `useRecordPayment` on confirm (#882).
    */
   recordPaymentInput: RepaymentInput | null;
@@ -413,12 +413,15 @@ export function useRecordCoupon(
         ]
       : [];
 
+  const amountSettled = amountInput === debouncedAmount;
+
   const summaryText =
-    enteredUsd != null && waterfall.data != null
+    amountSettled && enteredUsd != null && waterfall.data != null
       ? `Components sum to received ${usdFull(enteredUsd)}`
       : null;
 
   const isTerminal =
+    amountSettled &&
     waterfall.data != null &&
     isTerminalRepayment(
       outstandingSeniorUsd,
@@ -458,7 +461,7 @@ export function useRecordCoupon(
     summaryText,
     isTerminal,
     recordPaymentInput:
-      onChainBlockedReason === null
+      onChainBlockedReason === null && amountSettled
         ? buildRepaymentInput(amountBaseUnits, waterfall.data)
         : null,
     onChainBlockedReason,
