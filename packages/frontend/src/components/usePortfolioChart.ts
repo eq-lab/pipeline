@@ -93,9 +93,9 @@ export interface ChartSeries {
 
 export function buildSeries(
   history: { timestamp: string; shares_balance: string }[] | undefined,
-  decimals: number,
+  decimals: number | undefined,
 ): ChartSeries | null {
-  if (!history || history.length === 0) return null;
+  if (!history || history.length === 0 || decimals === undefined) return null;
   const timestamps: number[] = [];
   const values: number[] = [];
   for (const item of history) {

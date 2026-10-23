@@ -75,8 +75,11 @@ const subtitleClasses = [
   "m-0",
 ].join(" ");
 
-function formatBigintNumber(value: bigint | undefined, decimals = 18): string {
-  if (value === undefined) return "0.00";
+function formatBigintNumber(
+  value: bigint | undefined,
+  decimals: number | undefined,
+): string {
+  if (value === undefined || decimals === undefined) return "0.00";
   const asFloat = parseFloat(formatUnits(value, decimals));
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
@@ -95,7 +98,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
       mobileSplusdShares,
       mobileSplusdInPlusd,
       splusdUsdValue,
-      splusdDecimals = 18,
+      splusdDecimals,
       padding,
       layout = "default",
       ...rest

@@ -38,6 +38,7 @@ vi.mock("@/wallet", async (importOriginal) => {
     useEvmWallet: () => mockUseWallet(),
     useStellarWallet: () => mockUseStellarWallet(),
     useWalletView: () => mockUseWalletView(),
+    useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
   };
 });
 
@@ -73,9 +74,9 @@ const FIXTURE_3: RequestsResponse = {
     {
       type: "Stake",
       chain_id: 560048,
-      amount: "1000000000000000000000", // 1,000 PLUSD at 18 decimals
-      assets: "1000000000000000000000",
-      shares: "999500000000000000000", // 999.5 sPLUSD at 18 decimals
+      amount: "1000000000", // 1,000 PLUSD at 6 decimals
+      assets: "1000000000",
+      shares: "999500000", // 999.5 sPLUSD at 6 decimals
       status: "Completed",
       created_at: "2026-05-13T18:00:00Z",
     },

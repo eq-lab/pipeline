@@ -4,6 +4,7 @@ import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
 import { useStellarUnstakeConvertToAssets } from "@/wallet/stellar/useStellarStakedPlusd";
 import { useActiveChain } from "@/wallet/useActiveChain";
+import { useEvmStakeDecimals } from "@/wallet/evm/useEvmStakeDecimals";
 import { formatUnits4 } from "@/utils/formatUnits4";
 import { useStats, formatApy, useDashboardSummary } from "@/api";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
@@ -55,16 +56,20 @@ export type HomeStatsStripProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
   const { kind, chainId } = useActiveChain();
+  const evmDecimals = useEvmStakeDecimals();
   const { data: evmRate } = useStakedPlusdConvertToAssets(
-    kind === "evm" ? 10n ** 18n : undefined,
+    kind === "evm" && evmDecimals.splusd !== undefined
+      ? 10n ** BigInt(evmDecimals.splusd)
+      : undefined,
   );
   const { data: stellarRate } = useStellarUnstakeConvertToAssets(
     kind === "stellar" ? 10n ** 7n : undefined,
   );
   const rateRaw = kind === "evm" ? evmRate : stellarRate;
+  const rateDecimals = kind === "evm" ? evmDecimals.plusd : 7;
   const exchangeRateValue =
-    rateRaw !== undefined
-      ? `1 sPLUSD = ${formatUnits4(rateRaw, kind === "evm" ? 18 : 7)} PLUSD`
+    rateRaw !== undefined && rateDecimals !== undefined
+      ? `1 sPLUSD = ${formatUnits4(rateRaw, rateDecimals)} PLUSD`
       : "—";
 
   const { data: statsData } = useStats({ chainId });

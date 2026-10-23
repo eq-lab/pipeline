@@ -77,6 +77,19 @@ At the end the hook selects the active-chain, active-direction values and return
   `$5,000` / `$10,000` deposit chips are not clamped: a chip above the balance simply trips the
   insufficient-balance gate.
 
+### EVM token decimals
+
+EVM PLUSD and sPLUSD are **6-decimal** tokens (`PipelineUSD.sol`; the ERC-4626 vault has no
+decimals offset) — never 18, never hard-coded (#1627). Every EVM scale comes from the token's
+`decimals()` read: `useEvmToken(...).decimals` where the token is already mounted (home route,
+stake flow), or `useEvmStakeDecimals()` (`@/wallet`, `{ plusd, splusd }`, each `undefined` while
+loading) for consumers that only need the scale — `HomeStatsStrip`, `RecentActivityCard` and the
+Transactions page pass it into `renderRequestRow` (assets at `plusd`, shares at `splusd`).
+While a scale is still `undefined` the display helpers render their empty value (`isDisplayZero`
+→ `true`, `formatBigintCurrency` → `$0.00`, `formatTokenAmount` → `—`, `buildSeries` → `null`)
+instead of mis-scaling. Request amounts from `/v1/requests` are at the same token decimals.
+Mocks (`/test` scenarios and route tests) seed `6`.
+
 ### XLM funding rule
 
 `FlowState.needsXlmFunding` / `StakeFlowState.needsXlmFunding` (#1196, #1130): `true` when the
@@ -196,9 +209,12 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
 
 ### Design choices
 
-- **Convert scale differs by chain.** `convertDecimals` — the output scale of the convert/preview
-  hooks — is **18** on EVM (`RATE_SCALE = 1e18`) and **7** on Stellar (`SAC_DECIMALS`). Exchange-rate
-  rows are truncated (not rounded) to 4 dp.
+- **Convert scale is the output token's live decimals.** `convertDecimals` — the output scale of the
+  convert/preview hooks — is the output token's `decimals()` on EVM (sPLUSD on Stake, PLUSD on
+  Unstake; both 6, `undefined` while loading so the preview shows `0` and the rate `—`) and **7** on
+  Stellar (`SAC_DECIMALS`). The "1 PLUSD" / "1 sPLUSD" rate inputs are `parseUnits("1", <input
+  token decimals>)`. Exchange-rate rows are truncated (not rounded) to 4 dp. (#1627 — the former
+  hard-coded 18 showed every EVM preview as 0.00.)
 - **`stellarUsdcToken` is mounted but unused** in the stake flow — called only to satisfy the Rules
   of Hooks (`void stellarUsdcToken`).
 

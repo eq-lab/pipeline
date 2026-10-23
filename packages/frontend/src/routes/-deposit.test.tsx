@@ -386,10 +386,10 @@ const MIN_DEPOSIT_RAW = "1000000000";
 const BALANCE_5000_RAW = "5000000000";
 // 500 USDC at 6 decimals
 const BALANCE_500_RAW = "500000000";
-// 100 PLUSD at 18 decimals
-const BALANCE_100_PLUSD = "100000000000000000000";
-// 10 PLUSD at 18 decimals
-const AMOUNT_10_PLUSD = "10000000000000000000";
+// 100 PLUSD at 6 decimals
+const BALANCE_100_PLUSD = "100000000";
+// 10 PLUSD at 6 decimals
+const AMOUNT_10_PLUSD = "10000000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -485,10 +485,10 @@ function seedWithdrawMocks({
     USDC_ADDRESS,
   );
 
-  // PLUSD token metadata (18 decimals)
+  // PLUSD token metadata (6 decimals)
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.decimals`,
-    "18",
+    "6",
   );
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.symbol`,
@@ -1847,7 +1847,7 @@ describe("Deposit page — direction=withdraw — approved state (allowance ≥ 
     mockWithdrawVoucherData = undefined;
     mockWithdrawVoucherStatus = "idle";
     // allowance = 1000 PLUSD — sufficient for any reasonable input
-    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+    seedWithdrawMocks({ allowance: "1000000000" });
   });
 
   afterEach(() => {
@@ -1924,7 +1924,7 @@ describe("Deposit page — direction=withdraw — PendingVerification mock", () 
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
     mockWithdrawVoucherStatus = "idle";
-    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+    seedWithdrawMocks({ allowance: "1000000000" });
   });
 
   afterEach(() => {
@@ -1988,7 +1988,7 @@ describe("Deposit page — direction=withdraw — PendingClaim with voucher read
       signature: "0xsig",
     };
     mockWithdrawVoucherStatus = "ready";
-    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+    seedWithdrawMocks({ allowance: "1000000000" });
   });
 
   afterEach(() => {
@@ -3577,17 +3577,17 @@ describe("Deposit page — chips stay within the balance (#1628)", () => {
     expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   });
 
-  it("withdraw 75% and Max never exceed an odd 18-dp balance", async () => {
+  it("withdraw 75% and Max never exceed an odd 6-dp balance", async () => {
     mockDirection = "withdraw";
-    seedWithdrawMocks({ balance: "1234567891234567891235", allowance: "0" });
+    seedWithdrawMocks({ balance: "1234567891", allowance: "0" });
     const user = userEvent.setup();
     renderDeposit();
 
     const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
     await user.click(await screen.findByRole("button", { name: "75%" }));
-    expect((input as HTMLInputElement).value).toBe("925.925918425925918426");
+    expect((input as HTMLInputElement).value).toBe("925.925918");
     await user.click(screen.getByRole("button", { name: "Max" }));
-    expect((input as HTMLInputElement).value).toBe("1234.567891234567891235");
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
     expect(screen.queryByText("Insufficient balance")).toBeNull();
   });
 });

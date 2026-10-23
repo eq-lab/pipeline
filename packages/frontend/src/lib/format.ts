@@ -35,8 +35,9 @@ const tokenFormatterWhole = new Intl.NumberFormat("en-US", {
  */
 export function formatTokenAmount(
   raw: bigint | string,
-  decimals: number,
+  decimals: number | undefined,
 ): string {
+  if (decimals === undefined) return "—";
   const value = typeof raw === "string" ? BigInt(raw) : raw;
   const float = parseFloat(formatUnits(value, decimals));
   return tokenFormatter.format(float);
@@ -96,9 +97,10 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
 
 export function formatBigintCurrency(
   value: bigint | undefined,
-  decimals: number,
+  decimals: number | undefined,
 ): string {
-  if (value === undefined || value === 0n) return "$0.00";
+  if (value === undefined || value === 0n || decimals === undefined)
+    return "$0.00";
   const asFloat = parseFloat(formatUnits(value, decimals));
   const absFormatted = usdFormatter.format(Math.abs(asFloat));
   const sign = asFloat < 0 && absFormatted !== "$0.00" ? "-" : "";
@@ -107,11 +109,15 @@ export function formatBigintCurrency(
 
 export function formatRawDecimalUSD(
   value: string | null | undefined,
-  decimals: number,
+  decimals: number | undefined,
   options: { signed?: boolean; suffix?: string } = {},
 ): string {
-  const raw = value === undefined || value === null ? 0 : Number(value);
-  const amount = Number.isFinite(raw) ? raw / 10 ** decimals : 0;
+  const raw =
+    value === undefined || value === null || decimals === undefined
+      ? 0
+      : Number(value);
+  const amount =
+    Number.isFinite(raw) && decimals !== undefined ? raw / 10 ** decimals : 0;
   const absFormatted = usdFormatter.format(Math.abs(amount));
   const sign =
     absFormatted === "$0.00"
@@ -126,8 +132,9 @@ export function formatRawDecimalUSD(
 
 export function isDisplayZero(
   value: bigint | undefined,
-  decimals: number,
+  decimals: number | undefined,
 ): boolean {
-  if (value === undefined || value === 0n) return true;
+  if (value === undefined || value === 0n || decimals === undefined)
+    return true;
   return Math.abs(parseFloat(formatUnits(value, decimals))) < 0.005;
 }

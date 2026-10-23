@@ -16,6 +16,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useEvmStakeDecimals,
 } from "@/wallet";
 
 // spec: docs/frontend/dashboard-components.md#transactions-route
@@ -40,6 +41,7 @@ function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
   const { data, isLoading, error, refetch } = useRequests();
   const { kind } = useWalletView();
+  const evmStakeDecimals = useEvmStakeDecimals();
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { open: openConnectModal } = useConnectModal();
   const { isConnected: isStellarConnected } = useStellarWallet();
@@ -132,7 +134,13 @@ function Transactions() {
             filtered.length > 0 &&
             filtered.map((item, i) => (
               <React.Fragment key={i}>
-                {renderRequestRow(item, kind, `transactions-row-${i}`, "pb-4")}
+                {renderRequestRow(
+                  item,
+                  kind,
+                  `transactions-row-${i}`,
+                  "pb-4",
+                  evmStakeDecimals,
+                )}
               </React.Fragment>
             ))}
         </div>

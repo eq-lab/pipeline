@@ -33,6 +33,7 @@ afterEach(() => {
   chainState.value = { kind: "stellar", chainId: 99_000_001 };
   rateState.evm = undefined;
   rateState.stellar = undefined;
+  decimalsState.value = { plusd: 6, splusd: 6 };
   statsSpy.mockClear();
   summarySpy.mockClear();
 });
@@ -56,6 +57,19 @@ const { chainState, rateState, summaryState, statsSpy, summarySpy } =
 
 vi.mock("@/wallet/useActiveChain", () => ({
   useActiveChain: () => chainState.value,
+}));
+
+const { decimalsState } = vi.hoisted(() => ({
+  decimalsState: {
+    value: { plusd: 6, splusd: 6 } as {
+      plusd: number | undefined;
+      splusd: number | undefined;
+    },
+  },
+}));
+
+vi.mock("@/wallet/evm/useEvmStakeDecimals", () => ({
+  useEvmStakeDecimals: () => decimalsState.value,
 }));
 
 vi.mock("@/wallet/evm/useStakedPlusd", () => ({
@@ -129,9 +143,9 @@ describe("HomeStatsStrip", () => {
 });
 
 describe("HomeStatsStrip — active chain", () => {
-  it("formats the EVM rate at 18 dp", () => {
+  it("formats the EVM rate at the live 6-decimal PLUSD scale (#1627)", () => {
     chainState.value = { kind: "evm", chainId: 560048 };
-    rateState.evm = 1042100000000000000n;
+    rateState.evm = 1042100n;
     render(<HomeStatsStrip />);
     expect(screen.getByText("1 sPLUSD = 1.0421 PLUSD")).toBeInTheDocument();
   });
@@ -144,13 +158,22 @@ describe("HomeStatsStrip — active chain", () => {
 
   it("truncates instead of rounding", () => {
     chainState.value = { kind: "evm", chainId: 560048 };
-    rateState.evm = 1042199999999999999n;
+    rateState.evm = 1042199n;
     render(<HomeStatsStrip />);
     expect(screen.getByText("1 sPLUSD = 1.0421 PLUSD")).toBeInTheDocument();
   });
 
+  it("shows — while the EVM token decimals are still loading", () => {
+    chainState.value = { kind: "evm", chainId: 560048 };
+    decimalsState.value = { plusd: undefined, splusd: undefined };
+    rateState.evm = 1042100n;
+    render(<HomeStatsStrip />);
+    const label = screen.getByText("Exchange rate");
+    expect(label.parentElement).toHaveTextContent("—");
+  });
+
   it("ignores the other chain's rate", () => {
-    rateState.evm = 1042100000000000000n;
+    rateState.evm = 1042100n;
     render(<HomeStatsStrip />);
     const label = screen.getByText("Exchange rate");
     expect(label.parentElement).toHaveTextContent("—");
