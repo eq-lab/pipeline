@@ -264,6 +264,93 @@ describe("Record Coupon route — ready state", () => {
     });
   });
 
+  describe("amount settling gate (#1622)", () => {
+    const WATERFALL_50K: WaterfallResponse = {
+      senior_principal_returned: "0",
+      senior_coupon_net: "350000000000",
+      management_fee: "50000000000",
+      performance_fee: "30000000000",
+      oet_allocation: "20000000000",
+    };
+    const WATERFALL_500K: WaterfallResponse = {
+      senior_principal_returned: "0",
+      senior_coupon_net: "3500000000000",
+      management_fee: "500000000000",
+      performance_fee: "300000000000",
+      oet_allocation: "200000000000",
+    };
+
+    function mockByAmount() {
+      mockUseLoanWaterfall.mockImplementation((_c, _l, amount) => {
+        const data =
+          amount === "500000000000"
+            ? WATERFALL_50K
+            : amount === "5000000000000"
+              ? WATERFALL_500K
+              : undefined;
+        return { data, isLoading: false, error: null } as ReturnType<
+          typeof useLoanWaterfall
+        >;
+      });
+    }
+
+    async function settleAt50k() {
+      mockByAmount();
+      renderRoute();
+      const input = screen.getByTestId("record-coupon-amount");
+      fireEvent.change(input, { target: { value: "50000" } });
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      return { input, submit };
+    }
+
+    it("never submits the stale amount while the new one is debouncing", async () => {
+      const { input, submit } = await settleAt50k();
+      fireEvent.change(input, { target: { value: "500000" } });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+      await waitFor(() => expect(submit).toBeEnabled());
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
+        loanId: 4488,
+        repayment: {
+          offtaker_received: "5000000000000",
+          senior_principal_repaid: "0",
+          senior_interest: "3500000000000",
+          equity_distributed: "500000000000",
+          mgmt_fee: "500000000000",
+          perf_fee: "300000000000",
+          oet_alloc: "200000000000",
+        },
+      });
+    });
+
+    it("disables the record button immediately when the amount is cleared", async () => {
+      const { input, submit } = await settleAt50k();
+      fireEvent.change(input, { target: { value: "" } });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("hides the summary while the amount is unsettled, then shows the new total", async () => {
+      const { input } = await settleAt50k();
+      await waitFor(() =>
+        expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
+          "Components sum to received $50,000",
+        ),
+      );
+      fireEvent.change(input, { target: { value: "500000" } });
+      expect(screen.queryByTestId("record-coupon-summary")).toBeNull();
+      await waitFor(() =>
+        expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
+          "Components sum to received $500,000",
+        ),
+      );
+    });
+  });
+
   it("renders the static 'Your key · no cash moves' chip", () => {
     renderRoute();
     expect(screen.getByTestId("record-coupon-key-chip")).toHaveTextContent(

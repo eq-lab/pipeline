@@ -687,6 +687,13 @@ submit/confirm action, only the live preview.
   not a re-derived sum of the five/six components (the waterfall has no equity field, so the
   components alone do not sum to the offtaker amount without the residual — see below).
 
+### Record action gating (#1622, both flows)
+
+- The `record_payment` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
+- "Record on the ledger" is disabled while the live input differs from the debounced value (including when the input is cleared mid-debounce) or while the preview is recalculating (`waterfall.isCalculating`).
+- The green "Components sum to received $X" summary and the Record Coupon terminal hint are hidden while the amount is unsettled, matching the row skeletons (#1049). The "Offtaker still owed after coupon" row deliberately keeps tracking the live input.
+- Record Repayment's amount is a read-only one-shot prefill, so the stale window is unreachable there today (during the prefill debounce the debounced amount is `""`, so the payload is `null`). The same gate is applied for parity, so a future editable input cannot reintroduce the bug.
+
 ### Record Coupon — interest-only, context-dependent third row
 
 - The left card's third row is context-dependent (`hasCouponDue`): a simply-performing loan with

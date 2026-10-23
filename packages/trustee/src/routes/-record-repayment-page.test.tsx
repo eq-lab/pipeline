@@ -463,6 +463,27 @@ describe("Record Repayment route — ready state", () => {
     });
   });
 
+  it("keeps submit disabled through the prefill debounce window, then records the prefilled amount (#1622)", async () => {
+    mockUseLoanWaterfall.mockImplementation((_c, _l, amount) => {
+      const data = amount === "0" ? undefined : WATERFALL_TERMINAL;
+      return { data, isLoading: false, error: null } as ReturnType<
+        typeof useLoanWaterfall
+      >;
+    });
+    renderRoute();
+    const submit = screen.getByTestId("record-repayment-submit");
+    expect(submit).toBeDisabled();
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    expect(mockRecord.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repayment: expect.objectContaining({
+          offtaker_received: "61500000000000",
+        }),
+      }),
+    );
+  });
+
   it("keeps Close-loan DISABLED after a terminal amount until the payment is recorded (#884 gating)", async () => {
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
