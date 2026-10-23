@@ -183,34 +183,22 @@ pub async fn compute_position_fields(
     let (prev_shares, prev_avg_price) =
         fetch_prev_position(&mut *conn, chain_id, vault_address, &owner_address).await?;
 
-    let is_stake = event_name == "StakingDeposit";
-
-    let (new_shares, new_avg_price, realized_pnl) = if is_stake {
-        let new_shares = &prev_shares + &shares_raw;
-        let new_avg_price = if new_shares > zero {
-            (&prev_avg_price * &prev_shares + &assets_raw) / &new_shares
-        } else {
-            zero.clone()
-        };
-        (new_shares, new_avg_price, zero)
-    } else {
-        let new_shares = &prev_shares - &shares_raw;
-        if new_shares < zero {
-            tracing::warn!(
-                vault = vault_address,
-                owner = %owner_address,
-                prev_shares = %prev_shares,
-                withdrawn = %shares_raw,
-                "withdrawal exceeds balance — clamping to zero"
-            );
-            let realized = &assets_raw - &prev_shares * &prev_avg_price;
-            (zero.clone(), zero.clone(), realized)
-        } else {
-            let new_avg_price = prev_avg_price.clone();
-            let realized = &assets_raw - &shares_raw * &prev_avg_price;
-            (new_shares, new_avg_price, realized)
-        }
-    };
+    let (new_shares, new_avg_price, realized_pnl) = apply_position_delta(
+        event_name == "StakingDeposit",
+        &prev_shares,
+        &prev_avg_price,
+        &shares_raw,
+        &assets_raw,
+    );
+    if event_name != "StakingDeposit" && shares_raw > prev_shares {
+        tracing::warn!(
+            vault = vault_address,
+            owner = %owner_address,
+            prev_shares = %prev_shares,
+            withdrawn = %shares_raw,
+            "withdrawal exceeds balance — clamping to zero"
+        );
+    }
 
     // Write computed position fields back into params.
     if let Some(obj) = params.as_object_mut() {
@@ -229,6 +217,35 @@ pub async fn compute_position_fields(
     }
 
     Ok(())
+}
+
+/// Running position after a stake (`is_stake`) or a withdrawal of `shares` worth `assets`:
+/// `(shares_balance, avg_buy_share_price, realized_pnl)`.
+pub fn apply_position_delta(
+    is_stake: bool,
+    prev_shares: &BigDecimal,
+    prev_avg_price: &BigDecimal,
+    shares: &BigDecimal,
+    assets: &BigDecimal,
+) -> (BigDecimal, BigDecimal, BigDecimal) {
+    let zero = BigDecimal::from(0i64);
+    if is_stake {
+        let new_shares = prev_shares + shares;
+        let avg = if new_shares > zero {
+            (prev_avg_price * prev_shares + assets) / &new_shares
+        } else {
+            zero.clone()
+        };
+        return (new_shares, avg, zero);
+    }
+    let new_shares = prev_shares - shares;
+    if new_shares < zero {
+        let realized = assets - prev_shares * prev_avg_price;
+        (zero.clone(), zero, realized)
+    } else {
+        let realized = assets - shares * prev_avg_price;
+        (new_shares, prev_avg_price.clone(), realized)
+    }
 }
 
 /// Latest `(shares_balance, avg_buy_share_price)` for one holder on one vault.

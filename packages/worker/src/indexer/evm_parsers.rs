@@ -101,6 +101,10 @@ pub fn register_evm_handlers(
                 })
         })
         .add_event_handler(contracts.splusd_contracts, move |log| {
+            // `burnShares` emits both ERC-4626 `Withdraw` and `SharesBurned`; only `Withdraw`
+            // is parsed, so the burn yields one `StakingWithdrawal` row. Do not add a
+            // `SharesBurned` parser here (the Stellar arm needs one only because it has no
+            // `withdraw` event for the burn).
             parse_staking_deposit(log)
                 .or_else(|| parse_staking_withdraw(log))
                 .map(|ev| {
