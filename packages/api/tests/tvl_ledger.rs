@@ -82,11 +82,36 @@ fn pending_deposit_counts_before_any_claim() {
 }
 
 #[test]
-fn claiming_a_deposit_adds_nothing_on_top_of_the_request() {
-    for needle in ["'DepositRequested'", "c.event_name = 'RequestClaimed'"] {
-        assert!(PLUSD_LEDGER_SQL.contains(needle), "{needle}");
-    }
-    assert!(PLUSD_LEDGER_SQL.contains("q.event_name = 'WithdrawalRequested'"));
+fn only_withdrawal_queue_claims_are_ledger_rows_so_deposit_claims_add_nothing() {
+    let claim = PLUSD_LEDGER_SQL
+        .split("c.event_name = 'RequestClaimed'")
+        .nth(1)
+        .expect("claim branch");
+    let exists = claim.split("UNION ALL").next().expect("branch");
+    assert!(exists.contains("EXISTS"));
+    assert!(exists.contains("q.contract_address = c.contract_address"));
+    assert!(exists.contains("q.event_name = 'WithdrawalRequested'"));
+    assert_eq!(PLUSD_LEDGER_SQL.matches("'RequestClaimed'").count(), 1);
+}
+
+#[test]
+fn reversal_fee_burn_is_limited_to_the_reversals_own_minter() {
+    let branch = PLUSD_LEDGER_SQL
+        .rsplit("UNION ALL")
+        .next()
+        .expect("reversal branch");
+    assert!(branch.contains("v.event_name = 'CashRepaymentReversed'"));
+    assert!(branch.contains("w.event_name = 'StakingWithdrawal'"));
+    assert!(branch.contains("w.tx_hash = v.tx_hash"));
+    assert!(branch.contains("LOWER(w.params->>'sender') = LOWER(v.contract_address)"));
+}
+
+#[test]
+fn repayment_fee_leg_is_a_keyed_join_not_a_correlated_lateral() {
+    assert!(PLUSD_LEDGER_SQL.contains("WITH repayment_fees AS"));
+    assert!(PLUSD_LEDGER_SQL.contains("LEFT JOIN repayment_fees pr"));
+    assert!(PLUSD_LEDGER_SQL.contains("p.log_index DESC"));
+    assert_eq!(PLUSD_LEDGER_SQL.matches("LEFT JOIN LATERAL").count(), 1);
 }
 
 #[test]
@@ -128,7 +153,7 @@ fn mint_corrected_and_cash_corrected_carry_no_supply_step_of_their_own() {
 }
 
 #[test]
-fn each_path_moves_tvl_by_its_signed_amount() {
+fn signed_deltas_of_every_path_sum_into_tvl() {
     let paths: [(&str, i64); 11] = [
         ("deposit", 100),
         ("wire_in", 200),

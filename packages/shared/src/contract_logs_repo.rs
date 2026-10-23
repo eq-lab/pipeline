@@ -216,7 +216,26 @@ pub const LIST_WITHDRAWAL_QUEUE_ROWS_SQL: &str = "SELECT r.chain_id,
 
 /// Signed raw (on-chain scale) PLUSD supply steps of one chain: `$1` chain id, `$2` `to_unix`,
 /// `$3` the chain's LoanRegistry address. See `docs/product-specs/dashboards-tvl-ledger.md`.
-pub const PLUSD_LEDGER_SQL: &str = "SELECT block_timestamp, block_number, log_index, delta
+pub const PLUSD_LEDGER_SQL: &str = "WITH repayment_fees AS (
+         SELECT DISTINCT ON (p.chain_id, p.tx_hash,
+                             (p.params->>'loan_id')::numeric,
+                             (p.params->'event'->>'repayment_id')::numeric)
+                p.chain_id, p.tx_hash,
+                (p.params->>'loan_id')::numeric AS loan_id,
+                (p.params->'event'->>'repayment_id')::numeric AS repayment_id,
+                COALESCE((p.params->'event'->>'mgmt_fee')::numeric, 0)
+              + COALESCE((p.params->'event'->>'perf_fee')::numeric, 0)
+              + COALESCE((p.params->'event'->>'oet_alloc')::numeric, 0) AS fee_amount
+         FROM contract_logs p
+         WHERE p.chain_id = $1
+           AND p.contract_address = $3
+           AND p.event_name = 'PaymentRecorded'
+         ORDER BY p.chain_id, p.tx_hash,
+                  (p.params->>'loan_id')::numeric,
+                  (p.params->'event'->>'repayment_id')::numeric,
+                  p.log_index DESC
+     )
+     SELECT block_timestamp, block_number, log_index, delta
      FROM (
          SELECT block_timestamp, block_number, log_index,
                 CASE event_name
@@ -262,20 +281,11 @@ pub const PLUSD_LEDGER_SQL: &str = "SELECT block_timestamp, block_number, log_in
          SELECT r.block_timestamp, r.block_number, r.log_index,
                 COALESCE((r.params->>'interest_minted')::numeric, 0) + COALESCE(pr.fee_amount, 0)
          FROM contract_logs r
-         LEFT JOIN LATERAL (
-             SELECT COALESCE((p.params->'event'->>'mgmt_fee')::numeric, 0)
-                  + COALESCE((p.params->'event'->>'perf_fee')::numeric, 0)
-                  + COALESCE((p.params->'event'->>'oet_alloc')::numeric, 0) AS fee_amount
-             FROM contract_logs p
-             WHERE p.chain_id = r.chain_id
-               AND p.contract_address = $3
-               AND p.tx_hash = r.tx_hash
-               AND p.event_name = 'PaymentRecorded'
-               AND (p.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
-               AND (p.params->'event'->>'repayment_id')::numeric = (r.params->>'repayment_id')::numeric
-             ORDER BY p.log_index DESC
-             LIMIT 1
-         ) pr ON TRUE
+         LEFT JOIN repayment_fees pr
+                ON pr.chain_id = r.chain_id
+               AND pr.tx_hash = r.tx_hash
+               AND pr.loan_id = (r.params->>'loan_id')::numeric
+               AND pr.repayment_id = (r.params->>'repayment_id')::numeric
          WHERE r.chain_id = $1
            AND r.block_timestamp <= $2
            AND r.event_name = 'CashRepaid'
@@ -287,6 +297,7 @@ pub const PLUSD_LEDGER_SQL: &str = "SELECT block_timestamp, block_number, log_in
                        WHERE w.chain_id = v.chain_id
                          AND w.tx_hash = v.tx_hash
                          AND w.event_name = 'StakingWithdrawal'
+                         AND LOWER(w.params->>'sender') = LOWER(v.contract_address)
                    ), 0)
                  + COALESCE(orig.carved_interest, 0))
          FROM contract_logs v

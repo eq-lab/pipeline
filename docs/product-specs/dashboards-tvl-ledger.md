@@ -17,13 +17,13 @@ Reader: `ContractLogsRepo::list_plusd_ledger` (`PLUSD_LEDGER_SQL`). Rows are `(b
 | Repayment interest, minted to the vault or, when carved out, to the Pocket | + | `CashRepaid` | Minter | `interest_minted` |
 | Repayment fees, minted then staked for the treasury | + | `PaymentRecorded` (same tx, loan, repayment) | LoanRegistry | `event.mgmt_fee + perf_fee + oet_alloc` |
 | Income (`recordIncome` mints to the vault) | + | `CashRecorded`, reason `Income` | Minter | `delta` |
-| Legacy yield mint (vault and treasury legs) | + | `YieldMinted` | YieldMinter | `s_plusd_amount + treasury_amount` |
+| Legacy yield mint (vault and treasury legs; the treasury leg was plain PLUSD). Matches historical rows only, no parser emits `YieldMinted` any more | + | `YieldMinted` | YieldMinter | `s_plusd_amount + treasury_amount` |
 | Wire-in returned | − | `WireInReturned` | Minter | `amount` |
 | Wire-out settled (burn) | − | `WireOutSettled` | Minter | `amount` |
 | Withdrawal claim (burn) | − | `RequestClaimed` | WithdrawalQueue only | `amount` |
 | Loss absorbed (`recordExpense`, ramp loss, `correctVaultMint`, reversal shortfall) | − | `LossAbsorbed` | Minter | `pulled` |
 | Write-down burn from the Pocket | − | `LoanWrittenDown` | LoanRegistry | `event.burned` |
-| Repayment reversal: treasury fee-share burn | − | `StakingWithdrawal` in the reversal's tx | sPLUSD | `assets` |
+| Repayment reversal: treasury fee-share burn | − | `StakingWithdrawal` in the reversal's tx with `sender` = the reversal's Minter | sPLUSD | `assets` |
 | Repayment reversal of a carved-out repayment: Pocket interest burn | − | `CashRepaymentReversed` | Minter | original `CashRepaid.interest_minted` |
 
 Rules:
@@ -31,6 +31,8 @@ Rules:
 - **Withdrawals leave at claim.** `WithdrawalRequested` moves PLUSD into the queue (still in circulation) and has no ledger row. A `RequestClaimed` row counts only when a `WithdrawalRequested` with the same `request_id` exists on the same contract address, which scopes it to the WithdrawalQueue (DepositManager emits the same event name).
 - **Deposit claims have no row.** The mint at claim is already counted at the request.
 - **Carve-out stays.** PLUSD moved to the Pocket (default carve-out, carved-out interest) is still in circulation and stays in TVL until a write-down burns it. A carved-out repayment is a `CashRepaid` after a registry `LoanDefaulted` for the loan.
+- **Fee-share burn.** On EVM `burnShares` emits an ERC-4626 `Withdraw(minter, minter, treasury, ...)`. On Stellar `burn_shares` emits only `shares_burned`, which the worker indexes as a `StakingWithdrawal` with `sender` = `receiver` = the minter contract id (#1614). The reversal row subtracts only `StakingWithdrawal` rows of its own transaction whose `sender` equals the `CashRepaymentReversed` emitter (case-insensitive), so a batched transaction's other withdrawals are ignored. The treasury address is not available to the API, so `owner` is not filtered. `shares_burned` events from before this change need a Stellar re-index to appear.
+- **Scoping.** Only `PaymentRecorded`, `LoanDefaulted` and `LoanWrittenDown` are scoped to the chain's LoanRegistry. Every other event is chain-scoped only, because the Minter, DepositManager and WithdrawalQueue addresses are not available to the API. After a redeploy on the same chain this can only overstate TVL. `RequestClaimed` is scoped by its same-contract `WithdrawalRequested`.
 - **No row for pure bookkeeping.** `MintCorrected` (its burn is the `LossAbsorbed.pulled` of the same call), `CashCorrected`, `WireInAssigned`, `WireOutRequested` / `WireOutCancelled`, `CashDisbursed` and the other cash events do not change PLUSD supply.
 - **Normalisation.** Per chain, the running raw total is normalised to base-6 by chain kind (Stellar divides by 10 and truncates) and only its change is emitted (`normalise_plusd_ledger`), then chains are summed. A chain with no configured LoanRegistry address is skipped, like the summary's other readers.
 
