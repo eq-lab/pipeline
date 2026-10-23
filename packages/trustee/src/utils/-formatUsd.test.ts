@@ -186,3 +186,19 @@ describe("formatUsdDecimal", () => {
     );
   });
 });
+
+describe("compact formatters unit boundaries (#1626)", () => {
+  it("promotes to the next unit when rounding reaches 1000", () => {
+    expect(formatCompactUsd("999999.000000")).toBe("$1M");
+    expect(formatCompactUsd("999999.999999")).toBe("$1M");
+    expect(formatCompactUsd("999.999")).toBe("$1K");
+    expect(formatCompactUsd("-999999.000000")).toBe("-$1M");
+    expect(formatCompactUsd2dp("999999.000000")).toBe("$1.00M");
+    expect(formatCompactUsd2dp("999.999")).toBe("$1.00K");
+  });
+
+  it("keeps values that round below 1000 in their unit", () => {
+    expect(formatCompactUsd("999994.000000")).toBe("$999.99K");
+    expect(formatCompactUsd2dp("999994.000000")).toBe("$999.99K");
+  });
+});

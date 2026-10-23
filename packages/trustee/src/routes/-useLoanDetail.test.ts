@@ -28,6 +28,7 @@ import {
   buildPriceCollateralState,
   buildRegistryState,
   buildSummaryTiles,
+  ccrSeriesFrom,
   selectOtherActions,
   statusToChip,
 } from "./-useLoanDetail";
@@ -800,5 +801,38 @@ describe("buildCcrTrend", () => {
 
   it("returns null for an empty series (never priced / empty window)", () => {
     expect(buildCcrTrend(history([]))).toBeNull();
+  });
+});
+
+describe("ccrSeriesFrom", () => {
+  const DAY = 86_400;
+  const T0 = 1_760_000_000;
+
+  it("returns null for a missing entry", () => {
+    expect(ccrSeriesFrom(undefined)).toBeNull();
+  });
+
+  it("returns the origination for a non-rolled loan", () => {
+    expect(
+      ccrSeriesFrom({ maturity: T0 + 180 * DAY, duration_days: 180 }),
+    ).toBe(T0);
+  });
+
+  it("starts a rolled-over loan at origination, not at the original-term end", () => {
+    const from = ccrSeriesFrom({
+      maturity: T0 + 180 * DAY,
+      duration_days: 180,
+    });
+    expect(from).toBe(T0);
+    expect(from).not.toBe(T0 + 90 * DAY);
+  });
+
+  it("starts within one day after a sub-day origination, never before it", () => {
+    const origination = Date.UTC(2026, 0, 1, 14) / 1000;
+    const maturity = Date.UTC(2026, 6, 1) / 1000;
+    const durationDays = Math.floor((maturity - origination) / DAY);
+    const from = ccrSeriesFrom({ maturity, duration_days: durationDays })!;
+    expect(from).toBeGreaterThanOrEqual(origination);
+    expect(from - origination).toBeLessThan(DAY);
   });
 });

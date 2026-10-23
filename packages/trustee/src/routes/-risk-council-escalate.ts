@@ -14,7 +14,7 @@ import { findLoanEntry } from "@/lib/loanRoute";
 import type { TopConcentration } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
-import { buildCcrTrend, type CcrTrend } from "./-useLoanDetail";
+import { buildCcrTrend, ccrSeriesFrom, type CcrTrend } from "./-useLoanDetail";
 import {
   classifyCcr,
   type CcrBand,
@@ -25,9 +25,6 @@ import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
 // ── Mock constants (see module doc — no backend source, not per-loan) ───────
-
-/** MOCK — no "watchlist since" timestamp is served anywhere (issue #859's gap). */
-export const MOCK_DAYS_ON_WATCHLIST = "18";
 
 /** MOCK — no if-defaulted portfolio-impact projection endpoint exists. */
 export const MOCK_AT_RISK_PROJECTED_PCT = "4.3%";
@@ -243,11 +240,7 @@ export function useRiskCouncilEscalate(
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
-  // CCR-history series (#879) — from the loan's origination through now, daily.
-  // Mirrors `-useLoanDetail.ts`'s `ccrFrom` computation; the hook self-disables
-  // until `from` is known.
-  const ccrFrom =
-    entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
+  const ccrFrom = ccrSeriesFrom(entry);
   const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
 
   const state: RiskCouncilEscalateView["state"] = loanBook.isLoading
@@ -299,7 +292,10 @@ export function useRiskCouncilEscalate(
       collateralValue: formatFullUsd(entry?.collateral),
       ccrLine: formatCcrLine(entry?.ccr_bps ?? null),
       ccrBand: classifyCcr(entry?.ccr_bps ?? null),
-      daysOnWatchlist: MOCK_DAYS_ON_WATCHLIST,
+      daysOnWatchlist:
+        entry?.days_on_watchlist == null
+          ? "—"
+          : String(entry.days_on_watchlist),
     },
     ccrTrend: buildCcrTrend(ccrHistory),
     portfolioImpact: {

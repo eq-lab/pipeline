@@ -151,7 +151,6 @@ export interface LoanBookEntry {
    * spec: docs/frontend/trustee-flows.md#data-scale--registry-sourced-amounts-served-as-is-906
    */
   ccr_bps: number | null;
-  /** Original loan term in days. Not rendered on this page. */
   duration_days: number;
   /** Senior interest rate, decimal-fraction string. Not rendered on this page. */
   rate: string;

@@ -907,14 +907,6 @@
     "header": 10,
     "nodeIds": 0
   },
-  "packages/trustee/src/utils/formatDate.ts": {
-    "header": 12,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/utils/formatUsd.ts": {
-    "header": 33,
-    "nodeIds": 0
-  },
   "packages/trustee/src/utils/stellarSacUnits.ts": {
     "header": 5,
     "nodeIds": 0

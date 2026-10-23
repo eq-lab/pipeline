@@ -15,6 +15,16 @@ Trustee product intent lives in `docs/product-specs/` (see the Trustee panel not
 > definition-site config/field docs by design (rule-6 compliant: short constraints at the
 > definition, not flow narration).
 
+## Dates
+
+Every trustee calendar date renders in UTC through `@/utils/formatDate` (`formatMaturityDate`,
+`formatEpochDate`, `formatSubmittedDate`, `formatIsoDateUtc`, `formatAuditTimestamp`,
+`formatIsoDateTimeUtc`), never in the browser's zone (#1626). Maturity, origination and
+next-payment values are entered as UTC midnight, so a US browser must not show `15 Dec` as
+`14 Dec`. `formatSubmittedDate` is UTC too, so a "Submitted" day and a maturity day on one row use
+the same calendar. The tests force `TZ=America/New_York` (`-formatDate-utc.test.ts`) so they fail
+against a local-zone formatter even when CI runs in UTC.
+
 ## Audit Log
 
 **Sources:** `packages/trustee/src/routes/audit-log.tsx` (view),
@@ -532,7 +542,13 @@ every variant today.
 Built from the real `/ccr-history` series (#879) — replaces the fixed-geometry fixture (#859).
 `null` when the series has no points (never priced / empty window) so the card is simply omitted
 rather than drawing a fabricated line. The series spans the loan's origination
-(`maturity − duration_days`) through now, daily. Per-loan y-scale spans the series' CCR range
+through now, daily. Its `from` is `ccrSeriesFrom(entry)` (`-useLoanDetail.ts`, shared with the
+Escalate page): `maturity − duration_days · 86400`, where the served `duration_days` is the
+current, rollover-aware term `floor((current_maturity − origination) / 1 day)` (#1633; the
+`LoanBookEntry.duration_days` field is that current term, not the original one). The floor
+means the series can start up to one day after the origination instant, which is within one
+step of the daily `/ccr-history` grid; this is accepted, and a raw `origination_date` on the
+loan-book entry is not planned (#1626). Per-loan y-scale spans the series' CCR range
 widened to the protocol watchlist thresholds (spec §9.6) — 120% maintenance-margin and 110%
 margin-call dashed guide-lines (protocol-wide defaults; no endpoint serves per-loan overrides yet,
 #879). The card is extracted to `-CcrTrendChart.tsx` (#782) so the Risk Council "Escalate to
@@ -700,6 +716,11 @@ the residual after all five carve-outs (principal + interest + fees) — clamped
 negative — so the six components still sum exactly to `offtaker_received`. The amount input is
 prefilled (one-shot, then read-only) to the full remaining `offtaker_outstanding` once financials
 load — a principal repayment always pays it all; there are no partial principal repayments.
+The prefill (`prefillAmountInput`) is exact to the served 6-dp `offtaker_outstanding` string:
+validated, trailing fractional zeros trimmed (`"6150000.000000"` → `6,150,000`), then grouped, with
+no float round-trip. Stellar USDC has 7 dp while `/financials` serves a 6-dp truncated value, so a
+residue of up to 9 raw units (at most $0.0000009) can remain. This is intended: the served value
+then reads `0.000000`, the fully-paid gate opens, and `close_loan` waives the residue (#1626).
 
 Once the loan is fully repaid, the page also exposes a **Close loan** action (`useCloseLoan`) that
 moves the loan to `Closed`.
@@ -783,7 +804,11 @@ doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding
 chain is not served by the API) is the one 4xx that is **not** an amount problem: it falls
 through to `toUserError`'s "This network isn't enabled on the server…" copy (#1602). Anything else
 gets a generic retry message. The date input is fixed to today and not editable (#916) — no
-calendar/date picker.
+calendar/date picker. The "Date received" field only displays today: both record flows call the
+waterfall with `as_of` omitted, so the server uses its own `now` (the endpoint's documented
+default). #1626 decided the earlier `T00:00:00Z` midnight `as_of` was unintended: it
+under-accrued up to a day of interest and fees (waived at `close_loan`), and the backend returns
+400 when `as_of` precedes origination, which midnight did for a loan drawn earlier the same day.
 
 ## Mock keys (manual QA)
 
@@ -1024,18 +1049,17 @@ at the card width and keep those proportions as the card grows:
 | column | width | cell |
 |---|---|---|
 | Received | 22% | `occurred_at` via `formatIsoDateTimeUtc` → `5 Oct 2026, 15:41 UTC`, `whitespace-nowrap` |
-| Amount | 16% | right-aligned `tabular-nums`, `formatCompactUsd2dp` |
+| Amount | 16% | right-aligned `tabular-nums`, `formatUsdDecimal` (exact, `$1,234,567.89`) |
 | Payment reference | 26% | `payment_reference`, `break-all`, `ref_hash` as its `title` |
 | Recorded by | 18% | `recorded_by` as an [`AddressText`](#shared-detail-primitives) |
 | PLUSD | 18% | the status cell below |
 
 `min-w-[820px]` holds those shares legible before `overflow-x-auto` takes over.
 
-**Amount uses the Loans-table formatter.** `formatCompactUsd2dp` — the same formatter
-`-useLoansTable.ts` uses for `senior_outstanding` / `collateral` — replaced the local
-`formatUsdDecimal`, so a deposit reads `$1.25M` / `$30.00K` exactly as a loan amount does
-elsewhere in the trustee app instead of inventing a second money style per table. The served
-string is unchanged; only the display formatter moved.
+**Amount is exact (#1626).** `formatUsdDecimal` renders the served 2-dp dollar string as
+`$1,234,567.89`, never compact (`$1.23M`), because the trustee reconciles this figure against the
+wire before minting. This reverses the #1453 "Amount uses the Loans-table formatter" note. The
+column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
 
 - **List** — `GET`, 30 s poll, served order (newest first), no client sort. Columns per the plan
   above. Loading, empty ("No bank deposits recorded."), and error + Retry states.
@@ -1488,15 +1512,15 @@ the Risk-Council **display** screens for flows 11/12.
 
 **Real vs. mock data:**
 
-- **Real** (sourced live, per-loan): Originator / Facility (`principal`) / senior deployed
+- **Real** (sourced live, per-loan): Days on watchlist (`entry.days_on_watchlist`, `—` when
+  `null`, #1626); Originator / Facility (`principal`) / senior deployed
   (`senior_outstanding`) / Collateral (loan-book entry, served display-scale as-is, #906;
   `ccr_bps` used as-is); Repaid to date (`useLoanFinancials`, `offtaker − offtaker_outstanding`);
   CCR trend (`useLoanCcrHistory` + `buildCcrTrend`, reused from `-useLoanDetail.ts`); current
   at-risk % (`summary.at_risk_wl_and_default_pct`); concentration (`summary.top_concentration`,
   only when it names *this* loan's own commodity — the endpoint serves a single portfolio-wide top
   concentration, not a per-commodity share — `—` otherwise).
-- **Mock** (no backend source, flagged, not per-loan): "Days on watchlist" (no "watchlist since"
-  timestamp served anywhere, the same gap the Watchlist loan-detail page has, #859); the "→ Y% if
+- **Mock** (no backend source, flagged, not per-loan): the "→ Y% if
   defaulted" portfolio-impact projection (no projection endpoint, and `at_risk_wl_and_default_pct`
   already combines WatchList+Default so a same-loan transition barely moves the combined figure —
   no real formula to derive the Figma's forward-looking delta); the proposal builder itself (name +

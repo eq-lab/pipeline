@@ -14,7 +14,7 @@ explicitly marked as intended, with tests for items 1, 3 and 4.
 
 ### In scope
 
-1. **Dates in UTC.** `packages/trustee/src/utils/formatDate.ts`: `formatMaturityDate`,
+1. [x] **Dates in UTC.** `packages/trustee/src/utils/formatDate.ts`: `formatMaturityDate`,
    `formatEpochDate` and `formatSubmittedDate` format in the runner's local time zone. Maturity,
    origination and next-payment values are entered as UTC midnight, so a US browser shows
    `15 Dec` as `14 Dec`. All three switch to `timeZone: "UTC"`. This matches the rest of the
@@ -22,7 +22,7 @@ explicitly marked as intended, with tests for items 1, 3 and 4.
    which already render in UTC. `formatSubmittedDate` is included on purpose, so that a
    "Submitted"/"Approved" day and a maturity day on the same row use the same calendar. Call
    sites stay unchanged.
-2. **Waterfall `as_of`. Decision: not intended. Use now.** `-record-coupon.ts` and
+2. [x] **Waterfall `as_of`. Decision: not intended. Use now.** `-record-coupon.ts` and
    `-record-repayment.ts` build `as_of` from `todayDateInput()` + `T00:00:00Z`. The evidence:
    - #916 made the "Date received" field a read-only display of today, and its body says
      "`as_of` sent to `/waterfall` is today". That means the payment is not backdated. Nothing
@@ -39,7 +39,7 @@ explicitly marked as intended, with tests for items 1, 3 and 4.
    Fix: stop deriving `as_of` from the date input. Pass `null` to `useLoanWaterfall`, which
    omits `as_of`, so the server uses its own `now`. That avoids client-clock skew and matches
    the endpoint's documented default. The "Date received" display (`dateInput`) stays as it is.
-3. **CCR trend start.** `-useLoanDetail.ts:723` and `-risk-council-escalate.ts:249` each compute
+3. [x] **CCR trend start.** `-useLoanDetail.ts:723` and `-risk-council-escalate.ts:249` each compute
    `ccrFrom = maturity − duration_days·86400`. Since #1633 (`dec64862`, merged 2026-10-22,
    after the review), the served `duration_days` is the **current, rollover-aware** term
    `floor((current_maturity − origination) / 1 day)` (`shared/src/book_weighting.rs`
@@ -56,21 +56,21 @@ explicitly marked as intended, with tests for items 1, 3 and 4.
    - Correct the stale `duration_days` doc on the trustee `LoanBookEntry`
      ("Original loan term" → current full term, rollover-aware).
    - Add a rollover test.
-4. **Compact formatter.** `formatCompactUsd` / `formatCompactUsd2dp`
+4. [x] **Compact formatter.** `formatCompactUsd` / `formatCompactUsd2dp`
    (`packages/trustee/src/utils/formatUsd.ts`) choose the unit before rounding, so `999,999`
    becomes `999.999K`, which rounds to `"$1000K"` / `"$1000.00K"`. The same happens at the
    K boundary: `999.999` gives `"$1000"`. Fix: round first, then promote to the next unit when
    the rounded mantissa reaches 1000. `999,999` → `"$1M"` (`formatCompactUsd`) /
    `"$1.00M"` (`formatCompactUsd2dp`), and `999.999` → `"$1K"` / `"$1.00K"`. M stays the top
    unit (no B).
-5. **Bank-deposit rows show the exact amount.** `-useLpBankDeposits.ts:123`
+5. [x] **Bank-deposit rows show the exact amount.** `-useLpBankDeposits.ts:123`
    `mapDepositToRow` uses `formatCompactUsd2dp`. Switch it to the existing exact, string-based
    `formatUsdDecimal` (`"50000.00"` → `"$50,000.00"`). The served `amount` is a plain 2-dp
    dollar string. This reverses the #1453 "Amount uses the Loans-table formatter" note in
    `docs/frontend/trustee-flows.md`. The issue is newer and gives the reason: the trustee
    reconciles this figure against the wire before minting. `amountRaw` and the mint path are
    unchanged.
-6. **Principal prefill dust.** `-record-repayment.ts:310` prefills with
+6. [x] **Principal prefill dust.** `-record-repayment.ts:310` prefills with
    `formatUsdInputValue(String(parseFloat(offtaker_outstanding)))`, a float round-trip.
    Fix: prefill from the served string exactly. Validate it with `economicsUsdDecimal`, trim
    trailing fractional zeros so `"6150000.000000"` stays `"6,150,000"`, then group with
@@ -80,7 +80,7 @@ explicitly marked as intended, with tests for items 1, 3 and 4.
    Soroban USDC has 7 dp. The frontend cannot recover the 7th digit. With the default below,
    this residue is recorded as accepted. The served value then reads `0.000000`, so the
    fully-paid gate opens and `close_loan` waives the residue. See Open Questions.
-7. **Escalate page days on watchlist.** `-risk-council-escalate.ts:302` renders
+7. [x] **Escalate page days on watchlist.** `-risk-council-escalate.ts:302` renders
    `MOCK_DAYS_ON_WATCHLIST = "18"`. The loan-book entry now serves `days_on_watchlist`, which
    the loan-detail page already uses (`-useLoanDetail.ts:613`). Use
    `entry.days_on_watchlist` and render `"—"` when it is `null`. Delete the mock constant.
@@ -124,19 +124,19 @@ explicitly marked as intended, with tests for items 1, 3 and 4.
   frontend-only fix can do, and it never skips more than one daily grid point. The
   alternative is a follow-up `backend` issue to serve a raw `origination_date` on
   `GET /v1/loan-book` entries, which the trustee would then use directly.
-  Default if unanswered: accept, and do not file a backend issue.
+  Answered: accept, no backend issue.
 - **Item 6, Stellar dust:** should the residue of up to 9 raw units be marked as intended?
   It is at most $0.0000009, comes from `/financials` serving 6-dp truncated values against
   7-dp SAC amounts, and is waived at `close_loan`. The alternative is a follow-up `backend`
   issue to serve the raw on-chain `offtaker_outstanding` for the prefill.
-  Default if unanswered: mark it intended in the spec, and do not file a backend issue.
+  Answered: mark it intended in the spec, no backend issue.
 
 Item 2 (waterfall `as_of`) is **not** open. The specs and the backend default answer it (see
 Scope item 2).
 
 ## Implementation Steps
 
-1. **Dates in UTC:** `packages/trustee/src/utils/formatDate.ts`
+1. [x] **Dates in UTC:** `packages/trustee/src/utils/formatDate.ts`
    - Add `timeZone: "UTC"` to the `DAY_MONTH_YEAR` and `DAY_MONTH` option objects, or create
      `…_UTC` variants and drop the now-redundant spreads. `formatMaturityDate`,
      `formatSubmittedDate`, `formatEpochDate`, `formatIsoDateUtc` and `formatAuditTimestamp`
@@ -144,7 +144,7 @@ Scope item 2).
    - Remove the "exact day depends on TZ" wording and the other narrative JSDoc. Keep one
      2–3-line spec-pointer header (`docs/frontend/trustee-flows.md`). Shrink this file's entry
      in `scripts/lint-comments.baseline.json`.
-2. **Waterfall `as_of`:** `packages/trustee/src/routes/-record-coupon.ts` and
+2. [x] **Waterfall `as_of`:** `packages/trustee/src/routes/-record-coupon.ts` and
    `-record-repayment.ts`
    - Delete the `asOfSeconds` `useMemo` and call
      `useLoanWaterfall(chainId, loanId, amountBaseUnits, null)`.
@@ -152,7 +152,7 @@ Scope item 2).
    - Check that `useMemo` is still imported only where it is used.
    - `packages/trustee/src/api/useLoanWaterfall.ts` already omits `&as_of` for `null`, so it
      needs no change.
-3. **CCR start:** `packages/trustee/src/routes/-useLoanDetail.ts`
+3. [x] **CCR start:** `packages/trustee/src/routes/-useLoanDetail.ts`
    - Export `ccrSeriesFrom(entry: Pick<LoanBookEntry, "maturity" | "duration_days"> | undefined): number | null`.
      It returns `null` for a missing entry, otherwise
      `entry.maturity − entry.duration_days * 86_400`.
@@ -161,7 +161,7 @@ Scope item 2).
    - Remove the duplicated inline comments.
    - In `packages/trustee/src/api/useLoanBook.ts`, change the `duration_days` doc to "Current
      full loan term in days (`current_maturity − origination`, rollover-aware)".
-4. **Compact formatter:** `packages/trustee/src/utils/formatUsd.ts`
+4. [x] **Compact formatter:** `packages/trustee/src/utils/formatUsd.ts`
    - Add a private `compactParts(abs, decimals)` helper. It picks K or M, rounds the mantissa
      to 2 dp, and if the rounded value is `>= 1000`, promotes to the next unit (bare → K,
      K → M) and recomputes. M is the cap.
@@ -169,24 +169,24 @@ Scope item 2).
      keeps fixed `toFixed(2)`.
    - Existing outputs (`$96M`, `$8.4M`, `$500K`, `$2.10M`, `$500.00K`, `$0`, `$0.00`, `—`)
      must not change.
-5. **Bank-deposit amount:** `packages/trustee/src/routes/-useLpBankDeposits.ts`
+5. [x] **Bank-deposit amount:** `packages/trustee/src/routes/-useLpBankDeposits.ts`
    - In `mapDepositToRow`, set `amount: formatUsdDecimal(deposit.amount)`, and change the
      import from `formatCompactUsd2dp` to `formatUsdDecimal`.
    - Confirm the confirm-mint dialog, if it shows the amount, uses the same exact form.
    - Check the `-LpBankDepositsSection.tsx` Amount column for wrapping at 9-digit amounts, and
      adjust the `<colgroup>` shares only if it wraps.
-6. **Principal prefill:** `packages/trustee/src/routes/-record-repayment.ts`
+6. [x] **Principal prefill:** `packages/trustee/src/routes/-record-repayment.ts`
    - Add an exported pure helper `prefillAmountInput(served: string | null | undefined): string | null`.
      It runs `economicsUsdDecimal(served)`, returns `null` when the value is zero or invalid,
      strips trailing fractional zeros and a trailing `.`, then applies `formatUsdInputValue`.
    - The prefill `useEffect` uses this helper on `financials.data?.offtaker_outstanding`
      instead of `String(offtakerOutstandingUsd)`. The `> 0` guard stays.
-7. **Days on watchlist:** `packages/trustee/src/routes/-risk-council-escalate.ts`
+7. [x] **Days on watchlist:** `packages/trustee/src/routes/-risk-council-escalate.ts`
    - Set `daysOnWatchlist: entry?.days_on_watchlist == null ? "—" : String(entry.days_on_watchlist)`,
      the same mapping as `-useLoanDetail.ts:613`.
    - Delete `MOCK_DAYS_ON_WATCHLIST` and its comment, and remove every import of it.
-8. **Docs:** see Docs to Update.
-9. **Verification:**
+8. [x] **Docs:** see Docs to Update.
+9. [x] **Verification:**
    - `yarn workspace @pipeline/trustee test` (or the repo's trustee vitest command)
    - `yarn build` for trustee
    - `npx tsx scripts/lint-docs.ts`

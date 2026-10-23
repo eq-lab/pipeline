@@ -199,7 +199,7 @@ describe("LpBankDepositsSection — list", () => {
     ]);
     const row = screen.getAllByRole("row")[1]!;
     expect(row).toHaveTextContent("5 Oct 2026, 15:41 UTC");
-    expect(row).toHaveTextContent("$1.25M");
+    expect(row).toHaveTextContent("$1,250,000.50");
     expect(row).toHaveTextContent("WIRE-REF-1");
     expect(
       within(row).getByRole("button", { name: "Mint PLUSD" }),

@@ -10,7 +10,7 @@
  * (scope, key difference from Record Coupon, scale handling, close-loan
  * gating).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
@@ -25,6 +25,7 @@ import { formatFullUsd, formatUsdInputValue } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
   SAC_DECIMALS,
+  economicsUsdDecimal,
   parsePositiveUsdInput,
   sacBaseUnitsToUsdDecimal,
   usdInputToSacBaseUnits,
@@ -120,6 +121,17 @@ function parseServedUsd(raw: string | null | undefined): number | null {
   if (raw == null) return null;
   const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+export function prefillAmountInput(
+  served: string | null | undefined,
+): string | null {
+  const decimal = economicsUsdDecimal(served);
+  if (decimal == null || !/[1-9]/.test(decimal)) return null;
+  const trimmed = decimal.includes(".")
+    ? decimal.replace(/0+$/, "").replace(/\.$/, "")
+    : decimal;
+  return formatUsdInputValue(trimmed);
 }
 
 // e.g. "31 Mar 2026 → 24 Jun 2026 · 85 days" — same computation as
@@ -265,20 +277,8 @@ export function useRecordRepayment(
   const amountBaseUnits = offtakerFullyPaid
     ? "0"
     : usdToBaseUnits(debouncedAmount, decimals);
-  const asOfSeconds = useMemo(() => {
-    if (!dateInput) return Math.floor(Date.now() / 1000);
-    const parsed = Math.floor(
-      new Date(`${dateInput}T00:00:00Z`).getTime() / 1000,
-    );
-    return Number.isFinite(parsed) ? parsed : Math.floor(Date.now() / 1000);
-  }, [dateInput]);
 
-  const waterfall = useLoanWaterfall(
-    chainId,
-    loanId,
-    amountBaseUnits,
-    asOfSeconds,
-  );
+  const waterfall = useLoanWaterfall(chainId, loanId, amountBaseUnits, null);
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
   const onChainBlockedReason = entry
@@ -301,16 +301,23 @@ export function useRecordRepayment(
   // clobbers it; the field is disabled, so the trustee can't edit it down.
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
+    const prefill = prefillAmountInput(financials.data?.offtaker_outstanding);
     if (
       !prefilled &&
       amountInput === "" &&
       offtakerOutstandingUsd != null &&
-      offtakerOutstandingUsd > 0
+      offtakerOutstandingUsd > 0 &&
+      prefill != null
     ) {
-      setAmountInput(formatUsdInputValue(String(offtakerOutstandingUsd)));
+      setAmountInput(prefill);
       setPrefilled(true);
     }
-  }, [prefilled, amountInput, offtakerOutstandingUsd]);
+  }, [
+    prefilled,
+    amountInput,
+    offtakerOutstandingUsd,
+    financials.data?.offtaker_outstanding,
+  ]);
 
   const finalPeriod = computeFinalPeriod(financials.data?.epoch ?? null);
 
