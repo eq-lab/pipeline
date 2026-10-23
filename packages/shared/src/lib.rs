@@ -47,4 +47,5 @@ pub mod signature;
 pub mod stellar_voucher;
 pub mod submitted_loan_repo;
 pub mod sumsub;
+pub mod time_weighted_return;
 pub mod yield_mint_outbox_repo;

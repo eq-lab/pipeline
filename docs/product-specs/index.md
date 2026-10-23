@@ -30,6 +30,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
 | [book-rate-weighting.md](./book-rate-weighting.md) | Yield Distribution | Outstanding-senior weighting of book rate and tenor across loan book, dashboard and yield series |
+| [yield-apy-semantics.md](./yield-apy-semantics.md) | Yield Distribution | Definitions of `/v1/pnl` avg_apy, `/v1/stats` apy, per-loan minted yield and dashboard cumulative LP yield; amounts-0 / rates-null convention |
 | [loan-status-timeline.md](./loan-status-timeline.md) | Loans | One status-timeline rule for active, at-risk and accrual across loan book, dashboard, financial position, capital allocation and yield series |
 | [withdrawals.md](./withdrawals.md) | Withdrawals | EVM `requestWithdrawal` / `claimWithdrawal` (voucher-gated, FIFO-funded), Treasury redemption; designed attestation queue marked not deployed |
 | [smart-contracts.md](./smart-contracts.md) | Smart Contracts | Overview, governance, contracts table, security considerations, actor glossary |

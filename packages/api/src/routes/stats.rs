@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -13,11 +12,15 @@ use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
 use crate::routes::common::{ChainScope, LenientChainFilter, RequiredChain};
 use crate::AppState;
+use shared::time_weighted_return::linear_apy;
 
 /// Maximum value the `/stats` endpoint accepts for the `apy_days` query parameter.
 /// Coupled by product policy to `intervals::MAX_SAMPLES` (both 1_000) but semantically
 /// distinct: this is a duration in days, not a sample count.
 const MAX_APY_DAYS: u32 = 1_000;
+
+/// Minimum price-history span inside the window for a non-null `apy` (7 days).
+pub use shared::time_weighted_return::MIN_APY_SPAN_SECS;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -56,7 +59,8 @@ pub struct VaultStatsItem {
     pub vault_address: String,
     /// Current share price (assets per 1 share).
     pub share_price: String,
-    /// APY as a decimal (e.g. 0.0725 = 7.25%). Null if insufficient price history.
+    /// Simple-interest APY `(p_latest / p_oldest − 1) × 365 / days` as a decimal (0.0725 = 7.25%)
+    /// over the window's oldest-to-latest price span. Null with under 7 days of span.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apy: Option<String>,
 }
@@ -70,7 +74,7 @@ pub struct StatsResponse {
     get,
     path = "/v1/stats",
     params(
-        ("apy_days" = Option<u32>, Query, description = "Number of days for APY calculation window (default 30, max 1000). Uses the oldest available price within this window."),
+        ("apy_days" = Option<u32>, Query, description = "Number of days for APY calculation window (default 30, max 1000). Uses the oldest available price within this window; `apy` is null with under 7 days of span."),
         LenientChainFilter,
     ),
     responses(
@@ -123,19 +127,13 @@ async fn compute_stats(
             continue;
         };
 
-        // Get the oldest price within the window, then compute APY from actual time delta
         let apy = state
             .position_repo
             .get_oldest_price_in_window(chain_id, &v.address, since)
             .await?
             .and_then(|oldest| {
-                let actual_secs = (latest.block_timestamp - oldest.block_timestamp).num_seconds();
-                #[allow(clippy::cast_precision_loss)] // seconds in a 30-day window fits f64
-                let actual_days = actual_secs as f64 / 86400.0;
-                if actual_days < 1.0 {
-                    return None;
-                }
-                compute_apy(&latest.price, &oldest.price, actual_days)
+                let span = (latest.block_timestamp - oldest.block_timestamp).num_seconds();
+                linear_apy(&latest.price, &oldest.price, span, MIN_APY_SPAN_SECS)
             });
 
         vaults.push(VaultStatsItem {
@@ -292,32 +290,4 @@ async fn get_vaults(
         }));
     }
     Ok(Json(VaultsResponse { vaults }))
-}
-
-/// Compute APY: (current / past) ^ (365 / actual_days) - 1
-fn compute_apy(
-    current: &bigdecimal::BigDecimal,
-    past: &bigdecimal::BigDecimal,
-    actual_days: f64,
-) -> Option<f64> {
-    if *past == 0i64 || actual_days < 1.0 {
-        return None;
-    }
-
-    let current_f = f64::from_str(&current.to_string()).ok()?;
-    let past_f = f64::from_str(&past.to_string()).ok()?;
-
-    if past_f <= 0.0 || current_f <= 0.0 {
-        return None;
-    }
-
-    let periods_per_year = 365.0 / actual_days;
-    let period_return = current_f / past_f;
-    let apy = period_return.powf(periods_per_year) - 1.0;
-
-    if apy.is_finite() {
-        Some(apy)
-    } else {
-        None
-    }
 }

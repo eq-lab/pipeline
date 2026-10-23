@@ -19,7 +19,7 @@
 //! malformed or repeated = 400 (`LenientChainFilter`, same as `routes::financial_position`).
 //! Every amount is base-6 USDC before summing: the repo readers normalise flow, legacy
 //! yield and loan-snapshot amounts by chain kind, and `CashRepaid` mints (raw) are
-//! normalised per loan by chain kind exactly like LoanBook's `minted_yield`. Loan data is read through each chain's
+//! normalised per loan by chain kind (same rounding approach as LoanBook's `minted_yield`). Loan data is read through each chain's
 //! LoanRegistry address. Rates (`loan_book_yield`, `current_apy_net_to_splusd`) are
 //! computed over the union of active loans, i.e. outstanding-senior-weighted across chains. The
 //! series share one time grid and are summed point-wise; `max`/`min`/`average` come from
@@ -34,13 +34,14 @@
 //! | `outstanding_in_loans` | `financial_position::compute_financial_position` → `assets.deployed.secured_loans_outstanding` |
 //! | `loan_book_yield` | `loan_book::compute_loan_book` → `summary.avg_yield` |
 //! | `current_apy_net_to_splusd` | effective-haircut net rate: `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))` |
-//! | `cumulative_yield_total` | historical Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid` (`interest_minted` + `PaymentRecorded` fee leg) net of `CashRepaymentReversed` |
+//! | `cumulative_yield_total` | LP yield: legacy Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid.interest_minted` of non-carved-out loans (no `LoanDefaulted` at or before the repayment), net of `CashRepaymentReversed`; fees excluded |
 //!
 //! ## Conventions
 //!
 //! - USDC amounts as base-6 decimal strings (`"43140000.000000"`).
 //! - Rates as decimal-fraction strings (`"0.104000"` = 10.4 %).
-//! - `null` when data unavailable (e.g. no active loans or nothing outstanding → `current_apy_net_to_splusd`).
+//! - Amounts are `0` ("0.000000") when empty; rates are `null` when no book exists
+//!   (`current_apy_net_to_splusd` is `null` only when the gross rate is `null`).
 //! - `days`/`interval`/`MAX_SAMPLES` cap mirrors `/v1/stats/yield` (`portfolio.rs`).
 
 use std::collections::{BTreeMap, HashMap};
@@ -94,17 +95,20 @@ pub struct DashboardSummaryResponse {
     /// Total value locked = Σ `DepositRequested.amount` − Σ `WithdrawalRequested.amount`
     /// as-of now. USDC (6-decimal string).
     pub tvl: String,
-    /// Senior + equity principal outstanding over active loans. USDC (6-decimal string).
-    /// `null` when there are no active loans.
+    /// Senior + equity principal outstanding over active loans. USDC (6-decimal string);
+    /// `"0.000000"` when nothing is active (amounts are `0`, rates are `null`).
     pub outstanding_in_loans: Option<String>,
     /// Effective-haircut net APY accruing to sPLUSD holders (decimal-fraction string,
-    /// e.g. `"0.104000"` = 10.4 %). `null` when there are no active loans or nothing is outstanding.
+    /// e.g. `"0.104000"` = 10.4 %). `null` only when the gross book rate is `null`; `"0.000000"`
+    /// when the gross rate is `0` over an outstanding book.
     pub current_apy_net_to_splusd: Option<String>,
     /// Outstanding-senior-weighted gross current senior interest rate (decimal-fraction string, e.g.
     /// `"0.109000"` = 10.9 %). `null` when there are no active loans or nothing is outstanding.
     pub loan_book_yield: Option<String>,
-    /// Cumulative net PLUSD minted to the sPLUSD vault (loan + T-bill legs) since
-    /// inception. USDC (6-decimal string).
+    /// Cumulative LP yield since inception: legacy `YieldMinted.s_plusd_amount` plus
+    /// `CashRepaid.interest_minted` of loans not carved out at the repayment, net of
+    /// `CashRepaymentReversed`; fees excluded. Not equal to Σ LoanBook `minted_yield`.
+    /// USDC (6-decimal string).
     pub cumulative_yield_total: String,
 }
 
@@ -378,8 +382,8 @@ async fn read_chain(
     })
 }
 
-/// One chain's cumulative-yield step events: historical `YieldMinted` plus `CashRepaid`
-/// mints (netted against reversals), all base-6.
+/// One chain's cumulative LP-yield step events: legacy `YieldMinted.s_plusd_amount` plus
+/// `CashRepaid.interest_minted` of non-carved-out loans (netted against reversals), all base-6.
 async fn read_chain_yield(
     state: &AppState,
     chain_id: i64,
@@ -408,13 +412,14 @@ async fn read_chain_yield(
 
 // ── Compute ──────────────────────────────────────────────────────────────────
 
-/// One chain's cumulative-yield step events in base-6 USDC: the historical `YieldMinted`
-/// rows (already normalised by the repo) plus the `CashRepaid` mints. Per loan, the
-/// running raw `interest_minted + fee_amount` (`+` at the mint, `-` at its
-/// `CashRepaymentReversed`) is normalised with `normalize_usdc_amount(kind, …)` and only
-/// its change is emitted, so the sum of the deltas up to `t` equals the sum over loans of
-/// `shared::minted_yield::loan_minted_yield` at `t`. A reversal at or before the mint
-/// leaves the row never live, matching `shared::minted_yield::is_live_at`.
+/// One chain's cumulative LP-yield step events in base-6 USDC: the legacy `YieldMinted`
+/// vault leg (already normalised by the repo) plus `CashRepaid.interest_minted`. Fees are
+/// excluded, and so are repayments with a `LoanDefaulted` at or before them (carved-out
+/// interest is minted to the Pocket). Per loan, the running raw interest (`+` at the mint,
+/// `-` at its `CashRepaymentReversed`) is normalised with `normalize_usdc_amount(kind, …)`
+/// and only its change is emitted. A reversal at or before the mint leaves the row never
+/// live, matching `shared::minted_yield::is_live_at`. Intentionally differs from the sum of
+/// LoanBook `minted_yield` (which includes fees and carved-out interest).
 pub fn chain_yield_deltas(
     kind: ChainKind,
     legacy: &[YieldMintRow],
@@ -425,7 +430,10 @@ pub fn chain_yield_deltas(
         if r.reversed_at.is_some_and(|rev| rev <= r.block_timestamp) {
             continue;
         }
-        let raw = &r.interest_minted + r.fee_amount.clone().unwrap_or_default();
+        if r.carved_out {
+            continue;
+        }
+        let raw = r.interest_minted.clone();
         let steps = by_loan.entry(r.loan_id.to_string()).or_default();
         steps.push((r.block_timestamp, raw.clone()));
         if let Some(rev) = r.reversed_at {
@@ -498,7 +506,7 @@ pub fn compute_summary(
         base6_to_decimal_string(&sum)
     };
 
-    // cumulative_yield_total = Σ step events (historical YieldMinted + net CashRepaid mints)
+    // cumulative_yield_total = Σ LP-yield step events (legacy vault leg + net non-carved-out interest)
     let cumulative_yield_total = {
         let mut sum = BigDecimal::from(0);
         for m in yield_mints.iter().filter(|m| m.block_timestamp <= to) {
@@ -550,7 +558,8 @@ pub fn compute_summary(
 /// result          = gross_book_rate × haircut
 /// ```
 ///
-/// Returns `None` when there are no active loans (no `gross_book_rate`).
+/// Returns `None` only when there is no gross rate; a `0` gross rate over an outstanding
+/// book yields `"0.000000"` (amounts are `0`, rates are `null`).
 /// Falls back to `haircut = 1.0` (net = gross) when `realized_gross == 0`
 /// (no repayment data yet — a brand-new book).
 ///
@@ -563,10 +572,6 @@ pub fn net_apy(gross_book_rate_str: Option<&str>, loans: &[LoanSnapshotRow]) -> 
     // Parse the gross rate string back to BigDecimal.
     let gross_rate: BigDecimal = gross_str.parse().ok()?;
     let zero = BigDecimal::from(0);
-    if gross_rate == zero {
-        return None;
-    }
-
     // Sum repayment data over ALL loans (not just active) — bullet loans record
     // nothing until maturity, so we use the full book to capture any repayment data.
     let mut realized_net = BigDecimal::from(0);

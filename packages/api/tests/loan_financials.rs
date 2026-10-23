@@ -355,3 +355,21 @@ fn response_echoes_the_rows_chain_id() {
     let resp = build_response(&stellar_row, &BigDecimal::from(0), &[], true, 0);
     assert_eq!(resp.chain_id, 99_000_001);
 }
+
+#[test]
+fn legacy_minted_yield_includes_the_treasury_leg_so_not_minted_is_zero() {
+    use shared::chains::ChainKind;
+    use shared::minted_yield::loan_minted_yield;
+    let snap = snapshot(
+        "Performing",
+        800_000_000,
+        100_000_000,
+        1_000_000_000,
+        repayment(100_000_000, 20_000_000, 13_000_000, 0),
+    );
+    let legacy_raw = BigDecimal::from(100_000_000 + 33_000_000);
+    let minted = loan_minted_yield(ChainKind::Evm, &legacy_raw, &[], i64::MAX);
+    let resp = build_response(&row(snap), &minted, &[], true, 0);
+    assert_eq!(resp.minted_yield, "133.000000");
+    assert_eq!(resp.not_minted_yield, "0.000000");
+}

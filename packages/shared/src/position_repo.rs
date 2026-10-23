@@ -15,10 +15,17 @@ pub struct Vault {
     pub share_decimals: i16,
 }
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(sqlx::FromRow, Debug, Clone)]
 pub struct SharePriceSnapshot {
     pub price: bigdecimal::BigDecimal,
     pub block_timestamp: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct BalanceEventRow {
+    pub vault_address: String,
+    pub block_timestamp: i64,
+    pub shares_balance: bigdecimal::BigDecimal,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -226,11 +233,10 @@ impl PositionRepo {
     }
 
     /// Earliest timestamp (unix seconds) at which a wallet held any share
-    /// position — the anchor for its effective-APY window.
+    /// position — the start of the `/positions/history` all-history window.
     ///
     /// Reads `position_events`, so a holder who acquired shares only by
-    /// `ShareTransfer` and never staked directly still has an anchor. Keying on
-    /// staking alone would leave their APY undefined.
+    /// `ShareTransfer` and never staked directly still has an anchor.
     pub async fn get_first_position_timestamp(
         &self,
         chain_id: i64,
@@ -247,6 +253,60 @@ impl PositionRepo {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.and_then(|(v,)| v))
+    }
+
+    /// A wallet's balance after every `position_events` row, ordered per vault by
+    /// `(block_number, log_index)`; input of `shared::time_weighted_return`.
+    pub async fn get_balance_events(
+        &self,
+        chain_id: i64,
+        owner_address: &str,
+    ) -> anyhow::Result<Vec<BalanceEventRow>> {
+        let owner = owner_address.to_lowercase();
+        Ok(sqlx::query_as::<_, BalanceEventRow>(
+            "SELECT
+                 (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
+                 block_timestamp,
+                 shares_balance
+             FROM position_events
+             WHERE chain_id = $1
+               AND holder = $2
+               AND shares_balance IS NOT NULL
+             ORDER BY LOWER(contract_address), block_number, log_index",
+        )
+        .bind(chain_id)
+        .bind(&owner)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Share-price series of a vault from `since` on, oldest first, plus the
+    /// single latest sample before `since` (the price in force at `since`).
+    pub async fn get_share_price_series(
+        &self,
+        chain_id: i64,
+        vault_address: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<SharePriceSnapshot>> {
+        Ok(sqlx::query_as::<_, SharePriceSnapshot>(
+            "SELECT price, block_timestamp FROM (
+                 (SELECT price, block_timestamp, block_number FROM share_prices
+                  WHERE chain_id = $1 AND LOWER(vault_address) = LOWER($2)
+                    AND block_timestamp >= $3)
+                 UNION ALL
+                 (SELECT price, block_timestamp, block_number FROM share_prices
+                  WHERE chain_id = $1 AND LOWER(vault_address) = LOWER($2)
+                    AND block_timestamp < $3
+                  ORDER BY block_timestamp DESC, block_number DESC
+                  LIMIT 1)
+             ) s
+             ORDER BY block_timestamp ASC, block_number ASC",
+        )
+        .bind(chain_id)
+        .bind(vault_address)
+        .bind(since)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     /// Get the highest block number we have a price for (per vault).

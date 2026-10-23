@@ -122,8 +122,10 @@ pub const LOAN_ECONOMICS_EVENTS_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
 
-pub const LEGACY_YIELD_MINTED_SQL: &str =
-    "SELECT COALESCE(SUM((cl.params->>'s_plusd_amount')::numeric), 0)
+pub const LEGACY_YIELD_MINTED_SQL: &str = "SELECT COALESCE(SUM(
+                COALESCE((cl.params->>'s_plusd_amount')::numeric, 0)
+              + COALESCE((cl.params->>'treasury_amount')::numeric, 0)
+            ), 0)
      FROM contract_logs cl
      WHERE cl.chain_id = $1
        AND cl.event_name = 'YieldMinted'
@@ -150,7 +152,16 @@ pub const LIST_REPAYMENT_MINTS_SQL: &str = "SELECT (r.params->>'loan_id')::numer
             r.block_timestamp,
             COALESCE((r.params->>'interest_minted')::numeric, 0) AS interest_minted,
             pr.fee_amount,
-            rv.reversed_at
+            rv.reversed_at,
+            EXISTS (
+                SELECT 1
+                FROM contract_logs d
+                WHERE d.chain_id = r.chain_id
+                  AND d.contract_address = $4
+                  AND d.event_name = 'LoanDefaulted'
+                  AND (d.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
+                  AND (d.block_number, d.log_index) < (r.block_number, r.log_index)
+            ) AS carved_out
      FROM contract_logs r
      JOIN LATERAL (
          SELECT (p.params->'event'->>'mgmt_fee')::numeric
@@ -333,6 +344,7 @@ pub struct RepaymentMintRow {
     pub interest_minted: BigDecimal,
     pub fee_amount: Option<BigDecimal>,
     pub reversed_at: Option<i64>,
+    pub carved_out: bool,
 }
 
 /// One indexed Stellar `AssetTransfer` event row.
@@ -906,7 +918,8 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
-    /// Raw sum of the legacy `YieldMinted.s_plusd_amount` attributable to a single
+    /// Raw sum of the legacy `YieldMinted` `s_plusd_amount + treasury_amount`
+    /// (vault leg plus fee leg; missing keys count as 0) attributable to a single
     /// loan, in on-chain base units (not normalised; see `shared::minted_yield`).
     ///
     /// Per-loan attribution goes through `yield_mint_outbox`: each confirmed mint
@@ -942,8 +955,9 @@ impl ContractLogsRepo {
 
     /// Minter `CashRepaid` rows (optionally for one loan) up to `to_unix`, each
     /// carrying the fee leg (`mgmt_fee + perf_fee + oet_alloc`) of the matching
-    /// `PaymentRecorded` row and the earliest matching `CashRepaymentReversed`
-    /// timestamp. Raw on-chain scale.
+    /// `PaymentRecorded` row, the earliest matching `CashRepaymentReversed`
+    /// timestamp and the loan's earliest registry `LoanDefaulted` timestamp
+    /// (`carved_out`: a registry `LoanDefaulted` strictly earlier by `(block_number, log_index)`). Raw on-chain scale.
     /// Chain-scoped; the `PaymentRecorded` match (same `tx_hash`, `loan_id`,
     /// `repayment_id`) is required and must come from `loan_registry_address`, so a
     /// `CashRepaid` row with no such record is excluded entirely. A reversal must
