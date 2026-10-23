@@ -298,6 +298,15 @@ pub const PLUSD_LEDGER_SQL: &str = "WITH repayment_fees AS (
                          AND w.tx_hash = v.tx_hash
                          AND w.event_name = 'StakingWithdrawal'
                          AND LOWER(w.params->>'sender') = LOWER(v.contract_address)
+                         AND w.log_index < v.log_index
+                         AND w.log_index > COALESCE((
+                             SELECT MAX(v2.log_index)
+                             FROM contract_logs v2
+                             WHERE v2.chain_id = v.chain_id
+                               AND v2.tx_hash = v.tx_hash
+                               AND v2.event_name = 'CashRepaymentReversed'
+                               AND v2.log_index < v.log_index
+                         ), -1)
                    ), 0)
                  + COALESCE(orig.carved_interest, 0))
          FROM contract_logs v

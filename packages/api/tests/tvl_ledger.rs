@@ -107,6 +107,20 @@ fn reversal_fee_burn_is_limited_to_the_reversals_own_minter() {
 }
 
 #[test]
+fn batched_reversals_each_pair_with_their_own_preceding_burn() {
+    let branch = PLUSD_LEDGER_SQL
+        .rsplit("UNION ALL")
+        .next()
+        .expect("reversal branch");
+    // Both arms burn before emitting `CashRepaymentReversed`, so a burn belongs to the
+    // first reversal after it in the same transaction.
+    assert!(branch.contains("w.log_index < v.log_index"));
+    assert!(branch.contains("w.log_index > COALESCE(("));
+    assert!(branch.contains("v2.event_name = 'CashRepaymentReversed'"));
+    assert!(branch.contains("v2.log_index < v.log_index"));
+}
+
+#[test]
 fn repayment_fee_leg_is_a_keyed_join_not_a_correlated_lateral() {
     assert!(PLUSD_LEDGER_SQL.contains("WITH repayment_fees AS"));
     assert!(PLUSD_LEDGER_SQL.contains("LEFT JOIN repayment_fees pr"));
