@@ -899,7 +899,7 @@ describe("Deposit page — quick-amount chips", () => {
     await user.click(minChip);
 
     const input = screen.getByRole("textbox", { name: /USDC amount/i });
-    expect((input as HTMLInputElement).value).toBe("1000.00");
+    expect((input as HTMLInputElement).value).toBe("1000");
   });
 
   it("Max chip sets input to the live balance (5000)", async () => {
@@ -910,7 +910,7 @@ describe("Deposit page — quick-amount chips", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /USDC amount/i });
-    expect((input as HTMLInputElement).value).toBe("5000.00");
+    expect((input as HTMLInputElement).value).toBe("5000");
   });
 });
 
@@ -1531,7 +1531,7 @@ describe("Deposit page — locked amount on active request", () => {
 
     await waitFor(() => {
       // formatUsdc(5_000_000n, 6) → "5.00"; commas stripped → "5.00"
-      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).value).toBe("5");
       expect((input as HTMLInputElement).disabled).toBe(true);
     });
   });
@@ -1554,7 +1554,7 @@ describe("Deposit page — locked amount on active request", () => {
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
 
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).value).toBe("5");
       expect((input as HTMLInputElement).disabled).toBe(true);
     });
   });
@@ -1601,14 +1601,14 @@ describe("Deposit page — locked amount on active request", () => {
 
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).value).toBe("5");
     });
 
     const maxChip = screen.getByRole("button", { name: "Max" });
     await user.click(maxChip);
 
     // Input must still show the locked amount, not the balance.
-    expect((input as HTMLInputElement).value).toBe("5.00");
+    expect((input as HTMLInputElement).value).toBe("5");
   });
 
   it("VerificationFailed — input is editable (not locked)", async () => {
@@ -2083,7 +2083,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(chip25);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("25.00");
+    expect((input as HTMLInputElement).value).toBe("25");
   });
 
   it("Max chip sets input to the live balance (100 PLUSD)", async () => {
@@ -2094,7 +2094,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("100.00");
+    expect((input as HTMLInputElement).value).toBe("100");
   });
 
   it("50% chip sets input to balance / 2 = 50 PLUSD", async () => {
@@ -2105,7 +2105,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(chip50);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("50.00");
+    expect((input as HTMLInputElement).value).toBe("50");
   });
 
   it("75% chip sets input to balance * 75 / 100 = 75 PLUSD", async () => {
@@ -2116,7 +2116,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(chip75);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("75.00");
+    expect((input as HTMLInputElement).value).toBe("75");
   });
 });
 
@@ -2978,7 +2978,7 @@ describe("Deposit page — Stellar locked amount on active request", () => {
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await waitFor(() => {
       // formatUsdc(20_000_000_000n, 7) → "2,000.00"; commas stripped → "2000.00"
-      expect((input as HTMLInputElement).value).toBe("2000.00");
+      expect((input as HTMLInputElement).value).toBe("2000");
       expect((input as HTMLInputElement).disabled).toBe(true);
     });
   });
@@ -3007,7 +3007,7 @@ describe("Deposit page — Stellar locked amount on active request", () => {
 
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("1000.00");
+      expect((input as HTMLInputElement).value).toBe("1000");
       expect((input as HTMLInputElement).value).not.toBe("0");
     });
   });
@@ -3528,5 +3528,66 @@ describe("Deposit page — trustline enable failure resolves the pending toast (
       screen.queryByText("Enabling PLUSD trustline…"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+  });
+});
+
+describe("Deposit page — chips stay within the balance (#1628)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Max fills the exact 6-dp balance and keeps Approve enabled", async () => {
+    mockDirection = "deposit";
+    seedBaseMocks({ balance: "1234567891", allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    await user.click(await screen.findByRole("button", { name: "Max" }));
+
+    const input = screen.getByRole("textbox", { name: /USDC amount/i });
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled(),
+    );
+    expect(screen.queryByText("Insufficient balance")).toBeNull();
+  });
+
+  it("blocks a deposit above the balance with an Insufficient balance message", async () => {
+    mockDirection = "deposit";
+    seedBaseMocks({ balance: BALANCE_5000_RAW, allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    await user.click(await screen.findByRole("button", { name: "$10,000" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Insufficient balance",
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+  });
+
+  it("withdraw 75% and Max never exceed an odd 18-dp balance", async () => {
+    mockDirection = "withdraw";
+    seedWithdrawMocks({ balance: "1234567891234567891235", allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.click(await screen.findByRole("button", { name: "75%" }));
+    expect((input as HTMLInputElement).value).toBe("925.925918425925918426");
+    await user.click(screen.getByRole("button", { name: "Max" }));
+    expect((input as HTMLInputElement).value).toBe("1234.567891234567891235");
+    expect(screen.queryByText("Insufficient balance")).toBeNull();
   });
 });

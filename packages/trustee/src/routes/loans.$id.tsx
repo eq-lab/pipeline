@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
+import { percentToBps } from "@/utils/rateUnits";
 import {
   useUpdateLifecycle,
   type LocationInput,
@@ -762,13 +763,13 @@ function RolloverDialog({
   pending: boolean;
   error: DialogError | null;
 }) {
-  const [rateBps, setRateBps] = useState("");
+  const [ratePercent, setRatePercent] = useState("");
   const [maturity, setMaturity] = useState("");
 
   // Reset the form each time the dialog opens.
   useEffect(() => {
     if (open) {
-      setRateBps("");
+      setRatePercent("");
       setMaturity("");
     }
   }, [open]);
@@ -784,12 +785,12 @@ function RolloverDialog({
 
   if (!open) return null;
 
-  const bps = Number.parseInt(rateBps, 10);
+  const bps = percentToBps(ratePercent);
+  const rateInvalid = ratePercent.trim() !== "" && bps === null;
   const maturityUnix = maturity
     ? Math.floor(new Date(`${maturity}T00:00:00Z`).getTime() / 1000)
     : NaN;
-  const valid =
-    Number.isFinite(bps) && bps > 0 && Number.isFinite(maturityUnix);
+  const valid = bps !== null && Number.isFinite(maturityUnix);
 
   const fieldClass =
     "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
@@ -835,18 +836,36 @@ function RolloverDialog({
         <div className="flex flex-wrap gap-[16px] pt-[4px]">
           <label className="flex flex-1 flex-col gap-[6px]">
             <span className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]">
-              New rate (bps)
+              New rate (% p.a.)
             </span>
             <input
-              type="number"
-              inputMode="numeric"
+              type="text"
+              inputMode="decimal"
               data-testid="rollover-rate"
-              value={rateBps}
+              aria-invalid={rateInvalid || undefined}
+              value={ratePercent}
               disabled={pending}
-              onChange={(e) => setRateBps(e.target.value)}
-              placeholder="e.g. 1450"
+              onChange={(e) => setRatePercent(e.target.value)}
+              placeholder="e.g. 14.5"
               className={fieldClass}
             />
+            {rateInvalid ? (
+              <span
+                data-testid="rollover-rate-error"
+                role="alert"
+                className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
+              >
+                Enter a rate from 0.01 to 100 with at most 2 decimals (1 bp =
+                0.01%).
+              </span>
+            ) : (
+              <span
+                data-testid="rollover-rate-bps"
+                className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]"
+              >
+                {bps !== null ? `= ${bps} bps` : "1 bp = 0.01%"}
+              </span>
+            )}
           </label>
           <label className="flex flex-1 flex-col gap-[6px]">
             <span className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]">
@@ -891,7 +910,7 @@ function RolloverDialog({
           <button
             type="button"
             data-testid="rollover-submit"
-            onClick={() => onConfirm(bps, maturityUnix)}
+            onClick={() => bps !== null && onConfirm(bps, maturityUnix)}
             disabled={!valid || pending}
             className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: BRAND }}

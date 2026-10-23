@@ -7,7 +7,12 @@
  *   - `formatUsdcCurrency` — "$" prefix, undefined decimals sentinel.
  */
 import { describe, it, expect } from "vitest";
-import { parseUsdc, formatUsdc, formatUsdcCurrency } from "./usdc";
+import {
+  parseUsdc,
+  formatUsdc,
+  formatUsdcCurrency,
+  formatUsdcInput,
+} from "./usdc";
 
 const D6 = 6; // standard USDC decimals
 
@@ -87,5 +92,29 @@ describe("formatUsdcCurrency", () => {
 
   it("formats 250 USDC as '$250.00'", () => {
     expect(formatUsdcCurrency(250_000_000n, D6)).toBe("$250.00");
+  });
+});
+
+describe("formatUsdcInput (#1628)", () => {
+  it("formats the exact 6-dp balance with no rounding", () => {
+    expect(formatUsdcInput(1_234_567_891n, 6)).toBe("1234.567891");
+  });
+
+  it("formats the exact 7-dp balance with no rounding", () => {
+    expect(formatUsdcInput(12_345_678_912n, 7)).toBe("1234.5678912");
+  });
+
+  it("round-trips through parseUsdc to the same base units", () => {
+    for (const [raw, dec] of [
+      [1_234_567_891n, 6],
+      [12_345_678_912n, 7],
+      [1_234_567_891_234_567_891_234n, 18],
+    ] as const) {
+      expect(parseUsdc(formatUsdcInput(raw, dec), dec)).toBe(raw);
+    }
+  });
+
+  it("never groups thousands", () => {
+    expect(formatUsdcInput(5_000_000_000n, 6)).toBe("5000");
   });
 });

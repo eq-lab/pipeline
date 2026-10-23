@@ -67,6 +67,15 @@ At the end the hook selects the active-chain, active-direction values and return
   $1,000.) EVM takes its minimum from the on-chain `useDepositManagerMinDeposit`.
 - **Both trustlines before Confirm.** On Stellar, both the PLUSD and USDC trustlines must be present
   before the Confirm step can proceed (per issue #604, Q3).
+- **Amount never exceeds the balance (#1628).** Every direction of both flows — deposit included —
+  gates its step CTAs on `amountBig <= balance` and exposes `exceedsBalance` so the page renders an
+  `InlineError` "Insufficient balance" under the input while the typed amount is over the live
+  balance (never while the amount is locked to an in-flight request). Quick-amount chips write
+  `formatUsdcInput` (viem `formatUnits`, exact, no grouping, no 2-dp rounding) so **Max equals
+  the balance to the last base unit** on 6-, 7- and 18-dp tokens, and 25/50/75% are computed in
+  base units with BigInt floor division, so they can never round above the balance. The Min and
+  `$5,000` / `$10,000` deposit chips are not clamped: a chip above the balance simply trips the
+  insufficient-balance gate.
 
 ### EVM token decimals
 
