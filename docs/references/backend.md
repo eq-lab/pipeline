@@ -340,8 +340,8 @@ the poller and stored with the EVM event names; see
 summed raw and then normalised once to 6 decimals per chain kind (Stellar 7-dp amounts divide
 by 10, rounding down):
 
-- the legacy `YieldMinted` total joined through `yield_mint_outbox` (history; neither indexer
-  parses `YieldMinted` any more);
+- the legacy `YieldMinted` `s_plusd_amount + treasury_amount` (missing key = 0) joined through
+  `yield_mint_outbox` (history; neither indexer parses `YieldMinted` any more);
 - for every Minter `CashRepaid` row of the loan, `interest_minted` (counted for carved-out
   loans too, even when it is minted to the Pocket); and
 - the fee leg, `mgmt_fee + perf_fee + oet_alloc` from `params->'event'` of the
@@ -363,7 +363,7 @@ configured LoanRegistry (the outbox stores no registry). Minter rows are otherwi
 leg counts on both sides; for minter-era repayments it is structurally about 0. The `interest` and
 `fees` fields are unchanged (they exclude `oet_alloc`). The query and arithmetic live in
 `shared::contract_logs_repo::list_repayment_mints` and `shared::minted_yield` for reuse by the
-dashboard cumulative yield (#1533).
+dashboard cumulative yield (#1533), which counts interest of non-carved-out loans only and no fees (#1634, `yield-apy-semantics.md`).
 
 #### Stellar deal-token-factory indexing
 

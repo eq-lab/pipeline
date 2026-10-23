@@ -21,6 +21,7 @@ fn row(
         interest_minted: bd(interest),
         fee_amount: fee_amount.map(bd),
         reversed_at,
+        defaulted_at: None,
     }
 }
 

@@ -274,6 +274,16 @@ fn net_apy_uses_the_outstanding_weighted_gross_rate() {
     );
 }
 
+#[test]
+fn net_apy_is_zero_for_a_zero_gross_rate_and_null_only_without_a_gross_rate() {
+    let loans = vec![L::new(1, 10_000_000, 10_000_000, 0, 0).row()];
+    assert_eq!(
+        net_apy(Some("0.000000"), &loans).as_deref(),
+        Some("0.000000")
+    );
+    assert_eq!(net_apy(None, &loans), None);
+}
+
 // ── /v1/stats/yield apy series ───────────────────────────────────────────────
 
 fn series_fixture() -> (Vec<LoanSnapshotRow>, Vec<LoanRateEventRow>) {

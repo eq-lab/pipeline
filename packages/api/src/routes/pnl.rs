@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -17,7 +16,8 @@ use crate::intervals::{Interval, MAX_SAMPLES};
 use crate::routes::common::{RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
-use shared::position_repo::PositionHistoryBucket;
+use shared::position_repo::{BalanceEventRow, PositionHistoryBucket};
+use shared::time_weighted_return::{time_weighted_apy, VaultHolding};
 
 /// Serves two path prefixes: `/pnl` (point-in-time profit and loss, including
 /// unrealized) and `/positions` (historical balances and cost basis). They share
@@ -73,7 +73,9 @@ pub struct PnlResponse {
     pub total_unrealized_pnl: String,
     pub total_realized_pnl: String,
     pub total_pnl: String,
-    /// Wallet's effective annualized return across all positions. Null if no history.
+    /// Time-weighted annualised share-price return over the wallet's holding intervals
+    /// (`shares_balance > 0`): `Π(price_end / price_start)` annualised (365 d) over total held
+    /// time, independent of buy timing. Null with under 1 day held or no price at a boundary.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avg_apy: Option<String>,
 }
@@ -129,8 +131,6 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
     let zero = BigDecimal::from(0);
     let mut total_unrealized = zero.clone();
     let mut total_realized = zero.clone();
-    let mut total_cost = zero.clone();
-    let mut total_value = zero.clone();
     let mut positions = Vec::with_capacity(summaries.len());
 
     for s in summaries {
@@ -144,8 +144,6 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
         let realized = &s.total_realized_pnl;
         let total = &unrealized + realized;
 
-        total_cost = &total_cost + &s.shares_balance * &s.avg_buy_share_price;
-        total_value = &total_value + &s.shares_balance * &current_price;
         total_unrealized = &total_unrealized + &unrealized;
         total_realized = &total_realized + realized;
 
@@ -162,31 +160,7 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
 
     let total_pnl = &total_unrealized + &total_realized;
 
-    // Compute wallet's effective APY from its first share position to now
-    let avg_apy = state
-        .position_repo
-        .get_first_position_timestamp(chain_id, wallet)
-        .await?
-        .and_then(|first_ts| {
-            let now_ts = Utc::now().timestamp();
-            #[allow(clippy::cast_precision_loss)]
-            let days = (now_ts - first_ts) as f64 / 86400.0;
-            if days < 1.0 {
-                return None;
-            }
-            let cost_f = f64::from_str(&total_cost.to_string()).ok()?;
-            let value_f = f64::from_str(&total_value.to_string()).ok()?;
-            if cost_f <= 0.0 || value_f <= 0.0 {
-                return None;
-            }
-            let overall_return = value_f / cost_f;
-            let apy = overall_return.powf(365.0 / days) - 1.0;
-            if apy.is_finite() {
-                Some(apy)
-            } else {
-                None
-            }
-        });
+    let avg_apy = compute_avg_apy(state, wallet, chain_id).await?;
 
     Ok(PnlResponse {
         wallet: wallet.to_owned(),
@@ -196,6 +170,33 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
         total_pnl: total_pnl.to_string(),
         avg_apy: avg_apy.map(|v| format!("{v:.6}")),
     })
+}
+
+async fn compute_avg_apy(
+    state: &AppState,
+    wallet: &str,
+    chain_id: i64,
+) -> anyhow::Result<Option<f64>> {
+    let events = state
+        .position_repo
+        .get_balance_events(chain_id, wallet)
+        .await?;
+    let mut by_vault: Vec<(String, Vec<BalanceEventRow>)> = Vec::new();
+    for e in events {
+        match by_vault.last_mut() {
+            Some((addr, evs)) if *addr == e.vault_address => evs.push(e),
+            _ => by_vault.push((e.vault_address.clone(), vec![e])),
+        }
+    }
+    let mut holdings = Vec::with_capacity(by_vault.len());
+    for (vault, events) in by_vault {
+        let prices = state
+            .position_repo
+            .get_share_price_series(chain_id, &vault)
+            .await?;
+        holdings.push(VaultHolding { events, prices });
+    }
+    Ok(time_weighted_apy(&holdings, Utc::now().timestamp()))
 }
 
 // ── Position history ─────────────────────────────────────────────────────────
