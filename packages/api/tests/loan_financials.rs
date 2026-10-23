@@ -407,8 +407,8 @@ fn onchain_status_is_the_raw_snapshot_status_when_display_says_past_due() {
 }
 
 #[test]
-fn onchain_status_passes_performing_and_approved_through() {
-    for raw in ["Performing", "Approved"] {
+fn onchain_status_passes_every_raw_status_through() {
+    for raw in ["Performing", "Approved", "Default", "Closed"] {
         let snap = snapshot(raw, 100_000_000, 0, 100_000_000, repayment(0, 0, 0, 0));
         let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
         assert_eq!(resp.onchain_status, raw);

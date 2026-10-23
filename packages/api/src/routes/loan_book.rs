@@ -256,9 +256,10 @@ pub struct LoanBookEntry {
     /// maturity). See [`display_status`].
     pub status: String,
     /// Raw on-chain loan status from the latest snapshot, with no display overrides:
-    /// `Approved` | `Performing` | `WatchList` | `Default` | `Closed`. Use it when the
-    /// real chain state matters (e.g. a `Disbursing` / `Past Due` loan that is
-    /// `WatchList` on chain).
+    /// `Approved` | `Performing` | `WatchList` | `Default` | `Closed` (`Unknown` for an
+    /// unrecognised on-chain value). Use it when the real chain state matters (e.g. a
+    /// `Disbursing` / `Past Due` loan that is `WatchList` on chain). Old-registry loans
+    /// may read shifted, see "Known limitation" in docs/product-specs/loan-status-timeline.md.
     pub onchain_status: String,
     /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
     /// Empty when the loan's metadata records none.
