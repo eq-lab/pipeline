@@ -55,6 +55,11 @@ pub struct LoanFinancialsResponse {
     /// complete) and `Past Due` (past current maturity) overrides layered on. See
     /// `routes::loan_book::display_status`.
     pub status: String,
+    /// Raw on-chain loan status from the latest snapshot, with no display overrides:
+    /// `Approved` | `Performing` | `WatchList` | `Default` | `Closed`. Use it when the
+    /// real chain state matters (e.g. a `Disbursing` / `Past Due` loan that is
+    /// `WatchList` on chain).
+    pub onchain_status: String,
 
     /// Original offtaker price (USDC, 6-decimal string). What the offtaker owes in
     /// total for the commodity.
@@ -256,6 +261,7 @@ pub fn build_response(
             now,
             s.current_maturity_timestamp,
         ),
+        onchain_status: s.status.clone(),
         offtaker: base6_to_decimal_string(&s.original_offtaker_price),
         principal: base6_to_decimal_string(&principal),
         interest: base6_to_decimal_string(interest),

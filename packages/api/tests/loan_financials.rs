@@ -373,3 +373,44 @@ fn legacy_minted_yield_includes_the_treasury_leg_so_not_minted_is_zero() {
     assert_eq!(resp.minted_yield, "133.000000");
     assert_eq!(resp.not_minted_yield, "0.000000");
 }
+
+// ── onchain_status (#1649) ─────────────────────────────────────────────────
+
+#[test]
+fn onchain_status_is_the_raw_snapshot_status_when_display_says_disbursing() {
+    // WatchList on chain, off-ramp incomplete → displays Disbursing, raw stays WatchList.
+    let snap = snapshot(
+        "WatchList",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+    );
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
+    assert_eq!(resp.status, "Disbursing");
+    assert_eq!(resp.onchain_status, "WatchList");
+}
+
+#[test]
+fn onchain_status_is_the_raw_snapshot_status_when_display_says_past_due() {
+    let mut snap = snapshot(
+        "WatchList",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+    );
+    snap.current_maturity_timestamp = 1_000;
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 2_000);
+    assert_eq!(resp.status, "Past Due");
+    assert_eq!(resp.onchain_status, "WatchList");
+}
+
+#[test]
+fn onchain_status_passes_performing_and_approved_through() {
+    for raw in ["Performing", "Approved"] {
+        let snap = snapshot(raw, 100_000_000, 0, 100_000_000, repayment(0, 0, 0, 0));
+        let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
+        assert_eq!(resp.onchain_status, raw);
+    }
+}

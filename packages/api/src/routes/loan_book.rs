@@ -255,6 +255,11 @@ pub struct LoanBookEntry {
     /// `Disbursing` (USDC off-ramp not yet complete) and `Past Due` (past the current
     /// maturity). See [`display_status`].
     pub status: String,
+    /// Raw on-chain loan status from the latest snapshot, with no display overrides:
+    /// `Approved` | `Performing` | `WatchList` | `Default` | `Closed`. Use it when the
+    /// real chain state matters (e.g. a `Disbursing` / `Past Due` loan that is
+    /// `WatchList` on chain).
+    pub onchain_status: String,
     /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
     /// Empty when the loan's metadata records none.
     pub documents: Vec<LoanDocumentDto>,
@@ -1483,6 +1488,7 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         // Protection instrument from the loan metadata; empty string ⇒ null.
         protection: (!s.protection.is_empty()).then(|| s.protection.clone()),
         status,
+        onchain_status: s.status.clone(),
         documents: s
             .documents
             .iter()
