@@ -190,9 +190,11 @@ async fn compute_avg_apy(
     }
     let mut holdings = Vec::with_capacity(by_vault.len());
     for (vault, events) in by_vault {
+        let first_event = events.iter().map(|e| e.block_timestamp).min().unwrap_or(0);
+        let since = DateTime::<Utc>::from_timestamp(first_event, 0).unwrap_or_default();
         let prices = state
             .position_repo
-            .get_share_price_series(chain_id, &vault)
+            .get_share_price_series(chain_id, &vault, since)
             .await?;
         holdings.push(VaultHolding { events, prices });
     }

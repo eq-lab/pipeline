@@ -153,7 +153,15 @@ pub const LIST_REPAYMENT_MINTS_SQL: &str = "SELECT (r.params->>'loan_id')::numer
             COALESCE((r.params->>'interest_minted')::numeric, 0) AS interest_minted,
             pr.fee_amount,
             rv.reversed_at,
-            df.defaulted_at
+            EXISTS (
+                SELECT 1
+                FROM contract_logs d
+                WHERE d.chain_id = r.chain_id
+                  AND d.contract_address = $4
+                  AND d.event_name = 'LoanDefaulted'
+                  AND (d.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
+                  AND (d.block_number, d.log_index) < (r.block_number, r.log_index)
+            ) AS carved_out
      FROM contract_logs r
      JOIN LATERAL (
          SELECT (p.params->'event'->>'mgmt_fee')::numeric
@@ -179,15 +187,6 @@ pub const LIST_REPAYMENT_MINTS_SQL: &str = "SELECT (r.params->>'loan_id')::numer
            AND (v.params->>'repayment_id')::numeric = (r.params->>'repayment_id')::numeric
            AND v.block_timestamp <= $3
      ) rv ON true
-     LEFT JOIN LATERAL (
-         SELECT MIN(d.block_timestamp) AS defaulted_at
-         FROM contract_logs d
-         WHERE d.chain_id = r.chain_id
-           AND d.contract_address = $4
-           AND d.event_name = 'LoanDefaulted'
-           AND (d.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
-           AND d.block_timestamp <= $3
-     ) df ON true
      WHERE r.chain_id = $1
        AND r.event_name = 'CashRepaid'
        AND ($2::numeric IS NULL OR (r.params->>'loan_id')::numeric = $2)
@@ -345,7 +344,7 @@ pub struct RepaymentMintRow {
     pub interest_minted: BigDecimal,
     pub fee_amount: Option<BigDecimal>,
     pub reversed_at: Option<i64>,
-    pub defaulted_at: Option<i64>,
+    pub carved_out: bool,
 }
 
 /// One indexed Stellar `AssetTransfer` event row.
@@ -958,7 +957,7 @@ impl ContractLogsRepo {
     /// carrying the fee leg (`mgmt_fee + perf_fee + oet_alloc`) of the matching
     /// `PaymentRecorded` row, the earliest matching `CashRepaymentReversed`
     /// timestamp and the loan's earliest registry `LoanDefaulted` timestamp
-    /// (`defaulted_at`, carve-out marker). Raw on-chain scale.
+    /// (`carved_out`: a registry `LoanDefaulted` strictly earlier by `(block_number, log_index)`). Raw on-chain scale.
     /// Chain-scoped; the `PaymentRecorded` match (same `tx_hash`, `loan_id`,
     /// `repayment_id`) is required and must come from `loan_registry_address`, so a
     /// `CashRepaid` row with no such record is excluded entirely. A reversal must

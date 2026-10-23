@@ -86,17 +86,41 @@ fn partial_changes_while_held_do_not_split_the_return() {
 }
 
 #[test]
-fn under_one_day_held_is_null() {
-    let prices = vec![price(0, "1.0"), price(5, "1.5")];
+fn under_seven_days_held_is_null() {
+    let prices = vec![price(0, "1.0"), price(10, "1.5")];
     let h = holding(vec![bal(1, "10")], prices);
-    assert_eq!(time_weighted_apy(&h, DAY + DAY / 2 - 1), None);
+    assert_eq!(time_weighted_apy(&h, DAY + WEEK_SECS - 1), None);
+    assert!(time_weighted_apy(&h, DAY + WEEK_SECS).is_some());
 }
 
 #[test]
-fn interval_without_a_price_at_its_start_is_skipped() {
+fn holding_that_starts_before_the_first_sample_is_clipped_to_it() {
     let prices = vec![price(10, "1.0"), price(40, "1.1")];
     let h = holding(vec![bal(0, "10")], prices);
-    assert_eq!(time_weighted_apy(&h, 5 * DAY), None);
+    approx(
+        time_weighted_apy(&h, 40 * DAY),
+        1.1_f64.powf(365.0 / 30.0) - 1.0,
+    );
+}
+
+#[test]
+fn interval_wholly_before_the_first_sample_is_ignored() {
+    let prices = vec![price(20, "1.0"), price(50, "1.1")];
+    let events = vec![bal(0, "10"), bal(10, "0"), bal(20, "10")];
+    let h = holding(events, prices);
+    approx(
+        time_weighted_apy(&h, 50 * DAY),
+        1.1_f64.powf(365.0 / 30.0) - 1.0,
+    );
+}
+
+#[test]
+fn only_clipped_time_below_the_minimum_is_null() {
+    let prices = vec![price(10, "1.0"), price(40, "1.1")];
+    let h = holding(vec![bal(0, "10")], prices);
+    assert_eq!(time_weighted_apy(&h, 10 * DAY + WEEK_SECS - 1), None);
+    let before_all = holding(vec![bal(0, "10"), bal(5, "0")], vec![price(10, "1.0")]);
+    assert_eq!(time_weighted_apy(&before_all, 50 * DAY), None);
 }
 
 #[test]

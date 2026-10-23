@@ -430,7 +430,7 @@ pub fn chain_yield_deltas(
         if r.reversed_at.is_some_and(|rev| rev <= r.block_timestamp) {
             continue;
         }
-        if r.defaulted_at.is_some_and(|d| d <= r.block_timestamp) {
+        if r.carved_out {
             continue;
         }
         let raw = r.interest_minted.clone();

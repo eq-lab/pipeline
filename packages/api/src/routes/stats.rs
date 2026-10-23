@@ -20,7 +20,7 @@ use shared::time_weighted_return::linear_apy;
 const MAX_APY_DAYS: u32 = 1_000;
 
 /// Minimum price-history span inside the window for a non-null `apy` (7 days).
-pub const MIN_APY_SPAN_SECS: i64 = 7 * 86_400;
+pub use shared::time_weighted_return::MIN_APY_SPAN_SECS;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()

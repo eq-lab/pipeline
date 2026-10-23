@@ -3,7 +3,7 @@ use bigdecimal::BigDecimal;
 
 use crate::position_repo::{BalanceEventRow, SharePriceSnapshot};
 
-pub const MIN_HELD_SECS: i64 = 86_400;
+pub const MIN_APY_SPAN_SECS: i64 = 7 * 86_400;
 pub const SECS_PER_YEAR: f64 = 365.0 * 86_400.0;
 
 pub struct VaultHolding {
@@ -47,7 +47,11 @@ pub fn time_weighted_apy(vaults: &[VaultHolding], now: i64) -> Option<f64> {
     let mut log_return = 0.0_f64;
     let mut held_secs = 0_i64;
     for v in vaults {
+        let Some(first_ts) = v.prices.first().map(|p| p.block_timestamp.timestamp()) else {
+            continue;
+        };
         for (start, end) in holding_intervals(&v.events, now) {
+            let start = start.max(first_ts);
             if end <= start {
                 continue;
             }
@@ -59,7 +63,7 @@ pub fn time_weighted_apy(vaults: &[VaultHolding], now: i64) -> Option<f64> {
             held_secs += end - start;
         }
     }
-    if held_secs < MIN_HELD_SECS {
+    if held_secs < MIN_APY_SPAN_SECS {
         return None;
     }
     #[allow(clippy::cast_precision_loss)]

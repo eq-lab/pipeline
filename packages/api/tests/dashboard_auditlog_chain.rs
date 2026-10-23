@@ -226,7 +226,7 @@ fn cash_repaid(
         interest_minted: BigDecimal::from(interest_raw),
         fee_amount: fee_raw.map(BigDecimal::from),
         reversed_at: reversed_day.map(|d| d * DAY),
-        defaulted_at: None,
+        carved_out: false,
     }
 }
 
@@ -435,7 +435,7 @@ fn cumulative_yield_excludes_fees_and_carved_out_interest_unlike_loan_book() {
     let carved = RepaymentMintRow {
         repayment_id: BigDecimal::from(1),
         block_timestamp: day(5),
-        defaulted_at: Some(day(4)),
+        carved_out: true,
         ..cash_repaid(5, 40_000_000, Some(10_000_000), None)
     };
     let rows = [live, carved];
@@ -447,17 +447,14 @@ fn cumulative_yield_excludes_fees_and_carved_out_interest_unlike_loan_book() {
 }
 
 #[test]
-fn default_at_or_before_repayment_carves_out_after_it_does_not() {
-    let at = RepaymentMintRow {
-        defaulted_at: Some(2 * DAY),
+fn only_a_default_ordered_before_the_repayment_carves_it_out() {
+    let carved = RepaymentMintRow {
+        carved_out: true,
         ..cash_repaid(2, 5_000_000, None, None)
     };
-    let before = RepaymentMintRow {
-        defaulted_at: Some(3 * DAY),
-        ..cash_repaid(2, 7_000_000, None, None)
-    };
-    assert!(chain_yield_deltas(ChainKind::Evm, &[], &[at]).is_empty());
-    let deltas = chain_yield_deltas(ChainKind::Evm, &[], &[before]);
+    let not_carved = cash_repaid(2, 7_000_000, None, None);
+    assert!(chain_yield_deltas(ChainKind::Evm, &[], &[carved]).is_empty());
+    let deltas = chain_yield_deltas(ChainKind::Evm, &[], &[not_carved]);
     assert_eq!(deltas.len(), 1);
     assert_eq!(deltas[0].s_plusd_amount, BigDecimal::from(7_000_000));
 }

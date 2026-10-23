@@ -108,6 +108,14 @@ fn list_repayment_mints_sql_requires_registry_scoped_payment_recorded() {
         "expected p.contract_address = $4 on PaymentRecorded: {sql}"
     );
     assert!(sql.contains("WHERE r.chain_id = $1"), "{sql}");
+    assert!(
+        sql.contains("AND d.contract_address = $4 AND d.event_name = 'LoanDefaulted'"),
+        "{sql}"
+    );
+    assert!(
+        sql.contains("(d.block_number, d.log_index) < (r.block_number, r.log_index)"),
+        "{sql}"
+    );
 }
 
 #[test]

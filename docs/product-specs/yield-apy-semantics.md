@@ -7,10 +7,10 @@ Fixes the definitions of every APY / yield figure served by `/v1/pnl`, `/v1/stat
 Time-weighted return of the wallet's share-price exposure, `shared::time_weighted_return::time_weighted_apy`:
 
 - Holding intervals come from `position_events` (`PositionRepo::get_balance_events`): an interval opens at the first event with `shares_balance > 0` and closes at the event that takes it to `0` (still open = until now). Partial buys or sells inside an interval do not split it.
-- Prices come from `share_prices` (`PositionRepo::get_share_price_series`): the price at a boundary is the latest sample at or before it. An interval with no price at either boundary is skipped (it counts neither return nor time).
+- Prices come from `share_prices` (`PositionRepo::get_share_price_series`): the price at a boundary is the latest sample at or before it. `get_share_price_series` is bounded to the wallet's first holding event (samples from then on plus the single latest sample before it). A holding that starts before the first price sample is clipped to start at that sample; an interval that ends before the first sample contributes nothing (neither return nor time).
 - `avg_apy = exp(Σ ln(price_end / price_start) × 365 d / total_held_secs) − 1`, i.e. `Π(price_end / price_start)` annualised over the total held time. It is independent of buy timing and time out of the vault is excluded; realised PnL is included implicitly (it is part of the price path).
 - Several vaults on a chain are pooled the same way: all intervals multiply and their held seconds add.
-- `null` when total held time is under 1 day or no interval has prices. The year stays 365 days (#1630 owns the year length).
+- `null` when the usable held time (after clipping) is under **7 days**, the same minimum as `/v1/stats` (`MIN_APY_SPAN_SECS`), or no interval has prices. Event rows with a `NULL` `shares_balance` are ignored, never treated as a zero balance. The year stays 365 days (#1630 owns the year length).
 
 ## /v1/stats apy
 
@@ -25,7 +25,7 @@ Linear (simple-interest) annualisation: `(p_latest / p_oldest − 1) × 365 / da
 `cumulative_yield_total` and `/v1/dashboard/yield-history` are **LP yield only**:
 
 - legacy `YieldMinted.s_plusd_amount`;
-- plus `CashRepaid.interest_minted` of repayments whose loan has no registry `LoanDefaulted` at or before the repayment timestamp (the contract never resets the carve-out flag, even after a cure);
+- plus `CashRepaid.interest_minted` of repayments whose loan has no registry `LoanDefaulted` ordered before the repayment by `(block_number, log_index)` (a default in the same block but after the repayment does not carve it out; the contract never resets the carve-out flag, even after a cure). Carved-out interest is minted to the Pocket (claimable by snapshot holders) and is excluded from LP yield;
 - net of `CashRepaymentReversed`, normalised per loan by chain kind as before;
 - fees (`PaymentRecorded` fee leg, legacy `treasury_amount`) excluded.
 

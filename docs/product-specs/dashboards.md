@@ -86,9 +86,9 @@ Returns `{ series: [{ timestamp, cumulative_yield }], max, min, average }` (seri
 Per chain, LP yield only (full definition in [yield-apy-semantics.md](./yield-apy-semantics.md)):
 
 - the historical `YieldMinted.s_plusd_amount` rows already in `contract_logs` (`ContractLogsRepo::list_yield_mints`, normalized to base-6 when read, #901), plus
-- `CashRepaid.interest_minted` from `ContractLogsRepo::list_repayment_mints` (protocol-wide) for repayments with no `LoanDefaulted` at or before them on the chain's LoanRegistry (carved-out interest is minted to the Pocket), net of the earliest `CashRepaymentReversed`. Fees are excluded, so the total intentionally differs from Σ LoanBook `minted_yield`. A `CashRepaid` with no matching `PaymentRecorded` is excluded, as in `minted_yield` (#1525).
+- `CashRepaid.interest_minted` from `ContractLogsRepo::list_repayment_mints` (protocol-wide) for repayments with no `LoanDefaulted` ordered before them (`(block_number, log_index)`) on the chain's LoanRegistry (carved-out interest is minted to the Pocket), net of the earliest `CashRepaymentReversed`. Fees are excluded, so the total intentionally differs from Σ LoanBook `minted_yield`. A `CashRepaid` with no matching `PaymentRecorded` is excluded, as in `minted_yield` (#1525).
 
-`CashRepaid` amounts are raw on-chain values, normalized per loan with the chain's `asset_decimals`. The portfolio `GET /v1/stats/yield` still reads the gross-accrual estimate and has no chain aggregation yet (TD-149).
+`CashRepaid` amounts are raw on-chain values, normalized per loan with the chain's `asset_decimals` (`CHAIN_<id>_STELLAR_API_ASSET_DECIMALS` default 7, `CHAIN_<id>_EVM_API_ASSET_DECIMALS` default 6). The portfolio `GET /v1/stats/yield` still reads the gross-accrual estimate and has no chain aggregation yet (TD-149).
 
 ---
 
