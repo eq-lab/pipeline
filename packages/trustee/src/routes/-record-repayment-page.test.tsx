@@ -480,7 +480,7 @@ describe("Record Repayment route — ready state", () => {
 
   it("ENABLES Close-loan once the terminal payment has been recorded and the refetched financials cover the offtaker", async () => {
     mockRecord.isSuccess = true;
-    readyWith({ offtaker: "0.000000" });
+    readyWith({ senior: "0", offtaker: "0.000000" });
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     await waitFor(() =>
@@ -491,6 +491,33 @@ describe("Record Repayment route — ready state", () => {
     const submit = screen.getByTestId("record-repayment-submit");
     expect(submit).toHaveTextContent("Payment recorded");
     expect(submit).toBeDisabled();
+  });
+
+  it("keeps Close-loan DISABLED after a shortfall repayment while the refreshed senior outstanding is non-zero (#1624)", () => {
+    mockRecord.isSuccess = true;
+    readyWith({ senior: "1200000.000000", offtaker: "0.000000" });
+    mockWaterfall(WATERFALL_TERMINAL);
+    renderRoute();
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeDisabled();
+    const unmet = screen.getAllByTestId("record-repayment-check-unmet");
+    expect(unmet[0]).toHaveTextContent("Senior principal outstanding is zero");
+    expect(unmet[0]).toHaveTextContent("$1,200,000 outstanding");
+    const submit = screen.getByTestId("record-repayment-submit");
+    expect(submit).toHaveTextContent("Payment recorded");
+    expect(submit).toBeDisabled();
+  });
+
+  it("enables Close-loan only once the refetched loan-book reports zero senior outstanding after a full repayment (#1624)", () => {
+    mockRecord.isSuccess = true;
+    readyWith({ offtaker: "0.000000" });
+    mockWaterfall(WATERFALL_TERMINAL);
+    const rendered = renderRoute();
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeDisabled();
+    readyWith({ senior: "0", offtaker: "0.000000" });
+    const Page = Route.options.component as React.ComponentType;
+    rendered.rerender(<Page />);
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
+    expect(screen.getAllByTestId("record-repayment-check-ok")).toHaveLength(3);
   });
 
   it("ENABLES Close-loan immediately when the whole checklist is green (revisiting an already-repaid loan)", () => {
@@ -506,7 +533,7 @@ describe("Record Repayment route — ready state", () => {
     // fire on the real clock).
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_782_172_800 * 1000);
     mockRecord.isSuccess = true;
-    readyWith({ offtaker: "0.000000" });
+    readyWith({ senior: "0", offtaker: "0.000000" });
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     const closeBtn = screen.getByTestId("record-repayment-close-submit");
@@ -533,7 +560,7 @@ describe("Record Repayment route — ready state", () => {
       .spyOn(Date, "now")
       .mockReturnValue(1_782_172_800 * 1000 - 86_400_000);
     mockRecord.isSuccess = true;
-    readyWith({ offtaker: "0.000000" });
+    readyWith({ senior: "0", offtaker: "0.000000" });
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     const closeBtn = screen.getByTestId("record-repayment-close-submit");
@@ -683,7 +710,7 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
 
   it("keeps the just-recorded confirmation when this page's own record succeeded (no notice swap)", () => {
     mockRecord.isSuccess = true;
-    fullyPaid();
+    readyWith({ senior: "0", offtaker: "0.000000" });
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     expect(

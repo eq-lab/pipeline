@@ -224,9 +224,8 @@ function RecordRepayment() {
   const showFullyPaid =
     view.offtakerFullyPaid && !record.isPending && !record.isSuccess;
 
-  const seniorOk = view.closeChecklist.seniorZero || record.isSuccess;
   const closeReady =
-    seniorOk &&
+    view.closeChecklist.seniorZero &&
     view.closeChecklist.nothingToMint &&
     (view.closeChecklist.offtakerCovered || view.closeChecklist.offtakerAck);
 
@@ -572,10 +571,10 @@ function RecordRepayment() {
               className="flex flex-col gap-[8px]"
             >
               <ChecklistRow
-                ok={seniorOk}
+                ok={view.closeChecklist.seniorZero}
                 label="Senior principal outstanding is zero"
                 detail={
-                  seniorOk
+                  view.closeChecklist.seniorZero
                     ? null
                     : `${view.closeChecklist.seniorOutstanding} outstanding`
                 }

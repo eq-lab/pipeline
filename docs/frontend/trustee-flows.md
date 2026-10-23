@@ -742,10 +742,11 @@ The Close-loan action always renders as the full-width "Next step — close loan
 three-item checklist (`closeChecklist` on the presenter). The button enables only when **every**
 item is green:
 
-1. **Senior principal outstanding is zero** — hard gate. Green when the loan-book's
-   `senior_outstanding` is `0`, or when this page's own `record_payment` write has just succeeded
-   (`record.isSuccess` — the terminal principal payment zeroes it; the loan-book refetch lags the
-   indexer). The unmet row shows the current outstanding amount.
+1. **Senior principal outstanding is zero** — hard gate. Green only when the refreshed
+   loan-book's `senior_outstanding` is `0`. This page's own `record_payment` success does **not**
+   turn it green: a shortfall repayment succeeds on-chain but leaves senior outstanding, and
+   `close_loan` would revert (#1624). The unmet row shows the current outstanding amount until the
+   refetch lands.
 2. **Nothing left to mint on either leg** — hard gate, **no manual override**. Green when the
    financials' `not_minted_yield` is `0` (the aggregate covers both mint legs — no per-leg field
    is served). Minter repayments mint atomically, so after recording a final payment
@@ -765,6 +766,10 @@ On success, `useCloseLoan` invalidates the loan-book/financials queries immediat
 5 s and 15 s (#1092) — the close is indexed asynchronously, so the immediate refetch races the
 indexer and the next `refetchInterval` poll is 30 s out; the delayed re-invalidations make the
 post-close loan detail converge in seconds instead of appearing stale.
+
+On success, `useRecordPayment` likewise invalidates loan-book/financials immediately and again at
+5 s and 15 s (#1624), so a full repayment's zeroed senior outstanding reaches the checklist within
+seconds.
 
 ### Route registration & page shell
 

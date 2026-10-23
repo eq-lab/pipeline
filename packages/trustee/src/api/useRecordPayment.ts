@@ -71,9 +71,15 @@ export function useRecordPayment(): UseRecordPaymentResult {
       });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
-      void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
+      const invalidate = () => {
+        void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
+        void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
+      };
+      invalidate();
       void queryClient.invalidateQueries({ queryKey: ["loan-waterfall"] });
+      for (const delayMs of [5_000, 15_000]) {
+        setTimeout(invalidate, delayMs);
+      }
     },
   });
 
