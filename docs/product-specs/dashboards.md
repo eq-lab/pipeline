@@ -59,7 +59,7 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 
 | Field | Definition | Source |
 |---|---|---|
-| `tvl` | Σ `DepositRequested.amount` − Σ `WithdrawalRequested.amount` (request-side, v1 proxy) | `contract_logs` |
+| `tvl` | PLUSD in circulation plus pending deposits, from an event-sourced PLUSD supply ledger (#1631), see [dashboards-tvl-ledger.md](./dashboards-tvl-ledger.md) | `contract_logs` |
 | `outstanding_in_loans` | Σ (senior + equity tranche) over active loans, `0.000000` when nothing is active (status timeline, [loan-status-timeline.md](./loan-status-timeline.md); same set as `loan_book_yield`) | `compute_financial_position` |
 | `current_apy_net_to_splusd` | Gross book rate × realized net/gross haircut (see below). `null` only when the gross rate is `null`; `0` for a `0` gross rate over an outstanding book | derived |
 | `loan_book_yield` | Outstanding-senior-weighted gross current senior rate: `Σ(outstanding_senior × current_rate) / Σ outstanding_senior` (see [book-rate-weighting.md](./book-rate-weighting.md)). `null` when no active loans or nothing is outstanding | `compute_loan_book` |
@@ -75,7 +75,7 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 
 ### `GET /v1/dashboard/tvl-history?days&interval&chain_id?`
 
-Returns `{ series: [{ timestamp, tvl }], max, min, average }` (series oldest first). `tvl(t)` is the running cumulative net flow (Σ deposits − Σ withdrawals up to `t`). `days`/`interval` (`hourly`/`daily`/`weekly`) mirror `/v1/stats/yield`; the sample cap is `MAX_SAMPLES = 1000` (HTTP 400 on overflow); `days=None` → full history from earliest flow event; no events → an empty series with zero stats. Final point equals summary `tvl`. Across chains every point is the sum of the per-chain running totals on one grid (the window ends at now); `max` / `min` / `average` are time-weighted over the summed series.
+Returns `{ series: [{ timestamp, tvl }], max, min, average }` (series oldest first). `tvl(t)` is the running sum of the PLUSD ledger up to `t` ([dashboards-tvl-ledger.md](./dashboards-tvl-ledger.md)); a withdrawal leaves TVL at its claim, never at its request. `days`/`interval` (`hourly`/`daily`/`weekly`) mirror `/v1/stats/yield`; the sample cap is `MAX_SAMPLES = 1000` (HTTP 400 on overflow); `days=None` → full history from earliest ledger event; no events → an empty series with zero stats. Final point equals summary `tvl`. Across chains every point is the sum of the per-chain running totals on one grid (the window ends at now); `max` / `min` / `average` are time-weighted over the summed series.
 
 ### `GET /v1/dashboard/yield-history?days&interval&chain_id?`
 

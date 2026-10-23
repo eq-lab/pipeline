@@ -13,7 +13,7 @@ use pipeline_api::routes::dashboard::{
     compute_summary, compute_tvl_history, compute_tvl_series, compute_yield_history,
     compute_yield_series, net_apy, MAX_SAMPLES,
 };
-use shared::contract_logs_repo::{FlowEventRow, LifecycleRow, LoanSnapshotRow, YieldMintRow};
+use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow, PlusdDeltaRow, YieldMintRow};
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 // ── Fixture helpers ─────────────────────────────────────────────────────────
@@ -98,20 +98,21 @@ fn make_loan(
     }
 }
 
-fn deposit(ts_day: i64, amount_usdc: i64) -> FlowEventRow {
-    FlowEventRow {
+fn delta(ts_day: i64, amount_usdc: i64) -> PlusdDeltaRow {
+    PlusdDeltaRow {
         block_timestamp: ts_day * DAY,
-        kind: "deposit".to_owned(),
-        amount: usdc(amount_usdc),
+        block_number: ts_day,
+        log_index: 0,
+        delta: usdc(amount_usdc),
     }
 }
 
-fn withdrawal(ts_day: i64, amount_usdc: i64) -> FlowEventRow {
-    FlowEventRow {
-        block_timestamp: ts_day * DAY,
-        kind: "withdrawal".to_owned(),
-        amount: usdc(amount_usdc),
-    }
+fn deposit(ts_day: i64, amount_usdc: i64) -> PlusdDeltaRow {
+    delta(ts_day, amount_usdc)
+}
+
+fn withdrawal(ts_day: i64, amount_usdc: i64) -> PlusdDeltaRow {
+    delta(ts_day, -amount_usdc)
 }
 
 fn yield_mint(ts_day: i64, amount_usdc: i64) -> YieldMintRow {
@@ -354,7 +355,7 @@ fn net_apy_multiple_loans_aggregate_haircut() {
 // ── compute_summary ──────────────────────────────────────────────────────────
 
 #[test]
-fn summary_tvl_is_deposits_minus_withdrawals() {
+fn summary_tvl_is_the_signed_ledger_sum() {
     let flows = vec![deposit(0, 500), deposit(5, 200), withdrawal(7, 100)];
     let result = compute_summary(&[], &[], &flows, &[], 10 * DAY);
     // 500 + 200 - 100 = 600

@@ -50,6 +50,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [collateral-valuation.md](./collateral-valuation.md) | Collateral Valuation | Price sources and feed budget, standard-goods and NSR concentrate valuation modes, off-chain valuation record, CCR derivation |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |
+| [dashboards-tvl-ledger.md](./dashboards-tvl-ledger.md) | Dashboards | TVL definition: PLUSD supply ledger (mint / burn paths, pending deposits, carve-out), per chain and summed |
 | [dashboards-balance-sheet-sources.md](./dashboards-balance-sheet-sources.md) | Dashboards | Protocol Dashboard Panel A on-chain sources: Stellar and EVM PLUSD supply / USDC custody reads |
 | [dashboards-yield-history.md](./dashboards-yield-history.md) | Dashboards | Protocol Dashboard Panel D: yield history, T-bill accrual, exchange rate, trailing yield |
 | [home-screen-states.md](./home-screen-states.md) | Dashboards | LP home route (`/`) state table and precedence rule (epic #1419) |
