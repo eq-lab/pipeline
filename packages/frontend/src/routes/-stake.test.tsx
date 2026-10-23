@@ -1207,14 +1207,14 @@ describe("Stake page — chips stay within the balance (#1628)", () => {
   });
 
   it("Max fills the exact balance with no Insufficient balance message", async () => {
-    seedBaseMocks({ balance: "1234567891234567891235", allowance: "0" });
+    seedBaseMocks({ balance: "1234567891", allowance: "0" });
     const user = userEvent.setup();
     renderStake();
 
     await user.click(await screen.findByRole("button", { name: "Max" }));
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("1234.567891234567891235");
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
     expect(screen.queryByText("Insufficient balance")).toBeNull();
   });
 

@@ -386,9 +386,9 @@ const MIN_DEPOSIT_RAW = "1000000000";
 const BALANCE_5000_RAW = "5000000000";
 // 500 USDC at 6 decimals
 const BALANCE_500_RAW = "500000000";
-// 100 PLUSD at 18 decimals
+// 100 PLUSD at 6 decimals
 const BALANCE_100_PLUSD = "100000000";
-// 10 PLUSD at 18 decimals
+// 10 PLUSD at 6 decimals
 const AMOUNT_10_PLUSD = "10000000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -3577,17 +3577,17 @@ describe("Deposit page — chips stay within the balance (#1628)", () => {
     expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   });
 
-  it("withdraw 75% and Max never exceed an odd 18-dp balance", async () => {
+  it("withdraw 75% and Max never exceed an odd 6-dp balance", async () => {
     mockDirection = "withdraw";
-    seedWithdrawMocks({ balance: "1234567891234567891235", allowance: "0" });
+    seedWithdrawMocks({ balance: "1234567891", allowance: "0" });
     const user = userEvent.setup();
     renderDeposit();
 
     const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
     await user.click(await screen.findByRole("button", { name: "75%" }));
-    expect((input as HTMLInputElement).value).toBe("925.925918425925918426");
+    expect((input as HTMLInputElement).value).toBe("925.925918");
     await user.click(screen.getByRole("button", { name: "Max" }));
-    expect((input as HTMLInputElement).value).toBe("1234.567891234567891235");
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
     expect(screen.queryByText("Insufficient balance")).toBeNull();
   });
 });
