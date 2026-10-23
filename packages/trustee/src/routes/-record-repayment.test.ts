@@ -13,6 +13,7 @@ import {
   closureReason,
   computeFinalPeriod,
   parseUsdInput,
+  prefillAmountInput,
   todayDateInput,
   usdToBaseUnits,
 } from "./-record-repayment";
@@ -152,5 +153,21 @@ describe("buildRepaymentInput (issue #884 — REAL principal, unlike #882)", () 
   it("returns null before an amount/preview is available", () => {
     expect(buildRepaymentInput("0", WATERFALL)).toBeNull();
     expect(buildRepaymentInput("61500000000000", undefined)).toBeNull();
+  });
+});
+
+describe("prefillAmountInput", () => {
+  it("trims trailing zeros and groups", () => {
+    expect(prefillAmountInput("6150000.000000")).toBe("6,150,000");
+  });
+
+  it("keeps the served fraction exactly", () => {
+    expect(prefillAmountInput("1234567.891234")).toBe("1,234,567.891234");
+  });
+
+  it("returns null for zero, missing or malformed input", () => {
+    expect(prefillAmountInput("0.000000")).toBeNull();
+    expect(prefillAmountInput(null)).toBeNull();
+    expect(prefillAmountInput("abc")).toBeNull();
   });
 });

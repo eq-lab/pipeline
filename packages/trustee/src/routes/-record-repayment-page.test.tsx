@@ -285,6 +285,15 @@ describe("Record Repayment route — ready state", () => {
     expect(screen.queryByText(/Recorded ·/)).not.toBeInTheDocument();
   });
 
+  it("requests the waterfall without an as_of so the server uses now (#1626)", () => {
+    renderRoute();
+    const lastCall =
+      mockUseLoanWaterfall.mock.calls[
+        mockUseLoanWaterfall.mock.calls.length - 1
+      ]!;
+    expect(lastCall[3]).toBeNull();
+  });
+
   it("renders a read-only date fixed to today (#916)", () => {
     renderRoute();
     const dateInput = screen.getByTestId("record-repayment-date");

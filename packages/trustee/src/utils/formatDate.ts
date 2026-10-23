@@ -1,41 +1,25 @@
-/**
- * Trustee-local date formatters for the Origination page's submissions table
- * (issue #813). Mirrors the trustee-app convention set by `formatUsd.ts` —
- * self-contained, no `@pipeline/frontend` dependency (epic #775 keeps the two
- * apps separate).
- *
- * Two distinct formats, per the Figma reference (node `4116:9155`):
- *   - Maturity: day + short month + full year, e.g. `"15 Dec 2026"`.
- *   - Submitted: day + short month only (no year), e.g. `"18 Jun"`.
- *
- * Both render `—` for missing/unparseable input — never fabricate a date.
- */
+// spec: docs/frontend/trustee-flows.md#dates
 
 const DAY_MONTH_YEAR: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
   year: "numeric",
+  timeZone: "UTC",
 };
 
 const DAY_MONTH: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
+  timeZone: "UTC",
 };
 
 const HOUR_MINUTE_24H: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
+  timeZone: "UTC",
 };
 
-/**
- * Formats a Unix-seconds timestamp (`loan_data.economics.original_maturity_date`)
- * as `"15 Dec 2026"`.
- *
- * - `1765756800` → `"15 Dec 2025"` (example shape; exact day depends on TZ)
- * - `null | undefined` → `"—"`
- * - non-finite / non-numeric input → `"—"`
- */
 export function formatMaturityDate(
   unixSeconds: number | null | undefined,
 ): string {
@@ -45,14 +29,6 @@ export function formatMaturityDate(
   return new Intl.DateTimeFormat("en-GB", DAY_MONTH_YEAR).format(date);
 }
 
-/**
- * Formats an RFC 3339 timestamp (`SubmissionView.created_at`) as `"18 Jun"`
- * (day + short month, no year).
- *
- * - `"2026-06-18T10:00:00Z"` → `"18 Jun"`
- * - `null | undefined` → `"—"`
- * - unparseable string → `"—"`
- */
 export function formatSubmittedDate(
   rfc3339: string | null | undefined,
 ): string {
@@ -62,15 +38,6 @@ export function formatSubmittedDate(
   return new Intl.DateTimeFormat("en-GB", DAY_MONTH).format(date);
 }
 
-/**
- * Formats an RFC 3339 timestamp as `"18 Jun 2026"` (day + short month + year) —
- * the loan-detail epoch range (`start_date → maturity_date`, issue #857). Keeps
- * the year, unlike `formatSubmittedDate`, since epoch maturities can be years out.
- *
- * - `"2026-06-18T18:17:37Z"` → `"18 Jun 2026"`
- * - `null | undefined` → `"—"`
- * - unparseable string → `"—"`
- */
 export function formatEpochDate(rfc3339: string | null | undefined): string {
   if (rfc3339 == null) return "—";
   const date = new Date(rfc3339);
@@ -79,42 +46,20 @@ export function formatEpochDate(rfc3339: string | null | undefined): string {
 }
 
 export function formatIsoDateUtc(rfc3339: string | null | undefined): string {
-  if (rfc3339 == null) return "—";
-  const date = new Date(rfc3339);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    ...DAY_MONTH_YEAR,
-    timeZone: "UTC",
-  }).format(date);
+  return formatEpochDate(rfc3339);
 }
 
-/**
- * Formats an ISO-8601 timestamp as `"24 Jun 07:12"` (day + short month + 24h,
- * UTC) for the Audit Log Time column (#1004); `"—"` for missing/unparseable.
- */
 export function formatAuditTimestamp(
   rfc3339: string | null | undefined,
 ): string {
   if (rfc3339 == null) return "—";
   const date = new Date(rfc3339);
   if (Number.isNaN(date.getTime())) return "—";
-  // Format day+month and time separately, then join — a single en-GB call
-  // inserts a comma ("24 Jun, 07:12").
-  const dayMonth = new Intl.DateTimeFormat("en-GB", {
-    ...DAY_MONTH,
-    timeZone: "UTC",
-  }).format(date);
-  const time = new Intl.DateTimeFormat("en-GB", {
-    ...HOUR_MINUTE_24H,
-    timeZone: "UTC",
-  }).format(date);
+  const dayMonth = new Intl.DateTimeFormat("en-GB", DAY_MONTH).format(date);
+  const time = new Intl.DateTimeFormat("en-GB", HOUR_MINUTE_24H).format(date);
   return `${dayMonth} ${time}`;
 }
 
-/**
- * Formats an ISO-8601 timestamp as `"5 Oct 2026, 15:41 UTC"`; `"—"` for
- * missing/unparseable.
- */
 export function formatIsoDateTimeUtc(
   rfc3339: string | null | undefined,
 ): string {
@@ -124,15 +69,10 @@ export function formatIsoDateTimeUtc(
   return `${formatIsoDateUtc(rfc3339)}, ${date.toISOString().slice(11, 16)} UTC`;
 }
 
-/** Current UTC time as a `datetime-local` value (`YYYY-MM-DDTHH:MM`). */
 export function nowUtcDateTimeInput(now = new Date()): string {
   return now.toISOString().slice(0, 16);
 }
 
-/**
- * Reads a `datetime-local` value as UTC → ISO-8601 with a `Z` offset;
- * `null` for anything not a valid `YYYY-MM-DDTHH:MM`.
- */
 export function utcDateTimeInputToIso(value: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
   const iso = `${value}:00Z`;

@@ -21,7 +21,7 @@ import {
   nowUtcDateTimeInput,
   utcDateTimeInputToIso,
 } from "@/utils/formatDate";
-import { formatCompactUsd2dp, parseUsdCentsInput } from "@/utils/formatUsd";
+import { formatUsdDecimal, parseUsdCentsInput } from "@/utils/formatUsd";
 
 export const MINT_PENDING_WINDOW_MS = 120_000;
 export const MINT_PENDING_REFETCH_MS = 5_000;
@@ -120,7 +120,7 @@ export function mapDepositToRow(
     id: deposit.id,
     occurredAt: formatIsoDateTimeUtc(deposit.occurred_at),
     occurredAtIso: deposit.occurred_at,
-    amount: formatCompactUsd2dp(deposit.amount),
+    amount: formatUsdDecimal(deposit.amount),
     amountRaw: deposit.amount,
     reference: deposit.payment_reference,
     refHash: deposit.ref_hash,

@@ -8,7 +8,7 @@
  * spec: docs/frontend/trustee-flows.md#cash-movement--lifecycle-actions
  * (scope, scale handling, terminal-close detection).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
@@ -285,20 +285,8 @@ export function useRecordCoupon(
 
   const enteredUsd = parseUsdInput(debouncedAmount);
   const amountBaseUnits = usdToBaseUnits(debouncedAmount, decimals);
-  const asOfSeconds = useMemo(() => {
-    if (!dateInput) return Math.floor(Date.now() / 1000);
-    const parsed = Math.floor(
-      new Date(`${dateInput}T00:00:00Z`).getTime() / 1000,
-    );
-    return Number.isFinite(parsed) ? parsed : Math.floor(Date.now() / 1000);
-  }, [dateInput]);
 
-  const waterfall = useLoanWaterfall(
-    chainId,
-    loanId,
-    amountBaseUnits,
-    asOfSeconds,
-  );
+  const waterfall = useLoanWaterfall(chainId, loanId, amountBaseUnits, null);
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
   const onChainBlockedReason = entry

@@ -683,6 +683,12 @@ export function buildRegistryState(
   return { state: "ready", errorMessage: null, errorDetails: null, rows: [] };
 }
 
+export function ccrSeriesFrom(
+  entry: Pick<LoanBookEntry, "maturity" | "duration_days"> | undefined,
+): number | null {
+  return entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
+}
+
 /**
  * spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
  */
@@ -718,10 +724,7 @@ export function useLoanDetail(
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
-  // CCR-trend series (#879), origination through now, daily. Self-disables
-  // until `from` is known; only built for the Watchlist variant.
-  const ccrFrom =
-    entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
+  const ccrFrom = ccrSeriesFrom(entry);
   const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
 
   const state: LoanDetailState = loanBook.isLoading

@@ -223,11 +223,27 @@ describe("Risk Council Escalate route — ready state", () => {
     );
   });
 
-  it("renders the MOCK Days-on-watchlist tile", () => {
+  it("renders the served days_on_watchlist", () => {
+    mockUseLoanBook.mockReturnValue({
+      data: {
+        ...LOAN_BOOK_RESPONSE,
+        loans: [{ ...LOAN_BOOK_RESPONSE.loans[0]!, days_on_watchlist: 12 }],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
     renderRoute();
     expect(
       screen.getByTestId("risk-council-escalate-days-on-watchlist"),
-    ).toHaveTextContent("18");
+    ).toHaveTextContent("12");
+  });
+
+  it("renders — when days_on_watchlist is not served", () => {
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-escalate-days-on-watchlist"),
+    ).toHaveTextContent("—");
   });
 
   it("renders the CCR-trend chart from the real ccr-history series", () => {

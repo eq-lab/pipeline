@@ -456,6 +456,7 @@ describe("Record Coupon route — ready state", () => {
       expect(lastCall[0]).toBe(99_000_001);
       expect(lastCall[1]).toBe("4488");
       expect(lastCall[2]).toBe("1234567800");
+      expect(lastCall[3]).toBeNull();
     });
   });
 

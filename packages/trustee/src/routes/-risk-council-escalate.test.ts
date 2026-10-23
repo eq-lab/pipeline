@@ -21,7 +21,6 @@ import {
   formatFacilityLine,
   nextCcrAlertPct,
   MOCK_AT_RISK_PROJECTED_PCT,
-  MOCK_DAYS_ON_WATCHLIST,
 } from "./-risk-council-escalate";
 
 describe("nextCcrAlertPct", () => {
@@ -157,7 +156,6 @@ describe("buildConcentration", () => {
 
 describe("mock constants (issue #782 — no backend source, not per-loan)", () => {
   it("are documented, stable Figma literals", () => {
-    expect(MOCK_DAYS_ON_WATCHLIST).toBe("18");
     expect(MOCK_AT_RISK_PROJECTED_PCT).toBe("4.3%");
   });
 });
