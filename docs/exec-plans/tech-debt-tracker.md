@@ -208,7 +208,7 @@ line, whichever section it lands in.
 - **Impact:** The `block_timestamp` column for Stellar rows in `share_prices` is wall-clock sample time rather than ledger close-time. The skew is well below the API's hour/day bucketing granularity — no user-visible impact at current polling cadences. Exact timestamps matter if sub-minute granularity is ever needed.
 - **Suggested fix:** Fetch the canonical ledger close-time via `getLedgerEntries(LedgerHeader)` using the `latestLedger` sequence returned by simulate. This adds one extra RPC round-trip per poll tick. Implement when downstream consumers require exact-to-the-ledger timestamps.
 
-### TD-19: StepRow still uses raw className override instead of Button size="compact"
+### TD-19: StepRow still uses raw className override instead of Button size="compact" [RESOLVED 2026-10-26 / #1331]
 
 - **Date:** 2026-06-18
 - **Location:** `packages/ui/src/components/StepRow/StepRow.tsx` (~lines 170–178)
@@ -219,6 +219,7 @@ line, whichever section it lands in.
   sites of the same component.
 - **Suggested fix:** Replace `className="!h-8 ..."` in `StepRow.tsx` with `size="compact"` on
   the `Button` prop; adjust any test assertions that relied on the className value directly.
+- **Resolution (2026-10-26, #1331):** `StepRow` now renders `Button variant="primary-dark" size="compact" className="w-22"`; compact supplies the 32px height.
 
 ### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal` [RESOLVED 2026-10-19 / #1579]
 
