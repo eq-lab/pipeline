@@ -167,9 +167,8 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               variant="primary-dark"
               disabled={disabled || loading}
               onClick={onAction}
-              /* !h-8 (important modifier) so the height override reliably beats
-                 the h-12 from the primary-dark variant class in Tailwind v4. */
-              className="!h-8 w-22 min-w-0 text-[length:var(--text-pipeline-body)]"
+              size="compact"
+              className="w-22"
               aria-busy={loading}
             >
               {loading ? (
