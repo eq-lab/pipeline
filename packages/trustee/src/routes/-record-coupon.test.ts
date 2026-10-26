@@ -2,18 +2,17 @@
  * Tests for the Record-coupon presenter's pure helpers (`-record-coupon.ts`,
  * issue #882). All pure — no DOM, no query layer. Covers the scale
  * conversions (USD ↔ 7-decimal base-unit strings, the registry ×1000 #840
- * correction), the coupon-period day computation, and the terminal-close
- * ("Next stage: principal repayment") detection.
+ * correction), the coupon-period day computation, and the principal-block gate.
  */
 import { describe, it, expect } from "vitest";
 import type { Epoch } from "@/api/useLoanFinancials";
 import {
   buildRepaymentInput,
+  coversSeniorPrincipal,
   computeCouponPeriod,
   computeScheduledCoupon,
   DUE_SOON_DAYS,
   hasCouponDue,
-  isTerminalRepayment,
   parseUsdInput,
   todayDateInput,
   usdToBaseUnits,
@@ -159,41 +158,27 @@ describe("hasCouponDue", () => {
   });
 });
 
-describe("isTerminalRepayment", () => {
-  it("is true when the entered amount covers the outstanding senior AND the waterfall returns exactly that principal", () => {
-    expect(isTerminalRepayment(1_840_000, 1_900_000, 1_840_000)).toBe(true);
+describe("coversSeniorPrincipal (#1623)", () => {
+  it("is false when the waterfall is missing or returns no principal", () => {
+    expect(coversSeniorPrincipal(undefined)).toBe(false);
+    expect(coversSeniorPrincipal({ senior_principal_returned: "0" })).toBe(
+      false,
+    );
   });
 
-  it("is true at cent-level equality despite float drift from independent conversions", () => {
-    // 1840000.005 rounds to the same cents as 1840000.00 at 2dp precision.
-    expect(isTerminalRepayment(1_840_000, 1_840_000, 1_840_000.001)).toBe(true);
-  });
-
-  it("is false for a partial/interest-only coupon (principal returned is $0)", () => {
-    expect(isTerminalRepayment(1_840_000, 45_000, 0)).toBe(false);
-  });
-
-  it("is false when the entered amount does not cover the outstanding senior, even if principal returned matches partially", () => {
-    expect(isTerminalRepayment(1_840_000, 900_000, 900_000)).toBe(false);
-  });
-
-  it("is false when any input is unknown (never fabricates the terminal case)", () => {
-    expect(isTerminalRepayment(null, 1_900_000, 1_840_000)).toBe(false);
-    expect(isTerminalRepayment(1_840_000, null, 1_840_000)).toBe(false);
-    expect(isTerminalRepayment(1_840_000, 1_900_000, null)).toBe(false);
-  });
-
-  it("is false when the loan has no outstanding senior on record", () => {
-    expect(isTerminalRepayment(0, 1_900_000, 0)).toBe(false);
+  it("is true for any positive principal", () => {
+    expect(coversSeniorPrincipal({ senior_principal_returned: "1" })).toBe(
+      true,
+    );
+    expect(
+      coversSeniorPrincipal({ senior_principal_returned: "18400000000000" }),
+    ).toBe(true);
   });
 });
 
 describe("buildRepaymentInput (issue #882)", () => {
-  // Backend raw 7-decimal SAC units. senior_principal_returned is
-  // deliberately NON-zero to prove the interest-only override forces
-  // senior_principal_repaid to "0" regardless.
   const WATERFALL = {
-    senior_principal_returned: "9990000000", // ignored (interest-only)
+    senior_principal_returned: "0",
     senior_coupon_net: "1155000000000", // $115,500
     management_fee: "120000000000", // $12,000
     performance_fee: "150000000000", // $15,000
@@ -232,6 +217,15 @@ describe("buildRepaymentInput (issue #882)", () => {
   it("clamps equity at 0 (never negative) when interest+fees exceed the amount", () => {
     const input = buildRepaymentInput("1000000000000", WATERFALL);
     expect(input!.equity_distributed).toBe("0");
+  });
+
+  it("returns null when the waterfall returns any senior principal (#1623)", () => {
+    expect(
+      buildRepaymentInput("1500000000000", {
+        ...WATERFALL,
+        senior_principal_returned: "1",
+      }),
+    ).toBeNull();
   });
 
   it("returns null before an amount/preview is available", () => {

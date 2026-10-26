@@ -211,6 +211,7 @@ export interface RecordRepaymentView {
    * the fully-repaid notice instead of the amount form/waterfall.
    */
   offtakerFullyPaid: boolean;
+  seniorStillOutstanding: string | null;
   /**
    * The close-loan checklist (#1090) — Close-loan enables only when every item
    * is green. Items 1–2 are hard gates with no manual override; item 3 is
@@ -455,6 +456,12 @@ export function useRecordRepayment(
         : null,
     onChainBlockedReason,
     offtakerFullyPaid,
+    seniorStillOutstanding:
+      offtakerFullyPaid &&
+      outstandingSeniorUsd != null &&
+      outstandingSeniorUsd > 0
+        ? usdFull(outstandingSeniorUsd)
+        : null,
     closeChecklist,
     closureReason: onChainBlockedReason === null ? reason : null,
   };
