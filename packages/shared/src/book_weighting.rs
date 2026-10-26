@@ -1,6 +1,7 @@
 // spec: docs/product-specs/book-rate-weighting.md
 use bigdecimal::{BigDecimal, RoundingMode, Zero};
 
+use crate::chains::{normalize_usdc_amount, ChainKind};
 use crate::contract_logs_repo::LoanRateEventRow;
 use crate::loan_economics::{economics_rate_to_bps, BPS_DENOM};
 use crate::loan_snapshot::LoanSnapshot;
@@ -101,37 +102,126 @@ pub fn rate_bps_at(initial_bps: u32, events: &[&LoanRateEventRow], t: i64) -> u3
 /// Contract year (365.25 d) used by the `/v1/stats/yield` accrual.
 pub const CONTRACT_YEAR_SECS: i64 = 31_557_600;
 
+/// Per-chain-kind normalisation of raw event `outstanding` to base-6 (Stellar 7 dp floors /10, EVM unchanged).
+pub fn normalise_rate_events(kind: ChainKind, events: &mut [LoanRateEventRow]) {
+    for e in events {
+        if let Some(o) = e.outstanding.as_ref() {
+            e.outstanding = Some(normalize_usdc_amount(kind, o));
+        }
+    }
+}
+
+/// One loan's piecewise-constant `outstanding × rate_bps` timeline with a cumulative integral per breakpoint.
+pub struct LoanAccrual {
+    initial_bps: u32,
+    times: Vec<i64>,
+    outstanding: Vec<BigDecimal>,
+    rate_bps: Vec<u32>,
+    cumulative: Vec<BigDecimal>,
+}
+
+impl LoanAccrual {
+    /// Events in chain order; for equal timestamps the later event wins, as in `outstanding_at` / `rate_bps_at`.
+    pub fn new(initial_bps: u32, events: &[&LoanRateEventRow]) -> Self {
+        let mut relevant: Vec<&LoanRateEventRow> = events
+            .iter()
+            .copied()
+            .filter(|e| {
+                OUTSTANDING_EVENT_NAMES.contains(&e.event_name.as_str())
+                    || RATE_EVENT_NAMES.contains(&e.event_name.as_str())
+            })
+            .collect();
+        relevant.sort_by_key(|e| e.block_timestamp);
+
+        let mut acc = Self {
+            initial_bps,
+            times: Vec::new(),
+            outstanding: Vec::new(),
+            rate_bps: Vec::new(),
+            cumulative: Vec::new(),
+        };
+        let mut cur_out = BigDecimal::zero();
+        let mut cur_rate = initial_bps;
+        let mut cum = BigDecimal::zero();
+        let mut i = 0;
+        while i < relevant.len() {
+            let ts = relevant[i].block_timestamp;
+            if let Some(&prev) = acc.times.last() {
+                cum +=
+                    &cur_out * BigDecimal::from(i64::from(cur_rate)) * BigDecimal::from(ts - prev);
+            }
+            while i < relevant.len() && relevant[i].block_timestamp == ts {
+                let e = relevant[i];
+                if OUTSTANDING_EVENT_NAMES.contains(&e.event_name.as_str()) {
+                    if let Some(o) = &e.outstanding {
+                        cur_out = o.clone();
+                    }
+                }
+                if RATE_EVENT_NAMES.contains(&e.event_name.as_str()) {
+                    if let Some(r) = e.new_rate {
+                        cur_rate = economics_rate_to_bps(r);
+                    }
+                }
+                i += 1;
+            }
+            acc.times.push(ts);
+            acc.outstanding.push(cur_out.clone());
+            acc.rate_bps.push(cur_rate);
+            acc.cumulative.push(cum.clone());
+        }
+        acc
+    }
+
+    fn breakpoint_at(&self, t: i64) -> Option<usize> {
+        self.times.partition_point(|&ts| ts <= t).checked_sub(1)
+    }
+
+    pub fn outstanding_at(&self, t: i64) -> BigDecimal {
+        self.breakpoint_at(t)
+            .map_or_else(BigDecimal::zero, |i| self.outstanding[i].clone())
+    }
+
+    pub fn rate_bps_at(&self, t: i64) -> u32 {
+        self.breakpoint_at(t)
+            .map_or(self.initial_bps, |i| self.rate_bps[i])
+    }
+
+    fn integral_to(&self, t: i64) -> BigDecimal {
+        match self.breakpoint_at(t) {
+            None => BigDecimal::zero(),
+            Some(i) => {
+                &self.cumulative[i]
+                    + &self.outstanding[i]
+                        * BigDecimal::from(i64::from(self.rate_bps[i]))
+                        * BigDecimal::from(t - self.times[i])
+            }
+        }
+    }
+
+    /// `Σ ∫ outstanding × rate_bps dt` over `[from, until)` intervals, before the year / bps division.
+    pub fn numerator(&self, intervals: &[(i64, i64)]) -> BigDecimal {
+        let mut total = BigDecimal::zero();
+        for &(from, until) in intervals {
+            total += self.integral_to(until) - self.integral_to(from);
+        }
+        total
+    }
+
+    pub fn accrued(&self, intervals: &[(i64, i64)]) -> BigDecimal {
+        self.numerator(intervals) / accrual_denominator()
+    }
+}
+
+fn accrual_denominator() -> BigDecimal {
+    BigDecimal::from(BPS_DENOM) * BigDecimal::from(CONTRACT_YEAR_SECS)
+}
+
 /// Simple-interest accrual `Σ ∫ outstanding(t) × rate(t) dt / CONTRACT_YEAR_SECS` over `intervals` (raw outstanding units).
-/// Each `[from, until)` interval is split at every outstanding / rate event timestamp, so both factors are constant per piece.
+/// Both factors are piecewise constant between outstanding / rate events (see `LoanAccrual`).
 pub fn accrued_over_intervals(
     initial_bps: u32,
     events: &[&LoanRateEventRow],
     intervals: &[(i64, i64)],
 ) -> BigDecimal {
-    let denom = BigDecimal::from(BPS_DENOM) * BigDecimal::from(CONTRACT_YEAR_SECS);
-    let mut total = BigDecimal::zero();
-    for &(from, until) in intervals {
-        let mut cuts: Vec<i64> = events
-            .iter()
-            .filter(|e| {
-                e.block_timestamp > from
-                    && e.block_timestamp < until
-                    && (OUTSTANDING_EVENT_NAMES.contains(&e.event_name.as_str())
-                        || RATE_EVENT_NAMES.contains(&e.event_name.as_str()))
-            })
-            .map(|e| e.block_timestamp)
-            .collect();
-        cuts.push(until);
-        cuts.sort_unstable();
-        cuts.dedup();
-        let mut start = from;
-        for end in cuts {
-            let outstanding = outstanding_at(events, start);
-            let rate_bps = rate_bps_at(initial_bps, events, start);
-            total +=
-                outstanding * BigDecimal::from(i64::from(rate_bps)) * BigDecimal::from(end - start);
-            start = end;
-        }
-    }
-    total / denom
+    LoanAccrual::new(initial_bps, events).accrued(intervals)
 }

@@ -43,7 +43,7 @@ pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
        AND contract_address = $4
        AND event_name = ANY($2)
        AND block_timestamp <= $3
-     ORDER BY block_timestamp, log_index";
+     ORDER BY block_number, log_index";
 
 pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
          (params->>'loan_id')::numeric AS loan_id,
@@ -55,7 +55,7 @@ pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
      WHERE chain_id = $1
        AND event_name = ANY($2)
        AND block_timestamp <= $3
-     ORDER BY block_timestamp, log_index";
+     ORDER BY block_number, log_index";
 
 pub const LIST_LATEST_LOAN_SNAPSHOTS_SQL: &str =
     "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
@@ -670,7 +670,7 @@ impl ContractLogsRepo {
              WHERE chain_id = $1
                AND event_name = ANY($2)
                AND block_timestamp <= $3
-             ORDER BY block_timestamp, log_index",
+             ORDER BY block_number, log_index",
         )
         .bind(chain_id)
         .bind(&event_names)
