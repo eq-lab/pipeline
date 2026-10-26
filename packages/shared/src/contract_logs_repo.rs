@@ -9,7 +9,7 @@ use crate::loan_snapshot::LoanSnapshot;
 
 /// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
 /// the "latest snapshot per loan" queries below (`list_latest_loan_snapshots`,
-/// `list_latest_loan_snapshots_for_chain`, `get_loan_snapshot_as_of`,
+/// `get_loan_snapshot_as_of`,
 /// `latest_status_by_loans`, `get_latest_loan_snapshot`). A name missing from this list has its snapshot
 /// written but never read back as "latest" — see issue #1433 finding F3. All of these
 /// queries must stay derived from this single list rather than hand-copied.
@@ -45,7 +45,7 @@ pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
 
-pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
+pub const LOAN_RATE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
          (params->>'loan_id')::numeric AS loan_id,
          event_name,
          block_timestamp,
@@ -53,9 +53,17 @@ pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
          (params->'event'->>'new_rate')::bigint AS new_rate
      FROM contract_logs
      WHERE chain_id = $1
+       AND contract_address = $4
        AND event_name = ANY($2)
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
+
+pub const EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL: &str =
+    "SELECT MIN((params->'snapshot'->>'origination_date')::bigint)
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = 'LoanDrawn'";
 
 pub const LOAN_RATE_EVENTS_FOR_LOAN_SQL: &str = "SELECT
          (params->>'loan_id')::numeric AS loan_id,
@@ -658,44 +666,8 @@ impl ContractLogsRepo {
         Self { pool }
     }
 
-    /// Return all `LoanStatusUpdated`, `LoanDefaulted` and `LoanClosed` events for a given `chain_id` with
-    /// `block_timestamp <= to_unix`, ordered by `(block_timestamp, log_index)`.
-    ///
-    /// Generic over `Executor` so callers can run this inside a transaction alongside
-    /// other reads for a consistent snapshot.
-    pub async fn list_loan_lifecycle_events<'e, E>(
-        &self,
-        executor: E,
-        chain_id: i64,
-        to_unix: i64,
-    ) -> anyhow::Result<Vec<LifecycleRow>>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-    {
-        let event_names = LOAN_STATUS_EVENT_NAMES.to_vec();
-        let rows = sqlx::query_as::<_, LifecycleRow>(
-            "SELECT
-                 chain_id,
-                 event_name,
-                 block_timestamp,
-                 (params->>'loan_id')::numeric AS loan_id,
-                 params->'event'->>'status' AS status
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = ANY($2)
-               AND block_timestamp <= $3
-             ORDER BY block_number, log_index",
-        )
-        .bind(chain_id)
-        .bind(&event_names)
-        .bind(to_unix)
-        .fetch_all(executor)
-        .await?;
-        Ok(rows)
-    }
-
-    /// Like `list_loan_lifecycle_events` but only rows emitted by `contract_address`
-    /// (the configured LoanRegistry), so a registry redeploy cannot mix loan ids.
+    /// `LoanStatusUpdated`/`LoanDefaulted`/`LoanClosed` events emitted by `contract_address`
+    /// (the configured LoanRegistry) with `block_timestamp <= to_unix`, so a registry redeploy cannot mix loan ids.
     pub async fn list_loan_lifecycle_events_for_registry<'e, E>(
         &self,
         executor: E,
@@ -717,22 +689,24 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
-    /// Outstanding- and rate-changing loan events for a chain with `block_timestamp <=
-    /// to_unix`, ordered by `(block_timestamp, log_index)`. Backs the `/v1/stats/yield`
+    /// Outstanding- and rate-changing loan events emitted by `contract_address` (the
+    /// configured LoanRegistry) with `block_timestamp <= to_unix`, in chain order. Backs the `/v1/stats/yield`
     /// `apy` weighting (see `shared::book_weighting`).
-    pub async fn list_loan_rate_events<'e, E>(
+    pub async fn list_loan_rate_events_for_registry<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
+        contract_address: &str,
         to_unix: i64,
     ) -> anyhow::Result<Vec<LoanRateEventRow>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_SQL)
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_FOR_REGISTRY_SQL)
             .bind(chain_id)
             .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
             .bind(to_unix)
+            .bind(contract_address)
             .fetch_all(executor)
             .await?;
         Ok(rows)
@@ -786,43 +760,6 @@ impl ContractLogsRepo {
             .bind(LOAN_LIFECYCLE_EVENT_NAMES)
             .fetch_all(executor)
             .await?;
-        decode_snapshot_rows(chain_id, rows)
-    }
-
-    /// Like `list_latest_loan_snapshots` but filters only by `chain_id` (no
-    /// contract_address). Used by the chain-scoped non-LoanBook API groups until #1538.
-    ///
-    /// Replaces the old `LoanHistoryRepo::list_loans_for_window`.
-    pub async fn list_latest_loan_snapshots_for_chain<'e, E>(
-        &self,
-        executor: E,
-        chain_id: i64,
-        to_unix: i64,
-    ) -> anyhow::Result<Vec<LoanSnapshotRow>>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-    {
-        let rows = sqlx::query(
-            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
-                 chain_id,
-                 (params->>'loan_id')::numeric AS loan_id,
-                 block_number,
-                 log_index::bigint AS log_index,
-                 event_name,
-                 block_timestamp,
-                 params->'snapshot' AS snapshot
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = ANY($3)
-               AND block_timestamp <= $2
-             ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
-        )
-        .bind(chain_id)
-        .bind(to_unix)
-        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
-        .fetch_all(executor)
-        .await?;
-
         decode_snapshot_rows(chain_id, rows)
     }
 
@@ -940,25 +877,23 @@ impl ContractLogsRepo {
     }
 
     /// Earliest `origination_date` (from `params->'snapshot'->>'origination_date'`)
-    /// across all loans on a chain. Used by the API to default the "full history"
-    /// lookback window. Returns `None` if no loan events have been indexed yet.
-    pub async fn get_earliest_origination_date<'e, E>(
+    /// across the loans emitted by `contract_address` (the configured LoanRegistry) on a
+    /// chain. Defaults the "full history" lookback window. `None` if no loan is indexed.
+    pub async fn get_earliest_origination_date_for_registry<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
+        contract_address: &str,
     ) -> anyhow::Result<Option<i64>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let row: Option<(Option<i64>,)> = sqlx::query_as(
-            "SELECT MIN((params->'snapshot'->>'origination_date')::bigint)
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = 'LoanDrawn'",
-        )
-        .bind(chain_id)
-        .fetch_optional(executor)
-        .await?;
+        let row: Option<(Option<i64>,)> =
+            sqlx::query_as(EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL)
+                .bind(chain_id)
+                .bind(contract_address)
+                .fetch_optional(executor)
+                .await?;
         Ok(row.and_then(|(v,)| v))
     }
 
