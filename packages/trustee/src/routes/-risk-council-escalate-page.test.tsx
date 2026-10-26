@@ -112,6 +112,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "WatchList",
+      onchain_status: "WatchList",
       documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
@@ -124,6 +125,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4471",
   status: "WatchList",
+  onchain_status: "WatchList",
   epoch: null,
   offtaker: "2000000.000000",
   principal: "1800000.000000",

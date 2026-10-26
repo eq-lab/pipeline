@@ -111,6 +111,7 @@ function makeResult(
     errorMessage: null,
     errorDetails: null,
     variant: "performing",
+    lifecycleStatus: "Performing",
     ccrTrend: null,
     rollover: null,
     maturityDate: "30 Jun 2026",
@@ -876,6 +877,76 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
       },
       metadataUri: "ipfs://assay",
     });
+  });
+
+  it.each([
+    ["matured", "Matured"],
+    ["disbursing", "Disbursing"],
+  ] as const)(
+    "preselects WatchList on a %s loan that is WatchList on chain (#1621)",
+    (variant, chip) => {
+      mockUseLoanDetail.mockReturnValue(
+        makeResult({
+          variant,
+          lifecycleStatus: "WatchList",
+          hero: { ...makeResult().hero, status: { label: chip, band: "info" } },
+        }),
+      );
+      renderRoute();
+      fireEvent.click(
+        screen.getByTestId("loan-detail-action-Update lifecycle"),
+      );
+      expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
+        "WatchList",
+      );
+    },
+  );
+
+  it("submits WatchList when only CCR and location are filled on a Matured WatchList loan (#1621)", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        variant: "matured",
+        lifecycleStatus: "WatchList",
+        hero: {
+          ...makeResult().hero,
+          status: { label: "Matured", band: "attention" },
+        },
+      }),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
+      target: { value: "125" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
+      target: { value: "MV Andes" },
+    });
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "WatchList" }),
+    );
+  });
+
+  it("preselects nothing and blocks Confirm until a status is chosen when the on-chain status is unknown (#1621)", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult({ lifecycleStatus: null }));
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue("");
+    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
+      target: { value: "125" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
+      target: { value: "MV Andes" },
+    });
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
+      target: { value: "Performing" },
+    });
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "Performing" }),
+    );
   });
 });
 

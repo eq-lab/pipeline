@@ -576,6 +576,12 @@ own border/title).
   fields (status, CCR %, location, optional metadata URI), then submits the on-chain
   `LoanRegistry.updateMutable` via `useUpdateLifecycle`. Default/Closed are not offered (they route
   to the Risk Council / close flows); Past Due/Matured are derived, not settable here.
+  **Status default (#1621)** — the selector defaults to the loan's raw on-chain status, read from
+  `onchain_status` on the loan-book entry (`lifecycleStatusOf` in `-useLoanDetail.ts`), never from
+  the display chip: `Disbursing` / `Past Due` mask a WatchList loan. `Performing` and `WatchList`
+  preselect themselves; any other value (`Approved`, `Default`, `Closed`) or a missing field
+  preselects nothing ("Select status") and keeps **Confirm update** disabled until the trustee
+  picks a status, so a silent default is never written on-chain.
 - **Past-Due attention notice** (#940) — a past-maturity loan renders under the Matured variant;
   its derived `Past Due` status is an attention signal, not a lock — per the backend, it exists
   "to draw the Trustee's attention that they either need to record the payment or escalate to
