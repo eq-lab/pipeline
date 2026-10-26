@@ -33,6 +33,7 @@ import {
   type CcrTrend,
   type DocumentDisplay,
 } from "./-useLoanDetail";
+import type { LifecycleStatus } from "./-useLoanDetail";
 import {
   type RolloverCard as RolloverCardData,
   type SummaryTile,
@@ -935,8 +936,7 @@ function UpdateLifecycleDialog({
 }: {
   open: boolean;
   loanName: string;
-  /** On-chain status to default the selector to (`Performing` | `WatchList`). */
-  currentStatus: string;
+  currentStatus: LifecycleStatus | null;
   onClose: () => void;
   onConfirm: (input: {
     status: string;
@@ -947,7 +947,7 @@ function UpdateLifecycleDialog({
   pending: boolean;
   error: DialogError | null;
 }) {
-  const [status, setStatus] = useState(currentStatus);
+  const [status, setStatus] = useState<string>(currentStatus ?? "");
   const [ccr, setCcr] = useState("");
   const [locationType, setLocationType] = useState("Vessel");
   const [locationId, setLocationId] = useState("");
@@ -956,7 +956,7 @@ function UpdateLifecycleDialog({
 
   useEffect(() => {
     if (open) {
-      setStatus(currentStatus);
+      setStatus(currentStatus ?? "");
       setCcr("");
       setLocationType("Vessel");
       setLocationId("");
@@ -978,6 +978,7 @@ function UpdateLifecycleDialog({
 
   const ccrPercent = Number.parseFloat(ccr);
   const valid =
+    status !== "" &&
     Number.isFinite(ccrPercent) &&
     ccrPercent > 0 &&
     locationId.trim().length > 0;
@@ -1024,6 +1025,11 @@ function UpdateLifecycleDialog({
             onChange={(e) => setStatus(e.target.value)}
             className={fieldClass}
           >
+            {status === "" && (
+              <option value="" disabled>
+                Select status
+              </option>
+            )}
             <option value="Performing">Active</option>
             <option value="WatchList">Watchlist</option>
           </select>
@@ -1443,9 +1449,7 @@ function LoanDetail() {
       <UpdateLifecycleDialog
         open={updateOpen}
         loanName={detail.hero.title}
-        currentStatus={
-          detail.hero.status?.label === "Watchlist" ? "WatchList" : "Performing"
-        }
+        currentStatus={detail.lifecycleStatus}
         pending={updateLifecycle.isPending}
         error={
           updateLifecycle.error

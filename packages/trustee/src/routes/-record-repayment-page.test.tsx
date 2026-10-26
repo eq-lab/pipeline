@@ -145,6 +145,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      onchain_status: "Performing",
       documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
@@ -157,6 +158,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
+  onchain_status: "Performing",
   epoch: {
     number: 2,
     current_apy_bps: 1000,

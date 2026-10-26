@@ -15,34 +15,27 @@ offered in both of those variants. A trustee who only edits CCR/location therefo
 In scope (frontend only):
 
 1. Derive the loan's **current on-chain lifecycle status** (`Performing` | `WatchList` | unknown)
-   in `useLoanDetail` from served fields only, and expose it as a new `lifecycleStatus` field on
-   `UseLoanDetailResult`.
+   in `useLoanDetail` from the served `onchain_status`, and expose it as a new `lifecycleStatus`
+   field on `UseLoanDetailResult`.
 2. Default the dialog's selector to that status instead of the display chip.
 3. When the current on-chain status cannot be established from served data, preselect **nothing**
    and keep **Confirm update** disabled until the trustee picks a status explicitly. A silent
    default is never written.
 4. Tests and the `trustee-flows.md` wired-actions bullet.
 
-How the raw status is obtained (no backend change): neither `GET /v1/loan-book` (`entry.status`)
-nor `GET …/financials` (`status`) serves the raw snapshot status. Both pass through
-`display_status`. The one served field that tracks the raw status is `watchlist_entered_at` (and
-`days_on_watchlist`). `loan_book.rs` ~L1452 sets it **only** when the raw snapshot status is
-`WatchList` (`(s.status == "WatchList").then(...)`), and leaves it `null` otherwise. The mapping:
+How the raw status is obtained: backend #1649 (merged in #1654) serves `onchain_status` (`Approved |
+Performing | WatchList | Default | Closed`) on `GET /v1/loan-book` entries and on
+`GET …/financials`, with no display overrides. The trustee API types are hand-written
+(`packages/trustee/src/api/useLoanBook.ts`, `useLoanFinancials.ts`), so the field is added there by
+hand. The mapping:
 
-| served `entry.status` | `watchlist_entered_at` | `lifecycleStatus` |
-| :-- | :-- | :-- |
-| `Performing` | any | `Performing` |
-| `WatchList` / `Watchlist` | any | `WatchList` |
-| `Disbursing` / `Past Due` / `Matured` | non-null | `WatchList` |
-| `Disbursing` / `Past Due` / `Matured` | null | `null` (unknown → explicit choice) |
-| `Default` / `Closed` / anything else / no entry | any | `null` |
+| served `entry.onchain_status` | `lifecycleStatus` |
+| :-- | :-- |
+| `Performing` | `Performing` |
+| `WatchList` | `WatchList` |
+| `Approved` / `Default` / `Closed` / anything else / missing / no entry | `null` (unknown → explicit choice) |
 
-When the masked status (`Disbursing`/`Past Due`) has a null `watchlist_entered_at`, the raw status
-is almost always `Performing`. The backend documents one rare exception: a WatchList loan with no
-indexed transition event also has a null `watchlist_entered_at`. That exception is the same bug
-class as this issue, so the plan treats this case as unknown and requires an explicit choice
-rather than assuming `Performing`. If a backend raw-status field is added later (see Open
-Questions), `lifecycleStatusOf` switches to it and the unknown case disappears.
+The served display `status` and `watchlist_entered_at` play no part in the default.
 
 "Require an explicit choice when it differs from the current status" (from the issue), decided
 from the specs:
@@ -52,10 +45,10 @@ from the specs:
   puts a confirm gate only on choosing Past Due, which is not settable here
   (`trustee-risk-watchlist.md` § Past Due and `trustee-flows.md` § wired actions).
 - So the explicit-choice requirement applies **only** to the *unknown current status* case
-  (item 3). No additional confirm step is added for a deliberate change.
+  (item 3: `Approved` / `Default` / `Closed` or a missing field). No additional confirm step is added for a deliberate change.
 
 Out of scope:
-- Any backend/API change, such as serving the raw snapshot status. See Open Questions.
+- Any backend/API change (the raw status is already served by #1649).
 - Disabling the selector on a Disbursing loan (design doc v3 S10: "On a Disbursing loan the
   selector is disabled"). `docs/frontend/trustee-flows.md` does not specify this and it is a
   separate behavior change. Note it as a possible follow-up, not part of this fix.
@@ -65,45 +58,33 @@ Out of scope:
 
 ## Assumptions and Risks
 
-- **Assumption:** `watchlist_entered_at != null` ⇔ the raw snapshot status is `WatchList` (when the
-  transition event is indexed). This holds per the code at `loan_book.rs` ~L1449-1453 and the field
-  doc on `LoanBookEntry.watchlist_entered_at`. If the backend later changes that field's semantics
-  (for example, to keep it after the loan leaves WatchList), the mapping breaks silently. Mitigation:
-  `lifecycleStatusOf` is one pure function with a table-driven test and a spec pointer, so a
-  backend change has one place to update.
-- **Risk (UX):** every `Past Due`/`Disbursing` loan that is raw `Performing` and has no
-  `watchlist_entered_at` opens with no preselected status, so the trustee makes one extra click.
-  This is deliberate: an extra click is better than an unintended on-chain write. If the human
-  prefers `Performing` as the default there, it is a one-line change (see Open Questions).
+- **Assumption:** `onchain_status` is the raw snapshot status (#1649). Old-registry loans may read
+  shifted per the backend's "Known limitation" in `loan-status-timeline.md`; that is a backend
+  concern. `lifecycleStatusOf` is one pure function with a table-driven test and a spec pointer.
+- **Risk (UX):** a loan whose on-chain status is `Approved`/`Default`/`Closed`, or a stale backend
+  that does not serve the field, opens with no preselected status, so the trustee makes one extra
+  click. This is deliberate: an extra click is better than an unintended on-chain write.
 - **Risk:** the hero chip is still used for layout (`variant`). Only the selector default changes,
   so no layout regression is expected.
 - The route test mocks `useLoanDetail` (`makeResult`), so adding a required field to
   `UseLoanDetailResult` needs `makeResult` updated or `tsc` fails.
-- No dependency on other open issues or PRs. The branch `fix/1621-lifecycle-status-default` is
-  based on main at e74b5a2b.
+- No dependency on other open issues or PRs. The branch `fix/1621-lifecycle-status-default` has
+  main merged in at 84bd4d20 (includes #1654).
 
 ## Open Questions
 
-- Source of the current on-chain status: is it acceptable to infer it from the served
-  `watchlist_entered_at` (frontend-only, the planned approach), or should a backend issue be filed
-  to serve the raw snapshot status (for example, an `onchain_status` field on `LoanBookEntry` and
-  `…/financials`) so the frontend reads it directly and the "unknown → explicit choice" fallback
-  is never hit? This plan can go ahead as written. A backend field would only replace the body of
-  `lifecycleStatusOf`.
-- For a `Past Due`/`Disbursing` loan with null `watchlist_entered_at` (almost always raw
-  `Performing`), should the selector stay empty and require an explicit choice (planned, the
-  safest option), or preselect `Performing`?
+Resolved by backend #1649 / #1654: the raw status is served as `onchain_status`, so the
+`watchlist_entered_at` inference and the Disbursing/Past Due unknown fallback are dropped.
 
 ## Implementation Steps
 
-1. `packages/trustee/src/routes/-useLoanDetail.ts`
+1. `packages/trustee/src/api/useLoanBook.ts`, `useLoanFinancials.ts`: add `onchain_status: string`
+   to `LoanBookEntry` and `LoanFinancialsResponse` (hand-written types); add it to the test fixtures.
+   `packages/trustee/src/routes/-useLoanDetail.ts`
    - Add exported type `LifecycleStatus = "Performing" | "WatchList"`.
    - Add exported pure function
-     `lifecycleStatusOf(entry: LoanBookEntry | undefined | null): LifecycleStatus | null`. It
-     implements the mapping table in **Scope** exactly: `Performing` → `Performing`;
-     `WatchList`/`Watchlist` → `WatchList`; `Disbursing`/`Past Due`/`Matured` →
-     `entry.watchlist_entered_at != null ? "WatchList" : null`; everything else → `null`. No
-     comments beyond what the file header allows. Put the substance in the spec (step 4).
+     `lifecycleStatusOf(entry: LoanBookEntry | undefined | null): LifecycleStatus | null` returning
+     `entry.onchain_status` when it is `Performing` or `WatchList`, else `null`.
    - Add `lifecycleStatus: LifecycleStatus | null` to `UseLoanDetailResult`, and return
      `lifecycleStatus: lifecycleStatusOf(entry)` from `useLoanDetail`.
 2. `packages/trustee/src/routes/loans.$id.tsx`
@@ -124,24 +105,18 @@ Out of scope:
 3. Run `npx tsx scripts/lint-comments.ts`. If `loans.$id.tsx` or `-useLoanDetail.ts` is listed in
    `scripts/lint-comments.baseline.json`, shrink their counts to match (AGENTS.md rule).
 4. `docs/frontend/trustee-flows.md` § wired actions, **Update lifecycle** bullet: add the
-   selector-default rule. The selector defaults to the loan's current on-chain status, never the
-   display chip (Disbursing/Past Due mask a WatchList loan). Document the `lifecycleStatusOf`
-   mapping (raw WatchList detected via the served `watchlist_entered_at` while the display status
-   is masked), and the rule that an undeterminable status preselects nothing and blocks Confirm
-   until the trustee chooses. Reference #1621.
+   `onchain_status` selector-default rule and the unknown → explicit-choice rule. Reference #1621.
+5. User-stories doc `docs/user-stories/epic-1521/1621-lifecycle-status-default.md`, linked from
+   `docs/user-stories/index.md`.
 
 ## Test Strategy
 
-- `packages/trustee/src/routes/-useLoanDetail.test.ts`: a table-driven `describe("lifecycleStatusOf (#1621)")`
-  covering every row of the Scope table:
-  `Performing` → `Performing`; `WatchList` and `Watchlist` → `WatchList`; `Past Due` + non-null
-  `watchlist_entered_at` → `WatchList`; `Disbursing` + non-null → `WatchList`; `Matured` + non-null
-  → `WatchList`; `Past Due`/`Disbursing` + null → `null`; `Default`/`Closed` → `null`;
-  `undefined` entry → `null`. Plus one case that `Performing` with a stray non-null
-  `watchlist_entered_at` stays `Performing` (the served status wins when it is not masked).
-- `packages/trustee/src/routes/-useLoanDetail-hook.test.ts`: one hook-level case. A loan-book
-  entry `status: "Past Due"`, `watchlist_entered_at: <ts>` gives `result.lifecycleStatus === "WatchList"`
-  and `variant === "matured"`.
+- `packages/trustee/src/routes/-useLoanDetail.test.ts`: a table-driven `describe("lifecycleStatusOf (#1621)")`:
+  `Performing` / `WatchList` on-chain with Performing, Past Due, Disbursing and Matured display
+  statuses; `Default` / `Closed` / `Approved` / `Unknown` → `null`; `watchlist_entered_at` ignored;
+  missing field, `undefined` and `null` entry → `null`.
+- `packages/trustee/src/routes/-useLoanDetail-hook.test.ts`: `status: "Past Due"`,
+  `onchain_status: "WatchList"` gives `lifecycleStatus === "WatchList"` and `variant === "matured"`.
 - `packages/trustee/src/routes/-loans.$id.test.tsx`: add `lifecycleStatus: "Performing"` to
   `makeResult`. In `describe("Loan detail route — Update lifecycle (#872)")`, add:
   - **Acceptance 1:** `variant: "matured"`, hero chip `Matured`, `lifecycleStatus: "WatchList"`.
@@ -149,7 +124,7 @@ Out of scope:
     `variant: "disbursing"`, hero chip `Disbursing`.
   - **Acceptance 2:** for the matured case, fill only CCR and location (do not touch the selector),
     then submit. `mockUpdateLifecycle.mutateAsync` is called with `status: "WatchList"`.
-  - **Unknown:** `lifecycleStatus: null`. The selector value is `""`, and Submit is disabled even
+  - **Unknown:** `lifecycleStatus: null` (on-chain `Approved`/`Default`/`Closed` or missing). The selector value is `""`, and Submit is disabled even
     after CCR and location are filled. After choosing `Performing`, Submit is enabled and submits
     `status: "Performing"`.
   - The existing tests (open, error, explicit WatchList submit) still pass unchanged.
@@ -163,6 +138,7 @@ Out of scope:
 ## Docs to Update
 
 - `docs/frontend/trustee-flows.md` § wired actions, Update lifecycle bullet (step 4).
+- User-stories doc and index row (step 5).
 - No product-spec change: `trustee-risk-watchlist.md` already treats status as the on-chain value
   and Past Due as derived. This fix makes the UI follow it.
 - If the follow-up is wanted, log "S10: disable selector on Disbursing (design doc v3)" in

@@ -97,6 +97,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.120000",
       protection: null,
       status: "WatchList",
+      onchain_status: "WatchList",
       documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
@@ -109,6 +110,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4471",
   status: "WatchList",
+  onchain_status: "WatchList",
   // Current epoch coupon = 12.0%.
   epoch: {
     number: 1,
