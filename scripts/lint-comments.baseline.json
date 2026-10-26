@@ -808,11 +808,11 @@
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-record-coupon-page.test.tsx": {
-    "header": 18,
+    "header": 17,
     "nodeIds": 1
   },
   "packages/trustee/src/routes/-record-coupon.test.ts": {
-    "header": 7,
+    "header": 6,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-record-repayment-page.test.tsx": {

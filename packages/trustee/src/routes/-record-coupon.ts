@@ -85,6 +85,12 @@ function usdFull(usd: number | null): string {
 }
 
 // spec: docs/frontend/trustee-flows.md#record-coupon--interest-only-context-dependent-third-row.
+export function coversSeniorPrincipal(
+  waterfall: { senior_principal_returned: string } | undefined,
+): boolean {
+  return waterfall != null && BigInt(waterfall.senior_principal_returned) > 0n;
+}
+
 export function buildRepaymentInput(
   amountBaseUnits: string,
   waterfall:
@@ -98,8 +104,7 @@ export function buildRepaymentInput(
     | undefined,
 ): RepaymentInput | null {
   if (waterfall == null || amountBaseUnits === "0") return null;
-  // Interest-only: no principal is repaid, so equity absorbs the amount left
-  // after the interest + fee carve-outs.
+  if (coversSeniorPrincipal(waterfall)) return null;
   const carveouts =
     BigInt(waterfall.senior_coupon_net) +
     BigInt(waterfall.management_fee) +
@@ -175,27 +180,6 @@ export function hasCouponDue(
   return nowMs >= maturity.getTime() - dueSoonDays * 86_400_000;
 }
 
-// spec: docs/frontend/trustee-flows.md#record-coupon--interest-only-context-dependent-third-row.
-export function isTerminalRepayment(
-  outstandingSeniorUsd: number | null,
-  enteredUsd: number | null,
-  seniorPrincipalReturnedUsd: number | null,
-): boolean {
-  if (
-    outstandingSeniorUsd == null ||
-    enteredUsd == null ||
-    seniorPrincipalReturnedUsd == null ||
-    outstandingSeniorUsd <= 0
-  ) {
-    return false;
-  }
-  const toCents = (n: number) => Math.round(n * 100);
-  return (
-    enteredUsd >= outstandingSeniorUsd &&
-    toCents(seniorPrincipalReturnedUsd) === toCents(outstandingSeniorUsd)
-  );
-}
-
 // ── View types ──────────────────────────────────────────────────────────────
 
 export interface WaterfallRow {
@@ -243,7 +227,8 @@ export interface RecordCouponView {
   };
   /** `"Components sum to received $<amount>"` — `null` until the entered amount has settled and its preview resolved. */
   summaryText: string | null;
-  isTerminal: boolean;
+  coversPrincipal: boolean;
+  principalInAmount: string;
   /**
    * The on-chain `RepaymentData` for `record_payment` (base-unit strings);
    * `null` until the entered amount has settled and its preview resolved. The page
@@ -414,20 +399,16 @@ export function useRecordCoupon(
       : [];
 
   const amountSettled = amountInput === debouncedAmount;
+  const coversPrincipal =
+    amountSettled && coversSeniorPrincipal(waterfall.data);
 
   const summaryText =
-    amountSettled && enteredUsd != null && waterfall.data != null
+    amountSettled &&
+    enteredUsd != null &&
+    waterfall.data != null &&
+    !coversPrincipal
       ? `Components sum to received ${usdFull(enteredUsd)}`
       : null;
-
-  const isTerminal =
-    amountSettled &&
-    waterfall.data != null &&
-    isTerminalRepayment(
-      outstandingSeniorUsd,
-      enteredUsd,
-      seniorPrincipalReturnedUsd,
-    );
 
   const loanBookError: UserFacingError | null = loanBook.error
     ? toUserError(loanBook.error, "Failed to load the loan.")
@@ -459,7 +440,8 @@ export function useRecordCoupon(
       rows,
     },
     summaryText,
-    isTerminal,
+    coversPrincipal,
+    principalInAmount: usdFull(seniorPrincipalReturnedUsd),
     recordPaymentInput:
       onChainBlockedReason === null && amountSettled
         ? buildRepaymentInput(amountBaseUnits, waterfall.data)
