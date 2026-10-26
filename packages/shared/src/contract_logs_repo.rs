@@ -45,7 +45,7 @@ pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
 
-pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
+pub const LOAN_RATE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
          (params->>'loan_id')::numeric AS loan_id,
          event_name,
          block_timestamp,
@@ -702,7 +702,7 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_SQL)
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_FOR_REGISTRY_SQL)
             .bind(chain_id)
             .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
             .bind(to_unix)

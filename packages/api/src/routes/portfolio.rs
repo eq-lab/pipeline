@@ -18,7 +18,7 @@ use shared::loan_status::LoanTimeline;
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::{Interval, MAX_SAMPLES};
-use crate::routes::common::RequiredChain;
+use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -111,9 +111,7 @@ async fn handle_yield(
     query: YieldQuery,
 ) -> Result<Vec<SamplePoint>, ApiError> {
     let step = query.interval.step_secs();
-    let Some(registry) = state.loan_registry_addresses.get(&chain_id) else {
-        return Ok(vec![]);
-    };
+    let registry = loan_registry_address(state, chain_id)?;
 
     // The window always ends at the current server time — this API doesn't expose
     // historical windows. Matches `/v1/stats/prices` semantics.
