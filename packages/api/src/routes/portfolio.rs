@@ -111,6 +111,9 @@ async fn handle_yield(
     query: YieldQuery,
 ) -> Result<Vec<SamplePoint>, ApiError> {
     let step = query.interval.step_secs();
+    let Some(registry) = state.loan_registry_addresses.get(&chain_id) else {
+        return Ok(vec![]);
+    };
 
     // The window always ends at the current server time — this API doesn't expose
     // historical windows. Matches `/v1/stats/prices` semantics.
@@ -127,7 +130,7 @@ async fn handle_yield(
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match state
             .contract_logs_repo
-            .get_earliest_origination_date(&state.pool, chain_id)
+            .get_earliest_origination_date_for_registry(&state.pool, chain_id, registry)
             .await?
         {
             Some(earliest) => earliest,
@@ -151,7 +154,7 @@ async fn handle_yield(
     // indexer checkpoints; neither is an incorrect computation.
     let loans = state
         .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
+        .list_latest_loan_snapshots(&state.pool, chain_id, registry, to)
         .await?;
 
     if loans.is_empty() {
@@ -160,14 +163,14 @@ async fn handle_yield(
 
     let events = state
         .contract_logs_repo
-        .list_loan_lifecycle_events(&state.pool, chain_id, to)
+        .list_loan_lifecycle_events_for_registry(&state.pool, chain_id, registry, to)
         .await?;
 
     // Event `outstanding` is raw on-chain units (7 dp on Stellar); the snapshots and the
     // `accrued` output are base-6, so normalise per chain kind before integrating.
     let mut rate_events = state
         .contract_logs_repo
-        .list_loan_rate_events(&state.pool, chain_id, to)
+        .list_loan_rate_events_for_registry(&state.pool, chain_id, registry, to)
         .await?;
     normalise_rate_events(kind, &mut rate_events);
 

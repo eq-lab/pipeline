@@ -2082,14 +2082,14 @@ line, whichever section it lands in.
 - **Impact:** The field carries no signal for minter-era loans and its inputs are not like for like.
 - **Suggested fix:** Revisit the field's semantics and likely retire it (and the trustee close gate that reads it) in a later issue.
 
-### TD-149: Portfolio still reads loan snapshots unscoped by LoanRegistry address [PARTIALLY RESOLVED 2026-10-21 / #1595]
+### TD-149: Portfolio still reads loan snapshots unscoped by LoanRegistry address [RESOLVED 2026-10-26 / #1538]
 
 - **Date:** 2026-10-15
 - **Location:** `packages/shared/src/contract_logs_repo.rs` (`list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`), `packages/api/src/routes/portfolio.rs` — Issue #1526.
 - **Gap:** LoanBook, financial position, capital allocation (#1586) and the dashboard (#1595) use the registry-scoped repo methods, while `GET /v1/stats/yield` in `portfolio.rs` keeps the chain-only variants, so each query pair is duplicated.
 - **Impact:** After a LoanRegistry redeploy on the same chain, portfolio yield can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
 - **Suggested fix:** #1538 migrates the portfolio to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.
-- **Status:** financial position and capital allocation migrated in #1586, the dashboard in #1595. Portfolio (`/v1/stats/yield`) is still open under #1538.
+- **Status:** resolved. Financial position and capital allocation migrated in #1586, the dashboard in #1595, `/v1/stats/yield` in #1538 (scoped readers added, unscoped duplicates deleted).
 
 ### TD-150: The submission link is not LoanRegistry-scoped
 
