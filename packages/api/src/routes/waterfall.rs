@@ -82,6 +82,16 @@
 //!    receives the residual") — it simply absorbs whatever remains, which stage 3's
 //!    rejection has already bounded from running away.
 //!
+//! **Contract bounds.** The new `senior_interest + mgmt + perf` never exceeds the contract
+//! headroom `max(0, floor-accrued gross + interest_adjustment − recorded(senior_interest +
+//! mgmt + perf))` (`LoanRegistryInterestExceedsMax`): fee targets are kept and the net coupon is
+//! clamped first, then, if the fees alone exceed it, the coupon is dropped and the fees scaled.
+//! For a loan in `Default` the contract demands fees, OET and equity of 0
+//! (`LoanRegistryNonZeroOnDefault`): the payment is split senior principal first, then senior
+//! interest, and an `amount` above principal outstanding + headroom is a `400`. An `as_of` more
+//! than 300 s ahead of now is a `400`. A snapshot whose outstanding senior the indexed events
+//! cannot reproduce is a `422` (re-index required) rather than a silent 0 interest.
+//!
 //! **Units.** All monetary values — the `amount` input and every output — are **raw
 //! on-chain base units**, the same scale as the loan snapshot and `recordPayment`
 //! (7-decimal USDC on Stellar/Soroban). The computation is scale-invariant: the only
@@ -104,6 +114,7 @@ use shared::collateral_valuation_repo::ValuationMode;
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::LoanSnapshot;
+use shared::loan_status::LoanStatus;
 
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
@@ -114,6 +125,8 @@ use crate::AppState;
 const BPS_DENOM: i64 = 10_000;
 
 pub const ASSUMED_MAX_FEE_BPS: i64 = 5_000;
+
+pub const AS_OF_FUTURE_SKEW_SECS: i64 = 300;
 
 /// How the loan's offtaker price behaves as a repayment ceiling (issue #963).
 ///
@@ -239,7 +252,9 @@ pub fn router() -> Router<Arc<AppState>> {
     responses(
         (status = 200, description = "Repayment waterfall breakdown", body = WaterfallResponse),
         (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id / amount, or (fixed-price loans only) amount exceeds the loan's outstanding offtaker balance"),
+        (status = 400, description = "as_of is in the future, or a Default-loan payment exceeds what the contract lets it record (outstanding principal + interest headroom)"),
         (status = 404, description = "Loan not indexed as of the repayment instant"),
+        (status = 422, description = "Loan event history incomplete (outstanding senior does not match the indexed events); re-index required"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "LoanBook"
@@ -266,6 +281,9 @@ async fn get_waterfall(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
+    if let Some(requested) = query.as_of {
+        validate_as_of_not_future(requested, now)?;
+    }
     let as_of = query.as_of.unwrap_or(now);
 
     // Loan snapshot as of the repayment instant (status, immutable economics, cumulative
@@ -312,6 +330,8 @@ async fn get_waterfall(
             PricingBasis::from_valuation_mode(anchor.valuation_mode)
         });
 
+    ensure_event_history_complete(&row.snapshot, &rate_events, as_of, row.block_timestamp)?;
+
     let breakdown = compute_waterfall(
         &row.snapshot,
         &amount,
@@ -343,6 +363,45 @@ pub struct WaterfallBreakdown {
     /// `amount` takes cumulative `offtaker_received` past `original_offtaker_price` — only
     /// reachable for a `Quotational` loan (a `Fixed` loan rejects it at stage 3).
     pub offtaker_overpaid: bool,
+}
+
+pub fn validate_as_of_not_future(as_of: i64, now: i64) -> Result<(), ApiError> {
+    if as_of > now + AS_OF_FUTURE_SKEW_SECS {
+        return Err(ApiError::BadRequest(format!(
+            "as_of ({as_of}) is in the future (now {now})"
+        )));
+    }
+    Ok(())
+}
+
+pub fn ensure_event_history_complete(
+    s: &LoanSnapshot,
+    rate_events: &[LoanRateEventRow],
+    as_of: i64,
+    snapshot_block_time: i64,
+) -> Result<(), ApiError> {
+    if as_of < snapshot_block_time {
+        return Ok(());
+    }
+    let event_refs: Vec<&LoanRateEventRow> = rate_events.iter().collect();
+    let accrual = LoanAccrual::new(s.senior_interest_rate_bps, &event_refs);
+    let from_events = accrual.outstanding_at(as_of);
+    let snapshot = s.outstanding_senior_principal();
+    if from_events != snapshot {
+        return Err(ApiError::UnprocessableEntity(format!(
+            "loan event history incomplete; re-index required (outstanding senior {snapshot} \
+             in the snapshot vs {from_events} from indexed events)"
+        )));
+    }
+    Ok(())
+}
+
+fn interest_headroom(s: &LoanSnapshot, gross_accrued: &BigDecimal) -> BigDecimal {
+    if LoanStatus::parse(&s.status) == Some(LoanStatus::Closed) {
+        return BigDecimal::zero();
+    }
+    let recorded = &s.repayment.senior_interest + &s.repayment.mgmt_fee + &s.repayment.perf_fee;
+    (gross_accrued + &s.interest_adjustment - recorded).max(BigDecimal::zero())
 }
 
 /// Truncate a value toward zero to a whole base unit.
@@ -407,9 +466,10 @@ pub fn compute_waterfall(
     let accrual = LoanAccrual::new(s.senior_interest_rate_bps, &event_refs);
     let outstanding_seconds = accrual.outstanding_seconds(as_of);
 
-    let senior_gross_interest_cum = (accrual.accrued_floored_per_segment(as_of)
-        + &s.interest_adjustment)
-        .max(BigDecimal::zero());
+    let gross_accrued = accrual.accrued_floored_per_segment(as_of);
+    let headroom = interest_headroom(s, &gross_accrued);
+    let senior_gross_interest_cum =
+        (&gross_accrued + &s.interest_adjustment).max(BigDecimal::zero());
     let management_fee_cum = trunc(&simple_interest(
         &outstanding_seconds,
         i64::from(fees.mgmt_fee_rate_bps),
@@ -431,34 +491,35 @@ pub fn compute_waterfall(
     // snapshot's `repayment.*` fields are the cumulative counters `recordPayment`
     // maintains, so this is the amount newly due since the last repayment. Clamped at 0:
     // a prior manual override that over-recorded a bucket must not surface as negative.
-    let target_management_fee =
+    let mut target_management_fee =
         (&management_fee_cum - &s.repayment.mgmt_fee).max(BigDecimal::zero());
-    let target_performance_fee =
+    let mut target_performance_fee =
         (&performance_fee_cum - &s.repayment.perf_fee).max(BigDecimal::zero());
-    let target_senior_coupon_net =
+    let mut target_senior_coupon_net =
         (&senior_coupon_net_cum - &s.repayment.senior_interest).max(BigDecimal::zero());
     let target_oet_allocation =
         (&oet_allocation_cum - &s.repayment.oet_alloc).max(BigDecimal::zero());
 
-    // Cascade the incoming `amount` through the priority order — the interest tier
-    // (senior coupon + management + performance fee, together) → OET → senior principal
-    // — capping each tier at its still-owed target (stage 3). This is a deliberate
-    // departure from docs/product-specs/yield.md §"Waterfall components", which puts
-    // senior principal first; here the vault (LP) and Treasury legs are paid out ahead of
-    // principal return. A full/on-time payment (`amount` ≥ the sum of all targets)
-    // reproduces the targets exactly; a shortfall drains `remaining` top-down so
-    // lower-priority tiers shrink toward zero instead of the response reporting more
-    // than the incoming payment can actually cover.
-    //
-    // The interest tier is **proportional**, not cascaded bucket-by-bucket: coupon,
-    // management fee, and performance fee are carved from the *same* gross-interest pool
-    // (`gross_interest = mgmt + perf + net_coupon`, `docs/product-specs/loans.md:171`), so
-    // a payment that falls short of the full tier is split across all three in the same
-    // ratio as their full-period targets — a partial interest payment still pays its share
-    // of fees, rather than the coupon/vault leg draining the payment first and leaving
-    // fees at 0. OET is *not* part of this pool (it accrues independently off
-    // `senior_deployed`, not carved out of gross interest), so it stays a separate,
-    // lower-priority tier, cascaded the same way as before.
+    let fees_target = &target_management_fee + &target_performance_fee;
+    if fees_target > headroom {
+        target_senior_coupon_net = BigDecimal::zero();
+        target_management_fee = trunc(&(&headroom * &target_management_fee / &fees_target));
+        target_performance_fee = trunc(&(&headroom * &target_performance_fee / &fees_target));
+    } else {
+        target_senior_coupon_net = target_senior_coupon_net.min(&headroom - &fees_target);
+    }
+
+    if LoanStatus::parse(&s.status) == Some(LoanStatus::Default) {
+        return default_breakdown(
+            s,
+            amount,
+            &outstanding,
+            &headroom,
+            &outstanding_offtaker,
+            offtaker_overpaid,
+        );
+    }
+
     let mut remaining = amount.clone();
     let target_total_interest =
         &target_senior_coupon_net + &target_management_fee + &target_performance_fee;
@@ -501,6 +562,39 @@ pub fn compute_waterfall(
         equity_distributed,
         senior_principal_fully_repaid,
         offtaker_fully_received,
+        offtaker_overpaid,
+    })
+}
+
+fn default_breakdown(
+    s: &LoanSnapshot,
+    amount: &BigDecimal,
+    outstanding: &BigDecimal,
+    headroom: &BigDecimal,
+    outstanding_offtaker: &BigDecimal,
+    offtaker_overpaid: bool,
+) -> Result<WaterfallBreakdown, ApiError> {
+    let amount = trunc(amount);
+    let senior_principal_returned = outstanding.clone().min(amount.clone());
+    let senior_coupon_net = &amount - &senior_principal_returned;
+    if &senior_coupon_net > headroom {
+        return Err(ApiError::BadRequest(format!(
+            "loan is in Default: a payment may only repay senior principal ({outstanding}) plus \
+             accrued interest headroom ({headroom}), and fees, OET and equity must be 0; \
+             amount ({amount}) is too large"
+        )));
+    }
+    let senior_principal_fully_repaid = s.disbursed >= s.original_senior_tranche
+        && outstanding - &senior_principal_returned <= BigDecimal::zero();
+    Ok(WaterfallBreakdown {
+        senior_principal_returned,
+        senior_coupon_net,
+        management_fee: BigDecimal::zero(),
+        performance_fee: BigDecimal::zero(),
+        oet_allocation: BigDecimal::zero(),
+        equity_distributed: BigDecimal::zero(),
+        senior_principal_fully_repaid,
+        offtaker_fully_received: outstanding_offtaker - &amount <= BigDecimal::zero(),
         offtaker_overpaid,
     })
 }

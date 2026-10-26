@@ -1,7 +1,11 @@
 // spec: docs/product-specs/yield.md#waterfall-components
 use bigdecimal::BigDecimal;
 
-use pipeline_api::routes::waterfall::{compute_waterfall, PricingBasis, WaterfallBreakdown};
+use pipeline_api::error::ApiError;
+use pipeline_api::routes::waterfall::{
+    compute_waterfall, ensure_event_history_complete, validate_as_of_not_future, PricingBasis,
+    WaterfallBreakdown,
+};
 use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
@@ -328,4 +332,171 @@ fn suggested_interest_never_exceeds_the_contract_cap_across_scenarios() {
             );
         }
     }
+}
+
+const T: &str = "1000000000000";
+
+fn repayment(senior: &str, mgmt: &str, perf: &str) -> RepaymentSnapshot {
+    RepaymentSnapshot {
+        offtaker_received: dec("0"),
+        senior_principal_repaid: dec("0"),
+        senior_interest: dec(senior),
+        equity_distributed: dec("0"),
+        mgmt_fee: dec(mgmt),
+        perf_fee: dec(perf),
+        oet_alloc: dec("0"),
+    }
+}
+
+fn headroom(gross_cap: &BigDecimal, adj: &str, recorded: (&str, &str, &str)) -> BigDecimal {
+    (gross_cap + dec(adj) - dec(recorded.0) - dec(recorded.1) - dec(recorded.2)).max(dec("0"))
+}
+
+#[test]
+fn prior_recorded_amounts_and_adjustment_clamp_the_coupon_to_the_headroom() {
+    let mut s = snapshot_with_repayment(
+        T,
+        repayment("50000000000", "30000000000", "20000000000"),
+        1200,
+    );
+    s.interest_adjustment = dec("5000000000");
+    let events = [disbursed(ORIGINATION, T)];
+    let b = run(&s, ONE_YEAR_LATER, &fees(100, 2000, 0), &events);
+    let room = headroom(
+        &contract_cap(120_000, &events, ONE_YEAR_LATER),
+        "5000000000",
+        ("50000000000", "30000000000", "20000000000"),
+    );
+    assert_eq!(room, dec("25000000000"));
+    assert_eq!(suggested_interest(&b), room);
+    assert_eq!(b.performance_fee, dec("3000000000"));
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.senior_coupon_net, dec("22000000000"));
+}
+
+#[test]
+fn over_recorded_fee_legs_drop_the_coupon_and_scale_the_fees() {
+    let s = snapshot_with_repayment(T, repayment("10000000000", "100000000000", "0"), 1200);
+    let events = [disbursed(ORIGINATION, T)];
+    let b = run(&s, ONE_YEAR_LATER, &fees(100, 2000, 0), &events);
+    let room = headroom(
+        &contract_cap(120_000, &events, ONE_YEAR_LATER),
+        "0",
+        ("10000000000", "100000000000", "0"),
+    );
+    assert_eq!(room, dec("10000000000"));
+    assert_eq!(b.senior_coupon_net, dec("0"));
+    assert!(suggested_interest(&b) <= room);
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.performance_fee, dec("0"));
+}
+
+#[test]
+fn fully_recorded_interest_leaves_no_headroom() {
+    let s = snapshot_with_repayment(T, repayment("0", "0", "120000000000"), 1200);
+    let events = [disbursed(ORIGINATION, T)];
+    let b = run(&s, ONE_YEAR_LATER, &fees(0, 0, 0), &events);
+    assert_eq!(suggested_interest(&b), dec("0"));
+}
+
+#[test]
+fn closed_loan_has_no_headroom() {
+    let mut s = snapshot(T, "0", 1200);
+    "Closed".clone_into(&mut s.status);
+    let events = [disbursed(ORIGINATION, T)];
+    let b = run(&s, ONE_YEAR_LATER, &fees(0, 0, 0), &events);
+    assert_eq!(suggested_interest(&b), dec("0"));
+}
+
+#[test]
+fn non_whole_bps_genesis_rate_floors_below_the_ppm_cap() {
+    let s = snapshot(T, "0", 1125);
+    let events = [disbursed(ORIGINATION, T)];
+    let as_of = ORIGINATION + 200 * DAY + 17;
+    let b = run(&s, as_of, &fees(0, 0, 0), &events);
+    let cap = contract_cap(112_550, &events, as_of);
+    assert!(
+        b.senior_coupon_net < cap,
+        "{} !< {cap}",
+        b.senior_coupon_net
+    );
+    assert!(b.senior_coupon_net > dec("0"));
+}
+
+fn default_snapshot(repaid: &str) -> LoanSnapshot {
+    let mut s = snapshot(T, repaid, 1200);
+    "Default".clone_into(&mut s.status);
+    s
+}
+
+fn run_amount(s: &LoanSnapshot, amount: &str) -> Result<WaterfallBreakdown, ApiError> {
+    let events = [disbursed(ORIGINATION, T)];
+    compute_waterfall(
+        s,
+        &dec(amount),
+        ONE_YEAR_LATER,
+        &fees(100, 2000, 50),
+        &events,
+        PricingBasis::Quotational,
+    )
+}
+
+#[test]
+fn default_pays_principal_then_interest_with_zero_fees_oet_and_equity() {
+    let b = run_amount(&default_snapshot("0"), "1050000000000").unwrap();
+    assert_eq!(b.senior_principal_returned, dec(T));
+    assert_eq!(b.senior_coupon_net, dec("50000000000"));
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.equity_distributed, dec("0"));
+}
+
+#[test]
+fn default_payment_below_principal_is_all_principal() {
+    let b = run_amount(&default_snapshot("0"), "400000000000").unwrap();
+    assert_eq!(b.senior_principal_returned, dec("400000000000"));
+    assert_eq!(b.senior_coupon_net, dec("0"));
+}
+
+#[test]
+fn default_amount_beyond_principal_plus_headroom_is_a_400() {
+    let err = run_amount(&default_snapshot("0"), "1120000000001").unwrap_err();
+    assert!(matches!(err, ApiError::BadRequest(m) if m.contains("Default")));
+    let ok = run_amount(&default_snapshot("0"), "1120000000000").unwrap();
+    assert_eq!(ok.senior_coupon_net, dec("120000000000"));
+}
+
+#[test]
+fn history_check_rejects_a_snapshot_without_events() {
+    let s = snapshot(T, "0", 1200);
+    let err = ensure_event_history_complete(&s, &[], ONE_YEAR_LATER, ORIGINATION).unwrap_err();
+    assert!(matches!(err, ApiError::UnprocessableEntity(m) if m.contains("re-index required")));
+}
+
+#[test]
+fn history_check_rejects_a_latest_event_that_disagrees_with_the_snapshot() {
+    let s = snapshot(T, "0", 1200);
+    let events = [disbursed(ORIGINATION, "500000000000")];
+    assert!(ensure_event_history_complete(&s, &events, ONE_YEAR_LATER, ORIGINATION).is_err());
+}
+
+#[test]
+fn history_check_accepts_matching_events_and_the_pre_snapshot_genesis_fallback() {
+    let s = snapshot(T, "0", 1200);
+    let events = [disbursed(ORIGINATION, T)];
+    assert!(ensure_event_history_complete(&s, &events, ONE_YEAR_LATER, ORIGINATION).is_ok());
+    assert!(ensure_event_history_complete(&s, &[], ORIGINATION, ORIGINATION + 60).is_ok());
+    let repaid = snapshot(T, T, 1200);
+    assert!(ensure_event_history_complete(&repaid, &[], ONE_YEAR_LATER, ORIGINATION).is_ok());
+}
+
+#[test]
+fn future_as_of_beyond_the_skew_is_a_400() {
+    let now = 1_800_000_000;
+    assert!(validate_as_of_not_future(now + 300, now).is_ok());
+    assert!(matches!(
+        validate_as_of_not_future(now + 301, now),
+        Err(ApiError::BadRequest(_))
+    ));
 }

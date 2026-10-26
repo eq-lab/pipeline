@@ -45,7 +45,7 @@ fee). Deviations from the computed baseline are highlighted by the tooling.
 | Component | Formula |
 |---|---|
 | `senior_principal_returned` | `min(amount, outstanding_senior_principal)` |
-| `senior_gross_interest` | `Σ epochs Δt × senior_rate × outstanding / 365.25 d`, plus `interest_adjustment`, floored at 0 |
+| `senior_gross_interest` | `Σ segments floor(Δt × senior_rate × outstanding / 365.25 d)` (each constant segment floored to a whole unit, at the floored bps rate, so it never exceeds the on-chain cap), plus `interest_adjustment`, floored at 0 |
 | `management_fee` | `mgmt_rate × ∫ outstanding dt / 365.25 d` |
 | `securitisation_agent_fee` | `0` (inactive in MVP) |
 | `performance_fee` | `(senior_gross_interest − management_fee) × perf_rate` |
@@ -53,7 +53,7 @@ fee). Deviations from the computed baseline are highlighted by the tooling.
 | `oet_allocation` | `oet_rate × ∫ outstanding dt / 365.25 d` |
 | `originator_residual` | `amount − senior_principal_returned − senior_coupon_net − fees − oet_allocation` |
 
-Accrual is simple interest on outstanding senior, year `31_557_600 s` (365.25 d), from the **first disbursement**, through Default, with **no maturity cap**, as `LoanRegistry._accruedInterest` (resolves #967). Priority order: senior principal → management fee → senior coupon → performance fee →
+Accrual is simple interest on outstanding senior, year `31_557_600 s` (365.25 d), from the **first disbursement**, through Default, with **no maturity cap**, as `LoanRegistry._accruedInterest` (resolves #967). The suggested `senior_interest + mgmt + perf` is clamped to the contract headroom `max(0, gross + interest_adjustment − recorded(senior_interest + mgmt + perf))` (net coupon first, then fees). In Default fees, OET and equity are 0 and only principal then interest are split (a larger `amount` is a `400`); a future `as_of` is a `400`; indexed events that cannot reproduce the snapshot's outstanding senior are a `422` (re-index required). Priority order: senior principal → management fee → senior coupon → performance fee →
 OET allocation → originator residual (junior yield). The originator residual is settled
 directly through the Trust Company's USD bank account and does not appear in any on-chain
 event.

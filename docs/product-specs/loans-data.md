@@ -84,7 +84,7 @@ struct ImmutableLoanData {
 
 // Append-only rate and maturity schedule. epochs[0] is the genesis term.
 // Rollover (TRUSTEE) and amendEconomics (RISK_COUNCIL) append a row. No row is ever
-// rewritten or removed. The accrual base is always originalSeniorTranche.
+// rewritten or removed. The accrual base is the outstanding senior (disbursed - repaid - written down), per LoanRegistry._accruedInterest.
 struct EconomicsEpoch {
     uint64 effectiveFrom;             // Accrual start for this epoch
     uint64 maturityDate;             // Epoch maturity (informational; accrual is not capped)

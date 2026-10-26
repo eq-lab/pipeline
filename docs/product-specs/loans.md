@@ -82,7 +82,7 @@ re-term appends a new epoch. No epoch is ever rewritten or removed, so the origi
 and every later re-term stay on-chain for audit.
 
 Each epoch carries `effectiveFrom`, `maturityDate`, and `seniorInterestRateBps`. The
-interest ceiling that YieldMinter enforces is the contract's per-epoch accrual on the
+interest ceiling is `LoanRegistry._accruedInterest` (YieldMinter is retired): the per-epoch accrual on the
 outstanding senior, with no maturity cap (accrual continues past maturity and in Default).
 See [loans-data.md](./loans-data.md) for the ceiling formula.
 
