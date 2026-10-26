@@ -687,6 +687,13 @@ submit/confirm action, only the live preview.
   not a re-derived sum of the five/six components (the waterfall has no equity field, so the
   components alone do not sum to the offtaker amount without the residual — see below).
 
+### Record action gating (#1622, both flows)
+
+- The `record_payment` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
+- "Record on the ledger" is disabled while the live input differs from the debounced value (including when the input is cleared mid-debounce) or while the preview is recalculating (`waterfall.isCalculating`).
+- The green "Components sum to received $X" summary and the Record Coupon principal-block notice are hidden while the amount is unsettled, matching the row skeletons (#1049). The "Offtaker still owed after coupon" row deliberately keeps tracking the live input.
+- Record Repayment's amount is a read-only one-shot prefill, so the stale window is unreachable there today (during the prefill debounce the debounced amount is `""`, so the payload is `null`). The same gate is applied for parity, so a future editable input cannot reintroduce the bug.
+
 ### Record Coupon — interest-only, context-dependent third row
 
 - The left card's third row is context-dependent (`hasCouponDue`): a simply-performing loan with
@@ -696,17 +703,22 @@ submit/confirm action, only the live preview.
   `computeScheduledCoupon`; the backend serves no scheduled-coupon figure), shown for reference
   only and never recorded on the ledger.
 - This is the **interest-only coupon** flow: `buildRepaymentInput` always sets
-  `senior_principal_repaid = "0"` (principal stays deployed), regardless of the waterfall's own
-  `senior_principal_returned` (a principal-first `min(amount, outstanding)` figure, irrelevant to
-  a coupon). Interest + fee carve-outs map 1:1; `equity_distributed` is the residual after
-  interest + fees so the six components sum exactly to `offtaker_received` (clamped at 0 — never
-  negative).
-- **Terminal-close detection:** the Figma's "Next stage: principal repayment →" button is
-  suppressed everywhere except the terminal case — when this coupon fully amortises the
-  outstanding senior principal (`isTerminalRepayment`): the entered amount covers (≥) the loan's
-  outstanding senior AND the waterfall's own `senior_principal_returned` equals it exactly (to the
-  cent, guarding float drift from the two independent unit conversions). Otherwise no hint renders
-  at all — this is an interest-only coupon page by default.
+  `senior_principal_repaid = "0"` (principal stays deployed). Interest + fee carve-outs map 1:1;
+  `equity_distributed` is the residual after interest + fees so the six components sum exactly to
+  `offtaker_received` (clamped at 0 — never negative).
+- **Principal-block rule (#1623):** the backend waterfall (`waterfall.rs`, stage 4) cascades
+  interest, then OET, then senior principal, then equity, so `senior_principal_returned` is
+  non-zero only when the entered amount exceeds interest + OET while senior principal is still
+  outstanding. A coupon cannot carry that principal (it would land in `equity_distributed` while
+  the screen said it repaid senior), so when the served `senior_principal_returned` is non-zero
+  (`coversSeniorPrincipal`, no client-side threshold arithmetic) the coupon is **not recordable**:
+  `recordPaymentInput` is `null`, the green summary is hidden, and the page shows the
+  `record-coupon-principal-block` notice with the served principal amount and a link to Record
+  Repayment (keeping `chain`). Principal is never moved into equity, so Record Repayment can still
+  amortise the senior and the loan stays closable. When senior is already fully repaid the
+  waterfall returns principal `0` and the residual legitimately goes to equity, so the coupon
+  stays recordable. A wire larger than interest + OET but smaller than the full offtaker balance
+  cannot be recorded on either page (no partial principal repayments).
 
 ### Record Repayment — Principal (#884) — key difference from Record Coupon
 
@@ -734,7 +746,11 @@ notice ("nothing left to record"). The state must hold **without a reload** — 
 brings owed to `0` mid-session drops the stale form rather than leaving a recordable amount on
 screen. It is suppressed while this page's own `record_payment` is pending/settled so the
 "Payment recorded" confirmation flow stays intact. Whether Close-loan enables is decided by the
-close checklist below, not by this state alone.
+close checklist below, not by this state alone. When the loan-book `senior_outstanding` is still
+above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
+by a muted `record-repayment-senior-outstanding` line: "Senior principal of $X is still
+outstanding on-chain, so this loan can't be closed from the app. Escalate to the Risk Council."
+It is informational only and changes no gating; the recovery path is tracked in #1655.
 
 ### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
@@ -796,9 +812,9 @@ entirely — no backend source ever marks a coupon/repayment "recorded"/"minted"
 they would be fabricated.
 
 **Suppressed "Next stage: principal repayment" button** (Record Coupon only): per the issue's
-explicit scope note, the Figma's button is never rendered. In its place, `view.isTerminal` gates a
-plain text hint — only in the terminal case (see Terminal-close detection above). Every other
-coupon (the common interest-only case) shows no principal-repayment copy at all.
+explicit scope note, the Figma's button is never rendered. A coupon that would include senior
+principal shows the principal-block notice instead (see Principal-block rule above, #1623); every
+other coupon shows no principal-repayment copy at all.
 
 ### Waterfall error mapping (#916)
 

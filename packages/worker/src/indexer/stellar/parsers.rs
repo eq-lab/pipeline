@@ -250,6 +250,36 @@ pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
     })
 }
 
+pub const UNKNOWN_MINTER: &str = "unknown-minter";
+
+/// StakedPipelineUSD `shares_burned` (`burn_shares`, caller is the minter), remapped to
+/// `StakingWithdrawal` with the EVM `Withdraw(minter, minter, owner, ...)` shape (#1614).
+/// topics: [shares_burned, owner: Address]; value: Map { shares: i128, assets: i128 }
+pub fn parse_shares_burned(raw: &RawEvent, minter: &str) -> Option<StellarLog> {
+    if raw.event_name != "shares_burned" || raw.topics_base64.len() < 2 {
+        return None;
+    }
+    let owner = extract_address(&raw.topics_base64[1])?;
+    let shares = extract_i128_from_map(&raw.value_base64, "shares")?;
+    let assets = extract_i128_from_map(&raw.value_base64, "assets")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "StakingWithdrawal".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "sender": minter,
+            "receiver": minter,
+            "owner": owner,
+            "assets": assets.to_string(),
+            "shares": shares.to_string(),
+        }),
+    })
+}
+
 /// Minter `WireIn` event — a received bank wire, booked and minted (#1416).
 /// topics: [wire_in, id: u32]
 /// value:  Map { receiver: Address, amount: i128, value_date: u64, ref_hash: BytesN<32> }
@@ -568,6 +598,7 @@ pub fn dispatch_parser(
         // against `StakingDeposit` and must not simply be added here.
         parse_vault_deposit(raw)
             .or_else(|| parse_vault_withdraw(raw))
+            .or_else(|| parse_shares_burned(raw, yield_minter_id.unwrap_or(UNKNOWN_MINTER)))
             .or_else(|| parse_share_transfer(raw))
     } else if loan_registry_id == Some(raw.contract_id.as_str()) {
         // LoanRegistry events — all 12 collected events, tried in order.

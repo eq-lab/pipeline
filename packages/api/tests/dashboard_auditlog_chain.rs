@@ -15,7 +15,7 @@ use pipeline_api::AppState;
 use serde_json::{json, Value};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::{
-    AuditLogRow, ContractLogsRepo, FlowEventRow, LoanSnapshotRow, RepaymentMintRow, YieldMintRow,
+    AuditLogRow, ContractLogsRepo, LoanSnapshotRow, PlusdDeltaRow, RepaymentMintRow, YieldMintRow,
 };
 use shared::kyc_repo::KycRepo;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
@@ -198,11 +198,17 @@ fn make_loan(
     }
 }
 
-fn flow(kind: &str, ts_day: i64, amount_usdc: i64) -> FlowEventRow {
-    FlowEventRow {
+fn flow(kind: &str, ts_day: i64, amount_usdc: i64) -> PlusdDeltaRow {
+    let signed = if kind == "deposit" {
+        amount_usdc
+    } else {
+        -amount_usdc
+    };
+    PlusdDeltaRow {
         block_timestamp: ts_day * DAY,
-        kind: kind.to_owned(),
-        amount: usdc(amount_usdc),
+        block_number: ts_day,
+        log_index: 0,
+        delta: usdc(signed),
     }
 }
 
@@ -505,7 +511,7 @@ fn single_chain_merge_is_the_identity() {
         flow("deposit", 5, 1),
     ];
     let merged = merge_flows(vec![flows.clone()]);
-    let key = |f: &FlowEventRow| (f.block_timestamp, f.kind.clone(), f.amount.clone());
+    let key = |f: &PlusdDeltaRow| (f.block_timestamp, f.block_number, f.delta.clone());
     assert_eq!(
         merged.iter().map(key).collect::<Vec<_>>(),
         flows.iter().map(key).collect::<Vec<_>>()

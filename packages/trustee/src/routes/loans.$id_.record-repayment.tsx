@@ -419,36 +419,49 @@ function RecordRepayment() {
             Waterfall Breakdown
           </h2>
           {showFullyPaid ? (
-            <div
-              data-testid="record-repayment-fully-paid"
-              className="flex items-center justify-between gap-[12px] rounded-[4px] border border-solid px-[18px] py-[14px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]"
-              style={{
-                color: POSITIVE_GREEN,
-                backgroundColor: "rgba(32,128,0,0.08)",
-                borderColor: "rgba(32,128,0,0.3)",
-              }}
-            >
-              <span>
-                Offtaker fully repaid — all payments are recorded, nothing left
-                to record.
-              </span>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 18 18"
-                fill="none"
-                aria-hidden="true"
-                className="shrink-0"
+            <>
+              <div
+                data-testid="record-repayment-fully-paid"
+                className="flex items-center justify-between gap-[12px] rounded-[4px] border border-solid px-[18px] py-[14px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]"
+                style={{
+                  color: POSITIVE_GREEN,
+                  backgroundColor: "rgba(32,128,0,0.08)",
+                  borderColor: "rgba(32,128,0,0.3)",
+                }}
               >
-                <path
-                  d="M3.75 9.5 7.5 13.25 14.25 5"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
+                <span>
+                  Offtaker fully repaid — all payments are recorded, nothing
+                  left to record.
+                </span>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 18 18"
+                  fill="none"
+                  aria-hidden="true"
+                  className="shrink-0"
+                >
+                  <path
+                    d="M3.75 9.5 7.5 13.25 14.25 5"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              {view.seniorStillOutstanding && (
+                <p
+                  data-testid="record-repayment-senior-outstanding"
+                  className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+                  style={{ color: INK_MUTED }}
+                >
+                  Senior principal of {view.seniorStillOutstanding} is still
+                  outstanding on-chain, so this loan can't be closed from the
+                  app. Escalate to the Risk Council.
+                </p>
+              )}
+            </>
           ) : view.waterfall.rows.length === 0 ? (
             <p
               data-testid="record-repayment-waterfall-empty"
@@ -552,6 +565,7 @@ function RecordRepayment() {
                 data-testid="record-repayment-submit"
                 disabled={
                   view.recordPaymentInput == null ||
+                  view.waterfall.isCalculating ||
                   record.isPending ||
                   record.isSuccess
                 }

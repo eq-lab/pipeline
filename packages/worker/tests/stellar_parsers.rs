@@ -9,8 +9,8 @@ use std::collections::HashSet;
 
 use pipeline_worker::indexer::stellar::parsers::{
     dispatch_parser, parse_asset_transfer, parse_deposit_requested, parse_request_claimed,
-    parse_share_transfer, parse_vault_deposit, parse_vault_withdraw, parse_withdrawal_requested,
-    transfer_between_tracked, transfer_touches_address,
+    parse_share_transfer, parse_shares_burned, parse_vault_deposit, parse_vault_withdraw,
+    parse_withdrawal_requested, transfer_between_tracked, transfer_touches_address,
 };
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::{
@@ -1139,4 +1139,65 @@ fn synthesise_log_index_unique_for_realistic_inputs() {
             }
         }
     }
+}
+
+// ── parse_shares_burned (StakingWithdrawal, #1614) ────────────────────────────
+
+const MINTER_CONTRACT: &str = "CAZ7W2GUKC33LBPZW6EWPW5BOGQLWCOLSKWTSCBGX3V7CVDEJNRD3RXH";
+
+fn shares_burned_raw() -> RawEvent {
+    make_raw_event(
+        SPLUSD_CONTRACT,
+        "shares_burned",
+        vec![encode_account(USER_G)],
+        encode_map_i128(&[("shares", 700_000), ("assets", 750_000)]),
+    )
+}
+
+#[test]
+fn shares_burned_maps_to_a_staking_withdrawal_with_the_minter_as_sender() {
+    let log = parse_shares_burned(&shares_burned_raw(), MINTER_CONTRACT).expect("decode");
+    assert_eq!(log.event_name, "StakingWithdrawal");
+    assert_eq!(log.contract_address, SPLUSD_CONTRACT);
+    assert_eq!(log.params["owner"], USER_G);
+    assert_eq!(log.params["sender"], MINTER_CONTRACT);
+    assert_eq!(log.params["receiver"], MINTER_CONTRACT);
+    assert_eq!(log.params["shares"], "700000");
+    assert_eq!(log.params["assets"], "750000");
+}
+
+#[test]
+fn dispatch_routes_shares_burned_from_the_vault_only() {
+    let log = dispatch_parser(
+        &shares_burned_raw(),
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        Some(MINTER_CONTRACT),
+        None,
+        None,
+    )
+    .expect("vault shares_burned");
+    assert_eq!(log.params["sender"], MINTER_CONTRACT);
+    let mut other = shares_burned_raw();
+    other.contract_id = WQ_CONTRACT.to_owned();
+    assert!(dispatch_parser(
+        &other,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        Some(MINTER_CONTRACT),
+        None,
+        None,
+    )
+    .is_none());
+}
+
+#[test]
+fn shares_burned_rejects_other_event_names() {
+    let mut raw = shares_burned_raw();
+    raw.event_name = "withdraw".to_owned();
+    assert!(parse_shares_burned(&raw, MINTER_CONTRACT).is_none());
 }

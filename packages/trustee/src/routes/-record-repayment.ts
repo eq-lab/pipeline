@@ -196,11 +196,11 @@ export interface RecordRepaymentView {
     errorDetails: string | null;
     rows: WaterfallRow[];
   };
-  /** `"Components sum to received $<amount>"` — `null` until a positive amount is entered and the preview resolves. */
+  /** `"Components sum to received $<amount>"` — `null` until the entered amount has settled and its preview resolved. */
   summaryText: string | null;
   /**
    * The on-chain `RepaymentData` for `record_payment` (base-unit strings);
-   * `null` until a positive amount is entered and the preview resolves. The
+   * `null` until the entered amount has settled and its preview resolved. The
    * page passes this to `useRecordPayment` on confirm (#884).
    */
   recordPaymentInput: RepaymentInput | null;
@@ -211,6 +211,7 @@ export interface RecordRepaymentView {
    * the fully-repaid notice instead of the amount form/waterfall.
    */
   offtakerFullyPaid: boolean;
+  seniorStillOutstanding: string | null;
   /**
    * The close-loan checklist (#1090) — Close-loan enables only when every item
    * is green. Items 1–2 are hard gates with no manual override; item 3 is
@@ -398,8 +399,10 @@ export function useRecordRepayment(
         ]
       : [];
 
+  const amountSettled = amountInput === debouncedAmount;
+
   const summaryText =
-    enteredUsd != null && waterfall.data != null
+    amountSettled && enteredUsd != null && waterfall.data != null
       ? `Components sum to received ${usdFull(enteredUsd)}`
       : null;
 
@@ -448,9 +451,17 @@ export function useRecordRepayment(
     },
     summaryText,
     recordPaymentInput:
-      onChainBlockedReason === null ? recordPaymentInput : null,
+      onChainBlockedReason === null && amountSettled
+        ? recordPaymentInput
+        : null,
     onChainBlockedReason,
     offtakerFullyPaid,
+    seniorStillOutstanding:
+      offtakerFullyPaid &&
+      outstandingSeniorUsd != null &&
+      outstandingSeniorUsd > 0
+        ? usdFull(outstandingSeniorUsd)
+        : null,
     closeChecklist,
     closureReason: onChainBlockedReason === null ? reason : null,
   };
