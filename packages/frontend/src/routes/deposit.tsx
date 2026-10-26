@@ -155,6 +155,7 @@ function Deposit() {
   // ── Toast: step 1 (EVM approve only) ─────────────────────────────────
   const prevStep1IsPending = useRef(false);
   const prevStep1IsSuccess = useRef(false);
+  const prevStep1Error = useRef<Error | null>(null);
   useEffect(() => {
     // On Stellar, trustline toasts are emitted per-asset below.
     if (isStellar) return;
@@ -168,11 +169,29 @@ function Deposit() {
     if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
       toast.update(toastId, { tone: "success", title: "Approval confirmed" });
     }
+    if (flow.step1Tx.error && flow.step1Tx.error !== prevStep1Error.current) {
+      console.error("Approval failed:", flow.step1Tx.error);
+      const mapped = toUserError(flow.step1Tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: mapped.isSpecific ? mapped.message : "Approval failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
+      });
+    }
     prevStep1IsPending.current = flow.step1Tx.isPending;
     prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
+    prevStep1Error.current = flow.step1Tx.error;
   }, [
     flow.step1Tx.isPending,
     flow.step1Tx.isSuccess,
+    flow.step1Tx.error,
     toast,
     direction,
     isStellar,

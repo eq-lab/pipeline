@@ -374,7 +374,7 @@ balance, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"
 **`variant="stake-or-add-usd"` (#1424, Figma node `6701:97451`).** State 4's instance shares the
 same compact geometry as `"get-plusd"` (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
 eyebrow) and keeps the Total Balance heading bound to the served `balanceLabel`
-(`formatBigintCurrency(splusdSharesActive)`, `$0.00` here since sPLUSD is zero — the Figma frame's
+(`formatBigintCurrency(splusdInPlusdActive, plusdDecimals)`, `$0.00` here since sPLUSD is zero — the Figma frame's
 `$1,000.00` is a PLUSD-holding mock, not served data; no combined-total endpoint exists, so summing
 PLUSD + sPLUSD client-side is not done). The subtitle slot swaps to the sentence
 "Stake PLUSD or Add USD to start earning": `get_design_context` on the frame's text node
@@ -1595,6 +1595,14 @@ itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` 
 `packages/frontend/src/routes/-HomeDashboardGrid.tsx` (the desktop grid shell, #1577).
 
 Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
+
+**Headline value is assets, not shares (#1658).** The route's `balanceLabel` (every variant, mobile
+and desktop) and `StakeCard.splusdUsdValue` both come from `splusdBalanceFormatted`, which formats
+`splusdInPlusdActive` — the on-chain `convertToAssets(shares)` read, served as-is at the PLUSD
+decimals — never the raw sPLUSD share count. While that read is unavailable for a non-zero share
+balance the value renders `—` (never a false `$0.00`); zero shares render `$0.00`. State
+derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares. The chart
+sections are unchanged (tracked in #1629).
 
 **Desktop grid shell (#1577, closed TD-122).** Every `homeState` composition below renders through
 one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container

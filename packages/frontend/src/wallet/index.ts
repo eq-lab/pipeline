@@ -70,6 +70,12 @@ export {
   useEvmUsdcCustodyBalance,
 } from "./evm/useEvmFinancialPositionReads";
 export type { UseEvmTokenReadResult } from "./evm/useEvmFinancialPositionReads";
+export {
+  readInflightEvmRequest,
+  writeInflightEvmRequest,
+  clearInflightEvmRequest,
+} from "./evm/inflight";
+export type { InflightEvmKind, InflightEvmRequest } from "./evm/inflight";
 export { useApproval } from "./evm/useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./evm/useApproval";
 export { useEvmToken } from "./evm/useEvmToken";
@@ -128,6 +134,8 @@ export type {
   StellarDepositManagerAddresses,
   UseStellarDepositManagerAddressesResult,
 } from "./stellar/useStellarDepositManagerAddresses";
+export { useStellarDepositManagerMinDeposit } from "./stellar/useStellarDepositManagerMinDeposit";
+export type { UseStellarDepositManagerMinDepositResult } from "./stellar/useStellarDepositManagerMinDeposit";
 export {
   useStellarNetworkFeeEstimate,
   formatFeeXlm,

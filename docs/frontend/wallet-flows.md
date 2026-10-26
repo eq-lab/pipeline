@@ -61,10 +61,14 @@ At the end the hook selects the active-chain, active-direction values and return
 
 ### Business rules
 
-- **Stellar minimum deposit is $1,000, frontend-owned.** `STELLAR_MIN_DEPOSIT = 1000 × 10^7`.
-  Soroban exposes no on-chain minimum getter, so this stays a Stellar-specific frontend rule until
-  the contract or API provides a network value. (History: #598 lowered it to $1; #641 restored
-  $1,000.) EVM takes its minimum from the on-chain `useDepositManagerMinDeposit`.
+- **Minimum deposit comes from the contract on both chains (#1658).** Stellar reads Soroban
+  `min_deposit()` (i128) through `useStellarDepositManagerMinDeposit`, EVM reads `minDeposit()`
+  through `useDepositManagerMinDeposit`; both are read once per page lifetime. The frontend owns no
+  minimum value. (History: #598 lowered the old hard-coded value to $1; #641 restored $1,000; #1658
+  removed it.) Gating is undefined-safe on both chains: until the read resolves `isReady`,
+  `meetsMin` and `hasBalance` are not true, Confirm is disabled, the Min chip is a no-op and
+  `minChipLabel` is `"Min"`. A stale cached minimum surfaces as a contract revert through the
+  normal tx error path.
 - **Both trustlines before Confirm.** On Stellar, both the PLUSD and USDC trustlines must be present
   before the Confirm step can proceed (per issue #604, Q3).
 - **Amount never exceeds the balance (#1628).** Every direction of both flows — deposit included —
@@ -133,6 +137,21 @@ Always `false` on EVM.
   "confirmed" forever. To prevent that, when the on-chain request reads back as already claimed the
   record is treated as inactive (`*InflightActive`) and physically cleared. A claimed request is
   terminal, so this reconciliation never races a genuinely in-flight one.
+- **EVM request id from the receipt (#1658).** `useRequestDeposit` / `useRequestWithdrawal` decode
+  `requestId` (and `queued` for withdrawals) from the mined receipt's `DepositRequested` /
+  `WithdrawalRequested` event, keeping only logs emitted by the configured contract for the
+  connected wallet.
+- **Request list refresh (#1658).** Each request mutation's `isSuccess` rising edge (EVM and
+  Stellar, deposit and withdraw) invalidates every `["requests"]` query through
+  `useInvalidateRequests`. While a known request id (mutation result or in-flight record) is not
+  yet listed by `/v1/requests`, the list polls every 5 s instead of 60 s.
+- **EVM in-flight record (reload guard, #1658).** After the receipt is decoded, the amount, tx hash
+  and request id are persisted under `pipeline.evm.<deposit|withdraw>.inflight.<chainId>.<address>`
+  (a recovery record, never a stand-in for API data). Until `/v1/requests` lists that id, the flow
+  treats it as an active request: `requestIsConfirmed`, `isPendingVerification`, `isAmountLocked`
+  and `step2.loading` are true, `lockedAmountRaw` is the recorded amount, and approve and confirm
+  are disabled, so a reload cannot start a second request. Once the API lists the id (any
+  status) the record is cleared and the API drives state; a successful claim also clears it.
 - **PLUSD authorization window.** When the PLUSD trustline exists but the issuer has not yet
   authorized it, Claim is blocked (it would fail with "balance is deauthorized", contract error
   #11) and the step label reads "Claim your PLUSD — awaiting authorization".
@@ -177,6 +196,10 @@ its success check) while the only failure signal was a console error and a trans
   `"error"` from their underlying mutation: `mutation.error` set and the mutation not pending. The
   success conditions **win over error** — if the backend/on-chain state says the step genuinely
   completed (e.g. the request is `PendingClaim`), the flow is recoverable and the step stays green.
+- EVM step 1 (approve) derives `"error"` from `useEvmToken().approveError` (the approval hook's
+  error only, never the balance / metadata read errors), not pending, and only when no success
+  condition holds. `step1Tx.error` / `step1Tx.userError` carry it so the deposit route can raise the
+  same danger toast with a Details action as the stake route (#1658).
 - `StepInfo.errorMessage` carries the mutation's error message only while `state === "error"`.
   As of #1034 that message is **mapped, never raw**: `toUserError` supplies the short human line
   and the raw payload moves to `StepInfo.errorDetails`, shown only inside the details dialog —
@@ -383,8 +406,11 @@ wrong-network rules.
   return `undefined` without an RPC call and writes fail with a "not configured" error (stake
   hooks: `StakedPLUSD not configured`; disconnected wallet: `Wallet not connected`).
 - **Write return values.** `useWriteContract` resolves to a tx hash only, so the real path returns
-  `{ hash }`; `requestId`, `queued`, `amount`, `shares` are not decoded from the receipt. The
-  request id comes from the indexer / voucher API (see the voucher polling rule above).
+  `{ hash }`; `amount` and `shares` are not decoded from the receipt. `useRequestDeposit` and
+  `useRequestWithdrawal` additionally decode `requestId` (and `queued`) from the receipt's
+  `DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount)` /
+  `WithdrawalRequested(address indexed withdrawer, uint256 indexed requestId, uint256 amount, uint256 queued)`
+  event (#1658); the voucher API remains the source for claim.
 - **Approval.** Deposit needs USDC approved to the DepositManager; withdraw needs PLUSD approved to
   the WithdrawalQueue; stake needs PLUSD approved to the vault; unstake needs none
   (steps: `[Approve, Request/Stake]` as in the step tables above).

@@ -252,6 +252,16 @@ let mockStellarWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" =
 /** Deadline served by the ready Stellar voucher mocks (unix-seconds string). */
 const STELLAR_VOUCHER_DEADLINE = "9999999999";
 
+const mockInvalidateRequests = vi.hoisted(() => vi.fn());
+
+vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
+  useStellarDepositManagerMinDeposit: () => ({
+    minDeposit: 1000n * 10n ** 7n,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 vi.mock("@/api", () => ({
   useRequests: () => ({
     data: mockRequestsData,
@@ -259,6 +269,7 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  useInvalidateRequests: () => mockInvalidateRequests,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useDepositVoucher: (_requestId: string | undefined) => ({
     data: mockVoucherData,
@@ -641,6 +652,43 @@ describe("Deposit page — approve needed state", () => {
       },
       { timeout: 2000 },
     );
+  });
+});
+
+describe("Deposit page — EVM approve failure toast (#1658)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    seedBaseMocks({ allowance: "0" });
+    localStorage.removeItem(
+      `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.approve`,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("a failed approve turns the toast into a danger toast with Details", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2000");
+    const approveBtn = await screen.findByRole("button", { name: "Approve" });
+    await waitFor(() => expect(approveBtn).not.toBeDisabled());
+    await user.click(approveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Approval failed")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByText("Approving USDC…")).not.toBeInTheDocument();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });
 

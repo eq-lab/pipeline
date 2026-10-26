@@ -273,3 +273,11 @@ Vitest, colocated. Every item gets at least one test, per the acceptance criteri
   it is added to the client.
 - `docs/exec-plans/tech-debt-tracker.md`: `useStakeFlow` step 1 uses the aggregated
   `useEvmToken().error`, so read errors paint the approve row. It should switch to `approveError`.
+
+## Progress
+
+All steps 1-14 are implemented and gated (frontend lint, build, vitest, lint-docs, lint-comments).
+Deviation: `lockedAmountRaw` while awaiting the indexer uses the active request amount, else the
+in-flight record amount; there is no separate in-session mutation amount because the request hooks
+do not expose one and the record is written as soon as the receipt is decoded.
+`DepositManagerClient.min_deposit` was not added (the hook calls the view directly).

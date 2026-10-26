@@ -800,3 +800,63 @@ describe("useEvmToken — balanceOf uses wallet address as arg", () => {
     expect(lastCall[0]?.args).toEqual([WALLET_ADDRESS]);
   });
 });
+
+describe("useEvmToken — approveError (#1658)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockReset();
+    mockUseReadContract.mockImplementation(() => ({
+      data: undefined as unknown,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    }));
+  });
+
+  function failReads(failing: string) {
+    const testError = new Error(`${failing} failed`);
+    mockUseReadContract.mockImplementation((...rawArgs: unknown[]) => {
+      const args = rawArgs[0] as { functionName?: string };
+      return {
+        data: undefined,
+        isLoading: false,
+        error: args.functionName === failing ? testError : null,
+        refetch: mockRefetch,
+      } as unknown as ReturnType<typeof mockUseReadContract>;
+    });
+    return testError;
+  }
+
+  it("carries the approval error when a spender is given", () => {
+    const err = failReads("allowance");
+    const { result } = renderHook(
+      () => useEvmToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+    expect(result.current.approveError).toBe(err);
+  });
+
+  it("ignores balance and metadata read failures", () => {
+    const err = failReads("balanceOf");
+    const { result } = renderHook(
+      () => useEvmToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+    expect(result.current.error).toBe(err);
+    expect(result.current.approveError).toBeNull();
+  });
+
+  it("is null without a spender", () => {
+    failReads("allowance");
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
+      wrapper,
+    });
+    expect(result.current.approveError).toBeNull();
+  });
+});

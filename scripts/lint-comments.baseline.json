@@ -460,7 +460,7 @@
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/evm/useWithdrawalQueue.ts": {
-    "header": 22,
+    "header": 20,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/index.ts": {
