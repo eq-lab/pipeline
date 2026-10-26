@@ -10,7 +10,8 @@ use bigdecimal::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::book_weighting::{outstanding_at, rate_bps_at, weighted_mean};
+use shared::book_weighting::{accrued_over_intervals, outstanding_at, rate_bps_at, weighted_mean};
+use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::contract_logs_repo::{LifecycleRow, LoanRateEventRow, LoanSnapshotRow};
 use shared::loan_status::LoanTimeline;
 
@@ -98,12 +99,15 @@ async fn get_yield(
     RequiredChain(chain): RequiredChain,
     Query(query): Query<YieldQuery>,
 ) -> Result<Json<Vec<SamplePoint>>, ApiError> {
-    handle_yield(&state, chain.chain_id, query).await.map(Json)
+    handle_yield(&state, chain.chain_id, chain.kind, query)
+        .await
+        .map(Json)
 }
 
 async fn handle_yield(
     state: &AppState,
     chain_id: i64,
+    kind: ChainKind,
     query: YieldQuery,
 ) -> Result<Vec<SamplePoint>, ApiError> {
     let step = query.interval.step_secs();
@@ -159,10 +163,17 @@ async fn handle_yield(
         .list_loan_lifecycle_events(&state.pool, chain_id, to)
         .await?;
 
-    let rate_events = state
+    // Event `outstanding` is raw on-chain units (7 dp on Stellar); the snapshots and the
+    // `accrued` output are base-6, so normalise per chain kind before integrating.
+    let mut rate_events = state
         .contract_logs_repo
         .list_loan_rate_events(&state.pool, chain_id, to)
         .await?;
+    for e in &mut rate_events {
+        if let Some(o) = e.outstanding.as_ref() {
+            e.outstanding = Some(normalize_usdc_amount(kind, o));
+        }
+    }
 
     Ok(compute_series(
         &loans,
@@ -201,8 +212,8 @@ struct LoanView<'a> {
 /// loans that have *started* by `t` (`originationᵢ <= t`), including closed loans
 /// which contribute their final accrual frozen at the close. Only active time counts:
 /// accrual runs past maturity, pauses in Default, resumes after a cure and stops at Close.
-/// `accrued = Σᵢ Pᵢ · Rᵢ · activeSecsᵢ(t) / (365 · 86_400)`, where `activeSecsᵢ(t)` is the
-/// length of the active `[from, until)` intervals clipped to `t`.
+/// `accrued = Σᵢ ∫ Oᵢ(s) · R_bps_i(s) ds / (10_000 · 31_557_600)` over the active `[from, until)`
+/// intervals clipped to `t` (`shared::book_weighting::accrued_over_intervals`).
 ///
 /// **Principal outstanding** (USDC, 6dp decimal string) — `Σᵢ Pᵢ` over active loans.
 ///
@@ -239,10 +250,6 @@ pub fn compute_series(
             }
         })
         .collect();
-
-    // Denominators for accrual formula
-    let secs_per_year = BigDecimal::from(365_i64 * 86_400_i64);
-    let ten_thousand = BigDecimal::from(10_000_i64);
 
     // Build sample grid: from, from+step, …, to (always include to as last point)
     let mut timestamps: Vec<i64> = std::iter::successors(Some(from), |&t| {
@@ -290,11 +297,11 @@ pub fn compute_series(
             .iter()
             .filter(|lv| lv.row.snapshot.origination_date <= t)
             .map(|lv| {
-                let active_secs = BigDecimal::from(lv.timeline.active_secs_until(t));
-                lv.row.snapshot.original_senior_tranche.clone()
-                    * BigDecimal::from(i64::from(lv.row.snapshot.senior_interest_rate_bps))
-                    * active_secs
-                    / (&ten_thousand * &secs_per_year)
+                accrued_over_intervals(
+                    lv.row.snapshot.senior_interest_rate_bps,
+                    &lv.rate_events,
+                    &lv.timeline.active_intervals(t),
+                )
             })
             .sum();
 

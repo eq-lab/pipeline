@@ -8,6 +8,7 @@ use pipeline_api::routes::loan_book::compute_loan_book;
 use pipeline_api::routes::portfolio::compute_series;
 use shared::book_weighting::{current_rate_bps, current_tenor_days, outstanding_at, rate_bps_at};
 use shared::contract_logs_repo::{LoanRateEventRow, LoanSnapshotRow};
+use shared::loan_economics::economics_rate_to_bps;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 const DAY: i64 = 86_400;
@@ -388,19 +389,45 @@ fn series_events_of_other_loans_are_ignored() {
     assert_apy(apy_at(&loans, &events, 10), 0.15);
 }
 
+// Fixture: 10M USDC each, rates 1000 / 2000 bps, 10 days, YEAR = 31_557_600.
+// Before: 10M x (0.10 + 0.20) x 10 d / 365.25 d = 82_135.523613.
+// After (loan 1 -> 9000 bps from day 5, loan 2 repaid to 0 at day 5):
+//   loan 1: 10M x (0.10 x 5 + 0.90 x 5) / 365.25 = 136_892.539357
+//   loan 2: 10M x 0.20 x 5 / 365.25 = 27_378.507871
+//   total 164_271.047227
 #[test]
-fn series_accrued_amount_is_unchanged_by_rate_events() {
+fn series_accrued_follows_rate_and_outstanding_events() {
     let (loans, mut events) = series_fixture();
     let t = 10 * DAY;
     let before = compute_series(&loans, &[], &events, t, t, DAY)
         .pop()
         .unwrap();
+    assert_eq!(before.accrued, "82135.523613");
     events.push(rate_event(1, "EconomicsAmended", 5, 900_000));
     events.push(outstanding_event(2, "PaymentRecorded", 5, 0));
     let after = compute_series(&loans, &[], &events, t, t, DAY)
         .pop()
         .unwrap();
-    assert_eq!(before.accrued, after.accrued);
+    assert_eq!(after.accrued, "164271.047227");
+}
+
+#[test]
+fn series_accrued_is_zero_without_outstanding_events() {
+    let (loans, _) = series_fixture();
+    let t = 10 * DAY;
+    let s = compute_series(&loans, &[], &[], t, t, DAY).pop().unwrap();
+    assert_eq!(s.accrued, "0.000000");
+}
+
+#[test]
+fn rate_event_ppm_to_bps_floors_like_the_snapshot() {
+    let (loans, mut events) = series_fixture();
+    events.push(rate_event(1, "EconomicsAmended", 5, 112_550));
+    events.push(rate_event(2, "EconomicsAmended", 5, 112_550));
+    assert_apy(apy_at(&loans, &events, 10), 0.1125);
+    assert_eq!(economics_rate_to_bps(112_550), 1125);
+    assert_eq!(economics_rate_to_bps(112_599), 1125);
+    assert_eq!(economics_rate_to_bps(112_550) as i64, 112_550 / 100);
 }
 
 // ── helper functions ─────────────────────────────────────────────────────────

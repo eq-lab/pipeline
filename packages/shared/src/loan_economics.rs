@@ -85,9 +85,9 @@ pub fn build_epochs(
 }
 
 /// Contract-1e6-scaled event rate → bps: `new_rate × 10_000 / 1_000_000 = new_rate / 100`,
-/// rounded half-up (`150_000` → `1_500` bps = 15%).
+/// truncated (floor), the same rule as the worker's snapshot `raw / 100` (`150_000` → `1_500` bps = 15%; `112_550` → `1_125`).
 pub fn economics_rate_to_bps(new_rate: i64) -> u32 {
-    let bps = (new_rate * BPS_DENOM + ECONOMICS_RATE_ONE / 2) / ECONOMICS_RATE_ONE;
+    let bps = new_rate * BPS_DENOM / ECONOMICS_RATE_ONE;
     bps as u32
 }
 

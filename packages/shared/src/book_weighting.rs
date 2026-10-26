@@ -97,3 +97,41 @@ pub fn rate_bps_at(initial_bps: u32, events: &[&LoanRateEventRow], t: i64) -> u3
         .and_then(|e| e.new_rate)
         .map_or(initial_bps, economics_rate_to_bps)
 }
+
+/// Contract year (365.25 d) used by the `/v1/stats/yield` accrual.
+pub const CONTRACT_YEAR_SECS: i64 = 31_557_600;
+
+/// Simple-interest accrual `Σ ∫ outstanding(t) × rate(t) dt / CONTRACT_YEAR_SECS` over `intervals` (raw outstanding units).
+/// Each `[from, until)` interval is split at every outstanding / rate event timestamp, so both factors are constant per piece.
+pub fn accrued_over_intervals(
+    initial_bps: u32,
+    events: &[&LoanRateEventRow],
+    intervals: &[(i64, i64)],
+) -> BigDecimal {
+    let denom = BigDecimal::from(BPS_DENOM) * BigDecimal::from(CONTRACT_YEAR_SECS);
+    let mut total = BigDecimal::zero();
+    for &(from, until) in intervals {
+        let mut cuts: Vec<i64> = events
+            .iter()
+            .filter(|e| {
+                e.block_timestamp > from
+                    && e.block_timestamp < until
+                    && (OUTSTANDING_EVENT_NAMES.contains(&e.event_name.as_str())
+                        || RATE_EVENT_NAMES.contains(&e.event_name.as_str()))
+            })
+            .map(|e| e.block_timestamp)
+            .collect();
+        cuts.push(until);
+        cuts.sort_unstable();
+        cuts.dedup();
+        let mut start = from;
+        for end in cuts {
+            let outstanding = outstanding_at(events, start);
+            let rate_bps = rate_bps_at(initial_bps, events, start);
+            total +=
+                outstanding * BigDecimal::from(i64::from(rate_bps)) * BigDecimal::from(end - start);
+            start = end;
+        }
+    }
+    total / denom
+}
