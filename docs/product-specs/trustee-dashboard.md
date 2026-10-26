@@ -60,21 +60,21 @@ Instant, no timelock. The Trustee holds the `TRUSTEE` role on LoanRegistry and
 
 The dashboard computes the waterfall client-side from immutable loan parameters
 (`originalSeniorTranche`, `originalFacilitySize`, dates), mutable lifecycle state, the
-protocol fee schedule (management, performance, OET rates), and the actual tenor. The
+protocol fee schedule (management, performance, OET rates), and the loan's outstanding-senior events. The
 Trustee never does the arithmetic. Computed components, in priority order:
 
 1. `senior_principal_returned = min(amount, outstanding_senior_principal)`
-2. `senior_gross_interest = tenor * senior_rate * senior_deployed`
-3. `management_fee = senior_deployed * mgmt_rate * (tenor / 365)`
+2. `senior_gross_interest = Σ epochs Δt * senior_rate * outstanding / 365.25 d` (simple, from first disbursement, through Default, no maturity cap)
+3. `management_fee = mgmt_rate * ∫ outstanding dt / 365.25 d`
 4. `performance_fee = (senior_gross_interest - management_fee) * perf_rate`
 5. `senior_coupon_net = senior_gross_interest - management_fee - performance_fee`
-6. `oet_allocation = senior_deployed * oet_rate * (tenor / 365)`
+6. `oet_allocation = oet_rate * ∫ outstanding dt / 365.25 d`
 7. `originator_residual = amount - senior_principal_returned - senior_coupon_net - fees - oet_allocation`
 
 `recordPayment` takes `seniorInterest` as the net senior coupon and the three fee carve-outs
 separately. The originator residual settles off-chain through the Trust Company's USD
 account and appears in no on-chain event. Any component the Trustee overrides is revalidated
-against the `sum <= offtakerAmount` invariant before broadcast. **Shipped** as the baseline calculator `GET /v1/loan-book/{loan_id}/waterfall?chain_id=<id>&amount=<raw base units>[&as_of]` (`chain_id` required) (`packages/api/src/routes/waterfall.rs`): reads the loan snapshot (genesis rate, senior tranche, principal repaid) and the per-loan fee schedule (`loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps`, migrations `20260717000001` + `20260720000001`), and returns five components — `senior_principal_returned`, `senior_coupon_net` (the net senior coupon → vault leg), `management_fee`, `performance_fee`, `oet_allocation` — each mapping 1:1 to a `recordPayment` argument. Money is raw on-chain base units (`recordPayment` scale, 7-decimal on Soroban); the baseline uses the genesis rate and origination→`as_of` tenor with no epoch folding. `outstanding_senior_principal` / `senior_deployed` = `disbursed − repaid − written_down` (floored at zero), and cumulative gross interest includes the signed `interest_adjustment` (a waiver is negative) before the fee split.
+against the `sum <= offtakerAmount` invariant before broadcast. **Shipped** as the baseline calculator `GET /v1/loan-book/{loan_id}/waterfall?chain_id=<id>&amount=<raw base units>[&as_of]` (`chain_id` required) (`packages/api/src/routes/waterfall.rs`): reads the loan snapshot (genesis rate, senior tranche, principal repaid) and the per-loan fee schedule (`loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps`, migrations `20260717000001` + `20260720000001`), and returns five components — `senior_principal_returned`, `senior_coupon_net` (the net senior coupon → vault leg), `management_fee`, `performance_fee`, `oet_allocation` — each mapping 1:1 to a `recordPayment` argument. Money is raw on-chain base units (`recordPayment` scale, 7-decimal on Soroban); the baseline is the contract accrual from the loan's outstanding / rate events, first disbursement→`as_of` (#1630). `outstanding_senior_principal` / `senior_deployed` = `disbursed − repaid − written_down` (floored at zero), and cumulative gross interest includes the signed `interest_adjustment` (a waiver is negative) before the fee split.
 
 ### Flow note B — origination review
 
@@ -157,7 +157,7 @@ Relayer value is old, say so.
 Some numbers on screen are not stored on-chain, so the dashboard calculates them: senior
 principal still owed (original senior tranche minus principal repaid), how much the offtaker
 still owes (original price minus what has come in), interest earned so far (the
-maturity-capped epoch sum), how much is still waiting to be minted per leg (recorded minus
+contract's epoch accrual), how much is still waiting to be minted per leg (recorded minus
 already minted), and days left to maturity.
 
 ---
@@ -192,7 +192,7 @@ go through the Relayer.
   Every cash movement is Type 2 MPC co-signature.
 - A compromised Trustee key is bounded. It can record payments, roll over, and update
   lifecycle, but it cannot mint PLUSD. Minting needs the independent two-party attestation
-  (Relayer ECDSA plus custodian EIP-1271) and is capped by the maturity-capped ceiling the
+  (Relayer ECDSA plus custodian EIP-1271) and is capped by the accrual ceiling the
   YieldMinter computes itself. `recordPayment` and `rollover` only raise the ceiling.
 - Default, off-cycle re-term, and write-down close are removed from the Trustee key. They
   are RISK_COUNCIL proposals under a 24h timelock, GUARDIAN-cancelable. The dashboard must

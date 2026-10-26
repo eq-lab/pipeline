@@ -57,6 +57,20 @@ pub const LOAN_RATE_EVENTS_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
 
+pub const LOAN_RATE_EVENTS_FOR_LOAN_SQL: &str = "SELECT
+         (params->>'loan_id')::numeric AS loan_id,
+         event_name,
+         block_timestamp,
+         (params->'event'->>'outstanding')::numeric AS outstanding,
+         (params->'event'->>'new_rate')::bigint AS new_rate
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $4
+       AND event_name = ANY($2)
+       AND (params->>'loan_id')::numeric = $5
+       AND block_timestamp <= $3
+     ORDER BY block_number, log_index";
+
 pub const LIST_LATEST_LOAN_SNAPSHOTS_SQL: &str =
     "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
          chain_id,
@@ -719,6 +733,30 @@ impl ContractLogsRepo {
             .bind(chain_id)
             .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
             .bind(to_unix)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows)
+    }
+
+    /// One loan's outstanding- and rate-changing events emitted by `contract_address`
+    /// with `block_timestamp <= to_unix`, in chain order. Raw on-chain units (not normalised).
+    pub async fn list_loan_rate_events_for_loan<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        contract_address: &str,
+        loan_id: &BigDecimal,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanRateEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
+            .bind(to_unix)
+            .bind(contract_address)
+            .bind(loan_id)
             .fetch_all(executor)
             .await?;
         Ok(rows)

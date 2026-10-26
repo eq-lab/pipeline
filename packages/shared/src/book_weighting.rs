@@ -210,6 +210,40 @@ impl LoanAccrual {
     pub fn accrued(&self, intervals: &[(i64, i64)]) -> BigDecimal {
         self.numerator(intervals) / accrual_denominator()
     }
+
+    /// Contract gross accrual over `[0, until)`: each constant-(outstanding, rate) segment is floored to a whole unit, as the contract floors per epoch.
+    pub fn accrued_floored_per_segment(&self, until: i64) -> BigDecimal {
+        let mut total = BigDecimal::zero();
+        for (i, &start) in self.times.iter().enumerate() {
+            if start >= until {
+                break;
+            }
+            let end = self.times.get(i + 1).map_or(until, |&next| next.min(until));
+            let numerator = &self.outstanding[i]
+                * BigDecimal::from(i64::from(self.rate_bps[i]))
+                * BigDecimal::from(end - start);
+            total += (numerator / accrual_denominator()).with_scale_round(0, RoundingMode::Down);
+        }
+        total
+    }
+
+    /// `∫ outstanding dt` over `[0, until)` in raw units × seconds.
+    pub fn outstanding_seconds(&self, until: i64) -> BigDecimal {
+        let mut total = BigDecimal::zero();
+        for (i, &start) in self.times.iter().enumerate() {
+            if start >= until {
+                break;
+            }
+            let end = self.times.get(i + 1).map_or(until, |&next| next.min(until));
+            total += &self.outstanding[i] * BigDecimal::from(end - start);
+        }
+        total
+    }
+}
+
+/// Simple interest `outstanding_seconds × rate_bps / (10_000 × CONTRACT_YEAR_SECS)`, not rounded.
+pub fn simple_interest(outstanding_seconds: &BigDecimal, rate_bps: i64) -> BigDecimal {
+    outstanding_seconds * BigDecimal::from(rate_bps) / accrual_denominator()
 }
 
 fn accrual_denominator() -> BigDecimal {

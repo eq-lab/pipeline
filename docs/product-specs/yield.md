@@ -33,7 +33,7 @@ manual arithmetic is required from the trustee. The computation inputs are:
   `originalMaturityDate`, `governingLaw`
 - Mutable lifecycle state: `status`, `currentMaturityDate`
 - Protocol-wide fee schedule: management fee rate, performance fee rate, OET allocation rate
-- Actual tenor from origination to repayment date
+- Outstanding senior over time, from the loan's disbursement / repayment / write-down events
 - Repayment amount entered by trustee
 
 The trustee may adjust individual waterfall components when the actual transaction deviates
@@ -45,15 +45,15 @@ fee). Deviations from the computed baseline are highlighted by the tooling.
 | Component | Formula |
 |---|---|
 | `senior_principal_returned` | `min(amount, outstanding_senior_principal)` |
-| `senior_gross_interest` | `tenor × senior_rate × senior_deployed` |
-| `management_fee` | `senior_deployed × mgmt_rate × (tenor / 365)` |
+| `senior_gross_interest` | `Σ epochs Δt × senior_rate × outstanding / 365.25 d`, plus `interest_adjustment`, floored at 0 |
+| `management_fee` | `mgmt_rate × ∫ outstanding dt / 365.25 d` |
 | `securitisation_agent_fee` | `0` (inactive in MVP) |
 | `performance_fee` | `(senior_gross_interest − management_fee) × perf_rate` |
 | `senior_coupon_net` | `senior_gross_interest − management_fee − performance_fee` |
-| `oet_allocation` | `senior_deployed × oet_rate × (tenor / 365)` |
+| `oet_allocation` | `oet_rate × ∫ outstanding dt / 365.25 d` |
 | `originator_residual` | `amount − senior_principal_returned − senior_coupon_net − fees − oet_allocation` |
 
-Priority order: senior principal → management fee → senior coupon → performance fee →
+Accrual is simple interest on outstanding senior, year `31_557_600 s` (365.25 d), from the **first disbursement**, through Default, with **no maturity cap**, as `LoanRegistry._accruedInterest` (resolves #967). Priority order: senior principal → management fee → senior coupon → performance fee →
 OET allocation → originator residual (junior yield). The originator residual is settled
 directly through the Trust Company's USD bank account and does not appear in any on-chain
 event.
@@ -127,8 +127,8 @@ ceiling(loanId) = Σ over epochs e of
 
 The ceiling is the maturity-capped piecewise sum across the epoch schedule. Each epoch's
 accrual stops at its own maturity, so a loan past maturity without a rollover cannot accrue
-beyond its contracted term, and a rollover re-opens accrual under the new rate. For
-`leg = Treasury`:
+beyond its contracted term, and a rollover re-opens accrual under the new rate (historical: the
+retired YieldMinter; the current LoanRegistry cap has no maturity cap, #967). For `leg = Treasury`:
 
 ```
 treasuryMintedByLoan[loanId] + att.amount

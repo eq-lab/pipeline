@@ -11,27 +11,21 @@
 //! components" and `docs/product-specs/trustee-dashboard.md` flow note A), computed in
 //! four stages:
 //!
-//! 1. **Cumulative targets, origination → `as_of`.** Gross interest is the maturity-capped,
-//!    piecewise sum across the loan's economics-epoch timeline (`shared::loan_economics`) —
-//!    a rollover or economics amendment changes the rate/maturity from that point on, and
-//!    accrual stops at each epoch's own maturity if it isn't rolled over.
-//!    `senior_deployed = disbursed − repaid − written_down` (the contract's outstanding
-//!    balance, declining as principal is repaid or written down) — matching the on-chain
-//!    `calculate_max_interest`'s declining-balance model; see the `senior_deployed`
-//!    binding below for the approximation this implies for a loan repaid across
-//!    multiple rollovers instead of one bullet payment. Each rate compounds via real
-//!    exponentiation (`compound_growth` — `(1 + rate) ^ tenor
-//!    − 1`), **not** the linear/simple-interest formula the waterfall spec
-//!    (`docs/product-specs/yield.md` §"Waterfall components") and YieldMinter's on-chain
-//!    `ceiling(loanId)` (§"Per-loan mint cap") both document — a deliberate choice, so this
-//!    endpoint's figures no longer match either of those by construction; see
-//!    `compound_growth`'s doc comment for why and its precision tradeoff. Fees compound the
-//!    same way, over the same piecewise-capped tenor, at their single (non-epoch) rate:
-//!    - `senior_gross_interest = max(0, Σ epochs: compound_growth(senior_deployed, epoch.rate, epoch.capped_seconds) + interest_adjustment)` (signed; a waiver is negative)
-//!    - `management_fee_cum    = compound_growth(senior_deployed, mgmt_rate, capped_seconds)`
+//! 1. **Cumulative targets, first disbursement → `as_of`** — the contract's own accrual
+//!    (`LoanRegistry._accruedInterest`, `docs/product-specs/yield.md` §"Waterfall components"),
+//!    from the loan's `Disbursed` / `Undisbursed` / `PaymentRecorded` / `PaymentUnrecorded` /
+//!    `LoanDefaulted` / `LoanWrittenDown` / `EconomicsAmended` / `LoanRolledOver` events
+//!    (`shared::book_weighting::LoanAccrual`): simple interest on the outstanding senior at
+//!    each moment, 365.25-day year (`CONTRACT_YEAR_SECS`), accruing through Default and past
+//!    maturity (no maturity cap, issue #967). Gross interest floors each constant
+//!    (outstanding, rate) segment to a whole unit, as the contract floors per epoch, so with
+//!    the floored bps rate it never exceeds the on-chain cap. Fees use the same
+//!    `∫ outstanding dt` at their single rate:
+//!    - `senior_gross_interest = max(0, Σ segments floor(outstanding × rate × Δt / year) + interest_adjustment)` (signed; a waiver is negative)
+//!    - `management_fee_cum    = mgmt_rate × ∫ outstanding dt / year`
 //!    - `performance_fee_cum   = (senior_gross_interest − management_fee_cum) × perf_rate`
 //!    - `senior_coupon_net_cum = senior_gross_interest − management_fee_cum − performance_fee_cum`
-//!    - `oet_allocation_cum    = compound_growth(senior_deployed, oet_rate, capped_seconds)`
+//!    - `oet_allocation_cum    = oet_rate × ∫ outstanding dt / year`
 //! 2. **Subtract what's already been recorded** (the snapshot's cumulative `repayment.*`
 //!    counters — the running totals `recordPayment` maintains on-chain across every prior
 //!    repayment for this loan) to get what's *newly* due since the last repayment, clamped
@@ -75,7 +69,7 @@
 //!    targets, rather than the coupon/vault leg draining the payment first and leaving
 //!    the fees at 0 — a small interest payment still carries its proportional share of
 //!    fees, the same way a full one does. OET is *not* part of this pool (it accrues
-//!    independently off `senior_deployed`, never netted out of gross interest), so it
+//!    independently off the outstanding senior, never netted out of gross interest), so it
 //!    remains a separate, lower-priority tier, cascaded `min(target, remaining)` same as
 //!    before.
 //!
@@ -91,7 +85,7 @@
 //! **Units.** All monetary values — the `amount` input and every output — are **raw
 //! on-chain base units**, the same scale as the loan snapshot and `recordPayment`
 //! (7-decimal USDC on Stellar/Soroban). The computation is scale-invariant: the only
-//! non-monetary factors are dimensionless (`rate_bps / 10_000`, `tenor / year`), so no
+//! non-monetary factors are dimensionless (`rate_bps / 10_000`, `Δt / year`), so no
 //! decimal divisor is applied and the outputs can be handed straight to `recordPayment`.
 //! Each component is truncated toward zero to a whole base unit.
 
@@ -105,12 +99,9 @@ use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
+use shared::book_weighting::{simple_interest, LoanAccrual};
 use shared::collateral_valuation_repo::ValuationMode;
-use shared::contract_logs_repo::EconomicsEventRow;
-use shared::loan_economics::{
-    build_epochs, compound_growth, piecewise_capped_seconds, piecewise_interest,
-    validate_epochs_for_accrual,
-};
+use shared::contract_logs_repo::LoanRateEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::LoanSnapshot;
 
@@ -165,7 +156,7 @@ pub struct WaterfallQuery {
     /// non-negative. Passed as a string to preserve values beyond JS safe-int range.
     pub amount: String,
     /// Repayment date, Unix epoch **seconds**. Optional — defaults to now. Drives the
-    /// interest/fee tenor (origination → this instant); must be ≥ the loan's
+    /// interest/fee accrual (first disbursement → this instant); must be ≥ the loan's
     /// origination date.
     pub as_of: Option<i64>,
 }
@@ -249,7 +240,6 @@ pub fn router() -> Router<Arc<AppState>> {
         (status = 200, description = "Repayment waterfall breakdown", body = WaterfallResponse),
         (status = 400, description = "Missing, malformed, or unknown chain_id; malformed loan id / amount, or (fixed-price loans only) amount exceeds the loan's outstanding offtaker balance"),
         (status = 404, description = "Loan not indexed as of the repayment instant"),
-        (status = 422, description = "The loan's economics epoch timeline is corrupt (e.g. a rolled-over epoch with a zero maturity) and cannot be used for accrual"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "LoanBook"
@@ -280,7 +270,7 @@ async fn get_waterfall(
 
     // Loan snapshot as of the repayment instant (status, immutable economics, cumulative
     // repayment) — cut off at `as_of` so a backdated repayment sees the outstanding
-    // principal it had then, consistent with the origination→`as_of` accrual tenor.
+    // principal it had then, consistent with the first-disbursement→`as_of` accrual.
     // `get_loan_snapshot_as_of` also matches the genesis `LoanDrawn` row when `as_of`
     // falls between the loan's `origination_date` field and the draw transaction's actual
     // `block_timestamp` — those two clocks aren't guaranteed to agree (see its doc
@@ -305,11 +295,9 @@ async fn get_waterfall(
         .await?
         .unwrap_or_default();
 
-    // Rate/maturity epoch timeline (genesis + rollovers/amendments), cut off at `as_of`
-    // so a backdated repayment doesn't fold in a rollover that happened after it.
-    let economics_events = state
+    let rate_events = state
         .contract_logs_repo
-        .list_loan_economics_events(&state.pool, chain_id, registry, &loan_id, as_of)
+        .list_loan_rate_events_for_loan(&state.pool, chain_id, registry, &loan_id, as_of)
         .await?;
 
     // Pricing basis (issue #963): a metal concentrate settles on a quotational-period
@@ -329,7 +317,7 @@ async fn get_waterfall(
         &amount,
         as_of,
         &fees,
-        &economics_events,
+        &rate_events,
         pricing_basis,
     )?;
 
@@ -363,19 +351,19 @@ fn trunc(v: &BigDecimal) -> BigDecimal {
 }
 
 /// Compute the waterfall from a loan snapshot, an incoming `amount` (raw base units),
-/// the repayment instant `as_of` (Unix seconds), the per-loan fee schedule, and the
-/// loan's `LoanRolledOver` / `EconomicsAmended` events (chronologically ordered, already
-/// cut off at `as_of` by the caller — see `ContractLogsRepo::list_loan_economics_events`).
+/// the repayment instant `as_of` (Unix seconds), the per-loan fee schedule, and the loan's
+/// raw (un-normalised) outstanding- and rate-changing events in chain order, already cut
+/// off at `as_of` by the caller (`ContractLogsRepo::list_loan_rate_events_for_loan`).
 /// Pure and unit-testable — no DB, no clock.
 ///
-/// `Err(BadRequest)` when `as_of` precedes the loan's origination (negative tenor), or when
+/// `Err(BadRequest)` when `as_of` precedes the loan's origination (negative accrual span), or when
 /// `amount` exceeds the outstanding offtaker balance **on a `Fixed`-priced loan** (stage 3).
 pub fn compute_waterfall(
     s: &LoanSnapshot,
     amount: &BigDecimal,
     as_of: i64,
     fees: &FeeScheduleRow,
-    economics_events: &[EconomicsEventRow],
+    rate_events: &[LoanRateEventRow],
     pricing_basis: PricingBasis,
 ) -> Result<WaterfallBreakdown, ApiError> {
     if as_of < s.origination_date {
@@ -414,52 +402,19 @@ pub fn compute_waterfall(
         )));
     }
 
-    // Epoch timeline (genesis + any rollovers/amendments) and its piecewise-capped
-    // accrual seconds — an epoch past its own maturity without a rollover stops accruing
-    // there, instead of a single origination→as_of span at a single (possibly stale) rate.
-    let epochs = build_epochs(
-        s.origination_date,
-        s.original_maturity_date,
-        s.senior_interest_rate_bps,
-        economics_events,
-    );
-    // Fail loudly on a non-increasing epoch.
-    validate_epochs_for_accrual(&epochs).map_err(|e| {
-        ApiError::UnprocessableEntity(format!("refusing to compute repayment accrual: {e}"))
-    })?;
-    let capped_seconds = piecewise_capped_seconds(&epochs, as_of);
-
-    // Accrual base is the outstanding senior principal (disbursed less what's
-    // been repaid or written down) — matching the on-chain `calculate_max_interest`'s
-    // declining-balance model, not a fixed original-tranche base held for the loan's
-    // whole life. Applies to interest, management fee, and OET alike, since all three
-    // compound off the same `senior_deployed` variable.
-    //
-    // Approximation: this repo always recomputes gross interest from scratch (no
-    // stored per-epoch checkpoint the way the contract's `epoch.accrued_interest`
-    // is), so today's outstanding is applied uniformly across the *whole* piecewise
-    // recompute, not just the currently-open epoch. Exact for the common case
-    // (principal repaid in one bullet payment — outstanding is either the full
-    // tranche or already near-final for every historical epoch); would understate
-    // older epochs' interest for a loan whose principal was repaid incrementally
-    // across multiple rollovers, a pattern this product doesn't currently exercise.
     let outstanding = s.outstanding_senior_principal();
-    let senior_deployed = &outstanding;
+    let event_refs: Vec<&LoanRateEventRow> = rate_events.iter().collect();
+    let accrual = LoanAccrual::new(s.senior_interest_rate_bps, &event_refs);
+    let outstanding_seconds = accrual.outstanding_seconds(as_of);
 
-    // Cumulative targets, origination → `as_of` (stage 1 — see module docs). Gross
-    // interest is the piecewise sum across epochs (rate-change-aware, each epoch
-    // compounding independently — see `piecewise_interest`); fees compound the same way
-    // over the same piecewise-capped tenor at their single (non-epoch) rate.
-    let senior_gross_interest_cum = (trunc(&piecewise_interest(&epochs, senior_deployed, as_of))
+    let senior_gross_interest_cum = (accrual.accrued_floored_per_segment(as_of)
         + &s.interest_adjustment)
         .max(BigDecimal::zero());
-    let management_fee_cum = trunc(&compound_growth(
-        senior_deployed,
-        fees.mgmt_fee_rate_bps as i64,
-        capped_seconds,
+    let management_fee_cum = trunc(&simple_interest(
+        &outstanding_seconds,
+        i64::from(fees.mgmt_fee_rate_bps),
     ));
 
-    // Clamp the base at 0 so a mgmt rate above the senior rate can't yield a negative fee.
     let perf_base = (&senior_gross_interest_cum - &management_fee_cum).max(BigDecimal::zero());
     let performance_fee_cum = trunc(
         &(perf_base * BigDecimal::from(fees.perf_fee_rate_bps as i64)
@@ -467,10 +422,9 @@ pub fn compute_waterfall(
     );
     let senior_coupon_net_cum =
         &senior_gross_interest_cum - &management_fee_cum - &performance_fee_cum;
-    let oet_allocation_cum = trunc(&compound_growth(
-        senior_deployed,
-        fees.oet_alloc_rate_bps as i64,
-        capped_seconds,
+    let oet_allocation_cum = trunc(&simple_interest(
+        &outstanding_seconds,
+        i64::from(fees.oet_alloc_rate_bps),
     ));
 
     // Subtract what's already been recorded on-chain by prior repayments (stage 2). The

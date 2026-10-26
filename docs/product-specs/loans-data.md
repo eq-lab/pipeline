@@ -87,7 +87,7 @@ struct ImmutableLoanData {
 // rewritten or removed. The accrual base is always originalSeniorTranche.
 struct EconomicsEpoch {
     uint64 effectiveFrom;             // Accrual start for this epoch
-    uint64 maturityDate;             // Accrual stops here for this epoch
+    uint64 maturityDate;             // Epoch maturity (informational; accrual is not capped)
     uint32 seniorInterestRateBps;     // Annualised Senior coupon rate for this epoch
 }
 
@@ -137,7 +137,7 @@ ceiling(loanId) = Σ over epochs e of
 ```
 
 A loan past maturity without a rollover cannot accrue beyond its contracted term. A
-rollover appends an epoch that re-opens accrual under the new rate from the prior maturity.
+rollover appends an epoch that re-opens accrual under the new rate from the prior maturity. **Historical:** this ceiling describes the retired YieldMinter. The current LoanRegistry cap (`_accruedInterest`) has no maturity cap and accrues on outstanding senior over 365.25 d; the waterfall follows it (#967, #1630).
 
 **Key events**
 

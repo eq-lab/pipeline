@@ -82,9 +82,8 @@ re-term appends a new epoch. No epoch is ever rewritten or removed, so the origi
 and every later re-term stay on-chain for audit.
 
 Each epoch carries `effectiveFrom`, `maturityDate`, and `seniorInterestRateBps`. The
-accrual base is always `originalSeniorTranche`. The interest ceiling that YieldMinter
-enforces is computed piecewise across epochs, with accrual stopping at each epoch's own
-maturity. A loan past maturity without a rollover cannot accrue beyond its contracted term.
+interest ceiling that YieldMinter enforces is the contract's per-epoch accrual on the
+outstanding senior, with no maturity cap (accrual continues past maturity and in Default).
 See [loans-data.md](./loans-data.md) for the ceiling formula.
 
 ### Mutable lifecycle data
