@@ -198,18 +198,34 @@ export function toUserError(
   return { message: fallback, details, isSpecific: false };
 }
 
-/**
- * Maps a `/waterfall` query error to friendly, user-facing copy — never the
- * raw backend message, and no numbers (#916). Consolidated from the two
- * byte-identical copies in `-record-coupon.ts` / `-record-repayment.ts`.
- * The 4xx branch is the EXPECTED user-input case ("amount exceeds what's
- * left") and deliberately carries no `details` — no "View details" trigger —
- * since there is no diagnostic payload worth disclosing (D5). The
- * unexpected/non-4xx branch keeps its full details.
- */
+const WATERFALL_REINDEX_MESSAGE =
+  "Loan data is incomplete — the indexer needs a re-sync. Contact support.";
+const WATERFALL_DEFAULT_MESSAGE =
+  "This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a smaller amount.";
+const WATERFALL_DEFAULT_PATTERN = /^loan is in Default\b/i;
+
+// spec: docs/frontend/error-handling.md#waterfall-preview-no-details-on-the-expected-input-case-d5
 export function mapWaterfallError(error: Error | null): UserFacingError | null {
   if (error == null) return null;
   if (isChainIdError(error)) return toUserError(error);
+  if (error instanceof ApiError && error.status === 422) {
+    return {
+      message: WATERFALL_REINDEX_MESSAGE,
+      details: error.message,
+      isSpecific: true,
+    };
+  }
+  if (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    WATERFALL_DEFAULT_PATTERN.test(error.message)
+  ) {
+    return {
+      message: WATERFALL_DEFAULT_MESSAGE,
+      details: error.message,
+      isSpecific: true,
+    };
+  }
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
     return {
       message: "This amount is too high for this loan. Enter a smaller amount.",

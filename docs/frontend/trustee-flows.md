@@ -830,7 +830,11 @@ doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding
 "This amount is too high for this loan. Enter a smaller amount." A `chain_id` 400 (the loan's
 chain is not served by the API) is the one 4xx that is **not** an amount problem: it falls
 through to `toUserError`'s "This network isn't enabled on the server…" copy (#1602). Anything else
-gets a generic retry message. The date input is fixed to today and not editable (#916) — no
+gets a generic retry message. Two 4xx cases are not plain amount problems (#1661): a 422 (the
+loan's indexed event history is incomplete) reads "Loan data is incomplete — the indexer needs a
+re-sync. Contact support."; a 400 whose message starts with `loan is in Default` reads "This loan is
+in Default: a payment can only cover senior principal and accrued interest. Enter a smaller
+amount." Neither message has numbers, and the raw server text sits only under "View details". The date input is fixed to today and not editable (#916) — no
 calendar/date picker. The "Date received" field only displays today: both record flows call the
 waterfall with `as_of` omitted, so the server uses its own `now` (the endpoint's documented
 default). #1626 decided the earlier `T00:00:00Z` midnight `as_of` was unintended: it
