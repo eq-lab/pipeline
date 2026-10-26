@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-154.**
+**Next free number: TD-155.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2123,3 +2123,10 @@ line, whichever section it lands in.
 - **Impact:** Inconsistent page for an EVM session until EVM cash management exists (the EVM arms of the custody read and the ramp endpoints are not built — see TD-151/TD-152 for the same shape on loans).
 - **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
 
+### TD-154: `useStakeFlow` step 1 reads the aggregated `useEvmToken().error`, so read failures paint the approve row
+
+- **Date:** 2026-10-26
+- **Location:** `packages/frontend/src/wallet/useStakeFlow.ts` (EVM step 1 error) — found while fixing #1658.
+- **Gap:** The deposit/withdraw flow now derives step-1 `"error"` from `useEvmToken().approveError` (approval errors only). The stake flow still uses the aggregated `error`, which also carries balance and metadata read failures.
+- **Impact:** A failed `balanceOf` / `decimals` read can show an "Approve" error on the stake step row.
+- **Suggested fix:** Switch `useStakeFlow` to `approveError`, with a test mirroring the `useDepositFlow` one.

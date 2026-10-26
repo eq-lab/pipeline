@@ -32,7 +32,7 @@ export {
   deleteMyDocument,
 } from "./lps";
 export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
-export { useRequests } from "./useRequests";
+export { useRequests, useInvalidateRequests } from "./useRequests";
 export type {
   RequestItem,
   RequestType,

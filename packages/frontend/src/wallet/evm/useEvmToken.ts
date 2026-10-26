@@ -106,6 +106,7 @@ export interface UseTokenResult {
   isLoading: boolean;
   /** First non-null error across all reads (with spender-gating for approval). */
   error: Error | null;
+  approveError: Error | null;
 }
 
 // ── useToken ──────────────────────────────────────────────────────────────────
@@ -235,5 +236,6 @@ export function useEvmToken({ token, spender }: UseTokenArgs): UseTokenResult {
 
     isLoading,
     error,
+    approveError: approvalError,
   };
 }

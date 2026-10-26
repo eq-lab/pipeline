@@ -9,7 +9,8 @@
  * localStorage layer first; when a mock key is present the real wagmi call is
  * skipped entirely (no network request).
  */
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { parseEventLogs } from "viem";
 import {
   useReadContract,
   useWriteContract,
@@ -29,6 +30,7 @@ import { CACHE_FOREVER } from "./cache";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
 import { useEvmWallet } from "./useEvmWallet";
+import { writeInflightEvmRequest } from "./inflight";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -341,6 +343,46 @@ export function useRequestDeposit(): RequestDepositResult {
   // Public client for gas estimation — always called (hooks must not be conditional).
   const publicClient = usePublicClient();
 
+  const lastAmountRef = useRef<bigint>(0n);
+
+  const decodedRequestId = useMemo(() => {
+    const logs = wagmiReceipt.data?.logs;
+    if (!logs || address === undefined) return undefined;
+    try {
+      const events = parseEventLogs({
+        abi: depositManagerAbi,
+        eventName: "DepositRequested",
+        logs,
+      });
+      const match = events.find(
+        (e) =>
+          e.address.toLowerCase() === DM_ADDRESS.toLowerCase() &&
+          e.args.user.toLowerCase() === address.toLowerCase(),
+      );
+      return match?.args.requestId.toString();
+    } catch {
+      return undefined;
+    }
+  }, [wagmiReceipt.data, address, DM_ADDRESS]);
+
+  const txHashForInflight = wagmiWrite.data;
+  useEffect(() => {
+    if (
+      !wagmiReceipt.isSuccess ||
+      decodedRequestId === undefined ||
+      address === undefined ||
+      txHashForInflight === undefined
+    ) {
+      return;
+    }
+    writeInflightEvmRequest("deposit", ENV.EVM_CHAIN_ID, address, {
+      requestId: decodedRequestId,
+      amount: lastAmountRef.current.toString(),
+      txHash: txHashForInflight,
+      createdAt: Date.now(),
+    });
+  }, [wagmiReceipt.isSuccess, decodedRequestId, address, txHashForInflight]);
+
   const resetMock = useCallback(() => {
     setMockState({
       data: undefined,
@@ -353,6 +395,7 @@ export function useRequestDeposit(): RequestDepositResult {
 
   const write = useCallback(
     (amount: bigint) => {
+      lastAmountRef.current = amount;
       // Re-read mock key at call time to pick up any dynamic changes.
       const mockRaw = readMock(
         MOCK_KEYS.requestDeposit,
@@ -467,7 +510,10 @@ export function useRequestDeposit(): RequestDepositResult {
   const txHash = wagmiWrite.data;
   return {
     write,
-    data: txHash !== undefined ? { hash: txHash } : undefined,
+    data:
+      txHash !== undefined
+        ? { hash: txHash, requestId: decodedRequestId }
+        : undefined,
     isPending:
       isEstimating ||
       wagmiWrite.isPending ||

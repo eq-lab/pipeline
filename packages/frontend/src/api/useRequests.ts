@@ -22,7 +22,8 @@
  *
  * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { useSyncExternalStore } from "react";
 import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 import { subscribeMock } from "@/wallet";
@@ -87,7 +88,9 @@ function subscribeMockVersion(listener: () => void) {
 export interface UseRequestsOptions {
   /** Polling interval in milliseconds. When provided, the query refetches on
    *  this cadence in addition to mock-key-change refetches. */
-  refetchInterval?: number;
+  refetchInterval?:
+    | number
+    | ((data: RequestsResponse | undefined) => number | false);
 }
 
 export interface UseRequestsResult {
@@ -128,6 +131,8 @@ export function useRequests(
     getMockVersion,
   );
 
+  const interval = options.refetchInterval;
+
   const query = useQuery<RequestsResponse, Error>({
     queryKey: ["requests", kind, address, chainId, mockVer],
     queryFn: () =>
@@ -135,8 +140,14 @@ export function useRequests(
         `/v1/requests?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled: isConnected && !!address,
-    ...(options.refetchInterval !== undefined
-      ? { refetchInterval: options.refetchInterval }
+    ...(interval !== undefined
+      ? {
+          refetchInterval:
+            typeof interval === "function"
+              ? (q: { state: { data: RequestsResponse | undefined } }) =>
+                  interval(q.state.data)
+              : interval,
+        }
       : {}),
   });
 
@@ -146,4 +157,11 @@ export function useRequests(
     error: query.error,
     refetch: () => void query.refetch(),
   };
+}
+
+export function useInvalidateRequests(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["requests"] });
+  }, [queryClient]);
 }

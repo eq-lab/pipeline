@@ -186,6 +186,7 @@ when `spender` is omitted.
 | `refetchAllowance` | `(() => void) \| undefined`                  | Re-reads current allowance. `undefined` when spender is omitted.                                                                                  |
 | `isLoading`        | `boolean`                                    | `true` when any underlying read is in flight.                                                                                                     |
 | `error`            | `Error \| null`                              | First non-null error across all reads (approval error masked when spender is omitted).                                                            |
+| `approveError`     | `Error \| null`                              | The approval hook's error only (`null` when spender is omitted); never carries balance / metadata read failures (#1658).                          |
 
 ### `useContractRead({ address, abi, functionName, args })`
 
@@ -303,7 +304,12 @@ write(amount); // amount: bigint (USDC, 6 decimals)
 ```
 
 Write hook for `requestDeposit(uint256 amount)`. Returns a tx hash in `data.hash`
-after success. When `VITE_DEPOSIT_MANAGER_ADDRESS` is zero, `write()` surfaces
+after broadcast and, once the receipt is mined, `data.requestId` decoded from the
+`DepositRequested` event (log from the configured contract for the connected wallet); the
+request id, amount and tx hash are also persisted as the EVM in-flight record
+(`readInflightEvmRequest` / `writeInflightEvmRequest` / `clearInflightEvmRequest`, key
+`pipeline.evm.deposit.inflight.<chainId>.<address>`). `useRequestWithdrawal` does the same with
+`WithdrawalRequested` (`requestId`, `queued`; key `pipeline.evm.withdraw.inflight…`). When `VITE_DEPOSIT_MANAGER_ADDRESS` is zero, `write()` surfaces
 `Error("DepositManager not configured")` without making an RPC call.
 
 ### `useClaim()`
@@ -927,6 +933,16 @@ const { balance, isLoading, error, refetch } = useStellarStakedPlusdBalance();
 
 Reads `balance(account)` from the StakedPLUSD vault (which IS the share token).
 Returns the LP's raw sPLUSD share balance at 7-decimal scale.
+
+### `useStellarDepositManagerMinDeposit()`
+
+```ts
+const { minDeposit, isLoading, error } = useStellarDepositManagerMinDeposit();
+```
+
+Reads the Soroban DepositManager's `min_deposit()` (i128, 7 dp) by simulation, cached for the page
+lifetime. `minDeposit` is `undefined` while loading, on error, or when the contract id is not
+configured (no RPC call). No mock key.
 
 ### `useStellarChangeTrustStakedPlusd()`
 

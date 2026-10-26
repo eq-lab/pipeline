@@ -80,7 +80,7 @@ export interface UseStellarDepositManagerAddressesResult {
 /**
  * Calls a view method on a Soroban contract and returns the native JS value.
  */
-async function callView(
+export async function callView(
   server: SorobanRpc.Server,
   contractId: string,
   method: string,

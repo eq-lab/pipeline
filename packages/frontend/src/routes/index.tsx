@@ -151,10 +151,12 @@ function Home() {
       : undefined
     : evmPlusdFormatted;
 
-  const splusdBalanceFormatted = formatBigintCurrency(
-    splusdSharesActive,
-    splusdDecimals,
-  );
+  const splusdBalanceFormatted =
+    splusdInPlusdActive === undefined &&
+    splusdSharesActive !== undefined &&
+    splusdSharesActive !== 0n
+      ? "—"
+      : formatBigintCurrency(splusdInPlusdActive, plusdDecimals);
   const unrealizedPnlFormatted = formatRawDecimalUSD(
     pnl.data?.total_unrealized_pnl,
     plusdDecimals,
