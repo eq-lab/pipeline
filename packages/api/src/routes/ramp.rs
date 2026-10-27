@@ -63,9 +63,9 @@ pub struct RampEvent {
     /// `OnRamp` (ramp→custody) or `OffRamp` (custody→ramp).
     #[serde(rename = "type")]
     pub event_type: RampEventType,
-    /// Recipient Strkey.
+    /// Recipient address (Stellar Strkey or EVM `0x…`, per the event's chain).
     pub to: String,
-    /// Sender Strkey.
+    /// Sender address (Stellar Strkey or EVM `0x…`, per the event's chain).
     pub from: String,
     /// Transfer amount, normalized to the canonical 6-decimal USDC base units
     /// (matches `routes::capital_allocation`'s amount convention).
@@ -299,7 +299,10 @@ pub fn filter_pending_ramp_events(
 /// Order merged events newest-first: `created_at` desc, then `id` desc (ids are unique
 /// across chains, so the order is total).
 pub fn sort_ramp_events_newest_first(events: &mut [RampEvent]) {
-    events.sort_by_key(|e| std::cmp::Reverse((e.created_at, e.id)));
+    // Input is each chain's events in on-chain (block, log) order; reversing and then a
+    // stable sort by time keeps same-second events of one chain newest-first on chain.
+    events.reverse();
+    events.sort_by_key(|e| std::cmp::Reverse(e.created_at));
 }
 
 /// Validate a review request and map it to the `(decision, reason)` the repo

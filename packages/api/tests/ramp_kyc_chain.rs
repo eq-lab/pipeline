@@ -318,6 +318,23 @@ fn merged_events_carry_chain_id_use_own_chain_sets_and_sort_newest_first() {
     assert_eq!(json["chain_id"], 99_000_001);
 }
 
+#[test]
+fn same_second_events_of_one_chain_keep_on_chain_order_newest_first() {
+    // Reader order is on-chain (block, log). Ids are deliberately out of that order
+    // (31 first on chain, 30 second) to show the tiebreak is the chain, not the id.
+    let evm = sets(CUSTODY_E, &[RAMP_E], 6);
+    let mut events = filter_pending_ramp_events(
+        &[
+            transfer(31, 1, RAMP_E, CUSTODY_E, 50, 1, 6),
+            transfer(30, 1, RAMP_E, CUSTODY_E, 50, 2, 6),
+        ],
+        &evm,
+    );
+    sort_ramp_events_newest_first(&mut events);
+    let ids: Vec<i64> = events.iter().map(|e| e.id).collect();
+    assert_eq!(ids, vec![30, 31]);
+}
+
 // ── OpenAPI ─────────────────────────────────────────────────────────────────
 
 fn chain_param(doc: &serde_json::Value, path: &str, method: &str) -> serde_json::Value {
