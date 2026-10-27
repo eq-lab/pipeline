@@ -15,6 +15,7 @@ import React from "react";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
+import { stubCountriesFetch } from "@/test-support/countries";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
@@ -75,12 +76,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
     await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...original,
-    QueryClientProvider: ({
-      children,
-    }: {
-      children: React.ReactNode;
-      client: unknown;
-    }) => <>{children}</>,
   };
 });
 
@@ -180,6 +175,7 @@ function renderTestPage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Route as any).useNavigate = () => mockNavigate;
 
+  stubCountriesFetch();
   const TestPage = Route.options.component as React.ComponentType;
   return render(
     <EvmWalletProvider>

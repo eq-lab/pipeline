@@ -12,6 +12,7 @@ import type { LpResponse, UploadDocumentsResponse } from "@/api";
 import { readSession } from "@/auth/session";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { UploadedFileRow } from "@/components/UploadedFileRow";
+import { CountryField } from "@/components/account/CountryField";
 import { AccountUploadRow } from "@/components/account/AccountUploadRow";
 import { AccountRequirementsList } from "@/components/account/AccountRequirementsList";
 import {
@@ -371,17 +372,17 @@ export function CompanyDocsModal({
               disabled={!writable || busy}
             />
           </label>
-          <label className="flex flex-col gap-2" htmlFor="company-country">
-            <span>Country</span>
-            <TextField
+          <div className="flex flex-col gap-2">
+            <label htmlFor="company-country">Country</label>
+            <CountryField
               id="company-country"
               value={country}
+              savedValue={profileBaseline.country}
               onChange={setCountry}
-              placeholder="Country"
               className="[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]"
               disabled={!writable || busy}
             />
-          </label>
+          </div>
         </div>
         <div
           data-node-id="6701:96889"

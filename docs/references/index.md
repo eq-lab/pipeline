@@ -20,6 +20,7 @@ Links to be added as vendor selections are finalised:
 - Chainalysis Address Screening API docs
 - Platts/Argus price feed API docs
 - [MetalpriceAPI documentation](https://metalpriceapi.com/documentation) — precious-metal (XAU/XAG/…) USD spot & historical rates; backs the `metal_price` price provider
+- [Flagpedia flagcdn](https://flagpedia.net/download/api) — keyless CDN used by the LP country select (#1715): `https://flagcdn.com/en/codes.json` (code to English name map, CORS `*`), flags at `https://flagcdn.com/{code}.svg` or `https://flagcdn.com/w40/{code}.png`; the service asks for a backlink and publishes no rate limit
 
 ## Stellar / Soroban
 

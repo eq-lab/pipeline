@@ -22,15 +22,54 @@ again. The wallet card, logout button, and centered 480px column remain. UnderRe
 use the document status banner without an additional generic freeze paragraph (#1408); Failed
 retains its distinct verification-declined message. Edit restrictions still follow the server.
 
-A new profile card sits above the document card and uses the shared `TextField` for labelled Name
-(`legal_name`) and Country (`country`). Both fields have a visible one-pixel
-`--color-pipeline-line` border while unfocused (#1399); the existing focus border and disabled
-behavior remain. A targeted child selector styles the shared TextField control, so it does not
-add a second border to the outer wrapper or change other TextField consumers. The form preloads returned values, requires a nonblank Name,
-and sends the complete profile, including the stored `contact_email` and unchanged country, in
-JSON to `POST /v1/lps/me`. Profile-only edits save without another file. Draft text survives a
-same-LP document upload, deletion, or refetch; a successful profile save refreshes its baseline.
-The API's `writable` flag disables profile and document writes for `UnderReview` and `Passed`.
+A new profile card sits above the document card with a labelled Name (`legal_name`, shared
+`TextField`) and Country (`country`, `CountryField`, see [Country select](#country-select-1715)).
+Both controls have a visible one-pixel `--color-pipeline-line` border while unfocused (#1399); the
+existing focus border and disabled behavior remain. A targeted child selector styles the control
+row, so it does not add a second border to the outer wrapper or change other TextField consumers.
+The form preloads returned values, requires a nonblank Name, and sends the complete profile,
+including the stored `contact_email` and unchanged country, in JSON to `POST /v1/lps/me`.
+Profile-only edits save without another file. Draft text survives a same-LP document upload,
+deletion, or refetch; a successful profile save refreshes its baseline. The API's `writable` flag
+disables profile and document writes for `UnderReview` and `Passed`.
+
+### Country select (#1715)
+
+Country is a searchable `Combobox` (`@pipeline/ui`, see `ui-components.md#combobox`) wrapped by
+`CountryField` (`packages/frontend/src/components/account/CountryField.tsx`), used by this page and
+the account-setup modal. There is no Figma for it.
+
+- **Source.** `GET https://flagcdn.com/en/codes.json` (a `{ code: name }` map) through
+  `useCountries()` (`lib/useCountries.ts`; the request lives in `src/api/countries.ts`, the only place the lint rule allows a non-API `fetch`; parsing and option building in `lib/countries.ts`). Only two-letter keys are kept, minus `eu` and `un`,
+  sorted by name with `en` collation. React Query settings: key `["countries","flagcdn","en"]`,
+  `staleTime` and `gcTime` infinite, `retry: 2`, no refetch on window focus, so the list loads once
+  per page load and is shared by both surfaces. A payload that is not an object, or has no valid
+  entry, counts as a failure.
+- **Label.** The "Country" `<label htmlFor>` is a sibling of the field, not a wrapper, so the
+  combobox's accessible name is just "Country" (a wrapping label would also absorb the clear and
+  chevron button names).
+- **Flags.** `https://flagcdn.com/{code}.svg`, 20x15, decorative.
+- **Privacy.** Both the JSON request and the flag images are credential-less and send no referrer
+  (`credentials: "omit"`, `referrerPolicy: "no-referrer"`).
+- **What is sent.** Only the plain-text name (the list's value) goes to `POST /v1/lps/me`, through
+  the unchanged `country.trim() || null`. Never a code or a flag URL. The API still accepts any
+  nullable string.
+- **Search.** Typing filters by case-insensitive substring of the name, or an exact alpha-2 code
+  (`nl` finds Netherlands). "aland" does not match "Aland Islands" (no diacritic folding); the code
+  `AX` does. Typing never becomes the value: blur, Escape and outside click restore the previous
+  selection.
+- **Loading.** Until the list settles the field is a disabled combobox reading "Loading
+  countries...". A stored value appears once the list is loaded.
+- **Failure.** After the retries the field renders the plain `TextField` (same id, label, #1399
+  border and disabled gating) holding the current draft, with the caption "Couldn't load the
+  country list. Type your country instead." The LP is never blocked. The query is retried on the
+  next mount.
+- **Clear.** The "Clear country" button empties the field; saving then sends `null`.
+- **Stored values not in the list.** Matching is exact and case- and whitespace-sensitive, with no
+  normalisation. A value such as `"NL"`, `"peru"` or a long ISO form is added to the options as
+  "<value> (as saved)", built from the saved baseline and the current draft together so the LP can
+  switch back before saving. When selected, the closed field shows the raw value with no flag and
+  no suffix. The existing trim-on-save still applies.
 
 The document card displays all persisted `original_filename` values and Provided/Verified/Rejected
 statuses from the LP response after reload. Writable LPs can stage more files and upload them by

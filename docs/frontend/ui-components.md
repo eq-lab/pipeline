@@ -373,6 +373,75 @@ in Issue #535 (Figma node `910:10281`).
   out-rank the utilities and break responsive hiding. `flexShrink: 0` is applied inline so
   the icon never squashes in flex rows.
 
+## Combobox
+
+**Source:** `packages/ui/src/components/Combobox/` (`Combobox.tsx`, `useCombobox.ts`,
+`filterOptions.ts`). No Figma: styled from the `TextField` token map (#1715).
+
+A searchable single-select combobox. It is hand-rolled, with no new dependency (none of
+`@headlessui/react`, `downshift`, `cmdk`, `react-aria`, `@radix-ui/*` or `@floating-ui/*` is in
+the workspace). It is not a native `<select>` because options must show an image and the list must
+filter as the user types.
+
+### Props
+
+- `value` / `onChange(next: string)`: the selected option's `value`; `""` means no selection.
+- `options: ComboboxOption[]`: `{ value, label, iconUrl?, keywords?, selectedLabel? }`.
+  `keywords` take part in exact matching (a country's alpha-2 code); `selectedLabel` is the text
+  shown in the closed field when it differs from `label` (an off-list stored value shows its raw
+  text without the "(as saved)" suffix).
+- `placeholder`, `emptyText` (default "No results"), `clearLabel` (default "Clear"), `id`,
+  `disabled`, `invalid`, `error`, `className`.
+
+### Layout shared with TextField
+
+The outer `div` (`relative w-full` plus `className`) holds a field-row `div` that is class-for-class
+the `TextField` row (`h-14`, card radius, `px-3`, transparent border, `focus-within` border). The
+consumer's #1399 child selector (`[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]`)
+therefore targets the row exactly as it does for `TextField`. The row holds, in order: the
+selected flag, the `role="combobox"` input, the clear button, and the chevron button.
+
+### Token table
+
+| Element                                         | Tokens                                                                                                                                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Row, input, placeholder, invalid, error caption | Same as `TextField`                                                                                                                                                                                           |
+| List surface                                    | `--color-pipeline-surface`, 1px `--color-pipeline-line` border, `--radius-pipeline-card`, `py-1.5`, shadow `0px 8px 28px rgba(0,0,40,0.14)` (the `NetworkSwitcher` menu treatment), `max-h-72` scroll, `z-40` |
+| Option                                          | `px-4 py-2.5`, body typography, `--color-pipeline-ink`, `gap-2`                                                                                                                                               |
+| Active option                                   | `bg-[color:var(--color-pipeline-line)]/30`                                                                                                                                                                    |
+| Selected option                                 | `--font-weight-medium`                                                                                                                                                                                        |
+| Empty row                                       | `--color-pipeline-ink-muted`, `aria-disabled`                                                                                                                                                                 |
+| Flag                                            | 20x15, `rounded-[2px]`, `object-cover`, `alt=""`, `referrerPolicy="no-referrer"`                                                                                                                              |
+| Chevron                                         | 10x6 stroke, `--color-pipeline-ink-muted`, rotated 180 degrees while open                                                                                                                                     |
+| Clear button                                    | 32x32 hit area, 12x12 "x" stroke, `--color-pipeline-ink-muted`                                                                                                                                                |
+
+### Filter rule
+
+`filterOptions(options, query)` trims and lower-cases (`en`) the query. An empty query returns all
+options. Otherwise an option matches when its lower-cased `label` contains the query, or one of its
+`keywords` equals it. Source order is kept, with no ranking and no diacritic folding.
+
+### Keyboard and ARIA contract
+
+WAI-ARIA APG editable combobox with list autocomplete and no automatic selection:
+`role="combobox"` with `aria-autocomplete="list"`, `aria-expanded`, `aria-controls` (the
+`role="listbox"`), `aria-activedescendant` (the active `role="option"`), and
+`aria-selected` on the selected option.
+
+- Focus selects the input text; the list opens on click, on the chevron, or on ArrowDown/ArrowUp
+  (Alt+ArrowDown opens without moving the active option).
+- Typing filters, opens the list and activates the first match; it never calls `onChange`.
+- ArrowDown/ArrowUp move the active option, clamped at both ends.
+- Enter commits the active option and closes; Escape closes.
+- Blur (Tab), Escape and a pointerdown outside restore the input text to the selected label and
+  never commit free text. Only a click or Enter on an option commits.
+- No matches renders one non-selectable "No results" (or `emptyText`) option row.
+
+### Clear button
+
+Shown when `value !== ""` and the field is enabled. It calls `onChange("")`, empties the text,
+closes the list and focuses the input.
+
 ## ConversionCard
 
 **Source:** `packages/ui/src/components/ConversionCard/ConversionCard.tsx`. Figma

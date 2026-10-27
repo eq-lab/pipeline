@@ -530,3 +530,12 @@ fake-timer test.
       Create account are unchanged.
 - **`docs/user-stories/index.md`**: add the #1715 row to the "Epic #1376 — KYB review lifecycle"
   table, and set the #1399 row (Epic #1247 table) to "Amended by #1715".
+
+## Implementation Notes
+
+- Open question resolved: flagcdn.com (verified 2026-10-27: HTTP 200, CORS `*`, 252 two-letter entries).
+- `fetchCountries` and `COUNTRIES_URL` live in `packages/frontend/src/api/countries.ts` (the ESLint `no-restricted-globals` rule allows `fetch` only under `src/api/**`); parsing and option building stay in `lib/countries.ts`.
+- The Country `<label htmlFor>` is a sibling of the field rather than a wrapper, so the combobox's accessible name is "Country" and not "Country Clear country Show options".
+- `useCountries` sets `retry: 2` per query, which overrides a test client's `retry: false`; failure tests use fake timers (`settleCountryRetries` in `src/test-support/countries.tsx`).
+- `filterOptions` is also exported from `@pipeline/ui`. Tests that render the modal or card use the shared `src/test-support/countries.tsx`; `routes/-test.test.tsx` no longer mocks `QueryClientProvider` to a passthrough.
+- Overflow: the modal's only scroll container is `AuthModalShell`'s `overflow-y-auto` column, and the absolutely positioned list inside it extends that scroll area rather than being clipped (no `overflow-hidden` in between), so no portal or flip was needed.

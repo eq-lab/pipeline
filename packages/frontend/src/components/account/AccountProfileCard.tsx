@@ -1,9 +1,11 @@
 // spec: docs/frontend/account-page.md#production-lp-data-contract-1373
 import { Button, TextField } from "@pipeline/ui";
+import { CountryField } from "./CountryField";
 
 export interface AccountProfileCardProps {
   legalName: string;
   country: string;
+  savedCountry: string;
   onLegalNameChange: (value: string) => void;
   onCountryChange: (value: string) => void;
   onSave: () => void;
@@ -15,6 +17,7 @@ export interface AccountProfileCardProps {
 export function AccountProfileCard({
   legalName,
   country,
+  savedCountry,
   onLegalNameChange,
   onCountryChange,
   onSave,
@@ -35,17 +38,17 @@ export function AccountProfileCard({
           disabled={disabled}
         />
       </label>
-      <label className="flex flex-col gap-2" htmlFor="account-country">
-        <span>Country</span>
-        <TextField
+      <div className="flex flex-col gap-2">
+        <label htmlFor="account-country">Country</label>
+        <CountryField
           id="account-country"
           value={country}
+          savedValue={savedCountry}
           onChange={onCountryChange}
-          placeholder="Country"
           className="[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]"
           disabled={disabled}
         />
-      </label>
+      </div>
       <Button
         variant="primary-dark"
         className="w-full disabled:opacity-[0.32]"
