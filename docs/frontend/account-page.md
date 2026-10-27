@@ -31,7 +31,8 @@ The form preloads returned values, requires a nonblank Name, and sends the compl
 including the stored `contact_email` and unchanged country, in JSON to `POST /v1/lps/me`.
 Profile-only edits save without another file. Draft text survives a same-LP document upload,
 deletion, or refetch; a successful profile save refreshes its baseline. The API's `writable` flag
-disables profile and document writes for `UnderReview` and `Passed`.
+disables profile and document writes for `UnderReview`, `Passed`, and `Failed`; in that state the
+profile card hides the Save profile button instead of showing it disabled.
 
 ### Country select (#1715)
 

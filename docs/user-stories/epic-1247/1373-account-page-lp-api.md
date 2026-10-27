@@ -12,7 +12,7 @@ Open `/account` after sign-in. While `GET /v1/lps/me` is pending, see a loading 
 
 ## Story 2: Edit a writable profile
 
-Change Name on an existing LP, leave Country unchanged, and choose Save profile. The request sends the complete `legal_name`, `country`, and stored `contact_email` to `POST /v1/lps/me`, without a document upload. The saved value remains after reload and Save profile disables until another change. A blank Name cannot be saved; Country may be cleared. With a nonwritable LP, both fields and Save profile are disabled. A 409 refreshes the server state while leaving unsaved draft text visible.
+Change Name on an existing LP, leave Country unchanged, and choose Save profile. The request sends the complete `legal_name`, `country`, and stored `contact_email` to `POST /v1/lps/me`, without a document upload. The saved value remains after reload and Save profile disables until another change. A blank Name cannot be saved; Country may be cleared. With a nonwritable LP, both fields are disabled and Save profile is not shown. A 409 refreshes the server state while leaving unsaved draft text visible.
 
 ## Story 3: Upload and delete persisted documents
 

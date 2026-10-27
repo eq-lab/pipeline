@@ -176,6 +176,7 @@ function AccountPageContent({
             onCountryChange={account.setCountry}
             onSave={() => void account.saveProfile()}
             canSave={account.canSaveProfile}
+            writable={account.writable}
             disabled={
               !account.writable ||
               account.busy ||

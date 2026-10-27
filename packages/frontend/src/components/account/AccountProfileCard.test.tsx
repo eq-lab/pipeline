@@ -20,6 +20,7 @@ function renderCard(
       onCountryChange={vi.fn()}
       onSave={vi.fn()}
       canSave
+      writable
       disabled={false}
       busy={false}
       {...props}
@@ -57,5 +58,34 @@ describe("AccountProfileCard country", () => {
       expect(box).toHaveAttribute("placeholder", "Search country"),
     );
     expect(box).toBeDisabled();
+  });
+});
+
+describe("AccountProfileCard save button", () => {
+  it("renders no Save profile button when the LP is not writable", () => {
+    renderCard({ writable: false, disabled: true });
+    expect(
+      screen.queryByRole("button", { name: /save profile/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders Save profile when writable, gated by canSave", () => {
+    const { rerender } = renderCard({ canSave: false });
+    expect(screen.getByRole("button", { name: "Save profile" })).toBeDisabled();
+    rerender(
+      <AccountProfileCard
+        legalName="Acme"
+        country="NL"
+        savedCountry="NL"
+        onLegalNameChange={vi.fn()}
+        onCountryChange={vi.fn()}
+        onSave={vi.fn()}
+        canSave
+        writable
+        disabled={false}
+        busy={false}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Save profile" })).toBeEnabled();
   });
 });
