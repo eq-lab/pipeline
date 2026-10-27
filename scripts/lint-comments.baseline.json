@@ -460,7 +460,7 @@
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/evm/useWithdrawalQueue.ts": {
-    "header": 22,
+    "header": 20,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/index.ts": {
@@ -808,11 +808,11 @@
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-record-coupon-page.test.tsx": {
-    "header": 18,
+    "header": 17,
     "nodeIds": 1
   },
   "packages/trustee/src/routes/-record-coupon.test.ts": {
-    "header": 7,
+    "header": 6,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-record-repayment-page.test.tsx": {
@@ -905,14 +905,6 @@
   },
   "packages/trustee/src/utils/-userError.test.ts": {
     "header": 10,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/utils/formatDate.ts": {
-    "header": 12,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/utils/formatUsd.ts": {
-    "header": 33,
     "nodeIds": 0
   },
   "packages/trustee/src/utils/stellarSacUnits.ts": {

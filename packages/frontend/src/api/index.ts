@@ -32,7 +32,7 @@ export {
   deleteMyDocument,
 } from "./lps";
 export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
-export { useRequests } from "./useRequests";
+export { useRequests, useInvalidateRequests } from "./useRequests";
 export type {
   RequestItem,
   RequestType,
@@ -69,12 +69,12 @@ export type {
   UseStatsPricesResult,
 } from "./useStatsPrices";
 export { usePnl } from "./usePnl";
-export {
-  useChainServed,
-  isUnknownChainError,
-  chainDisplayName,
+export { useChainServed, chainDisplayName } from "./useChainServed";
+export type {
+  ChainItem,
+  ChainsResponse,
+  UseChainServedResult,
 } from "./useChainServed";
-export type { UseChainServedResult } from "./useChainServed";
 export type { PnlResponse, UsePnlResult, VaultPnl } from "./usePnl";
 export { useLoanBook } from "./useLoanBook";
 export type {

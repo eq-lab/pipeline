@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-155.**
+**Next free number: TD-156.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -208,7 +208,7 @@ line, whichever section it lands in.
 - **Impact:** The `block_timestamp` column for Stellar rows in `share_prices` is wall-clock sample time rather than ledger close-time. The skew is well below the API's hour/day bucketing granularity — no user-visible impact at current polling cadences. Exact timestamps matter if sub-minute granularity is ever needed.
 - **Suggested fix:** Fetch the canonical ledger close-time via `getLedgerEntries(LedgerHeader)` using the `latestLedger` sequence returned by simulate. This adds one extra RPC round-trip per poll tick. Implement when downstream consumers require exact-to-the-ledger timestamps.
 
-### TD-19: StepRow still uses raw className override instead of Button size="compact"
+### TD-19: StepRow still uses raw className override instead of Button size="compact" [RESOLVED 2026-10-26 / #1331]
 
 - **Date:** 2026-06-18
 - **Location:** `packages/ui/src/components/StepRow/StepRow.tsx` (~lines 170–178)
@@ -219,6 +219,7 @@ line, whichever section it lands in.
   sites of the same component.
 - **Suggested fix:** Replace `className="!h-8 ..."` in `StepRow.tsx` with `size="compact"` on
   the `Button` prop; adjust any test assertions that relied on the className value directly.
+- **Resolution (2026-10-26, #1331):** `StepRow` now renders `Button variant="primary-dark" size="compact" className="w-22"`; compact supplies the 32px height.
 
 ### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal` [RESOLVED 2026-10-19 / #1579]
 
@@ -2082,14 +2083,14 @@ line, whichever section it lands in.
 - **Impact:** The field carries no signal for minter-era loans and its inputs are not like for like.
 - **Suggested fix:** Revisit the field's semantics and likely retire it (and the trustee close gate that reads it) in a later issue.
 
-### TD-149: Portfolio still reads loan snapshots unscoped by LoanRegistry address [PARTIALLY RESOLVED 2026-10-21 / #1595]
+### TD-149: Portfolio read loan snapshots unscoped by LoanRegistry address [RESOLVED 2026-10-26 / #1538]
 
 - **Date:** 2026-10-15
-- **Location:** `packages/shared/src/contract_logs_repo.rs` (`list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`), `packages/api/src/routes/portfolio.rs` — Issue #1526.
+- **Location:** `packages/shared/src/contract_logs_repo.rs` (the former unscoped `list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`, all deleted in #1538), `packages/api/src/routes/portfolio.rs` — Issue #1526.
 - **Gap:** LoanBook, financial position, capital allocation (#1586) and the dashboard (#1595) use the registry-scoped repo methods, while `GET /v1/stats/yield` in `portfolio.rs` keeps the chain-only variants, so each query pair is duplicated.
 - **Impact:** After a LoanRegistry redeploy on the same chain, portfolio yield can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
 - **Suggested fix:** #1538 migrates the portfolio to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.
-- **Status:** financial position and capital allocation migrated in #1586, the dashboard in #1595. Portfolio (`/v1/stats/yield`) is still open under #1538.
+- **Status:** resolved. Financial position and capital allocation migrated in #1586, the dashboard in #1595, `/v1/stats/yield` in #1538 (scoped readers added, unscoped duplicates deleted).
 
 ### TD-150: The submission link is not LoanRegistry-scoped
 
@@ -2123,11 +2124,18 @@ line, whichever section it lands in.
 - **Impact:** Inconsistent page for an EVM session until EVM cash management exists (the EVM arms of the custody read and the ramp endpoints are not built — see TD-151/TD-152 for the same shape on loans).
 - **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
 
-### TD-154: The LP detects an unserved chain by probing `/v1/pnl` with a synthetic wallet
+### TD-154: `useStakeFlow` step 1 reads the aggregated `useEvmToken().error`, so read failures paint the approve row
+
+- **Date:** 2026-10-26
+- **Location:** `packages/frontend/src/wallet/useStakeFlow.ts` (EVM step 1 error) — found while fixing #1658.
+- **Gap:** The deposit/withdraw flow now derives step-1 `"error"` from `useEvmToken().approveError` (approval errors only). The stake flow still uses the aggregated `error`, which also carries balance and metadata read failures.
+- **Impact:** A failed `balanceOf` / `decimals` read can show an "Approve" error on the stake step row.
+- **Suggested fix:** Switch `useStakeFlow` to `approveError`, with a test mirroring the `useDepositFlow` one.
+
+### TD-155: The LP detects an unserved chain by probing `/v1/pnl` with a synthetic wallet [RESOLVED 2026-10-27 / #1605]
 
 - **Date:** 2026-10-22
 - **Location:** `packages/frontend/src/api/useChainServed.ts` — Issue #1605 (PR #1619).
 - **Gap:** The API exposes no configured-chains list, so the LP learns whether the active EVM chain is served by issuing `GET /v1/pnl?wallet=0x000…0&chain_id=<id>` once per chain and reading a `400 unknown chain_id`. It works because `RequiredChain` validates `chain_id` before the wallet is parsed, but it is a workaround: a synthetic wallet on an analytics endpoint, one extra request per chain per session, and a coupling to that handler's argument order (if the wallet were parsed first, the probe would misreport an unserved chain as served — which the hook treats as the safe default, so the failure mode is "no notice", never a false notice).
 - **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
-- **Suggested fix:** #1608 (`GET /v1/chains`). Then `useChainServed` swaps its probe body for the endpoint and the Trustee hides unserved target chains — nothing else changes.
-
+- **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.

@@ -8,8 +8,8 @@
   },
   "scripts": {
     "lint": "eslint . && prettier --check .",
-    "test": "TZ=UTC vitest run",
-    "test:watch": "TZ=UTC vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@creit.tech/stellar-wallets-kit": "2.2.0",

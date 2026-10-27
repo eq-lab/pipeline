@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -9,12 +10,15 @@ use bigdecimal::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::book_weighting::{normalise_rate_events, weighted_mean, LoanAccrual};
+use shared::chains::ChainKind;
+use shared::contract_logs_repo::{LifecycleRow, LoanRateEventRow, LoanSnapshotRow};
+use shared::loan_status::LoanTimeline;
 
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::{Interval, MAX_SAMPLES};
-use crate::routes::common::RequiredChain;
+use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -47,7 +51,7 @@ pub struct SamplePoint {
     /// Weighted-average book APY as a decimal fraction (e.g. `0.13` = 13 %).
     /// `null` when no loans are active at this sample.
     pub apy: Option<f64>,
-    /// Cumulative senior interest accrued, USDC (6-decimal string, e.g. `"986.301369"`).
+    /// Cumulative senior interest accrued, USDC (6-decimal string, e.g. `"985.626283"`).
     pub accrued: String,
     /// Senior principal outstanding at this sample, USDC (6-decimal string).
     /// Pre-amortisation this equals the sum of `original_senior_tranche` over active
@@ -95,15 +99,19 @@ async fn get_yield(
     RequiredChain(chain): RequiredChain,
     Query(query): Query<YieldQuery>,
 ) -> Result<Json<Vec<SamplePoint>>, ApiError> {
-    handle_yield(&state, chain.chain_id, query).await.map(Json)
+    handle_yield(&state, chain.chain_id, chain.kind, query)
+        .await
+        .map(Json)
 }
 
 async fn handle_yield(
     state: &AppState,
     chain_id: i64,
+    kind: ChainKind,
     query: YieldQuery,
 ) -> Result<Vec<SamplePoint>, ApiError> {
     let step = query.interval.step_secs();
+    let registry = loan_registry_address(state, chain_id)?;
 
     // The window always ends at the current server time — this API doesn't expose
     // historical windows. Matches `/v1/stats/prices` semantics.
@@ -120,7 +128,7 @@ async fn handle_yield(
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match state
             .contract_logs_repo
-            .get_earliest_origination_date(&state.pool, chain_id)
+            .get_earliest_origination_date_for_registry(&state.pool, chain_id, registry)
             .await?
         {
             Some(earliest) => earliest,
@@ -144,7 +152,7 @@ async fn handle_yield(
     // indexer checkpoints; neither is an incorrect computation.
     let loans = state
         .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
+        .list_latest_loan_snapshots(&state.pool, chain_id, registry, to)
         .await?;
 
     if loans.is_empty() {
@@ -153,10 +161,25 @@ async fn handle_yield(
 
     let events = state
         .contract_logs_repo
-        .list_loan_lifecycle_events(&state.pool, chain_id, to)
+        .list_loan_lifecycle_events_for_registry(&state.pool, chain_id, registry, to)
         .await?;
 
-    Ok(compute_series(&loans, &events, from, to, step))
+    // Event `outstanding` is raw on-chain units (7 dp on Stellar); the snapshots and the
+    // `accrued` output are base-6, so normalise per chain kind before integrating.
+    let mut rate_events = state
+        .contract_logs_repo
+        .list_loan_rate_events_for_registry(&state.pool, chain_id, registry, to)
+        .await?;
+    normalise_rate_events(kind, &mut rate_events);
+
+    Ok(compute_series(
+        &loans,
+        &events,
+        &rate_events,
+        from,
+        to,
+        step,
+    ))
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -164,8 +187,10 @@ async fn handle_yield(
 /// Resolved per-loan view used inside `compute_series`.
 struct LoanView<'a> {
     row: &'a LoanSnapshotRow,
-    /// Effective end of this loan: `min(original_maturity_date, earliest LoanClosed or LoanDefaulted timestamp)`.
-    end_at: i64,
+    /// This loan's outstanding- and rate-changing events, in chain order.
+    accrual: LoanAccrual,
+    /// Status timeline of this loan (`shared::loan_status`).
+    timeline: LoanTimeline,
 }
 
 /// Pure computation: no DB calls. Takes pre-fetched loans and lifecycle events,
@@ -174,13 +199,18 @@ struct LoanView<'a> {
 /// # Formulas
 ///
 /// **Weighted-average APY (decimal fraction)** — computed over *active* loans at `t`
-/// (`originationᵢ <= t < endᵢ`). `None` when no loans are active.
-/// `apy = (Σᵢ Pᵢ · R_bps_i / Σᵢ Pᵢ) / 10_000`.
+/// (originated and Approved / Performing / WatchList at `t`), weighted by each loan's outstanding senior at `t`
+/// (`Oᵢ(t)`, the `outstanding` of its latest outstanding-changing event, else 0) at the
+/// rate in force at `t` (`R_bps_i(t)`: genesis rate updated by `EconomicsAmended` /
+/// `LoanRolledOver`). `None` when no loans are active or `Σᵢ Oᵢ(t) = 0`.
+/// `apy = (Σᵢ Oᵢ(t) · R_bps_i(t) / Σᵢ Oᵢ(t)) / 10_000`.
 ///
 /// **Cumulative accrued senior interest** (USDC, 6dp decimal string) — summed over all
-/// loans that have *started* by `t` (`originationᵢ <= t`), including matured loans
-/// which contribute their final accrual frozen at `endᵢ`.
-/// `accrued = Σᵢ Pᵢ · Rᵢ · (min(t, endᵢ) − startᵢ) / (365 · 86_400)`.
+/// loans that have *started* by `t` (`originationᵢ <= t`), including closed loans
+/// which contribute their final accrual frozen at the close. Only active time counts:
+/// accrual runs past maturity, pauses in Default, resumes after a cure and stops at Close.
+/// `accrued = Σᵢ ∫ Oᵢ(s) · R_bps_i(s) ds / (10_000 · 31_557_600)` over the active `[from, until)`
+/// intervals clipped to `t` (`shared::book_weighting::accrued_over_intervals`).
 ///
 /// **Principal outstanding** (USDC, 6dp decimal string) — `Σᵢ Pᵢ` over active loans.
 ///
@@ -189,35 +219,33 @@ struct LoanView<'a> {
 pub fn compute_series(
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
+    rate_events: &[LoanRateEventRow],
     from: i64,
     to: i64,
     step: i64,
 ) -> Vec<SamplePoint> {
-    // Pre-compute per-loan end_at (earliest LoanClosed / LoanDefaulted, else scheduled).
+    let mut rate_events_by_loan: HashMap<String, Vec<&LoanRateEventRow>> = HashMap::new();
+    for e in rate_events {
+        rate_events_by_loan
+            .entry(e.loan_id.normalized().to_string())
+            .or_default()
+            .push(e);
+    }
+
     let loan_views: Vec<LoanView> = loans
         .iter()
         .map(|loan| {
-            let lifecycle_end = events
-                .iter()
-                .filter(|e| {
-                    (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
-                        && e.loan_id == loan.loan_id
-                })
-                .map(|e| e.block_timestamp)
-                .min();
+            let rate_events = rate_events_by_loan
+                .get(&loan.loan_id.normalized().to_string())
+                .map_or(&[][..], Vec::as_slice);
 
-            let end_at = match lifecycle_end {
-                Some(lc) => loan.snapshot.original_maturity_date.min(lc),
-                None => loan.snapshot.original_maturity_date,
-            };
-
-            LoanView { row: loan, end_at }
+            LoanView {
+                row: loan,
+                accrual: LoanAccrual::new(loan.snapshot.senior_interest_rate_bps, rate_events),
+                timeline: LoanTimeline::for_loan(loan, events),
+            }
         })
         .collect();
-
-    // Denominators for accrual formula
-    let secs_per_year = BigDecimal::from(365_i64 * 86_400_i64);
-    let ten_thousand = BigDecimal::from(10_000_i64);
 
     // Build sample grid: from, from+step, …, to (always include to as last point)
     let mut timestamps: Vec<i64> = std::iter::successors(Some(from), |&t| {
@@ -236,48 +264,33 @@ pub fn compute_series(
     let mut series: Vec<SamplePoint> = Vec::with_capacity(timestamps.len());
 
     for t in timestamps {
-        // Active loans: origination_date <= t < end_at
         let active: Vec<&LoanView> = loan_views
             .iter()
-            .filter(|lv| lv.row.snapshot.origination_date <= t && t < lv.end_at)
+            .filter(|lv| lv.timeline.is_active_at(t))
             .collect();
 
         let principal_sum: BigDecimal = active
             .iter()
             .map(|lv| lv.row.snapshot.original_senior_tranche.clone())
             .sum();
-
-        // APY as decimal fraction (e.g. 0.13).
-        let apy: Option<f64> = if principal_sum == 0_i64 {
-            None
-        } else {
-            let numerator: BigDecimal = active
-                .iter()
-                .map(|lv| {
-                    lv.row.snapshot.original_senior_tranche.clone()
-                        * BigDecimal::from(i64::from(lv.row.snapshot.senior_interest_rate_bps))
-                })
-                .sum();
-            // Divide by 10_000 inside BigDecimal arithmetic, then convert the
-            // small rate fraction to f64 — well within mantissa precision.
-            let ratio = numerator / &principal_sum / &ten_thousand;
-            ratio.with_scale_round(8, RoundingMode::HalfUp).to_f64()
-        };
+        // APY as decimal fraction (e.g. 0.13), outstanding-weighted at `t`.
+        let apy: Option<f64> = weighted_mean(active.iter().map(|lv| {
+            (
+                lv.accrual.outstanding_at(t),
+                BigDecimal::from(i64::from(lv.accrual.rate_bps_at(t))),
+            )
+        }))
+        .and_then(|bps| {
+            (bps / BigDecimal::from(10_000_i64))
+                .with_scale_round(8, RoundingMode::HalfUp)
+                .to_f64()
+        });
 
         // Cumulative accrued in USDC base units.
         let accrued_base: BigDecimal = loan_views
             .iter()
             .filter(|lv| lv.row.snapshot.origination_date <= t)
-            .map(|lv| {
-                // Defensive .max(0) — guards against pathological data (e.g. a
-                // re-org-artifact `LoanClosed.block_timestamp < origination_date`).
-                let active_secs =
-                    BigDecimal::from((t.min(lv.end_at) - lv.row.snapshot.origination_date).max(0));
-                lv.row.snapshot.original_senior_tranche.clone()
-                    * BigDecimal::from(i64::from(lv.row.snapshot.senior_interest_rate_bps))
-                    * active_secs
-                    / (&ten_thousand * &secs_per_year)
-            })
+            .map(|lv| lv.accrual.accrued(&lv.timeline.active_intervals(t)))
             .sum();
 
         series.push(SamplePoint {

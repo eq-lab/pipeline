@@ -45,9 +45,6 @@ pub struct LoanSnapshot {
     pub next_repayment_id: BigDecimal,
     pub status: String,
     /// Rollover-aware maturity timestamp (may differ from `original_maturity_date` after rollovers).
-    /// NOTE: The portfolio yield compute uses `original_maturity_date` for the scheduled-end
-    /// boundary to preserve existing yield-computation semantics. `current_maturity_timestamp`
-    /// is stored for informational/future use.
     pub current_maturity_timestamp: i64,
     /// Basis points on both arms; the readers convert from the contract's `ONE = 1_000_000` scale.
     /// `#[serde(default)]`: pre-rework rows predate this field.

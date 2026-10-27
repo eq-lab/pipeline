@@ -3,13 +3,13 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use sqlx::PgPool;
 
-use crate::chains::{normalize_usdc_amount, parse_chain_type};
+use crate::chains::{normalize_usdc_amount, parse_chain_type, ChainKind};
 use crate::loan_event_params::json_i64;
 use crate::loan_snapshot::LoanSnapshot;
 
 /// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
 /// the "latest snapshot per loan" queries below (`list_latest_loan_snapshots`,
-/// `list_latest_loan_snapshots_for_chain`, `get_loan_snapshot_as_of`,
+/// `get_loan_snapshot_as_of`,
 /// `latest_status_by_loans`, `get_latest_loan_snapshot`). A name missing from this list has its snapshot
 /// written but never read back as "latest" — see issue #1433 finding F3. All of these
 /// queries must stay derived from this single list rather than hand-copied.
@@ -30,17 +30,54 @@ pub const LOAN_LIFECYCLE_EVENT_NAMES: &[&str] = &[
     "InterestAdjusted",
 ];
 
+pub const LOAN_STATUS_EVENT_NAMES: &[&str] = &["LoanStatusUpdated", "LoanDefaulted", "LoanClosed"];
+
 pub const LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
          chain_id,
          event_name,
          block_timestamp,
-         (params->>'loan_id')::numeric AS loan_id
+         (params->>'loan_id')::numeric AS loan_id,
+         params->'event'->>'status' AS status
      FROM contract_logs
      WHERE chain_id = $1
        AND contract_address = $4
        AND event_name = ANY($2)
        AND block_timestamp <= $3
-     ORDER BY block_timestamp, log_index";
+     ORDER BY block_number, log_index";
+
+pub const LOAN_RATE_EVENTS_FOR_REGISTRY_SQL: &str = "SELECT
+         (params->>'loan_id')::numeric AS loan_id,
+         event_name,
+         block_timestamp,
+         (params->'event'->>'outstanding')::numeric AS outstanding,
+         (params->'event'->>'new_rate')::bigint AS new_rate
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $4
+       AND event_name = ANY($2)
+       AND block_timestamp <= $3
+     ORDER BY block_number, log_index";
+
+pub const EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL: &str =
+    "SELECT MIN((params->'snapshot'->>'origination_date')::bigint)
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = 'LoanDrawn'";
+
+pub const LOAN_RATE_EVENTS_FOR_LOAN_SQL: &str = "SELECT
+         (params->>'loan_id')::numeric AS loan_id,
+         event_name,
+         block_timestamp,
+         (params->'event'->>'outstanding')::numeric AS outstanding,
+         (params->'event'->>'new_rate')::bigint AS new_rate
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $4
+       AND event_name = ANY($2)
+       AND (params->>'loan_id')::numeric = $5
+       AND block_timestamp <= $3
+     ORDER BY block_number, log_index";
 
 pub const LIST_LATEST_LOAN_SNAPSHOTS_SQL: &str =
     "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
@@ -107,8 +144,10 @@ pub const LOAN_ECONOMICS_EVENTS_SQL: &str = "SELECT
        AND block_timestamp <= $3
      ORDER BY block_number, log_index";
 
-pub const LEGACY_YIELD_MINTED_SQL: &str =
-    "SELECT COALESCE(SUM((cl.params->>'s_plusd_amount')::numeric), 0)
+pub const LEGACY_YIELD_MINTED_SQL: &str = "SELECT COALESCE(SUM(
+                COALESCE((cl.params->>'s_plusd_amount')::numeric, 0)
+              + COALESCE((cl.params->>'treasury_amount')::numeric, 0)
+            ), 0)
      FROM contract_logs cl
      WHERE cl.chain_id = $1
        AND cl.event_name = 'YieldMinted'
@@ -135,7 +174,16 @@ pub const LIST_REPAYMENT_MINTS_SQL: &str = "SELECT (r.params->>'loan_id')::numer
             r.block_timestamp,
             COALESCE((r.params->>'interest_minted')::numeric, 0) AS interest_minted,
             pr.fee_amount,
-            rv.reversed_at
+            rv.reversed_at,
+            EXISTS (
+                SELECT 1
+                FROM contract_logs d
+                WHERE d.chain_id = r.chain_id
+                  AND d.contract_address = $4
+                  AND d.event_name = 'LoanDefaulted'
+                  AND (d.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
+                  AND (d.block_number, d.log_index) < (r.block_number, r.log_index)
+            ) AS carved_out
      FROM contract_logs r
      JOIN LATERAL (
          SELECT (p.params->'event'->>'mgmt_fee')::numeric
@@ -188,6 +236,129 @@ pub const LIST_WITHDRAWAL_QUEUE_ROWS_SQL: &str = "SELECT r.chain_id,
        AND r.event_name = 'WithdrawalRequested'
        AND r.block_timestamp <= $2";
 
+/// Signed raw (on-chain scale) PLUSD supply steps of one chain: `$1` chain id, `$2` `to_unix`,
+/// `$3` the chain's LoanRegistry address. See `docs/product-specs/dashboards-tvl-ledger.md`.
+pub const PLUSD_LEDGER_SQL: &str = "WITH repayment_fees AS (
+         SELECT DISTINCT ON (p.chain_id, p.tx_hash,
+                             (p.params->>'loan_id')::numeric,
+                             (p.params->'event'->>'repayment_id')::numeric)
+                p.chain_id, p.tx_hash,
+                (p.params->>'loan_id')::numeric AS loan_id,
+                (p.params->'event'->>'repayment_id')::numeric AS repayment_id,
+                COALESCE((p.params->'event'->>'mgmt_fee')::numeric, 0)
+              + COALESCE((p.params->'event'->>'perf_fee')::numeric, 0)
+              + COALESCE((p.params->'event'->>'oet_alloc')::numeric, 0) AS fee_amount
+         FROM contract_logs p
+         WHERE p.chain_id = $1
+           AND p.contract_address = $3
+           AND p.event_name = 'PaymentRecorded'
+         ORDER BY p.chain_id, p.tx_hash,
+                  (p.params->>'loan_id')::numeric,
+                  (p.params->'event'->>'repayment_id')::numeric,
+                  p.log_index DESC
+     )
+     SELECT block_timestamp, block_number, log_index, delta
+     FROM (
+         SELECT block_timestamp, block_number, log_index,
+                CASE event_name
+                    WHEN 'DepositRequested' THEN COALESCE((params->>'amount')::numeric, 0)
+                    WHEN 'WireIn'           THEN COALESCE((params->>'amount')::numeric, 0)
+                    WHEN 'WireInReturned'   THEN -COALESCE((params->>'amount')::numeric, 0)
+                    WHEN 'WireOutSettled'   THEN -COALESCE((params->>'amount')::numeric, 0)
+                    WHEN 'LossAbsorbed'     THEN -COALESCE((params->>'pulled')::numeric, 0)
+                    WHEN 'YieldMinted'      THEN COALESCE((params->>'s_plusd_amount')::numeric, 0)
+                                               + COALESCE((params->>'treasury_amount')::numeric, 0)
+                    WHEN 'CashRecorded'     THEN COALESCE((params->>'delta')::numeric, 0)
+                END AS delta
+         FROM contract_logs
+         WHERE chain_id = $1
+           AND block_timestamp <= $2
+           AND (event_name IN ('DepositRequested', 'WireIn', 'WireInReturned', 'WireOutSettled',
+                               'LossAbsorbed', 'YieldMinted')
+                OR (event_name = 'CashRecorded' AND params->>'reason' = 'Income'))
+         UNION ALL
+         SELECT c.block_timestamp, c.block_number, c.log_index,
+                -COALESCE((c.params->>'amount')::numeric, 0)
+         FROM contract_logs c
+         WHERE c.chain_id = $1
+           AND c.block_timestamp <= $2
+           AND c.event_name = 'RequestClaimed'
+           AND EXISTS (
+               SELECT 1
+               FROM contract_logs q
+               WHERE q.chain_id = c.chain_id
+                 AND q.contract_address = c.contract_address
+                 AND q.event_name = 'WithdrawalRequested'
+                 AND q.params->>'request_id' = c.params->>'request_id'
+           )
+         UNION ALL
+         SELECT block_timestamp, block_number, log_index,
+                -COALESCE((params->'event'->>'burned')::numeric, 0)
+         FROM contract_logs
+         WHERE chain_id = $1
+           AND block_timestamp <= $2
+           AND contract_address = $3
+           AND event_name = 'LoanWrittenDown'
+         UNION ALL
+         SELECT r.block_timestamp, r.block_number, r.log_index,
+                COALESCE((r.params->>'interest_minted')::numeric, 0) + COALESCE(pr.fee_amount, 0)
+         FROM contract_logs r
+         LEFT JOIN repayment_fees pr
+                ON pr.chain_id = r.chain_id
+               AND pr.tx_hash = r.tx_hash
+               AND pr.loan_id = (r.params->>'loan_id')::numeric
+               AND pr.repayment_id = (r.params->>'repayment_id')::numeric
+         WHERE r.chain_id = $1
+           AND r.block_timestamp <= $2
+           AND r.event_name = 'CashRepaid'
+         UNION ALL
+         SELECT v.block_timestamp, v.block_number, v.log_index,
+                -(COALESCE((
+                       SELECT SUM(COALESCE((w.params->>'assets')::numeric, 0))
+                       FROM contract_logs w
+                       WHERE w.chain_id = v.chain_id
+                         AND w.tx_hash = v.tx_hash
+                         AND w.event_name = 'StakingWithdrawal'
+                         AND LOWER(w.params->>'sender') = LOWER(v.contract_address)
+                         AND w.log_index < v.log_index
+                         AND w.log_index > COALESCE((
+                             SELECT MAX(v2.log_index)
+                             FROM contract_logs v2
+                             WHERE v2.chain_id = v.chain_id
+                               AND v2.tx_hash = v.tx_hash
+                               AND v2.event_name = 'CashRepaymentReversed'
+                               AND v2.log_index < v.log_index
+                         ), -1)
+                   ), 0)
+                 + COALESCE(orig.carved_interest, 0))
+         FROM contract_logs v
+         LEFT JOIN LATERAL (
+             SELECT CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM contract_logs d
+                        WHERE d.chain_id = r.chain_id
+                          AND d.contract_address = $3
+                          AND d.event_name = 'LoanDefaulted'
+                          AND (d.params->>'loan_id')::numeric = (r.params->>'loan_id')::numeric
+                          AND (d.block_number, d.log_index) < (r.block_number, r.log_index)
+                    ) THEN COALESCE((r.params->>'interest_minted')::numeric, 0) ELSE 0 END
+                    AS carved_interest
+             FROM contract_logs r
+             WHERE r.chain_id = v.chain_id
+               AND r.contract_address = v.contract_address
+               AND r.event_name = 'CashRepaid'
+               AND (r.params->>'loan_id')::numeric = (v.params->>'loan_id')::numeric
+               AND (r.params->>'repayment_id')::numeric = (v.params->>'repayment_id')::numeric
+             ORDER BY r.block_number DESC, r.log_index DESC
+             LIMIT 1
+         ) orig ON TRUE
+         WHERE v.chain_id = $1
+           AND v.block_timestamp <= $2
+           AND v.event_name = 'CashRepaymentReversed'
+     ) ledger
+     WHERE delta IS NOT NULL AND delta <> 0
+     ORDER BY block_number, log_index";
+
 fn decode_snapshot_rows(
     chain_id: i64,
     rows: Vec<sqlx::postgres::PgRow>,
@@ -216,16 +387,30 @@ fn decode_snapshot_rows(
     Ok(result)
 }
 
-/// A loan-end event row fetched from `contract_logs`.
-///
-/// Used by the portfolio yield endpoint to determine each loan's `effective_end`:
-/// `min(scheduled_maturity, earliest LoanClosed / LoanDefaulted block_timestamp)`.
+/// One outstanding-changing or rate-changing loan event (`Disbursed`, `Undisbursed`,
+/// `PaymentRecorded`, `PaymentUnrecorded`, `LoanDefaulted`, `LoanWrittenDown`,
+/// `EconomicsAmended`, `LoanRolledOver`). `outstanding` is `params.event.outstanding`
+/// (raw token units, `None` for the rate events); `new_rate` is `params.event.new_rate`
+/// (contract `ONE = 1_000_000` scale, `None` for the outstanding events).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LoanRateEventRow {
+    pub loan_id: BigDecimal,
+    pub event_name: String,
+    pub block_timestamp: i64,
+    pub outstanding: Option<BigDecimal>,
+    pub new_rate: Option<i64>,
+}
+
+/// A loan status event row (`LoanStatusUpdated`, `LoanDefaulted`, `LoanClosed`) fetched
+/// from `contract_logs`; `status` is `params.event.status`, set only on `LoanStatusUpdated`.
+/// Input of `shared::loan_status::LoanTimeline`.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LifecycleRow {
     pub chain_id: i64,
     pub event_name: String,
     pub block_timestamp: i64,
     pub loan_id: BigDecimal,
+    pub status: Option<String>,
 }
 
 /// One `WithdrawalRequested` event joined to its latest `RequestClaimed` (if any),
@@ -269,19 +454,33 @@ pub struct LoanSnapshotRow {
     pub snapshot: LoanSnapshot,
 }
 
-/// One `DepositRequested` or `WithdrawalRequested` event row.
+/// One signed PLUSD supply step of the TVL ledger (see `PLUSD_LEDGER_SQL`).
 ///
-/// Used by the Dashboard API to compute TVL (running net flow) as a pure function.
-/// `kind` is `"deposit"` (add) or `"withdrawal"` (subtract); callers apply the sign
-/// themselves when aggregating.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct FlowEventRow {
-    /// Block timestamp in Unix seconds.
+/// `delta` is positive for a mint or a pending deposit and negative for a burn. Rows from
+/// [`ContractLogsRepo::list_plusd_ledger`] are base-6 USDC, ordered by `(block_number, log_index)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlusdDeltaRow {
     pub block_timestamp: i64,
-    /// `"deposit"` or `"withdrawal"`.
-    pub kind: String,
-    /// Amount in USDC base units (6-decimal).
-    pub amount: BigDecimal,
+    pub block_number: i64,
+    pub log_index: i64,
+    pub delta: BigDecimal,
+}
+
+/// Normalises raw per-chain ledger deltas to base-6 by normalising the running total and
+/// emitting its change, so a Stellar chain truncates once per prefix, not once per event.
+/// `rows` must already be ordered by `(block_number, log_index)`.
+pub fn normalise_plusd_ledger(kind: ChainKind, rows: Vec<PlusdDeltaRow>) -> Vec<PlusdDeltaRow> {
+    let mut raw_total = BigDecimal::from(0);
+    let mut emitted = BigDecimal::from(0);
+    let mut out = Vec::with_capacity(rows.len());
+    for mut row in rows {
+        raw_total += &row.delta;
+        let normalised = normalize_usdc_amount(kind, &raw_total);
+        row.delta = &normalised - &emitted;
+        emitted = normalised;
+        out.push(row);
+    }
+    out
 }
 
 /// One `YieldMinted` event row.
@@ -304,6 +503,7 @@ pub struct RepaymentMintRow {
     pub interest_minted: BigDecimal,
     pub fee_amount: Option<BigDecimal>,
     pub reversed_at: Option<i64>,
+    pub carved_out: bool,
 }
 
 /// One indexed Stellar `AssetTransfer` event row.
@@ -466,43 +666,8 @@ impl ContractLogsRepo {
         Self { pool }
     }
 
-    /// Return all `LoanClosed` and `LoanDefaulted` events for a given `chain_id` with
-    /// `block_timestamp <= to_unix`, ordered by `(block_timestamp, log_index)`.
-    ///
-    /// Generic over `Executor` so callers can run this inside a transaction alongside
-    /// other reads for a consistent snapshot.
-    pub async fn list_loan_lifecycle_events<'e, E>(
-        &self,
-        executor: E,
-        chain_id: i64,
-        to_unix: i64,
-    ) -> anyhow::Result<Vec<LifecycleRow>>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-    {
-        let event_names = vec!["LoanClosed", "LoanDefaulted"];
-        let rows = sqlx::query_as::<_, LifecycleRow>(
-            "SELECT
-                 chain_id,
-                 event_name,
-                 block_timestamp,
-                 (params->>'loan_id')::numeric AS loan_id
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = ANY($2)
-               AND block_timestamp <= $3
-             ORDER BY block_timestamp, log_index",
-        )
-        .bind(chain_id)
-        .bind(&event_names)
-        .bind(to_unix)
-        .fetch_all(executor)
-        .await?;
-        Ok(rows)
-    }
-
-    /// Like `list_loan_lifecycle_events` but only rows emitted by `contract_address`
-    /// (the configured LoanRegistry), so a registry redeploy cannot mix loan ids.
+    /// `LoanStatusUpdated`/`LoanDefaulted`/`LoanClosed` events emitted by `contract_address`
+    /// (the configured LoanRegistry) with `block_timestamp <= to_unix`, so a registry redeploy cannot mix loan ids.
     pub async fn list_loan_lifecycle_events_for_registry<'e, E>(
         &self,
         executor: E,
@@ -513,12 +678,59 @@ impl ContractLogsRepo {
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let event_names = vec!["LoanClosed", "LoanDefaulted"];
+        let event_names = LOAN_STATUS_EVENT_NAMES.to_vec();
         let rows = sqlx::query_as::<_, LifecycleRow>(LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL)
             .bind(chain_id)
             .bind(&event_names)
             .bind(to_unix)
             .bind(contract_address)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Outstanding- and rate-changing loan events emitted by `contract_address` (the
+    /// configured LoanRegistry) with `block_timestamp <= to_unix`, in chain order. Backs the `/v1/stats/yield`
+    /// `apy` weighting (see `shared::book_weighting`).
+    pub async fn list_loan_rate_events_for_registry<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        contract_address: &str,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanRateEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_FOR_REGISTRY_SQL)
+            .bind(chain_id)
+            .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
+            .bind(to_unix)
+            .bind(contract_address)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows)
+    }
+
+    /// One loan's outstanding- and rate-changing events emitted by `contract_address`
+    /// with `block_timestamp <= to_unix`, in chain order. Raw on-chain units (not normalised).
+    pub async fn list_loan_rate_events_for_loan<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        contract_address: &str,
+        loan_id: &BigDecimal,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanRateEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, LoanRateEventRow>(LOAN_RATE_EVENTS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(crate::book_weighting::RATE_WEIGHT_EVENT_NAMES.to_vec())
+            .bind(to_unix)
+            .bind(contract_address)
+            .bind(loan_id)
             .fetch_all(executor)
             .await?;
         Ok(rows)
@@ -548,43 +760,6 @@ impl ContractLogsRepo {
             .bind(LOAN_LIFECYCLE_EVENT_NAMES)
             .fetch_all(executor)
             .await?;
-        decode_snapshot_rows(chain_id, rows)
-    }
-
-    /// Like `list_latest_loan_snapshots` but filters only by `chain_id` (no
-    /// contract_address). Used by the chain-scoped non-LoanBook API groups until #1538.
-    ///
-    /// Replaces the old `LoanHistoryRepo::list_loans_for_window`.
-    pub async fn list_latest_loan_snapshots_for_chain<'e, E>(
-        &self,
-        executor: E,
-        chain_id: i64,
-        to_unix: i64,
-    ) -> anyhow::Result<Vec<LoanSnapshotRow>>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-    {
-        let rows = sqlx::query(
-            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
-                 chain_id,
-                 (params->>'loan_id')::numeric AS loan_id,
-                 block_number,
-                 log_index::bigint AS log_index,
-                 event_name,
-                 block_timestamp,
-                 params->'snapshot' AS snapshot
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = ANY($3)
-               AND block_timestamp <= $2
-             ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
-        )
-        .bind(chain_id)
-        .bind(to_unix)
-        .bind(LOAN_LIFECYCLE_EVENT_NAMES)
-        .fetch_all(executor)
-        .await?;
-
         decode_snapshot_rows(chain_id, rows)
     }
 
@@ -702,25 +877,23 @@ impl ContractLogsRepo {
     }
 
     /// Earliest `origination_date` (from `params->'snapshot'->>'origination_date'`)
-    /// across all loans on a chain. Used by the API to default the "full history"
-    /// lookback window. Returns `None` if no loan events have been indexed yet.
-    pub async fn get_earliest_origination_date<'e, E>(
+    /// across the loans emitted by `contract_address` (the configured LoanRegistry) on a
+    /// chain. Defaults the "full history" lookback window. `None` if no loan is indexed.
+    pub async fn get_earliest_origination_date_for_registry<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
+        contract_address: &str,
     ) -> anyhow::Result<Option<i64>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let row: Option<(Option<i64>,)> = sqlx::query_as(
-            "SELECT MIN((params->'snapshot'->>'origination_date')::bigint)
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = 'LoanDrawn'",
-        )
-        .bind(chain_id)
-        .fetch_optional(executor)
-        .await?;
+        let row: Option<(Option<i64>,)> =
+            sqlx::query_as(EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL)
+                .bind(chain_id)
+                .bind(contract_address)
+                .fetch_optional(executor)
+                .await?;
         Ok(row.and_then(|(v,)| v))
     }
 
@@ -758,56 +931,42 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
-    /// All `DepositRequested` and `WithdrawalRequested` events for a chain with
-    /// `block_timestamp <= to_unix`, ordered by `block_timestamp`.
+    /// The PLUSD supply ledger of one chain with `block_timestamp <= to_unix`: signed steps,
+    /// oldest first by `(block_number, log_index)`, normalised to base-6 USDC.
     ///
-    /// Used by the Dashboard TVL endpoint to reconstruct the running net flow:
-    /// TVL(t) = Σ DepositRequested.amount − Σ WithdrawalRequested.amount (up to t).
-    /// Both event types carry `amount` in USDC 6-decimal base units.
-    ///
-    /// Returns `kind = "deposit"` for `DepositRequested` rows and
-    /// `kind = "withdrawal"` for `WithdrawalRequested` rows.
-    pub async fn list_flow_events<'e, E>(
+    /// TVL(t) is the running sum: pending deposits (`DepositRequested`), wire-ins, repayment
+    /// interest and fees, income and the legacy `YieldMinted` legs add; `WireInReturned`,
+    /// `WireOutSettled`, withdrawal-queue claims, `LossAbsorbed.pulled`, write-down burns and
+    /// repayment-reversal burns subtract. `loan_registry_address` scopes the registry-sourced
+    /// events. See `docs/product-specs/dashboards-tvl-ledger.md`.
+    pub async fn list_plusd_ledger<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
         to_unix: i64,
-    ) -> anyhow::Result<Vec<FlowEventRow>>
+        loan_registry_address: &str,
+    ) -> anyhow::Result<Vec<PlusdDeltaRow>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
     {
-        let rows = sqlx::query_as::<_, FlowEventRow>(
-            "SELECT
-                 block_timestamp,
-                 CASE event_name
-                     WHEN 'DepositRequested'    THEN 'deposit'
-                     WHEN 'WithdrawalRequested' THEN 'withdrawal'
-                 END AS kind,
-                 -- COALESCE guards a malformed/legacy row missing the `amount`
-                 -- key: without it a single NULL would fail-decode the whole
-                 -- query (non-Option BigDecimal) and 500 every dashboard endpoint.
-                 COALESCE((params->>'amount')::numeric, 0) AS amount
-             FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name IN ('DepositRequested', 'WithdrawalRequested')
-               AND block_timestamp <= $2
-             ORDER BY block_timestamp",
-        )
-        .bind(chain_id)
-        .bind(to_unix)
-        .fetch_all(executor)
-        .await?;
-        // `contract_logs` stores the raw on-chain value; normalize to the canonical
-        // 6-decimal scale here (read time only — see #901).
-        let chain_kind = parse_chain_type(chain_id)?;
+        let rows: Vec<(i64, i64, i64, BigDecimal)> = sqlx::query_as(PLUSD_LEDGER_SQL)
+            .bind(chain_id)
+            .bind(to_unix)
+            .bind(loan_registry_address)
+            .fetch_all(executor)
+            .await?;
         let rows = rows
             .into_iter()
-            .map(|mut r| {
-                r.amount = normalize_usdc_amount(chain_kind, &r.amount);
-                r
-            })
+            .map(
+                |(block_timestamp, block_number, log_index, delta)| PlusdDeltaRow {
+                    block_timestamp,
+                    block_number,
+                    log_index,
+                    delta,
+                },
+            )
             .collect();
-        Ok(rows)
+        Ok(normalise_plusd_ledger(parse_chain_type(chain_id)?, rows))
     }
 
     /// All `YieldMinted` events for a chain with `block_timestamp <= to_unix`,
@@ -855,7 +1014,8 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
-    /// Raw sum of the legacy `YieldMinted.s_plusd_amount` attributable to a single
+    /// Raw sum of the legacy `YieldMinted` `s_plusd_amount + treasury_amount`
+    /// (vault leg plus fee leg; missing keys count as 0) attributable to a single
     /// loan, in on-chain base units (not normalised; see `shared::minted_yield`).
     ///
     /// Per-loan attribution goes through `yield_mint_outbox`: each confirmed mint
@@ -891,8 +1051,9 @@ impl ContractLogsRepo {
 
     /// Minter `CashRepaid` rows (optionally for one loan) up to `to_unix`, each
     /// carrying the fee leg (`mgmt_fee + perf_fee + oet_alloc`) of the matching
-    /// `PaymentRecorded` row and the earliest matching `CashRepaymentReversed`
-    /// timestamp. Raw on-chain scale.
+    /// `PaymentRecorded` row, the earliest matching `CashRepaymentReversed`
+    /// timestamp and the loan's earliest registry `LoanDefaulted` timestamp
+    /// (`carved_out`: a registry `LoanDefaulted` strictly earlier by `(block_number, log_index)`). Raw on-chain scale.
     /// Chain-scoped; the `PaymentRecorded` match (same `tx_hash`, `loan_id`,
     /// `repayment_id`) is required and must come from `loan_registry_address`, so a
     /// `CashRepaid` row with no such record is excluded entirely. A reversal must

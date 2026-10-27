@@ -154,6 +154,16 @@ export type LoanDetailVariant =
   | "disbursing"
   | "matured";
 
+export type LifecycleStatus = "Performing" | "WatchList";
+
+// spec: docs/frontend/trustee-flows.md#wired-actions.
+export function lifecycleStatusOf(
+  entry: LoanBookEntry | undefined | null,
+): LifecycleStatus | null {
+  const raw = entry?.onchain_status;
+  return raw === "Performing" || raw === "WatchList" ? raw : null;
+}
+
 export interface UseLoanDetailResult {
   /** Driven by the loan-book fetch (the hero source). */
   state: LoanDetailState;
@@ -162,6 +172,7 @@ export interface UseLoanDetailResult {
   /** Status-selected layout — the view branches on this before rendering. */
   variant: LoanDetailVariant;
   hero: HeroView;
+  lifecycleStatus: LifecycleStatus | null;
   /** Lifecycle stepper — rendered only by the `performing`/`disbursing` layout (none on Watchlist/Matured). */
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
@@ -683,6 +694,12 @@ export function buildRegistryState(
   return { state: "ready", errorMessage: null, errorDetails: null, rows: [] };
 }
 
+export function ccrSeriesFrom(
+  entry: Pick<LoanBookEntry, "maturity" | "duration_days"> | undefined,
+): number | null {
+  return entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
+}
+
 /**
  * spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
  */
@@ -718,10 +735,7 @@ export function useLoanDetail(
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
-  // CCR-trend series (#879), origination through now, daily. Self-disables
-  // until `from` is known; only built for the Watchlist variant.
-  const ccrFrom =
-    entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
+  const ccrFrom = ccrSeriesFrom(entry);
   const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
 
   const state: LoanDetailState = loanBook.isLoading
@@ -761,6 +775,7 @@ export function useLoanDetail(
     errorDetails: loanBookError?.details ?? null,
     variant,
     hero: buildHero(loanId, entry),
+    lifecycleStatus: lifecycleStatusOf(entry),
     lifecycle: buildLifecycle(entry?.status),
     tiles,
     registry: buildRegistryState(financials, entry?.protection ?? null),

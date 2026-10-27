@@ -61,12 +61,38 @@ At the end the hook selects the active-chain, active-direction values and return
 
 ### Business rules
 
-- **Stellar minimum deposit is $1,000, frontend-owned.** `STELLAR_MIN_DEPOSIT = 1000 × 10^7`.
-  Soroban exposes no on-chain minimum getter, so this stays a Stellar-specific frontend rule until
-  the contract or API provides a network value. (History: #598 lowered it to $1; #641 restored
-  $1,000.) EVM takes its minimum from the on-chain `useDepositManagerMinDeposit`.
+- **Minimum deposit comes from the contract on both chains (#1658).** Stellar reads Soroban
+  `min_deposit()` (i128) through `useStellarDepositManagerMinDeposit`, EVM reads `minDeposit()`
+  through `useDepositManagerMinDeposit`; both are read once per page lifetime. The frontend owns no
+  minimum value. (History: #598 lowered the old hard-coded value to $1; #641 restored $1,000; #1658
+  removed it.) Gating is undefined-safe on both chains: until the read resolves `isReady`,
+  `meetsMin` and `hasBalance` are not true, Confirm is disabled, the Min chip is a no-op and
+  `minChipLabel` is `"Min"`. A stale cached minimum surfaces as a contract revert through the
+  normal tx error path.
 - **Both trustlines before Confirm.** On Stellar, both the PLUSD and USDC trustlines must be present
   before the Confirm step can proceed (per issue #604, Q3).
+- **Amount never exceeds the balance (#1628).** Every direction of both flows — deposit included —
+  gates its step CTAs on `amountBig <= balance` and exposes `exceedsBalance` so the page renders an
+  `InlineError` "Insufficient balance" under the input while the typed amount is over the live
+  balance (never while the amount is locked to an in-flight request). Quick-amount chips write
+  `formatUsdcInput` (viem `formatUnits`, exact, no grouping, no 2-dp rounding) so **Max equals
+  the balance to the last base unit** on 6-, 7- and 18-dp tokens, and 25/50/75% are computed in
+  base units with BigInt floor division, so they can never round above the balance. The Min and
+  `$5,000` / `$10,000` deposit chips are not clamped: a chip above the balance simply trips the
+  insufficient-balance gate.
+
+### EVM token decimals
+
+EVM PLUSD and sPLUSD are **6-decimal** tokens (`PipelineUSD.sol`; the ERC-4626 vault has no
+decimals offset) — never 18, never hard-coded (#1627). Every EVM scale comes from the token's
+`decimals()` read: `useEvmToken(...).decimals` where the token is already mounted (home route,
+stake flow), or `useEvmStakeDecimals()` (`@/wallet`, `{ plusd, splusd }`, each `undefined` while
+loading) for consumers that only need the scale — `HomeStatsStrip`, `RecentActivityCard` and the
+Transactions page pass it into `renderRequestRow` (assets at `plusd`, shares at `splusd`).
+While a scale is still `undefined` the display helpers render their empty value (`isDisplayZero`
+→ `true`, `formatBigintCurrency` → `$0.00`, `formatTokenAmount` → `—`, `buildSeries` → `null`)
+instead of mis-scaling. Request amounts from `/v1/requests` are at the same token decimals.
+Mocks (`/test` scenarios and route tests) seed `6`.
 
 ### XLM funding rule
 
@@ -111,6 +137,21 @@ Always `false` on EVM.
   "confirmed" forever. To prevent that, when the on-chain request reads back as already claimed the
   record is treated as inactive (`*InflightActive`) and physically cleared. A claimed request is
   terminal, so this reconciliation never races a genuinely in-flight one.
+- **EVM request id from the receipt (#1658).** `useRequestDeposit` / `useRequestWithdrawal` decode
+  `requestId` (and `queued` for withdrawals) from the mined receipt's `DepositRequested` /
+  `WithdrawalRequested` event, keeping only logs emitted by the configured contract for the
+  connected wallet.
+- **Request list refresh (#1658).** Each request mutation's `isSuccess` rising edge (EVM and
+  Stellar, deposit and withdraw) invalidates every `["requests"]` query through
+  `useInvalidateRequests`. While a known request id (mutation result or in-flight record) is not
+  yet listed by `/v1/requests`, the list polls every 5 s instead of 60 s.
+- **EVM in-flight record (reload guard, #1658).** After the receipt is decoded, the amount, tx hash
+  and request id are persisted under `pipeline.evm.<deposit|withdraw>.inflight.<chainId>.<address>`
+  (a recovery record, never a stand-in for API data). Until `/v1/requests` lists that id, the flow
+  treats it as an active request: `requestIsConfirmed`, `isPendingVerification`, `isAmountLocked`
+  and `step2.loading` are true, `lockedAmountRaw` is the recorded amount, and approve and confirm
+  are disabled, so a reload cannot start a second request. Once the API lists the id (any
+  status) the record is cleared and the API drives state; a successful claim also clears it.
 - **PLUSD authorization window.** When the PLUSD trustline exists but the issuer has not yet
   authorized it, Claim is blocked (it would fail with "balance is deauthorized", contract error
   #11) and the step label reads "Claim your PLUSD — awaiting authorization".
@@ -155,6 +196,10 @@ its success check) while the only failure signal was a console error and a trans
   `"error"` from their underlying mutation: `mutation.error` set and the mutation not pending. The
   success conditions **win over error** — if the backend/on-chain state says the step genuinely
   completed (e.g. the request is `PendingClaim`), the flow is recoverable and the step stays green.
+- EVM step 1 (approve) derives `"error"` from `useEvmToken().approveError` (the approval hook's
+  error only, never the balance / metadata read errors), not pending, and only when no success
+  condition holds. `step1Tx.error` / `step1Tx.userError` carry it so the deposit route can raise the
+  same danger toast with a Details action as the stake route (#1658).
 - `StepInfo.errorMessage` carries the mutation's error message only while `state === "error"`.
   As of #1034 that message is **mapped, never raw**: `toUserError` supplies the short human line
   and the raw payload moves to `StepInfo.errorDetails`, shown only inside the details dialog —
@@ -187,9 +232,12 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
 
 ### Design choices
 
-- **Convert scale differs by chain.** `convertDecimals` — the output scale of the convert/preview
-  hooks — is **18** on EVM (`RATE_SCALE = 1e18`) and **7** on Stellar (`SAC_DECIMALS`). Exchange-rate
-  rows are truncated (not rounded) to 4 dp.
+- **Convert scale is the output token's live decimals.** `convertDecimals` — the output scale of the
+  convert/preview hooks — is the output token's `decimals()` on EVM (sPLUSD on Stake, PLUSD on
+  Unstake; both 6, `undefined` while loading so the preview shows `0` and the rate `—`) and **7** on
+  Stellar (`SAC_DECIMALS`). The "1 PLUSD" / "1 sPLUSD" rate inputs are `parseUnits("1", <input
+  token decimals>)`. Exchange-rate rows are truncated (not rounded) to 4 dp. (#1627 — the former
+  hard-coded 18 showed every EVM preview as 0.00.)
 - **`stellarUsdcToken` is mounted but unused** in the stake flow — called only to satisfy the Rules
   of Hooks (`void stellarUsdcToken`).
 
@@ -249,20 +297,19 @@ Every protocol-stats API hook (`useStats`, `useDashboardSummary`, `useLoanBook`,
 takes `chainId` from its caller and includes it in its query key; none falls back to a Stellar
 constant. The Protocol Dashboard reads the rule through `useDashboardChain`.
 
-**Chain-served probe (#1605).** The API exposes no configured-chains list, and when the active
-chain is not in its `CHAINS` the optional-chain endpoints answer with real-looking zeros and
-empties (TVL "$0", empty loans, empty feed) while the required-chain ones 400. `useChainServed()`
-(`api/useChainServed.ts`) turns that into one explicit signal: for the EVM view it issues
-`GET /v1/pnl?wallet=0x000…0&chain_id=<id>` once per chain id (`staleTime: Infinity`, `retry:
-false`) — `/v1/pnl` validates `chain_id` before it parses `wallet`, so the zero address is a
-side-effect-free probe; a 200 means served, a `400 unknown chain_id` means not served, any other
-failure counts as served so a flaky probe can never hide a working chain. The Stellar view is
-served by construction and skips the request. `served` is `undefined` while the probe is in
-flight. Consumers (home, `/dashboard`, `/transactions`, `/deposit`, `/stake`, `HomeStatsStrip`)
-render `ChainNotServedNotice` ("Not available on <chain> … Switch your wallet to a supported
-network") instead of their protocol widgets when `served === false`, and keep their loading
-states while it is `undefined`. When a configured-chains endpoint lands, the probe body is the
-only thing to replace.
+**Chain-served check (#1605).** When the active chain is not in the API's `CHAINS` the
+optional-chain endpoints answer with real-looking zeros and empties (TVL "$0", empty loans, empty
+feed) while the required-chain ones 400. `useChainServed()` (`api/useChainServed.ts`) turns that
+into one explicit signal: it reads the public `GET /v1/chains` (#1608, `{ chains: [{ chain_id,
+kind }], default_chain_id }`) once per session (`queryKey: ["chains"]`, `staleTime: Infinity`,
+`retry: false`, shared by every chain id and both wallet views) and reports
+`served = chains.some(c => c.chain_id === chainId)`; the Stellar view goes through the same list.
+`served` is `undefined` while the request is in flight. If `/v1/chains` itself fails (network /
+5xx) the hook treats the chain as served, so a flaky request can never hide a working chain.
+Consumers (home, `/dashboard`, `/transactions`, `/deposit`, `/stake`, `HomeStatsStrip`) render
+`ChainNotServedNotice` ("Not available on <chain> … Switch your wallet to a supported network")
+instead of their protocol widgets when `served === false`, and keep their loading states while it
+is `undefined`.
 
 ## Network switcher (cross-deployment links)
 
@@ -373,8 +420,11 @@ wrong-network rules.
   return `undefined` without an RPC call and writes fail with a "not configured" error (stake
   hooks: `StakedPLUSD not configured`; disconnected wallet: `Wallet not connected`).
 - **Write return values.** `useWriteContract` resolves to a tx hash only, so the real path returns
-  `{ hash }`; `requestId`, `queued`, `amount`, `shares` are not decoded from the receipt. The
-  request id comes from the indexer / voucher API (see the voucher polling rule above).
+  `{ hash }`; `amount` and `shares` are not decoded from the receipt. `useRequestDeposit` and
+  `useRequestWithdrawal` additionally decode `requestId` (and `queued`) from the receipt's
+  `DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount)` /
+  `WithdrawalRequested(address indexed withdrawer, uint256 indexed requestId, uint256 amount, uint256 queued)`
+  event (#1658); the voucher API remains the source for claim.
 - **Approval.** Deposit needs USDC approved to the DepositManager; withdraw needs PLUSD approved to
   the WithdrawalQueue; stake needs PLUSD approved to the vault; unstake needs none
   (steps: `[Approve, Request/Stake]` as in the step tables above).

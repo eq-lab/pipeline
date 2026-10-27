@@ -203,12 +203,12 @@ vi.mock("@/lib/env", () => ({
 
 const WALLET_ADDRESS = "0x1234000000000000000000000000000000000001";
 const PLUSD_ADDRESS = "0x1111000000000000000000000000000000000001";
-// 100 PLUSD at 18 decimals
-const BALANCE_100_PLUSD = "100000000000000000000";
-// 50 sPLUSD at 18 decimals
-const BALANCE_50_SPLUSD = "50000000000000000000";
-// 10 PLUSD at 18 decimals
-const AMOUNT_10_PLUSD = "10000000000000000000";
+// 100 PLUSD at 6 decimals
+const BALANCE_100_PLUSD = "100000000";
+// 50 sPLUSD at 6 decimals
+const BALANCE_50_SPLUSD = "50000000";
+// 10 PLUSD at 6 decimals
+const AMOUNT_10_PLUSD = "10000000";
 
 // convertToShares rate: 0.9596 sPLUSD per 1 PLUSD (at 1e18 scale)
 const RATE_SHARES = "959600000000000000";
@@ -243,20 +243,20 @@ function seedBaseMocks({
     PLUSD_ADDRESS,
   );
 
-  // PLUSD token metadata (18 decimals)
+  // PLUSD token metadata (6 decimals)
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.decimals`,
-    "18",
+    "6",
   );
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.symbol`,
     "PLUSD",
   );
 
-  // sPLUSD token metadata (18 decimals)
+  // sPLUSD token metadata (6 decimals)
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${SPLUSD_ADDRESS.toLowerCase()}.decimals`,
-    "18",
+    "6",
   );
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${SPLUSD_ADDRESS.toLowerCase()}.symbol`,
@@ -302,7 +302,7 @@ function seedBaseMocks({
       "pipeline.mock.wallet.contract.stakedPlusd.stake",
       JSON.stringify({
         hash: "0xabc1000000000000000000000000000000000000000000000000000000000abc",
-        shares: "9596000000000000000",
+        shares: "9596000",
       }),
     );
   }
@@ -312,7 +312,7 @@ function seedBaseMocks({
       "pipeline.mock.wallet.contract.stakedPlusd.unstake",
       JSON.stringify({
         hash: "0xde110000000000000000000000000000000000000000000000000000000000de",
-        assets: "52105000000000000000",
+        assets: "52105000",
       }),
     );
   }
@@ -420,7 +420,7 @@ describe("Stake page — approved state (allowance ≥ amount)", () => {
     mockRefetch.mockClear();
     // allowance = 1000 PLUSD — sufficient for any reasonable input
     seedBaseMocks({
-      allowance: "1000000000000000000000",
+      allowance: "1000000000",
       includeStakeMock: true,
     });
   });
@@ -524,7 +524,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(chip25);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("25.00");
+    expect((input as HTMLInputElement).value).toBe("25");
   });
 
   it("Max chip sets input to the live balance (100 PLUSD)", async () => {
@@ -535,7 +535,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("100.00");
+    expect((input as HTMLInputElement).value).toBe("100");
   });
 
   it("50% chip sets input to 50 PLUSD", async () => {
@@ -546,7 +546,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(chip50);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("50.00");
+    expect((input as HTMLInputElement).value).toBe("50");
   });
 
   it("75% chip sets input to 75 PLUSD", async () => {
@@ -557,7 +557,7 @@ describe("Stake page — quick-amount chips (Stake tab)", () => {
     await user.click(chip75);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("75.00");
+    expect((input as HTMLInputElement).value).toBe("75");
   });
 });
 
@@ -602,38 +602,19 @@ describe("Stake page — preview and exchange rate (Stake tab)", () => {
   });
 });
 
-// ── Regression #541: address-mismatch path (sPLUSD decimals = 6 from live RPC) ──
-//
-// In the real app ENV.STAKED_PLUSD_ADDRESS may differ from the fixture's
-// hardcoded 0x5555…0005. When they differ, useEvmToken falls back to a live
-// decimals() RPC that returns 6 for the deployed contract. Before the fix,
-// formatting an 18-decimal convert value with 6 decimals produced results
-// inflated by 1e12 (e.g. "959600000000.0000" instead of "0.9596").
-//
-// These tests reproduce that condition by deliberately seeding sPLUSD decimals
-// as 6 (simulating the live-RPC fallback) while the convert alias remains
-// 18-scaled. After the fix the rate and preview rows must still show the
-// correct human-readable values.
-
-describe("Stake page — regression #541: address-mismatch / sPLUSD decimals=6", () => {
+describe("Stake page — previews use the live token decimals (#1627)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
-    // Use the normal base mocks but override sPLUSD decimals to 6 to simulate
-    // the live RPC returning 6 for a different contract address.
     seedBaseMocks({ allowance: "0" });
-    localStorage.setItem(
-      `pipeline.mock.wallet.contract.${SPLUSD_ADDRESS.toLowerCase()}.decimals`,
-      "6",
-    );
   });
 
   afterEach(() => {
     localStorage.clear();
   });
 
-  it("exchange-rate row shows '1 PLUSD = 0.9596 sPLUSD' even when sPLUSD decimals resolve to 6", async () => {
+  it("exchange-rate row shows '1 PLUSD = 0.9596 sPLUSD' with 6-decimal tokens", async () => {
     renderStake();
 
     await waitFor(() => {
@@ -641,7 +622,7 @@ describe("Stake page — regression #541: address-mismatch / sPLUSD decimals=6",
     });
   });
 
-  it("output shows ~9.60 sPLUSD for 10 PLUSD even when sPLUSD decimals resolve to 6", async () => {
+  it("output shows ~9.60 sPLUSD for 10 PLUSD with 6-decimal tokens", async () => {
     const user = userEvent.setup();
     renderStake();
 
@@ -654,30 +635,22 @@ describe("Stake page — regression #541: address-mismatch / sPLUSD decimals=6",
       expect(outputEl?.getAttribute("aria-label")).toMatch(/9\.60/);
     });
   });
-});
 
-describe("Stake page — regression #541: address-mismatch / sPLUSD decimals=6 (Unstake tab)", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    mockWriteContract.mockClear();
-    mockRefetch.mockClear();
-    seedBaseMocks({
-      balance: "0",
-      splusdBalance: BALANCE_50_SPLUSD,
-      allowance: "0",
-    });
-    // Override sPLUSD decimals to 6 to simulate address-mismatch path
-    localStorage.setItem(
+  it("holds the rate at '—' until the output token's decimals are known", async () => {
+    localStorage.removeItem(
       `pipeline.mock.wallet.contract.${SPLUSD_ADDRESS.toLowerCase()}.decimals`,
-      "6",
     );
+    renderStake();
+
+    await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    expect(screen.queryByText("1 PLUSD = 0.9596 sPLUSD")).toBeNull();
   });
 
-  afterEach(() => {
-    localStorage.clear();
-  });
-
-  it("exchange-rate row shows '1 sPLUSD = 1.0421 PLUSD' even when sPLUSD decimals resolve to 6", async () => {
+  it("exchange-rate row shows '1 sPLUSD = 1.0421 PLUSD' on Unstake with 6-decimal tokens", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${SPLUSD_ADDRESS.toLowerCase()}`,
+      BALANCE_50_SPLUSD,
+    );
     const user = userEvent.setup();
     renderStake();
 
@@ -839,7 +812,7 @@ describe("Stake page — Unstake tab", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /sPLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("50.00");
+    expect((input as HTMLInputElement).value).toBe("50");
   });
 });
 
@@ -906,7 +879,7 @@ describe("Stake page — cross-tab reset regression", () => {
     seedBaseMocks({
       balance: BALANCE_100_PLUSD,
       splusdBalance: BALANCE_50_SPLUSD,
-      allowance: "1000000000000000000000",
+      allowance: "1000000000",
       includeStakeMock: true,
     });
   });
@@ -1237,6 +1210,15 @@ describe("Stake page — no nested border on token-amount-display (Issue #615)",
 });
 
 describe("active chain not served by the API (#1605)", () => {
+  afterEach(() => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
   it("replaces the page content with the not-available notice", () => {
     mockChainServed.mockReturnValue({
       kind: "evm",
@@ -1249,5 +1231,40 @@ describe("active chain not served by the API (#1605)", () => {
       "Not available on Ethereum",
     );
     expect(screen.queryByTestId("stake-header")).not.toBeInTheDocument();
+  });
+});
+
+describe("Stake page — chips stay within the balance (#1628)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Max fills the exact balance with no Insufficient balance message", async () => {
+    seedBaseMocks({ balance: "1234567891", allowance: "0" });
+    const user = userEvent.setup();
+    renderStake();
+
+    await user.click(await screen.findByRole("button", { name: "Max" }));
+
+    const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
+    expect(screen.queryByText("Insufficient balance")).toBeNull();
+  });
+
+  it("shows Insufficient balance when the typed amount exceeds the balance", async () => {
+    seedBaseMocks({ balance: BALANCE_100_PLUSD, allowance: "0" });
+    const user = userEvent.setup();
+    renderStake();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "100.01");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Insufficient balance",
+    );
   });
 });

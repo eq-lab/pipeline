@@ -34,6 +34,7 @@ vi.mock("@/auth/sessionStore", () => ({
 const FIXTURE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
+  onchain_status: "Performing",
   epoch: {
     number: 1,
     current_apy_bps: 1000,

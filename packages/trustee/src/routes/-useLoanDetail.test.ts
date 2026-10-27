@@ -28,8 +28,10 @@ import {
   buildPriceCollateralState,
   buildRegistryState,
   buildSummaryTiles,
+  ccrSeriesFrom,
   selectOtherActions,
   statusToChip,
+  lifecycleStatusOf,
 } from "./-useLoanDetail";
 import {
   CLOSED_OTHER_ACTIONS,
@@ -62,6 +64,7 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "Performing",
+    onchain_status: "Performing",
     documents: [],
     repaid_to_date: "6300.000000",
     disbursed: true,
@@ -514,6 +517,7 @@ function makeFinancials(
   return {
     loan_id: "4488",
     status: "Performing",
+    onchain_status: "Performing",
     epoch: {
       number: 1,
       current_apy_bps: 1000,
@@ -800,5 +804,84 @@ describe("buildCcrTrend", () => {
 
   it("returns null for an empty series (never priced / empty window)", () => {
     expect(buildCcrTrend(history([]))).toBeNull();
+  });
+});
+
+describe("ccrSeriesFrom", () => {
+  const DAY = 86_400;
+  const T0 = 1_760_000_000;
+
+  it("returns null for a missing entry", () => {
+    expect(ccrSeriesFrom(undefined)).toBeNull();
+  });
+
+  it("returns the origination for a non-rolled loan", () => {
+    expect(
+      ccrSeriesFrom({ maturity: T0 + 180 * DAY, duration_days: 180 }),
+    ).toBe(T0);
+  });
+
+  it("starts a rolled-over loan at origination, not at the original-term end", () => {
+    const from = ccrSeriesFrom({
+      maturity: T0 + 180 * DAY,
+      duration_days: 180,
+    });
+    expect(from).toBe(T0);
+    expect(from).not.toBe(T0 + 90 * DAY);
+  });
+
+  it("starts within one day after a sub-day origination, never before it", () => {
+    const origination = Date.UTC(2026, 0, 1, 14) / 1000;
+    const maturity = Date.UTC(2026, 6, 1) / 1000;
+    const durationDays = Math.floor((maturity - origination) / DAY);
+    const from = ccrSeriesFrom({ maturity, duration_days: durationDays })!;
+    expect(from).toBeGreaterThanOrEqual(origination);
+    expect(from - origination).toBeLessThan(DAY);
+  });
+});
+
+describe("lifecycleStatusOf (#1621)", () => {
+  it.each([
+    ["Performing", "Performing", "Performing"],
+    ["Performing", "WatchList", "WatchList"],
+    ["Past Due", "WatchList", "WatchList"],
+    ["Disbursing", "WatchList", "WatchList"],
+    ["Matured", "WatchList", "WatchList"],
+    ["Past Due", "Performing", "Performing"],
+    ["Disbursing", "Performing", "Performing"],
+    ["Default", "Default", null],
+    ["Closed", "Closed", null],
+    ["Disbursing", "Approved", null],
+    ["Performing", "Unknown", null],
+  ])(
+    "served status %s + onchain_status %s -> %s",
+    (status, onchainStatus, expected) => {
+      expect(
+        lifecycleStatusOf(makeEntry({ status, onchain_status: onchainStatus })),
+      ).toBe(expected);
+    },
+  );
+
+  it("ignores watchlist_entered_at", () => {
+    expect(
+      lifecycleStatusOf(
+        makeEntry({
+          status: "Past Due",
+          onchain_status: "Performing",
+          watchlist_entered_at: 1_781_222_400,
+        }),
+      ),
+    ).toBe("Performing");
+  });
+
+  it("is null for a missing field or entry", () => {
+    expect(
+      lifecycleStatusOf({
+        ...makeEntry(),
+        onchain_status: undefined,
+      } as unknown as LoanBookEntry),
+    ).toBeNull();
+    expect(lifecycleStatusOf(undefined)).toBeNull();
+    expect(lifecycleStatusOf(null)).toBeNull();
   });
 });

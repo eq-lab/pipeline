@@ -355,3 +355,62 @@ fn response_echoes_the_rows_chain_id() {
     let resp = build_response(&stellar_row, &BigDecimal::from(0), &[], true, 0);
     assert_eq!(resp.chain_id, 99_000_001);
 }
+
+#[test]
+fn legacy_minted_yield_includes_the_treasury_leg_so_not_minted_is_zero() {
+    use shared::chains::ChainKind;
+    use shared::minted_yield::loan_minted_yield;
+    let snap = snapshot(
+        "Performing",
+        800_000_000,
+        100_000_000,
+        1_000_000_000,
+        repayment(100_000_000, 20_000_000, 13_000_000, 0),
+    );
+    let legacy_raw = BigDecimal::from(100_000_000 + 33_000_000);
+    let minted = loan_minted_yield(ChainKind::Evm, &legacy_raw, &[], i64::MAX);
+    let resp = build_response(&row(snap), &minted, &[], true, 0);
+    assert_eq!(resp.minted_yield, "133.000000");
+    assert_eq!(resp.not_minted_yield, "0.000000");
+}
+
+// ── onchain_status (#1649) ─────────────────────────────────────────────────
+
+#[test]
+fn onchain_status_is_the_raw_snapshot_status_when_display_says_disbursing() {
+    // WatchList on chain, off-ramp incomplete → displays Disbursing, raw stays WatchList.
+    let snap = snapshot(
+        "WatchList",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+    );
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
+    assert_eq!(resp.status, "Disbursing");
+    assert_eq!(resp.onchain_status, "WatchList");
+}
+
+#[test]
+fn onchain_status_is_the_raw_snapshot_status_when_display_says_past_due() {
+    let mut snap = snapshot(
+        "WatchList",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+    );
+    snap.current_maturity_timestamp = 1_000;
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 2_000);
+    assert_eq!(resp.status, "Past Due");
+    assert_eq!(resp.onchain_status, "WatchList");
+}
+
+#[test]
+fn onchain_status_passes_every_raw_status_through() {
+    for raw in ["Performing", "Approved", "Default", "Closed"] {
+        let snap = snapshot(raw, 100_000_000, 0, 100_000_000, repayment(0, 0, 0, 0));
+        let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
+        assert_eq!(resp.onchain_status, raw);
+    }
+}

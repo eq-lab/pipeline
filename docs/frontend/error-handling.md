@@ -306,6 +306,15 @@ validation returning a client error means "this amount doesn't fit the loan's te
 amount problem — `mapWaterfallError` delegates it to `toUserError`, so it reads "This network
 isn't enabled on the server…" with the raw text under details.
 
+Two more exceptions (#1661), checked before the generic 4xx branch. A **422** (the backend's
+`ensure_event_history_complete`: the loan's indexed event history is incomplete) is not an amount
+problem: it reads "Loan data is incomplete — the indexer needs a re-sync. Contact support." with
+the raw server text under details. A **400 whose message starts with `loan is in Default`** gets
+"This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a
+smaller amount." with the raw text under details; fixed copy is used because the server text carries
+raw base-unit numbers. Both messages contain no numbers. Every other 4xx keeps the generic amount
+copy with `details: ""`.
+
 ## Out of scope (this issue)
 
 - **Pre-submit deposit-amount validation** against `GET /v1/protocol/limits` — the real fix for the

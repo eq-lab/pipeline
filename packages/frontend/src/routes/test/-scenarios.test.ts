@@ -165,7 +165,7 @@ describe("withdraw + stake scenario contracts", () => {
       s.keys[
         "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
       ],
-    ).toBe("100000000000000000000");
+    ).toBe("100000000");
     expect(
       s.keys[
         "pipeline.mock.wallet.allowance.0x1111000000000000000000000000000000000001.0x4444000000000000000000000000000000000004"
@@ -182,12 +182,12 @@ describe("withdraw + stake scenario contracts", () => {
       s.keys[
         "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
       ],
-    ).toBe("100000000000000000000");
+    ).toBe("100000000");
     expect(
       s.keys[
         "pipeline.mock.wallet.allowance.0x1111000000000000000000000000000000000001.0x4444000000000000000000000000000000000004"
       ],
-    ).toBe("1000000000000000000000");
+    ).toBe("1000000000");
     expect(
       s.keys["pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal"],
     ).toBeDefined();
@@ -248,7 +248,7 @@ describe("withdraw + stake scenario contracts", () => {
       s.keys[
         "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
       ],
-    ).toBe("100000000000000000000");
+    ).toBe("100000000");
     expect(
       s.keys[
         "pipeline.mock.wallet.balance.0x5555000000000000000000000000000000000005"

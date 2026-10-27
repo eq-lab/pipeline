@@ -4,6 +4,7 @@ import type { RequestItem } from "@/api";
 import { formatTokenAmount, formatActivityTime } from "@/lib/format";
 import { SAC_DECIMALS } from "@/wallet";
 import type { WalletViewKind } from "@/wallet";
+import type { EvmStakeDecimals } from "@/wallet";
 
 // spec: docs/frontend/dashboard-components.md#renderrequestrow
 // (shared row-visual rule, chain-aware decimal table, fail-loud contract).
@@ -74,11 +75,15 @@ export function renderRequestRow(
   chainKind: WalletViewKind,
   testId?: string,
   className?: string,
+  evmStakeDecimals?: EvmStakeDecimals,
 ): React.ReactNode {
   const timestamp = formatActivityTime(item.created_at);
   // Derive decimal scales from the active chain (Issue #674).
   const paymentDecimals = chainKind === "stellar" ? SAC_DECIMALS : 6;
-  const stakeDecimals = chainKind === "stellar" ? SAC_DECIMALS : 18;
+  const assetDecimals =
+    chainKind === "stellar" ? SAC_DECIMALS : evmStakeDecimals?.plusd;
+  const shareDecimals =
+    chainKind === "stellar" ? SAC_DECIMALS : evmStakeDecimals?.splusd;
 
   if (item.type === "Deposit") {
     const amount = formatTokenAmount(item.amount, paymentDecimals);
@@ -156,11 +161,11 @@ export function renderRequestRow(
     // Fail-loud contract: spec: docs/frontend/dashboard-components.md#renderrequestrow.
     const assets =
       item.assets !== undefined
-        ? formatTokenAmount(item.assets, stakeDecimals)
+        ? formatTokenAmount(item.assets, assetDecimals)
         : "—";
     const shares =
       item.shares !== undefined
-        ? formatTokenAmount(item.shares, stakeDecimals)
+        ? formatTokenAmount(item.shares, shareDecimals)
         : "—";
     return (
       <ActivityRow
@@ -182,11 +187,11 @@ export function renderRequestRow(
   // Unstake — fail-loud: see Stake branch above for rationale.
   const assets =
     item.assets !== undefined
-      ? formatTokenAmount(item.assets, stakeDecimals)
+      ? formatTokenAmount(item.assets, assetDecimals)
       : "—";
   const shares =
     item.shares !== undefined
-      ? formatTokenAmount(item.shares, stakeDecimals)
+      ? formatTokenAmount(item.shares, shareDecimals)
       : "—";
   return (
     <ActivityRow

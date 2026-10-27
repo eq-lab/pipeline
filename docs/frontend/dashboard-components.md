@@ -374,7 +374,7 @@ balance, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"
 **`variant="stake-or-add-usd"` (#1424, Figma node `6701:97451`).** State 4's instance shares the
 same compact geometry as `"get-plusd"` (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
 eyebrow) and keeps the Total Balance heading bound to the served `balanceLabel`
-(`formatBigintCurrency(splusdSharesActive)`, `$0.00` here since sPLUSD is zero — the Figma frame's
+(`formatBigintCurrency(splusdInPlusdActive, plusdDecimals)`, `$0.00` here since sPLUSD is zero — the Figma frame's
 `$1,000.00` is a PLUSD-holding mock, not served data; no combined-total endpoint exists, so summing
 PLUSD + sPLUSD client-side is not done). The subtitle slot swaps to the sentence
 "Stake PLUSD or Add USD to start earning": `get_design_context` on the frame's text node
@@ -560,10 +560,11 @@ the strip shows the exchange rate alone rather than a fabricated "$0" (see
 
 **Active chain (#1498).** The strip reads `useActiveChain()` (connected wallet's chain, else
 Stellar — see [`wallet-flows.md`](./wallet-flows.md#active-chain-for-protocol-reads)). The exchange
-rate is the EVM `useStakedPlusdConvertToAssets(1e18)` formatted at 18 dp, or the Stellar
+rate is the EVM `useStakedPlusdConvertToAssets(10^sPLUSD decimals)` formatted at the PLUSD
+decimals (both 6 — read live via `useEvmStakeDecimals`, #1627), or the Stellar
 `useStellarUnstakeConvertToAssets(1e7)` formatted at 7 dp, both through `formatUnits4` (truncated,
 not rounded, to 4 dp); the other chain's convert hook is passed `undefined` and makes no read. A
-missing rate renders `—`. TVL and APY are fetched with `useDashboardSummary({ chainId })` and
+missing rate — or EVM decimals still loading — renders `—`. TVL and APY are fetched with `useDashboardSummary({ chainId })` and
 `useStats({ chainId })`; `StakeCard`'s "Earn X% p.a." uses the same `useStats({ chainId })`.
 
 - **Desktop:** inside `WelcomeHeader`, right side of the heading row.
@@ -1265,7 +1266,7 @@ router-nav `submission` threading and Review action):
 | Field     | Source                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Commodity | `loan_data.commodity`                                       | Figma also shows a valuation sub-line ("NSR · Net Smelter Return" / "Standard · price × quantity"), but no field in `loan_data`/`SubmissionView` carries a valuation mode for pre-mint submissions (`ValuationMode` lives in `loan_collateral_valuations`, keyed by an on-chain `loan_id` submissions don't have yet). Resolved (human, issue #814, mirroring #813): OMIT the sub-line entirely rather than infer it from the commodity name. |
-| Facility  | `loan_data.economics.original_facility_size`                | Served at the on-chain 7-decimal base-unit scale — normalized ÷10^7 via `economicsBaseUnitsToUsdDecimal` (issue #912, BigInt-safe) before `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841).                                                                                                                                                                                                            |
+| Facility  | `loan_data.economics.original_facility_size`                | Human-unit USDC decimal string (e.g. `"3500000.000000"`, #1620 — supersedes the #912 base-unit reading) — validated by `economicsUsdDecimal` (no scaling) and rendered via `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841). |
 | Corridor  | `loan_data.corridor`                                        | Hyphen separator rendered as the Figma's arrow glyph ("PE-CN" → "PE → CN") — same data, design-matching glyph.                                                                                                                                                                                                                                                                                                                                |
 | Rate      | `loan_data.economics.senior_interest_rate_bps`              | Via `formatBpsRate` (e.g. `1400` → `"14.0%"`).                                                                                                                                                                                                                                                                                                                                                                                                |
 | Maturity  | `loan_data.economics.original_maturity_date` (Unix seconds) | Via `formatMaturityDate` (e.g. `"15 Dec 2026"`).                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -1598,6 +1599,14 @@ itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` 
 
 Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 
+**Headline value is assets, not shares (#1658).** The route's `balanceLabel` (every variant, mobile
+and desktop) and `StakeCard.splusdUsdValue` both come from `splusdBalanceFormatted`, which formats
+`splusdInPlusdActive` — the on-chain `convertToAssets(shares)` read, served as-is at the PLUSD
+decimals — never the raw sPLUSD share count. While that read is unavailable for a non-zero share
+balance the value renders `—` (never a false `$0.00`); zero shares render `$0.00`. State
+derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares. The chart
+sections are unchanged (tracked in #1629).
+
 **Desktop grid shell (#1577, closed TD-122).** Every `homeState` composition below renders through
 one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
 (`home-dashboard-grid`), the absolutely-filled Recent-activity slot (col 5–7, `row-span-2`;
@@ -1839,8 +1848,15 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 2. **Initial data load** — first load only: chain data / requests API still loading; renders nothing until first resolved (avoids re-hide flicker on background refetches). Not shown again on later background refetches.
 3. **No-XLM banner** (`XlmFundingBanner`, Figma frame `6090-8741`, card node `6093-75787`) — Stellar only, **both directions**, `flow.needsXlmFunding` (see [`wallet-flows.md` § XLM funding rule](./wallet-flows.md#xlm-funding-rule)). "Add funds to your XLM balance / You need XLM to pay the network fee" with a Copy Address action (copies the connected address; label flips to "Copied"). Outranks the USDC-trustline banner because adding a trustline itself requires XLM (#1196, #1130).
 4. **USDC trustline banner** — Stellar deposit, no USDC trustline, no USDC balance. Takes the place of the low-balance banner (same layout) but the action adds the USDC trustline instead of prompting to add funds — the account must hold a USDC trustline before it can hold or deposit USDC on Stellar.
-5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`.
+5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`
+   (balance below the minimum deposit).
 6. Otherwise, the steps card (four-step Stellar or three-step EVM, above).
+
+**Insufficient-balance line (#1628):** independent of the banner, while `flow.exceedsBalance` is true
+(typed amount above the live balance in either direction) an `InlineError` "Insufficient balance"
+renders right-aligned directly under the `ConversionCard`, and every step CTA stays disabled. Max
+fills the exact balance (`formatUsdcInput`); percentages floor in base units — see
+[`wallet-flows.md` § Business rules](./wallet-flows.md#business-rules).
 
 **Toast ids** are scoped per chain+direction so a stale toast from one direction/chain does not collide with a new one:
 
@@ -1877,6 +1893,11 @@ Chain-aware stake/unstake page driving two flows via the `useStakeFlow` adapter,
 - Stellar Unstake tab: 1. Enable PLUSD (`changeTrust` — receiver needs PLUSD trustline) → 2. Confirm and unstake sPLUSD (vault redeem)
 
 Amount is reset on chain switch via the same `prevKindRef` pattern used by `deposit.tsx`.
+
+**Insufficient-balance line (#1628):** while `flow.exceedsBalance` is true (typed amount above the
+active tab's input balance — PLUSD on Stake, sPLUSD on Unstake) an `InlineError` "Insufficient
+balance" renders right-aligned under the `TokenInput` and the step CTAs stay disabled. Max fills
+the exact balance and 25/50/75% floor in base units, so a chip never trips the gate.
 
 **URL contract:** `/stake?tab=unstake` deep-links the Unstake tab (e.g. the home `StakeCard`'s "Unstake" link). The URL only seeds the _initial_ tab — in-page switching is local state, so subsequent tab toggles do not push history entries.
 

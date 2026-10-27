@@ -8,8 +8,8 @@
  * style of `sacBalance.test.ts` / `depositManager.test.ts`.
  *
  * Scenarios:
- *   1. `parseUsdcBaseUnitsToU128` — the API's economics decimal string → the
- *      EXACT u128 base-unit value (no scaling, issue #912), including the
+ *   1. `parseUsdcToU128` — the API's economics decimal string → the
+ *      exact u128 base-unit value (human USDC × 10^7, #1620), including the
  *      invalid-input guard.
  *   2. `encodeDrawLoanArgs` — the 5 positional args, each field's ScVal kind
  *      and scale, and both maps' sorted key order.
@@ -23,7 +23,7 @@ import {
   drawLoan,
   buildDrawLoanEnvelope,
   encodeDrawLoanArgs,
-  parseUsdcBaseUnitsToU128,
+  parseUsdcToU128,
   encodeRolloverArgs,
   buildRolloverEnvelope,
   encodeUpdateMutableArgs,
@@ -192,38 +192,34 @@ beforeEach(() => {
   mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
 });
 
-// ── parseUsdcBaseUnitsToU128 ──────────────────────────────────────────────────
+// ── parseUsdcToU128 ──────────────────────────────────────────────────
 
-describe("parseUsdcBaseUnitsToU128", () => {
-  it("returns the exact base-unit integer value, no scaling", () => {
-    expect(parseUsdcBaseUnitsToU128("8000000000.000000")).toBe(8_000_000_000n);
-    expect(parseUsdcBaseUnitsToU128("10000000000.000000")).toBe(
-      10_000_000_000n,
-    );
+describe("parseUsdcToU128", () => {
+  it("scales a human-unit USDC string to 7-decimal base units exactly (#1620)", () => {
+    expect(parseUsdcToU128("1200000.000000")).toBe(12_000_000_000_000n);
+    expect(parseUsdcToU128("800")).toBe(8_000_000_000n);
+    expect(parseUsdcToU128("100.5")).toBe(1_005_000_000n);
+    expect(parseUsdcToU128("0.0000001")).toBe(1n);
   });
 
-  it("handles an integer string with no decimal point", () => {
-    expect(parseUsdcBaseUnitsToU128("500")).toBe(500n);
+  it("honours an explicit decimals argument (6 on EVM USDC)", () => {
+    expect(parseUsdcToU128("1200000.000000", 6)).toBe(1_200_000_000_000n);
+    expect(parseUsdcToU128("0.000001", 6)).toBe(1n);
   });
 
-  it("truncates the fractional part entirely (base units carry no fraction)", () => {
-    expect(parseUsdcBaseUnitsToU128("100.999999")).toBe(100n);
+  it("rejects more fractional digits than the scale holds instead of truncating", () => {
+    expect(() => parseUsdcToU128("0.12345678")).toThrow(/fractional digits/);
+    expect(() => parseUsdcToU128("1.0000001", 6)).toThrow(/fractional digits/);
   });
 
-  it("truncates a short fractional part", () => {
-    expect(parseUsdcBaseUnitsToU128("0.5")).toBe(0n);
+  it("tolerates trailing zeros beyond the scale", () => {
+    expect(parseUsdcToU128("1.00000000")).toBe(10_000_000n);
   });
 
-  it("throws for a malformed decimal string", () => {
-    expect(() => parseUsdcBaseUnitsToU128("not-a-number")).toThrow(
-      "invalid decimal string",
-    );
-  });
-
-  it("throws for a negative string", () => {
-    expect(() => parseUsdcBaseUnitsToU128("-5.00")).toThrow(
-      "invalid decimal string",
-    );
+  it("rejects a malformed string", () => {
+    expect(() => parseUsdcToU128("abc")).toThrow(/invalid decimal string/);
+    expect(() => parseUsdcToU128("-1")).toThrow(/invalid decimal string/);
+    expect(() => parseUsdcToU128("")).toThrow(/invalid decimal string/);
   });
 });
 
@@ -272,19 +268,19 @@ describe("encodeDrawLoanArgs", () => {
     );
     expect(byKey.original_facility_size).toEqual({
       t: "u128",
-      v: 1_200_000n,
+      v: 12_000_000_000_000n,
     });
     expect(byKey.original_senior_tranche).toEqual({
       t: "u128",
-      v: 1_000_000n,
+      v: 10_000_000_000_000n,
     });
     expect(byKey.original_equity_tranche).toEqual({
       t: "u128",
-      v: 200_000n,
+      v: 2_000_000_000_000n,
     });
     expect(byKey.original_offtaker_price).toEqual({
       t: "u128",
-      v: 1_250_000n,
+      v: 12_500_000_000_000n,
     });
   });
 

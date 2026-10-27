@@ -20,7 +20,7 @@ Stellar), plus a Stellar wallet for the control case.
 
 **Expected outcomes:**
 
-- One probe `GET /v1/pnl?wallet=0x000…0&chain_id=<id>` answers `400 unknown chain_id`; no repeated probes on navigation.
+- One `GET /v1/chains` request answers a list that does not contain the active chain id; no repeated requests on navigation.
 - Home keeps the welcome header; below it a card reads "Not available on Ethereum — Pipeline isn't available on Ethereum yet. Switch your wallet to a supported network to see protocol data." The stats strip shows the exchange rate only — no "$0" TVL, no "—" APY cell.
 - `/dashboard` shows the title and the same notice; no Yield / Balance Sheet / Loan Book / Withdrawal Queue panels, no empty "no loans" state.
 - `/transactions`, `/deposit` and `/stake` show the notice instead of the feed / flow.
@@ -33,15 +33,15 @@ Stellar), plus a Stellar wallet for the control case.
 
 **Expected outcomes:**
 
-- Stellar: no probe request at all; every page renders as before.
-- Hoodi on staging: the probe answers 200; every page renders as before.
+- Stellar: the Stellar chain id is in the `GET /v1/chains` list; every page renders as before.
+- Hoodi on staging: `GET /v1/chains` lists `560048`; every page renders as before.
 
 ---
 
-## Story 3: A flaky probe never hides a working chain
+## Story 3: A failing `/v1/chains` never hides a working chain
 
-**Persona:** LP on a served EVM chain while the API briefly returns 500.
+**Persona:** LP on a served EVM chain while `GET /v1/chains` briefly fails (network error or 5xx).
 
 **Expected outcomes:**
 
-- The pages render their normal content (loading/error states of their own widgets as today); the notice appears only for a definitive `400 unknown chain_id`.
+- The pages render their normal content (loading/error states of their own widgets as today); the notice appears only when `/v1/chains` answers and omits the active chain.

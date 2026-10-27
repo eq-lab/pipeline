@@ -17,11 +17,11 @@
 //! `chain_id?` — omitted = the union over all configured chains, a configured id = that
 //! chain, a well-formed unconfigured id = a zeroed / empty response with no DB call,
 //! malformed or repeated = 400 (`LenientChainFilter`, same as `routes::financial_position`).
-//! Every amount is base-6 USDC before summing: the repo readers normalise flow, legacy
+//! Every amount is base-6 USDC before summing: the repo readers normalise PLUSD-ledger, legacy
 //! yield and loan-snapshot amounts by chain kind, and `CashRepaid` mints (raw) are
-//! normalised per loan by chain kind exactly like LoanBook's `minted_yield`. Loan data is read through each chain's
+//! normalised per loan by chain kind (same rounding approach as LoanBook's `minted_yield`). Loan data is read through each chain's
 //! LoanRegistry address. Rates (`loan_book_yield`, `current_apy_net_to_splusd`) are
-//! computed over the union of active loans, i.e. principal-weighted across chains. The
+//! computed over the union of active loans, i.e. outstanding-senior-weighted across chains. The
 //! series share one time grid and are summed point-wise; `max`/`min`/`average` come from
 //! the summed step function.
 //!
@@ -30,17 +30,18 @@
 //!
 //! | Field | Source |
 //! |---|---|
-//! | `tvl` | Σ `DepositRequested.amount` − Σ `WithdrawalRequested.amount` |
+//! | `tvl` | PLUSD ledger: PLUSD in circulation + pending deposits, see `docs/product-specs/dashboards-tvl-ledger.md` |
 //! | `outstanding_in_loans` | `financial_position::compute_financial_position` → `assets.deployed.secured_loans_outstanding` |
 //! | `loan_book_yield` | `loan_book::compute_loan_book` → `summary.avg_yield` |
 //! | `current_apy_net_to_splusd` | effective-haircut net rate: `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))` |
-//! | `cumulative_yield_total` | historical Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid` (`interest_minted` + `PaymentRecorded` fee leg) net of `CashRepaymentReversed` |
+//! | `cumulative_yield_total` | LP yield: legacy Σ `YieldMinted.s_plusd_amount` + Minter `CashRepaid.interest_minted` of non-carved-out loans (no `LoanDefaulted` at or before the repayment), net of `CashRepaymentReversed`; fees excluded |
 //!
 //! ## Conventions
 //!
 //! - USDC amounts as base-6 decimal strings (`"43140000.000000"`).
 //! - Rates as decimal-fraction strings (`"0.104000"` = 10.4 %).
-//! - `null` when data unavailable (e.g. no active loans → `current_apy_net_to_splusd`).
+//! - Amounts are `0` ("0.000000") when empty; rates are `null` when no book exists
+//!   (`current_apy_net_to_splusd` is `null` only when the gross rate is `null`).
 //! - `days`/`interval`/`MAX_SAMPLES` cap mirrors `/v1/stats/yield` (`portfolio.rs`).
 
 use std::collections::{BTreeMap, HashMap};
@@ -55,7 +56,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::contract_logs_repo::{
-    FlowEventRow, LifecycleRow, LoanSnapshotRow, RepaymentMintRow, YieldMintRow,
+    LifecycleRow, LoanSnapshotRow, PlusdDeltaRow, RepaymentMintRow, YieldMintRow,
 };
 
 use crate::error::ApiError;
@@ -81,7 +82,7 @@ const SECS_PER_DAY: i64 = 86_400;
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DashboardSeriesQuery {
     /// Number of days to look back from now (omit for full history starting at
-    /// the earliest flow/yield event in scope).
+    /// the earliest ledger/yield event in scope).
     pub days: Option<u32>,
     /// Sample interval: `"hourly"`, `"daily"` (default), or `"weekly"`.
     #[serde(default)]
@@ -91,20 +92,23 @@ pub struct DashboardSeriesQuery {
 /// Response for `GET /v1/dashboard/summary`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DashboardSummaryResponse {
-    /// Total value locked = Σ `DepositRequested.amount` − Σ `WithdrawalRequested.amount`
-    /// as-of now. USDC (6-decimal string).
+    /// Total value locked = PLUSD in circulation plus pending deposits (USDC at the custodian,
+    /// PLUSD not yet minted), from the PLUSD supply ledger as-of now. USDC (6-decimal string).
     pub tvl: String,
-    /// Senior + equity principal outstanding over active loans. USDC (6-decimal string).
-    /// `null` when there are no active loans.
+    /// Senior + equity principal outstanding over active loans. USDC (6-decimal string);
+    /// `"0.000000"` when nothing is active (amounts are `0`, rates are `null`).
     pub outstanding_in_loans: Option<String>,
     /// Effective-haircut net APY accruing to sPLUSD holders (decimal-fraction string,
-    /// e.g. `"0.104000"` = 10.4 %). `null` when there are no active loans.
+    /// e.g. `"0.104000"` = 10.4 %). `null` only when the gross book rate is `null`; `"0.000000"`
+    /// when the gross rate is `0` over an outstanding book.
     pub current_apy_net_to_splusd: Option<String>,
-    /// Principal-weighted gross senior interest rate (decimal-fraction string, e.g.
-    /// `"0.109000"` = 10.9 %). `null` when there are no active loans.
+    /// Outstanding-senior-weighted gross current senior interest rate (decimal-fraction string, e.g.
+    /// `"0.109000"` = 10.9 %). `null` when there are no active loans or nothing is outstanding.
     pub loan_book_yield: Option<String>,
-    /// Cumulative net PLUSD minted to the sPLUSD vault (loan + T-bill legs) since
-    /// inception. USDC (6-decimal string).
+    /// Cumulative LP yield since inception: legacy `YieldMinted.s_plusd_amount` plus
+    /// `CashRepaid.interest_minted` of loans not carved out at the repayment, net of
+    /// `CashRepaymentReversed`; fees excluded. Not equal to Σ LoanBook `minted_yield`.
+    /// USDC (6-decimal string).
     pub cumulative_yield_total: String,
 }
 
@@ -113,7 +117,7 @@ pub struct DashboardSummaryResponse {
 pub struct TvlPoint {
     /// ISO-8601 UTC timestamp for this sample.
     pub timestamp: String,
-    /// Running cumulative net TVL at this sample, USDC (6-decimal string).
+    /// Running PLUSD-ledger TVL at this sample, USDC (6-decimal string).
     pub tvl: String,
 }
 
@@ -259,23 +263,26 @@ async fn get_tvl_history(
     let step = query.interval.step_secs();
     let to = now_unix();
 
-    let mut flow_parts = Vec::new();
+    let mut ledger_parts = Vec::new();
     for c in chain.configured(&state.chains) {
-        flow_parts.push(
+        let Some(registry) = state.loan_registry_addresses.get(&c.chain_id) else {
+            continue;
+        };
+        ledger_parts.push(
             state
                 .contract_logs_repo
-                .list_flow_events(&state.pool, c.chain_id, to)
+                .list_plusd_ledger(&state.pool, c.chain_id, to, registry)
                 .await?,
         );
     }
-    let flows = merge_flows(flow_parts);
+    let flows = merge_flows(ledger_parts);
 
     // Determine window start.
     let from = match query.days {
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match flows.iter().map(|r| r.block_timestamp).min() {
             Some(earliest) => earliest,
-            None => return Ok(Json(empty_tvl_history())), // no flow events yet
+            None => return Ok(Json(empty_tvl_history())), // no ledger events yet
         },
     };
 
@@ -349,9 +356,9 @@ fn now_unix() -> i64 {
         .as_secs() as i64
 }
 
-/// One chain's flow + yield reads for the summary.
+/// One chain's PLUSD ledger + yield reads for the summary.
 struct ChainReads {
-    flows: Vec<FlowEventRow>,
+    flows: Vec<PlusdDeltaRow>,
     yield_deltas: Vec<YieldMintRow>,
 }
 
@@ -366,7 +373,7 @@ async fn read_chain(
         async {
             state
                 .contract_logs_repo
-                .list_flow_events(&state.pool, chain_id, to)
+                .list_plusd_ledger(&state.pool, chain_id, to, registry)
                 .await
                 .map_err(ApiError::from)
         },
@@ -378,8 +385,8 @@ async fn read_chain(
     })
 }
 
-/// One chain's cumulative-yield step events: historical `YieldMinted` plus `CashRepaid`
-/// mints (netted against reversals), all base-6.
+/// One chain's cumulative LP-yield step events: legacy `YieldMinted.s_plusd_amount` plus
+/// `CashRepaid.interest_minted` of non-carved-out loans (netted against reversals), all base-6.
 async fn read_chain_yield(
     state: &AppState,
     chain_id: i64,
@@ -408,13 +415,14 @@ async fn read_chain_yield(
 
 // ── Compute ──────────────────────────────────────────────────────────────────
 
-/// One chain's cumulative-yield step events in base-6 USDC: the historical `YieldMinted`
-/// rows (already normalised by the repo) plus the `CashRepaid` mints. Per loan, the
-/// running raw `interest_minted + fee_amount` (`+` at the mint, `-` at its
-/// `CashRepaymentReversed`) is normalised with `normalize_usdc_amount(kind, …)` and only
-/// its change is emitted, so the sum of the deltas up to `t` equals the sum over loans of
-/// `shared::minted_yield::loan_minted_yield` at `t`. A reversal at or before the mint
-/// leaves the row never live, matching `shared::minted_yield::is_live_at`.
+/// One chain's cumulative LP-yield step events in base-6 USDC: the legacy `YieldMinted`
+/// vault leg (already normalised by the repo) plus `CashRepaid.interest_minted`. Fees are
+/// excluded, and so are repayments with a `LoanDefaulted` at or before them (carved-out
+/// interest is minted to the Pocket). Per loan, the running raw interest (`+` at the mint,
+/// `-` at its `CashRepaymentReversed`) is normalised with `normalize_usdc_amount(kind, …)`
+/// and only its change is emitted. A reversal at or before the mint leaves the row never
+/// live, matching `shared::minted_yield::is_live_at`. Intentionally differs from the sum of
+/// LoanBook `minted_yield` (which includes fees and carved-out interest).
 pub fn chain_yield_deltas(
     kind: ChainKind,
     legacy: &[YieldMintRow],
@@ -425,7 +433,10 @@ pub fn chain_yield_deltas(
         if r.reversed_at.is_some_and(|rev| rev <= r.block_timestamp) {
             continue;
         }
-        let raw = &r.interest_minted + r.fee_amount.clone().unwrap_or_default();
+        if r.carved_out {
+            continue;
+        }
+        let raw = r.interest_minted.clone();
         let steps = by_loan.entry(r.loan_id.to_string()).or_default();
         steps.push((r.block_timestamp, raw.clone()));
         if let Some(rev) = r.reversed_at {
@@ -460,9 +471,9 @@ pub fn chain_yield_deltas(
     out
 }
 
-/// Merge per-chain (already base-6) flow events into one list ordered by time.
-pub fn merge_flows(parts: Vec<Vec<FlowEventRow>>) -> Vec<FlowEventRow> {
-    let mut out: Vec<FlowEventRow> = parts.into_iter().flatten().collect();
+/// Merge per-chain (already base-6) PLUSD ledger steps into one list ordered by time.
+pub fn merge_flows(parts: Vec<Vec<PlusdDeltaRow>>) -> Vec<PlusdDeltaRow> {
+    let mut out: Vec<PlusdDeltaRow> = parts.into_iter().flatten().collect();
     out.sort_by_key(|f| f.block_timestamp);
     out
 }
@@ -481,24 +492,14 @@ pub fn merge_yield_deltas(parts: Vec<Vec<YieldMintRow>>) -> Vec<YieldMintRow> {
 pub fn compute_summary(
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
-    flow_events: &[FlowEventRow],
+    ledger: &[PlusdDeltaRow],
     yield_mints: &[YieldMintRow],
     to: i64,
 ) -> DashboardSummaryResponse {
-    // TVL = Σ deposits − Σ withdrawals (request-side, USDC 6dp).
-    let tvl = {
-        let mut sum = BigDecimal::from(0);
-        for f in flow_events {
-            if f.kind == "deposit" {
-                sum += &f.amount;
-            } else {
-                sum -= &f.amount;
-            }
-        }
-        base6_to_decimal_string(&sum)
-    };
+    // TVL = Σ PLUSD ledger deltas (PLUSD in circulation + pending deposits, USDC 6dp).
+    let tvl = base6_to_decimal_string(&ledger.iter().map(|f| f.delta.clone()).sum::<BigDecimal>());
 
-    // cumulative_yield_total = Σ step events (historical YieldMinted + net CashRepaid mints)
+    // cumulative_yield_total = Σ LP-yield step events (legacy vault leg + net non-carved-out interest)
     let cumulative_yield_total = {
         let mut sum = BigDecimal::from(0);
         for m in yield_mints.iter().filter(|m| m.block_timestamp <= to) {
@@ -543,14 +544,15 @@ pub fn compute_summary(
 /// Effective-haircut net APY accruing to sPLUSD holders.
 ///
 /// ```text
-/// gross_book_rate = loan_book summary.avg_yield (principal-weighted gross senior rate)
+/// gross_book_rate = loan_book summary.avg_yield (outstanding-senior-weighted gross current senior rate)
 /// realized_net    = Σ repayment.senior_interest  (over ALL loans on chain)
 /// realized_gross  = Σ (senior_interest + mgmt_fee + perf_fee)
 /// haircut         = realized_gross > 0 ? realized_net / realized_gross : 1.0
 /// result          = gross_book_rate × haircut
 /// ```
 ///
-/// Returns `None` when there are no active loans (no `gross_book_rate`).
+/// Returns `None` only when there is no gross rate; a `0` gross rate over an outstanding
+/// book yields `"0.000000"` (amounts are `0`, rates are `null`).
 /// Falls back to `haircut = 1.0` (net = gross) when `realized_gross == 0`
 /// (no repayment data yet — a brand-new book).
 ///
@@ -563,10 +565,6 @@ pub fn net_apy(gross_book_rate_str: Option<&str>, loans: &[LoanSnapshotRow]) -> 
     // Parse the gross rate string back to BigDecimal.
     let gross_rate: BigDecimal = gross_str.parse().ok()?;
     let zero = BigDecimal::from(0);
-    if gross_rate == zero {
-        return None;
-    }
-
     // Sum repayment data over ALL loans (not just active) — bullet loans record
     // nothing until maturity, so we use the full book to capture any repayment data.
     let mut realized_net = BigDecimal::from(0);
@@ -589,7 +587,7 @@ pub fn net_apy(gross_book_rate_str: Option<&str>, loans: &[LoanSnapshotRow]) -> 
 }
 
 /// Pure computation: no DB calls. Walks the sample grid and emits the running
-/// cumulative net TVL (Σ deposits − Σ withdrawals) at each grid point.
+/// TVL (Σ PLUSD ledger deltas: PLUSD in circulation + pending deposits) at each grid point.
 ///
 /// Grid: `from, from+step, …, to` (always includes `to` as the final point).
 /// Events with `block_timestamp > t` are excluded from the running sum at `t`.
@@ -597,7 +595,7 @@ pub fn net_apy(gross_book_rate_str: Option<&str>, loans: &[LoanSnapshotRow]) -> 
 ///
 /// Public so `packages/api/tests/dashboard.rs` can exercise it without the HTTP/DB
 /// layers.
-pub fn compute_tvl_series(flows: &[FlowEventRow], from: i64, to: i64, step: i64) -> Vec<TvlPoint> {
+pub fn compute_tvl_series(flows: &[PlusdDeltaRow], from: i64, to: i64, step: i64) -> Vec<TvlPoint> {
     if flows.is_empty() {
         return vec![];
     }
@@ -606,17 +604,11 @@ pub fn compute_tvl_series(flows: &[FlowEventRow], from: i64, to: i64, step: i64)
     let mut series = Vec::with_capacity(timestamps.len());
 
     for t in timestamps {
-        let tvl: BigDecimal =
-            flows
-                .iter()
-                .filter(|f| f.block_timestamp <= t)
-                .fold(BigDecimal::from(0), |acc, f| {
-                    if f.kind == "deposit" {
-                        acc + &f.amount
-                    } else {
-                        acc - &f.amount
-                    }
-                });
+        let tvl: BigDecimal = flows
+            .iter()
+            .filter(|f| f.block_timestamp <= t)
+            .map(|f| f.delta.clone())
+            .sum();
         series.push(TvlPoint {
             timestamp: iso_utc_from_unix(t),
             tvl: base6_to_decimal_string(&tvl),
@@ -663,7 +655,7 @@ pub fn compute_yield_series(
     series
 }
 
-/// `TvlHistoryResponse` for a chain with no flow events yet — matches the
+/// `TvlHistoryResponse` for a chain with no PLUSD ledger events yet — matches the
 /// zero-valued convention `compute_summary` uses for an empty book.
 fn empty_tvl_history() -> TvlHistoryResponse {
     let zero = base6_to_decimal_string(&BigDecimal::from(0));
@@ -687,13 +679,13 @@ fn empty_yield_history() -> YieldHistoryResponse {
 }
 
 /// `compute_tvl_series` plus `max`/`min`/`average` over `[from, to]`, computed
-/// exactly from the underlying flow events (not the — possibly coarser —
+/// exactly from the underlying ledger deltas (not the — possibly coarser —
 /// sampled `series`), so the stats don't blur with a wide `interval`.
 ///
 /// Public so `packages/api/tests/dashboard.rs` can exercise it without the
 /// HTTP/DB layers.
 pub fn compute_tvl_history(
-    flows: &[FlowEventRow],
+    flows: &[PlusdDeltaRow],
     from: i64,
     to: i64,
     step: i64,
@@ -702,14 +694,7 @@ pub fn compute_tvl_history(
 
     let deltas: Vec<(i64, BigDecimal)> = flows
         .iter()
-        .map(|f| {
-            let delta = if f.kind == "deposit" {
-                f.amount.clone()
-            } else {
-                -f.amount.clone()
-            };
-            (f.block_timestamp, delta)
-        })
+        .map(|f| (f.block_timestamp, f.delta.clone()))
         .collect();
     let stat = window_stats(&deltas, from, to);
 

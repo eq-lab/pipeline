@@ -19,8 +19,8 @@ vi.mock("wagmi", async (importOriginal) => {
     useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
     useChainId: vi.fn(() => 560048),
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
-    useReadContract: vi.fn(() => ({
-      data: undefined,
+    useReadContract: vi.fn((args?: { functionName?: string }) => ({
+      data: args?.functionName === "decimals" ? 6 : undefined,
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -158,7 +158,7 @@ const mockEnv = vi.hoisted(() => ({
   DEPOSIT_MANAGER_ADDRESS:
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   STAKED_PLUSD_ADDRESS:
-    "0x0000000000000000000000000000000000000000" as `0x${string}`,
+    "0x5555000000000000000000000000000000000005" as `0x${string}`,
   STELLAR_STAKED_PLUSD_ID: "",
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
@@ -351,7 +351,7 @@ describe("Home page — disconnected state", () => {
     );
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000",
+      "1000000",
     );
 
     const user = userEvent.setup();
@@ -407,7 +407,7 @@ describe("Home page — connected CTA wiring (#1151, #1152)", () => {
   it("connected Sell is disabled at display-zero PLUSD (#1151)", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "4000000000000000",
+      "4000",
     );
     renderHome();
 
@@ -420,7 +420,7 @@ describe("Home page — connected CTA wiring (#1151, #1152)", () => {
   it("connected Sell with PLUSD navigates to withdraw", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000",
+      "1000000",
     );
     const user = userEvent.setup();
     renderHome();
@@ -577,7 +577,7 @@ describe("Home page — card height parity (connected)", () => {
 });
 
 const PLUSD_ADDRESS = "0xaaaa000000000000000000000000000000000002";
-const STAKED_PLUSD_ADDRESS = "0x0000000000000000000000000000000000000000";
+const STAKED_PLUSD_ADDRESS = "0x5555000000000000000000000000000000000005";
 
 describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
   beforeEach(() => {
@@ -655,7 +655,7 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
     );
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
   });
 
@@ -724,7 +724,7 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
 });
 
 describe("Home page — mobile State C: connected, has sPLUSD", () => {
-  const SPLUSD_ADDRESS = STAKED_PLUSD_ADDRESS; // zero address (env default)
+  const SPLUSD_ADDRESS = STAKED_PLUSD_ADDRESS;
 
   beforeEach(() => {
     localStorage.clear();
@@ -738,11 +738,11 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     );
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
@@ -821,8 +821,8 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
 
   it("EarnedCard shows total PnL in dollars from the pnl API when available", async () => {
     mockPnlData.current = {
-      total_unrealized_pnl: "42800000000000000000",
-      total_pnl: "123000000000000000000", // 123 PLUSD at 18 dp
+      total_unrealized_pnl: "42800000",
+      total_pnl: "123000000", // 123 PLUSD at 6 dp
       avg_apy: "0.0842",
     };
 
@@ -837,7 +837,7 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
 
   it("mobile portfolio chart summary shows sPLUSD balance in currency format and unrealized PnL below it", async () => {
     mockPnlData.current = {
-      total_unrealized_pnl: "42800000000000000000",
+      total_unrealized_pnl: "42800000",
       avg_apy: "0.0842",
     };
 
@@ -881,6 +881,36 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
       expect(subLine?.textContent).toMatch(/· \$[\d,]+\.\d{2}/);
       expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
+  });
+
+  it("headline and StakeCard value use convertToAssets, not the share count (#1658)", async () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
+      "1001500000000000000",
+    );
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$1,001.50" }).length,
+      ).toBeGreaterThanOrEqual(1);
+      const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
+      expect(subLine?.textContent).toContain("1,001.50 sPLUSD · $1,001.50");
+    });
+    expect(screen.getAllByTestId("splusd-shares")[0]?.textContent).toContain(
+      "1,000.00",
+    );
+  });
+
+  it("renders a dash, not $0.00, while convertToAssets is unavailable for a non-zero share balance (#1658)", async () => {
+    localStorage.removeItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
+    );
+    renderHome();
+    await waitFor(() => {
+      const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
+      expect(subLine?.textContent).toContain("· —");
+    });
+    expect(screen.queryByRole("heading", { name: "$0.00" })).toBeNull();
   });
 
   it("desktop StakeCard renders the staked state, not the marketing CTA (State C)", async () => {
@@ -1091,14 +1121,14 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "$100.00",
+        name: "$104.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
 
     await waitFor(() => {
       const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
-      expect(subLine?.textContent).toContain("104.00 sPLUSD · $100.00");
+      expect(subLine?.textContent).toContain("104.00 sPLUSD · $104.00");
       expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
 
@@ -1185,7 +1215,7 @@ describe("Home page — dust balances display as zero (#1186)", () => {
   it("dust PLUSD (renders $0.00) keeps the Stake button disabled and grey", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "4000000000000000",
+      "4000",
     );
     renderHome();
 
@@ -1205,7 +1235,7 @@ describe("Home page — dust balances display as zero (#1186)", () => {
   it("dust sPLUSD (renders 0.00) derives the empty state — no active Stake More", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
-      "4000000000000000",
+      "4000",
     );
     renderHome();
 
@@ -1221,7 +1251,7 @@ describe("Home page — dust balances display as zero (#1186)", () => {
   it("half-cent PLUSD (renders $0.01) keeps the Stake button active", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "5000000000000000",
+      "5000",
     );
     renderHome();
 
@@ -1799,7 +1829,7 @@ describe("Home page — KYB-pending regressions (#1423)", () => {
     connect();
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000",
+      "1000000",
     );
     renderHome();
     await expectLegacyConnectedLayout();
@@ -1809,7 +1839,7 @@ describe("Home page — KYB-pending regressions (#1423)", () => {
     connect();
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
-      "1000000000000000000",
+      "1000000",
     );
     renderHome();
     await expectLegacyConnectedLayout();
@@ -1869,7 +1899,7 @@ describe("Home page — plusd-held state (#1424)", () => {
     );
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
   });
 
@@ -2003,7 +2033,7 @@ describe("Home page — plusd-held regressions (#1424)", () => {
     );
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
   }
 
@@ -2011,7 +2041,7 @@ describe("Home page — plusd-held regressions (#1424)", () => {
     connectWithPlusd();
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
-      "1000000000000000000",
+      "1000000",
     );
     renderHome();
     const grid = await screen.findByTestId("home-dashboard-grid");
@@ -2135,7 +2165,7 @@ describe("Home page — KYB-problem state (#1426)", () => {
   it("a non-zero PLUSD balance still renders kyb-problem — no balance gating", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
     renderHome();
 
@@ -2302,7 +2332,7 @@ describe("Home page — wallet-only state (#1460)", () => {
   it("a non-zero PLUSD balance falls through to the zero state (undesigned combination)", async () => {
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
-      "1000000000000000000000",
+      "1000000000",
     );
     renderHome();
 

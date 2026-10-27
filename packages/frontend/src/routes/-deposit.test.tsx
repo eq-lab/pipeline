@@ -261,6 +261,16 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
+const mockInvalidateRequests = vi.hoisted(() => vi.fn());
+
+vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
+  useStellarDepositManagerMinDeposit: () => ({
+    minDeposit: 1000n * 10n ** 7n,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 vi.mock("@/api", () => ({
   useChainServed: () => mockChainServed(),
   useRequests: () => ({
@@ -269,6 +279,7 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  useInvalidateRequests: () => mockInvalidateRequests,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useDepositVoucher: (_requestId: string | undefined) => ({
     data: mockVoucherData,
@@ -396,10 +407,10 @@ const MIN_DEPOSIT_RAW = "1000000000";
 const BALANCE_5000_RAW = "5000000000";
 // 500 USDC at 6 decimals
 const BALANCE_500_RAW = "500000000";
-// 100 PLUSD at 18 decimals
-const BALANCE_100_PLUSD = "100000000000000000000";
-// 10 PLUSD at 18 decimals
-const AMOUNT_10_PLUSD = "10000000000000000000";
+// 100 PLUSD at 6 decimals
+const BALANCE_100_PLUSD = "100000000";
+// 10 PLUSD at 6 decimals
+const AMOUNT_10_PLUSD = "10000000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -495,10 +506,10 @@ function seedWithdrawMocks({
     USDC_ADDRESS,
   );
 
-  // PLUSD token metadata (18 decimals)
+  // PLUSD token metadata (6 decimals)
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.decimals`,
-    "18",
+    "6",
   );
   localStorage.setItem(
     `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.symbol`,
@@ -651,6 +662,43 @@ describe("Deposit page — approve needed state", () => {
       },
       { timeout: 2000 },
     );
+  });
+});
+
+describe("Deposit page — EVM approve failure toast (#1658)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    seedBaseMocks({ allowance: "0" });
+    localStorage.removeItem(
+      `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.approve`,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("a failed approve turns the toast into a danger toast with Details", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2000");
+    const approveBtn = await screen.findByRole("button", { name: "Approve" });
+    await waitFor(() => expect(approveBtn).not.toBeDisabled());
+    await user.click(approveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Approval failed")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByText("Approving USDC…")).not.toBeInTheDocument();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });
 
@@ -909,7 +957,7 @@ describe("Deposit page — quick-amount chips", () => {
     await user.click(minChip);
 
     const input = screen.getByRole("textbox", { name: /USDC amount/i });
-    expect((input as HTMLInputElement).value).toBe("1000.00");
+    expect((input as HTMLInputElement).value).toBe("1000");
   });
 
   it("Max chip sets input to the live balance (5000)", async () => {
@@ -920,7 +968,7 @@ describe("Deposit page — quick-amount chips", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /USDC amount/i });
-    expect((input as HTMLInputElement).value).toBe("5000.00");
+    expect((input as HTMLInputElement).value).toBe("5000");
   });
 });
 
@@ -1541,7 +1589,7 @@ describe("Deposit page — locked amount on active request", () => {
 
     await waitFor(() => {
       // formatUsdc(5_000_000n, 6) → "5.00"; commas stripped → "5.00"
-      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).value).toBe("5");
       expect((input as HTMLInputElement).disabled).toBe(true);
     });
   });
@@ -1564,7 +1612,7 @@ describe("Deposit page — locked amount on active request", () => {
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
 
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).value).toBe("5");
       expect((input as HTMLInputElement).disabled).toBe(true);
     });
   });
@@ -1611,14 +1659,14 @@ describe("Deposit page — locked amount on active request", () => {
 
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).value).toBe("5");
     });
 
     const maxChip = screen.getByRole("button", { name: "Max" });
     await user.click(maxChip);
 
     // Input must still show the locked amount, not the balance.
-    expect((input as HTMLInputElement).value).toBe("5.00");
+    expect((input as HTMLInputElement).value).toBe("5");
   });
 
   it("VerificationFailed — input is editable (not locked)", async () => {
@@ -1857,7 +1905,7 @@ describe("Deposit page — direction=withdraw — approved state (allowance ≥ 
     mockWithdrawVoucherData = undefined;
     mockWithdrawVoucherStatus = "idle";
     // allowance = 1000 PLUSD — sufficient for any reasonable input
-    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+    seedWithdrawMocks({ allowance: "1000000000" });
   });
 
   afterEach(() => {
@@ -1934,7 +1982,7 @@ describe("Deposit page — direction=withdraw — PendingVerification mock", () 
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
     mockWithdrawVoucherStatus = "idle";
-    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+    seedWithdrawMocks({ allowance: "1000000000" });
   });
 
   afterEach(() => {
@@ -1998,7 +2046,7 @@ describe("Deposit page — direction=withdraw — PendingClaim with voucher read
       signature: "0xsig",
     };
     mockWithdrawVoucherStatus = "ready";
-    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+    seedWithdrawMocks({ allowance: "1000000000" });
   });
 
   afterEach(() => {
@@ -2093,7 +2141,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(chip25);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("25.00");
+    expect((input as HTMLInputElement).value).toBe("25");
   });
 
   it("Max chip sets input to the live balance (100 PLUSD)", async () => {
@@ -2104,7 +2152,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(maxChip);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("100.00");
+    expect((input as HTMLInputElement).value).toBe("100");
   });
 
   it("50% chip sets input to balance / 2 = 50 PLUSD", async () => {
@@ -2115,7 +2163,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(chip50);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("50.00");
+    expect((input as HTMLInputElement).value).toBe("50");
   });
 
   it("75% chip sets input to balance * 75 / 100 = 75 PLUSD", async () => {
@@ -2126,7 +2174,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     await user.click(chip75);
 
     const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
-    expect((input as HTMLInputElement).value).toBe("75.00");
+    expect((input as HTMLInputElement).value).toBe("75");
   });
 });
 
@@ -2988,7 +3036,7 @@ describe("Deposit page — Stellar locked amount on active request", () => {
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await waitFor(() => {
       // formatUsdc(20_000_000_000n, 7) → "2,000.00"; commas stripped → "2000.00"
-      expect((input as HTMLInputElement).value).toBe("2000.00");
+      expect((input as HTMLInputElement).value).toBe("2000");
       expect((input as HTMLInputElement).disabled).toBe(true);
     });
   });
@@ -3017,7 +3065,7 @@ describe("Deposit page — Stellar locked amount on active request", () => {
 
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("1000.00");
+      expect((input as HTMLInputElement).value).toBe("1000");
       expect((input as HTMLInputElement).value).not.toBe("0");
     });
   });
@@ -3542,6 +3590,15 @@ describe("Deposit page — trustline enable failure resolves the pending toast (
 });
 
 describe("Deposit — active chain not served by the API (#1605)", () => {
+  afterEach(() => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
   it("replaces the conversion flow with the not-available notice", () => {
     mockChainServed.mockReturnValue({
       kind: "evm",
@@ -3554,5 +3611,66 @@ describe("Deposit — active chain not served by the API (#1605)", () => {
       "Not available on Ethereum",
     );
     expect(screen.queryByTestId("deposit-header")).not.toBeInTheDocument();
+  });
+});
+
+describe("Deposit page — chips stay within the balance (#1628)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Max fills the exact 6-dp balance and keeps Approve enabled", async () => {
+    mockDirection = "deposit";
+    seedBaseMocks({ balance: "1234567891", allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    await user.click(await screen.findByRole("button", { name: "Max" }));
+
+    const input = screen.getByRole("textbox", { name: /USDC amount/i });
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled(),
+    );
+    expect(screen.queryByText("Insufficient balance")).toBeNull();
+  });
+
+  it("blocks a deposit above the balance with an Insufficient balance message", async () => {
+    mockDirection = "deposit";
+    seedBaseMocks({ balance: BALANCE_5000_RAW, allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    await user.click(await screen.findByRole("button", { name: "$10,000" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Insufficient balance",
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+  });
+
+  it("withdraw 75% and Max never exceed an odd 6-dp balance", async () => {
+    mockDirection = "withdraw";
+    seedWithdrawMocks({ balance: "1234567891", allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.click(await screen.findByRole("button", { name: "75%" }));
+    expect((input as HTMLInputElement).value).toBe("925.925918");
+    await user.click(screen.getByRole("button", { name: "Max" }));
+    expect((input as HTMLInputElement).value).toBe("1234.567891");
+    expect(screen.queryByText("Insufficient balance")).toBeNull();
   });
 });

@@ -12,8 +12,7 @@
  *
  * Covers: the two cards + waterfall rows built from a mocked
  * `useLoanWaterfall` response; the suppressed "Next stage: principal
- * repayment" hint (absent for a normal interest coupon, present only in the
- * terminal full-principal-repayment case); the never-fabricated
+ * repayment" hint (absent) and the principal-block notice (#1623); the never-fabricated
  * "Recorded"/"Minted" chips (absent); loading / error / not-found states.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -47,11 +46,13 @@ vi.mock("@tanstack/react-router", async () => {
       children,
       to,
       params,
+      search,
       ...rest
     }: {
       children: React.ReactNode;
       to: string;
       params?: Record<string, string>;
+      search?: Record<string, unknown>;
     } & Record<string, unknown>) => {
       const href = params
         ? Object.entries(params).reduce(
@@ -60,7 +61,11 @@ vi.mock("@tanstack/react-router", async () => {
           )
         : to;
       return (
-        <a href={href} {...rest}>
+        <a
+          href={href}
+          data-search={search ? JSON.stringify(search) : undefined}
+          {...rest}
+        >
           {children}
         </a>
       );
@@ -135,6 +140,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      onchain_status: "Performing",
       documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
@@ -147,6 +153,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
+  onchain_status: "Performing",
   epoch: {
     number: 1,
     current_apy_bps: 1000,
@@ -190,8 +197,7 @@ const WATERFALL_INTEREST_ONLY: WaterfallResponse = {
   oet_allocation: "20000000000", // $2,000
 };
 
-/** A terminal coupon whose principal-first waterfall fully repays the $1,840,000 outstanding senior. */
-const WATERFALL_TERMINAL: WaterfallResponse = {
+const WATERFALL_COVERS_PRINCIPAL: WaterfallResponse = {
   senior_principal_returned: "18400000000000", // $1,840,000
   senior_coupon_net: "350000000000",
   management_fee: "50000000000",
@@ -261,6 +267,93 @@ describe("Record Coupon route — ready state", () => {
         perf_fee: "30000000000",
         oet_alloc: "20000000000",
       },
+    });
+  });
+
+  describe("amount settling gate (#1622)", () => {
+    const WATERFALL_50K: WaterfallResponse = {
+      senior_principal_returned: "0",
+      senior_coupon_net: "350000000000",
+      management_fee: "50000000000",
+      performance_fee: "30000000000",
+      oet_allocation: "20000000000",
+    };
+    const WATERFALL_500K: WaterfallResponse = {
+      senior_principal_returned: "0",
+      senior_coupon_net: "3500000000000",
+      management_fee: "500000000000",
+      performance_fee: "300000000000",
+      oet_allocation: "200000000000",
+    };
+
+    function mockByAmount() {
+      mockUseLoanWaterfall.mockImplementation((_c, _l, amount) => {
+        const data =
+          amount === "500000000000"
+            ? WATERFALL_50K
+            : amount === "5000000000000"
+              ? WATERFALL_500K
+              : undefined;
+        return { data, isLoading: false, error: null } as ReturnType<
+          typeof useLoanWaterfall
+        >;
+      });
+    }
+
+    async function settleAt50k() {
+      mockByAmount();
+      renderRoute();
+      const input = screen.getByTestId("record-coupon-amount");
+      fireEvent.change(input, { target: { value: "50000" } });
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      return { input, submit };
+    }
+
+    it("never submits the stale amount while the new one is debouncing", async () => {
+      const { input, submit } = await settleAt50k();
+      fireEvent.change(input, { target: { value: "500000" } });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+      await waitFor(() => expect(submit).toBeEnabled());
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
+        loanId: 4488,
+        repayment: {
+          offtaker_received: "5000000000000",
+          senior_principal_repaid: "0",
+          senior_interest: "3500000000000",
+          equity_distributed: "500000000000",
+          mgmt_fee: "500000000000",
+          perf_fee: "300000000000",
+          oet_alloc: "200000000000",
+        },
+      });
+    });
+
+    it("disables the record button immediately when the amount is cleared", async () => {
+      const { input, submit } = await settleAt50k();
+      fireEvent.change(input, { target: { value: "" } });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("hides the summary while the amount is unsettled, then shows the new total", async () => {
+      const { input } = await settleAt50k();
+      await waitFor(() =>
+        expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
+          "Components sum to received $50,000",
+        ),
+      );
+      fireEvent.change(input, { target: { value: "500000" } });
+      expect(screen.queryByTestId("record-coupon-summary")).toBeNull();
+      await waitFor(() =>
+        expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
+          "Components sum to received $500,000",
+        ),
+      );
     });
   });
 
@@ -456,6 +549,7 @@ describe("Record Coupon route — ready state", () => {
       expect(lastCall[0]).toBe(99_000_001);
       expect(lastCall[1]).toBe("4488");
       expect(lastCall[2]).toBe("1234567800");
+      expect(lastCall[3]).toBeNull();
     });
   });
 
@@ -619,45 +713,135 @@ describe("Record Coupon route — ready state", () => {
     ).toBeInTheDocument();
   });
 
-  it("does NOT render the 'Next stage: principal repayment' hint for a normal interest coupon", () => {
+  it("does NOT render the 'Next stage: principal repayment' hint or the principal block for a normal interest coupon", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
+    await waitFor(() =>
+      expect(screen.getByTestId("record-coupon-submit")).toBeEnabled(),
+    );
     expect(
-      screen.queryByTestId("record-coupon-terminal-hint"),
+      screen.queryByTestId("record-coupon-principal-block"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Next stage: principal repayment/),
     ).not.toBeInTheDocument();
   });
 
-  it("renders the terminal-close hint ONLY when the coupon fully repays the outstanding senior principal", async () => {
-    mockWaterfall(WATERFALL_TERMINAL);
-    renderRoute();
-    // Outstanding senior is $1,840,000 — enter an amount that covers it.
-    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
-      target: { value: "1900000" },
-    });
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("record-coupon-terminal-hint"),
-      ).toBeInTheDocument(),
-    );
-  });
+  describe("coupon covering principal (#1623)", () => {
+    async function enterBlocked(waterfall: WaterfallResponse, amount: string) {
+      mockWaterfall(waterfall);
+      renderRoute();
+      fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+        target: { value: amount },
+      });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("record-coupon-principal-block"),
+        ).toBeInTheDocument(),
+      );
+    }
 
-  it("does NOT render the terminal hint when the waterfall returns full principal but the entered amount doesn't cover it", () => {
-    // Defensive: senior_principal_returned alone should never trigger the hint
-    // without the entered-amount guard.
-    mockWaterfall(WATERFALL_TERMINAL);
-    renderRoute();
-    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
-      target: { value: "100" },
+    it("blocks the coupon, links to Record Repayment and keeps the screen consistent", async () => {
+      await enterBlocked(WATERFALL_COVERS_PRINCIPAL, "1900000");
+      const block = screen.getByTestId("record-coupon-principal-block");
+      expect(block).toHaveTextContent("$1,840,000");
+      const link = screen.getByRole("link", { name: "Record Repayment" });
+      expect(link).toHaveAttribute("href", "/loans/4488/record-repayment");
+      expect(link).toHaveAttribute("data-search", '{"chain":99000001}');
+      expect(screen.queryByTestId("record-coupon-summary")).toBeNull();
+      const submit = screen.getByTestId("record-coupon-submit");
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId("record-coupon-terminal-hint"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/fully repays senior principal/),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByTestId("record-coupon-terminal-hint"),
-    ).not.toBeInTheDocument();
+
+    it("blocks a partial principal too", async () => {
+      await enterBlocked(
+        { ...WATERFALL_INTEREST_ONLY, senior_principal_returned: "10000000" },
+        "45001",
+      );
+      expect(
+        screen.getByTestId("record-coupon-principal-block"),
+      ).toHaveTextContent("$1");
+      expect(screen.getByTestId("record-coupon-submit")).toBeDisabled();
+    });
+
+    it("still records when senior is already fully repaid (principal 0, residual to equity)", async () => {
+      mockUseLoanBook.mockReturnValue({
+        data: {
+          ...LOAN_BOOK_RESPONSE,
+          loans: [
+            { ...LOAN_BOOK_RESPONSE.loans[0]!, senior_outstanding: "0.000000" },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        refetch: () => {},
+      });
+      mockWaterfall(WATERFALL_INTEREST_ONLY);
+      renderRoute();
+      fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+        target: { value: "50000" },
+      });
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      expect(
+        screen.queryByTestId("record-coupon-principal-block"),
+      ).not.toBeInTheDocument();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
+        loanId: 4488,
+        repayment: {
+          offtaker_received: "500000000000",
+          senior_principal_repaid: "0",
+          senior_interest: "350000000000",
+          equity_distributed: "50000000000",
+          mgmt_fee: "50000000000",
+          perf_fee: "30000000000",
+          oet_alloc: "20000000000",
+        },
+      });
+    });
+
+    it("hides the notice immediately when the amount changes, without flashing back", async () => {
+      mockUseLoanWaterfall.mockImplementation((_c, _l, amount) => {
+        const data =
+          amount === "19000000000000"
+            ? WATERFALL_COVERS_PRINCIPAL
+            : amount === "450000000000"
+              ? WATERFALL_INTEREST_ONLY
+              : undefined;
+        return { data, isLoading: false, error: null } as ReturnType<
+          typeof useLoanWaterfall
+        >;
+      });
+      renderRoute();
+      const input = screen.getByTestId("record-coupon-amount");
+      fireEvent.change(input, { target: { value: "1900000" } });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("record-coupon-principal-block"),
+        ).toBeInTheDocument(),
+      );
+      fireEvent.change(input, { target: { value: "45000" } });
+      expect(
+        screen.queryByTestId("record-coupon-principal-block"),
+      ).not.toBeInTheDocument();
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      expect(
+        screen.queryByTestId("record-coupon-principal-block"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

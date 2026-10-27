@@ -41,6 +41,7 @@ function entry(overrides: Partial<LoanBookEntry>): LoanBookEntry {
     rate: "0.13",
     protection: null,
     status: "Performing",
+    onchain_status: "Performing",
     documents: [],
     repaid_to_date: "0",
     disbursed: true,
@@ -103,5 +104,26 @@ describe("useLoanDetail (#1537)", () => {
     const { result } = renderHook(() => useLoanDetail(99_000_001, "999"));
     expect(result.current.hero.title).toBe("Loan #999");
     expect(result.current.onChainBlockedReason).toBeNull();
+  });
+});
+
+describe("useLoanDetail lifecycleStatus (#1621)", () => {
+  it("serves the on-chain status for a Past Due loan that is WatchList on chain", () => {
+    mockUseLoanBook.mockReturnValue({
+      ...IDLE,
+      data: {
+        summary: {} as never,
+        loans: [
+          entry({
+            loan_id: "7",
+            status: "Past Due",
+            onchain_status: "WatchList",
+          }),
+        ],
+      },
+    });
+    const { result } = renderHook(() => useLoanDetail(99_000_001, "7"));
+    expect(result.current.lifecycleStatus).toBe("WatchList");
+    expect(result.current.variant).toBe("matured");
   });
 });

@@ -1,4 +1,4 @@
-// spec: docs/frontend/wallet-flows.md#active-chain-for-protocol-reads (chain-served probe, #1605).
+// spec: docs/frontend/wallet-flows.md#active-chain-for-protocol-reads (chain-served check via GET /v1/chains, #1605).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -26,15 +26,18 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-import {
-  chainDisplayName,
-  isUnknownChainError,
-  useChainServed,
-} from "./useChainServed";
-import { ApiError } from "./client";
+import { chainDisplayName, useChainServed } from "./useChainServed";
 
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal("fetch", fetchMock);
+
+const CHAINS_BODY = {
+  chains: [
+    { chain_id: 99_000_001, kind: "stellar" },
+    { chain_id: 560048, kind: "evm" },
+  ],
+  default_chain_id: 99_000_001,
+};
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -60,27 +63,23 @@ afterEach(() => {
 });
 
 describe("useChainServed", () => {
-  it("probes /v1/pnl with the zero wallet and the active chain; a 200 means served", async () => {
+  it("reads GET /v1/chains once; a listed chain is served", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ total_pnl: "0" }), { status: 200 }),
+      new Response(JSON.stringify(CHAINS_BODY), { status: 200 }),
     );
     const { result } = renderHook(() => useChainServed(), {
       wrapper: makeWrapper(),
     });
+    expect(result.current.served).toBeUndefined();
     await waitFor(() => expect(result.current.served).toBe(true));
-    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
-    expect(url).toContain(
-      "/v1/pnl?wallet=0x0000000000000000000000000000000000000000&chain_id=560048",
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("/v1/chains");
     expect(result.current.chainName).toBe("Hoodi");
   });
 
-  it("a 400 `unknown chain_id` means not served", async () => {
+  it("a chain missing from the list is not served", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ error: "unknown chain_id: 1 (configured: 99000002)" }),
-        { status: 400 },
-      ),
+      new Response(JSON.stringify(CHAINS_BODY), { status: 200 }),
     );
     activeChain.chainId = 1;
     const { result } = renderHook(() => useChainServed(), {
@@ -90,7 +89,7 @@ describe("useChainServed", () => {
     expect(result.current.chainName).toBe("Ethereum");
   });
 
-  it("any other failure counts as served (a flaky probe never hides a working chain)", async () => {
+  it("a failing /v1/chains counts as served (no false notice)", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "internal error" }), {
         status: 500,
@@ -102,30 +101,39 @@ describe("useChainServed", () => {
     await waitFor(() => expect(result.current.served).toBe(true));
   });
 
-  it("the Stellar view is served without a request", async () => {
+  it("the Stellar view is looked up in the same list", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(CHAINS_BODY), { status: 200 }),
+    );
     activeChain.kind = "stellar";
     activeChain.chainId = 99_000_001;
     const { result } = renderHook(() => useChainServed(), {
       wrapper: makeWrapper(),
     });
-    expect(result.current.served).toBe(true);
+    await waitFor(() => expect(result.current.served).toBe(true));
     expect(result.current.chainName).toBe("Stellar");
-    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a Stellar chain id absent from the list is not served", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          chains: [{ chain_id: 560048, kind: "evm" }],
+          default_chain_id: 560048,
+        }),
+        { status: 200 },
+      ),
+    );
+    activeChain.kind = "stellar";
+    activeChain.chainId = 99_000_001;
+    const { result } = renderHook(() => useChainServed(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.served).toBe(false));
   });
 });
 
-describe("isUnknownChainError / chainDisplayName", () => {
-  it("matches only a 400 whose message starts with unknown chain_id", () => {
-    expect(isUnknownChainError(new ApiError(400, "unknown chain_id: 1"))).toBe(
-      true,
-    );
-    expect(isUnknownChainError(new ApiError(400, "bad wallet"))).toBe(false);
-    expect(isUnknownChainError(new ApiError(404, "unknown chain_id: 1"))).toBe(
-      false,
-    );
-    expect(isUnknownChainError(new Error("unknown chain_id: 1"))).toBe(false);
-  });
-
+describe("chainDisplayName", () => {
   it("names known chains and falls back for unknown ids", () => {
     expect(chainDisplayName("stellar", 99_000_001)).toBe("Stellar");
     expect(chainDisplayName("evm", 560048)).toBe("Hoodi");

@@ -15,7 +15,7 @@ use pipeline_api::AppState;
 use serde_json::{json, Value};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::{
-    AuditLogRow, ContractLogsRepo, FlowEventRow, LoanSnapshotRow, RepaymentMintRow, YieldMintRow,
+    AuditLogRow, ContractLogsRepo, LoanSnapshotRow, PlusdDeltaRow, RepaymentMintRow, YieldMintRow,
 };
 use shared::kyc_repo::KycRepo;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
@@ -188,7 +188,7 @@ fn make_loan(
             current_rate: rate_bps,
             closure_reason: "None".to_owned(),
             carved_out: false,
-            disbursed: BigDecimal::from(0_i64),
+            disbursed: usdc(senior_usdc),
             repaid: BigDecimal::from(0_i64),
             written_down: BigDecimal::from(0_i64),
             interest_adjustment: BigDecimal::from(0_i64),
@@ -198,11 +198,17 @@ fn make_loan(
     }
 }
 
-fn flow(kind: &str, ts_day: i64, amount_usdc: i64) -> FlowEventRow {
-    FlowEventRow {
+fn flow(kind: &str, ts_day: i64, amount_usdc: i64) -> PlusdDeltaRow {
+    let signed = if kind == "deposit" {
+        amount_usdc
+    } else {
+        -amount_usdc
+    };
+    PlusdDeltaRow {
         block_timestamp: ts_day * DAY,
-        kind: kind.to_owned(),
-        amount: usdc(amount_usdc),
+        block_number: ts_day,
+        log_index: 0,
+        delta: usdc(signed),
     }
 }
 
@@ -226,6 +232,7 @@ fn cash_repaid(
         interest_minted: BigDecimal::from(interest_raw),
         fee_amount: fee_raw.map(BigDecimal::from),
         reversed_at: reversed_day.map(|d| d * DAY),
+        carved_out: false,
     }
 }
 
@@ -319,7 +326,7 @@ fn repayment_mints_normalise_per_chain_decimals_before_summing() {
     );
     let merged = merge_yield_deltas(vec![evm, stellar]);
     let summary = compute_summary(&[], &[], &[], &merged, 5 * DAY);
-    assert_eq!(summary.cumulative_yield_total, "7.000000");
+    assert_eq!(summary.cumulative_yield_total, "5.000000");
 }
 
 #[test]
@@ -332,7 +339,7 @@ fn cumulative_yield_is_legacy_plus_cash_repaid_net_of_reversal() {
     let deltas = chain_yield_deltas(ChainKind::Evm, &legacy, &repaid);
 
     let before_reversal = compute_summary(&[], &[], &[], &deltas, 3 * DAY);
-    assert_eq!(before_reversal.cumulative_yield_total, "16.000000");
+    assert_eq!(before_reversal.cumulative_yield_total, "14.000000");
     let after_reversal = compute_summary(&[], &[], &[], &deltas, 5 * DAY);
     assert_eq!(after_reversal.cumulative_yield_total, "6.000000");
 
@@ -347,25 +354,32 @@ fn cumulative_yield_is_legacy_plus_cash_repaid_net_of_reversal() {
         [
             "0.000000",
             "5.000000",
-            "15.000000",
-            "16.000000",
+            "13.000000",
+            "14.000000",
             "6.000000",
             "6.000000"
         ]
     );
-    assert_eq!(hist.max, "16.000000");
+    assert_eq!(hist.max, "14.000000");
     assert_eq!(hist.min, "0.000000");
 }
 
 #[test]
-fn yield_deltas_match_shared_net_repayment_arithmetic() {
+fn yield_deltas_match_shared_net_interest_arithmetic() {
     let repaid = vec![
         cash_repaid(2, 8_000_000, Some(2_000_000), Some(4)),
         cash_repaid(3, 1_000_000, None, None),
     ];
+    let interest_only: Vec<RepaymentMintRow> = repaid
+        .iter()
+        .map(|r| RepaymentMintRow {
+            fee_amount: None,
+            ..r.clone()
+        })
+        .collect();
     for as_of_day in [1, 2, 3, 4, 5] {
         let as_of = as_of_day * DAY;
-        let expected = net_repayment_minted_raw(&repaid, as_of);
+        let expected = net_repayment_minted_raw(&interest_only, as_of);
         let deltas = chain_yield_deltas(ChainKind::Evm, &[], &repaid);
         let got: BigDecimal = deltas
             .iter()
@@ -377,7 +391,7 @@ fn yield_deltas_match_shared_net_repayment_arithmetic() {
 }
 
 #[test]
-fn stellar_dashboard_yield_equals_sum_of_per_loan_minted_yield() {
+fn stellar_dashboard_yield_equals_sum_of_per_loan_interest_only_minted_yield() {
     let repaid = vec![
         loan_repaid(1, 1, 5, Some(4), None),
         loan_repaid(1, 2, 5, Some(4), None),
@@ -401,7 +415,10 @@ fn stellar_dashboard_yield_equals_sum_of_per_loan_minted_yield() {
                 let rows: Vec<RepaymentMintRow> = repaid
                     .iter()
                     .filter(|r| r.loan_id == loan)
-                    .cloned()
+                    .map(|r| RepaymentMintRow {
+                        fee_amount: None,
+                        ..r.clone()
+                    })
                     .collect();
                 loan_minted_yield(ChainKind::Stellar, &zero, &rows, as_of)
             })
@@ -411,15 +428,41 @@ fn stellar_dashboard_yield_equals_sum_of_per_loan_minted_yield() {
     let per_row_floor: BigDecimal = repaid
         .iter()
         .filter(|r| r.reversed_at.is_none())
-        .map(|r| {
-            shared::chains::normalize_usdc_amount(
-                ChainKind::Stellar,
-                &(&r.interest_minted + r.fee_amount.clone().unwrap_or_default()),
-            )
-        })
+        .map(|r| shared::chains::normalize_usdc_amount(ChainKind::Stellar, &r.interest_minted))
         .sum();
     let at_end: BigDecimal = deltas.iter().map(|d| d.s_plusd_amount.clone()).sum();
     assert_ne!(at_end, per_row_floor);
+}
+
+#[test]
+fn cumulative_yield_excludes_fees_and_carved_out_interest_unlike_loan_book() {
+    let day = |d: i64| d * DAY;
+    let live = cash_repaid(2, 100_000_000, Some(33_000_000), None);
+    let carved = RepaymentMintRow {
+        repayment_id: BigDecimal::from(1),
+        block_timestamp: day(5),
+        carved_out: true,
+        ..cash_repaid(5, 40_000_000, Some(10_000_000), None)
+    };
+    let rows = [live, carved];
+    let deltas = chain_yield_deltas(ChainKind::Evm, &[], &rows);
+    let summary = compute_summary(&[], &[], &[], &deltas, 6 * DAY);
+    assert_eq!(summary.cumulative_yield_total, "100.000000");
+    let loan_book = loan_minted_yield(ChainKind::Evm, &BigDecimal::from(0), &rows, 6 * DAY);
+    assert_eq!(loan_book, BigDecimal::from(183_000_000));
+}
+
+#[test]
+fn only_a_default_ordered_before_the_repayment_carves_it_out() {
+    let carved = RepaymentMintRow {
+        carved_out: true,
+        ..cash_repaid(2, 5_000_000, None, None)
+    };
+    let not_carved = cash_repaid(2, 7_000_000, None, None);
+    assert!(chain_yield_deltas(ChainKind::Evm, &[], &[carved]).is_empty());
+    let deltas = chain_yield_deltas(ChainKind::Evm, &[], &[not_carved]);
+    assert_eq!(deltas.len(), 1);
+    assert_eq!(deltas[0].s_plusd_amount, BigDecimal::from(7_000_000));
 }
 
 #[test]
@@ -468,7 +511,7 @@ fn single_chain_merge_is_the_identity() {
         flow("deposit", 5, 1),
     ];
     let merged = merge_flows(vec![flows.clone()]);
-    let key = |f: &FlowEventRow| (f.block_timestamp, f.kind.clone(), f.amount.clone());
+    let key = |f: &PlusdDeltaRow| (f.block_timestamp, f.block_number, f.delta.clone());
     assert_eq!(
         merged.iter().map(key).collect::<Vec<_>>(),
         flows.iter().map(key).collect::<Vec<_>>()
@@ -495,7 +538,7 @@ fn single_chain_merge_is_the_identity() {
 }
 
 #[test]
-fn summary_rates_are_principal_weighted_across_chains() {
+fn summary_rates_are_outstanding_weighted_across_chains() {
     let loans = vec![
         make_loan(1, 1, 100, 0, 1000, 0, 180),
         make_loan(99_000_001, 1, 300, 0, 2000, 0, 180),

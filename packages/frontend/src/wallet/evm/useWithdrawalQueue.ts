@@ -14,13 +14,12 @@
  *      RPC call when `VITE_WITHDRAWAL_QUEUE_ADDRESS` is the zero address.
  *   3. Real wagmi / viem calls.
  *
- * Important: the `requestId`, `queued`, and `amount` fields in `data` returned
- * by the write hooks are **mock-path only**. On the real wagmi path, `data`
- * contains only `{ hash }` because `useWriteContract` only resolves to a tx
- * hash — it does not decode the receipt return value. This mirrors the
- * behaviour of `useRequestDeposit` and `useClaim` in useDepositManager.ts.
+ * `useRequestWithdrawal` decodes `requestId` and `queued` from the mined
+ * receipt's `WithdrawalRequested` event; `useClaimWithdrawal`'s `amount` is
+ * mock-path only.
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { parseEventLogs } from "viem";
 import {
   useWriteContract,
   useWaitForTransactionReceipt,
@@ -32,6 +31,7 @@ import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
 import { useEvmWallet } from "./useEvmWallet";
+import { writeInflightEvmRequest } from "./inflight";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -93,9 +93,8 @@ export interface ClaimWithdrawalResult {
  * Zero-address: `write()` sets `error` to `Error("WithdrawalQueue not configured")`
  *   without touching wagmi.
  *
- * Note: `requestId` and `queued` are **mock-path only**. On the real wagmi path
- * `useWriteContract` only resolves to a tx hash — it does not decode the receipt
- * return tuple. This mirrors `useRequestDeposit`'s `requestId?` behaviour.
+ * On the real path `requestId` and `queued` come from the receipt's
+ * `WithdrawalRequested` event.
  *
  * Note: for write hooks we check the mock key inside the `write` callback
  * (via `readMock`) rather than tracking it reactively. This avoids the
@@ -145,6 +144,52 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
   // Public client for gas estimation — always called (hooks must not be conditional).
   const publicClient = usePublicClient();
 
+  const lastAmountRef = useRef<bigint>(0n);
+
+  const decoded = useMemo(() => {
+    const logs = wagmiReceipt.data?.logs;
+    if (!logs || address === undefined) return undefined;
+    try {
+      const events = parseEventLogs({
+        abi: withdrawalQueueAbi,
+        eventName: "WithdrawalRequested",
+        logs,
+      });
+      const match = events.find(
+        (e) =>
+          e.address.toLowerCase() === WQ_ADDRESS.toLowerCase() &&
+          e.args.withdrawer.toLowerCase() === address.toLowerCase(),
+      );
+      return match === undefined
+        ? undefined
+        : {
+            requestId: match.args.requestId.toString(),
+            queued: match.args.queued.toString(),
+          };
+    } catch {
+      return undefined;
+    }
+  }, [wagmiReceipt.data, address, WQ_ADDRESS]);
+
+  const txHashForInflight = wagmiWrite.data;
+  const decodedRequestId = decoded?.requestId;
+  useEffect(() => {
+    if (
+      !wagmiReceipt.isSuccess ||
+      decodedRequestId === undefined ||
+      address === undefined ||
+      txHashForInflight === undefined
+    ) {
+      return;
+    }
+    writeInflightEvmRequest("withdraw", ENV.EVM_CHAIN_ID, address, {
+      requestId: decodedRequestId,
+      amount: lastAmountRef.current.toString(),
+      txHash: txHashForInflight,
+      createdAt: Date.now(),
+    });
+  }, [wagmiReceipt.isSuccess, decodedRequestId, address, txHashForInflight]);
+
   const resetMock = useCallback(() => {
     setMockState({
       data: undefined,
@@ -157,6 +202,7 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
 
   const write = useCallback(
     (amount: bigint) => {
+      lastAmountRef.current = amount;
       // Re-read mock key at call time to pick up any dynamic changes.
       const mockRaw = readMock(
         MOCK_KEYS.requestWithdrawal,
@@ -271,7 +317,14 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
   const txHash = wagmiWrite.data;
   return {
     write,
-    data: txHash !== undefined ? { hash: txHash } : undefined,
+    data:
+      txHash !== undefined
+        ? {
+            hash: txHash,
+            requestId: decoded?.requestId,
+            queued: decoded?.queued,
+          }
+        : undefined,
     isPending:
       isEstimating ||
       wagmiWrite.isPending ||

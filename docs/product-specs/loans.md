@@ -82,9 +82,8 @@ re-term appends a new epoch. No epoch is ever rewritten or removed, so the origi
 and every later re-term stay on-chain for audit.
 
 Each epoch carries `effectiveFrom`, `maturityDate`, and `seniorInterestRateBps`. The
-accrual base is always `originalSeniorTranche`. The interest ceiling that YieldMinter
-enforces is computed piecewise across epochs, with accrual stopping at each epoch's own
-maturity. A loan past maturity without a rollover cannot accrue beyond its contracted term.
+interest ceiling is `LoanRegistry._accruedInterest` (YieldMinter is retired): the per-epoch accrual on the
+outstanding senior, with no maturity cap (accrual continues past maturity and in Default).
 See [loans-data.md](./loans-data.md) for the ceiling formula.
 
 ### Mutable lifecycle data
@@ -139,7 +138,7 @@ but its USDC off-ramp not yet marked complete — the default until a trustee fl
 table) and `Past Due` (now is past `currentMaturityDate` and the loan is still Performing /
 Watchlist — the API equivalent of the on-chain `Matured` state). Terminal states are never
 overridden and `Disbursing` outranks `Past Due`. Past-maturity loans stay in the loan book
-as `Past Due` until an explicit close/default removes them. `/financials.minted_yield` = legacy `YieldMinted` + Minter `CashRepaid` interest and fee PLUSD, net of `CashRepaymentReversed` (`docs/references/backend.md` "Minted yield").
+as `Past Due` until an explicit close/default removes them. Both endpoints also serve `onchain_status`, the raw snapshot status with no overrides (`Approved` | `Performing` | `WatchList` | `Default` | `Closed`, #1649), so a client can tell whether a `Disbursing` / `Past Due` loan is Performing or WatchList on chain. Old-registry loans may read shifted ([loan-status-timeline.md](./loan-status-timeline.md), Known limitation). `/financials.minted_yield` = legacy `YieldMinted` (`s_plusd_amount + treasury_amount`) + Minter `CashRepaid` interest and fee PLUSD, net of `CashRepaymentReversed` (`docs/references/backend.md` "Minted yield").
 
 ### Rollover
 

@@ -11,7 +11,7 @@ import type {
   SubmissionView,
 } from "@/api/useLoanSubmissions";
 import {
-  economicsBaseUnitsToUsdDecimal,
+  economicsUsdDecimal,
   formatBpsRate,
   formatCompactUsd,
 } from "@/utils/formatCompactUsd";
@@ -87,7 +87,7 @@ export function mapSubmissionToRow(
     chain: targetChainLabel(submission.target_chain_id),
     // Facility scale/formatting — spec: docs/frontend/dashboard-components.md#originationtable
     facility: formatCompactUsd(
-      economicsBaseUnitsToUsdDecimal(economics.original_facility_size ?? null),
+      economicsUsdDecimal(economics.original_facility_size ?? null),
     ),
     // Corridor separator glyph — spec: docs/frontend/dashboard-components.md#originationtable
     corridor: safeString(loanData.corridor).replace(/\s*-\s*/g, " → "),

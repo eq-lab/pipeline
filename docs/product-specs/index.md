@@ -29,6 +29,9 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
+| [book-rate-weighting.md](./book-rate-weighting.md) | Yield Distribution | Outstanding-senior weighting of book rate and tenor across loan book, dashboard and yield series |
+| [yield-apy-semantics.md](./yield-apy-semantics.md) | Yield Distribution | Definitions of `/v1/pnl` avg_apy, `/v1/stats` apy, per-loan minted yield and dashboard cumulative LP yield; amounts-0 / rates-null convention |
+| [loan-status-timeline.md](./loan-status-timeline.md) | Loans | One status-timeline rule for active, at-risk and accrual across loan book, dashboard, financial position, capital allocation and yield series |
 | [withdrawals.md](./withdrawals.md) | Withdrawals | EVM `requestWithdrawal` / `claimWithdrawal` (voucher-gated, FIFO-funded), Treasury redemption; designed attestation queue marked not deployed |
 | [smart-contracts.md](./smart-contracts.md) | Smart Contracts | Overview, governance, contracts table, security considerations, actor glossary |
 | [smart-contracts-interfaces.md](./smart-contracts-interfaces.md) | Smart Contracts | PLUSD, YieldMinter, sPLUSD, WhitelistRegistry interfaces; designed (not deployed) DepositManager and WithdrawalQueue |
@@ -47,6 +50,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [collateral-valuation.md](./collateral-valuation.md) | Collateral Valuation | Price sources and feed budget, standard-goods and NSR concentrate valuation modes, off-chain valuation record, CCR derivation |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |
+| [dashboards-tvl-ledger.md](./dashboards-tvl-ledger.md) | Dashboards | TVL definition: PLUSD supply ledger (mint / burn paths, pending deposits, carve-out), per chain and summed |
 | [dashboards-balance-sheet-sources.md](./dashboards-balance-sheet-sources.md) | Dashboards | Protocol Dashboard Panel A on-chain sources: Stellar and EVM PLUSD supply / USDC custody reads |
 | [dashboards-yield-history.md](./dashboards-yield-history.md) | Dashboards | Protocol Dashboard Panel D: yield history, T-bill accrual, exchange rate, trailing yield |
 | [home-screen-states.md](./home-screen-states.md) | Dashboards | LP home route (`/`) state table and precedence rule (epic #1419) |

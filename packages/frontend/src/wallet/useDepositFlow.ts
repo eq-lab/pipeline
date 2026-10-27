@@ -23,6 +23,7 @@ import {
   // Stellar
   useStellarWallet,
   useStellarDepositManagerAddresses,
+  useStellarDepositManagerMinDeposit,
   useStellarSacToken,
   useStellarToken,
   useStellarXlmBalance,
@@ -40,18 +41,21 @@ import {
   readInflightWithdrawal,
   clearInflightDeposit,
   clearInflightWithdrawal,
+  readInflightEvmRequest,
+  clearInflightEvmRequest,
   useStellarNetworkFeeEstimate,
 } from "@/wallet";
 import type { WrongNetworkInfo } from "@/wallet";
 import {
   useRequests,
+  useInvalidateRequests,
   useDepositVoucher,
   useWithdrawalVoucher,
   useStellarDepositVoucher,
   useStellarWithdrawalVoucher,
 } from "@/api";
 import { ENV } from "@/lib/env";
-import { formatUsdc, formatUsdcCurrencyCompact } from "@/lib/usdc";
+import { formatUsdcCurrencyCompact, formatUsdcInput } from "@/lib/usdc";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -142,6 +146,7 @@ export interface FlowState {
   /** Deposit: balance >= minDeposit.  Withdraw: true when balance loaded. */
   hasBalance: boolean | undefined;
   meetsMin: boolean;
+  exceedsBalance: boolean;
   /** True while the active-direction balance query OR the requests API query is still loading,
    *  or while the wallet is connected but the active balance is still undefined
    *  (e.g. during the addresses-resolver window before the token query becomes enabled). */
@@ -209,11 +214,8 @@ export interface FlowState {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-/**
- * Frontend-owned Stellar minimum deposit ($1,000 at 7 dp) — Soroban has no
- * on-chain minimum getter. spec: docs/frontend/wallet-flows.md#business-rules.
- */
-const STELLAR_MIN_DEPOSIT = 1000n * 10n ** BigInt(SAC_DECIMALS);
+const REQUESTS_POLL_MS = 60_000;
+const REQUESTS_FAST_POLL_MS = 5_000;
 
 // ── Format helper ─────────────────────────────────────────────────────────────
 
@@ -279,6 +281,7 @@ export function useDepositFlow(
     isApproveSuccess: isDepositApproveSuccess,
     refetchBalance: refetchDepositBalance,
     isLoading: isEvmDepositBalanceLoading,
+    approveError: depositApproveError,
   } = useEvmToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
 
   const evmRequestDeposit = useRequestDeposit();
@@ -295,6 +298,7 @@ export function useDepositFlow(
     isApproveSuccess: isWithdrawApproveSuccess,
     refetchBalance: refetchWithdrawBalance,
     isLoading: isEvmWithdrawBalanceLoading,
+    approveError: withdrawApproveError,
   } = useEvmToken({ token: plusdAddr, spender: ENV.WITHDRAWAL_QUEUE_ADDRESS });
 
   const evmRequestWithdrawal = useRequestWithdrawal();
@@ -313,6 +317,8 @@ export function useDepositFlow(
   } = useStellarWallet();
 
   const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
+  const { minDeposit: stellarMinDeposit } =
+    useStellarDepositManagerMinDeposit();
 
   // USDC balance (Stellar deposit input) via the same source as the TopBar pill
   // so the two can't disagree. spec: docs/frontend/wallet-flows.md#design-choices--invariants.
@@ -336,10 +342,69 @@ export function useDepositFlow(
   const { feeXlm: depositFeeXlm } = useStellarNetworkFeeEstimate("deposit");
   const { feeXlm: withdrawFeeXlm } = useStellarNetworkFeeEstimate("withdraw");
 
+  // ── In-flight recovery records (reload guard) ──────────────────────────────
+  const stellarDepositInflight = readInflightDeposit(stellarAddress ?? "");
+  const stellarWithdrawInflight = readInflightWithdrawal(stellarAddress ?? "");
+  const evmDepositInflight = evmAddress
+    ? readInflightEvmRequest("deposit", ENV.EVM_CHAIN_ID, evmAddress)
+    : undefined;
+  const evmWithdrawInflight = evmAddress
+    ? readInflightEvmRequest("withdraw", ENV.EVM_CHAIN_ID, evmAddress)
+    : undefined;
+
+  const knownPendingIds: { type: "Deposit" | "Withdraw"; id: string }[] = [];
+  const addKnownId = (type: "Deposit" | "Withdraw", id: unknown) => {
+    if (id !== undefined && id !== null)
+      knownPendingIds.push({ type, id: String(id) });
+  };
+  if (isStellar) {
+    addKnownId("Deposit", stellarRequestDeposit.data?.requestId);
+    addKnownId("Deposit", stellarDepositInflight?.requestId);
+    addKnownId("Withdraw", stellarRequestWithdrawal.data?.requestId);
+    addKnownId("Withdraw", stellarWithdrawInflight?.requestId);
+  } else {
+    addKnownId("Deposit", evmRequestDeposit.data?.requestId);
+    addKnownId("Deposit", evmDepositInflight?.requestId);
+    addKnownId("Withdraw", evmRequestWithdrawal.data?.requestId);
+    addKnownId("Withdraw", evmWithdrawInflight?.requestId);
+  }
+
   // ── Shared: useRequests (chain-aware — picks wallet address by view) ───────
   const { data: requestsData, isLoading: requestsLoading } = useRequests({
-    refetchInterval: 60_000,
+    refetchInterval: (data) =>
+      knownPendingIds.some(
+        (k) =>
+          !data?.requests.some(
+            (r) => r.type === k.type && r.request_id === k.id,
+          ),
+      )
+        ? REQUESTS_FAST_POLL_MS
+        : REQUESTS_POLL_MS,
   });
+  const invalidateRequests = useInvalidateRequests();
+
+  const isRequestListed = (
+    type: "Deposit" | "Withdraw",
+    id: string | undefined,
+  ) =>
+    id !== undefined &&
+    (requestsData?.requests.some(
+      (r) => r.type === type && r.request_id === id,
+    ) ??
+      false);
+
+  useEffect(() => {
+    if (evmRequestDeposit.isSuccess) invalidateRequests();
+  }, [evmRequestDeposit.isSuccess, invalidateRequests]);
+  useEffect(() => {
+    if (evmRequestWithdrawal.isSuccess) invalidateRequests();
+  }, [evmRequestWithdrawal.isSuccess, invalidateRequests]);
+  useEffect(() => {
+    if (stellarRequestDeposit.isSuccess) invalidateRequests();
+  }, [stellarRequestDeposit.isSuccess, invalidateRequests]);
+  useEffect(() => {
+    if (stellarRequestWithdrawal.isSuccess) invalidateRequests();
+  }, [stellarRequestWithdrawal.isSuccess, invalidateRequests]);
 
   // ── EVM request state machines ─────────────────────────────────────────────
   const evmDepositActiveRequest =
@@ -366,15 +431,51 @@ export function useDepositFlow(
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )[0] ?? null;
 
+  const evmDepositInflightListed =
+    evmDepositInflight !== undefined &&
+    isRequestListed("Deposit", evmDepositInflight.requestId);
+  const evmWithdrawInflightListed =
+    evmWithdrawInflight !== undefined &&
+    isRequestListed("Withdraw", evmWithdrawInflight.requestId);
+  const evmDepositInflightActive =
+    evmDepositInflight !== undefined && !evmDepositInflightListed;
+  const evmWithdrawInflightActive =
+    evmWithdrawInflight !== undefined && !evmWithdrawInflightListed;
+
+  useEffect(() => {
+    if (evmAddress && evmDepositInflightListed) {
+      clearInflightEvmRequest("deposit", ENV.EVM_CHAIN_ID, evmAddress);
+    }
+  }, [evmAddress, evmDepositInflightListed]);
+  useEffect(() => {
+    if (evmAddress && evmWithdrawInflightListed) {
+      clearInflightEvmRequest("withdraw", ENV.EVM_CHAIN_ID, evmAddress);
+    }
+  }, [evmAddress, evmWithdrawInflightListed]);
+  useEffect(() => {
+    if (evmAddress && evmClaim.isSuccess) {
+      clearInflightEvmRequest("deposit", ENV.EVM_CHAIN_ID, evmAddress);
+    }
+  }, [evmAddress, evmClaim.isSuccess]);
+  useEffect(() => {
+    if (evmAddress && evmClaimWithdrawal.isSuccess) {
+      clearInflightEvmRequest("withdraw", ENV.EVM_CHAIN_ID, evmAddress);
+    }
+  }, [evmAddress, evmClaimWithdrawal.isSuccess]);
+
   const evmDepositRequestId: string | undefined =
-    evmDepositActiveRequest?.request_id ?? evmRequestDeposit.data?.requestId;
+    evmDepositActiveRequest?.request_id ??
+    evmRequestDeposit.data?.requestId ??
+    (evmDepositInflightActive ? evmDepositInflight?.requestId : undefined);
   const evmWithdrawRequestId: string | undefined =
     evmWithdrawActiveRequest?.request_id ??
-    evmRequestWithdrawal.data?.requestId;
+    evmRequestWithdrawal.data?.requestId ??
+    (evmWithdrawInflightActive ? evmWithdrawInflight?.requestId : undefined);
 
   const evmDepositRequestIsConfirmed =
     evmDepositActiveRequest !== null ||
-    (evmRequestDeposit.isSuccess && evmDepositRequestId !== undefined);
+    (evmRequestDeposit.isSuccess && evmDepositRequestId !== undefined) ||
+    evmDepositInflightActive;
 
   // Most-recent claimed deposit. The active-request filter above keeps only
   // `PendingVerification`/`PendingClaim`, so a claimed request settles to
@@ -398,16 +499,28 @@ export function useDepositFlow(
 
   const evmWithdrawRequestIsConfirmed =
     evmWithdrawActiveRequest !== null ||
-    (evmRequestWithdrawal.isSuccess && evmWithdrawRequestId !== undefined);
+    (evmRequestWithdrawal.isSuccess && evmWithdrawRequestId !== undefined) ||
+    evmWithdrawInflightActive;
+
+  const evmDepositAwaitingIndexer =
+    evmDepositRequestIsConfirmed &&
+    evmDepositActiveRequest === null &&
+    !isRequestListed("Deposit", evmDepositRequestId);
+  const evmWithdrawAwaitingIndexer =
+    evmWithdrawRequestIsConfirmed &&
+    evmWithdrawActiveRequest === null &&
+    !isRequestListed("Withdraw", evmWithdrawRequestId);
 
   const evmDepositIsPendingClaim =
     evmDepositActiveRequest?.status === "PendingClaim";
   const evmDepositIsPendingVerification =
-    evmDepositActiveRequest?.status === "PendingVerification";
+    evmDepositActiveRequest?.status === "PendingVerification" ||
+    evmDepositAwaitingIndexer;
   const evmWithdrawIsPendingClaim =
     evmWithdrawActiveRequest?.status === "PendingClaim";
   const evmWithdrawIsPendingVerification =
-    evmWithdrawActiveRequest?.status === "PendingVerification";
+    evmWithdrawActiveRequest?.status === "PendingVerification" ||
+    evmWithdrawAwaitingIndexer;
 
   const evmDepositVoucherRequestId =
     !isStellar && evmDepositIsPendingClaim ? evmDepositRequestId : undefined;
@@ -420,9 +533,6 @@ export function useDepositFlow(
   // ── Stellar request state machines ─────────────────────────────────────────
   // On Stellar the API list may be empty until the backend sub-issue lands.
   // We drive steps from on-chain reads + localStorage in-flight recovery.
-  const stellarDepositInflight = readInflightDeposit(stellarAddress ?? "");
-  const stellarWithdrawInflight = readInflightWithdrawal(stellarAddress ?? "");
-
   // Extract from API (will be empty until backend sub-issue lands)
   const stellarDepositActiveRequest =
     requestsData?.requests
@@ -592,7 +702,11 @@ export function useDepositFlow(
     amountBig > 0n &&
     depositAllowance < amountBig;
   const evmDepositMeetsMin =
-    evmMinDeposit !== undefined && amountBig > 0n && amountBig >= evmMinDeposit;
+    evmMinDeposit !== undefined &&
+    evmDepositBalance !== undefined &&
+    amountBig > 0n &&
+    amountBig >= evmMinDeposit &&
+    amountBig <= (evmDepositBalance as bigint);
   const evmCanWithdraw =
     evmWithdrawDecimals !== undefined &&
     evmWithdrawBalance !== undefined &&
@@ -636,13 +750,19 @@ export function useDepositFlow(
   const bothTrustlinesReady = !depositNeedsTrustline && !withdrawNeedsTrustline;
 
   const stellarDepositMeetsMin =
-    amountBig > 0n && amountBig >= STELLAR_MIN_DEPOSIT;
+    stellarMinDeposit !== undefined &&
+    stellarUsdcBalanceRaw !== undefined &&
+    amountBig > 0n &&
+    amountBig >= stellarMinDeposit &&
+    amountBig <= stellarUsdcBalanceRaw;
   const stellarCanWithdraw =
     stellarPlusdBalanceRaw !== undefined &&
     amountBig > 0n &&
     amountBig <= stellarPlusdBalanceRaw;
   const isStellarDepositReady =
-    isStellarConnected && stellarUsdcBalanceRaw !== undefined;
+    isStellarConnected &&
+    stellarUsdcBalanceRaw !== undefined &&
+    stellarMinDeposit !== undefined;
   const isStellarWithdrawReady =
     isStellarConnected && stellarPlusdBalanceRaw !== undefined;
 
@@ -655,19 +775,14 @@ export function useDepositFlow(
       if (isDeposit) {
         if (evmDepositDecimals === undefined) return;
         if (idx === 0 && evmMinDeposit !== undefined) {
-          setAmountInput(
-            formatUsdc(evmMinDeposit, evmDepositDecimals).replace(/,/g, ""),
-          );
+          setAmountInput(formatUsdcInput(evmMinDeposit, evmDepositDecimals));
           return;
         }
         if (idx === 1) setAmountInput("5000");
         else if (idx === 2) setAmountInput("10000");
         else if (idx === 3 && evmDepositBalance !== undefined) {
           setAmountInput(
-            formatUsdc(evmDepositBalance as bigint, evmDepositDecimals).replace(
-              /,/g,
-              "",
-            ),
+            formatUsdcInput(evmDepositBalance as bigint, evmDepositDecimals),
           );
         }
       } else {
@@ -683,7 +798,7 @@ export function useDepositFlow(
           next = ((evmWithdrawBalance as bigint) * 75n) / 100n;
         else if (idx === 3) next = evmWithdrawBalance as bigint;
         else return;
-        setAmountInput(formatUsdc(next, evmWithdrawDecimals).replace(/,/g, ""));
+        setAmountInput(formatUsdcInput(next, evmWithdrawDecimals));
       }
     },
     [
@@ -701,17 +816,15 @@ export function useDepositFlow(
     (idx: number) => {
       if (isDeposit) {
         if (idx === 0) {
-          setAmountInput(
-            formatUsdc(STELLAR_MIN_DEPOSIT, SAC_DECIMALS).replace(/,/g, ""),
-          );
+          if (stellarMinDeposit !== undefined) {
+            setAmountInput(formatUsdcInput(stellarMinDeposit, SAC_DECIMALS));
+          }
           return;
         }
         if (idx === 1) setAmountInput("5000");
         else if (idx === 2) setAmountInput("10000");
         else if (idx === 3 && stellarUsdcBalanceRaw !== undefined) {
-          setAmountInput(
-            formatUsdc(stellarUsdcBalanceRaw, SAC_DECIMALS).replace(/,/g, ""),
-          );
+          setAmountInput(formatUsdcInput(stellarUsdcBalanceRaw, SAC_DECIMALS));
         }
       } else {
         if (stellarPlusdBalanceRaw === undefined) return;
@@ -721,10 +834,16 @@ export function useDepositFlow(
         else if (idx === 2) next = (stellarPlusdBalanceRaw * 75n) / 100n;
         else if (idx === 3) next = stellarPlusdBalanceRaw;
         else return;
-        setAmountInput(formatUsdc(next, SAC_DECIMALS).replace(/,/g, ""));
+        setAmountInput(formatUsdcInput(next, SAC_DECIMALS));
       }
     },
-    [isDeposit, stellarUsdcBalanceRaw, stellarPlusdBalanceRaw, setAmountInput],
+    [
+      isDeposit,
+      stellarMinDeposit,
+      stellarUsdcBalanceRaw,
+      stellarPlusdBalanceRaw,
+      setAmountInput,
+    ],
   );
 
   // ── Select the active state by chain ──────────────────────────────────────
@@ -763,6 +882,16 @@ export function useDepositFlow(
       ? evmDepositIsPendingVerification
       : evmWithdrawIsPendingVerification;
     const evmVoucher = isDeposit ? evmDepositVoucher : evmWithdrawVoucher;
+    const evmAwaitingIndexer = isDeposit
+      ? evmDepositAwaitingIndexer
+      : evmWithdrawAwaitingIndexer;
+    const evmInflight = isDeposit ? evmDepositInflight : evmWithdrawInflight;
+    const evmLockedAmountRaw: bigint | undefined =
+      evmActiveRequest !== null
+        ? BigInt(evmActiveRequest.amount)
+        : evmAwaitingIndexer && evmInflight !== undefined
+          ? BigInt(evmInflight.amount)
+          : undefined;
 
     // Step gates
     const canEvmApproveDeposit =
@@ -814,11 +943,23 @@ export function useDepositFlow(
     const canEvmClaim = isDeposit ? canEvmClaimDeposit : canEvmClaimWithdraw;
 
     // Step states.
+    const evmStep1Error = isDeposit
+      ? depositApproveError
+      : withdrawApproveError;
+    const evmStep1UserError = evmStep1Error
+      ? toUserError(evmStep1Error)
+      : undefined;
+    const evmStep1ApprovePending = isDeposit
+      ? isDepositApprovePending
+      : isWithdrawApprovePending;
+    const evmStep1ErrorState: StepState =
+      evmStep1Error && !evmStep1ApprovePending ? "error" : "idle";
+
     const evmDepositStep1State: StepState =
       (!evmDepositNeedsApproval && amountBig > 0n && isEvmConnected) ||
       evmDepositRequestIsConfirmed
         ? "success"
-        : "idle";
+        : evmStep1ErrorState;
     const evmDepositStep2State: StepState =
       evmDepositIsPendingClaim || evmClaim.isSuccess
         ? "success"
@@ -835,7 +976,7 @@ export function useDepositFlow(
       (evmHasSufficientWithdrawAllowance && isEvmConnected) ||
       evmWithdrawRequestIsConfirmed
         ? "success"
-        : "idle";
+        : evmStep1ErrorState;
     const evmWithdrawStep2State: StepState =
       evmWithdrawIsPendingClaim || evmClaimWithdrawal.isSuccess
         ? "success"
@@ -918,12 +1059,15 @@ export function useDepositFlow(
       isReady: isEvmReady,
       hasBalance: evmHasBalance,
       meetsMin: evmMeetsMin,
+      exceedsBalance:
+        evmActiveRequest === null &&
+        !evmAwaitingIndexer &&
+        evmBalance !== undefined &&
+        amountBig > evmBalance,
       isDataPending: evmIsDataPending,
-      isAmountLocked: evmActiveRequest !== null,
+      isAmountLocked: evmActiveRequest !== null || evmAwaitingIndexer,
       lockedAmountRaw:
-        evmActiveRequest !== null && evmDecimals !== undefined
-          ? BigInt(evmActiveRequest.amount)
-          : undefined,
+        evmDecimals !== undefined ? evmLockedAmountRaw : undefined,
       requestId: evmRequestId,
       requestIsConfirmed: evmRequestIsConfirmed,
       isPendingVerification: evmIsPendingVerification,
@@ -953,6 +1097,10 @@ export function useDepositFlow(
           const approve = isDeposit ? depositApprove : withdrawApprove;
           approve?.(amountBig);
         },
+        errorMessage:
+          evmStep1State === "error" ? evmStep1UserError?.message : undefined,
+        errorDetails:
+          evmStep1State === "error" ? evmStep1UserError?.details : undefined,
       },
       step2: {
         label: isDeposit ? "Confirm USDC transfer" : "Confirm PLUSD burn",
@@ -1013,7 +1161,8 @@ export function useDepositFlow(
         isSuccess: isDeposit
           ? isDepositApproveSuccess
           : isWithdrawApproveSuccess,
-        error: null,
+        error: evmStep1Error,
+        userError: evmStep1UserError,
       },
       step2Tx: {
         isPending: isDeposit
@@ -1065,7 +1214,7 @@ export function useDepositFlow(
 
   const stellarHasBalance: boolean | undefined = isDeposit
     ? isStellarDepositReady
-      ? (stellarUsdcBalanceRaw ?? 0n) >= STELLAR_MIN_DEPOSIT
+      ? (stellarUsdcBalanceRaw ?? 0n) >= (stellarMinDeposit as bigint)
       : undefined
     : isStellarWithdrawReady
       ? true
@@ -1261,7 +1410,10 @@ export function useDepositFlow(
         stellarWithdrawActiveRequest === null) ||
       stellarVoucher.status === "pending";
 
-  const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
+  const stellarMinChipLabel =
+    stellarMinDeposit !== undefined
+      ? `${formatUsdcCurrencyCompact(stellarMinDeposit, SAC_DECIMALS)} (Min)`
+      : "Min";
 
   const stellarActiveBalance = isDeposit
     ? stellarUsdcBalanceRaw
@@ -1279,11 +1431,15 @@ export function useDepositFlow(
     decimals: SAC_DECIMALS,
     formattedBalance: stellarFormattedBalance,
     balance: stellarBalance,
-    minDeposit: STELLAR_MIN_DEPOSIT,
+    minDeposit: stellarMinDeposit,
     minChipLabel: stellarMinChipLabel,
     isReady: isStellarReady,
     hasBalance: stellarHasBalance,
     meetsMin: stellarMeetsMin,
+    exceedsBalance:
+      !stellarRequestIsConfirmed &&
+      stellarBalance !== undefined &&
+      amountBig > stellarBalance,
     isDataPending: stellarIsDataPending,
     isAmountLocked: stellarRequestIsConfirmed,
     lockedAmountRaw:

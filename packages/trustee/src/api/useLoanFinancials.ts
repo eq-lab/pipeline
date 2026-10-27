@@ -28,6 +28,8 @@ export interface LoanFinancialsResponse {
   loan_id: string;
   /** Loan status (`Performing`, `WatchList`, `Default`, `Closed`). */
   status: string;
+  /** Raw on-chain status, no display overrides: `Approved` | `Performing` | `WatchList` | `Default` | `Closed`. */
+  onchain_status: string;
   /** Current epoch (number · APY · start → maturity); `null` when none on record. */
   epoch: Epoch | null;
   /** Original offtaker price (USDC 6-decimal string) — total the offtaker owes. */

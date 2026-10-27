@@ -182,12 +182,11 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "PE-CN",
       governing_law: "England",
       economics: {
-        // 7-decimal on-chain base-unit strings (issue #912) — displayed
-        // ÷10^7, so this facility value renders "$3.5M".
-        original_facility_size: "35000000000000.000000",
-        original_senior_tranche: "30000000000000.000000",
-        original_equity_tranche: "5000000000000.000000",
-        original_offtaker_price: "35000000000000.000000",
+        // Human-unit USDC strings (#1620) — rendered as served
+        original_facility_size: "3500000.000000",
+        original_senior_tranche: "3000000.000000",
+        original_equity_tranche: "500000.000000",
+        original_offtaker_price: "3500000.000000",
         senior_interest_rate_bps: 1400,
         origination_date: 1_750_000_000,
         original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z

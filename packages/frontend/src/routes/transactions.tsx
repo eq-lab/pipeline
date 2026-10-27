@@ -16,6 +16,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useEvmStakeDecimals,
 } from "@/wallet";
 import { useChainServed } from "@/api";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
@@ -43,6 +44,7 @@ function Transactions() {
   const { data, isLoading, error, refetch } = useRequests();
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
+  const evmStakeDecimals = useEvmStakeDecimals();
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { open: openConnectModal } = useConnectModal();
   const { isConnected: isStellarConnected } = useStellarWallet();
@@ -144,6 +146,7 @@ function Transactions() {
                       kind,
                       `transactions-row-${i}`,
                       "pb-4",
+                      evmStakeDecimals,
                     )}
                   </React.Fragment>
                 ))}

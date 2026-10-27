@@ -7,11 +7,17 @@ import {
   StepsCard,
   Button,
   ErrorDetailsDialog,
+  InlineError,
 } from "@pipeline/ui";
 import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
-import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
+import {
+  parseUsdc,
+  formatUsdc,
+  formatUsdcInput,
+  formatUsdcWhole,
+} from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 import { toUserError } from "@/utils/userError";
 import { useChainServed } from "@/api";
@@ -134,11 +140,7 @@ function Deposit() {
     if (!flow.isAmountLocked) return;
     if (flow.decimals === undefined) return;
     if (!flow.lockedAmountRaw) return;
-    const formatted = formatUsdc(flow.lockedAmountRaw, flow.decimals).replace(
-      /,/g,
-      "",
-    );
-    setAmountInput(formatted);
+    setAmountInput(formatUsdcInput(flow.lockedAmountRaw, flow.decimals));
   }, [flow.isAmountLocked, flow.lockedAmountRaw, flow.decimals]);
 
   // ── Refetch balance after success ─────────────────────────────────────
@@ -156,6 +158,7 @@ function Deposit() {
   // ── Toast: step 1 (EVM approve only) ─────────────────────────────────
   const prevStep1IsPending = useRef(false);
   const prevStep1IsSuccess = useRef(false);
+  const prevStep1Error = useRef<Error | null>(null);
   useEffect(() => {
     // On Stellar, trustline toasts are emitted per-asset below.
     if (isStellar) return;
@@ -169,11 +172,29 @@ function Deposit() {
     if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
       toast.update(toastId, { tone: "success", title: "Approval confirmed" });
     }
+    if (flow.step1Tx.error && flow.step1Tx.error !== prevStep1Error.current) {
+      console.error("Approval failed:", flow.step1Tx.error);
+      const mapped = toUserError(flow.step1Tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: mapped.isSpecific ? mapped.message : "Approval failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
+      });
+    }
     prevStep1IsPending.current = flow.step1Tx.isPending;
     prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
+    prevStep1Error.current = flow.step1Tx.error;
   }, [
     flow.step1Tx.isPending,
     flow.step1Tx.isSuccess,
+    flow.step1Tx.error,
     toast,
     direction,
     isStellar,
@@ -568,6 +589,13 @@ function Deposit() {
               networkFee={flow.networkFee ?? "—"}
               onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
             />
+
+            {flow.exceedsBalance && (
+              <InlineError
+                message="Insufficient balance"
+                className="self-end"
+              />
+            )}
 
             {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
             {!flow.isConnected ? (

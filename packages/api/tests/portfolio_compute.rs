@@ -8,7 +8,7 @@
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::portfolio::{compute_series, SamplePoint};
-use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::contract_logs_repo::{LifecycleRow, LoanRateEventRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 // Loan A: 100k USDC @ 12% (1200 bps), day 0 – 180
@@ -96,9 +96,22 @@ fn fixture_events() -> Vec<LifecycleRow> {
     vec![]
 }
 
+fn fixture_rate_events() -> Vec<LoanRateEventRow> {
+    [(1, 100_000, 0), (2, 50_000, 30), (3, 75_000, 60)]
+        .into_iter()
+        .map(|(loan_id, tranche, start_day)| LoanRateEventRow {
+            loan_id: BigDecimal::from(loan_id as i64),
+            event_name: "Disbursed".to_owned(),
+            block_timestamp: start_day * DAY,
+            outstanding: Some(usdc(tranche)),
+            new_rate: None,
+        })
+        .collect()
+}
+
 fn sample_at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> SamplePoint {
     let t = t_day * DAY;
-    let series = compute_series(loans, events, t, t, DAY);
+    let series = compute_series(loans, events, &fixture_rate_events(), t, t, DAY);
     assert_eq!(series.len(), 1);
     series.into_iter().next().unwrap()
 }
@@ -144,37 +157,52 @@ fn apy_at_day_60_weighted_average_three_loans() {
 
 #[test]
 fn accrued_at_day_30_matches_closed_form() {
-    // Loan A only: 100_000 · 0.12 · 30/365 = 986.301369… USDC → "986.301369"
+    // Loan A only: 100_000 · 0.12 · 30 · 86_400 / 31_557_600 = 985.626283… USDC → "985.626283"
     let s = sample_at(30, &fixture_loans(), &fixture_events());
-    assert_eq!(s.accrued, "986.301369");
+    assert_eq!(s.accrued, "985.626283");
 }
 
 #[test]
 fn accrued_at_day_60_three_loans() {
-    // A (60d): 100k · 0.12 · 60/365 ≈ 1972.602739
-    // B (30d): 50k  · 0.15 · 30/365 ≈ 616.438356
+    // k = 86_400 / 31_557_600 per day
+    // A (60d): 100k · 0.12 · 60k ≈ 1971.252566
+    // B (30d): 50k  · 0.15 · 30k ≈ 616.016427
     // C (0d):  0
-    // Total: 2589.041095 USDC → "2589.041095"
+    // Total: 2587.268993 USDC → "2587.268993"
     let s = sample_at(60, &fixture_loans(), &fixture_events());
-    assert_eq!(s.accrued, "2589.041095");
+    assert_eq!(s.accrued, "2587.268993");
+}
+
+fn close_event(loan_id: i64, day: i64) -> LifecycleRow {
+    LifecycleRow {
+        chain_id: 1,
+        event_name: "LoanClosed".to_owned(),
+        block_timestamp: day * DAY,
+        loan_id: BigDecimal::from(loan_id),
+        status: None,
+    }
 }
 
 #[test]
 fn apy_null_when_no_active_loans() {
-    let s = sample_at(181, &fixture_loans(), &fixture_events());
+    let events = vec![
+        close_event(1, 170),
+        close_event(2, 110),
+        close_event(3, 170),
+    ];
+    let s = sample_at(181, &fixture_loans(), &events);
     assert_eq!(s.apy, None);
     assert_eq!(s.principal_outstanding, "0.000000");
     // accrued is still the cumulative frozen total.
-    assert_ne!(s.accrued, "0.000000");
+    assert_eq!(s.accrued, "9486.652977");
 }
 
 #[test]
-fn apy_at_day_180_no_active_loans() {
-    // At t=180: end_at for A and C is 180·DAY; `t < end_at` excludes them. Loan B
-    // matured at 120. So no loans are active → apy = null, outstanding = 0.
+fn open_loans_stay_active_past_maturity() {
+    // At t=180 nothing is closed: A, B and C all keep earning past their maturities.
     let s = sample_at(180, &fixture_loans(), &fixture_events());
-    assert_eq!(s.apy, None);
-    assert_eq!(s.principal_outstanding, "0.000000");
+    assert_apy_approx(s.apy, Some(0.12));
+    assert_eq!(s.principal_outstanding, "225000.000000");
 }
 
 #[test]
@@ -185,17 +213,17 @@ fn early_close_stops_accrual() {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(2_i64),
+        status: None,
     }];
 
     // At day 120:
-    //   A (120d): 100k · 0.12 · 120/365 ≈ 3945.205479
-    //   B  (60d): 50k  · 0.15 · 60/365  ≈ 1232.876712  ← capped at close, not 90d
-    //   C  (60d): 75k  · 0.10 · 60/365  ≈ 1232.876712
-    //   Total ≈ 6410.958904 USDC
+    //   A (120d): 100k · 0.12 · 120d ≈ 3942.505133
+    //   B  (60d): 50k  · 0.15 · 60d  ≈ 1232.032854  ← capped at close, not 90d
+    //   C  (60d): 75k  · 0.10 · 60d  ≈ 1232.032854
+    //   Total ≈ 6406.570841 USDC (d = 86_400 / 31_557_600 per day)
     let s = sample_at(120, &fixture_loans(), &events);
-    // Sum-before-truncate: 3945.205479452… + 1232.876712328… + 1232.876712328… =
-    // 6410.958904109… → truncate at 6dp → "6410.958904".
-    assert_eq!(s.accrued, "6410.958904");
+    // Sum-before-truncate, then truncate at 6dp → "6406.570841".
+    assert_eq!(s.accrued, "6406.570841");
 }
 
 #[test]
@@ -205,30 +233,18 @@ fn default_stops_accrual_like_close() {
         event_name: "LoanDefaulted".to_owned(),
         block_timestamp: 90 * DAY,
         loan_id: BigDecimal::from(2_i64),
+        status: None,
     }];
 
     let s = sample_at(120, &fixture_loans(), &events);
-    assert_eq!(s.accrued, "6410.958904");
+    assert_eq!(s.accrued, "6406.570841");
 }
 
 #[test]
-fn lifecycle_event_after_scheduled_maturity_does_not_extend_loan() {
-    // LoanClosed at day 130 (AFTER Loan B's scheduled day-120 end). `min(scheduled,
-    // lifecycle)` picks the scheduled end — accrual doesn't extend.
-    let events = vec![LifecycleRow {
-        chain_id: 1,
-        event_name: "LoanClosed".to_owned(),
-        block_timestamp: 130 * DAY,
-        loan_id: BigDecimal::from(2_i64),
-    }];
-
-    // At day 120 (with no early close):
-    //   A 120d: ≈ 3945.205479
-    //   B  90d: ≈ 1849.315068
-    //   C  60d: ≈ 1232.876712
-    //   Total ≈ 7027.397260
-    let s = sample_at(120, &fixture_loans(), &events);
-    assert_eq!(s.accrued, "7027.397260");
+fn accrual_runs_past_maturity_until_close() {
+    let events = vec![close_event(2, 130)];
+    let s = sample_at(150, &fixture_loans(), &events);
+    assert_eq!(s.accrued, "8829.568788");
 }
 
 #[test]

@@ -40,7 +40,7 @@ import {
 } from "@/wallet";
 import type { WrongNetworkInfo } from "@/wallet";
 import { ENV } from "@/lib/env";
-import { formatUsdc } from "@/lib/usdc";
+import { formatUsdc, formatUsdcInput } from "@/lib/usdc";
 import { formatUnits4 } from "@/utils/formatUnits4";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
@@ -96,9 +96,10 @@ export interface StakeFlowState {
   decimals: number | undefined;
   /**
    * Decimals for the convert hooks' output scale.
-   * EVM: 18 (RATE_SCALE = 1e18); Stellar: 7 (SAC_DECIMALS).
+   * EVM: the live decimals of the output token (sPLUSD on Stake, PLUSD on
+   * Unstake), undefined while loading; Stellar: 7 (SAC_DECIMALS).
    */
-  convertDecimals: number;
+  convertDecimals: number | undefined;
   /** Formatted input balance string (no $ prefix). */
   formattedInputBalance: string | undefined;
   /** Formatted output balance string (no $ prefix). */
@@ -109,6 +110,7 @@ export interface StakeFlowState {
   // ── Input derivations ──────────────────────────────────────────────────
   isReady: boolean;
   hasBalance: boolean;
+  exceedsBalance: boolean;
 
   // ── Preview ────────────────────────────────────────────────────────────
   previewOutputValue: string;
@@ -142,9 +144,6 @@ export interface StakeFlowState {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-
-/** EVM convert scale — always 18 regardless of live token decimals read. */
-const EVM_CONVERT_DECIMALS = 18;
 
 // ── Format helpers ────────────────────────────────────────────────────────────
 
@@ -210,12 +209,14 @@ export function useStakeFlow(
   const evmAssetsPreview = useStakedPlusdConvertToAssets(
     !isStake ? amountBig : undefined,
   );
-  const evmOneStake = isStake
-    ? parseUnits("1", EVM_CONVERT_DECIMALS)
-    : undefined;
-  const evmOneUnstake = !isStake
-    ? parseUnits("1", EVM_CONVERT_DECIMALS)
-    : undefined;
+  const evmOneStake =
+    isStake && evmPlusdToken.decimals !== undefined
+      ? parseUnits("1", evmPlusdToken.decimals)
+      : undefined;
+  const evmOneUnstake =
+    !isStake && evmSplusdToken.decimals !== undefined
+      ? parseUnits("1", evmSplusdToken.decimals)
+      : undefined;
   const evmRateSharesPerPlusd = useStakedPlusdConvertToShares(evmOneStake);
   const evmRateAssetsPerSplusd = useStakedPlusdConvertToAssets(evmOneUnstake);
 
@@ -283,6 +284,7 @@ export function useStakeFlow(
 
   const evmInputToken = isStake ? evmPlusdToken : evmSplusdToken;
   const evmOutputToken = isStake ? evmSplusdToken : evmPlusdToken;
+  const evmConvertDecimals = evmOutputToken.decimals;
 
   const evmDecimals = evmInputToken.decimals;
   const evmBalance = evmInputToken.balance as bigint | undefined;
@@ -363,27 +365,20 @@ export function useStakeFlow(
       : "idle";
 
   // EVM preview and rate.
-  const evmPreviewOutputValue = isStake
-    ? evmSharesPreview.data !== undefined
-      ? formatUsdc(evmSharesPreview.data, EVM_CONVERT_DECIMALS).replace(
-          /,/g,
-          "",
-        )
-      : "0"
-    : evmAssetsPreview.data !== undefined
-      ? formatUsdc(evmAssetsPreview.data, EVM_CONVERT_DECIMALS).replace(
-          /,/g,
-          "",
-        )
+  const evmPreviewRaw = isStake ? evmSharesPreview.data : evmAssetsPreview.data;
+  const evmPreviewOutputValue =
+    evmPreviewRaw !== undefined && evmConvertDecimals !== undefined
+      ? formatUsdc(evmPreviewRaw, evmConvertDecimals).replace(/,/g, "")
       : "0";
 
   const evmExchangeRateText = (() => {
+    if (evmConvertDecimals === undefined) return "—";
     if (isStake) {
       if (evmRateSharesPerPlusd.data === undefined) return "—";
-      return `1 PLUSD = ${formatUnits4(evmRateSharesPerPlusd.data, EVM_CONVERT_DECIMALS)} sPLUSD`;
+      return `1 PLUSD = ${formatUnits4(evmRateSharesPerPlusd.data, evmConvertDecimals)} sPLUSD`;
     }
     if (evmRateAssetsPerSplusd.data === undefined) return "—";
-    return `1 sPLUSD = ${formatUnits4(evmRateAssetsPerSplusd.data, EVM_CONVERT_DECIMALS)} PLUSD`;
+    return `1 sPLUSD = ${formatUnits4(evmRateAssetsPerSplusd.data, evmConvertDecimals)} PLUSD`;
   })();
 
   const evmNetworkFee = isStake ? stakeFeeEth : unstakeFeeEth;
@@ -551,7 +546,7 @@ export function useStakeFlow(
       else if (idx === 2) next = (bal * 75n) / 100n;
       else if (idx === 3) next = bal;
       else return;
-      setAmountInput(formatUsdc(next, dec).replace(/,/g, ""));
+      setAmountInput(formatUsdcInput(next, dec));
     },
     [evmBalance, evmDecimals, setAmountInput],
   );
@@ -566,7 +561,7 @@ export function useStakeFlow(
       else if (idx === 2) next = (bal * 75n) / 100n;
       else if (idx === 3) next = bal;
       else return;
-      setAmountInput(formatUsdc(next, SAC_DECIMALS).replace(/,/g, ""));
+      setAmountInput(formatUsdcInput(next, SAC_DECIMALS));
     },
     [stellarInputBalance, setAmountInput],
   );
@@ -644,7 +639,7 @@ export function useStakeFlow(
       connect: evmConnect,
       address: evmAddress,
       decimals: evmDecimals,
-      convertDecimals: EVM_CONVERT_DECIMALS,
+      convertDecimals: evmConvertDecimals,
       formattedInputBalance: evmFormattedInputBalance
         ? evmFormattedInputBalance.replace(/^\$/, "")
         : undefined,
@@ -654,6 +649,7 @@ export function useStakeFlow(
       balance: evmBalance,
       isReady: evmIsReady,
       hasBalance: evmHasBalance,
+      exceedsBalance: evmBalance !== undefined && amountBig > evmBalance,
       previewOutputValue: evmPreviewOutputValue,
       exchangeRateText: evmExchangeRateText,
       networkFee: evmNetworkFee,
@@ -771,6 +767,8 @@ export function useStakeFlow(
     balance: stellarInputBalance,
     isReady: stellarIsReady,
     hasBalance: stellarHasBalance,
+    exceedsBalance:
+      stellarInputBalance !== undefined && amountBig > stellarInputBalance,
     previewOutputValue: stellarPreviewOutputValue,
     exchangeRateText: stellarExchangeRateText,
     networkFee: stellarNetworkFee,

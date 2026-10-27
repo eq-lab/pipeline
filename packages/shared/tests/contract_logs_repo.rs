@@ -1,9 +1,10 @@
 // spec: docs/exec-plans/completed/issue-1433-stellar-loan-parsers-realignment.md#test-strategy
 use shared::contract_logs_repo::{
-    LATEST_STATUS_BY_LOANS_SQL, LATEST_WATCHLIST_ENTRY_SQL, LEGACY_YIELD_MINTED_SQL,
-    LIST_LATEST_LOAN_SNAPSHOTS_SQL, LIST_REPAYMENT_MINTS_SQL, LIST_WITHDRAWAL_QUEUE_ROWS_SQL,
-    LOAN_ECONOMICS_EVENTS_SQL, LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES,
-    LOAN_SNAPSHOT_AS_OF_SQL,
+    EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL, LATEST_STATUS_BY_LOANS_SQL,
+    LATEST_WATCHLIST_ENTRY_SQL, LEGACY_YIELD_MINTED_SQL, LIST_LATEST_LOAN_SNAPSHOTS_SQL,
+    LIST_REPAYMENT_MINTS_SQL, LIST_WITHDRAWAL_QUEUE_ROWS_SQL, LOAN_ECONOMICS_EVENTS_SQL,
+    LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES,
+    LOAN_RATE_EVENTS_FOR_REGISTRY_SQL, LOAN_SNAPSHOT_AS_OF_SQL,
 };
 
 fn normalized(sql: &str) -> String {
@@ -73,6 +74,16 @@ fn loan_lifecycle_events_for_registry_sql_is_registry_scoped() {
 }
 
 #[test]
+fn loan_rate_events_sql_is_registry_scoped() {
+    assert_registry_scoped(LOAN_RATE_EVENTS_FOR_REGISTRY_SQL, 4);
+}
+
+#[test]
+fn earliest_origination_date_sql_is_registry_scoped() {
+    assert_registry_scoped(EARLIEST_ORIGINATION_DATE_FOR_REGISTRY_SQL, 2);
+}
+
+#[test]
 fn loan_snapshot_as_of_sql_is_registry_scoped() {
     assert_registry_scoped(LOAN_SNAPSHOT_AS_OF_SQL, 5);
 }
@@ -108,6 +119,14 @@ fn list_repayment_mints_sql_requires_registry_scoped_payment_recorded() {
         "expected p.contract_address = $4 on PaymentRecorded: {sql}"
     );
     assert!(sql.contains("WHERE r.chain_id = $1"), "{sql}");
+    assert!(
+        sql.contains("AND d.contract_address = $4 AND d.event_name = 'LoanDefaulted'"),
+        "{sql}"
+    );
+    assert!(
+        sql.contains("(d.block_number, d.log_index) < (r.block_number, r.log_index)"),
+        "{sql}"
+    );
 }
 
 #[test]

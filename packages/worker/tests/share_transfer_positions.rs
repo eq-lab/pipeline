@@ -12,7 +12,7 @@ use bigdecimal::BigDecimal;
 use std::str::FromStr;
 
 use pipeline_worker::indexer::mappers::{
-    carry_over_transfer, is_position_event_name, is_staking_event_name,
+    apply_position_delta, carry_over_transfer, is_position_event_name, is_staking_event_name,
 };
 
 fn bd(s: &str) -> BigDecimal {
@@ -180,4 +180,22 @@ fn fractional_share_price_keeps_precision() {
     // (5000000·1.1 + 2500000·1.05) / 7500000 = 8125000 / 7500000 = 1.0833…
     let expected = (bd("5000000") * bd("1.1") + bd("2500000") * bd("1.05")) / bd("7500000");
     assert_eq!(next.avg_price_to, expected);
+}
+
+#[test]
+fn shares_burned_withdrawal_reduces_the_treasury_balance_and_realizes_pnl() {
+    let (shares, avg, pnl) =
+        apply_position_delta(false, &bd("1000"), &bd("1.05"), &bd("700"), &bd("750"));
+    assert_eq!(shares, bd("300"));
+    assert_eq!(avg, bd("1.05"));
+    assert_eq!(pnl, bd("15"));
+}
+
+#[test]
+fn stake_updates_the_weighted_average_without_realizing_pnl() {
+    let (shares, avg, pnl) =
+        apply_position_delta(true, &bd("100"), &bd("1"), &bd("100"), &bd("120"));
+    assert_eq!(shares, bd("200"));
+    assert_eq!(avg, bd("1.1"));
+    assert_eq!(pnl, bd("0"));
 }

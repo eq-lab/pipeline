@@ -15,6 +15,16 @@ Trustee product intent lives in `docs/product-specs/` (see the Trustee panel not
 > definition-site config/field docs by design (rule-6 compliant: short constraints at the
 > definition, not flow narration).
 
+## Dates
+
+Every trustee calendar date renders in UTC through `@/utils/formatDate` (`formatMaturityDate`,
+`formatEpochDate`, `formatSubmittedDate`, `formatIsoDateUtc`, `formatAuditTimestamp`,
+`formatIsoDateTimeUtc`), never in the browser's zone (#1626). Maturity, origination and
+next-payment values are entered as UTC midnight, so a US browser must not show `15 Dec` as
+`14 Dec`. `formatSubmittedDate` is UTC too, so a "Submitted" day and a maturity day on one row use
+the same calendar. The tests force `TZ=America/New_York` (`-formatDate-utc.test.ts`) so they fail
+against a local-zone formatter even when CI runs in UTC.
+
 ## Audit Log
 
 **Sources:** `packages/trustee/src/routes/audit-log.tsx` (view),
@@ -532,7 +542,13 @@ every variant today.
 Built from the real `/ccr-history` series (#879) — replaces the fixed-geometry fixture (#859).
 `null` when the series has no points (never priced / empty window) so the card is simply omitted
 rather than drawing a fabricated line. The series spans the loan's origination
-(`maturity − duration_days`) through now, daily. Per-loan y-scale spans the series' CCR range
+through now, daily. Its `from` is `ccrSeriesFrom(entry)` (`-useLoanDetail.ts`, shared with the
+Escalate page): `maturity − duration_days · 86400`, where the served `duration_days` is the
+current, rollover-aware term `floor((current_maturity − origination) / 1 day)` (#1633; the
+`LoanBookEntry.duration_days` field is that current term, not the original one). The floor
+means the series can start up to one day after the origination instant, which is within one
+step of the daily `/ccr-history` grid; this is accepted, and a raw `origination_date` on the
+loan-book entry is not planned (#1626). Per-loan y-scale spans the series' CCR range
 widened to the protocol watchlist thresholds (spec §9.6) — 120% maintenance-margin and 110%
 margin-call dashed guide-lines (protocol-wide defaults; no endpoint serves per-loan overrides yet,
 #879). The card is extracted to `-CcrTrendChart.tsx` (#782) so the Risk Council "Escalate to
@@ -548,14 +564,24 @@ own border/title).
   shared dialog shell (`-RejectReasonDialog.tsx`): `role="dialog"`, `aria-modal`, Escape +
   backdrop-click cancel (never a stray confirm), navy confirm button; pending disables both
   buttons and a failure (404 = loan not indexed) surfaces inline.
-- **Roll over** (Matured variant, S9, Figma node `4116:14050`, #870) — collects the new rate (bps)
-  + new maturity, then submits the on-chain `LoanRegistry.rollover` via `useRollover`. The
+- **Roll over** (Matured variant, S9, Figma node `4116:14050`, #870) — collects the new rate as a
+  **percent p.a.** (text input, 0.01–100, at most 2 decimals since 1 bp = 0.01%; converted exactly
+  to integer bps by `percentToBps` (`@/utils/rateUnits`) and echoed live as `= N bps`; anything
+  else shows the inline rate error and keeps Roll over disabled — #1625, which replaced a
+  `parseInt` on a "bps" field that turned `14.5` into 14 bps) + new maturity, then submits the
+  on-chain `LoanRegistry.rollover` via `useRollover` (bps; the Stellar encoder scales ×100). The
   mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
   on-chain at rollover, avoiding a fabricated transaction-effect number.
 - **Update lifecycle** (S10, Figma node `4116:14087`, #872) — collects the non-economic mutable
   fields (status, CCR %, location, optional metadata URI), then submits the on-chain
   `LoanRegistry.updateMutable` via `useUpdateLifecycle`. Default/Closed are not offered (they route
   to the Risk Council / close flows); Past Due/Matured are derived, not settable here.
+  **Status default (#1621)** — the selector defaults to the loan's raw on-chain status, read from
+  `onchain_status` on the loan-book entry (`lifecycleStatusOf` in `-useLoanDetail.ts`), never from
+  the display chip: `Disbursing` / `Past Due` mask a WatchList loan. `Performing` and `WatchList`
+  preselect themselves; any other value (`Approved`, `Default`, `Closed`) or a missing field
+  preselects nothing ("Select status") and keeps **Confirm update** disabled until the trustee
+  picks a status, so a silent default is never written on-chain.
 - **Past-Due attention notice** (#940) — a past-maturity loan renders under the Matured variant;
   its derived `Past Due` status is an attention signal, not a lock — per the backend, it exists
   "to draw the Trustee's attention that they either need to record the payment or escalate to
@@ -667,6 +693,13 @@ submit/confirm action, only the live preview.
   not a re-derived sum of the five/six components (the waterfall has no equity field, so the
   components alone do not sum to the offtaker amount without the residual — see below).
 
+### Record action gating (#1622, both flows)
+
+- The `record_payment` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
+- "Record on the ledger" is disabled while the live input differs from the debounced value (including when the input is cleared mid-debounce) or while the preview is recalculating (`waterfall.isCalculating`).
+- The green "Components sum to received $X" summary and the Record Coupon principal-block notice are hidden while the amount is unsettled, matching the row skeletons (#1049). The "Offtaker still owed after coupon" row deliberately keeps tracking the live input.
+- Record Repayment's amount is a read-only one-shot prefill, so the stale window is unreachable there today (during the prefill debounce the debounced amount is `""`, so the payload is `null`). The same gate is applied for parity, so a future editable input cannot reintroduce the bug.
+
 ### Record Coupon — interest-only, context-dependent third row
 
 - The left card's third row is context-dependent (`hasCouponDue`): a simply-performing loan with
@@ -676,17 +709,22 @@ submit/confirm action, only the live preview.
   `computeScheduledCoupon`; the backend serves no scheduled-coupon figure), shown for reference
   only and never recorded on the ledger.
 - This is the **interest-only coupon** flow: `buildRepaymentInput` always sets
-  `senior_principal_repaid = "0"` (principal stays deployed), regardless of the waterfall's own
-  `senior_principal_returned` (a principal-first `min(amount, outstanding)` figure, irrelevant to
-  a coupon). Interest + fee carve-outs map 1:1; `equity_distributed` is the residual after
-  interest + fees so the six components sum exactly to `offtaker_received` (clamped at 0 — never
-  negative).
-- **Terminal-close detection:** the Figma's "Next stage: principal repayment →" button is
-  suppressed everywhere except the terminal case — when this coupon fully amortises the
-  outstanding senior principal (`isTerminalRepayment`): the entered amount covers (≥) the loan's
-  outstanding senior AND the waterfall's own `senior_principal_returned` equals it exactly (to the
-  cent, guarding float drift from the two independent unit conversions). Otherwise no hint renders
-  at all — this is an interest-only coupon page by default.
+  `senior_principal_repaid = "0"` (principal stays deployed). Interest + fee carve-outs map 1:1;
+  `equity_distributed` is the residual after interest + fees so the six components sum exactly to
+  `offtaker_received` (clamped at 0 — never negative).
+- **Principal-block rule (#1623):** the backend waterfall (`waterfall.rs`, stage 4) cascades
+  interest, then OET, then senior principal, then equity, so `senior_principal_returned` is
+  non-zero only when the entered amount exceeds interest + OET while senior principal is still
+  outstanding. A coupon cannot carry that principal (it would land in `equity_distributed` while
+  the screen said it repaid senior), so when the served `senior_principal_returned` is non-zero
+  (`coversSeniorPrincipal`, no client-side threshold arithmetic) the coupon is **not recordable**:
+  `recordPaymentInput` is `null`, the green summary is hidden, and the page shows the
+  `record-coupon-principal-block` notice with the served principal amount and a link to Record
+  Repayment (keeping `chain`). Principal is never moved into equity, so Record Repayment can still
+  amortise the senior and the loan stays closable. When senior is already fully repaid the
+  waterfall returns principal `0` and the residual legitimately goes to equity, so the coupon
+  stays recordable. A wire larger than interest + OET but smaller than the full offtaker balance
+  cannot be recorded on either page (no partial principal repayments).
 
 ### Record Repayment — Principal (#884) — key difference from Record Coupon
 
@@ -696,6 +734,11 @@ the residual after all five carve-outs (principal + interest + fees) — clamped
 negative — so the six components still sum exactly to `offtaker_received`. The amount input is
 prefilled (one-shot, then read-only) to the full remaining `offtaker_outstanding` once financials
 load — a principal repayment always pays it all; there are no partial principal repayments.
+The prefill (`prefillAmountInput`) is exact to the served 6-dp `offtaker_outstanding` string:
+validated, trailing fractional zeros trimmed (`"6150000.000000"` → `6,150,000`), then grouped, with
+no float round-trip. Stellar USDC has 7 dp while `/financials` serves a 6-dp truncated value, so a
+residue of up to 9 raw units (at most $0.0000009) can remain. This is intended: the served value
+then reads `0.000000`, the fully-paid gate opens, and `close_loan` waives the residue (#1626).
 
 Once the loan is fully repaid, the page also exposes a **Close loan** action (`useCloseLoan`) that
 moves the loan to `Closed`.
@@ -709,7 +752,11 @@ notice ("nothing left to record"). The state must hold **without a reload** — 
 brings owed to `0` mid-session drops the stale form rather than leaving a recordable amount on
 screen. It is suppressed while this page's own `record_payment` is pending/settled so the
 "Payment recorded" confirmation flow stays intact. Whether Close-loan enables is decided by the
-close checklist below, not by this state alone.
+close checklist below, not by this state alone. When the loan-book `senior_outstanding` is still
+above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
+by a muted `record-repayment-senior-outstanding` line: "Senior principal of $X is still
+outstanding on-chain, so this loan can't be closed from the app. Escalate to the Risk Council."
+It is informational only and changes no gating; the recovery path is tracked in #1655.
 
 ### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
@@ -717,10 +764,11 @@ The Close-loan action always renders as the full-width "Next step — close loan
 three-item checklist (`closeChecklist` on the presenter). The button enables only when **every**
 item is green:
 
-1. **Senior principal outstanding is zero** — hard gate. Green when the loan-book's
-   `senior_outstanding` is `0`, or when this page's own `record_payment` write has just succeeded
-   (`record.isSuccess` — the terminal principal payment zeroes it; the loan-book refetch lags the
-   indexer). The unmet row shows the current outstanding amount.
+1. **Senior principal outstanding is zero** — hard gate. Green only when the refreshed
+   loan-book's `senior_outstanding` is `0`. This page's own `record_payment` success does **not**
+   turn it green: a shortfall repayment succeeds on-chain but leaves senior outstanding, and
+   `close_loan` would revert (#1624). The unmet row shows the current outstanding amount until the
+   refetch lands.
 2. **Nothing left to mint on either leg** — hard gate, **no manual override**. Green when the
    financials' `not_minted_yield` is `0` (the aggregate covers both mint legs — no per-leg field
    is served). Minter repayments mint atomically, so after recording a final payment
@@ -740,6 +788,10 @@ On success, `useCloseLoan` invalidates the loan-book/financials queries immediat
 5 s and 15 s (#1092) — the close is indexed asynchronously, so the immediate refetch races the
 indexer and the next `refetchInterval` poll is 30 s out; the delayed re-invalidations make the
 post-close loan detail converge in seconds instead of appearing stale.
+
+On success, `useRecordPayment` likewise invalidates loan-book/financials immediately and again at
+5 s and 15 s (#1624), so a full repayment's zeroed senior outstanding reaches the checklist within
+seconds.
 
 ### Route registration & page shell
 
@@ -766,9 +818,9 @@ entirely — no backend source ever marks a coupon/repayment "recorded"/"minted"
 they would be fabricated.
 
 **Suppressed "Next stage: principal repayment" button** (Record Coupon only): per the issue's
-explicit scope note, the Figma's button is never rendered. In its place, `view.isTerminal` gates a
-plain text hint — only in the terminal case (see Terminal-close detection above). Every other
-coupon (the common interest-only case) shows no principal-repayment copy at all.
+explicit scope note, the Figma's button is never rendered. A coupon that would include senior
+principal shows the principal-block notice instead (see Principal-block rule above, #1623); every
+other coupon shows no principal-repayment copy at all.
 
 ### Waterfall error mapping (#916)
 
@@ -778,8 +830,16 @@ doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding
 "This amount is too high for this loan. Enter a smaller amount." A `chain_id` 400 (the loan's
 chain is not served by the API) is the one 4xx that is **not** an amount problem: it falls
 through to `toUserError`'s "This network isn't enabled on the server…" copy (#1602). Anything else
-gets a generic retry message. The date input is fixed to today and not editable (#916) — no
-calendar/date picker.
+gets a generic retry message. Two 4xx cases are not plain amount problems (#1661): a 422 (the
+loan's indexed event history is incomplete) reads "Loan data is incomplete — the indexer needs a
+re-sync. Contact support."; a 400 whose message starts with `loan is in Default` reads "This loan is
+in Default: a payment can only cover senior principal and accrued interest. Enter a smaller
+amount." Neither message has numbers, and the raw server text sits only under "View details". The date input is fixed to today and not editable (#916) — no
+calendar/date picker. The "Date received" field only displays today: both record flows call the
+waterfall with `as_of` omitted, so the server uses its own `now` (the endpoint's documented
+default). #1626 decided the earlier `T00:00:00Z` midnight `as_of` was unintended: it
+under-accrued up to a day of interest and fees (waived at `close_loan`), and the backend returns
+400 when `as_of` precedes origination, which midnight did for a loan drawn earlier the same day.
 
 ## Mock keys (manual QA)
 
@@ -1020,18 +1080,17 @@ at the card width and keep those proportions as the card grows:
 | column | width | cell |
 |---|---|---|
 | Received | 22% | `occurred_at` via `formatIsoDateTimeUtc` → `5 Oct 2026, 15:41 UTC`, `whitespace-nowrap` |
-| Amount | 16% | right-aligned `tabular-nums`, `formatCompactUsd2dp` |
+| Amount | 16% | right-aligned `tabular-nums`, `formatUsdDecimal` (exact, `$1,234,567.89`) |
 | Payment reference | 26% | `payment_reference`, `break-all`, `ref_hash` as its `title` |
 | Recorded by | 18% | `recorded_by` as an [`AddressText`](#shared-detail-primitives) |
 | PLUSD | 18% | the status cell below |
 
 `min-w-[820px]` holds those shares legible before `overflow-x-auto` takes over.
 
-**Amount uses the Loans-table formatter.** `formatCompactUsd2dp` — the same formatter
-`-useLoansTable.ts` uses for `senior_outstanding` / `collateral` — replaced the local
-`formatUsdDecimal`, so a deposit reads `$1.25M` / `$30.00K` exactly as a loan amount does
-elsewhere in the trustee app instead of inventing a second money style per table. The served
-string is unchanged; only the display formatter moved.
+**Amount is exact (#1626).** `formatUsdDecimal` renders the served 2-dp dollar string as
+`$1,234,567.89`, never compact (`$1.23M`), because the trustee reconciles this figure against the
+wire before minting. This reverses the #1453 "Amount uses the Loans-table formatter" note. The
+column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
 
 - **List** — `GET`, 30 s poll, served order (newest first), no client sort. Columns per the plan
   above. Loading, empty ("No bank deposits recorded."), and error + Retry states.
@@ -1135,12 +1194,16 @@ unfiltered variants cache independently.
 `SubmitLoanRequest` for convenience but not guaranteed to match at runtime), returned as a nested
 JSON object, not a JSON-encoded string. Its four monetary fields (`economics.
 original_facility_size` / `original_senior_tranche` / `original_equity_tranche` /
-`original_offtaker_price`) are served at the on-chain **7-decimal (10^7) base-unit scale** (e.g.
-`"8000000000.000000"` = 8,000,000,000 base units = $800.00) — not human-unit dollars (#912).
-Display consumers normalize ÷10^7 (BigInt-safe — never `Number`/`parseFloat` on the raw string)
-via `economicsBaseUnitsToUsdDecimal` (`@/utils/stellarSacUnits`) before `formatFullUsd`/
-`formatCompactUsd`. The `draw_loan` on-chain write sends these fields to the contract exactly as
-served, with no re-scaling. Every nested field access must be defensive — missing/malformed values
+`original_offtaker_price`) are **human-unit USDC decimal strings** (e.g. `"1200000.000000"` =
+$1,200,000; at most 6 fractional digits, which both chains represent exactly) — #1620, superseding
+the #912 "base-unit" reading that had the trustee form, the API doc and the draw path disagree and
+sent $1.2M on-chain as $0.12. Display consumers pass them through `economicsUsdDecimal`
+(`@/utils/stellarSacUnits`: validates a non-negative decimal, no scaling) before `formatFullUsd`/
+`formatCompactUsd`. The `draw_loan` on-chain write converts them to the target chain's base units
+exactly (`@pipeline/wallet-connect` `parseUsdcToU128`, ×10^7 on Stellar via `BigInt`; a string
+with more fractional digits than the scale holds throws, never truncates). Rows submitted under
+the old reading render 10^7× too large and must be re-entered. Every nested field access must be
+defensive — missing/malformed values
 render `—`, never fabricated.
 
 **Status normalization (#892/#949/#950):** `normalizeOriginationSubmissionStatus` maps the
@@ -1236,7 +1299,8 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
 - **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
   Loan & metadata (`target_chain_id`, `to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
   `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
-  (four 6-decimal amount strings + rate bps + two unix-second dates), Collateral (`initial_ccr`
+  (four human-unit USDC amount strings with at most 6 decimals, validated by `USDC_AMOUNT_PATTERN`
+  and labelled "USDC, up to 6 decimals" — #1620; rate bps + two unix-second dates), Collateral (`initial_ccr`
   + `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
   (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
 - **Unique-URI banner:** a standing attention banner states that `metadata_uri` must be unique
@@ -1277,7 +1341,8 @@ on-chain pre-mint, so there is no `loan_id` to call `GET /v1/loan-book/{loan_id}
 - Heading/breadcrumb/Deal-Details "Originator" → `loan_data.originator` (the human name), **not**
   `SubmissionView.originator` — same distinction as the table.
 - Start date → `economics.origination_date`. Maturity → `economics.original_maturity_date`.
-  Facility/tranches/offtaker price → `economics.*` (÷10^7 via `formatEconomicsUsd`, #912). Rate →
+  Facility/tranches/offtaker price → `economics.*` (human-unit USDC as served via
+  `formatEconomicsUsd`, #1620). Rate →
   `senior_interest_rate_bps` + " p.a." suffix (Figma "14.0% p.a.").
 - Corridor → `loan_data.corridor`, arrow-formatted (same regex as the table). Governing law →
   `loan_data.governing_law`. Protection → `loan_data.protection` (optional — `—` when absent).
@@ -1478,15 +1543,15 @@ the Risk-Council **display** screens for flows 11/12.
 
 **Real vs. mock data:**
 
-- **Real** (sourced live, per-loan): Originator / Facility (`principal`) / senior deployed
+- **Real** (sourced live, per-loan): Days on watchlist (`entry.days_on_watchlist`, `—` when
+  `null`, #1626); Originator / Facility (`principal`) / senior deployed
   (`senior_outstanding`) / Collateral (loan-book entry, served display-scale as-is, #906;
   `ccr_bps` used as-is); Repaid to date (`useLoanFinancials`, `offtaker − offtaker_outstanding`);
   CCR trend (`useLoanCcrHistory` + `buildCcrTrend`, reused from `-useLoanDetail.ts`); current
   at-risk % (`summary.at_risk_wl_and_default_pct`); concentration (`summary.top_concentration`,
   only when it names *this* loan's own commodity — the endpoint serves a single portfolio-wide top
   concentration, not a per-commodity share — `—` otherwise).
-- **Mock** (no backend source, flagged, not per-loan): "Days on watchlist" (no "watchlist since"
-  timestamp served anywhere, the same gap the Watchlist loan-detail page has, #859); the "→ Y% if
+- **Mock** (no backend source, flagged, not per-loan): the "→ Y% if
   defaulted" portfolio-impact projection (no projection endpoint, and `at_risk_wl_and_default_pct`
   already combines WatchList+Default so a same-loan transition barely moves the combined figure —
   no real formula to derive the Figma's forward-looking delta); the proposal builder itself (name +

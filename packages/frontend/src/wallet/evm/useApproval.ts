@@ -221,6 +221,7 @@ export function useApproval({
 
   const approve = useCallback(
     (amount: bigint) => {
+      setWriteError(null);
       // Re-read mock key at call time to pick up any dynamic changes.
       const approveMock = readMock(
         MOCK_KEYS.approve(token),

@@ -10,7 +10,7 @@
  * (scope, key difference from Record Coupon, scale handling, close-loan
  * gating).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
@@ -25,6 +25,7 @@ import { formatFullUsd, formatUsdInputValue } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
   SAC_DECIMALS,
+  economicsUsdDecimal,
   parsePositiveUsdInput,
   sacBaseUnitsToUsdDecimal,
   usdInputToSacBaseUnits,
@@ -122,6 +123,17 @@ function parseServedUsd(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export function prefillAmountInput(
+  served: string | null | undefined,
+): string | null {
+  const decimal = economicsUsdDecimal(served);
+  if (decimal == null || !/[1-9]/.test(decimal)) return null;
+  const trimmed = decimal.includes(".")
+    ? decimal.replace(/0+$/, "").replace(/\.$/, "")
+    : decimal;
+  return formatUsdInputValue(trimmed);
+}
+
 // e.g. "31 Mar 2026 → 24 Jun 2026 · 85 days" — same computation as
 // `computeCouponPeriod`, renamed for this page's "Final period" row.
 export function computeFinalPeriod(epoch: Epoch | null): {
@@ -184,11 +196,11 @@ export interface RecordRepaymentView {
     errorDetails: string | null;
     rows: WaterfallRow[];
   };
-  /** `"Components sum to received $<amount>"` — `null` until a positive amount is entered and the preview resolves. */
+  /** `"Components sum to received $<amount>"` — `null` until the entered amount has settled and its preview resolved. */
   summaryText: string | null;
   /**
    * The on-chain `RepaymentData` for `record_payment` (base-unit strings);
-   * `null` until a positive amount is entered and the preview resolves. The
+   * `null` until the entered amount has settled and its preview resolved. The
    * page passes this to `useRecordPayment` on confirm (#884).
    */
   recordPaymentInput: RepaymentInput | null;
@@ -199,6 +211,7 @@ export interface RecordRepaymentView {
    * the fully-repaid notice instead of the amount form/waterfall.
    */
   offtakerFullyPaid: boolean;
+  seniorStillOutstanding: string | null;
   /**
    * The close-loan checklist (#1090) — Close-loan enables only when every item
    * is green. Items 1–2 are hard gates with no manual override; item 3 is
@@ -265,20 +278,8 @@ export function useRecordRepayment(
   const amountBaseUnits = offtakerFullyPaid
     ? "0"
     : usdToBaseUnits(debouncedAmount, decimals);
-  const asOfSeconds = useMemo(() => {
-    if (!dateInput) return Math.floor(Date.now() / 1000);
-    const parsed = Math.floor(
-      new Date(`${dateInput}T00:00:00Z`).getTime() / 1000,
-    );
-    return Number.isFinite(parsed) ? parsed : Math.floor(Date.now() / 1000);
-  }, [dateInput]);
 
-  const waterfall = useLoanWaterfall(
-    chainId,
-    loanId,
-    amountBaseUnits,
-    asOfSeconds,
-  );
+  const waterfall = useLoanWaterfall(chainId, loanId, amountBaseUnits, null);
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
   const onChainBlockedReason = entry
@@ -301,16 +302,23 @@ export function useRecordRepayment(
   // clobbers it; the field is disabled, so the trustee can't edit it down.
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
+    const prefill = prefillAmountInput(financials.data?.offtaker_outstanding);
     if (
       !prefilled &&
       amountInput === "" &&
       offtakerOutstandingUsd != null &&
-      offtakerOutstandingUsd > 0
+      offtakerOutstandingUsd > 0 &&
+      prefill != null
     ) {
-      setAmountInput(formatUsdInputValue(String(offtakerOutstandingUsd)));
+      setAmountInput(prefill);
       setPrefilled(true);
     }
-  }, [prefilled, amountInput, offtakerOutstandingUsd]);
+  }, [
+    prefilled,
+    amountInput,
+    offtakerOutstandingUsd,
+    financials.data?.offtaker_outstanding,
+  ]);
 
   const finalPeriod = computeFinalPeriod(financials.data?.epoch ?? null);
 
@@ -391,8 +399,10 @@ export function useRecordRepayment(
         ]
       : [];
 
+  const amountSettled = amountInput === debouncedAmount;
+
   const summaryText =
-    enteredUsd != null && waterfall.data != null
+    amountSettled && enteredUsd != null && waterfall.data != null
       ? `Components sum to received ${usdFull(enteredUsd)}`
       : null;
 
@@ -441,9 +451,17 @@ export function useRecordRepayment(
     },
     summaryText,
     recordPaymentInput:
-      onChainBlockedReason === null ? recordPaymentInput : null,
+      onChainBlockedReason === null && amountSettled
+        ? recordPaymentInput
+        : null,
     onChainBlockedReason,
     offtakerFullyPaid,
+    seniorStillOutstanding:
+      offtakerFullyPaid &&
+      outstandingSeniorUsd != null &&
+      outstandingSeniorUsd > 0
+        ? usdFull(outstandingSeniorUsd)
+        : null,
     closeChecklist,
     closureReason: onChainBlockedReason === null ? reason : null,
   };
