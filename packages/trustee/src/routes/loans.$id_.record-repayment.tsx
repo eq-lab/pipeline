@@ -233,7 +233,11 @@ function RecordRepayment() {
     if (view.recordPaymentInput == null) return;
     record.reset();
     void record
-      .mutateAsync({ loanId: Number(id), repayment: view.recordPaymentInput })
+      .mutateAsync({
+        loanId: Number(id),
+        repayment: view.recordPaymentInput,
+        valueDate: view.valueDate,
+      })
       .catch(() => {
         // Error surfaces inline via `record.error`; stay on the page to retry.
       });
@@ -528,9 +532,6 @@ function RecordRepayment() {
               </svg>
             </div>
           )}
-          {/* Confirm — trustee-wallet-signed on-chain `record_payment` (#884).
-              Pinned to the bottom of the right card (`mt-auto`) so the actions
-              stay anchored to the card floor, matching Record Coupon. */}
           <div className="mt-auto flex flex-col gap-[12px] pt-[16px]">
             {recordError && (
               <div data-testid="record-repayment-record-error">

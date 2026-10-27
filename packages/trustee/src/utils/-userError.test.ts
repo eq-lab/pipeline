@@ -127,7 +127,7 @@ describe("toUserError — simulation-error shape", () => {
     "drawLoan simulation error: HostError: Error(Contract, #999)",
     "rollover simulation error: some RPC failure",
     "updateMutable simulation error: some RPC failure",
-    "recordPayment simulation error: some RPC failure",
+    "repay simulation error: some RPC failure",
     "closeLoan simulation error: some RPC failure",
   ])("maps %s to the generic could-not-verify copy", (raw) => {
     const result = toUserError(new Error(raw));

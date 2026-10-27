@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `mintLoan(address originator, ImmutableLoanData economics, string metadataURI, string initialLocation)` | TRUSTEE | none | Mints a new loan NFT and writes genesis economics on-chain plus `epochs[0]`. `metadataURI` points to an IPFS JSON document with descriptive material only. Emits `LoanMinted`. |
 | `updateMutable(uint256 loanId, LoanStatus status, uint256 newCCR, LocationUpdate newLocation, string metadataURI)` | TRUSTEE | none | Updates non-economic mutable fields. `status` may be one of {Performing, Watchlist, Matured}. Reverts on Default and Closed. Does not touch rate or maturity. |
-| `recordPayment(uint256 loanId, uint256 offtakerAmount, uint256 seniorPrincipal, uint256 seniorInterest, uint256 mgmtFee, uint256 perfFee, uint256 oetAlloc, uint256 equityAmount)` | TRUSTEE | none | Records a repayment split. Pure accounting, moves no USDC, mints no PLUSD. Reverts unless the loan is in {Performing, Watchlist} and the six components sum to `<= offtakerAmount`. Increments the seven per-loan counters. Emits `PaymentRecorded`. |
+| `recordPayment(uint256 loanId, uint256 offtakerAmount, uint256 seniorPrincipal, uint256 seniorInterest, uint256 mgmtFee, uint256 perfFee, uint256 oetAlloc, uint256 equityAmount)` | Minter only (`PIPELINE_MINTER_ROLE`) | none | Records a repayment split, reached through `Minter.repay` (see [loan-repay-minter.md](./loan-repay-minter.md)). Registry accounting only; the Minter call mints the yield. Reverts unless the loan is in {Performing, Watchlist} and the six components sum to `<= offtakerAmount`. Increments the seven per-loan counters. Emits `PaymentRecorded`. |
 | `rollover(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate)` | TRUSTEE | none | Rolls a loan into a new term after maturity. Reverts unless `now >= currentMaturityDate` and status is not Default or Closed. Appends an `EconomicsEpoch`, sets `currentMaturityDate`, returns status to Performing. Emits `LoanRolledOver`. |
 | `amendEconomics(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate)` | RISK_COUNCIL | 24h | Re-terms a loan outside the rollover fast-path (default penalty rate, off-cycle maturity change). Appends an `EconomicsEpoch` from the call time. Emits `EconomicsAmended`. |
 | `setDefault(uint256 loanId)` | RISK_COUNCIL | 24h | Transitions loan to Default. May fire before or after maturity. Blocks loan-tied mints. |
@@ -20,9 +20,9 @@
 | `getEpochs(uint256 loanId)` | public view | none | Returns the append-only economics epoch schedule. |
 | `tokenURI(uint256 loanId)` | public view (ERC-721) | none | Returns the IPFS URI of the descriptive document (the mutable `metadataURI`). |
 
-Relayer has **no role on LoanRegistry**. All loan NFT writes, including `recordPayment`,
-`rollover`, and `setDefault`, are executed by the Trustee key or the RISK_COUNCIL multisig
-directly per the table above.
+Relayer has **no role on LoanRegistry**. All other loan NFT writes, including
+`rollover` and `setDefault`, are executed by the Trustee key or the RISK_COUNCIL multisig
+directly per the table above; `recordPayment` is reached only through `Minter.repay`.
 
 Genesis economics are stored on-chain in `ImmutableLoanData` and mirrored into `epochs[0]`.
 YieldMinter reads them on every loan-tied mint to enforce the maturity-capped interest

@@ -1,4 +1,5 @@
 // spec: docs/product-specs/deposits.md#stellar-plusd-mint-leg
+import { createHash } from "node:crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   recordWireIn,
@@ -6,7 +7,12 @@ import {
   encodeRecordWireInArgs,
   parseUsdDollarsToI128,
   hexToBytes32ScVal,
+  repay,
+  buildRepayEnvelope,
+  encodeRepayArgs,
+  repaymentRefHash,
   type RecordWireInStage,
+  type RepayStage,
 } from "./minter";
 
 const {
@@ -101,6 +107,14 @@ vi.mock("@stellar/stellar-sdk", () => {
       (v: { __native?: unknown } | undefined) => v?.__native,
     ),
     xdr: {
+      ScMapEntry: class {
+        key: unknown;
+        val: unknown;
+        constructor({ key, val }: { key: unknown; val: unknown }) {
+          this.key = key;
+          this.val = val;
+        }
+      },
       ScVal: {
         scvString: (v: string) => ({ t: "string", v }),
         scvU32: (v: number) => ({ t: "u32", v }),
@@ -363,5 +377,236 @@ describe("recordWireIn", () => {
     await expect(recordWireIn(params())).rejects.toThrow(
       /failed with status FAILED/,
     );
+  });
+});
+
+const REPAYMENT = {
+  offtaker_received: "1500000000000",
+  senior_principal_repaid: "0",
+  senior_interest: "1155000000000",
+  equity_distributed: "0",
+  mgmt_fee: "120000000000",
+  perf_fee: "150000000000",
+  oet_alloc: "75000000000",
+};
+
+const REPAY_ARGS = {
+  caller: CALLER,
+  loanId: 7,
+  repayment: REPAYMENT,
+  valueDate: 1_793_059_200,
+  refHash: REF_HASH,
+};
+
+describe("encodeRepayArgs", () => {
+  it("emits the six positional args in contract order with exact types", () => {
+    const args = encodeRepayArgs(REPAY_ARGS) as unknown as Array<{
+      t: string;
+      v: unknown;
+    }>;
+    expect(args).toHaveLength(6);
+    expect(args.map((a) => a.t)).toEqual([
+      "address",
+      "u32",
+      "map",
+      "u64",
+      "bytes",
+      "u32",
+    ]);
+    expect(args[0]).toEqual({ t: "address", v: CALLER });
+    expect(args[1]).toEqual({ t: "u32", v: 7 });
+    expect(args[3]).toEqual({ t: "u64", v: 1_793_059_200n });
+    expect((args[4]!.v as Uint8Array).length).toBe(32);
+    expect(args[5]).toEqual({ t: "u32", v: 0 });
+  });
+
+  it("encodes the repayment as a sorted-key u128 map", () => {
+    const args = encodeRepayArgs(REPAY_ARGS) as unknown as Array<{
+      t: string;
+      v: Array<{ key: { v: string }; val: { t: string; v: bigint } }>;
+    }>;
+    const entries = args[2]!.v;
+    expect(entries.map((e) => e.key.v)).toEqual([
+      "equity_distributed",
+      "mgmt_fee",
+      "oet_alloc",
+      "offtaker_received",
+      "perf_fee",
+      "senior_interest",
+      "senior_principal_repaid",
+    ]);
+    expect(entries.every((e) => e.val.t === "u128")).toBe(true);
+  });
+
+  it("passes an explicit sale id", () => {
+    const args = encodeRepayArgs({
+      ...REPAY_ARGS,
+      saleId: 5,
+    }) as unknown as Array<{
+      t: string;
+      v: unknown;
+    }>;
+    expect(args[5]).toEqual({ t: "u32", v: 5 });
+  });
+
+  it("rejects a non-positive or fractional value date", () => {
+    expect(() => encodeRepayArgs({ ...REPAY_ARGS, valueDate: 0 })).toThrow(
+      /positive Unix-seconds integer/,
+    );
+    expect(() => encodeRepayArgs({ ...REPAY_ARGS, valueDate: 1.5 })).toThrow(
+      /positive Unix-seconds integer/,
+    );
+  });
+
+  it("rejects a malformed or zero ref hash", () => {
+    expect(() => encodeRepayArgs({ ...REPAY_ARGS, refHash: "9f86" })).toThrow(
+      /64 lowercase hex/,
+    );
+    expect(() =>
+      encodeRepayArgs({ ...REPAY_ARGS, refHash: "0".repeat(64) }),
+    ).toThrow(/zero hash/);
+  });
+});
+
+describe("buildRepayEnvelope", () => {
+  const base = {
+    ...REPAY_ARGS,
+    minterId: MINTER_ID,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("invokes repay on the minter with the caller as source", async () => {
+    await expect(buildRepayEnvelope(base)).resolves.toBe("assembled-xdr");
+    expect(mockContractCtor).toHaveBeenCalledWith(MINTER_ID);
+    const [method, ...callArgs] = mockContractCall.mock.calls[0]!;
+    expect(method).toBe("repay");
+    expect(callArgs).toHaveLength(6);
+    expect(mockGetAccount).toHaveBeenCalledWith(CALLER);
+  });
+
+  it("throws repay simulation error on a failed simulation", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({
+      error: "HostError: Error(Contract, #4)",
+    });
+    await expect(buildRepayEnvelope(base)).rejects.toThrow(
+      "repay simulation error: HostError: Error(Contract, #4)",
+    );
+  });
+
+  it("guards empty minter and caller before any RPC call", async () => {
+    await expect(buildRepayEnvelope({ ...base, minterId: "" })).rejects.toThrow(
+      /minterId must not be empty/,
+    );
+    await expect(buildRepayEnvelope({ ...base, caller: "" })).rejects.toThrow(
+      /caller must not be empty/,
+    );
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe("repay", () => {
+  function params(overrides: Record<string, unknown> = {}) {
+    return {
+      ...REPAY_ARGS,
+      minterId: MINTER_ID,
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "signed" }),
+      ...overrides,
+    };
+  }
+
+  it("runs build, sign, submit, poll and reports the stages in order", async () => {
+    const stages: RepayStage[] = [];
+    const result = await repay(
+      params({ onStageChange: (s: RepayStage) => stages.push(s) }),
+    );
+    expect(stages).toEqual(["awaiting-signature", "submitting", "confirming"]);
+    expect(result).toEqual({ hash: "tx-hash", repaymentId: null });
+  });
+
+  it("reads the repayment id (including 0) from the return value", async () => {
+    mockPollTransaction.mockResolvedValue({
+      status: "SUCCESS",
+      returnValue: { __native: 0 },
+    });
+    await expect(repay(params())).resolves.toEqual({
+      hash: "tx-hash",
+      repaymentId: 0,
+    });
+  });
+
+  it("falls back to the cash_repaid event data for the repayment id", async () => {
+    mockPollTransaction.mockResolvedValue({
+      status: "SUCCESS",
+      resultMetaXdr: {
+        v3: () => ({
+          sorobanMeta: () => ({
+            events: () => [
+              {
+                body: () => ({
+                  v0: () => ({
+                    topics: () => [
+                      { __native: "cash_repaid" },
+                      { __native: 7 },
+                    ],
+                    data: () => ({ __native: { repayment_id: 4n } }),
+                  }),
+                }),
+              },
+            ],
+          }),
+        }),
+      },
+    });
+    await expect(repay(params())).resolves.toEqual({
+      hash: "tx-hash",
+      repaymentId: 4,
+    });
+  });
+
+  it("never requests a signature when the simulation fails", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "boom" });
+    const signTransaction = vi.fn();
+    await expect(repay(params({ signTransaction }))).rejects.toThrow(
+      /simulation error/,
+    );
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws when sendTransaction reports ERROR", async () => {
+    mockSendTransaction.mockResolvedValue({ status: "ERROR", hash: "bad" });
+    await expect(repay(params())).rejects.toThrow(/sendTransaction failed/);
+  });
+
+  it("throws when the poll ends in a non-SUCCESS status", async () => {
+    mockPollTransaction.mockResolvedValue({ status: "FAILED" });
+    await expect(repay(params())).rejects.toThrow(/failed with status FAILED/);
+  });
+});
+
+describe("repaymentRefHash", () => {
+  const base = { registryId: "CREG", loanId: 7, nextRepaymentId: 0 };
+
+  it("is the sha256 of the pinned preimage as 64 lowercase hex", async () => {
+    const hash = await repaymentRefHash(base);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    const expected = createHash("sha256")
+      .update("pipeline:repay:CREG:7:0")
+      .digest("hex");
+    expect(hash).toBe(expected);
+  });
+
+  it("is deterministic and changes with each input", async () => {
+    const a = await repaymentRefHash(base);
+    expect(await repaymentRefHash(base)).toBe(a);
+    expect(await repaymentRefHash({ ...base, registryId: "CREG2" })).not.toBe(
+      a,
+    );
+    expect(await repaymentRefHash({ ...base, loanId: 8 })).not.toBe(a);
+    expect(await repaymentRefHash({ ...base, nextRepaymentId: 1 })).not.toBe(a);
   });
 });

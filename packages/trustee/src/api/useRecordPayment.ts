@@ -1,30 +1,22 @@
-/**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s
- * `recordPayment`: the trustee-wallet-signed on-chain
- * `LoanRegistry.record_payment`, run through the executor `execute` proxy
- * (same pattern as `useUpdateLifecycle`). Pure accounting — records a
- * repayment split (senior principal / interest, fees, equity); moves no
- * USDC and mints no PLUSD.
- *
- * spec: docs/frontend/trustee-flows.md#cash-movement--lifecycle-actions.
- */
+// spec: docs/frontend/trustee-flows.md#cash-movement--lifecycle-actions
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  recordPayment,
+  repay,
+  readNextRepaymentId,
+  repaymentRefHash,
   useStellarWallet,
-  type RecordPaymentStage,
+  type RepayStage,
   type RepaymentInput,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 
-export type { RecordPaymentStage, RepaymentInput };
+export type { RepayStage, RepaymentInput };
 
 export interface UseRecordPaymentInput {
-  /** On-chain loan id (u32). */
   loanId: number;
-  /** The `RepaymentData` split — base-unit (7-decimal USDC) integer strings. */
   repayment: RepaymentInput;
+  valueDate: number;
 }
 
 export interface UseRecordPaymentResult {
@@ -33,23 +25,20 @@ export interface UseRecordPaymentResult {
   isPending: boolean;
   isSuccess: boolean;
   error: Error | null;
-  stage: RecordPaymentStage | null;
+  stage: RepayStage | null;
   reset: () => void;
 }
 
 export function useRecordPayment(): UseRecordPaymentResult {
   const { address, isConnected, signTransaction } = useStellarWallet();
-  const [stage, setStage] = useState<RecordPaymentStage | null>(null);
+  const [stage, setStage] = useState<RepayStage | null>(null);
   const queryClient = useQueryClient();
 
   const mutation = useMutation<{ hash: string }, Error, UseRecordPaymentInput>({
-    mutationFn: async ({ loanId, repayment }) => {
+    mutationFn: async ({ loanId, repayment, valueDate }) => {
       setStage(null);
 
-      if (
-        !ENV.STELLAR_LOAN_REGISTRY_ID ||
-        !ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID
-      ) {
+      if (!ENV.STELLAR_YIELD_MINTER_ID || !ENV.STELLAR_LOAN_REGISTRY_ID) {
         throw new Error(
           "On-chain payment recording is not configured for this environment.",
         );
@@ -58,14 +47,30 @@ export function useRecordPayment(): UseRecordPaymentResult {
         throw new Error("Stellar wallet not connected.");
       }
 
-      return recordPayment({
-        executorId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
-        targetId: ENV.STELLAR_LOAN_REGISTRY_ID,
+      const rpcUrl = ENV.STELLAR_RPC_URL;
+      const networkPassphrase = ENV.STELLAR_NETWORK_PASSPHRASE;
+      const nextRepaymentId = await readNextRepaymentId({
+        registryId: ENV.STELLAR_LOAN_REGISTRY_ID,
+        loanId,
+        rpcUrl,
+        networkPassphrase,
+      });
+      const refHash = await repaymentRefHash({
+        registryId: ENV.STELLAR_LOAN_REGISTRY_ID,
+        loanId,
+        nextRepaymentId,
+      });
+
+      return repay({
+        minterId: ENV.STELLAR_YIELD_MINTER_ID,
         caller: address,
         loanId,
         repayment,
-        rpcUrl: ENV.STELLAR_RPC_URL,
-        networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
+        valueDate,
+        refHash,
+        saleId: 0,
+        rpcUrl,
+        networkPassphrase,
         signTransaction,
         onStageChange: setStage,
       });

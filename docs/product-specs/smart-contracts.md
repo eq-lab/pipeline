@@ -130,7 +130,8 @@ For the full interface definitions of all nine contracts, see:
   or destination on either rail — while allowing whitelisted LPs to move PLUSD and sPLUSD
   freely among themselves.
 - **On-chain repayment accounting is informational.** `LoanRegistry.recordPayment`
-  increments per-loan counters and emits an event but moves no USDC and mints no PLUSD.
+  (reached only through `Minter.repay`, see [loan-repay-minter.md](./loan-repay-minter.md))
+  increments per-loan counters and emits an event but moves no USDC itself.
   sPLUSD share price moves only on actual yield mints via the two-party YieldMinter paths.
   A compromised Trustee key cannot inflate share price by writing false payment entries, and
   the YieldMinter per-loan cap independently bounds what any loan can mint.
@@ -145,7 +146,7 @@ For the full interface definitions of all nine contracts, see:
 | RISK_COUNCIL Safe | 3/5 Gnosis Safe | Caller of `setDefault` on LoanRegistry, `proposeShutdown` and `adjustRecoveryRateUp` on ShutdownController | 24h AccessManager delay on these selectors. Distinct signer set from ADMIN. |
 | GUARDIAN Safe | 2/5 Gnosis Safe | `PAUSER` on every pausable contract; `GUARDIAN_ROLE` on AccessManager | Instant pause, cancellation, and operational-role revocation. No ability to grant, unpause, upgrade, or initiate risk-increasing actions. |
 | Relayer | Protocol backend | `WHITELIST_REVOKER` (WhitelistRegistry, defensive role for sanctions response). Off-chain signing keys: `kytAttestor` (signs ClaimAttestation and EnrolAttestation, referenced by DepositManager, WithdrawalQueue, WhitelistRegistry as a configured address), `relayerYieldAttestor` (first signer on yield mints, referenced by YieldMinter). | On-chain EOA or contract wallet. Never custodies USDC. Never writes state-flips on DepositManager or WithdrawalQueue. Signs off-chain attestations served via API, lender submits at claim time. Cannot mint PLUSD on its own (lender's USDC must be in the Intake Wallet first, and the lender calls `claim` themselves). Has no role on LoanRegistry. |
-| Trustee | Pipeline Trust Company key | `TRUSTEE` on LoanRegistry | All Trustee-branch LoanRegistry writes: `mintLoan`, `updateMutable`, `recordPayment`, `rollover`, Trustee-branch `closeLoan`. Also one cosigner on the Capital Wallet MPC. Distinct key set from Relayer and Team. |
+| Trustee | Pipeline Trust Company key | `TRUSTEE` on LoanRegistry | All Trustee-branch LoanRegistry writes: `mintLoan`, `updateMutable`, `rollover`, Trustee-branch `closeLoan`; repayments are recorded through `Minter.repay` (role `CASH_REPORTER` on Stellar). Also one cosigner on the Capital Wallet MPC. Distinct key set from Relayer and Team. |
 | Pipeline Team | Team key | — (none on-chain) | One cosigner on Capital Wallet and Treasury Wallet MPC. Co-signs loan disbursement and treasury operations per custodian policy. |
 | Capital Wallet | MPC-controlled on-chain address | — | Holds USDC reserves. Cosigners: Trustee + Team + Relayer. All Capital Wallet transfers are on-chain ERC-20, never off-chain wires. |
 | Treasury Wallet | MPC-controlled on-chain address | — | Protocol fees and yield share. |

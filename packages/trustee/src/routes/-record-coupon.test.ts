@@ -15,6 +15,7 @@ import {
   hasCouponDue,
   parseUsdInput,
   todayDateInput,
+  dateInputToValueDate,
   usdToBaseUnits,
 } from "./-record-coupon";
 
@@ -64,6 +65,12 @@ describe("usdToBaseUnits", () => {
     expect(usdToBaseUnits("")).toBe("0");
     expect(usdToBaseUnits("-1")).toBe("0");
     expect(usdToBaseUnits("1.2.3")).toBe("0");
+  });
+});
+
+describe("dateInputToValueDate", () => {
+  it("is the UTC-midnight Unix seconds of the date", () => {
+    expect(dateInputToValueDate("2026-10-27")).toBe(1793059200);
   });
 });
 

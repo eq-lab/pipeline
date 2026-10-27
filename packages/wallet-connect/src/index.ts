@@ -120,22 +120,13 @@ export {
   encodeRolloverArgs,
 } from "./stellar/contracts/loanRegistry";
 
-/**
- * `record_payment` (issue #882) — trustee-wallet-signed on-chain
- * `LoanRegistry.recordPayment` through the executor `execute` proxy. Pure
- * accounting; records a repayment split as a `RepaymentData` struct.
- */
 export {
-  recordPayment,
-  buildRecordPaymentEnvelope,
-  encodeRecordPaymentArgs,
+  encodeRepaymentData,
+  readNextRepaymentId,
 } from "./stellar/contracts/loanRegistry";
 export type {
   RepaymentInput,
-  RecordPaymentParams,
-  RecordPaymentResult,
-  RecordPaymentStage,
-  BuildRecordPaymentEnvelopeParams,
+  ReadNextRepaymentIdParams,
 } from "./stellar/contracts/loanRegistry";
 
 /**
@@ -184,6 +175,10 @@ export {
   encodeRecordWireInArgs,
   parseUsdDollarsToI128,
   hexToBytes32ScVal,
+  repay,
+  buildRepayEnvelope,
+  encodeRepayArgs,
+  repaymentRefHash,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -191,6 +186,11 @@ export type {
   RecordWireInResult,
   RecordWireInStage,
   BuildRecordWireInEnvelopeParams,
+  RepayArgs,
+  RepayParams,
+  RepayResult,
+  RepayStage,
+  BuildRepayEnvelopeParams,
 } from "./stellar/contracts/minter";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────

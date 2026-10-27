@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-157.**
+**Next free number: TD-158.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2114,7 +2114,7 @@ line, whichever section it lands in.
 - **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
 - **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
-- **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land.
+- **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
@@ -2140,3 +2140,11 @@ line, whichever section it lands in.
 - **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
 - **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
 - **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.
+
+### TD-157: Trustee has no on-chain `Minter.disburse`, so trustee-drawn Stellar loans stay `Approved` and `repay` reverts `WrongCurrentStatus`
+
+- **Date:** 2026-10-27
+- **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` and the off-ramp "Disbursement complete" action (DB-only, `docs/frontend/trustee-flows.md`); `packages/wallet-connect/src/stellar/contracts/minter.ts` (no `disburse` binding) — found while planning #1712.
+- **Gap:** `registry.disburse` moves a loan `Approved → Performing` and is reached only through `Minter.disburse` (`only_owner`, so through the AccessManager role `TRUSTEE`). The trustee app records "Disbursement complete" in the database only and never makes that call.
+- **Impact:** A loan drawn from the trustee app stays `Approved` on chain. `Minter.repay` (the Record Coupon / Record Repayment path since #1712) then reverts with registry `#3 WrongCurrentStatus` until someone disburses out of band. The testnet registry currently holds no loans, so the end-to-end path has not been simulated successfully.
+- **Suggested fix:** A wallet-connect `Minter.disburse` binding through the executor, signed by the trustee wallet, called from the "Disbursement complete" action with the usual simulate-then-sign ordering and an idempotency guard.
