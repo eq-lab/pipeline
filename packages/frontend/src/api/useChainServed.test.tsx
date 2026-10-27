@@ -39,6 +39,14 @@ const CHAINS_BODY = {
   default_chain_id: 99_000_001,
 };
 
+function answerChains(body: unknown, status = 200) {
+  fetchMock.mockImplementation(async (input) =>
+    String(input).includes("/v1/chains")
+      ? new Response(JSON.stringify(body), { status })
+      : new Response("{}", { status: 404 }),
+  );
+}
+
 function makeWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -64,23 +72,22 @@ afterEach(() => {
 
 describe("useChainServed", () => {
   it("reads GET /v1/chains once; a listed chain is served", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify(CHAINS_BODY), { status: 200 }),
-    );
+    answerChains(CHAINS_BODY, 200);
     const { result } = renderHook(() => useChainServed(), {
       wrapper: makeWrapper(),
     });
     expect(result.current.served).toBeUndefined();
     await waitFor(() => expect(result.current.served).toBe(true));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("/v1/chains");
+    const chainsCalls = fetchMock.mock.calls.filter(([u]) =>
+      String(u).includes("/v1/chains"),
+    );
+    expect(chainsCalls).toHaveLength(1);
+    expect(String(chainsCalls[0]?.[0])).toContain("/v1/chains");
     expect(result.current.chainName).toBe("Hoodi");
   });
 
   it("a chain missing from the list is not served", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify(CHAINS_BODY), { status: 200 }),
-    );
+    answerChains(CHAINS_BODY, 200);
     activeChain.chainId = 1;
     const { result } = renderHook(() => useChainServed(), {
       wrapper: makeWrapper(),
@@ -90,11 +97,7 @@ describe("useChainServed", () => {
   });
 
   it("a failing /v1/chains counts as served (no false notice)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "internal error" }), {
-        status: 500,
-      }),
-    );
+    answerChains({ error: "internal error" }, 500);
     const { result } = renderHook(() => useChainServed(), {
       wrapper: makeWrapper(),
     });
@@ -102,9 +105,7 @@ describe("useChainServed", () => {
   });
 
   it("the Stellar view is looked up in the same list", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify(CHAINS_BODY), { status: 200 }),
-    );
+    answerChains(CHAINS_BODY, 200);
     activeChain.kind = "stellar";
     activeChain.chainId = 99_000_001;
     const { result } = renderHook(() => useChainServed(), {
@@ -115,14 +116,12 @@ describe("useChainServed", () => {
   });
 
   it("a Stellar chain id absent from the list is not served", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          chains: [{ chain_id: 560048, kind: "evm" }],
-          default_chain_id: 560048,
-        }),
-        { status: 200 },
-      ),
+    answerChains(
+      {
+        chains: [{ chain_id: 560048, kind: "evm" }],
+        default_chain_id: 560048,
+      },
+      200,
     );
     activeChain.kind = "stellar";
     activeChain.chainId = 99_000_001;
