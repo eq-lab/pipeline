@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -9,10 +9,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use crate::middleware::webhook_auth::validate_webhook;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::RequiredChain;
 use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
-use shared::chains::parse_chain_type;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -70,33 +69,21 @@ pub struct ApiDoc;
     post,
     path = "/v1/kyc/applicants",
     request_body = CreateApplicantRequest,
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(RequiredChain),
     responses(
         (status = 200, description = "Applicant created or already exists", body = CreateApplicantResponse),
+        (status = 400, description = "chain_id missing, malformed, or not in CHAINS; or invalid wallet address"),
         (status = 502, description = "Sumsub unavailable"),
     ),
     tag = "KYC"
 )]
 async fn create_applicant(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
     Json(req): Json<CreateApplicantRequest>,
 ) -> impl IntoResponse {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
-    let chain_kind = match parse_chain_type(chain_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::error!(error = %e, chain_id, "failed to determine chain type");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "invalid chain type configuration"})),
-            )
-                .into_response();
-        }
-    };
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
 
     let wallet = match normalise_wallet(chain_kind, &req.wallet_address) {
         Ok(w) => w,
@@ -168,33 +155,21 @@ async fn create_applicant(
     post,
     path = "/v1/kyc/token",
     request_body = CreateTokenRequest,
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(RequiredChain),
     responses(
         (status = 200, description = "Access token generated", body = CreateTokenResponse),
+        (status = 400, description = "chain_id missing, malformed, or not in CHAINS; or invalid wallet address"),
         (status = 502, description = "Sumsub unavailable"),
     ),
     tag = "KYC"
 )]
 async fn create_token(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
     Json(req): Json<CreateTokenRequest>,
 ) -> impl IntoResponse {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
-    let chain_kind = match parse_chain_type(chain_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::error!(error = %e, chain_id, "failed to determine chain type");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "invalid chain type configuration"})),
-            )
-                .into_response();
-        }
-    };
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
 
     let wallet = match normalise_wallet(chain_kind, &req.wallet_address) {
         Ok(w) => w,
@@ -271,32 +246,22 @@ async fn create_token(
     path = "/v1/kyc/status/{wallet_address}",
     params(
         ("wallet_address" = String, Path, description = "Wallet address of the LP"),
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+        RequiredChain,
     ),
     responses(
         (status = 200, description = "KYC status retrieved", body = KycStatusResponse),
+        (status = 400, description = "chain_id missing, malformed, or not in CHAINS; or invalid wallet address"),
         (status = 404, description = "Profile not found"),
     ),
     tag = "KYC"
 )]
 async fn get_status(
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
     Path(wallet_address): Path<String>,
-    Query(query): Query<ChainQuery>,
 ) -> impl IntoResponse {
-    let chain_id = resolve_chain(&state, query.chain_id);
-
-    let chain_kind = match parse_chain_type(chain_id) {
-        Ok(k) => k,
-        Err(e) => {
-            tracing::error!(error = %e, chain_id, "failed to determine chain type");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "invalid chain type configuration"})),
-            )
-                .into_response();
-        }
-    };
+    let chain_id = chain.chain_id;
+    let chain_kind = chain.kind;
 
     let wallet = match normalise_wallet(chain_kind, &wallet_address) {
         Ok(w) => w,

@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -30,7 +30,7 @@ use crate::config::TransferAddressSets;
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::capital_allocation::normalize_to_canonical;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::{LenientChainFilter, RequiredChain};
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -58,6 +58,8 @@ pub enum RampEventType {
 pub struct RampEvent {
     /// `contract_logs.id` — pass this to `POST /v1/ramp/events/{id}/review`.
     pub id: i64,
+    /// Chain the transfer was indexed on.
+    pub chain_id: i64,
     /// `OnRamp` (ramp→custody) or `OffRamp` (custody→ramp).
     #[serde(rename = "type")]
     pub event_type: RampEventType,
@@ -130,22 +132,20 @@ pub fn router() -> Router<Arc<AppState>> {
 #[utoipa::path(
     get,
     path = "/v1/ramp/addresses",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(RequiredChain),
     responses(
         (status = 200, description = "Configured ramp addresses", body = RampAddressesResponse),
+        (status = 400, description = "chain_id missing, malformed, or not in CHAINS"),
     ),
     tag = "Ramp"
 )]
 async fn get_ramp_addresses(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    RequiredChain(chain): RequiredChain,
 ) -> Json<RampAddressesResponse> {
-    let chain_id = resolve_chain(&state, query.chain_id);
     let mut ramp_addresses: Vec<String> = state
         .transfer_addresses
-        .get(&chain_id)
+        .get(&chain.chain_id)
         .map(|sets| sets.ramp.iter().cloned().collect())
         .unwrap_or_default();
     ramp_addresses.sort();
@@ -155,37 +155,36 @@ async fn get_ramp_addresses(
 #[utoipa::path(
     get,
     path = "/v1/ramp/events",
-    params(
-        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
-    ),
+    params(LenientChainFilter),
     responses(
-        (status = 200, description = "Pending on-ramp and off-ramp events", body = RampEventsResponse),
+        (status = 200, description = "Pending on-ramp and off-ramp events, newest first, for the selected chain or merged over all configured chains when `chain_id` is omitted; a well-formed but unconfigured `chain_id` yields an empty list", body = RampEventsResponse),
+        (status = 400, description = "Malformed or repeated chain_id"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Ramp"
 )]
 async fn list_ramp_events(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ChainQuery>,
+    chain: LenientChainFilter,
 ) -> Result<Json<RampEventsResponse>, ApiError> {
-    let chain_id = resolve_chain(&state, query.chain_id);
-    let Some(addr) = state.transfer_addresses.get(&chain_id) else {
-        // Not configured for this chain — no ramp/custody sets to classify against.
-        return Ok(Json(RampEventsResponse { events: Vec::new() }));
-    };
-
     let to = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    let transfers = state
-        .contract_logs_repo
-        .list_asset_transfers(&state.pool, chain_id, to)
-        .await?;
+    let mut events = Vec::new();
+    for c in chain.configured(&state.chains) {
+        let Some(addr) = state.transfer_addresses.get(&c.chain_id) else {
+            continue;
+        };
+        let transfers = state
+            .contract_logs_repo
+            .list_asset_transfers(&state.pool, c.chain_id, to)
+            .await?;
+        events.extend(filter_pending_ramp_events(&transfers, addr));
+    }
+    sort_ramp_events_newest_first(&mut events);
 
-    Ok(Json(RampEventsResponse {
-        events: filter_pending_ramp_events(&transfers, addr),
-    }))
+    Ok(Json(RampEventsResponse { events }))
 }
 
 /// Approve or reject a ramp-boundary event (on-ramp or off-ramp). Trustee-only. A
@@ -283,6 +282,7 @@ pub fn filter_pending_ramp_events(
             let event_type = ramp_event_type(t, addr)?;
             Some(RampEvent {
                 id: t.id,
+                chain_id: t.chain_id,
                 event_type,
                 to: t.to_addr.clone(),
                 from: t.from_addr.clone(),
@@ -294,6 +294,12 @@ pub fn filter_pending_ramp_events(
             })
         })
         .collect()
+}
+
+/// Order merged events newest-first: `created_at` desc, then `id` desc (ids are unique
+/// across chains, so the order is total).
+pub fn sort_ramp_events_newest_first(events: &mut [RampEvent]) {
+    events.sort_by_key(|e| std::cmp::Reverse((e.created_at, e.id)));
 }
 
 /// Validate a review request and map it to the `(decision, reason)` the repo

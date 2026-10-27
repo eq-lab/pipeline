@@ -24,7 +24,7 @@ Shard `lp_profiles` and `kyc_outbox` by chain. Add `chain_id BIGINT NOT NULL` to
 - `kyc_repo::populate_profiles_from_deposits(chain_id)` — takes a chain filter and upserts the `(chain_id, wallet)` pairs that appear in `contract_logs.DepositRequested` for that chain. The per-chain relayer task calls this with its own `chain_id` every cycle.
 - `kyc_repo::insert_outbox(chain_id, wallet, ...)` — outbox rows are chain-scoped.
 - All `lp_profiles` and `kyc_outbox` writes/reads in the relayer are chain-scoped (passed down from `RelayerJobSettings.chain_id`).
-- KYC API routes (`/v1/kyc/*`) accept an optional `chain_id` query param falling back to `DEFAULT_CHAIN_ID`.
+- KYC API routes (`/v1/kyc/*`) require a `chain_id` query param validated against `CHAINS` (#1609); there is no `DEFAULT_CHAIN_ID` fallback and no all-chains mode, since the profile is per `(chain, wallet)`.
 
 ### Sumsub webhook handling
 
