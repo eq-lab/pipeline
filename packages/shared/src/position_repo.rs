@@ -1,6 +1,95 @@
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
+pub const GET_VAULTS_SQL: &str =
+    "SELECT id, chain_id, address, name, asset_decimals, share_decimals
+     FROM vaults WHERE chain_id = $1";
+
+pub const UPSERT_VAULT_SQL: &str =
+    "INSERT INTO vaults (chain_id, address, name, asset_decimals, share_decimals)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (chain_id) DO UPDATE SET
+         address = EXCLUDED.address,
+         name = EXCLUDED.name,
+         asset_decimals = EXCLUDED.asset_decimals,
+         share_decimals = EXCLUDED.share_decimals
+     RETURNING id, chain_id, address, name, asset_decimals, share_decimals";
+
+pub const FIRST_POSITION_TIMESTAMP_SQL: &str = "SELECT MIN(block_timestamp) FROM position_events
+     WHERE chain_id = $1
+       AND holder = $2
+       AND LOWER(contract_address) IN (SELECT LOWER(address) FROM vaults WHERE chain_id = $1)";
+
+pub const POSITION_SUMMARIES_SQL: &str = "SELECT
+         latest.vault_address,
+         latest.shares_balance,
+         latest.avg_buy_share_price,
+         COALESCE(agg.total_realized_pnl, 0) AS total_realized_pnl
+     FROM (
+         SELECT DISTINCT ON (LOWER(contract_address))
+             (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
+             shares_balance,
+             avg_buy_share_price
+         FROM position_events
+         WHERE chain_id = $1
+           AND holder = $2
+           AND shares_balance > 0
+           AND LOWER(contract_address) IN (SELECT LOWER(address) FROM vaults WHERE chain_id = $1)
+         ORDER BY LOWER(contract_address), block_number DESC, log_index DESC
+     ) latest
+     LEFT JOIN (
+         SELECT (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
+                SUM(realized_pnl) AS total_realized_pnl
+         FROM position_events
+         WHERE chain_id = $1
+           AND holder = $2
+           AND LOWER(contract_address) IN (SELECT LOWER(address) FROM vaults WHERE chain_id = $1)
+         GROUP BY (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END)
+     ) agg ON agg.vault_address = latest.vault_address";
+
+pub fn position_history_sql(interval: &str) -> String {
+    format!(
+        "WITH current_vault AS (
+             SELECT LOWER(address) AS addr
+             FROM vaults
+             WHERE chain_id = $1
+         ),
+         ev AS (
+             SELECT
+                 (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
+                 DATE_TRUNC('{interval}', TO_TIMESTAMP(block_timestamp)) AS bucket,
+                 block_number,
+                 log_index,
+                 shares_balance,
+                 avg_buy_share_price,
+                 SUM(realized_pnl) OVER (
+                     ORDER BY block_number, log_index
+                     ROWS UNBOUNDED PRECEDING
+                 ) AS cumulative_realized_pnl
+             FROM position_events
+             WHERE chain_id = $1
+               AND holder = $2
+               AND LOWER(contract_address) = (SELECT addr FROM current_vault)
+         ),
+         closing AS (
+             SELECT DISTINCT ON (bucket)
+                 vault_address,
+                 bucket,
+                 COALESCE(shares_balance, 0) AS shares_balance,
+                 COALESCE(avg_buy_share_price, 0) AS avg_buy_share_price,
+                 COALESCE(cumulative_realized_pnl, 0) AS cumulative_realized_pnl
+             FROM ev
+             ORDER BY bucket, block_number DESC, log_index DESC
+         )
+         SELECT vault_address, bucket, shares_balance, avg_buy_share_price, cumulative_realized_pnl
+         FROM closing
+         WHERE $3::timestamptz IS NULL
+            OR bucket >= $3
+            OR bucket = (SELECT MAX(bucket) FROM closing WHERE bucket < $3)
+         ORDER BY bucket",
+    )
+}
+
 pub struct PositionRepo {
     pub pool: PgPool,
 }
@@ -67,15 +156,12 @@ impl PositionRepo {
         Self { pool }
     }
 
-    /// Get all vaults for a chain.
+    /// Get the vaults of a chain (at most one: `vaults.chain_id` is unique).
     pub async fn get_vaults(&self, chain_id: i64) -> anyhow::Result<Vec<Vault>> {
-        let rows = sqlx::query_as::<_, Vault>(
-            "SELECT id, chain_id, address, name, asset_decimals, share_decimals
-             FROM vaults WHERE chain_id = $1",
-        )
-        .bind(chain_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, Vault>(GET_VAULTS_SQL)
+            .bind(chain_id)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows)
     }
 
@@ -87,22 +173,14 @@ impl PositionRepo {
         asset_decimals: i16,
         share_decimals: i16,
     ) -> anyhow::Result<Vault> {
-        let row = sqlx::query_as::<_, Vault>(
-            "INSERT INTO vaults (chain_id, address, name, asset_decimals, share_decimals)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (chain_id, address) DO UPDATE SET
-                 name = EXCLUDED.name,
-                 asset_decimals = EXCLUDED.asset_decimals,
-                 share_decimals = EXCLUDED.share_decimals
-             RETURNING id, chain_id, address, name, asset_decimals, share_decimals",
-        )
-        .bind(chain_id)
-        .bind(address)
-        .bind(name)
-        .bind(asset_decimals)
-        .bind(share_decimals)
-        .fetch_one(&self.pool)
-        .await?;
+        let row = sqlx::query_as::<_, Vault>(UPSERT_VAULT_SQL)
+            .bind(chain_id)
+            .bind(address)
+            .bind(name)
+            .bind(asset_decimals)
+            .bind(share_decimals)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(row)
     }
 
@@ -243,15 +321,11 @@ impl PositionRepo {
         owner_address: &str,
     ) -> anyhow::Result<Option<i64>> {
         let owner = owner_address.to_lowercase();
-        let row: Option<(Option<i64>,)> = sqlx::query_as(
-            "SELECT MIN(block_timestamp) FROM position_events
-             WHERE chain_id = $1
-               AND holder = $2",
-        )
-        .bind(chain_id)
-        .bind(&owner)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row: Option<(Option<i64>,)> = sqlx::query_as(FIRST_POSITION_TIMESTAMP_SQL)
+            .bind(chain_id)
+            .bind(&owner)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.and_then(|(v,)| v))
     }
 
@@ -335,13 +409,8 @@ impl PositionRepo {
     /// There is no vault parameter: `chain_id` identifies the sPLUSD vault,
     /// since that is the only vault the protocol runs.
     ///
-    /// A redeployment does change the vault's contract address, so a chain can
-    /// hold rows for more than one. The result is scoped to the **current**
-    /// vault — the address with the chain's most recent event — and positions on
-    /// a superseded address are dropped, by product decision: after a redeploy
-    /// the old positions no longer matter. Scoping off observed events rather
-    /// than the `vaults` registry keeps this correct even if the registry seed
-    /// lags a redeploy. Every returned row therefore shares one `vault_address`.
+    /// The result is scoped to the chain's single registered vault
+    /// (`vaults.chain_id` is unique); events on any other address are dropped.
     ///
     /// Reads `position_events`, so staking and either side of a `ShareTransfer`
     /// all contribute — a wallet that only ever received shares still has a
@@ -366,55 +435,7 @@ impl PositionRepo {
     ) -> anyhow::Result<Vec<PositionHistoryBucket>> {
         let owner = owner_address.to_lowercase();
 
-        // The cumulative realized-PnL window must run over the wallet's *whole*
-        // history, so the `since` bound is applied in the outer query, after the
-        // window has been computed. Filtering inside the CTE would restart the
-        // running total at the window boundary and understate it.
-        let query = format!(
-            "WITH current_vault AS (
-                 SELECT LOWER(contract_address) AS addr
-                 FROM position_events
-                 WHERE chain_id = $1
-                 ORDER BY block_number DESC, log_index DESC
-                 LIMIT 1
-             ),
-             ev AS (
-                 SELECT
-                     (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
-                     DATE_TRUNC('{interval}', TO_TIMESTAMP(block_timestamp)) AS bucket,
-                     block_number,
-                     log_index,
-                     shares_balance,
-                     avg_buy_share_price,
-                     SUM(realized_pnl) OVER (
-                         ORDER BY block_number, log_index
-                         ROWS UNBOUNDED PRECEDING
-                     ) AS cumulative_realized_pnl
-                 FROM position_events
-                 WHERE chain_id = $1
-                   AND holder = $2
-                   AND LOWER(contract_address) = (SELECT addr FROM current_vault)
-             ),
-             closing AS (
-                 SELECT DISTINCT ON (bucket)
-                     vault_address,
-                     bucket,
-                     COALESCE(shares_balance, 0) AS shares_balance,
-                     COALESCE(avg_buy_share_price, 0) AS avg_buy_share_price,
-                     COALESCE(cumulative_realized_pnl, 0) AS cumulative_realized_pnl
-                 FROM ev
-                 ORDER BY bucket, block_number DESC, log_index DESC
-             )
-             SELECT vault_address, bucket, shares_balance, avg_buy_share_price, cumulative_realized_pnl
-             FROM closing
-             WHERE $3::timestamptz IS NULL
-                OR bucket >= $3
-                -- Seed bucket: the wallet's standing position entering the
-                -- window, so the caller can carry it forward from the first grid
-                -- bucket rather than zero-filling a position that already existed.
-                OR bucket = (SELECT MAX(bucket) FROM closing WHERE bucket < $3)
-             ORDER BY bucket",
-        );
+        let query = position_history_sql(interval);
 
         Ok(sqlx::query_as::<_, PositionHistoryBucket>(&query)
             .bind(chain_id)
@@ -442,36 +463,11 @@ impl PositionRepo {
         // legacy `from`), and each side of a `ShareTransfer` — into one row per
         // holder. A holder's latest position is therefore found regardless of
         // whether it was last set by staking or by a peer-to-peer transfer.
-        let rows = sqlx::query_as::<_, PositionSummary>(
-            "SELECT
-                 latest.vault_address,
-                 latest.shares_balance,
-                 latest.avg_buy_share_price,
-                 COALESCE(agg.total_realized_pnl, 0) AS total_realized_pnl
-             FROM (
-                 SELECT DISTINCT ON (LOWER(contract_address))
-                     (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
-                     shares_balance,
-                     avg_buy_share_price
-                 FROM position_events
-                 WHERE chain_id = $1
-                   AND holder = $2
-                   AND shares_balance > 0
-                 ORDER BY LOWER(contract_address), block_number DESC, log_index DESC
-             ) latest
-             LEFT JOIN (
-                 SELECT (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
-                        SUM(realized_pnl) AS total_realized_pnl
-                 FROM position_events
-                 WHERE chain_id = $1
-                   AND holder = $2
-                 GROUP BY (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END)
-             ) agg ON agg.vault_address = latest.vault_address",
-        )
-        .bind(chain_id)
-        .bind(&owner)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query_as::<_, PositionSummary>(POSITION_SUMMARIES_SQL)
+            .bind(chain_id)
+            .bind(&owner)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows)
     }
 }
