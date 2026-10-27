@@ -2,7 +2,8 @@
  * Unit tests for the Cash Management presenter's pure helpers
  * (`-cash-management.ts`, issue #943). All pure — no DOM, no query layer.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook } from "@testing-library/react";
 
 // The presenter statically imports the balance/address hooks, whose module
 // graph reaches `@stellar/freighter-api` (CommonJS) and breaks under Vitest's
@@ -12,11 +13,18 @@ vi.mock("@/api/useUsdcCustodyBalance", () => ({
   useUsdcCustodyBalance: vi.fn(),
 }));
 vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
+vi.mock("@/api/useRampEvents", () => ({ useRampEvents: vi.fn() }));
+vi.mock("@/api/useReviewRampEvent", () => ({ useReviewRampEvent: vi.fn() }));
 
+import { useRampEvents } from "@/api/useRampEvents";
+import { useReviewRampEvent } from "@/api/useReviewRampEvent";
+import { useRampAddresses } from "@/api/useRampAddresses";
+import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import {
   truncateStrkey,
   formatRelativeAge,
   formatUsdcAmount,
+  useCashManagement,
 } from "./-cash-management";
 
 describe("truncateStrkey", () => {
@@ -69,5 +77,53 @@ describe("formatUsdcAmount", () => {
     expect(formatUsdcAmount(null)).toBe("—");
     expect(formatUsdcAmount(undefined)).toBe("—");
     expect(formatUsdcAmount(NaN)).toBe("—");
+  });
+});
+
+describe("useCashManagement chain scope", () => {
+  beforeEach(() => {
+    vi.mocked(useReviewRampEvent).mockReturnValue({
+      review: vi.fn(),
+      reviewAsync: vi.fn(),
+      isPending: false,
+      error: null,
+      reset: vi.fn(),
+      pendingId: null,
+    });
+    vi.mocked(useRampAddresses).mockReturnValue({
+      data: { ramp_addresses: [] },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    vi.mocked(useUsdcCustodyBalance).mockReturnValue({
+      data: "8400000.0000000",
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useUsdcCustodyBalance>);
+  });
+
+  function withChain(chainId: number) {
+    vi.mocked(useRampEvents).mockReturnValue({
+      chainId,
+      data: { events: [] },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    return renderHook(() => useCashManagement()).result.current;
+  }
+
+  it("labels the Stellar session and shows the custody balance", () => {
+    const view = withChain(99_000_001);
+    expect(view.chainLabel).toBe("Stellar");
+    expect(view.usdcBalanceValue).toBe(8_400_000);
+  });
+
+  it("labels an EVM session and never shows the Stellar custody balance", () => {
+    const view = withChain(560048);
+    expect(view.chainLabel).toBe("Hoodi");
+    expect(view.usdcBalanceValue).toBeNull();
+    expect(view.usdcBalanceDisplay).toBe("—");
   });
 });

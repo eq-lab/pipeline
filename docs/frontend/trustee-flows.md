@@ -131,9 +131,19 @@ Two parts:
    the Trustee Approves/Rejects (`POST …/review`), which is what actually moves the on-chain
    state. Events are split by leg into **inbound** (`OnRamp`, ramp→custody) and **outbound**
    (`OffRamp`, custody→ramp), matching the Figma's INBOUND/OUTBOUND sections.
+   Cash Management is per-network (#1669): `useRampEvents` (`GET /v1/ramp/events?chain_id=`, key
+   `["ramp-events", chainId]`) and `useRampAddresses` (`GET /v1/ramp/addresses?chain_id=`, key
+   `["ramp-addresses", chainId]`) read `useSessionState().chainId`, with `ENV.STELLAR_CHAIN_ID` only
+   as the no-session fallback. The scope is explicit in the UI: a chain chip
+   (`cash-management-ramp-chain`) beside the heading and the sub-line "<chain> ramp — the network you
+   signed in with.". An unconfigured chain returns an empty queue, shown as the empty state. Each
+   `RampEvent` carries `chain_id` (#1609); the review `POST /v1/ramp/events/{id}/review` takes the
+   chain from the event, so it sends no query string. The body is `{decision}` for Approved and `{decision, reason}` for Rejected (a non-empty `reason` is required); success is `200` with no JSON body, and `useReviewRampEvent` then invalidates the `["ramp-events"]` prefix. `useRampAddresses` returns the chain's configured ramp addresses (empty when unconfigured). Ramp addresses may be Strkeys or 0x hex, both
+   truncated first-4/last-4. The SwapDialog balance (`useUsdcCustodyBalance`) is a Stellar SAC read,
+   so it shows only on a Stellar session and `—` otherwise (the EVM custody read is TD-156).
 
 **Data-sourcing:** everything shown in the review queue is real — the served `RampEvent`
-(id/type/to/from/amount/created_at). The Figma's richer per-loan tagging/batch grouping/progress
+(id/chain_id/type/to/from/amount/created_at). The Figma's richer per-loan tagging/batch grouping/progress
 is not in the contract (#943) and is deliberately not fabricated.
 
 ### T-Bills tab (#944)
@@ -170,8 +180,8 @@ dialog are JSX-only and read `useWithdrawalQueueView`.
   sign-in, `auth/sessionStore.ts`; `ENV.STELLAR_CHAIN_ID` only as the no-session fallback) rather
   than omitting `chain_id` (since backend #1586 that means every configured chain) or hardcoding
   Stellar. The scope is explicit in the UI — a chain chip beside the tab heading and the sub-line
-  "<chain> queue — the network you signed in with." — and items carry `chain_id`. The Capital-Wallet
-  custody balance and the ramp hooks on the same page are still hardcoded to Stellar (TD-153).
+  "<chain> queue — the network you signed in with." — and items carry `chain_id`. The ramp tab follows
+  the same rule (#1669).
   A self-contained hand-mirror of the backend shape
   (TD-42; the trustee app does not depend on `@pipeline/frontend`, whose `useWithdrawalQueue` reads
   the same endpoint). `in_queue_usd`/`amount` are base-6 decimal strings in human units — format
@@ -756,7 +766,7 @@ close checklist below, not by this state alone. When the loan-book `senior_outst
 above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
 by a muted `record-repayment-senior-outstanding` line: "Senior principal of $X is still
 outstanding on-chain, so this loan can't be closed from the app. Escalate to the Risk Council."
-It is informational only and changes no gating; the recovery path is tracked in #1655.
+It is informational only and changes no gating; the recovery procedure (Minter reverse then corrected repay, roles, limits) is in [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md) (#1655).
 
 ### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
@@ -923,8 +933,10 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 - **Bank Info Available renders `—`, never `No`, until #1275.** No backend field exists yet for
   bank-requisites; `No` would fabricate a fact about the counterparty ("has not supplied bank
   details") that the absence of a field does not establish.
-- **`country` is rendered verbatim, never normalised.** It is an optional free-text field with no
-  validation and no frontend writer yet — rows may show `"CH"`, `"Switzerland"`, or anything else.
+- **`country` is rendered verbatim, never normalised.** The LP app now offers a
+  dropdown of common English country names from flagcdn (#1715) but falls back to free text when
+  the list cannot load, and the API still accepts any string. Rows may therefore hold common names,
+  older codes or free text such as `"CH"`. The column stays verbatim, with no mapping.
 
 ### Row click
 
@@ -1637,7 +1649,7 @@ formatters/summing logic; a misconfigured custody id (pointing at the USDC issue
 **Scope gate (#1601):** the read is a Stellar SAC balance, so `useCapitalAllocationCard` folds it
 into the Capital Wallet row and the guarded total only when the resolved chain is the Stellar
 chain; for an EVM session the row shows the backend `capital_wallet` bucket or `—` (the EVM
-custody read is TD-153).
+custody read is TD-156).
 
 **Guarded total (human-approved, #805) — a documented exception to
 [[no-frontend-computed-metrics]]:**

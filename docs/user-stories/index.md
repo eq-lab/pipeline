@@ -188,7 +188,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1408 Remove redundant Account review message](https://github.com/eq-lab/pipeline/issues/1408) | [1408-account-remove-review-message.md](./epic-1247/1408-account-remove-review-message.md) | Initial |
 | [#1404 Submit LP for KYB review](https://github.com/eq-lab/pipeline/issues/1404) | [1404-lp-submit-review.md](./epic-1247/1404-lp-submit-review.md) | Initial |
 | [#1401 Remove Account setup description](https://github.com/eq-lab/pipeline/issues/1401) | [1401-account-remove-setup-description.md](./epic-1247/1401-account-remove-setup-description.md) | Initial |
-| [#1399 Account input borders](https://github.com/eq-lab/pipeline/issues/1399) | [1399-account-input-borders.md](./epic-1247/1399-account-input-borders.md) | Initial |
+| [#1399 Account input borders](https://github.com/eq-lab/pipeline/issues/1399) | [1399-account-input-borders.md](./epic-1247/1399-account-input-borders.md) | Amended by #1715 |
 | [#1396 KYB: account setup review confirmation](https://github.com/eq-lab/pipeline/issues/1396) | [1396-account-setup-review-modal.md](./epic-1247/1396-account-setup-review-modal.md) | Initial |
 | [#1371 KYB: account setup and documents](https://github.com/eq-lab/pipeline/issues/1371) | [1371-account-setup-flow.md](./epic-1247/1371-account-setup-flow.md) | Initial |
 | [#1368 Backend: wire SendGrid as the transactional email provider (OTP delivery)](https://github.com/eq-lab/pipeline/issues/1368) | [1368-sendgrid-email-delivery.md](./epic-1247/1368-sendgrid-email-delivery.md) | Initial |
@@ -219,6 +219,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 | Issue | Doc | Status |
 | --- | --- | --- |
+| [#1715 LP: Country as a searchable select with flags](https://github.com/eq-lab/pipeline/issues/1715) | [1715-country-select.md](./epic-1376/1715-country-select.md) | Initial |
 | [#1380 Backend: enforce accounts.status = 'Suspended' in authorization](https://github.com/eq-lab/pipeline/issues/1380) | [1380-enforce-account-suspension.md](./epic-1376/1380-enforce-account-suspension.md) | Initial |
 | [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
 | [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |
@@ -316,6 +317,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1599 Trustee: audit log across all chains with a chain column; reference as the loan name](https://github.com/eq-lab/pipeline/issues/1599) | [1599-trustee-audit-log-all-chains.md](./epic-1521/1599-trustee-audit-log-all-chains.md) | Initial |
 | [#1600 Trustee: the Withdrawal Queue tab's chain scope is explicit](https://github.com/eq-lab/pipeline/issues/1600) | [1600-trustee-withdrawal-queue-chain-scope.md](./epic-1521/1600-trustee-withdrawal-queue-chain-scope.md) | Initial |
 | [#1601 Trustee: the Capital Allocation card follows the signed-in chain](https://github.com/eq-lab/pipeline/issues/1601) | [1601-trustee-capital-allocation-chain-scope.md](./epic-1521/1601-trustee-capital-allocation-chain-scope.md) | Initial |
+| [#1669 Trustee: the On/Off-ramp tab follows the signed-in chain](https://github.com/eq-lab/pipeline/issues/1669) | [1669-trustee-ramp-chain-scope.md](./epic-1521/1669-trustee-ramp-chain-scope.md) | Initial |
 | [#1602 Trustee: clear copy for unknown/missing chain_id 400s](https://github.com/eq-lab/pipeline/issues/1602) | [1602-trustee-chain-id-400-copy.md](./epic-1521/1602-trustee-chain-id-400-copy.md) | Initial |
 | [#1603 Trustee: waterfall preview uses the loan's own chain decimals](https://github.com/eq-lab/pipeline/issues/1603) | [1603-trustee-waterfall-chain-decimals.md](./epic-1521/1603-trustee-waterfall-chain-decimals.md) | Initial |
 | [#1604 LP: API types, comments and README for the multi-chain contract](https://github.com/eq-lab/pipeline/issues/1604) | [1604-lp-multichain-api-types.md](./epic-1521/1604-lp-multichain-api-types.md) | Initial |
@@ -329,5 +331,6 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1622 Trustee: Record Coupon can submit a stale (pre-debounce) amount](https://github.com/eq-lab/pipeline/issues/1622) | [1622-record-coupon-stale-amount.md](./epic-1521/1622-record-coupon-stale-amount.md) | Initial |
 | [#1595 Dashboard + AuditLog API: all-chains aggregation, CashRepaid yield, new indexer events in the audit feed](https://github.com/eq-lab/pipeline/issues/1595) | [1595-dashboard-auditlog-chain.md](./epic-1521/1595-dashboard-auditlog-chain.md) | Initial |
 | [#1608 API: GET /v1/chains — expose the configured chains and their kind](https://github.com/eq-lab/pipeline/issues/1608) | [1608-chains-endpoint.md](./epic-1521/1608-chains-endpoint.md) | Initial |
+| [#1609 Ramp + KYC API: migrate chain_id handling off the DEFAULT_CHAIN_ID fallback](https://github.com/eq-lab/pipeline/issues/1609) | [1609-ramp-kyc-chain.md](./epic-1521/1609-ramp-kyc-chain.md) | Initial |
 | [#1621 Trustee: Update lifecycle silently resets a WatchList loan to Performing](https://github.com/eq-lab/pipeline/issues/1621) | [1621-lifecycle-status-default.md](./epic-1521/1621-lifecycle-status-default.md) | Initial |
 | [#1661 Trustee: waterfall 422 (incomplete event history) and Default 400 show 'amount too high'](https://github.com/eq-lab/pipeline/issues/1661) | [1661-waterfall-error-mapping.md](./epic-1521/1661-waterfall-error-mapping.md) | Initial |

@@ -1158,7 +1158,8 @@ impl ContractLogsRepo {
                  ON ramp_reviews.contract_log_id = contract_logs.id
              WHERE contract_logs.chain_id = $1
                AND contract_logs.event_name = 'AssetTransfer'
-               AND contract_logs.block_timestamp <= $2",
+               AND contract_logs.block_timestamp <= $2
+             ORDER BY contract_logs.block_number, contract_logs.log_index",
         )
         .bind(chain_id)
         .bind(to_unix)

@@ -137,5 +137,5 @@ startup — the intended loud failure if step 3 lags step 2.
 ## Out of scope
 
 - Sampling other vaults or assets; the poller samples exactly one sPLUSD vault per chain.
-- Removing or migrating stale `vaults` rows.
+- Removing stale `vaults` rows: done by the #1613 migration, which also makes `vaults.chain_id` unique (`upsert_vault` conflicts on `chain_id`, so a redeploy replaces the row).
 - TD-18 (Stellar sample timestamp uses `Utc::now()`).
