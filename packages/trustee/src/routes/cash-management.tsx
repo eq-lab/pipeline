@@ -1062,18 +1062,31 @@ function CashManagement() {
           {/* Header + "New swap" trigger — opens the swap form in a dialog. */}
           <div className="flex flex-wrap items-center justify-between gap-[12px]">
             <div className="flex flex-col gap-[2px]">
-              <span
-                className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
-                style={{ color: INK }}
-              >
-                On / Off-ramp
+              <span className="flex items-center gap-[10px]">
+                <span
+                  className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
+                  style={{ color: INK }}
+                >
+                  On / Off-ramp
+                </span>
+                <span
+                  data-testid="cash-management-ramp-chain"
+                  className="rounded-[4px] px-[8px] py-[2px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+                  style={{
+                    border: `1px solid ${LINE_COLOR}`,
+                    color: INK_MUTED,
+                  }}
+                >
+                  {view.chainLabel}
+                </span>
               </span>
               <span
                 className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
                 style={{ color: INK_MUTED }}
               >
-                Move USDC in and out of the Capital Wallet; arrivals are
-                reviewed below.
+                {view.chainLabel} ramp — the network you signed in with. Move
+                USDC in and out of the Capital Wallet; arrivals are reviewed
+                below.
               </span>
             </div>
             <button

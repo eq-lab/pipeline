@@ -56,6 +56,7 @@ const EVENTS: RampEventsResponse = {
   events: [
     {
       id: 1,
+      chain_id: 99_000_001,
       type: "OnRamp",
       to: "GAAABBBBCCCCDDDD",
       from: "GEEEFFFFGGGGHHHH",
@@ -65,6 +66,7 @@ const EVENTS: RampEventsResponse = {
     },
     {
       id: 2,
+      chain_id: 99_000_001,
       type: "OffRamp",
       to: "GIIIJJJJKKKKLLLL",
       from: "GMMMNNNNOOOOPPPP",
@@ -88,6 +90,7 @@ function reviewHook(overrides: Record<string, unknown> = {}) {
 
 function readyEvents(data: RampEventsResponse = EVENTS) {
   mockUseRampEvents.mockReturnValue({
+    chainId: 99_000_001,
     data,
     isLoading: false,
     error: null,
@@ -460,8 +463,26 @@ describe("Cash Management route — states", () => {
     expect(screen.getByTestId("cash-management-empty")).toBeInTheDocument();
   });
 
+  it("shows the session chain chip and scope sub-line on the ramp tab", () => {
+    mockUseRampEvents.mockReturnValue({
+      chainId: 560048,
+      data: { events: [] },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    renderRoute();
+    expect(screen.getByTestId("cash-management-ramp-chain")).toHaveTextContent(
+      "Hoodi",
+    );
+    expect(
+      screen.getByText(/Hoodi ramp — the network you signed in with/),
+    ).toBeInTheDocument();
+  });
+
   it("renders a loading skeleton", () => {
     mockUseRampEvents.mockReturnValue({
+      chainId: 99_000_001,
       data: undefined,
       isLoading: true,
       error: null,
@@ -474,6 +495,7 @@ describe("Cash Management route — states", () => {
   it("renders the friendly error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
     const user = userEvent.setup();
     mockUseRampEvents.mockReturnValue({
+      chainId: 99_000_001,
       data: undefined,
       isLoading: false,
       error: new Error("network error"),

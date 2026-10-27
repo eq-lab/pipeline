@@ -36,4 +36,4 @@ requests on both chains; a trustee wallet allow-listed on both. No Figma for the
 **Expected outcomes:**
 
 - The request is `GET /v1/withdrawal-queue?chain_id=560048`; the chip reads "Hoodi"; the figures are Hoodi's only.
-- Known gap (TD-153): the Capital-Wallet balance above the tabs and the On/Off-ramp tab still show Stellar data in this session.
+- The On/Off-ramp tab follows the same chain (see #1669); the Capital-Wallet balance shows only on a Stellar session (EVM custody read: TD-156).
