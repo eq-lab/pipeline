@@ -131,6 +131,8 @@ Two parts:
    the Trustee Approves/Rejects (`POST …/review`), which is what actually moves the on-chain
    state. Events are split by leg into **inbound** (`OnRamp`, ramp→custody) and **outbound**
    (`OffRamp`, custody→ramp), matching the Figma's INBOUND/OUTBOUND sections.
+   `GET /v1/ramp/addresses` requires `chain_id`; `GET /v1/ramp/events` takes it as an optional filter
+   (omitted = every configured chain, each event carries `chain_id`, #1609).
 
 **Data-sourcing:** everything shown in the review queue is real — the served `RampEvent`
 (id/type/to/from/amount/created_at). The Figma's richer per-loan tagging/batch grouping/progress
