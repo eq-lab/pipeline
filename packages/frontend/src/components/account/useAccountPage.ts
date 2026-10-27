@@ -427,6 +427,7 @@ export function useAccountPage(enabled = true) {
     legalName,
     setLegalName,
     country,
+    savedCountry: baseline.country,
     setCountry,
     writable,
     busy,

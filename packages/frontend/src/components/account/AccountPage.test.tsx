@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "@/api";
 import { clearSession, saveSession } from "@/auth/session";
 import { AccountPage } from "./AccountPage";
+import { CountriesWrapper, stubCountriesFetch } from "@/test-support/countries";
 
 const mockGet = vi.fn();
 const mockOpenAddEmail = vi.fn();
@@ -43,9 +44,19 @@ vi.mock("@/wallet", async (importOriginal) => {
   };
 });
 
+beforeEach(() => {
+  stubCountriesFetch();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("AccountPage", () => {
   it("composes the heading, wallet, email, and documents sections", () => {
-    render(<AccountPage previewState="verify" />);
+    render(<AccountPage previewState="verify" />, {
+      wrapper: CountriesWrapper,
+    });
     expect(
       screen.getByRole("heading", { name: "Account" }),
     ).toBeInTheDocument();
@@ -55,7 +66,7 @@ describe("AccountPage", () => {
   });
 
   it("Log Out is present, focusable, and clicking it with no handler does not throw", async () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     const button = screen.getByRole("button", { name: "Log Out" });
     button.focus();
     expect(button).toHaveFocus();
@@ -64,7 +75,7 @@ describe("AccountPage", () => {
   });
 
   it("pads the page with the reduced sibling-route rhythm (#1309)", () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     expect(screen.getByTestId("account-page")).toHaveClass(
       "px-4",
       "py-8",
@@ -74,7 +85,7 @@ describe("AccountPage", () => {
   });
 
   it("paints the page root with the Figma frame's paper fill, matching sibling routes", () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     expect(screen.getByTestId("account-page")).toHaveClass(
       "min-h-screen",
       "bg-[color:var(--color-pipeline-paper)]",
@@ -83,13 +94,17 @@ describe("AccountPage", () => {
   });
 
   it("the verify preview renders the original fixture without an account session", () => {
-    render(<AccountPage previewState="verify" />);
+    render(<AccountPage previewState="verify" />, {
+      wrapper: CountriesWrapper,
+    });
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.getByText("Verify your account")).toBeInTheDocument();
   });
 
   it("a preview state overrides the documents section", () => {
-    render(<AccountPage previewState="verified" />);
+    render(<AccountPage previewState="verified" />, {
+      wrapper: CountriesWrapper,
+    });
     expect(screen.getAllByText("Verified")).toHaveLength(7);
     expect(screen.queryByText("Verify your account")).not.toBeInTheDocument();
   });
@@ -103,7 +118,7 @@ describe("AccountPage — wallet-only variant (#1458)", () => {
   });
 
   it("renders the wallet-only composition with no session and no /v1/lps/me request", () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     expect(screen.getByTestId("account-wallet-card")).toBeInTheDocument();
     expect(screen.getByTestId("account-add-email-row")).toBeInTheDocument();
     expect(screen.getByTestId("account-documents-card")).toBeInTheDocument();
@@ -116,7 +131,7 @@ describe("AccountPage — wallet-only variant (#1458)", () => {
   });
 
   it("renders no profile card and no Submit for review", () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     expect(screen.queryByText("Legal name")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Submit for review" }),
@@ -124,13 +139,13 @@ describe("AccountPage — wallet-only variant (#1458)", () => {
   });
 
   it("clicking the Add email row calls useAuthFlow().openAddEmail", async () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     await userEvent.click(screen.getByTestId("account-add-email-row"));
     expect(mockOpenAddEmail).toHaveBeenCalledTimes(1);
   });
 
   it("clicking Upload calls openAddEmail and does not open the file input", async () => {
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     await userEvent.click(screen.getByRole("button", { name: "Upload" }));
     expect(mockOpenAddEmail).toHaveBeenCalledTimes(1);
     expect(
@@ -148,7 +163,7 @@ describe("AccountPage — 403 account_suspended (#1426)", () => {
   it("renders the declined copy with no Retry button", async () => {
     saveSession({ token: "token", expires_in: 3600 });
     mockGet.mockRejectedValue(new ApiError(403, "account_suspended"));
-    render(<AccountPage />);
+    render(<AccountPage />, { wrapper: CountriesWrapper });
     await waitFor(() =>
       expect(
         screen.getByText(

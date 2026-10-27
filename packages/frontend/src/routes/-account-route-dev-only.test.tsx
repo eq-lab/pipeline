@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { saveSession, clearSession } from "@/auth/session";
+import { CountriesWrapper, stubCountriesFetch } from "@/test-support/countries";
 
 const { mockIsDev } = vi.hoisted(() => ({
   mockIsDev: { value: true },
@@ -73,7 +74,8 @@ function renderAccountRoute() {
     state: undefined,
   });
   const AccountRouteComponent = Route.options.component as React.ComponentType;
-  return render(<AccountRouteComponent />);
+  stubCountriesFetch();
+  return render(<AccountRouteComponent />, { wrapper: CountriesWrapper });
 }
 
 type SearchValidator = (raw: { state?: string }) => { state?: string };
@@ -108,6 +110,7 @@ describe("/account route — component-level gate (#1284, #1362, #1458)", () => 
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     clearSession();
     mockIsDev.value = true;
   });

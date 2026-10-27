@@ -13,6 +13,7 @@ import { AuthFlowProvider } from "@/auth";
 import { saveSession, readSession } from "@/auth/session";
 import { ToastProvider } from "@/lib/toast";
 import { login } from "@/api";
+import { CountriesWrapper } from "@/test-support/countries";
 
 const TOAST_TEXT = "Your session expired. Sign in again to continue.";
 
@@ -102,11 +103,13 @@ afterEach(() => {
 
 function renderRoot(router: ReturnType<typeof buildRouter>) {
   return render(
-    <AuthFlowProvider>
-      <ToastProvider>
-        <RouterProvider router={router} />
-      </ToastProvider>
-    </AuthFlowProvider>,
+    <CountriesWrapper>
+      <AuthFlowProvider>
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
+      </AuthFlowProvider>
+    </CountriesWrapper>,
   );
 }
 

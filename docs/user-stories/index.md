@@ -188,7 +188,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1408 Remove redundant Account review message](https://github.com/eq-lab/pipeline/issues/1408) | [1408-account-remove-review-message.md](./epic-1247/1408-account-remove-review-message.md) | Initial |
 | [#1404 Submit LP for KYB review](https://github.com/eq-lab/pipeline/issues/1404) | [1404-lp-submit-review.md](./epic-1247/1404-lp-submit-review.md) | Initial |
 | [#1401 Remove Account setup description](https://github.com/eq-lab/pipeline/issues/1401) | [1401-account-remove-setup-description.md](./epic-1247/1401-account-remove-setup-description.md) | Initial |
-| [#1399 Account input borders](https://github.com/eq-lab/pipeline/issues/1399) | [1399-account-input-borders.md](./epic-1247/1399-account-input-borders.md) | Initial |
+| [#1399 Account input borders](https://github.com/eq-lab/pipeline/issues/1399) | [1399-account-input-borders.md](./epic-1247/1399-account-input-borders.md) | Amended by #1715 |
 | [#1396 KYB: account setup review confirmation](https://github.com/eq-lab/pipeline/issues/1396) | [1396-account-setup-review-modal.md](./epic-1247/1396-account-setup-review-modal.md) | Initial |
 | [#1371 KYB: account setup and documents](https://github.com/eq-lab/pipeline/issues/1371) | [1371-account-setup-flow.md](./epic-1247/1371-account-setup-flow.md) | Initial |
 | [#1368 Backend: wire SendGrid as the transactional email provider (OTP delivery)](https://github.com/eq-lab/pipeline/issues/1368) | [1368-sendgrid-email-delivery.md](./epic-1247/1368-sendgrid-email-delivery.md) | Initial |
@@ -219,6 +219,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 | Issue | Doc | Status |
 | --- | --- | --- |
+| [#1715 LP: Country as a searchable select with flags](https://github.com/eq-lab/pipeline/issues/1715) | [1715-country-select.md](./epic-1376/1715-country-select.md) | Initial |
 | [#1380 Backend: enforce accounts.status = 'Suspended' in authorization](https://github.com/eq-lab/pipeline/issues/1380) | [1380-enforce-account-suspension.md](./epic-1376/1380-enforce-account-suspension.md) | Initial |
 | [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
 | [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |

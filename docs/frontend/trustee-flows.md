@@ -933,8 +933,10 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 - **Bank Info Available renders `—`, never `No`, until #1275.** No backend field exists yet for
   bank-requisites; `No` would fabricate a fact about the counterparty ("has not supplied bank
   details") that the absence of a field does not establish.
-- **`country` is rendered verbatim, never normalised.** It is an optional free-text field with no
-  validation and no frontend writer yet — rows may show `"CH"`, `"Switzerland"`, or anything else.
+- **`country` is rendered verbatim, never normalised.** The LP app now offers a
+  dropdown of common English country names from flagcdn (#1715) but falls back to free text when
+  the list cannot load, and the API still accepts any string. Rows may therefore hold common names,
+  older codes or free text such as `"CH"`. The column stays verbatim, with no mapping.
 
 ### Row click
 
