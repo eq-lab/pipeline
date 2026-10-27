@@ -766,7 +766,7 @@ close checklist below, not by this state alone. When the loan-book `senior_outst
 above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
 by a muted `record-repayment-senior-outstanding` line: "Senior principal of $X is still
 outstanding on-chain, so this loan can't be closed from the app. Escalate to the Risk Council."
-It is informational only and changes no gating; the recovery path is tracked in #1655.
+It is informational only and changes no gating; the recovery procedure (Minter reverse then corrected repay, roles, limits) is in [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md) (#1655).
 
 ### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
