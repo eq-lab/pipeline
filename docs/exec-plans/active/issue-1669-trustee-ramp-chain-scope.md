@@ -40,20 +40,20 @@ _None_ — the docs settle option (a), Cash Management being per-network. Treat 
 
 ## Implementation Steps
 
-1. `packages/trustee/src/api/useRampEvents.ts`:
+1. [x] `packages/trustee/src/api/useRampEvents.ts`:
    - Add `chain_id: number` to `RampEvent`.
    - Import `useSessionState` from `@/auth/sessionStore`, and set `const chainId = useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`.
    - Keep `?chain_id=${chainId}` and the key `["ramp-events", chainId]`.
    - Return `chainId` in `UseRampEventsResult`, as `useWithdrawalQueue` does.
    - Replace the TD-153 JSDoc with a one-line spec-pointer header, per the comment-minimal rule.
-2. `packages/trustee/src/api/useRampAddresses.ts`: same session-chain change, with the key `["ramp-addresses", chainId]`. Update the header comment to drop "Stellar-hardcoded, TD-153", and fix the "Strkeys" wording.
-3. `packages/trustee/src/api/useReviewRampEvent.ts`: URL `/v1/ramp/events/${input.id}/review`. Remove the `chainId` const and the `ENV` import.
-4. `packages/trustee/src/routes/-cash-management.ts`:
+2. [x] `packages/trustee/src/api/useRampAddresses.ts`: same session-chain change, with the key `["ramp-addresses", chainId]`. Update the header comment to drop "Stellar-hardcoded, TD-153", and fix the "Strkeys" wording.
+3. [x] `packages/trustee/src/api/useReviewRampEvent.ts`: URL `/v1/ramp/events/${input.id}/review`. Remove the `chainId` const and the `ENV` import.
+4. [x] `packages/trustee/src/routes/-cash-management.ts`:
    - Add `chainLabel: string` (`targetChainLabel(rampEvents.chainId)` from `@/lib/targetChains`) to `CashManagementView`.
    - Gate the custody balance: `usdcBalanceValue` is `null` unless `rampEvents.chainId === ENV.STELLAR_CHAIN_ID`.
    - `mapEvent` is unchanged; no per-row chain is needed on a per-network page.
-5. `packages/trustee/src/routes/cash-management.tsx`, On/Off-ramp tab heading area: add a chip `data-testid="cash-management-ramp-chain"` showing `{view.chainLabel}`, plus the sub-line "{chainLabel} ramp — the network you signed in with." Mirror the Withdrawal Queue chip markup at lines ~915-940, using the same tokens.
-6. Fixtures: add `chain_id` to every `RampEvent` literal in `routes/-cash-management.test.ts` and `routes/-cash-management-page.test.tsx`. Find them with `grep -rn "OnRamp\|OffRamp" packages/trustee/src`.
+5. [x] `packages/trustee/src/routes/cash-management.tsx`, On/Off-ramp tab heading area: add a chip `data-testid="cash-management-ramp-chain"` showing `{view.chainLabel}`, plus the sub-line "{chainLabel} ramp — the network you signed in with." Mirror the Withdrawal Queue chip markup at lines ~915-940, using the same tokens.
+6. [x] Fixtures: add `chain_id` to every `RampEvent` literal in `routes/-cash-management.test.ts` and `routes/-cash-management-page.test.tsx`. Find them with `grep -rn "OnRamp\|OffRamp" packages/trustee/src`.
 
 ## Test Strategy
 

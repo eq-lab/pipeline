@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-155.**
+**Next free number: TD-157.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2116,13 +2116,14 @@ line, whichever section it lands in.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land.
 
-### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain
+### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
 - **Date:** 2026-10-22
 - **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar `getSacBalance`), `packages/trustee/src/api/useRampEvents.ts`, `useRampAddresses.ts`, `useReviewRampEvent.ts`, `useCapitalAllocation.ts` (`chain_id=ENV.STELLAR_CHAIN_ID`) — Issue #1600.
 - **Gap:** Product rule (2026-10-22): a per-network Trustee page follows the chain the trustee signed in with (`useSessionState().chainId`, `auth/sessionStore.ts`), and only cross-network pages aggregate every chain. #1600 applied it to the Withdrawal Queue tab; the rest of Cash Management still reads Stellar unconditionally, so an EVM session sees a Hoodi withdrawal queue next to a Stellar custody balance and Stellar ramp events.
 - **Impact:** Inconsistent page for an EVM session until EVM cash management exists (the EVM arms of the custody read and the ramp endpoints are not built — see TD-151/TD-152 for the same shape on loans).
 - **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
+- **Resolved by #1669:** `useRampEvents` and `useRampAddresses` follow `useSessionState().chainId` (Stellar only as the no-session fallback), `RampEvent` carries `chain_id`, review takes the chain from the event (no query string), and the ramp section shows a chain chip plus sub-line. The SwapDialog custody balance is gated to the Stellar session and shows `—` otherwise; the missing EVM custody read is TD-156.
 
 ### TD-154: `useStakeFlow` step 1 reads the aggregated `useEvmToken().error`, so read failures paint the approve row
 
@@ -2131,3 +2132,11 @@ line, whichever section it lands in.
 - **Gap:** The deposit/withdraw flow now derives step-1 `"error"` from `useEvmToken().approveError` (approval errors only). The stake flow still uses the aggregated `error`, which also carries balance and metadata read failures.
 - **Impact:** A failed `balanceOf` / `decimals` read can show an "Approve" error on the stake step row.
 - **Suggested fix:** Switch `useStakeFlow` to `approveError`, with a test mirroring the `useDepositFlow` one.
+
+### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session
+
+- **Date:** 2026-10-27
+- **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar SAC `getSacBalance` only), `packages/trustee/src/routes/-cash-management.ts` (`usdcBalanceValue` gated to the Stellar session) — found while fixing #1669.
+- **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
+- **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
+- **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.

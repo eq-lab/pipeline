@@ -1,11 +1,10 @@
-// spec: docs/frontend/trustee-flows.md#onoff-ramp-tab (ramp addresses; still Stellar-hardcoded, TD-153).
+// spec: docs/frontend/trustee-flows.md#onoff-ramp-tab
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import { ENV } from "@/lib/env";
+import { useSessionState } from "@/auth/sessionStore";
 
-/** Shape of the `GET /v1/ramp/addresses` response. */
 export interface RampAddressesResponse {
-  /** The chain's configured ramp addresses (Strkeys); empty when unconfigured. */
   ramp_addresses: string[];
 }
 
@@ -16,9 +15,8 @@ export interface UseRampAddressesResult {
   refetch: () => void;
 }
 
-/** Fetches the configured ramp addresses for the Stellar chain. */
 export function useRampAddresses(): UseRampAddressesResult {
-  const chainId = ENV.STELLAR_CHAIN_ID;
+  const chainId = useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID;
   const query = useQuery<RampAddressesResponse, Error>({
     queryKey: ["ramp-addresses", chainId],
     queryFn: () =>
