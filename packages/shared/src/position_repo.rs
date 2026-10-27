@@ -15,6 +15,17 @@ pub const UPSERT_VAULT_SQL: &str =
          share_decimals = EXCLUDED.share_decimals
      RETURNING id, chain_id, address, name, asset_decimals, share_decimals";
 
+pub const BALANCE_EVENTS_SQL: &str = "SELECT
+         (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
+         block_timestamp,
+         shares_balance
+     FROM position_events
+     WHERE chain_id = $1
+       AND holder = $2
+       AND shares_balance IS NOT NULL
+       AND LOWER(contract_address) IN (SELECT LOWER(address) FROM vaults WHERE chain_id = $1)
+     ORDER BY LOWER(contract_address), block_number, log_index";
+
 pub const FIRST_POSITION_TIMESTAMP_SQL: &str = "SELECT MIN(block_timestamp) FROM position_events
      WHERE chain_id = $1
        AND holder = $2
@@ -173,6 +184,19 @@ impl PositionRepo {
         asset_decimals: i16,
         share_decimals: i16,
     ) -> anyhow::Result<Vault> {
+        let previous: Option<(String,)> =
+            sqlx::query_as("SELECT address FROM vaults WHERE chain_id = $1")
+                .bind(chain_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        if let Some((prev,)) = previous.filter(|(prev,)| !prev.eq_ignore_ascii_case(address)) {
+            tracing::warn!(
+                chain_id,
+                previous = %prev,
+                current = %address,
+                "replacing the chain's sPLUSD vault (one vault per chain, #1613)"
+            );
+        }
         let row = sqlx::query_as::<_, Vault>(UPSERT_VAULT_SQL)
             .bind(chain_id)
             .bind(address)
@@ -337,21 +361,11 @@ impl PositionRepo {
         owner_address: &str,
     ) -> anyhow::Result<Vec<BalanceEventRow>> {
         let owner = owner_address.to_lowercase();
-        Ok(sqlx::query_as::<_, BalanceEventRow>(
-            "SELECT
-                 (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
-                 block_timestamp,
-                 shares_balance
-             FROM position_events
-             WHERE chain_id = $1
-               AND holder = $2
-               AND shares_balance IS NOT NULL
-             ORDER BY LOWER(contract_address), block_number, log_index",
-        )
-        .bind(chain_id)
-        .bind(&owner)
-        .fetch_all(&self.pool)
-        .await?)
+        Ok(sqlx::query_as::<_, BalanceEventRow>(BALANCE_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(&owner)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     /// Share-price series of a vault from `since` on, oldest first, plus the
