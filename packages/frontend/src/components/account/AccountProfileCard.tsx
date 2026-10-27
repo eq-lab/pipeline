@@ -10,6 +10,7 @@ export interface AccountProfileCardProps {
   onCountryChange: (value: string) => void;
   onSave: () => void;
   canSave: boolean;
+  writable: boolean;
   disabled: boolean;
   busy: boolean;
 }
@@ -22,6 +23,7 @@ export function AccountProfileCard({
   onCountryChange,
   onSave,
   canSave,
+  writable,
   disabled,
   busy,
 }: AccountProfileCardProps) {
@@ -49,14 +51,16 @@ export function AccountProfileCard({
           disabled={disabled}
         />
       </div>
-      <Button
-        variant="primary-dark"
-        className="w-full disabled:opacity-[0.32]"
-        disabled={!canSave}
-        onClick={onSave}
-      >
-        {busy ? "Saving…" : "Save profile"}
-      </Button>
+      {writable && (
+        <Button
+          variant="primary-dark"
+          className="w-full disabled:opacity-[0.32]"
+          disabled={!canSave}
+          onClick={onSave}
+        >
+          {busy ? "Saving…" : "Save profile"}
+        </Button>
+      )}
     </div>
   );
 }
