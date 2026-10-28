@@ -10,7 +10,7 @@ use pipeline_api::config::ConfiguredChain;
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::common::trustee_loan_precheck;
 use pipeline_api::routes::{
-    ccr_history, collateral_valuation, loan_financials, loan_transfers, waterfall,
+    ccr_history, collateral_valuation, loan_book, loan_financials, loan_transfers, waterfall,
 };
 use pipeline_api::AppState;
 use serde_json::Value;
@@ -416,4 +416,51 @@ fn response_schemas_carry_a_required_chain_id() {
             "{schema}"
         );
     }
+}
+
+// ── POST /v1/loan-book/loan: chain_id is required, checked before auth and DB ──
+
+#[tokio::test]
+async fn submit_loan_without_chain_id_is_400() {
+    let (status, body) = call(loan_book::router(), Method::POST, "/loan-book/loan").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body, error_body("chain_id is required"));
+}
+
+#[tokio::test]
+async fn submit_loan_with_malformed_chain_id_is_400() {
+    let (status, body) = call(
+        loan_book::router(),
+        Method::POST,
+        "/loan-book/loan?chain_id=abc",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body, error_body("invalid chain_id: abc"));
+}
+
+#[tokio::test]
+async fn submit_loan_with_unknown_chain_id_is_400() {
+    let (status, body) = call(
+        loan_book::router(),
+        Method::POST,
+        "/loan-book/loan?chain_id=5",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        body,
+        error_body("unknown chain_id: 5 (configured: 1, 99000001)")
+    );
+}
+
+#[tokio::test]
+async fn submit_loan_with_configured_chain_id_passes_the_chain_check() {
+    let (status, _) = call(
+        loan_book::router(),
+        Method::POST,
+        "/loan-book/loan?chain_id=99000001",
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
