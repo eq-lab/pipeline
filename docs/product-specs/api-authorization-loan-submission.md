@@ -37,7 +37,10 @@ the trustee's review action. It carries the full submission payload (same shape 
 to `InReview` (clearing `reason`) for another review round. Only `ChangesRequested`
 submissions may be resubmitted: `InReview` is already open, and the terminal
 `Approved`/`Rejected` states return `409 Conflict`. There is no partial edit — a
-resubmission is a complete new payload.
+resubmission is a complete new payload. Only the originator who made the submission
+(`originator` = token `sub`) may resubmit it: a submission that does not exist and one
+owned by another originator both return `404`, so ids are not confirmed to other
+originators; the UPDATE also filters on `originator`.
 
 **Target chain.** Each submission has a `target_chain_id`: the chain it is meant to be
 drawn on. It is set at submission from the required `?chain_id` query parameter

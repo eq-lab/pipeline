@@ -709,7 +709,7 @@ async fn insert_valuation_and_fee_rows(
         (status = 400, description = "Payload failed validation"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
-        (status = 404, description = "No submission with that id"),
+        (status = 404, description = "No submission with that id owned by the caller"),
         (status = 409, description = "Submission is not in ChangesRequested, or metadata_uri collides with another undrawn submission"),
     ),
     security(("bearer_auth" = [])),
@@ -735,7 +735,12 @@ async fn resubmit_loan(
     // Distinguish "not found" (404) from "not resubmittable" (409): the guarded UPDATE
     // in `resubmit` only touches `ChangesRequested` rows, so a `false` result on an
     // existing row means the submission is InReview/Approved/Rejected.
-    if state.submitted_loan_repo.find(id).await?.is_none() {
+    let owned = state
+        .submitted_loan_repo
+        .find(id)
+        .await?
+        .is_some_and(|row| row.originator == claims.sub);
+    if !owned {
         return Err(ApiError::NotFound(format!("no submission with id {id}")));
     }
 
@@ -749,7 +754,7 @@ async fn resubmit_loan(
     // A unique violation here means the new `metadata_uri` collides with another undrawn
     // submission (partial unique index `submitted_loans_metadata_uri_unlinked_uk`) —
     // surface it as a 409, not a 500.
-    let reopened = SubmittedLoanRepo::resubmit(&mut tx, id, &loan_data)
+    let reopened = SubmittedLoanRepo::resubmit(&mut tx, id, &loan_data, &claims.sub)
         .await
         .map_err(|e| match e {
             sqlx::Error::Database(ref db) if db.code().as_deref() == Some("23505") => {
