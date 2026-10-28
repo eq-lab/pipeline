@@ -122,6 +122,25 @@ describe("FundingDetailsModal — Copy", () => {
     expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
   });
 
+  it("falls back to execCommand and shows Copied when navigator.clipboard is unavailable (#1317)", async () => {
+    const user = userEvent.setup();
+    uninstallClipboardMock();
+    const exec = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: exec,
+    });
+    renderModal({ details: FUNDING_DETAILS_PLACEHOLDER });
+
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(exec).toHaveBeenCalledWith("copy");
+    expect(
+      await screen.findByRole("button", { name: "Copied" }),
+    ).toBeInTheDocument();
+    Reflect.deleteProperty(document, "execCommand");
+  });
+
   it("does not throw with no navigator.clipboard", async () => {
     const user = userEvent.setup();
     uninstallClipboardMock();

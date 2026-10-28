@@ -1,5 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#shared-detail-primitives
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useCopyToClipboard } from "@pipeline/ui";
 import { INK_MUTED, LINE_COLOR } from "./detailTokens";
 
 const TAIL_LENGTH = 5;
@@ -7,17 +8,6 @@ const COPIED_MS = 1600;
 
 export function shortAddress(value: string): string {
   return value.length > TAIL_LENGTH ? `…${value.slice(-TAIL_LENGTH)}` : value;
-}
-
-export async function copyAddress(value: string): Promise<boolean> {
-  const clipboard = navigator.clipboard;
-  if (!clipboard?.writeText) return false;
-  try {
-    await clipboard.writeText(value);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function AddressChip({
@@ -28,22 +18,15 @@ export function AddressChip({
   testId?: string;
 }) {
   const [revealed, setRevealed] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), COPIED_MS);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
+  const { copied, copy } = useCopyToClipboard(COPIED_MS);
 
   function toggle() {
     if (revealed) {
       setRevealed(false);
-      setCopied(false);
       return;
     }
     setRevealed(true);
-    void copyAddress(value).then(setCopied);
+    void copy(value);
   }
 
   return (
@@ -59,7 +42,7 @@ export function AddressChip({
       >
         {revealed ? value : shortAddress(value)}
       </button>
-      {copied && (
+      {revealed && copied && (
         <span
           aria-live="polite"
           className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap"

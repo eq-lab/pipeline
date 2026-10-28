@@ -4,8 +4,8 @@
  * spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
  */
 
-import { useState, useCallback } from "react";
-import { Card, Button } from "@pipeline/ui";
+import { useCallback } from "react";
+import { Card, Button, useCopyToClipboard } from "@pipeline/ui";
 
 function CopyGlyph() {
   return (
@@ -31,19 +31,11 @@ function CopyGlyph() {
 }
 
 export function XlmFundingBanner({ address }: { address: string | undefined }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   const copyAddress = useCallback(() => {
-    if (!address || typeof navigator === "undefined" || !navigator.clipboard)
-      return;
-    navigator.clipboard.writeText(address).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
-  }, [address]);
+    if (address) void copy(address);
+  }, [address, copy]);
 
   return (
     <Card

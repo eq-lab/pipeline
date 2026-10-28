@@ -109,3 +109,5 @@ export { OtpInput } from "./components/OtpInput";
 export type { OtpInputProps, OtpInputHandle } from "./components/OtpInput";
 export { Combobox, filterOptions } from "./components/Combobox";
 export type { ComboboxProps, ComboboxOption } from "./components/Combobox";
+export { useCopyToClipboard } from "./hooks/useCopyToClipboard";
+export type { UseCopyToClipboardResult } from "./hooks/useCopyToClipboard";
