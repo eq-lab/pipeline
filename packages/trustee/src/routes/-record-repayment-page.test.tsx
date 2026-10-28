@@ -740,6 +740,17 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
     ).toHaveTextContent("$4,800,000");
   });
 
+  it("links the senior-outstanding notice to the loan detail recovery card (#1711)", () => {
+    fullyPaid();
+    renderRoute();
+    expect(
+      screen.getByTestId("record-repayment-recovery-link"),
+    ).toHaveAttribute("href", "/loans/4488");
+    expect(
+      screen.getByTestId("record-repayment-senior-outstanding"),
+    ).not.toHaveTextContent("Escalate to the Risk Council");
+  });
+
   it("omits the senior-outstanding line when senior is also zero (#1623)", () => {
     readyWith({ senior: "0", offtaker: "0.000000" });
     renderRoute();

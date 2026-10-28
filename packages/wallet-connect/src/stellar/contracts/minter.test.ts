@@ -11,6 +11,12 @@ import {
   buildRepayEnvelope,
   encodeRepayArgs,
   repaymentRefHash,
+  encodeReverseRepayArgs,
+  reverseRepayRefHash,
+  readMinterRepayment,
+  scheduleReverseRepay,
+  executeReverseRepay,
+  readReverseRepaySchedule,
   type RecordWireInStage,
   type RepayStage,
 } from "./minter";
@@ -87,6 +93,12 @@ vi.mock("@stellar/stellar-sdk", () => {
       return mockFromXDR(...args);
     }
   }
+  class MockAccount {
+    constructor(
+      public id: string,
+      public seq: string,
+    ) {}
+  }
   class MockAddress {
     constructor(public addr: string) {}
     toScVal() {
@@ -95,6 +107,7 @@ vi.mock("@stellar/stellar-sdk", () => {
   }
 
   return {
+    Account: MockAccount,
     Contract: MockContract,
     TransactionBuilder: MockTransactionBuilder,
     BASE_FEE: "100",
@@ -608,5 +621,233 @@ describe("repaymentRefHash", () => {
     );
     expect(await repaymentRefHash({ ...base, loanId: 8 })).not.toBe(a);
     expect(await repaymentRefHash({ ...base, nextRepaymentId: 1 })).not.toBe(a);
+  });
+});
+
+const AM_ID = "CDP7TUNBGIKDBGEUZCA6WEDVJ7BTJFXNIPQF6HWEDV7SAAS7VN75WHTW";
+const RC_CALLER = "GAZFDDYKOOHWNMBAQWDURXBV3WNFQIT4UR2NWV5SGTKA4CCV7LIEZH6G";
+
+describe("encodeReverseRepayArgs", () => {
+  const input = { loanId: 7, repaymentId: 0, refHash: REF_HASH };
+
+  it("emits u32, u32, bytes32 in contract order", () => {
+    const args = encodeReverseRepayArgs(input) as unknown as Array<{
+      t: string;
+      v: unknown;
+    }>;
+    expect(args.map((a) => a.t)).toEqual(["u32", "u32", "bytes"]);
+    expect(args[0]).toEqual({ t: "u32", v: 7 });
+    expect(args[1]).toEqual({ t: "u32", v: 0 });
+    expect((args[2]!.v as Uint8Array).length).toBe(32);
+  });
+
+  it("rejects negative or fractional ids", () => {
+    expect(() => encodeReverseRepayArgs({ ...input, loanId: -1 })).toThrow(
+      /invalid loanId/,
+    );
+    expect(() =>
+      encodeReverseRepayArgs({ ...input, repaymentId: 1.5 }),
+    ).toThrow(/invalid repaymentId/);
+  });
+
+  it("rejects a malformed or zero hash", () => {
+    expect(() => encodeReverseRepayArgs({ ...input, refHash: "9f86" })).toThrow(
+      /64 lowercase hex/,
+    );
+    expect(() =>
+      encodeReverseRepayArgs({ ...input, refHash: "0".repeat(64) }),
+    ).toThrow(/zero hash/);
+  });
+});
+
+describe("reverseRepayRefHash", () => {
+  const base = { minterId: "CMINT", loanId: 7, repaymentId: 0 };
+
+  it("is the sha256 of the pinned preimage as 64 lowercase hex", async () => {
+    const hash = await reverseRepayRefHash(base);
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(hash).toBe(
+      createHash("sha256")
+        .update("pipeline:reverse_repay:CMINT:7:0")
+        .digest("hex"),
+    );
+  });
+
+  it("is deterministic and changes with each input", async () => {
+    const a = await reverseRepayRefHash(base);
+    expect(await reverseRepayRefHash(base)).toBe(a);
+    expect(await reverseRepayRefHash({ ...base, minterId: "CMINT2" })).not.toBe(
+      a,
+    );
+    expect(await reverseRepayRefHash({ ...base, loanId: 8 })).not.toBe(a);
+    expect(await reverseRepayRefHash({ ...base, repaymentId: 1 })).not.toBe(a);
+  });
+});
+
+describe("readMinterRepayment", () => {
+  const params = {
+    minterId: MINTER_ID,
+    loanId: 7,
+    repaymentId: 2,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("maps the simulated struct to raw strings and flags", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: {
+        retval: {
+          __native: {
+            cash: 1500000000000n,
+            principal: 0n,
+            interest_minted: 1155000000000n,
+            fee_shares: 345n,
+            carved_out: true,
+            sale_id: 3,
+            reversed: false,
+          },
+        },
+      },
+    });
+    await expect(readMinterRepayment(params)).resolves.toEqual({
+      cash: "1500000000000",
+      principal: "0",
+      interestMinted: "1155000000000",
+      feeShares: "345",
+      carvedOut: true,
+      saleId: 3,
+      reversed: false,
+    });
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "repayment",
+      { t: "u32", v: 7 },
+      { t: "u32", v: 2 },
+    );
+  });
+
+  it("throws on a simulation error and on a missing field", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: {} } },
+    });
+    await expect(readMinterRepayment(params)).rejects.toThrow(/cash missing/);
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "boom" });
+    await expect(readMinterRepayment(params)).rejects.toThrow(
+      "repayment simulation error: boom",
+    );
+  });
+
+  it("guards an empty minter id", async () => {
+    await expect(
+      readMinterRepayment({ ...params, minterId: "" }),
+    ).rejects.toThrow(/minterId must not be empty/);
+  });
+});
+
+describe("scheduleReverseRepay / executeReverseRepay", () => {
+  function params(overrides: Record<string, unknown> = {}) {
+    return {
+      accessManagerId: AM_ID,
+      minterId: MINTER_ID,
+      caller: RC_CALLER,
+      loanId: 7,
+      repaymentId: 0,
+      refHash: REF_HASH,
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "signed" }),
+      ...overrides,
+    };
+  }
+  const expectedArgs = {
+    t: "vec",
+    v: encodeReverseRepayArgs({ loanId: 7, repaymentId: 0, refHash: REF_HASH }),
+  };
+
+  it("execute alone is the immediate path: AM.execute(minter, reverse_repay, args, caller)", async () => {
+    const stages: string[] = [];
+    await expect(
+      executeReverseRepay(
+        params({ onStageChange: (s: string) => stages.push(s) }),
+      ),
+    ).resolves.toEqual({ hash: "tx-hash" });
+    expect(mockContractCtor).toHaveBeenCalledWith(AM_ID);
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "execute",
+      { t: "address", v: MINTER_ID },
+      { t: "symbol", v: "reverse_repay" },
+      expectedArgs,
+      { t: "address", v: RC_CALLER },
+    );
+    expect(mockGetAccount).toHaveBeenCalledWith(RC_CALLER);
+    expect(stages).toEqual(["awaiting-signature", "submitting", "confirming"]);
+  });
+
+  it("schedule then execute is the delayed path with identical args and when = 0", async () => {
+    await scheduleReverseRepay(params());
+    await executeReverseRepay(params());
+    const calls = mockContractCall.mock.calls;
+    expect(calls[0]).toEqual([
+      "schedule",
+      { t: "address", v: MINTER_ID },
+      { t: "symbol", v: "reverse_repay" },
+      expectedArgs,
+      { t: "u64", v: 0n },
+      { t: "address", v: RC_CALLER },
+    ]);
+    expect(calls[1]![3]).toEqual(calls[0]![3]);
+    expect(calls[1]![0]).toBe("execute");
+  });
+
+  it("throws on ERROR send and on a non-SUCCESS poll", async () => {
+    mockSendTransaction.mockResolvedValue({ status: "ERROR", hash: "bad" });
+    await expect(scheduleReverseRepay(params())).rejects.toThrow(
+      /sendTransaction failed/,
+    );
+    mockSendTransaction.mockResolvedValue({
+      status: "PENDING",
+      hash: "tx-hash",
+    });
+    mockPollTransaction.mockResolvedValue({ status: "FAILED" });
+    await expect(executeReverseRepay(params())).rejects.toThrow(
+      /failed with status FAILED/,
+    );
+  });
+
+  it("rejects the zero ref hash before any RPC call", async () => {
+    await expect(
+      executeReverseRepay(params({ refHash: "0".repeat(64) })),
+    ).rejects.toThrow(/zero hash/);
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe("readReverseRepaySchedule", () => {
+  it("hashes the same args the relay signs, then reads the schedule", async () => {
+    mockSimulateTransaction
+      .mockResolvedValueOnce({
+        result: { retval: { __native: new Uint8Array(32).fill(1) } },
+      })
+      .mockResolvedValueOnce({ result: { retval: { __native: 1800000000n } } });
+    await expect(
+      readReverseRepaySchedule({
+        accessManagerId: AM_ID,
+        minterId: MINTER_ID,
+        caller: RC_CALLER,
+        loanId: 7,
+        repaymentId: 0,
+        refHash: REF_HASH,
+        rpcUrl: RPC_URL,
+        networkPassphrase: PASSPHRASE,
+      }),
+    ).resolves.toEqual({
+      operationId: "01".repeat(32),
+      readyAt: 1800000000,
+    });
+    expect(mockContractCall.mock.calls[0]![0]).toBe("hash_operation");
+    expect(mockContractCall.mock.calls[0]![3]).toEqual({
+      t: "symbol",
+      v: "reverse_repay",
+    });
   });
 });

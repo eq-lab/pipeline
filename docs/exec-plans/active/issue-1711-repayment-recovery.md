@@ -290,3 +290,16 @@ Open Question 1 (corrected split source) was decided by the user on 2026-10-28: 
   5. A wallet without either role sees disabled actions.
   6. An EVM loan shows the Stellar-only reason.
 - **`docs/exec-plans/tech-debt-tracker.md`:** TD-152 amendment, and a new TD for cancelling a scheduled reversal (step 11).
+
+## Progress
+
+All implementation steps (1-11) and the Docs to Update list are completed.
+
+Deviations from the plan:
+
+- `simulateRead` takes an optional `label` so `readNextRepaymentId` keeps its existing error text.
+- `useRecoveryCandidates(chainId, loanId, onchainStatus)` derives `enabled` itself; `RECOVERY_STATUSES` and `RecoveryRow` live in `api/useRepaymentRecovery.ts` to keep `api` independent of `routes`.
+- Dialog state and the card view live in an extra file, `routes/-useRepaymentRecoveryDialog.ts` (route `.tsx` stays render-only).
+- Step 2 keeps the recorded hash in dialog-local state (`useRecordPayment` exposes no data).
+- Dialog-local AM error copy for #9 (already scheduled) and Minter #25 added; AM #8 and Minter #8 collide on `execute`, so one combined message covers both.
+- The new debt entry is TD-159.

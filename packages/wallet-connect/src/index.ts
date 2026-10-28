@@ -125,10 +125,13 @@ export {
 export {
   encodeRepaymentData,
   readNextRepaymentId,
+  readRepaymentData,
+  readIsRepaymentReversed,
 } from "./stellar/contracts/loanRegistry";
 export type {
   RepaymentInput,
   ReadNextRepaymentIdParams,
+  ReadRepaymentParams,
 } from "./stellar/contracts/loanRegistry";
 
 /**
@@ -181,6 +184,12 @@ export {
   buildRepayEnvelope,
   encodeRepayArgs,
   repaymentRefHash,
+  encodeReverseRepayArgs,
+  reverseRepayRefHash,
+  readMinterRepayment,
+  scheduleReverseRepay,
+  executeReverseRepay,
+  readReverseRepaySchedule,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -193,7 +202,37 @@ export type {
   RepayResult,
   RepayStage,
   BuildRepayEnvelopeParams,
+  ReverseRepayArgs,
+  ReverseRepayParams,
+  ReadReverseRepayScheduleParams,
+  MinterRepayment,
+  ReadMinterRepaymentParams,
 } from "./stellar/contracts/minter";
+
+export {
+  readCanCall,
+  readOperationSchedule,
+  buildRelayEnvelope,
+  relay,
+} from "./stellar/contracts/accessManager";
+export type {
+  CanCall,
+  OperationSchedule,
+  RelayMode,
+  RelayStage,
+  RelayParams,
+  RelayResult,
+  ReadCanCallParams,
+  ReadOperationScheduleParams,
+  BuildRelayEnvelopeParams,
+} from "./stellar/contracts/accessManager";
+
+export {
+  minterRecoveryAbi,
+  encodeEvmReverseRepayCalldata,
+  encodeEvmRepayCalldata,
+} from "./evm/contracts/minter";
+export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

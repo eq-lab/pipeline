@@ -1,4 +1,5 @@
 // spec: docs/product-specs/deposits.md#stellar-plusd-mint-leg
+// spec: docs/product-specs/loan-repayment-recovery.md
 import {
   Contract,
   TransactionBuilder,
@@ -11,11 +12,17 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import { encodeRepaymentData, type RepaymentInput } from "./loanRegistry";
+import {
+  readOperationSchedule,
+  relay,
+  type OperationSchedule,
+  type RelayStage,
+  type RelayParams,
+  type RelayResult,
+} from "./accessManager";
+import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
-export type RecordWireInStage =
-  | "awaiting-signature"
-  | "submitting"
-  | "confirming";
+export type RecordWireInStage = RelayStage;
 
 export interface RecordWireInArgs {
   caller: string;
@@ -445,7 +452,17 @@ export async function repay({
   };
 }
 
-export async function repaymentRefHash({
+async function sha256Hex(preimage: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(preimage),
+  );
+  return Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+export function repaymentRefHash({
   registryId,
   loanId,
   nextRepaymentId,
@@ -454,11 +471,162 @@ export async function repaymentRefHash({
   loanId: number;
   nextRepaymentId: number;
 }): Promise<string> {
-  const preimage = new TextEncoder().encode(
-    `pipeline:repay:${registryId}:${loanId}:${nextRepaymentId}`,
+  return sha256Hex(`pipeline:repay:${registryId}:${loanId}:${nextRepaymentId}`);
+}
+
+// ── reverse_repay ─────────────────────────────────────────────────────────────
+
+export interface ReverseRepayArgs {
+  loanId: number;
+  repaymentId: number;
+  refHash: string;
+}
+
+export function encodeReverseRepayArgs({
+  loanId,
+  repaymentId,
+  refHash,
+}: ReverseRepayArgs): xdr.ScVal[] {
+  if (!Number.isInteger(loanId) || loanId < 0) {
+    throw new Error(`encodeReverseRepayArgs: invalid loanId ${loanId}`);
+  }
+  if (!Number.isInteger(repaymentId) || repaymentId < 0) {
+    throw new Error(
+      `encodeReverseRepayArgs: invalid repaymentId ${repaymentId}`,
+    );
+  }
+  if (refHash === ZERO_REF_HASH) {
+    throw new Error(
+      "encodeReverseRepayArgs: refHash must not be the zero hash",
+    );
+  }
+  return [
+    nativeToScVal(loanId, { type: "u32" }),
+    nativeToScVal(repaymentId, { type: "u32" }),
+    hexToBytes32ScVal(refHash),
+  ];
+}
+
+export function reverseRepayRefHash({
+  minterId,
+  loanId,
+  repaymentId,
+}: {
+  minterId: string;
+  loanId: number;
+  repaymentId: number;
+}): Promise<string> {
+  return sha256Hex(
+    `pipeline:reverse_repay:${minterId}:${loanId}:${repaymentId}`,
   );
-  const digest = await crypto.subtle.digest("SHA-256", preimage);
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
+}
+
+export interface MinterRepayment {
+  cash: string;
+  principal: string;
+  interestMinted: string;
+  feeShares: string;
+  carvedOut: boolean;
+  saleId: number;
+  reversed: boolean;
+}
+
+export interface ReadMinterRepaymentParams extends SimulateReadOptions {
+  minterId: string;
+  loanId: number;
+  repaymentId: number;
+}
+
+export async function readMinterRepayment({
+  minterId,
+  loanId,
+  repaymentId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadMinterRepaymentParams): Promise<MinterRepayment> {
+  if (!minterId) {
+    throw new Error("readMinterRepayment: minterId must not be empty");
+  }
+  const data = (await simulateRead(
+    minterId,
+    "repayment",
+    [
+      nativeToScVal(loanId, { type: "u32" }),
+      nativeToScVal(repaymentId, { type: "u32" }),
+    ],
+    { rpcUrl, networkPassphrase },
+  )) as Record<string, bigint | number | boolean | undefined>;
+  const amount = (key: string): string => {
+    const raw = data?.[key];
+    if (raw === undefined || raw === null) {
+      throw new Error(`readMinterRepayment: ${key} missing`);
+    }
+    return String(raw);
+  };
+  return {
+    cash: amount("cash"),
+    principal: amount("principal"),
+    interestMinted: amount("interest_minted"),
+    feeShares: amount("fee_shares"),
+    carvedOut: data?.carved_out === true,
+    saleId: Number(data?.sale_id ?? 0),
+    reversed: data?.reversed === true,
+  };
+}
+
+export interface ReverseRepayParams
+  extends
+    Omit<RelayParams, "mode" | "target" | "fn" | "args" | "accessManagerId">,
+    ReverseRepayArgs {
+  accessManagerId: string;
+  minterId: string;
+}
+
+export interface ReadReverseRepayScheduleParams
+  extends SimulateReadOptions, ReverseRepayArgs {
+  accessManagerId: string;
+  minterId: string;
+  caller: string;
+}
+
+const REVERSE_REPAY_FN = "reverse_repay";
+
+async function reverseRepayRelay(
+  mode: RelayParams["mode"],
+  { minterId, loanId, repaymentId, refHash, ...rest }: ReverseRepayParams,
+): Promise<RelayResult> {
+  return relay({
+    ...rest,
+    mode,
+    target: minterId,
+    fn: REVERSE_REPAY_FN,
+    args: encodeReverseRepayArgs({ loanId, repaymentId, refHash }),
+  });
+}
+
+export function scheduleReverseRepay(
+  params: ReverseRepayParams,
+): Promise<RelayResult> {
+  return reverseRepayRelay("schedule", params);
+}
+
+export function executeReverseRepay(
+  params: ReverseRepayParams,
+): Promise<RelayResult> {
+  return reverseRepayRelay("execute", params);
+}
+
+export async function readReverseRepaySchedule({
+  minterId,
+  loanId,
+  repaymentId,
+  refHash,
+  ...rest
+}: ReadReverseRepayScheduleParams): Promise<OperationSchedule> {
+  return readOperationSchedule({
+    ...rest,
+    target: minterId,
+    fn: REVERSE_REPAY_FN,
+    args: encodeReverseRepayArgs({ loanId, repaymentId, refHash }),
+  });
 }
