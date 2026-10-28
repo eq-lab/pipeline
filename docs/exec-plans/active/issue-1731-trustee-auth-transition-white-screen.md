@@ -142,7 +142,7 @@ _None_
 
 ## Implementation Steps
 
-1. **`packages/trustee/src/auth/useAuthRedirect.ts`: single owner, no duplicate, gated self-heal.**
+1. [x] **`packages/trustee/src/auth/useAuthRedirect.ts`: single owner, no duplicate, gated self-heal.**
    - Keep the reactive inputs (`status` from `useSessionState()`, `pathname` from
      `useRouterState`).
    - Compute `to = resolveAuthRedirect(status, pathname)`. If `to` is set:
@@ -161,13 +161,13 @@ _None_
      the 0/250/1500 ms re-checks and their cleanup.
    - Comments: remove the narrative block (L31-39) and the constant's JSDoc. Leave one 2-3-line
      spec-pointer header. The rationale moves to the spec (step 6).
-2. **`packages/trustee/src/auth/TrusteeSessionProvider.tsx`: `signOut` stops navigating.**
+2. [x] **`packages/trustee/src/auth/TrusteeSessionProvider.tsx`: `signOut` stops navigating.**
    - Delete `useNavigate` (import and L84), the `navigate` call and its comment (L252-253), and
      `navigate` from the dependency list.
    - `signOut` = `setSession(undefined)` + disconnect connected wallets. The hook performs the
      single `/sign-in` navigation.
    - Update the header's "signOut" pointer if needed. No new comments.
-3. **`packages/trustee/src/components/AppErrorBoundary.tsx` (new): boundary and view.**
+3. [x] **`packages/trustee/src/components/AppErrorBoundary.tsx` (new): boundary and view.**
    - `AppErrorBoundary`: class component with state `{ caught: boolean; error: unknown }`.
      - `getDerivedStateFromError(error)` returns `{ caught: true, error }`.
      - `componentDidCatch(error, info)` calls `reportAppError("render", error, router?, info.componentStack)`.
@@ -183,7 +183,7 @@ _None_
      - Style with existing tokens (`--color-pipeline-paper`, `--color-pipeline-ink`), full
        viewport, `role="alert"`.
      - Do not depend on router context. It renders outside `RouterProvider`.
-4. **`packages/trustee/src/lib/diagnostics.ts` (new): reporting and preload guard.**
+4. [x] **`packages/trustee/src/lib/diagnostics.ts` (new): reporting and preload guard.**
    - `reportAppError(source, value, router?, extra?)` calls `console.error("[trustee] <source>",`
      with an object containing:
      - `value`, `type: typeof value`, `message`, `stack`
@@ -201,13 +201,13 @@ _None_
        call `reportAppError("preloadError", e.payload, router)`. Wrap storage access in
        try/catch.
      - Return a cleanup function, for tests.
-5. **`packages/trustee/src/main.tsx`: wire it up.**
+5. [x] **`packages/trustee/src/main.tsx`: wire it up.**
    - `createRouter({ routeTree, defaultErrorComponent: AppErrorView })`.
    - Call `installGlobalErrorReporting(router)` before render.
    - Wrap `<RouterProvider router={router} />` in `<AppErrorBoundary router={router}>`, inside
      `ConnectModalProvider` so the existing provider order is unchanged.
    - Fold the new pieces into the existing spec-pointer comments. Add no new narrative comments.
-6. **Spec: `docs/frontend/trustee-flows.md`.**
+6. [x] **Spec: `docs/frontend/trustee-flows.md`.**
    - **§Two-layer gating (#1008):**
      - Layer 2 now has **one** navigation owner, `useAuthRedirect`. It navigates with
        `replace: true`, skips a target already pending (`router.latestLocation`), catches and
@@ -232,15 +232,15 @@ _None_
      - Update the sentence that says the provider mounts in the root route "because it calls
        `useNavigate()`". It mounts there for layout; it no longer needs the router.
      - Update **Sources** to include `components/AppErrorBoundary.tsx` and `lib/diagnostics.ts`.
-7. **`docs/exec-plans/known-bugs.md`:** add `BUG-30` under **## Resolved**: trustee white screen
+7. [x] **`docs/exec-plans/known-bugs.md`:** add `BUG-30` under **## Resolved**: trustee white screen
    after an auth transition. Include the date, the files, the symptom (`Uncaught undefined`, empty
    `#root`), the root cause (the three bullets in step 6), and the fix (#1731).
-8. **`docs/exec-plans/tech-debt-tracker.md`:** add `TD-159`. Upgrade `@tanstack/react-router`,
+8. [x] **`docs/exec-plans/tech-debt-tracker.md`:** add `TD-159`. Upgrade `@tanstack/react-router`,
    `router-core` and `router-plugin` to ≥ 1.170 in `packages/trustee` and `packages/frontend`.
    Upstream `CatchBoundary` stores `[error]`, so a falsy throw renders the error component, and
    `Match` no longer throws shared `_nonReactive` promises. The LP frontend has the same exposure
    and no app boundary.
-9. **User stories:** create `docs/user-stories/epic-1521/1731-trustee-auth-transition-white-screen.md`
+9. [x] **User stories:** create `docs/user-stories/epic-1521/1731-trustee-auth-transition-white-screen.md`
    in the format of `1626-trustee-display-fixes.md`. Header: Epic #1521 link, Issue #1731, Spec
    link to `trustee-flows.md#two-layer-gating-1008`. Stories:
    - (1) Sign in on staging from `/sign-in` → the dashboard renders in place at `/`, with no
@@ -251,7 +251,7 @@ _None_
    - (4) Every case: the console has no `Uncaught undefined`, and `#root` is never empty.
    - (5) If a render error occurs, an error view with the message and a Reload button shows
      instead of a white page.
-10. **Lint and baseline.**
+10. [x] **Lint and baseline.**
     - Run `npx tsx scripts/lint-docs.ts` and `npx tsx scripts/lint-comments.ts`.
     - Shrink `scripts/lint-comments.baseline.json` for any touched file it lists. That includes
       `auth/-TrusteeSessionProvider.test.tsx` and `auth/-useAuthRedirect.test.tsx`: drop their

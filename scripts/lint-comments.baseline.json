@@ -663,20 +663,12 @@
     "header": 14,
     "nodeIds": 0
   },
-  "packages/trustee/src/auth/-TrusteeSessionProvider.test.tsx": {
-    "header": 29,
-    "nodeIds": 0
-  },
   "packages/trustee/src/auth/-authGate.test.ts": {
     "header": 8,
     "nodeIds": 0
   },
   "packages/trustee/src/auth/-sessionStore.test.ts": {
     "header": 7,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/auth/-useAuthRedirect.test.tsx": {
-    "header": 10,
     "nodeIds": 0
   },
   "packages/trustee/src/components/-CapitalAllocationCard.test.tsx": {

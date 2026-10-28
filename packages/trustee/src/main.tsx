@@ -11,6 +11,8 @@ import {
 } from "@pipeline/wallet-connect";
 import { routeTree } from "./routeTree.gen";
 import { ENV } from "@/lib/env";
+import { AppErrorBoundary, AppErrorView } from "@/components/AppErrorBoundary";
+import { installGlobalErrorReporting } from "@/lib/diagnostics";
 
 // Must precede render (the wallet providers init their kits lazily on first
 // render). spec: docs/frontend/trustee-flows.md#app-bootstrap--providers.
@@ -27,7 +29,12 @@ setWalletConnectConfig({
 // clients. spec: docs/frontend/trustee-flows.md#app-bootstrap--providers.
 const queryClient = new QueryClient();
 
-const router = createRouter({ routeTree });
+const router = createRouter({
+  routeTree,
+  defaultErrorComponent: AppErrorView,
+});
+
+installGlobalErrorReporting(router);
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -46,7 +53,9 @@ createRoot(rootElement).render(
       <EvmWalletProvider>
         <StellarWalletProvider>
           <ConnectModalProvider signMessageOnly>
-            <RouterProvider router={router} />
+            <AppErrorBoundary router={router}>
+              <RouterProvider router={router} />
+            </AppErrorBoundary>
           </ConnectModalProvider>
         </StellarWalletProvider>
       </EvmWalletProvider>

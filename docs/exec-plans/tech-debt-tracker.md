@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-158.**
+**Next free number: TD-159.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2162,3 +2162,11 @@ line, whichever section it lands in.
 - **Gap:** `registry.disburse` moves a loan `Approved → Performing` and is reached only through `Minter.disburse` (`only_owner`, so through the AccessManager role `TRUSTEE`). The trustee app records "Disbursement complete" in the database only and never makes that call.
 - **Impact:** A loan drawn from the trustee app stays `Approved` on chain. `Minter.repay` (the Record Coupon / Record Repayment path since #1712) then reverts with registry `#3 WrongCurrentStatus` until someone disburses out of band. The testnet registry currently holds no loans, so the end-to-end path has not been simulated successfully.
 - **Suggested fix:** A wallet-connect `Minter.disburse` binding through the executor, signed by the trustee wallet, called from the "Disbursement complete" action with the usual simulate-then-sign ordering and an idempotency guard.
+
+### TD-158: `@tanstack/react-router` 1.168.x lets a thrown `undefined` white-screen the app; upgrade to >= 1.170
+
+- **Date:** 2026-10-28
+- **Location:** `packages/trustee` and `packages/frontend` (`@tanstack/react-router`, `@tanstack/router-core`, `@tanstack/router-plugin`).
+- **Gap:** 1.168.x `CatchBoundary` renders its error component only `if (error)` and `Match` throws the shared `_nonReactive` `loadPromise`, which overlapping loads clear to `undefined` (the #1731 white screen). 1.170.x stores `[error]` in the boundary and no longer throws these promises. #1731 mitigates the trustee with `AppErrorBoundary` and one navigation owner; the LP frontend has the same exposure and no app boundary.
+- **Impact:** A falsy throw from the router blanks the page until a refresh; in the LP app nothing reports it.
+- **Suggested fix:** Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.

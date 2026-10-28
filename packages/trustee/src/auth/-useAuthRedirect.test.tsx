@@ -1,13 +1,4 @@
-/**
- * Tests for `useAuthRedirect` (#1008) — the reactive auth redirect for
- * mid-session status changes, plus the address-bar self-heal that re-stamps
- * `window.location` when an external history write desyncs it from router
- * state (the "Overview renders but the URL says /sign-in" staging bug).
- *
- * The router hooks are mocked (a captured `navigate` spy + controllable
- * pathname/href); the real session store drives `status`; the real
- * jsdom `window.history` receives the self-heal writes.
- */
+// spec: docs/frontend/trustee-flows.md#two-layer-gating-1008
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
@@ -18,14 +9,35 @@ import {
 import { useAuthRedirect } from "./useAuthRedirect";
 
 const mockNavigate = vi.fn();
-const mockRouter = { navigate: mockNavigate };
 let currentPathname = "/";
+let latestPathname = "/";
+let routerStatus: "idle" | "pending" = "idle";
+const mockRouter = {
+  navigate: mockNavigate,
+  get latestLocation() {
+    return { pathname: latestPathname };
+  },
+  get state() {
+    return {
+      status: routerStatus,
+      location: { pathname: currentPathname },
+      isTransitioning: false,
+      resolvedLocation: { pathname: currentPathname, href: currentPathname },
+    };
+  },
+};
 
 vi.mock("@tanstack/react-router", () => ({
   useRouter: () => mockRouter,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
     select({ location: { pathname: currentPathname, href: currentPathname } }),
 }));
+
+function setPath(path: string) {
+  currentPathname = path;
+  latestPathname = path;
+  setAddressBar(path);
+}
 
 function authenticate() {
   setSession({
@@ -44,7 +56,10 @@ function setAddressBar(path: string) {
 beforeEach(() => {
   _resetSessionStoreForTests();
   mockNavigate.mockReset();
+  mockNavigate.mockResolvedValue(undefined);
   currentPathname = "/";
+  latestPathname = "/";
+  routerStatus = "idle";
   setAddressBar("/");
 });
 
@@ -54,18 +69,19 @@ afterEach(() => {
 
 describe("useAuthRedirect — semantic redirects", () => {
   it("redirects an authenticated session away from /sign-in to /", () => {
-    currentPathname = "/sign-in";
-    setAddressBar("/sign-in");
+    setPath("/sign-in");
     authenticate();
     renderHook(() => useAuthRedirect());
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/", replace: true });
   });
 
   it("redirects an unauthenticated session on a protected route to /sign-in", () => {
-    currentPathname = "/loans";
-    setAddressBar("/loans");
+    setPath("/loans");
     renderHook(() => useAuthRedirect());
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/sign-in" });
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/sign-in",
+      replace: true,
+    });
   });
 
   it("does not redirect an authenticated session already on /", () => {
@@ -75,43 +91,41 @@ describe("useAuthRedirect — semantic redirects", () => {
   });
 
   it("does not redirect an unauthenticated session already on /sign-in", () => {
-    currentPathname = "/sign-in";
-    setAddressBar("/sign-in");
+    setPath("/sign-in");
     renderHook(() => useAuthRedirect());
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("redirects to / the moment the session flips to authenticated on /sign-in (the bug)", () => {
-    currentPathname = "/sign-in";
-    setAddressBar("/sign-in");
+    setPath("/sign-in");
     renderHook(() => useAuthRedirect());
     expect(mockNavigate).not.toHaveBeenCalled();
 
     act(() => authenticate());
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/", replace: true });
   });
 
   it("redirects to /sign-in the moment the session is cleared on a protected route", () => {
-    currentPathname = "/loans";
-    setAddressBar("/loans");
+    setPath("/loans");
     authenticate();
     renderHook(() => useAuthRedirect());
     expect(mockNavigate).not.toHaveBeenCalled();
 
     act(() => setSessionStatus("unauthenticated"));
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/sign-in" });
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/sign-in",
+      replace: true,
+    });
   });
 });
 
 describe("useAuthRedirect — address-bar self-heal (#1008 staging desync)", () => {
   it("re-stamps the address bar when it disagrees with router state (the screenshot bug)", () => {
-    // Router (and rendered app) at "/", address bar clobbered to /sign-in.
     authenticate();
     setAddressBar("/sign-in");
     renderHook(() => useAuthRedirect());
 
     expect(window.location.pathname).toBe("/");
-    // Router itself was NOT navigated — this is purely an address-bar fix.
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -121,8 +135,6 @@ describe("useAuthRedirect — address-bar self-heal (#1008 staging desync)", () 
     renderHook(() => useAuthRedirect());
     expect(window.location.pathname).toBe("/");
 
-    // External code rewrites the URL after the effect already ran
-    // (e.g. the wallet modal restoring its pre-open URL on close).
     setAddressBar("/sign-in");
     act(() => {
       vi.runAllTimers();
@@ -136,5 +148,55 @@ describe("useAuthRedirect — address-bar self-heal (#1008 staging desync)", () 
     renderHook(() => useAuthRedirect());
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("useAuthRedirect — single owner", () => {
+  it("does not navigate when the target is already the latest location", () => {
+    currentPathname = "/loans";
+    latestPathname = "/sign-in";
+    renderHook(() => useAuthRedirect());
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("does not issue a second navigation to a target already in flight", () => {
+    mockNavigate.mockReturnValue(new Promise(() => {}));
+    setPath("/loans");
+    const { rerender } = renderHook(() => useAuthRedirect());
+    rerender();
+    act(() => setSessionStatus("connecting"));
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a rejected navigation instead of swallowing it", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockNavigate.mockRejectedValue(undefined);
+    setPath("/loans");
+    renderHook(() => useAuthRedirect());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(spy).toHaveBeenCalledWith(
+      "[trustee] auth-redirect",
+      expect.objectContaining({ type: "undefined" }),
+    );
+    spy.mockRestore();
+  });
+});
+
+describe("useAuthRedirect — self-heal gating", () => {
+  it("does not touch history while the router is pending, then heals once idle", () => {
+    vi.useFakeTimers();
+    authenticate();
+    setAddressBar("/sign-in");
+    routerStatus = "pending";
+    renderHook(() => useAuthRedirect());
+    expect(window.location.pathname).toBe("/sign-in");
+
+    routerStatus = "idle";
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(window.location.pathname).toBe("/");
   });
 });
