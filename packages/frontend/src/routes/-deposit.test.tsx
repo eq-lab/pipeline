@@ -252,6 +252,15 @@ let mockStellarWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" =
 /** Deadline served by the ready Stellar voucher mocks (unix-seconds string). */
 const STELLAR_VOUCHER_DEADLINE = "9999999999";
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+
 const mockInvalidateRequests = vi.hoisted(() => vi.fn());
 
 vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
@@ -263,6 +272,7 @@ vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
 }));
 
 vi.mock("@/api", () => ({
+  useChainServed: () => mockChainServed(),
   useRequests: () => ({
     data: mockRequestsData,
     isLoading: mockRequestsLoading,
@@ -3576,6 +3586,31 @@ describe("Deposit page — trustline enable failure resolves the pending toast (
       screen.queryByText("Enabling PLUSD trustline…"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+  });
+});
+
+describe("Deposit — active chain not served by the API (#1605)", () => {
+  afterEach(() => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
+  it("replaces the conversion flow with the not-available notice", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderDeposit();
+    expect(screen.getByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(screen.queryByTestId("deposit-header")).not.toBeInTheDocument();
   });
 });
 

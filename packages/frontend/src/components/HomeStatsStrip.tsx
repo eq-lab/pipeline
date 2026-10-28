@@ -6,7 +6,12 @@ import { useStellarUnstakeConvertToAssets } from "@/wallet/stellar/useStellarSta
 import { useActiveChain } from "@/wallet/useActiveChain";
 import { useEvmStakeDecimals } from "@/wallet/evm/useEvmStakeDecimals";
 import { formatUnits4 } from "@/utils/formatUnits4";
-import { useStats, formatApy, useDashboardSummary } from "@/api";
+import {
+  useStats,
+  formatApy,
+  useDashboardSummary,
+  useChainServed,
+} from "@/api";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
 import { isMainnetNetwork } from "@/wallet/networkSwitcher";
 
@@ -78,6 +83,8 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
   const { data: summary } = useDashboardSummary({ chainId });
   const tvlValue = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
 
+  const { served } = useChainServed();
+
   // spec: docs/frontend/dashboard-components.md#homestatsstrip (mainnet gate, Issue #1243)
   const mainnet = isMainnetNetwork(kind);
 
@@ -92,7 +99,7 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
 
       {/* TVL / APY cells + dashboard link — hidden on mainnet (#1243) so no
           bordered wrapper renders when Exchange rate is the sole cell. */}
-      {!mainnet && (
+      {!mainnet && served === true && (
         <>
           <div className={separatedCellClasses}>
             <Stat label="Total Value Locked" value={tvlValue} />

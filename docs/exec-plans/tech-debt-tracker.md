@@ -2133,6 +2133,14 @@ line, whichever section it lands in.
 - **Impact:** A failed `balanceOf` / `decimals` read can show an "Approve" error on the stake step row.
 - **Suggested fix:** Switch `useStakeFlow` to `approveError`, with a test mirroring the `useDepositFlow` one.
 
+### TD-155: The LP detects an unserved chain by probing `/v1/pnl` with a synthetic wallet [RESOLVED 2026-10-27 / #1605]
+
+- **Date:** 2026-10-22
+- **Location:** `packages/frontend/src/api/useChainServed.ts` — Issue #1605 (PR #1619).
+- **Gap:** The API exposes no configured-chains list, so the LP learns whether the active EVM chain is served by issuing `GET /v1/pnl?wallet=0x000…0&chain_id=<id>` once per chain and reading a `400 unknown chain_id`. It works because `RequiredChain` validates `chain_id` before the wallet is parsed, but it is a workaround: a synthetic wallet on an analytics endpoint, one extra request per chain per session, and a coupling to that handler's argument order (if the wallet were parsed first, the probe would misreport an unserved chain as served — which the hook treats as the safe default, so the failure mode is "no notice", never a false notice).
+- **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
+- **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.
+
 ### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session
 
 - **Date:** 2026-10-27

@@ -169,7 +169,17 @@ vi.mock("@/lib/env", () => ({
 
 const { mockGetMyLp } = vi.hoisted(() => ({ mockGetMyLp: vi.fn() }));
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+
 vi.mock("@/api", () => ({
+  useChainServed: () => mockChainServed(),
   getMyLp: mockGetMyLp,
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
@@ -2456,5 +2466,23 @@ describe("Home page — loading state while GET /v1/lps/me is in flight (#1576)"
     expect(
       within(grid).getByTestId("home-start-here-card"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Home — active chain not served by the API (#1605)", () => {
+  it("keeps the welcome header and replaces both layouts with the not-available notice", async () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderHome();
+    expect(await screen.findByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(screen.getByTestId("home-welcome-header")).toBeInTheDocument();
+    expect(screen.queryByTestId("home-mobile-layout")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home-dashboard-card")).not.toBeInTheDocument();
   });
 });

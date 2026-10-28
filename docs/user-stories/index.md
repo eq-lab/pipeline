@@ -268,6 +268,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1496 EVM claim vouchers: send chain_id from useDepositVoucher and useWithdrawalVoucher](https://github.com/eq-lab/pipeline/issues/1496) | [1496-evm-voucher-chain-id.md](./epic-1494/1496-evm-voucher-chain-id.md) | Initial |
 | [#1498 Stats, home strip, dashboard and withdrawal-queue hooks follow the active chain](https://github.com/eq-lab/pipeline/issues/1498) | [1498-stats-follow-active-chain.md](./epic-1494/1498-stats-follow-active-chain.md) | Initial |
 | [#1512 Account: single connected wallet — remove the Ethereum/Stellar tabs](https://github.com/eq-lab/pipeline/issues/1512) | [1512-single-connected-wallet.md](./epic-1494/1512-single-connected-wallet.md) | Initial |
+| [#1605 LP: explicit state when the active chain isn't served by the API](https://github.com/eq-lab/pipeline/issues/1605) | [1605-lp-chain-not-served.md](./epic-1494/1605-lp-chain-not-served.md) | Initial |
 | [#1497 EVM chain registry: mainnet + Hoodi, wrong-network switch, EVM identity in the network switcher](https://github.com/eq-lab/pipeline/issues/1497) | [1497-evm-chain-registry.md](./epic-1494/1497-evm-chain-registry.md) | Initial |
 
 ---

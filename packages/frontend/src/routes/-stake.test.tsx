@@ -39,6 +39,18 @@ import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { ToastProvider } from "@/lib/toast";
 import { Route } from "./stake";
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+vi.mock("@/api/useChainServed", () => ({
+  useChainServed: () => mockChainServed(),
+}));
+
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
 
 const mockRefetch = vi.fn();
@@ -1194,6 +1206,31 @@ describe("Stake page — no nested border on token-amount-display (Issue #615)",
       const display = screen.getByTestId("token-amount-display");
       expect(display.style.padding).toBe("0px");
     });
+  });
+});
+
+describe("active chain not served by the API (#1605)", () => {
+  afterEach(() => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
+  it("replaces the page content with the not-available notice", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderStake();
+    expect(screen.getByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(screen.queryByTestId("stake-header")).not.toBeInTheDocument();
   });
 });
 

@@ -297,6 +297,20 @@ Every protocol-stats API hook (`useStats`, `useDashboardSummary`, `useLoanBook`,
 takes `chainId` from its caller and includes it in its query key; none falls back to a Stellar
 constant. The Protocol Dashboard reads the rule through `useDashboardChain`.
 
+**Chain-served check (#1605).** When the active chain is not in the API's `CHAINS` the
+optional-chain endpoints answer with real-looking zeros and empties (TVL "$0", empty loans, empty
+feed) while the required-chain ones 400. `useChainServed()` (`api/useChainServed.ts`) turns that
+into one explicit signal: it reads the public `GET /v1/chains` (#1608, `{ chains: [{ chain_id,
+kind }], default_chain_id }`) once per session (`queryKey: ["chains"]`, `staleTime: Infinity`,
+`retry: false`, shared by every chain id and both wallet views) and reports
+`served = chains.some(c => c.chain_id === chainId)`; the Stellar view goes through the same list.
+`served` is `undefined` while the request is in flight. If `/v1/chains` itself fails (network /
+5xx) the hook treats the chain as served, so a flaky request can never hide a working chain.
+Consumers (home, `/dashboard`, `/transactions`, `/deposit`, `/stake`, `HomeStatsStrip`) render
+`ChainNotServedNotice` ("Not available on <chain> … Switch your wallet to a supported network")
+instead of their protocol widgets when `served === false`, and keep their loading states while it
+is `undefined`.
+
 ## Network switcher (cross-deployment links)
 
 **Source:** `packages/wallet-connect/src/network/links.ts` (shared helpers); per-app glue in
