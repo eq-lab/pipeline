@@ -983,7 +983,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Refactor `ConnectWalletModal` to render through `AuthModalShell` once the
   KYB modals (#1248–#1253) have shipped and stabilized, then delete the duplicated block.
 
-### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative`
+### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative` [RESOLVED 2026-10-28 / #1677]
 
 - **Date:** 2026-09-17
 - **Location:** `packages/ui/src/styles/theme.css`.
@@ -999,6 +999,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Designer reconciliation — either the KYB frames should be restyled onto
   the existing `--color-pipeline-negative`, or the existing negative/danger tokens should be
   updated to `#b20000` repo-wide, in a dedicated design-system pass.
+- **Resolution (2026-10-28, #1677):** Kept both tiers as intentional Figma `content/*` vs `content-test/*` semantics and documented the rule in `docs/FRONTEND.md`; no visual change.
 
 ### TD-60: `OtpModal`'s verification is a hardcoded mock (`MOCK_VALID_CODE`) [RESOLVED 2026-10-19 / #1579]
 
@@ -1134,7 +1135,7 @@ line, whichever section it lands in.
 - **Suggested fix:** A designer pass specifies real drag-over and rejection treatments; the QA
   Figma comparison should not file this as a bug against the current stand-ins.
 
-### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive`
+### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive` [RESOLVED 2026-10-28 / #1677]
 
 - **Date:** 2026-09-18
 - **Location:** `packages/ui/src/styles/theme.css`.
@@ -1148,6 +1149,7 @@ line, whichever section it lands in.
 - **Suggested fix:** A designer reconciliation pass should confirm whether the legacy
   `--color-pipeline-positive` should be retired in favor of the `-strong` value, or whether both
   are intentionally distinct semantics.
+- **Resolution (2026-10-28, #1677):** Both are intentional (`content/*` vs `content-test/*`); `--color-pipeline-positive-strong` now aliases `--color-pipeline-positive-primary` and the rule is documented in `docs/FRONTEND.md`.
 
 ### TD-69: The KYB epic's "review banner" deliverable has no node in the source-of-truth Figma
 
