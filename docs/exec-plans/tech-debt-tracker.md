@@ -70,37 +70,41 @@ line, whichever section it lands in.
 - **Impact:** Dependency violations can creep in silently.
 - **Suggested fix:** Evaluate `cargo deny` for dependency auditing; document module pub/priv visibility conventions in ARCHITECTURE.md.
 
-### TD-3: Frontend component library not selected
+### TD-3: Frontend component library not selected [RESOLVED-BY-DECISION 2026-10-28 / #1671]
 
 - **Date:** 2026-04-21
 - **Location:** packages/frontend
 - **Gap:** Component library decision deferred (Shadcn/ui vs Radix UI primitives). package.json is empty of UI dependencies.
 - **Impact:** Frontend sprint cannot begin without this decision.
 - **Suggested fix:** Evaluate and select before first frontend feature implementation sprint.
+- **Resolution (2026-10-28, #1671):** `@pipeline/ui` is the component library in practice (Button, StepRow, Modal primitives, theme tokens); no further selection needed.
 
-### TD-4: MPC vendor not selected
+### TD-4: MPC vendor not selected [RESOLVED-BY-DECISION 2026-10-28 / #1671]
 
 - **Date:** 2026-04-21
 - **Location:** packages/worker, docs/SECURITY.md
 - **Gap:** Fireblocks vs BitGo RFI in progress. Worker cannot implement MPC signing until SDK is chosen.
 - **Impact:** Loan disbursement, LP payout, and USYC rebalancing automation blocked.
 - **Suggested fix:** Complete RFI, select vendor, add SDK dependency to worker Cargo.toml.
+- **Resolution (2026-10-28, #1671):** Superseded by the BitGo/KMS direction tracked in #1318 / #1319; the open security work lives there.
 
-### TD-5: Storybook preview imports theme.css only as a commented TODO
+### TD-5: Storybook preview imports theme.css only as a commented TODO [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-05-12
 - **Location:** packages/ui/.storybook/preview.ts
 - **Gap:** `src/styles/theme.css` does not exist yet; the import line is commented out with a TODO so `yarn storybook` works without the file. Once the theme issue lands, the comment must be enabled.
 - **Impact:** Stories won't pick up design tokens until theme.css is created and the import is uncommented.
 - **Suggested fix:** Enable the import in preview.ts when the Phase-3 theme/token issue lands.
+- **Resolution (2026-10-28, #1671):** `packages/ui/.storybook/preview.ts` imports `../src/styles/theme.css` for real.
 
-### TD-7: packages/frontend/tsconfig.tsbuildinfo not gitignored
+### TD-7: packages/frontend/tsconfig.tsbuildinfo not gitignored [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-05-12
 - **Location:** packages/frontend/tsconfig.tsbuildinfo, .gitignore
 - **Gap:** The `tsconfig.tsbuildinfo` build cache file is not listed in the root `.gitignore` or any package-level `.gitignore`. Git reports it as modified after every TypeScript build.
 - **Impact:** The file can inadvertently be staged/committed, polluting history with binary build artifacts.
 - **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
+- **Resolution (2026-10-28, #1671):** `git check-ignore packages/frontend/tsconfig.tsbuildinfo` matches and the file is not tracked.
 
 ### TD-6: No Foundation/Tokens Storybook story
 
@@ -143,21 +147,23 @@ line, whichever section it lands in.
 - **Impact:** Style drift risk if the design token values change (`#208000`, `rgba(56,55,53,0.18)`, scrim opacity) — two places must be updated. Low severity until a second consumer appears.
 - **Suggested fix:** When a second modal or toggle consumer appears in the codebase, extract `Switch` (role="switch", off/on colour tokens) and `Modal` / `ModalOverlay` (portal + focus trap + scrim + `role="dialog"`) into `@pipeline/ui` and update all consumers.
 
-### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk)
+### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk) [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-06-02
 - **Location:** `packages/frontend/package.json`, `node_modules/@blend-capital/blend-sdk/node_modules/@stellar/stellar-sdk`
 - **Gap:** `@blend-capital/blend-sdk@3.2.2` bundles its own `@stellar/stellar-sdk@14.4.3` in a nested `node_modules`, while the app directly depends on `15.1.0`. Two copies are shipped in the bundle. The Soroban RPC lifecycle in `blendPool.ts` uses the direct `15.1.0` import; blend-sdk uses its own `14.4.3` internally. There is no version conflict today — both resolve correctly via Yarn's hoisting — but bundle size increases and type mismatches are possible if the two diverge further.
 - **Impact:** Mild bundle size increase from dual stellar-sdk copies. Low risk in practice since both packages use the SDK only internally and types are not shared across the boundary.
 - **Suggested fix:** When blend-sdk releases a version that declares `@stellar/stellar-sdk@^15` as a peer/dependency range, upgrade blend-sdk and verify the direct install deduplications. Track with `yarn why @stellar/stellar-sdk` to confirm dedup. File a follow-up issue if that version ships.
+- **Resolution (2026-10-28, #1671):** Only `@stellar/stellar-sdk@15.1.0` is installed for the app and `@blend-capital/blend-sdk` has no nested copy (the remaining nested `14.2.0` copies belong to `@trezor/*`).
 
-### TD-12: `yarn workspace @pipeline/frontend lint` fails on `main` (Prettier drift in 11 files)
+### TD-12: `yarn workspace @pipeline/frontend lint` fails on `main` (Prettier drift in 11 files) [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-06-04
 - **Location:** `packages/frontend/src` — 11 files including `StartHereCard.tsx`, `TopBar.test.tsx`, `WelcomeHeader.tsx`, `routes/index.tsx`, `routes/-index.test.tsx`
 - **Gap:** The frontend lint script's Prettier check exits 1 on a clean `main` checkout — formatting drifted without the gate catching it (CI does not currently fail on it).
 - **Impact:** The local lint gate is permanently red, so agents cannot use `lint` exit status as a pass/fail signal for their own changes; per-file checks are needed instead. New drift accumulates silently.
 - **Suggested fix:** One-shot `prettier --write` pass over the workspace in a dedicated chore PR, then make CI run the same lint script so drift fails fast.
+- **Resolution (2026-10-28, #1671):** `yarn workspace @pipeline/frontend lint` is clean on `main` ("All matched files use Prettier code style!").
 
 ### TD-14: Replace `STELLAR_VERIFIER_SECRET` with KMS/BitGo provisioning
 
@@ -483,7 +489,7 @@ line, whichever section it lands in.
   reliably enough that a server-computed percentage field can be added to the response, wire the
   bar's segment widths to that field (still not computed client-side).
 
-### TD-40: Trustee Overview drift text + provenance chips are static mock strings
+### TD-40: Trustee Overview drift text + provenance chips are static mock strings [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-07-09
 - **Location:** `packages/trustee/src/components/CapitalAllocationCard.tsx`
@@ -499,6 +505,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Wire to real provenance/drift data once the backend serves it — e.g. a
   drift percentage field plus per-source last-updated timestamps/status — and replace the static
   strings and `PROVENANCE_CHIPS` config with data-driven rendering.
+- **Resolution (2026-10-28, #1671):** The static drift header and provenance chips are gone from `CapitalAllocationCard.tsx`; `-CapitalAllocationCard.test.tsx` asserts they are not rendered.
 
 ### TD-41: Trustee Capital-Wallet balance is a client-side interim source + client-side total sum + client-side legend percentages + client-side proportional bar
 
@@ -744,7 +751,7 @@ line, whichever section it lands in.
   have both presenters import the shared copy.
 - **Resolution:** Lifted into `packages/trustee/src/utils/formatFractionPct.ts`; both presenters import it (#1339).
 
-### TD-47: `packages/frontend` has pre-existing Prettier formatting drift blocking the pre-commit hook
+### TD-47: `packages/frontend` has pre-existing Prettier formatting drift blocking the pre-commit hook [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-07-28 (#947)
 - **Location:** At minimum `src/api/README.md`, `src/api/useStatsYield.ts`,
@@ -765,6 +772,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Run `yarn --cwd packages/frontend format` (Prettier `--write`) across the
   9 files above in a dedicated formatting-only commit/PR, then confirm `yarn --cwd
   packages/frontend lint` passes clean so the hook stops blocking unrelated work.
+- **Resolution (2026-10-28, #1671):** Same as TD-12: `yarn workspace @pipeline/frontend lint` is clean on `main`.
 
 ### TD-48: Penalty `escalating` flag is stored but never applied
 
@@ -861,7 +869,7 @@ line, whichever section it lands in.
   `packages/trustee/src/utils/userError.ts` import the shared half, keeping only their
   status-table/copy differences local.
 
-### TD-53: Frontend Prettier drift blocks the pre-commit hook
+### TD-53: Frontend Prettier drift blocks the pre-commit hook [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-08-10
 - **Location:** `packages/frontend` (`.husky/pre-commit` step 3c), 7+ files incl.
@@ -880,6 +888,7 @@ line, whichever section it lands in.
   reformat the drifted files in a dedicated frontend chore PR, then add a
   `format:check` CI step so drift can't silently return. Alternatively scope the hook's
   Prettier check to staged files (lint-staged) so unrelated debt doesn't block commits.
+- **Resolution (2026-10-28, #1671):** Same as TD-12: `yarn workspace @pipeline/frontend lint` is clean on `main`.
 
 ### TD-54: No lint guard against spec-style comments creeping back into frontend source [RESOLVED 2026-10-20 / #1355]
 
@@ -1069,7 +1078,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a PDF-page-thumbnail renderer (e.g. `pdf.js`) if pixel-fidelity for this
   state becomes a priority; until then this is an accepted, documented subset.
 
-### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable
+### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-22):** Resolved by deletion. `FileDropZone.tsx` was deleted by #1278 — neither
   it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
@@ -1085,8 +1094,9 @@ line, whichever section it lands in.
   reconciliation pass should rebind the Figma variable, not the code.
 - **Suggested fix:** Ask design to rebind `text-tertairy` to `content-test/secondary` in the
   Figma library.
+- **Resolution (2026-10-28, #1671):** Already resolved by deletion (#1278); `FileDropZone.tsx` no longer exists and nothing references it.
 
-### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow
+### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-22):** Resolved by deletion. `KybInfoBanner.tsx` was deleted by #1278 — neither
   it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
@@ -1102,8 +1112,9 @@ line, whichever section it lands in.
   Escape in the capture phase and would close the modal instead of just the tooltip).
 - **Suggested fix:** A designer pass should attach the tooltip node to the Owners frame directly
   and specify trigger/offset/arrow explicitly.
+- **Resolution (2026-10-28, #1671):** Already resolved by deletion (#1278); `KybInfoBanner.tsx` no longer exists and nothing references it.
 
-### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement
+### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-21):** Resolved by retirement. `OwnersModal` and `useOwnersModal.ts` — the
   file this entry is about — were deleted (issue #1279); the Owners step, and its Submit
@@ -1119,8 +1130,9 @@ line, whichever section it lands in.
   actually needs.
 - **Suggested fix:** A designer/PM pass should specify the real completion requirement for this
   step, likely tied to a future owner-count or owner-list input.
+- **Resolution (2026-10-28, #1671):** Already resolved by retirement (#1279); `OwnersModal` and `useOwnersModal.ts` no longer exist.
 
-### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment
+### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-22):** Resolved by deletion. `FileDropZone.tsx` was deleted by #1278 — neither
   it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
@@ -1135,6 +1147,7 @@ line, whichever section it lands in.
   copy, an icon, or a different layout.
 - **Suggested fix:** A designer pass specifies real drag-over and rejection treatments; the QA
   Figma comparison should not file this as a bug against the current stand-ins.
+- **Resolution (2026-10-28, #1671):** Already resolved by deletion (#1278); `FileDropZone.tsx` no longer exists and nothing references it.
 
 ### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive` [RESOLVED 2026-10-28 / #1677]
 
@@ -2033,7 +2046,7 @@ line, whichever section it lands in.
 - **Impact:** No ground truth to pixel-verify the declined Account banner against; a future designer pass could redesign it as a dedicated frame and invalidate the stand-in.
 - **Suggested fix:** Designer ask — request a dedicated declined-state Account frame.
 
-### TD-138: The home grid derives connection from the active wallet view; the header derives it from any-wallet presence
+### TD-138: The home grid derives connection from the active wallet view; the header derives it from any-wallet presence [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-10-12
 - **Location:** `packages/frontend/src/routes/index.tsx` (`isConnected` from `useWalletView().kind`) vs `TopBar`/`MobileNavMenu` (`useWalletPresence().isAnyConnected`, #1458) — Issue #1460.
@@ -2042,6 +2055,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Either derive the header's icon from the active view too, or derive the home grid's connection from any-wallet presence and resolve balances/activity across both namespaces. Both are product decisions, not mechanical fixes.
 - **Narrowed by #1475 (2026-10-13):** entering `/account` now persists the single connected namespace as the active view, so the grid agrees with the header from then on, and the home heading keys on the header condition (`isAuthenticated || isAnyConnected`). Remaining gap: a visitor who connects one namespace and never opens `/account` still sees the zero-state grid under the account icon.
 - **Resolved by #1512 (2026-10-14):** `useWalletView().kind` is derived from the connected wallet, so the grid, the header and `/account` always agree.
+- **Resolution (2026-10-28, #1671):** `useWalletView().kind` in `packages/frontend/src/wallet/WalletViewContext.tsx` is derived from the connected wallet (#1512), so the grid, header and `/account` agree.
 
 ### TD-139: Completing Add email from the wallet-only state (#1460) lands the visitor in `"legacy"`, not a designed state
 
