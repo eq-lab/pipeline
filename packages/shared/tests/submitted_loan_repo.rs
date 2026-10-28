@@ -65,6 +65,11 @@ fn resubmit_sql_keeps_target_chain() {
 }
 
 #[test]
+fn resubmit_sql_filters_on_originator() {
+    assert!(flat(RESUBMIT_SQL).contains("AND originator = $3"));
+}
+
+#[test]
 fn candidates_sql_has_both_disjuncts() {
     let sql = flat(UNLINKED_DRAW_CANDIDATES_SQL);
     assert!(sql.contains("(chain_id = $2 AND loan_id = $3)"));
