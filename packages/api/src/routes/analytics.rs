@@ -10,6 +10,8 @@ use utoipa::{OpenApi, ToSchema};
 
 use crate::routes::common::{ChainScope, LenientChainFilter};
 use crate::AppState;
+use shared::chains::ChainKind;
+use shared::kyc_repo::kyt_gate_for_kind;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/requests", get(get_requests))
@@ -98,9 +100,18 @@ async fn get_requests(
         }
     };
 
+    let kyt_gate = |id: i64| {
+        let kind = state
+            .chains
+            .iter()
+            .find(|c| c.chain_id == id)
+            .map_or(ChainKind::Evm, |c| c.kind);
+        kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled)
+    };
+
     match state
         .kyc_repo
-        .get_all_requests(&wallet, pending_only, state.crystal_enabled, chain_id)
+        .get_all_requests(&wallet, pending_only, kyt_gate, chain_id)
         .await
     {
         Ok(events) => {
