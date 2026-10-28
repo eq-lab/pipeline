@@ -3,15 +3,11 @@
 //! (matches the project-wide convention: all tests in `tests/`, no live Postgres).
 
 use async_trait::async_trait;
-use pipeline_api::config::ConfiguredChain;
-use pipeline_api::routes::common::ChainFilter;
 use pipeline_api::routes::loan_book::{
-    extract_documents, resolve_review, resolve_target_chain, validate_metadata_uri,
-    validate_submission, CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanBookDoc,
-    LoanDocumentDto, LocationInput, ReviewDecision, ReviewRequest, SubmissionView,
-    SubmitLoanRequest,
+    extract_documents, resolve_review, validate_metadata_uri, validate_submission,
+    CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanBookDoc, LoanDocumentDto,
+    LocationInput, ReviewDecision, ReviewRequest, SubmissionView, SubmitLoanRequest,
 };
-use shared::chains::ChainKind;
 use shared::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
 use utoipa::OpenApi;
@@ -528,26 +524,6 @@ fn loan_metadata_json_rejects_unknown_field() {
 
 // ── target chain ──
 
-#[test]
-fn resolve_target_chain_defaults_when_omitted() {
-    assert_eq!(
-        resolve_target_chain(&ChainFilter(None), 99_000_001),
-        99_000_001
-    );
-}
-
-#[test]
-fn resolve_target_chain_uses_given_chain() {
-    let chain = ConfiguredChain {
-        chain_id: 560_048,
-        kind: ChainKind::Evm,
-    };
-    assert_eq!(
-        resolve_target_chain(&ChainFilter(Some(chain)), 99_000_001),
-        560_048
-    );
-}
-
 fn row(chain_id: Option<i64>, loan_id: Option<&str>) -> SubmittedLoanRow {
     SubmittedLoanRow {
         id: 1,
@@ -592,16 +568,20 @@ fn param<'a>(
 }
 
 #[test]
-fn openapi_declares_optional_chain_id_on_submit_and_list() {
+fn openapi_submit_requires_chain_id_and_documents_400() {
     let spec = serde_json::to_value(LoanBookDoc::openapi()).unwrap();
-    for (path, method) in [
-        ("/v1/loan-book/loan", "post"),
-        ("/v1/loan-book/submissions", "get"),
-    ] {
-        let p = param(&spec, path, method, "chain_id");
-        assert_eq!(p["in"], "query");
-        assert!(!p["required"].as_bool().unwrap_or(false));
-    }
+    let p = param(&spec, "/v1/loan-book/loan", "post", "chain_id");
+    assert_eq!(p["in"], "query");
+    assert_eq!(p["required"], true);
+    assert!(spec["paths"]["/v1/loan-book/loan"]["post"]["responses"]["400"].is_object());
+}
+
+#[test]
+fn openapi_list_submissions_chain_id_is_optional() {
+    let spec = serde_json::to_value(LoanBookDoc::openapi()).unwrap();
+    let p = param(&spec, "/v1/loan-book/submissions", "get", "chain_id");
+    assert_eq!(p["in"], "query");
+    assert!(!p["required"].as_bool().unwrap_or(false));
     param(&spec, "/v1/loan-book/submissions", "get", "status");
 }
 

@@ -38,7 +38,7 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{
-    loan_registry_address, trustee_indexed_loan_guard, ChainFilter, ChainScope, LenientChainFilter,
+    loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
     RequiredChain,
 };
 use crate::AppState;
@@ -593,11 +593,11 @@ async fn get_loan_book(
 #[utoipa::path(
     post,
     path = "/v1/loan-book/loan",
-    params(("chain_id" = Option<i64>, Query, description = "Target chain for the submission. Optional — defaults to DEFAULT_CHAIN_ID. Malformed or not in CHAINS → 400.")),
+    params(RequiredChain),
     request_body = SubmitLoanRequest,
     responses(
         (status = 201, description = "Submission accepted; awaiting trustee review", body = SubmitLoanResponse),
-        (status = 400, description = "Payload failed validation, or unknown/malformed chain_id"),
+        (status = 400, description = "Payload failed validation, or missing, malformed, or unknown chain_id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
     ),
@@ -605,9 +605,9 @@ async fn get_loan_book(
     tag = "LoanBook"
 )]
 async fn submit_loan(
+    RequiredChain(chain): RequiredChain,
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
-    chain: ChainFilter,
     Json(payload): Json<SubmitLoanRequest>,
 ) -> Result<(StatusCode, Json<SubmitLoanResponse>), ApiError> {
     if !claims.has_role(ORIGINATOR_ROLE) {
@@ -633,17 +633,12 @@ async fn submit_loan(
     // together or not at all.
     let mut tx = state.pool.begin().await?;
 
-    let target_chain_id = resolve_target_chain(&chain, state.default_chain_id);
-    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub, target_chain_id).await?;
+    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub, chain.chain_id).await?;
     insert_valuation_and_fee_rows(&mut tx, id, &payload).await?;
 
     tx.commit().await?;
 
     Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
-}
-
-pub fn resolve_target_chain(chain: &ChainFilter, default_chain_id: i64) -> i64 {
-    chain.chain_id().unwrap_or(default_chain_id)
 }
 
 /// Parse a validated submission's typed valuation / fee fields and write its

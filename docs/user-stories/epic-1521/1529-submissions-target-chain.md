@@ -12,15 +12,16 @@ Backend-only. A loan submission records the chain it is meant to be drawn on (`t
 
 ---
 
-## Story 1 — Submit with and without a target chain
+## Story 1 — Submit with a required target chain
 
 **Given** an originator token and `CHAINS=560048,99000001`, `DEFAULT_CHAIN_ID=99000001`
 
-**When** the originator posts a valid payload to `POST /v1/loan-book/loan` with no `chain_id`, then again with `?chain_id=560048`
+**When** the originator posts a valid payload to `POST /v1/loan-book/loan?chain_id=99000001`, then again with `?chain_id=560048`
 
 **Then:**
 
 - Both return `201 { id }`
+- No `chain_id` returns 400 `chain_id is required` and stores nothing (#1610)
 - `GET /v1/loan-book/submissions` shows `target_chain_id` 99000001 for the first and 560048 for the second
 - `chain_id` and `loan_id` are `null` on both (not drawn yet)
 - `?chain_id=5` or `?chain_id=abc` returns 400 and stores nothing

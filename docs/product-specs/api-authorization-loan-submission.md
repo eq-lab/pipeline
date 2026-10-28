@@ -40,12 +40,12 @@ submissions may be resubmitted: `InReview` is already open, and the terminal
 resubmission is a complete new payload.
 
 **Target chain.** Each submission has a `target_chain_id`: the chain it is meant to be
-drawn on. It is set at submission from the optional `?chain_id` query parameter
-(default `DEFAULT_CHAIN_ID`; an id not in `CHAINS` returns `400`), is not part of
+drawn on. It is set at submission from the required `?chain_id` query parameter
+(missing, malformed, or an id not in `CHAINS` returns `400`; checked before the token), is not part of
 `loan_data`, and is kept on resubmit. `GET /v1/loan-book/submissions` is public: omitted
 `chain_id` returns all rows, a configured id filters by target, a well-formed id not in
 `CHAINS` returns `200` with an empty list, and a malformed or repeated one returns `400`.
-The Trustee form sends the target chain since #1536. When the indexer sees `LoanDrawn`, it links the
+The Trustee form always sends the target chain (#1536). When the indexer sees `LoanDrawn`, it links the
 submission by `metadata_uri` only if the draw chain equals `target_chain_id`. A draw on
 another chain leaves the submission unlinked and is logged at `warn`; so is a draw whose
 `(chain_id, loan_id)` is already linked to another submission. The submission link is not
