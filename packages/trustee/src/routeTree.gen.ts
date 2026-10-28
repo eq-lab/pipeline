@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RiskCouncilRouteImport } from './routes/risk-council'
 import { Route as OriginationRouteImport } from './routes/origination'
 import { Route as LpCounterpartiesRouteImport } from './routes/lp-counterparties'
@@ -31,11 +30,6 @@ import { Route as RiskCouncilEscalateIdRouteImport } from './routes/risk-council
 import { Route as LoansIdRecordRepaymentRouteImport } from './routes/loans.$id_.record-repayment'
 import { Route as LoansIdRecordCouponRouteImport } from './routes/loans.$id_.record-coupon'
 
-const SignInRoute = SignInRouteImport.update({
-  id: '/sign-in',
-  path: '/sign-in',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const RiskCouncilRoute = RiskCouncilRouteImport.update({
   id: '/risk-council',
   path: '/risk-council',
@@ -145,7 +139,6 @@ export interface FileRoutesByFullPath {
   '/lp-counterparties': typeof LpCounterpartiesRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRouteWithChildren
-  '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
@@ -164,7 +157,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
@@ -188,7 +180,6 @@ export interface FileRoutesById {
   '/lp-counterparties': typeof LpCounterpartiesRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRouteWithChildren
-  '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
@@ -213,7 +204,6 @@ export interface FileRouteTypes {
     | '/lp-counterparties'
     | '/origination'
     | '/risk-council'
-    | '/sign-in'
     | '/loans/$id'
     | '/lp-counterparties/$id'
     | '/origination/$id'
@@ -232,7 +222,6 @@ export interface FileRouteTypes {
     | '/'
     | '/audit-log'
     | '/cash-management'
-    | '/sign-in'
     | '/loans/$id'
     | '/lp-counterparties/$id'
     | '/origination/$id'
@@ -255,7 +244,6 @@ export interface FileRouteTypes {
     | '/lp-counterparties'
     | '/origination'
     | '/risk-council'
-    | '/sign-in'
     | '/loans/$id'
     | '/lp-counterparties/$id'
     | '/origination/$id'
@@ -279,18 +267,10 @@ export interface RootRouteChildren {
   LpCounterpartiesRoute: typeof LpCounterpartiesRouteWithChildren
   OriginationRoute: typeof OriginationRouteWithChildren
   RiskCouncilRoute: typeof RiskCouncilRouteWithChildren
-  SignInRoute: typeof SignInRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/sign-in': {
-      id: '/sign-in'
-      path: '/sign-in'
-      fullPath: '/sign-in'
-      preLoaderRoute: typeof SignInRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/risk-council': {
       id: '/risk-council'
       path: '/risk-council'
@@ -505,7 +485,6 @@ const rootRouteChildren: RootRouteChildren = {
   LpCounterpartiesRoute: LpCounterpartiesRouteWithChildren,
   OriginationRoute: OriginationRouteWithChildren,
   RiskCouncilRoute: RiskCouncilRouteWithChildren,
-  SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

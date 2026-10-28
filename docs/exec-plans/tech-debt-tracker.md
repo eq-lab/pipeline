@@ -2167,6 +2167,6 @@ line, whichever section it lands in.
 
 - **Date:** 2026-10-28
 - **Location:** `packages/trustee` and `packages/frontend` (`@tanstack/react-router`, `@tanstack/router-core`, `@tanstack/router-plugin`).
-- **Gap:** 1.168.x `CatchBoundary` renders its error component only `if (error)` and `Match` throws the shared `_nonReactive` `loadPromise`, which overlapping loads clear to `undefined` (the #1731 white screen). 1.170.x stores `[error]` in the boundary and no longer throws these promises. #1731 mitigates the trustee with `AppErrorBoundary` and one navigation owner; the LP frontend has the same exposure and no app boundary.
+- **Gap:** 1.168.x `CatchBoundary` renders its error component only `if (error)` and `Match` throws the shared `_nonReactive` `loadPromise`, which overlapping loads clear to `undefined` (the #1731 white screen). 1.170.x stores `[error]` in the boundary and no longer throws these promises. #1731 mitigates the trustee with `AppErrorBoundary`, and #1749 removed the trustee's auth navigations altogether; the LP frontend has the same exposure and no app boundary.
 - **Impact:** A falsy throw from the router blanks the page until a refresh; in the LP app nothing reports it.
-- **Suggested fix:** Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.
+- **Suggested fix:** Still worthwhile, but no longer tied to auth navigation (the trustee no longer navigates on auth changes; #1749). Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.

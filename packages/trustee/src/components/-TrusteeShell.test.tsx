@@ -1,9 +1,4 @@
-/**
- * Tests for `TrusteeShell`'s render-level auth gate (#1008): unauthenticated →
- * the sign-in overlay on the current URL (protected content NOT mounted);
- * authenticated → sidebar + route outlet. There is no auth route or redirect —
- * the session status alone decides what renders.
- */
+// spec: docs/frontend/trustee-flows.md#render-level-auth-gate-1008-1749
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { TrusteeShell } from "./TrusteeShell";

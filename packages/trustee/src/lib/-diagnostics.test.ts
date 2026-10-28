@@ -4,7 +4,7 @@ import { installGlobalErrorReporting } from "./diagnostics";
 
 const router = {
   state: { location: { pathname: "/loans" }, status: "pending" },
-  latestLocation: { pathname: "/sign-in" },
+  latestLocation: { pathname: "/loans" },
 } as unknown as Parameters<typeof installGlobalErrorReporting>[0];
 
 let consoleError: ReturnType<typeof vi.spyOn>;
@@ -47,7 +47,7 @@ describe("installGlobalErrorReporting", () => {
         type: "undefined",
         routerPathname: "/loans",
         routerStatus: "pending",
-        pendingPathname: "/sign-in",
+        pendingPathname: "/loans",
         href: "http://localhost/loans",
       }),
     );
