@@ -39,21 +39,47 @@ role, so registering an account confers no privilege beyond starting KYB.
    (signature, expiry, not older than the account's last password reset), the account must be
    `Active` (else `403 account_suspended`), and a required **role** it lacks is a `403`.
 
-The challenge message is the single source of truth for the signed bytes and is
-identical between issuance and verification. It is a **single line** (no newlines)
-so that signing the JSON-transported value cannot diverge from signing the
-decoded string:
+The challenge message is the single source of truth for the signed bytes. It is a pure
+function of the stored `auth_users` row, so issuance and verification rebuild identical
+bytes. It is SIWE-style multi-line text; clients must sign the decoded `message` string
+(never its JSON-escaped form). The `domain` is the host (and port, if any) of the API's
+`APP_BASE_URL`, which is required at startup (`EMAIL_DEV_LOG=true` falls back to
+`localhost:5173`). `Issued At` is `Expiration Time` minus the TTL; timestamps are ISO-8601 UTC.
 
 ```
-Welcome to Pipeline! Sign this message to authenticate. This request will not trigger a blockchain transaction or cost any gas. Address: <address> Chain ID: <chain_id> Nonce: <nonce>
+<domain> wants you to sign in with your wallet:
+<address>
+
+Sign this message to authenticate with Pipeline. This request will not trigger a blockchain transaction or cost any gas.
+
+Chain ID: <chain_id>
+Nonce: <nonce>
+Issued At: <issued_at>
+Expiration Time: <expires_at>
 ```
+
+Challenge lifecycle (one record per account, on `auth_users`: `nonce`, `nonce_expires_at`):
+
+- **TTL** is 5 minutes. A `GET /v1/auth/challenge` for an address that already holds an
+  **unexpired** nonce returns that same nonce and message instead of rotating it, so polling
+  cannot invalidate a pending signature. Otherwise a new nonce is issued (the write only
+  replaces a missing or expired nonce, so concurrent requests converge on one).
+- **Consume** is atomic and single-use: after the signature checks out, `verify` runs
+  `UPDATE auth_users SET nonce = NULL, nonce_expires_at = NULL WHERE chain_id = $1 AND
+  address = $2 AND nonce = $3 AND nonce_expires_at > now() RETURNING …`; no row is a `401`.
+  This closes concurrent replay and stale nonces.
+- **Rate limit:** `GET /v1/auth/challenge` allows 30 requests per minute per client address
+  (`X-Forwarded-For`, counted in `login_attempts` under scope `wallet_challenge_ip`); beyond
+  that `429`.
+- **Stellar:** the same text is signed with SEP-0053 (`SHA256("Stellar Signed Message:\n" ||
+  message)`), which hashes the raw UTF-8 bytes, so newlines and length are not a concern.
 
 ## API Contract
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
-| `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
+| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; reuses the unexpired nonce, else issues a new 5-minute one. `401` if the address is not authorized, `429` past 30 requests per minute per client address. |
+| `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` (one shared body, `authentication failed`) for unknown address, no live or expired challenge, a replayed nonce, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
