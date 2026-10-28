@@ -6,151 +6,155 @@ section: Reference
 
 # Glossary
 
-One alphabetical list. Trade-finance terms sit alongside protocol terms because a lender reading Pipeline documentation eventually needs both. Italicised terms are defined elsewhere on this page.
+One alphabetical list of trade-finance and protocol terms.
 
 ---
 
 ## A
 
-**AccessManager** — OpenZeppelin v5 role hub. Every privileged call across the protocol routes through it. Per-role timelocks are enforced here: ADMIN 3-day standard, 7-day for upgrades, 14-day meta-timelock on the delay parameter itself; RISK_COUNCIL 3-day; GUARDIAN instant.
+**Access manager** — The smart contract that holds the protocol's roles. It maps each privileged action to a role and grants roles to holders. A role holder can carry an execution delay: the action is scheduled first and runs after the delay. A role's Guardian can cancel a scheduled action before it runs.
 
-**ADMIN** — A 3-of-5 MPC that holds every role-granting and upgrading power in the protocol, with a 3-day AccessManager delay on standard actions, 7-day delay on upgrades, and 14-day meta-timelock on changes to the delay itself. Re-enabling a paused contract, re-granting a revoked role, upgrading an implementation, and loosening any cap all require ADMIN. Every such action is cancellable by GUARDIAN during the delay window.
+**Accession** — How a new lender joins a facility. The new lender signs an accession deed, and the facility agent holds it. The Loan Originator and other lenders join this way.
 
-**AIS (Automatic Identification System)** — The maritime transponder standard that broadcasts a vessel's identity, position, course, and speed in real time. Pipeline uses AIS feeds (and platforms like MarineTraffic) to track cargo while it is at sea; a vessel's IMO number and AIS trail are part of the tracking evidence borrowers are expected to post.
+**Admin** — The top role. Admin grants and revokes roles, sets limits and custodian accounts, unpauses contracts and sets the withdrawal recovery rate. Admin actions run with no delay. A multisig holds the role.
+
+**Advance ratio** — The highest LTV allowed at drawdown, set per loan. A margin call must bring LTV back to this level. Default value 80 %.
+
+**Agency deed** — The facility document that appoints the facility agent and the Security Agent and sets their duties. Each agent is liable only for gross negligence, wilful misconduct or fraud. The Majority Lenders may replace either agent.
+
+**AIS (Automatic Identification System)** — The maritime transponder standard that broadcasts a vessel's identity, position, course and speed in real time.
 
 ---
 
 ## B
 
-**BURNER (role)** — The role on PLUSD that authorises `PLUSD.burn`, called during the withdrawal-claim path to burn escrowed PLUSD as USDC is paid out. Held in MVP by the WithdrawalQueue proxy address (contract-held, not an EOA).
+**Bill of lading (B/L)** — The carrier's document for goods shipped by sea. It is a receipt for the cargo and a document of title. In the security registry an endorsed B/L is one type of security record.
 
 ---
 
 ## C
 
-**Capital Wallet** — Institutional-custody MPC address holding lender USDC and the USYC reserve. 5-share, 3-of-5 cosigner topology (Pipeline Team x2, Trustee x1, External Counterparties x2). All movements are on-chain ERC-20 transfers visible on Etherscan.
+**Capital wallet** — The protocol account that holds every loan record and every debt token.
 
-**CCR (Collateral Coverage Ratio)** — Collateral value divided by outstanding senior principal on a given loan, reported in basis points on LoanRegistry (e.g. 14000 = 140%). Pipeline's visible risk dial runs on three thresholds: above 130% is performing headroom, below 120% is maintenance margin call, and below 110% is margin call.
+**Carve-out** — The first time a loan goes into default, the protocol moves PLUSD equal to the loan's outstanding balance from the vault into that loan's pocket. The sPLUSD holders at that moment own the pocket pro rata to their balances. What the vault cannot cover stays recorded as unabsorbed.
 
-**Chainalysis** — Wallet-side AML and sanctions screening provider. Pipeline runs every lender wallet through Chainalysis on onboarding and on a 90-day refresh cycle.
+**Cash Reporter** — The role that books bank events on-chain: incoming bank wires, loan repayments and bank income. Its actions run with no delay.
 
-**Charitable Trust** — Orphan trust at the top of the Pipeline entity hierarchy. Holds shares of The Trust Company. No beneficial owner.
+**CMA (Collateral Management Agreement)** — A contract under which an independent inspection and custody agent (SGS, Cotecna, Intertek) takes control of physical collateral (warehoused commodity, tank-farm stock) and releases it only against documented instructions. It gives a trade-finance lender third-party confirmation that the cargo backing a loan exists and is controlled.
 
-**Circle Mint** — Operates the Payment Agent function — USDC ↔ USD conversion for loan funding, repayment on-ramping, and T-bill deployment.
+**Collection account** — The borrower's account that receives the buyer's payment. The Security Agent co-signs it. It carries no credit facility at the borrower's bank, so there is no set-off. A change to its signing mandate without notice to the Security Agent is an event of default.
 
-**ClaimAttestation** — An EIP-712 payload signed off-chain by the Relayer under the `kytAttestor` key after a clean KYT result. The lender submits it to `DepositManager.claim` (or `WithdrawalQueue.claim`); the contract verifies the signature against the configured attestor address.
+**Commodity** — The physical good financed by a given Pipeline loan, for example jet fuel JET A-1, refined metals or agricultural products.
 
-**CMA (Collateral Management Agreement)** — A contract under which an independent inspection and custody agent (SGS, Cotecna, Intertek) takes control of physical collateral (warehoused commodity, tank-farm stock) and releases it only against documented instructions. Gives a trade-finance lender verifiable, third-party confirmation that the cargo backing a loan exists and is controlled.
+**Corridor** — The route the cargo travels, stated as "origin country → destination country" (e.g. "South Korea → Mongolia"). Sanctioned corridors are not financed.
 
-**Collateral Trust** — BVI statutory trust holding pledged bills of lading, warehouse receipts, and CMA receipts. Enforces on default.
+**CTRM** — Commodity Trade and Risk Management system. Software a commodity trader uses to book physical trades, positions and risk.
 
-**Commodity** — The physical good financed by a given Pipeline loan — for example jet fuel JET A-1, refined metals, or agricultural products. Recorded as immutable origination data on the LoanRegistry NFT alongside the Corridor and Offtaker.
+**Cure** — A Risk Council action that moves a defaulted loan back to Watchlist. The loan's pocket stays in place.
 
-**Corridor** — The route the cargo travels, typically stated as "origin country → destination country" (e.g. "South Korea → Mongolia"). Corridor is immutable origination data on every LoanRegistry NFT; sanctioned corridors are not financed.
+**Cure period** — The time a borrower has after a margin call to bring LTV back to the advance ratio, with cash or goods. Set per loan.
 
-**CTRM** — Commodity Trade and Risk Management system. Vessel tracking and cargo monitoring feed (Kpler primary; secondary feeds per deal). CTRM data drives the daily LTV refresh.
+**Custodian accounts** — The accounts that hold USDC. Smart contracts hold no USDC. A deposit goes straight to the deposit custodian. Withdrawals are paid from the withdrawal custodian through an allowance it grants to the withdrawal queue. Each custodian account is a multisig account.
 
 ---
 
 ## D
 
-**DEPOSITOR (role)** — The role on PLUSD that authorises `PLUSD.mintForDeposit`, the 1:1 deposit-leg mint called inside `DepositManager.claim`. Held in MVP by the DepositManager proxy address (contract-held, no human key).
+**Debt token** — One token per loan. One token equals one dollar of principal outstanding on that loan. The capital wallet holds it frozen, and it follows the loan registry. It is a record of the loan. It is not money and does not trade.
 
-**DepositManager** — Smart contract handling the two-step screened deposit. `deposit(amount)` parks USDC in the Intake Wallet and creates a deposit ticket. After the Relayer runs KYT and signs an EIP-712 ClaimAttestation, the lender calls `claim(depositId, attestation, signature)` to pull USDC from the Intake Wallet to the Capital Wallet, write a whitelist entry, and mint PLUSD 1:1.
+**Default** — A loan status set by the Risk Council. The action runs at once. The first default of a loan triggers the carve-out.
 
-**Deposit ticket** — A per-deposit entry in `DepositManager.tickets[lender][depositId]` recording amount, status, and timestamps. Statuses: `Pending` (awaiting KYT), `Claimable` (KYT clean), `UnderReview` (KYT soft fail in compliance queue), `Frozen` (KYT hard fail), `Claimed` (PLUSD minted), `Refunded` (USDC returned to lender).
+**Deposit manager** — The smart contract for USDC deposits. A lender sends USDC; it goes straight to the deposit custodian and a deposit request is recorded. The backend screens the deposit and signs a voucher. With the voucher, PLUSD is minted 1:1 to the lender. Limits: minimum 1,000 USDC, 5,000,000 per deposit, 10,000,000 per 24 hours across all lenders.
+
+**Deposit request** — The record of one USDC deposit: lender, amount, time and whether it has been claimed. A request is claimed once, with a valid voucher. There is no refund path in the contract.
 
 ---
 
 ## E
 
-**EIP-712 attestation** — A structured-data signature format where the signer commits to a domain-separated, typed payload. Pipeline uses EIP-712 for ClaimAttestation, EnrolAttestation, and YieldAttestation. Both signatures on a yield mint (Relayer ECDSA + Trustee EIP-1271) are verified on-chain inside `YieldMinter.yieldMint` before PLUSD is minted.
-
-**EIP-1271 signer** — A smart-contract signer that validates signatures by calling `isValidSignature(hash, signature)` on the signing contract, rather than recovering an ECDSA public key. Pipeline's Trustee operates an EIP-1271 signer for yield attestations; the contract independently verifies the underlying USDC inflow before co-signing any yieldMint.
-
-**EnrolAttestation** — An EIP-712 payload signed by the Relayer under `kytAttestor` after an address-only KYT screen. The address holder submits it to `WhitelistRegistry.enrol`. Path 2 (standalone enrolment) for the whitelist.
-
-**Equity tranche** — Junior slice of a commodity loan, funded by the Originator and held off-chain as first-loss capital. Realised losses hit the equity tranche before any sPLUSD writedown.
+**Equity tranche** — Junior slice of a commodity loan, funded by the Originator. The loan registry records its size. The protocol does not enforce the loss order between tranches.
 
 ---
 
 ## F
 
-**Facility** — A single trade-finance loan, typically tied to one Offtake contract for one cargo. Every facility is represented on-chain by one LoanRegistry NFT carrying its origination parameters and lifecycle state.
+**Facility** — A single trade-finance loan, typically tied to one offtake contract for one cargo. Every facility has one record in the loan registry.
 
-**Facility size** — The total committed loan amount at origination, in USDC (stored as `originalFacilitySize` on the LoanRegistry NFT). Split at mint into `originalSeniorTranche` (lender capital) and `originalEquityTranche` (originator first-loss).
+**Facility agent** — The agent appointed under the agency deed. It reviews drawdown requests, keeps the loan register, applies the priority of payments and records payments, accessions and transfer certificates. It executes grace, extensions, margin calls and the call of the loan on lender instruction.
 
-**First-loss** — The tranche that absorbs realised losses before any other capital is hit. On Pipeline, the Originator equity tranche is first-loss on every loan.
+**Facility size** — The total committed loan amount at origination. The loan registry records it with its split into the senior tranche (lender capital) and the equity tranche (originator capital).
 
-**Framework: TBD** — Placeholder reference for the legal framework that governs Pipeline's KYT-only AML approach. Published before launch.
+**First-loss** — The tranche that absorbs realised losses before any other capital is hit. On Pipeline, the originator's equity tranche is first-loss on every loan.
 
 ---
 
 ## G
 
-**GUARDIAN** — A 2-of-5 MPC with instant, defence-only powers: pause any pausable contract, cancel any pending scheduled ADMIN or RISK_COUNCIL action, and revoke individual operational-role holders (`WHITELIST_REVOKER`, `TRUSTEE`) one at a time. Cannot grant roles, unpause, upgrade, or initiate any risk-increasing action. Restoration is strictly ADMIN's job under the 3-day timelock (7-day for upgrades).
+**Guardian** — The role that can cancel scheduled actions of the operational roles before they run. It cannot pause, unpause, grant or revoke roles.
 
 ---
 
 ## H
 
-**Hashnote** — Asset manager that issues USYC, Hashnote's tokenised U.S. Treasury-bill product. Pipeline uses USYC as its idle-reserve yield engine. Pipeline redeems USYC for USDC against the Hashnote redemption rail to realise T-bill yield.
+**Handover** — In the security registry, one step that makes a new security record active and releases the old one. Example: the cargo leaves the ship for a warehouse, and the warehouse pledge replaces the bill of lading.
 
 ---
 
 ## I
 
-**Intake Wallet** — A separate MPC custody address that holds USDC during the screening window between `DepositManager.deposit` and `DepositManager.claim`. Same cosigner substrate as the Capital Wallet under a deposit-specific sub-policy. Smart contracts hold standing allowances against the Intake Wallet for `claim` (Intake → Capital) and `refund` (Intake → lender) settlements. A compromise of the Intake Wallet drains parked deposits but cannot drain the Capital Wallet.
+**Inspection** — An independent weight or quality check by an inspection company appointed by the lending vehicle. One Inspection Operator enters it and a second one approves it. The protocol computes the variance against the paper quantity and against the previous inspection. A variance above tolerance flags the record, and the Risk Council resolves the flag.
+
+**Inspection Operator** — The role that enters and approves inspections in the security registry. It is held by the lending vehicle. It never writes security records.
+
+**Interest** — Simple interest on outstanding principal at the loan's rate, on a 365.25-day year. A new interest period starts each time the outstanding amount or the rate changes. When a repayment is booked, the interest is minted as PLUSD into the vault and the sPLUSD price steps up. There is no daily minting. The platform bills accrued interest each month, and the borrower pays it as a repayment with zero principal.
 
 ---
 
 ## K
 
-**KYT (Know Your Transaction)** — Compliance screening that evaluates an address against sanctions and risk lists, and evaluates an inbound transaction for source-of-funds risk. Pipeline runs KYT on every deposit, on standalone address enrolments, and on scheduled passive re-screening of whitelisted addresses. KYT replaces customer identity verification (KYC, KYB) and accreditation declarations for lender onboarding under the `[Framework: TBD]` legal frame.
+**KYB (Know Your Business)** — Verification of a legal entity: ownership, control and sanctions. Every counterparty passes KYB: lenders, Originators, borrowers and every other party to a facility.
 
-**kytAttestor** — The Relayer's ECDSA signing key whose address is stored as a parameter on DepositManager, WithdrawalQueue, and WhitelistRegistry. The Relayer signs `ClaimAttestation` (for deposit and withdrawal claims) and `EnrolAttestation` (for standalone whitelist enrolment) with this key. Rotated via per-contract `setKytAttestor` setters under 48-hour ADMIN timelock. Signing-key relationship, not a role grant.
+**KYT (Know Your Transaction)** — Compliance screening of an address against sanctions and risk lists, and of a payment for source-of-funds risk. Every counterparty passes KYT. The backend screens an address before whitelisting it and screens each deposit before signing its voucher.
 
 ---
 
 ## L
 
-**Letter of credit** — A bank instrument under which an issuing bank undertakes to pay the seller once stated shipping and document conditions are met. A classical trade-finance payment mechanism. Pipeline finances the seller's working capital against the underlying trade, not the letter of credit itself.
+**Lending vehicle** — The bankruptcy-remote company that is the initial lender under the MFA. It holds the senior share of each facility and appoints the inspection companies. Pipeline's Trustee runs it and its operations.
 
-**LoanRegistry** — An ERC-721 (soulbound) contract that records every loan facility as an NFT, with immutable origination data and mutable lifecycle state. Public audit trail of every loan. Informational only — a compromised or erroneous write to LoanRegistry moves no USDC and cannot change sPLUSD share price, which responds only to real yieldMint events.
+**Letter of credit** — A bank instrument under which an issuing bank undertakes to pay the seller once stated shipping and document conditions are met. A classical trade-finance payment mechanism. Pipeline finances the seller's working capital against the underlying trade. It does not finance the letter of credit itself.
 
-**Loan Originator** — Independent commodity trading house, merchant, or specialist trade-finance shop that sources deals, underwrites them, and contributes the equity tranche on every loan they bring to Pipeline.
+**Loan registry** — The smart contract that records each loan as one non-transferable record held by the capital wallet. Fixed at origination: borrower reference, facility size, senior and equity tranches, offtaker price, interest rate, origination and maturity dates. Updated over the loan's life: status, amounts disbursed, repaid and written down, interest periods and repayments. Outstanding principal in the registry counts toward the pool's assets.
 
-**LTV (Loan-to-Value)** — Outstanding loan principal divided by current cargo value. Marked daily against independent price assessments (Platts, Argus).
+**Loan Originator** — Independent commodity trading house, merchant or specialist trade-finance shop that sources deals, underwrites them and contributes the equity tranche on every loan it brings to Pipeline. It joins a facility as a lender by accession.
+
+**Loan status** — Approved, Performing, Watchlist, Default, Closed. A loan becomes Performing at its first disbursement. A cured default returns to Watchlist.
+
+**LTV (Loan-to-Value)** — Outstanding principal plus accrued interest, divided by the value of the loan's active security. Goods count at counted quantity times market price. Cash, receivables, letter-of-credit proceeds and prepayments count at face. Insurance never counts. The platform feeds market prices on-chain.
 
 ---
 
 ## M
 
-**maxPerLPPerWindow** — A DepositManager parameter capping the USDC a single lender can deposit inside the rolling 24h deposit window. Together with `maxPerWindow` it bounds single-actor concentration on the deposit leg. YieldMinter has no per-account caps.
+**Majority Lenders** — Lenders holding the MFA threshold of commitments. They decide grace, extensions, default, the call of the loan, enforcement, write-downs, inspection flags, price overrides and the replacement of either agent. Changes to economics and release of security outside its release condition need all lenders. While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
 
-**maxPerWindow** — A DepositManager parameter capping the aggregate USDC accepted across all lenders inside the rolling 24h deposit window (launch value: $10M / 24h).
+**Margin call** — Opened when LTV rises above the margin-call ratio (default 85 %). Cured when LTV is back at or below the advance ratio (default 80 %) within the cure period. A stale price blocks a margin call. There is no automatic default at the end of the cure period.
 
-**maxTotalSupply** — Hard ceiling on `PLUSD.totalSupply() + outstandingClaimable` checked at deposit time and re-checked at claim time. `outstandingClaimable` reserves cap headroom for tickets already screened-clean but not yet claimed. Applies to both DepositManager and YieldMinter. Tightening is instant under GUARDIAN; loosening is 3-day-timelocked under ADMIN.
+**MFA (master facility agreement)** — The agreement between the borrower and the lenders for a facility. It sets the lenders' decisions, the priority of payments and the conditions for each drawdown.
 
-**mintForDeposit** — The PLUSD function the DepositManager calls inside `claim` to mint deposit-leg PLUSD 1:1 against a screened USDC deposit. Gated by the DEPOSITOR role and enforces the reserve invariant and `maxTotalSupply` ceiling.
+**Mint limits** — Caps on new PLUSD per entry and per 24 hours. Deposit manager: 5,000,000 per deposit, 10,000,000 per 24 hours. Minter: 1,000,000 per entry, 10,000,000 per 24 hours, counting bank wires in, interest and fees.
 
-**mintForYield** — The PLUSD function the YieldMinter calls to mint yield-leg PLUSD into the sPLUSD vault or the Treasury Wallet. Gated by the YIELD_MINTER role and enforces the reserve invariant and `maxTotalSupply` ceiling. Signature verification lives one layer up in YieldMinter.
+**Minter** — The smart contract that keeps the protocol's cash book. It makes every PLUSD mint other than USDC deposits: bank wires in, interest and fees on repayment, bank income. It also books loan disbursements, bank wires out, USDC-bank ramps, expenses and reversals.
 
-**MOPS** — Mean of Platts Singapore. Benchmark price assessment used for refined-products pricing and LTV margining.
-
-**MPC** — Multi-Party Computation. Cryptographic technique enabling threshold signing without any party ever holding a complete signing key. Used by BitGo for Pipeline's custody wallets, and by Pipeline's governance Safes (ADMIN, RISK_COUNCIL, GUARDIAN) at the on-chain layer.
+**MOPS** — Mean of Platts Singapore. Benchmark price assessment used for refined-products pricing.
 
 ---
 
 ## O
 
-**Offtake contract** — A commercial agreement under which the Offtaker commits to buy a specified cargo at a stated price and schedule. Pipeline typically originates one Facility per offtake contract and books the end-buyer obligation as `originalOfftakerPrice` on the LoanRegistry NFT.
+**Offtake contract** — A commercial agreement under which the Offtaker commits to buy a specified cargo at a stated price and schedule. Pipeline typically originates one facility per offtake contract and records the offtaker price in the loan registry.
 
-**Offtaker** — The end buyer of the physical commodity in a trade-finance deal. When the offtaker pays for the cargo, USD lands in the Trustee's correspondent bank account; the Trustee then on-ramps USD → USDC into the Capital Wallet. The offtaker never touches USDC and never touches the chain.
-
-**Open Mineral AG** — Pipeline's inaugural Loan Originator. Swiss-headquartered metals merchant founded by ex-Glencore principals, backed by Mubadala.
-
-**Operational Expense Trust (OET)** — Ring-fenced runway reserve. Pre-funded by a fraction of commission fees. Covers fixed operating costs through an orderly wind-down.
+**Offtaker** — The end buyer of the physical commodity in a trade-finance deal. The offtaker pays in USD to the bank account. The Cash Reporter books the payment on-chain as a repayment. The offtaker never touches USDC or the chain.
 
 **Originator** — Short for Loan Originator.
 
@@ -158,110 +162,80 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## P
 
-**Payment Agent** — Operates the fiat bridge via Circle Mint. Handles USD↔USDC for loan funding, repayment, and T-bill deployment. Operational counterparty, not part of the legal structure.
+**Pauser** — The role that stops a contract at once in an emergency. Seven contracts can be paused; the access manager and the debt token factory cannot. Only Admin unpauses.
 
-**PLIOU** — Contingent loss-absorption token, issued by The Trust Company only when a default has been declared, the equity tranche is exhausted, and a residual principal gap remains. Sold for PLUSD at discount to par; redeemed at par from future protocol revenue. Capped at 10% of PLUSD supply, 60-month horizon. Available beyond MVP.
+**Platts / Argus** — Independent commodity price-assessment providers: Platts (S&P Global) and Argus.
 
-**Platts / Argus** — Independent commodity price-assessment providers (S&P Global, LSEG). Pipeline uses them as the oracle source for daily LTV mark-to-market.
+**PLUSD** — Pipeline's dollar token. 1 PLUSD = 1 USD of claim on the pool. Minted 1:1 for USDC deposits and for bank wires in, and for interest and fees when a repayment is booked. Only whitelisted addresses can hold it. Burned when a withdrawal is paid.
 
-**PLUSD** — Pipeline's ERC-20 dollar receipt. Minted 1:1 against deposited USDC. One PLUSD represents one USDC held at the Capital Wallet. Transfers require both endpoints to be whitelisted or one to be a system address (DepositManager, YieldMinter, WithdrawalQueue, sPLUSD vault). Fresh supply enters only through mintForDeposit or mintForYield.
+**Pocket** — A holding account opened for each defaulted loan. It holds the PLUSD carved out of the vault for the sPLUSD holders at the moment of default. Recoveries on the loan go into the pocket, and those holders claim them pro rata. A write-down burns PLUSD from the pocket.
 
-**PRT (Pipeline Recovery Tokens)** — Post-MVP ERC-20 IOU token. Issued pro-rata to PLUSD and sPLUSD holders when loss exceeds the equity tranche and the sPLUSD writedown cushion. 1 PRT = $1 face claim against the Recovery Pool, redeemable at `pool.balance / totalSupply(PRT)` (capped at 1.0, ratchets up only). Freely transferable.
+**Priority of payments** — The order in which a facility's payments and enforcement proceeds are applied: agent costs, then lenders by class, then any surplus to the borrower.
 
 ---
 
 ## R
 
-**Realised gain (USYC)** — `USDC proceeds − cost basis of units sold`, computed at the moment a Trustee-instructed USYC redemption settles. Remaining position's cost basis is reduced by the cost basis of units sold. Realised gains are the only USYC-engine input to PLUSD mints.
+**Ramp** — A conversion between USDC and USD at the bank, booked on-chain by the Trustee. A shortfall on a ramp is booked as an expense and taken from the vault.
 
-**RecoveryPool** — Dormant contract in MVP. Reserved primitive for post-MVP recovery flows alongside PRT. Holds USDC against which PRT holders redeem at the published rate.
+**Recovery rate** — A rate below 1 that Admin may set once on the withdrawal queue. Queued withdrawals are then paid in USDC at that rate. It cannot be changed after it is set.
 
-**recordRepayment** — A LoanRegistry function the Trustee calls to book a split of an offtaker payment across senior principal, senior interest, and equity tranche. Pure accounting — moves no USDC and mints no PLUSD; actual yield delivery runs through the independent yieldMint path on YieldMinter.
+**Relayer** — Pipeline's off-chain backend service. It screens addresses and deposits, whitelists approved addresses, signs deposit and withdrawal vouchers and matches bank wires to on-chain records. It cannot mint PLUSD on its own.
 
-**Relayer** — Pipeline's off-chain backend. Indexes the chain, co-signs YieldAttestations alongside the Trustee, signs KYT attestations off-chain (`kytAttestor`), and operates the WHITELIST_REVOKER role for fast sanctions response. Holds no custody share. Cannot mint PLUSD alone. Never writes to DepositManager or WithdrawalQueue directly. Signs off-chain attestations that the lender or address holder submits at claim or enrol time. A compromised Relayer cannot mint PLUSD on its own.
+**Repayment waterfall** — The split of an offtaker payment, recorded per repayment: senior principal, senior interest, equity distributed, management fee, performance fee. Fees are capped at 50 % of interest plus fees. Interest goes to the vault. Fees go to the treasury as sPLUSD.
 
-**relayerYieldAttestor** — The Relayer's ECDSA signing key whose address is stored on YieldMinter. The Relayer signs the first half of every yield attestation with this key. Rotated via `YieldMinter.proposeYieldAttestors` under a 48-hour ADMIN timelock. Held in an air-gapped hardware signer.
-
-**Reserve invariant** — An on-chain, per-transaction check that `totalSupply + amount ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` on every PLUSD mint path. Internal-consistency check against PLUSD's own ledger — not a Proof of Reserve — and catches over-mint or counter desync before supply changes.
-
-**RISK_COUNCIL** — A 3-of-5 MPC with a 3-day AccessManager delay on its actions. Scope: `setDefault` on a LoanRegistry loan, write-down closures (`closeLoan` with reason `Default` or `OtherWriteDown`), and exchange-coefficient changes on the WithdrawalQueue. Cannot grant roles, upgrade, or unpause.
-
-**Risk committee** — Off-chain governance body of five members that approves loans, reviews concentration weekly, declares defaults, and sets recovery coefficients during workout. Decisions expressed on-chain via the RISK_COUNCIL MPC.
+**Risk Council** — The role for loan risk actions: default, write-down, cure, interest adjustment, changes to loan terms including extensions, closing a defaulted loan, and reversals and corrections of cash records. Default and the reversal of a repayment run at once. Its other actions run 24 hours after they are scheduled. In the security registry it resolves inspection flags and may set a manual price. A multisig of several people holds the role. While Pipeline is the only lender, it acts for the Majority Lenders. Loan approval runs off-chain.
 
 ---
 
 ## S
 
-**Senior tranche** — The senior slice of a commodity loan, funded by Pipeline lenders via the sPLUSD vault. Earns the senior coupon. Sits behind the equity tranche (and PRT, post-MVP) in the loss waterfall.
+**Security Agent** — The independent security trustee appointed under the agency deed. It holds the security on trust for all lenders by the priority of payments. Bills of lading are endorsed to it by way of pledge. It is loss payee on cargo and trade credit insurance and co-signs the collection account. In the security registry it writes the security records and attests them.
 
-**ShutdownController** — Dormant contract in MVP. Reserved primitive for post-MVP terminal-mode scenarios. MVP loss handling uses the WithdrawalQueue exchange coefficient as the entire mechanism.
+**Security registry** — The smart contract that records the security behind each loan, one record per security instrument: bill of lading, warehouse pledge, CMA, receivable, letter-of-credit proceeds, cash cover, prepayment, insurance. Only active records count toward LTV. There is no haircut. A facility is funded only where the lenders' security ranks first, confirmed by a local legal opinion.
 
-**Split-rail** — Pipeline's architecture: a cash rail where USDC sits in self-custodied MPC wallets (Intake, Capital, Withdrawal Queue, Treasury) operated under the Trustee + Team + External Counterparties cosigner policy; and a token rail where on-chain contracts track receipts and enforce rules. Rules link the two rails; no contract can spend wallet funds, and no single cosigner can mint tokens or move USDC alone.
+**Senior tranche** — The senior slice of a commodity loan, funded by Pipeline lenders through the sPLUSD vault. Earns the senior interest rate. Paid before the equity tranche.
 
-**sPLUSD** — ERC-4626 vault wrapping PLUSD. Stakers deposit PLUSD and receive sPLUSD shares whose redemption value rises as fresh PLUSD is minted into the vault through yieldMint. Share price moves only on actual mints, not on LoanRegistry writes or time-based accrual.
+**Signed voucher** — The backend's signature that releases a deposit or a withdrawal. It names the request, the lender, the amount and a deadline. A voucher works once.
 
-**Strategy Trusts** — Cayman / BVI Purpose Trusts that ring-fence each investment strategy. Capital allocated to one strategy cannot be commingled with another.
+**Split-rail** — Pipeline keeps cash and tokens apart. USDC sits in custodian accounts and USD in the bank. Smart contracts hold no USDC. They record loans and cash, and mint and burn PLUSD.
 
-**Sumsub** — Identity-verification provider used for KYC (individuals) and KYB (entities) on Pipeline's Originator and counterparty onboarding flows. Not used for lender onboarding; lenders are screened by KYT only.
+**sPLUSD** — Staked Pipeline USD, the share of the staking vault over PLUSD. A lender stakes PLUSD and receives sPLUSD. Unstaking returns PLUSD at the current share price at once. The share price rises when interest or bank income is minted into the vault. It falls when the vault absorbs a loss, an expense or a carve-out. The vault keeps each holder's balance history to fix who owns a pocket at default. sPLUSD transfers are not limited to whitelisted addresses.
+
+**Stale price** — A market price older than the allowed age. A stale price blocks a margin call.
 
 ---
 
 ## T
 
-**Team** — Pipeline's operating team. Holds two MPC cosigner shares on each Capital Layer wallet (Intake, Capital, Withdrawal Queue, Treasury). Holds no on-chain role; has no ability to mint PLUSD or move USDC alone.
+**Tranche** — A slice of a loan with a defined priority in the repayment waterfall. Pipeline's facilities have a senior tranche (lender capital, paid first) and an equity tranche (originator first-loss, paid last).
 
-**The Trust Company** — Cayman holding entity that owns the Strategy Trusts and the Operational Expense Trust. Exercises protocol-level governance, holds the USD bank account, and signs the custody quorum.
+**Transfer certificate** — How a lender takes over an existing share of a facility. The transferor and the transferee sign it, and the facility agent holds it.
 
-**totalClaimable** — WithdrawalQueue aggregate: `totalRequested - totalClaimed`. The currently outstanding obligations. Every claim asserts `claimAmount ≤ totalClaimable`; the queue physically refuses to pull more than it owes.
+**Treasury** — The protocol account that receives fees. Management fees and performance fees are minted as PLUSD at repayment and staked into the vault for the treasury.
 
-**totalClaimed** — WithdrawalQueue aggregate: cumulative PLUSD burned via successful claims.
+**Trustee** — Pipeline's Trustee. It runs the lending vehicle and its operations from the trustee console.
 
-**totalRequested** — WithdrawalQueue aggregate: cumulative PLUSD escrowed across all withdrawal requests ever submitted.
-
-**Trade Company (Cayman SPC)** — Segregated-portfolio company; lender of record on every loan. Each strategy sits in a separate Segregated Portfolio with statutory ring-fencing under Cayman Companies Act Part XIV.
-
-**Tranche** — A slice of a loan with a defined priority in the repayment waterfall. Pipeline's facilities are structured with a senior tranche (lender capital, paid first) and an equity tranche (originator first-loss, paid last).
-
-**Treasury Wallet** — Institutional-custody MPC address that accumulates protocol fees (management, performance, OET allocation) and the 30% Treasury share of realised T-bill yield. 5-share, 3-of-5 cosigner topology.
-
-**Trustee** — Pipeline Trust Company, an independent legal entity. Operationally the Trustee is (a) the sole caller of LoanRegistry lifecycle writes for non-default reasons (`recordRepayment`, Trustee-branch `closeLoan`); and (b) one MPC cosigner on every Capital Layer wallet. The Trustee does not custody USDC alone and cannot mint PLUSD.
-
-**TRUSTEE (role)** — The on-chain role on LoanRegistry that authorises Trustee-branch loan NFT writes. Held in MVP by the Trustee key alone. Revocable instantly by GUARDIAN, re-grantable only by ADMIN under the 3-day timelock.
-
-**trusteeYieldAttestor** — The Trustee's EIP-1271 signer contract whose address is stored on YieldMinter. The Trustee co-signs every yield mint after independently verifying the underlying USDC inflow (senior-coupon on-ramp or realised USYC sale proceeds). Signature recovered on-chain inside `YieldMinter.yieldMint` before any PLUSD is minted.
+**Trustee (role)** — The role for loan operations: draw a loan, disburse, update, roll over and close a loan, register its debt token, assign or return incoming wires, settle or cancel wires out, open and close ramps, book expenses. Its actions run with no delay.
 
 ---
 
 ## U
 
-**Unrealised gain (USYC)** — `USYC NAV × units − cost basis`. Informational only — does not enter `PLUSD.totalSupply` and does not move sPLUSD share price. Becomes realised only when the Trustee instructs the wallet to sell USYC for USDC.
+**Upgrader** — The role that replaces the code of a protocol contract.
 
-**UPGRADER (role)** — The role on AccessManager that authorises `upgradeTo(newImpl)` on every UUPS proxy. Held in MVP by ADMIN. Upgrades are 7-day-delayed and GUARDIAN-cancellable. The delay itself is protected by a 14-day meta-timelock.
-
-**USYC** — Hashnote's tokenised U.S. Treasury-bill holding, parked in the Capital Wallet. NAV drifts up daily as the underlying bills accrue, but the gain is unrealised. Yield is delivered to PLUSD only when the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail; realised gain is then minted via YieldMinter, 70% to the sPLUSD vault and 30% to the Treasury Wallet.
+**USDC** — The stablecoin lenders deposit and withdraw.
 
 ---
 
 ## W
 
-**WhitelistRegistry** — On-chain allowlist of compliance-screened lender addresses. Both endpoints of every PLUSD transfer must be whitelisted (or one must be a system address). 90-day KYT freshness window enforced via `approvedAt` per entry. Three enrolment paths: deposit-triggered (auto-enrol via `DepositManager.claim`), standalone (holder calls `enrol` with an EnrolAttestation), and DeFi venue (governance-added).
+**Watchlist** — A loan status between Performing and Default. A cured default returns to Watchlist.
 
-**WHITELIST_ADMIN (role)** — The role on WhitelistRegistry that authorises `setAccess` (enrolment). Held in MVP by the DepositManager proxy address (so auto-enrolment can happen inside `DepositManager.claim`). Contract-held.
+**Whitelist** — The set of addresses approved to hold PLUSD. Whitelist Admin approves an address after KYT screening. PLUSD can move only between whitelisted addresses.
 
-**WHITELIST_REVOKER (role)** — The role on WhitelistRegistry that authorises `revokeAccess`. Held by the Relayer EOA. Narrow defensive on-chain role for fast sanctions response. GUARDIAN can revoke this role instantly.
+**Whitelist Admin** — The role that approves addresses to hold PLUSD.
 
-**Withdrawal Queue Wallet** — Institutional-custody MPC address holding USDC earmarked for queued withdrawals. Funded by periodic top-ups from the Capital Wallet under the 3-of-5 cosigner quorum (Trustee mandatory). Pre-approved as a USDC source for the WithdrawalQueue contract via standing allowance.
+**Withdrawal queue** — The smart contract for USDC withdrawals. A lender escrows PLUSD and joins the queue in order. A request can be claimed once the withdrawal custodian holds enough USDC to cover the queue up to it, and the backend has signed its voucher. The claim pays USDC from the withdrawal custodian and burns the PLUSD.
 
-**WithdrawalQueue** — On-chain user-pulled FIFO exit queue. Lenders escrow PLUSD via `requestWithdrawal`, receive a queue ID, then call `claim` themselves. The queue contract pulls USDC from the Withdrawal Queue Wallet via the wallet's standing allowance, with a `claimAmount ≤ totalClaimable` aggregate-ledger ceiling. Can carry an exchange coefficient less than 1.0 during recovery.
-
----
-
-## Y
-
-**YieldAttestation** — An EIP-712 payload referencing a specific USDC inflow (senior coupon repayment or realised USYC sale proceeds). Co-signed by the Relayer (`relayerYieldAttestor`) and the Trustee (`trusteeYieldAttestor`). Submitted to `YieldMinter.yieldMint`, which verifies both signatures on-chain before minting.
-
-**YieldMinter** — Two-party yield mint gate. Requires verified signatures from both the Trustee attestor (EIP-1271) and the Relayer attestor before any PLUSD is minted. Mint destinations hard-constrained to the sPLUSD vault or Treasury Wallet. `usedRepaymentRefs` replay guard rejects any attestation ID already consumed.
-
-**YIELD_MINTER (role)** — The role on PLUSD that authorises `PLUSD.mintForYield`. Held in MVP by the YieldMinter proxy address (contract-held, not an EOA).
-
-**yieldMint** — The YieldMinter function called to mint yield-leg PLUSD. Verifies both signatures, checks the replay guard, enforces the recipient constraint (sPLUSD vault or Treasury Wallet only), and calls `PLUSD.mintForYield`.
+**Write-down** — A Risk Council action that writes off part of a defaulted loan's outstanding balance. It burns PLUSD from the loan's pocket. The part the pocket does not hold is recorded as unabsorbed. No cash moves.

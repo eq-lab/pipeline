@@ -6,49 +6,60 @@ section: How Pipeline works
 
 # Legal structure
 
-Pipeline's legal structure is designed around three principles. Each operates as a constraint on every other element of the architecture.
+Pipeline's legal structure rests on three principles.
 
 ## Design principles
 
 ### Bankruptcy remoteness
 
-Each financed trade is held in its own sub-trust. Collateral pledged to one trade cannot be reached by creditors of another trade, of the operating entity, or of Pipeline itself. A loss event in one sub-trust is structurally contained.
+The initial lender is a bankruptcy-remote lending vehicle. Security sits with the Security Agent, on trust for all lenders. Title documents held by the Security Agent do not form part of its estate. The collection account carries no credit facility at the borrower's bank, so the bank has no right of set-off.
 
-### On-chain instructions as binding legal authority
+### Secured lending with full recourse
 
-The trust deed recognises authenticated on-chain protocol actions as binding instructions. The fiduciary trustee acts on those instructions as a matter of legal obligation, not discretion — closing the gap between protocol logic and legal effect.
+The lender holds a claim on the borrower, with full recourse. The commodity is security for that claim. The lender never takes title to the goods. Bills of lading are endorsed to the Security Agent by way of pledge. Every facility requires first-ranking security, confirmed by a local legal opinion.
 
-### Regulated fiduciary as operator
+### Lenders decide, agents execute
 
-Capital movements are executed by a regulated trustee acting under the trust deed and applicable fiduciary duty, not by the Pipeline team. The operating counterparty that structures trades is a different entity from the one holding collateral; neither can unilaterally access senior capital.
+Grace, extensions, default, the call of the loan, enforcement and write-downs are lender decisions under the master facility agreement. The Majority Lenders take them. Changes to economics and release of security outside its release condition need the consent of all lenders. The facility agent and the Security Agent carry the decisions out and record them.
 
 ## Structure
 
-A purpose trust sits at the centre, governed by a trust deed that recognises on-chain protocol actions as legally binding. Each financed trade is held in its own sub-trust, isolating its collateral from every other trade.
+Each facility is documented by a master facility agreement (MFA) and an agency deed, with security documents per jurisdiction.
 
-Two operating entities sit alongside the trust:
+- **Lending vehicle**: the initial lender under the MFA. Bankruptcy remote. Holds the senior share of the facility.
+- **Loan Originator and other lenders**: join a facility by accession deed, or take over an existing share by transfer certificate.
+- **Borrower**: owes the loan with full recourse. Grants security to the Security Agent. Pays into a collection account co-signed by the Security Agent.
+- **Facility agent**: appointed under the agency deed. Keeps the loan register, records drawdowns, repayments, payments, accessions and transfers, and applies the priority of payments.
+- **Security Agent**: an independent security trustee appointed under the agency deed. Holds the bills of lading by way of pledge, warehouse release rights, assigned receivables and loss-payee rights on cargo and trade credit insurance. Holds the security on trust for all lenders, by the facility's priority of payments. Enforces on Majority Lender instruction.
+- **Inspection companies**: appointed by the lending vehicle. Certificates are addressed to the Security Agent and all lenders.
 
-- **The Trust Company (Cayman)** — the regulated trustee managing funds and legal title to collateral on behalf of their beneficiaries.
-- **Trade Company (Cayman SPC)** — the operating counterparty that structures each physical trade in a bankruptcy-remote cell and posts collateral into the sub-trusts.
-
-This separation means the entity doing the trades is distinct from the entity holding the collateral.
+Each agent is liable only for gross negligence, wilful misconduct or fraud. The Majority Lenders may replace either agent. Enforcement proceeds are applied by the priority of payments: agent costs, then lenders, then surplus to the borrower. A change to the collection account's signing mandate without notice to the Security Agent is an event of default.
 
 ## Trustee role
 
-"Trustee" across these docs refers to actions performed by The Trust Company under the trust deed. The Trustee:
+"Trustee" across these docs refers to Pipeline's Trustee, which runs the lending vehicle and its operations. The Trustee:
 
-- Manages legal title to pledged collateral (indirectly, through the sub-trust structure)
-- Executes capital movements under authenticated on-chain instructions consistent with the trust deed
-- Co-signs every yield mint alongside the Relayer (neither can mint alone)
-- Manages the USD bank account that receives offtaker wires and instructs USD/USDC conversion
-- Enforces collateral on default through the sub-trust mechanic
+- Runs the lending vehicle as lender under the MFA
+- Records loans, disbursements, lender wires out and USD/USDC conversions on-chain through the Trustee role
+- Manages the USD bank account that receives offtaker wires and handles USD/USDC conversion
+- Appoints the inspection companies for the lending vehicle and enters inspection results through its inspection operators
 
-The Trustee acts under fiduciary duty to beneficiaries, not under instruction from the Pipeline team. Where on-chain instructions conflict with the trust deed, the Trustee declines to act.
+While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
 
 ## What is not part of the legal structure
 
-The Loan Originator and the Payment Agent are operational counterparties, not entities in the Pipeline legal structure. The Originator is a per-deal third party that contributes the equity tranche and stands as merchant of record on the underlying trade. The Payment Agent operates the fiat bridge (USDC/USD via Circle Mint) under contract.
+The Loan Originator is not a Pipeline entity. It is a per-deal counterparty. It joins a facility as a lender by accession, contributes the equity tranche and stands as merchant of record on the underlying trade.
 
 ## Legal counsel
 
-Reed Smith LLP — facility templates, English law, LCIA arbitration, and structuring counsel for the Trade Company. Carey Olsen — Cayman offshore counsel covering the purpose trust, the trust deed, The Trust Company, and the sub-trust framework.
+A satisfactory local legal opinion on security perfection and enforcement, in the borrower and goods jurisdictions, is a condition precedent to each facility.
+
+## Confidentiality
+
+No counterparty name or document is published. Hashes are salted.
+
+| Public on-chain | Salted hash only | Kept off-chain |
+|---|---|---|
+| Principal, rate, status, maturity dates, coverage | Borrower, supplier and buyer identity | Names, contracts, invoices, KYB and KYT files |
+| Commodity, quantity, corridor and location by region | Vessel and warehouse identity; bills of lading, receipts, notices | Inspection reports and photographs |
+| Inspected quantity, quality and variance | Inspection certificates, accession deeds, transfer certificates, consents, lender instructions, legal opinions | Credit memos and lenders' committee papers |

@@ -6,7 +6,7 @@ section: Start here
 
 # Reference transaction
 
-The below represents a trade that Pipeline's architecture has been stress-tested against. This reference transaction illustrates the type of deal the protocol is designed to finance.
+Pipeline's architecture has been stress-tested against the trade below. It shows the type of deal the protocol finances. The parties and numbers are illustrative.
 
 ## Deal summary
 
@@ -14,13 +14,13 @@ The below represents a trade that Pipeline's architecture has been stress-tested
 |---|---|
 | **Commodity** | Jet fuel — aviation kerosene, JET A-1 |
 | **Trade corridor** | South Korea (sourcing) → Chinese bonded storage (tank farm) → Mongolia (end buyer) |
-| **Originator / Servicer** | Open Mineral AG |
+| **Originator / Servicer** | A commodity trade finance Originator |
 | **Sourcing counterparty** | Vitol / Korean refiners (FOB South Korea) |
 | **Storage** | Chinese bonded tank farm under CMA (SGS or Intertek) |
 | **Offtaker** | An aviation fuel distributor |
 | **Facility size** | $20M (indicative) |
 | **Senior tranche** | $17M (85%) — funded by Pipeline lenders |
-| **Equity tranche** | $3M (15%) — funded by Open Mineral, first-loss |
+| **Equity tranche** | $3M (15%) — funded by the Originator, first-loss |
 | **Duration** | 90 days |
 | **Senior coupon** | 14.0% gross annualised |
 | **Collateral structure** | CMA over stored product + assignment of offtake receivable |
@@ -36,39 +36,39 @@ The below represents a trade that Pipeline's architecture has been stress-tested
 
 #### Sourcing
 
-Open Mineral identifies the deal — an aviation fuel distributor needs JET A-1, sourced from Korean refiners via Vitol's supply chain.
+The Originator identifies the deal. An aviation fuel distributor needs JET A-1, sourced from Korean refiners via Vitol's supply chain.
 
-#### KYC and pre-screening
+#### KYB, KYT and pre-screening
 
-Open Mineral submits KYC packs for borrower, offtaker, and CMA provider. Protocol Operations runs sanctions, AML, and credit screens.
+The Originator submits KYB packs for the borrower, the offtaker and the CMA provider. Protocol Operations runs KYB, KYT, sanctions, AML and credit screens on every party.
 
 #### Term sheet and underwriting
 
-Open Mineral prepares the indicative term sheet — facility size, duration, pricing, collateral, hedging. Underwriting goes deep on price assumptions, corridor risk, and offtaker payment record.
+The Originator prepares the indicative term sheet: facility size, duration, pricing, collateral, hedging. Underwriting covers price assumptions, corridor risk and the offtaker's payment record.
 
-#### Risk committee approval
+#### Risk Council approval
 
-Committee reviews against the Credit Policy: commodity, corridor, borrower tier, concentration, LTV ladder, hedging adequacy. On approval, the loan gets recorded to the LoanRegistry smart contract.
+The deal is reviewed against the Credit Policy: commodity, corridor, borrower tier, concentration, advance ratio, hedging. On approval, the Trustee records the loan in the loan registry: facility size, senior and equity tranches, rate, origination and maturity dates, offtaker price. The loan starts as Approved.
 
 #### Equity tranche commitment
 
-Open Mineral funds the $3M equity tranche before senior tranche draws. First-loss capital sits in escrow.
+The Originator joins the facility by accession and funds the $3M equity tranche before the senior tranche is drawn.
 
 #### Senior tranche funding
 
-$17M drawn from the Capital Wallet under 3-of-5 cosigner quorum, routed via the Payment Agent to the Originator's control account, funding the seller.
+A local legal opinion confirms the security ranks first. The lending vehicle, the initial lender under the master facility agreement, wires $17M to fund the seller. The Trustee records the disbursement in the loan registry. Interest starts to accrue and the loan becomes Performing. A per-loan debt token mirrors the outstanding principal.
 
 #### Cargo loading and sailing
 
-Cargo loads at Korean refinery FOB. Vessel tracking via CTRM. Independent inspectors verify quantity and quality at load port.
+Cargo loads at the Korean refinery FOB. The bill of lading is endorsed to the Security Agent by way of pledge. The Security Agent records it in the security registry. Inspectors appointed by the lending vehicle verify quantity and quality at the load port.
 
 #### Bonded storage
 
-Cargo arrives at the Chinese bonded tank farm. CMA (SGS or Intertek) takes possession, issues warehouse receipts pledged to the Collateral Trust.
+Cargo arrives at the Chinese bonded tank farm. The CMA provider (SGS or Intertek) takes possession and issues warehouse receipts pledged to the Security Agent. The Security Agent hands the security over from the bill of lading to the warehouse pledge in one step.
 
 #### Daily monitoring
 
-Cargo value marked against MOPS. LTV calculated against outstanding senior + equity. Margin breach triggers Originator top-up.
+The platform marks the stored product against MOPS. LTV is the outstanding amount plus accrued interest, divided by the value of the goods. When LTV rises above 85%, a margin call opens. The borrower brings LTV back to 80% with cash or goods within the cure period. A stale price blocks a margin call.
 
 #### Offtake to Mongolia
 
@@ -76,32 +76,30 @@ The jet fuel distributor takes delivery. Payment falls due per LC or documentary
 
 #### Repayment
 
-The jet fuel distributor wires USD to the Trustee's correspondent account. Trustee instructs USD → USDC on-ramping via Circle Mint. USDC settles into the Capital Wallet.
+The jet fuel distributor wires USD to the collection account, co-signed by the Security Agent. The repayment is applied by the priority of payments, booked on-chain and split into senior principal, senior interest, fees and the equity distribution.
 
 #### Yield mint
 
-Trustee and Relayer co-sign a YieldAttestation for the senior coupon net of fees. YieldMinter verifies both signatures and mints into the sPLUSD vault. Share price moves up.
+The senior interest net of fees is minted as PLUSD into the staking vault. The sPLUSD price moves up. Fees go to the treasury.
 
 #### Collateral release and equity distribution
 
-LoanRegistry burns collateral tokens. Collateral Trust releases security. Equity tranche principal plus residual swept to Open Mineral. Loan archived.
+The Security Agent releases the security. The equity tranche principal and the residual go to the Originator. With nothing outstanding, the Trustee closes the loan.
 
 ## Illustrative investor yield
 
-Applying Pipeline's fee structure to this transaction:
+Applying illustrative fee rates (management fee 1.0% a year, performance fee 15% of net interest) to this transaction. Interest accrues on a 365.25-day year.
 
 | Component | Value |
 |---|---|
 | **Senior debt deployed (85% of $20M)** | $17,000,000 |
 | **Gross senior interest rate (annualised)** | 14.0% |
 | **Duration** | 90 days |
-| **Gross interest earned** | $586,850 ($17M × 14% × 90/365) |
-| **Less: Management fee (1.0% p.a. on $17M × 90d)** | ($41,920) |
-| **Net interest before performance fee** | $544,930 |
-| **Less: Performance fee (15% of net interest)** | ($81,740) |
-| **Net interest to sPLUSD holders from this deal** | $463,190 |
+| **Gross interest earned** | $586,448 ($17M × 14% × 90/365.25) |
+| **Less: Management fee (1.0% p.a. on $17M × 90d)** | ($41,889) |
+| **Net interest before performance fee** | $544,559 |
+| **Less: Performance fee (15% of net interest)** | ($81,684) |
+| **Net interest to sPLUSD holders from this deal** | $462,875 |
 | **Effective net yield (annualised, on deployed capital)** | ~11.0% p.a. |
-
-Uninvested capital earns base yield from US Treasury bill positions held as USYC. At a 4.5% T-bill rate and a 30% protocol share on Engine B, lenders receive ~3.2% annualised on unallocated capital. With a $100M pool, $85M deployed across concurrent 90-day facilities and $15M in T-bills, blended return is ~9.0–10.0% net of all fees — consistent with Pipeline's 8–12% target.
 
 90-day duration means deployed capital recycles four times per year.

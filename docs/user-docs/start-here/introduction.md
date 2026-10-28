@@ -10,24 +10,25 @@ On-chain yield from global commodity trade.
 
 ## What Pipeline does
 
-Pipeline is a decentralised commodity trade finance protocol that produces on-chain yield from asset-backed commodity financing loans — high yield, short duration, hard collateral-backed, self-liquidating. The decentralised way of accessing trade-finance returns: safer than a traditional trade finance fund, with the liquidity and transparency only an on-chain platform delivers.
+Pipeline is a permissioned commodity trade finance protocol. It funds the senior tranche of short-duration loans secured by physical commodities and repaid from the sale of the goods.
 
-Lenders deposit USDC and receive PLUSD, a 1:1 dollar receipt. PLUSD can be staked into sPLUSD to earn yield. Pipeline deploys deposited USDC into senior tranches of short-duration commodity trade loans — for instance, copper from Chile, jet fuel from South Korea, wheat from Australia — sourced and underwritten by qualified Loan Originators who contribute the equity tranche on every deal. Senior coupons net of fees accrete into the PLUSD staking vault, lifting sPLUSD price.
+Lenders deposit USDC or wire USD and receive PLUSD. 1 PLUSD is a claim on 1 USD of the pool. Lenders stake PLUSD in the staking vault and receive sPLUSD. Loan Originators source and underwrite the deals, for example copper from Chile or wheat from Australia, and fund the equity tranche of each one. When a borrower repays, the senior interest net of fees is minted as PLUSD into the staking vault. The sPLUSD price rises.
+
+Every loan is recorded in the on-chain loan registry. Its terms, status, disbursements and repayments are public.
 
 ## How it differs from what exists today
 
 |   | **Traditional trade finance fund** | **Pipeline** |
 |---|---|---|
-| **Access** | Quarterly subscription windows; accreditation gates | Permissioned but programmatic — KYC and deposit any time |
-| **Liquidity** | Quarterly redemptions, often gated | Withdraw any time; no lock-up |
+| **Access** | Quarterly subscription windows; accreditation gates | Permissioned; approved addresses deposit at any time |
+| **Liquidity** | Quarterly redemptions, often gated | No lock-up; withdrawals are paid in queue order as cash is available |
 | **Transparency** | Quarterly investor letter; limited deal disclosure | Every loan on a public on-chain registry |
-| **Capital efficiency** | Cash sits idle awaiting the next deal | Idle USDC held as USYC, accruing T-bill yield |
-| **Counterparty risk** | Manager discretion on selection | Risk committee approves every deal against published Credit Policy |
+| **Counterparty risk** | Manager discretion on selection | Every deal is assessed against the published Credit Policy |
 
 ## How it differs from on-chain credit protocols
 
-Existing on-chain credit pools USDC against borrower-pledged collateral, often with thin underwriting and weak recovery rights. They have repeatedly suffered losses from undercollateralised lending and inadequate workout. Pipeline differs in three ways:
+Existing on-chain credit pools lend USDC against borrower-pledged collateral, often with thin underwriting and weak recovery rights. They have suffered losses from undercollateralised lending and poor workouts. Pipeline differs on these points:
 
-- Real underwriting — every loan underwritten by a professional Loan Originator with their own equity at risk.
-- Physical collateral with enforceable rights — bills of lading, warehouse receipts, CMA agreements with centuries of commercial law behind them.
-- Institutional custody — USDC principal sits in BitGo custody under multi-party quorum, not inside an exploitable contract.
+- A professional Loan Originator underwrites every loan and puts its own equity in the deal.
+- Loans are secured by physical goods and the rights to them: bills of lading, warehouse pledges, collateral management agreements, assigned receivables. An independent Security Agent holds the security on trust for all lenders.
+- Deposited USDC goes straight to a custody account. No smart contract holds lender USDC.

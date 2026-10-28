@@ -6,35 +6,33 @@ section: Technical overview
 
 # Relayer security model
 
-The Relayer is Pipeline's off-chain backend that indexes the chain, co-signs yield mints, maintains the WhitelistRegistry, and cuts custody in an emergency. To minimise trust assumptions, it holds no custody share, cannot mint PLUSD alone, and cannot move USDC out of any Capital Layer wallet. Every privileged action requires either a second on-chain signature or a pre-authorised contract allowance.
+The Relayer is Pipeline's off-chain backend. It indexes on-chain events, screens lenders, approves screened addresses to hold PLUSD, signs deposit and withdrawal vouchers, and matches bank wires to their on-chain bookings. It holds no custody key. It cannot mint PLUSD alone. It cannot move USDC out of any custody account.
 
 ## What the Relayer can do
 
-- Index on-chain events and serve off-chain attestations to the frontend via API
-- Co-sign YieldAttestations alongside the Trustee — both signatures verified on-chain at `YieldMinter.yieldMint`, neither can mint alone
-- Sign ClaimAttestations and EnrolAttestations off-chain under the `kytAttestor` key; the lender or address holder submits them on-chain at `DepositManager.claim`, `WithdrawalQueue.claim`, or `WhitelistRegistry.enrol`
-- Call `WhitelistRegistry.revokeAccess` directly under the `WHITELIST_REVOKER` role for fast sanctions response — the only on-chain write the Relayer performs
-- Raise an alarm that triggers the hardware circuit breaker (a custody-side action carried out by the Trustee and Team under the BitGo cosigner policy, not by the Relayer itself)
+- Index on-chain events and serve protocol data to the app and the console
+- Screen lender addresses and deposits against sanctions and AML lists
+- Approve a screened address to hold PLUSD, under the Whitelist Admin role
+- Sign a single-use, expiring voucher for a screened deposit; anyone can then submit the claim, and PLUSD is minted 1:1 to the depositor
+- Sign a voucher for a withdrawal claim; the claim pays only if the withdrawal custody account holds enough USDC for the queue up to that request
+- Match bank wires to the wire-in bookings in the cash book
 
 ## What the Relayer cannot do
 
-- Mint PLUSD alone. Mint paths require the lender's own `DepositManager.claim` call (against USDC the lender already deposited) or YieldMinter's two-party call.
-- Move USDC out of the Capital Wallet, Treasury Wallet, or Intake Wallet. No allowances exist to any Relayer-controlled contract.
-- Move USDC out of the Withdrawal Queue Wallet. The WithdrawalQueue contract pulls via the wallet's standing allowance when a lender calls `claim`; the Relayer is not in the claim critical path.
-- Grant or re-grant roles. ADMIN only (under 3-day timelock, 7-day for upgrades).
-- Enrol addresses on the whitelist directly. Enrolments land via `DepositManager.claim` (auto-enrol on deposit) or holder-submitted `WhitelistRegistry.enrol` with an attestation.
-- Pause contracts. GUARDIAN only.
-- Declare default. RISK_COUNCIL only (3-day timelock).
+- Mint PLUSD alone. A deposit mint needs a real USDC deposit already sent to custody. Every other mint needs the Cash Reporter.
+- Move USDC out of any custody account. The withdrawal queue pays only the lender who queued the request.
+- Grant or revoke roles. Admin only.
+- Pause contracts. Pauser only.
+- Declare default. Risk Council only.
 
 ## Compromised Relayer scenario
 
-If the Relayer is compromised, the attacker cannot drain capital. PLUSD is only minted when the lender calls `claim` against their own deposited USDC; a compromised `kytAttestor` key can sign attestations but cannot mint PLUSD on its own. The risk is AML (illicit USDC entering the Capital Wallet via a bypassed KYT on a real deposit), not direct theft. Worst case beyond that: denial of service on yield mints (refusing to co-sign) and on whitelist enrolment (refusing fresh attestations).
+If the Relayer is compromised, the attacker cannot drain capital. PLUSD for a deposit is minted only against USDC the depositor already sent to custody. A compromised voucher key can approve deposits that should have failed screening. The risk is AML: illicit USDC can enter custody. It can also approve withdrawal claims; they still pay only the lender who queued them, in queue order. Under the Whitelist Admin role it can approve any address to hold PLUSD, or remove an approval. Worst case beyond that: deposits and withdrawals stall, and new addresses are not approved.
 
-GUARDIAN revokes the Relayer's `WHITELIST_REVOKER` instantly via `AccessManager.revokeRole`, and pauses DepositManager, YieldMinter, and WithdrawalQueue as defence in depth. ADMIN rotates `kytAttestor` and `relayerYieldAttestor` under the 48-hour attestor-rotation timelock and re-grants `WHITELIST_REVOKER` to a new Relayer key under the 3-day standard timelock.
+The Admin revokes the Relayer's Whitelist Admin role, sets a new voucher key on the deposit manager and the withdrawal queue, and grants the role to a new key. The Pauser can pause the deposit manager and the withdrawal queue meanwhile. These actions run with no delay.
 
 ## Operational hardening
 
-- Hardware-backed key custody for the attestation key
-- Rate-limited signing with anomaly detection
-- Independent reconciliation oracle separate from the Relayer, publishing the Capital Wallet vs. PLUSD `totalSupply` drift indicator
-- On-call rotation with SLA-bounded response to red drift
+- One voucher key signs both deposit and withdrawal vouchers.
+- Each voucher names the request, the user, the amount and a deadline, and can be used once.
+- Mint limits on deposits: 5,000,000 PLUSD per deposit and 10,000,000 per 24 hours.

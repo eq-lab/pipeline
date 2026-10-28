@@ -6,38 +6,65 @@ section: How Pipeline works
 
 # Protocol layer
 
-The Protocol Layer is a set of on-chain smart contracts. Token architecture sits at the top: PLUSD as the dollar receipt and sPLUSD as the yield-bearing share of the PLUSD staking vault. LoanRegistry sits as the second-priority surface, the public audit trail of every loan facility. The remaining contracts run the deposit, mint, withdraw, and access flows.
+The Protocol Layer is a set of on-chain smart contracts. PLUSD is the dollar token. sPLUSD is the share of the PLUSD staking vault. The loan registry is the public record of every loan facility. The other contracts run deposits, mints, withdrawals, defaults and access.
 
 ## Token architecture
 
 ### PLUSD
 
-ERC-20 dollar receipt. Minted 1:1 against USDC entering the Capital Wallet via DepositManager. Freely transferable between whitelisted addresses. Two mint paths: deposit-side (DepositManager) and yield-side (YieldMinter, two-party). Reserve invariant asserted on every mint.
+Permissioned dollar token. 1 PLUSD is a claim on 1 USD of the pool. Only addresses approved by the protocol can hold it. PLUSD moves only between approved holders.
+
+PLUSD is minted 1:1 in two cases: a lender deposits USDC, or a lender's bank wire arrives. The minter also mints PLUSD for loan interest and protocol fees at repayment. Each minting path has a per-transaction and a 24-hour limit.
 
 ### sPLUSD
 
-ERC-4626 yield-bearing share with PLUSD as an underlying asset. Any PLUSD holder can stake. The sPLUSD share price rises when a yield mint lands — senior coupons and realised T-bill yield.
+Share of the PLUSD staking vault. Any PLUSD holder can stake. Bank-wire deposits are staked for the lender on arrival. Redemption back to PLUSD is instant at the current share price.
+
+The share price rises when loan interest or bank interest is minted into the vault. Interest is minted in one amount when a borrower repays, so the share price moves in steps.
+
+### Debt token
+
+Each loan has its own debt token. One token equals 1 USD of principal outstanding. The capital wallet holds the tokens frozen, and their supply follows the loan registry. Debt tokens are never money and are never counted in PLUSD.
 
 ## LoanRegistry
 
-Every originated loan is one NFT carrying immutable origination data — borrower, commodity, corridor, facility size, tranche split, offtaker price, coupon rate. Plus mutable lifecycle state. LoanRegistry is the public audit trail of the loan book.
+Every loan is one non-transferable record held by the capital wallet. It carries data fixed at origination: a hash of the borrower reference, facility size, senior and equity tranches, offtaker price, interest rate, origination and maturity dates. It also carries lifecycle state: status, amounts disbursed, repaid and written down, interest periods and each repayment's split.
+
+Statuses: Approved, Performing, WatchList, Default, Closed. A cured default returns to WatchList.
+
+Interest is simple interest on principal outstanding at the current rate, on a 365.25-day year. A new interest period starts on every change of principal or rate.
+
+The loan registry is part of the pool's value. Principal outstanding counts in the pool's assets.
 
 ## Core operational contracts
 
 | Contract | Purpose |
 |---|---|
-| **DepositManager** | Two-step screened deposit. `deposit` moves USDC into the Intake Wallet and creates a ticket; the Relayer signs an EIP-712 ClaimAttestation off-chain after KYT clears; the lender submits the attestation via `claim`, which moves USDC to the Capital Wallet and mints PLUSD 1:1. |
-| **YieldMinter** | Gates yield mints. Requires signatures from both the Trustee attestor (EIP-1271) and the Relayer attestor. Mint destinations hard-constrained to sPLUSD vault or Treasury Wallet. |
-| **WithdrawalQueue** | User-pulled FIFO exit. Lenders escrow PLUSD, receive a queue ID, claim USDC themselves. The queue contract (not the Relayer) pulls from the Withdrawal Queue Wallet via the wallet's standing allowance. |
-| **WhitelistRegistry** | On-chain allowlist of compliance-screened addresses. Every PLUSD transfer requires both endpoints to be whitelisted or a system address (deposit/yield/queue contracts and the sPLUSD vault). Maintains the 90-day KYT freshness window. |
-| **AccessManager** | Role hub. Every privileged call routes through — instant for GUARDIAN, 3-day timelock for RISK_COUNCIL, 3-day timelock for ADMIN (7-day for upgrades), 14-day meta-timelock on the delay parameter itself. |
+| **Deposit manager** | Lender sends USDC. The USDC goes straight to the deposit account. After screening, the relayer signs a voucher. The voucher is submitted, and PLUSD is minted 1:1 to the lender. Minimum 1,000 USDC, at most 5,000,000 per deposit and 10,000,000 per 24 hours across all lenders. |
+| **Minter** | Keeps the cash book of the bank account. Mints PLUSD for bank wires in, books loan disbursements and repayments, mints interest into the vault and fees to the treasury, books wires out, USDC-to-bank conversions, bank income and charges, and reversals. |
+| **Withdrawal queue** | First-in, first-out exit. Lenders escrow PLUSD and get a queue position. A claim needs a voucher signed by the relayer and enough USDC in the withdrawal account to cover the queue up to that position. The queue pays USDC from the withdrawal account through its allowance and burns the PLUSD. |
+| **Security registry** | One record per security instrument behind a loan, written and confirmed by the Security Agent. Holds inspections, prices and each loan's security terms. Computes LTV and opens margin calls. |
+| **Debt token factory** | Registers each loan's debt token and keeps its supply equal to principal outstanding. |
+| **Pocket** | Holds a defaulted loan's share of the vault for the holders at the time of default. Pays recoveries to them and burns write-downs. |
+| **Access manager** | Role hub. Every privileged call goes through it. It maps each action to a role, applies the role's delay, and lets a guardian cancel a scheduled call. |
 
-## Recovery in MVP
+## Recovery
 
-If the loss waterfall exhausts the equity tranche, RISK_COUNCIL sets a recovery rate (an exchange coefficient less than 1.0) on the WithdrawalQueue under the 3-day timelock. From that block on, every claim pays out `face_value × coefficient`. The coefficient ratchets up only as recoveries land. There is no separate ShutdownController contract in MVP — the WithdrawalQueue's exchange coefficient is the entire mechanism. See [Default management](/risks/default-management/).
+When the Risk Council declares a loan in default, the loan's principal outstanding moves from the vault into the pocket for that loan. The pocket belongs to the vault holders at that moment, pro rata to their balance. Repayments and recoveries on the loan go to the pocket, and those holders claim them. A write-down burns PLUSD from the pocket. If the vault could not cover the full amount at default, the uncovered part of a write-down is recorded as an unabsorbed loss. See [Default management](/risks/default-management/).
 
-ShutdownController and RecoveryPool contracts remain in the codebase as dormant primitives for post-MVP scenarios, but are not engaged in MVP loss handling.
+The withdrawal queue has one more lever. The Admin can set a recovery rate below 1.0 once. From then on, every claim pays the face value times that rate. The rate cannot be changed after it is set.
 
-## ERC primitives
+## Roles
 
-PLUSD is ERC-20. sPLUSD is ERC-4626. Trustee attestation is EIP-1271. Role hub is OpenZeppelin AccessManager (v5). Governance MPCs are Gnosis Safe contracts behind BitGo MPC custody. Chain is EVM.
+| Role | Powers | Delay |
+|---|---|---|
+| Admin | Grants and revokes roles, sets limits and accounts, unpauses, sets the recovery rate | None |
+| Trustee | Records loans, disbursements, wires out and USDC-to-bank conversions, bank charges | None |
+| Cash reporter | Records bank wires in, repayments and bank income | None |
+| Risk Council | Declares default, reverses repayment entries | None |
+| Risk Council | Writes down, cures, amends loan terms, reverses other entries | 24 hours |
+| Security Agent | Writes and confirms security records | None |
+| Inspection operator | Enters and approves inspection results | None |
+| Guardian | Cancels a scheduled call of a guarded role | None |
+| Pauser | Pauses a contract | None |
+| Upgrader | Upgrades a contract | None |
