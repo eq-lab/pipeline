@@ -1,7 +1,13 @@
-// spec: docs/frontend/trustee-flows.md#two-layer-gating-1008
+// spec: docs/frontend/trustee-flows.md#render-level-auth-gate-1008-1749
 import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import {
   RouterProvider,
   createMemoryHistory,
@@ -10,9 +16,9 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { Route as AppRoot } from "@/routes/__root";
-import { useTrusteeSession } from "./TrusteeSessionProvider";
 import {
   _resetSessionStoreForTests,
+  getSessionState,
   setSession,
   setSessionStatus,
 } from "./sessionStore";
@@ -20,7 +26,8 @@ import {
 const mockEvmDisconnect = vi.fn();
 const mockStellarDisconnect = vi.fn();
 
-vi.mock("@pipeline/wallet-connect", () => ({
+vi.mock("@pipeline/wallet-connect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@pipeline/wallet-connect")>()),
   useEvmWallet: () => ({
     isConnected: false,
     address: undefined,
@@ -50,39 +57,33 @@ vi.mock("@/lib/env", () => ({
   ENV: { EVM_CHAIN_ID: 560048, STELLAR_CHAIN_ID: 99000001 },
 }));
 
-vi.mock("@/components/TrusteeSidebar", () => ({
-  TrusteeSidebar: () => <nav data-testid="sidebar" />,
-}));
-
 function HomePage() {
-  const { signOut } = useTrusteeSession();
-  return (
-    <div data-testid="home">
-      <button onClick={signOut}>sign out</button>
-    </div>
-  );
+  return <div data-testid="home" />;
+}
+
+function LoanPage() {
+  return <div data-testid="loan" />;
 }
 
 function buildRouter(initialPath: string) {
   const rootRoute = createRootRoute({
-    beforeLoad: AppRoot.options.beforeLoad,
     component: AppRoot.options.component,
+    notFoundComponent: AppRoot.options.notFoundComponent,
   });
   const home = createRoute({
     getParentRoute: () => rootRoute,
     path: "/",
     component: HomePage,
   });
-  const signIn = createRoute({
+  const loan = createRoute({
     getParentRoute: () => rootRoute,
-    path: "/sign-in",
-    component: () => <div data-testid="sign-in-page" />,
+    path: "/loans/$id",
+    component: LoanPage,
   });
-  const router = createRouter({
-    routeTree: rootRoute.addChildren([home, signIn]),
+  return createRouter({
+    routeTree: rootRoute.addChildren([home, loan]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
-  return router;
 }
 
 async function renderApp(initialPath: string) {
@@ -93,9 +94,20 @@ async function renderApp(initialPath: string) {
     </StrictMode>,
   );
   await waitFor(() => expect(router.state.status).toBe("idle"));
-  await screen.findByTestId(initialPath === "/" ? "home" : "sign-in-overlay");
+  const authed = getSessionState().status === "authenticated";
+  const testId = !authed
+    ? "sign-in-overlay"
+    : initialPath.startsWith("/loans/")
+      ? "loan"
+      : "home";
+  await screen.findByTestId(testId);
   const navigate = vi.spyOn(router, "navigate");
   return { router, navigate, ...result };
+}
+
+async function signOutFromMenu() {
+  fireEvent.click(await screen.findByRole("button", { name: "Account menu" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
 }
 
 function authenticate(expiresAt = Date.now() + 60_000) {
@@ -114,71 +126,96 @@ afterEach(() => {
 });
 
 describe("auth transitions on a real router", () => {
-  it("sign-in on /sign-in navigates once to / and renders the app", async () => {
-    const { router, navigate, container } = await renderApp("/sign-in");
+  it("sign-in on / keeps the URL and renders the app without navigating", async () => {
+    const { router, navigate, container } = await renderApp("/");
 
     act(() => authenticate());
 
-    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
-    await waitFor(() => expect(router.state.status).toBe("idle"));
-    expect(navigate).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenCalledWith({ to: "/", replace: true });
     expect(await screen.findByTestId("home")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/");
+    expect(navigate).not.toHaveBeenCalled();
     expect(container).not.toBeEmptyDOMElement();
   });
 
-  it("sign-out on / navigates once to /sign-in and renders the overlay", async () => {
+  it("deep link signed out shows the overlay on the same URL, then the page after sign-in", async () => {
+    const { router, navigate } = await renderApp("/loans/123");
+    expect(router.state.location.pathname).toBe("/loans/123");
+    expect(screen.queryByTestId("loan")).not.toBeInTheDocument();
+
+    act(() => authenticate());
+
+    expect(await screen.findByTestId("loan")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/loans/123");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("sign-out click on /loans/123 replaces the URL with / and renders the overlay", async () => {
+    authenticate();
+    const { router, navigate, container } = await renderApp("/loans/123");
+
+    await signOutFromMenu();
+
+    expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(router.history.length).toBe(1);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/", replace: true }),
+    );
+    expect(screen.queryByTestId("loan")).not.toBeInTheDocument();
+    expect(container).not.toBeEmptyDOMElement();
+  });
+
+  it("sign-out click on / stays on / and renders the overlay", async () => {
     authenticate();
     const { router, navigate, container } = await renderApp("/");
 
-    act(() => screen.getByText("sign out").click());
+    await signOutFromMenu();
 
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe("/sign-in"),
-    );
-    await waitFor(() => expect(router.state.status).toBe("idle"));
-    expect(navigate).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenCalledWith({ to: "/sign-in", replace: true });
     expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/");
+    expect(navigate).toHaveBeenCalledTimes(1);
     expect(container).not.toBeEmptyDOMElement();
   });
 
-  it("token expiry on / navigates once to /sign-in and renders the overlay", async () => {
+  it("a session status change to unauthenticated alone does not navigate", async () => {
+    authenticate();
+    const { router, navigate } = await renderApp("/loans/123");
+
+    act(() => setSessionStatus("unauthenticated"));
+
+    expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/loans/123");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("token expiry on /loans/123 keeps the URL and renders the overlay", async () => {
     authenticate(Date.now() + 700);
-    const { router, navigate, container } = await renderApp("/");
+    const { router, navigate, container } = await renderApp("/loans/123");
 
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe("/sign-in"),
-    );
-    await waitFor(() => expect(router.state.status).toBe("idle"));
-    expect(navigate).toHaveBeenCalledTimes(1);
     expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/loans/123");
+    expect(screen.queryByTestId("loan")).not.toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
     expect(container).not.toBeEmptyDOMElement();
   });
 
-  it("unauthorized sign-out on /sign-in does not navigate", async () => {
-    const { navigate } = await renderApp("/sign-in");
+  it("unauthorized reset does not navigate", async () => {
+    const { router, navigate } = await renderApp("/loans/123");
 
     act(() => setSessionStatus("unauthorized", "Not allowed"));
     act(() => screen.getByText("Try a different wallet").click());
 
     expect(navigate).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/loans/123");
     expect(screen.getByTestId("sign-in-overlay")).toBeInTheDocument();
   });
 
-  it("does not rewrite history while a navigation is pending", async () => {
+  it("an unknown path such as a stale /sign-in lands on / once authenticated", async () => {
     authenticate();
-    const { router } = await renderApp("/");
-    const replaceState = vi.spyOn(window.history, "replaceState");
+    const { router } = await renderApp("/sign-in");
 
-    act(() => screen.getByText("sign out").click());
-    while (router.state.status !== "idle") {
-      expect(replaceState).not.toHaveBeenCalled();
-      await act(async () => {
-        await Promise.resolve();
-      });
-    }
-    await waitFor(() => expect(router.state.status).toBe("idle"));
-    expect(replaceState).not.toHaveBeenCalled();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(await screen.findByTestId("home")).toBeInTheDocument();
   });
 });

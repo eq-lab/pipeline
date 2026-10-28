@@ -1785,67 +1785,57 @@ button shape, a different Figma component — corrected).
 
 ## Session & auth
 
-**Sources:** `packages/trustee/src/auth/**` (`TrusteeSessionProvider.tsx`, `sessionStore.ts`,
-`authGate.ts`, `useAuthRedirect.ts`), `components/TrusteeShell.tsx`, `components/SignInOverlay.tsx`,
-`components/SignInCard.tsx`, `routes/__root.tsx`, `routes/sign-in.tsx`.
+**Sources:** `packages/trustee/src/auth/**` (`TrusteeSessionProvider.tsx`, `sessionStore.ts`),
+`components/TrusteeShell.tsx`, `components/SignInOverlay.tsx`,
+`components/SignInCard.tsx`, `routes/__root.tsx`.
 Issues: #791 (flow), #793/#794/#795 (modal hardening), #921/#988/#1009 → **#1008** (gating
 architecture). Backend contract: `docs/product-specs/api-authorization.md` /
 `packages/api/src/routes/auth.rs`.
 
-### Two-layer gating (#1008)
+### Render-level auth gate (#1008, #1749)
 
-Auth is enforced in two independent layers:
+Auth is one render-level gate and nothing else. `TrusteeShell` renders `SignInOverlay`
+(Figma `4174-31660`) whenever the session is not authenticated, **on any URL**, and never mounts
+protected route content (`<Outlet/>`) while signed out, so no authenticated API calls fire either.
+No session status change (sign-in, token expiry, unauthorized reset) issues a navigation: the
+address bar stays where the user is, no history entries are added, and the content follows the
+session status. The one exception is the explicit **Sign out** click in the sidebar Account menu:
+its handler issues a single `navigate({ to: "/", replace: true })` (so Back never returns to a
+protected URL) and then calls `signOut()`. `signOut()` itself clears the session and disconnects
+wallets and never navigates, so the unauthorized "Try a different wallet" reset stays URL-neutral.
+There is no `/sign-in` route.
 
-1. **Correctness — render-level gate (cannot race).** `TrusteeShell` renders `SignInOverlay`
-   (Figma `4174-31660`) whenever the session is not authenticated, **on any URL**, and never mounts
-   protected route content (`<Outlet/>`) while signed out — so no authenticated API calls fire
-   either. Whatever the address bar says, the content is always right.
-2. **URL convention — redirects (not load-bearing).** `/sign-in` is the canonical logged-out URL.
-   The root route's `beforeLoad` (`resolveAuthRedirect`) enforces it on hard navigations
-   (unauthenticated on a protected path → `/sign-in`; authenticated on `/sign-in` → `/`), and
-   `useAuthRedirect` enforces it on **mid-session** status changes (sign-in completing, sign-out,
-   token expiry) that `beforeLoad` never sees. `useAuthRedirect` is the **one navigation owner**
-   for those transitions (#1731): it navigates with `replace: true`, skips a target that is
-   already `router.latestLocation` or already in flight, and logs a rejected navigation
-   (`[trustee] auth-redirect`) instead of swallowing it. `signOut()` does **not** navigate — it
-   clears the session and disconnects wallets, and the hook reacts to the status change. The
-   `/sign-in` route itself renders `null` — the gate UI always comes from the shell.
-   `useAuthRedirect` also **self-heals the address bar**: external history writes (observed on
-   staging — e.g. the wallet modal restoring its pre-open URL on close) can overwrite
-   `window.location` without the router noticing, leaving the URL on `/sign-in` while the app
-   renders `/`. No router/React state reflects that divergence, so the hook compares
-   `window.location.pathname` against the router's **resolved** location (read at call time, not
-   from a render closure) on every status/path change, plus short delayed re-checks (250 / 1500 ms)
-   for late clobbers, and re-stamps the address bar via `history.replaceState`. The check is a
-   no-op unless the router is idle, not transitioning, and has no newer `latestLocation` — a
-   write during a pending navigation would fight it. Router state is the source of truth.
+The root route has a `notFoundComponent` that renders `<Navigate to="/" replace />`, so any
+unknown path (a stale `/sign-in` bookmark included) lands on `/`. Signed out, the shell renders
+the overlay before the outlet, so the redirect mounts only after sign-in. That navigation is
+driven by an unmatched path, never by a session status change.
 
-If a redirect misfires, the failure mode is a briefly-wrong address bar. Content stays correct
-(layer 1), and the app-level error boundary ([App bootstrap](#app-bootstrap--providers)) turns
-any thrown render error — including a falsy one — into a visible error view instead of a blank
-page. **History:** three URL-synchronization approaches raced in production builds and stranded
-the URL on `/sign-in` — a render-phase `<Navigate>` (#921), `beforeLoad` + `router.invalidate()`
-(#988, `invalidate()` does not re-run the root guard and `beforeLoad` only runs during
-navigations), and a reactive navigate alone (#1009). The trigger — "status flipped while parked on
-`/sign-in` with no navigation in flight" — is inherently racy to convert into a navigation, which
-is why correctness no longer depends on one. **#1731** (white screen after sign-in and after
-logout on staging, console `Uncaught undefined`, fixed by a refresh): logout fired two overlapping
-navigations (the provider's and the hook's) and sign-in overlapped the hook's navigation with the
-`beforeLoad` redirect and the self-heal. Overlapping loads share the root match's `_nonReactive`
-state (`@tanstack/react-router` 1.168.x), so a load could leave the rendered root match `pending`
-after another load had cleared its `loadPromise`; `Match` then **throws that `undefined`**
-during render. TanStack's `CatchBoundary` renders its error view only `if (error)`, so the falsy
-throw passes through every router boundary, reaches the React root and unmounts the whole tree.
-Only a falsy throw does this — a real `Error` renders the router's error view. The fix is the
-single navigation owner above plus the app boundary; the upstream fix (≥ 1.170) is TD-158.
+The app-level error boundary ([App bootstrap](#app-bootstrap--providers)) turns any thrown render
+error, including a falsy one, into a visible error view instead of a blank page.
+
+**History:** #1008 added the render-level gate plus a `/sign-in` URL convention. Three
+URL-synchronization approaches raced in production builds and stranded the URL on `/sign-in`: a
+render-phase `<Navigate>` (#921), `beforeLoad` + `router.invalidate()` (#988, `invalidate()` does
+not re-run the root guard and `beforeLoad` only runs during navigations), and a reactive navigate
+alone (#1009). **#1731** (white screen after sign-in and after logout on staging, console
+`Uncaught undefined`, fixed by a refresh): logout fired two overlapping navigations and sign-in
+overlapped the hook's navigation with the `beforeLoad` redirect and an address-bar self-heal.
+Overlapping loads share the root match's `_nonReactive` state (`@tanstack/react-router` 1.168.x),
+so a load could leave the rendered root match `pending` after another load had cleared its
+`loadPromise`; `Match` then **throws that `undefined`** during render. TanStack's `CatchBoundary`
+renders its error view only `if (error)`, so the falsy throw passes through every router boundary,
+reaches the React root and unmounts the whole tree. **#1749** removed the URL layer entirely
+(`routes/sign-in.tsx`, `authGate.ts`, `useAuthRedirect.ts`, the root `beforeLoad`): with no
+navigation on auth changes there is nothing to overlap. The router upgrade (>= 1.170) is TD-158.
 
 | Scenario | URL | Content |
 |---|---|---|
-| Visit `/` signed out | `/sign-in` | overlay |
-| Deep-link `/loans` signed out | `/sign-in` | overlay |
-| Sign in from `/sign-in` | `/` | dashboard |
-| Logout from any page | `/sign-in` (`replace`: Back does not return to a protected URL) | overlay |
-| Token expiry mid-session | `/sign-in` | overlay |
+| Visit `/` signed out | `/` (unchanged) | overlay |
+| Deep-link `/loans` signed out | `/loans` (unchanged) | overlay; after sign-in the loans page on the same URL |
+| Sign in | unchanged | page for the current URL |
+| Sign out click (sidebar Account menu) from any page | `/` (one `replace` navigation from the click, no history entry added) | overlay |
+| Token expiry mid-session | unchanged | overlay |
+| Old `/sign-in` bookmark or any unknown path | `/` via root `notFoundComponent` (signed out: overlay first, redirect after sign-in) | overlay, then dashboard |
 
 ### Sign-in flow (#791, hardened #793/#794/#795)
 
@@ -1890,14 +1880,13 @@ unauthorized-error states).
    `@pipeline/wallet-connect`). A rejection returns to `unauthenticated` **silently** — a user
    choice, not an error.
 4. `POST /v1/auth/verify` — on success the token is stored (`setSession`) and `status` flips to
-   `authenticated`; **no navigation happens anywhere in the flow** (layer 1 swaps the UI, layer 2
-   tidies the URL). A `401` here (nonce race / signature mismatch) surfaces as
+   `authenticated`; **no navigation happens anywhere in the flow** (the render-level gate swaps the UI
+   on the current URL). A `401` here (nonce race / signature mismatch) surfaces as
    "verification failed"; the `400 unknown chain_id` case maps to the same network-not-supported
    message as step 2.
 
-`signOut()` clears the stored token and disconnects both wallets; the URL follows from
-`useAuthRedirect`. There
-is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
+`signOut()` clears the stored token and disconnects both wallets and does not navigate; the
+sidebar Sign out click first replaces the URL with `/`. There is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
 purely client-side.
 
 ### Session store (`sessionStore.ts`)

@@ -20,8 +20,8 @@ Resolved by #791 against the backend signature-auth contract (`docs/product-spec
 wallet connect → `GET /v1/auth/challenge` → sign (EVM `personal_sign` / Stellar SEP-0053) →
 `POST /v1/auth/verify` → client-held JWT bearer session (`sessionStorage`). Authorization is a
 server-side allow-list; `401` renders as a "not authorized" card error, no client-side role
-read. Sign-out is client-side (no server logout endpoint). Route gating redirects unauthenticated
-visitors to `/sign-in` and an existing session away from it.
+read. Sign-out is client-side (no server logout endpoint). Auth is a render-level gate: unauthenticated visitors see the
+sign-in overlay on the current URL; no session change navigates (#1749).
 
 ---
 

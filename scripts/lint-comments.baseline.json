@@ -663,10 +663,6 @@
     "header": 14,
     "nodeIds": 0
   },
-  "packages/trustee/src/auth/-authGate.test.ts": {
-    "header": 8,
-    "nodeIds": 0
-  },
   "packages/trustee/src/auth/-sessionStore.test.ts": {
     "header": 7,
     "nodeIds": 0
@@ -677,14 +673,6 @@
   },
   "packages/trustee/src/components/-NeedsAttention.test.tsx": {
     "header": 21,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/components/-SignInOverlay.test.tsx": {
-    "header": 10,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/components/-TrusteeShell.test.tsx": {
-    "header": 6,
     "nodeIds": 0
   },
   "packages/trustee/src/components/-TrusteeSidebar.test.tsx": {
@@ -713,10 +701,6 @@
   },
   "packages/trustee/src/components/TrusteeNavIcons.tsx": {
     "header": 12,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/components/TrusteeShell.tsx": {
-    "header": 0,
     "nodeIds": 1
   },
   "packages/trustee/src/lib/env.ts": {

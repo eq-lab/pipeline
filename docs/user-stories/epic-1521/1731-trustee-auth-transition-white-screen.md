@@ -2,7 +2,7 @@
 
 Epic: [#1521 — LoanBook API: multi-chain](https://github.com/eq-lab/pipeline/issues/1521)
 Issue: [#1731](https://github.com/eq-lab/pipeline/issues/1731)
-Spec: [docs/frontend/trustee-flows.md#two-layer-gating-1008](../../frontend/trustee-flows.md#two-layer-gating-1008)
+Spec: [docs/frontend/trustee-flows.md#render-level-auth-gate-1008-1749](../../frontend/trustee-flows.md#render-level-auth-gate-1008-1749)
 
 Trustee app (`packages/trustee`) on staging with an allow-listed wallet and DevTools open (Console and Network) before sign-in.
 
@@ -10,7 +10,7 @@ Trustee app (`packages/trustee`) on staging with an allow-listed wallet and DevT
 
 ## Story 1: Sign in renders the dashboard in place
 
-**Persona:** Trustee on `/sign-in` connecting an allow-listed wallet.
+**Persona:** Trustee on the sign-in overlay connecting an allow-listed wallet.
 
 **Steps:**
 
@@ -18,8 +18,8 @@ Trustee app (`packages/trustee`) on staging with an allow-listed wallet and DevT
 
 **Expected outcomes:**
 
-- The dashboard renders at `/` without a refresh.
-- The browser history has no extra `/sign-in` entry (the redirect replaces it).
+- The dashboard renders on the same URL without a refresh.
+- The browser history has no extra entry.
 
 ---
 
@@ -35,7 +35,7 @@ Trustee app (`packages/trustee`) on staging with an allow-listed wallet and DevT
 
 **Expected outcomes:**
 
-- The sign-in overlay renders at `/sign-in` both times, without a refresh.
+- The sign-in overlay renders on the current URL both times, without a refresh.
 - Back does not return to a protected page.
 
 ---
@@ -46,7 +46,7 @@ Trustee app (`packages/trustee`) on staging with an allow-listed wallet and DevT
 
 **Expected outcomes:**
 
-- The sign-in overlay renders at `/sign-in` when the token expires.
+- The sign-in overlay renders on the current URL when the token expires.
 
 ---
 

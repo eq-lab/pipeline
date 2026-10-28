@@ -1,13 +1,4 @@
-/**
- * Tests for the Trustee sign-in gate overlay (Figma node 4174-31660).
- *
- * Moved from the retired `/sign-in` route (#1008): the gate is now
- * `SignInOverlay`, rendered by `TrusteeShell` on the current URL whenever the
- * session is not authenticated (render-level gate; /sign-in remains only as the
- * canonical logged-out URL). This suite mocks
- * `useTrusteeSession` rather than mounting the full wallet/router provider
- * stack, so it stays a focused unit test of the card + overlay render.
- */
+// spec: docs/frontend/trustee-flows.md#render-level-auth-gate-1008-1749
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SignInOverlay } from "./SignInOverlay";
