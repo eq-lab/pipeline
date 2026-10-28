@@ -6,35 +6,27 @@ section: Security & Transparency
 
 # Custody
 
-Lender USDC sits in BitGo institutional custody, never inside a smart contract. Four wallets, one cosigner topology, hardware circuit breaker.
+Investor USDC sits in custody accounts, never inside a smart contract. The smart contracts move USDC only into the deposit custody account and, within an approved allowance, out of the withdrawal custody account.
 
-## Four wallets, one topology
+## Custody accounts
 
-| Wallet | Holds | Funded by | Drawn for |
+| Account | Holds | Funded by | Drawn for |
 |---|---|---|---|
-| **Intake Wallet** | USDC pending KYT | Lender deposits | Pending KYT or refund if failing checks |
-| **Capital Wallet** | Lender USDC + USYC reserve | Lender KYT-cleared deposits, offtaker repayments, USYC sales | Loan originations, Withdrawal Queue Wallet top-ups, USYC purchases |
-| **Treasury Wallet** | Protocol fees | Yield mint fee allocations | Operating expenses, OET runway |
-| **Withdrawal Queue Wallet** | USDC for queued withdrawals | Periodic top-ups from Capital Wallet | Lender claims (via WithdrawalQueue contract pre-approved allowance) |
+| Deposit custody account | USDC from investor deposits | Investor deposits, sent straight from the deposit manager | Conversion to bank dollars for loans, top-ups of the withdrawal custody account |
+| Capital wallet | Loan records and per-loan debt tokens; fee shares in the vault | Loan registry and minter | Nothing. It holds records, not cash. |
+| Withdrawal custody account | USDC for queued withdrawals | Top-ups | Investor withdrawal claims, through the withdrawal queue's allowance |
+| Trustee bank account | US dollars | Investor wires, borrower and offtaker repayments, conversions from USDC | Loan disbursements, investor bank withdrawals, conversions to USDC, expenses |
 
-## Cosigner topology
+The minter books every movement of bank dollars on-chain. The bank balance itself is held off-chain.
 
-Identical across all four wallets. Five shares, 3-of-5 threshold:
+## Signing policy
 
-- Pipeline Team — two shares
-- Trustee (The Trust Company) — one share
-- External Counterparties — two shares (one each)
+Each custody account signs under a multi-party signing policy. No single person can move USDC from a custody account.
 
-Hard policy rule: no transfer signs without both Team and Trustee. A Team-only or Trustee-only quorum is impossible.
+## Withdrawal allowance
 
-## Why MPC, not multisig
+The withdrawal queue pays claims from the withdrawal custody account through an allowance. The account owner sets the amount, and the allowance expires. A claim pays out only when the account holds enough USDC to cover all earlier requests in the queue and this one. The withdrawal queue has no access to the deposit custody account.
 
-MPC means no single share is ever a complete signing key. Compromising one cosigner reveals nothing — they would have shared a piece, but the piece is meaningless without three other valid pieces in the protocol. Stronger than a smart-contract multisig where every signer's key is a complete on-chain credential, and where on-chain coordination patterns can be observed and front-run.
+## Custody reporting
 
-## Hardware circuit breaker
-
-Custody policy carries a hardware circuit breaker that disconnects the Capital Wallet and the Withdrawal Queue Wallet from the protocol contracts on alarm. Pre-approved allowances revoked, all standing transfer authorisations frozen. The breaker is a custody-side action: it does not require a smart-contract upgrade or a governance vote, and BitGo cannot pull this lever. The Trustee and Team execute it under the BitGo cosigner policy. The Relayer raises the alarm but does not pull the lever itself. See [Relayer security model](/technical/relayer-security/).
-
-## Cosigner-policy attestations
-
-BitGo publishes attestation logs of every cosigner-policy event. Pipeline publishes a digest on a fixed cadence as part of the dashboard transparency layer.
+Custody balances are readable on-chain. The minter adds custody USDC, booked bank cash, cash in transit and loan principal outstanding into one pool total.

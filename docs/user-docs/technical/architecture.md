@@ -6,62 +6,62 @@ section: Technical overview
 
 # Technical architecture
 
-For engineers and auditors. Off-chain custody, on-chain protocol, off-chain relayer, on-chain governance. Every privileged call routes through one AccessManager.
+For engineers and auditors. Off-chain custody, on-chain protocol, an off-chain backend, and roles. Every privileged call routes through one access manager.
 
 ## Layers and components
 
 ### Capital Layer
 
-BitGo institutional custody. Four wallets:
+Custody accounts sit outside the smart contracts:
 
-- **Intake Wallet** — USDC deposits pending KYT
-- **Capital Wallet** — lender USDC plus USYC reserve (15% USDC buffer, 10–20% band)
-- **Treasury Wallet** — protocol fees
-- **Withdrawal Queue Wallet** — USDC for queued withdrawals
+- The deposit custody account receives lender USDC directly at deposit.
+- The withdrawal custody account pays queued withdrawals. It grants the withdrawal queue an allowance.
+- The capital account holds the loan records and the per-loan debt tokens. It also receives protocol fees.
 
-Each wallet under identical 5-share, 3-of-5 cosigner topology (Trustee, Pipeline Team x2, External Counterparties x2).
+Each account is a multisig account.
 
-A USD bank account in the Trustee's name for offtaker wires and on/off-ramping.
+A USD bank account receives lender and offtaker wires and pays borrowers and lender wire-outs. Every bank movement is booked on-chain in the cash book.
 
 ### Protocol Layer
 
-- Tokens: PLUSD (ERC-20), sPLUSD (ERC-4626).
-- Registry: LoanRegistry (ERC-721).
-- Operational contracts: DepositManager, YieldMinter, WithdrawalQueue, WhitelistRegistry.
-- Role hub: AccessManager (OZ v5).
-- Recovery: ShutdownController, RecoveryPool (dormant).
+- Tokens: PLUSD (permissioned dollar token; only approved addresses hold it), sPLUSD (staking vault share over PLUSD), one debt token per loan (1 token = 1 USD of principal outstanding).
+- Registries: loan registry (one non-transferable record per loan), security registry (one record per security instrument, written by the Security Agent).
+- Operational contracts: deposit manager, withdrawal queue, minter (cash book), debt token factory, pocket (holds a defaulted loan's PLUSD for its sPLUSD holders).
+- Role hub: access manager.
 
 ### Origination Layer
 
-Off-chain backend used by onboarded Originators to submit and manage deals. Components:
+Off-chain backend and console used by Originators and the Trustee.
 
-- **Sumsub integration** — KYB/KYC for new Originators, borrowers, offtakers, and CMA providers. Originators submit counterparty packs through the Originator UI; results flow into the underwriting record attached to each deal.
-- **CTRM integration** — vessel tracking and cargo monitoring (Kpler primary, secondary feeds per deal). CTRM data drives the daily LTV refresh and triggers margin-call events when thresholds breach.
-- **Originator UI** — the front end Originators use to upload loan information (term sheet, counterparty pack, security package, hedging plan), track approval status, monitor live facilities, and manage their equity stake across deals.
+- Every counterparty passes KYB and KYT: lenders, Originators, borrowers and every other party. Addresses and deposits are screened through a screening provider. Results are stored in the backend.
+- The backend tracks market prices for the goods and feeds them on-chain to the security registry.
+- In the console, Originators submit loan applications. The Trustee reviews them and approves, rejects or requests changes.
 
-The layer holds no custody and writes no on-chain state directly — approved deals reach the Protocol Layer via the Risk committee's RISK_COUNCIL Safe.
+The layer holds no custody. Approved loans reach the Protocol Layer when the Trustee records them in the loan registry.
 
 ### Governance Layer
 
-Three MPCs with distinct signer sets:
+Roles in the access manager:
 
-- **ADMIN** — 3-of-5, 3-day timelock (7-day for upgrades, 14-day meta-timelock on the delay parameter) — role grants, unpauses, upgrades, parameter changes, attestor rotation
-- **RISK_COUNCIL** — 3-of-5, 3-day timelock — `setDefault`, write-down closures, exchange-coefficient changes on WithdrawalQueue
-- **GUARDIAN** — 2-of-5, instant — pause, cancel pending actions, revoke operational-role holders one at a time
+- Admin: grants and revokes roles, unpauses, sets limits and custody accounts. Held by a multisig. No delay.
+- Risk Council: default, write-down, cure, loan amendments, reversals and corrections, collateral risk settings. Held by a multisig of several people. Default and the reversal of a repayment run at once. Its other actions run after a 24-hour delay. While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
+- Cash Reporter: books bank wires in, loan repayments and bank income. Held by a 2-of-2 multisig.
+- Guardian: cancels scheduled actions of the operational roles during their delay.
+- Pauser: pauses each contract.
+- Upgrader: upgrades contracts.
 
 ### Relayer
 
-Pipeline backend connecting the Capital Layer and the Protocol Layer. Indexes events, co-signs YieldAttestations alongside the Trustee, and signs KYT attestations off-chain that the lender or address holder submits at claim or enrol time. Holds no custody share. Cannot mint PLUSD alone. On lender withdrawal claims, the lender (not the Relayer) calls `WithdrawalQueue.claim`; the queue contract pulls USDC from the Withdrawal Queue Wallet via the wallet's standing allowance. The Relayer's only on-chain role is `WHITELIST_REVOKER`.
+The Pipeline backend between the bank, custody and the Protocol Layer. It indexes on-chain events. It screens lender addresses and deposits. It approves screened addresses to hold PLUSD. It signs the vouchers that let deposit and withdrawal claims go through. It matches bank wires to their on-chain bookings. It holds no custody key and cannot mint PLUSD alone.
 
-{% include diagram.html src="boss-system-architecture.png" caption="Technical architecture — capital, relayer, protocol, and origination layers, with governance routed through AccessManager." %}
+{% include diagram.html src="boss-system-architecture.png" caption="Technical architecture — capital, relayer, protocol, and origination layers, with governance routed through the access manager." %}
 
 ## Trust assumptions, summarised
 
-| Assumption | Mitigation if it fails |
+| Assumption | What happens if it fails |
 |---|---|
-| **Trustee key uncompromised** | Single Trustee key cannot move funds (3-of-5 requires Team co-sign). Compromise blocks operations but does not enable theft. |
-| **Pipeline Team keys uncompromised** | Team alone cannot move funds (Trustee + at least one external required). Compromise blocks operations but does not enable theft. |
-| **BitGo policy enforcement uncompromised** | External counterparty cosigners provide an independent check. BitGo cannot pull the hardware circuit breaker. |
-| **Relayer uncompromised** | Cannot mint PLUSD alone. Cannot move funds out of Capital or Treasury Wallets. Worst case: denial of service on yield mints and whitelist writes. GUARDIAN revokes instantly. |
-| **Smart contracts bug-free** | Off-chain custody isolation — bugs cannot drain Capital Layer dollars. WithdrawalQueue exchange coefficient is the deterministic recovery mechanism in MVP. |
-| **Governance Safes uncompromised** | Distinct signer sets, timelocks, and meta-timelocks. Defensive lever (GUARDIAN) is fast; constructive lever (ADMIN) is slow. |
+| **Custody keys uncompromised** | The signers of a custody account control the USDC in it. Each account is a multisig account. |
+| **Trustee key uncompromised** | The Trustee books disbursements, wire-outs, ramps and expenses. Expenses have no cap. The Risk Council can reverse bookings. The Admin revokes the role. |
+| **Relayer uncompromised** | Cannot mint PLUSD alone. Cannot move USDC out of custody. Worst case: deposits that should fail screening are approved, or deposits and withdrawals stall. The Admin revokes its role and replaces the voucher key. |
+| **Smart contracts bug-free** | Lender USDC is held outside the contracts. A bug in the withdrawal queue can move USDC up to the allowance. Mint limits cap new PLUSD per transaction and per 24 hours. |
+| **Admin multisig uncompromised** | The Admin can change roles, limits and custody accounts with no delay. |

@@ -6,11 +6,13 @@ section: Risk management
 
 # Credit policy overview
 
-The Credit Policy is the underwriting and monitoring rulebook for every Pipeline loan. Every facility is underwritten against it by the Originator and re-tested by the Risk committee before origination. This page summarises the live document, which sits with the Risk committee and is reviewed quarterly under the Risk Mandate.
+The Credit Policy is the underwriting and monitoring rulebook for every Pipeline loan. The Originator underwrites each facility against it. The Risk Council reviews it before origination. This page summarises the live document, which sits with the Risk Council.
+
+Pipeline lends only where, on every day the money is out, it holds the goods or a bank's promise to pay. Advances secured only by a supply contract and the trader's promise stay with the Originator.
 
 ## Borrower tier framework
 
-Three tiers, assigned by the Originator and confirmed by the Risk committee:
+Three tiers, assigned by the Originator and confirmed by the Risk Council:
 
 | Tier | Borrower profile |
 |---|---|
@@ -20,43 +22,60 @@ Three tiers, assigned by the Originator and confirmed by the Risk committee:
 
 ## Eligible commodities
 
-- Base metals — copper, zinc, aluminium, nickel, lead
-- Oil and refined products — crude, jet fuel, diesel, naphtha, fuel oil
-- Agricultural softs — coffee, cocoa, sugar, cotton
-- Grains and oilseeds — wheat, corn, soybeans, rapeseed
-- Biofuels and edible oils — palm oil, ethanol, biodiesel
+- Base metals: copper, zinc, aluminium, nickel, lead
+- Oil and refined products: crude, jet fuel, diesel, naphtha, fuel oil
+- Agricultural softs: coffee, cocoa, sugar, cotton
+- Grains and oilseeds: wheat, corn, soybeans, rapeseed
+- Biofuels and edible oils: palm oil, ethanol, biodiesel
 
 Specific exclusions (e.g. exotic chemicals, controlled substances, sanctioned commodity origins) are maintained in the full Credit Policy.
 
 ## Eligible corridors
 
-Pre-approved corridor list maintained by the Risk committee. New corridors added by ADMIN governance with the standard 3-day timelock. Corridor risk modifiers feed into the LTV ladder — challenging corridors carry tighter LTV thresholds.
+The Risk Council maintains a pre-approved corridor list. Each deal is reviewed by goods, corridor and counterparties, with a liquidation plan. Every counterparty passes KYB and KYT: lenders, Originators, borrowers, offtakers and every other party to the deal.
 
 ## LTV framework
 
-Base LTV per commodity class, with stacking modifiers for corridor risk, counterparty tier, and duration. Daily mark-to-market against Platts or Argus assessments. Margin events trigger at defined thresholds:
+LTV is the amount owed divided by the value of the security. The amount owed is outstanding principal plus accrued interest. No haircut is applied to the value.
 
-- **Initial threshold** — Originator notified; advisory level
-- **Margin call** — Originator must top up collateral within the cure window
-- **Default threshold** — Risk committee may declare default; `setDefault` on LoanRegistry
+| Security | Value |
+|---|---|
+| Goods (endorsed bill of lading, warehouse pledge, collateral management) | Counted quantity × market price. Counted quantity is the smaller of the document quantity and the latest approved inspection |
+| Assigned receivable, letter of credit proceeds, cash cover, prepayment | Face amount |
+| Insurance with the Security Agent as loss payee | Not counted |
+
+Each loan carries its own terms:
+
+| Term | Default |
+|---|---|
+| Advance ratio: highest LTV at drawdown, and the LTV a margin call must restore | 80 % |
+| Margin-call ratio: LTV that opens a margin call | 85 % |
+| Cure period | Per loan |
+| Grace period after maturity | Per loan |
+
+| Event | When |
+|---|---|
+| Margin call | LTV rises above the margin-call ratio. The borrower must bring LTV back to the advance ratio within the cure period, with cash or goods |
+| Cure | LTV is back at or below the advance ratio |
+| Default | The Risk Council declares it. Default is never automatic |
+
+The platform feeds market prices on-chain. A margin call does not open on a stale price. The Risk Council can set a price by hand. These checks run in the security registry.
 
 ## Concentration limits
 
 Hard ceilings, scaling with pool size:
 
-- Single-facility — capped percentage of pool
-- Single-borrower — capped percentage of pool, aggregating across facilities
-- Single-offtaker — capped percentage of pool
-- Single-Originator — capped percentage of pool
-- Single-commodity — capped percentage of pool
-- Single-corridor — capped percentage of pool
-
-The Risk committee reviews concentration weekly and may pause new approvals to a tier if a ceiling tightens.
+- Single-facility: capped percentage of pool
+- Single-borrower: capped percentage of pool, aggregating across facilities
+- Single-offtaker: capped percentage of pool
+- Single-Originator: capped percentage of pool
+- Single-commodity: capped percentage of pool
+- Single-corridor: capped percentage of pool
 
 ## Affiliated-party lending
 
-Pipeline permits affiliated-party lending under structural protections. Where the Originator and Borrower are affiliated, the equity tranche commitment must be public and documented, and Risk committee scrutiny is heightened. Economic alignment via the equity tranche is stronger than third-party-only lending in this asset class.
+Pipeline permits affiliated-party lending. Where the Originator and Borrower are affiliated, the equity tranche commitment must be documented, and the Risk Council review is heightened.
 
 ## Hedging requirements
 
-Where commodity price volatility could affect collateral coverage, the loan must include a hedging plan signed off at structuring. Hedge counterparties documented; positions marked daily; loss of cover triggers Risk committee review.
+Where commodity price moves could affect LTV, the loan must include a hedging plan signed off at structuring. Hedge counterparties are documented. Loss of cover triggers Risk Council review.
