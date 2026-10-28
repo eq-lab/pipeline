@@ -41,6 +41,10 @@ export function todayDateInput(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function dateInputToValueDate(dateInput: string): number {
+  return Date.parse(`${dateInput}T00:00:00Z`) / 1000;
+}
+
 /**
  * Parses the "Coupon received" USD text input into a positive dollar amount.
  * Empty/zero/negative/non-numeric input → `null` (keeps the waterfall query
@@ -216,6 +220,7 @@ export interface RecordCouponView {
   amountWarning: string | null;
   /** Fixed to today (read-only) — the coupon is always recorded as of today (#916). */
   dateInput: string;
+  valueDate: number;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -432,6 +437,7 @@ export function useRecordCoupon(
       setAmountInput(formatUsdInputValue(value)),
     amountWarning,
     dateInput,
+    valueDate: dateInputToValueDate(dateInput),
     waterfall: {
       ready: waterfall.data != null,
       isCalculating,

@@ -151,8 +151,8 @@ to `Performing`. The same `loanId`, all repayment counters, and all per-loan min
 carry over. The genesis economics are untouched.
 
 The rollover fast-path is safe despite having no timelock: appending an epoch can only
-raise the accrual ceiling, never mint. Actual minting still requires `recordPayment` plus
-the two-party Relayer and custodian attestation on the YieldMinter path.
+raise the accrual ceiling, never mint. Yield is minted only inside `Minter.repay`, bounded
+by the Minter's mint budget.
 
 ### Default and economics amendment
 
@@ -166,8 +166,8 @@ going through a post-maturity rollover.
 ### Repayment accounting
 
 When an offtaker wire lands in the Capital Wallet and the trustee has completed the
-client-side waterfall in the Operations Console, the trustee calls `recordPayment()` on
-LoanRegistry with the eight components. The offtaker pays principal plus gross interest, and
+client-side waterfall in the Operations Console, the trustee records the eight components through
+`Minter.repay`, which calls `recordPayment()` on LoanRegistry ([loan-repay-minter.md](./loan-repay-minter.md)). The offtaker pays principal plus gross interest, and
 the fees are carried inside that interest. The split decomposes the gross inflow:
 
 - `offtakerAmount`, gross USDC received from the offtaker for this repayment event

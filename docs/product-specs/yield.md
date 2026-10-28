@@ -62,8 +62,8 @@ event.
 
 ### Repayment on-chain delivery
 
-Once the trustee confirms the waterfall breakdown, they broadcast `recordPayment` on
-LoanRegistry from the Trustee key, crediting the per-loan counters (net senior coupon,
+Once the trustee confirms the waterfall breakdown, they call `Minter.repay` ([loan-repay-minter.md](./loan-repay-minter.md)),
+which calls `recordPayment` on LoanRegistry, crediting the per-loan counters (net senior coupon,
 the three fee carve-outs, principal, equity). The offtaker pays principal plus gross
 interest, and the fees are carried inside that interest. On-chain yield delivery follows:
 

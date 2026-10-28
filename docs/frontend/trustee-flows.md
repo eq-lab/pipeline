@@ -598,7 +598,7 @@ own border/title).
   default." The banner surfaces both paths directly (Record payment / Escalate to default), wired
   to the existing actions. Amber (attention) tokens — not red, which is reserved for Default.
 - **Stellar-only gate (#1537, TD-152)** — Roll over, Update lifecycle, Record coupon and Close loan
-  are trustee-wallet Stellar signatures (`LoanRegistry.*` via `@pipeline/wallet-connect`). For a
+  are trustee-wallet Stellar signatures (`LoanRegistry.*` via the executor, and `Minter.repay` for the two Record pages, via `@pipeline/wallet-connect`). For a
   loan whose `chain_id` is not `ENV.STELLAR_CHAIN_ID`, `useLoanDetail` returns
   `onChainBlockedReason` (`stellarOnlyActionReason`, `lib/targetChains.ts`): the actions card
   disables those four buttons (`ON_CHAIN_ACTIONS`) and prints the reason
@@ -680,7 +680,20 @@ diverge independently as either evolves.
 Previews the payment waterfall for a trustee-entered offtaker coupon via `useLoanWaterfall` (`GET
 /v1/loan-book/{loan_id}/waterfall`). At introduction it did not perform the on-chain
 `record_payment` write — that mutation (`useRecordPayment`) was deferred, so there was no
-submit/confirm action, only the live preview.
+submit/confirm action, only the live preview. The write now exists and signs `Minter.repay`, see below.
+
+### Recording a payment — `Minter.repay` (#1712)
+
+Record Coupon and Record Repayment sign the Minter's `repay`, not the executor's `record_payment`: the registry accepts `record_payment` only from the Minter, so the executor path always failed at simulation with the AccessManager's `Error(Contract, #1)`. The full contract, roles and side effects are in [loan-repay-minter.md](../product-specs/loan-repay-minter.md).
+
+- `useRecordPayment` calls `repay` from `@pipeline/wallet-connect` with `caller` = the connected wallet (also the transaction source), `loan_id`, the `RepaymentData` payload verbatim (`recordPaymentInput`), `value_date`, `ref_hash` and `sale_id = 0`.
+- `value_date` is the UTC-midnight Unix seconds of the page date (`dateInputToValueDate`; the date is fixed to today, #916).
+- `ref_hash` is `sha256("pipeline:repay:{registryId}:{loanId}:{next_repayment_id}")` as lowercase hex; `next_repayment_id` is read from `LoanRegistry.mutable_loan_data(loan_id)` just before the transaction is built. There is no input field for it. A second submit for the same slot fails at simulation (`RefHashSeen`).
+- The hook is gated on `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID` (the executor id is no longer used for this action) and keeps the "not configured for this environment" copy.
+- The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the treasury). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
+- The trustee wallet must hold `CASH_REPORTER`; without it simulation fails (`#4`) and the page shows the on-chain verification error with "View details" and no signature request. A loan not yet disbursed on chain fails with registry `#3` (TD-157).
+- Error copy stays the generic `toUserError` mapping; Minter and registry codes collide (a nested registry `#1` surfaces as `Error(Contract, #1)`), so no code-specific copy is added.
+- EVM loans stay gated by `stellarOnlyActionReason` (TD-152); the EVM arm is `PipelineMinter.repay`.
 
 ### Scale handling (both flows; verified against `-useLoanDetail.ts` / `useLoanWaterfall.ts`)
 
@@ -691,7 +704,7 @@ submit/confirm action, only the live preview.
   from the route's `chain`: `usdToBaseUnits(input, decimals)` multiplies the entered USD amount by
   10^decimals before calling the endpoint; `baseUnitsToUsd(value, decimals)` divides response
   fields the same way for display. The preview renders for an EVM loan even though its on-chain
-  write is gated (TD-152), so it must use the right scale. The `recordPayment` payload uses backend
+  write is gated (TD-152), so it must use the right scale. The `Minter.repay` payload uses backend
   raw fields unchanged.
 - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding` (`useLoanFinancials`) are
   displayed **exactly as the backend serves them** — no client-side rescaling (issue #906; the
@@ -705,7 +718,7 @@ submit/confirm action, only the live preview.
 
 ### Record action gating (#1622, both flows)
 
-- The `record_payment` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
+- The `RepaymentData` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
 - "Record on the ledger" is disabled while the live input differs from the debounced value (including when the input is cleared mid-debounce) or while the preview is recalculating (`waterfall.isCalculating`).
 - The green "Components sum to received $X" summary and the Record Coupon principal-block notice are hidden while the amount is unsettled, matching the row skeletons (#1049). The "Offtaker still owed after coupon" row deliberately keeps tracking the live input.
 - Record Repayment's amount is a read-only one-shot prefill, so the stale window is unreachable there today (during the prefill debounce the debounced amount is `""`, so the payload is `null`). The same gate is applied for parity, so a future editable input cannot reintroduce the bug.
@@ -760,7 +773,7 @@ pre-refetch prefill), keeps the waterfall query disabled, and forces `recordPaym
 `null`; the page replaces the amount/date fields, waterfall, and Record action with a fully-repaid
 notice ("nothing left to record"). The state must hold **without a reload** — a refetch that
 brings owed to `0` mid-session drops the stale form rather than leaving a recordable amount on
-screen. It is suppressed while this page's own `record_payment` is pending/settled so the
+screen. It is suppressed while this page's own repay is pending/settled so the
 "Payment recorded" confirmation flow stays intact. Whether Close-loan enables is decided by the
 close checklist below, not by this state alone. When the loan-book `senior_outstanding` is still
 above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
@@ -775,7 +788,7 @@ three-item checklist (`closeChecklist` on the presenter). The button enables onl
 item is green:
 
 1. **Senior principal outstanding is zero** — hard gate. Green only when the refreshed
-   loan-book's `senior_outstanding` is `0`. This page's own `record_payment` success does **not**
+   loan-book's `senior_outstanding` is `0`. This page's own repay success does **not**
    turn it green: a shortfall repayment succeeds on-chain but leaves senior outstanding, and
    `close_loan` would revert (#1624). The unmet row shows the current outstanding amount until the
    refetch lands.

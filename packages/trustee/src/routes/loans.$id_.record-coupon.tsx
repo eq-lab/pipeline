@@ -152,7 +152,11 @@ function RecordCoupon() {
     if (view.recordPaymentInput == null) return;
     record.reset();
     void record
-      .mutateAsync({ loanId: Number(id), repayment: view.recordPaymentInput })
+      .mutateAsync({
+        loanId: Number(id),
+        repayment: view.recordPaymentInput,
+        valueDate: view.valueDate,
+      })
       .then(() =>
         navigate({ to: "/loans/$id", params: { id }, search: { chain } }),
       )
@@ -260,7 +264,7 @@ function RecordCoupon() {
         }}
       >
         A scheduled coupon is a{" "}
-        <span className="font-semibold">recordPayment with zero principal</span>{" "}
+        <span className="font-semibold">Minter.repay with zero principal</span>{" "}
         — the same waterfall, senior principal stays deployed. Deferred interest
         (all-zero components) is also allowed.
       </div>
@@ -473,9 +477,6 @@ function RecordCoupon() {
             </p>
           )}
 
-          {/* Confirm — trustee-wallet-signed on-chain `record_payment` (#882).
-              Pinned to the bottom of the right card (`mt-auto`) per Figma node
-              `4116-11295` — stays anchored even before an amount is entered. */}
           <div className="mt-auto flex flex-col gap-[12px] pt-[16px]">
             {recordError && (
               <div data-testid="record-coupon-record-error">
@@ -515,7 +516,7 @@ function RecordCoupon() {
               className="text-center font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
               style={{ color: INK_MUTED }}
             >
-              recordPayment is pure accounting — increments the per-loan
+              Minter.repay is pure accounting — increments the per-loan
               counters, emits PaymentRecorded, moves no USDC.
             </p>
           </div>

@@ -258,6 +258,7 @@ describe("Record Coupon route — ready state", () => {
     fireEvent.click(submit);
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
+      valueDate: expect.any(Number),
       repayment: {
         offtaker_received: "450000000000",
         senior_principal_repaid: "0",
@@ -320,6 +321,7 @@ describe("Record Coupon route — ready state", () => {
       fireEvent.click(submit);
       expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
+        valueDate: expect.any(Number),
         repayment: {
           offtaker_received: "5000000000000",
           senior_principal_repaid: "0",
@@ -370,11 +372,11 @@ describe("Record Coupon route — ready state", () => {
     expect(screen.queryByText(/Minted ·/)).not.toBeInTheDocument();
   });
 
-  it("renders the info banner with the bolded 'recordPayment with zero principal' phrase", () => {
+  it("renders the info banner with the bolded 'Minter.repay with zero principal' phrase", () => {
     renderRoute();
     const banner = screen.getByTestId("record-coupon-info-banner");
     expect(banner).toHaveTextContent(
-      "A scheduled coupon is a recordPayment with zero principal",
+      "A scheduled coupon is a Minter.repay with zero principal",
     );
     expect(banner).toHaveTextContent("Deferred interest");
   });
@@ -454,7 +456,7 @@ describe("Record Coupon route — ready state", () => {
     nowSpy.mockRestore();
   });
 
-  it("renders the in-card 'Record on the ledger' button and the recordPayment footer (node 4116-11295)", () => {
+  it("renders the in-card 'Record on the ledger' button and the Minter.repay footer (node 4116-11295)", () => {
     renderRoute();
     const right = screen.getByTestId("record-coupon-right-card");
     const submit = screen.getByTestId("record-coupon-submit");
@@ -462,7 +464,7 @@ describe("Record Coupon route — ready state", () => {
     expect(right).toContainElement(submit);
     expect(submit).toHaveTextContent("Record on the ledger");
     expect(right).toHaveTextContent(
-      "recordPayment is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.",
+      "Minter.repay is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.",
     );
     // The old bottom Cancel action is gone (a back link at the top remains).
     expect(
@@ -800,6 +802,7 @@ describe("Record Coupon route — ready state", () => {
       fireEvent.click(submit);
       expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
+        valueDate: expect.any(Number),
         repayment: {
           offtaker_received: "500000000000",
           senior_principal_repaid: "0",

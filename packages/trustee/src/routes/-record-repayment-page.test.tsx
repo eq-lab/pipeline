@@ -453,6 +453,7 @@ describe("Record Repayment route — ready state", () => {
     fireEvent.click(submit);
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
+      valueDate: expect.any(Number),
       repayment: {
         offtaker_received: "61500000000000",
         senior_principal_repaid: "48000000000000",
@@ -784,6 +785,7 @@ describe("Record Repayment route — closable after an interest-only coupon (#16
     fireEvent.click(submit);
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
+      valueDate: expect.any(Number),
       repayment: expect.objectContaining({
         senior_principal_repaid: WATERFALL_TERMINAL.senior_principal_returned,
       }),

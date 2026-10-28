@@ -28,8 +28,9 @@ interface ILoanRegistry {
         string calldata metadataURI
     ) external;
 
-    // TRUSTEE, no timelock. Pure accounting, no USDC or PLUSD movement. Reverts unless the
-    // loan is in {Performing, Watchlist} and the six components sum <= offtakerAmount.
+    // Callable only by the Minter (Stellar `minter.require_auth()`, EVM `PIPELINE_MINTER_ROLE`);
+    // reached through `Minter.repay`, see [loan-repay-minter.md](./loan-repay-minter.md). No direct trustee call.
+    // Reverts unless the loan is in {Performing, Watchlist} and the six components sum <= offtakerAmount.
     // seniorInterest is the net senior coupon; mgmtFee/perfFee/oetAlloc are the fee
     // carve-outs from gross interest; all may be zero when interest defers to a later
     // payment. Increments the seven per-loan counters. Emits PaymentRecorded.
@@ -175,8 +176,8 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
 ## Security Considerations
 
 - The `TRUSTEE` role on LoanRegistry is held by the Trustee key alone. Relayer has no role
-  on LoanRegistry and cannot mint, update, roll over, close, or record payment on a loan
-  NFT. The Trustee broadcasts `mintLoan()` only after reviewing and approving the
+  on LoanRegistry and cannot mint, update, roll over, or close a loan NFT. Payments are
+  recorded only through `Minter.repay`. The Trustee broadcasts `mintLoan()` only after reviewing and approving the
   Originator's EIP-712 signed request. The mint is never automatic.
 - The `RISK_COUNCIL` role is a 3-of-5 multisig under a 24h AccessManager timelock. No
   single party can transition a loan to Default, amend economics outside the rollover
@@ -186,14 +187,10 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
   rate and maturity history is reconstructable from `getEpochs` and the
   `LoanRolledOver` / `EconomicsAmended` event stream.
 - The rollover fast-path (TRUSTEE, no timelock) can only raise the accrual ceiling, never
-  mint. Actual minting still requires `recordPayment` plus Relayer ECDSA plus custodian
-  EIP-1271. A lone compromised Trustee key gains nothing from appending an epoch.
-- `recordPayment()` is pure accounting and cannot move USDC or mint PLUSD. It updates the
-  per-loan counters and emits an event. Actual yield PLUSD minting requires the two-party
-  attestation on the YieldMinter path independent of the LoanRegistry write, so a
-  compromised Trustee key cannot fabricate yield.
+  mint. Minting happens only inside `Minter.repay`, bounded by the Minter's per-transaction and window limits. A lone compromised Trustee key gains nothing from appending an epoch.
+- `recordPayment()` is registry accounting only and is callable only by the Minter. The trustee records a repayment through `Minter.repay` ([loan-repay-minter.md](./loan-repay-minter.md)), which also books bank cash and mints PLUSD (interest to sPLUSD, fees staked for the treasury). The caller needs `CASH_REPORTER` (Stellar) or `MINT_CALLER_ROLE` (EVM), `ref_hash` is single-use, and `interest + fees` are capped by the Minter's mint budget, so a compromised trustee key is limited to one budgeted mint per distinct `ref_hash`.
 - Repayment accounting splits Senior principal, net Senior coupon, the three fee
   carve-outs, and Equity flows explicitly on chain. Outstanding obligations are derivable
   from genesis economics minus the mutable counters, auditable by any third party. A mis-split repayment is corrected by Minter `reverseRepay` then `repay` ([loan-repayment-recovery.md](./loan-repayment-recovery.md)).
-- The registry is informational. sPLUSD share price moves only on actual yield mints and not on `recordPayment()` writes, so an erroneous Trustee entry cannot inflate share price.
+- The registry is informational. sPLUSD share price moves on the yield minted by `Minter.repay`, within the Minter budget; a mis-split repayment is reversible ([loan-repayment-recovery.md](./loan-repayment-recovery.md)).
 - The Stellar minter's `record_wire_in(caller, receiver, amount: i128, value_date: u64, ref_hash: BytesN<32>) -> u32` is a direct, self-authorising invocation gated by `CASH_REPORTER` at execution delay 0, with a single-use `ref_hash` and 7-decimal amounts — it is not a LoanRegistry write and mints only against a recorded bank deposit; see [deposits.md](./deposits.md).
