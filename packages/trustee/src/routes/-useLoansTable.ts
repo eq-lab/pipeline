@@ -18,6 +18,7 @@ import type {
 import { targetChainLabel } from "@/lib/targetChains";
 import { loanRowKey } from "@/lib/loanRoute";
 import { formatCompactUsd, formatCompactUsd2dp } from "@/utils/formatUsd";
+import { formatFractionPct } from "@/utils/formatFractionPct";
 import { formatMaturityDate } from "@/utils/formatDate";
 import { toUserError } from "@/utils/userError";
 
@@ -190,18 +191,6 @@ export function formatSpot(
   // U+2212 MINUS SIGN / U+002B PLUS SIGN, matching the Figma glyphs.
   const sign = change < 0 ? "−" : "+";
   return { text: `${priceText} · ${sign}${pct}% 7d`, negative: change < 0 };
-}
-
-/**
- * Formats a decimal-fraction string (e.g. `"0.0430"`) as a one-decimal
- * percentage (`"4.3%"`). `null`/non-finite → `"—"`. Used for the served ratio
- * fields (`at_risk_wl_and_default_pct`, `weighted_rate`, `top_concentration.share`).
- */
-function formatFractionPct(fraction: string | null): string {
-  if (fraction == null) return "—";
-  const num = parseFloat(fraction);
-  if (!Number.isFinite(num)) return "—";
-  return `${(num * 100).toFixed(1)}%`;
 }
 
 /** Formats a whole-day tenor as `"148d"`; `null`/non-finite → `"—"`. */
