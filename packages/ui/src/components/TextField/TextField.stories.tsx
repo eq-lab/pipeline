@@ -28,6 +28,8 @@ const meta = {
     type: "text",
     placeholder: "Enter corporate email",
     invalid: false,
+    value: "",
+    onChange: () => {},
   },
 } satisfies Meta<typeof TextField>;
 
