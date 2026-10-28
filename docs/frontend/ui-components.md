@@ -1156,6 +1156,22 @@ Pass the `icon` prop to override (e.g. a token glyph for a claim toast).
 - `danger` → `role="alert"` + `aria-live="assertive"`.
 - All other tones → `role="status"` + `aria-live="polite"`.
 
+## useCopyToClipboard
+
+**Source:** `packages/ui/src/hooks/useCopyToClipboard.ts`, exported from `@pipeline/ui` (#1673).
+
+`const { copied, copy } = useCopyToClipboard(resetMs = 1500)`. `copy(text)` resolves `true` on a
+successful write and `false` otherwise; it never throws. It tries `navigator.clipboard.writeText`
+first and, when that is absent (non-secure origin such as a LAN-IP dev server) or rejects, falls
+back to a hidden `<textarea>` + `document.execCommand("copy")` (#1317). `copied` flips to `true`
+only on a real success and resets after `resetMs`; the timer is cleared on unmount and re-armed on
+a repeat copy.
+
+Used by `ErrorDetailsDialog`, `FundingDetailsModal`, `XlmFundingBanner`, the deposit route,
+`AccountWalletCard`, and the trustee `AddressChip` / `AddressText`. The trustee `AddressChip`
+passes `1600` because its spec ([trustee-flows](trustee-flows.md#shared-detail-primitives))
+fixes the "Copied" flash at 1.6 s.
+
 ## Switch
 
 **Source:** `packages/ui/src/components/Switch/Switch.tsx`. Figma: the library switcher used in

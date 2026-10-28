@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 
 /**
  * useErrorDetailsDialog — co-located hook for `ErrorDetailsDialog`.
@@ -24,7 +25,6 @@ export function useErrorDetailsDialog({
   onClose,
 }: UseErrorDetailsDialogOptions): UseErrorDetailsDialogResult {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (open) closeButtonRef.current?.focus();
@@ -46,26 +46,10 @@ export function useErrorDetailsDialog({
       window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [open, onClose]);
 
-  // Reset the "Copied" flag on close so it doesn't reappear stale on reopen.
-  useEffect(() => {
-    if (!open) setCopied(false);
-  }, [open]);
-
-  // Feature-detect `navigator.clipboard`; silently no-op on rejection
-  // (e.g. non-secure context).
+  const { copied, copy: copyText } = useCopyToClipboard();
   const copy = useCallback(() => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(details).then(
-        () => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        },
-        () => {
-          // Silently no-op if clipboard write fails.
-        },
-      );
-    }
-  }, [details]);
+    void copyText(details);
+  }, [copyText, details]);
 
-  return { closeButtonRef, copied, copy };
+  return { closeButtonRef, copied: open && copied, copy };
 }

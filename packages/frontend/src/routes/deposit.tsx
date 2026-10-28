@@ -8,6 +8,7 @@ import {
   Button,
   ErrorDetailsDialog,
   InlineError,
+  useCopyToClipboard,
 } from "@pipeline/ui";
 import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
@@ -57,7 +58,7 @@ function Deposit() {
 
   // ── Local state ───────────────────────────────────────────────────────
   const [amountInput, setAmountInput] = useState("");
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   // Page-level ErrorDetailsDialog state (#1034) — a danger toast's "Details"
   // action opens this dialog, which outlives the toast's 5s auto-dismiss.
   // spec: docs/frontend/error-handling.md
@@ -466,19 +467,8 @@ function Deposit() {
 
   // ── Copy address handler ──────────────────────────────────────────────
   const copyAddress = useCallback(() => {
-    const addr = flow.address;
-    if (!addr || typeof navigator === "undefined" || !navigator.clipboard)
-      return;
-    navigator.clipboard.writeText(addr).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => {
-        /* Silently no-op when clipboard write fails. */
-      },
-    );
-  }, [flow.address]);
+    if (flow.address) void copy(flow.address);
+  }, [flow.address, copy]);
 
   // ── Swap handler ──────────────────────────────────────────────────────
   const onSwap = useCallback(() => {

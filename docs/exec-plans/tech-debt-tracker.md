@@ -1413,7 +1413,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Make the 403 copy caller-suppliable (e.g. a second parameter alongside
   `fallback`), or move it out of the generic status table into a per-page map.
 
-### TD-109: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways
+### TD-109: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways [RESOLVED 2026-10-28 / #1673]
 
 - **Date:** 2026-09-22
 - **Location:** `packages/ui/src/components/ErrorDetailsDialog/useErrorDetailsDialog.ts`,
@@ -1430,6 +1430,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Extract a shared `useCopyToClipboard(text: string)` hook, most naturally in
   `@pipeline/ui` since three of the six call sites already live in `packages/frontend` and one in
   `packages/ui`.
+- **Resolution (2026-10-28, #1673):** `useCopyToClipboard` now lives in `@pipeline/ui` (with an `execCommand` fallback, #1317) and every site uses it.
 
 ### TD-110: No backend source for LP trust-account wire details
 

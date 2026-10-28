@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#shared-detail-primitives
 import { useToast } from "@/components/ToastProvider";
-import { copyAddress, shortAddress } from "./AddressChip";
+import { useCopyToClipboard } from "@pipeline/ui";
+import { shortAddress } from "./AddressChip";
 
 export function AddressText({
   value,
@@ -10,13 +11,14 @@ export function AddressText({
   testId?: string;
 }) {
   const { showToast } = useToast();
+  const { copy } = useCopyToClipboard();
   return (
     <button
       type="button"
       data-testid={testId}
       title={value}
       onClick={() =>
-        void copyAddress(value).then((ok) => {
+        void copy(value).then((ok) => {
           if (ok) showToast("Address copied");
         })
       }
