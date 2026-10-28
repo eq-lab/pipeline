@@ -57,6 +57,8 @@ export type {
   EvmWalletConnectorId,
 } from "./evm/useEvmWallet";
 export { evmChainInfo, defineEvmChain, isKnownEvmChain } from "./evm/chains";
+export { namespaceLabel } from "./namespaceLabel";
+export type { WalletNamespaceKind } from "./namespaceLabel";
 export type { EvmChainInfo } from "./evm/chains";
 export {
   isMockKeyPresent,

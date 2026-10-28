@@ -271,7 +271,7 @@ Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee ap
   the other chain is offered: every connect CTA keys on the active `kind`'s wallet, and
   `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`. Nothing is
   auto-disconnected on connect; the LP disconnects, then connects again (the connect modal keeps its
-  EVM / Soroban tabs for that choice).
+  Ethereum / Stellar tabs for that choice).
 - **`kind` is derived**, never stored: see [`hooks.md`](./hooks.md) (`useWalletView`). The
   `pipeline.wallet.view.kind` key and `setKind` no longer exist.
 - **Legacy both-connected state.** If both kits come back connected (a session restored from before
@@ -478,6 +478,10 @@ real calls. Keys: `address`, `isConnected`, `chainId`, `balance.<token>`, `allow
 "requestId"?: "…" }`). `convertToShares` / `convertToAssets` mocks hold one 1e18-scaled rate `r`;
 the output is `n * r / 1e18`. The schema and console snippets live in
 `packages/frontend/src/wallet/README.md`.
+
+### Wallet namespace labels
+
+One helper, `namespaceLabel(kind, chainId?)` in `@pipeline/wallet-connect` (`namespaceLabel.ts`), names the two wallet namespaces everywhere in user-facing copy (#1675, closes TD-102): `evm` is the EVM chain's name (`Ethereum` without a chain id, otherwise `evmChainInfo(chainId).name`, e.g. `Hoodi`) and `stellar`/`soroban` is `Stellar`; "Soroban" and "EVM" are never shown as labels. Consumers: both `ConnectWalletModal` tab sets and `AccountWalletCard`.
 
 ### Chain registry
 

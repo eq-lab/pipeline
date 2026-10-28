@@ -77,19 +77,19 @@ describe("ConnectWalletModal — visibility", () => {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
 describe("ConnectWalletModal — tabs", () => {
-  it("renders EVM and Soroban tabs", async () => {
+  it("renders Ethereum and Stellar tabs", async () => {
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    expect(screen.getByRole("tab", { name: "EVM" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Soroban" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Ethereum" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Stellar" })).toBeInTheDocument();
   });
 
   it("EVM tab is active by default — MetaMask visible", async () => {
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    expect(screen.getByRole("tab", { name: "EVM" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Ethereum" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -103,7 +103,7 @@ describe("ConnectWalletModal — tabs", () => {
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
 
     await waitFor(() =>
       expect(
@@ -221,7 +221,7 @@ describe("ConnectWalletModal — Soroban wallet list", () => {
     const user = userEvent.setup();
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
     await screen.findByRole("button", { name: "Connect Freighter" });
   });
 

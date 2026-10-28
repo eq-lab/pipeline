@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Logo, SegmentedTabs } from "@pipeline/ui";
+import { namespaceLabel } from "@pipeline/wallet-connect";
 import { useEvmConnectors, useStellarConnectors } from "@/wallet";
 import type { EvmWalletConnectorId } from "@/wallet";
 import heroUrl from "@/assets/connect-hero-ship.webp?url";
@@ -632,8 +633,8 @@ export function ConnectWalletModal({
               <SegmentedTabs
                 variant="track"
                 tabs={[
-                  { id: "evm", label: "EVM" },
-                  { id: "soroban", label: "Soroban" },
+                  { id: "evm", label: namespaceLabel("evm") },
+                  { id: "soroban", label: namespaceLabel("soroban") },
                 ]}
                 activeId={activeTab}
                 onSelect={handleTabChange}

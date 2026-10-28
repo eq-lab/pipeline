@@ -84,15 +84,15 @@ describe("ConnectWalletModal — tabs", () => {
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    expect(screen.getByRole("tab", { name: "EVM" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Soroban" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Ethereum" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Stellar" })).toBeInTheDocument();
   });
 
   it("EVM tab is active by default — MetaMask visible", async () => {
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    expect(screen.getByRole("tab", { name: "EVM" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Ethereum" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -106,7 +106,7 @@ describe("ConnectWalletModal — tabs", () => {
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
 
     await waitFor(() =>
       expect(
@@ -224,7 +224,7 @@ describe("ConnectWalletModal — Soroban wallet list", () => {
     const user = userEvent.setup();
     renderModal();
     await screen.findByRole("dialog", { name: "Connect Wallet" });
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
     await screen.findByRole("button", { name: "Connect Freighter" });
   });
 
@@ -270,7 +270,7 @@ describe("ConnectWalletModal — signMessageOnly (sign-in context, #1112)", () =
   it("filters the Soroban list to signMessage-capable wallets; EVM unaffected", async () => {
     const user = userEvent.setup();
     renderModal({ signMessageOnly: true });
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
     for (const label of [
       "Connect Freighter",
       "Connect LOBSTR",
@@ -285,7 +285,7 @@ describe("ConnectWalletModal — signMessageOnly (sign-in context, #1112)", () =
         screen.queryByRole("button", { name: label }),
       ).not.toBeInTheDocument();
     }
-    await user.click(screen.getByRole("tab", { name: "EVM" }));
+    await user.click(screen.getByRole("tab", { name: "Ethereum" }));
     expect(
       await screen.findByRole("button", { name: "Connect MetaMask" }),
     ).toBeInTheDocument();
@@ -294,7 +294,7 @@ describe("ConnectWalletModal — signMessageOnly (sign-in context, #1112)", () =
   it("keeps the full Soroban list without the flag", async () => {
     const user = userEvent.setup();
     renderModal();
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
     for (const label of [
       "Connect Freighter",
       "Connect LOBSTR",

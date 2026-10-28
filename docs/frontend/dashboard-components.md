@@ -852,7 +852,7 @@ https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2858-57637
 
 Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
 
-- **Left:** "Connect Wallet" heading, EVM / Soroban tab control, per-wallet rows with brand icons
+- **Left:** "Connect Wallet" heading, Ethereum / Stellar tab control, per-wallet rows with brand icons
   and direct connect actions.
 - **Right:** background photo + Pipeline logo + marketing headline ("Access real-world yield
   on-chain"). Hidden on mobile (below `lg` breakpoint). The dark scrim over the hero photo is an
@@ -864,7 +864,7 @@ The hero photo (`connect-hero-ship.webp`, 98 KB WebP) is warmed at idle time by
 complete instead of the hero pane popping in on a cold cache (#1212); the `<img>` carries no
 `loading="lazy"` — laziness only delayed the fetch for a modal-gated image.
 
-Tab set: EVM (Ethereum-compatible wallets) | Soroban (Stellar wallets). No "All" aggregate tab.
+Tab set: Ethereum (EVM wallets) | Stellar (Soroban wallets). No "All" aggregate tab.
 
 Per-wallet behavior:
 
