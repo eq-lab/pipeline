@@ -12,7 +12,6 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   useEvmWallet,
   useStellarWallet,
@@ -81,7 +80,6 @@ export function TrusteeSessionProvider({
     onCancel: onModalCancel,
     onWalletSelect: onModalWalletSelect,
   } = useConnectModal();
-  const navigate = useNavigate();
 
   // Single-flight guard for the challenge/verify orchestration.
   const orchestratingRef = useRef(false);
@@ -249,9 +247,7 @@ export function TrusteeSessionProvider({
     setSession(undefined);
     if (evmWallet.isConnected) evmWallet.disconnect();
     if (stellarWallet.isConnected) stellarWallet.disconnect();
-    // URL convention only — the overlay gate doesn't depend on it (#1008).
-    void navigate({ to: "/sign-in" });
-  }, [evmWallet, stellarWallet, navigate]);
+  }, [evmWallet, stellarWallet]);
 
   const value: TrusteeSessionContextValue = {
     ...sessionState,

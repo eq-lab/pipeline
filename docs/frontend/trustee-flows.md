@@ -1804,30 +1804,47 @@ Auth is enforced in two independent layers:
    The root route's `beforeLoad` (`resolveAuthRedirect`) enforces it on hard navigations
    (unauthenticated on a protected path → `/sign-in`; authenticated on `/sign-in` → `/`), and
    `useAuthRedirect` enforces it on **mid-session** status changes (sign-in completing, sign-out,
-   token expiry) that `beforeLoad` never sees. `signOut()` navigates to `/sign-in` explicitly. The
+   token expiry) that `beforeLoad` never sees. `useAuthRedirect` is the **one navigation owner**
+   for those transitions (#1731): it navigates with `replace: true`, skips a target that is
+   already `router.latestLocation` or already in flight, and logs a rejected navigation
+   (`[trustee] auth-redirect`) instead of swallowing it. `signOut()` does **not** navigate — it
+   clears the session and disconnects wallets, and the hook reacts to the status change. The
    `/sign-in` route itself renders `null` — the gate UI always comes from the shell.
    `useAuthRedirect` also **self-heals the address bar**: external history writes (observed on
    staging — e.g. the wallet modal restoring its pre-open URL on close) can overwrite
    `window.location` without the router noticing, leaving the URL on `/sign-in` while the app
    renders `/`. No router/React state reflects that divergence, so the hook compares
-   `window.location.pathname` against router state on every status/path change (plus short delayed
-   re-checks for late clobbers) and re-stamps the address bar via `history.replaceState` — router
-   state is the source of truth.
+   `window.location.pathname` against the router's **resolved** location (read at call time, not
+   from a render closure) on every status/path change, plus short delayed re-checks (250 / 1500 ms)
+   for late clobbers, and re-stamps the address bar via `history.replaceState`. The check is a
+   no-op unless the router is idle, not transitioning, and has no newer `latestLocation` — a
+   write during a pending navigation would fight it. Router state is the source of truth.
 
-If a redirect misfires, the failure mode is a briefly-wrong address bar — never wrong or blank
-content. **History:** three URL-synchronization approaches raced in production builds and stranded
+If a redirect misfires, the failure mode is a briefly-wrong address bar. Content stays correct
+(layer 1), and the app-level error boundary ([App bootstrap](#app-bootstrap--providers)) turns
+any thrown render error — including a falsy one — into a visible error view instead of a blank
+page. **History:** three URL-synchronization approaches raced in production builds and stranded
 the URL on `/sign-in` — a render-phase `<Navigate>` (#921), `beforeLoad` + `router.invalidate()`
 (#988, `invalidate()` does not re-run the root guard and `beforeLoad` only runs during
 navigations), and a reactive navigate alone (#1009). The trigger — "status flipped while parked on
 `/sign-in` with no navigation in flight" — is inherently racy to convert into a navigation, which
-is why correctness no longer depends on one.
+is why correctness no longer depends on one. **#1731** (white screen after sign-in and after
+logout on staging, console `Uncaught undefined`, fixed by a refresh): logout fired two overlapping
+navigations (the provider's and the hook's) and sign-in overlapped the hook's navigation with the
+`beforeLoad` redirect and the self-heal. Overlapping loads share the root match's `_nonReactive`
+state (`@tanstack/react-router` 1.168.x), so a load could leave the rendered root match `pending`
+after another load had cleared its `loadPromise`; `Match` then **throws that `undefined`**
+during render. TanStack's `CatchBoundary` renders its error view only `if (error)`, so the falsy
+throw passes through every router boundary, reaches the React root and unmounts the whole tree.
+Only a falsy throw does this — a real `Error` renders the router's error view. The fix is the
+single navigation owner above plus the app boundary; the upstream fix (≥ 1.170) is TD-158.
 
 | Scenario | URL | Content |
 |---|---|---|
 | Visit `/` signed out | `/sign-in` | overlay |
 | Deep-link `/loans` signed out | `/sign-in` | overlay |
 | Sign in from `/sign-in` | `/` | dashboard |
-| Logout from any page | `/sign-in` | overlay |
+| Logout from any page | `/sign-in` (`replace`: Back does not return to a protected URL) | overlay |
 | Token expiry mid-session | `/sign-in` | overlay |
 
 ### Sign-in flow (#791, hardened #793/#794/#795)
@@ -1878,7 +1895,8 @@ unauthorized-error states).
    "verification failed"; the `400 unknown chain_id` case maps to the same network-not-supported
    message as step 2.
 
-`signOut()` clears the stored token, disconnects both wallets, and navigates to `/sign-in`. There
+`signOut()` clears the stored token and disconnects both wallets; the URL follows from
+`useAuthRedirect`. There
 is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
 purely client-side.
 
@@ -1946,7 +1964,8 @@ centered.
 
 ## App bootstrap & providers
 
-**Sources:** `packages/trustee/src/main.tsx`, `lib/nav.ts`, `api/auth.ts`. Issues: #786 (nav),
+**Sources:** `packages/trustee/src/main.tsx`, `components/AppErrorBoundary.tsx`,
+`lib/diagnostics.ts`, `lib/nav.ts`, `api/auth.ts`. Issues: #786 (nav),
 #791 (sign-in flow / provider stack).
 
 The app's favicon is the Pipeline wordmark SVG (`public/pipeline.svg`, sourced from
@@ -1965,8 +1984,27 @@ Provider order mirrors the LP frontend's `main.tsx`, minus `WalletGateProvider` 
 omits the LP first-connection terms gate (internal operators; see the #791 exec plan's Decision
 Log). Without a `WalletGateContext.Provider` mounted, `@pipeline/wallet-connect`'s gate hooks
 default to a no-op (immediate proceed). `TrusteeSessionProvider` is NOT mounted in `main.tsx` —
-it calls `useNavigate()`, which needs router context, so it mounts inside the root route
-(`routes/__root.tsx`), below `<RouterProvider>`.
+it mounts inside the root route (`routes/__root.tsx`), below `<RouterProvider>`, next to the shell
+it feeds. It no longer needs router context (`signOut()` stopped navigating, #1731).
+
+**Error boundary (#1731).** `RouterProvider` is wrapped in `AppErrorBoundary`
+(`components/AppErrorBoundary.tsx`), inside `ConnectModalProvider`. It is a class component that
+stores `{ caught: true, error }` and branches on `caught`, never on `error`, so a thrown
+`undefined` is caught. This is required because TanStack's `CatchBoundary` renders its error
+component only `if (error)` (1.168.x): a router `defaultErrorComponent` alone does not prevent
+the white page for a falsy throw. The error view (`AppErrorView`) shows "Something went wrong",
+the message (`Non-error value thrown: …` for a non-`Error`), the stack when present, the current
+pathname and a **Reload** button (`window.location.reload()`, the same as the manual refresh;
+no auto-recovery loop). The same view is the router's `defaultErrorComponent` and does not depend
+on router context.
+
+**Diagnostics (`lib/diagnostics.ts`).** `installGlobalErrorReporting(router)` runs before render
+and logs to the console only (no external telemetry): `error` and `unhandledrejection` events, and
+the boundary's `componentDidCatch`, as `[trustee] <source>` with the value, its `typeof`, the
+router pathname / status / pending pathname and `window.location.href`. It also handles
+`vite:preloadError` (a lazy chunk that 404s after a deploy): one `window.location.reload()`,
+guarded by a `sessionStorage` timestamp (`pipeline.trustee.preloadReloadAt`, 10 s); a repeat
+within the window is logged and left to the boundary.
 
 ### Toasts
 

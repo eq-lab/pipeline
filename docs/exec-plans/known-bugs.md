@@ -102,6 +102,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Resolved
 
+### BUG-30: Trustee white screen after sign-in and after logout on staging (`Uncaught undefined`)
+- **Date:** 2026-10-28
+- **Location:** `packages/trustee/src/auth/useAuthRedirect.ts`, `auth/TrusteeSessionProvider.tsx` (`signOut`), `main.tsx`; `@tanstack/react-router` 1.168.25 `Match.js` / `CatchBoundary.js`. Issue #1731 (recurrence of #921 / #1008).
+- **Symptom:** After the wallet sign-in completes or after Sign out, `#root` is empty (white page) and the console shows only `Uncaught undefined`. A refresh fixes it. Staging only.
+- **Root cause:** (1) Logout issued two overlapping navigations to `/sign-in` (the provider's `signOut` and `useAuthRedirect`); sign-in overlapped the hook's navigation with the root `beforeLoad` redirect and the address-bar self-heal. (2) The root match id is constant and its active/pending/cached copies share one `_nonReactive`, so an overlapping load can leave the rendered root match `pending` after another load cleared its `loadPromise`; `Match` throws that `undefined` during render. (3) TanStack's `CatchBoundary` renders its error component only `if (error)`, so the falsy throw passes every router boundary and unmounts the React root.
+- **Resolved:** 2026-10-28 by #1731 — `useAuthRedirect` is the only auth navigation owner (`replace: true`, skips in-flight targets, self-heal gated on an idle router), `signOut` no longer navigates, `AppErrorBoundary` catches a falsy throw and `lib/diagnostics.ts` logs the value with router state. The exact staging interleaving was not reproduced headlessly; the reporter confirms on staging. The upstream router fix is TD-158.
+
 ### BUG-20: `SignInModal`/`CreateAccountModal` submit-attempt validation path is unreachable in a real browser
 - **Date:** 2026-09-21
 - **Location:** `packages/frontend/src/components/SignInModal.tsx`, `CreateAccountModal.tsx` (both via `useAuthCredentialsForm.ts`'s `handleSubmit`/`submitAttempted`). Found during #1281 planning.
