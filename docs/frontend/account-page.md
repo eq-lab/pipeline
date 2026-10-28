@@ -237,7 +237,7 @@ unconditionally, branched only in the derivation), `truncatedAddress` via
 `useConnectModal().open` (routes through the shared first-connection terms gate; a no-op while any
 wallet is connected), and `disconnect` (issue #1458) = the connected wallet's own `disconnect()`.
 To switch chains the LP disconnects and connects the other wallet through the connect modal, which
-keeps its EVM / Soroban tabs for that choice.
+keeps its Ethereum / Stellar tabs for that choice.
 
 **`Disconnect` row (issue #1458, closes TD-111).** Every connected state of the card renders a
 24px divider (`7127:15564`, a centered 1px `--color-pipeline-line` rule) followed by a full-width

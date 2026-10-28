@@ -1325,7 +1325,7 @@ line, whichever section it lands in.
 - **Suggested fix:** #1282 adopts `useActiveWalletAccount` when it rewrites the header.
 - **Resolution (2026-10-20, #1575):** Obsolete — the #1458/#1556 header rework replaced `TopBar`'s inline derivation with `useWalletPresence().isAnyConnected`; `TopBar` no longer derives an active-wallet account at all, so there is nothing left to deduplicate.
 
-### TD-102: Wallet-namespace labels diverge three ways across the app
+### TD-102: Wallet-namespace labels diverge three ways across the app [RESOLVED 2026-10-28 / #1675]
 
 - **Date:** 2026-09-21
 - **Location:** `ConnectWalletModal` ("EVM"/"Soroban"), `AccountDropdown` ("EVM"/"Stellar"),
@@ -1335,6 +1335,7 @@ line, whichever section it lands in.
 - **Impact:** Cosmetic inconsistency across surfaces.
 - **Suggested fix:** One designer decision on canonical namespace labels, applied everywhere at
   once rather than guessed per-surface.
+- **Resolution (2026-10-28, #1675):** `namespaceLabel()` in `@pipeline/wallet-connect` is the single source ("Ethereum"/"Stellar"); both connect modals and `AccountWalletCard` use it.
 
 ### TD-103: Account-page wallet row ships a generic glyph, not the frame's MetaMask branding
 
