@@ -1837,7 +1837,7 @@ after another load had cleared its `loadPromise`; `Match` then **throws that `un
 during render. TanStack's `CatchBoundary` renders its error view only `if (error)`, so the falsy
 throw passes through every router boundary, reaches the React root and unmounts the whole tree.
 Only a falsy throw does this — a real `Error` renders the router's error view. The fix is the
-single navigation owner above plus the app boundary; the upstream fix (≥ 1.170) is TD-158.
+single navigation owner above plus the app boundary; the upstream fix (≥ 1.170) is TD-158. The staging `/sign-in` ↔ `/` fight that remained after #1732 was the double boot (#1745), not the redirect logic.
 
 | Scenario | URL | Content |
 |---|---|---|
@@ -2005,6 +2005,25 @@ router pathname / status / pending pathname and `window.location.href`. It also 
 `vite:preloadError` (a lazy chunk that 404s after a deploy): one `window.location.reload()`,
 guarded by a `sessionStorage` timestamp (`pipeline.trustee.preloadReloadAt`, 10 s); a repeat
 within the window is logged and left to the boundary.
+
+**Page URL canonicalisation and boot guard (#1745).** When the page is opened with basic-auth
+credentials (`https://user:pass@host/…`, as on staging behind Kong), Chrome keys the entry
+`<script type="module">` by `document.URL` (credentialed) while lazy chunks resolve
+`import "./index-….js"` against the stripped URL, so the entry module is instantiated twice: two
+React roots and two routers on one `window.history`, which fight over `/sign-in` ↔ `/`. The first
+`<script>` in `<head>` of `index.html` (before the theme script, `/__env.js` and the module entry)
+reads `document.URL` (`location.href` is already stripped), and when it has a username or password
+calls `location.replace` with the same URL minus userinfo (path, query and hash kept), then sets
+`window.__PIPELINE_URL_CANONICALISING__`. Chrome reuses the realm's cached credentials, so there is
+no second prompt; other browsers may prompt once. The replaced URL has no userinfo, so the reload
+is a no-op and cannot loop; a throwing `replace` leaves the flag unset and the app boots as before.
+`claimAppBoot(root)` (`lib/bootGuard.ts`) wraps `main.tsx`'s side effects
+(`setWalletConnectConfig`, `installGlobalErrorReporting`, `createRoot(...).render`): it returns
+`false` silently while the canonicalising flag is set, and returns `false` with one
+`[trustee] duplicate boot` diagnostic (`booted`, `reactContainer`, credential-free `href`) when
+`window.__PIPELINE_BOOTED__` is set or `#root` already holds a React container; otherwise it sets
+`__PIPELINE_BOOTED__` and returns `true`. The LP app has the same script and guard (see
+[FRONTEND.md](../FRONTEND.md#page-url-canonicalisation-and-boot-guard)).
 
 ### Toasts
 

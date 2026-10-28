@@ -102,12 +102,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Resolved
 
+### BUG-31: Credentialed page URL boots the app twice (staging `/sign-in` stuck, duplicated console lines)
+
+- **Date:** 2026-10-28
+- **Location:** `packages/trustee/index.html`, `packages/frontend/index.html`, both `src/main.tsx`. Issue #1745.
+- **Symptom:** On staging (opened as `https://user:pass@host/`), the URL stays on `/sign-in`, tab clicks fall back to Overview and console lines appear twice.
+- **Root cause:** Chrome keys the entry module script by the credentialed `document.URL`, while lazy chunks import `./index-….js` against the stripped URL, so the entry module is instantiated twice (two React roots, two routers on one `window.history`). A relative `fetch` would also fail with a credentials error (dormant: the apps use absolute API bases).
+- **Resolved:** 2026-10-28 by #1745 — a first-in-`<head>` inline script strips userinfo with `location.replace`, and `claimAppBoot` (`lib/bootGuard.ts`) refuses a second boot with a `duplicate boot` diagnostic. Final confirmation on staging after deploy.
+
 ### BUG-30: Trustee white screen after sign-in and after logout on staging (`Uncaught undefined`)
 - **Date:** 2026-10-28
 - **Location:** `packages/trustee/src/auth/useAuthRedirect.ts`, `auth/TrusteeSessionProvider.tsx` (`signOut`), `main.tsx`; `@tanstack/react-router` 1.168.25 `Match.js` / `CatchBoundary.js`. Issue #1731 (recurrence of #921 / #1008).
 - **Symptom:** After the wallet sign-in completes or after Sign out, `#root` is empty (white page) and the console shows only `Uncaught undefined`. A refresh fixes it. Staging only.
 - **Root cause:** (1) Logout issued two overlapping navigations to `/sign-in` (the provider's `signOut` and `useAuthRedirect`); sign-in overlapped the hook's navigation with the root `beforeLoad` redirect and the address-bar self-heal. (2) The root match id is constant and its active/pending/cached copies share one `_nonReactive`, so an overlapping load can leave the rendered root match `pending` after another load cleared its `loadPromise`; `Match` throws that `undefined` during render. (3) TanStack's `CatchBoundary` renders its error component only `if (error)`, so the falsy throw passes every router boundary and unmounts the React root.
-- **Resolved:** 2026-10-28 by #1731 — `useAuthRedirect` is the only auth navigation owner (`replace: true`, skips in-flight targets, self-heal gated on an idle router), `signOut` no longer navigates, `AppErrorBoundary` catches a falsy throw and `lib/diagnostics.ts` logs the value with router state. The exact staging interleaving was not reproduced headlessly; the reporter confirms on staging. The upstream router fix is TD-158.
+- **Resolved:** 2026-10-28 by #1731 — `useAuthRedirect` is the only auth navigation owner (`replace: true`, skips in-flight targets, self-heal gated on an idle router), `signOut` no longer navigates, `AppErrorBoundary` catches a falsy throw and `lib/diagnostics.ts` logs the value with router state. The exact staging interleaving was not reproduced headlessly; the reporter confirms on staging. The upstream router fix is TD-158. Underlying staging trigger: BUG-31 (#1745).
 
 ### BUG-20: `SignInModal`/`CreateAccountModal` submit-attempt validation path is unreachable in a real browser
 - **Date:** 2026-09-21

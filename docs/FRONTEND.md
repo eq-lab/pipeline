@@ -232,6 +232,18 @@ docker run --rm -p 8081:80 \
   pipeline-frontend
 ```
 
+### Page URL canonicalisation and boot guard
+
+When the page is opened with basic-auth credentials in the URL (`https://user:pass@host/…`),
+Chrome instantiates the entry module twice (credentialed entry URL vs stripped chunk URL), giving
+two React roots and two routers (#1745). `index.html` therefore starts with an inline script, the
+first `<script>` in `<head>` and so ahead of `__env.js` and the module entry, that strips userinfo
+from `document.URL` via `location.replace` and sets `window.__PIPELINE_URL_CANONICALISING__`.
+`claimAppBoot` (`src/lib/bootGuard.ts`) wraps `createRoot(...).render` in `main.tsx`: it skips
+silently while that flag is set, and refuses a second boot with one `[pipeline] duplicate boot`
+console error. The Trustee app has the same pair; see
+[trustee-flows.md](./frontend/trustee-flows.md#app-bootstrap--providers).
+
 ### Trustee image
 
 The Trustee admin panel image is built the same way from the `trustee` Dockerfile target:

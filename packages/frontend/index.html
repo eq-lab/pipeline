@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/pipeline.svg" />
     <title>Pipeline</title>
+    <script>
+      (function () {
+        try {
+          var u = new URL(document.URL);
+          if (!u.username && !u.password) return;
+          u.username = "";
+          u.password = "";
+          location.replace(u.href);
+          window.__PIPELINE_URL_CANONICALISING__ = true;
+        } catch (e) {}
+      })();
+    </script>
     <!-- Blocking theme script: runs before first paint to prevent flash of wrong theme -->
     <script>
       (function () {
