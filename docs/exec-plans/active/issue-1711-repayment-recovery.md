@@ -38,12 +38,15 @@ Contract sources: shallow clones of `eq-lab/pipeline-stellar-contracts` @ `7646c
   - `hash_operation(caller, target, function, args) -> BytesN<32>` and `get_schedule(id) -> u64` are read-only. `get_schedule` returns `0` when the operation is not scheduled, already executed, cancelled or expired.
   - `cancel(target, function, args, caller, canceller)`.
   - The operation id covers `caller` and `args`. So only the wallet that scheduled the operation can execute it, with byte-identical args, including `ref_hash`.
-- **Consequence:** on Stellar the reversal is a 3-signature procedure across two wallets:
-  1. A `RISK_COUNCIL` wallet schedules the reversal.
-  2. After at least 24 h (and within 7 days), the same wallet executes it.
-  3. A `CASH_REPORTER` wallet signs the corrected `Minter.repay`.
+- **Target behaviour (user docs, source of truth since #1747):** a repayment reversal executes at once for the Risk Council; every other Risk Council action waits 24 h. See `docs/user-docs/governance/risk-committee.md` (L9, L28), `docs/user-docs/governance/multisig-roles.md` (L16, L71) and `docs/user-docs/how-it-works/protocol-layer.md` (L64-65).
+- **Deployment gap (#1756, backend):** the current deployment time-locks the whole `RISK_COUNCIL` role (testnet `can_call` returns delay 86400 for `reverse_repay`). Until #1756 lands, the reversal needs schedule → wait → execute.
+- **Roles:** the Risk Council operates the reversal. The Trustee role cannot reverse a repayment (`docs/user-docs/governance/fiduciary-trustee.md` L28). The corrected `Minter.repay` stays with the Cash reporter (`CASH_REPORTER`).
+- **Consequence: the UI is driven by on-chain `can_call(caller, minter, "reverse_repay")`**, and both paths are built and tested:
+  - **Immediate** (`immediate: true`, the documented target): one signature by the Risk Council wallet. Because the Minter's owner is the AccessManager, "direct" still means `AM.execute(minter, "reverse_repay", args, caller)` with no prior schedule. A bare `Minter.reverse_repay` call from an account would fail `#[only_owner]`. Same stage callbacks as `repay`.
+  - **Delayed** (`delay > 0`, today's deployment): the Risk Council wallet calls `AM.schedule`. After the delay (and within 7 days), the same wallet calls `AM.execute`.
+  - Then a `CASH_REPORTER` wallet signs the corrected `Minter.repay`.
 
-  Steps 2 and 3 can still run back to back, which is what limits the sPLUSD price dip described in the spec. The issue's "UI may only prepare the transaction for the owner to sign" is superseded: the AM relay is the owner path, and the app can drive it.
+  The execute step and the corrected repay can run back to back, which is what limits the sPLUSD price dip described in the spec. The issue's "UI may only prepare the transaction for the owner to sign" is superseded: the AM relay is the owner path, and the app can drive it.
 - Read-only on-chain data available for display, shown verbatim (no client math):
   - Registry `repayment_data(loan_id, repayment_id) -> RepaymentData`, readable after reversal too.
   - Registry `is_repayment_reversed(loan_id, repayment_id) -> bool`.
@@ -73,7 +76,12 @@ Contract sources: shallow clones of `eq-lab/pipeline-stellar-contracts` @ `7646c
   - `CashRepaymentReversed` carries `repayment_id, cash`.
 
   The full split therefore comes from the registry read, not the API.
-- Corrected split: `GET /v1/loan-book/{id}/waterfall?amount=&as_of=&chain_id=` (`useLoanWaterfall`), mapped by the already exported `buildRepaymentInput` (`routes/-record-repayment.ts:92`), the same path Record Repayment uses. See Open Question 1.
+- **Corrected split (decided):** the user docs say a repayment "is applied by the priority of payments, booked on-chain and split into senior principal, senior interest, fees and the equity distribution" (`docs/user-docs/start-here/reference-transaction.md` L79). So step 2 uses the backend waterfall:
+  - `GET /v1/loan-book/{id}/waterfall?amount=&as_of=&chain_id=` (`useLoanWaterfall`);
+  - `amount` = the original `offtaker_received` (on-chain `repayment_data`, verbatim);
+  - `as_of` = the original `CashRepaid.value_date` from the audit log;
+  - mapped by the already exported `buildRepaymentInput` (`routes/-record-repayment.ts:92`), the same path Record Repayment uses;
+  - `repay` is sent with that original `value_date`. If no `value_date` is found, step 2 is disabled with explanatory copy.
 - Signing step 2 reuses `useRecordPayment` (`api/useRecordPayment.ts`, #1712) unchanged.
 
 ## Scope
@@ -82,12 +90,12 @@ In scope:
 
 1. **`@pipeline/wallet-connect`, Stellar:**
    - `reverse_repay` arg encoding plus a deterministic `ref_hash`;
-   - a generic AccessManager relay (`schedule` / `execute`, with simulate → sign → submit → poll and stage callbacks);
+   - a generic AccessManager relay (`schedule` / `execute`, with simulate → sign → submit → poll and stage callbacks); `execute` alone is the immediate path;
    - read-only readers for `can_call`, the operation schedule, Minter `repayment`, registry `repayment_data` and `is_repayment_reversed`;
-   - `reverseRepay` wrappers: `scheduleReverseRepay`, `executeReverseRepay`.
+   - `reverseRepay` wrappers: `scheduleReverseRepay`, `executeReverseRepay` (used both for the immediate path and after a schedule).
    - Existing `repay` / `encodeRepayArgs` / `repaymentRefHash` / `readNextRepaymentId` are reused unchanged.
 2. **`@pipeline/wallet-connect`, EVM:** calldata encoders only (see the decision above).
-3. **Trustee:** a "Repayment recovery" card on the loan detail page and a two-step dialog: pick the repayment, see its effects, schedule or execute the reversal, then sign the corrected repayment. It is gated by the connected wallet's on-chain `can_call`. Also link to it from the existing Record Repayment senior-outstanding notice.
+3. **Trustee:** a "Repayment recovery" card on the loan detail page and a two-step dialog: pick the repayment, see its effects, reverse it (Risk Council wallet: one signature when `can_call` is immediate, schedule then execute when delayed), then sign the corrected repayment (Cash reporter wallet). Each step is gated by the connected wallet's on-chain `can_call`; a Trustee-only wallet can open the dialog but cannot reverse. Also link to it from the existing Record Repayment senior-outstanding notice.
 4. Tests, specs, the frontend flow doc and a user-stories doc.
 
 Out of scope:
@@ -95,13 +103,14 @@ Out of scope:
 - EVM signing and UI (follow-up above).
 - Cancelling a scheduled reversal. `AM.cancel` is admin or guardian only for others. Note it in the spec.
 - Any backend, API or indexer change. The indexer already handles `CashRepaymentReversed` and `PaymentUnrecorded`.
+- Removing the `RISK_COUNCIL` delay for `reverse_repay` (backend/deployment, #1756).
 - Role grants. Who holds `RISK_COUNCIL` / `CASH_REPORTER`, and whether that account is in the API's `auth_users` trustee allow-list, are deployment facts.
 - Risk Council pages (mocked; unrelated).
 
 ## Assumptions and Risks
 
-- **Timelock:** 24 h on every configured network for `RISK_COUNCIL`.
-  - The UI must survive reloads between scheduling and executing without local state. That works because the operation id is reproducible from on-chain data:
+- **Timelock (delayed path only, until #1756):** 24 h on every configured network for `RISK_COUNCIL` today. Once #1756 removes the delay for `reverse_repay`, `can_call` returns `immediate: true` and the UI takes the single-signature path with no code change.
+  - On the delayed path, the UI must survive reloads between scheduling and executing without local state. That works because the operation id is reproducible from on-chain data:
     - `caller` is the connected wallet;
     - `args` are `[loan_id, repayment_id, ref_hash]`;
     - `ref_hash = sha256("pipeline:reverse_repay:{minterId}:{loanId}:{repaymentId}")`, unique because a repayment reverses at most once.
@@ -123,14 +132,9 @@ Out of scope:
 
 ## Open Questions
 
-1. **Corrected split source for step 2.** The #1655 spec says: "same total, `senior_principal_repaid` = the mis-booked principal, `equity_distributed` reduced by the same amount, other fields unchanged". That is a client-side field move from the original on-chain `RepaymentData`. The user rules prefer backend-served values. **The plan proceeds with the backend waterfall:**
-   - `amount` = the original `offtaker_received` (on-chain, verbatim);
-   - `as_of` = the original `CashRepaid.value_date` from the audit log;
-   - the result is mapped by the existing `buildRepaymentInput`;
-   - the corrected `repay` is sent with that same original `value_date`;
-   - step 2 is disabled with explanatory copy if `value_date` is not found.
+_None_
 
-   Confirm this. The alternative is the spec's literal field move (keep `senior_interest` / fees, move the principal out of `equity_distributed`, capped at nothing client-side). The two can differ when later repayments exist, or when the waterfall's interest at `as_of` differs from what was originally booked.
+Open Question 1 (corrected split source) was decided by the user on 2026-10-28: backend waterfall with the original `offtaker_received` and value date, per `docs/user-docs/start-here/reference-transaction.md`. See Findings, "Corrected split".
 
 ## Implementation Steps
 
@@ -185,7 +189,7 @@ Out of scope:
      - "Treasury fee shares burned" = `fee_shares`, shown as raw share units;
      - if `carved_out`: "Pocket unrelease: principal / interest" = `principal`, `interest_minted`;
      - otherwise "Interest absorbed from the vault" = `interest_minted`.
-   - `reverseAction(access, schedule)`: `"execute-now"` (immediate) | `"schedule"` (delay > 0 and `readyAt === 0`) | `"execute-scheduled"` (`readyAt > 0`) | `"no-role"`. The delay and `readyAt` are rendered verbatim, as hours and a UTC date-time.
+   - `reverseAction(access, schedule)`: `"execute-now"` (`immediate: true`, single signature, the documented target) | `"schedule"` (delay > 0 and `readyAt === 0`) | `"execute-scheduled"` (`readyAt > 0`) | `"no-role"` (not a Risk Council member, e.g. a Trustee-only wallet). On the immediate path the schedule read is skipped. The delay and `readyAt` are rendered verbatim, as hours and a UTC date-time.
    - `correctedRepaymentInput(original, waterfall)` delegates to `buildRepaymentInput` imported from `./-record-repayment`. Do not re-implement it.
    - `originalValueDate(auditItems, chainId, loanId, repaymentId)` finds the `CashRepaid` row's `details.value_date`, or `null`.
 10. **Trustee: UI.** No Figma. Follow the existing dialog shell (`DisbursementConfirmDialog` in `loans.$id.tsx:611`, `-RejectReasonDialog.tsx`) and `DetailCard` / `KeyValueRow` / `BandButton` components.
@@ -194,14 +198,14 @@ Out of scope:
         - repayment radio list;
         - original split (key-value rows);
         - reversal effects;
-        - the role state line (for example "Connected wallet holds RISK_COUNCIL with a 24 h delay", "Scheduled — executable from <date>", or "This wallet cannot reverse repayments");
-        - the primary button "Schedule reversal" / "Execute reversal";
+        - the role state line (for example "Risk Council: reverses at once", "Risk Council: 24 h delay on this deployment", "Scheduled — executable from <date>", or "Only the Risk Council can reverse a repayment");
+        - the primary button "Reverse repayment" (immediate) / "Schedule reversal" / "Execute reversal";
         - stage text and an `InlineError` with `toUserError` plus View details;
         - dialog-local copy for AM codes #6, #7 and #8 and Minter #8, #25.
       - Step 2, enabled per the gate in Risks:
         - corrected split rows from the waterfall;
         - original `value_date`;
-        - "Record corrected repayment" (needs `CASH_REPORTER`, otherwise a no-role line).
+        - "Record corrected repayment" (needs the Cash reporter role, `CASH_REPORTER`; otherwise "Only the Cash reporter can record the corrected repayment").
         - On success, show the hash and close. The close checklist on Record Repayment then applies.
     - In `loans.$id.tsx`, add a `RepaymentRecoveryCard` (title "Repayment recovery", one muted line and an "Open recovery" button) in the performing and watchlist layouts, after `OtherActionsCard`, when `recoveryCardState !== "hidden"`. For EVM loans, show `detail.onChainBlockedReason` with the button disabled. Wire the dialog open state like `confirmOpen`. Shrink the file's lint baseline entry.
     - In `loans.$id_.record-repayment.tsx`, change the `record-repayment-senior-outstanding` notice's trailing "Escalate to the Risk Council." to a link to the loan detail page ("Open repayment recovery"). Search param `chain` is preserved.
@@ -215,7 +219,7 @@ Out of scope:
   - `encodeReverseRepayArgs`: 3 args with types `u32, u32, bytes(32)`; it rejects a negative or non-integer id, malformed hex and the zero hash.
   - `reverseRepayRefHash`: deterministic, 64 lowercase hex, changes with each input. Pin a vector, for example `pipeline:reverse_repay:CMINT:7:0`.
   - `readMinterRepayment`: maps the simulated struct to strings and booleans; throws on a simulation error.
-  - `scheduleReverseRepay` / `executeReverseRepay`:
+  - `scheduleReverseRepay` / `executeReverseRepay` (both paths: `executeReverseRepay` alone for the immediate path, and after `scheduleReverseRepay` for the delayed path):
     - call `schedule` / `execute` on the AccessManager id;
     - `target` is the Minter, `fn` is the `reverse_repay` symbol, and the args vec equals `encodeReverseRepayArgs`;
     - `when = 0` for `schedule`;
@@ -233,7 +237,7 @@ Out of scope:
   - card state, including `awaiting-corrected-repayment` and `blocked-evm`;
   - candidate ordering and preselection;
   - effect rows for carved-out and non-carved-out loans, with values verbatim and nothing summed;
-  - all four `reverseAction` states;
+  - all four `reverseAction` states, including immediate (`execute-now`) and delayed;
   - `originalValueDate` found and missing;
   - `correctedRepaymentInput` equals `buildRepaymentInput`'s output.
 - **Trustee hooks** `api/-useRepaymentRecovery.test.tsx`:
@@ -244,11 +248,12 @@ Out of scope:
   - candidates disabled for an EVM chain.
 - **Trustee UI** `routes/-RepaymentRecoveryDialog.test.tsx` and additions to `-loans.$id.test.tsx`:
   - the card is hidden for a healthy loan, shown for an eligible one, shown in the awaiting state, and disabled with the EVM reason;
-  - two-step flow:
+  - immediate path (`can_call` immediate): one "Reverse repayment" click calls `executeReverseRepay` with no schedule read or call, stages render, then step 2 unlocks per the gate;
+  - delayed path:
     - schedule (delay wallet), then a reload shows the scheduled state from mocked `readyAt`;
     - execute, then step 2 stays disabled until the reversed flag plus backend `offtaker_outstanding > 0`;
     - then `useRecordPayment.mutateAsync` receives `{ loanId, repayment: <waterfall-mapped>, valueDate: <original> }`;
-  - a no-role wallet gets disabled buttons;
+  - a no-role wallet (Trustee-only) gets the "Only the Risk Council…" line and a disabled reverse button; a wallet without `CASH_REPORTER` gets a disabled step-2 button;
   - simulation error copy for AM #7.
 - **`-record-repayment-page.test.tsx`:** the senior-outstanding notice links to the loan detail page.
 - **Commands:**
@@ -264,20 +269,23 @@ Out of scope:
 ## Docs to Update
 
 - **`docs/product-specs/loan-repayment-recovery.md`:**
-  - Roles table, Stellar row: `reverse_repay` is `#[only_owner]` and the owner is the AccessManager, so it is reached via `AM.schedule` → `AM.execute`. Role `RISK_COUNCIL`, delay 86400 s on the configured networks, operation expiry 7 days, same caller for both. Replace "The Trustee cannot call Stellar `reverse_repay`" with this.
+  - Roles table, Stellar row: `reverse_repay` is `#[only_owner]` and the owner is the AccessManager, so it is reached through `AM.execute`, role `RISK_COUNCIL`. Describe both paths:
+    - target (user docs `governance/risk-committee.md`, `governance/multisig-roles.md`, `how-it-works/protocol-layer.md`): the reversal executes at once, one `AM.execute` signature;
+    - current deployment: the whole role is time-locked (86400 s), so `AM.schedule` → wait → `AM.execute` by the same caller, expiry 7 days; deployment gap tracked in #1756.
+  - Roles: the Risk Council operates the reversal; the Trustee role cannot (`governance/fiduciary-trustee.md`); the corrected repay stays with the Cash reporter. Replace "The Trustee cannot call Stellar `reverse_repay`" with this.
   - Record the testnet read-only check.
   - Step 1: the app's `ref_hash` derivation.
-  - Step 2: the split source per Open Question 1, and the original `value_date`.
+  - Step 2: the backend waterfall at the original `offtaker_received` and `value_date`, citing `user-docs/start-here/reference-transaction.md` (priority of payments), and the original `value_date` sent to `repay`.
   - "Current gap": replace with the shipped UI and the EVM follow-up.
 - **`docs/product-specs/loan-repay-minter.md`:** link the recovery flow; EVM line: calldata encoders exist, signing is still TD-152.
 - **`docs/product-specs/loans-data.md`:** add a Minter `reverse_repay(loan_id: u32, repayment_id: u32, ref_hash: BytesN<32>)` bullet next to `repay`, with `RISK_COUNCIL` via AM and the time lock, plus EVM `reverseRepay(uint256,uint256,bytes32)` / `MINTER_OPS_ROLE`.
 - **`docs/frontend/trustee-flows.md`:**
-  - new subsection under "Loan detail" / "Wired actions", "Repayment recovery (#1711)": card states, dialog steps, gating by `can_call`, schedule persistence via `hash_operation` / `get_schedule`, the step-2 gate, error copy, and the EVM gate;
+  - new subsection under "Loan detail" / "Wired actions", "Repayment recovery (#1711)": card states, dialog steps, gating by `can_call` (Risk Council reverses, immediate or scheduled; Cash reporter records the corrected repayment; Trustee-only wallets cannot reverse), schedule persistence via `hash_operation` / `get_schedule`, the step-2 gate, error copy, and the EVM gate;
   - update the `record-repayment-senior-outstanding` paragraph (L782) to mention the link.
 - **`docs/user-stories/epic-1521/1711-repayment-recovery.md`** (new, shaped like `1712-trustee-repay-via-minter.md`). Stories:
   1. An eligible loan shows the card, and a healthy loan does not.
-  2. A Risk Council wallet schedules, and after a reload sees the ready time.
-  3. Executing before the ready time shows the not-ready error.
+  2. A Risk Council wallet with immediate access reverses with one signature.
+  3. On a delayed deployment (#1756 open), a Risk Council wallet schedules and after a reload sees the ready time; executing before it shows the not-ready error.
   4. After execution and indexing, a cash-reporter wallet records the corrected repayment, and the close checklist turns green.
   5. A wallet without either role sees disabled actions.
   6. An EVM loan shows the Stellar-only reason.
