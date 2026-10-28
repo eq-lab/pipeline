@@ -725,7 +725,7 @@ line, whichever section it lands in.
   loan_offtake_terms FROM <api role>` (or similar), so the guarantee holds even if
   application code regresses.
 
-### TD-46: Trustee `formatFractionPct` (decimal-fraction → 1dp percent) is duplicated across two route presenters
+### TD-46: Trustee `formatFractionPct` (decimal-fraction → 1dp percent) is duplicated across two route presenters [RESOLVED 2026-10-28 / #1339]
 
 - **Date:** 2026-07-20
 - **Location:** `packages/trustee/src/routes/-useLoansTable.ts` (private `formatFractionPct`,
@@ -742,6 +742,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Export `formatFractionPct` from `-useLoansTable.ts` (or lift it into
   `src/utils/` alongside `formatUsd.ts`'s money formatters, per `docs/FRONTEND.md` rule 3) and
   have both presenters import the shared copy.
+- **Resolution:** Lifted into `packages/trustee/src/utils/formatFractionPct.ts`; both presenters import it (#1339).
 
 ### TD-47: `packages/frontend` has pre-existing Prettier formatting drift blocking the pre-commit hook
 

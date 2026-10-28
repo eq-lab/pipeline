@@ -21,6 +21,7 @@ import {
   MAINTENANCE_MARGIN_BPS,
   HEALTHY_MARGIN_BPS,
 } from "./-useLoansTable";
+import { formatFractionPct } from "@/utils/formatFractionPct";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -119,19 +120,6 @@ export function buildCollateralLabel(
   return change != null
     ? `Collateral (${commodity.toLowerCase()} ${change})`
     : "Collateral";
-}
-
-/**
- * Formats a decimal-fraction string (e.g. `"0.0430"`) as a one-decimal
- * percentage (`"4.3%"`). `null`/non-finite → `"—"`. Hand-mirrored from
- * `-useLoansTable.ts`'s private `formatFractionPct` (not exported there) —
- * see `docs/exec-plans/tech-debt-tracker.md`.
- */
-function formatFractionPct(fraction: string | null | undefined): string {
-  if (fraction == null) return "—";
-  const num = parseFloat(fraction);
-  if (!Number.isFinite(num)) return "—";
-  return `${(num * 100).toFixed(1)}%`;
 }
 
 /**
