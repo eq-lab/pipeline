@@ -1797,10 +1797,13 @@ architecture). Backend contract: `docs/product-specs/api-authorization.md` /
 Auth is one render-level gate and nothing else. `TrusteeShell` renders `SignInOverlay`
 (Figma `4174-31660`) whenever the session is not authenticated, **on any URL**, and never mounts
 protected route content (`<Outlet/>`) while signed out, so no authenticated API calls fire either.
-No session status change (sign-in, sign-out, token expiry, unauthorized reset) issues a
-navigation: the address bar stays where the user is, no history entries are added, and the
-content follows the session status. `signOut()` clears the session and disconnects wallets; it
-does not navigate. There is no `/sign-in` route.
+No session status change (sign-in, token expiry, unauthorized reset) issues a navigation: the
+address bar stays where the user is, no history entries are added, and the content follows the
+session status. The one exception is the explicit **Sign out** click in the sidebar Account menu:
+its handler issues a single `navigate({ to: "/", replace: true })` (so Back never returns to a
+protected URL) and then calls `signOut()`. `signOut()` itself clears the session and disconnects
+wallets and never navigates, so the unauthorized "Try a different wallet" reset stays URL-neutral.
+There is no `/sign-in` route.
 
 The root route has a `notFoundComponent` that renders `<Navigate to="/" replace />`, so any
 unknown path (a stale `/sign-in` bookmark included) lands on `/`. Signed out, the shell renders
@@ -1830,7 +1833,7 @@ navigation on auth changes there is nothing to overlap. The router upgrade (>= 1
 | Visit `/` signed out | `/` (unchanged) | overlay |
 | Deep-link `/loans` signed out | `/loans` (unchanged) | overlay; after sign-in the loans page on the same URL |
 | Sign in | unchanged | page for the current URL |
-| Logout from any page | unchanged, no history entry added | overlay |
+| Sign out click (sidebar Account menu) from any page | `/` (one `replace` navigation from the click, no history entry added) | overlay |
 | Token expiry mid-session | unchanged | overlay |
 | Old `/sign-in` bookmark or any unknown path | `/` via root `notFoundComponent` (signed out: overlay first, redirect after sign-in) | overlay, then dashboard |
 
@@ -1882,8 +1885,8 @@ unauthorized-error states).
    "verification failed"; the `400 unknown chain_id` case maps to the same network-not-supported
    message as step 2.
 
-`signOut()` clears the stored token and disconnects both wallets; the URL does not change. There
-is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
+`signOut()` clears the stored token and disconnects both wallets and does not navigate; the
+sidebar Sign out click first replaces the URL with `/`. There is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
 purely client-side.
 
 ### Session store (`sessionStore.ts`)

@@ -1,7 +1,13 @@
 // spec: docs/frontend/trustee-flows.md#render-level-auth-gate-1008-1749
 import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import {
   RouterProvider,
   createMemoryHistory,
@@ -10,7 +16,6 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { Route as AppRoot } from "@/routes/__root";
-import { useTrusteeSession } from "./TrusteeSessionProvider";
 import {
   _resetSessionStoreForTests,
   getSessionState,
@@ -21,7 +26,8 @@ import {
 const mockEvmDisconnect = vi.fn();
 const mockStellarDisconnect = vi.fn();
 
-vi.mock("@pipeline/wallet-connect", () => ({
+vi.mock("@pipeline/wallet-connect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@pipeline/wallet-connect")>()),
   useEvmWallet: () => ({
     isConnected: false,
     address: undefined,
@@ -51,17 +57,8 @@ vi.mock("@/lib/env", () => ({
   ENV: { EVM_CHAIN_ID: 560048, STELLAR_CHAIN_ID: 99000001 },
 }));
 
-vi.mock("@/components/TrusteeSidebar", () => ({
-  TrusteeSidebar: () => <nav data-testid="sidebar" />,
-}));
-
 function HomePage() {
-  const { signOut } = useTrusteeSession();
-  return (
-    <div data-testid="home">
-      <button onClick={signOut}>sign out</button>
-    </div>
-  );
+  return <div data-testid="home" />;
 }
 
 function LoanPage() {
@@ -108,6 +105,11 @@ async function renderApp(initialPath: string) {
   return { router, navigate, ...result };
 }
 
+async function signOutFromMenu() {
+  fireEvent.click(await screen.findByRole("button", { name: "Account menu" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+}
+
 function authenticate(expiresAt = Date.now() + 60_000) {
   setSession({ token: "t", address: "0xabc", chainId: 1, expiresAt });
 }
@@ -147,30 +149,44 @@ describe("auth transitions on a real router", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("sign-out on /loans/123 keeps the URL and renders the overlay", async () => {
+  it("sign-out click on /loans/123 replaces the URL with / and renders the overlay", async () => {
     authenticate();
     const { router, navigate, container } = await renderApp("/loans/123");
+
+    await signOutFromMenu();
+
+    expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(router.history.length).toBe(1);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/", replace: true }),
+    );
+    expect(screen.queryByTestId("loan")).not.toBeInTheDocument();
+    expect(container).not.toBeEmptyDOMElement();
+  });
+
+  it("sign-out click on / stays on / and renders the overlay", async () => {
+    authenticate();
+    const { router, navigate, container } = await renderApp("/");
+
+    await signOutFromMenu();
+
+    expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/");
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(container).not.toBeEmptyDOMElement();
+  });
+
+  it("a session status change to unauthenticated alone does not navigate", async () => {
+    authenticate();
+    const { router, navigate } = await renderApp("/loans/123");
 
     act(() => setSessionStatus("unauthenticated"));
 
     expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/loans/123");
-    expect(screen.queryByTestId("loan")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("home")).not.toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalled();
-    expect(container).not.toBeEmptyDOMElement();
-  });
-
-  it("sign-out button on / keeps the URL and renders the overlay", async () => {
-    authenticate();
-    const { router, navigate, container } = await renderApp("/");
-
-    act(() => screen.getByText("sign out").click());
-
-    expect(await screen.findByTestId("sign-in-overlay")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/");
-    expect(navigate).not.toHaveBeenCalled();
-    expect(container).not.toBeEmptyDOMElement();
   });
 
   it("token expiry on /loans/123 keeps the URL and renders the overlay", async () => {

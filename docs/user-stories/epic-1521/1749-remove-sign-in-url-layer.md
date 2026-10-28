@@ -24,7 +24,7 @@ Trustee app (`packages/trustee`) with an allow-listed wallet.
 
 ---
 
-## Story 2: Sign out and token expiry keep the URL
+## Story 2: Sign out lands on /, token expiry keeps the URL
 
 **Persona:** Signed-in trustee on a protected page.
 
@@ -35,7 +35,8 @@ Trustee app (`packages/trustee`) with an allow-listed wallet.
 
 **Expected outcomes:**
 
-- The sign-in overlay renders at `/loans` both times and the URL does not change.
+- After Sign out the sign-in overlay renders and the URL is `/` (replaced, so Back does not return to `/loans`).
+- After token expiry the sign-in overlay renders at the current URL and the URL does not change.
 - Back does not move through extra entries.
 - The page is never blank and the console has no `Uncaught undefined`.
 
