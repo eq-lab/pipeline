@@ -2125,13 +2125,14 @@ line, whichever section it lands in.
 - **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
 - **Resolved by #1669:** `useRampEvents` and `useRampAddresses` follow `useSessionState().chainId` (Stellar only as the no-session fallback), `RampEvent` carries `chain_id`, review takes the chain from the event (no query string), and the ramp section shows a chain chip plus sub-line. The SwapDialog custody balance is gated to the Stellar session and shows `—` otherwise; the missing EVM custody read is TD-156.
 
-### TD-154: `useStakeFlow` step 1 reads the aggregated `useEvmToken().error`, so read failures paint the approve row
+### TD-154: `useStakeFlow` step 1 reads the aggregated `useEvmToken().error`, so read failures paint the approve row [RESOLVED 2026-10-28 / #1672]
 
 - **Date:** 2026-10-26
 - **Location:** `packages/frontend/src/wallet/useStakeFlow.ts` (EVM step 1 error) — found while fixing #1658.
 - **Gap:** The deposit/withdraw flow now derives step-1 `"error"` from `useEvmToken().approveError` (approval errors only). The stake flow still uses the aggregated `error`, which also carries balance and metadata read failures.
 - **Impact:** A failed `balanceOf` / `decimals` read can show an "Approve" error on the stake step row.
 - **Suggested fix:** Switch `useStakeFlow` to `approveError`, with a test mirroring the `useDepositFlow` one.
+- **Resolution:** `useStakeFlow` derives EVM step-1 `"error"` from `useEvmToken().approveError`; `useStakeFlow.test.tsx` covers the approve-error cases (#1672).
 
 ### TD-155: The LP detects an unserved chain by probing `/v1/pnl` with a synthetic wallet [RESOLVED 2026-10-27 / #1605]
 

@@ -167,6 +167,12 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
+const evmCtl = vi.hoisted(() => ({
+  kind: "stellar" as "stellar" | "evm",
+  active: false,
+  token: {} as Record<string, unknown>,
+}));
+
 // ── WalletView mock ───────────────────────────────────────────────────────────
 // useStakeFlow calls useWalletView() which returns "evm" outside a provider.
 // Override it to return "stellar" so the Stellar path is exercised.
@@ -175,9 +181,18 @@ vi.mock("./WalletViewContext", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./WalletViewContext")>();
   return {
     ...actual,
-    useWalletView: vi.fn(() => ({
-      kind: "stellar" as const,
-    })),
+    useWalletView: vi.fn(() => ({ kind: evmCtl.kind })),
+  };
+});
+
+vi.mock("./evm/useEvmToken", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./evm/useEvmToken")>();
+  return {
+    ...actual,
+    useEvmToken: (args: Parameters<typeof actual.useEvmToken>[0]) => {
+      const real = actual.useEvmToken(args);
+      return evmCtl.active ? { ...real, ...evmCtl.token } : real;
+    },
   };
 });
 
@@ -487,5 +502,82 @@ describe("useStakeFlow — Stellar sPLUSD balance (Unstake tab, not issuer-sensi
 
     expect(result.current.balance).toBe(splusdRaw);
     expect(result.current.hasBalance).toBe(true);
+  });
+});
+
+describe("useStakeFlow — EVM step 1 error state (#1672)", () => {
+  const EVM_ADDR = "0x1111111111111111111111111111111111111111";
+  const AMOUNT = 1_000_000n;
+
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("pipeline.mock.wallet.address", EVM_ADDR);
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    evmCtl.kind = "evm";
+    evmCtl.active = true;
+    evmCtl.token = {
+      decimals: 6,
+      balance: 5_000_000n,
+      allowance: 0n,
+      isApprovePending: false,
+      isApproveSuccess: false,
+      approve: vi.fn(),
+      approveError: null,
+      error: null,
+    };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    evmCtl.kind = "stellar";
+    evmCtl.active = false;
+    evmCtl.token = {};
+  });
+
+  function render() {
+    return renderHook(() => useStakeFlow("stake", AMOUNT, () => {}), {
+      wrapper: makeWrapper().wrapper,
+    });
+  }
+
+  it("an approve error puts step 1 in the error state with mapped copy", () => {
+    const err = new Error("User rejected the request.");
+    evmCtl.token.approveError = err;
+    const { result } = render();
+    expect(result.current.steps[0]?.state).toBe("error");
+    expect(result.current.steps[0]?.errorMessage).toBeTruthy();
+    expect(result.current.steps[0]?.errorDetails).toContain("User rejected");
+    expect(result.current.step1Tx.error).toBe(err);
+    expect(result.current.step1Tx.userError).toBeDefined();
+  });
+
+  it("a pending approve is not an error", () => {
+    evmCtl.token.approveError = new Error("stale");
+    evmCtl.token.isApprovePending = true;
+    const { result } = render();
+    expect(result.current.steps[0]?.state).toBe("idle");
+    expect(result.current.steps[0]?.errorMessage).toBeUndefined();
+  });
+
+  it("a sufficient allowance wins over a lingering approve error", () => {
+    evmCtl.token.approveError = new Error("stale");
+    evmCtl.token.allowance = AMOUNT;
+    const { result } = render();
+    expect(result.current.steps[0]?.state).toBe("success");
+    expect(result.current.steps[0]?.errorMessage).toBeUndefined();
+  });
+
+  it("no error leaves step 1 idle", () => {
+    const { result } = render();
+    expect(result.current.steps[0]?.state).toBe("idle");
+    expect(result.current.steps[0]?.errorMessage).toBeUndefined();
+  });
+
+  it("a read-only error with no approve error leaves step 1 idle", () => {
+    evmCtl.token.error = new Error("balanceOf reverted");
+    const { result } = render();
+    expect(result.current.steps[0]?.state).toBe("idle");
+    expect(result.current.steps[0]?.errorMessage).toBeUndefined();
+    expect(result.current.step1Tx.error).toBeNull();
   });
 });

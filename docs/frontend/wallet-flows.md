@@ -221,7 +221,9 @@ As of #1034 the stake steps carry the same error state as the deposit stepper:
 `StakeStepState` is `"idle" | "success" | "error"`, derived per
 [Step error state](#step-error-state) (mutation error set and not pending; success wins), with the
 mapped message in `errorMessage` and the raw payload in `errorDetails` — previously stake/unstake
-failures were toast-only with no stepper signal.
+failures were toast-only with no stepper signal. EVM step 1 (Approve) reads
+`useEvmToken().approveError`, never the aggregated `error`, so a `balanceOf` / `decimals` read
+failure leaves it `idle` (#1672).
 
 ### Architecture
 
