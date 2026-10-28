@@ -97,6 +97,21 @@ EVM wallets are lowercased (existing behaviour). Stellar Strkey `G…` addresses
 
 Crystal does not provide KYT for Stellar addresses in the current integration. Stellar voucher requests fall through the `crystal_enabled` gate as "screened-as-clean" (same as EVM with Crystal disabled). A dedicated Issue can wire Crystal Stellar support when Crystal adds Stellar coverage.
 
+### `/v1/requests` status per chain kind
+
+The feed gates each row on the flag of its own chain kind, matching the voucher endpoints: EVM rows follow `crystal_enabled`, Stellar rows follow `elliptic_enabled`. Rows from a `chain_id` absent from `CHAINS` are treated as EVM (the `parse_chain_type` default). Mapping for unclaimed Deposit/Withdraw rows (claimed and Stake/Unstake rows are always `Completed`):
+
+| Gate for the row's kind | `kyt_status` | `on_chain_allowed` | Status |
+|---|---|---|---|
+| off | any | true | `PendingClaim` |
+| off | any | false | `PendingVerification` |
+| on | `None` | any | `PendingVerification` |
+| on | `Some(1)` | true | `PendingClaim` |
+| on | `Some(1)` | false | `PendingVerification` |
+| on | `Some(other)` | any | `VerificationFailed` |
+
+`PendingClaim` therefore holds exactly when the voucher endpoint would issue. Implemented by `kyc_repo::feed_status` and `kyt_gate_for_kind`.
+
 ### `is_on_chain_allowed` for Stellar
 
 The same SQL runs for Stellar as for EVM — no short-circuit. Stellar voucher requests return HTTP 403 until an `lp_profiles` row exists for the wallet on the Stellar chain. Populating those rows is handled by the Stellar relayer (see "Stellar Relayer Whitelist" below).
