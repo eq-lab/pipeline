@@ -86,6 +86,7 @@ describe("useStellarWithdrawalVoucher voucher deadline", () => {
     });
     await advance(0);
     expect(result.current.status).toBe("ready");
+    expect(result.current.expired).toBe(false);
     expect(result.current.data?.signature).toBe(SIG_A);
 
     await advance(59_000);
@@ -95,6 +96,7 @@ describe("useStellarWithdrawalVoucher voucher deadline", () => {
     await advance(1_000);
     expect(mockApiFetch).toHaveBeenCalledTimes(2);
     expect(result.current.status).toBe("pending");
+    expect(result.current.expired).toBe(true);
     expect(result.current.data).toBeUndefined();
     expect(result.current.signatureBytes).toBeUndefined();
 

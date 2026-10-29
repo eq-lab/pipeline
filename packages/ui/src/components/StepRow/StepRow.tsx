@@ -32,6 +32,7 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
    * spec: docs/frontend/error-handling.md
    */
   errorDetails?: string;
+  hint?: string;
 }
 
 const rootClasses = [
@@ -56,6 +57,14 @@ const stepNumberClasses = [
   "select-none",
 ].join(" ");
 
+const hintClasses = [
+  "mt-0.5 block",
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-caption)]",
+  "leading-[var(--text-pipeline-caption--line-height)]",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+].join(" ");
+
 const labelClasses = [
   "flex-1 min-w-0",
   "font-[family-name:var(--font-body)]",
@@ -77,6 +86,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
       state = "idle",
       errorMessage,
       errorDetails,
+      hint,
       className,
       ...rest
     },
@@ -130,6 +140,11 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               details={errorDetails}
               className="mt-0.5 block"
             />
+          )}
+          {!isError && hint && (
+            <span data-testid={`step-row-${step}-hint`} className={hintClasses}>
+              {hint}
+            </span>
           )}
         </div>
 

@@ -83,4 +83,40 @@ describe("StepRow", () => {
       screen.queryByRole("button", { name: "Confirm" }),
     ).not.toBeInTheDocument();
   });
+
+  it("hint renders a muted caption under the label", () => {
+    render(
+      <StepRow
+        step={3}
+        label="Claim your USDC"
+        actionLabel="Claim"
+        hint="No voucher yet."
+      />,
+    );
+
+    const hint = screen.getByTestId("step-row-3-hint");
+    expect(hint).toHaveTextContent("No voucher yet.");
+    expect(hint.className).toContain("--color-pipeline-ink-muted");
+  });
+
+  it('hint is hidden while state="error"', () => {
+    render(
+      <StepRow
+        step={3}
+        label="Claim your USDC"
+        actionLabel="Claim"
+        state="error"
+        errorMessage="The transaction could not be completed."
+        hint="No voucher yet."
+      />,
+    );
+
+    expect(screen.queryByTestId("step-row-3-hint")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("no hint element when the prop is absent", () => {
+    render(<StepRow step={3} label="Claim" actionLabel="Claim" />);
+    expect(screen.queryByTestId("step-row-3-hint")).not.toBeInTheDocument();
+  });
 });

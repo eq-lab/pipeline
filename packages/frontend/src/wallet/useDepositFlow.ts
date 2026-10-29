@@ -55,6 +55,19 @@ import {
   useStellarWithdrawalVoucher,
 } from "@/api";
 import { ENV } from "@/lib/env";
+import { formatTokenAmount } from "@/lib/format";
+import { formatUnits } from "./evm/units";
+import {
+  isRecoveryRateActive,
+  useWithdrawalQueueTotals,
+  useWithdrawalRequestQueueState,
+} from "./useWithdrawalQueueReads";
+import { useStellarClaimPayout } from "./stellar/useStellarWithdrawalQueueReads";
+import { useEvmClaimPayout } from "./evm/useEvmWithdrawalQueueReads";
+import {
+  selectWithdrawClaimHint,
+  WITHDRAW_REQUEST_HINT,
+} from "./withdrawClaimHint";
 import { formatUsdcCurrencyCompact, formatUsdcInput } from "@/lib/usdc";
 import {
   parseSorobanContractErrorCode,
@@ -88,6 +101,20 @@ export interface StepInfo {
    * alongside `errorMessage` when `state` is `"error"`.
    */
   errorDetails?: string;
+  hint?: string;
+}
+
+export interface WithdrawQueueInfo {
+  position: bigint | undefined;
+  payableNow: boolean | undefined;
+  totalQueued: bigint | undefined;
+  totalClaimed: bigint | undefined;
+  rateRaw: bigint | undefined;
+  rateDecimals: number | undefined;
+  recoveryActive: boolean;
+  payout: bigint | undefined;
+  plusdDecimals: number | undefined;
+  usdcDecimals: number | undefined;
 }
 
 /** Per-step write transaction state — used by the component for toast emission. */
@@ -187,6 +214,8 @@ export interface FlowState {
   step1: StepInfo;
   step2: StepInfo;
   step3: StepInfo;
+
+  withdrawQueue: WithdrawQueueInfo | undefined;
 
   // ── Per-step write-state (for toast emission) ─────────────────────────
   step1Tx: StepTxState;
@@ -735,6 +764,95 @@ export function useDepositFlow(
     resetClaim,
   ]);
 
+  // ── Withdraw queue reads (position, payable now, rate, payout) ─────────────
+  const isWithdraw = !isDeposit;
+  const withdrawQueueRequestId: bigint | undefined = isStellar
+    ? stellarWithdrawRequestIdBigInt
+    : parseRequestId(evmWithdrawRequestId);
+  const queueTotals = useWithdrawalQueueTotals(kind, isWithdraw);
+  const queueRequestState = useWithdrawalRequestQueueState(
+    kind,
+    withdrawQueueRequestId,
+    isWithdraw,
+  );
+  const recoveryActive = isRecoveryRateActive(queueTotals);
+  const payoutEnabled =
+    isWithdraw && queueRequestState.payableNow === true && recoveryActive;
+  const stellarWithdrawDeadlineRaw = stellarWithdrawVoucher.data?.deadline;
+  const stellarPayout = useStellarClaimPayout({
+    requestId: stellarWithdrawRequestIdBigInt,
+    signatureBytes: stellarWithdrawVoucher.signatureBytes,
+    deadline:
+      stellarWithdrawDeadlineRaw !== undefined &&
+      /^\d+$/.test(stellarWithdrawDeadlineRaw)
+        ? BigInt(stellarWithdrawDeadlineRaw)
+        : undefined,
+    sender: stellarAddress,
+    enabled: payoutEnabled && isStellar,
+  });
+  const evmWithdrawAmountRaw: bigint | undefined =
+    evmWithdrawActiveRequest !== null
+      ? BigInt(evmWithdrawActiveRequest.amount)
+      : evmWithdrawInflight !== undefined
+        ? BigInt(evmWithdrawInflight.amount)
+        : undefined;
+  const evmPayout = useEvmClaimPayout(evmWithdrawAmountRaw, {
+    enabled: payoutEnabled && !isStellar,
+  });
+  const queuePayout = isStellar ? stellarPayout.data : evmPayout.data;
+
+  const queueAmountRaw: bigint | undefined = isStellar
+    ? stellarWithdrawActiveRequest?.amount !== undefined
+      ? BigInt(stellarWithdrawActiveRequest.amount)
+      : stellarWithdrawInflight?.amount !== undefined
+        ? BigInt(stellarWithdrawInflight.amount)
+        : undefined
+    : evmWithdrawAmountRaw;
+  const queueRateText =
+    queueTotals.rateRaw !== undefined && queueTotals.rateDecimals !== undefined
+      ? formatUnits(queueTotals.rateRaw, queueTotals.rateDecimals)
+      : undefined;
+  const queueVoucher = isStellar ? stellarWithdrawVoucher : evmWithdrawVoucher;
+  const queueClaimHint =
+    isWithdraw && withdrawQueueRequestId !== undefined
+      ? selectWithdrawClaimHint({
+          paused: queueTotals.paused,
+          voucherExpired: queueVoucher.expired,
+          hasVoucher: queueVoucher.status === "ready",
+          requestStatus: isStellar
+            ? stellarWithdrawActiveRequest?.status
+            : evmWithdrawActiveRequest?.status,
+          payableNow: queueRequestState.payableNow,
+          recoveryActive,
+          payout:
+            queuePayout !== undefined
+              ? formatTokenAmount(queuePayout, queueTotals.usdcDecimals)
+              : undefined,
+          amount:
+            queueAmountRaw !== undefined
+              ? formatTokenAmount(queueAmountRaw, queueTotals.plusdDecimals)
+              : undefined,
+          rate: queueRateText,
+        })
+      : undefined;
+  const queueClaimBlocked =
+    isWithdraw &&
+    (queueRequestState.payableNow === false || queueTotals.paused === true);
+  const withdrawQueue: WithdrawQueueInfo | undefined = isWithdraw
+    ? {
+        position: queueRequestState.position,
+        payableNow: queueRequestState.payableNow,
+        totalQueued: queueTotals.totalQueued,
+        totalClaimed: queueTotals.totalClaimed,
+        rateRaw: queueTotals.rateRaw,
+        rateDecimals: queueTotals.rateDecimals,
+        recoveryActive,
+        payout: queuePayout,
+        plusdDecimals: queueTotals.plusdDecimals,
+        usdcDecimals: queueTotals.usdcDecimals,
+      }
+    : undefined;
+
   // ── EVM derived state ──────────────────────────────────────────────────────
   const evmDepositNeedsApproval =
     depositAllowance !== undefined &&
@@ -1072,7 +1190,10 @@ export function useDepositFlow(
       : undefined;
     const evmStep3Error = isDeposit ? evmClaim.error : evmClaimWithdrawal.error;
     const evmStep3UserError = evmStep3Error
-      ? toUserError(evmStep3Error)
+      ? toUserError(
+          evmStep3Error,
+          isDeposit ? undefined : { context: "withdrawClaim" },
+        )
       : undefined;
 
     const evmMinChipLabel =
@@ -1163,6 +1284,10 @@ export function useDepositFlow(
           if (isDeposit) evmRequestDeposit.write(amountBig);
           else evmRequestWithdrawal.write(amountBig);
         },
+        hint:
+          isWithdraw && evmStep2State === "idle"
+            ? WITHDRAW_REQUEST_HINT
+            : undefined,
         errorMessage:
           evmStep2State === "error" ? evmStep2UserError?.message : undefined,
         errorDetails:
@@ -1173,7 +1298,9 @@ export function useDepositFlow(
         actionLabel: "Claim",
         state: evmStep3State,
         loading: isDeposit ? evmClaim.isPending : evmClaimWithdrawal.isPending,
-        disabled: !canEvmClaim || wrongNetwork !== undefined,
+        disabled:
+          !canEvmClaim || queueClaimBlocked || wrongNetwork !== undefined,
+        hint: evmStep3State === "success" ? undefined : queueClaimHint,
         onAction: () => {
           if (evmRequestId === undefined || !evmVoucher.data?.signature) return;
           if (isDeposit) {
@@ -1193,6 +1320,7 @@ export function useDepositFlow(
         errorDetails:
           evmStep3State === "error" ? evmStep3UserError?.details : undefined,
       },
+      withdrawQueue,
       step1Tx: {
         isPending: isDeposit
           ? isDepositApprovePending
@@ -1419,7 +1547,10 @@ export function useDepositFlow(
     ? stellarClaim.error
     : stellarClaimWithdrawal.error;
   const stellarStep3UserError = stellarStep3Error
-    ? toUserError(stellarStep3Error)
+    ? toUserError(
+        stellarStep3Error,
+        isDeposit ? undefined : { context: "withdrawClaim" },
+      )
     : undefined;
 
   const stellarInflight = isDeposit
@@ -1525,6 +1656,10 @@ export function useDepositFlow(
         if (isDeposit) stellarRequestDeposit.write(amountBig);
         else stellarRequestWithdrawal.write(amountBig);
       },
+      hint:
+        isWithdraw && stellarStep2State === "idle"
+          ? WITHDRAW_REQUEST_HINT
+          : undefined,
       errorMessage:
         stellarStep2State === "error"
           ? stellarStep2UserError?.message
@@ -1545,7 +1680,8 @@ export function useDepositFlow(
       loading: isDeposit
         ? stellarClaim.isPending
         : stellarClaimWithdrawal.isPending,
-      disabled: !canStellarStep3,
+      disabled: !canStellarStep3 || queueClaimBlocked,
+      hint: stellarStep3State === "success" ? undefined : queueClaimHint,
       onAction: () => {
         if (stellarRequestIdBigInt === undefined) return;
         const sig =
@@ -1582,6 +1718,7 @@ export function useDepositFlow(
           ? stellarStep3UserError?.details
           : undefined,
     },
+    withdrawQueue,
     step1Tx: {
       isPending: isDeposit ? changeTrust.isPending : changeTrustUsdc.isPending,
       isSuccess: isDeposit ? changeTrust.isSuccess : changeTrustUsdc.isSuccess,

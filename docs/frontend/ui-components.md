@@ -1010,6 +1010,9 @@ here.
   centred check icon. The check icon is a 20×20 viewport stroke in `--color-pipeline-positive`;
   `strokeWidth` 2.5 matches the medium-heavy Figma weight (node `1498:100802;9285:26314`), and the
   path spans the full usable height so the glyph clearly reads inside the 32 px pill.
+- **Hint** (`hint`, #1759): an optional muted caption line under the label (`--text-pipeline-caption`,
+  `--color-pipeline-ink-muted`, body font; `data-testid="step-row-{n}-hint"`). Rendered only when
+  `state !== "error"` — the red error line keeps precedence. Absent when not passed.
 - **Error** (`state="error"`): red-tinted badge (`rgba(192, 57, 43, 0.12)` fill, number in
   `--color-pipeline-negative`) + the `errorMessage` line under the label; the action button is
   **kept** so the user can retry. See
@@ -1037,7 +1040,7 @@ A thin wrapper that renders a list of `StepRow` items inside a `muted` `Card` su
 `steps` — ordered array of step descriptors; each entry maps 1:1 to a `StepRow`, with step numbers
 derived from the array index (1-based). Minimum two items expected (Approve + Convert), but the
 component accepts any number. Each item forwards `label`, `actionLabel`, `disabled`, `onAction`,
-`loading`, `state`, `errorMessage`, and `errorDetails` to `StepRow` (see [StepRow](#steprow) for
+`loading`, `state`, `errorMessage`, `errorDetails`, and `hint` to `StepRow` (see [StepRow](#steprow) for
 their semantics; the error slot is specified in [`error-handling.md`](./error-handling.md)).
 
 `notice` — optional `{ label, actionLabel, onAction, loading? }` (#1497). Renders a one-line row

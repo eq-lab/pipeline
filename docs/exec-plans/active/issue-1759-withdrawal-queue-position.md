@@ -12,22 +12,22 @@ No Figma frames will be made for this Issue (decision 2026-10-29 on the Issue an
 
 In scope:
 
-1. **Per-request position and payable-now.** Contract reads, values shown as returned.
+1. [x] **Per-request position and payable-now.** Contract reads, values shown as returned.
    - Withdraw page: a queue card under the steps card while a withdrawal request is in flight.
    - Pending `Withdraw` rows on Home (`RecentActivityCard`) and `/transactions`, through `renderRequestRow`.
-2. **Queue aggregates.** Total queued and total claimed on the withdraw page queue card and as two more summary cards on Protocol Dashboard Panel C, next to the served In Queue / Requests cards.
-3. **Recovery rate.**
+2. [x] **Queue aggregates.** Total queued and total claimed on the withdraw page queue card and as two more summary cards on Protocol Dashboard Panel C, next to the served In Queue / Requests cards.
+3. [x] **Recovery rate.**
    - When the on-chain rate is below 1, a notice on the withdraw page.
    - On the claim step, a "Pays X USDC = Y PLUSD × rate" hint. X is computed by the contract, never by the client.
    - The claim success toast must not report the PLUSD amount as USDC while a rate below 1 is set.
-4. **Waiting-state hints** on the claim step. The four §Delays reasons, copied verbatim: no voucher yet, custody account short, voucher expired, queue paused.
+4. [x] **Waiting-state hints** on the claim step. The four §Delays reasons, copied verbatim: no voucher yet, custody account short, voucher expired, queue paused.
    - Claim is disabled while the contract says the request is not payable.
    - `TooEarly` (Stellar `Error(Contract, #2)` on `claim_request`, EVM `WithdrawalQueueTooEarly()`) maps to the custody-short copy.
-5. **Request-step copy.** Hint on the withdraw request step: "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." Queue card copy: the "Paid in order" explanation.
+5. [x] **Request-step copy.** Hint on the withdraw request step: "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." Queue card copy: the "Paid in order" explanation.
 6. Specs and a user-stories doc.
 
 Out of scope:
-- Any backend or API change. This user's manager takes frontend/docs work only. A served `position` / `claimable` / aggregates / rate field would be the better long-term source, so log it as tech debt (Docs to Update).
+- Any backend or API change. This user's manager takes frontend/docs work only. A served `position` / `claimable` / aggregates / rate field would be the better long-term source, so it is tracked as backend issue #1801 (no tech-debt tracker entry).
 - Mapping `InvalidRate` (#3) / `AlreadyInShutdown` (#5). They are admin-only and the LP UI can never hit them (stated in the Issue).
 - Position on completed (claimed) rows. A claimed row already shows "claimed", and position only matters while a request waits. This also avoids N extra RPC reads per history page.
 - Trustee console, and the bank wire-out (#1757).
@@ -73,7 +73,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Stellar client reads** in `packages/frontend/src/wallet/stellar/contracts/withdrawalQueue.ts`. Add these methods through `simulateReadCall`:
+1. [x] **Stellar client reads** in `packages/frontend/src/wallet/stellar/contracts/withdrawalQueue.ts`. Add these methods through `simulateReadCall`:
    - `rate(): Promise<bigint>`
    - `totalQueued(): Promise<bigint>`
    - `totalClaimed(): Promise<bigint>`
@@ -83,7 +83,7 @@ _None_
    Add `simulateClaimPayout(sender: string, requestId: bigint, verifierSignature: Uint8Array, deadline: bigint): Promise<bigint>`. It builds the same `claim_request` op as `buildClaimRequest` on `new Account(sender, "0")`, simulates it, and returns `scValToNative(retval)` as bigint (throws on a simulation error).
 
    Reduce the file header to a 2–3-line spec pointer (`docs/frontend/wallet-flows.md#withdrawal-queue-reads`) and shrink its `lint-comments.baseline.json` entry.
-2. **EVM ABI** in `packages/frontend/src/wallet/evm/abis/withdrawalQueue.ts`. Add view entries:
+2. [x] **EVM ABI** in `packages/frontend/src/wallet/evm/abis/withdrawalQueue.ts`. Add view entries:
    - `isClaimable(uint256) -> bool`
    - `withdrawalRequestQueued(uint256) -> uint256`
    - `queueMetadata() -> (uint256 totalQueued, uint256 totalClaimed)`
@@ -91,7 +91,7 @@ _None_
    - `paused() -> bool`
 
    Same header and baseline treatment as step 1.
-3. **Per-chain read hooks.** Use React Query for Stellar and wagmi `useReadContract` for EVM. Each takes `{ enabled }` and returns raw bigint/boolean values plus `isLoading` / `error`. A missing contract id or zero address short-circuits to `undefined`.
+3. [x] **Per-chain read hooks.** Use React Query for Stellar and wagmi `useReadContract` for EVM. Each takes `{ enabled }` and returns raw bigint/boolean values plus `isLoading` / `error`. A missing contract id or zero address short-circuits to `undefined`.
    - New `wallet/stellar/useStellarWithdrawalQueueReads.ts`:
      - `useStellarWithdrawalQueueTotals()` (`total_queued`, `total_claimed`, `rate`, `paused`)
      - `useStellarWithdrawalRequestQueueState(requestId)` (`withdrawal_request_queued`, `claimable`)
@@ -100,15 +100,15 @@ _None_
      - `useEvmWithdrawalQueueTotals()` (`queueMetadata`, `convertToAssets(10^plusdDec)` with PLUSD decimals from `useEvmStakeDecimals`, `paused`)
      - `useEvmWithdrawalRequestQueueState(requestId)` (`withdrawalRequestQueued`, `isClaimable`)
      - `useEvmClaimPayout(amountRaw)` (`convertToAssets`)
-4. **Chain-agnostic facade** in new `wallet/useWithdrawalQueueReads.ts`.
+4. [x] **Chain-agnostic facade** in new `wallet/useWithdrawalQueueReads.ts`.
    - `useWithdrawalQueueTotals(kind)` returns `{ totalQueued, totalClaimed, rateRaw, rateDecimals, paused, plusdDecimals, usdcDecimals }`.
    - `useWithdrawalRequestQueueState(kind, requestId)` returns `{ position, payableNow }`.
    - Both call both chain hooks and enable only the active kind.
    - Export the helper `isRecoveryRateActive(totals)`. It returns true only when the rate is defined and below its unit.
 
    Export from `wallet/index.ts`.
-5. **Voucher expired flag.** In `api/useStellarWithdrawalVoucher.ts`, add `expired: boolean` to the result (the existing `expired` local). In `api/useWithdrawalVoucher.ts` (EVM), add `expired: false` for a uniform shape. Status semantics stay unchanged.
-6. **Claim-step hint selector** in new `wallet/withdrawClaimHint.ts`. It is pure, so it can be unit-tested.
+5. [x] **Voucher expired flag.** In `api/useStellarWithdrawalVoucher.ts`, add `expired: boolean` to the result (the existing `expired` local). In `api/useWithdrawalVoucher.ts` (EVM), add `expired: false` for a uniform shape. Status semantics stay unchanged.
+6. [x] **Claim-step hint selector** in new `wallet/withdrawClaimHint.ts`. It is pure, so it can be unit-tested.
 
    Signature: `selectWithdrawClaimHint({ paused, voucherExpired, hasVoucher, requestStatus, payableNow, recoveryActive, payout, amount, rate })`. It returns the hint string or `undefined`, in this priority:
    1. `paused === true`: "The withdrawal queue is paused. Check the status page before retrying."
@@ -118,16 +118,16 @@ _None_
    5. `recoveryActive`: "Pays {X} USDC = {Y} PLUSD × {rate}". X is "—" until the contract payout resolves.
 
    Before a request exists, the claim step returns `undefined`.
-7. **Wire into `useDepositFlow.ts`.** Withdraw direction only; deposit is unchanged.
+7. [x] **Wire into `useDepositFlow.ts`.** Withdraw direction only; deposit is unchanged.
    - Call the facade with `kind` and the active withdraw request id (`stellarRequestIdBigInt` / `evmRequestId`), and the payout hooks (Stellar: voucher `signatureBytes` + `deadline` + address, enabled when `payableNow === true && recoveryActive`; EVM: `lockedAmountRaw`).
    - Set `step2.hint = "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed."` while step 2 is idle.
    - Set `step3.hint` from step 6.
    - Add `payableNow === false || paused === true` to `step3.disabled` (strict false/true; `undefined` keeps today's behaviour).
    - Add to `FlowState`: `withdrawQueue: { position, payableNow, totalQueued, totalClaimed, rateRaw, rateDecimals, recoveryActive, payout, plusdDecimals, usdcDecimals } | undefined` (raw values, `undefined` on deposit).
    - Build the withdraw `step3UserError` with `toUserError(err, { context: "withdrawClaim" })` (step 8).
-8. **Error mapping** in `utils/userError.ts`. Add an optional second argument `{ context?: "withdrawClaim" }`. With that context, Soroban `#2` maps to the custody-short copy. Globally, also add an EVM match for `WithdrawalQueueTooEarly` (named error, unambiguous) to the same copy, checked before the generic `execution reverted` match. The `#4` mapping is unchanged.
-9. **`packages/ui` StepRow / StepsCard hint.** Add optional `hint?: string` to `StepRowProps` and `StepItem`. It renders a muted caption line under the label (`--text-pipeline-caption`, `--color-pipeline-ink-muted`, body font), only when `state !== "error"` (the red error line keeps precedence). Pass it through in `StepsCard`. Update `docs/frontend/ui-components.md#stepscard` / `#steprow`.
-10. **Withdraw page queue card.**
+8. [x] **Error mapping** in `utils/userError.ts`. Add an optional second argument `{ context?: "withdrawClaim" }`. With that context, Soroban `#2` maps to the custody-short copy. Globally, also add an EVM match for `WithdrawalQueueTooEarly` (named error, unambiguous) to the same copy, checked before the generic `execution reverted` match. The `#4` mapping is unchanged.
+9. [x] **`packages/ui` StepRow / StepsCard hint.** Add optional `hint?: string` to `StepRowProps` and `StepItem`. It renders a muted caption line under the label (`--text-pipeline-caption`, `--color-pipeline-ink-muted`, body font), only when `state !== "error"` (the red error line keeps precedence). Pass it through in `StepsCard`. Update `docs/frontend/ui-components.md#stepscard` / `#steprow`.
+10. [x] **Withdraw page queue card.**
     - New `components/withdraw/WithdrawQueueCard.tsx` (view) plus `components/withdraw/useWithdrawQueueCard.ts`, which formats `flow.withdrawQueue`.
     - Content:
       - A `Card variant="white"` titled "Withdrawal queue" with the "Paid in order" copy from withdraw.md verbatim.
@@ -139,19 +139,19 @@ _None_
     - Recovery notice: when `recoveryActive`, a `Card variant="yellow"` above it: "Recovery rate {rate}. Every claim pays USDC equal to the PLUSD burned times this rate." (from withdraw.md §During shutdown).
     - Render both in `routes/deposit.tsx` after the steps card when `!isDeposit && flow.isConnected`. Add test ids `withdraw-queue-card`, `withdraw-queue-position`, `withdraw-queue-payable`, `withdraw-queue-total-queued`, `withdraw-queue-total-claimed`, `withdraw-recovery-rate-notice`.
     - Pass `hint` for steps 2 and 3 in both `StepsCard` call sites.
-11. **Claim toast** in `routes/deposit.tsx`, withdraw direction.
+11. [x] **Claim toast** in `routes/deposit.tsx`, withdraw direction.
     - When `flow.withdrawQueue?.recoveryActive`, title the success toast `Claimed {X} USDC` from the contract payout captured before submit (ref, like `lastClaimAmountRaw`), else "USDC claimed".
     - With the rate at 1, keep today's copy (unchanged behaviour).
-12. **Request rows.**
+12. [x] **Request rows.**
     - New `components/activity/WithdrawRequestQueueMeta.tsx`: a hook-using component that takes `{ chainKind, requestId }` and renders "Position {pos} PLUSD · Payable now" / "Position {pos} PLUSD · Not payable yet", with "—" parts while loading or unavailable.
     - In `renderRequestRow.tsx`'s pending `Withdraw` branch (when `item.request_id` is set), add a third caption line through a new optional `tertiary?: React.ReactNode` prop on `TwoLineAmount`.
     - Completed rows are unchanged.
     - Apply to `RecentActivityCard` and `routes/transactions.tsx` automatically (shared renderer).
-13. **Panel C aggregates.**
+13. [x] **Panel C aggregates.**
     - `components/dashboard/useWithdrawalQueuePanel.ts`: read `useWithdrawalQueueTotals(useDashboardChain().kind)` and add `totalQueued` / `totalClaimed` to `WithdrawalQueueSummaryFormatted`. Format them in the panel's style (`formatCompactUsd` of the unit-formatted decimal, the same as In Queue), "—" when unavailable.
     - `WithdrawalQueuePanel.tsx`: two more `SummaryCard`s, "Total queued" and "Total claimed" (test ids `withdrawal-queue-card-total-queued` / `-total-claimed`), after Requests. The mobile scroll row already handles extra 200 px cards. On desktop, `md:flex-1` spreads six cards; verify they don't overflow at 1280 px.
     - Panel state (`loading` / `error` / `empty`) stays driven by the API query only. A failed contract read shows "—", not a panel error.
-14. **Lint/build.** Run:
+14. [x] **Lint/build.** Run:
     - `yarn workspace @pipeline/frontend test`
     - `@pipeline/ui` tests
     - `npx tsx scripts/lint-docs.ts`
@@ -234,4 +234,4 @@ Unit tests use Vitest + RTL with `vi.mock` of chain hooks and clients. No localS
   9. EVM parity on Hoodi
 
   Add the row to `docs/user-stories/index.md` under Epic #1795.
-- `docs/exec-plans/tech-debt-tracker.md`: the API does not serve position / payable / queue totals / rate, so the LP reads them from contracts. Backend follow-up: add them to `/v1/requests` and `/v1/withdrawal-queue`. Also note that the EVM WQ has no rate getter.
+- No tech-debt tracker entry (scope change). The missing served position / payable / queue totals / rate is tracked as backend issue #1801; the withdrawals spec source note and the user story reference #1801. The EVM WQ has no rate getter, noted in the spec.

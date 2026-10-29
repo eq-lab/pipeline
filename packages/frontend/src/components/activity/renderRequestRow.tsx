@@ -5,6 +5,7 @@ import { formatTokenAmount, formatActivityTime } from "@/lib/format";
 import { SAC_DECIMALS } from "@/wallet";
 import type { WalletViewKind } from "@/wallet";
 import type { EvmStakeDecimals } from "@/wallet";
+import { WithdrawRequestQueueMeta } from "./WithdrawRequestQueueMeta";
 
 // spec: docs/frontend/dashboard-components.md#renderrequestrow
 // (shared row-visual rule, chain-aware decimal table, fail-loud contract).
@@ -23,10 +24,12 @@ export function TwoLineAmount({
   primary,
   secondary,
   tone = "default",
+  tertiary,
 }: {
   primary: string;
   secondary: string;
   tone?: "default" | "muted";
+  tertiary?: React.ReactNode;
 }) {
   const primaryColor =
     tone === "muted"
@@ -59,6 +62,20 @@ export function TwoLineAmount({
       >
         {secondary}
       </span>
+      {tertiary !== undefined && (
+        <span
+          className={[
+            "font-[family-name:var(--font-body)]",
+            "text-[length:var(--text-pipeline-caption)]",
+            "leading-[var(--text-pipeline-caption--line-height)]",
+            "font-[var(--font-weight-regular)]",
+            "text-[color:var(--color-pipeline-ink-muted)]",
+            "whitespace-nowrap",
+          ].join(" ")}
+        >
+          {tertiary}
+        </span>
+      )}
     </div>
   );
 }
@@ -151,6 +168,15 @@ export function renderRequestRow(
             primary={`+${amount} USDC`}
             secondary={secondary}
             tone="muted"
+            tertiary={
+              item.request_id !== undefined ? (
+                <WithdrawRequestQueueMeta
+                  chainKind={chainKind}
+                  requestId={item.request_id}
+                  plusdDecimals={assetDecimals}
+                />
+              ) : undefined
+            }
           />
         }
       />

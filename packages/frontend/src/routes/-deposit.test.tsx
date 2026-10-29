@@ -383,6 +383,48 @@ vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
 }));
 
+const queueMock = vi.hoisted(() => ({
+  totals: {
+    totalQueued: undefined as bigint | undefined,
+    totalClaimed: undefined as bigint | undefined,
+    rateRaw: undefined as bigint | undefined,
+    rateDecimals: undefined as number | undefined,
+    paused: undefined as boolean | undefined,
+    plusdDecimals: undefined as number | undefined,
+    usdcDecimals: undefined as number | undefined,
+  },
+  request: {
+    position: undefined as bigint | undefined,
+    payableNow: undefined as boolean | undefined,
+  },
+  payout: undefined as bigint | undefined,
+}));
+
+vi.mock("@/wallet/useWithdrawalQueueReads", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/wallet/useWithdrawalQueueReads")>();
+  return {
+    ...actual,
+    useWithdrawalQueueTotals: () => queueMock.totals,
+    useWithdrawalRequestQueueState: () => queueMock.request,
+  };
+});
+
+vi.mock("@/wallet/evm/useEvmWithdrawalQueueReads", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/wallet/evm/useEvmWithdrawalQueueReads")
+    >();
+  return {
+    ...actual,
+    useEvmClaimPayout: () => ({
+      data: queueMock.payout,
+      isLoading: false,
+      error: null,
+    }),
+  };
+});
+
 // ── Clipboard mock ────────────────────────────────────────────────────────────
 
 const mockWriteText = vi.fn().mockResolvedValue(undefined);
@@ -3672,5 +3714,139 @@ describe("Deposit page — chips stay within the balance (#1628)", () => {
     await user.click(screen.getByRole("button", { name: "Max" }));
     expect((input as HTMLInputElement).value).toBe("1234.567891");
     expect(screen.queryByText("Insufficient balance")).toBeNull();
+  });
+});
+
+describe("Deposit page — withdraw queue card, recovery rate and claim toast (#1759)", () => {
+  function seedPendingClaim() {
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Withdraw",
+          chain_id: 560048,
+          request_id: "77",
+          amount: AMOUNT_10_PLUSD,
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockWithdrawVoucherData = {
+      request_id: "77",
+      amount: AMOUNT_10_PLUSD,
+      user: WALLET_ADDRESS,
+      signature: "0xsig",
+    };
+    mockWithdrawVoucherStatus = "ready";
+    seedWithdrawMocks({ allowance: "1000000000" });
+  }
+
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    Object.assign(queueMock.totals, {
+      totalQueued: 20_000_000n,
+      totalClaimed: 5_000_000n,
+      rateRaw: 1_000_000n,
+      rateDecimals: 6,
+      paused: false,
+      plusdDecimals: 6,
+      usdcDecimals: 6,
+    });
+    Object.assign(queueMock.request, {
+      position: 10_000_000n,
+      payableNow: true,
+    });
+    queueMock.payout = undefined;
+    seedPendingClaim();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows the queue card with contract values on the withdraw page", async () => {
+    renderDeposit();
+    expect(
+      await screen.findByTestId("withdraw-queue-card"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
+      "10.00 PLUSD",
+    );
+    expect(screen.getByTestId("withdraw-queue-payable")).toHaveTextContent(
+      "Yes",
+    );
+    expect(screen.getByTestId("withdraw-queue-total-queued")).toHaveTextContent(
+      "20.00 PLUSD",
+    );
+    expect(
+      screen.getByTestId("withdraw-queue-total-claimed"),
+    ).toHaveTextContent("5.00 PLUSD");
+    expect(
+      screen.queryByTestId("withdraw-recovery-rate-notice"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the queue card on the deposit page", async () => {
+    mockDirection = "deposit";
+    seedBaseMocks({ allowance: "10000000000" });
+    renderDeposit();
+    await screen.findByText("1:1 Conversion");
+    expect(screen.queryByTestId("withdraw-queue-card")).not.toBeInTheDocument();
+  });
+
+  it("disables Claim and shows the custody hint when the contract says not payable", async () => {
+    queueMock.request.payableNow = false;
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Claim" })).toBeDisabled();
+    });
+    expect(
+      screen.getByText(
+        "The withdrawal custody account is short. Claims for your position wait until it is funded.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the recovery notice and the payout hint when the rate is below 1", async () => {
+    queueMock.totals.rateRaw = 950_000n;
+    queueMock.payout = 9_500_000n;
+    renderDeposit();
+    expect(
+      await screen.findByTestId("withdraw-recovery-rate-notice"),
+    ).toHaveTextContent("Recovery rate 0.95.");
+    expect(
+      screen.getByText(/Pays 9\.50 USDC = 10\.00 PLUSD × 0\.95/),
+    ).toBeInTheDocument();
+  });
+
+  it("claim toast reports the contract payout under a recovery rate", async () => {
+    queueMock.totals.rateRaw = 950_000n;
+    queueMock.payout = 9_500_000n;
+    const user = userEvent.setup();
+    renderDeposit();
+    const claim = await screen.findByRole("button", { name: "Claim" });
+    await waitFor(() => expect(claim).not.toBeDisabled());
+    await user.click(claim);
+    await waitFor(
+      () =>
+        expect(screen.getByText(/^Claimed 9\.5.* USDC$/)).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+  });
+
+  it("claim toast keeps the unchanged copy at rate 1", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+    const claim = await screen.findByRole("button", { name: "Claim" });
+    await waitFor(() => expect(claim).not.toBeDisabled());
+    await user.click(claim);
+    await waitFor(
+      () => expect(screen.getByText(/^Claimed 10.* USDC$/)).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
   });
 });

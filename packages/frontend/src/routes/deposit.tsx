@@ -23,6 +23,7 @@ import { useToast } from "@/lib/toast";
 import { toUserError } from "@/utils/userError";
 import { useChainServed } from "@/api";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
+import { WithdrawQueueCard } from "@/components/withdraw/WithdrawQueueCard";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -398,6 +399,16 @@ function Deposit() {
     }
   }, [flow.lockedAmountRaw, flow.decimals]);
 
+  const lastClaimPayoutRef = useRef<string | undefined>(undefined);
+  const claimRecoveryActiveRef = useRef(false);
+  useEffect(() => {
+    const queue = flow.withdrawQueue;
+    claimRecoveryActiveRef.current = queue?.recoveryActive ?? false;
+    if (queue?.payout !== undefined && queue.usdcDecimals !== undefined) {
+      lastClaimPayoutRef.current = formatUsdc(queue.payout, queue.usdcDecimals);
+    }
+  }, [flow.withdrawQueue]);
+
   const prevStep3IsPending = useRef(false);
   const prevStep3IsSuccess = useRef(false);
   const prevStep3Error = useRef<Error | null>(null);
@@ -414,7 +425,10 @@ function Deposit() {
       toast.show({ id: toastId, tone: "pending", title: "Claiming…" });
     }
     if (flow.step3Tx.isSuccess && !prevStep3IsSuccess.current) {
-      const claimedAmount = lastClaimAmountRef.current;
+      const claimedAmount =
+        !isDeposit && claimRecoveryActiveRef.current
+          ? lastClaimPayoutRef.current
+          : lastClaimAmountRef.current;
       toast.update(toastId, {
         tone: "success",
         // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (claim toast)
@@ -437,7 +451,10 @@ function Deposit() {
     }
     if (flow.step3Tx.error && flow.step3Tx.error !== prevStep3Error.current) {
       console.error("Claim failed:", flow.step3Tx.error);
-      const mapped = toUserError(flow.step3Tx.error);
+      const mapped = toUserError(
+        flow.step3Tx.error,
+        isDeposit ? undefined : { context: "withdrawClaim" },
+      );
       toast.update(toastId, {
         tone: "danger",
         title: mapped.isSpecific ? mapped.message : "Claim failed",
@@ -722,6 +739,7 @@ function Deposit() {
                     onAction: flow.step2.onAction,
                     errorMessage: flow.step2.errorMessage,
                     errorDetails: flow.step2.errorDetails,
+                    hint: flow.step2.hint,
                   },
                   {
                     label: flow.step3.label,
@@ -732,6 +750,7 @@ function Deposit() {
                     onAction: flow.step3.onAction,
                     errorMessage: flow.step3.errorMessage,
                     errorDetails: flow.step3.errorDetails,
+                    hint: flow.step3.hint,
                   },
                 ]}
               />
@@ -758,6 +777,7 @@ function Deposit() {
                     onAction: flow.step2.onAction,
                     errorMessage: flow.step2.errorMessage,
                     errorDetails: flow.step2.errorDetails,
+                    hint: flow.step2.hint,
                   },
                   {
                     label: flow.step3.label,
@@ -768,9 +788,16 @@ function Deposit() {
                     onAction: flow.step3.onAction,
                     errorMessage: flow.step3.errorMessage,
                     errorDetails: flow.step3.errorDetails,
+                    hint: flow.step3.hint,
                   },
                 ]}
                 notice={chainNotice}
+              />
+            )}
+            {!isDeposit && flow.isConnected && (
+              <WithdrawQueueCard
+                queue={flow.withdrawQueue}
+                hasRequest={flow.requestId !== undefined}
               />
             )}
           </>

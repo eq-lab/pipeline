@@ -952,6 +952,8 @@ response, the renderer deliberately renders `—` (em-dash) instead of silently 
 zero or approximate value, so data regressions are immediately visible rather than silently
 zeroing out amounts.
 
+**Pending withdraw queue meta (#1759):** a pending (non-`Completed`) `Withdraw` row with a `request_id` gets a third caption line through `TwoLineAmount`'s optional `tertiary` prop, rendered by `components/activity/WithdrawRequestQueueMeta.tsx` (it takes `chainKind`, `requestId` and the PLUSD decimals the row already derives): "Position {pos} PLUSD · Payable now" or "Position {pos} PLUSD · Not payable yet", with "—" for a part that is loading or unavailable. Values are the contract reads in [withdrawals.md](../product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app) (one `claimable` and one `withdrawal_request_queued` read per pending withdraw row). Completed rows, Deposit, Stake and Unstake rows are unchanged. Home (`RecentActivityCard`) and `/transactions` get it from this shared renderer.
+
 ## Ops console panels
 
 ### BalanceSheetPanel
@@ -1372,7 +1374,7 @@ Protocol Dashboard Panel C — Withdrawal Queue. Wires the `useWithdrawalQueue` 
 **Content** per Figma section `3283:14893`:
 
 - Title "Withdrawal Queue".
-- Four summary cards: In Queue / Requests / Estimated wait / Liquid Cover.
+- Six summary cards: In Queue / Requests / Estimated wait / Liquid Cover / Total queued / Total claimed (#1759). Total queued and Total claimed are the queue contract's running totals (`total_queued()` / `total_claimed()` on Stellar, `queueMetadata()` on EVM), not the served `in_queue_usd`, which is the unclaimed sum and stays as In Queue. Test ids `withdrawal-queue-card-total-queued` / `-total-claimed`. They follow `useDashboardChain().kind` and show "—" when the read is unavailable. Six cards must not overflow at 1280 px (`md:flex-1`); the mobile scroll row handles the extra 200 px cards.
 - Table: Holder / Amount / Status (3 columns).
 - "Show more" affordance when there are more than 5 items (client-side).
 
@@ -1401,6 +1403,8 @@ Maps raw `useWithdrawalQueue` data → formatted summary cards + table rows + pa
 
 **Panel state:** `loading` → `PanelLoading`; `error` → `PanelError` with retry; `empty` → no queue
 items, `PanelEmpty`; `ready` → formatted summary + rows available.
+
+**Total queued / Total claimed (#1759):** `useWithdrawalQueueTotals(useDashboardChain().kind)` raw values, formatted with `formatCompactUsd` of the unit-formatted decimal (the same as In Queue), "—" when unavailable. A failed contract read shows "—", never a panel error; panel state stays driven by the API query only.
 
 **Row expand** (resolved Open Question 2): the first `WITHDRAWAL_QUEUE_DEFAULT_VISIBLE` (5) rows are
 visible by default; `expanded` toggles the "Show more" affordance. The hook owns this state so the
@@ -1870,6 +1874,8 @@ fills the exact balance (`formatUsdcInput`); percentages floor in base units —
 - Stellar withdraw: `stellar-withdraw-tx` / `stellar-withdraw-claim-tx`
 
 **Claim toast copy:** PLUSD claims (deposit direction) surface the claimed amount plus a "Stake" CTA; USDC claims (withdraw direction) surface "Claimed X USDC" from the same locked-amount ref (#1142; plain "USDC claimed" fallback). Both directions navigate home after the claim success — see wallet-flows.md "Terminal-success toasts and navigation".
+
+**Withdraw queue card, recovery notice and hints (#1759):** in the withdraw direction, when `flow.isConnected`, `WithdrawQueueCard` renders after the steps card (`components/withdraw/WithdrawQueueCard.tsx`, formatting in `useWithdrawQueueCard.ts`). It is a `Card variant="white"` titled "Withdrawal queue" holding the "Paid in order" copy from `docs/user-docs/lenders/withdraw.md` verbatim and four `InfoRow`s: Your position (`{pos} PLUSD`, only while a request id exists), Payable now ("Yes" / "Not yet" / "—"), Total queued and Total claimed (`{n} PLUSD`). Amounts use `formatTokenAmount(raw, decimals)` on the contract values; an unavailable value is "—". Test ids: `withdraw-queue-card`, `withdraw-queue-position`, `withdraw-queue-payable`, `withdraw-queue-total-queued`, `withdraw-queue-total-claimed`, `withdraw-recovery-rate-notice`. When `flow.withdrawQueue.recoveryActive`, a `Card variant="yellow"` above the queue card reads "Recovery rate {rate}. Every claim pays USDC equal to the PLUSD burned times this rate." Steps 2 and 3 pass `flow.stepN.hint` to `StepsCard` (request-step copy and claim-step hint priority: [withdrawals.md](../product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app)). No Figma frame exists for the card (decision 2026-10-29 on #1759); it reuses the LP theme and the withdraw frame `1498-100351` as style reference only. With a recovery rate below 1 the claim success toast is `Claimed {X} USDC` from the contract payout captured before submit (ref), "USDC claimed" when none was captured; at rate 1 it is unchanged. The danger toast for a failed withdraw claim maps with `toUserError(err, { context: "withdrawClaim" })`.
 
 Figma references: [deposit page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812), [withdraw page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100351), [swap button](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100157), [wallet not connected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-6885).
 

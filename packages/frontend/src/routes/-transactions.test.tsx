@@ -40,6 +40,13 @@ const mockUseWalletView = vi.fn(() => ({ kind: "evm" as "evm" | "stellar" }));
 
 const mockConnectModalOpen = vi.fn();
 
+const mockQueueState = vi.fn<
+  (
+    kind: string,
+    id: bigint | undefined,
+  ) => { position: bigint | undefined; payableNow: boolean | undefined }
+>(() => ({ position: undefined, payableNow: undefined }));
+
 vi.mock("@/wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/wallet")>();
   return {
@@ -48,6 +55,8 @@ vi.mock("@/wallet", async (importOriginal) => {
     useStellarWallet: () => mockUseStellarWallet(),
     useWalletView: () => mockUseWalletView(),
     useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
+    useWithdrawalRequestQueueState: (kind: string, id: bigint | undefined) =>
+      mockQueueState(kind, id),
     useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
   };
 });
@@ -498,6 +507,21 @@ describe("Transactions page — formatting assertions", () => {
     await user.click(sellTab);
 
     expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+  });
+
+  it("pending Withdraw row on Sell shows position and payable-now meta", async () => {
+    mockQueueState.mockReturnValue({
+      position: 2_500_000_000n,
+      payableNow: false,
+    });
+    const user = userEvent.setup();
+    renderTransactions();
+
+    await user.click(screen.getByRole("tab", { name: "Sell" }));
+
+    expect(screen.getByTestId("withdraw-request-queue-meta")).toHaveTextContent(
+      "Position 2,500.00 PLUSD · Not payable yet",
+    );
   });
 
   it("formats Stake amounts on Stake tab", async () => {
