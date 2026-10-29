@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" role="img" aria-label="Reference transaction lifecycle: origination, funding, transit and storage under the Security Agent, repayment by priority of payments with interest minted into the vault, and closure." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>Reference transaction lifecycle: origination, funding, transit and storage under the Security Agent, repayment by priority of payments with interest minted into the vault, and closure.</title>
+<defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="m9a9ccc" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#9a9ccc"/></marker></defs>
+<rect width="960" height="620" fill="#ffffff"/>
+<circle cx="31.0" cy="34.0" r="11" fill="#000080"/>
+<text x="31.0" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
+<text x="50.0" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Origination</text>
+<path d="M 192.6 34.0 L 204.6 34.0" fill="none" stroke="#9a9ccc" stroke-width="1.5" marker-end="url(#m9a9ccc)" stroke-linejoin="round"/>
+<line x1="20.0" y1="54" x2="189.6" y2="54" stroke="#000080" stroke-width="2"/>
+<rect x="20.0" y="72.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="30.0" y="95.0" font-size="14.5" fill="#262524" font-weight="600">Sourcing</text>
+<text x="30.0" y="118.2" font-size="12.5" fill="#5c5a57">the Originator identifies</text>
+<text x="30.0" y="135.4" font-size="12.5" fill="#5c5a57">the deal</text>
+<path d="M 104.8 164.0 L 104.8 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="186.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="30.0" y="209.1" font-size="14.5" fill="#262524" font-weight="600">KYB and KYT</text>
+<text x="30.0" y="232.2" font-size="12.5" fill="#5c5a57">on every party to the deal</text>
+<path d="M 104.8 278.0 L 104.8 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="300.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="30.0" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Underwriting</text>
+<text x="30.0" y="346.3" font-size="12.5" fill="#5c5a57">term sheet, prices,</text>
+<text x="30.0" y="363.5" font-size="12.5" fill="#5c5a57">corridor, offtaker</text>
+<path d="M 104.8 392.0 L 104.8 414.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="414.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="30.0" y="437.1" font-size="14.5" fill="#262524" font-weight="600">Approval</text>
+<text x="30.0" y="460.3" font-size="12.5" fill="#5c5a57">Risk Council approves;</text>
+<text x="30.0" y="477.5" font-size="12.5" fill="#5c5a57">the Trustee records the</text>
+<text x="30.0" y="494.7" font-size="12.5" fill="#5c5a57">loan</text>
+<circle cx="218.6" cy="34.0" r="11" fill="#000080"/>
+<text x="218.6" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
+<text x="237.6" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Funding</text>
+<path d="M 380.2 34.0 L 392.2 34.0" fill="none" stroke="#9a9ccc" stroke-width="1.5" marker-end="url(#m9a9ccc)" stroke-linejoin="round"/>
+<line x1="207.6" y1="54" x2="377.2" y2="54" stroke="#000080" stroke-width="2"/>
+<rect x="207.6" y="72.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="217.6" y="95.0" font-size="14.5" fill="#262524" font-weight="600">Equity tranche</text>
+<text x="217.6" y="118.2" font-size="12.5" fill="#5c5a57">Originator accedes and</text>
+<text x="217.6" y="135.4" font-size="12.5" fill="#5c5a57">funds $3M, first loss</text>
+<path d="M 292.4 164.0 L 292.4 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="207.6" y="186.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="217.6" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Legal opinion</text>
+<text x="217.6" y="232.2" font-size="12.5" fill="#5c5a57">security ranks first</text>
+<path d="M 292.4 278.0 L 292.4 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="207.6" y="300.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="217.6" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Senior tranche</text>
+<text x="217.6" y="346.3" font-size="12.5" fill="#5c5a57">lending vehicle wires</text>
+<text x="217.6" y="363.5" font-size="12.5" fill="#5c5a57">$17M; debt token issued</text>
+<circle cx="406.2" cy="34.0" r="11" fill="#000080"/>
+<text x="406.2" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">3</text>
+<text x="425.2" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Cargo</text>
+<path d="M 567.8 34.0 L 579.8 34.0" fill="none" stroke="#9a9ccc" stroke-width="1.5" marker-end="url(#m9a9ccc)" stroke-linejoin="round"/>
+<line x1="395.2" y1="54" x2="564.8" y2="54" stroke="#000080" stroke-width="2"/>
+<rect x="395.2" y="72.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="405.2" y="95.0" font-size="14.5" fill="#262524" font-weight="600">Loading</text>
+<text x="405.2" y="118.2" font-size="12.5" fill="#5c5a57">B/L endorsed to the</text>
+<text x="405.2" y="135.4" font-size="12.5" fill="#5c5a57">Security Agent;</text>
+<text x="405.2" y="152.6" font-size="12.5" fill="#5c5a57">inspectors verify</text>
+<path d="M 480.0 164.0 L 480.0 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="395.2" y="186.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="405.2" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Bonded storage</text>
+<text x="405.2" y="232.2" font-size="12.5" fill="#5c5a57">Security Agent hands</text>
+<text x="405.2" y="249.4" font-size="12.5" fill="#5c5a57">over to the warehouse</text>
+<text x="405.2" y="266.6" font-size="12.5" fill="#5c5a57">pledge</text>
+<path d="M 480.0 278.0 L 480.0 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="395.2" y="300.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="405.2" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Daily monitoring</text>
+<text x="405.2" y="346.3" font-size="12.5" fill="#5c5a57">LTV above 85 % opens a</text>
+<text x="405.2" y="363.5" font-size="12.5" fill="#5c5a57">margin call; cure to 80 %</text>
+<path d="M 480.0 392.0 L 480.0 414.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="395.2" y="414.0" width="169.6" height="92.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="405.2" y="437.1" font-size="14.5" fill="#262524" font-weight="600">Offtake</text>
+<text x="405.2" y="460.3" font-size="12.5" fill="#5c5a57">the distributor takes</text>
+<text x="405.2" y="477.5" font-size="12.5" fill="#5c5a57">delivery</text>
+<circle cx="593.8" cy="34.0" r="11" fill="#000080"/>
+<text x="593.8" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">4</text>
+<text x="612.8" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Repayment</text>
+<path d="M 755.4 34.0 L 767.4 34.0" fill="none" stroke="#9a9ccc" stroke-width="1.5" marker-end="url(#m9a9ccc)" stroke-linejoin="round"/>
+<line x1="582.8" y1="54" x2="752.4" y2="54" stroke="#000080" stroke-width="2"/>
+<rect x="582.8" y="72.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="592.8" y="95.0" font-size="14.5" fill="#262524" font-weight="600">Offtaker pays</text>
+<text x="592.8" y="118.2" font-size="12.5" fill="#5c5a57">into the collection</text>
+<text x="592.8" y="135.4" font-size="12.5" fill="#5c5a57">account co-signed by the</text>
+<text x="592.8" y="152.6" font-size="12.5" fill="#5c5a57">Security Agent</text>
+<path d="M 667.6 164.0 L 667.6 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="582.8" y="186.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="592.8" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Priority of payments</text>
+<text x="592.8" y="232.2" font-size="12.5" fill="#5c5a57">senior principal, senior</text>
+<text x="592.8" y="249.4" font-size="12.5" fill="#5c5a57">interest, fees, equity</text>
+<path d="M 667.6 278.0 L 667.6 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="582.8" y="300.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="592.8" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Interest minted</text>
+<text x="592.8" y="346.3" font-size="12.5" fill="#5c5a57">into the vault; sPLUSD</text>
+<text x="592.8" y="363.5" font-size="12.5" fill="#5c5a57">price rises; fees to the</text>
+<text x="592.8" y="380.7" font-size="12.5" fill="#5c5a57">capital wallet</text>
+<circle cx="781.4" cy="34.0" r="11" fill="#000080"/>
+<text x="781.4" y="38.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">5</text>
+<text x="800.4" y="39.0" font-size="15.5" fill="#000080" font-weight="600">Closure</text>
+<line x1="770.4" y1="54" x2="940.0" y2="54" stroke="#000080" stroke-width="2"/>
+<rect x="770.4" y="72.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="780.4" y="95.0" font-size="14.5" fill="#262524" font-weight="600">Security released</text>
+<text x="780.4" y="118.2" font-size="12.5" fill="#5c5a57">by the Security Agent</text>
+<path d="M 855.2 164.0 L 855.2 186.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="770.4" y="186.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="780.4" y="209.1" font-size="14.5" fill="#262524" font-weight="600">Equity paid out</text>
+<text x="780.4" y="232.2" font-size="12.5" fill="#5c5a57">equity principal and</text>
+<text x="780.4" y="249.4" font-size="12.5" fill="#5c5a57">residual to the Originator</text>
+<path d="M 855.2 278.0 L 855.2 300.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="770.4" y="300.0" width="169.6" height="92.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="780.4" y="323.1" font-size="14.5" fill="#262524" font-weight="600">Loan closed</text>
+<text x="780.4" y="346.3" font-size="12.5" fill="#5c5a57">by the Trustee, nothing</text>
+<text x="780.4" y="363.5" font-size="12.5" fill="#5c5a57">outstanding</text>
+<text x="20.0" y="528.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">LOAN STATUS</text>
+<line x1="104.8" y1="560" x2="855.1999999999999" y2="560" stroke="#d5d4d3" stroke-width="3"/>
+<line x1="292.4" y1="560" x2="855.1999999999999" y2="560" stroke="#2f6b3a" stroke-width="3"/>
+<rect x="68.4" y="550.0" width="72.8" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="104.8" y="564.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Approved</text>
+<rect x="200.4" y="550.0" width="184.0" height="20.0" rx="10" fill="#dcebdf" stroke="#dcebdf" stroke-width="0"/>
+<text x="292.4" y="564.0" font-size="12" fill="#2f6b3a" font-weight="600" text-anchor="middle">Performing: interest accrues</text>
+<rect x="826.6" y="550.0" width="57.2" height="20.0" rx="10" fill="#dfe2f2" stroke="#dfe2f2" stroke-width="0"/>
+<text x="855.2" y="564.0" font-size="12" fill="#000080" font-weight="600" text-anchor="middle">Closed</text>
+<text x="20.0" y="602.0" font-size="13" fill="#5c5a57">$20M facility: $17M senior from Pipeline lenders, $3M equity from the Originator. 90 days. Figures are illustrative.</text>
+</svg>

@@ -6,82 +6,91 @@ section: Governance
 
 # Operators & Multisigs
 
-Three MPCs hold every privileged role across the protocol. Their powers do not overlap. Their signer sets are operationally required to be distinct. Every privileged write routes through the AccessManager hub, which schedules timelocked actions and enforces role gating on every selector.
+Every privileged action in the protocol goes through the access manager. The access manager maps each action to one role. It checks the caller's role, applies the holder's execution delay, and records scheduled and cancelled calls on-chain.
 
-**Three MPCs, distinct signer sets, all writes through AccessManager.**
+{% include diagram.html src="boss-governance-detail.png" caption="Governance roles and the access manager." %}
 
-{% include diagram.html src="boss-governance-detail.png" caption="Three MPCs with distinct signer sets. ADMIN 3/5 (3-day standard, 7-day upgrades, 14-day meta-timelock). RISK_COUNCIL 3/5 (3-day). GUARDIAN 2/5 (instant)." %}
+| Role | Holder | Delay | Powers |
+|---|---|---|---|
+| Admin | Multisig | None | Grants and revokes roles, unpauses, sets limits and custody accounts, sets the voucher signer, sets the recovery rate |
+| Risk Council | Multisig of several people | None for default and reversing a repayment; 24 hours for the rest | Default, cure, write-down, closing defaulted loans, loan amendments, interest adjustments, reversals, corrections |
+| Trustee | The Trustee | None | Opens and services loans, disbursements, bank withdrawals, cash conversions, expenses |
+| Cash reporter | 2-of-2 multisig | None | Books incoming wires, repayments and bank income |
+| Whitelist admin | Platform backend | None | Approves addresses to hold PLUSD |
+| Guardian | Multisig | None | Cancels scheduled calls of operational roles |
+| Pauser | Multisig | None | Pauses contracts |
+| Upgrader | Multisig | None | Upgrades contracts |
+| Security Agent | The Security Agent | None | Writes and attests security records |
+| Inspection operator | The lending vehicle | None | Enters inspections; a second operator approves each one |
 
-## ADMIN — 3-of-5 MPC, 3-day timelock (7-day for upgrades)
+The mint role on PLUSD is held by two contracts: the deposit manager and the minter. No person holds it.
+
+## Admin
 
 #### Powers
 
-- Role grants and re-grants (after GUARDIAN revokes an operational-role holder)
-- Unpauses (after GUARDIAN has paused)
-- Contract upgrades via the AccessManager-mediated proxy pattern
-- Parameter changes — rate limits, fee schedules, supply ceilings, attestor key rotation (`setKytAttestor`, `proposeYieldAttestors`)
+- Grants and revokes every role
+- Unpauses contracts
+- Sets deposit and mint limits, custody accounts, the fee recipient (the capital wallet) and the voucher signer
+- Sets the one-time recovery rate on the withdrawal queue
+- Cancels any scheduled call
 
 #### Powers it does NOT have
 
-- Cannot pause
-- Cannot revoke roles unilaterally (only re-grant after GUARDIAN revokes)
-- Cannot move funds
-- Cannot declare default or set the WithdrawalQueue exchange coefficient
+- Cannot pause, upgrade, or take loan, cash or default actions directly. It can, however, grant itself any of those roles.
 
-#### Composition at MVP
+#### Composition
 
-Five members from The Trust Company senior representatives, external counsel (Reed Smith partner, Carey Olsen partner), and one technical lead. Distinct from RISK_COUNCIL and GUARDIAN.
+Multisig.
 
 #### Tempo
 
-Standard ADMIN actions scheduled through AccessManager with a 3-day delay. Upgrades carry a 7-day delay. GUARDIAN can cancel during the window. A 14-day meta-timelock gates the delay parameter itself.
+No delay. The access manager refuses an Admin holder with a delay.
 
-## RISK_COUNCIL — 3-of-5 MPC, 3-day timelock
+## Risk Council
 
 #### Powers
 
-- `setDefault` on LoanRegistry — declares default, opens the workout
-- Write-down closures (`closeLoan` with reason `Default` or `OtherWriteDown`)
-- Exchange-coefficient changes on the WithdrawalQueue (set the recovery coefficient, `adjustExchangeCoefficientUp`)
+- Declares default, cures, writes down and closes defaulted loans
+- Amends loan economics and adjusts interest
+- Reverses disbursements and repayments and corrects the vault's accounting
 
 #### Powers it does NOT have
 
 - No upgrade authority
 - No role-grant authority
-- Cannot move funds
-- Cannot edit parameters outside the credit and recovery surfaces
+- Cannot pause
+- Cannot move custody funds
 
-#### Composition at MVP
+#### Composition
 
-Five members from the off-chain [Risk committee](/governance/risk-committee/). Reed Smith, Carey Olsen, The Trust Company, plus two further committee members. Decentralisation roadmap as in [Risk committee](/governance/risk-committee/).
+Multisig of several people. See [Risk Council](/governance/risk-committee/).
 
 #### Tempo
 
-3-day delay. Credit and recovery decisions need to land within a working week. Pre-announced and reversible until execution. GUARDIAN-cancelable.
+Declaring a default and reversing a repayment run without a delay. Every other call waits 24 hours. The Guardian or the Admin can cancel during the wait.
 
-## GUARDIAN — 2-of-5 MPC, instant
+## Guardian
 
 #### Powers
 
-- `pause()` any pausable contract
-- `AccessManager.cancel(actionId)` on any pending scheduled action — vetoes a captured ADMIN or RISK_COUNCIL during its delay window
-- `AccessManager.revokeRole(role, holder)` for the operational EOA-held set — `WHITELIST_REVOKER` (Relayer), `TRUSTEE` (Trustee key) — one named holder at a time. Contract-held roles (`DEPOSITOR`, `YIELD_MINTER`, `BURNER`, `WHITELIST_ADMIN` held by the relevant proxy contracts) are not the revocation target — pause is the lever for suspected contract problems.
+- Cancels a scheduled call of an operational role during its delay
 
 #### Powers it does NOT have
 
-- Cannot grant roles
-- Cannot unpause
+- Cannot grant or revoke roles
+- Cannot pause or unpause
 - Cannot upgrade
 - Cannot move funds
 
-#### Composition at MVP
+#### Composition
 
-Five members optimised for fast response — security-experienced operators across multiple time zones. Distinct from ADMIN and RISK_COUNCIL. Lower threshold (2-of-5) reflects the defensive-only role: a compromised GUARDIAN can grief but cannot escalate, and restoration is ADMIN's job.
+Multisig.
 
 #### Tempo
 
-Instant. Every action reviewable on-chain. No single-call "revoke everything" switch — every revocation is a named record with bounded blast radius.
+Instant. Each cancellation is recorded on-chain.
 
 ## Signer-set rotation
 
-Rotation requires off-chain review and is published in the signer registry. The protocol does not enforce signer-set distinctness on-chain — that is procedural, enforced at construction. A rotation that violated the constraint would not be caught by the contracts; the mitigation is the published registry and the rotation playbook.
+The Admin changes a role holder by revoking the old holder and granting the new one. The contracts do not check that different roles are held by different people.

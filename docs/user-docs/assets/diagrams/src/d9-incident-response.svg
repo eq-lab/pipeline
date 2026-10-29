@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="484" viewBox="0 0 960 484" role="img" aria-label="Incident response: the Pauser pauses each affected contract, the Guardian or Admin cancels scheduled calls, the Admin revokes and re-grants roles, replaces the voucher signer and unpauses." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>Incident response: the Pauser pauses each affected contract, the Guardian or Admin cancels scheduled calls, the Admin revokes and re-grants roles, replaces the voucher signer and unpauses.</title>
+<defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker></defs>
+<rect width="960" height="484" fill="#ffffff"/>
+<rect x="10.0" y="14.0" width="940.0" height="222.0" rx="10" fill="#fdf8f9" stroke="#dfb3bc" stroke-width="1"/>
+<text x="26.0" y="38.0" font-size="12" fill="#b1334b" font-weight="600" letter-spacing="0.84">CONTAIN · EVERY ACTION IS INSTANT</text>
+<rect x="30.0" y="50.0" width="168.0" height="168.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="53.0" cy="73.0" r="11" fill="#262524"/>
+<text x="53.0" y="77.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
+<text x="72.0" y="76.0" font-size="15.5" fill="#262524" font-weight="600">Detect</text>
+<text x="72.0" y="99.8" font-size="13" fill="#5c5a57">unexpected</text>
+<text x="72.0" y="117.8" font-size="13" fill="#5c5a57">approvals, mints</text>
+<text x="72.0" y="135.7" font-size="13" fill="#5c5a57">near limits, queue</text>
+<text x="72.0" y="153.6" font-size="13" fill="#5c5a57">or cash-book</text>
+<text x="72.0" y="171.5" font-size="13" fill="#5c5a57">mismatch</text>
+<rect x="42.0" y="186.0" width="80.1" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="82.0" y="200.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Monitoring</text>
+<path d="M 198.0 73.0 L 213.0 73.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="213.0" y="50.0" width="168.0" height="168.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="236.0" cy="73.0" r="11" fill="#262524"/>
+<text x="236.0" y="77.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
+<text x="255.0" y="76.0" font-size="15.5" fill="#262524" font-weight="600">Pause</text>
+<text x="255.0" y="99.8" font-size="13" fill="#5c5a57">each affected</text>
+<text x="255.0" y="117.8" font-size="13" fill="#5c5a57">contract, one by</text>
+<text x="255.0" y="135.7" font-size="13" fill="#5c5a57">one</text>
+<rect x="225.0" y="186.0" width="57.2" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="253.6" y="200.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Pauser</text>
+<path d="M 381.0 73.0 L 396.0 73.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="396.0" y="50.0" width="168.0" height="168.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="419.0" cy="73.0" r="11" fill="#262524"/>
+<text x="419.0" y="77.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">3</text>
+<text x="438.0" y="76.0" font-size="15.5" fill="#262524" font-weight="600">Cancel</text>
+<text x="438.0" y="99.8" font-size="13" fill="#5c5a57">pending</text>
+<text x="438.0" y="117.8" font-size="13" fill="#5c5a57">scheduled calls</text>
+<text x="438.0" y="135.7" font-size="13" fill="#5c5a57">that look wrong</text>
+<rect x="408.0" y="186.0" width="126.5" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="471.3" y="200.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Guardian or Admin</text>
+<path d="M 564.0 73.0 L 579.0 73.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="579.0" y="50.0" width="168.0" height="168.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="602.0" cy="73.0" r="11" fill="#262524"/>
+<text x="602.0" y="77.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">4</text>
+<text x="621.0" y="76.0" font-size="15.5" fill="#262524" font-weight="600">Revoke</text>
+<text x="621.0" y="99.8" font-size="13" fill="#5c5a57">the role of the</text>
+<text x="621.0" y="117.8" font-size="13" fill="#5c5a57">suspected holder</text>
+<rect x="591.0" y="186.0" width="53.7" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="617.9" y="200.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Admin</text>
+<path d="M 747.0 73.0 L 762.0 73.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="762.0" y="50.0" width="168.0" height="168.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="785.0" cy="73.0" r="11" fill="#262524"/>
+<text x="785.0" y="77.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">5</text>
+<text x="804.0" y="76.0" font-size="15.5" fill="#262524" font-weight="600">Cut allowance</text>
+<text x="804.0" y="99.8" font-size="13" fill="#5c5a57">if the queue is the</text>
+<text x="804.0" y="117.8" font-size="13" fill="#5c5a57">vector; no</text>
+<text x="804.0" y="135.7" font-size="13" fill="#5c5a57">governance action</text>
+<rect x="774.0" y="186.0" width="133.6" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="840.8" y="200.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Withdrawal account</text>
+<rect x="10.0" y="254.0" width="940.0" height="190.0" rx="10" fill="#f7faf7" stroke="#b5cdb9" stroke-width="1"/>
+<text x="26.0" y="278.0" font-size="12" fill="#2f6b3a" font-weight="600" letter-spacing="0.84">RECOVER</text>
+<rect x="30.0" y="290.0" width="168.0" height="138.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="53.0" cy="313.0" r="11" fill="#262524"/>
+<text x="53.0" y="317.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">6</text>
+<text x="72.0" y="315.9" font-size="15.5" fill="#262524" font-weight="600">Replace signer</text>
+<text x="72.0" y="339.8" font-size="13" fill="#5c5a57">the compromised</text>
+<text x="72.0" y="357.7" font-size="13" fill="#5c5a57">voucher signer key</text>
+<rect x="42.0" y="396.0" width="53.7" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="68.9" y="410.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Admin</text>
+<path d="M 198.0 313.0 L 213.0 313.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="213.0" y="290.0" width="168.0" height="138.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="236.0" cy="313.0" r="11" fill="#262524"/>
+<text x="236.0" y="317.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">7</text>
+<text x="255.0" y="315.9" font-size="15.5" fill="#262524" font-weight="600">Re-grant</text>
+<text x="255.0" y="339.8" font-size="13" fill="#5c5a57">the role to a new</text>
+<text x="255.0" y="357.7" font-size="13" fill="#5c5a57">holder</text>
+<rect x="225.0" y="396.0" width="53.7" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="251.9" y="410.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Admin</text>
+<path d="M 381.0 313.0 L 396.0 313.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="396.0" y="290.0" width="168.0" height="138.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<circle cx="419.0" cy="313.0" r="11" fill="#262524"/>
+<text x="419.0" y="317.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">8</text>
+<text x="438.0" y="315.9" font-size="15.5" fill="#262524" font-weight="600">Unpause</text>
+<text x="438.0" y="339.8" font-size="13" fill="#5c5a57">each contract</text>
+<rect x="408.0" y="396.0" width="53.7" height="20.0" rx="10" fill="#ebeae9" stroke="#ebeae9" stroke-width="0"/>
+<text x="434.9" y="410.0" font-size="12" fill="#262524" font-weight="600" text-anchor="middle">Admin</text>
+<rect x="579.0" y="290.0" width="351.0" height="138.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="593.0" y="317.9" font-size="15.5" fill="#262524" font-weight="600">The Guardian only cancels</text>
+<text x="593.0" y="341.8" font-size="13" fill="#5c5a57">It cannot grant, revoke, pause, unpause, upgrade or</text>
+<text x="593.0" y="359.7" font-size="13" fill="#5c5a57">move funds. No single call stops the whole protocol.</text>
+<text x="593.0" y="377.6" font-size="13" fill="#5c5a57">Default handling still runs while the vault is paused.</text>
+<text x="30.0" y="470.0" font-size="13" fill="#5c5a57">Every action names its target and is recorded on-chain.</text>
+</svg>

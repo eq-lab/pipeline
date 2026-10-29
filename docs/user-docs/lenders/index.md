@@ -6,24 +6,24 @@ section: For Lenders
 
 # Overview
 
-Earn yield from senior commodity-backed lending. Commodity trade finance has historically maintained default rates below 0.3%, with loans secured by physical cargo and repaid by pre-contracted offtakers. Pipeline lenders earn 8–12% net on senior tranches, with an average advance rate of 80% and originator equity cushions up to 30% on every deal. USDC principal sits in institutional custody with BitGo, while unallocated USDC is deployed into tokenised T-bills.
+Earn yield from senior commodity-backed lending. Commodity trade finance has historically had default rates below 0.3%. The loans are secured by physical goods and repaid by pre-contracted offtakers. Each loan has an advance ratio, 80% by default, and the Originator funds an equity tranche of up to 30% that takes the first loss. Deposited USDC goes straight to a custody account. No smart contract holds lender USDC.
 
 ## What you get
 
 - Senior-tranche yield from real commodity trade loans, paid as offtakers settle
-- Realised T-bill yield on unallocated USDC held as USYC
-- Indicative blended return: 8–12% net of fees
-- No lock-up — withdraw any time via the WithdrawalQueue
+- No lock-up. Withdrawals go through a queue that pays in order as USDC is available
 - Every loan on a public on-chain registry
 
 ## Minimum deposit and limits
 
-Minimum $1,000 USDC. Per-transaction cap $5M. 24-hour cap across your wallets $10M. No protocol-level maximum beyond these rate limits.
+Minimum 1,000 USDC. Per-transaction cap 5,000,000 USDC. Protocol-wide cap of 10,000,000 USDC of deposits per 24 hours, across all lenders. No protocol-level maximum beyond these rate limits.
+
+You can also wire USD to the protocol's bank account. PLUSD is minted 1:1 for the wire and staked for you.
 
 ## How yield reaches you
 
-Yield arrives as fresh PLUSD minted into the sPLUSD vault. Share count stays constant; what each share is worth grows. There is no claim step, no restake, no compounding action.
+Yield arrives as fresh PLUSD minted into the staking vault when a loan repayment is booked. Your sPLUSD share count stays the same. What each share is worth grows. There is no claim step, no restake and no compounding action.
 
 ## Risks before you deposit
 
-Capital is exposed to credit, liquidity, custody, smart-contract, governance, regulatory, and operational risks. Each enumerated with mitigation and residual in [Potential risks](/risks/). Default mechanics in [Default management](/risks/default-management/). Read both before depositing.
+Capital is exposed to credit, liquidity, custody, smart-contract, governance, regulatory and operational risks. Each one, with its mitigation and the risk left over, is in [Potential risks](/risks/). Default mechanics are in [Default management](/risks/default-management/). Read both before depositing.

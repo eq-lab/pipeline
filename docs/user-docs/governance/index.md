@@ -6,31 +6,33 @@ section: Governance
 
 # Overview
 
-Pipeline's governance is split between off-chain and on-chain surfaces. The Trustee carries fiduciary authority off-chain. Three MPCs carry technical authority on-chain — ADMIN, RISK_COUNCIL, GUARDIAN. Neither side acts alone: the Trustee moves capital only on authenticated on-chain instructions, and the MPCs act only within the boundaries the trust deed and Risk Mandate define.
+Governance has an off-chain side and an on-chain side. Off-chain, the Trustee runs the loans and the bank account, and the Risk Council takes credit decisions. On-chain, every privileged action goes through the access manager. The access manager maps each action to a role and checks the caller's role before it runs.
 
 ## The four governance surfaces
 
 | Body | Type | Function |
 |---|---|---|
-| **Fiduciary trustee** | Off-chain legal entity | Acts in investor interests. Holds custody cosigner shares, signs YieldAttestations, instructs on-ramping, holds the USD account. |
-| **Risk committee** | Off-chain governance body | Approves loans, reviews concentration, declares defaults, sets the WithdrawalQueue exchange coefficient in recovery. Expressed on-chain via RISK_COUNCIL. |
-| **Multisig set** | On-chain MPCs | ADMIN (3/5, 3-day standard, 7-day upgrades, 14-day meta-timelock), RISK_COUNCIL (3/5, 3-day), GUARDIAN (2/5, instant). Distinct signer sets, non-overlapping powers, all routed through AccessManager. |
-| **Operators** | Custody cosigners + Relayer | Day-to-day operations. |
+| Fiduciary trustee | Off-chain legal entity | Opens and services loans, books cash movements between the bank and the protocol, settles bank withdrawals. On-chain role: Trustee. |
+| Risk Council | Credit body, a multisig of several people | Declares default, writes down, cures, amends loan terms, reverses wrong entries. On-chain role: Risk Council. Acts for the Majority Lenders while Pipeline is the only lender. |
+| Protocol roles | On-chain roles | Admin, Guardian, Pauser, Upgrader. They manage roles, parameters, pauses and upgrades. |
+| Operators | Off-chain staff and the platform backend | Book bank wires and repayments (Cash reporter), approve token holders (Whitelist admin), screen addresses and sign deposit and withdrawal vouchers (platform backend). |
 
 ## On-chain surface
 
-| MPC | Threshold | Tempo | Powers |
-|---|---|---|---|
-| **ADMIN** | 3-of-5 | 3-day standard, 7-day upgrades, 14-day meta-timelock | Role grants and re-grants, unpauses, upgrades, parameter changes, attestor rotation |
-| **RISK_COUNCIL** | 3-of-5 | 3-day timelock | `setDefault`, write-down closures, exchange-coefficient changes on the WithdrawalQueue |
-| **GUARDIAN** | 2-of-5 | Instant | Pause any pausable contract, cancel pending scheduled actions, revoke named operational-role holders one at a time |
+| Role | Delay | Powers |
+|---|---|---|
+| Admin | None. The access manager refuses an admin with a delay. | Grants and revokes roles, unpauses, sets limits, custody accounts, the voucher signer and the fee recipient (the capital wallet), sets the one-time recovery rate on the withdrawal queue |
+| Risk Council | None for default and for reversing a repayment; 24 hours for everything else | Default, write-down, cure, closing a defaulted loan, amending loan economics, adjusting interest, reversing disbursements and repayments, accounting corrections |
+| Guardian | None | Cancels a scheduled call of an operational role during its delay |
+| Pauser | None | Pauses a contract |
+| Upgrader | None | Upgrades a contract |
 
-GUARDIAN can stop things instantly. Only ADMIN can start them again, and only after a window GUARDIAN can veto. RISK_COUNCIL operates between the two with credit-event tempo.
+The Pauser stops a contract. Only the Admin starts it again. The Guardian can cancel a delayed Risk Council action while its 24 hours run.
 
 ## Distinct signer sets
 
-Each MPC carries a distinct signer set. Overlap collapses the separation: an attacker compromising a member on two MPCs pushes two roles' worth of authority. Enforced at signer-set construction and in the rotation playbook. Published signer registry is source of truth.
+Each role is held by its own signer set. The Admin, Guardian, Pauser and Upgrader roles are held by multisigs. The Risk Council is a multisig of several people. The Cash reporter is a 2-of-2 multisig. The contracts do not check that roles are held by different people.
 
-## Why the meta-timelock
+## Delays
 
-Without it, ADMIN could call `setTargetAdminDelay(0)` under the 3-day delay, then immediately execute any hostile change. The 14-day meta-timelock gates the delay parameter itself. A captured ADMIN waits 14 days to unlock a faster lever — long enough for GUARDIAN, the community, or auditors to respond.
+Each role holder has an execution delay. A holder with a delay schedules a call, waits, then executes it. The Risk Council delay is 24 hours. Declaring a default and reversing a repayment run without a delay. Other roles run without a delay. The Admin role cannot carry a delay, so Admin changes take effect at once.

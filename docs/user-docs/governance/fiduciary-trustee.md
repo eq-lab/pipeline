@@ -6,36 +6,37 @@ section: Governance
 
 # Fiduciary trustee
 
-Independent legal entity that performs every action the Pipeline Team cannot perform alone.
+The Trustee is the legal entity that runs the lending vehicle and its operations: loans and cash for the pool. It works from the Trustee console and acts on-chain through the Trustee role.
 
 ## Role
 
-Without the Trustee's signature, no USDC moves. Without the Trustee's co-signature, no yield mints. Without the Trustee's on-ramping instruction, no offtaker repayment lands as USDC.
+The Trustee opens loans in the loan registry and records disbursements. It books cash moving between the bank account and USDC custody. It settles and cancels bank withdrawals. It rolls over matured loans and closes loans that are repaid or cancelled. It registers the per-loan debt token.
 
 ## Operational responsibilities
 
-- Holds one cosigner share on each MPC wallet (Capital, Treasury, Withdrawal Queue)
-- Second signer on every YieldAttestation alongside the Relayer
-- Receives offtaker repayment wires through its correspondent account
-- Instructs USD → USDC on-ramping via the Payment Agent (Circle Mint)
-- Sells USYC against the Hashnote redemption rail to realise T-bill yield
-- Tops up the Withdrawal Queue Wallet against the queue's outstanding obligations
-- Records loan repayments on LoanRegistry
+- Opens each loan in the loan registry with its fixed terms
+- Records each disbursement to the borrower from the bank account
+- Assigns or returns bank wires that arrive without a known investor
+- Settles investor bank withdrawals when the wire is sent, or cancels them
+- Books conversions between USDC and bank dollars, and bank expenses
+- Updates the mutable loan fields during servicing
+
+Repayments, incoming wires and bank income are booked by a separate role, the Cash reporter.
 
 ## Independence
 
-The Trustee is operationally and beneficially independent from the Pipeline Team. It cannot act under direction of the Team in matters affecting investor assets. The 3-of-5 cosigner topology means no Team-only quorum exists — Trustee participation is required on every transfer.
+The Trustee role cannot declare a default, write down a loan, reverse a repayment or change loan economics. Those actions belong to the Risk Council. The Trustee cannot grant roles, pause, unpause or upgrade contracts. It cannot mint PLUSD.
 
 ## Mapping to the legal stack
 
-On the docs, "Trustee" is operational shorthand. The actual entities:
+The Trustee runs the lending vehicle. The lending vehicle is bankruptcy remote. It is the initial lender under the master facility agreement (MFA) with each borrower. Other lenders, including the Originator, join by accession or take over a share by transfer certificate.
 
-- **The Trust Company** — governance, custody quorum, USD account.
-- **Trade Company (Cayman SPC)** — lender of record; receives offtaker wires; instructs on-ramping.
-- **Collateral Trust (BVI)** — pledged collateral and enforcement.
+The facility agent and the Security Agent are appointed under the agency deed. The Security Agent is an independent security trustee. It holds the security on trust for all lenders by the priority of payments and co-signs the collection account.
+
+Lender decisions belong to the Majority Lenders. Changes to economics and releases of security outside their release condition need all lenders. While Pipeline is the only lender, the Risk Council acts for the Majority Lenders.
 
 Full hierarchy on the [Legal structure](/how-it-works/legal-structure/) page.
 
 ## Why a fiduciary trustee, not a contract
 
-Three reasons. Legal — physical-cargo trade finance requires a legal entity that signs loan documents, receives wires, holds collateral, acts in court. A contract cannot. Operational — banking rails and Hashnote redemptions require a regulated counterparty with KYC and a correspondent relationship. Architectural — splitting the lever between operating team and independent fiduciary means a bug in on-chain code cannot drain capital.
+Trade finance needs a legal entity that signs loan documents, holds the bank account, receives wires and acts in court. The Trustee does this off-chain. The smart contracts record each of its actions.

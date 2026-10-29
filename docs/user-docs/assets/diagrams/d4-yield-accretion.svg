@@ -1,117 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="820" viewBox="0 0 1080 820" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
-  <rect width="1080" height="820" fill="#ffffff"/>
-
-  <defs>
-    <marker id="arr-sage" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f6b3a"/>
-    </marker>
-    <marker id="arr-amb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b9870a"/>
-    </marker>
-  </defs>
-
-  <text x="540" y="40" text-anchor="middle" fill="#262524" font-size="16" font-weight="600">Two engines feed the sPLUSD vault — both deliver realised yield only</text>
-  <text x="540" y="60" text-anchor="middle" fill="#736f6c" font-size="12">PLUSD only mints when the proceeds are real USDC in the Capital Wallet</text>
-
-  <!-- ==== ENGINE A column (left) ==== -->
-  <rect x="40" y="92" width="480" height="580" rx="10" fill="#f8f7f6" stroke="#2f6b3a" stroke-width="1.5"/>
-  <text x="280" y="120" text-anchor="middle" fill="#2f6b3a" font-size="13" font-weight="700">ENGINE A · LOAN COUPONS</text>
-  <text x="280" y="138" text-anchor="middle" fill="#736f6c" font-size="11">offtaker pays USD → Trustee on-ramps to USDC</text>
-
-  <!-- A1 -->
-  <rect x="64" y="160" width="432" height="80" rx="6" fill="#ffffff" stroke="#2f6b3a" stroke-width="1"/>
-  <rect x="64" y="160" width="32"  height="80" fill="#2f6b3a"/>
-  <text x="80" y="206" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">1</text>
-  <text x="112" y="184" fill="#262524" font-size="13" font-weight="600">Offtaker wires USD to the Trustee bank account</text>
-  <text x="112" y="206" fill="#736f6c" font-size="11">Pipeline Trust Company correspondent bank · off-chain</text>
-  <text x="112" y="224" fill="#736f6c" font-size="11">borrower's loan tagged in the wire reference</text>
-
-  <!-- A2 -->
-  <rect x="64" y="260" width="432" height="80" rx="6" fill="#ffffff" stroke="#2f6b3a" stroke-width="1"/>
-  <rect x="64" y="260" width="32"  height="80" fill="#2f6b3a"/>
-  <text x="80" y="306" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">2</text>
-  <text x="112" y="284" fill="#262524" font-size="13" font-weight="600">Trustee on-ramps USD → USDC into the Capital Wallet</text>
-  <text x="112" y="306" fill="#736f6c" font-size="11">via on-ramp provider (Circle Mint / Zodia or similar)</text>
-  <text x="112" y="324" fill="#736f6c" font-size="11">first on-chain event in the repayment flow</text>
-
-  <!-- A3 -->
-  <rect x="64" y="360" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
-  <rect x="64" y="360" width="32"  height="80" fill="#b9870a"/>
-  <text x="80" y="406" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">3</text>
-  <text x="112" y="384" fill="#262524" font-size="13" font-weight="600">Trustee records the split on LoanRegistry</text>
-  <text x="112" y="406" fill="#736f6c" font-size="11">recordRepayment(seniorPrincipal, seniorInterest, equity)</text>
-  <text x="112" y="424" fill="#736f6c" font-size="11">accounting only — no PLUSD moves yet</text>
-
-  <!-- A4 -->
-  <rect x="64" y="460" width="432" height="80" rx="6" fill="#ffffff" stroke="#4a3a8e" stroke-width="1"/>
-  <rect x="64" y="460" width="32"  height="80" fill="#4a3a8e"/>
-  <text x="80" y="506" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">4</text>
-  <text x="112" y="484" fill="#262524" font-size="13" font-weight="600">Relayer + Trustee co-sign a YieldAttestation</text>
-  <text x="112" y="506" fill="#736f6c" font-size="11">amount = senior coupon net of fees</text>
-  <text x="112" y="524" fill="#736f6c" font-size="11">both signatures verified on-chain</text>
-
-  <!-- A5 -->
-  <rect x="64" y="560" width="432" height="80" rx="6" fill="#ffffff" stroke="#000080" stroke-width="1"/>
-  <rect x="64" y="560" width="32"  height="80" fill="#000080"/>
-  <text x="80" y="606" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">5</text>
-  <text x="112" y="584" fill="#262524" font-size="13" font-weight="600">YieldMinter.yieldMint → PLUSD.mintForYield</text>
-  <text x="112" y="606" fill="#736f6c" font-size="11">destination = sPLUSD vault · fees → Treasury (separate call)</text>
-  <text x="112" y="624" fill="#736f6c" font-size="11">reserve invariant + maxTotalSupply checked atomically</text>
-
-  <text x="280" y="656" text-anchor="middle" fill="#2f6b3a" font-size="11" font-weight="600">per-repayment event · share price ticks up when the vault leg lands</text>
-
-  <!-- ==== ENGINE B column (right) — REALISED yield, not accrual ==== -->
-  <rect x="560" y="92" width="480" height="580" rx="10" fill="#f8f7f6" stroke="#b9870a" stroke-width="1.5"/>
-  <text x="800" y="120" text-anchor="middle" fill="#b9870a" font-size="13" font-weight="700">ENGINE B · REALISED USYC YIELD</text>
-  <text x="800" y="138" text-anchor="middle" fill="#736f6c" font-size="11">USYC NAV drifts up — but only realised sales mint PLUSD</text>
-
-  <!-- B1 -->
-  <rect x="584" y="160" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
-  <rect x="584" y="160" width="32"  height="80" fill="#b9870a"/>
-  <text x="600" y="206" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">6</text>
-  <text x="632" y="184" fill="#262524" font-size="13" font-weight="600">USYC sits in the Capital Wallet · NAV drifts up</text>
-  <text x="632" y="206" fill="#736f6c" font-size="11">unrealised gain = NAV × units − cost basis</text>
-  <text x="632" y="224" fill="#736f6c" font-size="11">PLUSD totalSupply unchanged — gain is paper</text>
-
-  <!-- B2 -->
-  <rect x="584" y="260" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
-  <rect x="584" y="260" width="32"  height="80" fill="#b9870a"/>
-  <text x="600" y="306" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">7</text>
-  <text x="632" y="284" fill="#262524" font-size="13" font-weight="600">Trustee decides to realise — at their discretion</text>
-  <text x="632" y="306" fill="#736f6c" font-size="11">no on-chain schedule · cadence is policy, not code</text>
-  <text x="632" y="324" fill="#736f6c" font-size="11">conservative: leave a buffer in the position</text>
-
-  <!-- B3 -->
-  <rect x="584" y="360" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
-  <rect x="584" y="360" width="32"  height="80" fill="#b9870a"/>
-  <text x="600" y="406" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">8</text>
-  <text x="632" y="384" fill="#262524" font-size="13" font-weight="600">Capital Wallet sells N units of USYC for USDC</text>
-  <text x="632" y="406" fill="#736f6c" font-size="11">manual redemption · settlement time set by Hashnote</text>
-  <text x="632" y="424" fill="#736f6c" font-size="11">USDC proceeds land in the Capital Wallet</text>
-
-  <!-- B4 -->
-  <rect x="584" y="460" width="432" height="80" rx="6" fill="#ffffff" stroke="#4a3a8e" stroke-width="1"/>
-  <rect x="584" y="460" width="32"  height="80" fill="#4a3a8e"/>
-  <text x="600" y="506" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">9</text>
-  <text x="632" y="484" fill="#262524" font-size="13" font-weight="600">Realised gain = proceeds USDC − cost basis</text>
-  <text x="632" y="506" fill="#736f6c" font-size="11">remaining position's cost basis updated</text>
-  <text x="632" y="524" fill="#736f6c" font-size="11">Relayer + Trustee co-sign a YieldAttestation</text>
-
-  <!-- B5 -->
-  <rect x="584" y="560" width="432" height="80" rx="6" fill="#ffffff" stroke="#000080" stroke-width="1"/>
-  <rect x="584" y="560" width="32"  height="80" fill="#000080"/>
-  <text x="600" y="606" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">10</text>
-  <text x="632" y="584" fill="#262524" font-size="13" font-weight="600">YieldMinter.yieldMint × 2 — vault and Treasury legs</text>
-  <text x="632" y="606" fill="#736f6c" font-size="11">vault leg: 70% of realised_gain → sPLUSD vault</text>
-  <text x="632" y="624" fill="#736f6c" font-size="11">treasury leg: 30% of realised_gain → Treasury Wallet</text>
-
-  <text x="800" y="656" text-anchor="middle" fill="#b9870a" font-size="11" font-weight="600">no realisation = no mint · NAV alone never moves share price</text>
-
-  <!-- Two converging arrows to the vault -->
-  <path d="M 280 690 Q 280 730, 480 748" fill="none" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arr-sage)"/>
-  <path d="M 800 690 Q 800 730, 600 748" fill="none" stroke="#b9870a" stroke-width="2.5" marker-end="url(#arr-amb)"/>
-
-  <rect x="300" y="758" width="480" height="48" rx="8" fill="#000080" stroke="#000080" stroke-width="2"/>
-  <text x="540" y="780" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">sPLUSD vault NAV</text>
-  <text x="540" y="798" text-anchor="middle" fill="#ebe9e6b3" font-size="11">share price = totalAssets / totalSupply · moves only on yieldMint</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="435" viewBox="0 0 960 435" role="img" aria-label="How yield reaches sPLUSD: a borrower&#x27;s repayment is booked on-chain and split; senior interest is minted as PLUSD into the vault and the share price steps up; fees go to the capital wallet as shares." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>How yield reaches sPLUSD: a borrower&#x27;s repayment is booked on-chain and split; senior interest is minted as PLUSD into the vault and the share price steps up; fees go to the capital wallet as shares.</title>
+<defs><marker id="m000080" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#000080"/></marker><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="m77746f" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#77746f"/></marker></defs>
+<rect width="960" height="435" fill="#ffffff"/>
+<rect x="20.0" y="20.0" width="250.0" height="66.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
+<text x="30.0" y="45.3" font-size="15.5" fill="#262524" font-weight="600">Borrower pays</text>
+<text x="30.0" y="69.2" font-size="13" fill="#5c5a57">interest is invoiced monthly</text>
+<rect x="20.0" y="120.0" width="250.0" height="66.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="30.0" y="145.3" font-size="15.5" fill="#262524" font-weight="600">USD bank account</text>
+<text x="30.0" y="169.2" font-size="13" fill="#5c5a57">the payment arrives</text>
+<rect x="20.0" y="220.0" width="250.0" height="66.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="30.0" y="245.3" font-size="15.5" fill="#000080" font-weight="600">Repayment booked</text>
+<text x="30.0" y="269.2" font-size="13" fill="#5c5a57">by the cash reporter, on-chain</text>
+<path d="M 145.0 86.0 L 145.0 120.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<path d="M 145.0 186.0 L 145.0 220.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<line x1="270" y1="253.0" x2="304" y2="253.0" stroke="#4a4845" stroke-width="1.5"/>
+<line x1="304" y1="184" x2="304" y2="344" stroke="#4a4845" stroke-width="1.5"/>
+<rect x="340.0" y="156.0" width="270.0" height="56.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="348.0" y="176.3" font-size="15.5" fill="#262524" font-weight="600">Principal</text>
+<text x="348.0" y="200.2" font-size="13" fill="#5c5a57">outstanding falls</text>
+<path d="M 304.0 184.0 L 340.0 184.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="340.0" y="236.0" width="270.0" height="56.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="348.0" y="256.3" font-size="15.5" fill="#000080" font-weight="600">Senior interest</text>
+<text x="348.0" y="280.2" font-size="13" fill="#5c5a57">minted as PLUSD into the vault</text>
+<path d="M 304.0 264.0 L 340.0 264.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="340.0" y="316.0" width="270.0" height="56.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="348.0" y="336.3" font-size="15.5" fill="#262524" font-weight="600">Fees</text>
+<text x="348.0" y="360.2" font-size="13" fill="#5c5a57">to the capital wallet as sPLUSD shares</text>
+<path d="M 304.0 344.0 L 340.0 344.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="340.0" y="136.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">SPLIT ON-CHAIN</text>
+<text x="660.0" y="36.0" font-size="15.5" fill="#262524" font-weight="600">sPLUSD share price</text>
+<line x1="680" y1="330" x2="930" y2="330" stroke="#5c5a57" stroke-width="1"/>
+<line x1="680" y1="70" x2="680" y2="330" stroke="#5c5a57" stroke-width="1"/>
+<path d="M 680 280 L 750 280 L 750 230 L 840 230 L 840 170 L 930 170" fill="none" stroke="#000080" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="750" cy="230" r="4" fill="#000080"/>
+<circle cx="840" cy="170" r="4" fill="#000080"/>
+<text x="758.0" y="252.0" font-size="12.5" fill="#5c5a57">repayment</text>
+<text x="848.0" y="192.0" font-size="12.5" fill="#5c5a57">repayment</text>
+<text x="930.0" y="350.0" font-size="12.5" fill="#5c5a57" text-anchor="end">time</text>
+<path d="M 610.0 264.0 L 672.0 264.0" fill="none" stroke="#000080" stroke-width="1.5" marker-end="url(#m000080)" stroke-linejoin="round"/>
+<text x="645.0" y="256.0" font-size="13" fill="#000080" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">steps up</text>
+<text x="20.0" y="400.0" font-size="13" fill="#5c5a57">No daily accrual in the share price: interest lands in one amount when the borrower pays. Fees do not change the share price. Bank income booked on</text>
+<text x="20.0" y="417.9" font-size="13" fill="#5c5a57">the bank account is minted into the vault; bank charges and conversion shortfalls are burned from it.</text>
 </svg>

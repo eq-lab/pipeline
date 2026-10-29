@@ -6,97 +6,86 @@ section: Risk management
 
 # Default management
 
-If a loan defaults, Pipeline is designed to manage the event through multiple layers of protection. The equity tranche absorbs first-loss risk, while the mechanisms below address escalating levels of severity.
+This page describes what happens to a loan, and to lenders, when a borrower does not pay.
 
 ## Loan states
 
-Every loan moves through four states in fixed order: Performing, Watchlist, Default, Closed.
+Every loan has one of five states: Approved, Performing, WatchList, Default, Closed.
 
-The Trustee can promote a loan into Watchlist and demote it back to Performing as conditions change. The Trustee cannot mark a loan as Default. Only RISK_COUNCIL can propose that transition, and the call runs through a 3-day timelock. GUARDIAN can cancel during the window.
+| State | Meaning |
+|---|---|
+| Approved | The loan is recorded. No money has been paid out |
+| Performing | The first disbursement has been paid. Interest accrues |
+| WatchList | The loan is under closer review |
+| Default | The Risk Council has declared default |
+| Closed | The loan is finished. The closure reason is recorded |
 
-A loan's collateral coverage ratio (CCR) is collateral value divided by outstanding senior principal. When CCR crosses 130, 120, or 110, the Trustee and the Originator receive staged notifications and the Originator has a defined window to post additional margin. A sustained breach, or a missed repayment past the payment-delay thresholds (amber over 7 days late, red over 21 days late), is the typical route to a Default proposal.
+{% include diagram.html src="d6-loan-lifecycle.svg" caption="Loan states. The Trustee moves a loan between the normal states and closes it. Only the Risk Council declares default, cures it, or closes a defaulted loan." %}
 
-{% include chart.html src="boss-ccr-thresholds.png" caption="CCR thresholds. Margin call below 110, maintenance margin call below 120, watchlist below 130, healthy at or above 130." %}
+The Trustee moves a loan between Performing and WatchList. The Trustee cannot declare default. Only the Risk Council can, and the declaration runs without a delay. The Risk Council can cure a defaulted loan; it returns to WatchList.
+
+A loan's LTV is the amount owed (outstanding principal plus accrued interest) divided by the value of its security. A margin call opens when LTV rises above the loan's margin-call ratio (85 % by default). The borrower must bring LTV back to the advance ratio (80 % by default) within the cure period. A margin call left uncured, or a payment missed past the grace period, is the typical route to default. Default is never automatic. The security registry runs these checks on-chain.
 
 Closure authority by reason:
 
 | Closure reason | Who can close | Delay |
 |---|---|---|
-| ScheduledMaturity | Trustee | 0 |
-| EarlyRepayment | Trustee | 0 |
-| Default | RISK_COUNCIL only | 3 days |
-| OtherWriteDown | RISK_COUNCIL only | 3 days |
+| Scheduled maturity | Trustee | 0 |
+| Early repayment | Trustee | 0 |
+| Cancelled | Trustee | 0 |
+| Default | Risk Council only | 24 hours |
+| Other write-down | Risk Council only | 24 hours |
 
-A write-down closure is not reversible. Once a loan closes with Default or OtherWriteDown, the recorded loss is final and feeds the waterfall.
+A defaulted loan can be closed only after its outstanding principal is zero, by recovery or write-down. A write-down is final.
 
 ## Single-facility default
 
 ### Triggers
 
-A loan is declared in default when one of the following fires:
+The Risk Council may declare default when one of the following occurs:
 
-- Missed scheduled payment beyond the cure window
+- Missed payment beyond the grace period
+- Margin call not cured within the cure period
 - Material covenant breach uncured within the contractual window
-- Collateral seizure, fraud discovery, or CMA breach
+- Collateral seizure, fraud discovery, or collateral management breach
 - Force majeure beyond the covered insurance window
 - Sanctions hit on a counterparty
 
 ### Declaration
 
-RISK_COUNCIL calls `setDefault` on LoanRegistry (3-of-5, 3-day timelock, GUARDIAN-cancelable). Lifecycle state moves to "in default" and the workout commences.
+The Risk Council declares default on the loan registry. The declaration runs without a delay. The loan moves to Default. On the first default of a loan, its outstanding principal is moved out of the staking vault into a separate pocket for that loan. The pocket belongs to the sPLUSD holders at that moment, in proportion to their holdings. The sPLUSD share price falls by the amount moved. If the vault holds less PLUSD than the outstanding, it moves what it holds.
 
 ### Workout
 
 1. Counsel issues default notices and reservation-of-rights letters.
-2. Collateral Trust enforces the security package — bills of lading, warehouse receipts, CMA agreements.
-3. Pre-onboarded liquidators move cargo to recovery sale through the Partner Liquidation Network.
-4. Recovered proceeds flow back to LoanRegistry; the loss waterfall applies.
+2. The Security Agent enforces the security on the Risk Council's instruction: bills of lading, warehouse pledges, collateral management agreements, assigned receivables.
+3. The goods are sold under the loan's liquidation plan.
+4. Recovered proceeds are booked as repayments on the loan and go to its pocket.
 
 ## Loss waterfall
 
-The waterfall differs between MVP and post-MVP.
-
-**MVP** — two layers:
-
 | Layer | Source | Mechanic |
 |---|---|---|
-| **1. Equity tranche** | Originator first-loss capital (up to 30% of facility) | Absorbed in full before any senior dollar is touched. Held off-chain in escrow at funding. |
-| **2. Recovery on the WithdrawalQueue** | RISK_COUNCIL-set exchange coefficient | Every claim pays out at `face_value × coefficient` where `coefficient < 1.0`. Applies identically to PLUSD direct-redeem and sPLUSD-unstake-then-redeem. Ratchets up only as recoveries land. |
+| **1. Equity tranche** | The Originator's capital on the loan | Recorded on the loan. The smart contracts do not enforce it. |
+| **2. sPLUSD holders at default** | The loan's pocket | Holders in the vault when default is declared bear the loss in proportion to their holdings. Holders who left the vault before default do not. Holders who join after default do not. |
+| **3. Unabsorbed loss** | Recorded on the loan registry | If the vault could not cover the full outstanding at default, the part written down beyond the pocket is recorded as unabsorbed. |
 
-In MVP there is no sPLUSD share-price writedown step, and no separate ShutdownController/RecoveryPool engagement. Any loss past the equity tranche flows through the WithdrawalQueue coefficient. PLUSD and sPLUSD continue to operate normally; the haircut applies at the queue.
+PLUSD outside the vault (in wallets, in the withdrawal queue, in wire-out escrow) is not moved into the pocket.
 
-**Post-MVP** — three layers, added after the audit and hardening period:
+## Recovery mechanics
 
-| Layer | Source | Mechanic |
-|---|---|---|
-| **1. Equity tranche** | Originator first-loss capital | Absorbed in full before any senior dollar is touched. |
-| **2. sPLUSD share-price writedown** | Pro-rata haircut on sPLUSD share price | Residual loss reduces share price across all sPLUSD holders proportionally. PLUSD holders unaffected as long as the cushion is enough. |
-| **3. Pipeline Recovery Tokens (PRT)** | Tradable ERC-20 IOU issued to PLUSD holders pro-rata | If loss exceeds equity AND sPLUSD cushion: every holder's PLUSD-equivalent balance is reduced pro-rata, and 1 PRT is issued for every $1 of reduction. 1 PRT = $1 face claim against the Recovery Pool. Freely transferable. Redemption rate is `pool.balance / totalSupply(PRT)`, capped at 1.0, ratchets up only. |
+### Recoveries
 
-## Recovery mechanics in MVP
+Repayments on a defaulted loan go to its pocket, both principal and interest. Each holder at the moment of default claims a share of what has been recovered, in proportion to their sPLUSD balance at that moment. A holder can claim each time more is recovered.
 
-Pipeline's recovery in MVP is the WithdrawalQueue exchange coefficient. No race, no queue jump, no manager discretion at the redemption rate.
+### Write-down
 
-### Trigger and execution
+When recovery ends, the Risk Council writes down the remaining amount (24-hour delay). The written-down PLUSD in the pocket is burned. The loan is then closed with reason Default or Other write-down.
 
-RISK_COUNCIL proposes a recovery rate `r` (for example, 0.85) reflecting the recoverable value per dollar of outstanding PLUSD. RISK_COUNCIL executes via timelocked call — 3-day delay, GUARDIAN-cancelable.
+### Cure
 
-From that block on, every claim through the WithdrawalQueue pays out USDC at `face × r` instead of `face × 1.0`. There is no path to redeem at face value while the coefficient is below 1.0.
+If the borrower cures, the Risk Council returns the loan to WatchList. The pocket stays open. Later repayments still go to the pocket holders.
 
-### Ratchet up
+### Withdrawal queue recovery rate
 
-As recoveries arrive and the Trustee tops up the Withdrawal Queue Wallet, RISK_COUNCIL adjusts the coefficient up under the same 3-day timelock. When the rate reaches 1.0, normal economics resume. The coefficient never moves down.
-
-There is no separate shutdown contract in MVP. The recovery coefficient on the WithdrawalQueue is the entire mechanism.
-
-## PRT mechanics (post-MVP)
-
-If loss exceeds the equity tranche AND the sPLUSD cushion, the residual is passed to PLUSD holders as Pipeline Recovery Tokens.
-
-RISK_COUNCIL declares the bad-debt amount `D` via timelocked call. At the execution block, every PLUSD holder's balance and every sPLUSD holder's PLUSD-equivalent (`shares × pricePerShare`) is reduced pro-rata by their share of `D`. Each holder receives 1 PRT for every $1 of reduction.
-
-PRT is a standard ERC-20. No whitelist. No yield accrual. 1 PRT = $1 face claim against the Recovery Pool.
-
-As the Trustee deposits recovered USDC into the Recovery Pool, the redemption rate becomes `pool.balance / totalSupply(PRT)`, capped at 1.0. A holder calls `RecoveryPool.redeem(amount)` and receives `amount × currentRate` USDC. Their PRT burns. The rate ratchets up only.
-
-PRT is freely transferable. A holder who needs cash now can sell PRT on the secondary market. A holder who wants recovery upside can hold and redeem later. PLUSD and sPLUSD continue to operate normally on the post-haircut balances.
+The Admin can set one recovery rate below 1 on the withdrawal queue. From then on, each withdrawal claim pays that fraction of its face value in USDC. The rate can be set only once. It cannot be raised later.

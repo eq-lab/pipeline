@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="667" viewBox="0 0 900 667" role="img" aria-label="Layered protection: a credit loss meets the advance ratio, security enforcement, the equity tranche and the default pocket; a contract incident meets custody outside the contracts, vouchers and mint limits, role separation and pause." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>Layered protection: a credit loss meets the advance ratio, security enforcement, the equity tranche and the default pocket; a contract incident meets custody outside the contracts, vouchers and mint limits, role separation and pause.</title>
+<defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="mb1334b" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#b1334b"/></marker></defs>
+<rect width="900" height="667" fill="#ffffff"/>
+<rect x="20.0" y="20.0" width="410.0" height="63.0" rx="6" fill="#f9eef0" stroke="#b1334b" stroke-width="1.25"/>
+<text x="32.0" y="43.8" font-size="15.5" fill="#b1334b" font-weight="600">Credit loss</text>
+<text x="32.0" y="67.7" font-size="13" fill="#5c5a57">default, fraud, shortfall</text>
+<path d="M 225.0 83.0 L 225.0 109.0" fill="none" stroke="#b1334b" stroke-width="1.5" marker-end="url(#mb1334b)" stroke-linejoin="round"/>
+<rect x="20.0" y="109.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="149.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="153.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
+<text x="62.0" y="132.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Advance ratio</text>
+<text x="62.0" y="156.8" font-size="13" fill="#5c5a57">drawn up to 80 % of security value; above 85 %, a margin</text>
+<text x="62.0" y="174.7" font-size="13" fill="#5c5a57">call restores 80 %</text>
+<path d="M 225.0 190.0 L 225.0 216.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="216.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="256.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="260.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
+<text x="62.0" y="239.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Security enforcement</text>
+<text x="62.0" y="263.8" font-size="13" fill="#5c5a57">the Security Agent enforces; goods sold through</text>
+<text x="62.0" y="281.6" font-size="13" fill="#5c5a57">pre-onboarded liquidators</text>
+<path d="M 225.0 297.0 L 225.0 323.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="323.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="363.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="367.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">3</text>
+<text x="62.0" y="346.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Equity tranche</text>
+<text x="62.0" y="370.7" font-size="13" fill="#5c5a57">the Originator&#x27;s capital takes the first loss; recorded, not</text>
+<text x="62.0" y="388.6" font-size="13" fill="#5c5a57">enforced on-chain</text>
+<path d="M 225.0 404.0 L 225.0 430.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="20.0" y="430.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="43.0" cy="470.5" r="11" fill="#2f6b3a"/>
+<text x="43.0" y="474.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">4</text>
+<text x="62.0" y="453.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Default pocket</text>
+<text x="62.0" y="477.7" font-size="13" fill="#5c5a57">confines the loss to vault holders at default; recoveries go</text>
+<text x="62.0" y="495.6" font-size="13" fill="#5c5a57">back to them</text>
+<rect x="470.0" y="20.0" width="410.0" height="63.0" rx="6" fill="#f9eef0" stroke="#b1334b" stroke-width="1.25"/>
+<text x="482.0" y="43.8" font-size="15.5" fill="#b1334b" font-weight="600">Contract incident</text>
+<text x="482.0" y="67.7" font-size="13" fill="#5c5a57">bug, key compromise, attack</text>
+<path d="M 675.0 83.0 L 675.0 109.0" fill="none" stroke="#b1334b" stroke-width="1.5" marker-end="url(#mb1334b)" stroke-linejoin="round"/>
+<rect x="470.0" y="109.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="149.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="153.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">A</text>
+<text x="512.0" y="132.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Custody outside the contracts</text>
+<text x="512.0" y="156.8" font-size="13" fill="#5c5a57">contracts hold no USDC; the queue reaches only its</text>
+<text x="512.0" y="174.7" font-size="13" fill="#5c5a57">allowance</text>
+<path d="M 675.0 190.0 L 675.0 216.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="470.0" y="216.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="256.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="260.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">B</text>
+<text x="512.0" y="239.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Vouchers and mint limits</text>
+<text x="512.0" y="263.8" font-size="13" fill="#5c5a57">signed voucher per claim; per-transaction and 24-hour mint</text>
+<text x="512.0" y="281.6" font-size="13" fill="#5c5a57">limits</text>
+<path d="M 675.0 297.0 L 675.0 323.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="470.0" y="323.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="363.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="367.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">C</text>
+<text x="512.0" y="346.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Role separation</text>
+<text x="512.0" y="370.7" font-size="13" fill="#5c5a57">every privileged call through the access manager; the</text>
+<text x="512.0" y="388.6" font-size="13" fill="#5c5a57">Admin revokes</text>
+<path d="M 675.0 404.0 L 675.0 430.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="470.0" y="430.0" width="410.0" height="81.0" rx="6" fill="#eef4ef" stroke="#2f6b3a" stroke-width="1.25"/>
+<circle cx="493.0" cy="470.5" r="11" fill="#2f6b3a"/>
+<text x="493.0" y="474.8" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">D</text>
+<text x="512.0" y="462.8" font-size="15.5" fill="#2f6b3a" font-weight="600">Pause</text>
+<text x="512.0" y="486.7" font-size="13" fill="#5c5a57">the Pauser stops each contract at once</text>
+<path d="M 225.0 511.0 L 225.0 557.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="233.0" y="539.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">what gets through</text>
+<path d="M 675.0 511.0 L 675.0 557.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="683.0" y="539.0" font-size="13" fill="#5c5a57" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">what gets through</text>
+<rect x="20.0" y="557.0" width="860.0" height="62.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="450.0" y="580.3" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">Lender capital</text>
+<text x="450.0" y="604.2" font-size="13" fill="#5c5a57" text-anchor="middle">PLUSD staked in the sPLUSD vault</text>
+<text x="20.0" y="649.0" font-size="13" fill="#5c5a57">Terminal mode: the Admin can set one recovery rate below 1 on the withdrawal queue, once. Every claim then pays that fraction of face value.</text>
+</svg>

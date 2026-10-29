@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="435" viewBox="0 0 960 435" role="img" aria-label="How yield reaches sPLUSD: a borrower&#x27;s repayment is booked on-chain and split; senior interest is minted as PLUSD into the vault and the share price steps up; fees go to the capital wallet as shares." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>How yield reaches sPLUSD: a borrower&#x27;s repayment is booked on-chain and split; senior interest is minted as PLUSD into the vault and the share price steps up; fees go to the capital wallet as shares.</title>
+<defs><marker id="m000080" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#000080"/></marker><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker><marker id="m77746f" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#77746f"/></marker></defs>
+<rect width="960" height="435" fill="#ffffff"/>
+<rect x="20.0" y="20.0" width="250.0" height="66.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
+<text x="30.0" y="45.3" font-size="15.5" fill="#262524" font-weight="600">Borrower pays</text>
+<text x="30.0" y="69.2" font-size="13" fill="#5c5a57">interest is invoiced monthly</text>
+<rect x="20.0" y="120.0" width="250.0" height="66.0" rx="6" fill="#f4f3f1" stroke="#c9c7c4" stroke-width="1.25"/>
+<text x="30.0" y="145.3" font-size="15.5" fill="#262524" font-weight="600">USD bank account</text>
+<text x="30.0" y="169.2" font-size="13" fill="#5c5a57">the payment arrives</text>
+<rect x="20.0" y="220.0" width="250.0" height="66.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="30.0" y="245.3" font-size="15.5" fill="#000080" font-weight="600">Repayment booked</text>
+<text x="30.0" y="269.2" font-size="13" fill="#5c5a57">by the cash reporter, on-chain</text>
+<path d="M 145.0 86.0 L 145.0 120.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<path d="M 145.0 186.0 L 145.0 220.0" fill="none" stroke="#77746f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#m77746f)" stroke-linejoin="round"/>
+<line x1="270" y1="253.0" x2="304" y2="253.0" stroke="#4a4845" stroke-width="1.5"/>
+<line x1="304" y1="184" x2="304" y2="344" stroke="#4a4845" stroke-width="1.5"/>
+<rect x="340.0" y="156.0" width="270.0" height="56.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="348.0" y="176.3" font-size="15.5" fill="#262524" font-weight="600">Principal</text>
+<text x="348.0" y="200.2" font-size="13" fill="#5c5a57">outstanding falls</text>
+<path d="M 304.0 184.0 L 340.0 184.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="340.0" y="236.0" width="270.0" height="56.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="348.0" y="256.3" font-size="15.5" fill="#000080" font-weight="600">Senior interest</text>
+<text x="348.0" y="280.2" font-size="13" fill="#5c5a57">minted as PLUSD into the vault</text>
+<path d="M 304.0 264.0 L 340.0 264.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<rect x="340.0" y="316.0" width="270.0" height="56.0" rx="6" fill="#ffffff" stroke="#d5d4d3" stroke-width="1.25"/>
+<text x="348.0" y="336.3" font-size="15.5" fill="#262524" font-weight="600">Fees</text>
+<text x="348.0" y="360.2" font-size="13" fill="#5c5a57">to the capital wallet as sPLUSD shares</text>
+<path d="M 304.0 344.0 L 340.0 344.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<text x="340.0" y="136.0" font-size="12" fill="#5c5a57" font-weight="600" letter-spacing="0.84">SPLIT ON-CHAIN</text>
+<text x="660.0" y="36.0" font-size="15.5" fill="#262524" font-weight="600">sPLUSD share price</text>
+<line x1="680" y1="330" x2="930" y2="330" stroke="#5c5a57" stroke-width="1"/>
+<line x1="680" y1="70" x2="680" y2="330" stroke="#5c5a57" stroke-width="1"/>
+<path d="M 680 280 L 750 280 L 750 230 L 840 230 L 840 170 L 930 170" fill="none" stroke="#000080" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="750" cy="230" r="4" fill="#000080"/>
+<circle cx="840" cy="170" r="4" fill="#000080"/>
+<text x="758.0" y="252.0" font-size="12.5" fill="#5c5a57">repayment</text>
+<text x="848.0" y="192.0" font-size="12.5" fill="#5c5a57">repayment</text>
+<text x="930.0" y="350.0" font-size="12.5" fill="#5c5a57" text-anchor="end">time</text>
+<path d="M 610.0 264.0 L 672.0 264.0" fill="none" stroke="#000080" stroke-width="1.5" marker-end="url(#m000080)" stroke-linejoin="round"/>
+<text x="645.0" y="256.0" font-size="13" fill="#000080" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">steps up</text>
+<text x="20.0" y="400.0" font-size="13" fill="#5c5a57">No daily accrual in the share price: interest lands in one amount when the borrower pays. Fees do not change the share price. Bank income booked on</text>
+<text x="20.0" y="417.9" font-size="13" fill="#5c5a57">the bank account is minted into the vault; bank charges and conversion shortfalls are burned from it.</text>
+</svg>

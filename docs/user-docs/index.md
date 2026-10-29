@@ -21,7 +21,7 @@ For borrowers: [Overview](./borrowers/index.md)
 
 Technical overview: [Architecture](./technical/architecture.md) · [Smart contracts](./technical/smart-contracts.md) · [Relayer security](./technical/relayer-security.md) · [Audits & addresses](./technical/audits-and-addresses.md)
 
-Governance: [Overview](./governance/index.md) · [Fiduciary trustee](./governance/fiduciary-trustee.md) · [Risk committee](./governance/risk-committee.md) · [Operators & multisigs](./governance/multisig-roles.md)
+Governance: [Overview](./governance/index.md) · [Fiduciary trustee](./governance/fiduciary-trustee.md) · [Risk Council](./governance/risk-committee.md) · [Operators & multisigs](./governance/multisig-roles.md)
 
 Security & transparency: [Overview](./security/index.md) · [Investor protection](./security/investor-protection.md) · [Custody](./security/custody.md) · [Capital safeguards](./security/capital-safeguards.md) · [Emergency response](./security/emergency-response.md)
 

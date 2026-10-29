@@ -10,24 +10,26 @@ section: Start here
 
 1. Confirm Pipeline can serve your jurisdiction (see [Legal](/references/legal/)).
 2. Set up a self-custodied wallet. Pipeline never holds your keys.
-3. Fund the wallet with at least $1,000 USDC plus a small ETH balance for gas (two transactions on your side: `deposit` and `claim`).
-4. Connect the wallet at pipeline.one. No identity documents required — Pipeline runs KYT (Know Your Transaction) screening on every deposit, not KYC.
-5. Approve USDC to DepositManager and call `deposit(amount)`. Your USDC moves to the Intake Wallet pending screening; a deposit ticket is created.
-6. Wait for KYT screening. Typically seconds, sometimes minutes. The Relayer signs a claim attestation off-chain on a clean result.
-7. Call `claim(depositId, attestation, signature)` yourself. The contract enrols you on WhitelistRegistry, moves USDC from the Intake Wallet to the Capital Wallet, and mints PLUSD 1:1 — all in this transaction.
-8. Stake PLUSD into sPLUSD. Yield accrues to share price automatically.
+3. Fund the wallet with at least 1,000 USDC and a small balance for network fees.
+4. Connect the wallet at pipeline.one and pass KYB.
+5. Submit a deposit request. Your USDC goes straight to the custody account.
+6. The platform screens your address and the deposit (KYT, Know Your Transaction). On a clean result it approves your address to hold PLUSD and signs a voucher for your request.
+7. Claim with the voucher. PLUSD is minted to your address 1:1.
+8. Stake PLUSD in the staking vault and receive sPLUSD. Yield goes into the sPLUSD price.
+
+You can also wire USD to the protocol's bank account. When the wire is booked, PLUSD is minted 1:1 and staked for you as sPLUSD.
 
 <div class="callout info">
   <h4>What happens next</h4>
-  <p>sPLUSD share price moves only when a senior coupon or realised T-bill gain is minted into the vault. Both events are recorded on-chain. To exit, unstake sPLUSD, queue the resulting PLUSD on the WithdrawalQueue, and claim USDC yourself when the queue is funded.</p>
+  <p>The sPLUSD price rises when loan interest net of fees is minted into the vault at repayment. It falls when a defaulted loan moves out of the vault into a separate pocket owned by the holders on the default date, and when the vault absorbs a loss. Every such event is recorded on-chain. To exit, unstake sPLUSD and put the PLUSD in the withdrawal queue. The queue pays in order. Once the custody account holds enough USDC to cover your place in the queue and the platform has signed a voucher, you claim your USDC.</p>
 </div>
 
 ## For originators
 
 1. Fill out the application [here](https://forms.gle/kP1H3VJ5dKVoou6Q8).
 2. We will contact you within five business days.
-3. If approved, complete your onboarding.
-4. Start loan origination and earning higher yield on equity tranche.
+3. If approved, complete onboarding, including KYB and KYT.
+4. Start originating loans and earn the equity tranche return.
 
 ## For borrowers
 

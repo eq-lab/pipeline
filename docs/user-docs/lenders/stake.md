@@ -6,71 +6,75 @@ section: For Lenders
 
 # Stake PLUSD
 
-Stake PLUSD into sPLUSD to earn yield. sPLUSD is a standard ERC-4626 vault whose underlying asset is PLUSD. Yield arrives as fresh PLUSD minted directly into the vault — your share count stays constant, but what each share is worth grows. There is no claim step, no restake, no compounding action.
+Stake PLUSD into sPLUSD to earn yield. sPLUSD is a share of the staking vault, whose underlying asset is PLUSD. Interest arrives as new PLUSD minted into the vault. Your share count stays the same. What each share is worth goes up. There is no claim step and no restake.
 
-The whitelist lives on PLUSD transfers and is enforced at the underlying-asset level. The vault itself has no whitelist, so any PLUSD holder can stake — and compliance re-engages when you unstake back into PLUSD.
+The permission check lives on PLUSD. Only authorised addresses can hold PLUSD, so only they can stake it. The vault itself does not check the address that receives the shares. The check applies again when you unstake back into PLUSD.
 
 ---
 
 ## Stake flow
 
-{% include diagram.html src="d3-stake-unstake.png" caption="Stake is open access; unstake requires the receiver of the returned PLUSD to be whitelisted." %}
+{% include diagram.html src="d3-stake-unstake.png" caption="Staking takes PLUSD from an authorised holder. Unstaking requires the receiver of the returned PLUSD to be authorised." %}
 
 ### Walkthrough
 
 <ol class="steps">
-  <li>Call <code>PLUSD.approve(sPLUSDvault, amount)</code> to authorise the vault, then call <code>sPLUSD.deposit(assets, receiver)</code>.</li>
-  <li>The vault pulls <code>assets</code> PLUSD from your wallet into the vault contract via <code>transferFrom</code>.</li>
-  <li>The vault mints sPLUSD shares to <code>receiver</code> at <code>shares = assets * totalSupply / totalAssets</code>, rounded down.</li>
+  <li>Stake an amount of PLUSD from your wallet and name the address that receives the shares.</li>
+  <li>The vault takes the PLUSD from your wallet.</li>
+  <li>The vault issues sPLUSD shares to the receiver in proportion to the PLUSD already in the vault, rounded down.</li>
 </ol>
+
+A bank wire deposit skips these steps. The protocol mints the PLUSD and stakes it for you in one go. See [Deposit](/lenders/deposit/).
 
 ### How shares earn yield
 
-Your share count stays constant after stake. The PLUSD each share redeems for grows as fresh PLUSD is minted directly into the vault address from the two yield engines. This is passive: no claim call, no restake, no compounding step. The ERC-4626 share price (`totalAssets / totalSupply`) ticks up as `totalAssets` rises while `totalSupply` is unchanged.
+Your share count stays the same after you stake. The PLUSD each share redeems for grows when new PLUSD is minted into the vault. Share price is the vault's PLUSD divided by the number of shares.
 
-You can stake and unstake at any time. There is no lock-up, no queue at the vault, and no minimum hold.
+You can stake and unstake at any time. There is no lock-up, no queue at the vault and no minimum hold.
 
 ### Who can stake
 
-Any PLUSD holder. This is the design point that enables DeFi composability on sPLUSD shares while keeping the compliance boundary intact on the underlying asset.
+Any authorised PLUSD holder.
 
 ---
 
 ## Unstake flow
 
-Redeeming sPLUSD returns PLUSD, not USDC. Call `sPLUSD.redeem(shares, receiver, owner)` and the vault burns your shares and transfers PLUSD to the receiver. The receiver must be whitelisted on PLUSD, or the PLUSD transfer reverts and the whole redemption fails. The PLUSD amount paid out is `shares * totalAssets / totalSupply`, rounded down — so the exact quantity depends on the share price at the moment your transaction lands.
+Unstaking returns PLUSD, not USDC. You redeem shares and name a receiver. The vault burns the shares and sends PLUSD to the receiver. The receiver must be authorised to hold PLUSD, or the redemption fails. The PLUSD paid out is your shares times the share price at that moment, rounded down.
 
-Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue. Unlike the stake/unstake vault, the redemption path can route through the 15% USDC buffer or escalate to a large-withdrawal track that liquidates T-bills on your behalf. See [withdraw](/lenders/withdraw/) for the flow, the buffer rules, and the large-withdrawal path.
+Converting PLUSD back to USDC is a separate step through the withdrawal queue. See [Withdraw](/lenders/withdraw/).
 
 ---
 
 ## What affects your yield
 
-Two yield streams feed the vault, both routed through `YieldMinter.yieldMint` under two independent signatures (Relayer + Trustee).
+{% include diagram.html src="d4-yield-accretion.svg" caption="How interest reaches sPLUSD. A repayment is split on-chain. Senior interest is minted into the vault and the share price steps up. Fees go to the capital wallet as shares." %}
 
-**Senior coupons.** Minted as extra PLUSD when borrowers repay. The offtaker pays USD into the Trustee's bank account, the Trustee on-ramps to USDC, and the senior coupon net of fees is minted into the PLUSD staking vault. Settles per repayment event.
+Interest from loans is the source of yield. Borrowers are invoiced interest monthly. When a borrower pays, the senior interest is minted as new PLUSD into the vault in one go. The share price steps up on that day. There is no daily accrual in the share price.
 
-**T-bill yield.** USYC sits in the Capital Wallet and NAV drifts up daily, but yield is realised — not accrued. Nothing mints until the Trustee instructs a USYC sale via the Hashnote redemption rail. Realised gain is split 70% as fresh PLUSD to the PLUSD staking vault, 30% to Treasury. Realisation is at the Trustee's discretion; if no sale happens for a quarter, USYC contributes nothing to share price, regardless of NAV.
+Fees on a repayment go to the capital wallet as sPLUSD shares. They do not change the share price.
 
-A 15% USDC buffer in the Capital Wallet (band 10–20%) keeps routine redemptions from forcing a USYC sale.
+Income the protocol books on its bank account is minted into the vault and raises the share price. Bank charges and ramp shortfalls are burned from the vault and lower it.
+
+A default lowers the vault. The Risk Council, acting for the Majority Lenders, declares the default. The loan's outstanding PLUSD moves from the vault into a separate pocket for that loan. The pocket belongs to the sPLUSD holders at the moment of the default, pro rata to their shares. Recoveries on the loan go to the pocket, and those holders claim them. Holders who left the vault before the default do not share in the loss or the recoveries. See [Default management](/risks/default-management/).
 
 ---
 
 ## Common stake/unstake failure modes
 
-- **Stake reverts on transfer.** You did not approve `sPLUSD` to spend PLUSD, or the approval is for less than the `assets` you passed.
-- **Stake reverts with paused error.** The GUARDIAN Safe has paused `sPLUSD`. Check the status page before retrying.
-- **Redeem reverts at the PLUSD level.** The `receiver` address you passed is not whitelisted on PLUSD.
+- The stake is refused because your address is not authorised to hold PLUSD, or you hold less PLUSD than the amount.
+- The stake or redemption is refused with a paused error. The vault is paused. Check the status page before retrying.
+- The redemption fails at the PLUSD level. The receiver you named is not authorised to hold PLUSD.
 
 ---
 
 ## Contract addresses
 
-`sPLUSD` and `PLUSD` addresses are published on the [Audits & addresses page](/technical/audits-and-addresses/) and are verified on Etherscan. Treat the Audits & addresses page as the source of truth. Do not trust addresses copied from third-party sites.
+The sPLUSD vault and PLUSD are listed on the [Audits & addresses page](/technical/audits-and-addresses/). Treat that page as the source of truth. Do not trust addresses copied from third-party sites.
 
 ---
 
 ## Related pages
 
-- [Deposit](/lenders/deposit/) — get PLUSD before you can stake.
-- [Withdraw](/lenders/withdraw/) — convert sPLUSD or PLUSD back to USDC.
+- [Deposit](/lenders/deposit/). Get PLUSD before you can stake.
+- [Withdraw](/lenders/withdraw/). Convert sPLUSD or PLUSD back to USDC.
