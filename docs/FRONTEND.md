@@ -4,10 +4,6 @@
 
 Clean, professional financial interface. Priority: data density and clarity over decoration. Operators and LPs need to trust the numbers they see.
 
-## Design source
-
-Behaviour comes from the docs (`docs/user-docs/**` first, then `docs/product-specs/`); Figma supplies styles only. There is no design team and no new Figma frames are produced (decision 2026-10-29). When an Issue needs a page, modal or layout that no frame covers, development builds it from the existing theme: the tokens and components in `packages/ui`, and the nearest existing screen as the layout pattern (a new LP request flow follows the withdraw / request screens; a new list follows the existing tables). A missing frame is never a reason to park or block an Issue; where a frame does exist, match it as before.
-
 ## Typography
 
 Two self-hosted typefaces (declared as `@font-face` in `packages/ui/src/styles/theme.css`):

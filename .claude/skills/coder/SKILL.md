@@ -63,7 +63,6 @@ Treat the body as the authoritative "what" and the execution plan as the authori
 - Follow `AGENTS.md`. Never commit to `main`. Always work on the feature branch already opened for this Issue.
 - Respect dependency order. If the Issue depends on unfinished work, explain and stop.
 - If the Issue body or plan references a Figma URL, use it as an implementation reference (the actual visual verification happens later in `ux-tester`).
-- If no frame covers the UI, build it from the existing theme and the nearest existing screen, per `docs/FRONTEND.md` §"Design source". Never stop for missing design.
 - When implementation changes behavior, update the relevant product spec or design doc.
 - Log unrelated bugs found during implementation in `docs/exec-plans/known-bugs.md` — do not fix them inline.
 - Log structural shortcuts in `docs/exec-plans/tech-debt-tracker.md` — do not fix them inline.

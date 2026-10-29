@@ -41,8 +41,6 @@ Treat the body as the authoritative "what". Comments add scope changes / decisio
 
 If the Issue references a Figma URL in its body or comments, extract it — the plan must include a Figma-driven verification step.
 
-If no Figma frame covers what the Issue needs (a new page, modal, list or a changed layout), do not request design and do not raise it as an open question: there are no designers and no new frames (`docs/FRONTEND.md` §"Design source"). Plan the UI from the existing theme — name the `packages/ui` components and the existing screen whose layout the new UI follows — and treat the docs as the behaviour source.
-
 ## Workflow
 
 1. Read the Issue with `gh issue view <number> -c`.
