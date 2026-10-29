@@ -2193,3 +2193,11 @@ line, whichever section it lands in.
 - **Gap:** The repayment recovery dialog (#1711) schedules and executes the reversal through `AM.schedule` / `AM.execute` but has no `AM.cancel`. Cancelling is admin or guardian only for other callers.
 - **Impact:** A wrongly scheduled reversal can only be left to expire (7 days after its ready time) or cancelled outside the app.
 - **Suggested fix:** Add a `cancel` mode to the AccessManager relay and a "Cancel scheduled reversal" action gated on the wallet's guardian or admin role, while the delayed path is still in use (it disappears once #1756 makes `reverse_repay` immediate).
+
+### TD-160: EVM vouchers carry no deadline, so the 24-hour voucher validity is unenforced on EVM
+
+- **Date:** 2026-10-29
+- **Location:** `packages/api/src/routes/vouchers.rs` (EVM paths set `deadline: None`)
+- **Gap:** The user docs say a voucher is valid for 24 hours, but the EVM signature does not cover a deadline, so an EVM voucher never expires. The LP hooks (#1760) already honour a served `deadline`, so nothing changes in the app once the backend serves one.
+- **Impact:** The documented 24-hour expiry and fresh-voucher behaviour only exist on Stellar.
+- **Suggested fix:** Backend follow-up #1798: add a deadline to the EVM `VerifiedRequests` digest and serve it.

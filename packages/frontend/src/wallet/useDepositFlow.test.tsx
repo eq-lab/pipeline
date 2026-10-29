@@ -59,6 +59,9 @@ const ctl = vi.hoisted(() => ({
       }[]
     | undefined,
   invalidate: vi.fn(),
+  stellarClaimError: null as Error | null,
+  stellarClaimReset: vi.fn(),
+  voucherInvalidate: vi.fn(),
   refetchIntervalFn: undefined as
     | ((data: unknown) => number | false)
     | undefined,
@@ -185,8 +188,8 @@ vi.mock("@/wallet", () => ({
     write: mockStellarClaimWrite,
     isPending: false,
     isSuccess: false,
-    error: null,
-    reset: vi.fn(),
+    error: ctl.stellarClaimError,
+    reset: ctl.stellarClaimReset,
     data: undefined,
   }),
   useStellarDepositRequest: () => ({ request: undefined }),
@@ -274,6 +277,7 @@ vi.mock("@/api", () => ({
     status: "ready",
     error: null,
     refetch: vi.fn(),
+    invalidate: ctl.voucherInvalidate,
   }),
   useStellarWithdrawalVoucher: () => ({
     data: mockStellarWithdrawVoucherData,
@@ -296,6 +300,7 @@ function resetCtl() {
   ctl.stellarRequestDepositSuccess = false;
   ctl.stellarMinDeposit = 10_000_000_000n;
   ctl.requests = undefined;
+  ctl.stellarClaimError = null;
   ctl.refetchIntervalFn = undefined;
 }
 
@@ -691,5 +696,58 @@ describe("useDepositFlow — Stellar min deposit from the contract (#1658)", () 
       result.current.onQuickAmount(0);
     });
     expect(setAmount).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDepositFlow — expired voucher claim retry (#1760)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+    mockXlmState.kind = "stellar";
+    mockXlmState.xlmBalance = "100";
+    mockXlmState.accountExists = true;
+    mockStellarDepositVoucherData = { deadline: "1800000000" };
+  });
+
+  it("refetches the voucher once and clears the claim error on a deadline-expired claim", () => {
+    ctl.stellarClaimError = new Error("HostError: Error(Contract, #4)");
+
+    const { rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+
+    expect(ctl.voucherInvalidate).toHaveBeenCalledTimes(1);
+    expect(ctl.stellarClaimReset).toHaveBeenCalledTimes(1);
+
+    rerender();
+    expect(ctl.voucherInvalidate).toHaveBeenCalledTimes(1);
+    expect(ctl.stellarClaimReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the docs copy and does not retry a second time for the same request", () => {
+    ctl.stellarClaimError = new Error("HostError: Error(Contract, #4)");
+
+    const { result, rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+    rerender();
+
+    expect(result.current.step3.state).toBe("error");
+    expect(result.current.step3.errorMessage).toBe(
+      "The voucher expired or did not match the request. Your app fetches a fresh voucher.",
+    );
+    expect(ctl.voucherInvalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry on other contract errors or a bad-signature host error", () => {
+    ctl.stellarClaimError = new Error("HostError: Error(Crypto, InvalidInput)");
+    const { rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+    ctl.stellarClaimError = new Error("HostError: Error(Contract, #11)");
+    rerender();
+
+    expect(ctl.voucherInvalidate).not.toHaveBeenCalled();
+    expect(ctl.stellarClaimReset).not.toHaveBeenCalled();
   });
 });

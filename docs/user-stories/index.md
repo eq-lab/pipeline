@@ -339,3 +339,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1773 Trustee: reversal effects name the capital wallet, not the treasury](https://github.com/eq-lab/pipeline/issues/1773) | [1773-capital-wallet-fee-shares-label.md](./epic-1521/1773-capital-wallet-fee-shares-label.md) | Initial |
 | [#1731 Trustee (staging): white screen after wallet sign-in and after logout](https://github.com/eq-lab/pipeline/issues/1731) | [1731-trustee-auth-transition-white-screen.md](./epic-1521/1731-trustee-auth-transition-white-screen.md) | Initial |
 | [#1749 Trustee: remove the /sign-in URL layer](https://github.com/eq-lab/pipeline/issues/1749) | [1749-remove-sign-in-url-layer.md](./epic-1521/1749-remove-sign-in-url-layer.md) | Initial |
+
+---
+
+## Epic #1795 — Align the apps with the user docs
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |

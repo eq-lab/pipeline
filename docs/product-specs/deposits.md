@@ -17,6 +17,14 @@ On Stellar there is no `DepositManager` queue: the PLUSD mint leg is a Trustee w
 3. The indexer records `DepositRequested`; the API runs KYT on the lender and serves the voucher (`GET /v1/deposits/{request_id}/voucher?wallet=&chain_id=`) once screening passes. Hard-fail and unscreened requests get no voucher and are dispositioned off-chain by the Trustee.
 4. The lender calls `claimDeposit`; the contract verifies the voucher and mints PLUSD to the caller. The frontend polls the voucher endpoint until it is ready.
 
+### Voucher validity
+
+The voucher the API serves for a request is valid for 24 hours. On Stellar the response carries the signed `deadline` (u64 unix seconds, string); on EVM the signature does not cover a deadline, so none is served today and the validity is not enforced (backend follow-up #1798).
+
+The LP app treats a voucher whose served `deadline` has passed as absent: the hook reports `pending` (never `ready`, never `failed`), hides the voucher data and signature, and refetches. While a voucher with a deadline is ready, the hook schedules a refetch for the moment the deadline passes, so a tab left open goes back to pending and then ready with the fresh voucher. The served `deadline` is the only clock; the app holds no 24-hour constant and shows no countdown.
+
+If a Stellar claim still fails with the deadline-expired contract error (`Error(Contract, #4)`, for example under clock skew), the app resets the voucher query once per request id and shows "The voucher expired or did not match the request. Your app fetches a fresh voucher." A second failure for the same request keeps the error visible. A bad signature is a host crypto error, not a voucher expiry, and is never retried.
+
 ---
 
 ## Designed v2.3 model (not deployed on EVM)

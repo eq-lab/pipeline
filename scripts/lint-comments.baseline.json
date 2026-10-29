@@ -39,10 +39,6 @@
     "header": 28,
     "nodeIds": 0
   },
-  "packages/frontend/src/api/useDepositVoucher.ts": {
-    "header": 18,
-    "nodeIds": 0
-  },
   "packages/frontend/src/api/useFinancialPosition.test.tsx": {
     "header": 9,
     "nodeIds": 0
@@ -95,14 +91,6 @@
     "header": 24,
     "nodeIds": 0
   },
-  "packages/frontend/src/api/useStellarDepositVoucher.ts": {
-    "header": 20,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/api/useStellarWithdrawalVoucher.ts": {
-    "header": 20,
-    "nodeIds": 0
-  },
   "packages/frontend/src/api/useWithdrawalQueue.test.tsx": {
     "header": 9,
     "nodeIds": 0
@@ -113,10 +101,6 @@
   },
   "packages/frontend/src/api/useWithdrawalVoucher.test.tsx": {
     "header": 13,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/api/useWithdrawalVoucher.ts": {
-    "header": 18,
     "nodeIds": 0
   },
   "packages/frontend/src/components/ActivityHeader.test.tsx": {

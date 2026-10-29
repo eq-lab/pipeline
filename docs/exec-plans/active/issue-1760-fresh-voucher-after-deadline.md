@@ -59,6 +59,11 @@ Out of scope: backend/contract changes (adding a deadline to the EVM `VerifiedRe
 - `userError.test.ts`: new code maps to the docs copy.
 - Run `/test-fast` (lint, typecheck, unit). Manual staging check on Stellar testnet with a real request (no mocks): open a PendingClaim request whose voucher is past its deadline, Network tab shows a fresh `GET /v1/deposits/{id}/voucher` with a later `deadline`, Claim succeeds.
 
+## Implementation Notes (coder)
+
+- All seven steps done. Deviation: `invalidate()` uses `resetQueries` (not `invalidateQueries`) so a stale voucher is dropped immediately and a second Claim click cannot reuse it; expiry logic is shared in `voucherRetry.ts` (`voucherRefetchInterval`, `useVoucherExpired`). Step 3 `loading` is unchanged: step 2 `loading` already includes `voucher.status === "pending"`.
+- Tests: new `*.deadline.test.tsx` per hook, `voucherRetry.test.ts`, `userError.test.ts`, `useDepositFlow.test.tsx`.
+
 ## Docs to Update
 
 - `docs/product-specs/deposits.md` and `docs/product-specs/withdrawals.md`: new `### Voucher validity` section - served `deadline` (Stellar only today; EVM signature has no deadline), app treats a past deadline as no voucher and refetches, one invalidate-and-retry on an expired/invalid-signature claim error.
