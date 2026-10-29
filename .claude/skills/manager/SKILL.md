@@ -70,6 +70,7 @@ The manager works **only on sub-issues of an epic** (`epic`-labelled Issue, nati
    A sub-issue is a candidate when **all** hold:
    - status is `backlog`, or `planned` (plan exists and feedback — if any was requested — has been answered);
    - no `needs-feedback` label (a parked task is the user's to release);
+   - no `needs-figma` label (design work is pending; the designer removes it once the frames are linked on the Issue);
    - no `blocked` label;
    - unassigned or assigned to `@me`;
    - matches the session filter (`frontend` / `backend` / `trivial`); `qa` and `docs` sub-issues are picked only by `all` (no filter).
@@ -94,6 +95,8 @@ Whenever a task needs a human's input (plan review, open questions, ambiguous sc
 3. **Loop mode: move on to the next task.** Single-issue mode: report and stop.
 
 The human answers in a comment and removes `needs-feedback`; a later manager run picks the Issue up again (selection rule 2). Never work on an Issue that carries `needs-feedback`.
+
+The same applies to `needs-figma`: when a planner or coder finds that an Issue needs Figma frames that do not exist (or changes to existing ones), post a comment listing the frames needed, add `needs-figma`, keep the status label, and move on. Never work on an Issue that carries `needs-figma`; the designer removes the label after linking the frames. The human may instead decide that a specific Issue ships without design: they remove the label and say so in a comment, and the planner then builds that UI from the existing theme (`packages/ui` tokens and components, nearest existing screen as the pattern) without re-adding the label or raising design as an open question.
 
 For **failures** (red tests, lint gate, subagent error) use `blocked` instead: post the failure summary as a comment, strip the in-flight status, add `blocked`, and continue to the next task. Environment-level failures (diverged `main`, broken toolchain) stop the session — they would poison every task.
 

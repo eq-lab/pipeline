@@ -95,6 +95,7 @@ Any Issue intended for dev work **must** carry exactly one of `backend` or `fron
 | Label           | When to use                                                       |
 |-----------------|-------------------------------------------------------------------|
 | `priority`      | High priority — address before other backlog items                |
+| `needs-figma`   | Design work in Figma required before implementation — frames listed in a comment; agents skip it until the designer removes the label |
 | `bug`           | Something is broken or behaving incorrectly                       |
 | `enhancement`   | New feature or improvement to existing functionality              |
 | `documentation` | Docs-only change (specs, guides, generated docs)                  |
