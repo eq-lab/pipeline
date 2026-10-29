@@ -149,7 +149,7 @@ Plan, park for human plan review, implement, PR ready. No manual testing phase.
 
 ## Frontend flow
 
-Plan, gate only on open questions, implement, PR ready. **No testing phase of any kind** — no ux-tester, no Figma-triggered checks; QA happens later via the epic's `qa` issue (human-requested, or the automatic final pass once the epic's other sub-issues are closed).
+Plan, gate only on open questions, implement, PR ready. **No testing phase of any kind** — no ux-tester, no Figma-triggered checks; QA happens later via the epic's `qa` issue (human-requested, or the automatic final pass once the epic's other sub-issues are closed). A missing Figma frame is never a parking or blocking reason: new UI is built from the existing theme (`docs/FRONTEND.md` §"Design source"), so an open question that only asks for design is answered by that rule, not parked.
 
 1. **Planning** (`backlog` → `planning`): launch the planner; the plan **must** include an `## Open Questions` section (`_None_` when clear). Commit, push, transition to `planned`.
 2. **Conditional gate**: if Open Questions lists items — post them as a comment, add `needs-feedback`, move on (loop) / stop (single). If `_None_` — proceed immediately.
