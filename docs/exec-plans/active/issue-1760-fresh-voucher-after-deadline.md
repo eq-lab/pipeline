@@ -29,7 +29,7 @@ Out of scope: backend/contract changes (adding a deadline to the EVM `VerifiedRe
 
 ## Open Questions
 
-1. EVM vouchers carry no deadline (backend `deadline: None`, EVM signature does not cover one), so on EVM the docs' "valid for 24 hours" is not enforced anywhere and this issue changes nothing visible there. Accept "EVM: no-op until the backend/contract adds a deadline" and file a backend follow-up, or is EVM expected to change in this issue?
+1. EVM vouchers carry no deadline (backend `deadline: None`, EVM signature does not cover one), so on EVM the docs' "valid for 24 hours" is not enforced anywhere and this issue changes nothing visible there. **Answered 2026-10-29:** EVM stays a no-op in this issue; backend follow-up #1798.
 2. _Resolved by the manager from the contract source (pipeline-stellar-contracts @7646cef)._ `claim_request` on both the deposit manager and the withdrawal queue verifies the voucher through the shared `request-queue` crate: an expired deadline panics with `RequestQueueError::DeadlineExpired` = **`Error(Contract, #4)`**. Neither claim path raises its own `#4` (the deposit manager's claim raises no contract error of its own; the withdrawal queue's claim raises only `TooEarly` = `#2`), so `#4` on `claim_request` is unambiguous. A bad signature is not a contract code: `ed25519_verify` fails in the host (`Error(Crypto, InvalidInput)`), which means the signer changed, not that the voucher aged — do **not** retry on it. Scope the claim retry to `#4` only.
 
 ## Implementation Steps
