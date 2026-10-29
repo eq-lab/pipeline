@@ -159,7 +159,7 @@ export function reversalEffects(
   const money = (raw: string) => formatChainAmount(raw, chainId);
   const effects: LabelValue[] = [
     { label: "Cash removed from bank", value: money(minter.cash) },
-    { label: "Treasury fee shares burned", value: minter.feeShares },
+    { label: "Capital wallet fee shares burned", value: minter.feeShares },
   ];
   if (minter.carvedOut) {
     effects.push({

@@ -47,7 +47,7 @@ On-chain effects, in order:
 
 1. Registry unrecord (`PaymentUnrecorded`): `repaid` and `outstandingTotal` get the recorded `seniorPrincipalRepaid` back (`0` for a mis-split payment), and the cumulative offtaker, interest and fee totals shrink by the recorded amounts. On Stellar the event carries the reversed `RepaymentData`; on EVM only `outstanding`.
 2. Bank cash: the Minter's `bankCash` decreases by the original cash (`offtaker_received − equity_distributed`). It reverts (`MinterInsufficientBankCash`) when `bankCash` is smaller.
-3. Fee shares: the treasury's `feeShares` are burned from sPLUSD (`burnShares`, then the PLUSD is burned). A shortfall against the booked fees (share value fell or rounded) is absorbed from the vault.
+3. Fee shares: the capital wallet's `feeShares` (the contracts call the recipient `treasury`) are burned from sPLUSD (`burnShares`, then the PLUSD is burned). A shortfall against the booked fees (share value fell or rounded) is absorbed from the vault.
 4. Interest: a non-carved-out loan absorbs the minted interest from the vault (`LossAbsorbed`, PLUSD pulled and burned; any part the vault cannot cover is added to `unabsorbedTotal`). A carved-out loan instead calls `Pocket.unrelease(loan, released, interest)`, which burns the interest in the Pocket.
 5. Debt token: `syncDebt(loan)` on the DealTokenFactory (`DebtSynced`).
 6. `CashRepaymentReversed(loan_id, repayment_id, cash, ref_hash)` is emitted last.
@@ -66,7 +66,7 @@ API and indexer: the registry snapshot is re-read, so `offtaker_outstanding` ris
 - `refHash` must be non-zero and unused; the call reverts when paused.
 - The interest and fee mint passes the Minter rate limit again (`interest + fees` consumed a second time), so the budget must cover it.
 
-Effects: `bankCash` increases by `offtaker_received − equity_distributed`, which now includes the principal that step 1 did not return to the bank. The operator must confirm that cash is physically in the bank account and was not paid out to equity. Interest PLUSD is minted to the vault (or the Pocket if carved out), fees are minted and staked for the treasury, the new repayment id gets a fresh `PaymentRecorded` and `CashRepaid`, and `senior_outstanding` falls so `close_loan` can pass its checklist.
+Effects: `bankCash` increases by `offtaker_received − equity_distributed`, which now includes the principal that step 1 did not return to the bank. The operator must confirm that cash is physically in the bank account and was not paid out to equity. Interest PLUSD is minted to the vault (or the Pocket if carved out), fees are minted and staked for the capital wallet, the new repayment id gets a fresh `PaymentRecorded` and `CashRepaid`, and `senior_outstanding` falls so `close_loan` can pass its checklist.
 
 ## Limits and failure cases
 
@@ -78,7 +78,7 @@ Effects: `bankCash` increases by `offtaker_received − equity_distributed`, whi
 
 ## LP share price
 
-Step 1 absorbs the minted interest and burns the treasury's fee-share value, so sPLUSD share price drops by the reversed interest for the interval between the two steps; step 2 re-mints the interest to the vault and the price recovers by the same amount (fees go to the treasury, not LPs). Run both steps back to back, ideally in the same session, and expect transient dips in sPLUSD price, TVL and `cumulative_yield_total` that net out once the corrected `CashRepaid` is indexed.
+Step 1 absorbs the minted interest and burns the capital wallet's fee-share value, so sPLUSD share price drops by the reversed interest for the interval between the two steps; step 2 re-mints the interest to the vault and the price recovers by the same amount (fees go to the capital wallet, not LPs). Run both steps back to back, ideally in the same session, and expect transient dips in sPLUSD price, TVL and `cumulative_yield_total` that net out once the corrected `CashRepaid` is indexed.
 
 ## Trustee app
 
