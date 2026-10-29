@@ -1,10 +1,6 @@
 use chrono::Utc;
 use shared::crystal::client::CrystalClient;
-use shared::kyc_repo::{KycRepo, KytTransferResult, UnverifiedTransfer};
-
-/// KYT status values for contract_logs.kyt_status and lp_profiles.kyt_status
-const KYT_CLEAR: i16 = 1;
-const KYT_FAILED: i16 = 2;
+use shared::kyc_repo::{KycRepo, KytTransferResult, UnverifiedTransfer, KYT_CLEAR, KYT_FAILED};
 
 const BATCH_SIZE: i64 = 100;
 
