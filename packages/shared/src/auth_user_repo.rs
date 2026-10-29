@@ -12,12 +12,16 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub const ISSUE_NONCE_SQL: &str = "UPDATE auth_users \
-     SET nonce = $3, nonce_expires_at = now() + make_interval(secs => $4::double precision), \
+pub const NONCE_REUSE_MIN_REMAINING_SECS: i32 = 60;
+
+pub const ISSUE_OR_REUSE_NONCE_SQL: &str = "UPDATE auth_users \
+     SET nonce = CASE WHEN nonce IS NOT NULL AND nonce_expires_at > now() + make_interval(secs => $5::double precision) \
+                      THEN nonce ELSE $3 END, \
+         nonce_expires_at = CASE WHEN nonce IS NOT NULL AND nonce_expires_at > now() + make_interval(secs => $5::double precision) \
+                      THEN nonce_expires_at ELSE now() + make_interval(secs => $4::double precision) END, \
          updated_at = now() \
      WHERE chain_id = $1 AND address = $2 \
-       AND (nonce IS NULL OR nonce_expires_at IS NULL OR nonce_expires_at <= now()) \
-     RETURNING nonce_expires_at";
+     RETURNING nonce, nonce_expires_at";
 
 pub const CONSUME_NONCE_SQL: &str = "UPDATE auth_users \
      SET nonce = NULL, nonce_expires_at = NULL, updated_at = now() \
@@ -68,21 +72,21 @@ impl AuthUserRepo {
         .await
     }
 
-    pub async fn issue_nonce(
+    pub async fn issue_or_reuse_nonce(
         &self,
         chain_id: i64,
         address: &str,
-        nonce: &str,
+        fresh_nonce: &str,
         ttl_secs: i32,
-    ) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
-        let row: Option<(DateTime<Utc>,)> = sqlx::query_as(ISSUE_NONCE_SQL)
+    ) -> Result<Option<(String, DateTime<Utc>)>, sqlx::Error> {
+        sqlx::query_as(ISSUE_OR_REUSE_NONCE_SQL)
             .bind(chain_id)
             .bind(address)
-            .bind(nonce)
+            .bind(fresh_nonce)
             .bind(ttl_secs)
+            .bind(NONCE_REUSE_MIN_REMAINING_SECS)
             .fetch_optional(&self.pool)
-            .await?;
-        Ok(row.map(|r| r.0))
+            .await
     }
 
     pub async fn consume_nonce(

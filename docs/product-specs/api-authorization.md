@@ -60,17 +60,17 @@ Expiration Time: <expires_at>
 
 Challenge lifecycle (one record per account, on `auth_users`: `nonce`, `nonce_expires_at`):
 
-- **TTL** is 5 minutes. A `GET /v1/auth/challenge` for an address that already holds an
-  **unexpired** nonce returns that same nonce and message instead of rotating it, so polling
-  cannot invalidate a pending signature. Otherwise a new nonce is issued (the write only
-  replaces a missing or expired nonce, so concurrent requests converge on one).
+- **TTL** is 5 minutes. `GET /v1/auth/challenge` decides reuse-or-issue in one SQL `UPDATE`
+  on the database clock (`now()`, so app-server clock skew cannot matter): if the stored nonce
+  has **more than 60 seconds** left it is returned unchanged (polling cannot invalidate a
+  pending signature); otherwise (missing, expired, or 60 s or less left) a new nonce with a
+  fresh 5-minute expiry is written. The statement returns `(nonce, nonce_expires_at)` and the
+  message is built from that row, so concurrent requests converge on one nonce and a client
+  never receives a nonce about to expire. No matching row (unknown address) is a `401`.
 - **Consume** is atomic and single-use: after the signature checks out, `verify` runs
   `UPDATE auth_users SET nonce = NULL, nonce_expires_at = NULL WHERE chain_id = $1 AND
   address = $2 AND nonce = $3 AND nonce_expires_at > now() RETURNING …`; no row is a `401`.
   This closes concurrent replay and stale nonces.
-- **Rate limit:** `GET /v1/auth/challenge` allows 30 requests per minute per client address
-  (`X-Forwarded-For`, counted in `login_attempts` under scope `wallet_challenge_ip`); beyond
-  that `429`.
 - **Stellar:** the same text is signed with SEP-0053 (`SHA256("Stellar Signed Message:\n" ||
   message)`), which hashes the raw UTF-8 bytes, so newlines and length are not a concern.
 
@@ -78,7 +78,7 @@ Challenge lifecycle (one record per account, on `auth_users`: `nonce`, `nonce_ex
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; reuses the unexpired nonce, else issues a new 5-minute one. `401` if the address is not authorized, `429` past 30 requests per minute per client address. |
+| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; reuses the stored nonce while more than 60 s remain, else issues a new 5-minute one. `401` if the address is not authorized. No per-IP limit. |
 | `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` (one shared body, `authentication failed`) for unknown address, no live or expired challenge, a replayed nonce, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |

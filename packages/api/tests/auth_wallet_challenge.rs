@@ -3,12 +3,11 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::SignerSync;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use ed25519_dalek::{Signer, SigningKey};
-use pipeline_api::routes::auth::wallet::{
-    challenge_domain, challenge_message, reuse_or_rotate, within_challenge_limit, NonceDecision,
-    CHALLENGE_TTL_SECS, MAX_CHALLENGES_PER_IP,
-};
+use pipeline_api::routes::auth::wallet::{challenge_domain, challenge_message, CHALLENGE_TTL_SECS};
 use sha2::{Digest, Sha256};
-use shared::auth_user_repo::{CONSUME_NONCE_SQL, ISSUE_NONCE_SQL};
+use shared::auth_user_repo::{
+    CONSUME_NONCE_SQL, ISSUE_OR_REUSE_NONCE_SQL, NONCE_REUSE_MIN_REMAINING_SECS,
+};
 use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 
 fn t(secs: i64) -> DateTime<Utc> {
@@ -74,44 +73,6 @@ fn domain_is_the_host_of_app_base_url() {
     assert_eq!(challenge_domain("http://localhost:5173"), "localhost:5173");
 }
 
-#[test]
-fn live_nonce_is_reused() {
-    assert_eq!(
-        reuse_or_rotate(Some("n"), Some(t(60)), t(0)),
-        NonceDecision::Reuse {
-            nonce: "n".to_owned(),
-            expires_at: t(60)
-        }
-    );
-}
-
-#[test]
-fn expired_missing_or_legacy_nonce_rotates() {
-    assert_eq!(
-        reuse_or_rotate(Some("n"), Some(t(0)), t(0)),
-        NonceDecision::Rotate
-    );
-    assert_eq!(
-        reuse_or_rotate(Some("n"), Some(t(-1)), t(0)),
-        NonceDecision::Rotate
-    );
-    assert_eq!(reuse_or_rotate(None, None, t(0)), NonceDecision::Rotate);
-    assert_eq!(
-        reuse_or_rotate(Some("n"), None, t(0)),
-        NonceDecision::Rotate
-    );
-    assert_eq!(
-        reuse_or_rotate(None, Some(t(60)), t(0)),
-        NonceDecision::Rotate
-    );
-}
-
-#[test]
-fn challenge_limit_is_inclusive() {
-    assert!(within_challenge_limit(MAX_CHALLENGES_PER_IP));
-    assert!(!within_challenge_limit(MAX_CHALLENGES_PER_IP + 1));
-}
-
 fn squash(sql: &str) -> String {
     sql.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -127,12 +88,19 @@ fn consume_is_one_atomic_update_guarded_by_nonce_and_expiry() {
 }
 
 #[test]
-fn issue_only_overwrites_a_dead_nonce() {
-    let sql = squash(ISSUE_NONCE_SQL);
-    assert!(
-        sql.contains("(nonce IS NULL OR nonce_expires_at IS NULL OR nonce_expires_at <= now())")
-    );
-    assert!(sql.contains("RETURNING nonce_expires_at"));
+fn upsert_is_one_statement_on_the_db_clock_with_a_60s_reuse_threshold() {
+    assert_eq!(NONCE_REUSE_MIN_REMAINING_SECS, 60);
+    let sql = squash(ISSUE_OR_REUSE_NONCE_SQL);
+    assert!(sql.starts_with("UPDATE auth_users SET nonce = CASE WHEN nonce IS NOT NULL"));
+    let reuse = "nonce_expires_at > now() + make_interval(secs => $5::double precision)";
+    assert_eq!(sql.matches(reuse).count(), 2);
+    assert!(sql.contains("THEN nonce ELSE $3 END"));
+    assert!(sql.contains(
+        "THEN nonce_expires_at ELSE now() + make_interval(secs => $4::double precision) END"
+    ));
+    assert!(sql.contains("WHERE chain_id = $1 AND address = $2"));
+    assert!(sql.ends_with("RETURNING nonce, nonce_expires_at"));
+    assert!(!sql.contains("Utc"));
 }
 
 #[test]

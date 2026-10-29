@@ -2,7 +2,7 @@
 //!
 //! Flow (see `docs/product-specs/api-authorization.md`):
 //!   1. `GET  /v1/auth/challenge` — for a known `(chain_id, address)`, reuse the
-//!      unexpired nonce or issue a new 5-minute one, and return the message to sign.
+//!      live nonce (more than 60 s left) or issue a new 5-minute one, and return the message to sign.
 //!   2. `POST /v1/auth/verify` — verify the signature over the message rebuilt from
 //!      the *stored* nonce, consume the nonce atomically, and return a 24h JWT carrying the address'
 //!      roles and the account the address belongs to.
@@ -17,7 +17,6 @@
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
-use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
@@ -26,10 +25,8 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use shared::chains::ChainKind;
-use shared::login_attempt_repo::AttemptScope;
 use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 
-use super::password::client_ip;
 use crate::account_status::gate_request;
 use crate::auth::TOKEN_TTL_SECS;
 use crate::error::ApiError;
@@ -90,38 +87,7 @@ pub fn router() -> Router<Arc<AppState>> {
 
 pub const CHALLENGE_TTL_SECS: i64 = 5 * 60;
 
-pub const CHALLENGE_REQUEST_WINDOW_SECS: i32 = 60;
-
-pub const MAX_CHALLENGES_PER_IP: i32 = 30;
-
 pub const AUTH_FAILED: &str = "authentication failed";
-
-pub fn within_challenge_limit(requests_including_this: i32) -> bool {
-    requests_including_this <= MAX_CHALLENGES_PER_IP
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NonceDecision {
-    Reuse {
-        nonce: String,
-        expires_at: DateTime<Utc>,
-    },
-    Rotate,
-}
-
-pub fn reuse_or_rotate(
-    nonce: Option<&str>,
-    expires_at: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-) -> NonceDecision {
-    match (nonce, expires_at) {
-        (Some(nonce), Some(expires_at)) if expires_at > now => NonceDecision::Reuse {
-            nonce: nonce.to_owned(),
-            expires_at,
-        },
-        _ => NonceDecision::Rotate,
-    }
-}
 
 pub fn challenge_domain(app_base_url: &str) -> String {
     reqwest::Url::parse(app_base_url)
@@ -181,7 +147,6 @@ fn normalize_address(chain_kind: ChainKind, address: &str) -> String {
         (status = 200, description = "Challenge to sign", body = ChallengeResponse),
         (status = 400, description = "Missing, malformed, or unknown chain_id"),
         (status = 401, description = "Address is not authorized"),
-        (status = 429, description = "Too many challenge requests from this client"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Auth"
@@ -189,54 +154,18 @@ fn normalize_address(chain_kind: ChainKind, address: &str) -> String {
 pub async fn challenge(
     State(state): State<Arc<AppState>>,
     RequiredChain(chain): RequiredChain,
-    headers: HeaderMap,
     Query(query): Query<ChallengeQuery>,
 ) -> Result<Json<ChallengeResponse>, ApiError> {
     let chain_id = chain.chain_id;
     let address = normalize_address(chain.kind, &query.address);
 
-    if let Some(ip) = client_ip(&headers) {
-        let requests = state
-            .login_attempt_repo
-            .record(
-                AttemptScope::WalletChallengeIp,
-                &ip,
-                CHALLENGE_REQUEST_WINDOW_SECS,
-            )
-            .await?;
-        if !within_challenge_limit(requests) {
-            return Err(ApiError::TooManyRequests(
-                "too many challenge requests — try again shortly".to_owned(),
-            ));
-        }
-    }
-
-    // Reject unknown addresses — only the manually-seeded allow-list may log in.
-    let user = state
+    // Unknown addresses are rejected — only the manually-seeded allow-list may log in.
+    let fresh = Uuid::new_v4().to_string();
+    let (nonce, expires_at) = state
         .auth_user_repo
-        .find(chain_id, &address)
+        .issue_or_reuse_nonce(chain_id, &address, &fresh, CHALLENGE_TTL_SECS as i32)
         .await?
         .ok_or_else(|| ApiError::Unauthorized("address is not authorized".to_owned()))?;
-
-    let (nonce, expires_at) =
-        match reuse_or_rotate(user.nonce.as_deref(), user.nonce_expires_at, Utc::now()) {
-            NonceDecision::Reuse { nonce, expires_at } => (nonce, expires_at),
-            NonceDecision::Rotate => {
-                let fresh = Uuid::new_v4().to_string();
-                let issued = state
-                    .auth_user_repo
-                    .issue_nonce(chain_id, &address, &fresh, CHALLENGE_TTL_SECS as i32)
-                    .await?;
-                if let Some(expires_at) = issued {
-                    (fresh, expires_at)
-                } else {
-                    let raced = state.auth_user_repo.find(chain_id, &address).await?;
-                    raced
-                        .and_then(|u| Some((u.nonce?, u.nonce_expires_at?)))
-                        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("nonce not issued")))?
-                }
-            }
-        };
 
     let domain = challenge_domain(&state.password_reset.app_base_url);
     let message = challenge_message(&domain, &address, chain_id, &nonce, expires_at);
@@ -273,11 +202,9 @@ pub async fn verify(
         .await?
         .ok_or_else(denied)?;
 
-    let (nonce, expires_at) =
-        match reuse_or_rotate(user.nonce.as_deref(), user.nonce_expires_at, Utc::now()) {
-            NonceDecision::Reuse { nonce, expires_at } => (nonce, expires_at),
-            NonceDecision::Rotate => return Err(denied()),
-        };
+    let (Some(nonce), Some(expires_at)) = (user.nonce, user.nonce_expires_at) else {
+        return Err(denied());
+    };
 
     let domain = challenge_domain(&state.password_reset.app_base_url);
     let message = challenge_message(&domain, &address, chain_id, &nonce, expires_at);
