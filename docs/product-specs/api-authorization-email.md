@@ -59,13 +59,12 @@ least 8 characters, a digit, and a special character — rather than trusting it
 and hashes the submitted password *before* branching on whether the address is
 known, so the Argon2 cost cannot be timed to tell the two apart.
 
-**A password is never written to an unverified account.** Signup stores it on the
-passcode it issues, and only verifying *that* passcode installs it. Writing it
-straight onto the account is an account takeover: a stranger re-submits a
-pending address with their own password, the real owner's already-mailed code is
-still live, and the owner's own verification hands over an account whose
-password the stranger chose. Binding the password to the code means a
-verification can only ever install what was submitted with that same code.
+**A password is never written to an unverified account, and the first signup's
+wins.** It rides on the passcode; only verifying that passcode installs it.
+`OtpRepo::issue` (under the account row lock) copies the oldest non-null pending
+hash onto every reissue, so a repeat `signup`, `resend-otp` or cooldown-dropped
+request cannot change it; unverified login reads the same hash. Verification consumes the code with `... WHERE id = $1 AND consumed_at IS NULL RETURNING id`
+and answers the generic `401` on no row. Residual risk: an attacker signing up first.
 
 **Sign-in is limited to 3 attempts per 60 seconds**, counted per submitted
 address *and* per client address, independently. Per-address alone does nothing

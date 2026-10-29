@@ -57,6 +57,9 @@ pub struct AccountRepo {
     pub pool: PgPool,
 }
 
+pub const CONSUME_OTP_SQL: &str =
+    "UPDATE otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL RETURNING id";
+
 const COLUMNS: &str = "id, email, password_hash, email_verified_at, \
                        last_duplicate_notice_at, status, created_at, updated_at";
 
@@ -142,6 +145,7 @@ impl AccountRepo {
         Ok(claimed.is_some())
     }
 
+    /// Returns `false` (nothing changed) when the code was already consumed.
     /// Burn the passcode, install the password it carried, and mark the email
     /// verified — one transaction, because the three are worthless apart. A
     /// burn-then-fail would leave the caller unverified holding a spent code,
@@ -156,12 +160,16 @@ impl AccountRepo {
         id: Uuid,
         otp_id: i64,
         password_hash: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<bool, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE otp_codes SET consumed_at = now() WHERE id = $1")
+        let consumed: Option<(i64,)> = sqlx::query_as(CONSUME_OTP_SQL)
             .bind(otp_id)
-            .execute(&mut *tx)
+            .fetch_optional(&mut *tx)
             .await?;
+        if consumed.is_none() {
+            tx.rollback().await?;
+            return Ok(false);
+        }
         sqlx::query(
             "UPDATE accounts \
              SET email_verified_at = COALESCE(email_verified_at, now()), \
@@ -173,7 +181,8 @@ impl AccountRepo {
         .bind(password_hash)
         .execute(&mut *tx)
         .await?;
-        tx.commit().await
+        tx.commit().await?;
+        Ok(true)
     }
 
     pub async fn reset_password_consuming_token(

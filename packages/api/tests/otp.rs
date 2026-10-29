@@ -73,3 +73,26 @@ fn expires_a_passcode_one_minute_after_it_is_issued() {
 fn allows_a_single_guess_before_the_passcode_is_burned() {
     assert_eq!(MAX_OTP_ATTEMPTS, 1);
 }
+
+// ── First pending password wins ────────────────────────────────────────────────
+
+#[test]
+fn reissue_keeps_the_first_pending_hash() {
+    use shared::otp_repo::pending_hash_to_keep;
+    assert_eq!(pending_hash_to_keep(Some("first"), "attacker"), "first");
+    assert_eq!(pending_hash_to_keep(None, "submitted"), "submitted");
+}
+
+#[test]
+fn first_pending_hash_query_picks_oldest_non_null() {
+    use shared::otp_repo::FIRST_PENDING_HASH_SQL;
+    assert!(FIRST_PENDING_HASH_SQL.contains("ORDER BY id ASC LIMIT 1"));
+    assert!(FIRST_PENDING_HASH_SQL.contains("pending_password_hash IS NOT NULL"));
+}
+
+#[test]
+fn consume_is_atomic_and_single_use() {
+    use shared::account_repo::CONSUME_OTP_SQL;
+    assert!(CONSUME_OTP_SQL.contains("consumed_at IS NULL"));
+    assert!(CONSUME_OTP_SQL.contains("RETURNING id"));
+}
