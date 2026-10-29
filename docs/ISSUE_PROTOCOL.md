@@ -88,7 +88,7 @@ The planning pair is optional: work that needs no plan (e.g. `trivial`) goes str
 | `priority` | Pick before other backlog items |
 | `frontend` / `backend` | Routing hint — which kind of agent should pick it up |
 | `needs-feedback` | A human's input is requested — the question is in the latest comment. Agents skip these issues; the human removes the label after answering |
-| `needs-figma` | Design work in Figma is required before implementation — new frames or changes to existing ones, listed in a comment. Agents skip these issues (the manager never claims them); the designer removes the label once the frames exist and are linked on the Issue |
+| `needs-figma` | Design work in Figma is required before implementation — new frames or changes to existing ones, listed in a comment. Agents skip these issues (the manager never claims them); the designer removes the label once the frames exist and are linked on the Issue — or a human removes it with a comment that the Issue ships without design, built from the existing theme |
 
 ## 4. Status transitions
 

@@ -96,7 +96,7 @@ Whenever a task needs a human's input (plan review, open questions, ambiguous sc
 
 The human answers in a comment and removes `needs-feedback`; a later manager run picks the Issue up again (selection rule 2). Never work on an Issue that carries `needs-feedback`.
 
-The same applies to `needs-figma`: when a planner or coder finds that an Issue needs Figma frames that do not exist (or changes to existing ones), post a comment listing the frames needed, add `needs-figma`, keep the status label, and move on. Never work on an Issue that carries `needs-figma`; the designer removes the label after linking the frames.
+The same applies to `needs-figma`: when a planner or coder finds that an Issue needs Figma frames that do not exist (or changes to existing ones), post a comment listing the frames needed, add `needs-figma`, keep the status label, and move on. Never work on an Issue that carries `needs-figma`; the designer removes the label after linking the frames. The human may instead decide that a specific Issue ships without design: they remove the label and say so in a comment, and the planner then builds that UI from the existing theme (`packages/ui` tokens and components, nearest existing screen as the pattern) without re-adding the label or raising design as an open question.
 
 For **failures** (red tests, lint gate, subagent error) use `blocked` instead: post the failure summary as a comment, strip the in-flight status, add `blocked`, and continue to the next task. Environment-level failures (diverged `main`, broken toolchain) stop the session — they would poison every task.
 
