@@ -41,7 +41,7 @@ The loan registry is part of the pool's value. Principal outstanding counts in t
 | Contract | Purpose |
 |---|---|
 | **Deposit manager** | Lender sends USDC. The USDC goes straight to the deposit account. After screening, the relayer signs a voucher. The voucher is submitted, and PLUSD is minted 1:1 to the lender. Minimum 1,000 USDC, at most 5,000,000 per deposit and 10,000,000 per 24 hours across all lenders. |
-| **Minter** | Keeps the cash book of the bank account. Mints PLUSD for bank wires in, books loan disbursements and repayments, mints interest into the vault and fees to the treasury, books wires out, USDC-to-bank conversions, bank income and charges, and reversals. |
+| **Minter** | Keeps the cash book of the bank account. Mints PLUSD for bank wires in, books loan disbursements and repayments, mints interest into the vault and fees to the capital wallet as sPLUSD shares, books wires out, USDC-to-bank conversions, bank income and charges, and reversals. |
 | **Withdrawal queue** | First-in, first-out exit. Lenders escrow PLUSD and get a queue position. A claim needs a voucher signed by the relayer and enough USDC in the withdrawal account to cover the queue up to that position. The queue pays USDC from the withdrawal account through its allowance and burns the PLUSD. |
 | **Security registry** | One record per security instrument behind a loan, written and confirmed by the Security Agent. Holds inspections, prices and each loan's security terms. Computes LTV and opens margin calls. |
 | **Debt token factory** | Registers each loan's debt token and keeps its supply equal to principal outstanding. |

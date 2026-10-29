@@ -20,6 +20,8 @@ Every loan has one of five states: Approved, Performing, WatchList, Default, Clo
 | Default | The Risk Council has declared default |
 | Closed | The loan is finished. The closure reason is recorded |
 
+{% include diagram.html src="d6-loan-lifecycle.svg" caption="Loan states. The Trustee moves a loan between the normal states and closes it. Only the Risk Council declares default, cures it, or closes a defaulted loan." %}
+
 The Trustee moves a loan between Performing and WatchList. The Trustee cannot declare default. Only the Risk Council can, and the declaration runs without a delay. The Risk Council can cure a defaulted loan; it returns to WatchList.
 
 A loan's LTV is the amount owed (outstanding principal plus accrued interest) divided by the value of its security. A margin call opens when LTV rises above the loan's margin-call ratio (85 % by default). The borrower must bring LTV back to the advance ratio (80 % by default) within the cure period. A margin call left uncured, or a payment missed past the grace period, is the typical route to default. Default is never automatic. The security registry runs these checks on-chain.

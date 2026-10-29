@@ -48,9 +48,11 @@ Converting PLUSD back to USDC is a separate step through the withdrawal queue. S
 
 ## What affects your yield
 
+{% include diagram.html src="d4-yield-accretion.svg" caption="How interest reaches sPLUSD. A repayment is split on-chain. Senior interest is minted into the vault and the share price steps up. Fees go to the capital wallet as shares." %}
+
 Interest from loans is the source of yield. Borrowers are invoiced interest monthly. When a borrower pays, the senior interest is minted as new PLUSD into the vault in one go. The share price steps up on that day. There is no daily accrual in the share price.
 
-Fees on a repayment go to the protocol treasury as sPLUSD shares. They do not change the share price.
+Fees on a repayment go to the capital wallet as sPLUSD shares. They do not change the share price.
 
 Income the protocol books on its bank account is minted into the vault and raises the share price. Bank charges and ramp shortfalls are burned from the vault and lower it.
 

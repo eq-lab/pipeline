@@ -19,9 +19,9 @@ The Capital Layer meets four operational requirements:
 
 The pool's assets are USDC in the custody accounts, cash in the bank account, cash in transit between them, and loan principal outstanding. The protocol tracks this total on-chain.
 
-{% include diagram.html src="boss-capital-layer.png" caption="Capital Layer — deposit, capital, withdrawal and treasury accounts, plus the USD bank account." %}
+{% include diagram.html src="boss-capital-layer.png" caption="Capital Layer — deposit, capital and withdrawal accounts, plus the USD bank account." %}
 
-No smart contract can spend from the deposit account, the capital wallet, the treasury or the bank account. The withdrawal queue can pull from the withdrawal account up to the allowance that account has set.
+No smart contract can spend from the deposit account, the capital wallet or the bank account. The withdrawal queue can pull from the withdrawal account up to the allowance that account has set.
 
 ## Custody accounts
 
@@ -35,13 +35,11 @@ Lender USDC deposits go straight to this account. KYT screening runs after the U
 
 Holds the loan records and the per-loan debt tokens. Each loan is a non-transferable record in the loan registry, held by this wallet. Each loan's debt tokens sit here frozen, one token per USD of principal outstanding.
 
+It also receives protocol fees: management fee and performance fee. Fees are paid at each repayment as vault shares.
+
 ### Withdrawal Queue Wallet
 
 Holds USDC for lender withdrawals. It gives the withdrawal queue an allowance. When a lender claims, the queue pulls USDC from this account, never from another one. A claim waits until this account holds enough USDC to cover the queue up to that request. A fault in the withdrawal queue reaches only this account's balance, up to the allowance.
-
-### Treasury Wallet
-
-Receives protocol fees: management fee and performance fee. Fees are paid at each repayment as vault shares.
 
 ## USD bank account
 
@@ -53,7 +51,7 @@ The protocol keeps a cash book of this account:
 |---|---|---|
 | Lender wire in | Cash reporter | PLUSD minted 1:1 and staked in the vault for the lender |
 | Loan disbursement | Trustee | Loan principal outstanding rises |
-| Repayment | Cash reporter | Principal outstanding falls; interest minted into the vault; fees minted to the treasury |
+| Repayment | Cash reporter | Principal outstanding falls; interest minted into the vault; fees minted to the capital wallet as vault shares |
 | Lender wire out | Trustee | Lender's escrowed PLUSD burned |
 | USDC to USD or USD to USDC conversion | Trustee | Cash moved between custody and bank; any shortfall booked as an expense |
 | Bank interest | Cash reporter | Minted into the vault |

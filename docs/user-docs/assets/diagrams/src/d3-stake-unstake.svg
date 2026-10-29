@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="472" viewBox="0 0 960 472" role="img" aria-label="Stake: PLUSD from an authorised holder goes into the vault and shares go to the receiver. Unstake: shares are burned and PLUSD goes to a receiver that must be authorised." font-family="Graphik LC, Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+<title>Stake: PLUSD from an authorised holder goes into the vault and shares go to the receiver. Unstake: shares are burned and PLUSD goes to a receiver that must be authorised.</title>
+<defs><marker id="m4a4845" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.8 L10 5 L0 9.2 z" fill="#4a4845"/></marker></defs>
+<rect width="960" height="472" fill="#ffffff"/>
+<text x="20.0" y="36.0" font-size="20" fill="#262524" font-weight="600">Stake</text>
+<rect x="20.0" y="56.0" width="138.7" height="80.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
+<text x="89.3" y="88.3" font-size="15.5" fill="#262524" font-weight="600" text-anchor="middle">Lender</text>
+<text x="89.3" y="112.2" font-size="13" fill="#5c5a57" text-anchor="middle">authorised holder</text>
+<rect x="170.7" y="56.0" width="138.7" height="80.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="240.0" y="88.3" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">sPLUSD vault</text>
+<text x="240.0" y="112.2" font-size="13" fill="#5c5a57" text-anchor="middle">staking vault</text>
+<rect x="321.3" y="56.0" width="138.7" height="80.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
+<text x="390.7" y="79.4" font-size="15.5" fill="#262524" font-weight="600" text-anchor="middle">Receiver</text>
+<text x="390.7" y="103.2" font-size="13" fill="#5c5a57" text-anchor="middle">not checked by the</text>
+<text x="390.7" y="121.2" font-size="13" fill="#5c5a57" text-anchor="middle">vault</text>
+<line x1="89.3" y1="136.0" x2="89.3" y2="329.0" stroke="#c9c7c4" stroke-width="1.25" stroke-dasharray="2 4"/>
+<line x1="240.0" y1="136.0" x2="240.0" y2="329.0" stroke="#c9c7c4" stroke-width="1.25" stroke-dasharray="2 4"/>
+<line x1="390.7" y1="136.0" x2="390.7" y2="329.0" stroke="#c9c7c4" stroke-width="1.25" stroke-dasharray="2 4"/>
+<path d="M 102.3 176.0 L 239.0 176.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<circle cx="89.3" cy="176.0" r="11" fill="#262524"/>
+<text x="89.3" y="180.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
+<text x="164.7" y="168.0" font-size="13" fill="#262524" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">PLUSD</text>
+<rect x="160.7" y="198.0" width="158.7" height="75.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="240.0" y="218.8" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">Issues shares</text>
+<text x="240.0" y="242.8" font-size="13" fill="#5c5a57" text-anchor="middle">pro rata, rounded</text>
+<text x="240.0" y="260.6" font-size="13" fill="#5c5a57" text-anchor="middle">down</text>
+<path d="M 253.0 313.0 L 389.7 313.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<circle cx="240.0" cy="313.0" r="11" fill="#262524"/>
+<text x="240.0" y="317.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
+<text x="315.3" y="305.0" font-size="13" fill="#262524" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">sPLUSD shares</text>
+<text x="20.0" y="355.0" font-size="13" fill="#5c5a57">Only authorised addresses hold PLUSD, so only they can stake.</text>
+<text x="500.0" y="36.0" font-size="20" fill="#262524" font-weight="600">Unstake</text>
+<rect x="500.0" y="56.0" width="138.7" height="80.0" rx="6" fill="#ffffff" stroke="#8f8c88" stroke-width="1.25"/>
+<text x="569.3" y="88.3" font-size="15.5" fill="#262524" font-weight="600" text-anchor="middle">Lender</text>
+<text x="569.3" y="112.2" font-size="13" fill="#5c5a57" text-anchor="middle">authorised holder</text>
+<rect x="650.7" y="56.0" width="138.7" height="80.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="720.0" y="88.3" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">sPLUSD vault</text>
+<text x="720.0" y="112.2" font-size="13" fill="#5c5a57" text-anchor="middle">staking vault</text>
+<rect x="801.3" y="56.0" width="138.7" height="80.0" rx="6" fill="#f9eef0" stroke="#b1334b" stroke-width="1.25"/>
+<text x="870.7" y="88.3" font-size="15.5" fill="#b1334b" font-weight="600" text-anchor="middle">Receiver</text>
+<text x="870.7" y="112.2" font-size="13" fill="#5c5a57" text-anchor="middle">must be authorised</text>
+<line x1="569.3" y1="136.0" x2="569.3" y2="329.0" stroke="#c9c7c4" stroke-width="1.25" stroke-dasharray="2 4"/>
+<line x1="720.0" y1="136.0" x2="720.0" y2="329.0" stroke="#c9c7c4" stroke-width="1.25" stroke-dasharray="2 4"/>
+<line x1="870.7" y1="136.0" x2="870.7" y2="329.0" stroke="#c9c7c4" stroke-width="1.25" stroke-dasharray="2 4"/>
+<path d="M 582.3 176.0 L 719.0 176.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<circle cx="569.3" cy="176.0" r="11" fill="#262524"/>
+<text x="569.3" y="180.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">1</text>
+<text x="644.7" y="168.0" font-size="13" fill="#262524" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">sPLUSD shares</text>
+<rect x="640.7" y="198.0" width="158.7" height="75.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="720.0" y="218.8" font-size="15.5" fill="#000080" font-weight="600" text-anchor="middle">Burns the shares</text>
+<text x="720.0" y="242.8" font-size="13" fill="#5c5a57" text-anchor="middle">PLUSD = shares ×</text>
+<text x="720.0" y="260.6" font-size="13" fill="#5c5a57" text-anchor="middle">share price</text>
+<path d="M 733.0 313.0 L 869.7 313.0" fill="none" stroke="#4a4845" stroke-width="1.5" marker-end="url(#m4a4845)" stroke-linejoin="round"/>
+<circle cx="720.0" cy="313.0" r="11" fill="#262524"/>
+<text x="720.0" y="317.3" font-size="12" fill="#ffffff" font-weight="600" text-anchor="middle">2</text>
+<text x="795.3" y="305.0" font-size="13" fill="#262524" text-anchor="middle" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">PLUSD</text>
+<text x="500.0" y="355.0" font-size="13" fill="#5c5a57">If the receiver is not authorised, the redemption fails.</text>
+<line x1="480" y1="20" x2="480" y2="361.0" stroke="#d5d4d3" stroke-width="1"/>
+<rect x="20.0" y="385.0" width="920.0" height="67.0" rx="6" fill="#eef0f8" stroke="#000080" stroke-width="1.25"/>
+<text x="34.0" y="410.8" font-size="15.5" fill="#000080" font-weight="600">Share price = PLUSD in the vault ÷ shares</text>
+<text x="34.0" y="434.7" font-size="13" fill="#5c5a57">Interest minted into the vault raises it; your share count stays the same. No lock-up, no queue at the vault. For USDC, continue to Withdraw.</text>
+</svg>

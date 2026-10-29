@@ -19,7 +19,7 @@ Every Protocol Layer contract: purpose, key rules, role gates.
 | **Debt token factory** | One debt token per loan | 1 debt token = 1 USD of principal outstanding. Held by the capital account. Kept in line with the loan registry. Never money. |
 | **Deposit manager** | USDC deposit | USDC goes straight to the deposit custody account. PLUSD is minted 1:1 to the lender after the backend signs a single-use voucher. Minimum 1,000 USDC; 5,000,000 per deposit; 10,000,000 per 24 hours. |
 | **Withdrawal queue** | First-in, first-out exit | The lender escrows PLUSD. A claim needs a backend voucher and enough USDC in the withdrawal custody account to cover the queue up to that request. Pays USDC from that account through its allowance and burns the PLUSD. Can carry one recovery rate below 1, set once. |
-| **Minter** | Cash book and PLUSD mints for bank wires, interest, fees and bank income | Books bank wires in (mints PLUSD 1:1 and stakes it for the lender), loan disbursements, repayments (interest to the vault, fees to the treasury), wire-outs, USDC-to-bank ramps, bank income and charges, and their reversals. Each bank reference is single-use. Limits on PLUSD minted for wires in, interest, fees and bank income: 1,000,000 per transaction and 10,000,000 per 24 hours. |
+| **Minter** | Cash book and PLUSD mints for bank wires, interest, fees and bank income | Books bank wires in (mints PLUSD 1:1 and stakes it for the lender), loan disbursements, repayments (interest to the vault, fees to the capital wallet as sPLUSD shares), wire-outs, USDC-to-bank ramps, bank income and charges, and their reversals. Each bank reference is single-use. Limits on PLUSD minted for wires in, interest, fees and bank income: 1,000,000 per transaction and 10,000,000 per 24 hours. |
 | **Pocket** | Defaulted loans | Holds a defaulted loan's PLUSD for the sPLUSD holders at the moment of default. Releases recoveries for them to claim. Burns write-downs. |
 | **Access manager** | Role hub | Maps every privileged action to one role. Grants roles with an execution delay. Schedules and executes delayed calls. A role's guardian can cancel its scheduled calls. |
 
@@ -35,6 +35,6 @@ Every Protocol Layer contract: purpose, key rules, role gates.
 | **Pauser** | Multisig | Pause each pausable contract. |
 | **Upgrader** | Multisig | Upgrade contracts. |
 | **Guardian** | Multisig | Cancel scheduled calls of the roles above. |
-| **Admin** | Multisig | Every action not mapped to another role: grant and revoke roles, unpause, set custody accounts, voucher key, limits, treasury and recovery rate. No delay. |
+| **Admin** | Multisig | Every action not mapped to another role: grant and revoke roles, unpause, set custody accounts, voucher key, limits, the fee recipient (the capital wallet) and recovery rate. No delay. |
 | **Security Agent** | The Security Agent | Write and attest security records, handovers and releases. |
 | **Inspection Operator** | The lending vehicle, two-person entry | Enter and approve inspection results. |

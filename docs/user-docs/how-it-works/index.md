@@ -14,7 +14,7 @@ Pipeline has three layers:
 
 A backend service, the relayer, connects the off-chain world to the protocol layer. Pipeline's Trustee runs the lending vehicle, loans and cash operations through the Trustee role.
 
-{% include diagram.html src="boss-system-architecture.png" caption="Pipeline architecture — origination, capital, and protocol layers connected by the relayer, under fiduciary trustee oversight." %}
+{% include diagram.html src="boss-system-architecture.png" caption="Pipeline architecture — origination layer and relayer off-chain, the protocol layer on-chain, the capital layer of custody accounts and the USD bank account. Every privileged call goes through the access manager." %}
 
 <div class="callout safety">
 Smart contracts hold no USDC. The only contract that can move USDC out of custody is the withdrawal queue, and only up to the allowance the withdrawal account has set.
@@ -32,7 +32,7 @@ Each Originator clears KYB and KYT, audited financials, track record review, san
 
 *Handles all operations with principal.*
 
-It has three custody accounts and a treasury account. The deposit account receives lender USDC. The withdrawal account pays lender withdrawals. The capital wallet holds the loan records and the per-loan debt tokens. The treasury account receives protocol fees.
+It has three custody accounts. The deposit account receives lender USDC. The withdrawal account pays lender withdrawals. The capital wallet holds the loan records and the per-loan debt tokens, and receives protocol fees.
 
 A USD bank account managed by the Trustee handles fiat operations: lender wires in and out, loan disbursements, borrower and offtaker repayments, and conversion between USD and USDC.
 

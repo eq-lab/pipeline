@@ -21,7 +21,7 @@ The deposit manager serves investors who deposit USDC. The minter serves the cas
 | Who starts the mint | The investor, by sending USDC | The Cash reporter role, by booking a wire, a repayment or bank income |
 | Cash behind the mint | USDC already in the deposit custody account | Bank dollars booked by the Cash reporter |
 | Signed voucher | Yes. The platform backend signs it after screening. One use, with a deadline. | No |
-| Recipient must be approved to hold PLUSD | Yes | Not checked: the PLUSD goes to the vault, not to the investor. Wires are staked in the vault for the investor; interest goes to the vault; fees go to the treasury as vault shares. |
+| Recipient must be approved to hold PLUSD | Yes | Not checked: the PLUSD goes to the vault, not to the investor. Wires are staked in the vault for the investor; interest goes to the vault; fees go to the capital wallet as vault shares. |
 | Per-transaction limit | 5,000,000 USDC | 1,000,000 PLUSD |
 | 24-hour limit | 10,000,000 USDC | 10,000,000 PLUSD |
 | Minimum | 1,000 USDC | None |
@@ -55,7 +55,7 @@ The queue never holds USDC. It cannot draw more than the allowance the withdrawa
 
 The Cash reporter books each incoming wire with a bank reference. The minter mints PLUSD 1:1 and stakes it in the vault for the investor. A wire with no known investor waits in the minter until the Trustee assigns it or returns it.
 
-Interest reaches the vault when a repayment is booked. The minter mints the interest into the vault and the share price rises. Fees go to the treasury as vault shares. Disbursements do not mint.
+Interest reaches the vault when a repayment is booked. The minter mints the interest into the vault and the share price rises. Fees go to the capital wallet as vault shares. Disbursements do not mint.
 
 ---
 

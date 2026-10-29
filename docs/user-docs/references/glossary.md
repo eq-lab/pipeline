@@ -34,7 +34,7 @@ One alphabetical list of trade-finance and protocol terms.
 
 ## C
 
-**Capital wallet** — The protocol account that holds every loan record and every debt token.
+**Capital wallet** — The protocol account that holds every loan record and every debt token. It also receives protocol fees: management and performance fees are minted as PLUSD at repayment and staked into the vault for it.
 
 **Carve-out** — The first time a loan goes into default, the protocol moves PLUSD equal to the loan's outstanding balance from the vault into that loan's pocket. The sPLUSD holders at that moment own the pocket pro rata to their balances. What the vault cannot cover stays recorded as unabsorbed.
 
@@ -182,7 +182,7 @@ One alphabetical list of trade-finance and protocol terms.
 
 **Relayer** — Pipeline's off-chain backend service. It screens addresses and deposits, whitelists approved addresses, signs deposit and withdrawal vouchers and matches bank wires to on-chain records. It cannot mint PLUSD on its own.
 
-**Repayment waterfall** — The split of an offtaker payment, recorded per repayment: senior principal, senior interest, equity distributed, management fee, performance fee. Fees are capped at 50 % of interest plus fees. Interest goes to the vault. Fees go to the treasury as sPLUSD.
+**Repayment waterfall** — The split of an offtaker payment, recorded per repayment: senior principal, senior interest, equity distributed, management fee, performance fee. Fees are capped at 50 % of interest plus fees. Interest goes to the vault. Fees go to the capital wallet as sPLUSD.
 
 **Risk Council** — The role for loan risk actions: default, write-down, cure, interest adjustment, changes to loan terms including extensions, closing a defaulted loan, and reversals and corrections of cash records. Default and the reversal of a repayment run at once. Its other actions run 24 hours after they are scheduled. In the security registry it resolves inspection flags and may set a manual price. A multisig of several people holds the role. While Pipeline is the only lender, it acts for the Majority Lenders. Loan approval runs off-chain.
 
@@ -212,7 +212,7 @@ One alphabetical list of trade-finance and protocol terms.
 
 **Transfer certificate** — How a lender takes over an existing share of a facility. The transferor and the transferee sign it, and the facility agent holds it.
 
-**Treasury** — The protocol account that receives fees. Management fees and performance fees are minted as PLUSD at repayment and staked into the vault for the treasury.
+**Treasury** — See Capital wallet. Fees go to the capital wallet.
 
 **Trustee** — Pipeline's Trustee. It runs the lending vehicle and its operations from the trustee console.
 

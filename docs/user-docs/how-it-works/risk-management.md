@@ -64,6 +64,8 @@ Every live loan is monitored daily.
 | Advance ratio: the highest LTV at drawdown, and the LTV a margin call must restore | 80% |
 | Margin-call ratio: the LTV that opens a margin call | 85% |
 
+{% include diagram.html src="boss-ccr-thresholds.png" caption="LTV thresholds. A loan is drawn up to 80 %. A margin call opens above 85 % and must bring LTV back to 80 % within the cure period." %}
+
 Both ratios are set per loan. When LTV rises above the margin-call ratio, a margin call opens. The borrower then has the cure period to bring LTV back to the advance ratio with cash or goods. A stale price does not open a margin call; it alerts the Risk Council. The end of the cure period does not trigger default by itself.
 
 *Interest.* Accrued interest is invoiced monthly per loan and paid separately from principal. Unpaid interest past its due date alerts the Risk Council.

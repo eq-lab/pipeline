@@ -80,7 +80,7 @@ The jet fuel distributor wires USD to the collection account, co-signed by the S
 
 #### Yield mint
 
-The senior interest net of fees is minted as PLUSD into the staking vault. The sPLUSD price moves up. Fees go to the treasury.
+The senior interest net of fees is minted as PLUSD into the staking vault. The sPLUSD price moves up. Fees go to the capital wallet as sPLUSD shares.
 
 #### Collateral release and equity distribution
 

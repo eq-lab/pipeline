@@ -31,7 +31,7 @@ The mint role on PLUSD is held by two contracts: the deposit manager and the min
 
 - Grants and revokes every role
 - Unpauses contracts
-- Sets deposit and mint limits, custody accounts, the treasury and the voucher signer
+- Sets deposit and mint limits, custody accounts, the fee recipient (the capital wallet) and the voucher signer
 - Sets the one-time recovery rate on the withdrawal queue
 - Cancels any scheduled call
 

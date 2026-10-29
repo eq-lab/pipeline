@@ -21,7 +21,7 @@ Governance has an off-chain side and an on-chain side. Off-chain, the Trustee ru
 
 | Role | Delay | Powers |
 |---|---|---|
-| Admin | None. The access manager refuses an admin with a delay. | Grants and revokes roles, unpauses, sets limits, custody accounts, the voucher signer and the treasury, sets the one-time recovery rate on the withdrawal queue |
+| Admin | None. The access manager refuses an admin with a delay. | Grants and revokes roles, unpauses, sets limits, custody accounts, the voucher signer and the fee recipient (the capital wallet), sets the one-time recovery rate on the withdrawal queue |
 | Risk Council | None for default and for reversing a repayment; 24 hours for everything else | Default, write-down, cure, closing a defaulted loan, amending loan economics, adjusting interest, reversing disbursements and repayments, accounting corrections |
 | Guardian | None | Cancels a scheduled call of an operational role during its delay |
 | Pauser | None | Pauses a contract |
