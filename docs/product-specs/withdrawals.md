@@ -24,6 +24,14 @@ The indexer records `WithdrawalRequested`; the API runs KYT and serves the vouch
 
 The lender calls `claimWithdrawal`. It reverts `WithdrawalQueueTooEarly` until `queued[requestId] <= claimableAmount()`, that is until the asset holder's USDC balance (plus prior claims) covers every earlier request. The lender retries after the Trustee tops up the asset holder; funds are delayed, never lost.
 
+### Voucher validity
+
+The voucher the API serves for a request is valid for 24 hours. On Stellar the response carries the signed `deadline` (u64 unix seconds, string); on EVM the signature does not cover a deadline, so none is served today and the validity is not enforced (backend follow-up #1798).
+
+The LP app treats a voucher whose served `deadline` has passed as absent: the hook reports `pending` (never `ready`, never `failed`), hides the voucher data and signature, and refetches. While a voucher with a deadline is ready, the hook schedules a refetch for the moment the deadline passes, so a tab left open goes back to pending and then ready with the fresh voucher. The served `deadline` is the only clock; the app holds no 24-hour constant and shows no countdown.
+
+If a Stellar claim still fails with the deadline-expired contract error (`Error(Contract, #4)`, for example under clock skew), the app resets the voucher query once per request id and shows "The voucher expired or did not match the request. Your app fetches a fresh voucher." A second failure for the same request keeps the error visible. A bad signature is a host crypto error, not a voucher expiry, and is never retried.
+
 ### Asset-holder top-ups
 
 The Trustee and Team top up the asset holder from the Capital Wallet under the standard cosigner quorum, sized to cover near-term queue obligations. If the Capital Wallet is short, the Trustee redeems USYC first. Top-ups above the cosigner per-transfer cap surface in the Trustee tooling signing queue for the full quorum.

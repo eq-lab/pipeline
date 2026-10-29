@@ -167,6 +167,13 @@ Disabled when `requestId` is `undefined` or the wallet is disconnected. Polls
 every 3 s until the signature is present; retries up to 20 times on retriable
 errors (404/403). Reactive to `pipeline.mock.api.*` localStorage key changes.
 
+All four voucher hooks (`useDepositVoucher`, `useWithdrawalVoucher` and the
+Stellar variants) treat a voucher whose served `deadline` has passed as absent:
+`status` is `pending`, `data` / `signatureBytes` are `undefined`, and a refetch
+fires at the deadline. They also return `invalidate()`, which resets the voucher
+query and refetches. A voucher without a `deadline` (EVM today) never expires.
+See `docs/product-specs/deposits.md#voucher-validity`.
+
 ### `useStellarDepositVoucher(requestId?)`
 
 Stellar variant of `useDepositVoucher`. It uses the connected Stellar wallet

@@ -6,7 +6,7 @@
  * (architecture, FlowState contract, business rules, request state model, step model).
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   useWalletView,
   // EVM
@@ -56,7 +56,12 @@ import {
 } from "@/api";
 import { ENV } from "@/lib/env";
 import { formatUsdcCurrencyCompact, formatUsdcInput } from "@/lib/usdc";
-import { toUserError, type UserFacingError } from "@/utils/userError";
+import {
+  parseSorobanContractErrorCode,
+  SOROBAN_VOUCHER_EXPIRED_CODE,
+  toUserError,
+  type UserFacingError,
+} from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -695,6 +700,40 @@ export function useDepositFlow(
   const stellarWithdrawVoucher = useStellarWithdrawalVoucher(
     stellarWithdrawVoucherRequestId,
   );
+
+  const voucherRetriedRef = useRef<Set<string>>(new Set());
+  const claimVoucherRequestId = isDeposit
+    ? stellarDepositVoucherRequestId
+    : stellarWithdrawVoucherRequestId;
+  const claimVoucherError = isDeposit
+    ? stellarClaim.error
+    : stellarClaimWithdrawal.error;
+  const invalidateClaimVoucher = isDeposit
+    ? stellarDepositVoucher.invalidate
+    : stellarWithdrawVoucher.invalidate;
+  const resetClaim = isDeposit
+    ? stellarClaim.reset
+    : stellarClaimWithdrawal.reset;
+  useEffect(() => {
+    if (!claimVoucherError || claimVoucherRequestId === undefined) return;
+    if (
+      parseSorobanContractErrorCode(toUserError(claimVoucherError).details) !==
+      SOROBAN_VOUCHER_EXPIRED_CODE
+    ) {
+      return;
+    }
+    const key = `${isDeposit ? "deposit" : "withdraw"}:${claimVoucherRequestId}`;
+    if (voucherRetriedRef.current.has(key)) return;
+    voucherRetriedRef.current.add(key);
+    invalidateClaimVoucher();
+    resetClaim();
+  }, [
+    claimVoucherError,
+    claimVoucherRequestId,
+    isDeposit,
+    invalidateClaimVoucher,
+    resetClaim,
+  ]);
 
   // ── EVM derived state ──────────────────────────────────────────────────────
   const evmDepositNeedsApproval =

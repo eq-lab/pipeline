@@ -1,28 +1,16 @@
-/**
- * React Query hook — fetches a withdrawal voucher (verifier signature) from the
- * Pipeline API (`GET /v1/withdrawals/{request_id}/voucher?wallet=<address>&chain_id=<id>`).
- *
- * The voucher contains the `signature` needed to call `useClaimWithdrawal.write()`.
- * The hook is disabled when `requestId` is `undefined` or the wallet is
- * disconnected — it returns `{ status: "idle" }` in those cases.
- *
- * Mock layer
- * ----------
- * The hook is reactive to changes in `pipeline.mock.api.*` localStorage keys.
- * Two mock keys are checked (most-specific first):
- *
- *   1. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<addr>&chain_id=<id>`
- *   2. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`
- *
- * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
- */
-import { useQuery } from "@tanstack/react-query";
+// spec: docs/product-specs/withdrawals.md#voucher-validity
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useEvmWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { apiFetch } from "./client";
-import { isRetriableVoucherError, VOUCHER_RETRY_LIMIT } from "./voucherRetry";
+import {
+  isRetriableVoucherError,
+  useVoucherExpired,
+  VOUCHER_RETRY_LIMIT,
+  voucherRefetchInterval,
+} from "./voucherRetry";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,8 +18,8 @@ export interface WithdrawalVoucherResponse {
   request_id: string;
   amount: string;
   user: string;
-  /** Verifier signature — passed directly to `useClaimWithdrawal.write()`. */
   signature: string;
+  deadline?: string;
 }
 
 export type WithdrawalVoucherStatus = "idle" | "pending" | "ready" | "failed";
@@ -41,6 +29,7 @@ export interface UseWithdrawalVoucherResult {
   status: WithdrawalVoucherStatus;
   error: Error | null;
   refetch: () => void;
+  invalidate: () => void;
 }
 
 // ── Mock-version external store ────────────────────────────────────────────────
@@ -64,23 +53,11 @@ function subscribeMockVersion(listener: () => void) {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * Returns the withdrawal voucher for the given request ID.
- *
- * - Disabled when `requestId` is `undefined` or the wallet is disconnected.
- * - Polls until the voucher is ready (verifier may have latency).
- * - The `status` field conveys: `"idle"` | `"pending"` | `"ready"` | `"failed"`.
- *
- * @param requestId  The withdrawal request ID (string, e.g. "77"). Pass `undefined`
- *                   to keep the hook in the idle/disabled state.
- */
 export function useWithdrawalVoucher(
   requestId: string | undefined,
 ): UseWithdrawalVoucherResult {
   const { address, isConnected } = useEvmWallet();
 
-  // Subscribe to mock-key changes — version is included in queryKey to force
-  // React Query to issue a fresh fetch when mock data is written.
   const mockVer = useSyncExternalStore(
     subscribeMockVersion,
     getMockVersion,
@@ -90,6 +67,7 @@ export function useWithdrawalVoucher(
   const enabled = !!requestId && isConnected && !!address;
   const chainId = ENV.EVM_CHAIN_ID;
 
+  const queryClient = useQueryClient();
   const query = useQuery<WithdrawalVoucherResponse, Error>({
     queryKey: ["withdrawal-voucher", requestId, address, chainId, mockVer],
     queryFn: () =>
@@ -97,34 +75,37 @@ export function useWithdrawalVoucher(
         `/v1/withdrawals/${requestId}/voucher?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled,
-    refetchInterval: (query) => {
-      if (query.state.data?.signature) return false;
-      if (query.state.error && !isRetriableVoucherError(query.state.error))
-        return false;
-      return 3000;
-    },
+    refetchInterval: (query) =>
+      voucherRefetchInterval(query.state.data, query.state.error, Date.now()),
     retry: (failureCount, error) =>
       isRetriableVoucherError(error) && failureCount < VOUCHER_RETRY_LIMIT,
     retryDelay: 3000,
   });
 
-  // Derive status from query state.
+  const deadlinePassed = useVoucherExpired(query.data?.deadline);
+  const expired = !!query.data?.signature && deadlinePassed;
+
   let status: WithdrawalVoucherStatus;
   if (!enabled) {
     status = "idle";
+  } else if (expired) {
+    status = "pending";
   } else if (query.data?.signature) {
     status = "ready";
   } else if (query.error && !query.isFetching) {
-    // Non-retriable error (or exhausted retries).
     status = "failed";
   } else {
     status = "pending";
   }
 
   return {
-    data: query.data,
+    data: expired ? undefined : query.data,
     status,
     error: query.error,
     refetch: () => void query.refetch(),
+    invalidate: () =>
+      void queryClient.resetQueries({
+        queryKey: ["withdrawal-voucher", requestId, address, chainId],
+      }),
   };
 }

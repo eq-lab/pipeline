@@ -76,6 +76,14 @@ describe("toUserError — Soroban contract error mapping", () => {
     expect(result.isSpecific).toBe(true);
   });
 
+  it("#4 → expired-voucher copy", () => {
+    const result = toUserError(new Error("Error(Contract, #4)"));
+    expect(result.message).toBe(
+      "The voucher expired or did not match the request. Your app fetches a fresh voucher.",
+    );
+    expect(result.isSpecific).toBe(true);
+  });
+
   it("#13 → missing-trustline copy", () => {
     const result = toUserError(new Error("Error(Contract, #13)"));
     expect(result.message).toBe(

@@ -77,6 +77,8 @@ function isWalletRejection(raw: string): boolean {
 // Seeded with codes already established empirically elsewhere in this repo.
 // spec: docs/frontend/error-handling.md#soroban-contract-error-table
 
+export const SOROBAN_VOUCHER_EXPIRED_CODE = 4;
+
 const SOROBAN_ERROR_COPY: Record<number, string> = {
   // unconfirmed: #3 is presumed to be the $5M per-transaction / per-LP-window
   // deposit-amount guard — circumstantial evidence only (no contract source
@@ -84,6 +86,8 @@ const SOROBAN_ERROR_COPY: Record<number, string> = {
   // docs/exec-plans/tech-debt-tracker.md (contract-error-#3 row) and
   // docs/frontend/error-handling.md#soroban-contract-error-table.
   3: "Amount exceeds the deposit limit.",
+  [SOROBAN_VOUCHER_EXPIRED_CODE]:
+    "The voucher expired or did not match the request. Your app fetches a fresh voucher.",
   11: "Your PLUSD balance is not authorized yet. Try again shortly.",
   13: "A required trustline is missing. Enable the asset and try again.",
 };

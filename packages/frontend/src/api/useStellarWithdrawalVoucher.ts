@@ -1,31 +1,16 @@
-/**
- * React Query hook — fetches a withdrawal voucher (verifier signature) from the
- * Pipeline API for a Stellar withdrawal request.
- *
- * Mirrors `useWithdrawalVoucher.ts` but uses `useStellarWallet()` for the wallet
- * query parameter (Stellar address `G…`) and adds `signatureBytes` derived by
- * hex-decoding the `signature` field (ed25519, 64 bytes → 0x-prefixed hex).
- *
- * The hook polls
- * `GET /v1/withdrawals/{request_id}/voucher?wallet=<G…>&chain_id=<chain_id>`
- * every 3 s until the verifier signature is available.
- *
- * Mock layer
- * ----------
- * Two mock keys are checked (most-specific first):
- *   1. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<addr>`
- *   2. `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`
- *
- * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
- */
-
-import { useQuery } from "@tanstack/react-query";
+// spec: docs/product-specs/withdrawals.md#voucher-validity
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useStellarWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { apiFetch } from "./client";
-import { isRetriableVoucherError, VOUCHER_RETRY_LIMIT } from "./voucherRetry";
+import {
+  isRetriableVoucherError,
+  useVoucherExpired,
+  VOUCHER_RETRY_LIMIT,
+  voucherRefetchInterval,
+} from "./voucherRetry";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,15 +18,7 @@ export interface StellarWithdrawalVoucherResponse {
   request_id: string;
   amount: string;
   user: string;
-  /**
-   * Verifier signature — hex-encoded ed25519 (64 bytes → 0x-prefixed hex).
-   * Pass the decoded `signatureBytes` to `useStellarClaimWithdrawal.write()`.
-   */
   signature: string;
-  /**
-   * Claim deadline (u64 seconds) — pass to `claim_request`; still part of
-   * the signed digest.
-   */
   deadline?: string;
 }
 
@@ -53,11 +30,11 @@ export type StellarWithdrawalVoucherStatus =
 
 export interface UseStellarWithdrawalVoucherResult {
   data: StellarWithdrawalVoucherResponse | undefined;
-  /** Hex-decoded bytes of `data.signature`. `undefined` until the voucher is ready. */
   signatureBytes: Uint8Array | undefined;
   status: StellarWithdrawalVoucherStatus;
   error: Error | null;
   refetch: () => void;
+  invalidate: () => void;
 }
 
 // ── Mock-version external store ────────────────────────────────────────────────
@@ -77,10 +54,6 @@ function subscribeMockVersion(listener: () => void) {
 
 // ── Hex decode helper ─────────────────────────────────────────────────────────
 
-/**
- * Decodes a hex string into a `Uint8Array`.
- * Returns `undefined` for non-hex or odd-length strings.
- */
 function hexToBytes(hex: string): Uint8Array | undefined {
   const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
   if (normalized.length % 2 !== 0) return undefined;
@@ -95,23 +68,11 @@ function hexToBytes(hex: string): Uint8Array | undefined {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * Returns the withdrawal voucher for the given Stellar request ID.
- *
- * - Disabled when `requestId` is `undefined` or the Stellar wallet is disconnected.
- * - Polls until the voucher is ready (verifier may have latency).
- * - `signatureBytes` is a hex-decoded `Uint8Array` of `data.signature` (64 bytes).
- *
- * @param requestId  The withdrawal request ID (bigint or string). Pass `undefined`
- *                   to keep the hook in the idle/disabled state.
- */
 export function useStellarWithdrawalVoucher(
   requestId: bigint | string | undefined,
 ): UseStellarWithdrawalVoucherResult {
   const { address, isConnected } = useStellarWallet();
 
-  // Subscribe to mock-key changes — version is included in queryKey to force
-  // React Query to issue a fresh fetch when mock data is written.
   const mockVer = useSyncExternalStore(
     subscribeMockVersion,
     getMockVersion,
@@ -122,6 +83,7 @@ export function useStellarWithdrawalVoucher(
   const enabled = !!requestIdStr && isConnected && !!address;
   const chainId = ENV.STELLAR_CHAIN_ID;
 
+  const queryClient = useQueryClient();
   const query = useQuery<StellarWithdrawalVoucherResponse, Error>({
     queryKey: [
       "stellar-withdrawal-voucher",
@@ -135,21 +97,21 @@ export function useStellarWithdrawalVoucher(
         `/v1/withdrawals/${requestIdStr}/voucher?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled,
-    refetchInterval: (q) => {
-      if (q.state.data?.signature) return false;
-      if (q.state.error && !isRetriableVoucherError(q.state.error))
-        return false;
-      return 3000;
-    },
+    refetchInterval: (q) =>
+      voucherRefetchInterval(q.state.data, q.state.error, Date.now()),
     retry: (failureCount, error) =>
       isRetriableVoucherError(error) && failureCount < VOUCHER_RETRY_LIMIT,
     retryDelay: 3000,
   });
 
-  // Derive status from query state.
+  const deadlinePassed = useVoucherExpired(query.data?.deadline);
+  const expired = !!query.data?.signature && deadlinePassed;
+
   let status: StellarWithdrawalVoucherStatus;
   if (!enabled) {
     status = "idle";
+  } else if (expired) {
+    status = "pending";
   } else if (query.data?.signature) {
     status = "ready";
   } else if (query.error && !query.isFetching) {
@@ -158,16 +120,25 @@ export function useStellarWithdrawalVoucher(
     status = "pending";
   }
 
-  // Decode signatureBytes from hex.
-  const signatureBytes = query.data?.signature
-    ? hexToBytes(query.data.signature)
-    : undefined;
+  const signatureBytes =
+    query.data?.signature && !expired
+      ? hexToBytes(query.data.signature)
+      : undefined;
 
   return {
-    data: query.data,
+    data: expired ? undefined : query.data,
     signatureBytes,
     status,
     error: query.error,
     refetch: () => void query.refetch(),
+    invalidate: () =>
+      void queryClient.resetQueries({
+        queryKey: [
+          "stellar-withdrawal-voucher",
+          requestIdStr,
+          address,
+          chainId,
+        ],
+      }),
   };
 }

@@ -117,6 +117,7 @@ call sites — see [`wallet-flows.md` → Error normalization](./wallet-flows.md
    | Code | Copy | Confidence |
    |------|------|------------|
    | `#3` | "Amount exceeds the deposit limit." | **Unconfirmed** — see below. |
+   | `#4` | "The voucher expired or did not match the request. Your app fetches a fresh voucher." | Contract source (`request-queue` `DeadlineExpired`) on `claim_request`; the claim retries once per request id (#1760). |
    | `#11` | "Your PLUSD balance is not authorized yet. Try again shortly." | Established empirically (`useDepositFlow.ts`, "balance is deauthorized" window). |
    | `#13` | "A required trustline is missing. Enable the asset and try again." | Established empirically (issue #604, "trustline entry is missing"). |
 
