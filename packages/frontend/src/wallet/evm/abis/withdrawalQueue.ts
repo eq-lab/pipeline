@@ -39,6 +39,17 @@ export const withdrawalQueueAbi = [
     outputs: [{ name: "amount", type: "uint256" }],
   },
 
+  {
+    type: "event",
+    name: "WithdrawalRequested",
+    inputs: [
+      { name: "withdrawer", type: "address", indexed: true },
+      { name: "requestId", type: "uint256", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "queued", type: "uint256", indexed: false },
+    ],
+  },
+
   // ── Custom errors (decoder hints) ──────────────────────────────────────────
   {
     type: "error",

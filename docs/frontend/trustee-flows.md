@@ -131,9 +131,19 @@ Two parts:
    the Trustee Approves/Rejects (`POST …/review`), which is what actually moves the on-chain
    state. Events are split by leg into **inbound** (`OnRamp`, ramp→custody) and **outbound**
    (`OffRamp`, custody→ramp), matching the Figma's INBOUND/OUTBOUND sections.
+   Cash Management is per-network (#1669): `useRampEvents` (`GET /v1/ramp/events?chain_id=`, key
+   `["ramp-events", chainId]`) and `useRampAddresses` (`GET /v1/ramp/addresses?chain_id=`, key
+   `["ramp-addresses", chainId]`) read `useSessionState().chainId`, with `ENV.STELLAR_CHAIN_ID` only
+   as the no-session fallback. The scope is explicit in the UI: a chain chip
+   (`cash-management-ramp-chain`) beside the heading and the sub-line "<chain> ramp — the network you
+   signed in with.". An unconfigured chain returns an empty queue, shown as the empty state. Each
+   `RampEvent` carries `chain_id` (#1609); the review `POST /v1/ramp/events/{id}/review` takes the
+   chain from the event, so it sends no query string. The body is `{decision}` for Approved and `{decision, reason}` for Rejected (a non-empty `reason` is required); success is `200` with no JSON body, and `useReviewRampEvent` then invalidates the `["ramp-events"]` prefix. `useRampAddresses` returns the chain's configured ramp addresses (empty when unconfigured). Ramp addresses may be Strkeys or 0x hex, both
+   truncated first-4/last-4. The SwapDialog balance (`useUsdcCustodyBalance`) is a Stellar SAC read,
+   so it shows only on a Stellar session and `—` otherwise (the EVM custody read is TD-156).
 
 **Data-sourcing:** everything shown in the review queue is real — the served `RampEvent`
-(id/type/to/from/amount/created_at). The Figma's richer per-loan tagging/batch grouping/progress
+(id/chain_id/type/to/from/amount/created_at). The Figma's richer per-loan tagging/batch grouping/progress
 is not in the contract (#943) and is deliberately not fabricated.
 
 ### T-Bills tab (#944)
@@ -170,8 +180,8 @@ dialog are JSX-only and read `useWithdrawalQueueView`.
   sign-in, `auth/sessionStore.ts`; `ENV.STELLAR_CHAIN_ID` only as the no-session fallback) rather
   than omitting `chain_id` (since backend #1586 that means every configured chain) or hardcoding
   Stellar. The scope is explicit in the UI — a chain chip beside the tab heading and the sub-line
-  "<chain> queue — the network you signed in with." — and items carry `chain_id`. The Capital-Wallet
-  custody balance and the ramp hooks on the same page are still hardcoded to Stellar (TD-153).
+  "<chain> queue — the network you signed in with." — and items carry `chain_id`. The ramp tab follows
+  the same rule (#1669).
   A self-contained hand-mirror of the backend shape
   (TD-42; the trustee app does not depend on `@pipeline/frontend`, whose `useWithdrawalQueue` reads
   the same endpoint). `in_queue_usd`/`amount` are base-6 decimal strings in human units — format
@@ -576,13 +586,19 @@ own border/title).
   fields (status, CCR %, location, optional metadata URI), then submits the on-chain
   `LoanRegistry.updateMutable` via `useUpdateLifecycle`. Default/Closed are not offered (they route
   to the Risk Council / close flows); Past Due/Matured are derived, not settable here.
+  **Status default (#1621)** — the selector defaults to the loan's raw on-chain status, read from
+  `onchain_status` on the loan-book entry (`lifecycleStatusOf` in `-useLoanDetail.ts`), never from
+  the display chip: `Disbursing` / `Past Due` mask a WatchList loan. `Performing` and `WatchList`
+  preselect themselves; any other value (`Approved`, `Default`, `Closed`) or a missing field
+  preselects nothing ("Select status") and keeps **Confirm update** disabled until the trustee
+  picks a status, so a silent default is never written on-chain.
 - **Past-Due attention notice** (#940) — a past-maturity loan renders under the Matured variant;
   its derived `Past Due` status is an attention signal, not a lock — per the backend, it exists
   "to draw the Trustee's attention that they either need to record the payment or escalate to
   default." The banner surfaces both paths directly (Record payment / Escalate to default), wired
   to the existing actions. Amber (attention) tokens — not red, which is reserved for Default.
 - **Stellar-only gate (#1537, TD-152)** — Roll over, Update lifecycle, Record coupon and Close loan
-  are trustee-wallet Stellar signatures (`LoanRegistry.*` via `@pipeline/wallet-connect`). For a
+  are trustee-wallet Stellar signatures (`LoanRegistry.*` via the executor, and `Minter.repay` for the two Record pages, via `@pipeline/wallet-connect`). For a
   loan whose `chain_id` is not `ENV.STELLAR_CHAIN_ID`, `useLoanDetail` returns
   `onChainBlockedReason` (`stellarOnlyActionReason`, `lib/targetChains.ts`): the actions card
   disables those four buttons (`ON_CHAIN_ACTIONS`) and prints the reason
@@ -590,6 +606,31 @@ own border/title).
   no-op for them, and the Record Coupon / Record Repayment pages null their
   `recordPaymentInput` / `closureReason` and print the same line. Escalate to Risk Council
   (read-only page) and Disbursement complete (DB-only) stay available.
+
+### Repayment recovery (#1711)
+
+Procedure, roles and contract facts: [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md). No Figma: the card and dialog reuse the loan-detail card and the shared dialog shell (`DisbursementConfirmDialog`).
+
+- **Card** (`loan-detail-repayment-recovery`, `RepaymentRecoveryCard` in `loans.$id.tsx`): "Repayment recovery" with one muted line and an "Open recovery" button, rendered after the Other-actions card in the Performing and Watchlist layouts. States from `recoveryCardState` (`-repayment-recovery.ts`):
+  - `eligible`: `/financials.offtaker_outstanding` is `0`, loan-book `senior_outstanding` is `> 0`, and `onchain_status` is `Performing`, `WatchList` or `Default` (string comparisons on the served values, no arithmetic);
+  - `awaiting-corrected-repayment`: the latest repayment id (`next_repayment_id - 1`) has `is_repayment_reversed = true`. The card stays after step 1 even though the loan is no longer "eligible" (offtaker outstanding is back above `0`);
+  - `blocked-evm`: eligible but not a Stellar loan; the button is disabled and shows `onChainBlockedReason` (TD-152);
+  - `hidden` otherwise. The on-chain reads run only for Stellar loans in `Performing..Default`, under one React Query key (`["repayment-recovery", chainId, loanId]`, `staleTime` 15 s).
+- **Dialog** (`-RepaymentRecoveryDialog.tsx`, state in `-useRepaymentRecoveryDialog.ts`, on-chain hooks in `api/useRepaymentRecovery.ts`):
+  - Step 1: a radio list of the non-reversed repayments (registry `repayment_data`, formatted from raw units by `chainAmountDecimals`, never rescaled). A repayment with `senior_principal_repaid = 0` and `equity_distributed != 0` is listed first and preselected. For the selection the dialog shows the Minter `repayment(...)` effects verbatim: cash removed from bank, treasury fee shares burned (raw share units), and either the vault interest absorbed or, for a carved-out loan, the Pocket principal / interest unrelease. Nothing is summed client-side.
+  - Reload behaviour: when the latest repayment is already reversed, it is preselected and step 1 shows "reversed on-chain" so step 2 is reachable without local state.
+  - Step 2: the corrected split from `GET /v1/loan-book/{id}/waterfall` at the original `offtaker_received` and the original `value_date` (the `CashRepaid` audit row, `originalValueDate`), mapped by `buildRepaymentInput` (the Record Repayment mapping), then signed through `useRecordPayment` unchanged. On success the dialog shows the transaction hash; the close checklist on Record Repayment then applies.
+- **Gating by on-chain `can_call`** (`useReverseRepayAccess`, connected wallet on the Minter): `reverseAction` yields
+  - `execute-now` (`can_call(reverse_repay).immediate`): one "Reverse repayment" click, a single `AM.execute`, with the same stage text as `repay`;
+  - `schedule` (`delay > 0`, nothing scheduled): "Schedule reversal" (`AM.schedule`, `when = 0`), the delay shown in hours verbatim;
+  - `execute-scheduled` (a schedule exists): "Executable from <UTC date-time>" from the on-chain ready time, button "Execute reversal". The schedule is found after a reload by `hash_operation(caller, minter, "reverse_repay", [loan_id, repayment_id, ref_hash])` then `get_schedule`, with `ref_hash = sha256("pipeline:reverse_repay:{minterId}:{loanId}:{repaymentId}")`; no `localStorage`. Execute stays enabled while a schedule exists; an early attempt fails at simulation;
+  - `no-role` (`immediate: false, delay: 0`, for example a Trustee-only wallet): "Only the Risk Council can reverse a repayment." and the button is disabled.
+  - Step 2 additionally needs `can_call(repay).immediate` (`CASH_REPORTER`); otherwise "Only the Cash reporter can record the corrected repayment."
+- **Step 2 gate** (all required): the repayment is reversed on chain (registry flag), the original `value_date` was found, `/financials.offtaker_outstanding` is above `0` (the backend has indexed the reversal), and the waterfall query resolved. Mutations invalidate `repayment-recovery`, `repayment-recovery-access`, `loan-book`, `loan-financials`, `loan-waterfall` and `audit-log` immediately and again at 5 s and 15 s.
+- **Errors:** generic `toUserError` plus dialog-local copy for AccessManager `#6` (not scheduled), `#7` (not ready), `#8` (expired, or the Minter's bank cash below the repayment's cash), `#9` (already scheduled) and Minter `#25` (already reversed). It is local because Soroban codes collide across contracts and the global map stays empty.
+- **Config and roles:** `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` (the AccessManager), `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives the "not configured for this environment" copy. The Risk Council wallet must also be a trustee in the API's `auth_users`, or step 1 cannot run from the app (deployment fact).
+- **EVM:** gated by `stellarOnlyActionReason`. `@pipeline/wallet-connect` exports pure calldata encoders (`encodeEvmReverseRepayCalldata`, `encodeEvmRepayCalldata`); there is no EVM send path (TD-152, #1573).
+- Not in the app: cancelling a scheduled reversal (`AM.cancel`, TD-159).
 
 ### Figma → token / px mapping (`4116:10549`)
 
@@ -664,7 +705,20 @@ diverge independently as either evolves.
 Previews the payment waterfall for a trustee-entered offtaker coupon via `useLoanWaterfall` (`GET
 /v1/loan-book/{loan_id}/waterfall`). At introduction it did not perform the on-chain
 `record_payment` write — that mutation (`useRecordPayment`) was deferred, so there was no
-submit/confirm action, only the live preview.
+submit/confirm action, only the live preview. The write now exists and signs `Minter.repay`, see below.
+
+### Recording a payment — `Minter.repay` (#1712)
+
+Record Coupon and Record Repayment sign the Minter's `repay`, not the executor's `record_payment`: the registry accepts `record_payment` only from the Minter, so the executor path always failed at simulation with the AccessManager's `Error(Contract, #1)`. The full contract, roles and side effects are in [loan-repay-minter.md](../product-specs/loan-repay-minter.md).
+
+- `useRecordPayment` calls `repay` from `@pipeline/wallet-connect` with `caller` = the connected wallet (also the transaction source), `loan_id`, the `RepaymentData` payload verbatim (`recordPaymentInput`), `value_date`, `ref_hash` and `sale_id = 0`.
+- `value_date` is the UTC-midnight Unix seconds of the page date (`dateInputToValueDate`; the date is fixed to today, #916).
+- `ref_hash` is `sha256("pipeline:repay:{registryId}:{loanId}:{next_repayment_id}")` as lowercase hex; `next_repayment_id` is read from `LoanRegistry.mutable_loan_data(loan_id)` just before the transaction is built. There is no input field for it. A second submit for the same slot fails at simulation (`RefHashSeen`).
+- The hook is gated on `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID` (the executor id is no longer used for this action) and keeps the "not configured for this environment" copy.
+- The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the treasury). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
+- The trustee wallet must hold `CASH_REPORTER`; without it simulation fails (`#4`) and the page shows the on-chain verification error with "View details" and no signature request. A loan not yet disbursed on chain fails with registry `#3` (TD-157).
+- Error copy stays the generic `toUserError` mapping; Minter and registry codes collide (a nested registry `#1` surfaces as `Error(Contract, #1)`), so no code-specific copy is added.
+- EVM loans stay gated by `stellarOnlyActionReason` (TD-152); the EVM arm is `PipelineMinter.repay`.
 
 ### Scale handling (both flows; verified against `-useLoanDetail.ts` / `useLoanWaterfall.ts`)
 
@@ -675,7 +729,7 @@ submit/confirm action, only the live preview.
   from the route's `chain`: `usdToBaseUnits(input, decimals)` multiplies the entered USD amount by
   10^decimals before calling the endpoint; `baseUnitsToUsd(value, decimals)` divides response
   fields the same way for display. The preview renders for an EVM loan even though its on-chain
-  write is gated (TD-152), so it must use the right scale. The `recordPayment` payload uses backend
+  write is gated (TD-152), so it must use the right scale. The `Minter.repay` payload uses backend
   raw fields unchanged.
 - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding` (`useLoanFinancials`) are
   displayed **exactly as the backend serves them** — no client-side rescaling (issue #906; the
@@ -689,9 +743,9 @@ submit/confirm action, only the live preview.
 
 ### Record action gating (#1622, both flows)
 
-- The `record_payment` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
+- The `RepaymentData` payload (`recordPaymentInput`) is built only from the **settled** amount: the live input must equal the 400 ms-debounced value (`amountSettled`) and the waterfall preview for that value must have resolved. Otherwise it is `null`, so the payload can never carry an amount other than the one the preview was computed for.
 - "Record on the ledger" is disabled while the live input differs from the debounced value (including when the input is cleared mid-debounce) or while the preview is recalculating (`waterfall.isCalculating`).
-- The green "Components sum to received $X" summary and the Record Coupon terminal hint are hidden while the amount is unsettled, matching the row skeletons (#1049). The "Offtaker still owed after coupon" row deliberately keeps tracking the live input.
+- The green "Components sum to received $X" summary and the Record Coupon principal-block notice are hidden while the amount is unsettled, matching the row skeletons (#1049). The "Offtaker still owed after coupon" row deliberately keeps tracking the live input.
 - Record Repayment's amount is a read-only one-shot prefill, so the stale window is unreachable there today (during the prefill debounce the debounced amount is `""`, so the payload is `null`). The same gate is applied for parity, so a future editable input cannot reintroduce the bug.
 
 ### Record Coupon — interest-only, context-dependent third row
@@ -703,17 +757,22 @@ submit/confirm action, only the live preview.
   `computeScheduledCoupon`; the backend serves no scheduled-coupon figure), shown for reference
   only and never recorded on the ledger.
 - This is the **interest-only coupon** flow: `buildRepaymentInput` always sets
-  `senior_principal_repaid = "0"` (principal stays deployed), regardless of the waterfall's own
-  `senior_principal_returned` (a principal-first `min(amount, outstanding)` figure, irrelevant to
-  a coupon). Interest + fee carve-outs map 1:1; `equity_distributed` is the residual after
-  interest + fees so the six components sum exactly to `offtaker_received` (clamped at 0 — never
-  negative).
-- **Terminal-close detection:** the Figma's "Next stage: principal repayment →" button is
-  suppressed everywhere except the terminal case — when this coupon fully amortises the
-  outstanding senior principal (`isTerminalRepayment`): the entered amount covers (≥) the loan's
-  outstanding senior AND the waterfall's own `senior_principal_returned` equals it exactly (to the
-  cent, guarding float drift from the two independent unit conversions). Otherwise no hint renders
-  at all — this is an interest-only coupon page by default.
+  `senior_principal_repaid = "0"` (principal stays deployed). Interest + fee carve-outs map 1:1;
+  `equity_distributed` is the residual after interest + fees so the six components sum exactly to
+  `offtaker_received` (clamped at 0 — never negative).
+- **Principal-block rule (#1623):** the backend waterfall (`waterfall.rs`, stage 4) cascades
+  interest, then OET, then senior principal, then equity, so `senior_principal_returned` is
+  non-zero only when the entered amount exceeds interest + OET while senior principal is still
+  outstanding. A coupon cannot carry that principal (it would land in `equity_distributed` while
+  the screen said it repaid senior), so when the served `senior_principal_returned` is non-zero
+  (`coversSeniorPrincipal`, no client-side threshold arithmetic) the coupon is **not recordable**:
+  `recordPaymentInput` is `null`, the green summary is hidden, and the page shows the
+  `record-coupon-principal-block` notice with the served principal amount and a link to Record
+  Repayment (keeping `chain`). Principal is never moved into equity, so Record Repayment can still
+  amortise the senior and the loan stays closable. When senior is already fully repaid the
+  waterfall returns principal `0` and the residual legitimately goes to equity, so the coupon
+  stays recordable. A wire larger than interest + OET but smaller than the full offtaker balance
+  cannot be recorded on either page (no partial principal repayments).
 
 ### Record Repayment — Principal (#884) — key difference from Record Coupon
 
@@ -739,9 +798,14 @@ pre-refetch prefill), keeps the waterfall query disabled, and forces `recordPaym
 `null`; the page replaces the amount/date fields, waterfall, and Record action with a fully-repaid
 notice ("nothing left to record"). The state must hold **without a reload** — a refetch that
 brings owed to `0` mid-session drops the stale form rather than leaving a recordable amount on
-screen. It is suppressed while this page's own `record_payment` is pending/settled so the
+screen. It is suppressed while this page's own repay is pending/settled so the
 "Payment recorded" confirmation flow stays intact. Whether Close-loan enables is decided by the
-close checklist below, not by this state alone.
+close checklist below, not by this state alone. When the loan-book `senior_outstanding` is still
+above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
+by a muted `record-repayment-senior-outstanding` line: "Senior principal of $X is still
+outstanding on-chain, so this loan can't be closed from the app." followed by an "Open repayment
+recovery" link (`record-repayment-recovery-link`) to the loan detail page, where the Repayment
+recovery card lives (#1711). It is informational only and changes no gating; the recovery procedure (Minter reverse then corrected repay, roles, limits) is in [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md) (#1655).
 
 ### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
@@ -750,7 +814,7 @@ three-item checklist (`closeChecklist` on the presenter). The button enables onl
 item is green:
 
 1. **Senior principal outstanding is zero** — hard gate. Green only when the refreshed
-   loan-book's `senior_outstanding` is `0`. This page's own `record_payment` success does **not**
+   loan-book's `senior_outstanding` is `0`. This page's own repay success does **not**
    turn it green: a shortfall repayment succeeds on-chain but leaves senior outstanding, and
    `close_loan` would revert (#1624). The unmet row shows the current outstanding amount until the
    refetch lands.
@@ -803,9 +867,9 @@ entirely — no backend source ever marks a coupon/repayment "recorded"/"minted"
 they would be fabricated.
 
 **Suppressed "Next stage: principal repayment" button** (Record Coupon only): per the issue's
-explicit scope note, the Figma's button is never rendered. In its place, `view.isTerminal` gates a
-plain text hint — only in the terminal case (see Terminal-close detection above). Every other
-coupon (the common interest-only case) shows no principal-repayment copy at all.
+explicit scope note, the Figma's button is never rendered. A coupon that would include senior
+principal shows the principal-block notice instead (see Principal-block rule above, #1623); every
+other coupon shows no principal-repayment copy at all.
 
 ### Waterfall error mapping (#916)
 
@@ -815,7 +879,11 @@ doesn't fit (e.g. an amount too large for the loan's interest rate / outstanding
 "This amount is too high for this loan. Enter a smaller amount." A `chain_id` 400 (the loan's
 chain is not served by the API) is the one 4xx that is **not** an amount problem: it falls
 through to `toUserError`'s "This network isn't enabled on the server…" copy (#1602). Anything else
-gets a generic retry message. The date input is fixed to today and not editable (#916) — no
+gets a generic retry message. Two 4xx cases are not plain amount problems (#1661): a 422 (the
+loan's indexed event history is incomplete) reads "Loan data is incomplete — the indexer needs a
+re-sync. Contact support."; a 400 whose message starts with `loan is in Default` reads "This loan is
+in Default: a payment can only cover senior principal and accrued interest. Enter a smaller
+amount." Neither message has numbers, and the raw server text sits only under "View details". The date input is fixed to today and not editable (#916) — no
 calendar/date picker. The "Date received" field only displays today: both record flows call the
 waterfall with `as_of` omitted, so the server uses its own `now` (the endpoint's documented
 default). #1626 decided the earlier `T00:00:00Z` midnight `as_of` was unintended: it
@@ -904,8 +972,10 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 - **Bank Info Available renders `—`, never `No`, until #1275.** No backend field exists yet for
   bank-requisites; `No` would fabricate a fact about the counterparty ("has not supplied bank
   details") that the absence of a field does not establish.
-- **`country` is rendered verbatim, never normalised.** It is an optional free-text field with no
-  validation and no frontend writer yet — rows may show `"CH"`, `"Switzerland"`, or anything else.
+- **`country` is rendered verbatim, never normalised.** The LP app now offers a
+  dropdown of common English country names from flagcdn (#1715) but falls back to free text when
+  the list cannot load, and the API still accepts any string. Rows may therefore hold common names,
+  older codes or free text such as `"CH"`. The column stays verbatim, with no mapping.
 
 ### Row click
 
@@ -1618,7 +1688,7 @@ formatters/summing logic; a misconfigured custody id (pointing at the USDC issue
 **Scope gate (#1601):** the read is a Stellar SAC balance, so `useCapitalAllocationCard` folds it
 into the Capital Wallet row and the guarded total only when the resolved chain is the Stellar
 chain; for an EVM session the row shows the backend `capital_wallet` bucket or `—` (the EVM
-custody read is TD-153).
+custody read is TD-156).
 
 **Guarded total (human-approved, #805) — a documented exception to
 [[no-frontend-computed-metrics]]:**
@@ -1741,50 +1811,57 @@ button shape, a different Figma component — corrected).
 
 ## Session & auth
 
-**Sources:** `packages/trustee/src/auth/**` (`TrusteeSessionProvider.tsx`, `sessionStore.ts`,
-`authGate.ts`, `useAuthRedirect.ts`), `components/TrusteeShell.tsx`, `components/SignInOverlay.tsx`,
-`components/SignInCard.tsx`, `routes/__root.tsx`, `routes/sign-in.tsx`.
+**Sources:** `packages/trustee/src/auth/**` (`TrusteeSessionProvider.tsx`, `sessionStore.ts`),
+`components/TrusteeShell.tsx`, `components/SignInOverlay.tsx`,
+`components/SignInCard.tsx`, `routes/__root.tsx`.
 Issues: #791 (flow), #793/#794/#795 (modal hardening), #921/#988/#1009 → **#1008** (gating
 architecture). Backend contract: `docs/product-specs/api-authorization.md` /
 `packages/api/src/routes/auth.rs`.
 
-### Two-layer gating (#1008)
+### Render-level auth gate (#1008, #1749)
 
-Auth is enforced in two independent layers:
+Auth is one render-level gate and nothing else. `TrusteeShell` renders `SignInOverlay`
+(Figma `4174-31660`) whenever the session is not authenticated, **on any URL**, and never mounts
+protected route content (`<Outlet/>`) while signed out, so no authenticated API calls fire either.
+No session status change (sign-in, token expiry, unauthorized reset) issues a navigation: the
+address bar stays where the user is, no history entries are added, and the content follows the
+session status. The one exception is the explicit **Sign out** click in the sidebar Account menu:
+its handler issues a single `navigate({ to: "/", replace: true })` (so Back never returns to a
+protected URL) and then calls `signOut()`. `signOut()` itself clears the session and disconnects
+wallets and never navigates, so the unauthorized "Try a different wallet" reset stays URL-neutral.
+There is no `/sign-in` route.
 
-1. **Correctness — render-level gate (cannot race).** `TrusteeShell` renders `SignInOverlay`
-   (Figma `4174-31660`) whenever the session is not authenticated, **on any URL**, and never mounts
-   protected route content (`<Outlet/>`) while signed out — so no authenticated API calls fire
-   either. Whatever the address bar says, the content is always right.
-2. **URL convention — redirects (not load-bearing).** `/sign-in` is the canonical logged-out URL.
-   The root route's `beforeLoad` (`resolveAuthRedirect`) enforces it on hard navigations
-   (unauthenticated on a protected path → `/sign-in`; authenticated on `/sign-in` → `/`), and
-   `useAuthRedirect` enforces it on **mid-session** status changes (sign-in completing, sign-out,
-   token expiry) that `beforeLoad` never sees. `signOut()` navigates to `/sign-in` explicitly. The
-   `/sign-in` route itself renders `null` — the gate UI always comes from the shell.
-   `useAuthRedirect` also **self-heals the address bar**: external history writes (observed on
-   staging — e.g. the wallet modal restoring its pre-open URL on close) can overwrite
-   `window.location` without the router noticing, leaving the URL on `/sign-in` while the app
-   renders `/`. No router/React state reflects that divergence, so the hook compares
-   `window.location.pathname` against router state on every status/path change (plus short delayed
-   re-checks for late clobbers) and re-stamps the address bar via `history.replaceState` — router
-   state is the source of truth.
+The root route has a `notFoundComponent` that renders `<Navigate to="/" replace />`, so any
+unknown path (a stale `/sign-in` bookmark included) lands on `/`. Signed out, the shell renders
+the overlay before the outlet, so the redirect mounts only after sign-in. That navigation is
+driven by an unmatched path, never by a session status change.
 
-If a redirect misfires, the failure mode is a briefly-wrong address bar — never wrong or blank
-content. **History:** three URL-synchronization approaches raced in production builds and stranded
-the URL on `/sign-in` — a render-phase `<Navigate>` (#921), `beforeLoad` + `router.invalidate()`
-(#988, `invalidate()` does not re-run the root guard and `beforeLoad` only runs during
-navigations), and a reactive navigate alone (#1009). The trigger — "status flipped while parked on
-`/sign-in` with no navigation in flight" — is inherently racy to convert into a navigation, which
-is why correctness no longer depends on one.
+The app-level error boundary ([App bootstrap](#app-bootstrap--providers)) turns any thrown render
+error, including a falsy one, into a visible error view instead of a blank page.
+
+**History:** #1008 added the render-level gate plus a `/sign-in` URL convention. Three
+URL-synchronization approaches raced in production builds and stranded the URL on `/sign-in`: a
+render-phase `<Navigate>` (#921), `beforeLoad` + `router.invalidate()` (#988, `invalidate()` does
+not re-run the root guard and `beforeLoad` only runs during navigations), and a reactive navigate
+alone (#1009). **#1731** (white screen after sign-in and after logout on staging, console
+`Uncaught undefined`, fixed by a refresh): logout fired two overlapping navigations and sign-in
+overlapped the hook's navigation with the `beforeLoad` redirect and an address-bar self-heal.
+Overlapping loads share the root match's `_nonReactive` state (`@tanstack/react-router` 1.168.x),
+so a load could leave the rendered root match `pending` after another load had cleared its
+`loadPromise`; `Match` then **throws that `undefined`** during render. TanStack's `CatchBoundary`
+renders its error view only `if (error)`, so the falsy throw passes through every router boundary,
+reaches the React root and unmounts the whole tree. **#1749** removed the URL layer entirely
+(`routes/sign-in.tsx`, `authGate.ts`, `useAuthRedirect.ts`, the root `beforeLoad`): with no
+navigation on auth changes there is nothing to overlap. The router upgrade (>= 1.170) is TD-158.
 
 | Scenario | URL | Content |
 |---|---|---|
-| Visit `/` signed out | `/sign-in` | overlay |
-| Deep-link `/loans` signed out | `/sign-in` | overlay |
-| Sign in from `/sign-in` | `/` | dashboard |
-| Logout from any page | `/sign-in` | overlay |
-| Token expiry mid-session | `/sign-in` | overlay |
+| Visit `/` signed out | `/` (unchanged) | overlay |
+| Deep-link `/loans` signed out | `/loans` (unchanged) | overlay; after sign-in the loans page on the same URL |
+| Sign in | unchanged | page for the current URL |
+| Sign out click (sidebar Account menu) from any page | `/` (one `replace` navigation from the click, no history entry added) | overlay |
+| Token expiry mid-session | unchanged | overlay |
+| Old `/sign-in` bookmark or any unknown path | `/` via root `notFoundComponent` (signed out: overlay first, redirect after sign-in) | overlay, then dashboard |
 
 ### Sign-in flow (#791, hardened #793/#794/#795)
 
@@ -1829,13 +1906,13 @@ unauthorized-error states).
    `@pipeline/wallet-connect`). A rejection returns to `unauthenticated` **silently** — a user
    choice, not an error.
 4. `POST /v1/auth/verify` — on success the token is stored (`setSession`) and `status` flips to
-   `authenticated`; **no navigation happens anywhere in the flow** (layer 1 swaps the UI, layer 2
-   tidies the URL). A `401` here (nonce race / signature mismatch) surfaces as
+   `authenticated`; **no navigation happens anywhere in the flow** (the render-level gate swaps the UI
+   on the current URL). A `401` here (nonce race / signature mismatch) surfaces as
    "verification failed"; the `400 unknown chain_id` case maps to the same network-not-supported
    message as step 2.
 
-`signOut()` clears the stored token, disconnects both wallets, and navigates to `/sign-in`. There
-is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
+`signOut()` clears the stored token and disconnects both wallets and does not navigate; the
+sidebar Sign out click first replaces the URL with `/`. There is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
 purely client-side.
 
 ### Session store (`sessionStore.ts`)
@@ -1902,7 +1979,8 @@ centered.
 
 ## App bootstrap & providers
 
-**Sources:** `packages/trustee/src/main.tsx`, `lib/nav.ts`, `api/auth.ts`. Issues: #786 (nav),
+**Sources:** `packages/trustee/src/main.tsx`, `components/AppErrorBoundary.tsx`,
+`lib/diagnostics.ts`, `lib/nav.ts`, `api/auth.ts`. Issues: #786 (nav),
 #791 (sign-in flow / provider stack).
 
 The app's favicon is the Pipeline wordmark SVG (`public/pipeline.svg`, sourced from
@@ -1921,8 +1999,27 @@ Provider order mirrors the LP frontend's `main.tsx`, minus `WalletGateProvider` 
 omits the LP first-connection terms gate (internal operators; see the #791 exec plan's Decision
 Log). Without a `WalletGateContext.Provider` mounted, `@pipeline/wallet-connect`'s gate hooks
 default to a no-op (immediate proceed). `TrusteeSessionProvider` is NOT mounted in `main.tsx` —
-it calls `useNavigate()`, which needs router context, so it mounts inside the root route
-(`routes/__root.tsx`), below `<RouterProvider>`.
+it mounts inside the root route (`routes/__root.tsx`), below `<RouterProvider>`, next to the shell
+it feeds. It no longer needs router context (`signOut()` stopped navigating, #1731).
+
+**Error boundary (#1731).** `RouterProvider` is wrapped in `AppErrorBoundary`
+(`components/AppErrorBoundary.tsx`), inside `ConnectModalProvider`. It is a class component that
+stores `{ caught: true, error }` and branches on `caught`, never on `error`, so a thrown
+`undefined` is caught. This is required because TanStack's `CatchBoundary` renders its error
+component only `if (error)` (1.168.x): a router `defaultErrorComponent` alone does not prevent
+the white page for a falsy throw. The error view (`AppErrorView`) shows "Something went wrong",
+the message (`Non-error value thrown: …` for a non-`Error`), the stack when present, the current
+pathname and a **Reload** button (`window.location.reload()`, the same as the manual refresh;
+no auto-recovery loop). The same view is the router's `defaultErrorComponent` and does not depend
+on router context.
+
+**Diagnostics (`lib/diagnostics.ts`).** `installGlobalErrorReporting(router)` runs before render
+and logs to the console only (no external telemetry): `error` and `unhandledrejection` events, and
+the boundary's `componentDidCatch`, as `[trustee] <source>` with the value, its `typeof`, the
+router pathname / status / pending pathname and `window.location.href`. It also handles
+`vite:preloadError` (a lazy chunk that 404s after a deploy): one `window.location.reload()`,
+guarded by a `sessionStorage` timestamp (`pipeline.trustee.preloadReloadAt`, 10 s); a repeat
+within the window is logged and left to the boundary.
 
 ### Toasts
 

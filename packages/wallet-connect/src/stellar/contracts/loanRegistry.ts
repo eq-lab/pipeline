@@ -75,6 +75,7 @@ import {
   rpc as SorobanRpc,
   type Transaction,
 } from "@stellar/stellar-sdk";
+import { simulateRead } from "./simulateRead";
 
 // ── Types (self-contained port of the API's SubmitLoanRequest — see
 //    `packages/trustee/src/api/useLoanSubmissions.ts` /
@@ -906,35 +907,8 @@ export async function updateMutable({
   return { hash: sendResult.hash };
 }
 
-// ── Record payment (issue #882) ───────────────────────────────────────────────
+// ── Repayment data ────────────────────────────────────────────────────────────
 
-/**
- * Soroban client for the trustee's `record_payment` on-chain call (issue #882) —
- * `LoanRegistry.recordPayment`, through the same executor proxy as `draw_loan`:
- *
- *   executor.execute(target, function: Symbol("record_payment"), args, caller)
- *
- * Pure accounting: records a repayment split (no USDC moves, no PLUSD mint).
- * Emits `PaymentRecorded`. Confirmed against the deployed Rust source:
- *
- *   record_payment(e, loan_id: u32, repayment: RepaymentData)
- *
- * where `RepaymentData` is a struct (NOT the flat 8-arg EVM form the product-spec
- * docs list) — so the two wire args are `[u32 loan_id, map repayment]`. Amounts
- * are `u128`; the caller passes the `/waterfall` values through unchanged (the
- * backend handles USDC decimals, so the endpoint's amounts already match what
- * `record_payment` expects). The struct is a sorted-key `scMap` (like
- * `draw_loan`'s economics/location maps).
- */
-export type RecordPaymentStage = DrawLoanStage;
-
-/**
- * The `RepaymentData` fields, each a whole-base-unit (7-decimal USDC) integer
- * string. `senior_principal_repaid` / `senior_interest` / `mgmt_fee` / `perf_fee`
- * / `oet_alloc` come straight from `/waterfall`; `offtaker_received` is the entered
- * amount; `equity_distributed` is the residual so the six components sum to
- * `offtaker_received`.
- */
 export interface RepaymentInput {
   offtaker_received: string;
   senior_principal_repaid: string;
@@ -945,27 +919,7 @@ export interface RepaymentInput {
   oet_alloc: string;
 }
 
-export interface RecordPaymentParams {
-  executorId: string;
-  targetId: string;
-  caller: string;
-  loanId: number;
-  repayment: RepaymentInput;
-  rpcUrl: string;
-  networkPassphrase: string;
-  signTransaction: (
-    xdrStr: string,
-    opts?: { networkPassphrase?: string; address?: string },
-  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
-  onStageChange?: (stage: RecordPaymentStage) => void;
-}
-
-export interface RecordPaymentResult {
-  hash: string;
-}
-
-/** Encodes the `RepaymentData` struct as a sorted-key `u128` map. */
-function encodeRepaymentData(r: RepaymentInput): xdr.ScVal {
+export function encodeRepaymentData(r: RepaymentInput): xdr.ScVal {
   return scMap([
     ["equity_distributed", u128(BigInt(r.equity_distributed))],
     ["mgmt_fee", u128(BigInt(r.mgmt_fee))],
@@ -977,143 +931,93 @@ function encodeRepaymentData(r: RepaymentInput): xdr.ScVal {
   ]);
 }
 
-/**
- * Encodes `record_payment`'s two positional args: `[loan_id: u32, repayment:
- * RepaymentData]`. Exported for unit testing.
- */
-export function encodeRecordPaymentArgs(
-  loanId: number,
-  repayment: RepaymentInput,
-): xdr.ScVal[] {
-  return [xdr.ScVal.scvU32(loanId), encodeRepaymentData(repayment)];
-}
-
-export interface BuildRecordPaymentEnvelopeParams {
-  executorId: string;
-  targetId: string;
-  caller: string;
+export interface ReadNextRepaymentIdParams {
+  registryId: string;
   loanId: number;
-  repayment: RepaymentInput;
   rpcUrl: string;
   networkPassphrase: string;
 }
 
-/**
- * Builds, simulates, and assembles the `execute(target, "record_payment", args,
- * caller)` transaction — unsigned XDR ready for `signTransaction`. Mirrors
- * `buildUpdateMutableEnvelope`.
- */
-export async function buildRecordPaymentEnvelope({
-  executorId,
-  targetId,
-  caller,
+export async function readNextRepaymentId({
+  registryId,
   loanId,
-  repayment,
   rpcUrl,
   networkPassphrase,
-}: BuildRecordPaymentEnvelopeParams): Promise<string> {
-  if (!executorId) {
-    throw new Error("buildRecordPaymentEnvelope: executorId must not be empty");
+}: ReadNextRepaymentIdParams): Promise<number> {
+  if (!registryId) {
+    throw new Error("readNextRepaymentId: registryId must not be empty");
   }
-  if (!targetId) {
-    throw new Error("buildRecordPaymentEnvelope: targetId must not be empty");
+  const data = (await simulateRead(
+    registryId,
+    "mutable_loan_data",
+    [xdr.ScVal.scvU32(loanId)],
+    { rpcUrl, networkPassphrase, label: "readNextRepaymentId" },
+  )) as { next_repayment_id?: number | bigint };
+  const next = Number(data?.next_repayment_id);
+  if (!Number.isInteger(next) || next < 0) {
+    throw new Error("readNextRepaymentId: next_repayment_id missing");
   }
-  if (!caller) {
-    throw new Error("buildRecordPaymentEnvelope: caller must not be empty");
-  }
-
-  const contract = new Contract(executorId);
-  const server = new SorobanRpc.Server(rpcUrl, {
-    allowHttp: rpcUrl.startsWith("http://"),
-  });
-
-  const sourceAccount = await server.getAccount(caller);
-
-  const op = contract.call(
-    "execute",
-    new Address(targetId).toScVal(),
-    xdr.ScVal.scvSymbol("record_payment"),
-    xdr.ScVal.scvVec(encodeRecordPaymentArgs(loanId, repayment)),
-    new Address(caller).toScVal(),
-  );
-
-  const tx = new TransactionBuilder(sourceAccount, {
-    fee: BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(op)
-    .setTimeout(30)
-    .build();
-
-  const simResult = await server.simulateTransaction(tx);
-
-  if (SorobanRpc.Api.isSimulationError(simResult)) {
-    throw new Error(`recordPayment simulation error: ${simResult.error}`);
-  }
-
-  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
-  return assembled.toXDR();
+  return next;
 }
 
-/**
- * Signs and submits the trustee-wallet-signed `record_payment` end-to-end: build
- * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
- * a terminal status. Mirrors `updateMutable`.
- */
-export async function recordPayment({
-  executorId,
-  targetId,
-  caller,
+export interface ReadRepaymentParams extends ReadNextRepaymentIdParams {
+  repaymentId: number;
+}
+
+const REPAYMENT_KEYS = [
+  "offtaker_received",
+  "senior_principal_repaid",
+  "senior_interest",
+  "equity_distributed",
+  "mgmt_fee",
+  "perf_fee",
+  "oet_alloc",
+] as const;
+
+export async function readRepaymentData({
+  registryId,
   loanId,
-  repayment,
+  repaymentId,
   rpcUrl,
   networkPassphrase,
-  signTransaction,
-  onStageChange,
-}: RecordPaymentParams): Promise<RecordPaymentResult> {
-  onStageChange?.("awaiting-signature");
-
-  const assembledXdr = await buildRecordPaymentEnvelope({
-    executorId,
-    targetId,
-    caller,
-    loanId,
-    repayment,
-    rpcUrl,
-    networkPassphrase,
-  });
-
-  const { signedTxXdr } = await signTransaction(assembledXdr, {
-    networkPassphrase,
-    address: caller,
-  });
-
-  onStageChange?.("submitting");
-
-  const server = new SorobanRpc.Server(rpcUrl, {
-    allowHttp: rpcUrl.startsWith("http://"),
-  });
-  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
-
-  const sendResult = await server.sendTransaction(signedTx as Transaction);
-
-  if (sendResult.status === "ERROR") {
-    throw new Error(
-      `recordPayment: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
-    );
+}: ReadRepaymentParams): Promise<RepaymentInput> {
+  if (!registryId) {
+    throw new Error("readRepaymentData: registryId must not be empty");
   }
-
-  onStageChange?.("confirming");
-
-  const finalResult = await server.pollTransaction(sendResult.hash);
-
-  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
-    throw new Error(
-      `recordPayment: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
-    );
+  const data = (await simulateRead(
+    registryId,
+    "repayment_data",
+    [xdr.ScVal.scvU32(loanId), xdr.ScVal.scvU32(repaymentId)],
+    { rpcUrl, networkPassphrase },
+  )) as Record<string, bigint | number | string | undefined>;
+  const out = {} as Record<(typeof REPAYMENT_KEYS)[number], string>;
+  for (const key of REPAYMENT_KEYS) {
+    const raw = data?.[key];
+    if (raw === undefined || raw === null) {
+      throw new Error(`readRepaymentData: ${key} missing`);
+    }
+    out[key] = String(raw);
   }
+  return out;
+}
 
-  return { hash: sendResult.hash };
+export async function readIsRepaymentReversed({
+  registryId,
+  loanId,
+  repaymentId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadRepaymentParams): Promise<boolean> {
+  if (!registryId) {
+    throw new Error("readIsRepaymentReversed: registryId must not be empty");
+  }
+  const reversed = await simulateRead(
+    registryId,
+    "is_repayment_reversed",
+    [xdr.ScVal.scvU32(loanId), xdr.ScVal.scvU32(repaymentId)],
+    { rpcUrl, networkPassphrase },
+  );
+  return reversed === true;
 }
 
 // ── Close loan (issue #884) ───────────────────────────────────────────────────

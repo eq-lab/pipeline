@@ -374,7 +374,7 @@ balance, not a placeholder default. `data-node-id` per variant: `1497:95048` (`"
 **`variant="stake-or-add-usd"` (#1424, Figma node `6701:97451`).** State 4's instance shares the
 same compact geometry as `"get-plusd"` (`h-[274px]`, `gap-2`, `padding="md"`, Body-16 primary-ink
 eyebrow) and keeps the Total Balance heading bound to the served `balanceLabel`
-(`formatBigintCurrency(splusdSharesActive)`, `$0.00` here since sPLUSD is zero — the Figma frame's
+(`formatBigintCurrency(splusdInPlusdActive, plusdDecimals)`, `$0.00` here since sPLUSD is zero — the Figma frame's
 `$1,000.00` is a PLUSD-holding mock, not served data; no combined-total endpoint exists, so summing
 PLUSD + sPLUSD client-side is not done). The subtitle slot swaps to the sentence
 "Stake PLUSD or Add USD to start earning": `get_design_context` on the frame's text node
@@ -553,7 +553,10 @@ from the on-chain `convertToAssets` read, APY from `GET /v1/stats`, and TVL (#12
 `GET /v1/dashboard/summary` → `summary.tvl` via `useDashboardSummary` — the same source as the
 dashboard TVL card, formatted with `formatCompactUsd` (`"$19.0M"`), rendering `—` while loading or
 when the field is null (never a hardcoded value; the strip previously shipped the Figma mock
-`$28,812,044.93` as a literal).
+`$28,812,044.93` as a literal). **Chain-served gate (#1605):** the TVL / APY cells (and the
+dashboard link) render only while `useChainServed().served === true`; on an unserved EVM chain
+the strip shows the exchange rate alone rather than a fabricated "$0" (see
+[`wallet-flows.md`](./wallet-flows.md#active-chain-for-protocol-reads)).
 
 **Active chain (#1498).** The strip reads `useActiveChain()` (connected wallet's chain, else
 Stellar — see [`wallet-flows.md`](./wallet-flows.md#active-chain-for-protocol-reads)). The exchange
@@ -849,7 +852,7 @@ https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2858-57637
 
 Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
 
-- **Left:** "Connect Wallet" heading, EVM / Soroban tab control, per-wallet rows with brand icons
+- **Left:** "Connect Wallet" heading, Ethereum / Stellar tab control, per-wallet rows with brand icons
   and direct connect actions.
 - **Right:** background photo + Pipeline logo + marketing headline ("Access real-world yield
   on-chain"). Hidden on mobile (below `lg` breakpoint). The dark scrim over the hero photo is an
@@ -861,7 +864,7 @@ The hero photo (`connect-hero-ship.webp`, 98 KB WebP) is warmed at idle time by
 complete instead of the hero pane popping in on a cold cache (#1212); the `<img>` carries no
 `loading="lazy"` — laziness only delayed the fetch for a modal-gated image.
 
-Tab set: EVM (Ethereum-compatible wallets) | Soroban (Stellar wallets). No "All" aggregate tab.
+Tab set: Ethereum (EVM wallets) | Stellar (Soroban wallets). No "All" aggregate tab.
 
 Per-wallet behavior:
 
@@ -1596,6 +1599,14 @@ itself):** `WalletGateProvider` > `EvmWalletProvider` > `StellarWalletProvider` 
 
 Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 
+**Headline value is assets, not shares (#1658).** The route's `balanceLabel` (every variant, mobile
+and desktop) and `StakeCard.splusdUsdValue` both come from `splusdBalanceFormatted`, which formats
+`splusdInPlusdActive` — the on-chain `convertToAssets(shares)` read, served as-is at the PLUSD
+decimals — never the raw sPLUSD share count. While that read is unavailable for a non-zero share
+balance the value renders `—` (never a false `$0.00`); zero shares render `$0.00`. State
+derivation (`deriveHomeState`, `mobileHomeState`, `isDisplayZero`) still gates on shares. The chart
+sections are unchanged (tracked in #1629).
+
 **Desktop grid shell (#1577, closed TD-122).** Every `homeState` composition below renders through
 one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
 (`home-dashboard-grid`), the absolutely-filled Recent-activity slot (col 5–7, `row-span-2`;
@@ -1750,6 +1761,10 @@ during the window; the Balances wrapper carries no `data-node-id`. No Figma load
 the skeleton is derived from the cards' own heights. The mobile stack is unaffected (it never reads
 `homeState`), and `lpRead === "error"` still falls back to `"legacy"`.
 
+**Chain-served gate (#1605).** When `useChainServed().served === false` (the active EVM chain is not
+served by the API), the route keeps `WelcomeHeader` and replaces both the mobile stack and the
+desktop dashboard card with `ChainNotServedNotice` — no home state is derived or rendered.
+
 **Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460/#1576):**
 `packages/frontend/src/components/homeState.ts` exports
 `HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
@@ -1793,7 +1808,7 @@ Token discipline: this composer adds no raw colors, fonts, sizes, or radii — e
 
 **Source:** `packages/frontend/src/routes/deposit.tsx`, `packages/frontend/src/routes/withdraw.tsx`
 
-Merged three/four-step conversion page. Direction is driven by the `?direction=deposit|withdraw` search param; unknown values fall back to `"deposit"`.
+Merged three/four-step conversion page. Direction is driven by the `?direction=deposit|withdraw` search param; unknown values fall back to `"deposit"`. **Chain-served gate (#1605):** on an unserved EVM chain the page renders `ChainNotServedNotice` instead of the flow — a request submitted on a chain the API does not serve could never receive a voucher, so the flow is closed rather than warned.
 
 **URL contract:**
 
@@ -1866,6 +1881,8 @@ See also [`wallet-flows.md` § Request state model](./wallet-flows.md#request-st
 
 **Source:** `packages/frontend/src/routes/stake.tsx`
 
+**Chain-served gate (#1605):** same rule as `/deposit` — an unserved EVM chain renders `ChainNotServedNotice` instead of the stake/unstake flow.
+
 Chain-aware stake/unstake page driving two flows via the `useStakeFlow` adapter, which selects between the EVM and Stellar/Soroban stacks based on `useWalletView().kind`.
 
 **Step sequences per chain/tab:**
@@ -1916,13 +1933,17 @@ Activity page wired to `GET /v1/requests`.
 - Mobile (< 768px, Figma node `1993-9958`): illustration (240×240) and caption are top-anchored just below the tab bar with natural spacing; no tall centering wrapper.
 - Desktop (≥ 768px, Figma node `1497-94912`): illustration is vertically centred inside a `min-h-[400px]` wrapper. The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`) to gate the desktop centering treatment without affecting mobile.
 
-**Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does. The feed itself is chain-scoped too (#1567): `useRequests` sends `chain_id` for the active view and keys its query on it, so the rows are the active chain's requests only (see `src/api/README.md#userequests`).
+**Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does. The feed itself is chain-scoped too (#1567): `useRequests` sends `chain_id` for the active view and keys its query on it, so the rows are the active chain's requests only (see `src/api/README.md#userequests`). **Chain-served gate (#1605):** on an unserved EVM chain the page renders `ChainNotServedNotice` instead of the header, tabs and feed.
 
 Figma references: [desktop](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev), [mobile with data](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9592&m=dev), [mobile empty](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9958&m=dev).
 
 ### Dashboard route
 
 **Source:** `packages/frontend/src/routes/dashboard.tsx`
+
+**Chain-served gate (#1605):** the white content container with the four panels renders only
+while the active chain is served; `useChainServed().served === false` replaces it with
+`ChainNotServedNotice` under the page title.
 
 Protocol Dashboard route (`/dashboard`) — issues #716, #728. Hosts the four Operations Console panel slots in a full-width single-column stack at every viewport width. The page is protocol-wide, **not** wallet-gated — it renders fully with no wallet connected (it pulls no wallet hooks at all). Entry point: reached from the home page's "Current APY" external-link icon (`HomeStatsStrip`, Figma node `1497:94564`), not a `TopBar` slot.
 

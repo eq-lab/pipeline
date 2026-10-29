@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useRequests } from "./useRequests";
+import { useRequests, useInvalidateRequests } from "./useRequests";
 import type { RequestsResponse } from "./useRequests";
 import { installSameTabMockBridge } from "@/wallet/evm/mock";
 
@@ -493,5 +493,79 @@ describe("useRequests — Stellar wallet view", () => {
       expect(url).not.toContain(WALLET_ADDRESS);
       expect(url).toContain(STELLAR_ADDRESS);
     }
+  });
+});
+
+describe("useRequests — function refetchInterval (#1658)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchSpy.mockClear();
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("passes the latest data to a function-form interval", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(FIXTURE), { status: 200 }),
+    );
+    const interval = vi.fn((): number | false => false);
+
+    const { result } = renderHook(
+      () => useRequests({ refetchInterval: interval }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE);
+    });
+    await waitFor(() => {
+      expect(interval).toHaveBeenCalledWith(FIXTURE);
+    });
+  });
+});
+
+describe("useInvalidateRequests (#1658)", () => {
+  it("invalidates every requests query and leaves others alone", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["requests", "evm", "0xa", 560048, 0], FIXTURE);
+    queryClient.setQueryData(
+      ["requests", "stellar", "G", 99000001, 0],
+      FIXTURE,
+    );
+    queryClient.setQueryData(["pnl", "0xa"], { ok: true });
+    function wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+    }
+
+    const { result, rerender } = renderHook(() => useInvalidateRequests(), {
+      wrapper,
+    });
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
+
+    act(() => {
+      result.current();
+    });
+
+    expect(
+      queryClient.getQueryState(["requests", "evm", "0xa", 560048, 0])
+        ?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(["requests", "stellar", "G", 99000001, 0])
+        ?.isInvalidated,
+    ).toBe(true);
+    expect(queryClient.getQueryState(["pnl", "0xa"])?.isInvalidated).toBe(
+      false,
+    );
   });
 });

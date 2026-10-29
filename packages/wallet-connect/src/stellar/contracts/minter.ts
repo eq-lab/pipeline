@@ -1,4 +1,5 @@
 // spec: docs/product-specs/deposits.md#stellar-plusd-mint-leg
+// spec: docs/product-specs/loan-repayment-recovery.md
 import {
   Contract,
   TransactionBuilder,
@@ -10,11 +11,18 @@ import {
   rpc as SorobanRpc,
   type Transaction,
 } from "@stellar/stellar-sdk";
+import { encodeRepaymentData, type RepaymentInput } from "./loanRegistry";
+import {
+  readOperationSchedule,
+  relay,
+  type OperationSchedule,
+  type RelayStage,
+  type RelayParams,
+  type RelayResult,
+} from "./accessManager";
+import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
-export type RecordWireInStage =
-  | "awaiting-signature"
-  | "submitting"
-  | "confirming";
+export type RecordWireInStage = RelayStage;
 
 export interface RecordWireInArgs {
   caller: string;
@@ -152,14 +160,18 @@ export async function buildRecordWireInEnvelope({
   return assembled.toXDR();
 }
 
-function toWireId(native: unknown): number | null {
+function toId(native: unknown, min: number): number | null {
   const n =
     typeof native === "bigint"
       ? Number(native)
       : typeof native === "number"
         ? native
         : NaN;
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isInteger(n) && n >= min ? n : null;
+}
+
+function toWireId(native: unknown): number | null {
+  return toId(native, 1);
 }
 
 function wireIdFromReturnValue(
@@ -256,4 +268,365 @@ export async function recordWireIn({
   }
 
   return { hash: sendResult.hash, wireId: extractWireId(finalResult) };
+}
+
+// ── repay ─────────────────────────────────────────────────────────────────────
+
+export type RepayStage = RecordWireInStage;
+
+export interface RepayArgs {
+  caller: string;
+  loanId: number;
+  repayment: RepaymentInput;
+  valueDate: number;
+  refHash: string;
+  saleId?: number;
+}
+
+export interface BuildRepayEnvelopeParams extends RepayArgs {
+  minterId: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+export interface RepayParams extends BuildRepayEnvelopeParams {
+  signTransaction: RecordWireInParams["signTransaction"];
+  onStageChange?: (stage: RepayStage) => void;
+}
+
+export interface RepayResult {
+  hash: string;
+  repaymentId: number | null;
+}
+
+const ZERO_REF_HASH = "0".repeat(64);
+
+export function encodeRepayArgs({
+  caller,
+  loanId,
+  repayment,
+  valueDate,
+  refHash,
+  saleId = 0,
+}: RepayArgs): xdr.ScVal[] {
+  if (!Number.isInteger(valueDate) || valueDate <= 0) {
+    throw new Error(
+      `encodeRepayArgs: valueDate must be a positive Unix-seconds integer, got ${valueDate}`,
+    );
+  }
+  if (!Number.isInteger(loanId) || loanId < 0) {
+    throw new Error(`encodeRepayArgs: invalid loanId ${loanId}`);
+  }
+  if (!Number.isInteger(saleId) || saleId < 0) {
+    throw new Error(`encodeRepayArgs: invalid saleId ${saleId}`);
+  }
+  if (refHash === ZERO_REF_HASH) {
+    throw new Error("encodeRepayArgs: refHash must not be the zero hash");
+  }
+  return [
+    new Address(caller).toScVal(),
+    nativeToScVal(loanId, { type: "u32" }),
+    encodeRepaymentData(repayment),
+    nativeToScVal(BigInt(valueDate), { type: "u64" }),
+    hexToBytes32ScVal(refHash),
+    nativeToScVal(saleId, { type: "u32" }),
+  ];
+}
+
+export async function buildRepayEnvelope({
+  minterId,
+  rpcUrl,
+  networkPassphrase,
+  ...args
+}: BuildRepayEnvelopeParams): Promise<string> {
+  if (!minterId) {
+    throw new Error("buildRepayEnvelope: minterId must not be empty");
+  }
+  if (!args.caller) {
+    throw new Error("buildRepayEnvelope: caller must not be empty");
+  }
+
+  const encoded = encodeRepayArgs(args);
+
+  const contract = new Contract(minterId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(args.caller);
+  const op = contract.call("repay", ...encoded);
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`repay simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+function repaymentIdFromReturnValue(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
+  if (!finalResult.returnValue) return null;
+  try {
+    return toId(scValToNative(finalResult.returnValue), 0);
+  } catch {
+    return null;
+  }
+}
+
+function repaymentIdFromEvents(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
+  try {
+    const events = finalResult.resultMetaXdr.v3().sorobanMeta()?.events() ?? [];
+    for (const event of events) {
+      const v0 = event.body().v0();
+      const nameTopic = v0.topics()[0];
+      if (!nameTopic || scValToNative(nameTopic) !== "cash_repaid") continue;
+      const data = scValToNative(v0.data()) as { repayment_id?: unknown };
+      const id = toId(data?.repayment_id, 0);
+      if (id != null) return id;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export async function repay({
+  signTransaction,
+  onStageChange,
+  ...build
+}: RepayParams): Promise<RepayResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildRepayEnvelope(build);
+
+  const { networkPassphrase, rpcUrl, caller } = build;
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: caller,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `repay: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `repay: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return {
+    hash: sendResult.hash,
+    repaymentId:
+      repaymentIdFromReturnValue(finalResult) ??
+      repaymentIdFromEvents(finalResult),
+  };
+}
+
+async function sha256Hex(preimage: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(preimage),
+  );
+  return Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+export function repaymentRefHash({
+  registryId,
+  loanId,
+  nextRepaymentId,
+}: {
+  registryId: string;
+  loanId: number;
+  nextRepaymentId: number;
+}): Promise<string> {
+  return sha256Hex(`pipeline:repay:${registryId}:${loanId}:${nextRepaymentId}`);
+}
+
+// ── reverse_repay ─────────────────────────────────────────────────────────────
+
+export interface ReverseRepayArgs {
+  loanId: number;
+  repaymentId: number;
+  refHash: string;
+}
+
+export function encodeReverseRepayArgs({
+  loanId,
+  repaymentId,
+  refHash,
+}: ReverseRepayArgs): xdr.ScVal[] {
+  if (!Number.isInteger(loanId) || loanId < 0) {
+    throw new Error(`encodeReverseRepayArgs: invalid loanId ${loanId}`);
+  }
+  if (!Number.isInteger(repaymentId) || repaymentId < 0) {
+    throw new Error(
+      `encodeReverseRepayArgs: invalid repaymentId ${repaymentId}`,
+    );
+  }
+  if (refHash === ZERO_REF_HASH) {
+    throw new Error(
+      "encodeReverseRepayArgs: refHash must not be the zero hash",
+    );
+  }
+  return [
+    nativeToScVal(loanId, { type: "u32" }),
+    nativeToScVal(repaymentId, { type: "u32" }),
+    hexToBytes32ScVal(refHash),
+  ];
+}
+
+export function reverseRepayRefHash({
+  minterId,
+  loanId,
+  repaymentId,
+}: {
+  minterId: string;
+  loanId: number;
+  repaymentId: number;
+}): Promise<string> {
+  return sha256Hex(
+    `pipeline:reverse_repay:${minterId}:${loanId}:${repaymentId}`,
+  );
+}
+
+export interface MinterRepayment {
+  cash: string;
+  principal: string;
+  interestMinted: string;
+  feeShares: string;
+  carvedOut: boolean;
+  saleId: number;
+  reversed: boolean;
+}
+
+export interface ReadMinterRepaymentParams extends SimulateReadOptions {
+  minterId: string;
+  loanId: number;
+  repaymentId: number;
+}
+
+export async function readMinterRepayment({
+  minterId,
+  loanId,
+  repaymentId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadMinterRepaymentParams): Promise<MinterRepayment> {
+  if (!minterId) {
+    throw new Error("readMinterRepayment: minterId must not be empty");
+  }
+  const data = (await simulateRead(
+    minterId,
+    "repayment",
+    [
+      nativeToScVal(loanId, { type: "u32" }),
+      nativeToScVal(repaymentId, { type: "u32" }),
+    ],
+    { rpcUrl, networkPassphrase },
+  )) as Record<string, bigint | number | boolean | undefined>;
+  const amount = (key: string): string => {
+    const raw = data?.[key];
+    if (raw === undefined || raw === null) {
+      throw new Error(`readMinterRepayment: ${key} missing`);
+    }
+    return String(raw);
+  };
+  return {
+    cash: amount("cash"),
+    principal: amount("principal"),
+    interestMinted: amount("interest_minted"),
+    feeShares: amount("fee_shares"),
+    carvedOut: data?.carved_out === true,
+    saleId: Number(data?.sale_id ?? 0),
+    reversed: data?.reversed === true,
+  };
+}
+
+export interface ReverseRepayParams
+  extends
+    Omit<RelayParams, "mode" | "target" | "fn" | "args" | "accessManagerId">,
+    ReverseRepayArgs {
+  accessManagerId: string;
+  minterId: string;
+}
+
+export interface ReadReverseRepayScheduleParams
+  extends SimulateReadOptions, ReverseRepayArgs {
+  accessManagerId: string;
+  minterId: string;
+  caller: string;
+}
+
+const REVERSE_REPAY_FN = "reverse_repay";
+
+async function reverseRepayRelay(
+  mode: RelayParams["mode"],
+  { minterId, loanId, repaymentId, refHash, ...rest }: ReverseRepayParams,
+): Promise<RelayResult> {
+  return relay({
+    ...rest,
+    mode,
+    target: minterId,
+    fn: REVERSE_REPAY_FN,
+    args: encodeReverseRepayArgs({ loanId, repaymentId, refHash }),
+  });
+}
+
+export function scheduleReverseRepay(
+  params: ReverseRepayParams,
+): Promise<RelayResult> {
+  return reverseRepayRelay("schedule", params);
+}
+
+export function executeReverseRepay(
+  params: ReverseRepayParams,
+): Promise<RelayResult> {
+  return reverseRepayRelay("execute", params);
+}
+
+export async function readReverseRepaySchedule({
+  minterId,
+  loanId,
+  repaymentId,
+  refHash,
+  ...rest
+}: ReadReverseRepayScheduleParams): Promise<OperationSchedule> {
+  return readOperationSchedule({
+    ...rest,
+    target: minterId,
+    fn: REVERSE_REPAY_FN,
+    args: encodeReverseRepayArgs({ loanId, repaymentId, refHash }),
+  });
 }

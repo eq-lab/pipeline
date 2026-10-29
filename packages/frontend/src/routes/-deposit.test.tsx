@@ -252,13 +252,34 @@ let mockStellarWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" =
 /** Deadline served by the ready Stellar voucher mocks (unix-seconds string). */
 const STELLAR_VOUCHER_DEADLINE = "9999999999";
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+
+const mockInvalidateRequests = vi.hoisted(() => vi.fn());
+
+vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
+  useStellarDepositManagerMinDeposit: () => ({
+    minDeposit: 1000n * 10n ** 7n,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 vi.mock("@/api", () => ({
+  useChainServed: () => mockChainServed(),
   useRequests: () => ({
     data: mockRequestsData,
     isLoading: mockRequestsLoading,
     error: null,
     refetch: vi.fn(),
   }),
+  useInvalidateRequests: () => mockInvalidateRequests,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useDepositVoucher: (_requestId: string | undefined) => ({
     data: mockVoucherData,
@@ -641,6 +662,43 @@ describe("Deposit page — approve needed state", () => {
       },
       { timeout: 2000 },
     );
+  });
+});
+
+describe("Deposit page — EVM approve failure toast (#1658)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    seedBaseMocks({ allowance: "0" });
+    localStorage.removeItem(
+      `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.approve`,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("a failed approve turns the toast into a danger toast with Details", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2000");
+    const approveBtn = await screen.findByRole("button", { name: "Approve" });
+    await waitFor(() => expect(approveBtn).not.toBeDisabled());
+    await user.click(approveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Approval failed")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByText("Approving USDC…")).not.toBeInTheDocument();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });
 
@@ -3528,6 +3586,31 @@ describe("Deposit page — trustline enable failure resolves the pending toast (
       screen.queryByText("Enabling PLUSD trustline…"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
+  });
+});
+
+describe("Deposit — active chain not served by the API (#1605)", () => {
+  afterEach(() => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
+  it("replaces the conversion flow with the not-available notice", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderDeposit();
+    expect(screen.getByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(screen.queryByTestId("deposit-header")).not.toBeInTheDocument();
   });
 });
 

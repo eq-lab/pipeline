@@ -72,6 +72,7 @@ sPLUSD has no transfer restriction — the vault is intentionally open for DeFi 
 - No LP PII stored on-chain — wallet addresses and KYC outcomes only
 - Sumsub and Chainalysis raw reports retained per each vendor's data retention policy
 - Audit log retained for lifetime of the protocol; stored append-only with no delete capability
+- The LP app fetches `flagcdn.com` (country list and flag images) from the browser without credentials or a referrer; no user data is sent
 
 ## Operational endpoint protection
 

@@ -40,6 +40,10 @@ export function todayDateInput(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function dateInputToValueDate(dateInput: string): number {
+  return Date.parse(`${dateInput}T00:00:00Z`) / 1000;
+}
+
 /**
  * Parses the "Offtaker payment received" USD text input into a positive
  * dollar amount. Empty/zero/negative/non-numeric input → `null` (keeps the
@@ -187,6 +191,7 @@ export interface RecordRepaymentView {
   onAmountChange: (value: string) => void;
   /** Fixed to today (read-only) — the repayment is always recorded as of today (#916). */
   dateInput: string;
+  valueDate: number;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -211,6 +216,7 @@ export interface RecordRepaymentView {
    * the fully-repaid notice instead of the amount form/waterfall.
    */
   offtakerFullyPaid: boolean;
+  seniorStillOutstanding: string | null;
   /**
    * The close-loan checklist (#1090) — Close-loan enables only when every item
    * is green. Items 1–2 are hard gates with no manual override; item 3 is
@@ -441,6 +447,7 @@ export function useRecordRepayment(
     amountInput,
     onAmountChange: setAmountInput,
     dateInput,
+    valueDate: dateInputToValueDate(dateInput),
     waterfall: {
       ready: waterfall.data != null,
       isCalculating,
@@ -455,6 +462,12 @@ export function useRecordRepayment(
         : null,
     onChainBlockedReason,
     offtakerFullyPaid,
+    seniorStillOutstanding:
+      offtakerFullyPaid &&
+      outstandingSeniorUsd != null &&
+      outstandingSeniorUsd > 0
+        ? usdFull(outstandingSeniorUsd)
+        : null,
     closeChecklist,
     closureReason: onChainBlockedReason === null ? reason : null,
   };

@@ -28,8 +28,10 @@ import {
   buildRolloverEnvelope,
   encodeUpdateMutableArgs,
   buildUpdateMutableEnvelope,
-  encodeRecordPaymentArgs,
-  buildRecordPaymentEnvelope,
+  encodeRepaymentData,
+  readNextRepaymentId,
+  readRepaymentData,
+  readIsRepaymentReversed,
   encodeCloseLoanArgs,
   buildCloseLoanEnvelope,
   type SubmitLoanRequest,
@@ -102,6 +104,12 @@ vi.mock("@stellar/stellar-sdk", () => {
       return mockFromXDR(...args);
     }
   }
+  class MockAccount {
+    constructor(
+      public id: string,
+      public seq: string,
+    ) {}
+  }
   class MockAddress {
     constructor(public addr: string) {}
     toScVal() {
@@ -110,6 +118,7 @@ vi.mock("@stellar/stellar-sdk", () => {
   }
 
   return {
+    Account: MockAccount,
     Contract: MockContract,
     TransactionBuilder: MockTransactionBuilder,
     BASE_FEE: "100",
@@ -683,10 +692,10 @@ describe("buildUpdateMutableEnvelope", () => {
   });
 });
 
-// ── encodeRecordPaymentArgs / recordPayment (issue #882) ────────────────────────
+// ── encodeRepaymentData / readNextRepaymentId ───────────────────────────────────
 
 const REPAYMENT: RepaymentInput = {
-  offtaker_received: "1500000000000", // $150,000 @ 7-decimal base units
+  offtaker_received: "1500000000000",
   senior_principal_repaid: "0",
   senior_interest: "1155000000000",
   equity_distributed: "0",
@@ -695,18 +704,13 @@ const REPAYMENT: RepaymentInput = {
   oet_alloc: "75000000000",
 };
 
-describe("encodeRecordPaymentArgs", () => {
-  it("encodes [loan_id: u32, repayment: RepaymentData map] with sorted u128 fields", () => {
-    const args = encodeRecordPaymentArgs(4488, REPAYMENT);
-    expect(args).toHaveLength(2);
-    expect(args[0]).toEqual({ t: "u32", v: 4488 });
-    expect(args[1]).toMatchObject({ t: "map" });
-
-    const map = args[1] as unknown as {
+describe("encodeRepaymentData", () => {
+  it("encodes a sorted-key map of u128 base-unit values", () => {
+    const map = encodeRepaymentData(REPAYMENT) as unknown as {
       t: "map";
       v: Array<{ key: { v: string }; val: { t: string; v: bigint } }>;
     };
-    // Soroban struct = sorted-key map.
+    expect(map.t).toBe("map");
     expect(map.v.map((e) => e.key.v)).toEqual([
       "equity_distributed",
       "mgmt_fee",
@@ -717,48 +721,147 @@ describe("encodeRecordPaymentArgs", () => {
       "senior_principal_repaid",
     ]);
     const byKey = Object.fromEntries(map.v.map((e) => [e.key.v, e.val]));
-    // Each amount is u128, passed through unscaled (base units).
     expect(byKey.offtaker_received).toEqual({
       t: "u128",
       v: 1_500_000_000_000n,
     });
-    expect(byKey.senior_interest).toEqual({ t: "u128", v: 1_155_000_000_000n });
     expect(byKey.senior_principal_repaid).toEqual({ t: "u128", v: 0n });
   });
 });
 
-describe("buildRecordPaymentEnvelope", () => {
-  function args(overrides: Record<string, unknown> = {}) {
-    return {
-      executorId: EXECUTOR_ID,
-      targetId: TARGET_ID,
-      caller: CALLER,
-      loanId: 4488,
-      repayment: REPAYMENT,
-      rpcUrl: RPC_URL,
-      networkPassphrase: PASSPHRASE,
-      ...overrides,
-    };
-  }
+describe("readNextRepaymentId", () => {
+  const params = {
+    registryId: TARGET_ID,
+    loanId: 4488,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
 
-  it("calls execute with (target, record_payment symbol, args vec, caller)", async () => {
-    await buildRecordPaymentEnvelope(args());
-    expect(mockContractCall).toHaveBeenCalledWith(
-      "execute",
-      { t: "address", v: TARGET_ID },
-      { t: "symbol", v: "record_payment" },
-      expect.objectContaining({ t: "vec" }),
-      { t: "address", v: CALLER },
+  it("simulates mutable_loan_data read-only and returns next_repayment_id", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: { next_repayment_id: 3 } } },
+    });
+    await expect(readNextRepaymentId(params)).resolves.toBe(3);
+    expect(mockContractCall).toHaveBeenCalledWith("mutable_loan_data", {
+      t: "u32",
+      v: 4488,
+    });
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+
+  it("accepts a bigint id", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: { next_repayment_id: 0n } } },
+    });
+    await expect(readNextRepaymentId(params)).resolves.toBe(0);
+  });
+
+  it("throws on a simulation error", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({
+      error: "HostError: Error(Contract, #1)",
+    });
+    await expect(readNextRepaymentId(params)).rejects.toThrow(
+      "readNextRepaymentId simulation error: HostError: Error(Contract, #1)",
     );
   });
 
-  it("throws a simulation error without assembling", async () => {
-    mockIsSimulationError.mockReturnValue(true);
-    mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
-    await expect(buildRecordPaymentEnvelope(args())).rejects.toThrow(
-      "recordPayment simulation error",
+  it("throws when the struct has no next_repayment_id", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: {} } },
+    });
+    await expect(readNextRepaymentId(params)).rejects.toThrow(
+      /next_repayment_id missing/,
     );
-    expect(mockAssembleTransaction).not.toHaveBeenCalled();
+  });
+
+  it("guards an empty registry id", async () => {
+    await expect(
+      readNextRepaymentId({ ...params, registryId: "" }),
+    ).rejects.toThrow(/registryId must not be empty/);
+  });
+});
+
+describe("readRepaymentData", () => {
+  const params = {
+    registryId: TARGET_ID,
+    loanId: 7,
+    repaymentId: 1,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("maps the u128 struct to raw decimal strings", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: {
+        retval: {
+          __native: {
+            oet_alloc: 75000000000n,
+            perf_fee: 150000000000n,
+            mgmt_fee: 120000000000n,
+            equity_distributed: 0n,
+            senior_interest: 1155000000000n,
+            senior_principal_repaid: 0n,
+            offtaker_received: 1500000000000n,
+          },
+        },
+      },
+    });
+    await expect(readRepaymentData(params)).resolves.toEqual(REPAYMENT);
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "repayment_data",
+      { t: "u32", v: 7 },
+      { t: "u32", v: 1 },
+    );
+  });
+
+  it("throws on a missing field, a simulation error and an empty id", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: {} } },
+    });
+    await expect(readRepaymentData(params)).rejects.toThrow(
+      /offtaker_received missing/,
+    );
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "boom" });
+    await expect(readRepaymentData(params)).rejects.toThrow(
+      "repayment_data simulation error: boom",
+    );
+    await expect(
+      readRepaymentData({ ...params, registryId: "" }),
+    ).rejects.toThrow(/registryId must not be empty/);
+  });
+});
+
+describe("readIsRepaymentReversed", () => {
+  const params = {
+    registryId: TARGET_ID,
+    loanId: 7,
+    repaymentId: 1,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("returns the on-chain boolean", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: true } },
+    });
+    await expect(readIsRepaymentReversed(params)).resolves.toBe(true);
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "is_repayment_reversed",
+      { t: "u32", v: 7 },
+      { t: "u32", v: 1 },
+    );
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: false } },
+    });
+    await expect(readIsRepaymentReversed(params)).resolves.toBe(false);
+  });
+
+  it("guards an empty registry id", async () => {
+    await expect(
+      readIsRepaymentReversed({ ...params, registryId: "" }),
+    ).rejects.toThrow(/registryId must not be empty/);
   });
 });
 

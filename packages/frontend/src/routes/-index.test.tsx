@@ -158,7 +158,7 @@ const mockEnv = vi.hoisted(() => ({
   DEPOSIT_MANAGER_ADDRESS:
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   STAKED_PLUSD_ADDRESS:
-    "0x0000000000000000000000000000000000000000" as `0x${string}`,
+    "0x5555000000000000000000000000000000000005" as `0x${string}`,
   STELLAR_STAKED_PLUSD_ID: "",
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
@@ -169,7 +169,17 @@ vi.mock("@/lib/env", () => ({
 
 const { mockGetMyLp } = vi.hoisted(() => ({ mockGetMyLp: vi.fn() }));
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+
 vi.mock("@/api", () => ({
+  useChainServed: () => mockChainServed(),
   getMyLp: mockGetMyLp,
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
@@ -567,7 +577,7 @@ describe("Home page — card height parity (connected)", () => {
 });
 
 const PLUSD_ADDRESS = "0xaaaa000000000000000000000000000000000002";
-const STAKED_PLUSD_ADDRESS = "0x0000000000000000000000000000000000000000";
+const STAKED_PLUSD_ADDRESS = "0x5555000000000000000000000000000000000005";
 
 describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
   beforeEach(() => {
@@ -714,7 +724,7 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
 });
 
 describe("Home page — mobile State C: connected, has sPLUSD", () => {
-  const SPLUSD_ADDRESS = STAKED_PLUSD_ADDRESS; // zero address (env default)
+  const SPLUSD_ADDRESS = STAKED_PLUSD_ADDRESS;
 
   beforeEach(() => {
     localStorage.clear();
@@ -871,6 +881,36 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
       expect(subLine?.textContent).toMatch(/· \$[\d,]+\.\d{2}/);
       expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
+  });
+
+  it("headline and StakeCard value use convertToAssets, not the share count (#1658)", async () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
+      "1001500000000000000",
+    );
+    renderHome();
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$1,001.50" }).length,
+      ).toBeGreaterThanOrEqual(1);
+      const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
+      expect(subLine?.textContent).toContain("1,001.50 sPLUSD · $1,001.50");
+    });
+    expect(screen.getAllByTestId("splusd-shares")[0]?.textContent).toContain(
+      "1,000.00",
+    );
+  });
+
+  it("renders a dash, not $0.00, while convertToAssets is unavailable for a non-zero share balance (#1658)", async () => {
+    localStorage.removeItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
+    );
+    renderHome();
+    await waitFor(() => {
+      const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
+      expect(subLine?.textContent).toContain("· —");
+    });
+    expect(screen.queryByRole("heading", { name: "$0.00" })).toBeNull();
   });
 
   it("desktop StakeCard renders the staked state, not the marketing CTA (State C)", async () => {
@@ -1081,14 +1121,14 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "$100.00",
+        name: "$104.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
 
     await waitFor(() => {
       const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
-      expect(subLine?.textContent).toContain("104.00 sPLUSD · $100.00");
+      expect(subLine?.textContent).toContain("104.00 sPLUSD · $104.00");
       expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
 
@@ -2426,5 +2466,23 @@ describe("Home page — loading state while GET /v1/lps/me is in flight (#1576)"
     expect(
       within(grid).getByTestId("home-start-here-card"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Home — active chain not served by the API (#1605)", () => {
+  it("keeps the welcome header and replaces both layouts with the not-available notice", async () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    renderHome();
+    expect(await screen.findByTestId("chain-not-served")).toHaveTextContent(
+      "Not available on Ethereum",
+    );
+    expect(screen.getByTestId("home-welcome-header")).toBeInTheDocument();
+    expect(screen.queryByTestId("home-mobile-layout")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home-dashboard-card")).not.toBeInTheDocument();
   });
 });

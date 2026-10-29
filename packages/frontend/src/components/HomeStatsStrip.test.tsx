@@ -80,7 +80,17 @@ vi.mock("@/wallet/stellar/useStellarStakedPlusd", () => ({
   useStellarUnstakeConvertToAssets: () => ({ data: rateState.stellar }),
 }));
 
+const mockChainServed = vi.hoisted(() =>
+  vi.fn(() => ({
+    kind: "evm" as const,
+    chainId: 560048,
+    chainName: "Hoodi",
+    served: true as boolean | undefined,
+  })),
+);
+
 vi.mock("@/api", () => ({
+  useChainServed: () => mockChainServed(),
   useStats: (args: unknown) => {
     statsSpy(args);
     return { data: undefined };
@@ -224,5 +234,31 @@ describe("HomeStatsStrip — mainnet dashboard gate (#1243)", () => {
     expect(
       screen.getByRole("link", { name: "View Protocol Dashboard" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("HomeStatsStrip — active chain not served by the API (#1605)", () => {
+  it("renders the exchange rate only — no TVL / APY cells that would show fabricated zeros", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 1,
+      chainName: "Ethereum",
+      served: false,
+    });
+    render(<HomeStatsStrip />);
+    expect(screen.getByText("Exchange rate")).toBeInTheDocument();
+    expect(screen.queryByText("Total Value Locked")).not.toBeInTheDocument();
+    expect(screen.queryByText("Current APY")).not.toBeInTheDocument();
+  });
+
+  it("hides the TVL / APY cells while the probe is still unresolved", () => {
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: undefined,
+    });
+    render(<HomeStatsStrip />);
+    expect(screen.queryByText("Total Value Locked")).not.toBeInTheDocument();
   });
 });

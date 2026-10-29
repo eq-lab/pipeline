@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
+use crate::chains::ChainKind;
 use crate::sumsub::models::{AmlStatus, KycReviewStatus, KycStatus};
 
 pub struct KycRepo {
@@ -83,8 +84,56 @@ pub struct GroupedRequest {
     pub created_at: String,
 }
 
+/// Whether the KYT gate applies to a chain kind: EVM follows Crystal, Stellar follows Elliptic.
+pub fn kyt_gate_for_kind(kind: ChainKind, crystal_enabled: bool, elliptic_enabled: bool) -> bool {
+    match kind {
+        ChainKind::Evm => crystal_enabled,
+        ChainKind::Stellar => elliptic_enabled,
+    }
+}
+
+pub const KYT_CLEAR: i16 = 1;
+pub const KYT_FAILED: i16 = 2;
+
+pub const PROFILE_KYT_CLEAR_SQL: &str = "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2 AND kyt_status IS DISTINCT FROM 2";
+
+/// Profile-level KYT transition: a failed profile stays failed until a manual reset.
+pub fn next_kyt_status(current: Option<i16>, verdict: i16) -> i16 {
+    if current == Some(KYT_FAILED) {
+        KYT_FAILED
+    } else {
+        verdict
+    }
+}
+
+/// Feed status of a request row. `PendingClaim` holds exactly when the voucher endpoint
+/// would issue: gate off or `kyt_status == 1`, plus whitelisted on chain and unclaimed.
+pub fn feed_status(
+    event_name: &str,
+    is_claimed: bool,
+    on_chain_allowed: bool,
+    kyt_status: Option<i16>,
+    kyt_gate_enabled: bool,
+) -> &'static str {
+    if matches!(event_name, "StakingDeposit" | "StakingWithdrawal") || is_claimed {
+        return "Completed";
+    }
+    if kyt_gate_enabled {
+        match kyt_status {
+            Some(1) => {}
+            Some(_) => return "VerificationFailed",
+            None => return "PendingVerification",
+        }
+    }
+    if on_chain_allowed {
+        "PendingClaim"
+    } else {
+        "PendingVerification"
+    }
+}
+
 impl GroupedRequest {
-    fn from_row(row: RequestEventRow, crystal_enabled: bool) -> Self {
+    fn from_row(row: RequestEventRow, kyt_gate_enabled: bool) -> Self {
         let request_type = match row.event_name.as_str() {
             "DepositRequested" => "Deposit",
             "WithdrawalRequested" => "Withdraw",
@@ -93,28 +142,13 @@ impl GroupedRequest {
             other => other,
         };
 
-        let status = match row.event_name.as_str() {
-            "StakingDeposit" | "StakingWithdrawal" => "Completed",
-            _ => {
-                if row.is_claimed {
-                    "Completed"
-                } else if !crystal_enabled {
-                    if row.on_chain_allowed {
-                        "PendingClaim"
-                    } else {
-                        "PendingVerification"
-                    }
-                } else {
-                    #[allow(clippy::match_same_arms)]
-                    match row.kyt_status {
-                        Some(1) if row.on_chain_allowed => "PendingClaim",
-                        Some(1) => "PendingVerification", // passed KYT but not yet whitelisted
-                        Some(_) => "VerificationFailed",
-                        None => "PendingVerification", // not yet screened
-                    }
-                }
-            }
-        };
+        let status = feed_status(
+            &row.event_name,
+            row.is_claimed,
+            row.on_chain_allowed,
+            row.kyt_status,
+            kyt_gate_enabled,
+        );
 
         let created_at = chrono::DateTime::from_timestamp(row.block_timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
@@ -613,13 +647,18 @@ impl KycRepo {
         chain_id: i64,
         wallet_address: &str,
     ) -> anyhow::Result<()> {
-        sqlx::query(
-            "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
-        )
-        .bind(chain_id)
-        .bind(wallet_address)
-        .execute(&self.pool)
-        .await?;
+        let res = sqlx::query(PROFILE_KYT_CLEAR_SQL)
+            .bind(chain_id)
+            .bind(wallet_address)
+            .execute(&self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            tracing::info!(
+                wallet = wallet_address,
+                chain_id,
+                "KYT clear skipped: profile is failed (or missing); failure is never downgraded"
+            );
+        }
         Ok(())
     }
 
@@ -884,7 +923,7 @@ impl KycRepo {
         &self,
         wallet: &str,
         pending_only: bool,
-        crystal_enabled: bool,
+        kyt_gate_for_chain: impl Fn(i64) -> bool,
         chain_id: Option<i64>,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
         // Derive the "sender" from params depending on the event type.
@@ -959,7 +998,10 @@ impl KycRepo {
         let rows = q.fetch_all(&self.pool).await?;
         Ok(rows
             .into_iter()
-            .map(|row| GroupedRequest::from_row(row, crystal_enabled))
+            .map(|row| {
+                let gate = kyt_gate_for_chain(row.chain_id);
+                GroupedRequest::from_row(row, gate)
+            })
             .collect())
     }
 

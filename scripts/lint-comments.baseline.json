@@ -460,7 +460,7 @@
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/evm/useWithdrawalQueue.ts": {
-    "header": 22,
+    "header": 20,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/index.ts": {
@@ -663,20 +663,8 @@
     "header": 14,
     "nodeIds": 0
   },
-  "packages/trustee/src/auth/-TrusteeSessionProvider.test.tsx": {
-    "header": 29,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/auth/-authGate.test.ts": {
-    "header": 8,
-    "nodeIds": 0
-  },
   "packages/trustee/src/auth/-sessionStore.test.ts": {
     "header": 7,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/auth/-useAuthRedirect.test.tsx": {
-    "header": 10,
     "nodeIds": 0
   },
   "packages/trustee/src/components/-CapitalAllocationCard.test.tsx": {
@@ -685,14 +673,6 @@
   },
   "packages/trustee/src/components/-NeedsAttention.test.tsx": {
     "header": 21,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/components/-SignInOverlay.test.tsx": {
-    "header": 10,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/components/-TrusteeShell.test.tsx": {
-    "header": 6,
     "nodeIds": 0
   },
   "packages/trustee/src/components/-TrusteeSidebar.test.tsx": {
@@ -721,10 +701,6 @@
   },
   "packages/trustee/src/components/TrusteeNavIcons.tsx": {
     "header": 12,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/components/TrusteeShell.tsx": {
-    "header": 0,
     "nodeIds": 1
   },
   "packages/trustee/src/lib/env.ts": {
@@ -808,11 +784,11 @@
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-record-coupon-page.test.tsx": {
-    "header": 18,
+    "header": 17,
     "nodeIds": 1
   },
   "packages/trustee/src/routes/-record-coupon.test.ts": {
-    "header": 7,
+    "header": 6,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-record-repayment-page.test.tsx": {
@@ -874,10 +850,6 @@
   "packages/trustee/src/routes/cash-management.tsx": {
     "header": 0,
     "nodeIds": 1
-  },
-  "packages/trustee/src/routes/loans.$id.tsx": {
-    "header": 0,
-    "nodeIds": 3
   },
   "packages/trustee/src/routes/loans.$id_.record-coupon.tsx": {
     "header": 0,

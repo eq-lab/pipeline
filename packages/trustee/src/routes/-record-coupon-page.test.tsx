@@ -12,8 +12,7 @@
  *
  * Covers: the two cards + waterfall rows built from a mocked
  * `useLoanWaterfall` response; the suppressed "Next stage: principal
- * repayment" hint (absent for a normal interest coupon, present only in the
- * terminal full-principal-repayment case); the never-fabricated
+ * repayment" hint (absent) and the principal-block notice (#1623); the never-fabricated
  * "Recorded"/"Minted" chips (absent); loading / error / not-found states.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -47,11 +46,13 @@ vi.mock("@tanstack/react-router", async () => {
       children,
       to,
       params,
+      search,
       ...rest
     }: {
       children: React.ReactNode;
       to: string;
       params?: Record<string, string>;
+      search?: Record<string, unknown>;
     } & Record<string, unknown>) => {
       const href = params
         ? Object.entries(params).reduce(
@@ -60,7 +61,11 @@ vi.mock("@tanstack/react-router", async () => {
           )
         : to;
       return (
-        <a href={href} {...rest}>
+        <a
+          href={href}
+          data-search={search ? JSON.stringify(search) : undefined}
+          {...rest}
+        >
           {children}
         </a>
       );
@@ -135,6 +140,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      onchain_status: "Performing",
       documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
@@ -147,6 +153,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
+  onchain_status: "Performing",
   epoch: {
     number: 1,
     current_apy_bps: 1000,
@@ -190,8 +197,7 @@ const WATERFALL_INTEREST_ONLY: WaterfallResponse = {
   oet_allocation: "20000000000", // $2,000
 };
 
-/** A terminal coupon whose principal-first waterfall fully repays the $1,840,000 outstanding senior. */
-const WATERFALL_TERMINAL: WaterfallResponse = {
+const WATERFALL_COVERS_PRINCIPAL: WaterfallResponse = {
   senior_principal_returned: "18400000000000", // $1,840,000
   senior_coupon_net: "350000000000",
   management_fee: "50000000000",
@@ -252,6 +258,7 @@ describe("Record Coupon route — ready state", () => {
     fireEvent.click(submit);
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
+      valueDate: expect.any(Number),
       repayment: {
         offtaker_received: "450000000000",
         senior_principal_repaid: "0",
@@ -314,6 +321,7 @@ describe("Record Coupon route — ready state", () => {
       fireEvent.click(submit);
       expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
         loanId: 4488,
+        valueDate: expect.any(Number),
         repayment: {
           offtaker_received: "5000000000000",
           senior_principal_repaid: "0",
@@ -364,11 +372,11 @@ describe("Record Coupon route — ready state", () => {
     expect(screen.queryByText(/Minted ·/)).not.toBeInTheDocument();
   });
 
-  it("renders the info banner with the bolded 'recordPayment with zero principal' phrase", () => {
+  it("renders the info banner with the bolded 'Minter.repay with zero principal' phrase", () => {
     renderRoute();
     const banner = screen.getByTestId("record-coupon-info-banner");
     expect(banner).toHaveTextContent(
-      "A scheduled coupon is a recordPayment with zero principal",
+      "A scheduled coupon is a Minter.repay with zero principal",
     );
     expect(banner).toHaveTextContent("Deferred interest");
   });
@@ -448,7 +456,7 @@ describe("Record Coupon route — ready state", () => {
     nowSpy.mockRestore();
   });
 
-  it("renders the in-card 'Record on the ledger' button and the recordPayment footer (node 4116-11295)", () => {
+  it("renders the in-card 'Record on the ledger' button and the Minter.repay footer (node 4116-11295)", () => {
     renderRoute();
     const right = screen.getByTestId("record-coupon-right-card");
     const submit = screen.getByTestId("record-coupon-submit");
@@ -456,7 +464,7 @@ describe("Record Coupon route — ready state", () => {
     expect(right).toContainElement(submit);
     expect(submit).toHaveTextContent("Record on the ledger");
     expect(right).toHaveTextContent(
-      "recordPayment is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.",
+      "Minter.repay is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.",
     );
     // The old bottom Cancel action is gone (a back link at the top remains).
     expect(
@@ -707,45 +715,136 @@ describe("Record Coupon route — ready state", () => {
     ).toBeInTheDocument();
   });
 
-  it("does NOT render the 'Next stage: principal repayment' hint for a normal interest coupon", () => {
+  it("does NOT render the 'Next stage: principal repayment' hint or the principal block for a normal interest coupon", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
+    await waitFor(() =>
+      expect(screen.getByTestId("record-coupon-submit")).toBeEnabled(),
+    );
     expect(
-      screen.queryByTestId("record-coupon-terminal-hint"),
+      screen.queryByTestId("record-coupon-principal-block"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Next stage: principal repayment/),
     ).not.toBeInTheDocument();
   });
 
-  it("renders the terminal-close hint ONLY when the coupon fully repays the outstanding senior principal", async () => {
-    mockWaterfall(WATERFALL_TERMINAL);
-    renderRoute();
-    // Outstanding senior is $1,840,000 — enter an amount that covers it.
-    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
-      target: { value: "1900000" },
-    });
-    await waitFor(() =>
-      expect(
-        screen.getByTestId("record-coupon-terminal-hint"),
-      ).toBeInTheDocument(),
-    );
-  });
+  describe("coupon covering principal (#1623)", () => {
+    async function enterBlocked(waterfall: WaterfallResponse, amount: string) {
+      mockWaterfall(waterfall);
+      renderRoute();
+      fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+        target: { value: amount },
+      });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("record-coupon-principal-block"),
+        ).toBeInTheDocument(),
+      );
+    }
 
-  it("does NOT render the terminal hint when the waterfall returns full principal but the entered amount doesn't cover it", () => {
-    // Defensive: senior_principal_returned alone should never trigger the hint
-    // without the entered-amount guard.
-    mockWaterfall(WATERFALL_TERMINAL);
-    renderRoute();
-    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
-      target: { value: "100" },
+    it("blocks the coupon, links to Record Repayment and keeps the screen consistent", async () => {
+      await enterBlocked(WATERFALL_COVERS_PRINCIPAL, "1900000");
+      const block = screen.getByTestId("record-coupon-principal-block");
+      expect(block).toHaveTextContent("$1,840,000");
+      const link = screen.getByRole("link", { name: "Record Repayment" });
+      expect(link).toHaveAttribute("href", "/loans/4488/record-repayment");
+      expect(link).toHaveAttribute("data-search", '{"chain":99000001}');
+      expect(screen.queryByTestId("record-coupon-summary")).toBeNull();
+      const submit = screen.getByTestId("record-coupon-submit");
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId("record-coupon-terminal-hint"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/fully repays senior principal/),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByTestId("record-coupon-terminal-hint"),
-    ).not.toBeInTheDocument();
+
+    it("blocks a partial principal too", async () => {
+      await enterBlocked(
+        { ...WATERFALL_INTEREST_ONLY, senior_principal_returned: "10000000" },
+        "45001",
+      );
+      expect(
+        screen.getByTestId("record-coupon-principal-block"),
+      ).toHaveTextContent("$1");
+      expect(screen.getByTestId("record-coupon-submit")).toBeDisabled();
+    });
+
+    it("still records when senior is already fully repaid (principal 0, residual to equity)", async () => {
+      mockUseLoanBook.mockReturnValue({
+        data: {
+          ...LOAN_BOOK_RESPONSE,
+          loans: [
+            { ...LOAN_BOOK_RESPONSE.loans[0]!, senior_outstanding: "0.000000" },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        refetch: () => {},
+      });
+      mockWaterfall(WATERFALL_INTEREST_ONLY);
+      renderRoute();
+      fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+        target: { value: "50000" },
+      });
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      expect(
+        screen.queryByTestId("record-coupon-principal-block"),
+      ).not.toBeInTheDocument();
+      fireEvent.click(submit);
+      expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
+        loanId: 4488,
+        valueDate: expect.any(Number),
+        repayment: {
+          offtaker_received: "500000000000",
+          senior_principal_repaid: "0",
+          senior_interest: "350000000000",
+          equity_distributed: "50000000000",
+          mgmt_fee: "50000000000",
+          perf_fee: "30000000000",
+          oet_alloc: "20000000000",
+        },
+      });
+    });
+
+    it("hides the notice immediately when the amount changes, without flashing back", async () => {
+      mockUseLoanWaterfall.mockImplementation((_c, _l, amount) => {
+        const data =
+          amount === "19000000000000"
+            ? WATERFALL_COVERS_PRINCIPAL
+            : amount === "450000000000"
+              ? WATERFALL_INTEREST_ONLY
+              : undefined;
+        return { data, isLoading: false, error: null } as ReturnType<
+          typeof useLoanWaterfall
+        >;
+      });
+      renderRoute();
+      const input = screen.getByTestId("record-coupon-amount");
+      fireEvent.change(input, { target: { value: "1900000" } });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("record-coupon-principal-block"),
+        ).toBeInTheDocument(),
+      );
+      fireEvent.change(input, { target: { value: "45000" } });
+      expect(
+        screen.queryByTestId("record-coupon-principal-block"),
+      ).not.toBeInTheDocument();
+      const submit = screen.getByTestId("record-coupon-submit");
+      await waitFor(() => expect(submit).toBeEnabled());
+      expect(
+        screen.queryByTestId("record-coupon-principal-block"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

@@ -81,7 +81,7 @@ pub const FIND_SUBMISSION_SQL: &str =
 
 pub const RESUBMIT_SQL: &str = "UPDATE submitted_loans \
         SET loan_data = $2, status = 'InReview', reason = NULL, updated_at = now() \
-      WHERE id = $1 AND status = 'ChangesRequested'";
+      WHERE id = $1 AND status = 'ChangesRequested' AND originator = $3";
 
 pub const LINK_DRAWN_SQL: &str = "UPDATE submitted_loans \
         SET chain_id = $2, loan_id = $3, updated_at = now() \
@@ -266,8 +266,7 @@ impl SubmittedLoanRepo {
 
     /// Replace an originator's `ChangesRequested` submission and reopen it for review.
     /// Overwrites `loan_data`, resets `status` to `InReview`, and clears `reason` — but
-    /// only when the row is currently `ChangesRequested`, the sole state an originator
-    /// may resubmit from. `InReview`/`Approved`/`Rejected` rows are left untouched, so
+    /// only when the row is currently `ChangesRequested` and owned by `originator`. `InReview`/`Approved`/`Rejected` rows are left untouched, so
     /// the returned bool lets the caller return `409` for a non-resubmittable state
     /// (the same pattern as [`review`](Self::review)).
     ///
@@ -280,10 +279,12 @@ impl SubmittedLoanRepo {
         conn: &mut PgConnection,
         id: i64,
         loan_data: &Value,
+        originator: &str,
     ) -> Result<bool, sqlx::Error> {
         let affected = sqlx::query(RESUBMIT_SQL)
             .bind(id)
             .bind(loan_data)
+            .bind(originator)
             .execute(conn)
             .await?
             .rows_affected();

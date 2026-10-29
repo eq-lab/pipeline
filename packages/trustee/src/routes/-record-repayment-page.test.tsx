@@ -145,6 +145,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      onchain_status: "Performing",
       documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
@@ -157,6 +158,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
 const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   loan_id: "4488",
   status: "Performing",
+  onchain_status: "Performing",
   epoch: {
     number: 2,
     current_apy_bps: 1000,
@@ -451,6 +453,7 @@ describe("Record Repayment route — ready state", () => {
     fireEvent.click(submit);
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
+      valueDate: expect.any(Number),
       repayment: {
         offtaker_received: "61500000000000",
         senior_principal_repaid: "48000000000000",
@@ -729,6 +732,36 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
     ).toHaveTextContent("Senior principal outstanding is zero");
   });
 
+  it("explains the stuck loan: shows the senior still outstanding when the offtaker owes nothing (#1623)", () => {
+    fullyPaid();
+    renderRoute();
+    expect(
+      screen.getByTestId("record-repayment-senior-outstanding"),
+    ).toHaveTextContent("$4,800,000");
+  });
+
+  it("links the senior-outstanding notice to the loan detail recovery card (#1711)", () => {
+    fullyPaid();
+    renderRoute();
+    expect(
+      screen.getByTestId("record-repayment-recovery-link"),
+    ).toHaveAttribute("href", "/loans/4488");
+    expect(
+      screen.getByTestId("record-repayment-senior-outstanding"),
+    ).not.toHaveTextContent("Escalate to the Risk Council");
+  });
+
+  it("omits the senior-outstanding line when senior is also zero (#1623)", () => {
+    readyWith({ senior: "0", offtaker: "0.000000" });
+    renderRoute();
+    expect(
+      screen.getByTestId("record-repayment-fully-paid"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("record-repayment-senior-outstanding"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps the just-recorded confirmation when this page's own record succeeded (no notice swap)", () => {
     mockRecord.isSuccess = true;
     readyWith({ senior: "0", offtaker: "0.000000" });
@@ -739,6 +772,40 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
     ).not.toBeInTheDocument();
     const submit = screen.getByTestId("record-repayment-submit");
     expect(submit).toHaveTextContent("Payment recorded");
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
+  });
+});
+
+describe("Record Repayment route — closable after an interest-only coupon (#1623)", () => {
+  beforeEach(() => {
+    mockRecord.isSuccess = false;
+  });
+
+  it("keeps the form, pays the waterfall principal, and Close-loan enables once the refetch settles senior and unminted to zero", async () => {
+    ready();
+    mockWaterfall(WATERFALL_TERMINAL);
+    const rendered = renderRoute();
+    expect(
+      screen.queryByTestId("record-repayment-fully-paid"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("record-repayment-amount"), {
+      target: { value: "6150000" },
+    });
+    const submit = screen.getByTestId("record-repayment-submit");
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      valueDate: expect.any(Number),
+      repayment: expect.objectContaining({
+        senior_principal_repaid: WATERFALL_TERMINAL.senior_principal_returned,
+      }),
+    });
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeDisabled();
+    readyWith({ senior: "0", offtaker: "0.000000", notMinted: "0.000000" });
+    mockRecord.isSuccess = true;
+    const Page = Route.options.component as React.ComponentType;
+    rendered.rerender(<Page />);
     expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
   });
 });

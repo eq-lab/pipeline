@@ -121,6 +121,41 @@ describe("useAccountPage", () => {
     expect(result.current.canSaveProfile).toBe(false);
   });
 
+  it("tracks savedCountry as the baseline and sends null for a cleared country", async () => {
+    signIn();
+    mockGet.mockResolvedValue(lp({ contact_email: "stored@example.com" }));
+    let release!: () => void;
+    mockUpsert.mockImplementationOnce(
+      (profile) =>
+        new Promise((resolve) => {
+          release = () => resolve(lp({ country: profile.country }));
+        }),
+    );
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("loaded"));
+    expect(result.current.savedCountry).toBe("GB");
+    act(() => result.current.setCountry("France"));
+    expect(result.current.savedCountry).toBe("GB");
+    let saving!: Promise<unknown>;
+    act(() => {
+      saving = result.current.saveProfile();
+    });
+    expect(result.current.savedCountry).toBe("GB");
+    await act(async () => {
+      release();
+      await saving;
+    });
+    expect(result.current.savedCountry).toBe("France");
+    mockUpsert.mockImplementationOnce(async (profile) =>
+      lp({ country: profile.country }),
+    );
+    act(() => result.current.setCountry(""));
+    await act(async () => result.current.saveProfile());
+    expect(mockUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({ country: null }),
+    );
+  });
+
   it("requires session email for creation and does not invent one", async () => {
     signIn();
     mockGet.mockRejectedValue(new ApiError(404, "missing"));

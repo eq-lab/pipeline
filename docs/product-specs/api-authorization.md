@@ -39,28 +39,54 @@ role, so registering an account confers no privilege beyond starting KYB.
    (signature, expiry, not older than the account's last password reset), the account must be
    `Active` (else `403 account_suspended`), and a required **role** it lacks is a `403`.
 
-The challenge message is the single source of truth for the signed bytes and is
-identical between issuance and verification. It is a **single line** (no newlines)
-so that signing the JSON-transported value cannot diverge from signing the
-decoded string:
+The challenge message is the single source of truth for the signed bytes. It is a pure
+function of the stored `auth_users` row, so issuance and verification rebuild identical
+bytes. It is SIWE-style multi-line text; clients must sign the decoded `message` string
+(never its JSON-escaped form). The `domain` is the host (and port, if any) of the API's
+`APP_BASE_URL`, which is required at startup (`EMAIL_DEV_LOG=true` falls back to
+`localhost:5173`). `Issued At` is `Expiration Time` minus the TTL; timestamps are ISO-8601 UTC.
 
 ```
-Welcome to Pipeline! Sign this message to authenticate. This request will not trigger a blockchain transaction or cost any gas. Address: <address> Chain ID: <chain_id> Nonce: <nonce>
+<domain> wants you to sign in with your wallet:
+<address>
+
+Sign this message to authenticate with Pipeline. This request will not trigger a blockchain transaction or cost any gas.
+
+Chain ID: <chain_id>
+Nonce: <nonce>
+Issued At: <issued_at>
+Expiration Time: <expires_at>
 ```
+
+Challenge lifecycle (one record per account, on `auth_users`: `nonce`, `nonce_expires_at`):
+
+- **TTL** is 5 minutes. `GET /v1/auth/challenge` decides reuse-or-issue in one SQL `UPDATE`
+  on the database clock (`now()`, so app-server clock skew cannot matter): if the stored nonce
+  has **more than 60 seconds** left it is returned unchanged (polling cannot invalidate a
+  pending signature); otherwise (missing, expired, or 60 s or less left) a new nonce with a
+  fresh 5-minute expiry is written. The statement returns `(nonce, nonce_expires_at)` and the
+  message is built from that row, so concurrent requests converge on one nonce and a client
+  never receives a nonce about to expire. No matching row (unknown address) is a `401`.
+- **Consume** is atomic and single-use: after the signature checks out, `verify` runs
+  `UPDATE auth_users SET nonce = NULL, nonce_expires_at = NULL WHERE chain_id = $1 AND
+  address = $2 AND nonce = $3 AND nonce_expires_at > now() RETURNING …`; no row is a `401`.
+  This closes concurrent replay and stale nonces.
+- **Stellar:** the same text is signed with SEP-0053 (`SHA256("Stellar Signed Message:\n" ||
+  message)`), which hashes the raw UTF-8 bytes, so newlines and length are not a concern.
 
 ## API Contract
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
-| `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
+| `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; reuses the stored nonce while more than 60 s remain, else issues a new 5-minute one. `401` if the address is not authorized. No per-IP limit. |
+| `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` (one shared body, `authentication failed`) for unknown address, no live or expired challenge, a replayed nonce, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
 | `POST` | `/v1/auth/login` | none | Body `{ email, password }`. Returns `{ token, expires_in }`. `401` for an unknown address or a wrong password (indistinguishable, in body and in timing), `403 email_not_verified` for an unverified account, `403 account_suspended` for a suspended one, `429` past the attempt limit. |
 | `POST` | `/v1/auth/forgot-password` | none | Body `{ email, captcha_token }`. Always `202`; a reset link is mailed only to a verified, active account, at most once per 60 seconds. `403`/`503` per the captcha, `429` past 10 requests per hour per client address. See [api-authorization-password-reset.md](./api-authorization-password-reset.md). |
 | `POST` | `/v1/auth/reset-password` | none | Body `{ token, password }`. `204` on success, with no token issued; every token the account held before is rejected from then on. `400` for a password failing the policy, `401` for every link failure, with one shared message. |
-| `POST` | `/v1/loan-book/loan?chain_id` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](./api-authorization-loan-submission.md)). Optional `chain_id` is the target chain (defaults to `DEFAULT_CHAIN_ID`; not in `CHAINS` → `400`). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
+| `POST` | `/v1/loan-book/loan?chain_id` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](./api-authorization-loan-submission.md)). Required `chain_id` is the target chain (missing, malformed or not in `CHAINS` → `400`, checked before the token). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
 | `GET`  | `/v1/loan-book/submissions?status&chain_id` | none (public) | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. Optional `chain_id` filters by target chain; omitted returns all submissions, a configured id filters by target, a well-formed id not in `CHAINS` is `200` with an empty list. `400` on an unknown status value or a malformed/repeated `chain_id`. Each item carries `target_chain_id` and the nullable drawn `chain_id` / `loan_id`. |
 | `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
 | `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`; the target chain is kept. `200 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |

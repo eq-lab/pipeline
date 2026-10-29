@@ -9,6 +9,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { LpResponse } from "@/api";
 import { clearSession, readSession, saveSession } from "@/auth/session";
+import { CountriesWrapper, stubCountriesFetch } from "@/test-support/countries";
 
 const mockGet = vi.fn();
 const mockDisconnectAll = vi.fn();
@@ -71,8 +72,17 @@ function renderAccountRoute(state: AccountDocumentsState | undefined) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Route as any).useSearch = () => ({ state });
   const AccountRouteComponent = Route.options.component as React.ComponentType;
-  return render(<AccountRouteComponent />);
+  stubCountriesFetch();
+  return render(
+    <CountriesWrapper>
+      <AccountRouteComponent />
+    </CountriesWrapper>,
+  );
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("/account route — section order", () => {
   it("composes heading, wallet, email, and documents in the frame's order", () => {

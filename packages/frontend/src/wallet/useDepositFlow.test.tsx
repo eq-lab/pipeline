@@ -23,8 +23,11 @@ import { useDepositFlow } from "./useDepositFlow";
 
 const mockStellarClaimWrite = vi.fn();
 const mockStellarClaimWithdrawalWrite = vi.fn();
+const mockClearInflightEvm = vi.hoisted(() => vi.fn());
 
 const SIG_BYTES = new Uint8Array(64).fill(0xab);
+
+const EVM_ADDRESS = "0x1111111111111111111111111111111111111111";
 
 const mockXlmState = vi.hoisted(() => ({
   kind: "stellar" as "stellar" | "evm",
@@ -32,33 +35,82 @@ const mockXlmState = vi.hoisted(() => ({
   accountExists: true as boolean | undefined,
 }));
 
+const ctl = vi.hoisted(() => ({
+  evmConnected: false,
+  approveError: null as Error | null,
+  isApprovePending: false,
+  isApproveSuccess: false,
+  evmDepositInflight: undefined as
+    | { requestId: string; amount: string; txHash: string; createdAt: number }
+    | undefined,
+  evmRequestDeposit: {
+    data: undefined as { hash: string; requestId?: string } | undefined,
+    isSuccess: false,
+  },
+  stellarRequestDepositSuccess: false,
+  stellarMinDeposit: 10_000_000_000n as bigint | undefined,
+  requests: undefined as
+    | {
+        type: string;
+        request_id: string;
+        amount: string;
+        status: string;
+        created_at: string;
+      }[]
+    | undefined,
+  invalidate: vi.fn(),
+  refetchIntervalFn: undefined as
+    | ((data: unknown) => number | false)
+    | undefined,
+}));
+
+const defaultStellarRequests = () => [
+  {
+    type: "Deposit",
+    request_id: "42",
+    amount: "10000000000",
+    status: "PendingClaim",
+    created_at: new Date().toISOString(),
+  },
+  {
+    type: "Withdraw",
+    request_id: "43",
+    amount: "10000000000",
+    status: "PendingClaim",
+    created_at: new Date().toISOString(),
+  },
+];
+
 vi.mock("@/wallet", () => ({
   useWalletView: () => ({ kind: mockXlmState.kind }),
 
   useEvmNetworkGuard: () => ({ wrongNetwork: undefined }),
   // EVM (unused on the Stellar path, but called unconditionally)
   useEvmWallet: () => ({
-    address: undefined,
-    isConnected: false,
+    address: ctl.evmConnected ? EVM_ADDRESS : undefined,
+    isConnected: ctl.evmConnected,
     connect: vi.fn(),
   }),
   useDepositManagerAddresses: () => ({ plusd: undefined, usdc: undefined }),
-  useDepositManagerMinDeposit: () => ({ minDeposit: undefined }),
+  useDepositManagerMinDeposit: () => ({
+    minDeposit: ctl.evmConnected ? 1_000_000_000n : undefined,
+  }),
   useEvmToken: () => ({
-    decimals: undefined,
-    balance: undefined,
+    decimals: ctl.evmConnected ? 6 : undefined,
+    balance: ctl.evmConnected ? 5_000_000_000n : undefined,
     formattedBalance: undefined,
-    allowance: undefined,
+    allowance: 0n,
     approve: vi.fn(),
-    isApprovePending: false,
-    isApproveSuccess: false,
+    isApprovePending: ctl.isApprovePending,
+    isApproveSuccess: ctl.isApproveSuccess,
+    approveError: ctl.approveError,
     refetchBalance: vi.fn(),
     isLoading: false,
   }),
   useRequestDeposit: () => ({
-    data: undefined,
+    data: ctl.evmRequestDeposit.data,
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.evmRequestDeposit.isSuccess,
     error: null,
     write: vi.fn(),
     reset: vi.fn(),
@@ -124,7 +176,7 @@ vi.mock("@/wallet", () => ({
   useStellarRequestDeposit: () => ({
     data: undefined,
     isPending: false,
-    isSuccess: false,
+    isSuccess: ctl.stellarRequestDepositSuccess,
     error: null,
     write: vi.fn(),
     reset: vi.fn(),
@@ -173,6 +225,12 @@ vi.mock("@/wallet", () => ({
   readInflightWithdrawal: () => undefined,
   clearInflightDeposit: vi.fn(),
   clearInflightWithdrawal: vi.fn(),
+  readInflightEvmRequest: (kind: string) =>
+    kind === "deposit" ? ctl.evmDepositInflight : undefined,
+  clearInflightEvmRequest: mockClearInflightEvm,
+  useStellarDepositManagerMinDeposit: () => ({
+    minDeposit: ctl.stellarMinDeposit,
+  }),
   useStellarNetworkFeeEstimate: () => ({ feeXlm: undefined }),
 }));
 
@@ -184,29 +242,18 @@ let mockStellarWithdrawVoucherData: { deadline?: string } | undefined =
   undefined;
 
 vi.mock("@/api", () => ({
-  useRequests: () => ({
-    data: {
-      requests: [
-        {
-          type: "Deposit",
-          request_id: "42",
-          amount: "10000000000",
-          status: "PendingClaim",
-          created_at: new Date().toISOString(),
-        },
-        {
-          type: "Withdraw",
-          request_id: "43",
-          amount: "10000000000",
-          status: "PendingClaim",
-          created_at: new Date().toISOString(),
-        },
-      ],
-    },
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
+  useRequests: (opts?: {
+    refetchInterval?: (data: unknown) => number | false;
+  }) => {
+    ctl.refetchIntervalFn = opts?.refetchInterval;
+    return {
+      data: { requests: ctl.requests ?? defaultStellarRequests() },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  },
+  useInvalidateRequests: () => ctl.invalidate,
   useDepositVoucher: () => ({
     data: undefined,
     status: "idle",
@@ -239,9 +286,23 @@ vi.mock("@/api", () => ({
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+function resetCtl() {
+  ctl.evmConnected = false;
+  ctl.approveError = null;
+  ctl.isApprovePending = false;
+  ctl.isApproveSuccess = false;
+  ctl.evmDepositInflight = undefined;
+  ctl.evmRequestDeposit = { data: undefined, isSuccess: false };
+  ctl.stellarRequestDepositSuccess = false;
+  ctl.stellarMinDeposit = 10_000_000_000n;
+  ctl.requests = undefined;
+  ctl.refetchIntervalFn = undefined;
+}
+
 describe("useDepositFlow — needsXlmFunding (#1196/#1130)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCtl();
     mockXlmState.kind = "stellar";
     mockXlmState.xlmBalance = "100";
     mockXlmState.accountExists = true;
@@ -292,6 +353,7 @@ describe("useDepositFlow — needsXlmFunding (#1196/#1130)", () => {
 describe("useDepositFlow — Stellar claim deadline guard (#800)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCtl();
     mockXlmState.kind = "stellar";
     mockXlmState.xlmBalance = "100";
     mockXlmState.accountExists = true;
@@ -397,5 +459,237 @@ describe("useDepositFlow — Stellar claim deadline guard (#800)", () => {
     });
 
     expect(mockStellarClaimWithdrawalWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDepositFlow — EVM approve errors (#1658)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+    mockXlmState.kind = "evm";
+    ctl.evmConnected = true;
+    ctl.requests = [];
+  });
+
+  it("an approve error puts step 1 in the error state with mapped copy", () => {
+    ctl.approveError = new Error("User rejected the request.");
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 2_000_000_000n, vi.fn()),
+    );
+    expect(result.current.step1.state).toBe("error");
+    expect(result.current.step1.errorMessage).toBeTruthy();
+    expect(result.current.step1.errorDetails).toContain("User rejected");
+    expect(result.current.step1Tx.error).toBe(ctl.approveError);
+    expect(result.current.step1Tx.userError).toBeDefined();
+  });
+
+  it("applies to the withdraw direction too", () => {
+    ctl.approveError = new Error("User rejected the request.");
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 2_000_000_000n, vi.fn()),
+    );
+    expect(result.current.step1.state).toBe("error");
+    expect(result.current.step1Tx.error).toBe(ctl.approveError);
+  });
+
+  it("a pending approve is not an error", () => {
+    ctl.approveError = new Error("stale");
+    ctl.isApprovePending = true;
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 2_000_000_000n, vi.fn()),
+    );
+    expect(result.current.step1.state).toBe("idle");
+    expect(result.current.step1.errorMessage).toBeUndefined();
+  });
+
+  it("a confirmed request wins over a lingering approve error", () => {
+    ctl.approveError = new Error("stale");
+    ctl.evmRequestDeposit = {
+      data: { hash: "0xabc", requestId: "7" },
+      isSuccess: true,
+    };
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 2_000_000_000n, vi.fn()),
+    );
+    expect(result.current.step1.state).toBe("success");
+    expect(result.current.step1.errorMessage).toBeUndefined();
+  });
+
+  it("no error leaves step 1 idle", () => {
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 2_000_000_000n, vi.fn()),
+    );
+    expect(result.current.step1.state).toBe("idle");
+    expect(result.current.step1Tx.error).toBeNull();
+  });
+});
+
+describe("useDepositFlow — EVM in-flight reload guard (#1658)", () => {
+  const inflight = {
+    requestId: "9",
+    amount: "2000000000",
+    txHash: "0xdead",
+    createdAt: 1,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+    mockXlmState.kind = "evm";
+    ctl.evmConnected = true;
+    ctl.requests = [];
+  });
+
+  it("locks the form and disables approve/confirm while the API has not listed the request", () => {
+    ctl.evmDepositInflight = inflight;
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 2_000_000_000n, vi.fn()),
+    );
+    expect(result.current.requestIsConfirmed).toBe(true);
+    expect(result.current.requestId).toBe("9");
+    expect(result.current.step1.disabled).toBe(true);
+    expect(result.current.step2.disabled).toBe(true);
+    expect(result.current.isAmountLocked).toBe(true);
+    expect(result.current.lockedAmountRaw).toBe(2_000_000_000n);
+    expect(result.current.step2.loading).toBe(true);
+    expect(result.current.isPendingVerification).toBe(true);
+    expect(result.current.exceedsBalance).toBe(false);
+  });
+
+  it("hands over to the API and clears the record once the id is listed", () => {
+    ctl.evmDepositInflight = inflight;
+    ctl.requests = [
+      {
+        type: "Deposit",
+        request_id: "9",
+        amount: "2000000000",
+        status: "PendingVerification",
+        created_at: new Date().toISOString(),
+      },
+    ];
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(mockClearInflightEvm).toHaveBeenCalledWith(
+      "deposit",
+      expect.any(Number),
+      EVM_ADDRESS,
+    );
+    expect(result.current.isPendingVerification).toBe(true);
+    expect(result.current.lockedAmountRaw).toBe(2_000_000_000n);
+  });
+
+  it("a Completed listing ends the guard", () => {
+    ctl.evmDepositInflight = inflight;
+    ctl.requests = [
+      {
+        type: "Deposit",
+        request_id: "9",
+        amount: "2000000000",
+        status: "Completed",
+        created_at: new Date().toISOString(),
+      },
+    ];
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(result.current.isAmountLocked).toBe(false);
+    expect(result.current.requestIsConfirmed).toBe(false);
+  });
+
+  it("polls fast while a known id is unlisted and slow once listed", () => {
+    ctl.evmDepositInflight = inflight;
+    renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    const fn = ctl.refetchIntervalFn!;
+    expect(fn({ requests: [] })).toBe(5_000);
+    expect(
+      fn({
+        requests: [
+          { type: "Deposit", request_id: "9", status: "PendingVerification" },
+        ],
+      }),
+    ).toBe(60_000);
+  });
+
+  it("polls slowly with no known ids", () => {
+    renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(ctl.refetchIntervalFn!({ requests: [] })).toBe(60_000);
+  });
+});
+
+describe("useDepositFlow — requests invalidation (#1658)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+  });
+
+  it("invalidates once when the EVM request mutation succeeds", () => {
+    mockXlmState.kind = "evm";
+    ctl.evmConnected = true;
+    ctl.requests = [];
+    const { rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+    expect(ctl.invalidate).not.toHaveBeenCalled();
+    ctl.evmRequestDeposit = {
+      data: { hash: "0xabc", requestId: "7" },
+      isSuccess: true,
+    };
+    rerender();
+    rerender();
+    expect(ctl.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates once when the Stellar request mutation succeeds", () => {
+    mockXlmState.kind = "stellar";
+    const { rerender } = renderHook(() =>
+      useDepositFlow("deposit", 0n, vi.fn()),
+    );
+    expect(ctl.invalidate).not.toHaveBeenCalled();
+    ctl.stellarRequestDepositSuccess = true;
+    rerender();
+    rerender();
+    expect(ctl.invalidate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useDepositFlow — Stellar min deposit from the contract (#1658)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+    mockXlmState.kind = "stellar";
+    ctl.requests = [];
+  });
+
+  it("follows the hook value for the chip, minDeposit and meetsMin", () => {
+    ctl.stellarMinDeposit = 500n * 10n ** 7n;
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 600n * 10n ** 7n, vi.fn()),
+    );
+    expect(result.current.minDeposit).toBe(500n * 10n ** 7n);
+    expect(result.current.minChipLabel).toContain("500");
+    expect(result.current.meetsMin).toBe(true);
+  });
+
+  it("an amount below the contract minimum does not meet it", () => {
+    ctl.stellarMinDeposit = 500n * 10n ** 7n;
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 400n * 10n ** 7n, vi.fn()),
+    );
+    expect(result.current.meetsMin).toBe(false);
+  });
+
+  it("while undefined: not ready, confirm disabled, chip reads Min and is a no-op", () => {
+    ctl.stellarMinDeposit = undefined;
+    const setAmount = vi.fn();
+    const { result } = renderHook(() =>
+      useDepositFlow("deposit", 5_000n * 10n ** 7n, setAmount),
+    );
+    expect(result.current.minDeposit).toBeUndefined();
+    expect(result.current.minChipLabel).toBe("Min");
+    expect(result.current.isReady).toBe(false);
+    expect(result.current.hasBalance).toBeUndefined();
+    expect(result.current.meetsMin).toBe(false);
+    expect(result.current.step2.disabled).toBe(true);
+    act(() => {
+      result.current.onQuickAmount(0);
+    });
+    expect(setAmount).not.toHaveBeenCalled();
   });
 });

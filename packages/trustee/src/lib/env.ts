@@ -57,6 +57,20 @@ export const ENV = Object.freeze({
   ),
 
   /**
+   * EVM LoanRegistry contract address. Must equal the backend's
+   * `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS`. Empty string means
+   * unconfigured — callers must short-circuit with a "not configured" error.
+   */
+  EVM_LOAN_REGISTRY_ADDRESS: readString("VITE_EVM_LOAN_REGISTRY_ADDRESS", ""),
+
+  /**
+   * EVM Minter contract address. Must equal the backend's
+   * `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`. Empty string means unconfigured —
+   * see `EVM_LOAN_REGISTRY_ADDRESS`.
+   */
+  EVM_MINTER_ADDRESS: readString("VITE_EVM_MINTER_ADDRESS", ""),
+
+  /**
    * Reown Cloud / WalletConnect v2 project id.
    * Defaults to a placeholder; the AppKit modal will construct successfully
    * but will fail to relay to real wallets until a real id is provided.

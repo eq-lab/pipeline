@@ -127,7 +127,7 @@ describe("toUserError — simulation-error shape", () => {
     "drawLoan simulation error: HostError: Error(Contract, #999)",
     "rollover simulation error: some RPC failure",
     "updateMutable simulation error: some RPC failure",
-    "recordPayment simulation error: some RPC failure",
+    "repay simulation error: some RPC failure",
     "closeLoan simulation error: some RPC failure",
   ])("maps %s to the generic could-not-verify copy", (raw) => {
     const result = toUserError(new Error(raw));
@@ -259,6 +259,44 @@ describe("mapWaterfallError (consolidated, D5)", () => {
       "Couldn't preview this payment. Please try again.",
     );
     expect(genericResult?.details).toBe("network 12");
+  });
+
+  it("maps a 422 (incomplete event history) to the re-sync copy with raw details (#1661)", () => {
+    const raw =
+      "loan event history incomplete; re-index required (outstanding senior 100 in the snapshot vs 90 from indexed events)";
+    const result = mapWaterfallError(new ApiError(raw, 422));
+    expect(result?.message).toBe(
+      "Loan data is incomplete — the indexer needs a re-sync. Contact support.",
+    );
+    expect(result?.message).not.toMatch(/amount/i);
+    expect(result?.message).not.toMatch(/\d/);
+    expect(result?.details).toBe(raw);
+    expect(result?.isSpecific).toBe(true);
+  });
+
+  it("maps the Default 400 to the Default copy with raw details (#1661)", () => {
+    const raw =
+      "loan is in Default: a payment may only repay senior principal (500) plus accrued interest headroom (20), and fees, OET and equity must be 0; amount (600) is too large";
+    const result = mapWaterfallError(new ApiError(raw, 400));
+    expect(result?.message).toBe(
+      "This loan is in Default: a payment can only cover senior principal and accrued interest. Enter a smaller amount.",
+    );
+    expect(result?.message).not.toMatch(/\d/);
+    expect(result?.details).toBe(raw);
+    expect(result?.isSpecific).toBe(true);
+  });
+
+  it("keeps other waterfall 400s on the generic amount copy with no details (#1661)", () => {
+    const result = mapWaterfallError(
+      new ApiError(
+        "amount (999) exceeds the loan's outstanding offtaker balance (500)",
+        400,
+      ),
+    );
+    expect(result?.message).toBe(
+      "This amount is too high for this loan. Enter a smaller amount.",
+    );
+    expect(result?.details).toBe("");
   });
 
   it("returns null when there is no error", () => {

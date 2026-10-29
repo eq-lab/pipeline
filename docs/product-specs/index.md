@@ -28,6 +28,8 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
+| [loan-repay-minter.md](./loan-repay-minter.md) | Loan Management | How the Trustee records a repayment: `Minter.repay` signature, roles, `ref_hash`, mint budget, side effects, testnet verification |
+| [loan-repayment-recovery.md](./loan-repayment-recovery.md) | Loan Management | Recovery procedure for a mis-split coupon: Minter reverse then corrected repay, roles, effects, limits |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
 | [book-rate-weighting.md](./book-rate-weighting.md) | Yield Distribution | Outstanding-senior weighting of book rate and tenor across loan book, dashboard and yield series |
 | [yield-apy-semantics.md](./yield-apy-semantics.md) | Yield Distribution | Definitions of `/v1/pnl` avg_apy, `/v1/stats` apy, per-loan minted yield and dashboard cumulative LP yield; amounts-0 / rates-null convention |

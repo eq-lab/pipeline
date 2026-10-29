@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-154.**
+**Next free number: TD-159.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -70,37 +70,41 @@ line, whichever section it lands in.
 - **Impact:** Dependency violations can creep in silently.
 - **Suggested fix:** Evaluate `cargo deny` for dependency auditing; document module pub/priv visibility conventions in ARCHITECTURE.md.
 
-### TD-3: Frontend component library not selected
+### TD-3: Frontend component library not selected [RESOLVED-BY-DECISION 2026-10-28 / #1671]
 
 - **Date:** 2026-04-21
 - **Location:** packages/frontend
 - **Gap:** Component library decision deferred (Shadcn/ui vs Radix UI primitives). package.json is empty of UI dependencies.
 - **Impact:** Frontend sprint cannot begin without this decision.
 - **Suggested fix:** Evaluate and select before first frontend feature implementation sprint.
+- **Resolution (2026-10-28, #1671):** `@pipeline/ui` is the component library in practice (Button, StepRow, Modal primitives, theme tokens); no further selection needed.
 
-### TD-4: MPC vendor not selected
+### TD-4: MPC vendor not selected [RESOLVED-BY-DECISION 2026-10-28 / #1671]
 
 - **Date:** 2026-04-21
 - **Location:** packages/worker, docs/SECURITY.md
 - **Gap:** Fireblocks vs BitGo RFI in progress. Worker cannot implement MPC signing until SDK is chosen.
 - **Impact:** Loan disbursement, LP payout, and USYC rebalancing automation blocked.
 - **Suggested fix:** Complete RFI, select vendor, add SDK dependency to worker Cargo.toml.
+- **Resolution (2026-10-28, #1671):** Superseded by the BitGo/KMS direction tracked in #1318 / #1319; the open security work lives there.
 
-### TD-5: Storybook preview imports theme.css only as a commented TODO
+### TD-5: Storybook preview imports theme.css only as a commented TODO [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-05-12
 - **Location:** packages/ui/.storybook/preview.ts
 - **Gap:** `src/styles/theme.css` does not exist yet; the import line is commented out with a TODO so `yarn storybook` works without the file. Once the theme issue lands, the comment must be enabled.
 - **Impact:** Stories won't pick up design tokens until theme.css is created and the import is uncommented.
 - **Suggested fix:** Enable the import in preview.ts when the Phase-3 theme/token issue lands.
+- **Resolution (2026-10-28, #1671):** `packages/ui/.storybook/preview.ts` imports `../src/styles/theme.css` for real.
 
-### TD-7: packages/frontend/tsconfig.tsbuildinfo not gitignored
+### TD-7: packages/frontend/tsconfig.tsbuildinfo not gitignored [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-05-12
 - **Location:** packages/frontend/tsconfig.tsbuildinfo, .gitignore
 - **Gap:** The `tsconfig.tsbuildinfo` build cache file is not listed in the root `.gitignore` or any package-level `.gitignore`. Git reports it as modified after every TypeScript build.
 - **Impact:** The file can inadvertently be staged/committed, polluting history with binary build artifacts.
 - **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
+- **Resolution (2026-10-28, #1671):** `git check-ignore packages/frontend/tsconfig.tsbuildinfo` matches and the file is not tracked.
 
 ### TD-6: No Foundation/Tokens Storybook story
 
@@ -143,21 +147,23 @@ line, whichever section it lands in.
 - **Impact:** Style drift risk if the design token values change (`#208000`, `rgba(56,55,53,0.18)`, scrim opacity) — two places must be updated. Low severity until a second consumer appears.
 - **Suggested fix:** When a second modal or toggle consumer appears in the codebase, extract `Switch` (role="switch", off/on colour tokens) and `Modal` / `ModalOverlay` (portal + focus trap + scrim + `role="dialog"`) into `@pipeline/ui` and update all consumers.
 
-### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk)
+### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk) [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-06-02
 - **Location:** `packages/frontend/package.json`, `node_modules/@blend-capital/blend-sdk/node_modules/@stellar/stellar-sdk`
 - **Gap:** `@blend-capital/blend-sdk@3.2.2` bundles its own `@stellar/stellar-sdk@14.4.3` in a nested `node_modules`, while the app directly depends on `15.1.0`. Two copies are shipped in the bundle. The Soroban RPC lifecycle in `blendPool.ts` uses the direct `15.1.0` import; blend-sdk uses its own `14.4.3` internally. There is no version conflict today — both resolve correctly via Yarn's hoisting — but bundle size increases and type mismatches are possible if the two diverge further.
 - **Impact:** Mild bundle size increase from dual stellar-sdk copies. Low risk in practice since both packages use the SDK only internally and types are not shared across the boundary.
 - **Suggested fix:** When blend-sdk releases a version that declares `@stellar/stellar-sdk@^15` as a peer/dependency range, upgrade blend-sdk and verify the direct install deduplications. Track with `yarn why @stellar/stellar-sdk` to confirm dedup. File a follow-up issue if that version ships.
+- **Resolution (2026-10-28, #1671):** Only `@stellar/stellar-sdk@15.1.0` is installed for the app and `@blend-capital/blend-sdk` has no nested copy (the remaining nested `14.2.0` copies belong to `@trezor/*`).
 
-### TD-12: `yarn workspace @pipeline/frontend lint` fails on `main` (Prettier drift in 11 files)
+### TD-12: `yarn workspace @pipeline/frontend lint` fails on `main` (Prettier drift in 11 files) [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-06-04
 - **Location:** `packages/frontend/src` — 11 files including `StartHereCard.tsx`, `TopBar.test.tsx`, `WelcomeHeader.tsx`, `routes/index.tsx`, `routes/-index.test.tsx`
 - **Gap:** The frontend lint script's Prettier check exits 1 on a clean `main` checkout — formatting drifted without the gate catching it (CI does not currently fail on it).
 - **Impact:** The local lint gate is permanently red, so agents cannot use `lint` exit status as a pass/fail signal for their own changes; per-file checks are needed instead. New drift accumulates silently.
 - **Suggested fix:** One-shot `prettier --write` pass over the workspace in a dedicated chore PR, then make CI run the same lint script so drift fails fast.
+- **Resolution (2026-10-28, #1671):** `yarn workspace @pipeline/frontend lint` is clean on `main` ("All matched files use Prettier code style!").
 
 ### TD-14: Replace `STELLAR_VERIFIER_SECRET` with KMS/BitGo provisioning
 
@@ -208,7 +214,7 @@ line, whichever section it lands in.
 - **Impact:** The `block_timestamp` column for Stellar rows in `share_prices` is wall-clock sample time rather than ledger close-time. The skew is well below the API's hour/day bucketing granularity — no user-visible impact at current polling cadences. Exact timestamps matter if sub-minute granularity is ever needed.
 - **Suggested fix:** Fetch the canonical ledger close-time via `getLedgerEntries(LedgerHeader)` using the `latestLedger` sequence returned by simulate. This adds one extra RPC round-trip per poll tick. Implement when downstream consumers require exact-to-the-ledger timestamps.
 
-### TD-19: StepRow still uses raw className override instead of Button size="compact"
+### TD-19: StepRow still uses raw className override instead of Button size="compact" [RESOLVED 2026-10-26 / #1331]
 
 - **Date:** 2026-06-18
 - **Location:** `packages/ui/src/components/StepRow/StepRow.tsx` (~lines 170–178)
@@ -219,6 +225,7 @@ line, whichever section it lands in.
   sites of the same component.
 - **Suggested fix:** Replace `className="!h-8 ..."` in `StepRow.tsx` with `size="compact"` on
   the `Button` prop; adjust any test assertions that relied on the className value directly.
+- **Resolution (2026-10-26, #1331):** `StepRow` now renders `Button variant="primary-dark" size="compact" className="w-22"`; compact supplies the 32px height.
 
 ### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal` [RESOLVED 2026-10-19 / #1579]
 
@@ -482,7 +489,7 @@ line, whichever section it lands in.
   reliably enough that a server-computed percentage field can be added to the response, wire the
   bar's segment widths to that field (still not computed client-side).
 
-### TD-40: Trustee Overview drift text + provenance chips are static mock strings
+### TD-40: Trustee Overview drift text + provenance chips are static mock strings [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-07-09
 - **Location:** `packages/trustee/src/components/CapitalAllocationCard.tsx`
@@ -498,6 +505,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Wire to real provenance/drift data once the backend serves it — e.g. a
   drift percentage field plus per-source last-updated timestamps/status — and replace the static
   strings and `PROVENANCE_CHIPS` config with data-driven rendering.
+- **Resolution (2026-10-28, #1671):** The static drift header and provenance chips are gone from `CapitalAllocationCard.tsx`; `-CapitalAllocationCard.test.tsx` asserts they are not rendered.
 
 ### TD-41: Trustee Capital-Wallet balance is a client-side interim source + client-side total sum + client-side legend percentages + client-side proportional bar
 
@@ -724,7 +732,7 @@ line, whichever section it lands in.
   loan_offtake_terms FROM <api role>` (or similar), so the guarantee holds even if
   application code regresses.
 
-### TD-46: Trustee `formatFractionPct` (decimal-fraction → 1dp percent) is duplicated across two route presenters
+### TD-46: Trustee `formatFractionPct` (decimal-fraction → 1dp percent) is duplicated across two route presenters [RESOLVED 2026-10-28 / #1339]
 
 - **Date:** 2026-07-20
 - **Location:** `packages/trustee/src/routes/-useLoansTable.ts` (private `formatFractionPct`,
@@ -741,8 +749,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Export `formatFractionPct` from `-useLoansTable.ts` (or lift it into
   `src/utils/` alongside `formatUsd.ts`'s money formatters, per `docs/FRONTEND.md` rule 3) and
   have both presenters import the shared copy.
+- **Resolution:** Lifted into `packages/trustee/src/utils/formatFractionPct.ts`; both presenters import it (#1339).
 
-### TD-47: `packages/frontend` has pre-existing Prettier formatting drift blocking the pre-commit hook
+### TD-47: `packages/frontend` has pre-existing Prettier formatting drift blocking the pre-commit hook [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-07-28 (#947)
 - **Location:** At minimum `src/api/README.md`, `src/api/useStatsYield.ts`,
@@ -763,6 +772,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Run `yarn --cwd packages/frontend format` (Prettier `--write`) across the
   9 files above in a dedicated formatting-only commit/PR, then confirm `yarn --cwd
   packages/frontend lint` passes clean so the hook stops blocking unrelated work.
+- **Resolution (2026-10-28, #1671):** Same as TD-12: `yarn workspace @pipeline/frontend lint` is clean on `main`.
 
 ### TD-48: Penalty `escalating` flag is stored but never applied
 
@@ -859,7 +869,7 @@ line, whichever section it lands in.
   `packages/trustee/src/utils/userError.ts` import the shared half, keeping only their
   status-table/copy differences local.
 
-### TD-53: Frontend Prettier drift blocks the pre-commit hook
+### TD-53: Frontend Prettier drift blocks the pre-commit hook [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-08-10
 - **Location:** `packages/frontend` (`.husky/pre-commit` step 3c), 7+ files incl.
@@ -878,6 +888,7 @@ line, whichever section it lands in.
   reformat the drifted files in a dedicated frontend chore PR, then add a
   `format:check` CI step so drift can't silently return. Alternatively scope the hook's
   Prettier check to staged files (lint-staged) so unrelated debt doesn't block commits.
+- **Resolution (2026-10-28, #1671):** Same as TD-12: `yarn workspace @pipeline/frontend lint` is clean on `main`.
 
 ### TD-54: No lint guard against spec-style comments creeping back into frontend source [RESOLVED 2026-10-20 / #1355]
 
@@ -982,7 +993,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Refactor `ConnectWalletModal` to render through `AuthModalShell` once the
   KYB modals (#1248–#1253) have shipped and stabilized, then delete the duplicated block.
 
-### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative`
+### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative` [RESOLVED 2026-10-28 / #1677]
 
 - **Date:** 2026-09-17
 - **Location:** `packages/ui/src/styles/theme.css`.
@@ -998,6 +1009,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Designer reconciliation — either the KYB frames should be restyled onto
   the existing `--color-pipeline-negative`, or the existing negative/danger tokens should be
   updated to `#b20000` repo-wide, in a dedicated design-system pass.
+- **Resolution (2026-10-28, #1677):** Kept both tiers as intentional Figma `content/*` vs `content-test/*` semantics and documented the rule in `docs/FRONTEND.md`; no visual change.
 
 ### TD-60: `OtpModal`'s verification is a hardcoded mock (`MOCK_VALID_CODE`) [RESOLVED 2026-10-19 / #1579]
 
@@ -1066,7 +1078,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a PDF-page-thumbnail renderer (e.g. `pdf.js`) if pixel-fidelity for this
   state becomes a priority; until then this is an accepted, documented subset.
 
-### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable
+### TD-64: `OwnersModal` drop-zone subtitle binds to a misspelled, non-namespaced Figma variable [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-22):** Resolved by deletion. `FileDropZone.tsx` was deleted by #1278 — neither
   it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
@@ -1082,8 +1094,9 @@ line, whichever section it lands in.
   reconciliation pass should rebind the Figma variable, not the code.
 - **Suggested fix:** Ask design to rebind `text-tertairy` to `content-test/secondary` in the
   Figma library.
+- **Resolution (2026-10-28, #1671):** Already resolved by deletion (#1278); `FileDropZone.tsx` no longer exists and nothing references it.
 
-### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow
+### TD-65: `OwnersModal` banner hint tooltip has no specified trigger, offset, or arrow [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-22):** Resolved by deletion. `KybInfoBanner.tsx` was deleted by #1278 — neither
   it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
@@ -1099,8 +1112,9 @@ line, whichever section it lands in.
   Escape in the capture phase and would close the modal instead of just the tooltip).
 - **Suggested fix:** A designer pass should attach the tooltip node to the Owners frame directly
   and specify trigger/offset/arrow explicitly.
+- **Resolution (2026-10-28, #1671):** Already resolved by deletion (#1278); `KybInfoBanner.tsx` no longer exists and nothing references it.
 
-### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement
+### TD-66: `OwnersModal` Submit threshold (≥1 file) has no designed requirement [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-21):** Resolved by retirement. `OwnersModal` and `useOwnersModal.ts` — the
   file this entry is about — were deleted (issue #1279); the Owners step, and its Submit
@@ -1116,8 +1130,9 @@ line, whichever section it lands in.
   actually needs.
 - **Suggested fix:** A designer/PM pass should specify the real completion requirement for this
   step, likely tied to a future owner-count or owner-list input.
+- **Resolution (2026-10-28, #1671):** Already resolved by retirement (#1279); `OwnersModal` and `useOwnersModal.ts` no longer exist.
 
-### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment
+### TD-67: `OwnersModal` drop zone's drag-over and rejection states have no Figma treatment [RESOLVED 2026-10-28 / #1671]
 
 - **Status (2026-09-22):** Resolved by deletion. `FileDropZone.tsx` was deleted by #1278 — neither
   it nor #1284's Account page ever gained a consumer, so this gap no longer has a location.
@@ -1132,8 +1147,9 @@ line, whichever section it lands in.
   copy, an icon, or a different layout.
 - **Suggested fix:** A designer pass specifies real drag-over and rejection treatments; the QA
   Figma comparison should not file this as a bug against the current stand-ins.
+- **Resolution (2026-10-28, #1671):** Already resolved by deletion (#1278); `FileDropZone.tsx` no longer exists and nothing references it.
 
-### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive`
+### TD-68: `--color-pipeline-positive-strong` diverges from `--color-pipeline-positive` [RESOLVED 2026-10-28 / #1677]
 
 - **Date:** 2026-09-18
 - **Location:** `packages/ui/src/styles/theme.css`.
@@ -1147,6 +1163,7 @@ line, whichever section it lands in.
 - **Suggested fix:** A designer reconciliation pass should confirm whether the legacy
   `--color-pipeline-positive` should be retired in favor of the `-strong` value, or whether both
   are intentionally distinct semantics.
+- **Resolution (2026-10-28, #1677):** Both are intentional (`content/*` vs `content-test/*`); `--color-pipeline-positive-strong` now aliases `--color-pipeline-positive-primary` and the rule is documented in `docs/FRONTEND.md`.
 
 ### TD-69: The KYB epic's "review banner" deliverable has no node in the source-of-truth Figma
 
@@ -1321,7 +1338,7 @@ line, whichever section it lands in.
 - **Suggested fix:** #1282 adopts `useActiveWalletAccount` when it rewrites the header.
 - **Resolution (2026-10-20, #1575):** Obsolete — the #1458/#1556 header rework replaced `TopBar`'s inline derivation with `useWalletPresence().isAnyConnected`; `TopBar` no longer derives an active-wallet account at all, so there is nothing left to deduplicate.
 
-### TD-102: Wallet-namespace labels diverge three ways across the app
+### TD-102: Wallet-namespace labels diverge three ways across the app [RESOLVED 2026-10-28 / #1675]
 
 - **Date:** 2026-09-21
 - **Location:** `ConnectWalletModal` ("EVM"/"Soroban"), `AccountDropdown` ("EVM"/"Stellar"),
@@ -1331,6 +1348,7 @@ line, whichever section it lands in.
 - **Impact:** Cosmetic inconsistency across surfaces.
 - **Suggested fix:** One designer decision on canonical namespace labels, applied everywhere at
   once rather than guessed per-surface.
+- **Resolution (2026-10-28, #1675):** `namespaceLabel()` in `@pipeline/wallet-connect` is the single source ("Ethereum"/"Stellar"); both connect modals and `AccountWalletCard` use it.
 
 ### TD-103: Account-page wallet row ships a generic glyph, not the frame's MetaMask branding
 
@@ -1412,7 +1430,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Make the 403 copy caller-suppliable (e.g. a second parameter alongside
   `fallback`), or move it out of the generic status table into a per-page map.
 
-### TD-109: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways
+### TD-109: `navigator.clipboard` + 1500 ms "Copied" reset duplicated six ways [RESOLVED 2026-10-28 / #1673]
 
 - **Date:** 2026-09-22
 - **Location:** `packages/ui/src/components/ErrorDetailsDialog/useErrorDetailsDialog.ts`,
@@ -1429,6 +1447,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Extract a shared `useCopyToClipboard(text: string)` hook, most naturally in
   `@pipeline/ui` since three of the six call sites already live in `packages/frontend` and one in
   `packages/ui`.
+- **Resolution (2026-10-28, #1673):** `useCopyToClipboard` now lives in `@pipeline/ui` (with an `execCommand` fallback, #1317) and every site uses it.
 
 ### TD-110: No backend source for LP trust-account wire details
 
@@ -2027,7 +2046,7 @@ line, whichever section it lands in.
 - **Impact:** No ground truth to pixel-verify the declined Account banner against; a future designer pass could redesign it as a dedicated frame and invalidate the stand-in.
 - **Suggested fix:** Designer ask — request a dedicated declined-state Account frame.
 
-### TD-138: The home grid derives connection from the active wallet view; the header derives it from any-wallet presence
+### TD-138: The home grid derives connection from the active wallet view; the header derives it from any-wallet presence [RESOLVED 2026-10-28 / #1671]
 
 - **Date:** 2026-10-12
 - **Location:** `packages/frontend/src/routes/index.tsx` (`isConnected` from `useWalletView().kind`) vs `TopBar`/`MobileNavMenu` (`useWalletPresence().isAnyConnected`, #1458) — Issue #1460.
@@ -2036,6 +2055,7 @@ line, whichever section it lands in.
 - **Suggested fix:** Either derive the header's icon from the active view too, or derive the home grid's connection from any-wallet presence and resolve balances/activity across both namespaces. Both are product decisions, not mechanical fixes.
 - **Narrowed by #1475 (2026-10-13):** entering `/account` now persists the single connected namespace as the active view, so the grid agrees with the header from then on, and the home heading keys on the header condition (`isAuthenticated || isAnyConnected`). Remaining gap: a visitor who connects one namespace and never opens `/account` still sees the zero-state grid under the account icon.
 - **Resolved by #1512 (2026-10-14):** `useWalletView().kind` is derived from the connected wallet, so the grid, the header and `/account` always agree.
+- **Resolution (2026-10-28, #1671):** `useWalletView().kind` in `packages/frontend/src/wallet/WalletViewContext.tsx` is derived from the connected wallet (#1512), so the grid, header and `/account` agree.
 
 ### TD-139: Completing Add email from the wallet-only state (#1460) lands the visitor in `"legacy"`, not a designed state
 
@@ -2082,14 +2102,14 @@ line, whichever section it lands in.
 - **Impact:** The field carries no signal for minter-era loans and its inputs are not like for like.
 - **Suggested fix:** Revisit the field's semantics and likely retire it (and the trustee close gate that reads it) in a later issue.
 
-### TD-149: Portfolio still reads loan snapshots unscoped by LoanRegistry address [PARTIALLY RESOLVED 2026-10-21 / #1595]
+### TD-149: Portfolio read loan snapshots unscoped by LoanRegistry address [RESOLVED 2026-10-26 / #1538]
 
 - **Date:** 2026-10-15
-- **Location:** `packages/shared/src/contract_logs_repo.rs` (`list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`), `packages/api/src/routes/portfolio.rs` — Issue #1526.
+- **Location:** `packages/shared/src/contract_logs_repo.rs` (the former unscoped `list_latest_loan_snapshots_for_chain`, `list_loan_lifecycle_events`, `get_earliest_origination_date`, all deleted in #1538), `packages/api/src/routes/portfolio.rs` — Issue #1526.
 - **Gap:** LoanBook, financial position, capital allocation (#1586) and the dashboard (#1595) use the registry-scoped repo methods, while `GET /v1/stats/yield` in `portfolio.rs` keeps the chain-only variants, so each query pair is duplicated.
 - **Impact:** After a LoanRegistry redeploy on the same chain, portfolio yield can mix the old and new registry's loan ids, and the duplicated repo methods must be kept in step.
 - **Suggested fix:** #1538 migrates the portfolio to the scoped methods, adds the scoped `get_earliest_origination_date`, and deletes the unscoped duplicates.
-- **Status:** financial position and capital allocation migrated in #1586, the dashboard in #1595. Portfolio (`/v1/stats/yield`) is still open under #1538.
+- **Status:** resolved. Financial position and capital allocation migrated in #1586, the dashboard in #1595, `/v1/stats/yield` in #1538 (scoped readers added, unscoped duplicates deleted).
 
 ### TD-150: The submission link is not LoanRegistry-scoped
 
@@ -2113,13 +2133,63 @@ line, whichever section it lands in.
 - **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
 - **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
-- **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land.
+- **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
+- **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
 
-### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain
+### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
 
 - **Date:** 2026-10-22
 - **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar `getSacBalance`), `packages/trustee/src/api/useRampEvents.ts`, `useRampAddresses.ts`, `useReviewRampEvent.ts`, `useCapitalAllocation.ts` (`chain_id=ENV.STELLAR_CHAIN_ID`) — Issue #1600.
 - **Gap:** Product rule (2026-10-22): a per-network Trustee page follows the chain the trustee signed in with (`useSessionState().chainId`, `auth/sessionStore.ts`), and only cross-network pages aggregate every chain. #1600 applied it to the Withdrawal Queue tab; the rest of Cash Management still reads Stellar unconditionally, so an EVM session sees a Hoodi withdrawal queue next to a Stellar custody balance and Stellar ramp events.
 - **Impact:** Inconsistent page for an EVM session until EVM cash management exists (the EVM arms of the custody read and the ramp endpoints are not built — see TD-151/TD-152 for the same shape on loans).
 - **Suggested fix:** Thread `useSessionState().chainId` through the Cash Management hooks once the EVM custody read and ramp endpoints exist; until then, label those sections with their chain the way the Withdrawal Queue tab does.
+- **Resolved by #1669:** `useRampEvents` and `useRampAddresses` follow `useSessionState().chainId` (Stellar only as the no-session fallback), `RampEvent` carries `chain_id`, review takes the chain from the event (no query string), and the ramp section shows a chain chip plus sub-line. The SwapDialog custody balance is gated to the Stellar session and shows `—` otherwise; the missing EVM custody read is TD-156.
 
+### TD-154: `useStakeFlow` step 1 reads the aggregated `useEvmToken().error`, so read failures paint the approve row [RESOLVED 2026-10-28 / #1672]
+
+- **Date:** 2026-10-26
+- **Location:** `packages/frontend/src/wallet/useStakeFlow.ts` (EVM step 1 error) — found while fixing #1658.
+- **Gap:** The deposit/withdraw flow now derives step-1 `"error"` from `useEvmToken().approveError` (approval errors only). The stake flow still uses the aggregated `error`, which also carries balance and metadata read failures.
+- **Impact:** A failed `balanceOf` / `decimals` read can show an "Approve" error on the stake step row.
+- **Suggested fix:** Switch `useStakeFlow` to `approveError`, with a test mirroring the `useDepositFlow` one.
+- **Resolution:** `useStakeFlow` derives EVM step-1 `"error"` from `useEvmToken().approveError`; `useStakeFlow.test.tsx` covers the approve-error cases (#1672).
+
+### TD-155: The LP detects an unserved chain by probing `/v1/pnl` with a synthetic wallet [RESOLVED 2026-10-27 / #1605]
+
+- **Date:** 2026-10-22
+- **Location:** `packages/frontend/src/api/useChainServed.ts` — Issue #1605 (PR #1619).
+- **Gap:** The API exposes no configured-chains list, so the LP learns whether the active EVM chain is served by issuing `GET /v1/pnl?wallet=0x000…0&chain_id=<id>` once per chain and reading a `400 unknown chain_id`. It works because `RequiredChain` validates `chain_id` before the wallet is parsed, but it is a workaround: a synthetic wallet on an analytics endpoint, one extra request per chain per session, and a coupling to that handler's argument order (if the wallet were parsed first, the probe would misreport an unserved chain as served — which the hook treats as the safe default, so the failure mode is "no notice", never a false notice).
+- **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
+- **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.
+
+### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session
+
+- **Date:** 2026-10-27
+- **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar SAC `getSacBalance` only), `packages/trustee/src/routes/-cash-management.ts` (`usdcBalanceValue` gated to the Stellar session) — found while fixing #1669.
+- **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
+- **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
+- **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.
+
+### TD-157: Trustee has no on-chain `Minter.disburse`, so trustee-drawn Stellar loans stay `Approved` and `repay` reverts `WrongCurrentStatus`
+
+- **Date:** 2026-10-27
+- **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` and the off-ramp "Disbursement complete" action (DB-only, `docs/frontend/trustee-flows.md`); `packages/wallet-connect/src/stellar/contracts/minter.ts` (no `disburse` binding) — found while planning #1712.
+- **Gap:** `registry.disburse` moves a loan `Approved → Performing` and is reached only through `Minter.disburse` (`only_owner`, so through the AccessManager role `TRUSTEE`). The trustee app records "Disbursement complete" in the database only and never makes that call.
+- **Impact:** A loan drawn from the trustee app stays `Approved` on chain. `Minter.repay` (the Record Coupon / Record Repayment path since #1712) then reverts with registry `#3 WrongCurrentStatus` until someone disburses out of band. The testnet registry currently holds no loans, so the end-to-end path has not been simulated successfully.
+- **Suggested fix:** A wallet-connect `Minter.disburse` binding through the executor, signed by the trustee wallet, called from the "Disbursement complete" action with the usual simulate-then-sign ordering and an idempotency guard.
+
+### TD-158: `@tanstack/react-router` 1.168.x lets a thrown `undefined` white-screen the app; upgrade to >= 1.170
+
+- **Date:** 2026-10-28
+- **Location:** `packages/trustee` and `packages/frontend` (`@tanstack/react-router`, `@tanstack/router-core`, `@tanstack/router-plugin`).
+- **Gap:** 1.168.x `CatchBoundary` renders its error component only `if (error)` and `Match` throws the shared `_nonReactive` `loadPromise`, which overlapping loads clear to `undefined` (the #1731 white screen). 1.170.x stores `[error]` in the boundary and no longer throws these promises. #1731 mitigates the trustee with `AppErrorBoundary`, and #1749 removed the trustee's auth navigations altogether; the LP frontend has the same exposure and no app boundary.
+- **Impact:** A falsy throw from the router blanks the page until a refresh; in the LP app nothing reports it.
+- **Suggested fix:** Still worthwhile, but no longer tied to auth navigation (the trustee no longer navigates on auth changes; #1749). Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.
+
+### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay`
+
+- **Date:** 2026-10-28
+- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
+- **Gap:** The repayment recovery dialog (#1711) schedules and executes the reversal through `AM.schedule` / `AM.execute` but has no `AM.cancel`. Cancelling is admin or guardian only for other callers.
+- **Impact:** A wrongly scheduled reversal can only be left to expire (7 days after its ready time) or cancelled outside the app.
+- **Suggested fix:** Add a `cancel` mode to the AccessManager relay and a "Cancel scheduled reversal" action gated on the wallet's guardian or admin role, while the delayed path is still in use (it disappears once #1756 makes `reverse_repay` immediate).

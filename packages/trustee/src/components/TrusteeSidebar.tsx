@@ -7,7 +7,7 @@
  * docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links).
  */
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Logo, NetworkSwitchDialog } from "@pipeline/ui";
 import { TRUSTEE_NAV_ITEMS, type TrusteeNavItem } from "@/lib/nav";
 import { truncateAddress } from "@/lib/truncateAddress";
@@ -241,6 +241,7 @@ function AccountMenu({
 
 function AccountChip() {
   const { address, signOut } = useTrusteeSession();
+  const navigate = useNavigate();
   const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
 
   if (!address) return null;
@@ -297,7 +298,13 @@ function AccountChip() {
         </span>
       </div>
 
-      <AccountMenu otherNetworks={otherNetworks} onSignOut={signOut} />
+      <AccountMenu
+        otherNetworks={otherNetworks}
+        onSignOut={() => {
+          void navigate({ to: "/", replace: true });
+          signOut();
+        }}
+      />
     </div>
   );
 }

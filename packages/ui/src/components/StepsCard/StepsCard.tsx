@@ -74,7 +74,8 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
                   data-testid="steps-card-chain-notice-action"
                   disabled={notice.loading}
                   onClick={notice.onAction}
-                  className="!h-8 w-22 min-w-0 text-[length:var(--text-pipeline-body)]"
+                  size="compact"
+                  className="w-22"
                 >
                   {notice.actionLabel}
                 </Button>

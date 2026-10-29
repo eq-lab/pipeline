@@ -1,9 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { CompanyDocsModal } from "./CompanyDocsModal";
 import { ApiError } from "@/api";
 import type { LpResponse } from "@/api";
 import { saveSession, clearSession } from "@/auth/session";
+import {
+  CountriesWrapper,
+  settleCountryRetries,
+  stubCountriesFetch,
+} from "@/test-support/countries";
 
 const mockUpsert = vi.fn();
 const mockUpload = vi.fn();
@@ -34,6 +40,12 @@ beforeEach(() => {
   mockDelete.mockReset();
   mockGet.mockReset();
   clearSession();
+  stubCountriesFetch();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 function renderModal(
@@ -46,6 +58,7 @@ function renderModal(
       onDismiss={onDismiss}
       {...props}
     />,
+    { wrapper: CountriesWrapper },
   );
   if (props.lp === undefined) {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
@@ -56,6 +69,25 @@ function renderModal(
     onDismiss,
     ...rendered,
   };
+}
+
+async function countryBox(): Promise<HTMLInputElement> {
+  const box = (await screen.findByRole("combobox", {
+    name: "Country",
+  })) as HTMLInputElement;
+  await waitFor(() => expect(box).toBeEnabled());
+  return box;
+}
+
+async function pickCountry(
+  user: ReturnType<typeof userEvent.setup>,
+  query: string,
+  option: string,
+) {
+  const box = await countryBox();
+  await user.clear(box);
+  await user.type(box, query);
+  await user.click(screen.getByRole("option", { name: option }));
 }
 
 function makeFile(name: string, type: string, sizeBytes = 1024): File {
@@ -308,7 +340,11 @@ describe("CompanyDocsModal — production requests", () => {
   });
   it("saves changed profile fields and submits existing documents without uploading files", async () => {
     const existing = lp([makeDocument(5)]);
-    const saved = { ...existing, legal_name: "Changed Name", country: "US" };
+    const saved = {
+      ...existing,
+      legal_name: "Changed Name",
+      country: "United States",
+    };
     mockUpsert.mockResolvedValueOnce(saved);
     renderModal({ lp: existing });
     expect(
@@ -317,9 +353,7 @@ describe("CompanyDocsModal — production requests", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Changed Name" },
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Country" }), {
-      target: { value: "US" },
-    });
+    await pickCountry(userEvent.setup(), "us", "United States");
     expect(
       screen.getByRole("button", { name: "Submit for review" }),
     ).toBeEnabled();
@@ -327,7 +361,7 @@ describe("CompanyDocsModal — production requests", () => {
     await waitFor(() =>
       expect(mockUpsert).toHaveBeenCalledWith({
         legal_name: "Changed Name",
-        country: "US",
+        country: "United States",
         contact_email: "existing@example.com",
       }),
     );
@@ -348,7 +382,7 @@ describe("CompanyDocsModal — production requests", () => {
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
       "Existing Name",
     );
-    expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("NL");
+    expect(await countryBox()).toHaveValue("NL");
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Changed" },
     });
@@ -445,9 +479,7 @@ describe("CompanyDocsModal — production requests", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Draft Name" },
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Country" }), {
-      target: { value: "FR" },
-    });
+    await pickCountry(userEvent.setup(), "fra", "France");
     fireEvent.click(screen.getByRole("button", { name: "Remove saved.pdf" }));
     await waitFor(() => expect(onLpChange).toHaveBeenCalledOnce());
     rerender(
@@ -461,7 +493,9 @@ describe("CompanyDocsModal — production requests", () => {
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
       "Draft Name",
     );
-    expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("FR");
+    expect(screen.getByRole("combobox", { name: "Country" })).toHaveValue(
+      "France",
+    );
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
     rerender(
       <CompanyDocsModal
@@ -474,7 +508,113 @@ describe("CompanyDocsModal — production requests", () => {
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(
       "Other LP",
     );
-    expect(screen.getByRole("textbox", { name: "Country" })).toHaveValue("GB");
+    expect(screen.getByRole("combobox", { name: "Country" })).toHaveValue("GB");
+  });
+
+  it("sends only the plain name for a picked country, never a code or flag URL", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce({ ...existing, country: "Peru" });
+    renderModal({ lp: existing });
+    const user = userEvent.setup();
+    const box = await countryBox();
+    await user.clear(box);
+    await user.type(box, "per");
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(box).toHaveValue("Peru");
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalledOnce());
+    const payload = mockUpsert.mock.calls[0]![0];
+    expect(payload.country).toBe("Peru");
+    const json = JSON.stringify(payload);
+    expect(json).not.toContain("flagcdn.com");
+    expect(json).not.toMatch(/"PE"|"pe"/);
+  });
+
+  it("keeps the previous country when free text is typed and abandoned", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce(existing);
+    renderModal({ lp: existing });
+    const user = userEvent.setup();
+    const box = await countryBox();
+    await user.clear(box);
+    await user.type(box, "Atlantis");
+    await user.tab();
+    expect(box).toHaveValue("NL");
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() =>
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ country: "NL" }),
+      ),
+    );
+  });
+
+  it("offers an off-list saved value as 'as saved' and re-picks it after another country", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce(existing);
+    renderModal({ lp: existing });
+    const user = userEvent.setup();
+    const box = await countryBox();
+    expect(box).toHaveValue("NL");
+    await user.click(box);
+    expect(
+      screen.getByRole("option", { name: "NL (as saved)" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "France" }));
+    expect(box).toHaveValue("France");
+    await user.click(box);
+    await user.click(screen.getByRole("option", { name: "NL (as saved)" }));
+    expect(box).toHaveValue("NL");
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() =>
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ country: "NL" }),
+      ),
+    );
+  });
+
+  it("sends country null after the Clear country button", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce({ ...existing, country: null });
+    renderModal({ lp: existing });
+    await countryBox();
+    fireEvent.click(screen.getByRole("button", { name: "Clear country" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() =>
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ country: null }),
+      ),
+    );
+  });
+
+  it("falls back to a free-text field holding the stored value when the list cannot load", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stubCountriesFetch({ fail: true });
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce(existing);
+    renderModal({ lp: existing });
+    await settleCountryRetries();
+    const field = await screen.findByRole("textbox", { name: "Country" });
+    expect(field).toHaveValue("NL");
+    expect(
+      screen.getByText(
+        "Couldn't load the country list. Type your country instead.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() =>
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ country: "NL" }),
+      ),
+    );
   });
 
   it("deletes a persisted file by id after success and protects Verified files", async () => {

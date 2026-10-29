@@ -86,6 +86,21 @@ vi.mock("@/api/useUpdateLifecycle", () => ({
   useUpdateLifecycle: () => mockUpdateLifecycle,
 }));
 
+const { mockRecoveryCard } = vi.hoisted(() => ({
+  mockRecoveryCard: {
+    state: "hidden" as string,
+    onchainStatus: "Performing" as string | null,
+    blockedReason: null as string | null,
+  },
+}));
+vi.mock("./-useRepaymentRecoveryDialog", () => ({
+  useRecoveryCard: () => mockRecoveryCard,
+}));
+vi.mock("./-RepaymentRecoveryDialog", () => ({
+  RepaymentRecoveryDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="recovery-dialog-stub" /> : null,
+}));
+
 import { Route } from "./loans.$id";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
@@ -111,6 +126,7 @@ function makeResult(
     errorMessage: null,
     errorDetails: null,
     variant: "performing",
+    lifecycleStatus: "Performing",
     ccrTrend: null,
     rollover: null,
     maturityDate: "30 Jun 2026",
@@ -877,6 +893,76 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
       metadataUri: "ipfs://assay",
     });
   });
+
+  it.each([
+    ["matured", "Matured"],
+    ["disbursing", "Disbursing"],
+  ] as const)(
+    "preselects WatchList on a %s loan that is WatchList on chain (#1621)",
+    (variant, chip) => {
+      mockUseLoanDetail.mockReturnValue(
+        makeResult({
+          variant,
+          lifecycleStatus: "WatchList",
+          hero: { ...makeResult().hero, status: { label: chip, band: "info" } },
+        }),
+      );
+      renderRoute();
+      fireEvent.click(
+        screen.getByTestId("loan-detail-action-Update lifecycle"),
+      );
+      expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
+        "WatchList",
+      );
+    },
+  );
+
+  it("submits WatchList when only CCR and location are filled on a Matured WatchList loan (#1621)", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        variant: "matured",
+        lifecycleStatus: "WatchList",
+        hero: {
+          ...makeResult().hero,
+          status: { label: "Matured", band: "attention" },
+        },
+      }),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
+      target: { value: "125" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
+      target: { value: "MV Andes" },
+    });
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "WatchList" }),
+    );
+  });
+
+  it("preselects nothing and blocks Confirm until a status is chosen when the on-chain status is unknown (#1621)", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult({ lifecycleStatus: null }));
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue("");
+    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
+      target: { value: "125" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
+      target: { value: "MV Andes" },
+    });
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
+      target: { value: "Performing" },
+    });
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "Performing" }),
+    );
+  });
 });
 
 describe("Loan detail route — Record coupon (#882)", () => {
@@ -929,6 +1015,63 @@ describe("Loan detail route — Escalate to Risk Council (#782)", () => {
     expect(
       screen.queryByTestId("update-lifecycle-dialog"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — Repayment recovery card (#1711)", () => {
+  beforeEach(() => {
+    mockRecoveryCard.state = "hidden";
+    mockRecoveryCard.blockedReason = null;
+  });
+
+  it("is hidden for a healthy loan", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-repayment-recovery"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows for an eligible loan and opens the dialog", () => {
+    mockRecoveryCard.state = "eligible";
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(screen.getByText("Repayment recovery")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("recovery-dialog-stub"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-open-recovery"));
+    expect(screen.getByTestId("recovery-dialog-stub")).toBeInTheDocument();
+  });
+
+  it("shows in the awaiting-corrected-repayment state", () => {
+    mockRecoveryCard.state = "awaiting-corrected-repayment";
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-repayment-recovery"),
+    ).toHaveAttribute("data-state", "awaiting-corrected-repayment");
+    expect(screen.getByTestId("loan-detail-open-recovery")).toBeEnabled();
+  });
+
+  it("is disabled with the Stellar-only reason on an EVM loan", () => {
+    mockRecoveryCard.state = "blocked-evm";
+    mockRecoveryCard.blockedReason = "On-chain actions run on Stellar only.";
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-open-recovery")).toBeDisabled();
+    expect(
+      screen.getByTestId("loan-detail-repayment-recovery-blocked"),
+    ).toHaveTextContent("Stellar only");
+  });
+
+  it("renders in the watchlist layout too", () => {
+    mockRecoveryCard.state = "eligible";
+    mockUseLoanDetail.mockReturnValue(makeResult({ variant: "watchlist" }));
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-repayment-recovery"),
+    ).toBeInTheDocument();
   });
 });
 

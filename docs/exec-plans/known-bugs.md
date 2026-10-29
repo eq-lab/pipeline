@@ -17,6 +17,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-29: The Stellar yield-mint relayer phase signs `mint_yield` against a Minter that has no such function
+- **Date:** 2026-10-27
+- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (lines ~110-160), `yield_mint_outbox_repo.rs` (~150-180). Found while planning #1712.
+- **Symptom:** The phase simulates `mint_yield` on `CHAIN_99000001_RELAYER_STELLAR_YIELD_MINTER_ID`, which is the same Minter (`CAPL5WN3…AIFK` on testnet) whose deployed spec has no `mint_yield`. It discovers work from `PaymentRecorded`, so once repayments land through `Minter.repay` (#1712) each one creates an outbox row whose simulation fails with "non-existent contract function" on every cycle.
+- **Root cause:** The phase predates the Minter folding `repay` into one signature that mints the interest and fees itself. It cannot double-mint, but it adds noise and a stuck row per repayment. EVM already removed its phase for the same reason (see the TD referenced at `tech-debt-tracker.md` near line 1970).
+- **Workaround:** None. The fix is backend: delete the Stellar phase or skip rows whose `PaymentRecorded` has a same-transaction `CashRepaid`.
+
+### BUG-28: The trustee wire-in error mapping treats Minter code 13 as a missing trustline, but the source has 13 = `NonExistentRepayment` and 15 = `ReceiverNotAuthorized`
+- **Date:** 2026-10-27
+- **Location:** `packages/trustee/src/routes/-useLpBankDeposits.ts` (`mintError`). Found while planning #1712.
+- **Symptom:** A `record_wire_in` that fails with `ReceiverNotAuthorized` (#15) shows the generic mint error, and a `#13` from the Minter would be shown as "The receiver has no authorized PLUSD trustline."
+- **Root cause:** `contracts/minter/src/error.rs` at `ee87852` of `pipeline-stellar-contracts` numbers `NonExistentRepayment = 13` and `ReceiverNotAuthorized = 15`; the mapping was written against an earlier numbering. The deployed Minter spec ships no `#[contracterror]` enum, so the codes are not machine-checkable.
+- **Workaround:** The "View details" dialog shows the raw code. Re-verify the numbering against the deployed contract before changing the mapping.
+
 ### BUG-27: The Stellar whitelist phase skips its disallow pass on every tick with no allow candidates
 - **Date:** 2026-10-08
 - **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar`. Found while mirroring it as `relayer/evm/whitelist.rs` (`docs/exec-plans/active/evm-relayer-v5.md`).
@@ -87,6 +101,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-30: Trustee white screen after sign-in and after logout on staging (`Uncaught undefined`)
+- **Date:** 2026-10-28
+- **Location:** `packages/trustee/src/auth/useAuthRedirect.ts`, `auth/TrusteeSessionProvider.tsx` (`signOut`), `main.tsx`; `@tanstack/react-router` 1.168.25 `Match.js` / `CatchBoundary.js`. Issue #1731 (recurrence of #921 / #1008).
+- **Symptom:** After the wallet sign-in completes or after Sign out, `#root` is empty (white page) and the console shows only `Uncaught undefined`. A refresh fixes it. Staging only.
+- **Root cause:** (1) Logout issued two overlapping navigations to `/sign-in` (the provider's `signOut` and `useAuthRedirect`); sign-in overlapped the hook's navigation with the root `beforeLoad` redirect and the address-bar self-heal. (2) The root match id is constant and its active/pending/cached copies share one `_nonReactive`, so an overlapping load can leave the rendered root match `pending` after another load cleared its `loadPromise`; `Match` throws that `undefined` during render. (3) TanStack's `CatchBoundary` renders its error component only `if (error)`, so the falsy throw passes every router boundary and unmounts the React root.
+- **Resolved:** 2026-10-28 by #1731 — `useAuthRedirect` is the only auth navigation owner (`replace: true`, skips in-flight targets, self-heal gated on an idle router), `signOut` no longer navigates, `AppErrorBoundary` catches a falsy throw and `lib/diagnostics.ts` logs the value with router state. The exact staging interleaving was not reproduced headlessly; the reporter confirms on staging. The upstream router fix is TD-158.
 
 ### BUG-20: `SignInModal`/`CreateAccountModal` submit-attempt validation path is unreachable in a real browser
 - **Date:** 2026-09-21

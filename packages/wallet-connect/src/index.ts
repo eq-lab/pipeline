@@ -57,6 +57,8 @@ export type {
   EvmWalletConnectorId,
 } from "./evm/useEvmWallet";
 export { evmChainInfo, defineEvmChain, isKnownEvmChain } from "./evm/chains";
+export { namespaceLabel } from "./namespaceLabel";
+export type { WalletNamespaceKind } from "./namespaceLabel";
 export type { EvmChainInfo } from "./evm/chains";
 export {
   isMockKeyPresent,
@@ -120,22 +122,16 @@ export {
   encodeRolloverArgs,
 } from "./stellar/contracts/loanRegistry";
 
-/**
- * `record_payment` (issue #882) — trustee-wallet-signed on-chain
- * `LoanRegistry.recordPayment` through the executor `execute` proxy. Pure
- * accounting; records a repayment split as a `RepaymentData` struct.
- */
 export {
-  recordPayment,
-  buildRecordPaymentEnvelope,
-  encodeRecordPaymentArgs,
+  encodeRepaymentData,
+  readNextRepaymentId,
+  readRepaymentData,
+  readIsRepaymentReversed,
 } from "./stellar/contracts/loanRegistry";
 export type {
   RepaymentInput,
-  RecordPaymentParams,
-  RecordPaymentResult,
-  RecordPaymentStage,
-  BuildRecordPaymentEnvelopeParams,
+  ReadNextRepaymentIdParams,
+  ReadRepaymentParams,
 } from "./stellar/contracts/loanRegistry";
 
 /**
@@ -184,6 +180,16 @@ export {
   encodeRecordWireInArgs,
   parseUsdDollarsToI128,
   hexToBytes32ScVal,
+  repay,
+  buildRepayEnvelope,
+  encodeRepayArgs,
+  repaymentRefHash,
+  encodeReverseRepayArgs,
+  reverseRepayRefHash,
+  readMinterRepayment,
+  scheduleReverseRepay,
+  executeReverseRepay,
+  readReverseRepaySchedule,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -191,7 +197,42 @@ export type {
   RecordWireInResult,
   RecordWireInStage,
   BuildRecordWireInEnvelopeParams,
+  RepayArgs,
+  RepayParams,
+  RepayResult,
+  RepayStage,
+  BuildRepayEnvelopeParams,
+  ReverseRepayArgs,
+  ReverseRepayParams,
+  ReadReverseRepayScheduleParams,
+  MinterRepayment,
+  ReadMinterRepaymentParams,
 } from "./stellar/contracts/minter";
+
+export {
+  readCanCall,
+  readOperationSchedule,
+  buildRelayEnvelope,
+  relay,
+} from "./stellar/contracts/accessManager";
+export type {
+  CanCall,
+  OperationSchedule,
+  RelayMode,
+  RelayStage,
+  RelayParams,
+  RelayResult,
+  ReadCanCallParams,
+  ReadOperationScheduleParams,
+  BuildRelayEnvelopeParams,
+} from "./stellar/contracts/accessManager";
+
+export {
+  minterRecoveryAbi,
+  encodeEvmReverseRepayCalldata,
+  encodeEvmRepayCalldata,
+} from "./evm/contracts/minter";
+export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

@@ -1,5 +1,6 @@
 // spec: docs/frontend/bank-transfers.md#fundingdetailsmodal
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { useCopyToClipboard } from "@pipeline/ui";
 import { formatFundingDetailsForCopy } from "./fundingDetails";
 import type { FundingDetailRow } from "./fundingDetails";
 
@@ -19,11 +20,7 @@ export function useFundingDetailsModal({
   rows,
   onDismiss,
 }: UseFundingDetailsModalOptions): UseFundingDetailsModalResult {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!open) setCopied(false);
-  }, [open]);
+  const { copied, copy: copyText } = useCopyToClipboard();
 
   useEffect(() => {
     if (!open) return;
@@ -48,16 +45,8 @@ export function useFundingDetailsModal({
   }, [open]);
 
   const copy = useCallback(() => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(formatFundingDetailsForCopy(rows)).then(
-        () => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        },
-        () => {},
-      );
-    }
-  }, [rows]);
+    void copyText(formatFundingDetailsForCopy(rows));
+  }, [copyText, rows]);
 
-  return { copied, copy };
+  return { copied: open && copied, copy };
 }

@@ -152,7 +152,11 @@ function RecordCoupon() {
     if (view.recordPaymentInput == null) return;
     record.reset();
     void record
-      .mutateAsync({ loanId: Number(id), repayment: view.recordPaymentInput })
+      .mutateAsync({
+        loanId: Number(id),
+        repayment: view.recordPaymentInput,
+        valueDate: view.valueDate,
+      })
       .then(() =>
         navigate({ to: "/loans/$id", params: { id }, search: { chain } }),
       )
@@ -260,7 +264,7 @@ function RecordCoupon() {
         }}
       >
         A scheduled coupon is a{" "}
-        <span className="font-semibold">recordPayment with zero principal</span>{" "}
+        <span className="font-semibold">Minter.repay with zero principal</span>{" "}
         — the same waterfall, senior principal stays deployed. Deferred interest
         (all-zero components) is also allowed.
       </div>
@@ -428,23 +432,51 @@ function RecordCoupon() {
               </svg>
             </div>
           )}
-          {/* Terminal-close hint ONLY — the Figma's "Next stage: principal
-              repayment →" button is suppressed everywhere else (issue #882
-              explicit scope note). */}
-          {view.isTerminal && (
+          {view.coversPrincipal && (
             <p
-              data-testid="record-coupon-terminal-hint"
-              className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
-              style={{ color: INK_MUTED }}
+              data-testid="record-coupon-principal-block"
+              aria-live="polite"
+              className="flex items-start gap-[8px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[color:var(--color-pipeline-warning)]"
             >
-              This coupon fully repays senior principal — next stage: principal
-              repayment closes the loan.
+              <svg
+                aria-hidden="true"
+                width={14}
+                height={14}
+                viewBox="0 0 16 16"
+                className="mt-[2px] shrink-0"
+              >
+                <path
+                  d="M8 1.5 15 14H1L8 1.5Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M8 6v3.4"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <circle cx="8" cy="11.8" r="0.9" fill="currentColor" />
+              </svg>
+              <span>
+                This amount includes {view.principalInAmount} of senior
+                principal. A coupon records interest only. Record principal on
+                the{" "}
+                <Link
+                  to="/loans/$id/record-repayment"
+                  params={{ id }}
+                  search={{ chain }}
+                  className="text-[#000080] underline"
+                >
+                  Record Repayment
+                </Link>{" "}
+                page, which pays the full remaining balance.
+              </span>
             </p>
           )}
 
-          {/* Confirm — trustee-wallet-signed on-chain `record_payment` (#882).
-              Pinned to the bottom of the right card (`mt-auto`) per Figma node
-              `4116-11295` — stays anchored even before an amount is entered. */}
           <div className="mt-auto flex flex-col gap-[12px] pt-[16px]">
             {recordError && (
               <div data-testid="record-coupon-record-error">
@@ -484,7 +516,7 @@ function RecordCoupon() {
               className="text-center font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
               style={{ color: INK_MUTED }}
             >
-              recordPayment is pure accounting — increments the per-loan
+              Minter.repay is pure accounting — increments the per-loan
               counters, emits PaymentRecorded, moves no USDC.
             </p>
           </div>

@@ -6,8 +6,13 @@ use bigdecimal::BigDecimal;
 use pipeline_api::routes::dashboard::net_apy;
 use pipeline_api::routes::loan_book::compute_loan_book;
 use pipeline_api::routes::portfolio::compute_series;
-use shared::book_weighting::{current_rate_bps, current_tenor_days, outstanding_at, rate_bps_at};
+use shared::book_weighting::{
+    accrued_over_intervals, current_rate_bps, current_tenor_days, normalise_rate_events,
+    outstanding_at, rate_bps_at, LoanAccrual, CONTRACT_YEAR_SECS,
+};
+use shared::chains::ChainKind;
 use shared::contract_logs_repo::{LoanRateEventRow, LoanSnapshotRow};
+use shared::loan_economics::economics_rate_to_bps;
 use shared::loan_snapshot::{LoanSnapshot, RepaymentSnapshot};
 
 const DAY: i64 = 86_400;
@@ -388,19 +393,45 @@ fn series_events_of_other_loans_are_ignored() {
     assert_apy(apy_at(&loans, &events, 10), 0.15);
 }
 
+// Fixture: 10M USDC each, rates 1000 / 2000 bps, 10 days, YEAR = 31_557_600.
+// Before: 10M x (0.10 + 0.20) x 10 d / 365.25 d = 82_135.523613.
+// After (loan 1 -> 9000 bps from day 5, loan 2 repaid to 0 at day 5):
+//   loan 1: 10M x (0.10 x 5 + 0.90 x 5) / 365.25 = 136_892.539357
+//   loan 2: 10M x 0.20 x 5 / 365.25 = 27_378.507871
+//   total 164_271.047227
 #[test]
-fn series_accrued_amount_is_unchanged_by_rate_events() {
+fn series_accrued_follows_rate_and_outstanding_events() {
     let (loans, mut events) = series_fixture();
     let t = 10 * DAY;
     let before = compute_series(&loans, &[], &events, t, t, DAY)
         .pop()
         .unwrap();
+    assert_eq!(before.accrued, "82135.523613");
     events.push(rate_event(1, "EconomicsAmended", 5, 900_000));
     events.push(outstanding_event(2, "PaymentRecorded", 5, 0));
     let after = compute_series(&loans, &[], &events, t, t, DAY)
         .pop()
         .unwrap();
-    assert_eq!(before.accrued, after.accrued);
+    assert_eq!(after.accrued, "164271.047227");
+}
+
+#[test]
+fn series_accrued_is_zero_without_outstanding_events() {
+    let (loans, _) = series_fixture();
+    let t = 10 * DAY;
+    let s = compute_series(&loans, &[], &[], t, t, DAY).pop().unwrap();
+    assert_eq!(s.accrued, "0.000000");
+}
+
+#[test]
+fn rate_event_ppm_to_bps_floors_like_the_snapshot() {
+    let (loans, mut events) = series_fixture();
+    events.push(rate_event(1, "EconomicsAmended", 5, 112_550));
+    events.push(rate_event(2, "EconomicsAmended", 5, 112_550));
+    assert_apy(apy_at(&loans, &events, 10), 0.1125);
+    assert_eq!(economics_rate_to_bps(112_550), 1125);
+    assert_eq!(economics_rate_to_bps(112_599), 1125);
+    assert_eq!(economics_rate_to_bps(112_550) as i64, 112_550 / 100);
 }
 
 // ── helper functions ─────────────────────────────────────────────────────────
@@ -415,4 +446,99 @@ fn helper_latest_event_at_or_before_t_wins_and_ties_keep_input_order() {
     assert_eq!(outstanding_at(&refs, 5 * DAY), usdc(40));
     assert_eq!(outstanding_at(&refs, 100 * DAY), usdc(10));
     assert_eq!(rate_bps_at(1234, &refs, 100 * DAY), 1234);
+}
+
+fn naive_accrued(
+    initial_bps: u32,
+    refs: &[&LoanRateEventRow],
+    intervals: &[(i64, i64)],
+) -> BigDecimal {
+    let mut total = BigDecimal::from(0_i64);
+    for &(from, until) in intervals {
+        let mut cuts: Vec<i64> = refs
+            .iter()
+            .map(|e| e.block_timestamp)
+            .filter(|&ts| ts > from && ts < until)
+            .collect();
+        cuts.push(until);
+        cuts.sort_unstable();
+        cuts.dedup();
+        let mut start = from;
+        for end in cuts {
+            total += outstanding_at(refs, start)
+                * BigDecimal::from(i64::from(rate_bps_at(initial_bps, refs, start)))
+                * BigDecimal::from(end - start);
+            start = end;
+        }
+    }
+    total / (BigDecimal::from(10_000_i64) * BigDecimal::from(CONTRACT_YEAR_SECS))
+}
+
+#[test]
+fn accrual_fast_path_equals_per_interval_result_on_multi_event_fixture() {
+    let events = [
+        rate_event(1, "EconomicsAmended", 1, 90_000),
+        outstanding_event(1, "Disbursed", 2, 100),
+        outstanding_event(1, "PaymentRecorded", 5, 60),
+        rate_event(1, "LoanRolledOver", 5, 120_000),
+        outstanding_event(1, "Disbursed", 9, 160),
+        outstanding_event(1, "Disbursed", 9, 170),
+        outstanding_event(1, "LoanDefaulted", 14, 170),
+        outstanding_event(1, "PaymentRecorded", 20, 10),
+    ];
+    let refs: Vec<&LoanRateEventRow> = events.iter().collect();
+    let acc = LoanAccrual::new(1000, &refs);
+    let interval_sets: [Vec<(i64, i64)>; 5] = [
+        vec![(0, 3 * DAY)],
+        vec![(2 * DAY, 9 * DAY), (10 * DAY, 14 * DAY)],
+        vec![(DAY + 5, 5 * DAY), (5 * DAY, 25 * DAY)],
+        vec![(15 * DAY, 30 * DAY)],
+        vec![(0, 100 * DAY)],
+    ];
+    for iv in &interval_sets {
+        assert_eq!(acc.accrued(iv), naive_accrued(1000, &refs, iv));
+        assert_eq!(
+            accrued_over_intervals(1000, &refs, iv),
+            naive_accrued(1000, &refs, iv)
+        );
+    }
+    for t in [
+        0,
+        DAY,
+        2 * DAY,
+        5 * DAY,
+        9 * DAY,
+        13 * DAY,
+        20 * DAY,
+        99 * DAY,
+    ] {
+        assert_eq!(acc.outstanding_at(t), outstanding_at(&refs, t));
+        assert_eq!(acc.rate_bps_at(t), rate_bps_at(1000, &refs, t));
+    }
+}
+
+#[test]
+fn normalise_rate_events_floors_stellar_and_keeps_evm_and_none() {
+    let mk = |o: Option<i64>| LoanRateEventRow {
+        loan_id: BigDecimal::from(1_i64),
+        event_name: "Disbursed".to_owned(),
+        block_timestamp: 0,
+        outstanding: o.map(BigDecimal::from),
+        new_rate: None,
+    };
+    let mut stellar = vec![mk(Some(1_234_567_899)), mk(None)];
+    normalise_rate_events(ChainKind::Stellar, &mut stellar);
+    assert_eq!(
+        stellar[0].outstanding,
+        Some(BigDecimal::from(123_456_789_i64))
+    );
+    assert_eq!(stellar[1].outstanding, None);
+
+    let mut evm = vec![mk(Some(1_234_567_899)), mk(None)];
+    normalise_rate_events(ChainKind::Evm, &mut evm);
+    assert_eq!(
+        evm[0].outstanding,
+        Some(BigDecimal::from(1_234_567_899_i64))
+    );
+    assert_eq!(evm[1].outstanding, None);
 }

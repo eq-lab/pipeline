@@ -33,6 +33,7 @@ import {
   type CcrTrend,
   type DocumentDisplay,
 } from "./-useLoanDetail";
+import type { LifecycleStatus } from "./-useLoanDetail";
 import {
   type RolloverCard as RolloverCardData,
   type SummaryTile,
@@ -42,6 +43,11 @@ import { CcrTrendChart } from "./-CcrTrendChart";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
+import { RepaymentRecoveryDialog } from "./-RepaymentRecoveryDialog";
+import {
+  useRecoveryCard,
+  type RecoveryCardView,
+} from "./-useRepaymentRecoveryDialog";
 
 const ON_CHAIN_ACTIONS: ReadonlySet<string> = new Set([
   "Update lifecycle",
@@ -572,6 +578,56 @@ function OtherActionsCard({
   );
 }
 
+// ── Repayment recovery (#1711) ────────────────────────────────────────────────
+
+function RepaymentRecoveryCard({
+  card,
+  onOpen,
+}: {
+  card: RecoveryCardView;
+  onOpen: () => void;
+}) {
+  if (card.state === "hidden") return null;
+  const blocked = card.state === "blocked-evm";
+  return (
+    <div
+      className={`${CARD_CLASS} gap-[16px] p-[26px]`}
+      style={cardStyle()}
+      data-testid="loan-detail-repayment-recovery"
+      data-state={card.state}
+    >
+      <CardTitle>Repayment recovery</CardTitle>
+      <p
+        className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+        style={{ color: INK_MUTED }}
+      >
+        {card.state === "awaiting-corrected-repayment"
+          ? "A repayment was reversed. Record the corrected repayment."
+          : "The offtaker is fully paid but senior principal is still outstanding. Reverse the mis-split repayment and record it again."}
+      </p>
+      {blocked && card.blockedReason && (
+        <p
+          data-testid="loan-detail-repayment-recovery-blocked"
+          className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+          style={{ color: INK_MUTED }}
+        >
+          {card.blockedReason}
+        </p>
+      )}
+      <button
+        type="button"
+        data-testid="loan-detail-open-recovery"
+        disabled={blocked}
+        onClick={onOpen}
+        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ backgroundColor: BRAND }}
+      >
+        Open recovery
+      </button>
+    </div>
+  );
+}
+
 // ── Disbursement action (Disbursing variant, #862) ───────────────────────────
 
 // spec: docs/frontend/trustee-flows.md#wired-actions.
@@ -935,8 +991,7 @@ function UpdateLifecycleDialog({
 }: {
   open: boolean;
   loanName: string;
-  /** On-chain status to default the selector to (`Performing` | `WatchList`). */
-  currentStatus: string;
+  currentStatus: LifecycleStatus | null;
   onClose: () => void;
   onConfirm: (input: {
     status: string;
@@ -947,7 +1002,7 @@ function UpdateLifecycleDialog({
   pending: boolean;
   error: DialogError | null;
 }) {
-  const [status, setStatus] = useState(currentStatus);
+  const [status, setStatus] = useState<string>(currentStatus ?? "");
   const [ccr, setCcr] = useState("");
   const [locationType, setLocationType] = useState("Vessel");
   const [locationId, setLocationId] = useState("");
@@ -956,7 +1011,7 @@ function UpdateLifecycleDialog({
 
   useEffect(() => {
     if (open) {
-      setStatus(currentStatus);
+      setStatus(currentStatus ?? "");
       setCcr("");
       setLocationType("Vessel");
       setLocationId("");
@@ -978,6 +1033,7 @@ function UpdateLifecycleDialog({
 
   const ccrPercent = Number.parseFloat(ccr);
   const valid =
+    status !== "" &&
     Number.isFinite(ccrPercent) &&
     ccrPercent > 0 &&
     locationId.trim().length > 0;
@@ -1024,6 +1080,11 @@ function UpdateLifecycleDialog({
             onChange={(e) => setStatus(e.target.value)}
             className={fieldClass}
           >
+            {status === "" && (
+              <option value="" disabled>
+                Select status
+              </option>
+            )}
             <option value="Performing">Active</option>
             <option value="WatchList">Watchlist</option>
           </select>
@@ -1235,6 +1296,8 @@ function LoanDetail() {
   const [rolloverOpen, setRolloverOpen] = useState(false);
   const updateLifecycle = useUpdateLifecycle();
   const [updateOpen, setUpdateOpen] = useState(false);
+  const recoveryCard = useRecoveryCard(chain, id);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   const onOtherAction = (label: string) => {
     if (detail.onChainBlockedReason !== null && ON_CHAIN_ACTIONS.has(label)) {
@@ -1244,33 +1307,21 @@ function LoanDetail() {
       updateLifecycle.reset();
       setUpdateOpen(true);
     } else if (label === "Roll over") {
-      // Opens the same wired RolloverDialog as the Matured variant's rollover
-      // widget (#923) — the "Roll over" other-action was previously unhandled,
-      // so clicking it in the actions card did nothing.
       rolloverMutation.reset();
       setRolloverOpen(true);
     } else if (label === "Record coupon") {
-      // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
-      // so this navigates rather than opening a dialog like the other actions.
       void navigate({
         to: "/loans/$id/record-coupon",
         params: { id },
         search: { chain },
       });
     } else if (label === "Close loan") {
-      // Full-page destination (issue #884, Figma `4116-11621`) — this action
-      // does NOT close the loan directly; it opens the Record Repayment page,
-      // where the trustee records the final principal repayment and only
-      // then closes the loan from there.
       void navigate({
         to: "/loans/$id/record-repayment",
         params: { id },
         search: { chain },
       });
     } else if (label === "Escalate to Risk Council") {
-      // Full-page destination (issue #782, Figma `4116-12953`) — the first of
-      // the three Type-3 RISK_COUNCIL proposal screens (Escalate to Default).
-      // Not a modal: drafting/submitting a Safe proposal is its own page.
       void navigate({
         to: "/risk-council/escalate/$id",
         params: { id },
@@ -1332,6 +1383,10 @@ function LoanDetail() {
             otherActions={detail.otherActions}
             blockedReason={detail.onChainBlockedReason}
             onAction={onOtherAction}
+          />
+          <RepaymentRecoveryCard
+            card={recoveryCard}
+            onOpen={() => setRecoveryOpen(true)}
           />
         </>
       ) : detail.variant === "matured" ? (
@@ -1415,6 +1470,10 @@ function LoanDetail() {
             blockedReason={detail.onChainBlockedReason}
             onAction={onOtherAction}
           />
+          <RepaymentRecoveryCard
+            card={recoveryCard}
+            onOpen={() => setRecoveryOpen(true)}
+          />
           <DisbursementConfirmDialog
             open={confirmOpen}
             loanName={detail.hero.title}
@@ -1438,14 +1497,21 @@ function LoanDetail() {
         </>
       )}
 
+      <RepaymentRecoveryDialog
+        open={recoveryOpen}
+        chainId={chain}
+        loanId={id}
+        loanName={detail.hero.title}
+        onchainStatus={recoveryCard.onchainStatus}
+        onClose={() => setRecoveryOpen(false)}
+      />
+
       {/* Update-lifecycle modal (#872) — opened by the "Update lifecycle" action
           in any variant; self-guards on `open`. */}
       <UpdateLifecycleDialog
         open={updateOpen}
         loanName={detail.hero.title}
-        currentStatus={
-          detail.hero.status?.label === "Watchlist" ? "WatchList" : "Performing"
-        }
+        currentStatus={detail.lifecycleStatus}
         pending={updateLifecycle.isPending}
         error={
           updateLifecycle.error

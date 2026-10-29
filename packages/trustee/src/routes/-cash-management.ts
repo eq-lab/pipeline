@@ -14,6 +14,8 @@ import {
 } from "@/api/useReviewRampEvent";
 import { useRampAddresses } from "@/api/useRampAddresses";
 import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
+import { ENV } from "@/lib/env";
+import { targetChainLabel } from "@/lib/targetChains";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
 
@@ -65,6 +67,7 @@ export interface RampEventRow {
 }
 
 export interface CashManagementView {
+  chainLabel: string;
   state: "loading" | "error" | "ready";
   errorMessage: string | null;
   errorDetails: string | null;
@@ -112,7 +115,10 @@ export function useCashManagement(): CashManagementView {
   const nowSec = Math.floor(Date.now() / 1000);
   const events = rampEvents.data?.events ?? [];
 
-  const balanceNum = balance.data != null ? Number(balance.data) : null;
+  const balanceNum =
+    rampEvents.chainId === ENV.STELLAR_CHAIN_ID && balance.data != null
+      ? Number(balance.data)
+      : null;
   const usdcBalanceValue =
     balanceNum != null && Number.isFinite(balanceNum) ? balanceNum : null;
   const rampAddress = addresses.data?.ramp_addresses[0];
@@ -138,6 +144,7 @@ export function useCashManagement(): CashManagementView {
     : null;
 
   return {
+    chainLabel: targetChainLabel(rampEvents.chainId),
     state,
     errorMessage: loadError?.message ?? null,
     errorDetails: loadError?.details ?? null,

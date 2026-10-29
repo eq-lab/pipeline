@@ -204,6 +204,7 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "WatchList",
+    onchain_status: "WatchList",
     documents: [],
     repaid_to_date: "0",
     disbursed: true,

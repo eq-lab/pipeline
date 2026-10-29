@@ -1,6 +1,7 @@
 // spec: docs/frontend/account-page.md#accountwalletcard
-import { Button, CoinIcon } from "@pipeline/ui";
+import { Button, CoinIcon, useCopyToClipboard } from "@pipeline/ui";
 import { useActiveWalletAccount } from "@/wallet";
+import { namespaceLabel } from "@pipeline/wallet-connect";
 import { AccountIconTile } from "./AccountIconTile";
 import { AccountListRow } from "./AccountListRow";
 
@@ -41,7 +42,7 @@ function CopyIcon() {
 }
 
 function ChainLogo({ kind }: { kind: "evm" | "stellar" }) {
-  const label = kind === "evm" ? "Ethereum" : "Stellar";
+  const label = namespaceLabel(kind);
   return (
     <svg
       width={16}
@@ -89,9 +90,10 @@ export function AccountWalletCard() {
     disconnect,
   } = useActiveWalletAccount();
 
+  const { copy } = useCopyToClipboard();
+
   function handleCopy() {
-    if (!address) return;
-    void navigator.clipboard?.writeText?.(address);
+    if (address) void copy(address);
   }
 
   return (
@@ -127,7 +129,7 @@ export function AccountWalletCard() {
               >
                 <ChainLogo kind={kind} />
                 <span data-testid="account-wallet-provider-name">
-                  {kind === "evm" ? "Ethereum" : "Stellar"}
+                  {namespaceLabel(kind)}
                 </span>
               </div>
             </div>

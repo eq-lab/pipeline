@@ -31,6 +31,7 @@ import {
   ccrSeriesFrom,
   selectOtherActions,
   statusToChip,
+  lifecycleStatusOf,
 } from "./-useLoanDetail";
 import {
   CLOSED_OTHER_ACTIONS,
@@ -63,6 +64,7 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "Performing",
+    onchain_status: "Performing",
     documents: [],
     repaid_to_date: "6300.000000",
     disbursed: true,
@@ -515,6 +517,7 @@ function makeFinancials(
   return {
     loan_id: "4488",
     status: "Performing",
+    onchain_status: "Performing",
     epoch: {
       number: 1,
       current_apy_bps: 1000,
@@ -834,5 +837,51 @@ describe("ccrSeriesFrom", () => {
     const from = ccrSeriesFrom({ maturity, duration_days: durationDays })!;
     expect(from).toBeGreaterThanOrEqual(origination);
     expect(from - origination).toBeLessThan(DAY);
+  });
+});
+
+describe("lifecycleStatusOf (#1621)", () => {
+  it.each([
+    ["Performing", "Performing", "Performing"],
+    ["Performing", "WatchList", "WatchList"],
+    ["Past Due", "WatchList", "WatchList"],
+    ["Disbursing", "WatchList", "WatchList"],
+    ["Matured", "WatchList", "WatchList"],
+    ["Past Due", "Performing", "Performing"],
+    ["Disbursing", "Performing", "Performing"],
+    ["Default", "Default", null],
+    ["Closed", "Closed", null],
+    ["Disbursing", "Approved", null],
+    ["Performing", "Unknown", null],
+  ])(
+    "served status %s + onchain_status %s -> %s",
+    (status, onchainStatus, expected) => {
+      expect(
+        lifecycleStatusOf(makeEntry({ status, onchain_status: onchainStatus })),
+      ).toBe(expected);
+    },
+  );
+
+  it("ignores watchlist_entered_at", () => {
+    expect(
+      lifecycleStatusOf(
+        makeEntry({
+          status: "Past Due",
+          onchain_status: "Performing",
+          watchlist_entered_at: 1_781_222_400,
+        }),
+      ),
+    ).toBe("Performing");
+  });
+
+  it("is null for a missing field or entry", () => {
+    expect(
+      lifecycleStatusOf({
+        ...makeEntry(),
+        onchain_status: undefined,
+      } as unknown as LoanBookEntry),
+    ).toBeNull();
+    expect(lifecycleStatusOf(undefined)).toBeNull();
+    expect(lifecycleStatusOf(null)).toBeNull();
   });
 });

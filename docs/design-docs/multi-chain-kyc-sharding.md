@@ -24,7 +24,7 @@ Shard `lp_profiles` and `kyc_outbox` by chain. Add `chain_id BIGINT NOT NULL` to
 - `kyc_repo::populate_profiles_from_deposits(chain_id)` — takes a chain filter and upserts the `(chain_id, wallet)` pairs that appear in `contract_logs.DepositRequested` for that chain. The per-chain relayer task calls this with its own `chain_id` every cycle.
 - `kyc_repo::insert_outbox(chain_id, wallet, ...)` — outbox rows are chain-scoped.
 - All `lp_profiles` and `kyc_outbox` writes/reads in the relayer are chain-scoped (passed down from `RelayerJobSettings.chain_id`).
-- KYC API routes (`/v1/kyc/*`) accept an optional `chain_id` query param falling back to `DEFAULT_CHAIN_ID`.
+- KYC API routes (`/v1/kyc/*`) require a `chain_id` query param validated against `CHAINS` (#1609); there is no `DEFAULT_CHAIN_ID` fallback and no all-chains mode, since the profile is per `(chain, wallet)`.
 
 ### Sumsub webhook handling
 
@@ -97,6 +97,21 @@ EVM wallets are lowercased (existing behaviour). Stellar Strkey `G…` addresses
 
 Crystal does not provide KYT for Stellar addresses in the current integration. Stellar voucher requests fall through the `crystal_enabled` gate as "screened-as-clean" (same as EVM with Crystal disabled). A dedicated Issue can wire Crystal Stellar support when Crystal adds Stellar coverage.
 
+### `/v1/requests` status per chain kind
+
+The feed gates each row on the flag of its own chain kind, matching the voucher endpoints: EVM rows follow `crystal_enabled`, Stellar rows follow `elliptic_enabled`. Rows from a `chain_id` absent from `CHAINS` are treated as EVM (the `parse_chain_type` default). Mapping for unclaimed Deposit/Withdraw rows (claimed and Stake/Unstake rows are always `Completed`):
+
+| Gate for the row's kind | `kyt_status` | `on_chain_allowed` | Status |
+|---|---|---|---|
+| off | any | true | `PendingClaim` |
+| off | any | false | `PendingVerification` |
+| on | `None` | any | `PendingVerification` |
+| on | `Some(1)` | true | `PendingClaim` |
+| on | `Some(1)` | false | `PendingVerification` |
+| on | `Some(other)` | any | `VerificationFailed` |
+
+`PendingClaim` therefore holds exactly when the voucher endpoint would issue. Implemented by `kyc_repo::feed_status` and `kyt_gate_for_kind`.
+
 ### `is_on_chain_allowed` for Stellar
 
 The same SQL runs for Stellar as for EVM — no short-circuit. Stellar voucher requests return HTTP 403 until an `lp_profiles` row exists for the wallet on the Stellar chain. Populating those rows is handled by the Stellar relayer (see "Stellar Relayer Whitelist" below).
@@ -122,3 +137,7 @@ Phase 3 calls the SAC's `authorized(user) -> bool` view via `simulateTransaction
 ### Crystal force-disabled
 
 `StellarRelayerSettings::from_chain_env` hard-codes `crystal_enabled = false` regardless of the global `CRYSTAL_ENABLED`. Crystal does not return KYT for Stellar addresses; gating on `crystal_kyt_status = 1` would block every Stellar profile forever. Sumsub remains under the global toggle — Sumsub identity is wallet-scoped, so EVM-side reviews propagate to Stellar `lp_profiles` rows via the existing webhook handler.
+
+## KYT no-downgrade rule
+
+`lp_profiles.kyt_status = 2` (failed) is sticky. The address screen (`set_profile_kyt_clear`, Crystal and Elliptic) runs `UPDATE lp_profiles SET kyt_status = 1 ... AND kyt_status IS DISTINCT FROM 2`, so a clean address verdict never overwrites a failure recorded by event screening; the skipped clear is logged at info. Only the failed-setting path (`set_profile_kyt_failed`) and a manual DB reset can change a failed profile. No automated or API reset path exists. The pure rule is `shared::kyc_repo::next_kyt_status`. Per-request `contract_logs.kyt_status` is written once, only for rows where it is NULL (`fetch_unverified_transfers`), so a re-screen cannot overwrite it.

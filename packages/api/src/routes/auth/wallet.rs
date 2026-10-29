@@ -1,10 +1,10 @@
 //! Signature-based authorization endpoints.
 //!
 //! Flow (see `docs/product-specs/api-authorization.md`):
-//!   1. `GET  /v1/auth/challenge` — for a known `(chain_id, address)`, generate a
-//!      fresh single-use nonce, persist it, and return the exact message to sign.
-//!   2. `POST /v1/auth/verify` — verify the signature over the *stored* challenge,
-//!      clear the nonce (single-use), and return a 24h JWT carrying the address'
+//!   1. `GET  /v1/auth/challenge` — for a known `(chain_id, address)`, reuse the
+//!      live nonce (more than 60 s left) or issue a new 5-minute one, and return the message to sign.
+//!   2. `POST /v1/auth/verify` — verify the signature over the message rebuilt from
+//!      the *stored* nonce, consume the nonce atomically, and return a 24h JWT carrying the address'
 //!      roles and the account the address belongs to.
 //!
 //! Protected endpoints live in their own route modules and gate access with the
@@ -19,6 +19,7 @@ use std::sync::Arc;
 use axum::extract::{Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -84,20 +85,46 @@ pub fn router() -> Router<Arc<AppState>> {
 
 // ── Challenge message ──────────────────────────────────────────────────────
 
-/// Build the canonical challenge message. This is the single source of truth for
-/// the bytes the wallet signs — it must be byte-identical between issuance
-/// (`challenge`) and verification (`verify`).
-///
-/// Deliberately a **single line** (no newlines): the message is transported in a
-/// JSON `message` field, and embedded newlines are escaped as `\n` there — a
-/// client that signs the JSON-escaped text instead of the decoded value would
-/// produce a signature over different bytes. Keeping it newline-free removes that
-/// footgun entirely.
-fn challenge_message(address: &str, chain_id: i64, nonce: &str) -> String {
+pub const CHALLENGE_TTL_SECS: i64 = 5 * 60;
+
+pub const AUTH_FAILED: &str = "authentication failed";
+
+pub fn challenge_domain(app_base_url: &str) -> String {
+    reqwest::Url::parse(app_base_url)
+        .ok()
+        .and_then(|u| {
+            u.host_str().map(|h| {
+                u.port()
+                    .map_or_else(|| h.to_owned(), |p| format!("{h}:{p}"))
+            })
+        })
+        .unwrap_or_else(|| app_base_url.to_owned())
+}
+
+fn iso(t: DateTime<Utc>) -> String {
+    t.to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+pub fn challenge_message(
+    domain: &str,
+    address: &str,
+    chain_id: i64,
+    nonce: &str,
+    expires_at: DateTime<Utc>,
+) -> String {
+    let issued_at = expires_at - Duration::seconds(CHALLENGE_TTL_SECS);
     format!(
-        "Welcome to Pipeline! Sign this message to authenticate. \
-         This request will not trigger a blockchain transaction or cost any gas. \
-         Address: {address} Chain ID: {chain_id} Nonce: {nonce}"
+        "{domain} wants you to sign in with your wallet:\n\
+         {address}\n\
+         \n\
+         Sign this message to authenticate with Pipeline. This request will not trigger a blockchain transaction or cost any gas.\n\
+         \n\
+         Chain ID: {chain_id}\n\
+         Nonce: {nonce}\n\
+         Issued At: {issued}\n\
+         Expiration Time: {expires}",
+        issued = iso(issued_at),
+        expires = iso(expires_at),
     )
 }
 
@@ -130,28 +157,18 @@ pub async fn challenge(
     Query(query): Query<ChallengeQuery>,
 ) -> Result<Json<ChallengeResponse>, ApiError> {
     let chain_id = chain.chain_id;
-    let chain_kind = chain.kind;
-    let address = normalize_address(chain_kind, &query.address);
+    let address = normalize_address(chain.kind, &query.address);
 
-    // Reject unknown addresses — only the manually-seeded allow-list may log in.
-    if state
+    // Unknown addresses are rejected — only the manually-seeded allow-list may log in.
+    let fresh = Uuid::new_v4().to_string();
+    let (nonce, expires_at) = state
         .auth_user_repo
-        .find(chain_id, &address)
+        .issue_or_reuse_nonce(chain_id, &address, &fresh, CHALLENGE_TTL_SECS as i32)
         .await?
-        .is_none()
-    {
-        return Err(ApiError::Unauthorized(
-            "address is not authorized".to_owned(),
-        ));
-    }
+        .ok_or_else(|| ApiError::Unauthorized("address is not authorized".to_owned()))?;
 
-    let nonce = Uuid::new_v4().to_string();
-    state
-        .auth_user_repo
-        .set_nonce(chain_id, &address, &nonce)
-        .await?;
-
-    let message = challenge_message(&address, chain_id, &nonce);
+    let domain = challenge_domain(&state.password_reset.app_base_url);
+    let message = challenge_message(&domain, &address, chain_id, &nonce, expires_at);
     Ok(Json(ChallengeResponse { message, nonce }))
 }
 
@@ -162,7 +179,7 @@ pub async fn challenge(
     responses(
         (status = 200, description = "Signature verified; JWT issued", body = VerifyResponse),
         (status = 400, description = "Missing or unknown chain_id"),
-        (status = 401, description = "Unknown address, no outstanding challenge, or bad signature"),
+        (status = 401, description = "Unknown address, no live challenge, or bad signature (one shared body)"),
         (status = 403, description = "The account behind this wallet is suspended (account_suspended)"),
         (status = 500, description = "Internal server error"),
     ),
@@ -177,26 +194,32 @@ pub async fn verify(
     let chain_kind = chain.kind;
     let address = normalize_address(chain_kind, &req.address);
 
+    let denied = || ApiError::Unauthorized(AUTH_FAILED.to_owned());
+
     let user = state
         .auth_user_repo
         .find(chain_id, &address)
         .await?
-        .ok_or_else(|| ApiError::Unauthorized("address is not authorized".to_owned()))?;
+        .ok_or_else(denied)?;
 
-    let nonce = user
-        .nonce
-        .ok_or_else(|| ApiError::Unauthorized("no outstanding challenge".to_owned()))?;
+    let (Some(nonce), Some(expires_at)) = (user.nonce, user.nonce_expires_at) else {
+        return Err(denied());
+    };
 
-    let message = challenge_message(&address, chain_id, &nonce);
+    let domain = challenge_domain(&state.password_reset.app_base_url);
+    let message = challenge_message(&domain, &address, chain_id, &nonce, expires_at);
 
     let verified = match chain_kind {
         ChainKind::Evm => verify_personal_sign(&message, &req.signature, &address),
         ChainKind::Stellar => verify_stellar_personal_sign(&message, &req.signature, &address),
     };
-    verified.map_err(|_| ApiError::Unauthorized("signature verification failed".to_owned()))?;
+    verified.map_err(|_| denied())?;
 
-    // Single-use: clear the nonce so the same signature cannot be replayed.
-    state.auth_user_repo.clear_nonce(chain_id, &address).await?;
+    let user = state
+        .auth_user_repo
+        .consume_nonce(chain_id, &address, &nonce)
+        .await?
+        .ok_or_else(denied)?;
 
     let status = state.account_repo.find_status(user.account_id).await?;
     if let Some(refusal) = gate_request(status.as_deref()) {

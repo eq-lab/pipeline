@@ -20,8 +20,8 @@ Resolved by #791 against the backend signature-auth contract (`docs/product-spec
 wallet connect → `GET /v1/auth/challenge` → sign (EVM `personal_sign` / Stellar SEP-0053) →
 `POST /v1/auth/verify` → client-held JWT bearer session (`sessionStorage`). Authorization is a
 server-side allow-list; `401` renders as a "not authorized" card error, no client-side role
-read. Sign-out is client-side (no server logout endpoint). Route gating redirects unauthenticated
-visitors to `/sign-in` and an existing session away from it.
+read. Sign-out is client-side (no server logout endpoint). Auth is a render-level gate: unauthenticated visitors see the
+sign-in overlay on the current URL; no session change navigates (#1749).
 
 ---
 
@@ -50,7 +50,7 @@ Instant, no timelock. The Trustee holds the `TRUSTEE` role on LoanRegistry and
 | # | Flow | Trigger | Data presented | Trustee input | On-chain call and effect | Pre-broadcast checks |
 |---|---|---|---|---|---|---|
 | 1 | Origination approval | Originator submits an EIP-712 signed request, Relayer validates the signature and queues it | Full immutable economics, the validated Originator signature, submission timestamp, resolved descriptive material (borrower hash, commodity, corridor, governing law, protection instrument, initial location). See flow note B | Approve, Request changes (comment), or Reject (reason) | `mintLoan(originator, economics, metadataURI, initialLocation)`. Mints the loan NFT, seeds `epochs[0]`, emits `LoanMinted`, which triggers Relayer disbursement prep (Flow 7) | `senior + equity == facilitySize`, `offtakerPrice >= facilitySize`, `maturity > origination`. Show the failing invariant before enabling broadcast |
-| 2 | Repayment intake | The dashboard flags loans at or past a scheduled coupon or maturity with no matching `recordPayment` yet (repayment-due worklist) and notifies the Trustee. Bank integration is excluded from MVP, so the Trustee reconciles the prompt against the correspondent bank wire manually, then opens intake against the loan | Loan picker of open loans. On loan select: outstanding senior principal, actual tenor, protocol fee schedule, the auto-computed waterfall split, deviations from baseline flagged. See flow note A | Confirm received amount and date. Adjust individual components for waivers, partials, or early-repayment fees. The amount input accepts display-formatted values (`$`, `,` separators are stripped on parse) and renders comma-grouped as-you-type; a non-blocking warning (message + icon below the input) fires when the entered amount exceeds the served `offtaker_outstanding` (#1048) | `recordPayment(loanId, offtakerAmount, seniorPrincipal, seniorInterest, mgmtFee, perfFee, oetAlloc, equityAmount)`. The registry entry lands first as pure accounting: increments the seven per-loan counters, emits `PaymentRecorded`, moves no USDC, mints no PLUSD. The Trustee then instructs the USD-to-USDC on-ramp into the Capital Wallet, and the Relayer matches that inflow to mint (Flow 13). Both this on-ramp inflow and its later off-ramp counterpart are indexed as pending ramp events (`GET /v1/ramp/events`) that the Trustee must approve or reject with a reason (`POST /v1/ramp/events/{id}/review`) before Capital Allocation's `in_transit` figure counts either leg toward its gross flow — only an Approved decision counts. Once a loan's ramp movements settle, the Trustee records the confirmed per-loan amounts (and the loan's deployment flag and trust-account movements) via the full-upsert `POST /v1/loan-book/{loan_id}/transfers` (#1027) — these confirmed amounts are subtracted from the gross flow, so an unrecorded settlement leaves `in_transit` overstated and an over-recorded one drives it negative (deliberately unclamped) | Loan in {Performing, Watchlist}, the six split components sum `<= offtakerAmount`. Deferred interest is allowed (zero components). Recording is not minting |
+| 2 | Repayment intake | The dashboard flags loans at or past a scheduled coupon or maturity with no matching `recordPayment` yet (repayment-due worklist) and notifies the Trustee. Bank integration is excluded from MVP, so the Trustee reconciles the prompt against the correspondent bank wire manually, then opens intake against the loan | Loan picker of open loans. On loan select: outstanding senior principal, actual tenor, protocol fee schedule, the auto-computed waterfall split, deviations from baseline flagged. See flow note A | Confirm received amount and date. Adjust individual components for waivers, partials, or early-repayment fees. The amount input accepts display-formatted values (`$`, `,` separators are stripped on parse) and renders comma-grouped as-you-type; a non-blocking warning (message + icon below the input) fires when the entered amount exceeds the served `offtaker_outstanding` (#1048) | `Minter.repay` carrying the `recordPayment` split ([loan-repay-minter.md](./loan-repay-minter.md)): the registry entry increments the seven per-loan counters and emits `PaymentRecorded`, and the same signature books bank cash and mints the interest and fees as PLUSD (`CashRepaid`). It moves no USDC from the Trustee wallet. The Trustee then instructs the USD-to-USDC on-ramp into the Capital Wallet, and the Relayer matches that inflow to mint (Flow 13). Both this on-ramp inflow and its later off-ramp counterpart are indexed as pending ramp events (`GET /v1/ramp/events`) that the Trustee must approve or reject with a reason (`POST /v1/ramp/events/{id}/review`) before Capital Allocation's `in_transit` figure counts either leg toward its gross flow — only an Approved decision counts. Once a loan's ramp movements settle, the Trustee records the confirmed per-loan amounts (and the loan's deployment flag and trust-account movements) via the full-upsert `POST /v1/loan-book/{loan_id}/transfers` (#1027) — these confirmed amounts are subtracted from the gross flow, so an unrecorded settlement leaves `in_transit` overstated and an over-recorded one drives it negative (deliberately unclamped) | Loan in {Performing, Watchlist}, the six split components sum `<= offtakerAmount`. Deferred interest is allowed (zero components). Recording is not minting |
 | 3 | Lifecycle update | Price-feed threshold crossing, manual review, cargo movement, document append, or maturity reached | Current status, `ccrBps` with age, current location, current `metadataURI`, current maturity. Only {Performing, Watchlist, Matured} are selectable | New status, new CCR (bps), new location (type, identifier, optional tracking URL), appended `metadataURI` | `updateMutable(loanId, status, newCCR, newLocation, metadataURI)`. Updates non-economic mutable fields, emits the matching status, location, or metadata event. No NAV or share-price impact | Target status not Default (that is Flow 10) and not Closed (that is Flow 5 or Flow 12) |
 | 4 | Rollover | Loan reaches `currentMaturityDate` without full repayment and is re-termed | Current epoch schedule, prior maturity, days past maturity, proposed new rate and maturity, the resulting ceiling delta | New rate (bps), new maturity date | `rollover(loanId, newRateBps, newMaturityDate)`. Appends an epoch from the prior maturity, sets `currentMaturityDate`, returns status to Performing, emits `LoanRolledOver`. Raises the mint ceiling only, mints nothing | `now >= currentMaturityDate`, status not in {Default, Closed} |
 | 5 | Benign close | Loan repaid at scheduled maturity or early | Final repayment ledger, realised senior coupon, realised residual, outstanding balances at zero | Confirm closure reason | `closeLoan(loanId, ScheduledMaturity \| EarlyRepayment)`. Sets status Closed and the closure reason, emits `LoanClosed` | Write-down closures (Default, OtherWriteDown) are Flow 12, not selectable here |
@@ -60,21 +60,21 @@ Instant, no timelock. The Trustee holds the `TRUSTEE` role on LoanRegistry and
 
 The dashboard computes the waterfall client-side from immutable loan parameters
 (`originalSeniorTranche`, `originalFacilitySize`, dates), mutable lifecycle state, the
-protocol fee schedule (management, performance, OET rates), and the actual tenor. The
+protocol fee schedule (management, performance, OET rates), and the loan's outstanding-senior events. The
 Trustee never does the arithmetic. Computed components, in priority order:
 
 1. `senior_principal_returned = min(amount, outstanding_senior_principal)`
-2. `senior_gross_interest = tenor * senior_rate * senior_deployed`
-3. `management_fee = senior_deployed * mgmt_rate * (tenor / 365)`
+2. `senior_gross_interest = Σ epochs Δt * senior_rate * outstanding / 365.25 d` (simple, from first disbursement, through Default, no maturity cap)
+3. `management_fee = mgmt_rate * ∫ outstanding dt / 365.25 d`
 4. `performance_fee = (senior_gross_interest - management_fee) * perf_rate`
 5. `senior_coupon_net = senior_gross_interest - management_fee - performance_fee`
-6. `oet_allocation = senior_deployed * oet_rate * (tenor / 365)`
+6. `oet_allocation = oet_rate * ∫ outstanding dt / 365.25 d`
 7. `originator_residual = amount - senior_principal_returned - senior_coupon_net - fees - oet_allocation`
 
 `recordPayment` takes `seniorInterest` as the net senior coupon and the three fee carve-outs
 separately. The originator residual settles off-chain through the Trust Company's USD
 account and appears in no on-chain event. Any component the Trustee overrides is revalidated
-against the `sum <= offtakerAmount` invariant before broadcast. **Shipped** as the baseline calculator `GET /v1/loan-book/{loan_id}/waterfall?chain_id=<id>&amount=<raw base units>[&as_of]` (`chain_id` required) (`packages/api/src/routes/waterfall.rs`): reads the loan snapshot (genesis rate, senior tranche, principal repaid) and the per-loan fee schedule (`loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps`, migrations `20260717000001` + `20260720000001`), and returns five components — `senior_principal_returned`, `senior_coupon_net` (the net senior coupon → vault leg), `management_fee`, `performance_fee`, `oet_allocation` — each mapping 1:1 to a `recordPayment` argument. Money is raw on-chain base units (`recordPayment` scale, 7-decimal on Soroban); the baseline uses the genesis rate and origination→`as_of` tenor with no epoch folding. `outstanding_senior_principal` / `senior_deployed` = `disbursed − repaid − written_down` (floored at zero), and cumulative gross interest includes the signed `interest_adjustment` (a waiver is negative) before the fee split.
+against the `sum <= offtakerAmount` invariant before broadcast. **Shipped** as the baseline calculator `GET /v1/loan-book/{loan_id}/waterfall?chain_id=<id>&amount=<raw base units>[&as_of]` (`chain_id` required) (`packages/api/src/routes/waterfall.rs`): reads the loan snapshot (genesis rate, senior tranche, principal repaid) and the per-loan fee schedule (`loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps`, migrations `20260717000001` + `20260720000001`), and returns five components — `senior_principal_returned`, `senior_coupon_net` (the net senior coupon → vault leg), `management_fee`, `performance_fee`, `oet_allocation` — each mapping 1:1 to a `recordPayment` argument. Money is raw on-chain base units (`recordPayment` scale, 7-decimal on Soroban); the baseline is the contract accrual from the loan's outstanding / rate events, first disbursement→`as_of` (#1630). `outstanding_senior_principal` / `senior_deployed` = `disbursed − repaid − written_down` (floored at zero), and cumulative gross interest includes the signed `interest_adjustment` (a waiver is negative) before the fee split.
 
 ### Flow note B — origination review
 
@@ -157,7 +157,7 @@ Relayer value is old, say so.
 Some numbers on screen are not stored on-chain, so the dashboard calculates them: senior
 principal still owed (original senior tranche minus principal repaid), how much the offtaker
 still owes (original price minus what has come in), interest earned so far (the
-maturity-capped epoch sum), how much is still waiting to be minted per leg (recorded minus
+contract's epoch accrual), how much is still waiting to be minted per leg (recorded minus
 already minted), and days left to maturity.
 
 ---
@@ -180,7 +180,7 @@ already minted), and days left to maturity.
 | Audit log | The running list of everything the Trustee has done | Surface 17 |
 
 The Type 1 actions are sent straight from the Trustee key. For `mintLoan`, `updateMutable`,
-`recordPayment`, `rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the
+`rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the
 transaction, shows it in readable form for review, and sends it once confirmed. These do not
 go through the Relayer.
 
@@ -191,9 +191,9 @@ go through the Relayer.
 - No dashboard action moves USDC from the Capital Wallet on the Trustee's signature alone.
   Every cash movement is Type 2 MPC co-signature.
 - A compromised Trustee key is bounded. It can record payments, roll over, and update
-  lifecycle, but it cannot mint PLUSD. Minting needs the independent two-party attestation
-  (Relayer ECDSA plus custodian EIP-1271) and is capped by the maturity-capped ceiling the
-  YieldMinter computes itself. `recordPayment` and `rollover` only raise the ceiling.
+  lifecycle. Recording a payment goes through `Minter.repay` and mints its yield, bounded by
+  the Minter's per-transaction and window limits and a single-use `ref_hash` (see
+  [loan-repay-minter.md](./loan-repay-minter.md)); the YieldMinter attestation narrative here is legacy.
 - Default, off-cycle re-term, and write-down close are removed from the Trustee key. They
   are RISK_COUNCIL proposals under a 24h timelock, GUARDIAN-cancelable. The dashboard must
   not offer a Trustee-key path to any of them.

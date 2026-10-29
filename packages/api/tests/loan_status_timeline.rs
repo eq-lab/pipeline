@@ -187,7 +187,8 @@ fn accrued_at(loans: &[LoanSnapshotRow], events: &[LifecycleRow], day: i64) -> S
 }
 
 fn accrual_for_days(days: i64) -> String {
-    let v = BigDecimal::from(8_000_000_i64 * 1200 * days) / BigDecimal::from(10_000_i64 * 365);
+    let v = BigDecimal::from(8_000_000_i64 * 1200 * days * 86_400)
+        / BigDecimal::from(10_000_i64 * 31_557_600);
     v.with_scale_round(6, bigdecimal::RoundingMode::Down)
         .to_plain_string()
 }
@@ -558,4 +559,84 @@ fn series_accrual_follows_active_intervals_across_the_grid() {
     assert_eq!(by_day[10], accrual_for_days(80));
     assert!(series[6].apy.is_none());
     assert!(series[8].apy.is_some());
+}
+
+// ── /v1/stats/yield contract accrual (outstanding x rate / 31_557_600) ───────
+
+fn out_ev(day: i64, name: &str, outstanding: i64) -> LoanRateEventRow {
+    LoanRateEventRow {
+        loan_id: BigDecimal::from(1_i64),
+        event_name: name.to_owned(),
+        block_timestamp: day * DAY,
+        outstanding: Some(usdc(outstanding)),
+        new_rate: None,
+    }
+}
+
+fn lifecycle_scenario() -> (Vec<LifecycleRow>, Vec<LoanRateEventRow>) {
+    let events = vec![
+        status_ev(1, 50, "Default"),
+        status_ev(1, 70, "Performing"),
+        status_ev(1, 100, "Closed"),
+    ];
+    let rows = vec![
+        out_ev(0, "Disbursed", 1_000_000),
+        out_ev(20, "PaymentRecorded", 600_000),
+        LoanRateEventRow {
+            loan_id: BigDecimal::from(1_i64),
+            event_name: "EconomicsAmended".to_owned(),
+            block_timestamp: 30 * DAY,
+            outstanding: None,
+            new_rate: Some(112_550),
+        },
+        out_ev(90, "PaymentRecorded", 400_000),
+    ];
+    (events, rows)
+}
+
+// Active [0,50) and [70,100); YEAR = 31_557_600; rate floor(112_550 / 100) = 1125 bps.
+// Pieces in USDC x bps x days:
+//   [0,20)   1_000_000 x 1200 x 20 = 24_000_000_000
+//   [20,30)    600_000 x 1200 x 10 =  7_200_000_000
+//   [30,50)    600_000 x 1125 x 20 = 13_500_000_000
+//   [70,90)    600_000 x 1125 x 20 = 13_500_000_000
+//   [90,100)   400_000 x 1125 x 10 =  4_500_000_000
+// Sum 62_700_000_000 x 86_400 / (10_000 x 31_557_600) = 17166.324435...
+#[test]
+fn accrual_follows_outstanding_rate_default_cure_and_close() {
+    let (events, rows) = lifecycle_scenario();
+    let loans = [base()];
+    let t = 120 * DAY;
+    let s = compute_series(&loans, &events, &rows, t, t, DAY)
+        .pop()
+        .unwrap();
+    assert_eq!(s.accrued, "17166.324435");
+}
+
+#[test]
+fn accrual_series_last_point_and_freeze_after_close() {
+    let (events, rows) = lifecycle_scenario();
+    let loans = [base()];
+    let series = compute_series(&loans, &events, &rows, 0, 120 * DAY, 30 * DAY);
+    assert_eq!(series.last().unwrap().accrued, "17166.324435");
+    assert_eq!(series[3].accrued, "15934.291581");
+}
+
+#[test]
+fn accrual_with_no_outstanding_events_is_zero() {
+    let loans = [base()];
+    let t = 60 * DAY;
+    let s = compute_series(&loans, &[], &[], t, t, DAY).pop().unwrap();
+    assert_eq!(s.accrued, "0.000000");
+}
+
+#[test]
+fn apy_uses_floor_rate_and_outstanding_after_amendment() {
+    let (events, rows) = lifecycle_scenario();
+    let loans = [base()];
+    let t = 80 * DAY;
+    let s = compute_series(&loans, &events, &rows, t, t, DAY)
+        .pop()
+        .unwrap();
+    assert!((s.apy.unwrap() - 0.1125).abs() < 1e-9);
 }

@@ -332,7 +332,7 @@ export function useStakeFlow(
 
   // Mapped errors (#1034) — mirrors #1024's deposit-flow derivation: success
   // wins over error. spec: docs/frontend/error-handling.md
-  const evmStep1Error = isStake ? evmPlusdToken.error : null;
+  const evmStep1Error = isStake ? evmPlusdToken.approveError : null;
   const evmStep1UserError = evmStep1Error
     ? toUserError(evmStep1Error)
     : undefined;

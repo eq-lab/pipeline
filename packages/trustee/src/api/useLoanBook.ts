@@ -158,6 +158,8 @@ export interface LoanBookEntry {
   protection: string | null;
   /** Loan status from the latest snapshot: `"Performing"`, `"WatchList"`, `"Default"`, `"Closed"`, … */
   status: string;
+  /** Raw on-chain status, no display overrides: `Approved` | `Performing` | `WatchList` | `Default` | `Closed`. */
+  onchain_status: string;
   /** Backs the loan-detail Documents card. Spec: `docs/frontend/trustee-flows.md#documents`. */
   documents: LoanDocumentDto[];
   /**

@@ -1085,3 +1085,42 @@ describe("useApproval — mock key bypasses simulateContract", () => {
     expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });
+
+describe("useApproval — retry clears the stale write error (#1658)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("a successful retry after a simulate failure drops the old error", async () => {
+    mockSimulateContract.mockRejectedValueOnce(new Error("first failure"));
+
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(100n);
+    });
+    await waitFor(() => {
+      expect(result.current.error?.message).toContain("first failure");
+    });
+
+    act(() => {
+      result.current.approve(100n);
+    });
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.error).toBeNull();
+  });
+});

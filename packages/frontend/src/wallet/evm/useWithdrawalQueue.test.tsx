@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { encodeAbiParameters, encodeEventTopics } from "viem";
 import { EvmWalletProvider } from "./EvmWalletProvider";
+import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
 import { useRequestWithdrawal, useClaimWithdrawal } from "./useWithdrawalQueue";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
@@ -1068,5 +1070,117 @@ describe("useClaimWithdrawal — receipt-gated isSuccess", () => {
     const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
 
     expect(result.current.error).toBe(receiptErr);
+  });
+});
+
+// ── useRequestWithdrawal — requestId decoded from the receipt (#1658) ────────────
+
+describe("useRequestWithdrawal — receipt event decoding", () => {
+  const wqAddr = "0xFFFF000000000000000000000000000000000020" as `0x${string}`;
+  const user = "0x1111111111111111111111111111111111111111" as `0x${string}`;
+  const other = "0x2222222222222222222222222222222222222222" as `0x${string}`;
+  const inflightKey = `pipeline.evm.withdraw.inflight.560048.${user.toLowerCase()}`;
+
+  function withdrawalLog(
+    address: `0x${string}`,
+    eventUser: `0x${string}`,
+    requestId: bigint,
+    amount: bigint,
+    queued: bigint = 0n,
+  ) {
+    return {
+      address,
+      topics: encodeEventTopics({
+        abi: withdrawalQueueAbi,
+        eventName: "WithdrawalRequested",
+        args: { withdrawer: eventUser, requestId },
+      }),
+      data: encodeAbiParameters(
+        [{ type: "uint256" }, { type: "uint256" }],
+        [amount, queued],
+      ),
+    };
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    resetEnv();
+    resetReceiptState();
+    resetWriteContractState();
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr;
+    mockUseAccount.mockReturnValue({ address: user, isConnected: true });
+    stableWriteContractState.data = "0xhash1";
+    stableReceiptState.isSuccess = true;
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    resetReceiptState();
+    resetWriteContractState();
+    setDisconnectedWallet();
+  });
+
+  it("decodes requestId and queued and writes the in-flight record with the submitted amount", async () => {
+    stableReceiptState.isSuccess = false;
+
+    const { result, rerender } = renderHook(() => useRequestWithdrawal(), {
+      wrapper,
+    });
+    act(() => {
+      result.current.write(2_000_000_000n);
+    });
+    await waitFor(() => expect(mockWriteContract).toHaveBeenCalled());
+
+    stableReceiptState.isSuccess = true;
+    stableReceiptState.data = {
+      logs: [withdrawalLog(wqAddr, user, 77n, 2_000_000_000n, 500n)],
+    };
+    rerender();
+
+    expect(result.current.data).toEqual({
+      hash: "0xhash1",
+      requestId: "77",
+      queued: "500",
+    });
+    await waitFor(() => {
+      expect(
+        JSON.parse(localStorage.getItem(inflightKey) ?? "null"),
+      ).toMatchObject({
+        requestId: "77",
+        amount: "2000000000",
+        txHash: "0xhash1",
+      });
+    });
+  });
+
+  it("ignores a log emitted by another contract or for another user", () => {
+    stableReceiptState.data = {
+      logs: [
+        withdrawalLog(other, user, 5n, 1n),
+        withdrawalLog(wqAddr, other, 6n, 1n),
+      ],
+    };
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    expect(result.current.data?.requestId).toBeUndefined();
+    expect(localStorage.getItem(inflightKey)).toBeNull();
+  });
+
+  it("has no requestId before the receipt lands", () => {
+    stableReceiptState.isSuccess = false;
+    stableReceiptState.data = undefined;
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    expect(result.current.data).toEqual({
+      hash: "0xhash1",
+      requestId: undefined,
+      queued: undefined,
+    });
+    expect(localStorage.getItem(inflightKey)).toBeNull();
   });
 });

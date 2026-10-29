@@ -171,10 +171,12 @@ function AccountPageContent({
           <AccountProfileCard
             legalName={account.legalName}
             country={account.country}
+            savedCountry={account.savedCountry}
             onLegalNameChange={account.setLegalName}
             onCountryChange={account.setCountry}
             onSave={() => void account.saveProfile()}
             canSave={account.canSaveProfile}
+            writable={account.writable}
             disabled={
               !account.writable ||
               account.busy ||

@@ -34,6 +34,7 @@ import { useEvmConnectors } from "./evm/useEvmWallet";
 import type { EvmWalletConnectorId } from "./evm/useEvmWallet";
 import { useStellarConnectors } from "./stellar/useStellarWallet";
 import heroUrl from "./assets/connect-hero-ship.webp?url";
+import { namespaceLabel } from "./namespaceLabel";
 
 // ── Focus trap ────────────────────────────────────────────────────────────────
 
@@ -703,8 +704,8 @@ export function ConnectWalletModal({
               <SegmentedTabs
                 variant="track"
                 tabs={[
-                  { id: "evm", label: "EVM" },
-                  { id: "soroban", label: "Soroban" },
+                  { id: "evm", label: namespaceLabel("evm") },
+                  { id: "soroban", label: namespaceLabel("soroban") },
                 ]}
                 activeId={activeTab}
                 onSelect={handleTabChange}
