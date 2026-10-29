@@ -137,3 +137,7 @@ Phase 3 calls the SAC's `authorized(user) -> bool` view via `simulateTransaction
 ### Crystal force-disabled
 
 `StellarRelayerSettings::from_chain_env` hard-codes `crystal_enabled = false` regardless of the global `CRYSTAL_ENABLED`. Crystal does not return KYT for Stellar addresses; gating on `crystal_kyt_status = 1` would block every Stellar profile forever. Sumsub remains under the global toggle — Sumsub identity is wallet-scoped, so EVM-side reviews propagate to Stellar `lp_profiles` rows via the existing webhook handler.
+
+## KYT no-downgrade rule
+
+`lp_profiles.kyt_status = 2` (failed) is sticky. The address screen (`set_profile_kyt_clear`, Crystal and Elliptic) runs `UPDATE lp_profiles SET kyt_status = 1 ... AND kyt_status IS DISTINCT FROM 2`, so a clean address verdict never overwrites a failure recorded by event screening; the skipped clear is logged at info. Only the failed-setting path (`set_profile_kyt_failed`) and a manual DB reset can change a failed profile. No automated or API reset path exists. The pure rule is `shared::kyc_repo::next_kyt_status`. Per-request `contract_logs.kyt_status` is written once, only for rows where it is NULL (`fetch_unverified_transfers`), so a re-screen cannot overwrite it.

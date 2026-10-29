@@ -92,6 +92,20 @@ pub fn kyt_gate_for_kind(kind: ChainKind, crystal_enabled: bool, elliptic_enable
     }
 }
 
+pub const KYT_CLEAR: i16 = 1;
+pub const KYT_FAILED: i16 = 2;
+
+pub const PROFILE_KYT_CLEAR_SQL: &str = "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2 AND kyt_status IS DISTINCT FROM 2";
+
+/// Profile-level KYT transition: a failed profile stays failed until a manual reset.
+pub fn next_kyt_status(current: Option<i16>, verdict: i16) -> i16 {
+    if current == Some(KYT_FAILED) {
+        KYT_FAILED
+    } else {
+        verdict
+    }
+}
+
 /// Feed status of a request row. `PendingClaim` holds exactly when the voucher endpoint
 /// would issue: gate off or `kyt_status == 1`, plus whitelisted on chain and unclaimed.
 pub fn feed_status(
@@ -633,13 +647,18 @@ impl KycRepo {
         chain_id: i64,
         wallet_address: &str,
     ) -> anyhow::Result<()> {
-        sqlx::query(
-            "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
-        )
-        .bind(chain_id)
-        .bind(wallet_address)
-        .execute(&self.pool)
-        .await?;
+        let res = sqlx::query(PROFILE_KYT_CLEAR_SQL)
+            .bind(chain_id)
+            .bind(wallet_address)
+            .execute(&self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            tracing::info!(
+                wallet = wallet_address,
+                chain_id,
+                "KYT clear skipped: profile is failed (or missing); failure is never downgraded"
+            );
+        }
         Ok(())
     }
 

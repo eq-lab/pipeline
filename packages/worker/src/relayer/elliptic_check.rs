@@ -1,10 +1,7 @@
 use chrono::Utc;
 use shared::elliptic::client::EllipticClient;
-use shared::kyc_repo::{KycRepo, KytTransferResult, UnverifiedTransfer};
+use shared::kyc_repo::{KycRepo, KytTransferResult, UnverifiedTransfer, KYT_CLEAR, KYT_FAILED};
 
-// KYT status values shared with the whitelist gate.
-const KYT_CLEAR: i16 = 1;
-const KYT_FAILED: i16 = 2;
 const BATCH_SIZE: i64 = 100;
 
 /// Stellar Phase 2: Elliptic KYT/AML screening.
