@@ -30,6 +30,8 @@ import {
   buildUpdateMutableEnvelope,
   encodeRepaymentData,
   readNextRepaymentId,
+  readRepaymentData,
+  readIsRepaymentReversed,
   encodeCloseLoanArgs,
   buildCloseLoanEnvelope,
   type SubmitLoanRequest,
@@ -776,6 +778,89 @@ describe("readNextRepaymentId", () => {
   it("guards an empty registry id", async () => {
     await expect(
       readNextRepaymentId({ ...params, registryId: "" }),
+    ).rejects.toThrow(/registryId must not be empty/);
+  });
+});
+
+describe("readRepaymentData", () => {
+  const params = {
+    registryId: TARGET_ID,
+    loanId: 7,
+    repaymentId: 1,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("maps the u128 struct to raw decimal strings", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: {
+        retval: {
+          __native: {
+            oet_alloc: 75000000000n,
+            perf_fee: 150000000000n,
+            mgmt_fee: 120000000000n,
+            equity_distributed: 0n,
+            senior_interest: 1155000000000n,
+            senior_principal_repaid: 0n,
+            offtaker_received: 1500000000000n,
+          },
+        },
+      },
+    });
+    await expect(readRepaymentData(params)).resolves.toEqual(REPAYMENT);
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "repayment_data",
+      { t: "u32", v: 7 },
+      { t: "u32", v: 1 },
+    );
+  });
+
+  it("throws on a missing field, a simulation error and an empty id", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: {} } },
+    });
+    await expect(readRepaymentData(params)).rejects.toThrow(
+      /offtaker_received missing/,
+    );
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "boom" });
+    await expect(readRepaymentData(params)).rejects.toThrow(
+      "repayment_data simulation error: boom",
+    );
+    await expect(
+      readRepaymentData({ ...params, registryId: "" }),
+    ).rejects.toThrow(/registryId must not be empty/);
+  });
+});
+
+describe("readIsRepaymentReversed", () => {
+  const params = {
+    registryId: TARGET_ID,
+    loanId: 7,
+    repaymentId: 1,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("returns the on-chain boolean", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: true } },
+    });
+    await expect(readIsRepaymentReversed(params)).resolves.toBe(true);
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "is_repayment_reversed",
+      { t: "u32", v: 7 },
+      { t: "u32", v: 1 },
+    );
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: false } },
+    });
+    await expect(readIsRepaymentReversed(params)).resolves.toBe(false);
+  });
+
+  it("guards an empty registry id", async () => {
+    await expect(
+      readIsRepaymentReversed({ ...params, registryId: "" }),
     ).rejects.toThrow(/registryId must not be empty/);
   });
 });

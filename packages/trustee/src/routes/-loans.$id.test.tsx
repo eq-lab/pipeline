@@ -86,6 +86,21 @@ vi.mock("@/api/useUpdateLifecycle", () => ({
   useUpdateLifecycle: () => mockUpdateLifecycle,
 }));
 
+const { mockRecoveryCard } = vi.hoisted(() => ({
+  mockRecoveryCard: {
+    state: "hidden" as string,
+    onchainStatus: "Performing" as string | null,
+    blockedReason: null as string | null,
+  },
+}));
+vi.mock("./-useRepaymentRecoveryDialog", () => ({
+  useRecoveryCard: () => mockRecoveryCard,
+}));
+vi.mock("./-RepaymentRecoveryDialog", () => ({
+  RepaymentRecoveryDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="recovery-dialog-stub" /> : null,
+}));
+
 import { Route } from "./loans.$id";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
@@ -1000,6 +1015,63 @@ describe("Loan detail route — Escalate to Risk Council (#782)", () => {
     expect(
       screen.queryByTestId("update-lifecycle-dialog"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — Repayment recovery card (#1711)", () => {
+  beforeEach(() => {
+    mockRecoveryCard.state = "hidden";
+    mockRecoveryCard.blockedReason = null;
+  });
+
+  it("is hidden for a healthy loan", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-repayment-recovery"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows for an eligible loan and opens the dialog", () => {
+    mockRecoveryCard.state = "eligible";
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(screen.getByText("Repayment recovery")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("recovery-dialog-stub"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-open-recovery"));
+    expect(screen.getByTestId("recovery-dialog-stub")).toBeInTheDocument();
+  });
+
+  it("shows in the awaiting-corrected-repayment state", () => {
+    mockRecoveryCard.state = "awaiting-corrected-repayment";
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-repayment-recovery"),
+    ).toHaveAttribute("data-state", "awaiting-corrected-repayment");
+    expect(screen.getByTestId("loan-detail-open-recovery")).toBeEnabled();
+  });
+
+  it("is disabled with the Stellar-only reason on an EVM loan", () => {
+    mockRecoveryCard.state = "blocked-evm";
+    mockRecoveryCard.blockedReason = "On-chain actions run on Stellar only.";
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-open-recovery")).toBeDisabled();
+    expect(
+      screen.getByTestId("loan-detail-repayment-recovery-blocked"),
+    ).toHaveTextContent("Stellar only");
+  });
+
+  it("renders in the watchlist layout too", () => {
+    mockRecoveryCard.state = "eligible";
+    mockUseLoanDetail.mockReturnValue(makeResult({ variant: "watchlist" }));
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-repayment-recovery"),
+    ).toBeInTheDocument();
   });
 });
 

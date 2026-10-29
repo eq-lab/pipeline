@@ -851,10 +851,6 @@
     "header": 0,
     "nodeIds": 1
   },
-  "packages/trustee/src/routes/loans.$id.tsx": {
-    "header": 0,
-    "nodeIds": 3
-  },
   "packages/trustee/src/routes/loans.$id_.record-coupon.tsx": {
     "header": 0,
     "nodeIds": 2

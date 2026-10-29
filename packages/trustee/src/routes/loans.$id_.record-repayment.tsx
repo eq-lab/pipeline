@@ -462,7 +462,16 @@ function RecordRepayment() {
                 >
                   Senior principal of {view.seniorStillOutstanding} is still
                   outstanding on-chain, so this loan can't be closed from the
-                  app. Escalate to the Risk Council.
+                  app.{" "}
+                  <Link
+                    to="/loans/$id"
+                    params={{ id }}
+                    search={{ chain }}
+                    data-testid="record-repayment-recovery-link"
+                    className="underline"
+                  >
+                    Open repayment recovery
+                  </Link>
                 </p>
               )}
             </>

@@ -607,6 +607,31 @@ own border/title).
   `recordPaymentInput` / `closureReason` and print the same line. Escalate to Risk Council
   (read-only page) and Disbursement complete (DB-only) stay available.
 
+### Repayment recovery (#1711)
+
+Procedure, roles and contract facts: [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md). No Figma: the card and dialog reuse the loan-detail card and the shared dialog shell (`DisbursementConfirmDialog`).
+
+- **Card** (`loan-detail-repayment-recovery`, `RepaymentRecoveryCard` in `loans.$id.tsx`): "Repayment recovery" with one muted line and an "Open recovery" button, rendered after the Other-actions card in the Performing and Watchlist layouts. States from `recoveryCardState` (`-repayment-recovery.ts`):
+  - `eligible`: `/financials.offtaker_outstanding` is `0`, loan-book `senior_outstanding` is `> 0`, and `onchain_status` is `Performing`, `WatchList` or `Default` (string comparisons on the served values, no arithmetic);
+  - `awaiting-corrected-repayment`: the latest repayment id (`next_repayment_id - 1`) has `is_repayment_reversed = true`. The card stays after step 1 even though the loan is no longer "eligible" (offtaker outstanding is back above `0`);
+  - `blocked-evm`: eligible but not a Stellar loan; the button is disabled and shows `onChainBlockedReason` (TD-152);
+  - `hidden` otherwise. The on-chain reads run only for Stellar loans in `Performing..Default`, under one React Query key (`["repayment-recovery", chainId, loanId]`, `staleTime` 15 s).
+- **Dialog** (`-RepaymentRecoveryDialog.tsx`, state in `-useRepaymentRecoveryDialog.ts`, on-chain hooks in `api/useRepaymentRecovery.ts`):
+  - Step 1: a radio list of the non-reversed repayments (registry `repayment_data`, formatted from raw units by `chainAmountDecimals`, never rescaled). A repayment with `senior_principal_repaid = 0` and `equity_distributed != 0` is listed first and preselected. For the selection the dialog shows the Minter `repayment(...)` effects verbatim: cash removed from bank, treasury fee shares burned (raw share units), and either the vault interest absorbed or, for a carved-out loan, the Pocket principal / interest unrelease. Nothing is summed client-side.
+  - Reload behaviour: when the latest repayment is already reversed, it is preselected and step 1 shows "reversed on-chain" so step 2 is reachable without local state.
+  - Step 2: the corrected split from `GET /v1/loan-book/{id}/waterfall` at the original `offtaker_received` and the original `value_date` (the `CashRepaid` audit row, `originalValueDate`), mapped by `buildRepaymentInput` (the Record Repayment mapping), then signed through `useRecordPayment` unchanged. On success the dialog shows the transaction hash; the close checklist on Record Repayment then applies.
+- **Gating by on-chain `can_call`** (`useReverseRepayAccess`, connected wallet on the Minter): `reverseAction` yields
+  - `execute-now` (`can_call(reverse_repay).immediate`): one "Reverse repayment" click, a single `AM.execute`, with the same stage text as `repay`;
+  - `schedule` (`delay > 0`, nothing scheduled): "Schedule reversal" (`AM.schedule`, `when = 0`), the delay shown in hours verbatim;
+  - `execute-scheduled` (a schedule exists): "Executable from <UTC date-time>" from the on-chain ready time, button "Execute reversal". The schedule is found after a reload by `hash_operation(caller, minter, "reverse_repay", [loan_id, repayment_id, ref_hash])` then `get_schedule`, with `ref_hash = sha256("pipeline:reverse_repay:{minterId}:{loanId}:{repaymentId}")`; no `localStorage`. Execute stays enabled while a schedule exists; an early attempt fails at simulation;
+  - `no-role` (`immediate: false, delay: 0`, for example a Trustee-only wallet): "Only the Risk Council can reverse a repayment." and the button is disabled.
+  - Step 2 additionally needs `can_call(repay).immediate` (`CASH_REPORTER`); otherwise "Only the Cash reporter can record the corrected repayment."
+- **Step 2 gate** (all required): the repayment is reversed on chain (registry flag), the original `value_date` was found, `/financials.offtaker_outstanding` is above `0` (the backend has indexed the reversal), and the waterfall query resolved. Mutations invalidate `repayment-recovery`, `repayment-recovery-access`, `loan-book`, `loan-financials`, `loan-waterfall` and `audit-log` immediately and again at 5 s and 15 s.
+- **Errors:** generic `toUserError` plus dialog-local copy for AccessManager `#6` (not scheduled), `#7` (not ready), `#8` (expired, or the Minter's bank cash below the repayment's cash), `#9` (already scheduled) and Minter `#25` (already reversed). It is local because Soroban codes collide across contracts and the global map stays empty.
+- **Config and roles:** `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` (the AccessManager), `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives the "not configured for this environment" copy. The Risk Council wallet must also be a trustee in the API's `auth_users`, or step 1 cannot run from the app (deployment fact).
+- **EVM:** gated by `stellarOnlyActionReason`. `@pipeline/wallet-connect` exports pure calldata encoders (`encodeEvmReverseRepayCalldata`, `encodeEvmRepayCalldata`); there is no EVM send path (TD-152, #1573).
+- Not in the app: cancelling a scheduled reversal (`AM.cancel`, TD-159).
+
 ### Figma → token / px mapping (`4116:10549`)
 
 - `‹ Loans` `Besley 18px` `#262524`; title `Besley 44px`; both ink.
@@ -778,8 +803,9 @@ screen. It is suppressed while this page's own repay is pending/settled so the
 close checklist below, not by this state alone. When the loan-book `senior_outstanding` is still
 above `0` in this state (a loan stranded by an earlier over-sized coupon), the notice is followed
 by a muted `record-repayment-senior-outstanding` line: "Senior principal of $X is still
-outstanding on-chain, so this loan can't be closed from the app. Escalate to the Risk Council."
-It is informational only and changes no gating; the recovery procedure (Minter reverse then corrected repay, roles, limits) is in [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md) (#1655).
+outstanding on-chain, so this loan can't be closed from the app." followed by an "Open repayment
+recovery" link (`record-repayment-recovery-link`) to the loan detail page, where the Repayment
+recovery card lives (#1711). It is informational only and changes no gating; the recovery procedure (Minter reverse then corrected repay, roles, limits) is in [loan-repayment-recovery.md](../product-specs/loan-repayment-recovery.md) (#1655).
 
 ### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 

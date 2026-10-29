@@ -65,7 +65,6 @@
  * `ENV.STELLAR_LOAN_REGISTRY_ID`) — not hardcoded here.
  */
 import {
-  Account,
   Contract,
   TransactionBuilder,
   BASE_FEE,
@@ -76,7 +75,7 @@ import {
   rpc as SorobanRpc,
   type Transaction,
 } from "@stellar/stellar-sdk";
-import { READ_SIMULATION_SOURCE } from "../sacBalance";
+import { simulateRead } from "./simulateRead";
 
 // ── Types (self-contained port of the API's SubmitLoanRequest — see
 //    `packages/trustee/src/api/useLoanSubmissions.ts` /
@@ -948,36 +947,77 @@ export async function readNextRepaymentId({
   if (!registryId) {
     throw new Error("readNextRepaymentId: registryId must not be empty");
   }
-  const server = new SorobanRpc.Server(rpcUrl, {
-    allowHttp: rpcUrl.startsWith("http://"),
-  });
-  const op = new Contract(registryId).call(
+  const data = (await simulateRead(
+    registryId,
     "mutable_loan_data",
-    xdr.ScVal.scvU32(loanId),
-  );
-  const tx = new TransactionBuilder(new Account(READ_SIMULATION_SOURCE, "0"), {
-    fee: BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(op)
-    .setTimeout(30)
-    .build();
-
-  const sim = await server.simulateTransaction(tx);
-  if (SorobanRpc.Api.isSimulationError(sim)) {
-    throw new Error(`readNextRepaymentId simulation error: ${sim.error}`);
-  }
-  if (!sim.result) {
-    throw new Error("readNextRepaymentId: simulation returned no result");
-  }
-  const data = scValToNative(sim.result.retval) as {
-    next_repayment_id?: number | bigint;
-  };
+    [xdr.ScVal.scvU32(loanId)],
+    { rpcUrl, networkPassphrase, label: "readNextRepaymentId" },
+  )) as { next_repayment_id?: number | bigint };
   const next = Number(data?.next_repayment_id);
   if (!Number.isInteger(next) || next < 0) {
     throw new Error("readNextRepaymentId: next_repayment_id missing");
   }
   return next;
+}
+
+export interface ReadRepaymentParams extends ReadNextRepaymentIdParams {
+  repaymentId: number;
+}
+
+const REPAYMENT_KEYS = [
+  "offtaker_received",
+  "senior_principal_repaid",
+  "senior_interest",
+  "equity_distributed",
+  "mgmt_fee",
+  "perf_fee",
+  "oet_alloc",
+] as const;
+
+export async function readRepaymentData({
+  registryId,
+  loanId,
+  repaymentId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadRepaymentParams): Promise<RepaymentInput> {
+  if (!registryId) {
+    throw new Error("readRepaymentData: registryId must not be empty");
+  }
+  const data = (await simulateRead(
+    registryId,
+    "repayment_data",
+    [xdr.ScVal.scvU32(loanId), xdr.ScVal.scvU32(repaymentId)],
+    { rpcUrl, networkPassphrase },
+  )) as Record<string, bigint | number | string | undefined>;
+  const out = {} as Record<(typeof REPAYMENT_KEYS)[number], string>;
+  for (const key of REPAYMENT_KEYS) {
+    const raw = data?.[key];
+    if (raw === undefined || raw === null) {
+      throw new Error(`readRepaymentData: ${key} missing`);
+    }
+    out[key] = String(raw);
+  }
+  return out;
+}
+
+export async function readIsRepaymentReversed({
+  registryId,
+  loanId,
+  repaymentId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadRepaymentParams): Promise<boolean> {
+  if (!registryId) {
+    throw new Error("readIsRepaymentReversed: registryId must not be empty");
+  }
+  const reversed = await simulateRead(
+    registryId,
+    "is_repayment_reversed",
+    [xdr.ScVal.scvU32(loanId), xdr.ScVal.scvU32(repaymentId)],
+    { rpcUrl, networkPassphrase },
+  );
+  return reversed === true;
 }
 
 // ── Close loan (issue #884) ───────────────────────────────────────────────────
