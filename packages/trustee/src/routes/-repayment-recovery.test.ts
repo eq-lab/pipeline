@@ -179,7 +179,7 @@ describe("reversalEffects", () => {
   it("lists cash, fee shares and the vault interest for a non-carved-out loan", () => {
     expect(reversalEffects(MINTER, STELLAR)).toEqual([
       { label: "Cash removed from bank", value: "$115,500.00" },
-      { label: "Treasury fee shares burned", value: "345" },
+      { label: "Capital wallet fee shares burned", value: "345" },
       { label: "Interest absorbed from the vault", value: "$115,500.00" },
     ]);
   });

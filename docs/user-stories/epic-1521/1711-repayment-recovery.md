@@ -37,7 +37,7 @@ Trustee app (`packages/trustee`), loan detail page of a Stellar loan, with a Ste
 
 **Expected outcomes:**
 
-- The effects list shows the cash removed from the bank, the treasury fee shares burned and the interest absorbed from the vault (or the Pocket unrelease for a carved-out loan), as served on chain.
+- The effects list shows the cash removed from the bank, the capital wallet fee shares burned and the interest absorbed from the vault (or the Pocket unrelease for a carved-out loan), as served on chain.
 - One wallet prompt appears, for an AccessManager `execute` of the Minter's `reverse_repay`; no schedule transaction precedes it.
 - After indexing, the audit log shows `CashRepaymentReversed` and `PaymentUnrecorded`.
 

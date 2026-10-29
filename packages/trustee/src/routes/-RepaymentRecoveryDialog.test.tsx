@@ -149,7 +149,7 @@ describe("RepaymentRecoveryDialog step 1", () => {
       "Equity distributed$34,500.00",
     );
     expect(screen.getByTestId("repayment-recovery-effects")).toHaveTextContent(
-      "Treasury fee shares burned345",
+      "Capital wallet fee shares burned345",
     );
   });
 

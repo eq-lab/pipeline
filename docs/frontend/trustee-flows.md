@@ -498,7 +498,7 @@ TD-42 hand-mirroring pair. Money fields display exactly as served, via plain `fo
 `Custodian co-sig on
 mint` has no field on `/financials` yet, so it renders `—` pending clarification (#852 open
 question c) — never fabricated. `Unminted yield` (`not_minted_yield`) is shown as a single figure
-(no vault/treasury split — open question b). `Protection` is the deal-level trade-finance
+(no vault/capital-wallet split — open question b). `Protection` is the deal-level trade-finance
 protection instrument (#1014), served on the loan-book row (relayer DB, from the submission
 payload — never on-chain). A 404 from `/financials` renders a neutral `"empty"` note, mirroring
 Price & Collateral.
@@ -617,7 +617,7 @@ Procedure, roles and contract facts: [loan-repayment-recovery.md](../product-spe
   - `blocked-evm`: eligible but not a Stellar loan; the button is disabled and shows `onChainBlockedReason` (TD-152);
   - `hidden` otherwise. The on-chain reads run only for Stellar loans in `Performing..Default`, under one React Query key (`["repayment-recovery", chainId, loanId]`, `staleTime` 15 s).
 - **Dialog** (`-RepaymentRecoveryDialog.tsx`, state in `-useRepaymentRecoveryDialog.ts`, on-chain hooks in `api/useRepaymentRecovery.ts`):
-  - Step 1: a radio list of the non-reversed repayments (registry `repayment_data`, formatted from raw units by `chainAmountDecimals`, never rescaled). A repayment with `senior_principal_repaid = 0` and `equity_distributed != 0` is listed first and preselected. For the selection the dialog shows the Minter `repayment(...)` effects verbatim: cash removed from bank, treasury fee shares burned (raw share units), and either the vault interest absorbed or, for a carved-out loan, the Pocket principal / interest unrelease. Nothing is summed client-side.
+  - Step 1: a radio list of the non-reversed repayments (registry `repayment_data`, formatted from raw units by `chainAmountDecimals`, never rescaled). A repayment with `senior_principal_repaid = 0` and `equity_distributed != 0` is listed first and preselected. For the selection the dialog shows the Minter `repayment(...)` effects verbatim: cash removed from bank, capital wallet fee shares burned (raw share units), and either the vault interest absorbed or, for a carved-out loan, the Pocket principal / interest unrelease. Nothing is summed client-side.
   - Reload behaviour: when the latest repayment is already reversed, it is preselected and step 1 shows "reversed on-chain" so step 2 is reachable without local state.
   - Step 2: the corrected split from `GET /v1/loan-book/{id}/waterfall` at the original `offtaker_received` and the original `value_date` (the `CashRepaid` audit row, `originalValueDate`), mapped by `buildRepaymentInput` (the Record Repayment mapping), then signed through `useRecordPayment` unchanged. On success the dialog shows the transaction hash; the close checklist on Record Repayment then applies.
 - **Gating by on-chain `can_call`** (`useReverseRepayAccess`, connected wallet on the Minter): `reverseAction` yields
@@ -715,7 +715,7 @@ Record Coupon and Record Repayment sign the Minter's `repay`, not the executor's
 - `value_date` is the UTC-midnight Unix seconds of the page date (`dateInputToValueDate`; the date is fixed to today, #916).
 - `ref_hash` is `sha256("pipeline:repay:{registryId}:{loanId}:{next_repayment_id}")` as lowercase hex; `next_repayment_id` is read from `LoanRegistry.mutable_loan_data(loan_id)` just before the transaction is built. There is no input field for it. A second submit for the same slot fails at simulation (`RefHashSeen`).
 - The hook is gated on `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID` (the executor id is no longer used for this action) and keeps the "not configured for this environment" copy.
-- The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the treasury). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
+- The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the capital wallet). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
 - The trustee wallet must hold `CASH_REPORTER`; without it simulation fails (`#4`) and the page shows the on-chain verification error with "View details" and no signature request. A loan not yet disbursed on chain fails with registry `#3` (TD-157).
 - Error copy stays the generic `toUserError` mapping; Minter and registry codes collide (a nested registry `#1` surfaces as `Error(Contract, #1)`), so no code-specific copy is added.
 - EVM loans stay gated by `stellarOnlyActionReason` (TD-152); the EVM arm is `PipelineMinter.repay`.
