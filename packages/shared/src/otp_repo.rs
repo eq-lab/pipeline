@@ -41,6 +41,16 @@ pub struct OtpRepo {
     pub pool: PgPool,
 }
 
+pub const FIRST_PENDING_HASH_SQL: &str = "SELECT pending_password_hash FROM otp_codes \
+     WHERE account_id = $1 AND purpose = $2 AND pending_password_hash IS NOT NULL \
+     ORDER BY id ASC LIMIT 1";
+
+/// First signup's password wins: once an account has a pending hash, a later
+/// submission never replaces it.
+pub fn pending_hash_to_keep<'a>(first: Option<&'a str>, submitted: &'a str) -> &'a str {
+    first.unwrap_or(submitted)
+}
+
 const COLUMNS: &str = "id, account_id, code_hash, pending_password_hash, purpose, \
                        expires_at, consumed_at, attempts, created_at";
 
@@ -128,6 +138,14 @@ impl OtpRepo {
             return Ok(false);
         }
 
+        let first: Option<(String,)> = sqlx::query_as(FIRST_PENDING_HASH_SQL)
+            .bind(account_id)
+            .bind(purpose)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let carried = pending_password_hash
+            .map(|submitted| pending_hash_to_keep(first.as_ref().map(|f| f.0.as_str()), submitted));
+
         sqlx::query(
             "UPDATE otp_codes SET consumed_at = now() \
              WHERE account_id = $1 AND purpose = $2 AND consumed_at IS NULL",
@@ -144,7 +162,7 @@ impl OtpRepo {
         )
         .bind(account_id)
         .bind(code_hash)
-        .bind(pending_password_hash)
+        .bind(carried)
         .bind(purpose)
         .bind(ttl_secs)
         .execute(&mut *tx)
@@ -181,22 +199,17 @@ impl OtpRepo {
         Ok(())
     }
 
-    /// The password riding on the account's newest code, so a resend can carry it
-    /// forward unchanged. `None` when there is no code to carry one.
-    pub async fn latest_pending_password_hash(
+    /// The account's first pending password hash, the only one ever installed.
+    pub async fn first_pending_password_hash(
         &self,
         account_id: Uuid,
     ) -> Result<Option<String>, sqlx::Error> {
-        let row: Option<(Option<String>,)> = sqlx::query_as(
-            "SELECT pending_password_hash FROM otp_codes \
-             WHERE account_id = $1 AND purpose = $2 \
-             ORDER BY created_at DESC, id DESC LIMIT 1",
-        )
-        .bind(account_id)
-        .bind(PURPOSE_EMAIL_VERIFICATION)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.and_then(|r| r.0))
+        let row: Option<(String,)> = sqlx::query_as(FIRST_PENDING_HASH_SQL)
+            .bind(account_id)
+            .bind(PURPOSE_EMAIL_VERIFICATION)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.0))
     }
 
     /// Spend one verification attempt against the account's newest code and

@@ -190,8 +190,9 @@ pub async fn signup(
         }
         SignupOutcome::ReissuePasscode => {
             let account = existing.expect("classified from an existing account");
-            // The password rides on the new code and is installed only if that
-            // code is the one verified — it is never written to the account here.
+            // The submitted hash is only a fallback: `issue` carries forward the
+            // account's first pending hash, so this caller's password is never
+            // installed. Nothing is written to the account here.
             // Writing it here is an account takeover: a stranger re-submits this
             // address with their own password, the real owner's already-mailed
             // code stays live, and the owner's own verification hands over an
@@ -270,7 +271,7 @@ pub async fn verify_otp(
         return Err(rejected());
     }
 
-    state
+    let consumed = state
         .account_repo
         .verify_email_consuming_code(
             account.id,
@@ -278,6 +279,9 @@ pub async fn verify_otp(
             stored.pending_password_hash.as_deref(),
         )
         .await?;
+    if !consumed {
+        return Err(rejected());
+    }
 
     Ok(Json(issue_token(&state, account.id, Vec::new())?))
 }
@@ -309,12 +313,11 @@ pub async fn resend_otp(
         return Ok(StatusCode::ACCEPTED);
     }
 
-    // A resend re-issues the passcode but cannot change the password: the new
-    // code carries whatever the account's outstanding one carried, so this
-    // endpoint can never be used to install a credential.
+    // A resend carries the first signup's pending hash, so it can never install
+    // a credential.
     let Some(pending) = state
         .otp_repo
-        .latest_pending_password_hash(account.id)
+        .first_pending_password_hash(account.id)
         .await?
     else {
         return Ok(StatusCode::ACCEPTED);
@@ -386,7 +389,7 @@ pub async fn login(
     // registered without already holding its credential.
     let stored_hash = match account.as_ref() {
         Some(a) if a.password_hash.is_some() => a.password_hash.clone(),
-        Some(a) => state.otp_repo.latest_pending_password_hash(a.id).await?,
+        Some(a) => state.otp_repo.first_pending_password_hash(a.id).await?,
         None => None,
     };
     let password_ok = match stored_hash.as_deref() {
