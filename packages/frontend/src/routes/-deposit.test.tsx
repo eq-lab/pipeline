@@ -341,6 +341,7 @@ vi.mock("@/api", () => ({
 
 // Mutable direction for tests.
 let mockDirection: "deposit" | "withdraw" = "deposit";
+let mockTab: "withdraw" | "bank" | undefined;
 
 // Capture the navigate mock so tests can assert on it.
 const mockNavigateFn = vi.fn();
@@ -362,6 +363,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
         // can read `direction` without a router context.
         (route as unknown as Record<string, unknown>).useSearch = () => ({
           direction: mockDirection,
+          ...(mockTab ? { tab: mockTab } : {}),
         });
         return route;
       };
@@ -3906,11 +3908,13 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
   });
 });
 
-describe("Deposit page — bank wire-out section (#1757)", () => {
+describe("Deposit page — withdraw tabs (#1757)", () => {
   const MINTER = "0x2222222222222222222222222222222222222222";
 
   beforeEach(() => {
     mockDirection = "withdraw";
+    mockTab = undefined;
+    mockNavigateFn.mockClear();
     localStorage.clear();
     mockRequestsData = undefined;
     seedWithdrawMocks({ allowance: "1000000000" });
@@ -3918,30 +3922,84 @@ describe("Deposit page — bank wire-out section (#1757)", () => {
 
   afterEach(() => {
     mockEnv.EVM_MINTER_ADDRESS = undefined;
+    mockTab = undefined;
     localStorage.clear();
   });
 
-  it("renders on the withdraw direction when connected and the minter is configured", async () => {
-    mockEnv.EVM_MINTER_ADDRESS = MINTER as `0x${string}`;
+  it("shows the Withdraw and Bank tabs on the withdraw direction, Withdraw active by default", async () => {
     renderDeposit();
-    expect(await screen.findByTestId("wire-out-section")).toBeInTheDocument();
-    expect(screen.getByTestId("wire-out-open")).toBeDisabled();
-    expect(screen.getByTestId("wire-out-blocked-reason")).toHaveTextContent(
-      "Complete KYB to withdraw to a bank account",
+    const tabs = await screen.findByTestId("withdraw-tabs");
+    expect(within(tabs).getByRole("tab", { name: "Withdraw" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
+    expect(within(tabs).getByRole("tab", { name: "Bank" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    expect(screen.getByTestId("withdraw-queue-card")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("bank-conversion-card"),
+    ).not.toBeInTheDocument();
   });
 
-  it("is absent on the deposit direction", async () => {
-    mockEnv.EVM_MINTER_ADDRESS = MINTER as `0x${string}`;
+  it("shows no tabs on the deposit direction", async () => {
     mockDirection = "deposit";
     renderDeposit();
     await screen.findByTestId("deposit-header");
-    expect(screen.queryByTestId("wire-out-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("withdraw-tabs")).not.toBeInTheDocument();
   });
 
-  it("is absent when the minter env is unset", async () => {
+  it("ignores ?tab=bank on the deposit direction", async () => {
+    mockDirection = "deposit";
+    mockTab = "bank";
     renderDeposit();
-    await screen.findByTestId("withdraw-queue-card");
-    expect(screen.queryByTestId("wire-out-section")).not.toBeInTheDocument();
+    await screen.findByTestId("deposit-header");
+    expect(
+      screen.queryByTestId("bank-conversion-card"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("?tab=bank renders the bank content and hides the queue block and recovery row", async () => {
+    mockEnv.EVM_MINTER_ADDRESS = MINTER as `0x${string}`;
+    mockTab = "bank";
+    renderDeposit();
+    expect(
+      await screen.findByTestId("bank-conversion-card"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("wire-out-amount-input")).toBeInTheDocument();
+    expect(screen.getByText("USD to your bank account")).toBeInTheDocument();
+    expect(screen.getByText("1 PLUSD = 1 USD")).toBeInTheDocument();
+    expect(screen.getByTestId("wire-out-info")).toHaveTextContent(
+      "Your PLUSD stays in escrow until the Trustee sends the wire.",
+    );
+    expect(screen.getByTestId("wire-out-steps-card")).toBeInTheDocument();
+    expect(
+      screen.getByText("Complete KYB to withdraw to a bank account"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("withdraw-queue-card")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-recovery-rate"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("withdraw-steps-card")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("withdraw-tabs")).getByRole("tab", {
+        name: "Bank",
+      }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("selecting a tab updates the URL search", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+    const tabs = await screen.findByTestId("withdraw-tabs");
+    await user.click(within(tabs).getByRole("tab", { name: "Bank" }));
+    expect(mockNavigateFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/deposit",
+        search: { direction: "withdraw", tab: "bank" },
+        replace: true,
+      }),
+    );
   });
 });

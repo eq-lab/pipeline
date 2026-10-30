@@ -124,7 +124,7 @@ export function useWireOutFlow(
   const requestStep: StepItem = {
     label: "Request wire-out",
     actionLabel: "Request",
-    hint: WIRE_OUT_REQUEST_HINT,
+    hint: blockedReason ?? WIRE_OUT_REQUEST_HINT,
     state: write.isSuccess ? "success" : "idle",
     loading: write.isPending,
     disabled:

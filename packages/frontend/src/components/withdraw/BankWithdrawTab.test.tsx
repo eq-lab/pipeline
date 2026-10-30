@@ -1,6 +1,5 @@
 // spec: docs/frontend/bank-transfers.md#wire-out
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import React from "react";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuthFlowContext } from "@/auth/AuthFlowContext";
@@ -64,7 +63,8 @@ vi.mock("@/lib/env", () => ({
   ENV: { EVM_MINTER_ADDRESS: "0x2222222222222222222222222222222222222222" },
 }));
 
-import { WireOutSection, WIRE_OUT_DESCRIPTION } from "./WireOutSection";
+import { BankWithdrawTab } from "./BankWithdrawTab";
+import { WIRE_OUT_DESCRIPTION } from "./WireOutInfoCard";
 
 const flow = {
   balance: 50_000_000n,
@@ -72,33 +72,40 @@ const flow = {
   formattedBalance: "$5.00",
   plusdAuthorized: true as boolean | undefined,
   refetchBalance: vi.fn(),
+  networkFee: "~$0.10" as string | undefined,
+  isConnected: true,
 };
 
-function renderSection(
-  kyb: Partial<AuthFlowContextValue> = {
-    lpRead: "loaded",
-    kybStatus: "Passed",
-  },
-  props: Partial<React.ComponentProps<typeof WireOutSection>> = {},
+const kybPassed = {
+  lpRead: "loaded",
+  kybStatus: "Passed",
+} as AuthFlowContextValue;
+
+function tree(
+  kyb: Partial<AuthFlowContextValue> = kybPassed,
+  flowOverride: Partial<typeof flow> = {},
 ) {
-  const ctx = {
-    open: vi.fn(),
-    close: vi.fn(),
-    openAccountSetup: vi.fn(),
-    openAddEmail: vi.fn(),
-    lpRead: "unknown",
-    ...kyb,
-  } as AuthFlowContextValue;
-  return render(
+  const ctx = { ...kyb } as AuthFlowContextValue;
+  return (
     <ToastProvider>
       <AuthFlowContext.Provider value={ctx}>
-        <WireOutSection
-          flow={{ ...flow, ...(props.flow ?? {}) }}
+        <BankWithdrawTab
+          flow={{ ...flow, ...flowOverride }}
+          tabs={<div data-testid="tabs-slot" />}
+          onSwap={vi.fn()}
+          connectBanner={<div data-testid="connect-banner" />}
           onShowErrorDetails={vi.fn()}
         />
       </AuthFlowContext.Provider>
-    </ToastProvider>,
+    </ToastProvider>
   );
+}
+
+function renderTab(
+  kyb: Partial<AuthFlowContextValue> = kybPassed,
+  flowOverride: Partial<typeof flow> = {},
+) {
+  return render(tree(kyb, flowOverride));
 }
 
 beforeEach(() => {
@@ -112,57 +119,99 @@ beforeEach(() => {
   h.evm = h.write();
 });
 
-describe("WireOutSection", () => {
-  it("renders the heading, the verbatim docs copy and an enabled button", () => {
-    renderSection();
-    expect(screen.getByTestId("wire-out-section")).toHaveTextContent(
-      "Withdraw to a bank account",
-    );
-    expect(screen.getByTestId("wire-out-description")).toHaveTextContent(
-      WIRE_OUT_DESCRIPTION,
-    );
-    expect(screen.getByTestId("wire-out-open")).toBeEnabled();
-    expect(screen.queryByTestId("wire-out-blocked-reason")).toBeNull();
+describe("BankWithdrawTab layout", () => {
+  it("composes the tabs slot, PLUSD input, bank output, rate and fee", () => {
+    renderTab();
+    expect(screen.getByTestId("tabs-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("wire-out-amount-input")).toBeInTheDocument();
+    expect(screen.getByText("USD to your bank account")).toBeInTheDocument();
+    expect(screen.getByText("1 PLUSD = 1 USD")).toBeInTheDocument();
+    expect(screen.getByText("~$0.10")).toBeInTheDocument();
+    expect(screen.queryByTestId("withdraw-recovery-rate")).toBeNull();
     expect(screen.queryByTestId("wire-out-list")).toBeNull();
   });
 
-  it("renders nothing when the minter is unconfigured", () => {
-    h.configured = false;
-    renderSection();
-    expect(screen.queryByTestId("wire-out-section")).toBeNull();
+  it("mirrors the entered amount on the bank leg", async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await user.type(screen.getByTestId("wire-out-amount-input"), "2");
+    expect(screen.getByTestId("conversion-output-card")).toHaveTextContent(
+      "+2",
+    );
   });
 
-  it("disables the action with the KYB reason without a passed KYB", () => {
-    renderSection({ lpRead: "loaded", kybStatus: "UnderReview" });
-    expect(screen.getByTestId("wire-out-open")).toBeDisabled();
-    expect(screen.getByTestId("wire-out-blocked-reason")).toHaveTextContent(
-      "Complete KYB to withdraw to a bank account",
+  it("renders the em dash for a missing network fee", () => {
+    renderTab(kybPassed, { networkFee: undefined });
+    expect(screen.getByTestId("conversion-details")).toHaveTextContent(
+      "Network fee—",
     );
+  });
+
+  it("shows the one-line info and the verbatim docs copy behind Learn more", async () => {
+    const user = userEvent.setup();
+    renderTab();
+    expect(screen.getByTestId("wire-out-info")).toHaveTextContent(
+      "Your PLUSD stays in escrow until the Trustee sends the wire.",
+    );
+    expect(screen.queryByTestId("wire-out-description")).toBeNull();
+    await user.click(screen.getByTestId("wire-out-learn-more"));
+    expect(screen.getByTestId("wire-out-description")).toHaveTextContent(
+      WIRE_OUT_DESCRIPTION,
+    );
+  });
+
+  it("shows the connect banner instead of info and steps when disconnected", () => {
+    renderTab(kybPassed, { isConnected: false });
+    expect(screen.getByTestId("connect-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("wire-out-steps-card")).toBeNull();
+    expect(screen.queryByTestId("wire-out-info")).toBeNull();
+  });
+});
+
+describe("BankWithdrawTab gate hints", () => {
+  it("disables the action with the KYB reason without a passed KYB", () => {
+    renderTab({ lpRead: "loaded", kybStatus: "UnderReview" });
+    expect(screen.getByRole("button", { name: "Request" })).toBeDisabled();
+    expect(
+      screen.getByText("Complete KYB to withdraw to a bank account"),
+    ).toBeInTheDocument();
   });
 
   it("disables the action for a wallet-only visitor (no auth flow context)", () => {
     render(
       <ToastProvider>
-        <WireOutSection flow={flow} onShowErrorDetails={vi.fn()} />
+        <BankWithdrawTab
+          flow={flow}
+          tabs={null}
+          connectBanner={null}
+          onShowErrorDetails={vi.fn()}
+        />
       </ToastProvider>,
     );
-    expect(screen.getByTestId("wire-out-open")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Request" })).toBeDisabled();
   });
 
   it("shows the paused and not-authorised reasons", () => {
     h.paused = true;
-    const { unmount } = renderSection();
-    expect(screen.getByTestId("wire-out-blocked-reason")).toHaveTextContent(
-      /paused/,
-    );
+    const { unmount } = renderTab();
+    expect(screen.getByText(/paused/)).toBeInTheDocument();
     unmount();
     h.paused = false;
-    renderSection(undefined, { flow: { ...flow, plusdAuthorized: false } });
-    expect(screen.getByTestId("wire-out-blocked-reason")).toHaveTextContent(
-      /authorised to hold PLUSD/,
-    );
+    renderTab(kybPassed, { plusdAuthorized: false });
+    expect(screen.getByText(/authorised to hold PLUSD/)).toBeInTheDocument();
   });
 
+  it("shows the escrow hint when the gate is open", () => {
+    renderTab();
+    expect(
+      screen.getByText(
+        /moves into escrow until the Trustee settles or cancels/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("BankWithdrawTab list", () => {
   it("lists Pending, Settled and Cancelled rows from the contract reads", () => {
     h.served = [
       { id: "3", timestamp: "2026-10-30T10:00:00Z" },
@@ -174,7 +223,7 @@ describe("WireOutSection", () => {
       "2": { amountRaw: "20000000", status: "Settled" },
       "1": { amountRaw: "30000000", status: "Cancelled" },
     };
-    renderSection();
+    renderTab();
     expect(screen.getByTestId("wire-out-row-3")).toHaveTextContent(
       "−1.00 PLUSDBank transfer · Pending",
     );
@@ -188,41 +237,36 @@ describe("WireOutSection", () => {
 
   it("shows em dashes while a read is unresolved", () => {
     h.served = [{ id: "3", timestamp: "2026-10-30T10:00:00Z" }];
-    renderSection();
+    renderTab();
     expect(screen.getByTestId("wire-out-row-3")).toHaveTextContent(
       "−— PLUSDBank transfer · —",
     );
   });
+
+  it("de-dupes the just-submitted id once the served list has it", () => {
+    h.served = [{ id: "8", timestamp: "2026-10-30T10:00:00Z" }];
+    renderTab();
+    expect(screen.getAllByTestId("wire-out-row-8")).toHaveLength(1);
+  });
 });
 
-describe("WireOutModal via the section", () => {
-  it("opens with the Stellar single step and the escrow hint", async () => {
-    const user = userEvent.setup();
-    renderSection();
-    await user.click(screen.getByTestId("wire-out-open"));
-    expect(screen.getByTestId("wire-out-modal")).toBeInTheDocument();
+describe("BankWithdrawTab flow", () => {
+  it("shows the Stellar single step", () => {
+    renderTab();
     expect(screen.getByText("Request wire-out")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /moves into escrow until the Trustee settles or cancels/,
-      ),
-    ).toBeInTheDocument();
     expect(screen.queryByText("Allow Pipeline to use PLUSD")).toBeNull();
   });
 
-  it("shows the approve step first on EVM", async () => {
+  it("shows the approve step first on EVM", () => {
     h.kind = "evm";
-    const user = userEvent.setup();
-    renderSection();
-    await user.click(screen.getByTestId("wire-out-open"));
+    renderTab();
     expect(screen.getByText("Allow Pipeline to use PLUSD")).toBeInTheDocument();
     expect(screen.getByText("Request wire-out")).toBeInTheDocument();
   });
 
   it("Max fills the balance and an amount above it shows the inline error", async () => {
     const user = userEvent.setup();
-    renderSection();
-    await user.click(screen.getByTestId("wire-out-open"));
+    renderTab();
     await user.click(screen.getByRole("button", { name: "Max" }));
     expect(screen.getByTestId("wire-out-amount-input")).toHaveValue("5");
     await user.clear(screen.getByTestId("wire-out-amount-input"));
@@ -230,49 +274,22 @@ describe("WireOutModal via the section", () => {
     expect(screen.getByText("Insufficient balance")).toBeInTheDocument();
   });
 
-  it("requests the raw amount, then closes, shows the just-submitted row and refetches", async () => {
+  it("requests the raw amount, then clears the input, shows the just-submitted row and refetches", async () => {
     const user = userEvent.setup();
-    const { rerender } = renderSection();
-    await user.click(screen.getByTestId("wire-out-open"));
+    const { rerender } = renderTab();
     await user.type(screen.getByTestId("wire-out-amount-input"), "2");
     await user.click(screen.getByRole("button", { name: "Request" }));
     expect(h.stellar.request).toHaveBeenCalledWith(20_000_000n);
 
     h.stellar = { ...h.write(), isPending: true };
     h.reads = { "8": { amountRaw: "20000000", status: "Pending" } };
-    rerender(
-      <ToastProvider>
-        <AuthFlowContext.Provider
-          value={
-            {
-              lpRead: "loaded",
-              kybStatus: "Passed",
-            } as AuthFlowContextValue
-          }
-        >
-          <WireOutSection flow={flow} onShowErrorDetails={vi.fn()} />
-        </AuthFlowContext.Provider>
-      </ToastProvider>,
-    );
+    rerender(tree());
     h.stellar = { ...h.write(), isSuccess: true, wireOutId: "8" };
     await act(async () => {
-      rerender(
-        <ToastProvider>
-          <AuthFlowContext.Provider
-            value={
-              {
-                lpRead: "loaded",
-                kybStatus: "Passed",
-              } as AuthFlowContextValue
-            }
-          >
-            <WireOutSection flow={flow} onShowErrorDetails={vi.fn()} />
-          </AuthFlowContext.Provider>
-        </ToastProvider>,
-      );
+      rerender(tree());
     });
 
-    expect(screen.queryByTestId("wire-out-modal")).toBeNull();
+    expect(screen.getByTestId("wire-out-amount-input")).toHaveValue("");
     expect(screen.getByTestId("wire-out-row-8")).toHaveTextContent(
       "Bank transfer · Pending",
     );
@@ -281,13 +298,5 @@ describe("WireOutModal via the section", () => {
     expect(
       screen.getByText("Wire-out of 2 PLUSD requested"),
     ).toBeInTheDocument();
-  });
-
-  it("de-dupes the just-submitted id once the served list has it", async () => {
-    const user = userEvent.setup();
-    h.served = [{ id: "8", timestamp: "2026-10-30T10:00:00Z" }];
-    renderSection();
-    expect(screen.getAllByTestId("wire-out-row-8")).toHaveLength(1);
-    await user.click(screen.getByTestId("wire-out-open"));
   });
 });

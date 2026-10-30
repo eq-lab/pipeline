@@ -6,6 +6,7 @@ export const Route = createFileRoute("/withdraw")({
     throw redirect({
       to: "/deposit",
       search: {
+        tab: "withdraw" as const,
         ...(search as Record<string, unknown>),
         direction: "withdraw" as const,
       },

@@ -1807,7 +1807,7 @@ Token discipline: this composer adds no raw colors, fonts, sizes, or radii — e
 
 ### Deposit and withdraw route
 
-**Bank wire-out (#1757):** on the withdraw direction, when connected and the active chain's minter is configured, `WireOutSection` renders after the steps card (section, "Your bank wire-outs" list, `WireOutModal`). It reuses the page's `ErrorDetailsDialog` state for the wire-out toast "Details" action. See [`bank-transfers.md#wire-out`](./bank-transfers.md#wire-out).
+**Bank wire-out (#1757):** the withdraw direction has two tabs (`SegmentedTabs`, `withdraw-tabs`) in the `ConversionCard` `header` slot, above the PLUSD input, mirroring the stake page: "Withdraw" (queue flow, unchanged) and "Bank" (`BankWithdrawTab`: PLUSD input, bank output card, info line, steps, "Your bank wire-outs"). The tab is the `?tab=withdraw|bank` search param, default `withdraw`, ignored on the deposit direction; selecting a tab navigates with `replace: true`. The queue block, recovery-rate row and queue steps render on the Withdraw tab only. It reuses the page's `ErrorDetailsDialog` state for the wire-out toast "Details" action. See [`bank-transfers.md#wire-out`](./bank-transfers.md#wire-out).
 
 **Source:** `packages/frontend/src/routes/deposit.tsx`, `packages/frontend/src/routes/withdraw.tsx`
 
@@ -1815,15 +1815,16 @@ Merged three/four-step conversion page. Direction is driven by the `?direction=d
 
 **URL contract:**
 
-| URL                                  | Resulting direction                         |
-| ------------------------------------ | ------------------------------------------- |
-| `/deposit`                           | `"deposit"`                                 |
-| `/deposit?direction=deposit`         | `"deposit"`                                 |
-| `/deposit?direction=withdraw`        | `"withdraw"`                                |
-| `/deposit?direction=<anything else>` | `"deposit"` (fallback)                      |
-| `/withdraw`                          | Redirected to `/deposit?direction=withdraw` |
+| URL                                    | Resulting direction                                      |
+| -------------------------------------- | -------------------------------------------------------- |
+| `/deposit`                             | `"deposit"`                                              |
+| `/deposit?direction=deposit`           | `"deposit"`                                              |
+| `/deposit?direction=withdraw`          | `"withdraw"`, tab `withdraw`                             |
+| `/deposit?direction=withdraw&tab=bank` | `"withdraw"`, tab `bank`                                 |
+| `/deposit?direction=<anything else>`   | `"deposit"` (fallback)                                   |
+| `/withdraw`                            | Redirected to `/deposit?direction=withdraw&tab=withdraw` |
 
-`/withdraw` (`withdraw.tsx`) is a one-time `redirect` to `/deposit?direction=withdraw`, kept only so external links/bookmarks to `/withdraw` continue to work — the actual page lives at `/deposit`. `replace: true` keeps the redirect out of the back-button history (reload does not flash `/withdraw` before `/deposit`, and back-button does not accumulate redirect hops). Incoming search params are preserved.
+`/withdraw` (`withdraw.tsx`) is a one-time `redirect` to `/deposit?direction=withdraw&tab=withdraw`, kept only so external links/bookmarks to `/withdraw` continue to work — the actual page lives at `/deposit`. `replace: true` keeps the redirect out of the back-button history (reload does not flash `/withdraw` before `/deposit`, and back-button does not accumulate redirect hops). Incoming search params are preserved.
 
 **Chain-aware wiring** (issue #552): the page reacts to `useWalletView().kind`. When the connected wallet is Stellar (`kind` is derived, #1512), the `useDepositFlow` adapter switches all data and actions to the Stellar/Soroban stack (trustline step, SAC balances, XLM fee, etc.); disconnecting and connecting an EVM wallet restores the EVM behavior. All hooks are called unconditionally per React's Rules of Hooks.
 

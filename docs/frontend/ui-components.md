@@ -490,6 +490,7 @@ nested within the PLUSD card, matching Figma node `1498-100135`.
   right padding, so the output value sits 16 px from the card edge.
 - `border-0` removes the white Card's default hairline border (fix 8, Issue #595).
 - Optional `footer` slot (#1759): a node rendered after the "Network fee" `InfoRow` as the last row of the same `conversion-details` rows container (shares the 8 px row gap and 16 px side padding). Omitted, nothing renders. The withdraw page passes it only for the "Recovery rate" row when the rate is below 1 (design change 10; the queue info row lives in its own block below the card); Storybook: `Components/ConversionCard` "With footer row".
+- Optional `header` slot (#1757): a node rendered at the top of the sell-side card (`conversion-input-card`), directly above the `TokenInput` with a 2 px gap, mirroring the stake page's tabs-above-input layout. The withdraw page passes `SegmentedTabs` (`withdraw-tabs`). Omitted, the card renders the `TokenInput` alone.
 - The output value is prefixed with `+` when non-zero (purely visual); zero values stay
   un-prefixed to match the Figma "0" placeholder state.
 

@@ -26,6 +26,8 @@ export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement
   onSwap?: () => void;
   /** Optional row rendered after the "Network fee" InfoRow as the last row of the details block. */
   footer?: React.ReactNode;
+  /** Optional node (e.g. `SegmentedTabs`) rendered at the top of the sell-side card, above the `TokenInput`. */
+  header?: React.ReactNode;
 }
 
 // Straddles the 2px seam: anchored to Card A's bottom edge (top-full) and
@@ -56,6 +58,7 @@ export const ConversionCard = React.forwardRef<
     networkFee,
     onSwap,
     footer,
+    header,
     className,
     ...rest
   },
@@ -81,7 +84,14 @@ export const ConversionCard = React.forwardRef<
         data-testid="conversion-input-card"
         className="relative rounded-[var(--radius-pipeline-card)] bg-[var(--color-pipeline-surface)] pt-4 pr-4 pb-6 pl-4"
       >
-        <TokenInput {...input} signPrefix="−" />
+        {header ? (
+          <div className="flex flex-col gap-0.5">
+            {header}
+            <TokenInput {...input} signPrefix="−" />
+          </div>
+        ) : (
+          <TokenInput {...input} signPrefix="−" />
+        )}
 
         {/* Disabled so it cannot fire during an in-flight wallet action. */}
         <button

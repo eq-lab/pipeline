@@ -125,6 +125,11 @@ describe("useWireOutFlow steps", () => {
     });
   });
 
+  it("shows the gate reason as the request step hint when blocked", () => {
+    const { steps } = run({ kybPassed: false });
+    expect(steps[0]?.hint).toBe(WIRE_OUT_KYB_REASON);
+  });
+
   it("EVM gates the request on the allowance", () => {
     const pending = run({ kind: "evm" }).steps;
     expect(pending.map((s) => s.label)).toEqual([

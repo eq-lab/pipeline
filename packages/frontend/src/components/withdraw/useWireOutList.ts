@@ -11,7 +11,7 @@ export interface WireOutRowView {
   read: WireOutRead | undefined;
 }
 
-export interface UseWireOutSectionResult {
+export interface UseWireOutListResult {
   rows: WireOutRowView[];
   refetch: () => void;
 }
@@ -21,9 +21,7 @@ export function useKybPassed(): boolean {
   return ctx?.lpRead === "loaded" && ctx.kybStatus === "Passed";
 }
 
-export function useWireOutSection(
-  submittedIds: string[],
-): UseWireOutSectionResult {
+export function useWireOutList(submittedIds: string[]): UseWireOutListResult {
   const { kind } = useWalletView();
   const { items, refetch } = useWireOutRequests();
 

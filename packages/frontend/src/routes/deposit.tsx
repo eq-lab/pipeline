@@ -8,14 +8,10 @@ import {
   Button,
   ErrorDetailsDialog,
   InlineError,
+  SegmentedTabs,
   useCopyToClipboard,
 } from "@pipeline/ui";
-import {
-  isWireOutMinterConfigured,
-  useDepositFlow,
-  useWalletView,
-  useConnectModal,
-} from "@/wallet";
+import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import {
@@ -31,7 +27,7 @@ import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 import { WithdrawQueueCard } from "@/components/withdraw/WithdrawQueueCard";
 import { WithdrawRecoveryRateRow } from "@/components/withdraw/WithdrawRecoveryRateRow";
 import { formatRecoveryRate } from "@/components/withdraw/recoveryRate";
-import { WireOutSection } from "@/components/withdraw/WireOutSection";
+import { BankWithdrawTab } from "@/components/withdraw/BankWithdrawTab";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -39,12 +35,16 @@ import { WireOutSection } from "@/components/withdraw/WireOutSection";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Direction = "deposit" | "withdraw";
+type WithdrawTab = "withdraw" | "bank";
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/deposit")({
-  validateSearch: (raw): { direction: Direction } => ({
+  validateSearch: (raw): { direction: Direction; tab?: WithdrawTab } => ({
     direction: raw?.direction === "withdraw" ? "withdraw" : "deposit",
+    ...(raw?.tab === "bank" || raw?.tab === "withdraw"
+      ? { tab: raw.tab as WithdrawTab }
+      : {}),
   }),
   component: Deposit,
 });
@@ -53,8 +53,11 @@ export const Route = createFileRoute("/deposit")({
 
 function Deposit() {
   // ── Direction ─────────────────────────────────────────────────────────
-  const { direction } = Route.useSearch();
+  const { direction, tab } = Route.useSearch();
   const isDeposit = direction === "deposit";
+  const activeTab: WithdrawTab =
+    !isDeposit && tab === "bank" ? "bank" : "withdraw";
+  const isBankTab = !isDeposit && activeTab === "bank";
 
   // ── Toast + navigation ────────────────────────────────────────────────
   const toast = useToast();
@@ -506,7 +509,52 @@ function Deposit() {
     });
   }, [direction, navigate]);
 
-  // plusdTrustline / usdcTrustline are already declared above for toast logic.
+  const onSelectTab = useCallback(
+    (next: string) => {
+      void navigate({
+        to: "/deposit",
+        search: { direction: "withdraw", tab: next as WithdrawTab },
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+
+  const withdrawTabs = isDeposit ? undefined : (
+    <SegmentedTabs
+      data-testid="withdraw-tabs"
+      tabs={[
+        { id: "withdraw", label: "Withdraw" },
+        { id: "bank", label: "Bank" },
+      ]}
+      activeId={activeTab}
+      onSelect={onSelectTab}
+    />
+  );
+
+  const connectWalletBanner = (
+    <Card
+      variant="yellow"
+      data-testid="connect-wallet-banner"
+      className="flex flex-row items-center justify-between gap-4 !border-t !border-r-[3px] !border-b-[3px] !border-l shadow-sm"
+    >
+      <p
+        data-testid="connect-wallet-banner-text"
+        className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+      >
+        Connect your wallet first
+      </p>
+      <Button
+        data-testid="connect-wallet-banner-action"
+        variant="primary-dark"
+        size="compact"
+        className="whitespace-nowrap"
+        onClick={openConnectModal}
+      >
+        Connect
+      </Button>
+    </Card>
+  );
 
   // ── Render ────────────────────────────────────────────────────────────
   const recoveryRate = formatRecoveryRate(flow.withdrawQueue);
@@ -524,307 +572,296 @@ function Deposit() {
               title="1:1 Conversion"
             />
 
-            {/* Conversion card */}
-            <ConversionCard
-              data-testid={
-                isDeposit
-                  ? "deposit-conversion-card"
-                  : "withdraw-conversion-card"
-              }
-              input={
-                isDeposit
-                  ? {
-                      token: "usdc",
-                      tokenLabel: "USDC",
-                      inputTestId: "deposit-amount-input",
-                      balanceLabel: flow.formattedBalance
-                        ? flow.formattedBalance.replace(/^\$/, "")
-                        : "—",
-                      placeholderValue: "0",
-                      value: amountInput,
-                      onValueChange: setAmountInput,
-                      disabled:
-                        !flow.isConnected ||
-                        !flow.isReady ||
-                        flow.isAmountLocked,
-                      className: flow.isInputFaded
-                        ? "opacity-30 focus-within:opacity-100 transition-opacity"
-                        : "transition-opacity",
-                      quickAmounts: [
-                        {
-                          label: flow.minChipLabel,
-                          disabled: flow.isAmountLocked,
-                        },
-                        { label: "$5,000", disabled: flow.isAmountLocked },
-                        { label: "$10,000", disabled: flow.isAmountLocked },
-                        { label: "Max", disabled: flow.isAmountLocked },
-                      ],
-                      onQuickAmountClick: flow.onQuickAmount,
-                    }
-                  : {
-                      token: "plusd",
-                      tokenLabel: "PLUSD",
-                      inputTestId: "withdraw-amount-input",
-                      balanceLabel: flow.formattedBalance
-                        ? flow.formattedBalance.replace(/^\$/, "")
-                        : "—",
-                      placeholderValue: "0",
-                      value: amountInput,
-                      onValueChange: setAmountInput,
-                      disabled:
-                        !flow.isConnected ||
-                        !flow.isReady ||
-                        flow.isAmountLocked,
-                      className: flow.isInputFaded
-                        ? "opacity-30 focus-within:opacity-100 transition-opacity"
-                        : "transition-opacity",
-                      quickAmounts: [
-                        { label: "25%", disabled: flow.isAmountLocked },
-                        { label: "50%", disabled: flow.isAmountLocked },
-                        { label: "75%", disabled: flow.isAmountLocked },
-                        { label: "Max", disabled: flow.isAmountLocked },
-                      ],
-                      onQuickAmountClick: flow.onQuickAmount,
-                    }
-              }
-              output={
-                isDeposit
-                  ? {
-                      token: "plusd",
-                      tokenLabel: "PLUSD",
-                      balanceLabel: "0.00",
-                      value: amountInput || "0",
-                    }
-                  : {
-                      token: "usdc",
-                      tokenLabel: "USDC",
-                      balanceLabel: "0.00",
-                      value: amountInput || "0",
-                    }
-              }
-              exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
-              networkFee={flow.networkFee ?? "—"}
-              footer={
-                !isDeposit && flow.isConnected && recoveryRate !== undefined ? (
-                  <WithdrawRecoveryRateRow rate={recoveryRate} />
-                ) : undefined
-              }
-              onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
-            />
-
-            {flow.exceedsBalance && (
-              <InlineError
-                message="Insufficient balance"
-                className="self-end"
-              />
-            )}
-
-            {!isDeposit && flow.isConnected && (
-              <WithdrawQueueCard
-                queue={flow.withdrawQueue}
-                hasRequest={flow.requestId !== undefined}
-              />
-            )}
-
-            {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
-            {!flow.isConnected ? (
-              <Card
-                variant="yellow"
-                data-testid="connect-wallet-banner"
-                className="flex flex-row items-center justify-between gap-4 !border-t !border-r-[3px] !border-b-[3px] !border-l shadow-sm"
-              >
-                <p
-                  data-testid="connect-wallet-banner-text"
-                  className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
-                >
-                  Connect your wallet first
-                </p>
-                <Button
-                  data-testid="connect-wallet-banner-action"
-                  variant="primary-dark"
-                  size="compact"
-                  className="whitespace-nowrap"
-                  onClick={openConnectModal}
-                >
-                  Connect
-                </Button>
-              </Card>
-            ) : isInitialDataLoad ? null : isStellar && flow.needsXlmFunding ? (
-              <XlmFundingBanner address={flow.address} />
-            ) : isStellar &&
-              isDeposit &&
-              usdcTrustline?.needsTrustline &&
-              flow.hasBalance === false ? (
-              <Card
-                variant="yellow"
-                data-testid="usdc-trustline-banner"
-                className="flex flex-row items-center justify-between gap-4"
-              >
-                <div
-                  data-testid="usdc-trustline-banner-text"
-                  className="flex flex-col items-start gap-1"
-                >
-                  <p
-                    data-testid="usdc-trustline-banner-title"
-                    className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
-                  >
-                    Add USDC trustline
-                  </p>
-                  <p
-                    data-testid="usdc-trustline-banner-subtitle"
-                    className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
-                  >
-                    Required to hold and deposit USDC on Stellar
-                  </p>
-                </div>
-                <Button
-                  data-testid="usdc-trustline-banner-action"
-                  variant="primary-dark"
-                  className="whitespace-nowrap"
-                  onClick={() => usdcTrustline?.onEnable()}
-                  disabled={usdcTrustline?.enabling}
-                >
-                  {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
-                </Button>
-              </Card>
-            ) : isDeposit && flow.hasBalance === false ? (
-              <Card
-                variant="yellow"
-                data-testid="low-balance-banner"
-                className="flex flex-row items-center justify-between gap-4"
-              >
-                <div
-                  data-testid="low-balance-banner-text"
-                  className="flex flex-col items-start gap-1"
-                >
-                  <p
-                    data-testid="low-balance-banner-title"
-                    className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
-                  >
-                    Add funds to your USDC balance
-                  </p>
-                  <p
-                    data-testid="low-balance-banner-minimum"
-                    className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
-                  >
-                    Minimum amount —{" "}
-                    {flow.minDeposit !== undefined &&
-                    flow.decimals !== undefined
-                      ? `${formatUsdcWhole(flow.minDeposit, flow.decimals)} USDC`
-                      : "—"}
-                  </p>
-                </div>
-                <Button
-                  data-testid="low-balance-banner-action"
-                  variant="primary-dark"
-                  className="whitespace-nowrap"
-                  onClick={copyAddress}
-                  disabled={!flow.address}
-                >
-                  {copied ? "Copied" : "Copy Address"}
-                </Button>
-              </Card>
-            ) : isStellar && flow.trustlines.length === 2 ? (
-              <StepsCard
-                data-testid={
-                  isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
-                }
-                steps={[
-                  {
-                    label: "Enable USDC",
-                    actionLabel: "Enable",
-                    state: usdcTrustline?.isEnabled ? "success" : "idle",
-                    loading: usdcTrustline?.enabling ?? false,
-                    disabled:
-                      (usdcTrustline?.isEnabled ?? false) ||
-                      (usdcTrustline?.enabling ?? false) ||
-                      !flow.isConnected,
-                    onAction: usdcTrustline?.onEnable,
-                  },
-                  {
-                    label: "Enable PLUSD",
-                    actionLabel: "Enable",
-                    state: plusdTrustline?.isEnabled ? "success" : "idle",
-                    loading: plusdTrustline?.enabling ?? false,
-                    disabled:
-                      (plusdTrustline?.isEnabled ?? false) ||
-                      (plusdTrustline?.enabling ?? false) ||
-                      !flow.isConnected,
-                    onAction: plusdTrustline?.onEnable,
-                  },
-                  {
-                    label: flow.step2.label,
-                    actionLabel: flow.step2.actionLabel,
-                    disabled: flow.step2.disabled,
-                    loading: flow.step2.loading,
-                    state: flow.step2.state,
-                    onAction: flow.step2.onAction,
-                    errorMessage: flow.step2.errorMessage,
-                    errorDetails: flow.step2.errorDetails,
-                    hint: flow.step2.hint,
-                  },
-                  {
-                    label: flow.step3.label,
-                    actionLabel: flow.step3.actionLabel,
-                    disabled: flow.step3.disabled,
-                    loading: flow.step3.loading,
-                    state: flow.step3.state,
-                    onAction: flow.step3.onAction,
-                    errorMessage: flow.step3.errorMessage,
-                    errorDetails: flow.step3.errorDetails,
-                    hint: flow.step3.hint,
-                  },
-                ]}
+            {isBankTab ? (
+              <BankWithdrawTab
+                flow={flow}
+                tabs={withdrawTabs}
+                onSwap={onSwap}
+                connectBanner={connectWalletBanner}
+                onShowErrorDetails={setErrorDialog}
               />
             ) : (
-              <StepsCard
-                data-testid={
-                  isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
-                }
-                steps={[
-                  {
-                    label: flow.step1.label,
-                    actionLabel: flow.step1.actionLabel,
-                    disabled: flow.step1.disabled,
-                    loading: flow.step1.loading,
-                    state: flow.step1.state,
-                    onAction: flow.step1.onAction,
-                  },
-                  {
-                    label: flow.step2.label,
-                    actionLabel: flow.step2.actionLabel,
-                    disabled: flow.step2.disabled,
-                    loading: flow.step2.loading,
-                    state: flow.step2.state,
-                    onAction: flow.step2.onAction,
-                    errorMessage: flow.step2.errorMessage,
-                    errorDetails: flow.step2.errorDetails,
-                    hint: flow.step2.hint,
-                  },
-                  {
-                    label: flow.step3.label,
-                    actionLabel: flow.step3.actionLabel,
-                    disabled: flow.step3.disabled,
-                    loading: flow.step3.loading,
-                    state: flow.step3.state,
-                    onAction: flow.step3.onAction,
-                    errorMessage: flow.step3.errorMessage,
-                    errorDetails: flow.step3.errorDetails,
-                    hint: flow.step3.hint,
-                  },
-                ]}
-                notice={chainNotice}
-              />
-            )}
-
-            {!isDeposit &&
-              flow.isConnected &&
-              isWireOutMinterConfigured(kind) && (
-                <WireOutSection
-                  flow={flow}
-                  onShowErrorDetails={setErrorDialog}
+              <>
+                {/* Conversion card */}
+                <ConversionCard
+                  header={withdrawTabs}
+                  data-testid={
+                    isDeposit
+                      ? "deposit-conversion-card"
+                      : "withdraw-conversion-card"
+                  }
+                  input={
+                    isDeposit
+                      ? {
+                          token: "usdc",
+                          tokenLabel: "USDC",
+                          inputTestId: "deposit-amount-input",
+                          balanceLabel: flow.formattedBalance
+                            ? flow.formattedBalance.replace(/^\$/, "")
+                            : "—",
+                          placeholderValue: "0",
+                          value: amountInput,
+                          onValueChange: setAmountInput,
+                          disabled:
+                            !flow.isConnected ||
+                            !flow.isReady ||
+                            flow.isAmountLocked,
+                          className: flow.isInputFaded
+                            ? "opacity-30 focus-within:opacity-100 transition-opacity"
+                            : "transition-opacity",
+                          quickAmounts: [
+                            {
+                              label: flow.minChipLabel,
+                              disabled: flow.isAmountLocked,
+                            },
+                            { label: "$5,000", disabled: flow.isAmountLocked },
+                            { label: "$10,000", disabled: flow.isAmountLocked },
+                            { label: "Max", disabled: flow.isAmountLocked },
+                          ],
+                          onQuickAmountClick: flow.onQuickAmount,
+                        }
+                      : {
+                          token: "plusd",
+                          tokenLabel: "PLUSD",
+                          inputTestId: "withdraw-amount-input",
+                          balanceLabel: flow.formattedBalance
+                            ? flow.formattedBalance.replace(/^\$/, "")
+                            : "—",
+                          placeholderValue: "0",
+                          value: amountInput,
+                          onValueChange: setAmountInput,
+                          disabled:
+                            !flow.isConnected ||
+                            !flow.isReady ||
+                            flow.isAmountLocked,
+                          className: flow.isInputFaded
+                            ? "opacity-30 focus-within:opacity-100 transition-opacity"
+                            : "transition-opacity",
+                          quickAmounts: [
+                            { label: "25%", disabled: flow.isAmountLocked },
+                            { label: "50%", disabled: flow.isAmountLocked },
+                            { label: "75%", disabled: flow.isAmountLocked },
+                            { label: "Max", disabled: flow.isAmountLocked },
+                          ],
+                          onQuickAmountClick: flow.onQuickAmount,
+                        }
+                  }
+                  output={
+                    isDeposit
+                      ? {
+                          token: "plusd",
+                          tokenLabel: "PLUSD",
+                          balanceLabel: "0.00",
+                          value: amountInput || "0",
+                        }
+                      : {
+                          token: "usdc",
+                          tokenLabel: "USDC",
+                          balanceLabel: "0.00",
+                          value: amountInput || "0",
+                        }
+                  }
+                  exchangeRate={
+                    isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"
+                  }
+                  networkFee={flow.networkFee ?? "—"}
+                  footer={
+                    !isDeposit &&
+                    flow.isConnected &&
+                    recoveryRate !== undefined ? (
+                      <WithdrawRecoveryRateRow rate={recoveryRate} />
+                    ) : undefined
+                  }
+                  onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
                 />
-              )}
+
+                {flow.exceedsBalance && (
+                  <InlineError
+                    message="Insufficient balance"
+                    className="self-end"
+                  />
+                )}
+
+                {!isDeposit && flow.isConnected && (
+                  <WithdrawQueueCard
+                    queue={flow.withdrawQueue}
+                    hasRequest={flow.requestId !== undefined}
+                  />
+                )}
+
+                {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
+                {!flow.isConnected ? (
+                  connectWalletBanner
+                ) : isInitialDataLoad ? null : isStellar &&
+                  flow.needsXlmFunding ? (
+                  <XlmFundingBanner address={flow.address} />
+                ) : isStellar &&
+                  isDeposit &&
+                  usdcTrustline?.needsTrustline &&
+                  flow.hasBalance === false ? (
+                  <Card
+                    variant="yellow"
+                    data-testid="usdc-trustline-banner"
+                    className="flex flex-row items-center justify-between gap-4"
+                  >
+                    <div
+                      data-testid="usdc-trustline-banner-text"
+                      className="flex flex-col items-start gap-1"
+                    >
+                      <p
+                        data-testid="usdc-trustline-banner-title"
+                        className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+                      >
+                        Add USDC trustline
+                      </p>
+                      <p
+                        data-testid="usdc-trustline-banner-subtitle"
+                        className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
+                      >
+                        Required to hold and deposit USDC on Stellar
+                      </p>
+                    </div>
+                    <Button
+                      data-testid="usdc-trustline-banner-action"
+                      variant="primary-dark"
+                      className="whitespace-nowrap"
+                      onClick={() => usdcTrustline?.onEnable()}
+                      disabled={usdcTrustline?.enabling}
+                    >
+                      {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
+                    </Button>
+                  </Card>
+                ) : isDeposit && flow.hasBalance === false ? (
+                  <Card
+                    variant="yellow"
+                    data-testid="low-balance-banner"
+                    className="flex flex-row items-center justify-between gap-4"
+                  >
+                    <div
+                      data-testid="low-balance-banner-text"
+                      className="flex flex-col items-start gap-1"
+                    >
+                      <p
+                        data-testid="low-balance-banner-title"
+                        className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+                      >
+                        Add funds to your USDC balance
+                      </p>
+                      <p
+                        data-testid="low-balance-banner-minimum"
+                        className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
+                      >
+                        Minimum amount —{" "}
+                        {flow.minDeposit !== undefined &&
+                        flow.decimals !== undefined
+                          ? `${formatUsdcWhole(flow.minDeposit, flow.decimals)} USDC`
+                          : "—"}
+                      </p>
+                    </div>
+                    <Button
+                      data-testid="low-balance-banner-action"
+                      variant="primary-dark"
+                      className="whitespace-nowrap"
+                      onClick={copyAddress}
+                      disabled={!flow.address}
+                    >
+                      {copied ? "Copied" : "Copy Address"}
+                    </Button>
+                  </Card>
+                ) : isStellar && flow.trustlines.length === 2 ? (
+                  <StepsCard
+                    data-testid={
+                      isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
+                    }
+                    steps={[
+                      {
+                        label: "Enable USDC",
+                        actionLabel: "Enable",
+                        state: usdcTrustline?.isEnabled ? "success" : "idle",
+                        loading: usdcTrustline?.enabling ?? false,
+                        disabled:
+                          (usdcTrustline?.isEnabled ?? false) ||
+                          (usdcTrustline?.enabling ?? false) ||
+                          !flow.isConnected,
+                        onAction: usdcTrustline?.onEnable,
+                      },
+                      {
+                        label: "Enable PLUSD",
+                        actionLabel: "Enable",
+                        state: plusdTrustline?.isEnabled ? "success" : "idle",
+                        loading: plusdTrustline?.enabling ?? false,
+                        disabled:
+                          (plusdTrustline?.isEnabled ?? false) ||
+                          (plusdTrustline?.enabling ?? false) ||
+                          !flow.isConnected,
+                        onAction: plusdTrustline?.onEnable,
+                      },
+                      {
+                        label: flow.step2.label,
+                        actionLabel: flow.step2.actionLabel,
+                        disabled: flow.step2.disabled,
+                        loading: flow.step2.loading,
+                        state: flow.step2.state,
+                        onAction: flow.step2.onAction,
+                        errorMessage: flow.step2.errorMessage,
+                        errorDetails: flow.step2.errorDetails,
+                        hint: flow.step2.hint,
+                      },
+                      {
+                        label: flow.step3.label,
+                        actionLabel: flow.step3.actionLabel,
+                        disabled: flow.step3.disabled,
+                        loading: flow.step3.loading,
+                        state: flow.step3.state,
+                        onAction: flow.step3.onAction,
+                        errorMessage: flow.step3.errorMessage,
+                        errorDetails: flow.step3.errorDetails,
+                        hint: flow.step3.hint,
+                      },
+                    ]}
+                  />
+                ) : (
+                  <StepsCard
+                    data-testid={
+                      isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
+                    }
+                    steps={[
+                      {
+                        label: flow.step1.label,
+                        actionLabel: flow.step1.actionLabel,
+                        disabled: flow.step1.disabled,
+                        loading: flow.step1.loading,
+                        state: flow.step1.state,
+                        onAction: flow.step1.onAction,
+                      },
+                      {
+                        label: flow.step2.label,
+                        actionLabel: flow.step2.actionLabel,
+                        disabled: flow.step2.disabled,
+                        loading: flow.step2.loading,
+                        state: flow.step2.state,
+                        onAction: flow.step2.onAction,
+                        errorMessage: flow.step2.errorMessage,
+                        errorDetails: flow.step2.errorDetails,
+                        hint: flow.step2.hint,
+                      },
+                      {
+                        label: flow.step3.label,
+                        actionLabel: flow.step3.actionLabel,
+                        disabled: flow.step3.disabled,
+                        loading: flow.step3.loading,
+                        state: flow.step3.state,
+                        onAction: flow.step3.onAction,
+                        errorMessage: flow.step3.errorMessage,
+                        errorDetails: flow.step3.errorDetails,
+                        hint: flow.step3.hint,
+                      },
+                    ]}
+                    notice={chainNotice}
+                  />
+                )}
+              </>
+            )}
           </>
         )}
       </main>
