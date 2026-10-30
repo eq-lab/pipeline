@@ -76,7 +76,7 @@ Behaviour sources, in precedence order:
 
 - EVM wallets: the endpoint validates a Stellar strkey and the LP record models no EVM settlement
   address. An EVM-connected LP gets no link call; the row says a Stellar wallet is needed. The
-  chain-aware address is a backend change under epic #1494 — not planned here (frontend-only).
+  chain-aware address is backend issue #1816 (epic #1494) — not planned here (frontend-only).
 - Trustee app: no code change; it already reads `stellar_address`/`address_linked_at`. The
   capital-wallet fallback in `-useLpBankDeposits.ts` and the `deposits.md` §Stellar wire-in paragraph
   belong to #1763/#1768.
@@ -116,13 +116,13 @@ not a silent re-read.
 
 ## Implementation Steps
 
-1. **API client** — `packages/frontend/src/api/lps.ts`: add
+1. [x] **API client** — `packages/frontend/src/api/lps.ts`: add
    `linkMyAddress(stellarAddress: string): Promise<LpResponse>` →
    `apiFetch("/v1/lps/me/link-address", { method: "POST", headers: { ...authHeaders(),
    "Content-Type": "application/json" }, body: JSON.stringify({ stellar_address }) })`. Export it from
    `packages/frontend/src/api/index.ts`.
 
-2. **Pure derivation** — new `packages/frontend/src/components/account/settlementAddress.ts`
+2. [x] **Pure derivation** — new `packages/frontend/src/components/account/settlementAddress.ts`
    (header `// spec: docs/frontend/account-page.md#settlement-address-1813`):
    - `settlementWritable(lp: LpResponse): boolean` — `kyb_status !== "Failed" && !(kyb_status ===
      "Passed" && stellar_address !== null)`.
@@ -144,7 +144,7 @@ not a silent re-read.
 
    Strings live in this module as exported constants (single source for tests and spec).
 
-3. **Linker hook** — new `packages/frontend/src/auth/useSettlementAddressLink.ts`
+3. [x] **Linker hook** — new `packages/frontend/src/auth/useSettlementAddressLink.ts`
    (header `// spec: docs/frontend/auth-components.md#authflowprovider`):
    `useSettlementAddressLink({ token, lp, lpLoaded, onLp }) → SettlementLinkState`.
    - Reads `useStellarWallet()` from `@/wallet` (address only while `isConnected`).
@@ -157,7 +157,7 @@ not a silent re-read.
      tick state so the effect re-evaluates (serialization, decision 2).
    - No toast, no console noise, no comments beyond the header.
 
-4. **Provider and context** — `packages/frontend/src/auth/AuthFlowProvider.tsx` and
+4. [x] **Provider and context** — `packages/frontend/src/auth/AuthFlowProvider.tsx` and
    `AuthFlowContext.ts`:
    - Call `useSettlementAddressLink({ token, lp: setup?.lp ?? null, lpLoaded: setup?.status ===
      "loaded" && setup.token === token, onLp })`, where `onLp` does the existing
@@ -169,12 +169,12 @@ not a silent re-read.
      `useEvmWallet().isConnected`, and the link state). Add both to the `useMemo` deps.
    - Pass `settlement` into `CompanyDocsModal` as a new prop (below).
 
-5. **Account page sync** — `packages/frontend/src/components/account/useAccountPage.ts`: add an
+5. [x] **Account page sync** — `packages/frontend/src/components/account/useAccountPage.ts`: add an
    optional second parameter `onLpAdopted?: (lp: LpResponse) => void`, called inside `adopt()` when
    `next` is non-null (after the token check). `AccountPage.tsx` passes `useAuthFlow().adoptLp`
    (it already calls `useAuthFlow()`). The wallet-only branch stays untouched (no `useAccountPage`).
 
-6. **Settlement row UI** — new `packages/frontend/src/components/account/SettlementAddressRow.tsx`
+6. [x] **Settlement row UI** — new `packages/frontend/src/components/account/SettlementAddressRow.tsx`
    (header `// spec: docs/frontend/account-page.md#settlement-address-1813`): renders
    `AccountListRow variant="plain"` with `caption="Settlement address"`, `title={address ?? "—"}`
    (title text `break-all`), and the caption line below in body-small ink-subtle, or
@@ -186,7 +186,7 @@ not a silent re-read.
    - `AccountProfileCard.tsx`: new optional prop `settlement?`; render the row after Country, above
      the Save button. `AccountPage.tsx` passes `useAuthFlow().settlement`.
 
-7. **User stories** — new `docs/user-stories/epic-1247/1813-link-wallet-address.md` (Epic #1247,
+7. [x] **User stories** — new `docs/user-stories/epic-1247/1813-link-wallet-address.md` (Epic #1247,
    Issue #1813, Spec links to the two spec sections). Stories:
    1. Signed-in LP (NotStarted/UnderReview, LP exists) connects a Stellar wallet → one
       `POST /v1/lps/me/link-address` 200 with the connected address; `/v1/lps/me` returns it with
@@ -204,7 +204,7 @@ not a silent re-read.
    9. Trustee records a bank deposit for the linked LP and mints → PLUSD lands in the linked wallet.
    Add the row to `docs/user-stories/index.md` under epic #1247.
 
-8. **Lint/build** — `yarn workspace @pipeline/frontend test`, `yarn workspace @pipeline/frontend
+8. [x] **Lint/build** — `yarn workspace @pipeline/frontend test`, `yarn workspace @pipeline/frontend
    lint`, `yarn workspace @pipeline/frontend build`, `npx tsx scripts/lint-docs.ts`,
    `npx tsx scripts/lint-comments.ts`; sweep `git diff origin/main...HEAD --unified=0 -- packages |
    grep -E '^\+ *(//|/\*| \*)'` — only bare `// spec:` headers allowed.
@@ -258,5 +258,3 @@ Network tab and the Trustee LP profile, plus story 5's "no toast" check.
 - `docs/product-specs/kyb-lp-verification.md` §Settlement Address: one sentence that the LP app
   names the connected Stellar wallet automatically (no free-text entry) — keeps TD-57 open.
 - `docs/user-stories/epic-1247/1813-link-wallet-address.md` + `docs/user-stories/index.md` row.
-- `docs/exec-plans/tech-debt-tracker.md`: note the EVM settlement-address gap points at epic #1494
-  if no entry exists yet.

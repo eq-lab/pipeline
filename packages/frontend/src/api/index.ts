@@ -30,6 +30,7 @@ export {
   upsertMyLp,
   uploadMyDocuments,
   deleteMyDocument,
+  linkMyAddress,
 } from "./lps";
 export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
 export { useRequests, useInvalidateRequests } from "./useRequests";

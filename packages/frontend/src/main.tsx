@@ -31,14 +31,14 @@ createRoot(rootElement).render(
       <EvmWalletProvider>
         <StellarWalletProvider>
           <ConnectModalProvider>
-            <AuthFlowProvider>
-              <WalletViewProvider>
-                <EvmChainAutoSwitch />
-                <ToastProvider>
+            <ToastProvider>
+              <AuthFlowProvider>
+                <WalletViewProvider>
+                  <EvmChainAutoSwitch />
                   <RouterProvider router={router} />
-                </ToastProvider>
-              </WalletViewProvider>
-            </AuthFlowProvider>
+                </WalletViewProvider>
+              </AuthFlowProvider>
+            </ToastProvider>
           </ConnectModalProvider>
         </StellarWalletProvider>
       </EvmWalletProvider>

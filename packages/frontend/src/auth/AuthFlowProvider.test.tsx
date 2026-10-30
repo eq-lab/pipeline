@@ -30,6 +30,8 @@ const mockOpenConnectModal = vi.fn();
 
 vi.mock("@/wallet", () => ({
   useConnectModal: () => ({ open: mockOpenConnectModal, close: vi.fn() }),
+  useStellarWallet: () => ({ address: undefined, isConnected: false }),
+  useEvmWallet: () => ({ address: undefined, isConnected: false }),
 }));
 
 function ConsumerButtons() {

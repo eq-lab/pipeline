@@ -91,3 +91,11 @@ export function submitMyLp(): Promise<LpResponse> {
     headers: authHeaders(),
   });
 }
+
+export function linkMyAddress(stellarAddress: string): Promise<LpResponse> {
+  return apiFetch<LpResponse>("/v1/lps/me/link-address", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ stellar_address: stellarAddress }),
+  });
+}
