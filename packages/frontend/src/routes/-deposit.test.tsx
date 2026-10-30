@@ -3774,12 +3774,12 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
       "10.00 PLUSD",
     );
-    expect(screen.getByTestId("withdraw-queue-payable")).toHaveTextContent(
+    expect(screen.getByTestId("withdraw-queue-status")).toHaveTextContent(
       "Payable now",
     );
-    expect(screen.getByTestId("withdraw-queue-card")).toHaveAttribute(
+    expect(screen.getByTestId("withdraw-queue-status")).toHaveAttribute(
       "data-tone",
-      "payable",
+      "positive",
     );
     expect(
       screen.queryByTestId("withdraw-queue-total-queued"),
@@ -3792,35 +3792,38 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     ).not.toBeInTheDocument();
   });
 
-  it("places the info row inside the conversion card as the last row after Network fee, then the status block, above the steps card", async () => {
+  it("places one block with the info row after the conversion card, then the recovery notice, above the steps card", async () => {
+    queueMock.totals.rateRaw = 950_000n;
     renderDeposit();
-    const info = await screen.findByTestId("withdraw-queue-info");
-    const outputCard = screen.getByTestId("conversion-output-card");
-    expect(within(outputCard).getByTestId("withdraw-queue-info")).toBe(info);
-    const rate = within(outputCard).getByTestId("info-row-exchange-rate");
-    const fee = within(outputCard).getByTestId("info-row-network-fee");
     const card = await screen.findByTestId("withdraw-queue-card");
+    const outputCard = screen.getByTestId("conversion-output-card");
+    const info = within(card).getByTestId("withdraw-queue-info");
+    expect(outputCard.contains(card)).toBe(false);
+    expect(outputCard.contains(info)).toBe(false);
+    const notice = await screen.findByTestId("withdraw-recovery-rate-notice");
     const claim = await screen.findByRole("button", { name: "Claim" });
     const follows = (a: Element, b: Element) =>
       a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(follows(rate, fee)).toBeTruthy();
-    expect(follows(fee, info)).toBeTruthy();
-    expect(outputCard.contains(card)).toBe(false);
     expect(follows(outputCard, card)).toBeTruthy();
-    expect(follows(card, claim)).toBeTruthy();
+    expect(follows(card, notice)).toBeTruthy();
+    expect(follows(notice, claim)).toBeTruthy();
   });
 
-  it("shows the info block but no status block without a request", async () => {
+  it("shows the info row but no position row or status chip without a request", async () => {
     localStorage.clear();
     mockRequestsData = { requests: [] };
     mockWithdrawVoucherData = undefined;
     mockWithdrawVoucherStatus = "idle";
     seedWithdrawMocks({ allowance: "1000000000" });
     renderDeposit();
+    const card = await screen.findByTestId("withdraw-queue-card");
+    expect(within(card).getByTestId("withdraw-queue-info")).toBeInTheDocument();
     expect(
-      await screen.findByTestId("withdraw-queue-info"),
-    ).toBeInTheDocument();
-    expect(screen.queryByTestId("withdraw-queue-card")).not.toBeInTheDocument();
+      screen.queryByTestId("withdraw-queue-position"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-queue-status"),
+    ).not.toBeInTheDocument();
   });
 
   it("does not render the queue card on the deposit page", async () => {
@@ -3835,9 +3838,9 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
   it("disables Claim and shows the custody hint when the contract says not payable", async () => {
     queueMock.request.payableNow = false;
     renderDeposit();
-    expect(await screen.findByTestId("withdraw-queue-card")).toHaveAttribute(
+    expect(await screen.findByTestId("withdraw-queue-status")).toHaveAttribute(
       "data-tone",
-      "waiting",
+      "pending",
     );
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Claim" })).toBeDisabled();

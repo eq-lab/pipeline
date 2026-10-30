@@ -3,7 +3,7 @@ import type { WithdrawQueueInfo } from "@/wallet";
 import { formatUnits } from "@/wallet";
 import { formatTokenAmount } from "@/lib/format";
 
-export type WithdrawQueueTone = "payable" | "waiting" | "unknown";
+export type WithdrawQueueTone = "positive" | "pending" | "neutral";
 
 export interface WithdrawQueueCardView {
   tone: WithdrawQueueTone;
@@ -14,19 +14,18 @@ export interface WithdrawQueueCardView {
 
 export function useWithdrawQueueCard(
   queue: WithdrawQueueInfo | undefined,
-  hasRequest: boolean,
 ): WithdrawQueueCardView {
   const payableNow = queue?.payableNow;
   const tone: WithdrawQueueTone =
-    payableNow === undefined ? "unknown" : payableNow ? "payable" : "waiting";
+    payableNow === undefined ? "neutral" : payableNow ? "positive" : "pending";
   const rateKnown =
     queue?.rateRaw !== undefined && queue.rateDecimals !== undefined;
   return {
-    tone: hasRequest ? tone : "unknown",
+    tone,
     status:
-      tone === "payable"
+      tone === "positive"
         ? "Payable now"
-        : tone === "waiting"
+        : tone === "pending"
           ? "Not payable yet"
           : "—",
     position:

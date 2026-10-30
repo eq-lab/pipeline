@@ -13,7 +13,7 @@ const meta = {
           "(paper-white surface used for the dashboard cards and outer " +
           "container, Figma frame 1497-94556), `yellow` (pale yellow promo " +
           "surface used for the Connect Wallet card, Figma frame 1497-94556), " +
-          "`positive` (pale green status surface, positive content color), `muted` (slightly-grey surface used for step rows in the " +
+          "`muted` (slightly-grey surface used for step rows in the " +
           "deposit/conversion flow, Figma node 1498-100130), and `danger` " +
           "(red error surface used for unreachable-contract banners). The Card " +
           "is a surface only — it owns fill, border, radius, and inner padding. " +
@@ -25,7 +25,7 @@ const meta = {
   argTypes: {
     variant: {
       control: "inline-radio",
-      options: ["white", "yellow", "positive", "muted", "danger"],
+      options: ["white", "yellow", "muted", "danger"],
     },
     children: { control: false },
   },
@@ -109,19 +109,6 @@ export const Yellow: Story = {
       <SampleContent
         title="Connect Wallet"
         body="Link a wallet to view balances and start staking."
-      />
-    ),
-  },
-};
-
-export const Positive: Story = {
-  name: "positive",
-  args: {
-    variant: "positive",
-    children: (
-      <SampleContent
-        title="Payable now"
-        body="Status surface for a good state."
       />
     ),
   },

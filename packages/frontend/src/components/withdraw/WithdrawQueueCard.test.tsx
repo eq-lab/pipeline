@@ -1,6 +1,6 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { WithdrawQueueInfo } from "@/wallet";
 import { WithdrawQueueCard } from "./WithdrawQueueCard";
 
@@ -16,54 +16,54 @@ const BASE: WithdrawQueueInfo = {
 };
 
 describe("WithdrawQueueCard", () => {
-  it("renders the green payable tone as one row with a bold position", () => {
+  it("renders one white block with the info row and, with a request, a position row and a payable chip", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest />);
     const card = screen.getByTestId("withdraw-queue-card");
-    expect(card).toHaveAttribute("data-tone", "payable");
-    expect(card).toHaveAttribute("data-variant", "positive");
-    expect(screen.getByTestId("withdraw-queue-payable")).toHaveTextContent(
-      "Payable now",
-    );
-    expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
-      "2,500.00 PLUSD",
-    );
-    expect(card).toHaveTextContent("Payable now");
-    expect(card).toHaveTextContent("Your position");
-    expect(screen.getByTestId("withdraw-queue-position").tagName).toBe(
-      "STRONG",
-    );
-    expect(screen.queryByText(/Paid in order/)).not.toBeInTheDocument();
+    expect(card).toHaveAttribute("data-variant", "white");
+    expect(within(card).getByTestId("withdraw-queue-info")).toBeInTheDocument();
     expect(
-      screen.queryByTestId("withdraw-queue-learn-more"),
-    ).not.toBeInTheDocument();
+      within(card).getByTestId("withdraw-queue-learn-more"),
+    ).toBeInTheDocument();
+    const row = within(card).getByTestId("withdraw-queue-position");
+    expect(row).toHaveTextContent("Your position");
+    const amount = within(row).getByText("2,500.00 PLUSD");
+    expect(amount.tagName).toBe("STRONG");
+    expect(amount).toHaveClass("font-[var(--font-weight-emphasized)]");
+    const chip = within(row).getByTestId("withdraw-queue-status");
+    expect(chip).toHaveAttribute("data-tone", "positive");
+    expect(chip).toHaveTextContent("Payable now");
+    expect(chip.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("renders the yellow waiting tone when the contract says not payable", () => {
+  it("renders the pending chip when the contract says not payable", () => {
     render(
       <WithdrawQueueCard queue={{ ...BASE, payableNow: false }} hasRequest />,
     );
-    const card = screen.getByTestId("withdraw-queue-card");
-    expect(card).toHaveAttribute("data-tone", "waiting");
-    expect(card).toHaveAttribute("data-variant", "yellow");
-    expect(screen.getByTestId("withdraw-queue-payable")).toHaveTextContent(
-      "Not payable yet",
-    );
+    const chip = screen.getByTestId("withdraw-queue-status");
+    expect(chip).toHaveAttribute("data-tone", "pending");
+    expect(chip).toHaveTextContent("Not payable yet");
   });
 
-  it("renders the white unknown tone with — while the reads are unavailable", () => {
+  it("renders the neutral chip and — while the reads are unavailable", () => {
     render(<WithdrawQueueCard queue={undefined} hasRequest />);
-    const card = screen.getByTestId("withdraw-queue-card");
-    expect(card).toHaveAttribute("data-tone", "unknown");
-    expect(card).toHaveAttribute("data-variant", "white");
-    expect(screen.getByTestId("withdraw-queue-payable")).toHaveTextContent("—");
+    const chip = screen.getByTestId("withdraw-queue-status");
+    expect(chip).toHaveAttribute("data-tone", "neutral");
+    expect(chip).toHaveTextContent("—");
     expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
-      "—",
+      "Your position—",
     );
   });
 
-  it("renders nothing without a request and never shows the queue totals", () => {
+  it("keeps the info row but renders no position row or chip without a request", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest={false} />);
-    expect(screen.queryByTestId("withdraw-queue-card")).not.toBeInTheDocument();
+    expect(screen.getByTestId("withdraw-queue-card")).toBeInTheDocument();
+    expect(screen.getByTestId("withdraw-queue-info")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-queue-position"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-queue-status"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-queue-total-queued"),
     ).not.toBeInTheDocument();

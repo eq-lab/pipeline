@@ -312,10 +312,6 @@ frames.
   Figma value from issue #606) with the same hairline border so it sits visually alongside
   the white surfaces. Matches the Connect Wallet promo card (node `1497:94688`) on the
   deposit/stake pages and the home dashboard.
-- **`positive`** — pale green status surface (`--color-pipeline-positive-secondary`) with the
-  `--color-pipeline-line` hairline border and `--color-pipeline-positive` content colour;
-  mirrors `yellow`'s structure. Used by the withdraw-page queue status card when the request
-  is payable now (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`).
 - **`muted`** — slightly-grey surface (`--color-pipeline-paper`, #f8f7f6) that visually
   recedes behind white surfaces; border from `--color-pipeline-line`. Used for step rows in
   the deposit/conversion flow — the `StepsCard` container (Figma node `1498-100130`).
@@ -490,10 +486,7 @@ nested within the PLUSD card, matching Figma node `1498-100135`.
   `gap-8` (32 px) between the value row and the details rows. The value row carries no extra
   right padding, so the output value sits 16 px from the card edge.
 - `border-0` removes the white Card's default hairline border (fix 8, Issue #595).
-- Optional `footer` slot (#1759): a node rendered after the "Network fee" `InfoRow` as
-  the last row of the same `conversion-details` rows container, so it shares the 8 px row gap and the
-  card's 16 px side padding (its left edge matches the InfoRow labels). Omitted, nothing
-  renders. Storybook: `Components/ConversionCard` "With footer row".
+- Optional `footer` slot (#1759): a node rendered after the "Network fee" `InfoRow` as the last row of the same `conversion-details` rows container (shares the 8 px row gap and 16 px side padding). Omitted, nothing renders. The withdraw page no longer passes it (design change 9 moved the queue info row into its own block below the card); Storybook: `Components/ConversionCard` "With footer row".
 - The output value is prefixed with `+` when non-zero (purely visual); zero values stay
   un-prefixed to match the Figma "0" placeholder state.
 
@@ -982,6 +975,20 @@ or padding; the parent strip handles the dividing left border (see node `1497:94
 values come from the design tokens declared in `@pipeline/ui/styles/theme.css`. The `value` prop
 accepts a `ReactNode` so callers can mix in inline formatting (units, deltas) while keeping the
 typography token consistent.
+
+## StatusChip
+
+**Source:** `packages/ui/src/components/StatusChip/StatusChip.tsx` (#1759). Storybook: `Components/StatusChip`.
+
+Small inline status pill: `rounded-[var(--radius-pipeline-pill)]`, caption type (`--text-pipeline-caption`), `px-2 py-0.5`, a 12 px leading inline SVG (`currentColor`, `aria-hidden`), `data-tone` on the root. Props: `tone` (`positive` | `pending` | `neutral`) and `label`; extra `<span>` attributes (e.g. `data-testid`) pass through. Not the trustee `StatusChip` (a separate component in `packages/trustee`).
+
+| Tone       | Fill                                         | Text and icon                | Icon  |
+| ---------- | -------------------------------------------- | ---------------------------- | ----- |
+| `positive` | `--color-pipeline-positive-secondary`        | `--color-pipeline-positive`  | check |
+| `pending`  | `--color-pipeline-promo` (warning-secondary) | `--color-pipeline-pending`   | clock |
+| `neutral`  | `--color-pipeline-surface-muted`             | `--color-pipeline-ink-muted` | dash  |
+
+Used by the withdraw-page queue block for "Payable now" / "Not payable yet" / "—" (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`).
 
 ## StepRow
 

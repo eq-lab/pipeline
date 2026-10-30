@@ -1,7 +1,8 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
-import { Card } from "@pipeline/ui";
+import { Card, InfoRow, StatusChip } from "@pipeline/ui";
 import type { WithdrawQueueInfo } from "@/wallet";
 import { useWithdrawQueueCard } from "./useWithdrawQueueCard";
+import { WithdrawQueueInfoCard } from "./WithdrawQueueInfoCard";
 
 interface WithdrawQueueCardProps {
   queue: WithdrawQueueInfo | undefined;
@@ -15,46 +16,35 @@ export function WithdrawQueueCard({
   queue,
   hasRequest,
 }: WithdrawQueueCardProps) {
-  const view = useWithdrawQueueCard(queue, hasRequest);
-
-  const textColor =
-    view.tone === "payable"
-      ? "text-[color:var(--color-pipeline-positive)]"
-      : "text-[color:var(--color-pipeline-ink)]";
-  const cardVariant =
-    view.tone === "payable"
-      ? "positive"
-      : view.tone === "waiting"
-        ? "yellow"
-        : "white";
+  const view = useWithdrawQueueCard(queue);
 
   return (
     <>
-      {hasRequest && (
-        <Card
-          variant={cardVariant}
-          padding="md"
-          data-testid="withdraw-queue-card"
-          data-tone={view.tone}
-          className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4"
-        >
-          <span
-            className={`${bodyClasses} ${textColor}`}
-            data-testid="withdraw-queue-payable"
-          >
-            {view.status}
-          </span>
-          <span className={`${bodyClasses} ${textColor}`}>
-            Your position{" "}
-            <strong
-              className="font-[var(--font-weight-emphasized)]"
-              data-testid="withdraw-queue-position"
-            >
-              {view.position}
-            </strong>
-          </span>
-        </Card>
-      )}
+      <Card
+        padding="md"
+        data-testid="withdraw-queue-card"
+        className="flex flex-col gap-2"
+      >
+        <WithdrawQueueInfoCard />
+        {hasRequest && (
+          <InfoRow
+            data-testid="withdraw-queue-position"
+            label="Your position"
+            value={
+              <span className="inline-flex items-center gap-2">
+                <strong className="font-[var(--font-weight-emphasized)]">
+                  {view.position}
+                </strong>
+                <StatusChip
+                  data-testid="withdraw-queue-status"
+                  tone={view.tone}
+                  label={view.status}
+                />
+              </span>
+            }
+          />
+        )}
+      </Card>
       {view.recoveryRate !== undefined && (
         <Card variant="yellow" data-testid="withdraw-recovery-rate-notice">
           <p

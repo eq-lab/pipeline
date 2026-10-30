@@ -24,7 +24,6 @@ import { toUserError } from "@/utils/userError";
 import { useChainServed } from "@/api";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 import { WithdrawQueueCard } from "@/components/withdraw/WithdrawQueueCard";
-import { WithdrawQueueInfoCard } from "@/components/withdraw/WithdrawQueueInfoCard";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -596,11 +595,6 @@ function Deposit() {
               exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
               networkFee={flow.networkFee ?? "—"}
               onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
-              footer={
-                !isDeposit && flow.isConnected ? (
-                  <WithdrawQueueInfoCard />
-                ) : undefined
-              }
             />
 
             {flow.exceedsBalance && (
