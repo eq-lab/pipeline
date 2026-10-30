@@ -1,5 +1,6 @@
 // spec: docs/product-specs/deposits.md#stellar-plusd-mint-leg
 // spec: docs/product-specs/loan-repayment-recovery.md
+// spec: docs/product-specs/withdrawals.md#bank-wire-withdrawals-lp-app
 import {
   Contract,
   TransactionBuilder,
@@ -629,4 +630,243 @@ export async function readReverseRepaySchedule({
     fn: REVERSE_REPAY_FN,
     args: encodeReverseRepayArgs({ loanId, repaymentId, refHash }),
   });
+}
+
+// ── request_wire_out ──────────────────────────────────────────────────────────
+
+export type RequestWireOutStage = RelayStage;
+
+export interface RequestWireOutArgs {
+  lp: string;
+  amountRaw: bigint;
+}
+
+export interface BuildRequestWireOutEnvelopeParams extends RequestWireOutArgs {
+  minterId: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+export interface RequestWireOutParams extends BuildRequestWireOutEnvelopeParams {
+  signTransaction: RecordWireInParams["signTransaction"];
+  onStageChange?: (stage: RequestWireOutStage) => void;
+}
+
+export interface RequestWireOutResult {
+  hash: string;
+  wireOutId: number | null;
+}
+
+export function encodeRequestWireOutArgs({
+  lp,
+  amountRaw,
+}: RequestWireOutArgs): xdr.ScVal[] {
+  if (amountRaw <= 0n) {
+    throw new Error(
+      `encodeRequestWireOutArgs: amount must be greater than zero, got ${amountRaw}`,
+    );
+  }
+  return [
+    new Address(lp).toScVal(),
+    nativeToScVal(amountRaw, { type: "i128" }),
+  ];
+}
+
+export async function buildRequestWireOutEnvelope({
+  minterId,
+  lp,
+  amountRaw,
+  rpcUrl,
+  networkPassphrase,
+}: BuildRequestWireOutEnvelopeParams): Promise<string> {
+  if (!minterId) {
+    throw new Error("buildRequestWireOutEnvelope: minterId must not be empty");
+  }
+  if (!lp) {
+    throw new Error("buildRequestWireOutEnvelope: lp must not be empty");
+  }
+
+  const args = encodeRequestWireOutArgs({ lp, amountRaw });
+
+  const contract = new Contract(minterId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(lp);
+  const op = contract.call("request_wire_out", ...args);
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`requestWireOut simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+function wireOutIdFromReturnValue(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
+  if (!finalResult.returnValue) return null;
+  try {
+    return toId(scValToNative(finalResult.returnValue), 0);
+  } catch {
+    return null;
+  }
+}
+
+function wireOutIdFromEvents(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
+  try {
+    const events = finalResult.resultMetaXdr.v3().sorobanMeta()?.events() ?? [];
+    for (const event of events) {
+      const topics = event.body().v0().topics();
+      const nameTopic = topics[0];
+      const idTopic = topics[1];
+      if (!nameTopic || !idTopic) continue;
+      if (scValToNative(nameTopic) === "wire_out_requested") {
+        const id = toId(scValToNative(idTopic), 0);
+        if (id != null) return id;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export async function requestWireOut({
+  signTransaction,
+  onStageChange,
+  ...build
+}: RequestWireOutParams): Promise<RequestWireOutResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildRequestWireOutEnvelope(build);
+
+  const { networkPassphrase, rpcUrl, lp } = build;
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: lp,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `requestWireOut: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `requestWireOut: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return {
+    hash: sendResult.hash,
+    wireOutId:
+      wireOutIdFromReturnValue(finalResult) ?? wireOutIdFromEvents(finalResult),
+  };
+}
+
+// ── wire_out / paused reads ───────────────────────────────────────────────────
+
+export type MinterWireOutStatus = "Pending" | "Settled" | "Cancelled";
+
+const WIRE_OUT_STATUSES: readonly MinterWireOutStatus[] = [
+  "Pending",
+  "Settled",
+  "Cancelled",
+];
+
+export interface MinterWireOut {
+  lp: string;
+  amount: string;
+  requestedAt: number;
+  status: MinterWireOutStatus;
+}
+
+export interface ReadMinterWireOutParams extends SimulateReadOptions {
+  minterId: string;
+  id: number;
+}
+
+export interface ReadMinterPausedParams extends SimulateReadOptions {
+  minterId: string;
+}
+
+function decodeWireOutStatus(raw: unknown): MinterWireOutStatus {
+  const variant = Array.isArray(raw) ? raw[0] : raw;
+  const found = WIRE_OUT_STATUSES.find((s) => s === variant);
+  if (!found) {
+    throw new Error(
+      `readMinterWireOut: unknown status ${JSON.stringify(variant)}`,
+    );
+  }
+  return found;
+}
+
+export async function readMinterWireOut({
+  minterId,
+  id,
+  rpcUrl,
+  networkPassphrase,
+}: ReadMinterWireOutParams): Promise<MinterWireOut> {
+  if (!minterId) {
+    throw new Error("readMinterWireOut: minterId must not be empty");
+  }
+  const data = (await simulateRead(
+    minterId,
+    "wire_out",
+    [nativeToScVal(id, { type: "u32" })],
+    { rpcUrl, networkPassphrase },
+  )) as Record<string, unknown> | undefined;
+  if (data?.amount === undefined || data.amount === null) {
+    throw new Error("readMinterWireOut: amount missing");
+  }
+  return {
+    lp: String(data.lp ?? ""),
+    amount: String(data.amount),
+    requestedAt: Number(data.requested_at ?? 0),
+    status: decodeWireOutStatus(data.status),
+  };
+}
+
+export async function readMinterPaused({
+  minterId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadMinterPausedParams): Promise<boolean> {
+  if (!minterId) {
+    throw new Error("readMinterPaused: minterId must not be empty");
+  }
+  const paused = await simulateRead(minterId, "paused", [], {
+    rpcUrl,
+    networkPassphrase,
+  });
+  return paused === true;
 }

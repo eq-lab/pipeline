@@ -40,6 +40,13 @@ export type {
   RequestsResponse,
   UseRequestsResult,
 } from "./useRequests";
+export { useWireOutRequests, getAuditLog } from "./useWireOutRequests";
+export type {
+  AuditLogItem,
+  AuditLogResponse,
+  WireOutRequestItem,
+  UseWireOutRequestsResult,
+} from "./useWireOutRequests";
 export { useDepositVoucher } from "./useDepositVoucher";
 export type {
   VoucherResponse,

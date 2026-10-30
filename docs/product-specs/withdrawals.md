@@ -22,7 +22,7 @@ The indexer records `WithdrawalRequested`; the API runs KYT and serves the vouch
 
 ### Step 4: claimWithdrawal
 
-The lender calls `claimWithdrawal`. It reverts `WithdrawalQueueTooEarly` until `queued[requestId] <= claimableAmount()`, that is until the asset holder's USDC balance (plus prior claims) covers every earlier request. The lender retries after the Trustee tops up the asset holder; funds are delayed, never lost.
+The lender calls `claimWithdrawal`. It reverts `WithdrawalQueueTooEarly` until `queued[requestId] <= claimableAmount()`, that is until the asset holder's USDC balance (plus prior claims) covers every earlier request. The lender retries after the Trustee tops up the asset holder; funds are delayed, never lost. On Stellar the equivalent call is `claim_request(request_id, signature, deadline)`; it fails with `Error(Contract, #2)` (`TooEarly`) until the view `claimable(request_id)` is true.
 
 ### Voucher validity
 
@@ -31,6 +31,38 @@ The voucher the API serves for a request is valid for 24 hours. On Stellar the r
 The LP app treats a voucher whose served `deadline` has passed as absent: the hook reports `pending` (never `ready`, never `failed`), hides the voucher data and signature, and refetches. While a voucher with a deadline is ready, the hook schedules a refetch for the moment the deadline passes, so a tab left open goes back to pending and then ready with the fresh voucher. The served `deadline` is the only clock; the app holds no 24-hour constant and shows no countdown.
 
 If a Stellar claim still fails with the deadline-expired contract error (`Error(Contract, #4)`, for example under clock skew), the app resets the voucher query once per request id and shows "The voucher expired or did not match the request. Your app fetches a fresh voucher." A second failure for the same request keeps the error visible. A bad signature is a host crypto error, not a voucher expiry, and is never retried.
+
+### Queue position, payable now and recovery rate (LP app)
+
+Behaviour source: `docs/user-docs/lenders/withdraw.md` (Flow, Paid in order, Queue aggregates, Delays, During shutdown), `docs/user-docs/lenders/dashboard.md` and `docs/user-docs/risks/default-management.md`. The LP app shows these values from the queue contract, exactly as returned. It computes no metric; the only comparison is the recovery rate against its own unit, to decide whether the recovery notice shows. A value that is not available renders "—". All reads follow the connected wallet's chain.
+
+| Value                                                 | Stellar (`VITE_STELLAR_WITHDRAWAL_QUEUE_ID`)                           | EVM (`VITE_WITHDRAWAL_QUEUE_ADDRESS`)                                                                                                 | Served by API                                                                                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Request list, status, amount, `request_id`            | `GET /v1/requests`                                                     | same                                                                                                                                  | yes, used as is                                                                                                    |
+| Position                                              | `withdrawal_request_queued(u128) -> i128` (PLUSD, 7 dp)                | `withdrawalRequestQueued(uint256) -> uint256` (PLUSD decimals)                                                                        | no                                                                                                                 |
+| Payable now                                           | `claimable(u128) -> bool`                                              | `isClaimable(uint256) -> bool`                                                                                                        | no                                                                                                                 |
+| Total queued / total claimed (dashboard Panel C only) | `total_queued()` / `total_claimed()`                                   | `queueMetadata() -> (totalQueued, totalClaimed)`                                                                                      | no. `/v1/withdrawal-queue` `in_queue_usd` is the unclaimed sum, a different number, and stays as the In Queue card |
+| Recovery rate                                         | `rate() -> i128`, 6 dp (`1_000_000` = 1.0)                             | no public getter on the deployed proxy; `convertToAssets(10^plusdDecimals)`, the contract's USDC payout for 1 PLUSD, at USDC decimals | no                                                                                                                 |
+| Payout on the claim step                              | return value of a `claim_request` simulation from the lender's address | `convertToAssets(request.amount)`                                                                                                     | no                                                                                                                 |
+| Queue paused                                          | `paused() -> bool`                                                     | `paused() -> bool`                                                                                                                    | no                                                                                                                 |
+| Voucher expired                                       | served `deadline` (see Voucher validity)                               | not served (#1798)                                                                                                                    | yes                                                                                                                |
+
+The API does not serve position, payable now, queue totals or the rate, so the LP reads them from the contracts. Serving them is tracked as backend issue #1801. If a later EVM deploy adds a rate getter, switch to it.
+
+Rules:
+
+- **Claim gating.** Claim is disabled while `claimable` / `isClaimable` is exactly `false` or the queue is paused. An unknown value (`undefined`) keeps the previous behaviour, so a failed read never blocks a claim.
+- **Payout is contract-only.** "Pays X USDC = Y PLUSD × rate" shows X from the contract (simulation / `convertToAssets`), never a client product. X is "—" until it resolves or when the simulation fails.
+- **Claim toast.** With a recovery rate below 1 the success toast reads `Claimed {X} USDC` from the contract payout captured before submit (or "USDC claimed" when none was captured). At rate 1 the copy is unchanged.
+- **Request step hint.** "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." shows on the withdraw request step while it is idle.
+- **Claim-step hint priority** (first match wins, copy verbatim from the Delays list):
+  1. Queue paused: "The withdrawal queue is paused. Check the status page before retrying."
+  2. Voucher expired: "The voucher expired before you claimed. Your app fetches a new one."
+  3. No ready voucher (request `PendingVerification` / `VerificationFailed`, or voucher pending / failed): "No voucher yet. Screening is still running, or the request did not screen clean."
+  4. Not payable (`payableNow === false`): "The withdrawal custody account is short. Claims for your position wait until it is funded."
+  5. Payable (`payableNow === true`, nothing above applies): "Payable now." followed, when the payout is known, by "Pays {X} USDC." (under a recovery rate below 1: "Pays {X} USDC = {Y} PLUSD × {rate}", X "—" until it resolves). An unknown `payableNow` shows no hint.
+- **`TooEarly` mapping.** Stellar `Error(Contract, #2)` maps to the custody-short copy only for the withdraw `claim_request` call (`toUserError(err, { context: "withdrawClaim" })`), because `#2` collides with other contracts' codes (for example `get_request` on an unknown id). EVM `WithdrawalQueueTooEarly()` maps to the same copy globally. `InvalidRate` / `AlreadyInShutdown` are admin-only and not mapped.
+- **Surfaces.** The withdraw page shows an always-visible info block above the steps card ("Requests are paid in order." with a Learn more button that opens the "Withdrawal queue" modal carrying the rest of the copy), then a status block only when the lender has a request (two plain rows: "Your request", the request's own PLUSD amount as served by `GET /v1/requests`, and "Queue position", the contract read, both ordinary right-aligned values with no chips (payability is shown only as the claim-step hint under step 3); no queue totals; the Learn more modal also explains that the position is the total PLUSD requested up to and including the request), a "Recovery rate" row after Network fee in the conversion card (rate verbatim plus a yellow warning icon that opens a modal with the During shutdown copy) only when the rate is below 1, and two more Panel C summary cards (Total queued, Total claimed), the only place the queue totals appear. Component detail is in [dashboard-components.md](../frontend/dashboard-components.md#deposit-and-withdraw-route).
 
 ### Asset-holder top-ups
 
@@ -45,6 +77,26 @@ The Treasury Wallet redeems protocol fees through the same request and claim mec
 ## Designed v2.3 model (not deployed on EVM)
 
 The designed queue keeps `Entry { queueId, lp, amount, status: Pending | Claimed | AdminReleased }` with `totalRequested` / `totalClaimed` / `totalClaimable` aggregates, a `claim(queueId, ClaimAttestation, sig)` that checks a `kytAttestor` signature, nonce and deadline, re-checks `WhitelistRegistry.isAllowed`, enforces `claimAmount <= totalClaimable`, pulls USDC from a Withdrawal Queue Wallet and burns PLUSD, plus `adminRelease(queueId)` for sanctioned entries. None of it exists in `hoodi-v5`; the interface is in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
+
+---
+
+## Bank wire withdrawals (LP app)
+
+Sources: `user-docs/lenders/withdraw.md` (Bank wire withdrawals), `dashboard.md`, `onboarding.md` (Re-screening), `security/capital-safeguards.md`. Issue #1757, epic #1795; Trustee settle and cancel are #1764. The lender requests a wire-out of PLUSD from `/deposit?direction=withdraw`; the PLUSD moves into escrow in the Minter, the Trustee settles (burned) or cancels (returned). **The lender cannot cancel.** No bank account is collected or shown: the Trustee wires to the account on the KYB file.
+
+**Contract calls.** Stellar Minter (`VITE_STELLAR_YIELD_MINTER_ID`): `request_wire_out(lp: Address, amount: i128) -> u32` (LP signs, 7 dp, no minimum; order: `require_auth`, `when_not_paused` `#1000`, `require_positive` `#6`, `plusd_authorized` `#16`, SAC transfer with `#13` no trustline / `#10` balance), `wire_out(id: u32) -> { lp, amount, requested_at, status, ref_hash }` (`Pending` / `Settled` / `Cancelled`), `paused()`. EVM `PipelineMinter` (`VITE_EVM_MINTER_ADDRESS`): `PLUSD.approve(minter, amount)`, `requestWireOut(uint256) returns (uint256)`, `wireOut(uint256) -> (lp, uint8 status 0/1/2, amount)`, `paused()`; reverts `EnforcedPause`, `MinterInvalidAmount`, `ERC20InsufficientBalance`. Bindings live in `@pipeline/wallet-connect` (reused by #1764).
+
+**Placement.** The withdraw page (`/deposit?direction=withdraw`) has two tabs at the top of the conversion card (`SegmentedTabs`, `withdraw-tabs`): "Withdraw" (the USDC queue flow) and "Bank" (this flow). The tab is the `?tab=withdraw|bank` search param (default `withdraw`, honoured only on the withdraw direction; the deposit direction shows no tabs); selecting a tab replaces the URL. `/withdraw` redirects to `/deposit?direction=withdraw&tab=withdraw`. The Bank tab shows the PLUSD amount input, the bank output ("USD to your bank account", "Exchange rate 1 PLUSD = 1 USD", "Network fee" as served), a one-line info ("Your PLUSD stays in escrow until the Trustee sends the wire." with "Learn more" opening the docs paragraph above verbatim), the wire-out steps and the "Your bank wire-outs" list; it has no queue block and no recovery-rate row.
+
+**Gates** (first failing wins, the request step is disabled and the reason shows as its hint): minter unconfigured for the chain ("Bank wire-outs are not available on this network."); not a signed-in LP with `kyb_status === "Passed"` ("Complete KYB to withdraw to a bank account", decision 2026-10-30); paused ("Bank wire-outs are paused. Check the status page before retrying."); address not authorised to hold PLUSD, Stellar only, includes a missing trustline ("Your address must be authorised to hold PLUSD to request a bank wire-out."); empty or zero amount; amount above balance ("Insufficient balance"). EVM unauthorised addresses are caught by the revert mapping.
+
+**Value sources.** Ids and request time: `GET /v1/audit-log?chain_id=<active chain>` (public, newest first), keeping `WireOutRequested` rows whose `details.lp` equals the connected address (case-insensitive on EVM), cached and polled 30 s; filtering served rows is selection, not a computed metric. A wallet-scoped endpoint is the recommended backend follow-up. Amount and status come from the contract read ("—" while loading or on error), status mapped 1:1, never derived from events. Balance, decimals and authorisation come from the withdraw flow. Chain follows `useWalletView().kind`.
+
+**Just-submitted ids.** The indexer lags, so the returned id (Stellar return value, else `wire_out_requested` topic; EVM receipt log) is kept in component state, rendered through the contract read with "—" for the time, and dropped once the served list has it.
+
+**Errors.** `toUserError(err, { context: "wireOut" })` only, never the global table: Soroban `#16`, `#6`, `#10` (SAC balance in this call, not Minter `NonExistentWireOut`), `#1000`; EVM named errors. See [error-handling.md](../frontend/error-handling.md#the-mapping-layer-touserror).
+
+**Environment.** Both minter vars must be set on the LP container; the Minter's `addresses_config().plusd` must equal the PLUSD the lender holds, else the transfer fails (deployment fix).
 
 ---
 

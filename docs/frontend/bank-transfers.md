@@ -277,6 +277,21 @@ class of staleness `account-page.md` documents for its own frame.
 | `useErrorDetailsDialog.ts`'s Escape pattern | **Pattern reused**, not imported — `stopImmediatePropagation` on a capture-phase listener, since this modal may one day open over a page hosting another dialog. |
 | A shared hint-icon component | **Does not exist.** The plan's claim that `EarnedCard` already renders one was incorrect; `hint.svg` is a new, dedicated asset exported from the frame. |
 
+## Wire-out
+
+LP bank wire-out (#1757); behaviour in [withdrawals.md](../product-specs/withdrawals.md#bank-wire-withdrawals-lp-app). No Figma frames exist for it; it is built from the LP theme and `@pipeline/ui` components, using the funded home `6701-97136`, the funding modal `6701-97113` and the withdraw page `1498-100351` as style reference only.
+
+| Piece | File | Notes |
+| --- | --- | --- |
+| `BankWithdrawTab` | `components/withdraw/BankWithdrawTab.tsx` | Content of the withdraw page's "Bank" tab (`?tab=bank`). A `ConversionCard` (`bank-conversion-card`) with the page's `SegmentedTabs` in its `header` slot, input `TokenInput` PLUSD (`wire-out-amount-input`, 25% / 50% / 75% / Max via `balanceChipAmount`), output `TokenAmountDisplay` "USD to your bank account" mirroring the entered amount, "Exchange rate" `1 PLUSD = 1 USD`, "Network fee" as served by the withdraw flow ("—" when missing); no recovery-rate row. Below: `InlineError` "Insufficient balance", `WireOutInfoCard` in a plain `Card` (`wire-out-info-block`), `StepsCard` (`wire-out-steps-card`, the gate reason shows as the request step's hint) and "Your bank wire-outs" (`wire-out-list`, rows `wire-out-row-<id>`, hidden when empty). Disconnected: the page's connect-wallet banner replaces the info and steps. Toast id `wire-out-tx`: "Sending…", success "Wire-out of {amount} PLUSD requested", danger with "Details" into the page `ErrorDetailsDialog`. Success clears the input, adds the id to the just-submitted ids, refetches the audit log and the balance. |
+| `WireOutInfoCard` | `components/withdraw/WireOutInfoCard.tsx` | `WithdrawQueueInfoCard` pattern: ⓘ icon, "Your PLUSD stays in escrow until the Trustee sends the wire." and an inline "Learn more" opening a `ModalDialog` (`wire-out-modal`) with the verbatim docs paragraph (`wire-out-description`, `lenders/withdraw.md` "Bank wire withdrawals"). |
+| `useWireOutList` | `components/withdraw/useWireOutList.ts` | Served ids merged with the just-submitted ids, contract reads per id, and `useKybPassed`. |
+| `useWireOutFlow` / `useWireOutGate` | `components/withdraw/useWireOutFlow.ts` | Steps (Stellar: Request wire-out; EVM: Allow Pipeline to use PLUSD, Request wire-out), `disabledReason` priority, errors via the `wireOut` context. Request step hint: the gate reason when blocked, else "The PLUSD moves into escrow until the Trustee settles or cancels the request." |
+| `renderWireOutRow` | `components/activity/renderWireOutRow.tsx` | `ActivityRow` title "Withdraw funds", time from the audit log, amount `TwoLineAmount` `−{amount} PLUSD` over `Bank transfer · {status}`. Pending: `clock-pending` / warning, muted; Settled: `check-circle` / success; Cancelled: `arrow-down-circle` / neutral, muted. Unresolved reads show "—". |
+| `useActivityFeed` | `components/activity/useActivityFeed.ts` | Merges `useRequests()` with `useWireOutRequests()` by served time (newest first, each list's order preserved, requests first on ties), slices after the merge, reads contract values once per list. |
+
+Home `RecentActivityCard` and `/transactions` ("All" and "Sell" tabs) render the merged feed. Loading and error states stay driven by `useRequests`; a failed audit-log read just omits wire-out rows.
+
 ## Seams and who wires them
 
 | Seam | Default | Wired by |
@@ -286,7 +301,7 @@ class of staleness `account-page.md` documents for its own frame.
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
 | `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal` with no `details`) |
-| `AddUsdCard.onWithdraw` | no-op | #1285 |
+| `AddUsdCard.onWithdraw` | no-op | #1285 (the LP wire-out request itself is on the withdraw page, #1757; see [Wire-out](#wire-out)) |
 | `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
 | `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`); reused as-is by #1426 (home state 6, `declined` variant) |
 
@@ -316,7 +331,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | --- | --- |
 | Deciding which card variant renders for a given account state | epic #1419 (`deriveHomeState`) |
 | Mounting `AddUsdCard` into the home grid for state 5 | #1425 (shipped for state 6 by #1426) |
-| A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
+| A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 (the wire-out path is #1757 on the withdraw page; `AddUsdCard.onWithdraw` stays with #1285) |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
 | Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |
 | Real source for trust-account wire details | #1285 (folded), or a new backend issue |

@@ -218,6 +218,24 @@ export type {
   UseStellarChangeTrustStakedPlusdResult,
 } from "./stellar/useStellarStakedPlusd";
 
+// ── Withdrawal queue reads (position, payable now, totals, recovery rate) ─────
+export {
+  useWithdrawalQueueTotals,
+  isRecoveryRateActive,
+} from "./useWithdrawalQueueReads";
+export type {
+  WithdrawalQueueTotals,
+  WithdrawalRequestQueueState,
+} from "./useWithdrawalQueueReads";
+
+// ── Bank wire-out (#1757) ─────────────────────────────────────────────────────
+export { isWireOutMinterConfigured } from "./wireOutConfig";
+export { useWireOuts, useMinterPaused } from "./useWireOutReads";
+export type { WireOutRead, WireOutStatus } from "./useWireOutReads";
+export { useStellarRequestWireOut } from "./stellar/useStellarRequestWireOut";
+export type { UseRequestWireOutResult } from "./stellar/useStellarRequestWireOut";
+export { useEvmRequestWireOut } from "./evm/useEvmRequestWireOut";
+
 // ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
 export { useDepositFlow } from "./useDepositFlow";
 export type {
@@ -225,6 +243,7 @@ export type {
   Direction as FlowDirection,
   StepState as FlowStepState,
   StepInfo,
+  WithdrawQueueInfo,
   StepTxState,
   TrustlineInfo,
 } from "./useDepositFlow";

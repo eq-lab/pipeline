@@ -1,11 +1,11 @@
 import React from "react";
 
 /**
- * Card — Pipeline UI surface primitive (white/yellow/muted/danger).
+ * Card — Pipeline UI surface primitive (white/plain/yellow/muted/danger).
  * spec: docs/frontend/ui-components.md#card
  */
 
-export type CardVariant = "white" | "yellow" | "muted" | "danger";
+export type CardVariant = "white" | "plain" | "yellow" | "muted" | "danger";
 
 /** Interior padding: none 0 / sm 8 / md 16 / lg 24px (default); "none" = caller owns padding. */
 export type CardPadding = "none" | "sm" | "md" | "lg";
@@ -36,6 +36,12 @@ const variantClasses: Record<CardVariant, string> = {
   white: [
     "bg-[var(--color-pipeline-surface)]",
     "border-[color:var(--color-pipeline-line)]",
+    "text-[color:var(--color-pipeline-ink)]",
+  ].join(" "),
+
+  plain: [
+    "bg-[var(--color-pipeline-surface)]",
+    "border-transparent",
     "text-[color:var(--color-pipeline-ink)]",
   ].join(" "),
 

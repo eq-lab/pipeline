@@ -25,6 +25,7 @@ export interface StepItem {
   errorMessage?: string;
   /** Raw error text for the details dialog — see `StepRow.errorDetails`. */
   errorDetails?: string;
+  hint?: string;
 }
 
 export interface StepsCardNotice {
@@ -93,6 +94,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
                 state,
                 errorMessage,
                 errorDetails,
+                hint,
               },
               index,
             ) => (
@@ -106,6 +108,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
                 loading={loading}
                 errorMessage={errorMessage}
                 errorDetails={errorDetails}
+                hint={hint}
                 state={state}
               />
             ),

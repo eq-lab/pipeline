@@ -1,0 +1,73 @@
+// spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
+import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { WithdrawQueueInfoCard } from "./WithdrawQueueInfoCard";
+
+const COPY =
+  "Paid in order. Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.";
+
+const POSITION_COPY =
+  "Your queue position is the total PLUSD requested up to and including your request. The request is payable once total claimed plus the USDC in the withdrawal custody account reaches that number.";
+
+describe("WithdrawQueueInfoCard", () => {
+  it("renders one ink paragraph: icon, sentence, then the inline Learn more link", () => {
+    render(<WithdrawQueueInfoCard />);
+    const row = screen.getByTestId("withdraw-queue-info");
+    expect(row.tagName).toBe("P");
+    expect(row).toHaveClass("text-[color:var(--color-pipeline-ink)]");
+    const icon = screen.getByTestId("withdraw-queue-info-icon");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(row.firstElementChild).toBe(icon);
+    expect(row.querySelector("strong")).toBeNull();
+    expect(row.textContent).toBe("Requests are paid in order. Learn more");
+    const link = screen.getByRole("button", { name: "Learn more" });
+    expect(link).toBe(screen.getByTestId("withdraw-queue-learn-more"));
+    expect(row).toContainElement(link);
+    expect(row.lastElementChild).toBe(link);
+    expect(link).toHaveAttribute("aria-haspopup", "dialog");
+    expect(link).not.toHaveAttribute("aria-expanded");
+    expect(link).toHaveClass(
+      "underline",
+      "text-[color:var(--color-pipeline-ink-muted)]",
+    );
+    expect(link.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(link).not.toHaveTextContent("→");
+    expect(
+      screen.queryByTestId("withdraw-queue-modal"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the modal with the verbatim copy, closes on Escape and restores focus", () => {
+    render(<WithdrawQueueInfoCard />);
+    const button = screen.getByTestId("withdraw-queue-learn-more");
+    button.focus();
+    fireEvent.click(button);
+    const modal = screen.getByTestId("withdraw-queue-modal");
+    expect(modal).toHaveAttribute("role", "dialog");
+    expect(modal).toHaveTextContent("Withdrawal queue");
+    expect(modal).toHaveTextContent(COPY);
+    expect(modal).toHaveTextContent(POSITION_COPY);
+    expect(screen.getByTestId("withdraw-queue-modal-close")).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(
+      screen.queryByTestId("withdraw-queue-modal"),
+    ).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it("closes from the Close button and the backdrop", () => {
+    render(<WithdrawQueueInfoCard />);
+    const button = screen.getByTestId("withdraw-queue-learn-more");
+    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId("withdraw-queue-modal-close"));
+    expect(
+      screen.queryByTestId("withdraw-queue-modal"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId("withdraw-queue-modal-backdrop"));
+    expect(
+      screen.queryByTestId("withdraw-queue-modal"),
+    ).not.toBeInTheDocument();
+  });
+});

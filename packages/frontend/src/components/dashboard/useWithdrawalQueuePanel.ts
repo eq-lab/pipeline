@@ -10,6 +10,7 @@ import { useWithdrawalQueue } from "@/api";
 import { useFinancialPosition } from "@/api/useFinancialPosition";
 import type { PanelState } from "./PanelContainer";
 import { useDashboardChain } from "./useDashboardChain";
+import { formatUnits, useWithdrawalQueueTotals } from "@/wallet";
 import { truncateAddress } from "@/utils/truncateAddress";
 import { toUserError } from "@/utils/userError";
 import {
@@ -35,6 +36,8 @@ export interface WithdrawalQueueSummaryFormatted {
   estimatedWait: string;
   /** e.g. `"5.6x"` or `"—"`. spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel (Liquid Cover calc). */
   liquidCover: string;
+  totalQueued: string;
+  totalClaimed: string;
 }
 
 /** One pre-formatted withdrawal queue row. */
@@ -70,7 +73,17 @@ const EMPTY_SUMMARY: WithdrawalQueueSummaryFormatted = {
   requests: "—",
   estimatedWait: "—",
   liquidCover: "—",
+  totalQueued: "—",
+  totalClaimed: "—",
 };
+
+function formatQueueTotal(
+  raw: bigint | undefined,
+  decimals: number | undefined,
+): string {
+  if (raw === undefined || decimals === undefined) return "—";
+  return formatCompactUsd(formatUnits(raw, decimals));
+}
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
@@ -79,7 +92,8 @@ const EMPTY_SUMMARY: WithdrawalQueueSummaryFormatted = {
  * spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel (panel state, row expand).
  */
 export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
-  const { chainId } = useDashboardChain();
+  const { chainId, kind } = useDashboardChain();
+  const totals = useWithdrawalQueueTotals(kind);
   const { data, isLoading, error, refetch } = useWithdrawalQueue({ chainId });
   const [expanded, setExpanded] = useState(false);
   // Liquid Cover numerator — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
@@ -163,6 +177,8 @@ export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
     requests: String(data.summary.requests_count),
     estimatedWait: formatEstimatedWaitDays(data.summary.estimated_wait_days),
     liquidCover,
+    totalQueued: formatQueueTotal(totals.totalQueued, totals.plusdDecimals),
+    totalClaimed: formatQueueTotal(totals.totalClaimed, totals.plusdDecimals),
   };
 
   return {
