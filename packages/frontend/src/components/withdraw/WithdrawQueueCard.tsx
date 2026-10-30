@@ -30,15 +30,15 @@ export function WithdrawQueueCard({
           variant="plain"
           padding="none"
           data-testid="withdraw-queue-position-block"
-          className="px-4 py-4"
+          className="flex flex-col gap-3 px-4 py-4"
         >
           <InfoRow
-            data-testid="withdraw-queue-position"
-            label="Your position"
+            data-testid="withdraw-queue-request"
+            label="Your request"
             value={
               <span className="inline-flex items-center gap-2">
                 <strong className="font-[var(--font-weight-emphasized)]">
-                  {view.position}
+                  {view.request}
                 </strong>
                 <span
                   aria-hidden="true"
@@ -53,6 +53,15 @@ export function WithdrawQueueCard({
                   label={view.status}
                 />
               </span>
+            }
+          />
+          <InfoRow
+            data-testid="withdraw-queue-position"
+            label="Queue position"
+            value={
+              <strong className="font-[var(--font-weight-emphasized)]">
+                {view.position}
+              </strong>
             }
           />
         </Card>

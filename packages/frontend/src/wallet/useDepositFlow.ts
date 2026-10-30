@@ -105,6 +105,7 @@ export interface StepInfo {
 }
 
 export interface WithdrawQueueInfo {
+  requestAmount: bigint | undefined;
   position: bigint | undefined;
   payableNow: boolean | undefined;
   rateRaw: bigint | undefined;
@@ -838,6 +839,7 @@ export function useDepositFlow(
     (queueRequestState.payableNow === false || queueTotals.paused === true);
   const withdrawQueue: WithdrawQueueInfo | undefined = isWithdraw
     ? {
+        requestAmount: queueAmountRaw,
         position: queueRequestState.position,
         payableNow: queueRequestState.payableNow,
         rateRaw: queueTotals.rateRaw,

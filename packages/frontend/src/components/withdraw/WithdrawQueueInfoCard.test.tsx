@@ -6,6 +6,9 @@ import { WithdrawQueueInfoCard } from "./WithdrawQueueInfoCard";
 const COPY =
   "Paid in order. Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.";
 
+const POSITION_COPY =
+  "Your queue position is the total PLUSD requested up to and including your request. The request is payable once total claimed plus the USDC in the withdrawal custody account reaches that number.";
+
 describe("WithdrawQueueInfoCard", () => {
   it("renders one ink paragraph: icon, sentence, then the inline Learn more link", () => {
     render(<WithdrawQueueInfoCard />);
@@ -43,6 +46,7 @@ describe("WithdrawQueueInfoCard", () => {
     expect(modal).toHaveAttribute("role", "dialog");
     expect(modal).toHaveTextContent("Withdrawal queue");
     expect(modal).toHaveTextContent(COPY);
+    expect(modal).toHaveTextContent(POSITION_COPY);
     expect(screen.getByTestId("withdraw-queue-modal-close")).toHaveFocus();
 
     fireEvent.keyDown(window, { key: "Escape" });

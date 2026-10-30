@@ -8,6 +8,7 @@ export interface WithdrawQueueCardView {
   tone: WithdrawQueueTone;
   status: string;
   position: string;
+  request: string;
 }
 
 export function useWithdrawQueueCard(
@@ -24,6 +25,10 @@ export function useWithdrawQueueCard(
         : tone === "pending"
           ? "Not payable yet"
           : "—",
+    request:
+      queue?.requestAmount !== undefined
+        ? `${formatTokenAmount(queue.requestAmount, queue.plusdDecimals)} PLUSD`
+        : "—",
     position:
       queue?.position !== undefined
         ? `${formatTokenAmount(queue.position, queue.plusdDecimals)} PLUSD`

@@ -866,11 +866,12 @@ describe("useDepositFlow — withdraw queue state (#1759)", () => {
   });
 
   it("exposes raw queue values on withdraw and nothing on deposit", () => {
-    queue.position = 10_000_000_000n;
+    queue.position = 25_000_000_000n;
     queue.claimable = true;
     const withdraw = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
     expect(withdraw.result.current.withdrawQueue).toMatchObject({
-      position: 10_000_000_000n,
+      requestAmount: 10_000_000_000n,
+      position: 25_000_000_000n,
       payableNow: true,
       recoveryActive: false,
     });

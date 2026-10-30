@@ -3755,7 +3755,7 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
       usdcDecimals: 6,
     });
     Object.assign(queueMock.request, {
-      position: 10_000_000n,
+      position: 25_000_000n,
       payableNow: true,
     });
     queueMock.payout = undefined;
@@ -3771,8 +3771,11 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     expect(
       await screen.findByTestId("withdraw-queue-card"),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("withdraw-queue-request")).toHaveTextContent(
+      "Your request10.00 PLUSD",
+    );
     expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
-      "10.00 PLUSD",
+      "Queue position25.00 PLUSD",
     );
     expect(screen.getByTestId("withdraw-queue-status")).toHaveTextContent(
       "Payable now",

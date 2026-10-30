@@ -25,7 +25,8 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 - On every withdraw visit (not on deposit) a white block sits below the conversion card (above the steps); with a withdrawal request a second white block follows it, separated by a thin 2px seam like the two token cards of the converter
 - The first block is one line of running text with a small info icon: "Requests are paid in order." (plain, no bold lead) followed directly by an underlined "Learn more" link with an arrow icon, in muted 16px text
 - Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the link
-- With a withdrawal request, the second block shows "Your position" with the amount in bolder text, equal to `withdrawal_request_queued(request_id)` formatted as PLUSD, followed by a status chip; with no request only the first block shows
+- With a withdrawal request, the second block shows two rows: "Your request" with the request's own PLUSD amount (as served by the API) in bolder text followed by a status chip, then "Queue position" with `withdrawal_request_queued(request_id)` formatted as PLUSD in bolder text and no chip; with no request only the first block shows
+- The Learn more modal adds: "Your queue position is the total PLUSD requested up to and including your request. The request is payable once total claimed plus the USDC in the withdrawal custody account reaches that number."
 - The chip reads "Payable now" (green, check icon) when `claimable(request_id)` is true, "Not payable yet" (pale yellow, clock icon) when false, and "—" (grey) while the read is pending or failed
 - The withdraw page does not show "Total queued" or "Total claimed"; they live on the Protocol Dashboard Panel C only
 - Step 2 shows "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." while idle

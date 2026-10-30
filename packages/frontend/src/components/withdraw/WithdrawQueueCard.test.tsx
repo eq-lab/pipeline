@@ -5,6 +5,7 @@ import type { WithdrawQueueInfo } from "@/wallet";
 import { WithdrawQueueCard } from "./WithdrawQueueCard";
 
 const BASE: WithdrawQueueInfo = {
+  requestAmount: 12_500_000_000n,
   position: 25_000_000_000n,
   payableNow: true,
   rateRaw: 1_000_000n,
@@ -37,9 +38,9 @@ describe("WithdrawQueueCard", () => {
     expect(
       within(card).getByTestId("withdraw-queue-learn-more"),
     ).toBeInTheDocument();
-    const row = within(card).getByTestId("withdraw-queue-position");
-    expect(row).toHaveTextContent("Your position");
-    const amount = within(row).getByText("2,500.00 PLUSD");
+    const row = within(card).getByTestId("withdraw-queue-request");
+    expect(row).toHaveTextContent("Your request");
+    const amount = within(row).getByText("1,250.00 PLUSD");
     expect(amount.tagName).toBe("STRONG");
     expect(amount).toHaveClass("font-[var(--font-weight-emphasized)]");
     const chip = within(row).getByTestId("withdraw-queue-status");
@@ -49,6 +50,16 @@ describe("WithdrawQueueCard", () => {
     expect(dot).toHaveClass("text-[color:var(--color-pipeline-ink-muted)]");
     expect(amount.nextElementSibling).toBe(dot);
     expect(dot.nextElementSibling).toBe(chip);
+    const position = within(card).getByTestId("withdraw-queue-position");
+    expect(position).toHaveTextContent("Queue position");
+    const posValue = within(position).getByText("2,500.00 PLUSD");
+    expect(posValue.tagName).toBe("STRONG");
+    expect(
+      position.querySelector('[data-testid="withdraw-queue-status"]'),
+    ).toBeNull();
+    expect(row.compareDocumentPosition(position)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(chip).toHaveAttribute("data-tone", "positive");
     expect(chip).toHaveTextContent("Payable now");
     expect(chip.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
@@ -68,8 +79,11 @@ describe("WithdrawQueueCard", () => {
     const chip = screen.getByTestId("withdraw-queue-status");
     expect(chip).toHaveAttribute("data-tone", "neutral");
     expect(chip).toHaveTextContent("—");
+    expect(screen.getByTestId("withdraw-queue-request")).toHaveTextContent(
+      "Your request—",
+    );
     expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
-      "Your position—",
+      "Queue position—",
     );
   });
 
@@ -84,6 +98,9 @@ describe("WithdrawQueueCard", () => {
       screen.queryByTestId("withdraw-queue-position-block"),
     ).not.toBeInTheDocument();
     expect(screen.getByTestId("withdraw-queue-info")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-queue-request"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-queue-position"),
     ).not.toBeInTheDocument();

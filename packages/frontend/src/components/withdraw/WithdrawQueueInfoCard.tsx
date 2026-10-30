@@ -78,6 +78,11 @@ export function WithdrawQueueInfoCard() {
         claimed once the withdrawal custody account holds enough USDC to cover
         it and every earlier unclaimed request. Until then the claim is refused
         as too early. Your PLUSD stays in the queue. Nothing is lost.
+        <p className="mt-3 mb-0">
+          Your queue position is the total PLUSD requested up to and including
+          your request. The request is payable once total claimed plus the USDC
+          in the withdrawal custody account reaches that number.
+        </p>
       </ModalDialog>
     </>
   );
