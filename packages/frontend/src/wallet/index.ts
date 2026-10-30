@@ -228,6 +228,14 @@ export type {
   WithdrawalRequestQueueState,
 } from "./useWithdrawalQueueReads";
 
+// ── Bank wire-out (#1757) ─────────────────────────────────────────────────────
+export { isWireOutMinterConfigured } from "./wireOutConfig";
+export { useWireOuts, useMinterPaused } from "./useWireOutReads";
+export type { WireOutRead, WireOutStatus } from "./useWireOutReads";
+export { useStellarRequestWireOut } from "./stellar/useStellarRequestWireOut";
+export type { UseRequestWireOutResult } from "./stellar/useStellarRequestWireOut";
+export { useEvmRequestWireOut } from "./evm/useEvmRequestWireOut";
+
 // ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
 export { useDepositFlow } from "./useDepositFlow";
 export type {

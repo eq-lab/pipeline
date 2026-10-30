@@ -8,10 +8,12 @@ import {
   EmptyState,
   SegmentedTabs,
 } from "@pipeline/ui";
-import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
+import { renderWireOutRow } from "@/components/activity/renderWireOutRow";
+import { useActivityFeed } from "@/components/activity/useActivityFeed";
 import {
+  SAC_DECIMALS,
   useConnectModal,
   useEvmWallet,
   useStellarWallet,
@@ -41,7 +43,11 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
 
 function Transactions() {
   const [activeTab, setActiveTab] = useState("all");
-  const { data, isLoading, error, refetch } = useRequests();
+  const showWireOuts = activeTab === "all" || activeTab === "sell";
+  const { items, wireOuts, requests } = useActivityFeed({
+    includeWireOuts: showWireOuts,
+  });
+  const { data, isLoading, error, refetch } = requests;
   const { kind } = useWalletView();
   const { served, chainName } = useChainServed();
   const evmStakeDecimals = useEvmStakeDecimals();
@@ -50,11 +56,16 @@ function Transactions() {
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
-  const items = data?.requests ?? [];
+  const wireOutDecimals =
+    kind === "stellar" ? SAC_DECIMALS : evmStakeDecimals?.plusd;
   const filtered =
     activeTab === "all"
       ? items
-      : items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
+      : items.filter(
+          (entry) =>
+            entry.kind === "wireOut" ||
+            TYPE_TO_TAB[entry.item.type] === activeTab,
+        );
 
   const shouldRenderEmpty =
     !isLoading && !error && (!isConnected || filtered.length === 0);
@@ -139,15 +150,23 @@ function Transactions() {
 
               {!shouldRenderEmpty &&
                 filtered.length > 0 &&
-                filtered.map((item, i) => (
+                filtered.map((entry, i) => (
                   <React.Fragment key={i}>
-                    {renderRequestRow(
-                      item,
-                      kind,
-                      `transactions-row-${i}`,
-                      "pb-4",
-                      evmStakeDecimals,
-                    )}
+                    {entry.kind === "request"
+                      ? renderRequestRow(
+                          entry.item,
+                          kind,
+                          `transactions-row-${i}`,
+                          "pb-4",
+                          evmStakeDecimals,
+                        )
+                      : renderWireOutRow({
+                          timestamp: entry.timestamp,
+                          read: wireOuts[entry.id],
+                          decimals: wireOutDecimals,
+                          testId: `transactions-row-${i}`,
+                          className: "pb-4",
+                        })}
                   </React.Fragment>
                 ))}
             </div>

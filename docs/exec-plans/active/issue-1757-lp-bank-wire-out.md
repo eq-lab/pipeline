@@ -275,3 +275,7 @@ Vitest + RTL. Chain hooks and clients are stubbed with `vi.mock`. No localStorag
 
   Add the row to `docs/user-stories/index.md` under Epic #1795.
 - No tech-debt tracker entry. The missing wallet-scoped wire-out endpoint is called out in the spec as a backend follow-up for the user to file.
+
+## Progress
+
+Implementation steps 1-12 completed; docs and user-stories doc written. Deviations: KYB gate sits right after "unconfigured" in the priority order; `FlowState.plusdAuthorized` passthrough added; `balanceChipAmount` extracted to `utils/quickAmount.ts` and used by `useDepositFlow`.

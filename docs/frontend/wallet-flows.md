@@ -605,3 +605,18 @@ everything else falls back to JSON, then `String`. All withdrawal-queue mutation
 through it. As of #1034 `toError` lives in `packages/frontend/src/utils/userError.ts` and is the
 first stage of `toUserError`, the mapping layer that turns normalized errors into user-facing copy
 — see [`error-handling.md`](./error-handling.md).
+
+### Minter wire-out reads and writes (#1757)
+
+Bank wire-out for the LP app; behaviour in [`withdrawals.md`](../product-specs/withdrawals.md#bank-wire-withdrawals-lp-app).
+
+| Hook | Role |
+| --- | --- |
+| `useStellarRequestWireOut` (`wallet/stellar`) | Wraps `requestWireOut` from `@pipeline/wallet-connect` with `ENV.STELLAR_MINTER_ID`; `lp` = connected G-address; result `{ request, isPending, isSuccess, error, wireOutId, hash, reset }` |
+| `useEvmRequestWireOut` (`wallet/evm`) | simulate, estimate, `writeContract` `requestWireOut(amount)`, id decoded from the receipt's `WireOutRequested` log; same result shape. The PLUSD approval reuses `useApproval({ token: plusd, spender: ENV.EVM_MINTER_ADDRESS })` |
+| `useStellarWireOuts` / `useEvmWireOuts` | One `wire_out(id)` / `wireOut(id)` read per id (`useQueries` / `useReadContracts`); Stellar per id `staleTime: Infinity` and no polling once Settled or Cancelled, 30 s polling while Pending |
+| `useStellarMinterPaused` / `useEvmMinterPaused` | `paused()`, polled every 30 s |
+| `useWireOuts(kind, ids)` / `useMinterPaused(kind)` | Facade: calls both chain hooks, enables only the active kind, returns `Record<id, { amountRaw?, status?, error? }>`; a per-id error does not affect other ids |
+| `isWireOutMinterConfigured(kind)` | False for an empty Stellar minter id or an empty / zero EVM address; every hook short-circuits and the section is hidden |
+
+Chain scoping follows `useWalletView().kind`; the audit-log query (`useWireOutRequests`) uses `ENV.STELLAR_CHAIN_ID` / `ENV.EVM_CHAIN_ID`. No localStorage is used; the just-submitted id lives in component state.

@@ -69,6 +69,7 @@ import {
   WITHDRAW_REQUEST_HINT,
 } from "./withdrawClaimHint";
 import { formatUsdcCurrencyCompact, formatUsdcInput } from "@/lib/usdc";
+import { balanceChipAmount } from "@/utils/quickAmount";
 import {
   parseSorobanContractErrorCode,
   SOROBAN_VOUCHER_EXPIRED_CODE,
@@ -165,6 +166,7 @@ export interface FlowState {
   formattedBalance: string | undefined;
   /** Raw balance bigint at active-chain decimals */
   balance: bigint | undefined;
+  plusdAuthorized: boolean | undefined;
 
   // ── Min deposit ────────────────────────────────────────────────────────
   /** Min deposit expressed in active-chain decimals */
@@ -946,13 +948,8 @@ export function useDepositFlow(
           evmWithdrawBalance === undefined
         )
           return;
-        let next: bigint;
-        if (idx === 0) next = ((evmWithdrawBalance as bigint) * 25n) / 100n;
-        else if (idx === 1) next = (evmWithdrawBalance as bigint) / 2n;
-        else if (idx === 2)
-          next = ((evmWithdrawBalance as bigint) * 75n) / 100n;
-        else if (idx === 3) next = evmWithdrawBalance as bigint;
-        else return;
+        const next = balanceChipAmount(evmWithdrawBalance as bigint, idx);
+        if (next === undefined) return;
         setAmountInput(formatUsdcInput(next, evmWithdrawDecimals));
       }
     },
@@ -983,12 +980,8 @@ export function useDepositFlow(
         }
       } else {
         if (stellarPlusdBalanceRaw === undefined) return;
-        let next: bigint;
-        if (idx === 0) next = (stellarPlusdBalanceRaw * 25n) / 100n;
-        else if (idx === 1) next = stellarPlusdBalanceRaw / 2n;
-        else if (idx === 2) next = (stellarPlusdBalanceRaw * 75n) / 100n;
-        else if (idx === 3) next = stellarPlusdBalanceRaw;
-        else return;
+        const next = balanceChipAmount(stellarPlusdBalanceRaw, idx);
+        if (next === undefined) return;
         setAmountInput(formatUsdcInput(next, SAC_DECIMALS));
       }
     },
@@ -1212,6 +1205,7 @@ export function useDepositFlow(
       decimals: evmDecimals,
       formattedBalance: evmFormattedBalance,
       balance: evmBalance,
+      plusdAuthorized: undefined,
       minDeposit: evmMinDeposit,
       minChipLabel: evmMinChipLabel,
       isReady: isEvmReady,
@@ -1599,6 +1593,10 @@ export function useDepositFlow(
     decimals: SAC_DECIMALS,
     formattedBalance: stellarFormattedBalance,
     balance: stellarBalance,
+    plusdAuthorized:
+      isStellarConnected && !plusdSac.isLoading
+        ? plusdSac.isAuthorized
+        : undefined,
     minDeposit: stellarMinDeposit,
     minChipLabel: stellarMinChipLabel,
     isReady: isStellarReady,

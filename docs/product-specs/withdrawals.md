@@ -80,6 +80,24 @@ The designed queue keeps `Entry { queueId, lp, amount, status: Pending | Claimed
 
 ---
 
+## Bank wire withdrawals (LP app)
+
+Sources: `user-docs/lenders/withdraw.md` (Bank wire withdrawals), `dashboard.md`, `onboarding.md` (Re-screening), `security/capital-safeguards.md`. Issue #1757, epic #1795; Trustee settle and cancel are #1764. The lender requests a wire-out of PLUSD from `/deposit?direction=withdraw`; the PLUSD moves into escrow in the Minter, the Trustee settles (burned) or cancels (returned). **The lender cannot cancel.** No bank account is collected or shown: the Trustee wires to the account on the KYB file.
+
+**Contract calls.** Stellar Minter (`VITE_STELLAR_YIELD_MINTER_ID`): `request_wire_out(lp: Address, amount: i128) -> u32` (LP signs, 7 dp, no minimum; order: `require_auth`, `when_not_paused` `#1000`, `require_positive` `#6`, `plusd_authorized` `#16`, SAC transfer with `#13` no trustline / `#10` balance), `wire_out(id: u32) -> { lp, amount, requested_at, status, ref_hash }` (`Pending` / `Settled` / `Cancelled`), `paused()`. EVM `PipelineMinter` (`VITE_EVM_MINTER_ADDRESS`): `PLUSD.approve(minter, amount)`, `requestWireOut(uint256) returns (uint256)`, `wireOut(uint256) -> (lp, uint8 status 0/1/2, amount)`, `paused()`; reverts `EnforcedPause`, `MinterInvalidAmount`, `ERC20InsufficientBalance`. Bindings live in `@pipeline/wallet-connect` (reused by #1764).
+
+**Gates** (first failing wins, request disabled with the reason): minter unconfigured for the chain (section hidden); not a signed-in LP with `kyb_status === "Passed"` ("Complete KYB to withdraw to a bank account", decision 2026-10-30); paused ("Bank wire-outs are paused. Check the status page before retrying."); address not authorised to hold PLUSD, Stellar only, includes a missing trustline ("Your address must be authorised to hold PLUSD to request a bank wire-out."); empty or zero amount; amount above balance ("Insufficient balance"). EVM unauthorised addresses are caught by the revert mapping.
+
+**Value sources.** Ids and request time: `GET /v1/audit-log?chain_id=<active chain>` (public, newest first), keeping `WireOutRequested` rows whose `details.lp` equals the connected address (case-insensitive on EVM), cached and polled 30 s; filtering served rows is selection, not a computed metric. A wallet-scoped endpoint is the recommended backend follow-up. Amount and status come from the contract read ("—" while loading or on error), status mapped 1:1, never derived from events. Balance, decimals and authorisation come from the withdraw flow. Chain follows `useWalletView().kind`.
+
+**Just-submitted ids.** The indexer lags, so the returned id (Stellar return value, else `wire_out_requested` topic; EVM receipt log) is kept in component state, rendered through the contract read with "—" for the time, and dropped once the served list has it.
+
+**Errors.** `toUserError(err, { context: "wireOut" })` only, never the global table: Soroban `#16`, `#6`, `#10` (SAC balance in this call, not Minter `NonExistentWireOut`), `#1000`; EVM named errors. See [error-handling.md](../frontend/error-handling.md#the-mapping-layer-touserror).
+
+**Environment.** Both minter vars must be set on the LP container; the Minter's `addresses_config().plusd` must equal the PLUSD the lender holds, else the transfer fails (deployment fix).
+
+---
+
 ## UI: Network Fee Estimate
 
 The `/deposit` page (withdraw direction) shows a "Network fee" row in the Details section of the conversion card. The fee is an ETH-denominated estimate, decoupled from the user's typed amount:

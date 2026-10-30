@@ -91,6 +91,7 @@ vi.mock("wagmi", async (importOriginal) => {
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
+    useReadContracts: () => ({ data: undefined }),
     useWriteContract: () => mockUseWriteContract(),
     usePublicClient: () => mockUsePublicClient(),
     useWaitForTransactionReceipt: vi.fn(() => ({
@@ -126,6 +127,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       children: React.ReactNode;
       client: unknown;
     }) => <>{children}</>,
+    useQueries: vi.fn(() => []),
     useQuery: vi.fn(() => ({
       data: mockNetworkFeeEth,
       isLoading: false,
@@ -280,6 +282,12 @@ vi.mock("@/api", () => ({
     refetch: vi.fn(),
   }),
   useInvalidateRequests: () => mockInvalidateRequests,
+  useWireOutRequests: () => ({
+    items: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useDepositVoucher: (_requestId: string | undefined) => ({
     data: mockVoucherData,
@@ -377,6 +385,7 @@ const mockEnv = vi.hoisted(() => ({
   STELLAR_WITHDRAWAL_QUEUE_ID:
     "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
   WALLETCONNECT_PROJECT_ID: "replace-me",
+  EVM_MINTER_ADDRESS: undefined as `0x${string}` | undefined,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -3894,5 +3903,45 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
       () => expect(screen.getByText(/^Claimed 10.* USDC$/)).toBeInTheDocument(),
       { timeout: 3000 },
     );
+  });
+});
+
+describe("Deposit page — bank wire-out section (#1757)", () => {
+  const MINTER = "0x2222222222222222222222222222222222222222";
+
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockRequestsData = undefined;
+    seedWithdrawMocks({ allowance: "1000000000" });
+  });
+
+  afterEach(() => {
+    mockEnv.EVM_MINTER_ADDRESS = undefined;
+    localStorage.clear();
+  });
+
+  it("renders on the withdraw direction when connected and the minter is configured", async () => {
+    mockEnv.EVM_MINTER_ADDRESS = MINTER as `0x${string}`;
+    renderDeposit();
+    expect(await screen.findByTestId("wire-out-section")).toBeInTheDocument();
+    expect(screen.getByTestId("wire-out-open")).toBeDisabled();
+    expect(screen.getByTestId("wire-out-blocked-reason")).toHaveTextContent(
+      "Complete KYB to withdraw to a bank account",
+    );
+  });
+
+  it("is absent on the deposit direction", async () => {
+    mockEnv.EVM_MINTER_ADDRESS = MINTER as `0x${string}`;
+    mockDirection = "deposit";
+    renderDeposit();
+    await screen.findByTestId("deposit-header");
+    expect(screen.queryByTestId("wire-out-section")).not.toBeInTheDocument();
+  });
+
+  it("is absent when the minter env is unset", async () => {
+    renderDeposit();
+    await screen.findByTestId("withdraw-queue-card");
+    expect(screen.queryByTestId("wire-out-section")).not.toBeInTheDocument();
   });
 });

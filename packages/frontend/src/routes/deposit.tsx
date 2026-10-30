@@ -10,7 +10,12 @@ import {
   InlineError,
   useCopyToClipboard,
 } from "@pipeline/ui";
-import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
+import {
+  isWireOutMinterConfigured,
+  useDepositFlow,
+  useWalletView,
+  useConnectModal,
+} from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import {
@@ -26,6 +31,7 @@ import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 import { WithdrawQueueCard } from "@/components/withdraw/WithdrawQueueCard";
 import { WithdrawRecoveryRateRow } from "@/components/withdraw/WithdrawRecoveryRateRow";
 import { formatRecoveryRate } from "@/components/withdraw/recoveryRate";
+import { WireOutSection } from "@/components/withdraw/WireOutSection";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -810,6 +816,15 @@ function Deposit() {
                 notice={chainNotice}
               />
             )}
+
+            {!isDeposit &&
+              flow.isConnected &&
+              isWireOutMinterConfigured(kind) && (
+                <WireOutSection
+                  flow={flow}
+                  onShowErrorDetails={setErrorDialog}
+                />
+              )}
           </>
         )}
       </main>

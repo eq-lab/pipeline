@@ -125,6 +125,17 @@ call sites — see [`wallet-flows.md` → Error normalization](./wallet-flows.md
    | `#11` | "Your PLUSD balance is not authorized yet. Try again shortly." | Established empirically (`useDepositFlow.ts`, "balance is deauthorized" window). |
    | `#13` | "A required trustline is missing. Enable the asset and try again." | Established empirically (issue #604, "trustline entry is missing"). |
 
+   **`wireOut` context (#1757).** Only with `toUserError(err, { context: "wireOut" })`, for `Minter.request_wire_out`:
+
+   | Code | Copy | Source |
+   |------|------|--------|
+   | `#16` | "Your address must be authorised to hold PLUSD to request a bank wire-out." | Minter `LpFrozen` (`plusd_authorized` false) |
+   | `#6` | "Enter an amount greater than zero." | Minter `InvalidAmount` |
+   | `#10` | "Insufficient PLUSD balance." | SAC `BalanceError` from `plusd.transfer`; **collides** with Minter `#10` `NonExistentWireOut`, which is a read-only trap, so the mapping is scoped to the request call |
+   | `#1000` | "Bank wire-outs are paused. Check the status page before retrying." | `PausableError::EnforcedPause` from `when_not_paused` |
+
+   SAC `#13` is `TrustlineMissing` (not "not authorised") and keeps the global trustline copy; `#11` keeps its global copy.
+
    Unlisted codes fall through to the generic line (`details` is still preserved).
 
    **Code collision.** Soroban error codes are per contract and collide between the WithdrawalQueue
@@ -150,7 +161,9 @@ call sites — see [`wallet-flows.md` → Error normalization](./wallet-flows.md
    unavailable. Please try again." Deliberately does **not** touch the four voucher hooks'
    existing `msg.includes("Not Found")` predicates (`api/useDepositVoucher.ts` and three
    siblings) — those drive RETRY control flow and are load-bearing.
-4. **EVM revert / network.** `WithdrawalQueueTooEarly` (the decoded custom error name, checked
+4. **EVM revert / network.** In the `wireOut` context first: `EnforcedPause` → the paused copy,
+   `MinterInvalidAmount` → "Enter an amount greater than zero.", `ERC20InsufficientBalance` →
+   "Insufficient PLUSD balance." Then `WithdrawalQueueTooEarly` (the decoded custom error name, checked
    before the generic revert line) → "The withdrawal custody account is short. Claims for your
    position wait until it is funded."; `execution reverted` → "The transaction was rejected by the
    contract."; `insufficient funds`/`insufficient balance` → "Insufficient balance for this
