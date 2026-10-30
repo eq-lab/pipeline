@@ -107,8 +107,6 @@ export interface StepInfo {
 export interface WithdrawQueueInfo {
   position: bigint | undefined;
   payableNow: boolean | undefined;
-  totalQueued: bigint | undefined;
-  totalClaimed: bigint | undefined;
   rateRaw: bigint | undefined;
   rateDecimals: number | undefined;
   recoveryActive: boolean;
@@ -842,8 +840,6 @@ export function useDepositFlow(
     ? {
         position: queueRequestState.position,
         payableNow: queueRequestState.payableNow,
-        totalQueued: queueTotals.totalQueued,
-        totalClaimed: queueTotals.totalClaimed,
         rateRaw: queueTotals.rateRaw,
         rateDecimals: queueTotals.rateDecimals,
         recoveryActive,

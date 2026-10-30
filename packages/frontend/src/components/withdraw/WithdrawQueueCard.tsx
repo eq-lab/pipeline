@@ -1,6 +1,5 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
-import { useId, useState } from "react";
-import { Card, InfoRow } from "@pipeline/ui";
+import { Card } from "@pipeline/ui";
 import type { WithdrawQueueInfo } from "@/wallet";
 import { useWithdrawQueueCard } from "./useWithdrawQueueCard";
 
@@ -10,83 +9,61 @@ interface WithdrawQueueCardProps {
 }
 
 const bodyClasses =
-  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]";
+  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)]";
 
 export function WithdrawQueueCard({
   queue,
   hasRequest,
 }: WithdrawQueueCardProps) {
   const view = useWithdrawQueueCard(queue, hasRequest);
-  const [open, setOpen] = useState(false);
-  const detailsId = useId();
+
+  const textColor =
+    view.tone === "payable"
+      ? "text-[color:var(--color-pipeline-positive)]"
+      : "text-[color:var(--color-pipeline-ink)]";
+  const cardVariant =
+    view.tone === "payable"
+      ? "positive"
+      : view.tone === "waiting"
+        ? "yellow"
+        : "white";
 
   return (
-    <div className="flex flex-col gap-4">
+    <>
+      {hasRequest && (
+        <Card
+          variant={cardVariant}
+          data-testid="withdraw-queue-card"
+          data-tone={view.tone}
+          className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4"
+        >
+          <span
+            className={`${bodyClasses} ${textColor}`}
+            data-testid="withdraw-queue-payable"
+          >
+            {view.status}
+          </span>
+          <span className={`${bodyClasses} ${textColor}`}>
+            Your position{" "}
+            <strong
+              className="font-[var(--font-weight-emphasized)]"
+              data-testid="withdraw-queue-position"
+            >
+              {view.position}
+            </strong>
+          </span>
+        </Card>
+      )}
       {view.recoveryRate !== undefined && (
         <Card variant="yellow" data-testid="withdraw-recovery-rate-notice">
-          <p className={bodyClasses}>
+          <p
+            className={`${bodyClasses} text-[color:var(--color-pipeline-ink)]`}
+          >
             Recovery rate {view.recoveryRate}. Every claim pays USDC equal to
             the PLUSD burned times this rate.
           </p>
         </Card>
       )}
-      <Card variant="white" data-testid="withdraw-queue-card">
-        <div className="flex flex-col gap-3">
-          <h2
-            className={`${bodyClasses} font-[var(--font-weight-bold)]`}
-            data-testid="withdraw-queue-title"
-          >
-            Withdrawal queue
-          </h2>
-          <p className={bodyClasses} data-testid="withdraw-queue-copy">
-            <strong>Paid in order.</strong> Requests are paid first in, first
-            out.
-          </p>
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={detailsId}
-            onClick={() => setOpen((v) => !v)}
-            className={`${bodyClasses} cursor-pointer self-start underline`}
-            data-testid="withdraw-queue-learn-more"
-          >
-            {open ? "Show less" : "Learn more"}
-          </button>
-          <p
-            id={detailsId}
-            hidden={!open}
-            className={bodyClasses}
-            data-testid="withdraw-queue-details"
-          >
-            A request can be claimed once the withdrawal custody account holds
-            enough USDC to cover it and every earlier unclaimed request. Until
-            then the claim is refused as too early. Your PLUSD stays in the
-            queue. Nothing is lost.
-          </p>
-          {view.position !== undefined && (
-            <InfoRow
-              label="Your position"
-              value={view.position}
-              data-testid="withdraw-queue-position"
-            />
-          )}
-          <InfoRow
-            label="Payable now"
-            value={view.payableNow}
-            data-testid="withdraw-queue-payable"
-          />
-          <InfoRow
-            label="Total queued"
-            value={view.totalQueued}
-            data-testid="withdraw-queue-total-queued"
-          />
-          <InfoRow
-            label="Total claimed"
-            value={view.totalClaimed}
-            data-testid="withdraw-queue-total-claimed"
-          />
-        </div>
-      </Card>
-    </div>
+    </>
   );
 }

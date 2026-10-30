@@ -3748,8 +3748,6 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     Object.assign(queueMock.totals, {
-      totalQueued: 20_000_000n,
-      totalClaimed: 5_000_000n,
       rateRaw: 1_000_000n,
       rateDecimals: 6,
       paused: false,
@@ -3777,17 +3775,45 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
       "10.00 PLUSD",
     );
     expect(screen.getByTestId("withdraw-queue-payable")).toHaveTextContent(
-      "Yes",
+      "Payable now",
     );
-    expect(screen.getByTestId("withdraw-queue-total-queued")).toHaveTextContent(
-      "20.00 PLUSD",
+    expect(screen.getByTestId("withdraw-queue-card")).toHaveAttribute(
+      "data-tone",
+      "payable",
     );
     expect(
-      screen.getByTestId("withdraw-queue-total-claimed"),
-    ).toHaveTextContent("5.00 PLUSD");
+      screen.queryByTestId("withdraw-queue-total-queued"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-queue-total-claimed"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-recovery-rate-notice"),
     ).not.toBeInTheDocument();
+  });
+
+  it("places the info block, then the status block, above the steps card", async () => {
+    renderDeposit();
+    const info = await screen.findByTestId("withdraw-queue-info");
+    const card = await screen.findByTestId("withdraw-queue-card");
+    const claim = await screen.findByRole("button", { name: "Claim" });
+    const follows = (a: Element, b: Element) =>
+      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(follows(info, card)).toBeTruthy();
+    expect(follows(card, claim)).toBeTruthy();
+  });
+
+  it("shows the info block but no status block without a request", async () => {
+    localStorage.clear();
+    mockRequestsData = { requests: [] };
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ allowance: "1000000000" });
+    renderDeposit();
+    expect(
+      await screen.findByTestId("withdraw-queue-info"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("withdraw-queue-card")).not.toBeInTheDocument();
   });
 
   it("does not render the queue card on the deposit page", async () => {
@@ -3796,11 +3822,16 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     renderDeposit();
     await screen.findByText("1:1 Conversion");
     expect(screen.queryByTestId("withdraw-queue-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("withdraw-queue-info")).not.toBeInTheDocument();
   });
 
   it("disables Claim and shows the custody hint when the contract says not payable", async () => {
     queueMock.request.payableNow = false;
     renderDeposit();
+    expect(await screen.findByTestId("withdraw-queue-card")).toHaveAttribute(
+      "data-tone",
+      "waiting",
+    );
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Claim" })).toBeDisabled();
     });

@@ -8,7 +8,7 @@
 
 ## Overview
 
-Withdrawals are paid first in, first out (`docs/user-docs/lenders/withdraw.md`: Flow, Paid in order, Queue aggregates, Delays, During shutdown). The LP app shows, from the queue contract and exactly as returned, each request's position and whether it is payable now, the queue's total queued and total claimed, and the recovery rate when it is below 1. The API serves none of these today, so the LP reads them from the contracts; serving them is tracked as backend issue #1801. Spec: `docs/product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app`.
+Withdrawals are paid first in, first out (`docs/user-docs/lenders/withdraw.md`: Flow, Paid in order, Queue aggregates, Delays, During shutdown). The LP app shows, from the queue contract and exactly as returned, each request's position and whether it is payable now, the recovery rate when it is below 1, and (on the Protocol Dashboard only) the queue's total queued and total claimed. The API serves none of these today, so the LP reads them from the contracts; serving them is tracked as backend issue #1801. Spec: `docs/product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app`.
 
 All checks use the real API and contracts on staging (Stellar testnet, then Hoodi), no localStorage mocks. Open DevTools Network before starting; Soroban reads appear as `simulateTransaction` calls to the RPC, EVM reads as `eth_call`. Compare every shown value with a direct contract read. While RPC is blocked the values render "—" and Claim keeps its previous behaviour.
 
@@ -22,10 +22,12 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 **Then:**
 
-- A "Withdrawal queue" card sits under the steps card showing "Paid in order. Requests are paid first in, first out." and a "Learn more" control that reveals the rest of the "Paid in order" copy on click (collapsed by default)
-- "Your position" equals `withdrawal_request_queued(request_id)` formatted as PLUSD, "Payable now" shows Yes / Not yet from `claimable(request_id)`
-- "Total queued" and "Total claimed" equal `total_queued()` and `total_claimed()`
-- With no request in flight the "Your position" row is absent
+- An info block sits above the steps card on every withdraw visit, with or without a request: "**Paid in order.** Requests are paid first in, first out." and a "Learn more" button
+- Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the button
+- Below the info block a compact status row appears only while the lender has a withdrawal request with a position; with no request nothing renders
+- The row is green with "Payable now" when `claimable(request_id)` is true, yellow with "Not payable yet" when false, and white with "—" while the read is pending or failed
+- "Your position" in the row, in bolder text, equals `withdrawal_request_queued(request_id)` formatted as PLUSD; the row holds no copy and no button
+- The withdraw page does not show "Total queued" or "Total claimed"; they live on the Protocol Dashboard Panel C only
 - Step 2 shows "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." while idle
 
 ---

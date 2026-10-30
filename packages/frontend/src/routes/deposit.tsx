@@ -24,6 +24,7 @@ import { toUserError } from "@/utils/userError";
 import { useChainServed } from "@/api";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 import { WithdrawQueueCard } from "@/components/withdraw/WithdrawQueueCard";
+import { WithdrawQueueInfoCard } from "@/components/withdraw/WithdrawQueueInfoCard";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -604,6 +605,15 @@ function Deposit() {
               />
             )}
 
+            {!isDeposit && flow.isConnected && <WithdrawQueueInfoCard />}
+
+            {!isDeposit && flow.isConnected && (
+              <WithdrawQueueCard
+                queue={flow.withdrawQueue}
+                hasRequest={flow.requestId !== undefined}
+              />
+            )}
+
             {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
             {!flow.isConnected ? (
               <Card
@@ -792,12 +802,6 @@ function Deposit() {
                   },
                 ]}
                 notice={chainNotice}
-              />
-            )}
-            {!isDeposit && flow.isConnected && (
-              <WithdrawQueueCard
-                queue={flow.withdrawQueue}
-                hasRequest={flow.requestId !== undefined}
               />
             )}
           </>

@@ -312,6 +312,10 @@ frames.
   Figma value from issue #606) with the same hairline border so it sits visually alongside
   the white surfaces. Matches the Connect Wallet promo card (node `1497:94688`) on the
   deposit/stake pages and the home dashboard.
+- **`positive`** — pale green status surface (`--color-pipeline-positive-secondary`) with the
+  `--color-pipeline-line` hairline border and `--color-pipeline-positive` content colour;
+  mirrors `yellow`'s structure. Used by the withdraw-page queue status card when the request
+  is payable now (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`).
 - **`muted`** — slightly-grey surface (`--color-pipeline-paper`, #f8f7f6) that visually
   recedes behind white surfaces; border from `--color-pipeline-line`. Used for step rows in
   the deposit/conversion flow — the `StepsCard` container (Figma node `1498-100130`).
@@ -441,6 +445,15 @@ WAI-ARIA APG editable combobox with list autocomplete and no automatic selection
 
 Shown when `value !== ""` and the field is enabled. It calls `onChange("")`, empties the text,
 closes the list and focuses the input.
+
+## ModalDialog
+
+`packages/ui/src/components/ModalDialog/` (`ModalDialog.tsx`, `useModalDialog.ts`), exported from `@pipeline/ui`.
+
+- Props: `open`, `title`, `onClose`, `children`, optional `data-testid` (default `modal-dialog`; backdrop `{id}-backdrop`, Close button `{id}-close`).
+- Renders nothing while closed. Open: a fixed backdrop (click closes) with a centred white panel (`role="dialog"`, `aria-modal`, `aria-labelledby` the title), the title, the children and a primary-dark Close button.
+- Focus moves to the Close button on open and returns to the previously focused element on close; Tab and Shift+Tab are trapped inside the panel; Escape closes.
+- First consumer: the withdraw-page "Withdrawal queue" modal (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`). Storybook: `Components/ModalDialog`.
 
 ## ConversionCard
 

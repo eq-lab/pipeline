@@ -111,3 +111,5 @@ export { Combobox, filterOptions } from "./components/Combobox";
 export type { ComboboxProps, ComboboxOption } from "./components/Combobox";
 export { useCopyToClipboard } from "./hooks/useCopyToClipboard";
 export type { UseCopyToClipboardResult } from "./hooks/useCopyToClipboard";
+export { ModalDialog } from "./components/ModalDialog/ModalDialog";
+export type { ModalDialogProps } from "./components/ModalDialog/ModalDialog";
