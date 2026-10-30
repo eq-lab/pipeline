@@ -9,9 +9,9 @@ const meta = {
     docs: {
       description: {
         component:
-          "Pipeline UI Card surface primitive. Four variants: `white` " +
+          "Pipeline UI Card surface primitive. Six variants: `white` " +
           "(paper-white surface used for the dashboard cards and outer " +
-          "container, Figma frame 1497-94556), `yellow` (pale yellow promo " +
+          "container, Figma frame 1497-94556), `plain` (same white surface with a transparent border, no visible edge), `yellow` (pale yellow promo " +
           "surface used for the Connect Wallet card, Figma frame 1497-94556), " +
           "`muted` (slightly-grey surface used for step rows in the " +
           "deposit/conversion flow, Figma node 1498-100130), and `danger` " +
@@ -25,7 +25,7 @@ const meta = {
   argTypes: {
     variant: {
       control: "inline-radio",
-      options: ["white", "yellow", "muted", "danger"],
+      options: ["white", "plain", "yellow", "muted", "danger"],
     },
     children: { control: false },
   },
@@ -96,6 +96,19 @@ export const White: Story = {
       <SampleContent
         title="Get PLUSD"
         body="Mint PLUSD with collateral and start earning yield."
+      />
+    ),
+  },
+};
+
+export const Plain: Story = {
+  name: "plain",
+  args: {
+    variant: "plain",
+    children: (
+      <SampleContent
+        title="Withdrawal queue"
+        body="Same white surface with no visible border."
       />
     ),
   },

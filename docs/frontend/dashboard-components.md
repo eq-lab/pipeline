@@ -87,10 +87,10 @@ not call for italics, so the component intentionally omits them.
 
 **State → display-value table** (`mobileHomeState` + `earnedPnlLabel`):
 
-| Condition                                                                                     | Displayed value                                                                                                                                                                               |
-| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `earnedPnlLabel` present                                                                      | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`). Color keys off the rendered sign (#1194): green positive token (`--color-pipeline-chart-positive`) only when the label starts with `+`; zero and negative values render in primary ink (`--color-pipeline-ink`). No red treatment for negatives — the design defines none, so neutral ink is deliberate. |
-| No PnL label (any state)                                                                      | `"Tracked once you stake"` — unified per LP review #7 (#1153); the former States-A/B `"Nothing yet"` split and the `mobileHomeState` prop are gone.                                            |
+| Condition                | Displayed value                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `earnedPnlLabel` present | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`). Color keys off the rendered sign (#1194): green positive token (`--color-pipeline-chart-positive`) only when the label starts with `+`; zero and negative values render in primary ink (`--color-pipeline-ink`). No red treatment for negatives — the design defines none, so neutral ink is deliberate. |
+| No PnL label (any state) | `"Tracked once you stake"` — unified per LP review #7 (#1153); the former States-A/B `"Nothing yet"` split and the `mobileHomeState` prop are gone.                                                                                                                                                                                                                                   |
 
 The card label reads **"Earnings"** (was "Earned"; LP review #7, #1153).
 
@@ -142,10 +142,10 @@ gap (Figma `gap-2`).
 **States A/B/C** (`mobileHomeState`, mobile-only):
 
 | State                        | Behavior                                                                                                                                                                                                                                                         |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------------------- |
 | `"empty"` (A) / disconnected | Disconnected "Start here / Get PLUSD" copy. Sell disabled, rendered at 32% opacity (Figma node `1989:9022`) — used for both the disconnected-mobile state and the connected-but-zero-balance state.                                                              |
 | `"plusd"` / `"splusd"` (B/C) | "PLUSD Balance" connected variant: eyebrow "PLUSD Balance", formatted balance, USDC sub-line (Figma node `1984:6772`, since PLUSD is 1:1 with USDC the balance value doubles as the USDC-equivalent and is always shown even at $0.00), Buy + Sell both enabled. |
-| `undefined` (desktop)        | Default appearance; Sell disabling comes from the `sellDisabled` prop (#1151) — the home route passes `!isConnected || isDisplayZero(PLUSD)`, so desktop matches the mobile `"empty"` semantics.                                                                                                                                                                                                          |
+| `undefined` (desktop)        | Default appearance; Sell disabling comes from the `sellDisabled` prop (#1151) — the home route passes `!isConnected                                                                                                                                              |     | isDisplayZero(PLUSD)`, so desktop matches the mobile `"empty"` semantics. |
 
 **Typography** (no raw font sizes): eyebrow "Start here" is Body token; heading "Get PLUSD" is
 Heading-S token in Besley display serif with the dollar glyph inline at 24px; subtitle is Caption
@@ -156,11 +156,11 @@ token, ink-muted.
 `h-[164px]`, and a full-height `justify-between` column (Figma "List" `6701:97661`, 281×132) that
 pins the text block to the top and the button row to the bottom.
 
-| Element  | Figma node   | Style                                                                                     |
-| -------- | ------------ | ----------------------------------------------------------------------------------------- |
-| Eyebrow  | `6701:97663` | "Start here", Body 16/22, primary ink. No gap to the title block (Figma `gap 0`).          |
-| Title    | `6701:97669` | "Get PLUSD", Heading 20 (20/28) in Besley display, primary ink; 24px PLUSD `CoinIcon` at 4px gap (`6701:97668`). |
-| Subtitle | `6701:97671` | "Convert with USDC 1:1", Caption 12/16, ink-muted; 4px gap below the title row (Figma `TextCont gap 4`). |
+| Element  | Figma node   | Style                                                                                                                                             |
+| -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Eyebrow  | `6701:97663` | "Start here", Body 16/22, primary ink. No gap to the title block (Figma `gap 0`).                                                                 |
+| Title    | `6701:97669` | "Get PLUSD", Heading 20 (20/28) in Besley display, primary ink; 24px PLUSD `CoinIcon` at 4px gap (`6701:97668`).                                  |
+| Subtitle | `6701:97671` | "Convert with USDC 1:1", Caption 12/16, ink-muted; 4px gap below the title row (Figma `TextCont gap 4`).                                          |
 | Buttons  | `6701:97675` | 8px gap. "Buy" `primary-blue` `size="m"` (40px tall, 4px radius, 61px wide at this label); "Sell" `secondary` `size="m"`, disabled → 32% opacity. |
 
 The compact subtitle reads **"Convert with USDC 1:1"** — the state-1/state-2 frames' wording.
@@ -243,12 +243,12 @@ when formatting (#688).
 The frame carries two `Buttons` slots; the 40px one at y=108 (`6701:97692`) is the live one and the
 one at y=77 (`6701:97690`) is `hidden`.
 
-| Element  | Figma node   | Style                                                                                     |
-| -------- | ------------ | ----------------------------------------------------------------------------------------- |
-| Eyebrow  | `6701:97680` | "Stake PLUSD", Body 16/22, primary ink; no gap to the title block.                         |
+| Element  | Figma node   | Style                                                                                                                                                 |
+| -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Eyebrow  | `6701:97680` | "Stake PLUSD", Body 16/22, primary ink; no gap to the title block.                                                                                    |
 | Title    | `6701:97685` | `Earn <apy> p.a.`, Heading 20 (20/28) Besley; the APY is served verbatim by `useStats`, `—` when absent, and the `" p.a."` suffix is kept either way. |
-| Subtitle | `6701:97688` | "From senior loan coupons and T-bills", Caption 12/16, ink-muted; 4px below the title.     |
-| Button   | `6701:97693` | Single "Stake" `primary-blue` `size="m"` — 40px tall, 4px radius, 75px wide at this label. |
+| Subtitle | `6701:97688` | "From senior loan coupons and T-bills", Caption 12/16, ink-muted; 4px below the title.                                                                |
+| Button   | `6701:97693` | Single "Stake" `primary-blue` `size="m"` — 40px tall, 4px radius, 75px wide at this label.                                                            |
 
 The compact CTA's accessible name is its visible label (the circular CTA's
 `aria-label="Stake PLUSD"` does not apply).
@@ -659,7 +659,6 @@ rendering branch (`href="#"` → `aria-disabled`, default cursor) remains for th
 
 ## Navigation & wallet UI
 
-
 ### TopBar
 
 Global page header (self-contained — no external props). Mounted in the root layout
@@ -683,7 +682,7 @@ narrow `{ isAnyConnected, isSettled, disconnectAll }` surface over `useEvmWallet
 no wallet UI — no pill, no balance, no Connect button — only the presence boolean. See "Where
 wallet-connect entry points still live" below for what replaces the removed header CTA.
 
-**Header icon rule (#1458): session *or* connected wallet, not session alone.**
+**Header icon rule (#1458): session _or_ connected wallet, not session alone.**
 `showAccount = isAuthenticated || isAnyConnected` — a visitor with a connected wallet but no auth
 session sees the same account icon as a signed-in LP, reactively (flipping either source re-renders
 the right slot without a remount). This closes the gap where a wallet-only visitor used to see Sign
@@ -741,15 +740,15 @@ was the only always-visible "Connect Wallet" entry point. After removing it:
 
 **Active nav** is derived from the current URL:
 
-| Path                                                                                              | Nav key                  |
-| ------------------------------------------------------------------------------------------------- | ------------------------ |
-| `/`                                                                                               | `"home"`                 |
-| `/deposit` (incl. `?direction=withdraw` — direction is a search param, pathname stays `/deposit`) | `"deposit"` (Convert)    |
-| `/stake`                                                                                          | `"stats"` (Earn)         |
-| `/transactions`                                                                                   | `"history"` (Activity)   |
-| `/dashboard`                                                                                      | `"overview"` (Overview)  |
+| Path                                                                                              | Nav key                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                                                                                               | `"home"`                                                                                                                                                                                                |
+| `/deposit` (incl. `?direction=withdraw` — direction is a search param, pathname stays `/deposit`) | `"deposit"` (Convert)                                                                                                                                                                                   |
+| `/stake`                                                                                          | `"stats"` (Earn)                                                                                                                                                                                        |
+| `/transactions`                                                                                   | `"history"` (Activity)                                                                                                                                                                                  |
+| `/dashboard`                                                                                      | `"overview"` (Overview)                                                                                                                                                                                 |
 | `/account`                                                                                        | `"account"` (#1556) — no nav item matches; the right-slot account icon renders active instead (`--color-pipeline-brand`, `aria-pressed`, `data-active="true"`), as does the mobile menu's `Account` row |
-| other                                                                                             | `"home"` (safe fallback) |
+| other                                                                                             | `"home"` (safe fallback)                                                                                                                                                                                |
 
 The fifth slot — **Overview** (#1125, Figma node `5915:77655`) — navigates to the Protocol
 Dashboard at `/dashboard` and is separated from Activity by a vertical divider (node
@@ -898,7 +897,7 @@ paper, it stays `--color-pipeline-ink`.
 this modal's two-pane shell — extracted verbatim into `AuthModalShell` — and, as of #1362, is also
 reachable from the production `TopBar`'s "Sign In" button (via the app-wide `AuthFlowProvider`),
 not only `/test?tab=auth`. `ConnectWalletModal`'s own entry point (this section) is unchanged by
-#1248/#1362 — the LP header now opens *both* modals, from different controls: "Sign In"/"Sign Up"
+#1248/#1362 — the LP header now opens _both_ modals, from different controls: "Sign In"/"Sign Up"
 open `SignInModal`/`CreateAccountModal`, and wallet connection happens on `/account`
 (`AccountWalletCard`), not from the header. See `auth-components.md#authflowprovider`.
 
@@ -1266,7 +1265,7 @@ router-nav `submission` threading and Review action):
 | Field     | Source                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Commodity | `loan_data.commodity`                                       | Figma also shows a valuation sub-line ("NSR · Net Smelter Return" / "Standard · price × quantity"), but no field in `loan_data`/`SubmissionView` carries a valuation mode for pre-mint submissions (`ValuationMode` lives in `loan_collateral_valuations`, keyed by an on-chain `loan_id` submissions don't have yet). Resolved (human, issue #814, mirroring #813): OMIT the sub-line entirely rather than infer it from the commodity name. |
-| Facility  | `loan_data.economics.original_facility_size`                | Human-unit USDC decimal string (e.g. `"3500000.000000"`, #1620 — supersedes the #912 base-unit reading) — validated by `economicsUsdDecimal` (no scaling) and rendered via `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841). |
+| Facility  | `loan_data.economics.original_facility_size`                | Human-unit USDC decimal string (e.g. `"3500000.000000"`, #1620 — supersedes the #912 base-unit reading) — validated by `economicsUsdDecimal` (no scaling) and rendered via `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841).                                                                                                                                                                           |
 | Corridor  | `loan_data.corridor`                                        | Hyphen separator rendered as the Figma's arrow glyph ("PE-CN" → "PE → CN") — same data, design-matching glyph.                                                                                                                                                                                                                                                                                                                                |
 | Rate      | `loan_data.economics.senior_interest_rate_bps`              | Via `formatBpsRate` (e.g. `1400` → `"14.0%"`).                                                                                                                                                                                                                                                                                                                                                                                                |
 | Maturity  | `loan_data.economics.original_maturity_date` (Unix seconds) | Via `formatMaturityDate` (e.g. `"15 Dec 2026"`).                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -1372,7 +1371,7 @@ Protocol Dashboard Panel C — Withdrawal Queue. Wires the `useWithdrawalQueue` 
 **Content** per Figma section `3283:14893`:
 
 - Title "Withdrawal Queue".
-- Four summary cards: In Queue / Requests / Estimated wait / Liquid Cover.
+- Six summary cards: In Queue / Requests / Estimated wait / Liquid Cover / Total queued / Total claimed (#1759). Total queued and Total claimed are the queue contract's running totals (`total_queued()` / `total_claimed()` on Stellar, `queueMetadata()` on EVM), not the served `in_queue_usd`, which is the unclaimed sum and stays as In Queue. Test ids `withdrawal-queue-card-total-queued` / `-total-claimed`. They follow `useDashboardChain().kind` and show "—" when the read is unavailable. Six cards must not overflow at 1280 px (`md:flex-1`); the mobile scroll row handles the extra 200 px cards.
 - Table: Holder / Amount / Status (3 columns).
 - "Show more" affordance when there are more than 5 items (client-side).
 
@@ -1401,6 +1400,8 @@ Maps raw `useWithdrawalQueue` data → formatted summary cards + table rows + pa
 
 **Panel state:** `loading` → `PanelLoading`; `error` → `PanelError` with retry; `empty` → no queue
 items, `PanelEmpty`; `ready` → formatted summary + rows available.
+
+**Total queued / Total claimed (#1759):** `useWithdrawalQueueTotals(useDashboardChain().kind)` raw values, formatted with `formatCompactUsd` of the unit-formatted decimal (the same as In Queue), "—" when unavailable. A failed contract read shows "—", never a panel error; panel state stays driven by the API query only.
 
 **Row expand** (resolved Open Question 2): the first `WITHDRAWAL_QUEUE_DEFAULT_VISIBLE` (5) rows are
 visible by default; `expanded` toggles the "Show more" affordance. The hook owns this state so the
@@ -1638,51 +1639,51 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    issue #1421). When `deriveHomeState` returns `"zero"` (no auth session — see "Home state
    derivation" below) the grid instead renders:
 
-   | Slot            | Grid position                        | Content                                                                                                            |
-   | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                  |
+   | Slot            | Grid position                        | Content                                                                                                                                                                                       |
+   | --------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                                                                                         |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                                                                                           |
    | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — both CTAs open the auth flow, Sell forced disabled. |
-   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled. |
-   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                            |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled.                                         |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                                                                                                    |
 
    When `deriveHomeState` returns `"unverified"` (signed in, KYB bypassed or not completed, wallet
    disconnected — state 2 of `home-screen-states.md`, #1422, Figma node `6701:97538`) the grid
    renders a third branch, built from the `"zero"` branch with two card swaps and the CTA rewiring:
 
-   | Slot            | Grid position                        | Content                                                                                                                      |
-   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="connect-wallet"` (Figma node `6701:97649`, 643×274) — "Total Balance" / "$0.00" / `Connect wallet` link, placeholder chart. |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97548`, 478×634).                                                           |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:97659`, 313×344) — Buy/Stake open the connect modal, Sell disabled when zero. |
+   | Slot            | Grid position                        | Content                                                                                                                                                                                               |
+   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="connect-wallet"` (Figma node `6701:97649`, 643×274) — "Total Balance" / "$0.00" / `Connect wallet` link, placeholder chart.                                        |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97548`, 478×634).                                                                                                                                 |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:97659`, 313×344) — Buy/Stake open the connect modal, Sell disabled when zero.                               |
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="verify"` (Figma node `6701:97695`, 246px) + `EarnedCard layout="compact"` (node `6701:97918`, 82px) stacked (node `6701:97694`) — Start Verification opens `openAccountSetup()`. |
-   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97650`) — `pt-4` + 16px heading + `gap-4` + 41px cells already matches.             |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97650`) — `pt-4` + 16px heading + `gap-4` + 41px cells already matches.                                                                                          |
 
    When `deriveHomeState` returns `"kyb-pending"` (signed in, wallet connected, `kyb_status`
    `UnderReview`, both PLUSD and sPLUSD displaying as zero — state 3 of `home-screen-states.md`,
    #1423, Figma frame `6701:98417`) the grid renders a fourth branch, built from the `"unverified"`
    branch with two card swaps:
 
-   | Slot            | Grid position                        | Content                                                                                                                      |
-   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="get-plusd"` (Figma node `6701:98528`, 643×274 at (32,32)) — "Total Balance" / served `$0.00` / underlined brand `Get PLUSD to start` link to `/deposit?direction=deposit`; chart wired to `usePositionsHistory` as in the legacy branch. |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:98427`, 477.71×634 at (690.29,32)) — unchanged.                             |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98773`, 313.14×344 at (32,322) = two 164px cards + 16px gap) — Buy navigates to `/deposit`, Sell disabled (`6701:98788`, 61×40 at 32% opacity), Stake CTA disabled as `Nothing to Stake` (`6701:98802`, 160×40). |
+   | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                                                                                               |
+   | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="get-plusd"` (Figma node `6701:98528`, 643×274 at (32,32)) — "Total Balance" / served `$0.00` / underlined brand `Get PLUSD to start` link to `/deposit?direction=deposit`; chart wired to `usePositionsHistory` as in the legacy branch.                                                           |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:98427`, 477.71×634 at (690.29,32)) — unchanged.                                                                                                                                                                                                                                   |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98773`, 313.14×344 at (32,322) = two 164px cards + 16px gap) — Buy navigates to `/deposit`, Sell disabled (`6701:98788`, 61×40 at 32% opacity), Stake CTA disabled as `Nothing to Stake` (`6701:98802`, 160×40).                            |
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="verifying"` (Figma node `6701:98539`, 313.14×246, no `flex-1` — the card owns its height) + `EarnedCard layout="compact"` (node `6701:98762`, 313.14×82) stacked (node `6701:98538`) — `View Status` (`6701:98761`, 122×40 `primary-dark`) navigates to `/account` per the node's `Open Account` dev annotation. |
-   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:98529`) — unchanged.                                                                      |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:98529`) — unchanged.                                                                                                                                                                                                                                                                             |
 
    When `deriveHomeState` returns `"plusd-held"` (signed in, wallet connected, `kyb_status`
    `"Passed"`, PLUSD non-zero, sPLUSD display-zero — state 4 of `home-screen-states.md`, #1424,
    Figma frame `6701:97340`) the grid renders a fifth branch, built from the `"kyb-pending"` branch
    with three card swaps:
 
-   | Slot            | Grid position                        | Content                                                                                                                      |
-   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+   | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                                                                                                                                                                                |
+   | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
    | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="stake-or-add-usd"` (Figma node `6701:97451`, 642×274 at (32,32)) — "Total Balance" / served `$0.00` (sPLUSD binding unchanged) / the sentence "Stake PLUSD or Add USD to start earning", all four runs underlined brand navy: a `Link` to `/stake?tab=stake`, a `<button onClick={onAddFunds}>`, and two plain spans; chart wired to `usePositionsHistory` as in the legacy branch. |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97519`, 477.71×634 at (690.29,32)) — unchanged; with PLUSD held `useRequests` populates real rows and the `View All` link (node `6701:97525`, 126×48). |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`). |
-   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`. |
-   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                      |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` (Figma node `6701:97519`, 477.71×634 at (690.29,32)) — unchanged; with PLUSD held `useRequests` populates real rows and the `View All` link (node `6701:97525`, 126×48).                                                                                                                                                                                                             |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`).                                                                                                                                                            |
+   | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`.                                                                                                                 |
+   | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                                                                                                                                                                                                                                                                                                              |
 
    When `deriveHomeState` returns `"kyb-problem"` (signed in, `lpRead === "loaded"`,
    `kyb_status` `ChangesRequested` or `Failed` — state 6 of `home-screen-states.md`, #1426, Figma
@@ -1690,13 +1691,13 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    two swaps. Unlike states 3–4, this branch is gated on `kyb_status` alone — no `isConnected`, no
    balance check:
 
-   | Slot            | Grid position                        | Content                                                                                                                      |
-   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1 (`6702:104180`)       | `PortfolioPlaceholderCard variant={isConnected ? "get-plusd" : "connect-wallet"}` — the only card that still branches on connection, since the frame itself is drawn connected but the state is not gated on it. |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 (`6702:104081`) | `RecentActivityCard padding="md"` — unchanged from state 3/4.                                                                   |
-   | Balances        | col 1–2, row 2 (`6702:104425`)       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3/4 (Buy/Sell/Stake wired the same way, `sellDisabled`/`stakeDisabled` from the served balances). |
-   | AddUsdCard      | col 3–4, row 2 (`6702:104190`)       | `AddUsdCard variant="declined"` (Figma node `6702:104191`, 313.14×246, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `View` (`onViewStatus`) navigates to `/account`, the same seam state 3's `View Status` uses. |
-   | QnaSection      | col 1–7, row 3 (`6702:104181`)       | FAQ strip, 1136×89 — unchanged.                                                                                                  |
+   | Slot            | Grid position                                        | Content                                                                                                                                                                                                                           |
+   | --------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`6702:104180`)                       | `PortfolioPlaceholderCard variant={isConnected ? "get-plusd" : "connect-wallet"}` — the only card that still branches on connection, since the frame itself is drawn connected but the state is not gated on it.                  |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`6702:104081`) | `RecentActivityCard padding="md"` — unchanged from state 3/4.                                                                                                                                                                     |
+   | Balances        | col 1–2, row 2 (`6702:104425`)                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3/4 (Buy/Sell/Stake wired the same way, `sellDisabled`/`stakeDisabled` from the served balances).                                  |
+   | AddUsdCard      | col 3–4, row 2 (`6702:104190`)                       | `AddUsdCard variant="declined"` (Figma node `6702:104191`, 313.14×246, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `View` (`onViewStatus`) navigates to `/account`, the same seam state 3's `View Status` uses. |
+   | QnaSection      | col 1–7, row 3 (`6702:104181`)                       | FAQ strip, 1136×89 — unchanged.                                                                                                                                                                                                   |
 
    Full `declined` card geometry (illustration anchor, heading cap, bleed) is
    `docs/frontend/bank-transfers.md#shape-b-frame-and-illustration-anchor-1430-1426`.
@@ -1705,13 +1706,13 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    and sPLUSD display-zero — state 7 of `home-screen-states.md`, #1460, Figma frame `7149:16033`)
    the grid renders a seventh branch, built from the `"kyb-pending"` branch with one card swap:
 
-   | Slot            | Grid position                        | Content                                                                                                                      |
-   | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-   | Portfolio       | col 1–4, row 1 (`7149:16142`)        | `PortfolioPlaceholderCard variant="get-plusd"` — same as state 3, `data-node-id` kept at the variant-keyed `6701:98528`.          |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 (`7149:16043`) | `RecentActivityCard padding="md"` — unchanged from state 3.                                                                 |
-   | Balances        | col 1–2, row 2 (`7149:16787`)        | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3 (no `compactVariant="balance"`: Buy stays default navy, Sell/Stake disabled). |
-   | AddUsdCard      | col 3–4, row 2 (`7149:16152`)        | `AddUsdCard variant="verify"` (same card state 2 uses, 246px, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `Start Verification` calls `openAddEmail()`, **not** `openAccountSetup()` (a no-op without a session). |
-   | QnaSection      | col 1–7, row 3 (`7149:16143`)        | FAQ strip, 1136×89 — unchanged.                                                                                                  |
+   | Slot            | Grid position                                       | Content                                                                                                                                                                                                                            |
+   | --------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`7149:16142`)                       | `PortfolioPlaceholderCard variant="get-plusd"` — same as state 3, `data-node-id` kept at the variant-keyed `6701:98528`.                                                                                                           |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`7149:16043`) | `RecentActivityCard padding="md"` — unchanged from state 3.                                                                                                                                                                        |
+   | Balances        | col 1–2, row 2 (`7149:16787`)                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked — unchanged from state 3 (no `compactVariant="balance"`: Buy stays default navy, Sell/Stake disabled).                                                     |
+   | AddUsdCard      | col 3–4, row 2 (`7149:16152`)                       | `AddUsdCard variant="verify"` (same card state 2 uses, 246px, no `flex-1`) + `EarnedCard layout="compact"` (82px) stacked — `Start Verification` calls `openAddEmail()`, **not** `openAccountSetup()` (a no-op without a session). |
+   | QnaSection      | col 1–7, row 3 (`7149:16143`)                       | FAQ strip, 1136×89 — unchanged.                                                                                                                                                                                                    |
 
    All seven #1419 branches are pixel-matched to their frames, shared cards included (human
    decision, 2026-10-07 — this supersedes the "composition only, card heights accepted" note from
@@ -1870,6 +1871,8 @@ fills the exact balance (`formatUsdcInput`); percentages floor in base units —
 - Stellar withdraw: `stellar-withdraw-tx` / `stellar-withdraw-claim-tx`
 
 **Claim toast copy:** PLUSD claims (deposit direction) surface the claimed amount plus a "Stake" CTA; USDC claims (withdraw direction) surface "Claimed X USDC" from the same locked-amount ref (#1142; plain "USDC claimed" fallback). Both directions navigate home after the claim success — see wallet-flows.md "Terminal-success toasts and navigation".
+
+**Withdraw queue block, recovery rate row and hints (#1759):** in the withdraw direction, when `flow.isConnected`, two neutral blocks (`WithdrawQueueCard`, `components/withdraw/WithdrawQueueCard.tsx`, view in `useWithdrawQueueCard.ts`) renders as a direct child of `<main>` (page `gap-8`) after the conversion card and the inline error, before the steps card (decision 2026-10-30, design change 9 on #1759). The wrapper (`withdraw-queue-card`) is `flex flex-col gap-[2px]`, the same 2px seam the `ConversionCard` uses between its two token cards, holding two separate borderless `Card variant="plain" padding="none"` blocks (`px-4 py-4`, same radius and surface): the info block (`withdraw-queue-info-block`) and, only when the LP has a request, the request-and-position block (`withdraw-queue-position-block`); with no request the info block renders alone (decision 2026-10-30, design change 11 on #1759). The conversion card receives a `footer` only for the recovery rate row (see (3)). (1) **Info row** `WithdrawQueueInfoCard` (`components/withdraw/WithdrawQueueInfoCard.tsx`, `withdraw-queue-info`): always present on every withdraw visit, with or without a request; not on deposit. A single wrapping paragraph (not an `InfoRow`; 16px `--text-pipeline-body`, `--color-pipeline-ink`) in running text: a 14px circle-i inline SVG icon (`withdraw-queue-info-icon`, `currentColor`, `aria-hidden`), then the plain ink sentence "Requests are paid in order." (icon and sentence in ink) (no bold lead; one line) and, after a normal space with no flex gap, the "Learn more" link (`withdraw-queue-learn-more`): an underlined `<button type="button" aria-haspopup="dialog">` in `--color-pipeline-ink-muted` (link and arrow muted gray) with no Button chrome and a trailing 12px right-arrow inline SVG (`currentColor`, `aria-hidden`; never a "→" character), part of the same text flow. It opens the `ModalDialog` (`withdraw-queue-modal`, title "Withdrawal queue") with the `docs/user-docs/lenders/withdraw.md` copy verbatim: "Paid in order. Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost." followed by a second paragraph: "Your queue position is the total PLUSD requested up to and including your request. The request is payable once total claimed plus the USDC in the withdrawal custody account reaches that number." Close button (`withdraw-queue-modal-close`), Escape and backdrop (`withdraw-queue-modal-backdrop`) close it; focus returns to the Learn more link. (2) **Request and position rows** (inside the position block, a `flex flex-col gap-3` stack): only when `flow.requestId !== undefined`. Both are plain `InfoRow`s with the normal right-aligned value style: no bold, no separator and no chip (decision 2026-10-30, design change 13 on #1759). First "Your request" (`withdraw-queue-request`) whose value is the request's own PLUSD amount (`{amount} PLUSD` via `formatTokenAmount(raw, decimals)`; raw is `WithdrawQueueInfo.requestAmount`, the `amount` served by `GET /v1/requests` for the active request, or the request transaction's amount while it is in flight; never the input field, never derived; "—" when unavailable). Second "Queue position" (`withdraw-queue-position`) whose value is the `withdrawal_request_queued` / `withdrawal_request_queued(id)` read (`{pos} PLUSD`, "—" when unavailable). Payability is not shown in the block: it lives in the claim-step hint under step 3 ("Payable now." when the contract `payableNow` read is true and nothing blocks the claim, the waiting reason otherwise; priority in [withdrawals.md](../product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app)). The position is the total queued up to and including the request, so it can exceed the request amount; the Learn more modal adds a paragraph saying so (decision 2026-10-30, design change 12 on #1759). Total queued and Total claimed are not shown on the withdraw page (decision 2026-10-30 on #1759); they stay on Protocol Dashboard Panel C. (3) **Recovery rate row** (`withdraw-recovery-rate`, `WithdrawRecoveryRateRow`, `components/withdraw/WithdrawRecoveryRateRow.tsx`, decision 2026-10-30, design change 10 on #1759): not part of the queue block and no separate yellow notice. When the withdraw direction is open with a connected wallet and `flow.withdrawQueue.recoveryActive` (rate below 1) with a known rate, the route passes it as the `ConversionCard` `footer`, so it is the row after "Network fee" in `withdraw-conversion-card`. An `InfoRow` labelled "Recovery rate" (same styles as the other rows) whose value is the rate verbatim (`formatRecoveryRate` in `components/withdraw/recoveryRate.ts`, e.g. "0.85") followed by a 14px yellow warning-triangle icon button (`withdraw-recovery-rate-info`, `type="button"`, `aria-label="About the recovery rate"`, `aria-haspopup="dialog"`, `--color-pipeline-warning`). It opens the `ModalDialog` (`withdraw-recovery-rate-modal`, title "Recovery rate") with the `docs/user-docs/lenders/withdraw.md` "During shutdown" copy verbatim: "The protocol administrator can set a recovery rate below 1 on the withdrawal queue, once. After that, every claim pays USDC equal to the PLUSD burned times that rate. The rate applies to every claim made after it is set, whatever the request date. It cannot be changed afterwards." Nothing renders at rate 1 or while the rate is unknown. Steps 2 and 3 pass `flow.stepN.hint` to `StepsCard` (request-step copy and claim-step hint priority: [withdrawals.md](../product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app)). No Figma frame exists for the block (decision 2026-10-29 on #1759); it reuses the LP theme and the withdraw frame `1498-100351` as style reference only. With a recovery rate below 1 the claim success toast is `Claimed {X} USDC` from the contract payout captured before submit (ref), "USDC claimed" when none was captured; at rate 1 it is unchanged. The danger toast for a failed withdraw claim maps with `toUserError(err, { context: "withdrawClaim" })`.
 
 Figma references: [deposit page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812), [withdraw page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100351), [swap button](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100157), [wallet not connected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-6885).
 

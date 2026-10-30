@@ -1,22 +1,4 @@
-/**
- * Minimal WithdrawalQueue ABI subset used by the LP UI wallet hooks.
- *
- * Only the two write functions consumed by the LP UI are listed here — the
- * full ABI lives in `docs.local/withdrawal_abi.txt`. Custom-error entries from
- * the full ABI are included so viem can decode reverts into named errors (e.g.
- * `WithdrawalQueueTooEarly()`, `VerifiedRequestsQueueAlreadyClaimed()`)
- * instead of "execution reverted".
- *
- * Typed `as const` so viem picks up exact return types for each function.
- *
- * PLUSD and USDC addresses are sourced from the DepositManager (`plUsd()` /
- * `usdc()`), not from the WithdrawalQueue. The deployed WithdrawalQueue does
- * not expose `fromToken()` / `intoToken()` view functions.
- *
- * Custom-error entries from the full ABI are included so viem can decode
- * reverts into named errors instead of "execution reverted". Required for
- * revert decoding via the `simulateOrFail` pre-flight (#350).
- */
+// spec: docs/frontend/wallet-flows.md#withdrawal-queue-reads
 export const withdrawalQueueAbi = [
   {
     type: "function",
@@ -37,6 +19,44 @@ export const withdrawalQueueAbi = [
       { name: "verifierSignature", type: "bytes" },
     ],
     outputs: [{ name: "amount", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "isClaimable",
+    stateMutability: "view",
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "withdrawalRequestQueued",
+    stateMutability: "view",
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "queueMetadata",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "totalQueued", type: "uint256" },
+      { name: "totalClaimed", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "convertToAssets",
+    stateMutability: "view",
+    inputs: [{ name: "shares", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "paused",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
   },
 
   {

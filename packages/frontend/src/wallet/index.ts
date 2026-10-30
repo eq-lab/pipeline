@@ -218,6 +218,16 @@ export type {
   UseStellarChangeTrustStakedPlusdResult,
 } from "./stellar/useStellarStakedPlusd";
 
+// ── Withdrawal queue reads (position, payable now, totals, recovery rate) ─────
+export {
+  useWithdrawalQueueTotals,
+  isRecoveryRateActive,
+} from "./useWithdrawalQueueReads";
+export type {
+  WithdrawalQueueTotals,
+  WithdrawalRequestQueueState,
+} from "./useWithdrawalQueueReads";
+
 // ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
 export { useDepositFlow } from "./useDepositFlow";
 export type {
@@ -225,6 +235,7 @@ export type {
   Direction as FlowDirection,
   StepState as FlowStepState,
   StepInfo,
+  WithdrawQueueInfo,
   StepTxState,
   TrustlineInfo,
 } from "./useDepositFlow";

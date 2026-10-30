@@ -89,7 +89,10 @@ export interface UserFacingError {
 }
 
 export function toError(err: unknown): Error;
-export function toUserError(err: unknown): UserFacingError;
+export function toUserError(
+  err: unknown,
+  options?: { context?: "withdrawClaim" },
+): UserFacingError;
 export function parseSorobanContractErrorCode(raw: string): number | null;
 ```
 
@@ -117,11 +120,20 @@ call sites — see [`wallet-flows.md` → Error normalization](./wallet-flows.md
    | Code | Copy | Confidence |
    |------|------|------------|
    | `#3` | "Amount exceeds the deposit limit." | **Unconfirmed** — see below. |
+   | `#2` (context `withdrawClaim` only) | "The withdrawal custody account is short. Claims for your position wait until it is funded." | WithdrawalQueue `TooEarly` on `claim_request`. Only applied when `toUserError(err, { context: "withdrawClaim" })` is used; never in the global table. |
    | `#4` | "The voucher expired or did not match the request. Your app fetches a fresh voucher." | Contract source (`request-queue` `DeadlineExpired`) on `claim_request`; the claim retries once per request id (#1760). |
    | `#11` | "Your PLUSD balance is not authorized yet. Try again shortly." | Established empirically (`useDepositFlow.ts`, "balance is deauthorized" window). |
    | `#13` | "A required trustline is missing. Enable the asset and try again." | Established empirically (issue #604, "trustline entry is missing"). |
 
    Unlisted codes fall through to the generic line (`details` is still preserved).
+
+   **Code collision.** Soroban error codes are per contract and collide between the WithdrawalQueue
+   and its request-queue library (for example `get_request` on an unknown id also fails with
+   `#2`, and the WithdrawalQueue lists `InvalidAmount = 4` next to the request-queue
+   `DeadlineExpired = 4`). So `#2` is mapped only when the caller says the error came from the
+   withdraw `claim_request` (`context: "withdrawClaim"`); adding it to the global table would also
+   hit deposit-manager errors. The `#4` mapping stays as is. `InvalidRate` (`#3`) and
+   `AlreadyInShutdown` (`#5`) are admin-only and not mapped.
 
    **`#3` is not resolvable from this repo** — the Soroban contracts are not vendored here, and
    `docs/generated/stellar-protocol-contracts.md` has no `#[contracterror]` enum. Circumstantial
@@ -138,7 +150,9 @@ call sites — see [`wallet-flows.md` → Error normalization](./wallet-flows.md
    unavailable. Please try again." Deliberately does **not** touch the four voucher hooks'
    existing `msg.includes("Not Found")` predicates (`api/useDepositVoucher.ts` and three
    siblings) — those drive RETRY control flow and are load-bearing.
-4. **EVM revert / network.** `execution reverted` → "The transaction was rejected by the
+4. **EVM revert / network.** `WithdrawalQueueTooEarly` (the decoded custom error name, checked
+   before the generic revert line) → "The withdrawal custody account is short. Claims for your
+   position wait until it is funded."; `execution reverted` → "The transaction was rejected by the
    contract."; `insufficient funds`/`insufficient balance` → "Insufficient balance for this
    transaction."; `timeout`/`network` → "Network problem. Please try again."
 5. **Generic fallback** (`isSpecific: false`) — **"The transaction could not be completed."** Same

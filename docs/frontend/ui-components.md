@@ -308,6 +308,9 @@ frames.
   subtle hairline border in `--color-pipeline-line`. Used for Get PLUSD (node
   `1497:94567`), Stake (node `1497:94707`), Earned, Recent activity, QnA cards, and the
   outer container that wraps the dashboard (node `1497:94565`). Figma frame `1497-94556`.
+- **`plain`** — same white surface (`--color-pipeline-surface`) and ink text as `white`, but
+  `border-transparent`: the 1 px border width is kept so layout does not shift, with no
+  visible edge. Used for the `/withdraw` queue block (#1759).
 - **`yellow`** — pale yellow promo surface (`--color-pipeline-promo`, #F8FCE9 — the solid
   Figma value from issue #606) with the same hairline border so it sits visually alongside
   the white surfaces. Matches the Connect Wallet promo card (node `1497:94688`) on the
@@ -442,6 +445,15 @@ WAI-ARIA APG editable combobox with list autocomplete and no automatic selection
 Shown when `value !== ""` and the field is enabled. It calls `onChange("")`, empties the text,
 closes the list and focuses the input.
 
+## ModalDialog
+
+`packages/ui/src/components/ModalDialog/` (`ModalDialog.tsx`, `useModalDialog.ts`), exported from `@pipeline/ui`.
+
+- Props: `open`, `title`, `onClose`, `children`, optional `data-testid` (default `modal-dialog`; backdrop `{id}-backdrop`, Close button `{id}-close`).
+- Renders nothing while closed. Open: a fixed backdrop (click closes) with a centred white panel (`role="dialog"`, `aria-modal`, `aria-labelledby` the title), the title, the children and a primary-dark Close button.
+- Focus moves to the Close button on open and returns to the previously focused element on close; Tab and Shift+Tab are trapped inside the panel; Escape closes.
+- First consumer: the withdraw-page "Withdrawal queue" modal (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`). Storybook: `Components/ModalDialog`.
+
 ## ConversionCard
 
 **Source:** `packages/ui/src/components/ConversionCard/ConversionCard.tsx`. Figma
@@ -477,6 +489,7 @@ nested within the PLUSD card, matching Figma node `1498-100135`.
   `gap-8` (32 px) between the value row and the details rows. The value row carries no extra
   right padding, so the output value sits 16 px from the card edge.
 - `border-0` removes the white Card's default hairline border (fix 8, Issue #595).
+- Optional `footer` slot (#1759): a node rendered after the "Network fee" `InfoRow` as the last row of the same `conversion-details` rows container (shares the 8 px row gap and 16 px side padding). Omitted, nothing renders. The withdraw page passes it only for the "Recovery rate" row when the rate is below 1 (design change 10; the queue info row lives in its own block below the card); Storybook: `Components/ConversionCard` "With footer row".
 - The output value is prefixed with `+` when non-zero (purely visual); zero values stay
   un-prefixed to match the Figma "0" placeholder state.
 
@@ -661,6 +674,7 @@ bottom of the conversion card (Figma nodes `1498-100130` / `1498-99897`).
   right.
 - **Type** — body size (16 px / 22 px) per Figma node `1498-99897`, applied to all InfoRow
   instances (Issue #595 fix 7).
+- **`wrapLabel`** (optional, default `false`, #1759) — drops the label's `whitespace-nowrap` (adds `min-w-0`) so a long label wraps onto extra lines while the value gets `shrink-0` and stays on the right; Storybook "Wrapping label".
 - **Test ids** — each row derives a stable `data-testid` from its label
   (`info-row-exchange-rate`, `info-row-network-fee`) so the two rows rendered inside a
   `ConversionCard` stay individually addressable; a caller-supplied `data-testid` still wins.
@@ -996,10 +1010,12 @@ here.
 
 ### States
 
-- **Disabled** (`disabled`): matches Figma — the entire row renders at 30 % opacity (`opacity-30`)
-  and the action button additionally receives the HTML `disabled` attribute so it is inert. The
-  30 % opacity applies only when the row is _not_ in a success/error/loading state — those always
-  render at full opacity so the user can see the check badge / error line / spinner clearly.
+- **Disabled** (`disabled`): the step badge and the action wrapper (button) render at 30 % opacity
+  (`opacity-30`), the label switches to `--color-pipeline-ink-muted`, and the [hint](#states)
+  keeps its normal muted caption style so the waiting reason stays readable; the action button
+  also receives the HTML `disabled` attribute so it is inert. The row root is never dimmed. The
+  dimming applies only when the row is _not_ in a success/error/loading state — those render at
+  full opacity so the check badge / error line / spinner stay clear.
 - **Loading** (`loading`): the action button is disabled and shows an inline CSS-only spinner
   (16 px ring in `--color-pipeline-on-dark` with transparent top, `animate-spin`) to communicate a
   pending transaction. Full row opacity is kept.
@@ -1010,6 +1026,9 @@ here.
   centred check icon. The check icon is a 20×20 viewport stroke in `--color-pipeline-positive`;
   `strokeWidth` 2.5 matches the medium-heavy Figma weight (node `1498:100802;9285:26314`), and the
   path spans the full usable height so the glyph clearly reads inside the 32 px pill.
+- **Hint** (`hint`, #1759): an optional muted caption line under the label (`--text-pipeline-caption`,
+  `--color-pipeline-ink-muted`, body font; `data-testid="step-row-{n}-hint"`). Rendered only when
+  `state !== "error"` — the red error line keeps precedence. Absent when not passed.
 - **Error** (`state="error"`): red-tinted badge (`rgba(192, 57, 43, 0.12)` fill, number in
   `--color-pipeline-negative`) + the `errorMessage` line under the label; the action button is
   **kept** so the user can retry. See
@@ -1037,7 +1056,7 @@ A thin wrapper that renders a list of `StepRow` items inside a `muted` `Card` su
 `steps` — ordered array of step descriptors; each entry maps 1:1 to a `StepRow`, with step numbers
 derived from the array index (1-based). Minimum two items expected (Approve + Convert), but the
 component accepts any number. Each item forwards `label`, `actionLabel`, `disabled`, `onAction`,
-`loading`, `state`, `errorMessage`, and `errorDetails` to `StepRow` (see [StepRow](#steprow) for
+`loading`, `state`, `errorMessage`, `errorDetails`, and `hint` to `StepRow` (see [StepRow](#steprow) for
 their semantics; the error slot is specified in [`error-handling.md`](./error-handling.md)).
 
 `notice` — optional `{ label, actionLabel, onAction, loading? }` (#1497). Renders a one-line row

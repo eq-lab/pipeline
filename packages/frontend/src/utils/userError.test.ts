@@ -100,6 +100,45 @@ describe("toUserError — Soroban contract error mapping", () => {
   });
 });
 
+describe("toUserError — withdraw claim too-early mapping", () => {
+  const CUSTODY_SHORT =
+    "The withdrawal custody account is short. Claims for your position wait until it is funded.";
+
+  it("#2 with the withdrawClaim context → custody-short copy", () => {
+    const result = toUserError(new Error("Error(Contract, #2)"), {
+      context: "withdrawClaim",
+    });
+    expect(result.message).toBe(CUSTODY_SHORT);
+    expect(result.isSpecific).toBe(true);
+    expect(result.details).toBe("Error(Contract, #2)");
+  });
+
+  it("#2 without the context stays generic", () => {
+    const result = toUserError(new Error("Error(Contract, #2)"));
+    expect(result.message).toBe(GENERIC_MESSAGE);
+    expect(result.isSpecific).toBe(false);
+  });
+
+  it("#4 with the withdrawClaim context is unchanged", () => {
+    const result = toUserError(new Error("Error(Contract, #4)"), {
+      context: "withdrawClaim",
+    });
+    expect(result.message).toBe(
+      "The voucher expired or did not match the request. Your app fetches a fresh voucher.",
+    );
+  });
+
+  it("EVM WithdrawalQueueTooEarly() → custody-short copy before the generic revert match", () => {
+    const result = toUserError(
+      new Error(
+        "The contract function reverted with: execution reverted: WithdrawalQueueTooEarly()",
+      ),
+    );
+    expect(result.message).toBe(CUSTODY_SHORT);
+    expect(result.isSpecific).toBe(true);
+  });
+});
+
 describe("toUserError — wallet / user rejection (checked first)", () => {
   it.each([
     "User rejected the request",

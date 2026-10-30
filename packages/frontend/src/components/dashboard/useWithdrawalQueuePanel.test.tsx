@@ -39,7 +39,23 @@ vi.mock("./useDashboardChain", () => ({
   useDashboardChain: () => dashboardChain.value,
 }));
 
-vi.mock("@/wallet", () => ({
+const { queueTotals } = vi.hoisted(() => ({
+  queueTotals: {
+    value: {
+      totalQueued: undefined,
+      totalClaimed: undefined,
+      plusdDecimals: undefined,
+    } as {
+      totalQueued: bigint | undefined;
+      totalClaimed: bigint | undefined;
+      plusdDecimals: number | undefined;
+    },
+  },
+}));
+
+vi.mock("@/wallet", async () => ({
+  formatUnits: (await import("viem")).formatUnits,
+  useWithdrawalQueueTotals: () => queueTotals.value,
   useWalletView: () => ({ kind: "evm" }),
   useEvmWallet: () => ({ address: undefined, isConnected: false }),
   useStellarWallet: () => ({ address: undefined, isConnected: false }),
@@ -326,6 +342,39 @@ describe("useWithdrawalQueuePanel — ready state", () => {
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
     // 1850000 → $1.9M
+    expect(result.current.summary.inQueue).toBe("$1.9M");
+  });
+
+  it("formats the contract totals like In Queue", async () => {
+    queueTotals.value = {
+      totalQueued: 18_500_000_000_000n,
+      totalClaimed: 5_000_000_000n,
+      plusdDecimals: 7,
+    };
+    const { result } = renderHook(() => useWithdrawalQueuePanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    expect(result.current.summary.totalQueued).toBe("$1.9M");
+    expect(result.current.summary.totalClaimed).toBe("$500.00");
+  });
+
+  it("renders — for the totals when the contract reads are unavailable, panel stays ready", async () => {
+    queueTotals.value = {
+      totalQueued: undefined,
+      totalClaimed: undefined,
+      plusdDecimals: undefined,
+    };
+    const { result } = renderHook(() => useWithdrawalQueuePanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    expect(result.current.summary.totalQueued).toBe("—");
+    expect(result.current.summary.totalClaimed).toBe("—");
     expect(result.current.summary.inQueue).toBe("$1.9M");
   });
 

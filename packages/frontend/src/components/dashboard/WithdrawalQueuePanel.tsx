@@ -122,6 +122,16 @@ export function WithdrawalQueuePanel() {
               value={summary.liquidCover}
               data-testid="withdrawal-queue-card-liquid-cover"
             />
+            <SummaryCard
+              label="Total queued"
+              value={summary.totalQueued}
+              data-testid="withdrawal-queue-card-total-queued"
+            />
+            <SummaryCard
+              label="Total claimed"
+              value={summary.totalClaimed}
+              data-testid="withdrawal-queue-card-total-claimed"
+            />
           </div>
         </div>
 
