@@ -16,10 +16,23 @@ const BASE: WithdrawQueueInfo = {
 };
 
 describe("WithdrawQueueCard", () => {
-  it("renders one plain block with the info row and, with a request, a position row and a payable chip", () => {
+  it("renders two plain blocks with a 2px seam, info then position, with a payable chip", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest />);
     const card = screen.getByTestId("withdraw-queue-card");
-    expect(card).toHaveAttribute("data-variant", "plain");
+    expect(card).toHaveClass("flex", "flex-col", "gap-[2px]");
+    const infoBlock = within(card).getByTestId("withdraw-queue-info-block");
+    const positionBlock = within(card).getByTestId(
+      "withdraw-queue-position-block",
+    );
+    expect(infoBlock).toHaveAttribute("data-variant", "plain");
+    expect(positionBlock).toHaveAttribute("data-variant", "plain");
+    expect(card.children).toHaveLength(2);
+    expect(infoBlock).toContainElement(
+      within(card).getByTestId("withdraw-queue-info"),
+    );
+    expect(positionBlock).toContainElement(
+      within(card).getByTestId("withdraw-queue-position"),
+    );
     expect(within(card).getByTestId("withdraw-queue-info")).toBeInTheDocument();
     expect(
       within(card).getByTestId("withdraw-queue-learn-more"),
@@ -54,9 +67,16 @@ describe("WithdrawQueueCard", () => {
     );
   });
 
-  it("keeps the info row but renders no position row or chip without a request", () => {
+  it("keeps one info block but renders no position block, row or chip without a request", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest={false} />);
-    expect(screen.getByTestId("withdraw-queue-card")).toBeInTheDocument();
+    expect(screen.getByTestId("withdraw-queue-card").children).toHaveLength(1);
+    expect(screen.getByTestId("withdraw-queue-info-block")).toHaveAttribute(
+      "data-variant",
+      "plain",
+    );
+    expect(
+      screen.queryByTestId("withdraw-queue-position-block"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("withdraw-queue-info")).toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-queue-position"),

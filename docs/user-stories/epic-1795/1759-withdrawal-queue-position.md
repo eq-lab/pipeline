@@ -22,10 +22,10 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 **Then:**
 
-- One white block sits below the conversion card (above the steps) on every withdraw visit, and not on deposit
-- Its first row is built like the "Exchange rate" and "Network fee" rows (muted 16px label on the left, 16px black value on the right): the label reads "Paid in order. Requests are paid first in, first out." and the right side is an underlined "Learn more" link with an arrow icon
+- On every withdraw visit (not on deposit) a white block sits below the conversion card (above the steps); with a withdrawal request a second white block follows it, separated by a thin 2px seam like the two token cards of the converter
+- The first block is one line of running text with a small info icon: "**Paid in order.** Requests are paid first in, first out." followed directly by an underlined "Learn more" link with an arrow icon, wrapping naturally in muted 16px text
 - Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the link
-- With a withdrawal request, a second row "Your position" shows the amount in bolder text, equal to `withdrawal_request_queued(request_id)` formatted as PLUSD, followed by a status chip; with no request the block holds only the info row
+- With a withdrawal request, the second block shows "Your position" with the amount in bolder text, equal to `withdrawal_request_queued(request_id)` formatted as PLUSD, followed by a status chip; with no request only the first block shows
 - The chip reads "Payable now" (green, check icon) when `claimable(request_id)` is true, "Not payable yet" (pale yellow, clock icon) when false, and "—" (grey) while the read is pending or failed
 - The withdraw page does not show "Total queued" or "Total claimed"; they live on the Protocol Dashboard Panel C only
 - Step 2 shows "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." while idle
