@@ -1,17 +1,17 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 import { useState } from "react";
-import { Card, ModalDialog } from "@pipeline/ui";
+import { ModalDialog } from "@pipeline/ui";
 
 const bodyClasses =
-  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]";
+  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body-s)] leading-[var(--text-pipeline-body-s--line-height)] text-[color:var(--color-pipeline-ink)]";
 
 function ArrowRight() {
   return (
     <svg
       aria-hidden="true"
       focusable="false"
-      width="12"
-      height="12"
+      width="10"
+      height="10"
       viewBox="0 0 12 12"
       fill="none"
     >
@@ -31,24 +31,27 @@ export function WithdrawQueueInfoCard() {
 
   return (
     <>
-      <Card variant="white" padding="md" data-testid="withdraw-queue-info">
-        <p className={bodyClasses}>
+      <div
+        data-testid="withdraw-queue-info"
+        className={`${bodyClasses} flex flex-wrap items-center gap-x-1 md:flex-nowrap md:whitespace-nowrap`}
+      >
+        <span>
           <strong className="font-[var(--font-weight-emphasized)]">
             Paid in order.
           </strong>{" "}
-          Requests are paid first in, first out.{" "}
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            data-testid="withdraw-queue-learn-more"
-            onClick={() => setOpen(true)}
-            className={`${bodyClasses} inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 whitespace-nowrap underline`}
-          >
-            Learn more
-            <ArrowRight />
-          </button>
-        </p>
-      </Card>
+          Requests are paid first in, first out.
+        </span>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          data-testid="withdraw-queue-learn-more"
+          onClick={() => setOpen(true)}
+          className={`${bodyClasses} inline-flex shrink-0 cursor-pointer items-center gap-1 bg-transparent p-0 whitespace-nowrap underline`}
+        >
+          Learn more
+          <ArrowRight />
+        </button>
+      </div>
       <ModalDialog
         open={open}
         title="Withdrawal queue"

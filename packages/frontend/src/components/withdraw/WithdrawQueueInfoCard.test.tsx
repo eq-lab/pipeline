@@ -9,8 +9,10 @@ const COPY =
 describe("WithdrawQueueInfoCard", () => {
   it("always renders the line with a bold lead and a Learn more link button", () => {
     render(<WithdrawQueueInfoCard />);
-    const card = screen.getByTestId("withdraw-queue-info");
-    expect(card).toHaveTextContent(
+    const row = screen.getByTestId("withdraw-queue-info");
+    expect(row).not.toHaveAttribute("data-variant");
+    expect(row).toHaveClass("md:whitespace-nowrap");
+    expect(row).toHaveTextContent(
       "Paid in order. Requests are paid first in, first out.",
     );
     expect(screen.getByText("Paid in order.").tagName).toBe("STRONG");
@@ -18,7 +20,7 @@ describe("WithdrawQueueInfoCard", () => {
     expect(link).toBe(screen.getByTestId("withdraw-queue-learn-more"));
     expect(link).toHaveAttribute("aria-haspopup", "dialog");
     expect(link).not.toHaveAttribute("aria-expanded");
-    expect(link).toHaveClass("underline");
+    expect(link).toHaveClass("underline", "shrink-0");
     expect(link.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     expect(link).not.toHaveTextContent("→");
     expect(

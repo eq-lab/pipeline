@@ -22,7 +22,7 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 **Then:**
 
-- An info block sits above the steps card on every withdraw visit, with or without a request: "**Paid in order.** Requests are paid first in, first out." followed inline by an underlined "Learn more" link with an arrow icon, on one row from tablet width up
+- A plain text info line (no card, small body text) sits above the steps card on every withdraw visit, with or without a request: "**Paid in order.** Requests are paid first in, first out." followed inline by an underlined "Learn more" link with an arrow icon, on one row from tablet width up
 - Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the link
 - Below the info block a compact status row appears only while the lender has a withdrawal request with a position; with no request nothing renders
 - The row is green with "Payable now" when `claimable(request_id)` is true, yellow with "Not payable yet" when false, and white with "—" while the read is pending or failed
