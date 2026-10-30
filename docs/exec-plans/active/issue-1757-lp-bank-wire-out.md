@@ -112,12 +112,7 @@ The amount is i128 at PLUSD SAC scale (7 dp, `SAC_DECIMALS`). Source account = t
 
 ## Open Questions
 
-- **Prerequisite and destination bank account.**
-  - The Issue lists a pre-check that "the LP has a settlement bank account on file (KYB)". No API field or endpoint serves or collects LP bank details. The KYB "settlement address" is a Stellar blockchain address. The user docs require only on-chain PLUSD authorisation to request a wire-out.
-  - The plan therefore assumes:
-    1. the app neither collects nor shows destination bank details (the Trustee wires to the bank account on the LP's KYB file, off-chain);
-    2. the only gates are on-chain authorisation, balance and not-paused. There is no `kyb_status` or session gate, so a wallet-only visitor whose address is authorised can request (consistent with "connected wallet = active account").
-  - Confirm, or say if the app should also require a signed-in LP with `kyb_status === "Passed"` (`useAuthFlow().kybStatus`), or show a destination.
+_None_ — answered 2026-10-30 by the user: a passed KYB is taken as proof that the LP has a verified bank account. The wire-out section therefore requires a **signed-in LP with `kyb_status === "Passed"`** in addition to the on-chain gates (authorised address, balance, minter not paused); a wallet-only visitor or an LP whose KYB is not passed sees the section with the request action disabled and the reason ("Complete KYB to withdraw to a bank account"). The app neither collects nor shows destination bank details; the Trustee wires to the account on the LP's KYB file. The earlier assumption (2) in this section is superseded.
 
 ## Implementation Steps
 
