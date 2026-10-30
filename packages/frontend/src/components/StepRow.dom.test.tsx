@@ -119,4 +119,21 @@ describe("StepRow", () => {
     render(<StepRow step={3} label="Claim" actionLabel="Claim" />);
     expect(screen.queryByTestId("step-row-3-hint")).not.toBeInTheDocument();
   });
+  it("disabled → badge and action dim, row root and hint stay at full opacity", () => {
+    render(
+      <StepRow
+        step={1}
+        label="Claim"
+        actionLabel="Claim"
+        disabled
+        hint="Waiting for liquidity"
+      />,
+    );
+
+    expect(screen.getByTestId("step-row-1")).not.toHaveClass("opacity-30");
+    expect(screen.getByTestId("step-row-1-badge")).toHaveClass("opacity-30");
+    expect(screen.getByTestId("step-row-1-action")).toHaveClass("opacity-30");
+    expect(screen.getByTestId("step-row-1-hint")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Claim" })).toBeDisabled();
+  });
 });

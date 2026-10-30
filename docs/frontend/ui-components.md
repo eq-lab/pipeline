@@ -1010,10 +1010,12 @@ here.
 
 ### States
 
-- **Disabled** (`disabled`): matches Figma — the entire row renders at 30 % opacity (`opacity-30`)
-  and the action button additionally receives the HTML `disabled` attribute so it is inert. The
-  30 % opacity applies only when the row is _not_ in a success/error/loading state — those always
-  render at full opacity so the user can see the check badge / error line / spinner clearly.
+- **Disabled** (`disabled`): the step badge and the action wrapper (button) render at 30 % opacity
+  (`opacity-30`), the label switches to `--color-pipeline-ink-muted`, and the [hint](#states)
+  keeps its normal muted caption style so the waiting reason stays readable; the action button
+  also receives the HTML `disabled` attribute so it is inert. The row root is never dimmed. The
+  dimming applies only when the row is _not_ in a success/error/loading state — those render at
+  full opacity so the check badge / error line / spinner stay clear.
 - **Loading** (`loading`): the action button is disabled and shows an inline CSS-only spinner
   (16 px ring in `--color-pipeline-on-dark` with transparent top, `animate-spin`) to communicate a
   pending transaction. Full row opacity is kept.
