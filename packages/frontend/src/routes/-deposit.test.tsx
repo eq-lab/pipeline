@@ -3785,6 +3785,9 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
       "positive",
     );
     expect(
+      screen.getByTestId("withdraw-queue-request-status"),
+    ).toHaveTextContent("In queue");
+    expect(
       screen.queryByTestId("withdraw-queue-total-queued"),
     ).not.toBeInTheDocument();
     expect(

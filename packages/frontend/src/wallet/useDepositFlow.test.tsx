@@ -871,6 +871,7 @@ describe("useDepositFlow — withdraw queue state (#1759)", () => {
     const withdraw = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
     expect(withdraw.result.current.withdrawQueue).toMatchObject({
       requestAmount: 10_000_000_000n,
+      requestStatus: "PendingClaim",
       position: 25_000_000_000n,
       payableNow: true,
       recoveryActive: false,

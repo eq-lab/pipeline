@@ -6,11 +6,20 @@ import React from "react";
  */
 
 export type StatusChipTone = "positive" | "pending" | "neutral";
+export type StatusChipIcon = "check" | "clock" | "dash" | "queue";
+
+const defaultIcon: Record<StatusChipTone, StatusChipIcon> = {
+  positive: "check",
+  pending: "clock",
+  neutral: "dash",
+};
 
 export interface StatusChipProps extends React.HTMLAttributes<HTMLSpanElement> {
   tone: StatusChipTone;
   /** Visible status text (e.g. "Payable now"). */
   label: string;
+  /** Overrides the tone's default icon. */
+  icon?: StatusChipIcon;
 }
 
 const rootClasses = [
@@ -32,7 +41,7 @@ const toneClasses: Record<StatusChipTone, string> = {
     "bg-[var(--color-pipeline-surface-muted)] text-[color:var(--color-pipeline-ink-muted)]",
 };
 
-function Icon({ tone }: { tone: StatusChipTone }) {
+function Icon({ icon }: { icon: StatusChipIcon }) {
   return (
     <svg
       aria-hidden="true"
@@ -42,7 +51,7 @@ function Icon({ tone }: { tone: StatusChipTone }) {
       viewBox="0 0 12 12"
       fill="none"
     >
-      {tone === "positive" && (
+      {icon === "check" && (
         <path
           d="M2 6.5L5 9.5L10 3"
           stroke="currentColor"
@@ -51,7 +60,7 @@ function Icon({ tone }: { tone: StatusChipTone }) {
           strokeLinejoin="round"
         />
       )}
-      {tone === "pending" && (
+      {icon === "clock" && (
         <>
           <circle
             cx="6"
@@ -69,7 +78,15 @@ function Icon({ tone }: { tone: StatusChipTone }) {
           />
         </>
       )}
-      {tone === "neutral" && (
+      {icon === "queue" && (
+        <path
+          d="M2.5 3H9.5M2.5 6H9.5M2.5 9H6.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      )}
+      {icon === "dash" && (
         <path
           d="M3 6H9"
           stroke="currentColor"
@@ -82,13 +99,13 @@ function Icon({ tone }: { tone: StatusChipTone }) {
 }
 
 export const StatusChip = React.forwardRef<HTMLSpanElement, StatusChipProps>(
-  function StatusChip({ tone, label, className, ...rest }, ref) {
+  function StatusChip({ tone, label, icon, className, ...rest }, ref) {
     const composed = [rootClasses, toneClasses[tone], className]
       .filter(Boolean)
       .join(" ");
     return (
       <span ref={ref} data-tone={tone} className={composed} {...rest}>
-        <Icon tone={tone} />
+        <Icon icon={icon ?? defaultIcon[tone]} />
         {label}
       </span>
     );

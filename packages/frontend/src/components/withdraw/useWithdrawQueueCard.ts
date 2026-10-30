@@ -9,6 +9,19 @@ export interface WithdrawQueueCardView {
   status: string;
   position: string;
   request: string;
+  requestStatus:
+    | { label: string; tone: WithdrawQueueTone; icon?: "queue" }
+    | undefined;
+}
+
+function requestStatusChip(
+  status: string | undefined,
+): WithdrawQueueCardView["requestStatus"] {
+  if (status === undefined) return undefined;
+  if (status === "PendingClaim")
+    return { label: "In queue", tone: "neutral", icon: "queue" };
+  if (status === "Completed") return { label: "Claimed", tone: "positive" };
+  return { label: status, tone: "neutral" };
 }
 
 export function useWithdrawQueueCard(
@@ -25,6 +38,7 @@ export function useWithdrawQueueCard(
         : tone === "pending"
           ? "Not payable yet"
           : "—",
+    requestStatus: requestStatusChip(queue?.requestStatus),
     request:
       queue?.requestAmount !== undefined
         ? `${formatTokenAmount(queue.requestAmount, queue.plusdDecimals)} PLUSD`

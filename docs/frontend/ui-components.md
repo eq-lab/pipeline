@@ -983,7 +983,7 @@ typography token consistent.
 
 **Source:** `packages/ui/src/components/StatusChip/StatusChip.tsx` (#1759). Storybook: `Components/StatusChip`.
 
-Small inline status pill: `rounded-[var(--radius-pipeline-pill)]`, caption type (`--text-pipeline-caption`), `px-2 py-0.5`, a 12 px leading inline SVG (`currentColor`, `aria-hidden`), `data-tone` on the root. Props: `tone` (`positive` | `pending` | `neutral`) and `label`; extra `<span>` attributes (e.g. `data-testid`) pass through. Not the trustee `StatusChip` (a separate component in `packages/trustee`).
+Small inline status pill: `rounded-[var(--radius-pipeline-pill)]`, caption type (`--text-pipeline-caption`), `px-2 py-0.5`, a 12 px leading inline SVG (`currentColor`, `aria-hidden`), `data-tone` on the root. Props: `tone` (`positive` | `pending` | `neutral`), `label` and optional `icon` (`check` | `clock` | `dash` | `queue`, overrides the tone's default; `queue` is three left-aligned horizontal bars); extra `<span>` attributes (e.g. `data-testid`) pass through. Not the trustee `StatusChip` (a separate component in `packages/trustee`).
 
 | Tone       | Fill                                         | Text and icon                | Icon  |
 | ---------- | -------------------------------------------- | ---------------------------- | ----- |
@@ -991,7 +991,7 @@ Small inline status pill: `rounded-[var(--radius-pipeline-pill)]`, caption type 
 | `pending`  | `--color-pipeline-promo` (warning-secondary) | `--color-pipeline-pending`   | clock |
 | `neutral`  | `--color-pipeline-surface-muted`             | `--color-pipeline-ink-muted` | dash  |
 
-Used by the withdraw-page queue block for "Payable now" / "Not payable yet" / "—" (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`).
+Used by the withdraw-page queue block for "Payable now" / "Not payable yet" / "—" and the request status ("In queue" / "Claimed") (`docs/frontend/dashboard-components.md#deposit-and-withdraw-route`).
 
 ## StepRow
 

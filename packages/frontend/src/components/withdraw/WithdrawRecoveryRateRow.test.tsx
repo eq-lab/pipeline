@@ -52,6 +52,7 @@ describe("formatRecoveryRate", () => {
     plusdDecimals: 6,
     usdcDecimals: 6,
     requestAmount: undefined,
+    requestStatus: undefined,
     position: undefined,
     payableNow: undefined,
     payout: undefined,

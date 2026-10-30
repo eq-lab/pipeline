@@ -59,9 +59,28 @@ export function WithdrawQueueCard({
             data-testid="withdraw-queue-position"
             label="Queue position"
             value={
-              <strong className="font-[var(--font-weight-emphasized)]">
-                {view.position}
-              </strong>
+              <span className="inline-flex items-center gap-2">
+                <strong className="font-[var(--font-weight-emphasized)]">
+                  {view.position}
+                </strong>
+                {view.requestStatus && (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      data-testid="withdraw-queue-request-separator"
+                      className="text-[color:var(--color-pipeline-ink-muted)]"
+                    >
+                      ·
+                    </span>
+                    <StatusChip
+                      data-testid="withdraw-queue-request-status"
+                      tone={view.requestStatus.tone}
+                      icon={view.requestStatus.icon}
+                      label={view.requestStatus.label}
+                    />
+                  </>
+                )}
+              </span>
             }
           />
         </Card>

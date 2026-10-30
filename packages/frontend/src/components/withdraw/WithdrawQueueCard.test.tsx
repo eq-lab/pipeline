@@ -6,6 +6,7 @@ import { WithdrawQueueCard } from "./WithdrawQueueCard";
 
 const BASE: WithdrawQueueInfo = {
   requestAmount: 12_500_000_000n,
+  requestStatus: "PendingClaim",
   position: 25_000_000_000n,
   payableNow: true,
   rateRaw: 1_000_000n,
@@ -54,6 +55,13 @@ describe("WithdrawQueueCard", () => {
     expect(position).toHaveTextContent("Queue position");
     const posValue = within(position).getByText("2,500.00 PLUSD");
     expect(posValue.tagName).toBe("STRONG");
+    const reqChip = within(position).getByTestId(
+      "withdraw-queue-request-status",
+    );
+    expect(reqChip).toHaveTextContent("In queue");
+    expect(reqChip.previousElementSibling).toBe(
+      within(position).getByTestId("withdraw-queue-request-separator"),
+    );
     expect(
       position.querySelector('[data-testid="withdraw-queue-status"]'),
     ).toBeNull();
@@ -63,6 +71,38 @@ describe("WithdrawQueueCard", () => {
     expect(chip).toHaveAttribute("data-tone", "positive");
     expect(chip).toHaveTextContent("Payable now");
     expect(chip.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it.each([
+    ["PendingClaim", "In queue", "neutral"],
+    ["Completed", "Claimed", "positive"],
+    ["PendingVerification", "PendingVerification", "neutral"],
+    ["VerificationFailed", "VerificationFailed", "neutral"],
+  ])("maps served status %s to the %s chip", (status, text, tone) => {
+    render(
+      <WithdrawQueueCard
+        queue={{ ...BASE, requestStatus: status }}
+        hasRequest
+      />,
+    );
+    const chip = screen.getByTestId("withdraw-queue-request-status");
+    expect(chip).toHaveTextContent(text);
+    expect(chip).toHaveAttribute("data-tone", tone);
+  });
+
+  it("omits the request status chip when the status is unavailable", () => {
+    render(
+      <WithdrawQueueCard
+        queue={{ ...BASE, requestStatus: undefined }}
+        hasRequest
+      />,
+    );
+    expect(
+      screen.queryByTestId("withdraw-queue-request-status"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-queue-request-separator"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the pending chip when the contract says not payable", () => {
