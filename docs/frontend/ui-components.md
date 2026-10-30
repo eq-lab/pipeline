@@ -678,6 +678,7 @@ bottom of the conversion card (Figma nodes `1498-100130` / `1498-99897`).
   right.
 - **Type** — body size (16 px / 22 px) per Figma node `1498-99897`, applied to all InfoRow
   instances (Issue #595 fix 7).
+- **`wrapLabel`** (optional, default `false`, #1759) — drops the label's `whitespace-nowrap` (adds `min-w-0`) so a long label wraps onto extra lines while the value gets `shrink-0` and stays on the right; Storybook "Wrapping label".
 - **Test ids** — each row derives a stable `data-testid` from its label
   (`info-row-exchange-rate`, `info-row-network-fee`) so the two rows rendered inside a
   `ConversionCard` stay individually addressable; a caller-supplied `data-testid` still wins.

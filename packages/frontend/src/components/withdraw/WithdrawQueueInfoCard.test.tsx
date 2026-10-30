@@ -7,20 +7,23 @@ const COPY =
   "Paid in order. Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.";
 
 describe("WithdrawQueueInfoCard", () => {
-  it("always renders the line with a bold lead and a Learn more link button", () => {
+  it("always renders the line as an InfoRow with the sentence label and a Learn more value", () => {
     render(<WithdrawQueueInfoCard />);
     const row = screen.getByTestId("withdraw-queue-info");
     expect(row).not.toHaveAttribute("data-variant");
-    expect(row).toHaveClass("md:whitespace-nowrap");
-    expect(row).toHaveTextContent(
+    expect(row.querySelector("strong")).toBeNull();
+    const label = screen.getByText(
       "Paid in order. Requests are paid first in, first out.",
     );
-    expect(screen.getByText("Paid in order.").tagName).toBe("STRONG");
+    expect(label.tagName).toBe("SPAN");
+    expect(label).not.toHaveClass("whitespace-nowrap");
+    expect(label).toHaveClass("text-[color:var(--color-pipeline-ink-muted)]");
     const link = screen.getByRole("button", { name: "Learn more" });
     expect(link).toBe(screen.getByTestId("withdraw-queue-learn-more"));
     expect(link).toHaveAttribute("aria-haspopup", "dialog");
     expect(link).not.toHaveAttribute("aria-expanded");
-    expect(link).toHaveClass("underline", "shrink-0");
+    expect(link).toHaveClass("underline");
+    expect(row.lastElementChild).toContainElement(link);
     expect(link.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     expect(link).not.toHaveTextContent("→");
     expect(
