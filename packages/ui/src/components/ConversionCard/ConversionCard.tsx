@@ -24,6 +24,8 @@ export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement
   networkFee: string;
   /** Swap-direction callback; when undefined (or `input.disabled`) the button renders disabled. */
   onSwap?: () => void;
+  /** Optional row rendered between the "Exchange rate" and "Network fee" InfoRows, inside the details block. */
+  afterExchangeRate?: React.ReactNode;
 }
 
 // Straddles the 2px seam: anchored to Card A's bottom edge (top-full) and
@@ -47,7 +49,16 @@ export const ConversionCard = React.forwardRef<
   HTMLDivElement,
   ConversionCardProps
 >(function ConversionCard(
-  { input, output, exchangeRate, networkFee, onSwap, className, ...rest },
+  {
+    input,
+    output,
+    exchangeRate,
+    networkFee,
+    onSwap,
+    afterExchangeRate,
+    className,
+    ...rest
+  },
   ref,
 ) {
   // "+" prefix is purely visual and only for non-zero values (spec).
@@ -111,6 +122,7 @@ export const ConversionCard = React.forwardRef<
 
         <div data-testid="conversion-details" className="flex flex-col gap-2">
           <InfoRow label="Exchange rate" value={exchangeRate} />
+          {afterExchangeRate}
           <InfoRow label="Network fee" value={networkFee} />
         </div>
       </Card>

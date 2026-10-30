@@ -490,6 +490,10 @@ nested within the PLUSD card, matching Figma node `1498-100135`.
   `gap-8` (32 px) between the value row and the details rows. The value row carries no extra
   right padding, so the output value sits 16 px from the card edge.
 - `border-0` removes the white Card's default hairline border (fix 8, Issue #595).
+- Optional `afterExchangeRate` slot (#1759): a node rendered between the "Exchange rate"
+  and "Network fee" `InfoRow`s inside the same `conversion-details` rows container, so it shares the 8 px row gap and the
+  card's 16 px side padding (its left edge matches the InfoRow labels). Omitted, nothing
+  renders. Storybook: `Components/ConversionCard` "With a row after Exchange rate".
 - The output value is prefixed with `+` when non-zero (purely visual); zero values stay
   un-prefixed to match the Figma "0" placeholder state.
 

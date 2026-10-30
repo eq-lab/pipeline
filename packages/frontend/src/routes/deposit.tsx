@@ -596,6 +596,11 @@ function Deposit() {
               exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
               networkFee={flow.networkFee ?? "—"}
               onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
+              afterExchangeRate={
+                !isDeposit && flow.isConnected ? (
+                  <WithdrawQueueInfoCard />
+                ) : undefined
+              }
             />
 
             {flow.exceedsBalance && (
@@ -604,8 +609,6 @@ function Deposit() {
                 className="self-end"
               />
             )}
-
-            {!isDeposit && flow.isConnected && <WithdrawQueueInfoCard />}
 
             {!isDeposit && flow.isConnected && (
               <WithdrawQueueCard

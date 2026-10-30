@@ -37,7 +37,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider } from "@/wallet";
@@ -3792,14 +3792,21 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     ).not.toBeInTheDocument();
   });
 
-  it("places the info block, then the status block, above the steps card", async () => {
+  it("places the info row inside the conversion card between Exchange rate and Network fee, then the status block, above the steps card", async () => {
     renderDeposit();
     const info = await screen.findByTestId("withdraw-queue-info");
+    const outputCard = screen.getByTestId("conversion-output-card");
+    expect(within(outputCard).getByTestId("withdraw-queue-info")).toBe(info);
+    const rate = within(outputCard).getByTestId("info-row-exchange-rate");
+    const fee = within(outputCard).getByTestId("info-row-network-fee");
     const card = await screen.findByTestId("withdraw-queue-card");
     const claim = await screen.findByRole("button", { name: "Claim" });
     const follows = (a: Element, b: Element) =>
       a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(follows(info, card)).toBeTruthy();
+    expect(follows(rate, info)).toBeTruthy();
+    expect(follows(info, fee)).toBeTruthy();
+    expect(outputCard.contains(card)).toBe(false);
+    expect(follows(outputCard, card)).toBeTruthy();
     expect(follows(card, claim)).toBeTruthy();
   });
 
