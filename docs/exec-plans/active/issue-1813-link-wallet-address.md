@@ -58,11 +58,12 @@ Behaviour sources, in precedence order:
    never out-of-order writes). A per-mount `Set` of attempted keys prevents retry loops on failures
    (only an address, LP or token change makes a new key). React StrictMode's double effect must not
    double-post (the in-flight ref guards it). Nothing is persisted — no localStorage.
-3. **409 handling.** No toast, no thrown error, no banner. On 409 the provider re-reads
-   `GET /v1/lps/me` and adopts it, then the settlement row derives its caption from served state:
-   `Passed` with an address → "fixed" caption; otherwise → "already linked to another account"
-   caption. 400/404/5xx/network → "could not be linked" caption, no automatic retry. 401/403 are
-   already handled app-wide by `apiFetch`'s session-end path (#1473/#1465).
+3. **409 handling** (decided 2026-10-30 by the user: show an error message). On 409 the hook surfaces the
+   API's message through the app's existing error toast (`useToast`, same pattern as other failed API
+   calls) — "LP … has passed KYB; its settlement address is fixed" / "already linked to another account"
+   verbatim from the server — and re-reads `GET /v1/lps/me` so the settlement row shows the served
+   state. No automatic retry. 400/404/5xx/network → the same toast path with the served message;
+   401/403 are already handled app-wide by `apiFetch`'s session-end path (#1473/#1465).
 4. **How the KYB form shows the settlement address.** A read-only row — never an input — labelled
    `Settlement address`, in the `CompanyDocsModal` profile surface card (below Country) and in
    `AccountProfileCard` (below Country). Title = served `lp.stellar_address` verbatim (full G-address,
@@ -109,10 +110,9 @@ Behaviour sources, in precedence order:
 
 ## Open Questions
 
-- The settlement-address row has no Figma frame. Plan default: ship it built from the existing theme
-  (reusing `AccountListRow` in the existing profile cards) with the copy in step 2's table, and
-  document it as a stand-in in the spec. Confirm, or add `needs-figma` and hold the UI half (the link
-  call itself does not depend on design).
+_None_ — answered 2026-10-30 by the user: no Figma needed; build the settlement-address row from the
+existing theme (`AccountListRow` in the existing profile cards). On 409 show the error message (toast),
+not a silent re-read.
 
 ## Implementation Steps
 
@@ -227,7 +227,7 @@ Unit/integration (vitest + Testing Library, real module boundaries, `fetch`/API 
   - `lpLoaded` false (absent/loading/error) → no call; flipping to loaded → call.
   - not connected / EVM only → no call.
   - A→C while the A request is pending → C is sent only after A settles; final `onLp` is C's response.
-  - 409 → `getMyLp` re-read adopted; Passed+address → state `idle`; otherwise `taken`; no throw.
+  - 409 → error toast with the served message, then `getMyLp` re-read adopted; no throw.
   - network error → `error`, no second call for the same key; a new address retries.
   - token changes mid-flight → late response not adopted; StrictMode render → single call.
 - `auth/AuthFlowProvider.test.tsx`: widen the `@/wallet` mock (`useStellarWallet`, `useEvmWallet`);
