@@ -22,7 +22,7 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 **Then:**
 
-- One white block sits below the conversion card (above the recovery notice and the steps) on every withdraw visit, and not on deposit
+- One white block sits below the conversion card (above the steps) on every withdraw visit, and not on deposit
 - Its first row is built like the "Exchange rate" and "Network fee" rows (muted 16px label on the left, 16px black value on the right): the label reads "Paid in order. Requests are paid first in, first out." and the right side is an underlined "Learn more" link with an arrow icon
 - Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the link
 - With a withdrawal request, a second row "Your position" shows the amount in bolder text, equal to `withdrawal_request_queued(request_id)` formatted as PLUSD, followed by a status chip; with no request the block holds only the info row
@@ -124,10 +124,11 @@ Needs a testnet admin to call `set_rate` (below 1_000_000) or a dedicated deploy
 
 **Then:**
 
-- A yellow notice reads "Recovery rate {rate}. Every claim pays USDC equal to the PLUSD burned times this rate."
+- The conversion card has a "Recovery rate" row after "Network fee" showing the rate (e.g. "0.85") and a small yellow warning icon; there is no separate yellow notice
+- Clicking the icon opens a "Recovery rate" modal with the "During shutdown" copy from the lender withdraw docs; the Close button, Escape and a backdrop click close it and focus returns to the icon
 - The claim hint reads "Pays {X} USDC = {Y} PLUSD × {rate}", where X equals the `claim_request` simulation return value (never a client product)
 - After claiming, the success toast reads "Claimed {X} USDC" with that contract payout, not the PLUSD amount
-- At rate 1 the notice and the Pays hint are absent and the toast keeps its previous copy
+- At rate 1 the Recovery rate row and the Pays hint are absent and the toast keeps its previous copy
 
 ---
 

@@ -3788,11 +3788,11 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
       screen.queryByTestId("withdraw-queue-total-claimed"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByTestId("withdraw-recovery-rate-notice"),
+      screen.queryByTestId("withdraw-recovery-rate"),
     ).not.toBeInTheDocument();
   });
 
-  it("places one block with the info row after the conversion card, then the recovery notice, above the steps card", async () => {
+  it("places the queue block after the conversion card with the recovery row inside the card after Network fee, and no notice", async () => {
     queueMock.totals.rateRaw = 950_000n;
     renderDeposit();
     const card = await screen.findByTestId("withdraw-queue-card");
@@ -3800,13 +3800,21 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     const info = within(card).getByTestId("withdraw-queue-info");
     expect(outputCard.contains(card)).toBe(false);
     expect(outputCard.contains(info)).toBe(false);
-    const notice = await screen.findByTestId("withdraw-recovery-rate-notice");
     const claim = await screen.findByRole("button", { name: "Claim" });
     const follows = (a: Element, b: Element) =>
       a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
     expect(follows(outputCard, card)).toBeTruthy();
-    expect(follows(card, notice)).toBeTruthy();
-    expect(follows(notice, claim)).toBeTruthy();
+    expect(follows(card, claim)).toBeTruthy();
+    expect(
+      screen.queryByTestId("withdraw-recovery-rate-notice"),
+    ).not.toBeInTheDocument();
+    const conversion = screen.getByTestId("withdraw-conversion-card");
+    const row = within(conversion).getByTestId("withdraw-recovery-rate");
+    expect(row).toHaveTextContent("Recovery rate");
+    expect(row).toHaveTextContent("0.95");
+    const fee = within(conversion).getByText("Network fee");
+    expect(follows(fee, row)).toBeTruthy();
+    expect(card.contains(row)).toBe(false);
   });
 
   it("shows the info row but no position row or status chip without a request", async () => {
@@ -3852,13 +3860,13 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     ).toBeInTheDocument();
   });
 
-  it("shows the recovery notice and the payout hint when the rate is below 1", async () => {
+  it("shows the recovery row and the payout hint when the rate is below 1", async () => {
     queueMock.totals.rateRaw = 950_000n;
     queueMock.payout = 9_500_000n;
     renderDeposit();
     expect(
-      await screen.findByTestId("withdraw-recovery-rate-notice"),
-    ).toHaveTextContent("Recovery rate 0.95.");
+      await screen.findByTestId("withdraw-recovery-rate"),
+    ).toHaveTextContent("Recovery rate0.95");
     expect(
       screen.getByText(/Pays 9\.50 USDC = 10\.00 PLUSD × 0\.95/),
     ).toBeInTheDocument();

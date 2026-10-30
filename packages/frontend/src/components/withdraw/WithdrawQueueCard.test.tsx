@@ -72,34 +72,18 @@ describe("WithdrawQueueCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows the recovery notice without a request when the rate is below 1", () => {
+  it("renders no recovery notice, even when the rate is below 1", () => {
     render(
-      <WithdrawQueueCard
-        queue={{ ...BASE, rateRaw: 950_000n, recoveryActive: true }}
-        hasRequest={false}
-      />,
-    );
-    expect(
-      screen.getByTestId("withdraw-recovery-rate-notice"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the recovery notice only when the rate is below 1", () => {
-    const { rerender } = render(<WithdrawQueueCard queue={BASE} hasRequest />);
-    expect(
-      screen.queryByTestId("withdraw-recovery-rate-notice"),
-    ).not.toBeInTheDocument();
-
-    rerender(
       <WithdrawQueueCard
         queue={{ ...BASE, rateRaw: 950_000n, recoveryActive: true }}
         hasRequest
       />,
     );
     expect(
-      screen.getByTestId("withdraw-recovery-rate-notice"),
-    ).toHaveTextContent(
-      "Recovery rate 0.95. Every claim pays USDC equal to the PLUSD burned times this rate.",
-    );
+      screen.queryByTestId("withdraw-recovery-rate-notice"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("withdraw-recovery-rate"),
+    ).not.toBeInTheDocument();
   });
 });

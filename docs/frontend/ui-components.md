@@ -486,7 +486,7 @@ nested within the PLUSD card, matching Figma node `1498-100135`.
   `gap-8` (32 px) between the value row and the details rows. The value row carries no extra
   right padding, so the output value sits 16 px from the card edge.
 - `border-0` removes the white Card's default hairline border (fix 8, Issue #595).
-- Optional `footer` slot (#1759): a node rendered after the "Network fee" `InfoRow` as the last row of the same `conversion-details` rows container (shares the 8 px row gap and 16 px side padding). Omitted, nothing renders. The withdraw page no longer passes it (design change 9 moved the queue info row into its own block below the card); Storybook: `Components/ConversionCard` "With footer row".
+- Optional `footer` slot (#1759): a node rendered after the "Network fee" `InfoRow` as the last row of the same `conversion-details` rows container (shares the 8 px row gap and 16 px side padding). Omitted, nothing renders. The withdraw page passes it only for the "Recovery rate" row when the rate is below 1 (design change 10; the queue info row lives in its own block below the card); Storybook: `Components/ConversionCard` "With footer row".
 - The output value is prefixed with `+` when non-zero (purely visual); zero values stay
   un-prefixed to match the Figma "0" placeholder state.
 

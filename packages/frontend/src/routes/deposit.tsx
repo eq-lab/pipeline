@@ -24,6 +24,8 @@ import { toUserError } from "@/utils/userError";
 import { useChainServed } from "@/api";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
 import { WithdrawQueueCard } from "@/components/withdraw/WithdrawQueueCard";
+import { WithdrawRecoveryRateRow } from "@/components/withdraw/WithdrawRecoveryRateRow";
+import { formatRecoveryRate } from "@/components/withdraw/recoveryRate";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -501,6 +503,8 @@ function Deposit() {
   // plusdTrustline / usdcTrustline are already declared above for toast logic.
 
   // ── Render ────────────────────────────────────────────────────────────
+  const recoveryRate = formatRecoveryRate(flow.withdrawQueue);
+
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
       <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-2 py-12 md:px-4">
@@ -594,6 +598,11 @@ function Deposit() {
               }
               exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
               networkFee={flow.networkFee ?? "—"}
+              footer={
+                !isDeposit && flow.isConnected && recoveryRate !== undefined ? (
+                  <WithdrawRecoveryRateRow rate={recoveryRate} />
+                ) : undefined
+              }
               onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
             />
 

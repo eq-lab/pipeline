@@ -9,9 +9,6 @@ interface WithdrawQueueCardProps {
   hasRequest: boolean;
 }
 
-const bodyClasses =
-  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)]";
-
 export function WithdrawQueueCard({
   queue,
   hasRequest,
@@ -19,42 +16,30 @@ export function WithdrawQueueCard({
   const view = useWithdrawQueueCard(queue);
 
   return (
-    <>
-      <Card
-        padding="md"
-        data-testid="withdraw-queue-card"
-        className="flex flex-col gap-2"
-      >
-        <WithdrawQueueInfoCard />
-        {hasRequest && (
-          <InfoRow
-            data-testid="withdraw-queue-position"
-            label="Your position"
-            value={
-              <span className="inline-flex items-center gap-2">
-                <strong className="font-[var(--font-weight-emphasized)]">
-                  {view.position}
-                </strong>
-                <StatusChip
-                  data-testid="withdraw-queue-status"
-                  tone={view.tone}
-                  label={view.status}
-                />
-              </span>
-            }
-          />
-        )}
-      </Card>
-      {view.recoveryRate !== undefined && (
-        <Card variant="yellow" data-testid="withdraw-recovery-rate-notice">
-          <p
-            className={`${bodyClasses} text-[color:var(--color-pipeline-ink)]`}
-          >
-            Recovery rate {view.recoveryRate}. Every claim pays USDC equal to
-            the PLUSD burned times this rate.
-          </p>
-        </Card>
+    <Card
+      padding="md"
+      data-testid="withdraw-queue-card"
+      className="flex flex-col gap-2"
+    >
+      <WithdrawQueueInfoCard />
+      {hasRequest && (
+        <InfoRow
+          data-testid="withdraw-queue-position"
+          label="Your position"
+          value={
+            <span className="inline-flex items-center gap-2">
+              <strong className="font-[var(--font-weight-emphasized)]">
+                {view.position}
+              </strong>
+              <StatusChip
+                data-testid="withdraw-queue-status"
+                tone={view.tone}
+                label={view.status}
+              />
+            </span>
+          }
+        />
       )}
-    </>
+    </Card>
   );
 }
