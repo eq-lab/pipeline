@@ -7,16 +7,20 @@ const COPY =
   "Paid in order. Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.";
 
 describe("WithdrawQueueInfoCard", () => {
-  it("always renders the line with a bold lead and a Learn more button", () => {
+  it("always renders the line with a bold lead and a Learn more link button", () => {
     render(<WithdrawQueueInfoCard />);
     const card = screen.getByTestId("withdraw-queue-info");
     expect(card).toHaveTextContent(
       "Paid in order. Requests are paid first in, first out.",
     );
     expect(screen.getByText("Paid in order.").tagName).toBe("STRONG");
-    expect(screen.getByTestId("withdraw-queue-learn-more")).toHaveTextContent(
-      "Learn more",
-    );
+    const link = screen.getByRole("button", { name: "Learn more" });
+    expect(link).toBe(screen.getByTestId("withdraw-queue-learn-more"));
+    expect(link).toHaveAttribute("aria-haspopup", "dialog");
+    expect(link).not.toHaveAttribute("aria-expanded");
+    expect(link).toHaveClass("underline");
+    expect(link.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(link).not.toHaveTextContent("→");
     expect(
       screen.queryByTestId("withdraw-queue-modal"),
     ).not.toBeInTheDocument();

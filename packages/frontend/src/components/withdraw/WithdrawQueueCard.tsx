@@ -33,6 +33,7 @@ export function WithdrawQueueCard({
       {hasRequest && (
         <Card
           variant={cardVariant}
+          padding="md"
           data-testid="withdraw-queue-card"
           data-tone={view.tone}
           className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4"

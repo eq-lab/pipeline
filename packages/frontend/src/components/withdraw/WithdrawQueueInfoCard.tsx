@@ -1,35 +1,53 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 import { useState } from "react";
-import { Button, Card, ModalDialog } from "@pipeline/ui";
+import { Card, ModalDialog } from "@pipeline/ui";
 
 const bodyClasses =
   "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]";
+
+function ArrowRight() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+    >
+      <path
+        d="M1 6H11M7 2L11 6L7 10"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export function WithdrawQueueInfoCard() {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Card
-        variant="white"
-        data-testid="withdraw-queue-info"
-        className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4"
-      >
+      <Card variant="white" padding="md" data-testid="withdraw-queue-info">
         <p className={bodyClasses}>
           <strong className="font-[var(--font-weight-emphasized)]">
             Paid in order.
           </strong>{" "}
-          Requests are paid first in, first out.
+          Requests are paid first in, first out.{" "}
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            data-testid="withdraw-queue-learn-more"
+            onClick={() => setOpen(true)}
+            className={`${bodyClasses} inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 whitespace-nowrap underline`}
+          >
+            Learn more
+            <ArrowRight />
+          </button>
         </p>
-        <Button
-          variant="secondary"
-          size="compact"
-          className="self-start whitespace-nowrap md:self-auto"
-          data-testid="withdraw-queue-learn-more"
-          onClick={() => setOpen(true)}
-        >
-          Learn more
-        </Button>
       </Card>
       <ModalDialog
         open={open}
