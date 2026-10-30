@@ -43,6 +43,12 @@ describe("WithdrawQueueCard", () => {
     expect(amount.tagName).toBe("STRONG");
     expect(amount).toHaveClass("font-[var(--font-weight-emphasized)]");
     const chip = within(row).getByTestId("withdraw-queue-status");
+    const dot = within(row).getByTestId("withdraw-queue-separator");
+    expect(dot).toHaveTextContent("·");
+    expect(dot).toHaveAttribute("aria-hidden", "true");
+    expect(dot).toHaveClass("text-[color:var(--color-pipeline-ink-muted)]");
+    expect(amount.nextElementSibling).toBe(dot);
+    expect(dot.nextElementSibling).toBe(chip);
     expect(chip).toHaveAttribute("data-tone", "positive");
     expect(chip).toHaveTextContent("Payable now");
     expect(chip.querySelector("svg")).toHaveAttribute("aria-hidden", "true");

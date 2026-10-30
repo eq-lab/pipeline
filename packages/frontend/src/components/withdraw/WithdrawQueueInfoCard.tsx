@@ -53,7 +53,7 @@ export function WithdrawQueueInfoCard() {
     <>
       <p
         data-testid="withdraw-queue-info"
-        className="m-0 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink-muted)]"
+        className="m-0 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]"
       >
         <InfoIcon />
         Requests are paid in order.{" "}
@@ -62,7 +62,7 @@ export function WithdrawQueueInfoCard() {
           aria-haspopup="dialog"
           data-testid="withdraw-queue-learn-more"
           onClick={() => setOpen(true)}
-          className="inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 text-inherit underline"
+          className="inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 text-[color:var(--color-pipeline-ink-muted)] underline"
         >
           Learn more
           <ArrowRight />

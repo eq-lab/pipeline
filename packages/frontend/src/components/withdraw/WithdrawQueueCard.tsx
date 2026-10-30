@@ -40,6 +40,13 @@ export function WithdrawQueueCard({
                 <strong className="font-[var(--font-weight-emphasized)]">
                   {view.position}
                 </strong>
+                <span
+                  aria-hidden="true"
+                  data-testid="withdraw-queue-separator"
+                  className="text-[color:var(--color-pipeline-ink-muted)]"
+                >
+                  ·
+                </span>
                 <StatusChip
                   data-testid="withdraw-queue-status"
                   tone={view.tone}
