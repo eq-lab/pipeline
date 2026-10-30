@@ -16,10 +16,10 @@ const BASE: WithdrawQueueInfo = {
 };
 
 describe("WithdrawQueueCard", () => {
-  it("renders one white block with the info row and, with a request, a position row and a payable chip", () => {
+  it("renders one plain block with the info row and, with a request, a position row and a payable chip", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest />);
     const card = screen.getByTestId("withdraw-queue-card");
-    expect(card).toHaveAttribute("data-variant", "white");
+    expect(card).toHaveAttribute("data-variant", "plain");
     expect(within(card).getByTestId("withdraw-queue-info")).toBeInTheDocument();
     expect(
       within(card).getByTestId("withdraw-queue-learn-more"),

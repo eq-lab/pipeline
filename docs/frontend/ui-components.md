@@ -308,6 +308,9 @@ frames.
   subtle hairline border in `--color-pipeline-line`. Used for Get PLUSD (node
   `1497:94567`), Stake (node `1497:94707`), Earned, Recent activity, QnA cards, and the
   outer container that wraps the dashboard (node `1497:94565`). Figma frame `1497-94556`.
+- **`plain`** — same white surface (`--color-pipeline-surface`) and ink text as `white`, but
+  `border-transparent`: the 1 px border width is kept so layout does not shift, with no
+  visible edge. Used for the `/withdraw` queue block (#1759).
 - **`yellow`** — pale yellow promo surface (`--color-pipeline-promo`, #F8FCE9 — the solid
   Figma value from issue #606) with the same hairline border so it sits visually alongside
   the white surfaces. Matches the Connect Wallet promo card (node `1497:94688`) on the

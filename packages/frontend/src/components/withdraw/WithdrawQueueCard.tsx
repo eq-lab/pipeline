@@ -17,9 +17,10 @@ export function WithdrawQueueCard({
 
   return (
     <Card
-      padding="md"
+      variant="plain"
+      padding="none"
       data-testid="withdraw-queue-card"
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-8 px-4 pt-6 pb-4"
     >
       <WithdrawQueueInfoCard />
       {hasRequest && (
