@@ -1,6 +1,6 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { WithdrawQueueInfo } from "@/wallet";
 import { WithdrawQueueCard } from "./WithdrawQueueCard";
 
@@ -33,8 +33,31 @@ describe("WithdrawQueueCard", () => {
       screen.getByTestId("withdraw-queue-total-claimed"),
     ).toHaveTextContent("4,000.00 PLUSD");
     expect(screen.getByTestId("withdraw-queue-copy")).toHaveTextContent(
-      "Paid in order. Requests are paid first in, first out. A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.",
+      "Paid in order. Requests are paid first in, first out.",
     );
+  });
+
+  it("keeps the details collapsed by default and toggles them on click", () => {
+    render(<WithdrawQueueCard queue={BASE} hasRequest />);
+    const button = screen.getByTestId("withdraw-queue-learn-more");
+    const details = screen.getByTestId("withdraw-queue-details");
+    expect(button).toHaveTextContent("Learn more");
+    expect(button).toHaveAttribute("type", "button");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(button).toHaveAttribute("aria-controls", details.id);
+    expect(details).not.toBeVisible();
+
+    fireEvent.click(button);
+    expect(button).toHaveTextContent("Show less");
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(details).toBeVisible();
+    expect(details).toHaveTextContent(
+      "A request can be claimed once the withdrawal custody account holds enough USDC to cover it and every earlier unclaimed request. Until then the claim is refused as too early. Your PLUSD stays in the queue. Nothing is lost.",
+    );
+
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(details).not.toBeVisible();
   });
 
   it("renders Not yet when the contract says not payable", () => {

@@ -22,7 +22,7 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 **Then:**
 
-- A "Withdrawal queue" card sits under the steps card with the "Paid in order" copy
+- A "Withdrawal queue" card sits under the steps card showing "Paid in order. Requests are paid first in, first out." and a "Learn more" control that reveals the rest of the "Paid in order" copy on click (collapsed by default)
 - "Your position" equals `withdrawal_request_queued(request_id)` formatted as PLUSD, "Payable now" shows Yes / Not yet from `claimable(request_id)`
 - "Total queued" and "Total claimed" equal `total_queued()` and `total_claimed()`
 - With no request in flight the "Your position" row is absent

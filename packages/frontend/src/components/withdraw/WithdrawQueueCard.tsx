@@ -1,4 +1,5 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
+import { useId, useState } from "react";
 import { Card, InfoRow } from "@pipeline/ui";
 import type { WithdrawQueueInfo } from "@/wallet";
 import { useWithdrawQueueCard } from "./useWithdrawQueueCard";
@@ -16,6 +17,8 @@ export function WithdrawQueueCard({
   hasRequest,
 }: WithdrawQueueCardProps) {
   const view = useWithdrawQueueCard(queue, hasRequest);
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
 
   return (
     <div className="flex flex-col gap-4">
@@ -37,10 +40,28 @@ export function WithdrawQueueCard({
           </h2>
           <p className={bodyClasses} data-testid="withdraw-queue-copy">
             <strong>Paid in order.</strong> Requests are paid first in, first
-            out. A request can be claimed once the withdrawal custody account
-            holds enough USDC to cover it and every earlier unclaimed request.
-            Until then the claim is refused as too early. Your PLUSD stays in
-            the queue. Nothing is lost.
+            out.
+          </p>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailsId}
+            onClick={() => setOpen((v) => !v)}
+            className={`${bodyClasses} cursor-pointer self-start underline`}
+            data-testid="withdraw-queue-learn-more"
+          >
+            {open ? "Show less" : "Learn more"}
+          </button>
+          <p
+            id={detailsId}
+            hidden={!open}
+            className={bodyClasses}
+            data-testid="withdraw-queue-details"
+          >
+            A request can be claimed once the withdrawal custody account holds
+            enough USDC to cover it and every earlier unclaimed request. Until
+            then the claim is refused as too early. Your PLUSD stays in the
+            queue. Nothing is lost.
           </p>
           {view.position !== undefined && (
             <InfoRow
