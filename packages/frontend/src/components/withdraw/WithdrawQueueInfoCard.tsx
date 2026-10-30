@@ -56,10 +56,7 @@ export function WithdrawQueueInfoCard() {
         className="m-0 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink-muted)]"
       >
         <InfoIcon />
-        <strong className="font-[var(--font-weight-emphasized)]">
-          Paid in order.
-        </strong>{" "}
-        Requests are paid first in, first out.{" "}
+        Requests are paid in order.{" "}
         <button
           type="button"
           aria-haspopup="dialog"
