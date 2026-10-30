@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ModalDialog } from "@pipeline/ui";
 
 const bodyClasses =
-  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body-s)] leading-[var(--text-pipeline-body-s--line-height)] text-[color:var(--color-pipeline-ink)]";
+  "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body-s)] leading-[var(--text-pipeline-body-s--line-height)] text-[color:var(--color-pipeline-ink-muted)]";
 
 function ArrowRight() {
   return (

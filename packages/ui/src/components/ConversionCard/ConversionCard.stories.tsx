@@ -96,10 +96,10 @@ export const WithSelectedAmount: Story = {
 /*  With footer row                                                            */
 /* -------------------------------------------------------------------------- */
 
-export const WithAfterExchangeRate: Story = {
-  name: "With a row after Exchange rate",
+export const WithFooter: Story = {
+  name: "With footer row",
   args: {
-    afterExchangeRate: (
+    footer: (
       <span style={{ fontSize: 14 }}>
         <strong>Paid in order.</strong> Requests are paid first in, first out.
       </span>

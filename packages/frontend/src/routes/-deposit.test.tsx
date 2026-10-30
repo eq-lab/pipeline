@@ -3792,7 +3792,7 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     ).not.toBeInTheDocument();
   });
 
-  it("places the info row inside the conversion card between Exchange rate and Network fee, then the status block, above the steps card", async () => {
+  it("places the info row inside the conversion card as the last row after Network fee, then the status block, above the steps card", async () => {
     renderDeposit();
     const info = await screen.findByTestId("withdraw-queue-info");
     const outputCard = screen.getByTestId("conversion-output-card");
@@ -3803,8 +3803,8 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     const claim = await screen.findByRole("button", { name: "Claim" });
     const follows = (a: Element, b: Element) =>
       a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(follows(rate, info)).toBeTruthy();
-    expect(follows(info, fee)).toBeTruthy();
+    expect(follows(rate, fee)).toBeTruthy();
+    expect(follows(fee, info)).toBeTruthy();
     expect(outputCard.contains(card)).toBe(false);
     expect(follows(outputCard, card)).toBeTruthy();
     expect(follows(card, claim)).toBeTruthy();

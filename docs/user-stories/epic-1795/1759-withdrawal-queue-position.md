@@ -22,7 +22,7 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 **Then:**
 
-- A plain text info row (small body text) sits inside the conversion card directly under the "Exchange rate" row (above "Network fee"), aligned with its label, on every withdraw visit (and not on deposit), with or without a request: "**Paid in order.** Requests are paid first in, first out." followed inline by an underlined "Learn more" link with an arrow icon, on one row from tablet width up
+- A plain text info row (small body text) sits inside the conversion card as the last row, directly under the "Network fee" row, in the muted label colour and aligned with the row labels, on every withdraw visit (and not on deposit), with or without a request: "**Paid in order.** Requests are paid first in, first out." followed inline by an underlined "Learn more" link with an arrow icon, on one row from tablet width up
 - Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the link
 - Below the conversion card a compact status row appears only while the lender has a withdrawal request with a position; with no request nothing renders
 - The row is green with "Payable now" when `claimable(request_id)` is true, yellow with "Not payable yet" when false, and white with "—" while the read is pending or failed
