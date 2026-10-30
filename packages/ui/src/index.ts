@@ -47,8 +47,6 @@ export { QuickAmountChip } from "./components/QuickAmountChip/QuickAmountChip";
 export type { QuickAmountChipProps } from "./components/QuickAmountChip/QuickAmountChip";
 export { InfoRow } from "./components/InfoRow/InfoRow";
 export type { InfoRowProps } from "./components/InfoRow/InfoRow";
-export { StatusChip } from "./components/StatusChip";
-export type { StatusChipProps, StatusChipTone } from "./components/StatusChip";
 export { StepRow } from "./components/StepRow/StepRow";
 export type { StepRowProps } from "./components/StepRow/StepRow";
 export { TokenAmountDisplay } from "./components/TokenAmountDisplay/TokenAmountDisplay";

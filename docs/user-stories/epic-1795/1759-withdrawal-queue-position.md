@@ -25,9 +25,9 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 - On every withdraw visit (not on deposit) a white block sits below the conversion card (above the steps); with a withdrawal request a second white block follows it, separated by a thin 2px seam like the two token cards of the converter
 - The first block is one line of running text with a small info icon: "Requests are paid in order." (plain, no bold lead) followed directly by an underlined "Learn more" link with an arrow icon, in muted 16px text
 - Learn more opens a "Withdrawal queue" modal with the full "Paid in order" copy; the Close button, Escape and a backdrop click close it and focus returns to the link
-- With a withdrawal request, the second block shows two rows: "Your request" with the request's own PLUSD amount (as served by the API) in bolder text followed by a status chip, then "Queue position" with `withdrawal_request_queued(request_id)` formatted as PLUSD in bolder text followed by a status chip with the request status served by the API ("In queue" for a pending claim, "Claimed" once completed, otherwise the served status; no chip when unavailable); with no request only the first block shows
+- With a withdrawal request, the second block shows two plain rows with right-aligned values: "Your request" with the request's own PLUSD amount (as served by the API) and "Queue position" with `withdrawal_request_queued(request_id)` formatted as PLUSD; no chips; with no request only the first block shows
 - The Learn more modal adds: "Your queue position is the total PLUSD requested up to and including your request. The request is payable once total claimed plus the USDC in the withdrawal custody account reaches that number."
-- The chip reads "Payable now" (green, check icon) when `claimable(request_id)` is true, "Not payable yet" (pale yellow, clock icon) when false, and "—" (grey) while the read is pending or failed
+- The claim step hint reads "Payable now." when `claimable(request_id)` is true and nothing else blocks the claim (followed by "Pays {X} USDC." once the payout is known), and the custody-short copy when false; no hint while the read is pending or failed
 - The withdraw page does not show "Total queued" or "Total claimed"; they live on the Protocol Dashboard Panel C only
 - Step 2 shows "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed." while idle
 
@@ -42,8 +42,8 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 **Then:**
 
 - The hint reads "The withdrawal custody account is short. Claims for your position wait until it is funded."
-- Claim is disabled and "Payable now" shows "Not yet"
-- After the custody account is funded, within about 15 seconds "Payable now" shows Yes, the hint disappears and Claim is enabled
+- Claim is disabled
+- After the custody account is funded, within about 15 seconds the hint changes to "Payable now." and Claim is enabled
 - A claim that still fails with `Error(Contract, #2)` shows the same custody-short message (a race), not the generic error
 
 ---
@@ -87,20 +87,7 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 ---
 
-## Story 6 — Pending rows on Home and /transactions
-
-**Given** a wallet has a pending (not yet claimed) withdrawal
-
-**When** the lender opens Home and `/transactions` (Sell tab)
-
-**Then:**
-
-- The pending Sell row shows a third line "Position {pos} PLUSD · Payable now" or "Position {pos} PLUSD · Not payable yet", matching the contract reads
-- Completed Sell rows, Buy rows and Stake rows show no such line
-
----
-
-## Story 7 — Panel C totals match the contract
+## Story 6 — Panel C totals match the contract
 
 **Given** the Protocol Dashboard is open with a Stellar or EVM wallet connected
 
@@ -115,7 +102,7 @@ All checks use the real API and contracts on staging (Stellar testnet, then Hood
 
 ---
 
-## Story 8 — Recovery rate below 1
+## Story 7 — Recovery rate below 1
 
 Needs a testnet admin to call `set_rate` (below 1_000_000) or a dedicated deployment with a rate set.
 
@@ -133,11 +120,11 @@ Needs a testnet admin to call `set_rate` (below 1_000_000) or a dedicated deploy
 
 ---
 
-## Story 9 — EVM parity on Hoodi
+## Story 8 — EVM parity on Hoodi
 
 **Given** an EVM wallet is connected on Hoodi with a pending withdrawal
 
-**When** the lender repeats Stories 1, 2, 3, 6 and 7
+**When** the lender repeats Stories 1, 2, 3 and 6
 
 **Then:**
 

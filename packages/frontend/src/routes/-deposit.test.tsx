@@ -3777,16 +3777,10 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
     expect(screen.getByTestId("withdraw-queue-position")).toHaveTextContent(
       "Queue position25.00 PLUSD",
     );
-    expect(screen.getByTestId("withdraw-queue-status")).toHaveTextContent(
-      "Payable now",
-    );
-    expect(screen.getByTestId("withdraw-queue-status")).toHaveAttribute(
-      "data-tone",
-      "positive",
-    );
     expect(
-      screen.getByTestId("withdraw-queue-request-status"),
-    ).toHaveTextContent("In queue");
+      screen.queryByTestId("withdraw-queue-status"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Payable now.")).toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-queue-total-queued"),
     ).not.toBeInTheDocument();
@@ -3852,10 +3846,6 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
   it("disables Claim and shows the custody hint when the contract says not payable", async () => {
     queueMock.request.payableNow = false;
     renderDeposit();
-    expect(await screen.findByTestId("withdraw-queue-status")).toHaveAttribute(
-      "data-tone",
-      "pending",
-    );
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Claim" })).toBeDisabled();
     });
@@ -3864,6 +3854,7 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
         "The withdrawal custody account is short. Claims for your position wait until it is funded.",
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Payable now/)).not.toBeInTheDocument();
   });
 
   it("shows the recovery row and the payout hint when the rate is below 1", async () => {
@@ -3874,7 +3865,7 @@ describe("Deposit page — withdraw queue card, recovery rate and claim toast (#
       await screen.findByTestId("withdraw-recovery-rate"),
     ).toHaveTextContent("Recovery rate0.95");
     expect(
-      screen.getByText(/Pays 9\.50 USDC = 10\.00 PLUSD × 0\.95/),
+      screen.getByText(/Payable now\. Pays 9\.50 USDC = 10\.00 PLUSD × 0\.95/),
     ).toBeInTheDocument();
   });
 

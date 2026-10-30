@@ -106,7 +106,6 @@ export interface StepInfo {
 
 export interface WithdrawQueueInfo {
   requestAmount: bigint | undefined;
-  requestStatus: string | undefined;
   position: bigint | undefined;
   payableNow: boolean | undefined;
   rateRaw: bigint | undefined;
@@ -841,9 +840,6 @@ export function useDepositFlow(
   const withdrawQueue: WithdrawQueueInfo | undefined = isWithdraw
     ? {
         requestAmount: queueAmountRaw,
-        requestStatus: isStellar
-          ? stellarWithdrawActiveRequest?.status
-          : evmWithdrawActiveRequest?.status,
         position: queueRequestState.position,
         payableNow: queueRequestState.payableNow,
         rateRaw: queueTotals.rateRaw,

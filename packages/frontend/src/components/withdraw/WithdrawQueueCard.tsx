@@ -1,5 +1,5 @@
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
-import { Card, InfoRow, StatusChip } from "@pipeline/ui";
+import { Card, InfoRow } from "@pipeline/ui";
 import type { WithdrawQueueInfo } from "@/wallet";
 import { useWithdrawQueueCard } from "./useWithdrawQueueCard";
 import { WithdrawQueueInfoCard } from "./WithdrawQueueInfoCard";
@@ -35,53 +35,12 @@ export function WithdrawQueueCard({
           <InfoRow
             data-testid="withdraw-queue-request"
             label="Your request"
-            value={
-              <span className="inline-flex items-center gap-2">
-                <strong className="font-[var(--font-weight-emphasized)]">
-                  {view.request}
-                </strong>
-                <span
-                  aria-hidden="true"
-                  data-testid="withdraw-queue-separator"
-                  className="text-[color:var(--color-pipeline-ink-muted)]"
-                >
-                  ·
-                </span>
-                <StatusChip
-                  data-testid="withdraw-queue-status"
-                  tone={view.tone}
-                  label={view.status}
-                />
-              </span>
-            }
+            value={view.request}
           />
           <InfoRow
             data-testid="withdraw-queue-position"
             label="Queue position"
-            value={
-              <span className="inline-flex items-center gap-2">
-                <strong className="font-[var(--font-weight-emphasized)]">
-                  {view.position}
-                </strong>
-                {view.requestStatus && (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      data-testid="withdraw-queue-request-separator"
-                      className="text-[color:var(--color-pipeline-ink-muted)]"
-                    >
-                      ·
-                    </span>
-                    <StatusChip
-                      data-testid="withdraw-queue-request-status"
-                      tone={view.requestStatus.tone}
-                      icon={view.requestStatus.icon}
-                      label={view.requestStatus.label}
-                    />
-                  </>
-                )}
-              </span>
-            }
+            value={view.position}
           />
         </Card>
       )}

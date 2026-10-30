@@ -27,8 +27,14 @@ const CUSTODY =
   "The withdrawal custody account is short. Claims for your position wait until it is funded.";
 
 describe("selectWithdrawClaimHint", () => {
-  it("returns undefined when nothing applies", () => {
-    expect(selectWithdrawClaimHint(READY)).toBeUndefined();
+  it("payable with nothing blocking reads Payable now.", () => {
+    expect(selectWithdrawClaimHint(READY)).toBe("Payable now.");
+  });
+
+  it("payable with a known payout appends the payout line", () => {
+    expect(selectWithdrawClaimHint({ ...READY, payout: "1,250.00" })).toBe(
+      "Payable now. Pays 1,250.00 USDC.",
+    );
   });
 
   it("paused wins over every other state", () => {
@@ -71,15 +77,20 @@ describe("selectWithdrawClaimHint", () => {
     );
   });
 
-  it("unknown payable state does not show the custody copy", () => {
+  it("unknown payable state shows neither the custody nor the payable copy", () => {
     expect(
-      selectWithdrawClaimHint({ ...READY, payableNow: undefined }),
+      selectWithdrawClaimHint({
+        ...READY,
+        payableNow: undefined,
+        recoveryActive: true,
+        payout: "950.00",
+      }),
     ).toBeUndefined();
   });
 
   it("recovery active shows the payout formula, — until the payout resolves", () => {
     expect(selectWithdrawClaimHint({ ...READY, recoveryActive: true })).toBe(
-      "Pays — USDC = 1,000.00 PLUSD × 0.95",
+      "Payable now. Pays — USDC = 1,000.00 PLUSD × 0.95",
     );
     expect(
       selectWithdrawClaimHint({
@@ -87,7 +98,7 @@ describe("selectWithdrawClaimHint", () => {
         recoveryActive: true,
         payout: "950.00",
       }),
-    ).toBe("Pays 950.00 USDC = 1,000.00 PLUSD × 0.95");
+    ).toBe("Payable now. Pays 950.00 USDC = 1,000.00 PLUSD × 0.95");
   });
 
   it("a waiting reason wins over the recovery formula", () => {

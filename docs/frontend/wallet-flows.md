@@ -342,7 +342,7 @@ The mock layer is not used: values come from the contracts.
   `{ totalQueued, totalClaimed, rateRaw, rateDecimals, paused, plusdDecimals, usdcDecimals }` and
   `useWithdrawalRequestQueueState(kind, requestId)` returns `{ position, payableNow }`. Both call
   the Stellar and EVM hooks unconditionally and enable only the active kind (`kind` is
-  `useWalletView().kind` in the flow and rows, `useDashboardChain().kind` in Panel C).
+  `useWalletView().kind` in the flow, `useDashboardChain().kind` in Panel C).
   `isRecoveryRateActive(totals)` is true only when the rate is defined and below its unit
   (`1_000_000` on Stellar, `10^usdcDecimals` on EVM).
 - Cadence: position is immutable (`staleTime: Infinity`); `claimable` polls every 15 s; totals and

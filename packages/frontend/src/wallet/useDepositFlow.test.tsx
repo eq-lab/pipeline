@@ -832,6 +832,15 @@ describe("useDepositFlow — withdraw queue state (#1759)", () => {
     expect(result.current.step3.hint).toBeUndefined();
   });
 
+  it("shows Payable now under the claim step when the contract says payable", () => {
+    queue.claimable = true;
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    expect(result.current.step3.disabled).toBe(false);
+    expect(result.current.step3.hint).toBe("Payable now.");
+  });
+
   it("disables Claim and shows the custody-short hint when not payable", () => {
     queue.claimable = false;
     const { result } = renderHook(() =>
@@ -871,7 +880,6 @@ describe("useDepositFlow — withdraw queue state (#1759)", () => {
     const withdraw = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
     expect(withdraw.result.current.withdrawQueue).toMatchObject({
       requestAmount: 10_000_000_000n,
-      requestStatus: "PendingClaim",
       position: 25_000_000_000n,
       payableNow: true,
       recoveryActive: false,
@@ -887,12 +895,12 @@ describe("useDepositFlow — withdraw queue state (#1759)", () => {
     const pending = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
     expect(pending.result.current.withdrawQueue?.recoveryActive).toBe(true);
     expect(pending.result.current.step3.hint).toBe(
-      "Pays — USDC = 1,000.00 PLUSD × 0.95",
+      "Payable now. Pays — USDC = 1,000.00 PLUSD × 0.95",
     );
     queue.payout = 9_500_000_000n;
     const resolved = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
     expect(resolved.result.current.step3.hint).toBe(
-      "Pays 950.00 USDC = 1,000.00 PLUSD × 0.95",
+      "Payable now. Pays 950.00 USDC = 1,000.00 PLUSD × 0.95",
     );
   });
 });

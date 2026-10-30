@@ -6,7 +6,6 @@ import { WithdrawQueueCard } from "./WithdrawQueueCard";
 
 const BASE: WithdrawQueueInfo = {
   requestAmount: 12_500_000_000n,
-  requestStatus: "PendingClaim",
   position: 25_000_000_000n,
   payableNow: true,
   rateRaw: 1_000_000n,
@@ -18,7 +17,7 @@ const BASE: WithdrawQueueInfo = {
 };
 
 describe("WithdrawQueueCard", () => {
-  it("renders two plain blocks with a 2px seam, info then position, with a payable chip", () => {
+  it("renders two plain blocks with a 2px seam, info then position, with plain rows", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest />);
     const card = screen.getByTestId("withdraw-queue-card");
     expect(card).toHaveClass("flex", "flex-col", "gap-[2px]");
@@ -41,84 +40,24 @@ describe("WithdrawQueueCard", () => {
     ).toBeInTheDocument();
     const row = within(card).getByTestId("withdraw-queue-request");
     expect(row).toHaveTextContent("Your request");
-    const amount = within(row).getByText("1,250.00 PLUSD");
-    expect(amount.tagName).toBe("STRONG");
-    expect(amount).toHaveClass("font-[var(--font-weight-emphasized)]");
-    const chip = within(row).getByTestId("withdraw-queue-status");
-    const dot = within(row).getByTestId("withdraw-queue-separator");
-    expect(dot).toHaveTextContent("·");
-    expect(dot).toHaveAttribute("aria-hidden", "true");
-    expect(dot).toHaveClass("text-[color:var(--color-pipeline-ink-muted)]");
-    expect(amount.nextElementSibling).toBe(dot);
-    expect(dot.nextElementSibling).toBe(chip);
+    expect(row).toHaveTextContent("Your request1,250.00 PLUSD");
+    expect(row.querySelector("strong")).toBeNull();
     const position = within(card).getByTestId("withdraw-queue-position");
-    expect(position).toHaveTextContent("Queue position");
-    const posValue = within(position).getByText("2,500.00 PLUSD");
-    expect(posValue.tagName).toBe("STRONG");
-    const reqChip = within(position).getByTestId(
-      "withdraw-queue-request-status",
-    );
-    expect(reqChip).toHaveTextContent("In queue");
-    expect(reqChip.previousElementSibling).toBe(
-      within(position).getByTestId("withdraw-queue-request-separator"),
-    );
+    expect(position).toHaveTextContent("Queue position2,500.00 PLUSD");
+    expect(position.querySelector("strong")).toBeNull();
     expect(
-      position.querySelector('[data-testid="withdraw-queue-status"]'),
-    ).toBeNull();
+      within(card).queryByTestId("withdraw-queue-status"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card).queryByTestId("withdraw-queue-request-status"),
+    ).not.toBeInTheDocument();
     expect(row.compareDocumentPosition(position)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(chip).toHaveAttribute("data-tone", "positive");
-    expect(chip).toHaveTextContent("Payable now");
-    expect(chip.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it.each([
-    ["PendingClaim", "In queue", "neutral"],
-    ["Completed", "Claimed", "positive"],
-    ["PendingVerification", "PendingVerification", "neutral"],
-    ["VerificationFailed", "VerificationFailed", "neutral"],
-  ])("maps served status %s to the %s chip", (status, text, tone) => {
-    render(
-      <WithdrawQueueCard
-        queue={{ ...BASE, requestStatus: status }}
-        hasRequest
-      />,
-    );
-    const chip = screen.getByTestId("withdraw-queue-request-status");
-    expect(chip).toHaveTextContent(text);
-    expect(chip).toHaveAttribute("data-tone", tone);
-  });
-
-  it("omits the request status chip when the status is unavailable", () => {
-    render(
-      <WithdrawQueueCard
-        queue={{ ...BASE, requestStatus: undefined }}
-        hasRequest
-      />,
-    );
-    expect(
-      screen.queryByTestId("withdraw-queue-request-status"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("withdraw-queue-request-separator"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders the pending chip when the contract says not payable", () => {
-    render(
-      <WithdrawQueueCard queue={{ ...BASE, payableNow: false }} hasRequest />,
-    );
-    const chip = screen.getByTestId("withdraw-queue-status");
-    expect(chip).toHaveAttribute("data-tone", "pending");
-    expect(chip).toHaveTextContent("Not payable yet");
-  });
-
-  it("renders the neutral chip and — while the reads are unavailable", () => {
+  it("renders — in both rows while the reads are unavailable", () => {
     render(<WithdrawQueueCard queue={undefined} hasRequest />);
-    const chip = screen.getByTestId("withdraw-queue-status");
-    expect(chip).toHaveAttribute("data-tone", "neutral");
-    expect(chip).toHaveTextContent("—");
     expect(screen.getByTestId("withdraw-queue-request")).toHaveTextContent(
       "Your request—",
     );
@@ -127,7 +66,7 @@ describe("WithdrawQueueCard", () => {
     );
   });
 
-  it("keeps one info block but renders no position block, row or chip without a request", () => {
+  it("keeps one info block but renders no position block or rows without a request", () => {
     render(<WithdrawQueueCard queue={BASE} hasRequest={false} />);
     expect(screen.getByTestId("withdraw-queue-card").children).toHaveLength(1);
     expect(screen.getByTestId("withdraw-queue-info-block")).toHaveAttribute(
@@ -143,9 +82,6 @@ describe("WithdrawQueueCard", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-queue-position"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId("withdraw-queue-status"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("withdraw-queue-total-queued"),

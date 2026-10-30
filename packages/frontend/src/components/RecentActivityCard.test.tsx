@@ -31,13 +31,6 @@ const mockUseStellarWallet = vi.fn(() => ({
 }));
 const mockUseWalletView = vi.fn(() => ({ kind: "evm" as "evm" | "stellar" }));
 
-const mockQueueState = vi.fn<
-  (
-    kind: string,
-    id: bigint | undefined,
-  ) => { position: bigint | undefined; payableNow: boolean | undefined }
->(() => ({ position: undefined, payableNow: undefined }));
-
 vi.mock("@/wallet", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/wallet")>();
   return {
@@ -46,8 +39,6 @@ vi.mock("@/wallet", async (importOriginal) => {
     useStellarWallet: () => mockUseStellarWallet(),
     useWalletView: () => mockUseWalletView(),
     useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
-    useWithdrawalRequestQueueState: (kind: string, id: bigint | undefined) =>
-      mockQueueState(kind, id),
   };
 });
 
@@ -218,42 +209,6 @@ describe("RecentActivityCard — connected + 3 rows", () => {
     renderCard();
     expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(1);
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
-  });
-
-  it("pending Withdraw row shows the queue position and payable-now meta line", () => {
-    mockQueueState.mockReturnValue({
-      position: 2_500_000_000n,
-      payableNow: true,
-    });
-    renderCard();
-    expect(mockQueueState).toHaveBeenCalledWith("evm", 2n);
-    expect(screen.getAllByTestId("withdraw-request-queue-meta")).toHaveLength(
-      1,
-    );
-    expect(screen.getByTestId("withdraw-request-queue-meta")).toHaveTextContent(
-      "Position 2,500.00 PLUSD · Payable now",
-    );
-  });
-
-  it("pending Withdraw meta shows 'Not payable yet' and — while unavailable", () => {
-    mockQueueState.mockReturnValue({ position: undefined, payableNow: false });
-    renderCard();
-    expect(screen.getByTestId("withdraw-request-queue-meta")).toHaveTextContent(
-      "Position — · Not payable yet",
-    );
-  });
-
-  it("Deposit and Completed rows have no queue meta", () => {
-    mockUseRequests.mockReturnValue({
-      data: { requests: [FIXTURE_3.requests[0]!] },
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-    });
-    renderCard();
-    expect(
-      screen.queryByTestId("withdraw-request-queue-meta"),
-    ).not.toBeInTheDocument();
   });
 
   it("renders the Stake row amounts", () => {

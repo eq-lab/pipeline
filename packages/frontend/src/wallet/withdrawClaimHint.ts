@@ -9,6 +9,7 @@ export const WITHDRAW_HINT_VOUCHER_EXPIRED =
 export const WITHDRAW_HINT_NO_VOUCHER =
   "No voucher yet. Screening is still running, or the request did not screen clean.";
 export const WITHDRAW_HINT_CUSTODY_SHORT = WITHDRAW_CUSTODY_SHORT_MESSAGE;
+export const WITHDRAW_HINT_PAYABLE = "Payable now.";
 export const WITHDRAW_REQUEST_HINT =
   "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed.";
 
@@ -37,8 +38,12 @@ export function selectWithdrawClaimHint(
     return WITHDRAW_HINT_NO_VOUCHER;
   }
   if (input.payableNow === false) return WITHDRAW_HINT_CUSTODY_SHORT;
+  if (input.payableNow !== true) return undefined;
   if (input.recoveryActive) {
-    return `Pays ${input.payout ?? "—"} USDC = ${input.amount ?? "—"} PLUSD × ${input.rate ?? "—"}`;
+    return `${WITHDRAW_HINT_PAYABLE} Pays ${input.payout ?? "—"} USDC = ${input.amount ?? "—"} PLUSD × ${input.rate ?? "—"}`;
   }
-  return undefined;
+  if (input.payout !== undefined) {
+    return `${WITHDRAW_HINT_PAYABLE} Pays ${input.payout} USDC.`;
+  }
+  return WITHDRAW_HINT_PAYABLE;
 }

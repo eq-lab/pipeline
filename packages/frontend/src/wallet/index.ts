@@ -221,7 +221,6 @@ export type {
 // ── Withdrawal queue reads (position, payable now, totals, recovery rate) ─────
 export {
   useWithdrawalQueueTotals,
-  useWithdrawalRequestQueueState,
   isRecoveryRateActive,
 } from "./useWithdrawalQueueReads";
 export type {
