@@ -4,13 +4,15 @@ import { Link } from "@tanstack/react-router";
 import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 import {
+  SAC_DECIMALS,
   useEvmStakeDecimals,
   useEvmWallet,
   useStellarWallet,
   useWalletView,
 } from "@/wallet";
-import { useRequests } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
+import { renderWireOutRow } from "@/components/activity/renderWireOutRow";
+import { useActivityFeed } from "@/components/activity/useActivityFeed";
 
 export interface RecentActivityCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -37,9 +39,11 @@ export const RecentActivityCard = React.forwardRef<
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
-  const { data, isLoading, error } = useRequests();
-  const requests = data?.requests ?? [];
-  const showList = isConnected && !isLoading && !error && requests.length > 0;
+  const { items, wireOuts, requests } = useActivityFeed({ limit: MAX_ROWS });
+  const { isLoading, error } = requests;
+  const showList = isConnected && !isLoading && !error && items.length > 0;
+  const wireOutDecimals =
+    kind === "stellar" ? SAC_DECIMALS : evmStakeDecimals?.plusd;
 
   const composed = [
     "flex flex-col gap-4",
@@ -85,15 +89,23 @@ export const RecentActivityCard = React.forwardRef<
         {showList ? (
           <>
             <ul className="flex flex-col" data-testid="home-activity-list">
-              {requests.slice(0, MAX_ROWS).map((item, i) => (
+              {items.map((entry, i) => (
                 <li key={i} data-testid={`home-activity-row-${i}`}>
-                  {renderRequestRow(
-                    item,
-                    kind,
-                    `home-activity-row-inner-${i}`,
-                    "pb-4",
-                    evmStakeDecimals,
-                  )}
+                  {entry.kind === "request"
+                    ? renderRequestRow(
+                        entry.item,
+                        kind,
+                        `home-activity-row-inner-${i}`,
+                        "pb-4",
+                        evmStakeDecimals,
+                      )
+                    : renderWireOutRow({
+                        timestamp: entry.timestamp,
+                        read: wireOuts[entry.id],
+                        decimals: wireOutDecimals,
+                        testId: `home-activity-row-inner-${i}`,
+                        className: "pb-4",
+                      })}
                 </li>
               ))}
             </ul>

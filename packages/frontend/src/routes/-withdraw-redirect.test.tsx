@@ -63,6 +63,12 @@ describe("/withdraw route — redirect contract", () => {
     expect(r.options.to).toBe("/deposit");
     expect(r.options.replace).toBe(true);
     expect(r.options.search.direction).toBe("withdraw");
+    expect(r.options.search.tab).toBe("withdraw");
+  });
+
+  it("keeps an explicit tab from /withdraw?tab=bank", () => {
+    const r = captureRedirect({ tab: "bank" });
+    expect(r.options.search.tab).toBe("bank");
   });
 
   it("preserves other search params when redirecting from /withdraw?foo=bar", () => {
