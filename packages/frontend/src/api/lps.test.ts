@@ -3,6 +3,7 @@ import { saveSession } from "@/auth/session";
 import {
   deleteMyDocument,
   getMyLp,
+  linkMyAddress,
   upsertMyLp,
   uploadMyDocuments,
 } from "./lps";
@@ -14,6 +15,28 @@ beforeEach(() => {
 });
 
 describe("LP API client", () => {
+  it("posts the connected Stellar address to link-address with bearer auth", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 1, stellar_address: "GABC" }), {
+        status: 200,
+      }),
+    );
+    const lp = await linkMyAddress("GABC");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/v1\/lps\/me\/link-address$/,
+    );
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Authorization: "Bearer jwt",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      stellar_address: "GABC",
+    });
+    expect(lp.stellar_address).toBe("GABC");
+  });
+
   it("authenticates the read and sends a full JSON profile", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

@@ -70,7 +70,7 @@ The exemption from the freeze is never an exemption from the account gate. `Fail
 
 Authorization is the only control. The endpoint is keyed on the caller's session, so only the account owning an LP can set that LP's address. Pipeline does not require the LP to prove it controls the address it names — an open gap, because a wrong or hostile entry both misdirects settlement and, through the uniqueness constraint, permanently denies that address to the LP that really holds it.
 
-Only a Stellar address is modelled. An LP has no EVM settlement address.
+Only a Stellar address is modelled. An LP has no EVM settlement address (chain-aware settlement address: backend issue #1816, epic #1494). The LP app names the connected Stellar wallet automatically, with no free-text entry (#1813); that leaves the proof-of-control gap above open.
 
 ---
 
