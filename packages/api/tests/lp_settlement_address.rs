@@ -16,7 +16,7 @@ use pipeline_api::error::ApiError;
 use pipeline_api::routes::auth::wallet::{challenge_message, CHALLENGE_TTL_SECS};
 use pipeline_api::routes::lp_settlement_address::{
     issue_link_challenge, link_challenge_message, link_refusal, resolve_link_target, verify_link,
-    LinkTarget, LpSettlementAddressDoc, LINK_PROOF_FAILED,
+    LinkTarget, LpSettlementAddressDoc, LINK_CHALLENGE_TTL_SECS, LINK_PROOF_FAILED,
 };
 use pipeline_api::routes::{lp_settlement_address, lps};
 use pipeline_api::AppState;
@@ -147,6 +147,7 @@ struct FakeState {
     link_outcome: LinkOutcome,
     links: Vec<SettlementLink>,
     issue_calls: usize,
+    last_ttl: Option<i32>,
 }
 
 struct FakeLinkStore {
@@ -164,6 +165,7 @@ impl FakeLinkStore {
                 link_outcome: LinkOutcome::Linked,
                 links: Vec::new(),
                 issue_calls: 0,
+                last_ttl: None,
             }),
         }
     }
@@ -190,10 +192,11 @@ impl SettlementLinkStore for FakeLinkStore {
         address: &str,
         signer_address: &str,
         fresh_nonce: &str,
-        _ttl_secs: i32,
+        ttl_secs: i32,
     ) -> Result<(String, DateTime<Utc>), sqlx::Error> {
         self.with(|s| {
             s.issue_calls += 1;
+            s.last_ttl = Some(ttl_secs);
             let reuse = s
                 .challenge
                 .as_ref()
@@ -203,7 +206,7 @@ impl SettlementLinkStore for FakeLinkStore {
                 address: address.to_owned(),
                 signer_address: signer_address.to_owned(),
                 nonce: fresh_nonce.to_owned(),
-                expires_at: t(CHALLENGE_TTL_SECS),
+                expires_at: t(i64::from(ttl_secs)),
             });
             s.challenge = Some(stored.clone());
             Ok((stored.nonce, stored.expires_at))
@@ -322,26 +325,34 @@ fn message(expires_at: DateTime<Utc>) -> String {
 
 #[test]
 fn the_message_is_byte_exact_to_the_template() {
-    let expected = "app.pipeline.one wants you to link a settlement address to your Pipeline LP account.\n\
-\n\
-Settlement address: GADDR\n\
-Signed by: GSIGNER\n\
-\n\
-Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas.\n\
-\n\
-LP ID: 42\n\
-Chain ID: 99000001\n\
-Nonce: n-1\n\
-Issued At: 2027-01-15T08:00:00Z\n\
-Expiration Time: 2027-01-15T08:05:00Z";
-    assert_eq!(message(t(300)), expected);
+    let expected = "app.pipeline.one wants you to link a settlement address to your Pipeline LP account. Settlement address: GADDR Signed by: GSIGNER Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas. LP ID: 42 Chain ID: 99000001 Nonce: n-1 Issued At: 2027-01-15T08:00:00Z Expiration Time: 2027-01-15T09:00:00Z";
+    assert_eq!(message(t(3600)), expected);
 }
 
 #[test]
-fn issued_at_is_expiry_minus_the_ttl_and_the_message_is_deterministic() {
+fn issued_at_is_expiry_minus_one_hour_and_the_message_is_deterministic() {
+    assert_eq!(LINK_CHALLENGE_TTL_SECS, 3600);
     assert_eq!(CHALLENGE_TTL_SECS, 300);
-    assert!(message(t(900)).contains("Issued At: 2027-01-15T08:10:00Z"));
-    assert_eq!(message(t(300)), message(t(300)));
+    let m = message(t(4200));
+    assert!(m.contains("Issued At: 2027-01-15T08:10:00Z"));
+    assert!(m.contains("Expiration Time: 2027-01-15T09:10:00Z"));
+    assert_eq!(message(t(3600)), message(t(3600)));
+}
+
+#[test]
+fn the_message_is_one_line_without_double_spaces() {
+    let g = g_of(&stellar_key(7));
+    let evm = evm_addr(&evm_signer("11"));
+    let nonce = Uuid::new_v4().to_string();
+    for (chain_id, address, signer) in [
+        (STELLAR.chain_id, g.as_str(), g.as_str()),
+        (EVM.chain_id, evm.as_str(), evm.as_str()),
+    ] {
+        let m = link_challenge_message(DOMAIN, LP_ID, chain_id, address, signer, &nonce, t(5400));
+        assert!(!m.contains('\n'), "{m}");
+        assert!(!m.contains('\r'), "{m}");
+        assert!(!m.contains("  "), "{m}");
+    }
 }
 
 #[test]
@@ -521,8 +532,17 @@ async fn issuing_returns_the_stored_nonce_and_the_rebuilt_message() {
     assert_eq!(response.nonce, "n-1");
     assert_eq!(
         response.message,
-        link_challenge_message(DOMAIN, LP_ID, STELLAR.chain_id, &g, &g, "n-1", t(300))
+        link_challenge_message(
+            DOMAIN,
+            LP_ID,
+            STELLAR.chain_id,
+            &g,
+            &g,
+            "n-1",
+            t(LINK_CHALLENGE_TTL_SECS)
+        )
     );
+    assert_eq!(store.with(|s| s.last_ttl), Some(3600));
 }
 
 #[tokio::test]
@@ -814,6 +834,7 @@ async fn a_stellar_account_links_with_its_own_signature() {
     let g = g_of(&key);
     let tgt = target(ChainKind::Stellar, &g, None);
     let msg = issue(&store, STELLAR, &tgt).await;
+    assert!(!msg.contains('\n'));
     let sig = hex::encode(sep53(&key, &msg));
     verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
@@ -846,6 +867,7 @@ async fn an_evm_address_links_with_the_stored_lowercase_address_and_signer() {
     let checksummed = format!("{}", signer.address());
     let tgt = target(ChainKind::Evm, &checksummed, None);
     let msg = issue(&store, EVM, &tgt).await;
+    assert!(!msg.contains('\n'));
     let sig = evm_sig(&signer, &msg);
     verify_link(&store, &open_lp(), EVM, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
@@ -1028,6 +1050,9 @@ fn the_challenge_is_a_get_with_required_chain_and_address_and_optional_signer() 
         .as_str()
         .unwrap();
     assert!(schema.ends_with("/ChallengeResponse"));
+    let ok = op["responses"]["200"]["description"].as_str().unwrap();
+    assert!(ok.contains("1 hour"));
+    assert!(ok.contains("exactly as returned"));
     assert_no_fixed_wording(op);
 }
 

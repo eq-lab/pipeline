@@ -21,7 +21,7 @@ use crate::auth::{AuthClaims, SecurityAddon};
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
-use crate::routes::auth::wallet::{challenge_domain, ChallengeResponse, CHALLENGE_TTL_SECS};
+use crate::routes::auth::wallet::{challenge_domain, ChallengeResponse};
 use crate::routes::common::{require_chain_id, RequiredChain};
 use crate::routes::lps::{my_lp, with_documents, LpResponse};
 use crate::AppState;
@@ -65,6 +65,7 @@ pub fn router() -> Router<Arc<AppState>> {
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 pub const LINK_PROOF_FAILED: &str = "settlement address proof failed";
+pub const LINK_CHALLENGE_TTL_SECS: i64 = 60 * 60;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkTarget {
@@ -130,19 +131,16 @@ pub fn link_challenge_message(
     nonce: &str,
     expires_at: DateTime<Utc>,
 ) -> String {
-    let issued_at = expires_at - Duration::seconds(CHALLENGE_TTL_SECS);
+    let issued_at = expires_at - Duration::seconds(LINK_CHALLENGE_TTL_SECS);
     format!(
-        "{domain} wants you to link a settlement address to your Pipeline LP account.\n\
-         \n\
-         Settlement address: {address}\n\
-         Signed by: {signer_address}\n\
-         \n\
-         Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas.\n\
-         \n\
-         LP ID: {lp_id}\n\
-         Chain ID: {chain_id}\n\
-         Nonce: {nonce}\n\
-         Issued At: {issued}\n\
+        "{domain} wants you to link a settlement address to your Pipeline LP account. \
+         Settlement address: {address} \
+         Signed by: {signer_address} \
+         Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas. \
+         LP ID: {lp_id} \
+         Chain ID: {chain_id} \
+         Nonce: {nonce} \
+         Issued At: {issued} \
          Expiration Time: {expires}",
         issued = iso_utc(&issued_at),
         expires = iso_utc(&expires_at),
@@ -208,7 +206,7 @@ pub async fn issue_link_challenge<S: SettlementLinkStore + ?Sized>(
             &target.address,
             &target.signer_address,
             &fresh_nonce,
-            CHALLENGE_TTL_SECS as i32,
+            LINK_CHALLENGE_TTL_SECS as i32,
         )
         .await?;
     let message = link_challenge_message(
@@ -293,7 +291,7 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
     path = "/v1/lps/me/link-address/challenge",
     params(RequiredChain, LinkChallengeQuery),
     responses(
-        (status = 200, description = "Challenge to sign with the signer wallet", body = ChallengeResponse),
+        (status = 200, description = "Challenge to sign with the signer wallet: a single-line message, valid for 1 hour; sign the message string exactly as returned", body = ChallengeResponse),
         (status = 400, description = "Missing or unknown chain_id, or a malformed address or signer_address"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
@@ -334,7 +332,7 @@ async fn link_challenge(
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
         (status = 409, description = "The LP was refused at KYB, or the address belongs to another LP"),
-        (status = 422, description = "Proof failed: bad signature, unknown/expired/consumed challenge, or address/signer not matching the challenge (one shared body)"),
+        (status = 422, description = "Proof failed: bad signature, unknown/expired (1 hour)/consumed challenge, or address/signer not matching the challenge (one shared body)"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
