@@ -1338,7 +1338,7 @@ fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
 /// The caller's LP, or `404`. Replaces the old `lp_owner_guard`: with the owner
 /// routes keyed on `/me`, ownership is not something to check after the fact —
 /// the lookup is by `owner_account_id`, so a caller can only ever reach its own.
-async fn my_lp(claims: &Claims, state: &AppState) -> Result<LpRow, ApiError> {
+pub(crate) async fn my_lp(claims: &Claims, state: &AppState) -> Result<LpRow, ApiError> {
     state
         .lp_repo
         .find_by_owner_account_id(claims.account_id)

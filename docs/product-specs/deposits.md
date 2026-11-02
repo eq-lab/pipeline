@@ -57,6 +57,36 @@ Per-chain on-chain state lives in the contract (`requests[requestId]`, `nextRequ
 
 ---
 
+## LP Funding Details
+
+`GET /v1/lps/me/payment-details` (LP session; `LpBankDeposits` group, Issue #1815, which settles #1311 and #1700) answers `200 OK` with the trust account's receiving bank details and a **newly issued** payment reference for the LP to quote on the wire:
+
+```json
+{
+  "company_name": "",
+  "bank_name": "",
+  "bank_address": "",
+  "account_number": "",
+  "iban": "",
+  "swift_bic_code": "",
+  "payment_details": "PL-7K3M-Q9TX-H2CD"
+}
+```
+
+`HEAD` on the same path answers `405 Method Not Allowed` with `Allow: GET` and never touches the DB, so a probe or prefetch cannot mint a reference (axum would otherwise serve `HEAD` through the `GET` handler).
+
+By user decision this is a `GET` with a side effect: every successful call issues and stores a new reference, and nothing is reused. The response carries `Cache-Control: no-store`, so no HTTP cache serves one LP's reference again. The client calls it exactly once each time it shows the funding details (one modal open), with automatic refetching and retries off (`staleTime: Infinity`, and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off), so the history holds only references that were actually shown. Client wiring is #1817.
+
+- **Bank details.** One system-wide record (`system_configuration`, type `system_bank_details`), seeded empty and set by hand in the DB. There is no write endpoint. The DB enforces that the record is an object with all six keys as strings. Values are served verbatim, and an empty field is served as `""`, which the client renders as `—`.
+- **Access.** The LP needs a linked settlement address (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address) **and** `kyb_status = Passed`. Otherwise the response is `409`, naming every unmet precondition, and no reference is issued. No LP for the caller (including a trustee token) is `404`. A missing or malformed bank-details record is `500`, and no reference is issued. `Passed` is terminal and the address is fixed once `Passed` holds one, so the gate cannot stop being true between the check and the insert.
+- **Reference.** Every successful call inserts a row into `lp_requested_bank_details` (`lp_id`, `payment_details`, `created_at`). The full history is kept, earlier references stay valid and still belong to that LP, and `lp_id` is not unique. The format is `PL-XXXX-XXXX-XXXX`: a fixed `PL-` prefix and 12 symbols of the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no `I`, `L`, `O`, `U`), 60 bits from the OS CSPRNG, 17 characters. It is random, not derived from the LP id, so it reveals neither the LP nor how many references were requested. It fits the 18-character UK Faster Payments / BACS reference field and a single 35-character SWIFT field-70 line, and the charset is a subset of `[A-Z0-9-]`. It is unique across every reference ever issued (`UNIQUE` plus a `^[A-Z0-9-]{1,140}$` CHECK); on a collision the handler draws again, up to 3 attempts, then answers `500`.
+- **Wire matching (follow-up).** Attributing an arriving wire finds the LP by **any** reference ever issued to it, comparing with `-` and whitespace removed, since a bank may strip the hyphens. Not part of #1815.
+- **Not the per-wire reference.** The issued reference is **not** `lp_bank_deposits.payment_reference`, which is the bank's per-wire reference, unique per deposit and hashed into the minter's single-use `ref_hash`. An LP may quote one issued reference on more than one wire.
+- **Deploy prerequisite.** The seeded `system_bank_details` row is all empty strings, and an eligible LP is still issued a reference against blank details. There is no deploy checklist or runbook in `docs/`, so this is recorded here: fill `system_configuration.system_bank_details` with the real trust-account details before #1817 (Funding details modal) ships.
+- **Known gap.** There is no rate limit or per-LP cap on how many references an eligible LP can request (TD-159).
+
+---
+
 ## Stellar PLUSD Mint Leg
 
 The Stellar leg has no `DepositManager`: an LP wires fiat/USDC to the bank, the Trustee records it as an LP bank deposit (`POST /v1/lps/{id}/bank-deposits`, #1413), and then mints the PLUSD leg from the Trustee dashboard (#1449) by invoking the yield minter **directly** — not through the executor proxy the LoanRegistry writes use, because the minter self-checks `caller.require_auth()` plus the access manager's `can_call`: `record_wire_in(caller: Address, receiver: Address, amount: i128, value_date: u64, ref_hash: BytesN<32>) -> u32`, five positional args in that order. `caller` is the Trustee's connected wallet and must hold `CASH_REPORTER` with execution delay 0 (the method requires `immediate`). `amount` is the served plain-dollar string scaled to the contract's 7 decimals; `value_date` is `occurred_at` in Unix seconds; `ref_hash` is the served `sha256(payment_reference)` and is single-use on-chain — the zero hash is refused (`MissingRef`) and a replay traps (`RefHashSeen`). `receiver` is the LP's `stellar_address` when `address_linked_at` is non-null, otherwise the dedicated Pipeline capital wallet (`VITE_STELLAR_CAPITAL_WALLET_ID`, amended 2026-10-09) — not the USDC custody account (`VITE_STELLAR_USDC_CUSTODY_ID`), which is the Deposit Manager's custody account for LP USDC deposits and must hold nothing else; the receiver must hold an authorized PLUSD trustline on the current issuer. The PLUSD issuer is auth-required, so the capital wallet and any LP settlement wallet need an authorized trustline before minting; without one `record_wire_in` traps with PLUSD `Error(Contract, #13)` ("trustline entry is missing"), which the Trustee UI reads as "The receiver has no authorized PLUSD trustline." Either way the mint is a `Direct` wire that stakes shares to the receiver. Passing the minter's own address would escrow instead (`assign_wire_in` / `return_wire_in`) — out of scope here. Per-tx and per-window mint budgets still apply. The minter emits `WireIn`, the indexer records it (#1416) and the relayer joins it on `ref_hash` to flip `is_minted`, which stays the single source of truth for the minted state — no client-side flag. See [trustee-flows.md](../frontend/trustee-flows.md) for the Trustee UI states.

@@ -72,6 +72,11 @@ fn make_test_state() -> AppState {
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
         lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
         lp_bank_deposit_repo: shared::lp_bank_deposit_repo::LpBankDepositRepo::new(pool.clone()),
+        system_configuration_repo: shared::system_configuration_repo::SystemConfigurationRepo::new(
+            pool.clone(),
+        ),
+        lp_requested_bank_details_repo:
+            shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo::new(pool.clone()),
         kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool.clone()),
         object_store: shared::object_store::ObjectStore::new(
             "test-key",

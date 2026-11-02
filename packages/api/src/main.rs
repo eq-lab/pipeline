@@ -23,12 +23,14 @@ use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
+use shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo;
 use shared::metadata_fetcher::MetadataFetcher;
 use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use shared::system_configuration_repo::SystemConfigurationRepo;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -69,6 +71,8 @@ async fn main() -> anyhow::Result<()> {
     let lp_repo = LpRepo::new(pool.clone());
     let lp_ledger_repo = LpLedgerRepo::new(pool.clone());
     let lp_bank_deposit_repo = LpBankDepositRepo::new(pool.clone());
+    let system_configuration_repo = SystemConfigurationRepo::new(pool.clone());
+    let lp_requested_bank_details_repo = LpRequestedBankDetailsRepo::new(pool.clone());
     let kyb_document_repo = KybDocumentRepo::new(pool.clone());
 
     // Required, not optional: an API that booted without storage would accept
@@ -167,6 +171,8 @@ async fn main() -> anyhow::Result<()> {
         lp_repo,
         lp_ledger_repo,
         lp_bank_deposit_repo,
+        system_configuration_repo,
+        lp_requested_bank_details_repo,
         kyb_document_repo,
         object_store,
         kyb_limits,
