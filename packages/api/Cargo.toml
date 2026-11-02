@@ -34,7 +34,6 @@ utoipa            = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 jsonwebtoken      = { workspace = true }
 uuid              = { workspace = true }
-rand              = "0.8"
 
 [dev-dependencies]
 async-trait       = { workspace = true }

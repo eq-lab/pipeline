@@ -6,15 +6,14 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, on, MethodFilter};
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use rand::rngs::OsRng;
-use rand::RngCore;
+use argon2::password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use shared::lp_bank_deposit_repo::{LpBankDepositRepo, LpBankDepositRow};
 use shared::lp_ledger_repo::LpLedgerRepo;
@@ -132,7 +131,10 @@ pub struct LpBankDepositsDoc;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/lps/me/payment-details", get(get_my_payment_details))
+        .route(
+            "/lps/me/payment-details",
+            on(MethodFilter::GET, get_my_payment_details).head(payment_details_head_not_allowed),
+        )
         .route(
             "/lps/{id}/bank-deposits",
             get(list_bank_deposits).post(record_bank_deposit),
@@ -264,6 +266,10 @@ async fn get_my_payment_details(
     )
     .await?;
     Ok(payment_details_reply(body))
+}
+
+async fn payment_details_head_not_allowed() -> Response {
+    (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET")]).into_response()
 }
 
 fn require_trustee(claims: &Claims) -> Result<(), ApiError> {

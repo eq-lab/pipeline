@@ -494,3 +494,8 @@ rule forbids DB-backed tests.
    - **Suggested fix:** a per-LP rate limit, or reusing the most recent reference within a short window,
      if product agrees.
 6. When done, move this plan to `docs/exec-plans/completed/`. The manager or coder handles that at completion per `docs/PLANS.md`.
+
+## Post-review notes (2026-11-02)
+
+- The `rand = "0.8"` dependency described above was dropped. The generator uses `argon2::password_hash::rand_core::OsRng` like `otp.rs` and `password_reset.rs`; output is unchanged (low 60 bits of a `u64`).
+- `HEAD /lps/me/payment-details` answers `405` with `Allow: GET` (an explicit handler), so it cannot issue a reference.

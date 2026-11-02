@@ -73,6 +73,8 @@ Per-chain on-chain state lives in the contract (`requests[requestId]`, `nextRequ
 }
 ```
 
+`HEAD` on the same path answers `405 Method Not Allowed` with `Allow: GET` and never touches the DB, so a probe or prefetch cannot mint a reference (axum would otherwise serve `HEAD` through the `GET` handler).
+
 By user decision this is a `GET` with a side effect: every successful call issues and stores a new reference, and nothing is reused. The response carries `Cache-Control: no-store`, so no HTTP cache serves one LP's reference again. The client calls it exactly once each time it shows the funding details (one modal open), with automatic refetching and retries off (`staleTime: Infinity`, and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off), so the history holds only references that were actually shown. Client wiring is #1817.
 
 - **Bank details.** One system-wide record (`system_configuration`, type `system_bank_details`), seeded empty and set by hand in the DB. There is no write endpoint. The DB enforces that the record is an object with all six keys as strings. Values are served verbatim, and an empty field is served as `""`, which the client renders as `—`.
@@ -80,6 +82,7 @@ By user decision this is a `GET` with a side effect: every successful call issue
 - **Reference.** Every successful call inserts a row into `lp_requested_bank_details` (`lp_id`, `payment_details`, `created_at`). The full history is kept, earlier references stay valid and still belong to that LP, and `lp_id` is not unique. The format is `PL-XXXX-XXXX-XXXX`: a fixed `PL-` prefix and 12 symbols of the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no `I`, `L`, `O`, `U`), 60 bits from the OS CSPRNG, 17 characters. It is random, not derived from the LP id, so it reveals neither the LP nor how many references were requested. It fits the 18-character UK Faster Payments / BACS reference field and a single 35-character SWIFT field-70 line, and the charset is a subset of `[A-Z0-9-]`. It is unique across every reference ever issued (`UNIQUE` plus a `^[A-Z0-9-]{1,140}$` CHECK); on a collision the handler draws again, up to 3 attempts, then answers `500`.
 - **Wire matching (follow-up).** Attributing an arriving wire finds the LP by **any** reference ever issued to it, comparing with `-` and whitespace removed, since a bank may strip the hyphens. Not part of #1815.
 - **Not the per-wire reference.** The issued reference is **not** `lp_bank_deposits.payment_reference`, which is the bank's per-wire reference, unique per deposit and hashed into the minter's single-use `ref_hash`. An LP may quote one issued reference on more than one wire.
+- **Deploy prerequisite.** The seeded `system_bank_details` row is all empty strings, and an eligible LP is still issued a reference against blank details. There is no deploy checklist or runbook in `docs/`, so this is recorded here: fill `system_configuration.system_bank_details` with the real trust-account details before #1817 (Funding details modal) ships.
 - **Known gap.** There is no rate limit or per-LP cap on how many references an eligible LP can request (TD-159).
 
 ---
