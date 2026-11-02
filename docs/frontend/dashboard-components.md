@@ -1915,6 +1915,8 @@ Wallet-not-connected banner uses the same Figma node as the deposit page (`1994-
 
 **No-XLM banner** — the same `XlmFundingBanner` component as the deposit page (precedence item 3 there) replaces the StepsCard on **both tabs** when `stakeFlow.needsXlmFunding` is true: every Stellar step (trustline enable, vault deposit/redeem) needs XLM for the network fee (#1196, #1130).
 
+**Default pockets card (#1758):** `components/stake/DefaultPocketsCard.tsx` (+ `useDefaultPocketsCard`) mounts after the steps / connect card inside the served branch, with `claimBlocked={isStellar && flow.needsXlmFunding}`. It reads `useActiveChain()`, `useLoanBook({ chainId })` (Default / Closed loans), `usePocketReads` and `usePocketClaim`; a `Card variant="white"` holds one `Card variant="plain"` block per pocket (header, "Pocket balance" / "Claimable" / "Claimed" `InfoRow`s, a compact primary-dark Claim button) on the `WithdrawQueueCard` pattern. No Figma frames exist for it (Issue decision 2026-10-29); behaviour is in [`staking.md#default-pockets`](../product-specs/staking.md#default-pockets). Toast id `pocket-claim-tx`.
+
 Figma references: [disconnected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-7280), [init](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95311), [approved](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-101158).
 
 ### Transactions route

@@ -68,6 +68,26 @@ On the way out, the chain re-engages: `redeem` delivers PLUSD, and PLUSD's trans
 
 ---
 
+## Default pockets
+
+Sources: `user-docs/risks/default-management.md` (Recovery mechanics), `lenders/dashboard.md`. Issue #1758, epic #1795. When a loan defaults its outstanding moves out of the vault into a per-loan Pocket held for the sPLUSD holders at that moment; recovered proceeds are released there and each holder claims a share, repeatedly, as more is recovered. The LP app shows the pockets on `/stake` and lets the holder claim.
+
+**Data sources.** Candidate loans: `GET /v1/loan-book?chain_id=<active>` rows with `status` `Default` or `Closed` (the response carries no closure reason, so Closed-by-maturity loans are dropped by the pocket read, not by status). Per candidate, three on-chain reads on the active chain (`useActiveChain()`, Stellar when no wallet is connected): `pocket(loan_id)`, `claimable(holder, loan_id)`, `claimed(holder, loan_id)`; the write is `claim(holder, loan_id)` signed by the connected wallet. Loan ids are `u32` on Stellar and `uint256` on EVM.
+
+**Assumed contract surface (unverified).** The Pocket sources and deployments file are outside this repo and the CLI was not available when #1758 was built, so the surface follows the Issue: Stellar `pocket(loan_id) -> PocketData` read as a map with an i128 `balance` field (a missing field renders "—"), a missing pocket is `Error(Contract, #2)`; `claimable` / `claimed` / `claim` return i128. EVM `pocket(uint256)` is decoded as a tuple whose first field is `balance` and a revert means no pocket; `claimable` / `claimed` / `claim` use `uint256`. Verify the field names, the tuple layout and the not-found behaviour when the full ids reach `.env`; change `packages/wallet-connect/src/stellar/contracts/pocket.ts` and `evm/contracts/pocket.ts` only.
+
+**Rows (decision 2026-11-02, option a).** The Pocket exposes no per-holder share read, so the card lists every pocket that exists on the active chain, with the connected wallet's `claimable` and `claimed`; zeros show as `0.00`, rows are never hidden on zero, and no share or pro-rata is computed in the client. A loan whose `pocket(loan_id)` read fails with the not-found result is dropped; a pending or failed read keeps the row with "—".
+
+**Visibility.** The "Default pockets" card renders below the stake / steps cards only when a wallet is connected on the active chain, the Pocket is configured for it, and at least one pocket row exists. It is absent when the chain is not served.
+
+**Row.** "Loan #<id> · <borrower>", the commodity, then "Pocket balance", "Claimable", "Claimed", and a Claim button. Amounts are the raw on-chain values formatted with PLUSD decimals (7 on Stellar, the token's on EVM); "—" for any unavailable value.
+
+**Claim.** Enabled only when `claimable` is known and greater than zero, no claim is in flight and (Stellar) the account does not need XLM funding. One claim at a time. On success: toast "Claimed <amount> PLUSD" (the returned amount on Stellar, else the pre-claim `claimable` read), then the pocket reads and the PLUSD balance refetch. A failure shows the mapped line with "View details" under the list and a danger toast.
+
+**Config.** `VITE_STELLAR_POCKET_ID` and `VITE_EVM_POCKET_ADDRESS` (`.env.example`, `docker/frontend/entrypoint.sh`, `lib/env.ts`); empty or the zero address hides the card on that chain.
+
+---
+
 ## API Contract
 
 ### sPLUSD (ERC-4626)

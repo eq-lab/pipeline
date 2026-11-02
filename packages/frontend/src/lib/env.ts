@@ -78,6 +78,11 @@ export const ENV = Object.freeze({
     "0x0000000000000000000000000000000000000000",
   ) as `0x${string}`,
 
+  EVM_POCKET_ADDRESS: readString(
+    "VITE_EVM_POCKET_ADDRESS",
+    "0x0000000000000000000000000000000000000000",
+  ) as `0x${string}`,
+
   /**
    * StakedPLUSD (sPLUSD) ERC-4626 vault contract address on the configured chain.
    * Defaults to the zero address; when zero the wallet module short-circuits
@@ -163,6 +168,8 @@ export const ENV = Object.freeze({
   ),
 
   STELLAR_MINTER_ID: readString("VITE_STELLAR_YIELD_MINTER_ID", ""),
+
+  STELLAR_POCKET_ID: readString("VITE_STELLAR_POCKET_ID", ""),
 
   /**
    * Pipeline protocol StakedPLUSD (sPLUSD) FungibleVault Soroban contract ID

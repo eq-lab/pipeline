@@ -193,6 +193,9 @@ rather than the toast itself, because the dialog must outlive the toast's 5-seco
   effects don't re-map (the effects re-map from `error` anyway to keep their `useEffect` dependency
   arrays on stable primitives rather than a freshly-allocated object each render — see the inline
   comment at each toast effect).
+- **`DefaultPocketsCard`** (#1758) — a failed claim renders `InlineError` (mapped line plus "View
+  details") under the pocket list and a danger toast titled by the mapped line when specific, else
+  "Claim failed"; no `context` mapping is added.
 - **`useStakeFlow`** — gained the `"error"` step state it lacked entirely before #1034
   (`StakeStepState` was `"idle" | "success"` only). Derived for both the approve/trustline step
   (step 1) and the stake/unstake write step (step 2), mirroring `useDepositFlow`'s

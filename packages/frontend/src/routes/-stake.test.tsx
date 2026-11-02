@@ -51,6 +51,10 @@ vi.mock("@/api/useChainServed", () => ({
   useChainServed: () => mockChainServed(),
 }));
 
+vi.mock("@/components/stake/DefaultPocketsCard", () => ({
+  DefaultPocketsCard: () => <div data-testid="default-pockets-card-stub" />,
+}));
+
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
 
 const mockRefetch = vi.fn();
@@ -1231,6 +1235,14 @@ describe("active chain not served by the API (#1605)", () => {
       "Not available on Ethereum",
     );
     expect(screen.queryByTestId("stake-header")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("default-pockets-card-stub"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("mounts the default pockets card when the chain is served", () => {
+    renderStake();
+    expect(screen.getByTestId("default-pockets-card-stub")).toBeInTheDocument();
   });
 });
 
