@@ -528,6 +528,59 @@ async fn two_requests_give_two_references_and_the_same_bank_fields() {
     assert_eq!(store.count_for(7), 2);
 }
 
+#[tokio::test]
+async fn a_relink_changes_the_receiver_of_new_references_only() {
+    for (chain, old, new) in [
+        (STELLAR, ADDR, "GNEW"),
+        (EVM, EVM_ADDR, "0x00000000000000000000000000000000000000bb"),
+    ] {
+        let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
+        let store = FakeStore::default();
+        let mut next = counter();
+        let first = request_payment_details(
+            &bank,
+            &store,
+            7,
+            KybStatus::Passed,
+            chain,
+            Some(old),
+            &mut next,
+        )
+        .await
+        .unwrap();
+        let second = request_payment_details(
+            &bank,
+            &store,
+            7,
+            KybStatus::Passed,
+            chain,
+            Some(new),
+            &mut next,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            store.rows(),
+            vec![
+                (
+                    7,
+                    chain.chain_id,
+                    old.to_owned(),
+                    first.payment_details.clone()
+                ),
+                (
+                    7,
+                    chain.chain_id,
+                    new.to_owned(),
+                    second.payment_details.clone()
+                ),
+            ]
+        );
+        assert_eq!(first.receiver_address, old);
+        assert_eq!(second.receiver_address, new);
+    }
+}
+
 // ── Response shape and reply ─────────────────────────────────────────────────
 
 const SEVEN_KEYS: [&str; 7] = [

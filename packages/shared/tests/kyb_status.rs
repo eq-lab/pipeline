@@ -204,7 +204,7 @@ fn the_three_status_policies_are_independent() {
     assert!(
         !KybStatus::UnderReview.allows_owner_writes()
             && KybStatus::UnderReview.allows_document_review()
-            && KybStatus::UnderReview.allows_address_write(false),
+            && KybStatus::UnderReview.allows_address_write(),
         "UnderReview freezes owner writes, admits document review, and admits \
          an address write — three different answers from one status"
     );
@@ -216,8 +216,7 @@ fn the_three_status_policies_are_independent() {
     assert!(
         !KybStatus::Failed.allows_owner_writes()
             && !KybStatus::Failed.allows_document_review()
-            && !KybStatus::Failed.allows_address_write(false)
-            && !KybStatus::Failed.allows_address_write(true),
+            && !KybStatus::Failed.allows_address_write(),
         "Failed refuses all three, for independent reasons"
     );
 }

@@ -14,7 +14,7 @@ use uuid::Uuid;
 use shared::chains::{
     validate_evm_address, validate_stellar_account, validate_stellar_settlement_address, ChainKind,
 };
-use shared::lp_repo::{KybStatus, LinkOutcome, LpRow, SettlementLinkStore};
+use shared::lp_repo::{KybStatus, LinkOutcome, LpRow, SettlementLink, SettlementLinkStore};
 use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 
 use crate::auth::{AuthClaims, SecurityAddon};
@@ -157,17 +157,11 @@ pub fn link_refusal(
     address: &str,
 ) -> Result<(), String> {
     let name = kind.label();
-    if !status.allows_address_write(lp.settlement_address(kind).is_some()) {
-        return Err(match status {
-            KybStatus::Failed => format!(
-                "LP {} was refused at KYB and cannot set a settlement address",
-                lp.id
-            ),
-            _ => format!(
-                "LP {} has passed KYB; its {name} settlement address is fixed",
-                lp.id
-            ),
-        });
+    if !status.allows_address_write() {
+        return Err(format!(
+            "LP {} was refused at KYB and cannot set a settlement address",
+            lp.id
+        ));
     }
     if holder.is_some_and(|id| id != lp.id) {
         return Err(format!(
@@ -236,6 +230,7 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
     target: &LinkTarget,
     signature: &str,
     domain: &str,
+    linked_by: Uuid,
 ) -> Result<(), ApiError> {
     let status = lp_kyb_status(lp)?;
     let stored = store
@@ -267,12 +262,14 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
     link_refusal(lp, status, target.kind, holder, &consumed.address).map_err(ApiError::Conflict)?;
 
     match store
-        .link_settlement_address(
-            lp.id,
-            target.kind,
-            &consumed.address,
-            &consumed.signer_address,
-        )
+        .link_settlement_address(&SettlementLink {
+            lp_id: lp.id,
+            kind: target.kind,
+            chain_id: chain.chain_id,
+            address: consumed.address.clone(),
+            signer_address: consumed.signer_address.clone(),
+            linked_by_account_id: linked_by,
+        })
         .await?
     {
         LinkOutcome::Linked => Ok(()),
@@ -300,7 +297,7 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
         (status = 400, description = "Missing or unknown chain_id, or a malformed address or signer_address"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
-        (status = 409, description = "The LP was refused at KYB, its address of this kind is fixed, or the address belongs to another LP"),
+        (status = 409, description = "The LP was refused at KYB, or the address belongs to another LP"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -336,7 +333,7 @@ async fn link_challenge(
         (status = 400, description = "Missing or unknown chain_id, or a malformed address or signer_address"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
-        (status = 409, description = "The LP was refused at KYB, its address of this kind is fixed, or the address belongs to another LP"),
+        (status = 409, description = "The LP was refused at KYB, or the address belongs to another LP"),
         (status = 422, description = "Proof failed: bad signature, unknown/expired/consumed challenge, or address/signer not matching the challenge (one shared body)"),
     ),
     security(("bearer_auth" = [])),
@@ -352,7 +349,16 @@ async fn link_verify(
         .map_err(ApiError::BadRequest)?;
     let lp = my_lp(&claims, &state).await?;
     let domain = challenge_domain(&state.password_reset.app_base_url);
-    verify_link(&state.lp_repo, &lp, chain, &target, &req.signature, &domain).await?;
+    verify_link(
+        &state.lp_repo,
+        &lp,
+        chain,
+        &target,
+        &req.signature,
+        &domain,
+        claims.account_id,
+    )
+    .await?;
 
     let refreshed = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
         ApiError::Internal(anyhow::anyhow!(

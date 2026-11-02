@@ -8,135 +8,136 @@ use shared::chains::ChainKind;
 use shared::lp_repo::{
     KybStatus, LpRow, CONSUME_LINK_CHALLENGE_SQL, FIND_LINK_CHALLENGE_SQL,
     ISSUE_OR_REUSE_LINK_CHALLENGE_SQL, LINK_EVM_ADDRESS_SQL, LINK_STELLAR_ADDRESS_SQL,
+    LIST_SETTLEMENT_ADDRESS_HISTORY_SQL,
 };
 use uuid::Uuid;
 
-const NON_TERMINAL: [KybStatus; 4] = [
-    KybStatus::NotStarted,
-    KybStatus::InProgress,
-    KybStatus::UnderReview,
-    KybStatus::ChangesRequested,
-];
-
 #[test]
-fn an_unlinked_lp_may_set_an_address_at_any_non_terminal_status() {
-    for status in NON_TERMINAL {
-        assert!(
-            status.allows_address_write(false),
-            "{status} must allow a first address write; if this fails the gate came back"
-        );
-    }
-}
-
-#[test]
-fn a_linked_address_may_be_replaced_until_the_decision_is_final() {
-    for status in NON_TERMINAL {
-        assert!(
-            status.allows_address_write(true),
-            "{status} must allow replacing an already-linked address"
-        );
-    }
-}
-
-#[test]
-fn the_two_terminal_statuses_close_the_address_differently() {
-    assert!(
-        !KybStatus::Passed.allows_address_write(true),
-        "a Passed LP's address is fixed once it holds one"
-    );
-    assert!(
-        KybStatus::Passed.allows_address_write(false),
-        "a Passed LP with no address must not be locked out forever — it has \
-         a real, ongoing use for the field"
-    );
-    assert!(
-        !KybStatus::Failed.allows_address_write(true),
-        "a Failed LP with an address must stay refused: left writable it \
-         could burn a real LP's address through the UNIQUE column"
-    );
-    assert!(
-        !KybStatus::Failed.allows_address_write(false),
-        "a Failed LP with no address must still be refused on its first \
-         attempt — the Failed exclusion in LpRepo::link_address's WHERE must \
-         sit outside the `stellar_address IS NULL` disjunction, not inside it"
-    );
-}
-
-#[test]
-fn the_policy_is_total_and_classifies_every_status_deliberately() {
-    fn expected(status: KybStatus, has_address: bool) -> bool {
+fn every_status_but_failed_allows_a_link_or_relink() {
+    fn expected(status: KybStatus) -> bool {
         match status {
             KybStatus::Failed => false,
-            KybStatus::Passed => !has_address,
             KybStatus::NotStarted
             | KybStatus::InProgress
             | KybStatus::UnderReview
-            | KybStatus::ChangesRequested => true,
+            | KybStatus::ChangesRequested
+            | KybStatus::Passed => true,
         }
     }
 
     for status in KybStatus::ALL {
-        for has_address in [false, true] {
-            assert_eq!(
-                status.allows_address_write(has_address),
-                expected(status, has_address),
-                "{status} with has_address={has_address} must match the \
-                 deliberate classification in `expected` — when a new status \
-                 is added, this match must stop compiling until it is \
-                 classified on purpose"
-            );
-        }
+        assert_eq!(status.allows_address_write(), expected(status), "{status}");
     }
+}
+
+#[test]
+fn passed_allows_a_relink() {
+    assert!(
+        KybStatus::Passed.allows_address_write(),
+        "user decision 2026-11-02 (#1831): a Passed LP may relink"
+    );
+    assert!(!KybStatus::Failed.allows_address_write());
 }
 
 #[test]
 fn the_policy_is_independent_of_the_write_freeze() {
     assert!(
-        KybStatus::UnderReview.allows_address_write(false)
-            && !KybStatus::UnderReview.allows_owner_writes(),
-        "the settlement address is exempt from the freeze at UnderReview"
+        KybStatus::UnderReview.allows_address_write()
+            && !KybStatus::UnderReview.allows_owner_writes()
     );
-    assert!(
-        KybStatus::Passed.allows_address_write(false) && !KybStatus::Passed.allows_owner_writes(),
-        "the crossing that survives Issue #1274: Passed with no address yet \
-         still allows one address write while the profile stays frozen"
-    );
-    assert!(
-        !KybStatus::Failed.allows_address_write(true) && !KybStatus::Failed.allows_owner_writes(),
-        "Failed now closes both policies, for independent reasons — after \
-         Issue #1274 owner-writable implies address-writable, so the \
-         containment between the two policies is one-directional rather than \
-         a two-way crossing"
-    );
+    assert!(KybStatus::Passed.allows_address_write() && !KybStatus::Passed.allows_owner_writes());
+    assert!(!KybStatus::Failed.allows_address_write() && !KybStatus::Failed.allows_owner_writes());
 }
 
 fn flat(sql: &str) -> String {
     sql.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-const GUARD_TAIL: &str = "kyb_status <> 'Failed' AND (";
+struct Kind {
+    sql: &'static str,
+    name: &'static str,
+    addr: &'static str,
+    signer: &'static str,
+    linked_at: &'static str,
+    other: &'static str,
+}
+
+const KINDS: [Kind; 2] = [
+    Kind {
+        sql: LINK_STELLAR_ADDRESS_SQL,
+        name: "stellar",
+        addr: "stellar_address",
+        signer: "stellar_signer_address",
+        linked_at: "address_linked_at",
+        other: "evm_",
+    },
+    Kind {
+        sql: LINK_EVM_ADDRESS_SQL,
+        name: "evm",
+        addr: "evm_address",
+        signer: "evm_signer_address",
+        linked_at: "evm_address_linked_at",
+        other: "stellar_",
+    },
+];
 
 #[test]
-fn the_stellar_link_sql_writes_its_own_columns_and_keeps_the_status_guard() {
-    let sql = flat(LINK_STELLAR_ADDRESS_SQL);
-    assert!(sql.contains(
-        "SET stellar_address = $2, stellar_signer_address = $3, address_linked_at = now()"
-    ));
-    assert!(sql.contains(&format!(
-        "{GUARD_TAIL}stellar_address IS NULL OR kyb_status <> 'Passed')"
-    )));
-    assert!(!sql.contains("evm_"));
+fn the_link_sql_writes_its_own_columns_guards_only_failed_and_records_history() {
+    for k in KINDS {
+        let sql = flat(k.sql);
+        let set = format!(
+            "SET {} = $2, {} = $3, {} = clock_timestamp()",
+            k.addr, k.signer, k.linked_at
+        );
+        assert!(sql.contains(&set), "{}", k.name);
+        assert!(sql.contains("lps.kyb_status <> 'Failed'"));
+        assert!(!sql.contains("kyb_status <> 'Passed'"));
+        assert!(!sql.contains("IS NULL OR"));
+        assert!(sql.contains("FOR UPDATE"));
+        let insert = sql
+            .find("INSERT INTO lp_settlement_address_history")
+            .expect("history insert");
+        let from = sql.find("FROM linked").expect("reads the update");
+        let ret = sql.rfind("RETURNING id").expect("returns the id");
+        assert!(insert < from && from < ret);
+        assert!(sql.contains(&format!("SELECT id, '{}', $4, $2, $3,", k.name)));
+        assert!(sql.contains(&format!("prev.{} AS previous_address", k.addr)));
+        assert!(sql.contains(&format!("prev.{} AS previous_signer_address", k.signer)));
+        assert!(sql.contains(
+            "(lp_id, chain_kind, chain_id, address, signer_address, previous_address, \
+previous_signer_address, linked_by_account_id, created_at)"
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .as_str()
+        ));
+        assert!(sql.contains("previous_signer_address, $5, linked_at"));
+        assert!(!sql.contains(k.other), "{}", k.name);
+    }
 }
 
 #[test]
-fn the_evm_link_sql_writes_its_own_columns_and_keeps_the_status_guard() {
-    let sql = flat(LINK_EVM_ADDRESS_SQL);
-    assert!(sql
-        .contains("SET evm_address = $2, evm_signer_address = $3, evm_address_linked_at = now()"));
-    assert!(sql.contains(&format!(
-        "{GUARD_TAIL}evm_address IS NULL OR kyb_status <> 'Passed')"
-    )));
-    assert!(!sql.contains("stellar_"));
+fn the_link_is_one_statement() {
+    for k in KINDS {
+        let sql = flat(k.sql);
+        assert_eq!(sql.matches("INSERT").count(), 1, "{}", k.name);
+        assert_eq!(sql.matches("UPDATE lps").count(), 1, "{}", k.name);
+        assert!(!sql.contains(';'), "{}", k.name);
+    }
+}
+
+#[test]
+fn history_is_listed_newest_first_for_one_lp() {
+    let sql = flat(LIST_SETTLEMENT_ADDRESS_HISTORY_SQL);
+    assert!(sql.contains("FROM lp_settlement_address_history WHERE lp_id = $1"));
+    assert!(sql.ends_with("ORDER BY id DESC"));
+}
+
+#[test]
+fn history_is_append_only_in_code() {
+    let src = include_str!("../src/lp_repo.rs");
+    assert!(!src.contains("UPDATE lp_settlement_address_history"));
+    assert!(!src.contains("DELETE FROM lp_settlement_address_history"));
 }
 
 #[test]

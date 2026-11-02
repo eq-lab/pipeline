@@ -107,8 +107,7 @@ pub struct LpResponse {
     pub country: Option<String>,
     #[schema(example = "ops@acme.example")]
     pub contact_email: String,
-    /// Settable at any status short of a terminal verdict, fixed once
-    /// `Passed` holds one, never settable at `Failed`.
+    /// Replaceable at any status except `Failed` (signed link).
     pub stellar_address: Option<String>,
     /// ISO-8601 UTC.
     pub address_linked_at: Option<String>,

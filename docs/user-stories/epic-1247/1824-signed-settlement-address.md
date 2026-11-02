@@ -13,7 +13,7 @@ from a wallet or a script: Stellar SEP-0053 `signMessage` (base64 or hex), EVM E
 
 ## Story 1: Link a Stellar account (`G…`) that signs for itself
 
-**Persona:** LP (any status short of `Failed`, not `Passed` with a Stellar address) holding the key of a `G…` account.
+**Persona:** LP (any status short of `Failed`) holding the key of a `G…` account.
 
 **Steps:**
 
@@ -86,21 +86,19 @@ from a wallet or a script: Stellar SEP-0053 `signMessage` (base64 or hex), EVM E
 
 ## Story 5: Ineligible LPs get `409`
 
-**Persona:** An LP refused at KYB, and an LP `Passed` with an address of the chosen kind.
+**Persona:** An LP refused at KYB. A `Passed` LP may relink: see the #1831 stories.
 
 **Steps:**
 
 1. As the `Failed` LP, request a challenge. (A suspended account is refused earlier, with `403 account_suspended`.)
-2. As the `Passed` LP with a Stellar address, request a Stellar challenge for another address.
-3. Request a challenge for an address another LP already holds.
-4. Request a challenge, then mark the LP `Failed` in the database, then verify with the right signature.
+2. Request a challenge for an address another LP already holds.
+3. Request a challenge, then mark the LP `Failed` in the database, then verify with the right signature.
 
 **Expected outcomes:**
 
 - Step 1 is `409 LP <id> was refused at KYB and cannot set a settlement address`.
-- Step 2 is `409 LP <id> has passed KYB; its Stellar settlement address is fixed`.
-- Step 3 is `409 <Kind> settlement address <address> is already linked to another LP`.
-- Step 4 is `409`, and the challenge row is gone: a valid signature followed by a refused link spends the challenge.
+- Step 2 is `409 <Kind> settlement address <address> is already linked to another LP`.
+- Step 3 is `409`, and the challenge row is gone: a valid signature followed by a refused link spends the challenge.
 
 ---
 

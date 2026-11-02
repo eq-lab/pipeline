@@ -69,9 +69,9 @@ An LP settles to blockchain addresses held on the LP record, a separate identity
 - **Stellar:** an account `G…` or a contract `C…` Strkey with a valid checksum, in `lps.stellar_address` (`address_linked_at`, `stellar_signer_address`).
 - **EVM:** `0x` plus 40 hex digits, in `lps.evm_address` (`evm_address_linked_at`, `evm_signer_address`). Mixed-case input must be a valid EIP-55 checksum; all-lowercase and all-uppercase are accepted. It is stored lowercase.
 
-The rules below apply to each kind independently. An address may be set at any KYB status short of a terminal verdict, and replaced freely until the decision is final. `Passed` fixes the address of that kind already held, because from that point downstream systems treat it as the account money moves to. An LP that passed before naming one may still name it, once, and a `Passed` LP with only a Stellar address may still link an EVM one. `Failed` closes linking outright, whether or not an address is stored: addresses are unique across all LPs within a kind, so a refused applicant who could keep naming addresses could burn one real LP's address after another, and a refused LP will never settle.
+The rules below apply to each kind independently. An address of each kind may be linked and relinked at any KYB status except `Failed`, including `Passed` (user decision 2026-11-02, #1831), with no limit on relinks. Each link or relink needs its own signed challenge and nothing else: no signature by the old address and no Trustee approval (TD-163). A relink replaces the address, the signer and `*_linked_at`. The previous address is released, and another LP may then link it. `Failed` closes linking outright, whether or not an address is stored: addresses are unique across all LPs within a kind, so a refused applicant who could keep naming addresses could burn one real LP's address after another, and a refused LP will never settle.
 
-The exemption from the freeze is never an exemption from the account gate. `Failed` also suspends the account, and a suspended account is refused at authorization before any of this is reached. The fixing rule above does not depend on that.
+The exemption from the freeze is never an exemption from the account gate. `Failed` also suspends the account, and a suspended account is refused at authorization before any of this is reached. The `Failed` refusal above does not depend on that.
 
 #### Proof of control
 
@@ -99,7 +99,7 @@ Issued At: {issued_at}
 Expiration Time: {expires_at}
 ```
 
-Eligibility is checked at challenge time and again at verify time, after the challenge is consumed. A valid signature followed by a refused link therefore spends the challenge, and the LP requests a new one. A bad signature does not spend it. An LP that is `Failed`, or `Passed` with the slot of that kind already set, or whose address is held by another LP in that kind, gets `409`.
+Eligibility is checked at challenge time and again at verify time, after the challenge is consumed. A valid signature followed by a refused link therefore spends the challenge, and the LP requests a new one. A bad signature does not spend it. An LP that is `Failed`, or whose address is held by another LP in that kind, gets `409`.
 
 A failed proof is `422 Unprocessable Entity` with the single body `settlement address proof failed`, never `401`. The cases are a bad signature, no live challenge (never issued, expired, or already consumed), and an address or signer that does not match the challenge. One body means a caller cannot tell them apart. `401` is kept for a missing or invalid token, because the LP app ends the session on any authenticated `401`.
 
@@ -107,7 +107,16 @@ The earlier unsigned `POST /v1/lps/me/link-address` is deleted and answers `404`
 
 #### Existing unsigned addresses
 
-Stellar addresses linked before the signed flow (through the unsigned endpoint or the automatic link of #1813) are kept, with `stellar_signer_address = NULL`. A `NULL` signer next to a non-null address means the address is **unproven**. The Trustee view (#1826) shows such addresses as unproven. An unproven address is still fixed at `Passed` and still serves payment details; relinking through the signed flow replaces it where the status rule above allows.
+Stellar addresses linked before the signed flow (through the unsigned endpoint or the automatic link of #1813) are kept, with `stellar_signer_address = NULL`. A `NULL` signer next to a non-null address means the address is **unproven**. The Trustee view (#1826) shows such addresses as unproven. An unproven address still serves payment details. The LP proves it by relinking the **same** address through the signed flow, at any status except `Failed`, including `Passed`; the signer then becomes non-null. This supersedes #1829.
+
+#### Link history
+
+`lp_settlement_address_history` is append-only. Columns: `id`, `lp_id`, `chain_kind` (`stellar` | `evm`), `chain_id`, `address`, `signer_address`, `previous_address`, `previous_signer_address`, `linked_by_account_id` (the authenticated account that verified the link), `created_at`.
+
+- **One row per successful link or relink**, written in the same SQL statement as the guarded update of `lps`, with `created_at` equal to `*_linked_at`. A refusal (`Failed`, an address held by another LP) or a failed proof writes nothing.
+- **Re-verifying the same address and signer is allowed.** It is a fresh proof event: it adds a history row (with `previous_*` equal to the current values) and moves `*_linked_at` forward. Timestamps use `clock_timestamp()` and rows are listed by `id DESC`, which is the true apply order because the insert runs under the `FOR UPDATE` lock on the LP row.
+- **Backfill:** the migration wrote one row per address set at that time, with `chain_id`, `linked_by_account_id` and `previous_*` NULL, and the signer NULL for legacy unproven links. A backfilled row is recognised by `chain_id IS NULL`. Every new row carries `chain_id`, `signer_address` and `linked_by_account_id`.
+- There is no read endpoint yet. The Trustee view, investigations and wire matching are later consumers.
 
 #### Known limit
 
@@ -118,6 +127,8 @@ When `signer_address` differs from the settlement address (always for a Stellar 
 ## Security Considerations
 
 - **The LP settlement address is proven by a signature.** Linking needs a signed single-use challenge bound to the LP, chain, address and signer, so an address cannot be named without the signer's key. When the signer is the address itself, this proves ownership of the address. When a separate signer is named (required for `C…`, allowed for `G…`/`0x…`), the proof covers the signer only (TD-162). Addresses linked before this are kept and shown as unproven (`NULL` signer). The unsigned-address gap TD-57 is resolved (#1824).
+
+- **The settlement address can be changed at any time with a valid signed challenge.** A hijacked LP session can therefore redirect future mints to an address it controls (TD-163). `lp_settlement_address_history` records every change: who, when, old to new.
 
 - **The LP contact address is unverified, and decision emails avoid it.** `lps.contact_email` is a required field of the owner-controlled full-replace profile endpoint; nothing proves the owner holds it. Decision messages therefore go to the account's verified address, and fall back to the contact address only for an account that has none. Because delivery failures are logged rather than propagated, a misdirected message would otherwise leave no trace.
 

@@ -203,6 +203,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
 | [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Amended by #1824 (unsigned endpoint removed; LP app rewired by #1825) |
 | [#1824 Backend: signed settlement-address linking (Stellar + EVM) + chain-aware payment-details](https://github.com/eq-lab/pipeline/issues/1824) | [1824-signed-settlement-address.md](./epic-1247/1824-signed-settlement-address.md) | Initial |
+| [#1831 Backend: let an LP change its linked settlement address at any time (including after KYB Passed)](https://github.com/eq-lab/pipeline/issues/1831) | [1831-relink-settlement-address.md](./epic-1247/1831-relink-settlement-address.md) | Initial |
 
 ---
 
