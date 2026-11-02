@@ -73,14 +73,18 @@ state 4 does today; wiring real bank details and the payment reference is #1817.
 
 ## Open Questions
 
-1. **`Passed` + sPLUSD > 0 (any PLUSD) — what renders until #1425 ships?**
-   (a) *Recommended:* the interim `"passed-staked"` composition above — the LP sees the
-   `unlocked` card and the connected hero, but the home grid temporarily loses the full
-   `StakeCard`'s staked-value line and `Unstake` button (both still on `/stake`); logged as TD-161.
-   (b) Keep `"legacy"` for staked LPs — no information loss, but a staked `Passed` LP sees no
-   "Transfers unlocked / Add Funds" card on the home grid until state 5 lands.
-   (c) Unblock #1425 and build state 5 now with `unlocked` standing in for `funded` — the largest
-   scope (new compact staked-balance card `6701:97273`, hero per `6701:97247`).
+_None_ — answered 2026-11-02 by the user: **option (a)**. `"passed-staked"` renders the interim
+compact grid (connected hero, compact Buy/Sell + Stake pair, `unlocked` card + Earnings); the staked
+value line and `Unstake` stay on `/stake` until #1425 ships (TD-161). The three options considered
+are kept in the Decision log below.
+
+## Decision log
+
+- 2026-11-02 — Passed + sPLUSD > 0 until state 5 (#1425) ships: (a) interim compact grid with the
+  `unlocked` card **(chosen)**; (b) keep `"legacy"` for staked LPs (no card); (c) unblock #1425 and
+  build state 5 with `unlocked` standing in for `funded`. Rationale: the user wants every verified,
+  connected LP to see "Transfers unlocked / Add Funds" now; the staked value and `Unstake` remain one
+  click away on `/stake`.
 
 ## Implementation Steps
 
