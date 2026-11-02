@@ -63,7 +63,10 @@ function uploadErrorResponse(error: ApiError): UploadDocumentsResponse | null {
   return payload as UploadDocumentsResponse;
 }
 
-export function useAccountPage(enabled = true) {
+export function useAccountPage(
+  enabled = true,
+  onLpAdopted?: (lp: LpResponse) => void,
+) {
   const { token, email: sessionEmail } = useAuthSession();
   const [readState, setReadState] = useState<ReadState>("loading");
   const [suspended, setSuspended] = useState(false);
@@ -84,6 +87,8 @@ export function useAccountPage(enabled = true) {
   const identity = useRef<string | undefined>(undefined);
   const request = useRef(0);
   const documents = useAccountDocuments();
+  const onLpAdoptedRef = useRef(onLpAdopted);
+  onLpAdoptedRef.current = onLpAdopted;
 
   const current = useCallback(
     (expected: string) => readSession()?.token === expected,
@@ -105,6 +110,7 @@ export function useAccountPage(enabled = true) {
       }
       setLp(next);
       setReadState(next ? "loaded" : "absent");
+      if (next) onLpAdoptedRef.current?.(next);
     },
     [current],
   );

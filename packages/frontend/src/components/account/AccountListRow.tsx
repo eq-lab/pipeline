@@ -10,6 +10,7 @@ export interface AccountListRowProps extends Omit<
   title: string;
   trailing?: React.ReactNode;
   variant?: "card" | "plain";
+  wrapTitle?: boolean;
   onActivate?: () => void;
 }
 
@@ -19,6 +20,7 @@ export function AccountListRow({
   title,
   trailing,
   variant = "card",
+  wrapTitle = false,
   onActivate,
   className,
   ...rest
@@ -56,7 +58,7 @@ export function AccountListRow({
         </span>
         <span
           className={[
-            "block truncate",
+            wrapTitle ? "block break-all" : "block truncate",
             "font-[family-name:var(--font-body)]",
             "text-[length:var(--text-pipeline-body)]",
             "leading-[var(--text-pipeline-body--line-height)]",

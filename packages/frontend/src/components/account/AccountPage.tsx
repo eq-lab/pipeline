@@ -59,7 +59,8 @@ export function AccountPage({ previewState, onLogOut }: AccountPageProps) {
 function ProductionAccountPage({
   onLogOut,
 }: Pick<AccountPageProps, "onLogOut">) {
-  const account = useAccountPage();
+  const { adoptLp } = useAuthFlow();
+  const account = useAccountPage(true, adoptLp);
   return <AccountPageContent account={account} onLogOut={onLogOut} />;
 }
 
@@ -72,7 +73,7 @@ function AccountPageContent({
   account?: ReturnType<typeof useAccountPage>;
   walletOnly?: boolean;
 }) {
-  const { openAddEmail } = useAuthFlow();
+  const { openAddEmail, settlement } = useAuthFlow();
   const preview = previewState
     ? ACCOUNT_STATE_PREVIEWS[previewState]
     : undefined;
@@ -184,6 +185,7 @@ function AccountPageContent({
               !account.email
             }
             busy={account.busy}
+            settlement={settlement}
           />
         )}
 

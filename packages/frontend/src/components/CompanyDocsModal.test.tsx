@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CompanyDocsModal } from "./CompanyDocsModal";
 import { ApiError } from "@/api";
@@ -821,5 +827,45 @@ describe("CompanyDocsModal — uncertain upload with duplicate filenames (#1572,
     expect(screen.getAllByText("a.pdf")).toHaveLength(1);
     expect(screen.getAllByText("b.pdf")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+  });
+});
+
+describe("CompanyDocsModal — settlement row", () => {
+  const ADDRESS = "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK";
+
+  it("renders the read-only settlement row after Country for a production LP", () => {
+    renderModal({
+      lp: lp([makeDocument(1)]),
+      settlement: {
+        address: ADDRESS,
+        caption: "Fixed once your entity passed verification.",
+        tone: "muted",
+      },
+    });
+    const row = screen.getByTestId("settlement-address-row");
+    expect(row).toHaveTextContent("Settlement address");
+    expect(row).toHaveTextContent(ADDRESS);
+    expect(row).toHaveTextContent(
+      "Fixed once your entity passed verification.",
+    );
+    expect(row.querySelector("input, button")).toBeNull();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("uses role alert only for the negative tone", () => {
+    renderModal({
+      lp: null,
+      settlement: { address: null, caption: "Taken.", tone: "negative" },
+    });
+    expect(
+      within(screen.getByTestId("settlement-address-row")).getByRole("alert"),
+    ).toHaveTextContent("Taken.");
+  });
+
+  it("renders no row in preview mode", () => {
+    renderModal({
+      settlement: { address: ADDRESS, caption: null, tone: "muted" },
+    });
+    expect(screen.queryByTestId("settlement-address-row")).toBeNull();
   });
 });

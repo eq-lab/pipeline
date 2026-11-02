@@ -715,7 +715,9 @@ outside `{application/pdf, image/jpeg, image/png}` (falling back to the filename
 caption recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
 accepted pick. Neither Figma frame designs a rejection state — tracked as **TD-62**.
 
-**Out of scope for #1371.** Account-page document hub, wallet linking, home-page state matrix, and KYB review submission or status transitions.
+**Settlement row (#1813).** An optional `settlement` prop (`SettlementRowView`, from `useAuthFlow().settlement`) renders the read-only `SettlementAddressRow` below Country in the first surface card; it is omitted in preview mode. See [`account-page.md#settlement-address-1813`](./account-page.md#settlement-address-1813).
+
+**Out of scope for #1371.** Account-page document hub, home-page state matrix, and KYB review submission or status transitions. Wallet linking was out of scope here and is added by #1813.
 
 **Accessibility:** `<ul role="list">` for the staged files; the hidden file input is paired with a
 labelled `Upload`/`Remove {file.name}` button so the picker and remove affordances stay operable
@@ -976,12 +978,13 @@ Wiring, screen by screen:
 `packages/frontend/src/auth/AuthFlowContext.ts` + `AuthFlowProvider.tsx` (#1362), exported from
 the `auth/index.ts` barrel alongside `useAuthSession`. The single app-wide `EmailAuthFlow`
 instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern for
-`ConnectWalletModal`. Mounted in `main.tsx` inside `ConnectModalProvider` (needs
-`useConnectModal()` for "Continue with wallet") and above `WalletViewProvider`/`RouterProvider`,
+`ConnectWalletModal`. Mounted in `main.tsx` inside `ConnectModalProvider` and `ToastProvider` (needs
+`useConnectModal()` for "Continue with wallet", and the toast for link failures) and above `WalletViewProvider`/`RouterProvider`,
 so every route renders under it.
 
 `useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close(), lpRead, kybStatus?,
-openAccountSetup(), openAddEmail() }` (widened by #1422 for the home route's state derivation —
+openAccountSetup(), openAddEmail(), adoptLp(lp), settlement }` (`adoptLp` and `settlement` added by #1813,
+below; widened by #1422 for the home route's state derivation —
 `docs/frontend/dashboard-components.md#home-route` — and by #1458 for the Account page's
 wallet-only `Add email` row). `open()` defaults to the `"sign-in"` screen when called with no
 argument. Unlike `useConnectModal()` (no-op fallback for partial test trees), `useAuthFlow()`
@@ -1018,6 +1021,12 @@ the setup modal open. The provider then closes setup and opens `AccountInReviewM
 and dismissal close it without logging out or navigating. Modal state belongs to the current
 session token and is cleared on session changes or reload. Submission adopts the server LP and freezes editing. Failed or partial uploads do not submit;
 unknown submission status requires Check submission status before writes resume.
+
+**Settlement address link (#1813).** The provider calls `useSettlementAddressLink` and owns the
+`POST /v1/lps/me/link-address` call for the connected Stellar wallet. `adoptLp(lp)` replaces the provider's LP
+(the single adopt path, shared with `CompanyDocsModal.onLpChange` and the Account page's `useAccountPage`
+`onLpAdopted`), and `settlement` is the derived `{ address, caption, tone }` row view. Trigger predicate,
+serialization, error handling and the caption table: [`account-page.md#settlement-address-1813`](./account-page.md#settlement-address-1813).
 
 **Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (no session, no wallet) call
 `open("sign-in")` / `open("create-account")`; the account icon (session, or a connected wallet

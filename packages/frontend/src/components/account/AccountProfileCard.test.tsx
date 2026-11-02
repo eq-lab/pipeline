@@ -89,3 +89,37 @@ describe("AccountProfileCard save button", () => {
     expect(screen.getByRole("button", { name: "Save profile" })).toBeEnabled();
   });
 });
+
+describe("AccountProfileCard settlement row", () => {
+  const ADDRESS = "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK";
+
+  it("renders the full address and caption read-only", async () => {
+    renderCard({
+      settlement: {
+        address: ADDRESS,
+        caption: "Linked to your connected wallet.",
+        tone: "muted",
+      },
+    });
+    const row = await screen.findByTestId("settlement-address-row");
+    expect(row).toHaveTextContent("Settlement address");
+    expect(row).toHaveTextContent(ADDRESS);
+    expect(row).toHaveTextContent("Linked to your connected wallet.");
+    expect(row.querySelector("input, button")).toBeNull();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("marks a negative caption as an alert and shows a dash without an address", async () => {
+    renderCard({
+      settlement: { address: null, caption: "Taken.", tone: "negative" },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Taken.");
+    expect(screen.getByTestId("settlement-address-row")).toHaveTextContent("—");
+  });
+
+  it("renders no row without a settlement view", async () => {
+    renderCard();
+    await screen.findByRole("combobox", { name: "Country" });
+    expect(screen.queryByTestId("settlement-address-row")).toBeNull();
+  });
+});
