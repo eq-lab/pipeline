@@ -29,7 +29,18 @@ function wrapper(strict = false) {
   };
 }
 
+vi.mock("@reown/appkit/react", () => ({
+  createAppKit: vi.fn(),
+  useAppKit: vi.fn(() => ({ open: vi.fn() })),
+}));
+
 let fetchMock: ReturnType<typeof vi.spyOn>;
+
+function paymentCalls(): number {
+  return fetchMock.mock.calls.filter((call: unknown[]) =>
+    String(call[0]).includes("/v1/lps/me/payment-details"),
+  ).length;
+}
 
 function mockOk() {
   fetchMock = vi
@@ -64,7 +75,7 @@ describe("usePaymentDetails", () => {
       window.dispatchEvent(new Event("online"));
     });
     await new Promise((r) => setTimeout(r, 20));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(paymentCalls()).toBe(1);
     expect(result.current.data?.payment_details).toBe("PL-0000-0000-0000");
   });
 
@@ -76,7 +87,7 @@ describe("usePaymentDetails", () => {
     );
     await waitFor(() => expect(result.current.status).toBe("ready"));
     await new Promise((r) => setTimeout(r, 20));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(paymentCalls()).toBe(1);
   });
 
   it("a new openId makes exactly one more request", async () => {
@@ -94,9 +105,9 @@ describe("usePaymentDetails", () => {
     await waitFor(() => expect(result.current.status).toBe("ready"));
     rerender({ request: null });
     rerender({ request: { openId: 2, chainId: 1 } });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(paymentCalls()).toBe(2));
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(paymentCalls()).toBe(2);
   });
 
   it("makes no request for a null request or without a session", async () => {
@@ -112,7 +123,7 @@ describe("usePaymentDetails", () => {
     );
     expect(second.result.current.status).toBe("idle");
     await new Promise((r) => setTimeout(r, 20));
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(paymentCalls()).toBe(0);
   });
 
   it.each([409, 500])(
@@ -130,7 +141,7 @@ describe("usePaymentDetails", () => {
       );
       await waitFor(() => expect(result.current.status).toBe("unavailable"));
       await new Promise((r) => setTimeout(r, 20));
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(paymentCalls()).toBe(1);
     },
   );
 });
