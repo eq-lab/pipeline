@@ -24,6 +24,8 @@ from a wallet or a script: Stellar SEP-0053 `signMessage` (base64 or hex), EVM E
 **Expected outcomes:**
 
 - Step 1 is `200` with `{ message, nonce }`; the message starts `<domain> wants you to link a settlement address to your Pipeline LP account.`
+- The message is a single line and contains no line break, and `Issued At` is exactly 1 hour before `Expiration Time`.
+- Step 2 signs the `message` as returned; no `\n` unescaping is needed because the message has none.
 - Step 3 is `200` with the LP record: `stellar_address` and `stellar_signer_address` both equal `$G`, `address_linked_at` is set.
 - `lp_address_challenges` has no row for this LP and chain any more.
 
@@ -70,7 +72,7 @@ from a wallet or a script: Stellar SEP-0053 `signMessage` (base64 or hex), EVM E
 **Steps:**
 
 1. Verify with a signature made by another key.
-2. Wait past the 5-minute expiry (or set `expires_at` in the past), then verify with the right signature.
+2. Wait past the 1-hour expiry (or set `expires_at` in the past), then verify with the right signature.
 3. Verify a successful link a second time with the same signature (replay).
 4. Verify with a signature over the sign-in message from `GET /v1/auth/challenge`.
 5. Verify with an `address` or `signer_address` different from the challenge.

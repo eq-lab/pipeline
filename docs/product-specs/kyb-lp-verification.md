@@ -82,21 +82,10 @@ An address is linked only through a signed challenge, in two calls (`routes::lp_
 
 `signer_address` is the wallet that signs. It defaults to the settlement address for a Stellar `G…` and for an EVM `0x…`, and is **required** for a Stellar `C…`, which cannot sign for itself. A Stellar signer must be a `G…` account and an EVM signer a `0x…` EOA, so a `G…` or `0x…` settlement address may name a different signer. The signer is stored next to the address it proved.
 
-The message is distinct from the sign-in message, so neither signature can be replayed as the other:
+The message is distinct from the sign-in message, so neither signature can be replayed as the other. It is a single line (no line breaks), so it survives copy-paste from a JSON response, and it must be signed exactly as returned. A challenge is valid for 1 hour (`Issued At` = `Expiration Time` − 1 hour):
 
 ```
-{domain} wants you to link a settlement address to your Pipeline LP account.
-
-Settlement address: {address}
-Signed by: {signer_address}
-
-Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas.
-
-LP ID: {lp_id}
-Chain ID: {chain_id}
-Nonce: {nonce}
-Issued At: {issued_at}
-Expiration Time: {expires_at}
+{domain} wants you to link a settlement address to your Pipeline LP account. Settlement address: {address} Signed by: {signer_address} Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas. LP ID: {lp_id} Chain ID: {chain_id} Nonce: {nonce} Issued At: {issued_at} Expiration Time: {expires_at}
 ```
 
 Eligibility is checked at challenge time and again at verify time, after the challenge is consumed. A valid signature followed by a refused link therefore spends the challenge, and the LP requests a new one. A bad signature does not spend it. An LP that is `Failed`, or whose address is held by another LP in that kind, gets `409`.
