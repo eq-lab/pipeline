@@ -283,7 +283,7 @@ class of staleness `account-page.md` documents for its own frame.
 
 | Seam | Default | Wired by |
 | --- | --- | --- |
-| `FundingDetailsModal.details` | every value renders `—` | backend source: `GET /v1/lps/me/payment-details` (#1815). Each call returns a fresh `payment_details` and adds a row to the history, so the client calls it exactly once per modal open with `staleTime: Infinity` and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off. The payload uses `swift_bic_code`. Client wiring: #1817 |
+| `FundingDetailsModal.details` | every value renders `—` | backend source: `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824: `chain_id` is required and the response also echoes `chain_id` and `receiver_address`). Each call returns a fresh `payment_details` and adds a row to the history, so the client calls it exactly once per modal open with `staleTime: Infinity` and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off. The payload uses `swift_bic_code`. Client wiring: #1817 |
 | `FundingDetailsModal.onContactSupport` | no-op | unassigned — no destination exists in the design (tech debt) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |

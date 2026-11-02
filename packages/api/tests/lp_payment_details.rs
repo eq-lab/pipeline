@@ -5,16 +5,29 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use pipeline_api::config::ConfiguredChain;
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::lp_bank_deposits::{
     issue_payment_details, payment_details_access, payment_details_from, payment_details_reply,
     request_payment_details, LpBankDepositsDoc, PaymentDetailsResponse, MAX_ISSUE_ATTEMPTS,
 };
+use shared::chains::ChainKind;
 use shared::lp_repo::KybStatus;
 use shared::lp_requested_bank_details_repo::{InsertOutcome, PaymentDetailsStore};
 use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
 const ADDR: &str = "GABC";
+const EVM_ADDR: &str = "0x00000000000000000000000000000000000000aa";
+const STELLAR: ConfiguredChain = ConfiguredChain {
+    chain_id: 7,
+    kind: ChainKind::Stellar,
+};
+const EVM: ConfiguredChain = ConfiguredChain {
+    chain_id: 1,
+    kind: ChainKind::Evm,
+};
+
+type Row = (i64, i64, String, String);
 const CROCKFORD: &str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const PATH: &str = "/v1/lps/me/payment-details";
 
@@ -22,24 +35,28 @@ const PATH: &str = "/v1/lps/me/payment-details";
 
 #[derive(Default)]
 struct FakeStore {
-    rows: Mutex<Vec<(i64, String)>>,
+    rows: Mutex<Vec<Row>>,
     fail_with_pool_timeout: bool,
 }
 
 impl FakeStore {
     fn seeded(rows: &[(i64, &str)]) -> Self {
         Self {
-            rows: Mutex::new(rows.iter().map(|(l, v)| (*l, (*v).to_owned())).collect()),
+            rows: Mutex::new(
+                rows.iter()
+                    .map(|(l, v)| (*l, STELLAR.chain_id, ADDR.to_owned(), (*v).to_owned()))
+                    .collect(),
+            ),
             fail_with_pool_timeout: false,
         }
     }
 
-    fn rows(&self) -> Vec<(i64, String)> {
+    fn rows(&self) -> Vec<Row> {
         self.rows.lock().unwrap().clone()
     }
 
     fn count_for(&self, lp_id: i64) -> usize {
-        self.rows().iter().filter(|(l, _)| *l == lp_id).count()
+        self.rows().iter().filter(|r| r.0 == lp_id).count()
     }
 }
 
@@ -48,16 +65,23 @@ impl PaymentDetailsStore for FakeStore {
     async fn insert(
         &self,
         lp_id: i64,
+        chain_id: i64,
+        receiver_address: &str,
         payment_details: &str,
     ) -> Result<InsertOutcome, sqlx::Error> {
         if self.fail_with_pool_timeout {
             return Err(sqlx::Error::PoolTimedOut);
         }
         let mut rows = self.rows.lock().unwrap();
-        if rows.iter().any(|(_, v)| v == payment_details) {
+        if rows.iter().any(|r| r.3 == payment_details) {
             return Ok(InsertOutcome::ReferenceTaken);
         }
-        rows.push((lp_id, payment_details.to_owned()));
+        rows.push((
+            lp_id,
+            chain_id,
+            receiver_address.to_owned(),
+            payment_details.to_owned(),
+        ));
         Ok(InsertOutcome::Inserted)
     }
 }
@@ -151,14 +175,18 @@ fn counter() -> impl FnMut() -> String {
 // ── Access gate ──────────────────────────────────────────────────────────────
 
 #[test]
-fn passed_with_an_address_is_allowed() {
-    assert!(payment_details_access(KybStatus::Passed, Some(ADDR)).is_ok());
+fn passed_with_an_address_of_the_chain_kind_is_allowed() {
+    assert!(payment_details_access(KybStatus::Passed, ChainKind::Stellar, Some(ADDR)).is_ok());
+    assert!(payment_details_access(KybStatus::Passed, ChainKind::Evm, Some(EVM_ADDR)).is_ok());
 }
 
 #[test]
-fn passed_without_an_address_names_the_settlement_address() {
-    let err = payment_details_access(KybStatus::Passed, None).unwrap_err();
-    assert!(err.contains("settlement address"), "{err}");
+fn passed_without_an_address_names_the_kind_and_the_settlement_address() {
+    let err = payment_details_access(KybStatus::Passed, ChainKind::Stellar, None).unwrap_err();
+    assert!(err.contains("a linked Stellar settlement address"), "{err}");
+    let err = payment_details_access(KybStatus::Passed, ChainKind::Evm, None).unwrap_err();
+    assert!(err.contains("a linked EVM settlement address"), "{err}");
+    assert!(err.contains("Passed with no linked EVM address"), "{err}");
 }
 
 #[test]
@@ -167,7 +195,7 @@ fn every_other_status_is_refused_naming_the_status_and_passed() {
         .into_iter()
         .filter(|s| *s != KybStatus::Passed)
     {
-        let err = payment_details_access(status, Some(ADDR)).unwrap_err();
+        let err = payment_details_access(status, ChainKind::Stellar, Some(ADDR)).unwrap_err();
         assert!(err.contains(&status.to_string()), "{err}");
         assert!(err.contains("Passed"), "{err}");
     }
@@ -175,9 +203,47 @@ fn every_other_status_is_refused_naming_the_status_and_passed() {
 
 #[test]
 fn not_started_without_an_address_names_both_preconditions() {
-    let err = payment_details_access(KybStatus::NotStarted, None).unwrap_err();
-    assert!(err.contains("settlement address"), "{err}");
-    assert!(err.contains("Passed"), "{err}");
+    let err = payment_details_access(KybStatus::NotStarted, ChainKind::Evm, None).unwrap_err();
+    assert!(
+        err.contains("a linked EVM settlement address and KYB status Passed"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn an_evm_chain_with_only_a_stellar_address_is_refused() {
+    let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
+    let store = FakeStore::default();
+    let err = request_payment_details(&bank, &store, 1, KybStatus::Passed, EVM, None, counter())
+        .await
+        .unwrap_err();
+    let ApiError::Conflict(msg) = err else {
+        panic!("expected Conflict");
+    };
+    assert!(msg.contains("a linked EVM settlement address"), "{msg}");
+    assert!(store.rows().is_empty());
+}
+
+#[tokio::test]
+async fn an_evm_only_lp_on_a_stellar_chain_is_refused() {
+    let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
+    let store = FakeStore::default();
+    let err = request_payment_details(
+        &bank,
+        &store,
+        1,
+        KybStatus::Passed,
+        STELLAR,
+        None,
+        counter(),
+    )
+    .await
+    .unwrap_err();
+    let ApiError::Conflict(msg) = err else {
+        panic!("expected Conflict");
+    };
+    assert!(msg.contains("a linked Stellar settlement address"), "{msg}");
+    assert!(store.rows().is_empty());
 }
 
 // ── Generator ────────────────────────────────────────────────────────────────
@@ -256,7 +322,7 @@ async fn every_call_returns_a_new_value() {
     let mut values = Vec::new();
     for _ in 0..3 {
         values.push(
-            issue_payment_details(&store, 1, &mut generator)
+            issue_payment_details(&store, 1, 7, ADDR, &mut generator)
                 .await
                 .unwrap(),
         );
@@ -267,7 +333,7 @@ async fn every_call_returns_a_new_value() {
     let rows = store.rows();
     assert_eq!(rows.len(), 3);
     for (row, value) in rows.iter().zip(&values) {
-        assert_eq!(row, &(1, value.clone()));
+        assert_eq!(row, &(1, 7, ADDR.to_owned(), value.clone()));
     }
 }
 
@@ -276,12 +342,14 @@ async fn rows_accumulate_per_lp_and_never_share_a_value() {
     let store = FakeStore::default();
     let mut next = counter();
     for lp in [1, 2, 1] {
-        issue_payment_details(&store, lp, &mut next).await.unwrap();
+        issue_payment_details(&store, lp, 7, ADDR, &mut next)
+            .await
+            .unwrap();
     }
     assert_eq!(store.count_for(1), 2);
     assert_eq!(store.count_for(2), 1);
     let rows = store.rows();
-    let distinct: HashSet<&String> = rows.iter().map(|(_, v)| v).collect();
+    let distinct: HashSet<&String> = rows.iter().map(|r| &r.3).collect();
     assert_eq!(distinct.len(), 3);
 }
 
@@ -289,7 +357,7 @@ async fn rows_accumulate_per_lp_and_never_share_a_value() {
 async fn a_collision_is_redrawn() {
     let store = FakeStore::seeded(&[(2, "PL-AAAA-AAAA-AAAA")]);
     let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA", "PL-BBBB-BBBB-BBBB"]);
-    let value = issue_payment_details(&store, 1, || script.next())
+    let value = issue_payment_details(&store, 1, 7, ADDR, || script.next())
         .await
         .unwrap();
     assert_eq!(value, "PL-BBBB-BBBB-BBBB");
@@ -301,7 +369,7 @@ async fn a_collision_is_redrawn() {
 async fn exhausting_every_attempt_is_internal_and_adds_no_row() {
     let store = FakeStore::seeded(&[(2, "PL-AAAA-AAAA-AAAA")]);
     let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
-    let err = issue_payment_details(&store, 1, || script.next())
+    let err = issue_payment_details(&store, 1, 7, ADDR, || script.next())
         .await
         .unwrap_err();
     assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
@@ -316,7 +384,7 @@ async fn another_store_error_propagates_without_a_retry() {
         ..FakeStore::default()
     };
     let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
-    let err = issue_payment_details(&store, 1, || script.next())
+    let err = issue_payment_details(&store, 1, 7, ADDR, || script.next())
         .await
         .unwrap_err();
     assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
@@ -334,9 +402,10 @@ async fn a_refused_caller_creates_no_row_and_reads_nothing() {
         let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
         let store = FakeStore::default();
         let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
-        let err = request_payment_details(&bank, &store, 1, status, address, || script.next())
-            .await
-            .unwrap_err();
+        let err =
+            request_payment_details(&bank, &store, 1, status, STELLAR, address, || script.next())
+                .await
+                .unwrap_err();
         assert!(matches!(err, ApiError::Conflict(_)), "{err:?}");
         assert!(store.rows().is_empty());
         assert_eq!(script.calls, 0);
@@ -350,9 +419,15 @@ async fn a_misconfigured_system_creates_no_row() {
         let bank = FakeBankDetails::new(mode);
         let store = FakeStore::default();
         let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
-        let err = request_payment_details(&bank, &store, 1, KybStatus::Passed, Some(ADDR), || {
-            script.next()
-        })
+        let err = request_payment_details(
+            &bank,
+            &store,
+            1,
+            KybStatus::Passed,
+            STELLAR,
+            Some(ADDR),
+            || script.next(),
+        )
         .await
         .unwrap_err();
         assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
@@ -365,14 +440,59 @@ async fn a_misconfigured_system_creates_no_row() {
 async fn the_happy_path_serves_the_bank_fields_and_the_stored_reference() {
     let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
     let store = FakeStore::default();
-    let response =
-        request_payment_details(&bank, &store, 7, KybStatus::Passed, Some(ADDR), counter())
-            .await
-            .unwrap();
+    let response = request_payment_details(
+        &bank,
+        &store,
+        7,
+        KybStatus::Passed,
+        STELLAR,
+        Some(ADDR),
+        counter(),
+    )
+    .await
+    .unwrap();
     assert_eq!(response.company_name, "Pipeline Trust");
     assert_eq!(response.bank_address, "");
     assert_eq!(response.swift_bic_code, "ABCDEF22");
-    assert_eq!(store.rows(), vec![(7, response.payment_details.clone())]);
+    assert_eq!(
+        store.rows(),
+        vec![(
+            7,
+            STELLAR.chain_id,
+            ADDR.to_owned(),
+            response.payment_details.clone()
+        )]
+    );
+    assert_eq!(response.chain_id, STELLAR.chain_id);
+    assert_eq!(response.receiver_address, ADDR);
+}
+
+#[tokio::test]
+async fn an_evm_request_stores_and_echoes_the_evm_chain_and_address() {
+    let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
+    let store = FakeStore::default();
+    let response = request_payment_details(
+        &bank,
+        &store,
+        7,
+        KybStatus::Passed,
+        EVM,
+        Some(EVM_ADDR),
+        counter(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.chain_id, EVM.chain_id);
+    assert_eq!(response.receiver_address, EVM_ADDR);
+    assert_eq!(
+        store.rows(),
+        vec![(
+            7,
+            EVM.chain_id,
+            EVM_ADDR.to_owned(),
+            response.payment_details.clone()
+        )]
+    );
 }
 
 #[tokio::test]
@@ -380,13 +500,28 @@ async fn two_requests_give_two_references_and_the_same_bank_fields() {
     let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
     let store = FakeStore::default();
     let mut next = counter();
-    let first = request_payment_details(&bank, &store, 7, KybStatus::Passed, Some(ADDR), &mut next)
-        .await
-        .unwrap();
-    let second =
-        request_payment_details(&bank, &store, 7, KybStatus::Passed, Some(ADDR), &mut next)
-            .await
-            .unwrap();
+    let first = request_payment_details(
+        &bank,
+        &store,
+        7,
+        KybStatus::Passed,
+        STELLAR,
+        Some(ADDR),
+        &mut next,
+    )
+    .await
+    .unwrap();
+    let second = request_payment_details(
+        &bank,
+        &store,
+        7,
+        KybStatus::Passed,
+        STELLAR,
+        Some(ADDR),
+        &mut next,
+    )
+    .await
+    .unwrap();
     assert_ne!(first.payment_details, second.payment_details);
     assert_eq!(first.iban, second.iban);
     assert_eq!(first.account_number, second.account_number);
@@ -405,28 +540,33 @@ const SEVEN_KEYS: [&str; 7] = [
     "payment_details",
 ];
 
-#[test]
-fn the_response_has_exactly_seven_string_keys_and_keeps_empty_strings() {
-    let value = serde_json::to_value(PaymentDetailsResponse::new(
+fn response() -> PaymentDetailsResponse {
+    PaymentDetailsResponse::new(
         empty_details(),
         "PL-AAAA-AAAA-AAAA".to_owned(),
-    ))
-    .unwrap();
+        7,
+        ADDR.to_owned(),
+    )
+}
+
+#[test]
+fn the_response_has_exactly_nine_keys_and_keeps_empty_strings() {
+    let value = serde_json::to_value(response()).unwrap();
     let object = value.as_object().unwrap();
-    assert_eq!(object.len(), 7);
+    assert_eq!(object.len(), 9);
     for key in SEVEN_KEYS {
-        assert!(object.contains_key(key), "missing {key}");
+        assert!(object[key].is_string(), "{key} is not a string");
     }
+    assert!(object["chain_id"].is_i64());
+    assert_eq!(object["chain_id"], 7);
+    assert_eq!(object["receiver_address"], ADDR);
     assert_eq!(object["iban"], "");
     assert!(!object.contains_key("swift_bic"));
 }
 
 #[tokio::test]
 async fn the_reply_is_ok_and_never_cacheable() {
-    let response = payment_details_reply(PaymentDetailsResponse::new(
-        empty_details(),
-        "PL-AAAA-AAAA-AAAA".to_owned(),
-    ));
+    let response = payment_details_reply(response());
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     assert_eq!(
         response
@@ -440,7 +580,7 @@ async fn the_reply_is_ok_and_never_cacheable() {
         .unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["payment_details"], "PL-AAAA-AAAA-AAAA");
-    assert_eq!(body.as_object().unwrap().len(), 7);
+    assert_eq!(body.as_object().unwrap().len(), 9);
 }
 
 // ── OpenAPI document ─────────────────────────────────────────────────────────
@@ -451,7 +591,7 @@ fn openapi_json() -> serde_json::Value {
 }
 
 #[test]
-fn the_path_is_a_bodyless_get_tagged_lp_bank_deposits() {
+fn the_path_is_a_bodyless_get_with_a_required_chain_id_query() {
     let doc = openapi_json();
     let path = &doc["paths"][PATH];
     let get = &path["get"];
@@ -459,23 +599,27 @@ fn the_path_is_a_bodyless_get_tagged_lp_bank_deposits() {
     assert_eq!(get["tags"][0], "LpBankDeposits");
     assert!(path.get("post").is_none());
     assert!(get.get("requestBody").is_none());
-    assert!(get
-        .get("parameters")
-        .is_none_or(|p| p.as_array().is_some_and(Vec::is_empty)));
+    let params = get["parameters"].as_array().expect("parameters");
+    let chain = params
+        .iter()
+        .find(|p| p["name"] == "chain_id")
+        .expect("chain_id param");
+    assert_eq!(chain["in"], "query");
+    assert_eq!(chain["required"], true);
 }
 
 #[test]
-fn the_documented_responses_are_200_401_404_409() {
+fn the_documented_responses_are_200_400_401_404_409() {
     let doc = openapi_json();
     let responses = doc["paths"][PATH]["get"]["responses"].as_object().unwrap();
-    for status in ["200", "401", "404", "409"] {
+    for status in ["200", "400", "401", "404", "409"] {
         assert!(responses.contains_key(status), "missing {status}");
     }
     assert!(!responses.contains_key("201"));
 }
 
 #[test]
-fn the_schema_lists_seven_required_string_properties() {
+fn the_schema_lists_nine_required_properties_with_their_types() {
     let doc = openapi_json();
     let schema = &doc["components"]["schemas"]["PaymentDetailsResponse"];
     let required: HashSet<&str> = schema["required"]
@@ -484,9 +628,11 @@ fn the_schema_lists_seven_required_string_properties() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    for key in SEVEN_KEYS {
+    for key in SEVEN_KEYS.into_iter().chain(["receiver_address"]) {
         assert_eq!(schema["properties"][key]["type"], "string", "{key}");
         assert!(required.contains(key), "{key} not required");
     }
-    assert_eq!(schema["properties"].as_object().unwrap().len(), 7);
+    assert_eq!(schema["properties"]["chain_id"]["type"], "integer");
+    assert!(required.contains("chain_id"));
+    assert_eq!(schema["properties"].as_object().unwrap().len(), 9);
 }

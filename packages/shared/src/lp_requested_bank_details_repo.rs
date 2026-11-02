@@ -11,8 +11,13 @@ pub enum InsertOutcome {
 
 #[async_trait]
 pub trait PaymentDetailsStore: Send + Sync {
-    async fn insert(&self, lp_id: i64, payment_details: &str)
-        -> Result<InsertOutcome, sqlx::Error>;
+    async fn insert(
+        &self,
+        lp_id: i64,
+        chain_id: i64,
+        receiver_address: &str,
+        payment_details: &str,
+    ) -> Result<InsertOutcome, sqlx::Error>;
 }
 
 pub struct LpRequestedBankDetailsRepo {
@@ -30,12 +35,17 @@ impl PaymentDetailsStore for LpRequestedBankDetailsRepo {
     async fn insert(
         &self,
         lp_id: i64,
+        chain_id: i64,
+        receiver_address: &str,
         payment_details: &str,
     ) -> Result<InsertOutcome, sqlx::Error> {
         let result = sqlx::query(
-            "INSERT INTO lp_requested_bank_details (lp_id, payment_details) VALUES ($1, $2)",
+            "INSERT INTO lp_requested_bank_details (lp_id, chain_id, receiver_address, payment_details) \
+             VALUES ($1, $2, $3, $4)",
         )
         .bind(lp_id)
+        .bind(chain_id)
+        .bind(receiver_address)
         .bind(payment_details)
         .execute(&self.pool)
         .await;

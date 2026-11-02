@@ -15,6 +15,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use argon2::password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
+use shared::chains::ChainKind;
 use shared::lp_bank_deposit_repo::{LpBankDepositRepo, LpBankDepositRow};
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::KybStatus;
@@ -22,8 +23,10 @@ use shared::lp_requested_bank_details_repo::{InsertOutcome, PaymentDetailsStore}
 use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
 use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
+use crate::config::ConfiguredChain;
 use crate::error::{is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
+use crate::routes::common::RequiredChain;
 use crate::routes::lps::my_lp;
 use crate::AppState;
 
@@ -94,10 +97,17 @@ pub struct PaymentDetailsResponse {
     pub iban: String,
     pub swift_bic_code: String,
     pub payment_details: String,
+    pub chain_id: i64,
+    pub receiver_address: String,
 }
 
 impl PaymentDetailsResponse {
-    pub fn new(details: SystemBankDetails, payment_details: String) -> Self {
+    pub fn new(
+        details: SystemBankDetails,
+        payment_details: String,
+        chain_id: i64,
+        receiver_address: String,
+    ) -> Self {
         Self {
             company_name: details.company_name,
             bank_name: details.bank_name,
@@ -106,6 +116,8 @@ impl PaymentDetailsResponse {
             iban: details.iban,
             swift_bic_code: details.swift_bic_code,
             payment_details,
+            chain_id,
+            receiver_address,
         }
     }
 }
@@ -240,11 +252,13 @@ async fn record_bank_deposit(
 #[utoipa::path(
     get,
     path = "/v1/lps/me/payment-details",
+    params(RequiredChain),
     responses(
-        (status = 200, description = "The bank details with a newly issued payment reference; every call issues a new one", body = PaymentDetailsResponse),
+        (status = 200, description = "The bank details with a newly issued payment reference and the chain and receiver address; every call issues a new one", body = PaymentDetailsResponse),
+        (status = 400, description = "Missing, malformed, or unknown chain_id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
-        (status = 409, description = "No linked settlement address, or KYB status is not Passed"),
+        (status = 409, description = "No linked settlement address of this chain's kind, or KYB status is not Passed"),
     ),
     security(("bearer_auth" = [])),
     tag = "LpBankDeposits"
@@ -252,6 +266,7 @@ async fn record_bank_deposit(
 async fn get_my_payment_details(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
 ) -> Result<Response, ApiError> {
     let lp = my_lp(&claims, &state).await?;
     let status =
@@ -261,7 +276,8 @@ async fn get_my_payment_details(
         &state.lp_requested_bank_details_repo,
         lp.id,
         status,
-        lp.stellar_address.as_deref(),
+        chain,
+        lp.settlement_address(chain.kind),
         new_payment_details,
     )
     .await?;
@@ -363,24 +379,29 @@ pub const MAX_ISSUE_ATTEMPTS: usize = 3;
 
 pub fn payment_details_access(
     kyb_status: KybStatus,
-    stellar_address: Option<&str>,
+    kind: ChainKind,
+    settlement_address: Option<&str>,
 ) -> Result<(), String> {
     let status_ok = kyb_status == KybStatus::Passed;
-    let address_ok = stellar_address.is_some();
+    let address_ok = settlement_address.is_some();
     if status_ok && address_ok {
         return Ok(());
     }
+    let kind_name = match kind {
+        ChainKind::Stellar => "Stellar",
+        ChainKind::Evm => "EVM",
+    };
     let mut unmet = Vec::new();
     if !address_ok {
-        unmet.push("a linked settlement address");
+        unmet.push(format!("a linked {kind_name} settlement address"));
     }
     if !status_ok {
-        unmet.push("KYB status Passed");
+        unmet.push("KYB status Passed".to_owned());
     }
     let address_state = if address_ok {
-        "with a linked address"
+        format!("with a linked {kind_name} address")
     } else {
-        "with no linked address"
+        format!("with no linked {kind_name} address")
     };
     Err(format!(
         "payment details require {} (this LP is {kyb_status} {address_state})",
@@ -404,11 +425,16 @@ fn new_payment_details() -> String {
 pub async fn issue_payment_details<S: PaymentDetailsStore + ?Sized>(
     store: &S,
     lp_id: i64,
+    chain_id: i64,
+    receiver_address: &str,
     mut next: impl FnMut() -> String,
 ) -> Result<String, ApiError> {
     for _ in 0..MAX_ISSUE_ATTEMPTS {
         let candidate = next();
-        match store.insert(lp_id, &candidate).await? {
+        match store
+            .insert(lp_id, chain_id, receiver_address, &candidate)
+            .await?
+        {
             InsertOutcome::Inserted => return Ok(candidate),
             InsertOutcome::ReferenceTaken => {}
         }
@@ -423,16 +449,26 @@ pub async fn request_payment_details(
     store: &(impl PaymentDetailsStore + ?Sized),
     lp_id: i64,
     kyb_status: KybStatus,
-    stellar_address: Option<&str>,
+    chain: ConfiguredChain,
+    settlement_address: Option<&str>,
     next: impl FnMut() -> String,
 ) -> Result<PaymentDetailsResponse, ApiError> {
-    payment_details_access(kyb_status, stellar_address).map_err(ApiError::Conflict)?;
+    payment_details_access(kyb_status, chain.kind, settlement_address)
+        .map_err(ApiError::Conflict)?;
+    let receiver_address = settlement_address
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("settlement address vanished")))?;
     let details = bank
         .bank_details()
         .await?
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("system_bank_details row is missing")))?;
-    let payment_details = issue_payment_details(store, lp_id, next).await?;
-    Ok(PaymentDetailsResponse::new(details, payment_details))
+    let payment_details =
+        issue_payment_details(store, lp_id, chain.chain_id, receiver_address, next).await?;
+    Ok(PaymentDetailsResponse::new(
+        details,
+        payment_details,
+        chain.chain_id,
+        receiver_address.to_owned(),
+    ))
 }
 
 pub fn payment_details_reply(body: PaymentDetailsResponse) -> Response {

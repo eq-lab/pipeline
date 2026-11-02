@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-162.**
+**Next free number: TD-163.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -944,7 +944,9 @@ line, whichever section it lands in.
   the existing `state="error"` treatment. Not built as part of #1234 — that issue only fixed the
   specific parsing bug; this is the containment gap around it.
 
-### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership
+### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership [RESOLVED 2026-11-02 / #1824]
+
+- **Resolved:** #1824 deleted `POST /v1/lps/me/link-address` and links addresses only through a signed challenge (`GET`/`POST /v1/lps/me/link-address/{challenge,verify}`); see `docs/product-specs/kyb-lp-verification.md` § Settlement Address. Rows linked before it are kept with a `NULL` (unproven) signer. The original entry follows.
 
 - **Date:** 2026-09-15 (narrowed 2026-09-15, widened 2026-09-30 — see below)
 - **Location:** `packages/api/src/routes/lps.rs` — `link_address`
@@ -2222,3 +2224,11 @@ line, whichever section it lands in.
 - **Gap:** #1819 shows the `unlocked` AddUsdCard to every connected `Passed` LP. For sPLUSD holders it uses the compact grid, whose compact `StakeCard` has only the marketing variant; the designed state-5 frame (`6701:97136`) has a compact "Staked PLUSD / value / Stake More / Unstake" card (`6701:97273`) that does not exist in code. The legacy grid's full `StakeCard` used to show the staked value and `Unstake` here.
 - **Impact:** A verified, staked LP sees their sPLUSD value only in the hero's Total Balance and reaches `Unstake` via `/stake?tab=unstake`, not from the home grid (user decision 2026-11-02, option (a) on #1819).
 - **Suggested fix:** #1425 (home state 5) builds the compact staked-balance card and takes over the `"passed-staked"` composition; #1820 swaps in the `funded` card.
+
+### TD-162: A settlement address with a separate signer is proven only through that signer
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_settlement_address.rs` (`verify_link`)
+- **Gap:** When `signer_address` differs from the settlement address, the challenge signature proves control of the signer only. This is required for a Stellar `C…` contract, and allowed by user decision (2026-11-02) for any `G…` or `0x…` address, so that Stellar multisig accounts and EVM smart wallets (Safe) can be linked. Nothing checks, on-chain or off, that the signer controls or is authorized for the settlement address.
+- **Impact:** An LP can link any well-formed address it does not control, as long as it signs with a key it does hold. A typo is caught by the Strkey or EIP-55 checksum (EIP-55 only for mixed-case input), but a valid address belonging to someone else is not. Only `signer_address = address` proves ownership of the settlement address itself.
+- **Suggested fix:** Verify the signer's authority per address type: Stellar account signers via Horizon, `C…` via the contract or an allow-list, EVM smart wallets via EIP-1271. Alternatively, require `signer_address = address` except where such a check exists. Until then the Trustee view (#1826) can flag links whose signer differs from the address.
