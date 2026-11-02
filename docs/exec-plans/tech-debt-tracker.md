@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-163.**
+**Next free number: TD-164.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2232,3 +2232,11 @@ line, whichever section it lands in.
 - **Gap:** When `signer_address` differs from the settlement address, the challenge signature proves control of the signer only. This is required for a Stellar `C…` contract, and allowed by user decision (2026-11-02) for any `G…` or `0x…` address, so that Stellar multisig accounts and EVM smart wallets (Safe) can be linked. Nothing checks, on-chain or off, that the signer controls or is authorized for the settlement address.
 - **Impact:** An LP can link any well-formed address it does not control, as long as it signs with a key it does hold. A typo is caught by the Strkey or EIP-55 checksum (EIP-55 only for mixed-case input), but a valid address belonging to someone else is not. Only `signer_address = address` proves ownership of the settlement address itself.
 - **Suggested fix:** Verify the signer's authority per address type: Stellar account signers via Horizon, `C…` via the contract or an allow-list, EVM smart wallets via EIP-1271. Alternatively, require `signer_address = address` except where such a check exists. Until then the Trustee view (#1826) can flag links whose signer differs from the address.
+
+### TD-163: A settlement address can be relinked at any time on session authority alone
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_settlement_address.rs` (`verify_link`), `KybStatus::allows_address_write` in `packages/shared/src/lp_repo.rs`
+- **Gap:** By user decision (2026-11-02, #1831) an LP may relink its settlement address at any status except `Failed`, including after `Passed`, with a valid signed challenge for the new address and nothing else. There is no signature by the current address, no Trustee approval and no notification on change.
+- **Impact:** A hijacked LP session links an address it controls (with TD-162, even one it does not own) and receives every later mint.
+- **Suggested fix:** Any of a signature by the current address, Trustee approval of a change after `Passed`, or an email to the account's verified address on every change. `lp_settlement_address_history` makes changes auditable meanwhile.

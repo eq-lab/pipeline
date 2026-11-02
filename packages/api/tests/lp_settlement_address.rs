@@ -24,13 +24,14 @@ use sha2::{Digest, Sha256};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
-use shared::lp_repo::{LinkChallenge, LinkOutcome, LpRow, SettlementLinkStore};
+use shared::lp_repo::{LinkChallenge, LinkOutcome, LpRow, SettlementLink, SettlementLinkStore};
 use shared::position_repo::PositionRepo;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 const DOMAIN: &str = "app.pipeline.one";
 const LP_ID: i64 = 42;
+const ACCOUNT: Uuid = Uuid::from_u128(7);
 const STELLAR: ConfiguredChain = ConfiguredChain {
     chain_id: 99_000_001,
     kind: ChainKind::Stellar,
@@ -144,7 +145,7 @@ struct FakeState {
     holder: Option<i64>,
     consume_finds_nothing: bool,
     link_outcome: LinkOutcome,
-    links: Vec<(i64, ChainKind, String, String)>,
+    links: Vec<SettlementLink>,
     issue_calls: usize,
 }
 
@@ -175,7 +176,7 @@ impl FakeLinkStore {
         self.with(|s| s.challenge.is_some())
     }
 
-    fn links(&self) -> Vec<(i64, ChainKind, String, String)> {
+    fn links(&self) -> Vec<SettlementLink> {
         self.with(|s| s.links.clone())
     }
 }
@@ -247,15 +248,11 @@ impl SettlementLinkStore for FakeLinkStore {
 
     async fn link_settlement_address(
         &self,
-        lp_id: i64,
-        kind: ChainKind,
-        address: &str,
-        signer_address: &str,
+        link: &SettlementLink,
     ) -> Result<LinkOutcome, sqlx::Error> {
         Ok(self.with(|s| {
             if s.link_outcome == LinkOutcome::Linked {
-                s.links
-                    .push((lp_id, kind, address.to_owned(), signer_address.to_owned()));
+                s.links.push(link.clone());
             }
             s.link_outcome
         }))
@@ -271,6 +268,37 @@ async fn issue(store: &FakeLinkStore, chain: ConfiguredChain, target: &LinkTarge
         .await
         .unwrap()
         .message
+}
+
+async fn issue_for(
+    store: &FakeLinkStore,
+    row: &LpRow,
+    chain: ConfiguredChain,
+    target: &LinkTarget,
+    nonce: &str,
+) -> String {
+    issue_link_challenge(store, row, chain, target, DOMAIN, nonce.to_owned())
+        .await
+        .unwrap()
+        .message
+}
+
+fn link_for(chain: ConfiguredChain, address: &str, signer: &str) -> SettlementLink {
+    SettlementLink {
+        lp_id: LP_ID,
+        kind: chain.kind,
+        chain_id: chain.chain_id,
+        address: address.to_owned(),
+        signer_address: signer.to_owned(),
+        linked_by_account_id: ACCOUNT,
+    }
+}
+
+fn sign(chain: ConfiguredChain, key: &SigningKey, evm: &PrivateKeySigner, message: &str) -> String {
+    match chain.kind {
+        ChainKind::Stellar => hex::encode(sep53(key, message)),
+        ChainKind::Evm => evm_sig(evm, message),
+    }
 }
 
 fn is_proof_failed(err: &ApiError) -> bool {
@@ -452,19 +480,10 @@ fn a_failed_lp_is_refused_with_or_without_an_address() {
 }
 
 #[test]
-fn a_passed_lp_with_that_kind_set_is_fixed() {
-    let stellar = lp("Passed", Some("GOLD"), None);
-    let msg = refusal(&stellar, ChainKind::Stellar, None, "GNEW").unwrap_err();
-    assert_eq!(
-        msg,
-        "LP 42 has passed KYB; its Stellar settlement address is fixed"
-    );
-    let evm = lp("Passed", None, Some("0xold"));
-    let msg = refusal(&evm, ChainKind::Evm, None, "0xnew").unwrap_err();
-    assert_eq!(
-        msg,
-        "LP 42 has passed KYB; its EVM settlement address is fixed"
-    );
+fn a_passed_lp_may_relink_either_kind() {
+    let row = lp("Passed", Some("GOLD"), Some("0xold"));
+    assert!(refusal(&row, ChainKind::Stellar, None, "GNEW").is_ok());
+    assert!(refusal(&row, ChainKind::Evm, None, "0xnew").is_ok());
 }
 
 #[test]
@@ -510,7 +529,7 @@ async fn issuing_returns_the_stored_nonce_and_the_rebuilt_message() {
 async fn a_refused_lp_never_reaches_the_issue_call() {
     let g = g_of(&stellar_key(7));
     let tgt = target(ChainKind::Stellar, &g, None);
-    for row in [lp("Failed", None, None), lp("Passed", Some("GOLD"), None)] {
+    for row in [lp("Failed", None, None), lp("Failed", Some("GOLD"), None)] {
         let store = FakeLinkStore::new();
         let err = issue_link_challenge(&store, &row, STELLAR, &tgt, DOMAIN, "n-1".to_owned())
             .await
@@ -574,7 +593,7 @@ async fn a_corrupt_kyb_status_is_a_500_at_verify_and_keeps_the_challenge() {
     let sig = hex::encode(sep53(&key, &msg));
     let mut corrupt = open_lp();
     corrupt.kyb_status = "Bogus".to_owned();
-    let err = verify_link(&store, &corrupt, STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &corrupt, STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert_opaque_500(err).await;
@@ -591,7 +610,7 @@ async fn a_signature_by_another_key_is_a_proof_failure_and_keeps_the_challenge()
     let tgt = target(ChainKind::Stellar, &g, None);
     let msg = issue(&store, STELLAR, &tgt).await;
     let wrong = hex::encode(sep53(&stellar_key(8), &msg));
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &wrong, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &wrong, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err), "{err:?}");
@@ -609,7 +628,7 @@ async fn an_expired_challenge_is_a_proof_failure() {
     let msg = issue(&store, STELLAR, &tgt).await;
     store.with(|s| s.expired = true);
     let sig = hex::encode(sep53(&key, &msg));
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
@@ -621,10 +640,11 @@ async fn a_challenge_that_was_never_issued_is_a_proof_failure() {
     let store = FakeLinkStore::new();
     let g = g_of(&stellar_key(7));
     let tgt = target(ChainKind::Stellar, &g, None);
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, "00", DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, "00", DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
+    assert!(store.links().is_empty());
 }
 
 #[tokio::test]
@@ -635,10 +655,10 @@ async fn a_replay_after_success_is_a_proof_failure() {
     let tgt = target(ChainKind::Stellar, &g, None);
     let msg = issue(&store, STELLAR, &tgt).await;
     let sig = hex::encode(sep53(&key, &msg));
-    verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap();
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
@@ -654,11 +674,12 @@ async fn a_sign_in_signature_is_a_proof_failure() {
     issue(&store, STELLAR, &tgt).await;
     let sign_in = challenge_message(DOMAIN, &g, STELLAR.chain_id, "n-1", t(300));
     let sig = hex::encode(sep53(&key, &sign_in));
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
     assert!(store.challenge_present());
+    assert!(store.links().is_empty());
 }
 
 #[tokio::test]
@@ -670,7 +691,7 @@ async fn an_address_differing_from_the_challenge_is_a_proof_failure() {
     let msg = issue(&store, STELLAR, &tgt).await;
     let sig = hex::encode(sep53(&key, &msg));
     let other = target(ChainKind::Stellar, &contract(), Some(&g));
-    let err = verify_link(&store, &open_lp(), STELLAR, &other, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &other, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
@@ -687,7 +708,7 @@ async fn a_signer_differing_from_the_challenge_is_a_proof_failure() {
     let sig = hex::encode(sep53(&key, &msg));
     let other_signer = g_of(&stellar_key(8));
     let other = target(ChainKind::Stellar, &contract(), Some(&other_signer));
-    let err = verify_link(&store, &open_lp(), STELLAR, &other, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &other, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
@@ -709,6 +730,7 @@ async fn an_lp_that_failed_after_the_challenge_is_a_conflict_and_the_challenge_i
         &tgt,
         &sig,
         DOMAIN,
+        ACCOUNT,
     )
     .await
     .unwrap_err();
@@ -718,19 +740,18 @@ async fn an_lp_that_failed_after_the_challenge_is_a_conflict_and_the_challenge_i
 }
 
 #[tokio::test]
-async fn a_passed_lp_with_that_kind_already_set_is_a_conflict() {
+async fn a_passed_lp_relinks_through_challenge_and_verify() {
     let store = FakeLinkStore::new();
     let key = stellar_key(7);
     let g = g_of(&key);
     let tgt = target(ChainKind::Stellar, &g, None);
-    let msg = issue(&store, STELLAR, &tgt).await;
-    let sig = hex::encode(sep53(&key, &msg));
     let row = lp("Passed", Some("GOLD"), None);
-    let err = verify_link(&store, &row, STELLAR, &tgt, &sig, DOMAIN)
+    let msg = issue_for(&store, &row, STELLAR, &tgt, "n-1").await;
+    let sig = hex::encode(sep53(&key, &msg));
+    verify_link(&store, &row, STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
-        .unwrap_err();
-    assert!(conflict(err).contains("its Stellar settlement address is fixed"));
-    assert!(store.links().is_empty());
+        .unwrap();
+    assert_eq!(store.links(), vec![link_for(STELLAR, &g, &g)]);
 }
 
 #[tokio::test]
@@ -742,7 +763,7 @@ async fn a_lost_consume_race_is_a_proof_failure_with_no_link_call() {
     let msg = issue(&store, STELLAR, &tgt).await;
     store.with(|s| s.consume_finds_nothing = true);
     let sig = hex::encode(sep53(&key, &msg));
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
@@ -758,10 +779,11 @@ async fn a_unique_violation_on_the_link_is_a_conflict() {
     let msg = issue(&store, STELLAR, &tgt).await;
     store.with(|s| s.link_outcome = LinkOutcome::AddressTaken);
     let sig = hex::encode(sep53(&key, &msg));
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(conflict(err).contains("is already linked to another LP"));
+    assert!(store.links().is_empty());
 }
 
 #[tokio::test]
@@ -773,13 +795,14 @@ async fn a_guarded_update_that_touches_nothing_is_a_conflict() {
     let msg = issue(&store, STELLAR, &tgt).await;
     store.with(|s| s.link_outcome = LinkOutcome::Ineligible);
     let sig = hex::encode(sep53(&key, &msg));
-    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert_eq!(
         conflict(err),
         "LP 42 is no longer eligible to set a Stellar settlement address"
     );
+    assert!(store.links().is_empty());
 }
 
 // ── verify_link: happy paths ─────────────────────────────────────────────────
@@ -792,13 +815,10 @@ async fn a_stellar_account_links_with_its_own_signature() {
     let tgt = target(ChainKind::Stellar, &g, None);
     let msg = issue(&store, STELLAR, &tgt).await;
     let sig = hex::encode(sep53(&key, &msg));
-    verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+    verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap();
-    assert_eq!(
-        store.links(),
-        vec![(LP_ID, ChainKind::Stellar, g.clone(), g)]
-    );
+    assert_eq!(store.links(), vec![link_for(STELLAR, &g, &g)]);
     assert!(!store.challenge_present());
 }
 
@@ -811,13 +831,10 @@ async fn a_stellar_contract_links_through_a_g_signer_in_base64_and_hex() {
         let tgt = target(ChainKind::Stellar, &contract(), Some(&g));
         let msg = issue(&store, STELLAR, &tgt).await;
         let sig = encode(&sep53(&key, &msg));
-        verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN)
+        verify_link(&store, &open_lp(), STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
             .await
             .unwrap();
-        assert_eq!(
-            store.links(),
-            vec![(LP_ID, ChainKind::Stellar, contract(), g.clone())]
-        );
+        assert_eq!(store.links(), vec![link_for(STELLAR, &contract(), &g)]);
     }
 }
 
@@ -830,13 +847,10 @@ async fn an_evm_address_links_with_the_stored_lowercase_address_and_signer() {
     let tgt = target(ChainKind::Evm, &checksummed, None);
     let msg = issue(&store, EVM, &tgt).await;
     let sig = evm_sig(&signer, &msg);
-    verify_link(&store, &open_lp(), EVM, &tgt, &sig, DOMAIN)
+    verify_link(&store, &open_lp(), EVM, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap();
-    assert_eq!(
-        store.links(),
-        vec![(LP_ID, ChainKind::Evm, address.clone(), address)]
-    );
+    assert_eq!(store.links(), vec![link_for(EVM, &address, &address)]);
 }
 
 #[tokio::test]
@@ -848,13 +862,10 @@ async fn an_evm_address_links_through_a_different_signer() {
     let tgt = target(ChainKind::Evm, &owner, Some(&signer_addr));
     let msg = issue(&store, EVM, &tgt).await;
     let sig = format!("0x{}", evm_sig(&signer, &msg));
-    verify_link(&store, &open_lp(), EVM, &tgt, &sig, DOMAIN)
+    verify_link(&store, &open_lp(), EVM, &tgt, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap();
-    assert_eq!(
-        store.links(),
-        vec![(LP_ID, ChainKind::Evm, owner, signer_addr)]
-    );
+    assert_eq!(store.links(), vec![link_for(EVM, &owner, &signer_addr)]);
 }
 
 #[tokio::test]
@@ -867,10 +878,122 @@ async fn a_new_address_after_a_challenge_invalidates_the_previous_one() {
     let sig = hex::encode(sep53(&key, &msg));
     let second = target(ChainKind::Stellar, &contract(), Some(&g));
     issue(&store, STELLAR, &second).await;
-    let err = verify_link(&store, &open_lp(), STELLAR, &first, &sig, DOMAIN)
+    let err = verify_link(&store, &open_lp(), STELLAR, &first, &sig, DOMAIN, ACCOUNT)
         .await
         .unwrap_err();
     assert!(is_proof_failed(&err));
+}
+
+#[tokio::test]
+async fn relink_succeeds_at_every_non_failed_status_for_both_kinds() {
+    let new_stellar = stellar_key(7);
+    let new_evm = evm_signer("11");
+    for status in [
+        "NotStarted",
+        "InProgress",
+        "UnderReview",
+        "ChangesRequested",
+        "Passed",
+    ] {
+        for chain in [STELLAR, EVM] {
+            let store = FakeLinkStore::new();
+            let (row, tgt, address) = match chain.kind {
+                ChainKind::Stellar => {
+                    let g = g_of(&new_stellar);
+                    (
+                        lp(status, Some("GOLD"), None),
+                        target(chain.kind, &g, None),
+                        g,
+                    )
+                }
+                ChainKind::Evm => {
+                    let a = evm_addr(&new_evm);
+                    (
+                        lp(status, None, Some("0xold")),
+                        target(chain.kind, &a, None),
+                        a,
+                    )
+                }
+            };
+            let msg = issue_for(&store, &row, chain, &tgt, "n-1").await;
+            let sig = sign(chain, &new_stellar, &new_evm, &msg);
+            verify_link(&store, &row, chain, &tgt, &sig, DOMAIN, ACCOUNT)
+                .await
+                .unwrap_or_else(|e| panic!("{status} {:?}: {e:?}", chain.kind));
+            assert_eq!(store.links(), vec![link_for(chain, &address, &address)]);
+            assert!(!store.challenge_present());
+        }
+    }
+}
+
+#[tokio::test]
+async fn repeated_relinks_each_need_a_fresh_challenge() {
+    let a = (stellar_key(7), evm_signer("11"));
+    let b = (stellar_key(8), evm_signer("22"));
+    for chain in [STELLAR, EVM] {
+        let store = FakeLinkStore::new();
+        let row = lp("Passed", Some("GOLD"), Some("0xold"));
+        let addr = |k: &(SigningKey, PrivateKeySigner)| match chain.kind {
+            ChainKind::Stellar => g_of(&k.0),
+            ChainKind::Evm => evm_addr(&k.1),
+        };
+        let order = [&a, &b, &a, &a];
+        let mut first_sig = String::new();
+        let mut expected = Vec::new();
+        for (i, k) in order.iter().enumerate() {
+            let address = addr(k);
+            let tgt = target(chain.kind, &address, None);
+            let msg = issue_for(&store, &row, chain, &tgt, &format!("n-{}", i + 1)).await;
+            let sig = sign(chain, &k.0, &k.1, &msg);
+            if i == 0 {
+                first_sig = sig.clone();
+            }
+            verify_link(&store, &row, chain, &tgt, &sig, DOMAIN, ACCOUNT)
+                .await
+                .unwrap();
+            expected.push(link_for(chain, &address, &address));
+        }
+        assert_eq!(store.links(), expected);
+        let tgt = target(chain.kind, &addr(&a), None);
+        let err = verify_link(&store, &row, chain, &tgt, &first_sig, DOMAIN, ACCOUNT)
+            .await
+            .unwrap_err();
+        assert!(is_proof_failed(&err), "{err:?}");
+        assert_eq!(store.links().len(), 4);
+    }
+}
+
+#[tokio::test]
+async fn relinking_back_to_a_previous_address_is_allowed() {
+    let store = FakeLinkStore::new();
+    store.with(|s| s.holder = Some(LP_ID));
+    let key = stellar_key(7);
+    let g = g_of(&key);
+    let row = lp("Passed", Some(&g), None);
+    let tgt = target(ChainKind::Stellar, &g, None);
+    let msg = issue_for(&store, &row, STELLAR, &tgt, "n-1").await;
+    let sig = hex::encode(sep53(&key, &msg));
+    verify_link(&store, &row, STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
+        .await
+        .unwrap();
+    assert_eq!(store.links().len(), 1);
+}
+
+#[tokio::test]
+async fn a_passed_lp_proves_its_legacy_unsigned_address_by_relinking_it() {
+    let store = FakeLinkStore::new();
+    store.with(|s| s.holder = Some(LP_ID));
+    let key = stellar_key(7);
+    let g = g_of(&key);
+    let row = lp("Passed", Some(&g), None);
+    assert!(row.stellar_signer_address.is_none());
+    let tgt = target(ChainKind::Stellar, &g, None);
+    let msg = issue_for(&store, &row, STELLAR, &tgt, "n-1").await;
+    let sig = hex::encode(sep53(&key, &msg));
+    verify_link(&store, &row, STELLAR, &tgt, &sig, DOMAIN, ACCOUNT)
+        .await
+        .unwrap();
+    assert_eq!(store.links(), vec![link_for(STELLAR, &g, &g)]);
 }
 
 // ── OpenAPI document ─────────────────────────────────────────────────────────
@@ -905,6 +1028,13 @@ fn the_challenge_is_a_get_with_required_chain_and_address_and_optional_signer() 
         .as_str()
         .unwrap();
     assert!(schema.ends_with("/ChallengeResponse"));
+    assert_no_fixed_wording(op);
+}
+
+fn assert_no_fixed_wording(op: &serde_json::Value) {
+    let conflict = op["responses"]["409"]["description"].as_str().unwrap();
+    assert!(!conflict.contains("fixed"), "{conflict}");
+    assert!(conflict.contains("refused at KYB"));
 }
 
 #[test]
@@ -937,6 +1067,7 @@ fn the_verify_is_a_post_with_a_required_proof_body_and_a_422() {
         assert!(required.contains(&field), "{field} must be required");
     }
     assert!(!required.contains(&"signer_address"));
+    assert_no_fixed_wording(op);
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────

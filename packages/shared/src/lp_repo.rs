@@ -151,39 +151,14 @@ impl KybStatus {
         matches!(self, KybStatus::UnderReview)
     }
 
-    /// Whether the settlement address of one chain kind may be written now —
-    /// `has_address` is whether that kind's address is already linked (spec §
-    /// Settlement Address).
-    ///
-    /// It may be set at any status short of a terminal verdict, and replaced
-    /// freely until the decision is final. `Passed` fixes the address already
-    /// held — downstream systems treat it from then on as the account money
-    /// moves to — but an LP that passed before naming one may still name it
-    /// once. `Failed` refuses outright: the column is UNIQUE across LPs, so a
-    /// refused applicant left writable could burn real LPs' addresses, and a
-    /// refused LP will never settle, so even a first write buys nothing. That
-    /// does not lean on the suspension `Failed` also sets (#1380), which is
-    /// enforced nowhere yet. Mirrored by the
-    /// `kyb_status <> 'Failed' AND (stellar_address IS NULL OR kyb_status <> 'Passed')`
-    /// predicate in `LINK_STELLAR_ADDRESS_SQL` / `LINK_EVM_ADDRESS_SQL`, which is
-    /// what actually enforces it — this is where the rule is *stated*, and the SQL must keep
-    /// restating it faithfully. Deliberately not folded into
-    /// [`allows_owner_writes`](Self::allows_owner_writes) — the two policies
-    /// still cross at `UnderReview` (address open, profile frozen) and at
-    /// `Passed` with no address yet (one address write allowed, profile
-    /// frozen), but `Failed` now closes both, for independent reasons: this
-    /// rule rests on `stellar_address` being UNIQUE, the other on the decision
-    /// being final. Owner-writable now *implies* address-writable, so the
-    /// containment is one-directional rather than a two-way crossing; they
-    /// stay two policies because they answer different questions.
-    pub fn allows_address_write(&self, has_address: bool) -> bool {
+    pub fn allows_address_write(&self) -> bool {
         match self {
             KybStatus::Failed => false,
-            KybStatus::Passed => !has_address,
             KybStatus::NotStarted
             | KybStatus::InProgress
             | KybStatus::UnderReview
-            | KybStatus::ChangesRequested => true,
+            | KybStatus::ChangesRequested
+            | KybStatus::Passed => true,
         }
     }
 
@@ -232,9 +207,6 @@ pub struct LpRow {
     pub legal_name: String,
     pub country: Option<String>,
     pub contact_email: String,
-    /// Settable at any status short of a terminal verdict; fixed once `Passed`
-    /// holds one, never settable at `Failed` (see
-    /// [`KybStatus::allows_address_write`]).
     pub stellar_address: Option<String>,
     pub address_linked_at: Option<DateTime<Utc>>,
     pub stellar_signer_address: Option<String>,
@@ -293,6 +265,16 @@ pub struct LpRepo {
 impl LpRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn settlement_address_history(
+        &self,
+        lp_id: i64,
+    ) -> Result<Vec<SettlementAddressHistoryRow>, sqlx::Error> {
+        sqlx::query_as::<_, SettlementAddressHistoryRow>(LIST_SETTLEMENT_ADDRESS_HISTORY_SQL)
+            .bind(lp_id)
+            .fetch_all(&self.pool)
+            .await
     }
 
     fn writable_statuses() -> Vec<String> {
@@ -513,15 +495,42 @@ pub const CONSUME_LINK_CHALLENGE_SQL: &str = "DELETE FROM lp_address_challenges 
      WHERE lp_id = $1 AND chain_id = $2 AND nonce = $3 AND expires_at > now() \
      RETURNING address, signer_address, nonce, expires_at";
 
-pub const LINK_STELLAR_ADDRESS_SQL: &str = "UPDATE lps SET stellar_address = $2, \
-     stellar_signer_address = $3, address_linked_at = now(), updated_at = now() \
-     WHERE id = $1 AND kyb_status <> 'Failed' \
-       AND (stellar_address IS NULL OR kyb_status <> 'Passed')";
+pub const LINK_STELLAR_ADDRESS_SQL: &str = "WITH prev AS ( \
+         SELECT id, stellar_address, stellar_signer_address FROM lps WHERE id = $1 FOR UPDATE \
+     ), linked AS ( \
+         UPDATE lps SET stellar_address = $2, stellar_signer_address = $3, address_linked_at = now(), updated_at = now() \
+           FROM prev \
+          WHERE lps.id = prev.id AND lps.kyb_status <> 'Failed' \
+         RETURNING lps.id, prev.stellar_address AS previous_address, \
+                   prev.stellar_signer_address AS previous_signer_address, lps.address_linked_at AS linked_at \
+     ) \
+     INSERT INTO lp_settlement_address_history \
+         (lp_id, chain_kind, chain_id, address, signer_address, previous_address, \
+          previous_signer_address, linked_by_account_id, created_at) \
+     SELECT id, 'stellar', $4, $2, $3, previous_address, previous_signer_address, $5, linked_at \
+       FROM linked \
+     RETURNING id";
 
-pub const LINK_EVM_ADDRESS_SQL: &str = "UPDATE lps SET evm_address = $2, \
-     evm_signer_address = $3, evm_address_linked_at = now(), updated_at = now() \
-     WHERE id = $1 AND kyb_status <> 'Failed' \
-       AND (evm_address IS NULL OR kyb_status <> 'Passed')";
+pub const LINK_EVM_ADDRESS_SQL: &str = "WITH prev AS ( \
+         SELECT id, evm_address, evm_signer_address FROM lps WHERE id = $1 FOR UPDATE \
+     ), linked AS ( \
+         UPDATE lps SET evm_address = $2, evm_signer_address = $3, evm_address_linked_at = now(), updated_at = now() \
+           FROM prev \
+          WHERE lps.id = prev.id AND lps.kyb_status <> 'Failed' \
+         RETURNING lps.id, prev.evm_address AS previous_address, \
+                   prev.evm_signer_address AS previous_signer_address, lps.evm_address_linked_at AS linked_at \
+     ) \
+     INSERT INTO lp_settlement_address_history \
+         (lp_id, chain_kind, chain_id, address, signer_address, previous_address, \
+          previous_signer_address, linked_by_account_id, created_at) \
+     SELECT id, 'evm', $4, $2, $3, previous_address, previous_signer_address, $5, linked_at \
+       FROM linked \
+     RETURNING id";
+
+pub const LIST_SETTLEMENT_ADDRESS_HISTORY_SQL: &str = "SELECT id, lp_id, chain_kind, chain_id, \
+     address, signer_address, previous_address, previous_signer_address, \
+     linked_by_account_id, created_at \
+     FROM lp_settlement_address_history WHERE lp_id = $1 ORDER BY created_at DESC, id DESC";
 
 pub const ADDRESS_HOLDER_STELLAR_SQL: &str = "SELECT id FROM lps WHERE stellar_address = $1";
 
@@ -533,6 +542,30 @@ pub struct LinkChallenge {
     pub signer_address: String,
     pub nonce: String,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettlementLink {
+    pub lp_id: i64,
+    pub kind: ChainKind,
+    pub chain_id: i64,
+    pub address: String,
+    pub signer_address: String,
+    pub linked_by_account_id: Uuid,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SettlementAddressHistoryRow {
+    pub id: i64,
+    pub lp_id: i64,
+    pub chain_kind: String,
+    pub chain_id: Option<i64>,
+    pub address: String,
+    pub signer_address: Option<String>,
+    pub previous_address: Option<String>,
+    pub previous_signer_address: Option<String>,
+    pub linked_by_account_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -575,10 +608,7 @@ pub trait SettlementLinkStore: Send + Sync {
 
     async fn link_settlement_address(
         &self,
-        lp_id: i64,
-        kind: ChainKind,
-        address: &str,
-        signer_address: &str,
+        link: &SettlementLink,
     ) -> Result<LinkOutcome, sqlx::Error>;
 }
 
@@ -649,24 +679,23 @@ impl SettlementLinkStore for LpRepo {
 
     async fn link_settlement_address(
         &self,
-        lp_id: i64,
-        kind: ChainKind,
-        address: &str,
-        signer_address: &str,
+        link: &SettlementLink,
     ) -> Result<LinkOutcome, sqlx::Error> {
-        let sql = match kind {
+        let sql = match link.kind {
             ChainKind::Stellar => LINK_STELLAR_ADDRESS_SQL,
             ChainKind::Evm => LINK_EVM_ADDRESS_SQL,
         };
-        let result = sqlx::query(sql)
-            .bind(lp_id)
-            .bind(address)
-            .bind(signer_address)
-            .execute(&self.pool)
+        let result = sqlx::query_as::<_, (i64,)>(sql)
+            .bind(link.lp_id)
+            .bind(&link.address)
+            .bind(&link.signer_address)
+            .bind(link.chain_id)
+            .bind(link.linked_by_account_id)
+            .fetch_optional(&self.pool)
             .await;
         match result {
-            Ok(done) if done.rows_affected() > 0 => Ok(LinkOutcome::Linked),
-            Ok(_) => Ok(LinkOutcome::Ineligible),
+            Ok(Some(_)) => Ok(LinkOutcome::Linked),
+            Ok(None) => Ok(LinkOutcome::Ineligible),
             Err(e)
                 if e.as_database_error()
                     .is_some_and(sqlx::error::DatabaseError::is_unique_violation) =>
