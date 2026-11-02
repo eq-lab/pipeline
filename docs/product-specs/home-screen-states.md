@@ -18,6 +18,8 @@ replaced or superseded. See [dashboards.md](./dashboards.md) for the rest of the
 | 3 | KYB pending, empty | wallet connected · PLUSD = 0 · sPLUSD = 0 · KYB `UnderReview` | Implemented (#1423) |
 | 4 | Verified, holds PLUSD | wallet connected · PLUSD > 0 · sPLUSD = 0 · KYB `Passed` · bank transfer unlocked | Implemented (#1424) |
 | 5 | Verified, funded, staked | wallet connected · KYB `Passed` · bank transfer received · PLUSD = 0 · sPLUSD > 0 | Not yet implemented |
+| 4a | Verified, empty (transfers unlocked) | wallet connected · PLUSD = 0 · sPLUSD = 0 · KYB `Passed` | Implemented (#1819) — interim, no frame of its own |
+| 4b | Verified, staked (transfers unlocked) | wallet connected · sPLUSD > 0 (any PLUSD) · KYB `Passed` | Implemented (#1819) — interim until state 5 (#1425) |
 | 6 | KYB problem | KYB `ChangesRequested` or `Failed` (status alone — no wallet or balance condition) | Implemented (#1426) |
 | 7 | Wallet connected, no account | wallet connected · not signed in (no email account) · PLUSD = 0 · sPLUSD = 0 | Implemented (#1460) |
 
@@ -72,13 +74,25 @@ resolves — the same in-flight shape tracked as TD-121.
 **State 4 (verified, holds PLUSD)** requires all five of: an auth session, a **connected** wallet,
 `lpRead === "loaded"`, `kyb_status === "Passed"`, and PLUSD rendering **non**-zero while sPLUSD
 renders zero at two decimal places (the same #1186 displayed-zero rule as state 3). `Passed` with
-PLUSD also display-zero, `Passed` with sPLUSD non-zero, `Passed` with no wallet connected, and a
-failed/absent LP read all fall through to `"legacy"` (an in-flight read renders `"loading"`) — none
-of these combinations is designed. As with state 3, an unresolved PLUSD balance reads as displayed-zero (TD-121), so a
-`Passed` LP who actually holds PLUSD can render briefly as `"legacy"` before the balance resolves.
-"Bank transfer unlocked" is not an independently served field — it is the
-`AddUsdCard variant="unlocked"` rendering, gated by the same `kyb_status === "Passed"` that defines
-the state itself; there is no separate "transfers unlocked" flag on `GET /v1/lps/me`.
+no wallet connected and a failed/absent LP read fall through to `"legacy"` (an in-flight read
+renders `"loading"`) — neither combination is designed. `Passed` with PLUSD also display-zero is
+state 4a and `Passed` with sPLUSD non-zero is state 4b (both #1819, below); as with state 3, an
+unresolved PLUSD balance reads as displayed-zero (TD-121), so a PLUSD holder can flash 4a first.
+
+**States 4a and 4b (verified, transfers unlocked — #1819)** make every signed-in,
+wallet-connected `Passed` LP see the "Transfers unlocked / Add Funds" card (`AddUsdCard
+variant="unlocked"`, Figma node `6701:97494`) whatever the balances (user decision 2026-11-02,
+option (a) on #1819). Both are evaluated after state 4 and before state 6 and share its gate (auth
+session, **connected** wallet, `lpRead === "loaded"`, `kyb_status === "Passed"`). **4a
+(`"passed-empty"`)** adds both balances displayed-zero and reuses state 3's composition with one
+card swap (`unlocked` for `verifying`; same reuse pattern as states 6 and 7 — no frame draws this
+combination, the card node is the reference). **4b (`"passed-staked"`)** adds sPLUSD displayed
+non-zero, any PLUSD; its designed frame is state 5 (`6701:97136`, #1425, blocked), whose compact
+"Staked PLUSD / Stake More / Unstake" card does not exist yet, so until #1425 ships it renders the
+interim compact grid (connected hero, compact Buy/Sell in balance mode when PLUSD is held, compact
+Stake, `unlocked` + Earnings) — the staked-value line and `Unstake` stay on `/stake` (TD-161).
+Compositions: [`dashboard-components.md#home-route`](../frontend/dashboard-components.md#home-route).
+"Bank transfer unlocked" is the `Passed` rendering, not a served flag on `GET /v1/lps/me`.
 
 **State 6 (KYB problem)** requires only an auth session, `lpRead === "loaded"`, and
 `kyb_status` in (`"ChangesRequested"`, `"Failed"`) — **no wallet-connection condition and no
@@ -113,9 +127,8 @@ undesigned combination, see the state 2 paragraph above) until that combination 
 `isConnected` alone (never on `homeState`), and this visitor already renders
 `mobileHomeState === "empty"`, the mobile reading of this exact state.
 
-Until state 5 lands, every other signed-in session renders today's pre-#1419
-wallet-connection-driven layout (`deriveHomeState`'s `"legacy"` branch in
-`packages/frontend/src/components/homeState.ts`).
+Every other signed-in session (`Passed` + disconnected, `NotStarted` + connected, a failed LP
+read) renders the pre-#1419 layout (`deriveHomeState`'s `"legacy"` branch in `homeState.ts`).
 
 ## Heading
 

@@ -6,6 +6,8 @@ export type HomeState =
   | "unverified"
   | "kyb-pending"
   | "plusd-held"
+  | "passed-empty"
+  | "passed-staked"
   | "kyb-problem"
   | "legacy";
 export type LpReadState = "unknown" | "absent" | "loaded" | "error";
@@ -52,6 +54,23 @@ export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
     splusdIsZero
   ) {
     return "plusd-held";
+  }
+  if (
+    isConnected &&
+    lpRead === "loaded" &&
+    kybStatus === "Passed" &&
+    plusdIsZero &&
+    splusdIsZero
+  ) {
+    return "passed-empty";
+  }
+  if (
+    isConnected &&
+    lpRead === "loaded" &&
+    kybStatus === "Passed" &&
+    !splusdIsZero
+  ) {
+    return "passed-staked";
   }
   if (
     lpRead === "loaded" &&

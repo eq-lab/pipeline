@@ -1614,8 +1614,8 @@ one `HomeDashboardGrid`: it owns the `grid w-full grid-cols-7 gap-4` container
 wrapper (col 1–2, row 2, `data-node-id` per state via `balancesNodeId`) and the `QnaSection`
 footer (col 1–7, row 3). The route supplies the varying parts as slots: `hero` (col 1–4, row 1),
 `balances` (the stack's children) and `third` (col 3–4, row 2 — a `CompactAddUsdStack`, which
-appends the compact `EarnedCard`, for the six compact states; the bare `StakeCard` for
-`"legacy"`). `CompactBalances` renders the compact `StartHereCard` + `StakeCard` pair from the
+appends the compact `EarnedCard` (fed the stack's optional `earnedPnlLabel`, passed only by
+`"passed-staked"`, #1819), for the compact states; the bare `StakeCard` for `"legacy"`). `CompactBalances` renders the compact `StartHereCard` + `StakeCard` pair from the
 per-state handlers. The per-state tables below are unchanged: the refactor was verified
 byte-identical for all seven states (grid `outerHTML` diffed before/after), and every
 `data-node-id` / `data-testid` sits on the same element as before.
@@ -1683,6 +1683,30 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact" compactVariant="balance"` + `StakeCard layout="compact"` stacked (Figma node `6701:97461`, 313.14×344 at (32,322)) — Buy/Sell both navigate (`sellDisabled={false}`), Stake CTA enabled (node `6701:97492`, 75×40 `Stake`). |
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="unlocked" className="flex-1"` (Figma node `6701:97494`, 313.14×246) + `EarnedCard layout="compact"` (node `6701:97508`, 313.14×82) stacked (node `6701:97493`) — `onAddFunds` opens `FundingDetailsModal` with no `details` (every row `—`), mounted for the first time from `/`. |
    | QnaSection      | col 1–7, row 3                       | FAQ strip, 1136×89 (Figma node `6701:97452`) — unchanged.                                                                      |
+
+   When `deriveHomeState` returns `"passed-empty"` (signed in, wallet connected, `kyb_status`
+   `"Passed"`, PLUSD and sPLUSD both display-zero — state 4a of `home-screen-states.md`, #1819, no
+   frame of its own) the grid renders the `"kyb-pending"` branch with one card swap:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1                       | `PortfolioPlaceholderCard variant="get-plusd"` — served `$0.00`, unchanged from state 3.                                      |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard padding="md"` — unchanged.                                                                                |
+   | Balances        | col 1–2, row 2 (`6701:98773`)        | `CompactBalances {...compactWalletActions}` — Buy enabled, Sell and Stake disabled by the served zero balances (state 3's stack geometry). |
+   | AddUsdCard      | col 3–4, row 2 (`6701:97493`)        | `AddUsdCard variant="unlocked" className="flex-1"` (node `6701:97494`) + `EarnedCard layout="compact"` — `onAddFunds` opens `FundingDetailsModal` (rows `—` until #1817); state 4's stack geometry. |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                                      |
+
+   When `deriveHomeState` returns `"passed-staked"` (signed in, wallet connected, `kyb_status`
+   `"Passed"`, sPLUSD display non-zero, any PLUSD — state 4b, #1819, interim until state 5 / #1425
+   whose frame `6701:97136` is the geometry reference) the grid renders:
+
+   | Slot            | Grid position                        | Content                                                                                                                      |
+   | --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+   | Portfolio       | col 1–4, row 1 (`6701:97247`)        | `PortfolioPlaceholderCard` default variant with `mobileHomeState`, `balanceLabel={splusdBalanceFormatted}` (sPLUSD in PLUSD, #1658), `unrealizedPnlLabel` and the chart props — the same hero the `"legacy"` connected grid shows. |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 (`6701:97315`) | `RecentActivityCard padding="md"`.                                                                                    |
+   | Balances        | col 1–2, row 2 (`6701:97257`)        | `CompactBalances` — `compactVariant="balance"` + `compactBalanceLabel={plusdFormattedActive}` when PLUSD is display non-zero (Buy and Sell enabled), the default compact pair otherwise; the compact `StakeCard` keeps its marketing copy — the frame's compact "Staked PLUSD / Stake More / Unstake" card (`6701:97273`) is #1425's (TD-161). |
+   | AddUsdCard      | col 3–4, row 2 (`6701:97288`)        | `AddUsdCard variant="unlocked" className="flex-1"` + `EarnedCard layout="compact" earnedPnlLabel={earnedPnlLabel}` (the stack's `earnedPnlLabel` prop) — `funded` (`6701:97289`) replaces `unlocked` here under #1820. |
+   | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                                      |
 
    When `deriveHomeState` returns `"kyb-problem"` (signed in, `lpRead === "loaded"`,
    `kyb_status` `ChangesRequested` or `Failed` — state 6 of `home-screen-states.md`, #1426, Figma
@@ -1765,9 +1789,9 @@ the skeleton is derived from the cards' own heights. The mobile stack is unaffec
 served by the API), the route keeps `WelcomeHeader` and replaces both the mobile stack and the
 desktop dashboard card with `ChainNotServedNotice` — no home state is derived or rendered.
 
-**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460/#1576):**
+**Home state derivation (`deriveHomeState`, issues #1421/#1422/#1423/#1424/#1426/#1460/#1576/#1819):**
 `packages/frontend/src/components/homeState.ts` exports
-`HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "kyb-problem" | "legacy"`,
+`HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "passed-empty" | "passed-staked" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
 `deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
@@ -1782,11 +1806,16 @@ has not resolved (#1576, closes the LP-read half of TD-121; see "Loading composi
 (`lpRead === "loaded"` and `kybStatus === "NotStarted"`); else
 `"kyb-pending"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "UnderReview"` and both
 `plusdIsZero` and `splusdIsZero`; else `"plusd-held"` when `isConnected`, `lpRead === "loaded"`,
-`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"kyb-problem"` when
+`kybStatus === "Passed"`, `!plusdIsZero` and `splusdIsZero`; else `"passed-empty"` when
+`isConnected`, `lpRead === "loaded"`, `kybStatus === "Passed"`, `plusdIsZero` and `splusdIsZero`;
+else `"passed-staked"` when `isConnected`, `lpRead === "loaded"`, `kybStatus === "Passed"` and
+`!splusdIsZero` (#1819 — together the three `Passed` branches cover every connected `Passed`
+balance combination); else `"kyb-problem"` when
 `lpRead === "loaded"` and `kybStatus` is `"ChangesRequested"` or `"Failed"` — **no `isConnected` or
-balance check**, unlike the two branches above it; else `"legacy"` (covers a disconnected wallet, a
-non-zero sPLUSD balance, `lpRead` `"error"`, and every other `kyb_status`, including the
-unreachable `"InProgress"`). The route reads `useAuthSession().isAuthenticated` for `hasSession`,
+balance check**, unlike the branches above it; else `"legacy"` (covers a disconnected wallet,
+`lpRead` `"error"`, and every other `kyb_status`, including the unreachable `"InProgress"`). The
+route hoists `plusdIsZero` / `splusdIsZero` into two consts shared by `deriveHomeState`,
+`stakeDisabled`, `sellDisabled` and the `"passed-staked"` balance-mode switch. The route reads `useAuthSession().isAuthenticated` for `hasSession`,
 `lpRead`/`kybStatus` from `useAuthFlow()`, and feeds the two balance inputs from
 `isDisplayZero(plusdBalanceActive, activeDecimals)` / `isDisplayZero(splusdSharesActive,
 activeDecimals)` — the same #1186 displayed-zero rule as `stakeDisabled` / `sellDisabled`. For the

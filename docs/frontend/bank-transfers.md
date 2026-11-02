@@ -99,7 +99,9 @@ for home state 3 (#1423, Figma frame `6701:98417`), stacked above `EarnedCard la
 with **no `flex-1`** — the card owns its 246px height, per § "Shape B frame and illustration
 anchor". `unlocked` ships on `/` for home state 4 (#1424, Figma frame `6701:97340`, node
 `6701:97494`), stacked above `EarnedCard layout="compact"` **with** `className="flex-1"` (Shape A
-carries no height of its own). `declined` ships on `/` for home state 6 (#1426, Figma frame
+carries no height of its own), and — since #1819 — for every other signed-in, wallet-connected
+`Passed` combination too: states 4a `"passed-empty"` and 4b `"passed-staked"` of
+`docs/product-specs/home-screen-states.md` mount the identical card in the same slot. `declined` ships on `/` for home state 6 (#1426, Figma frame
 `6702:104071`, node `6702:104191`), gated on `kyb_status` alone (`ChangesRequested` or `Failed`, no
 wallet or balance gating — see `docs/product-specs/home-screen-states.md`), stacked above
 `EarnedCard layout="compact"` with **no `flex-1`**, same as `verifying`. `funded` is still

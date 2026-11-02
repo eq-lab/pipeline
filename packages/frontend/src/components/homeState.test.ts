@@ -166,12 +166,18 @@ describe("deriveHomeState — kyb-pending (#1423)", () => {
     },
   );
 
-  it.each(["NotStarted", "Passed", "InProgress"])(
+  it.each(["NotStarted", "InProgress"])(
     "returns legacy when connected with zero balances and kybStatus %s",
     (kybStatus) => {
       expect(deriveHomeState({ ...base, kybStatus })).toBe("legacy");
     },
   );
+
+  it("returns passed-empty when connected with zero balances and kybStatus Passed (#1819)", () => {
+    expect(deriveHomeState({ ...base, kybStatus: "Passed" })).toBe(
+      "passed-empty",
+    );
+  });
 
   it.each(["ChangesRequested", "Failed"])(
     "returns kyb-problem when connected with zero balances and kybStatus %s",
@@ -222,12 +228,16 @@ describe("deriveHomeState — plusd-held (#1424)", () => {
     expect(deriveHomeState(base)).toBe("plusd-held");
   });
 
-  it("returns legacy when PLUSD is also zero", () => {
-    expect(deriveHomeState({ ...base, plusdIsZero: true })).toBe("legacy");
+  it("returns passed-empty when PLUSD is also zero (#1819)", () => {
+    expect(deriveHomeState({ ...base, plusdIsZero: true })).toBe(
+      "passed-empty",
+    );
   });
 
-  it("returns legacy when sPLUSD is non-zero", () => {
-    expect(deriveHomeState({ ...base, splusdIsZero: false })).toBe("legacy");
+  it("returns passed-staked when sPLUSD is non-zero (#1819)", () => {
+    expect(deriveHomeState({ ...base, splusdIsZero: false })).toBe(
+      "passed-staked",
+    );
   });
 
   it("returns legacy when the wallet is disconnected", () => {
@@ -398,5 +408,77 @@ describe("deriveHomeState — wallet-only (#1460)", () => {
     expect(
       deriveHomeState({ ...base, hasSession: true, lpRead: "unknown" }),
     ).toBe("loading");
+  });
+
+  it("returns passed-empty when signed in, connected, Passed and both balances display-zero (#1819)", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "loaded",
+        kybStatus: "Passed",
+        plusdIsZero: true,
+        splusdIsZero: true,
+      }),
+    ).toBe("passed-empty");
+  });
+
+  it("returns passed-staked when signed in, connected, Passed and sPLUSD is non-zero (#1819)", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "loaded",
+        kybStatus: "Passed",
+        plusdIsZero: true,
+        splusdIsZero: false,
+      }),
+    ).toBe("passed-staked");
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "loaded",
+        kybStatus: "Passed",
+        plusdIsZero: false,
+        splusdIsZero: false,
+      }),
+    ).toBe("passed-staked");
+  });
+
+  it("keeps plusd-held ahead of the #1819 states when Passed with PLUSD and no sPLUSD", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "loaded",
+        kybStatus: "Passed",
+        plusdIsZero: false,
+        splusdIsZero: true,
+      }),
+    ).toBe("plusd-held");
+  });
+
+  it("keeps legacy for Passed with the wallet disconnected or the LP read failed (#1819)", () => {
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: false,
+        lpRead: "loaded",
+        kybStatus: "Passed",
+        plusdIsZero: true,
+        splusdIsZero: true,
+      }),
+    ).toBe("legacy");
+    expect(
+      deriveHomeState({
+        hasSession: true,
+        isConnected: true,
+        lpRead: "error",
+        kybStatus: "Passed",
+        plusdIsZero: true,
+        splusdIsZero: true,
+      }),
+    ).toBe("legacy");
   });
 });

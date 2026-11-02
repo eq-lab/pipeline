@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-160.**
+**Next free number: TD-162.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2214,3 +2214,11 @@ line, whichever section it lands in.
 - **Gap:** The user docs say a voucher is valid for 24 hours, but the EVM signature does not cover a deadline, so an EVM voucher never expires. The LP hooks (#1760) already honour a served `deadline`, so nothing changes in the app once the backend serves one.
 - **Impact:** The documented 24-hour expiry and fresh-voucher behaviour only exist on Stellar.
 - **Suggested fix:** Backend follow-up #1798: add a deadline to the EVM `VerifiedRequests` digest and serve it.
+
+### TD-161: The interim `"passed-staked"` home grid has no staked-balance card and no `Unstake` entry
+
+- **Date:** 2026-11-02
+- **Location:** `packages/frontend/src/routes/index.tsx` (`"passed-staked"` branch), `packages/frontend/src/components/StakeCard.tsx` (compact layout)
+- **Gap:** #1819 shows the `unlocked` AddUsdCard to every connected `Passed` LP. For sPLUSD holders it uses the compact grid, whose compact `StakeCard` has only the marketing variant; the designed state-5 frame (`6701:97136`) has a compact "Staked PLUSD / value / Stake More / Unstake" card (`6701:97273`) that does not exist in code. The legacy grid's full `StakeCard` used to show the staked value and `Unstake` here.
+- **Impact:** A verified, staked LP sees their sPLUSD value only in the hero's Total Balance and reaches `Unstake` via `/stake?tab=unstake`, not from the home grid (user decision 2026-11-02, option (a) on #1819).
+- **Suggested fix:** #1425 (home state 5) builds the compact staked-balance card and takes over the `"passed-staked"` composition; #1820 swaps in the `funded` card.
