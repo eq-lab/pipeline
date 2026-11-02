@@ -101,7 +101,7 @@ pub fn challenge_domain(app_base_url: &str) -> String {
         .unwrap_or_else(|| app_base_url.to_owned())
 }
 
-fn iso(t: DateTime<Utc>) -> String {
+pub(crate) fn iso(t: DateTime<Utc>) -> String {
     t.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 

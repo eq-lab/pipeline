@@ -15,6 +15,7 @@ pub mod loan_financials;
 pub mod loan_transfers;
 pub mod lp_bank_deposits;
 pub mod lp_ledger;
+pub mod lp_settlement_address;
 pub mod lps;
 pub mod pnl;
 pub mod portfolio;

@@ -74,12 +74,24 @@ Challenge lifecycle (one record per account, on `auth_users`: `nonce`, `nonce_ex
 - **Stellar:** the same text is signed with SEP-0053 (`SHA256("Stellar Signed Message:\n" ||
   message)`), which hashes the raw UTF-8 bytes, so newlines and length are not a concern.
 
+### Settlement-address proof
+
+A second challenge kind proves an LP controls the wallet it names as a settlement address (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address). It reuses the sign-in mechanics but is stored in its own table, `lp_address_challenges`, with one live row per `(lp_id, chain_id)`.
+
+- **Binding.** The row holds `address` and `signer_address`, and the message embeds `lp_id`, `chain_id`, both addresses, the nonce and the expiry. A challenge cannot be used for another LP, chain, address or signer. Its text differs from the sign-in message, so a sign-in signature never verifies as a link proof.
+- **TTL and reuse.** 5 minutes. One SQL upsert on the database clock reuses the stored nonce only when the stored `address` and `signer_address` equal the requested ones **and** more than 60 seconds remain. Otherwise a fresh nonce overwrites the row, so a challenge for a different address invalidates the previous one.
+- **Consume.** After the signature verifies against the stored signer, `verify` runs `DELETE FROM lp_address_challenges WHERE lp_id = $1 AND chain_id = $2 AND nonce = $3 AND expires_at > now() RETURNING address, signer_address`. The link uses the returned row, never the request body. No row means a concurrent replay. A bad signature does not consume.
+- **Errors.** Every proof failure is `422` with the one body `settlement address proof failed`: no live challenge, an address or signer different from the stored binding, a signature that does not verify, a lost consume race. `401` stays reserved for a missing or invalid token (`AuthClaims`).
+- **Signers.** EVM signatures are EIP-191 `personal_sign` by an EOA, so ERC-1271 contract wallets cannot sign. Stellar signatures are SEP-0053, base64 or hex.
+
 ## API Contract
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET`  | `/v1/auth/challenge?chain_id&address` | none | Required `chain_id`: missing, malformed, or not in `CHAINS` → `400` (`chain_id is required` / `invalid chain_id: <v>` / `unknown chain_id: <id> (configured: …)`). Returns `{ message, nonce }` for an allow-listed address; reuses the stored nonce while more than 60 s remain, else issues a new 5-minute one. `401` if the address is not authorized. No per-IP limit. |
 | `POST` | `/v1/auth/verify` | none | Body `{ chain_id, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). `chain_id` is required: missing or not in `CHAINS` → `400` with the same messages as the challenge; the chain kind (EVM / Stellar) comes from the configured chain. Returns `{ token, expires_in }` on a valid signature. `401` (one shared body, `authentication failed`) for unknown address, no live or expired challenge, a replayed nonce, or bad signature. `403 account_suspended` if the account behind the address is suspended. |
+| `GET`  | `/v1/lps/me/link-address/challenge?chain_id&address&signer_address` | bearer (LP owner) | Required `chain_id` (`400` as for the sign-in challenge); `signer_address` optional. Validates the address and signer (`400`), then LP eligibility (`404` no LP; `409` for a `Failed` LP, a fixed address of that kind, or an address held by another LP). Returns `{ message, nonce }`. See [Settlement-address proof](#settlement-address-proof). |
+| `POST` | `/v1/lps/me/link-address/verify` | bearer (LP owner) | Body `{ chain_id, address, signer_address?, signature }`. `200` with the refreshed LP record. `400` for validation, `404` no LP, `409` for ineligibility re-checked after the consume, `422 settlement address proof failed` for every proof failure. `401` only for a missing or invalid token. |
 | `POST` | `/v1/auth/signup` | none | Body `{ email, password, captcha_token }`. **Always `202`** — see [api-authorization-email.md](./api-authorization-email.md). `400` on a malformed address or a password failing the policy, `403` if the captcha is rejected, `503` if the captcha provider is unreachable. |
 | `POST` | `/v1/auth/verify-otp` | none | Body `{ email, code }`. Returns `{ token, expires_in }`. `401` for every failure mode, with one shared message. |
 | `POST` | `/v1/auth/resend-otp` | none | Body `{ email, captcha_token }`. Always `202` — inside the 60-second cooldown the send is skipped silently. `403`/`503` per the captcha. |
@@ -134,6 +146,18 @@ returning `403 Forbidden` when absent (see `routes::loan_book::submit_loan`).
 
 Rows are inserted manually (there is no admin endpoint). Address normalization
 must follow the convention above so lookups match.
+
+`lp_address_challenges` — one live settlement-address challenge per LP and chain:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `lp_id` | `BIGINT` | part of the primary key; references `lps(id)` |
+| `chain_id` | `BIGINT` | part of the primary key |
+| `address` | `TEXT` | the settlement address the challenge is bound to, normalized |
+| `signer_address` | `TEXT` | the wallet that must sign, normalized |
+| `nonce` | `TEXT` | single-use GUID embedded in the message |
+| `expires_at` | `TIMESTAMPTZ` | 5 minutes after issue |
+| `created_at` | `TIMESTAMPTZ` | bookkeeping |
 
 `lps.owner_account_id` is the LP-ownership key and is **UNIQUE** — one account
 owns at most one LP, which is why the LP-facing routes are keyed on the session:

@@ -205,6 +205,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());
     api_docs.merge(pipeline_api::routes::audit_log::AuditLogDoc::openapi());
     api_docs.merge(pipeline_api::routes::lps::LpsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::lp_settlement_address::LpSettlementAddressDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_ledger::LpLedgerDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_bank_deposits::LpBankDepositsDoc::openapi());
     api_docs.merge(pipeline_api::routes::chains::ChainsDoc::openapi());
@@ -231,6 +232,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::ramp::router())
         .nest("/v1", pipeline_api::routes::audit_log::router())
         .nest("/v1", pipeline_api::routes::lps::router(kyb_limits))
+        .nest("/v1", pipeline_api::routes::lp_settlement_address::router())
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .nest("/v1", pipeline_api::routes::lp_bank_deposits::router())
         .nest("/v1", pipeline_api::routes::chains::router())

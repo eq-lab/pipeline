@@ -201,7 +201,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Initial |
 | [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
-| [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Initial |
+| [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Amended by #1824 (unsigned endpoint removed; LP app rewired by #1825) |
+| [#1824 Backend: signed settlement-address linking (Stellar + EVM) + chain-aware payment-details](https://github.com/eq-lab/pipeline/issues/1824) | [1824-signed-settlement-address.md](./epic-1247/1824-signed-settlement-address.md) | Initial |
 
 ---
 
@@ -223,7 +224,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1715 LP: Country as a searchable select with flags](https://github.com/eq-lab/pipeline/issues/1715) | [1715-country-select.md](./epic-1376/1715-country-select.md) | Initial |
 | [#1380 Backend: enforce accounts.status = 'Suspended' in authorization](https://github.com/eq-lab/pipeline/issues/1380) | [1380-enforce-account-suspension.md](./epic-1376/1380-enforce-account-suspension.md) | Initial |
-| [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
+| [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Superseded (endpoint removed, #1824) |
 | [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |
 | [#1377 Backend: notify_on_review flag on POST /v1/lps/me + narrowed write freeze](https://github.com/eq-lab/pipeline/issues/1377) | [1377-notify-on-review.md](./epic-1376/1377-notify-on-review.md) | Initial |
 | [#1378 Backend: KYB decision emails to the LP](https://github.com/eq-lab/pipeline/issues/1378) | [1378-kyb-decision-emails.md](./epic-1376/1378-kyb-decision-emails.md) | Initial |

@@ -390,3 +390,7 @@ All tests are pure and live in `packages/<pkg>/tests/<topic>.rs`. No DB connecti
   - new **TD-162**: a Stellar `C…` settlement address is proven only through its `G…` signer, with no on-chain check that the signer controls the contract;
   - bump "Next free number" to TD-163.
 - OpenAPI is generated at runtime through utoipa (`/api-docs/openapi.json`). There is no checked-in artifact in `docs/generated/` to regenerate.
+
+## Post-implementation notes (2026-11-02)
+
+- **Separate signer for any address (user decision).** `signer_address` may differ from a `G…` or `0x…` settlement address, not only from a `C…`, so Stellar multisig accounts and EVM smart wallets (Safe) can be linked. In that case the proof covers the signer only. TD-162 is widened from "`C…` only" to "any separate signer", and `kyb-lp-verification.md` (§ Settlement Address and Security Considerations) states that ownership of the settlement address itself is proven only when `signer_address` equals it.

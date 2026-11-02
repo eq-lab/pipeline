@@ -8,10 +8,10 @@
 //! returns the record with its documents inline (each carrying a presigned
 //! download URL); `POST /v1/lps/me` upserts the profile as JSON;
 //! `POST /v1/lps/me/documents` appends files as `multipart/form-data`;
-//! `DELETE /v1/lps/me/documents/{doc}` removes one; `POST
-//! /v1/lps/me/link-address` sets or replaces the settlement account at any
-//! status short of a terminal verdict; fixed once `Passed` holds one, refused
-//! outright at `Failed`; `POST /v1/lps/me/submit` asks for review.
+//! `DELETE /v1/lps/me/documents/{doc}` removes one; `GET
+//! /v1/lps/me/link-address/challenge` and `POST /v1/lps/me/link-address/verify`
+//! (`routes::lp_settlement_address`) link a settlement address per chain kind
+//! by signed proof; `POST /v1/lps/me/submit` asks for review.
 //!
 //! Profile and documents are separate endpoints on purpose. They were one
 //! request at first, which read as the smaller surface — but the profile is a
@@ -61,12 +61,9 @@
 //! Documents are **untyped**: no `doc_type`, no `subject`, no slots, no
 //! versioning. Replacing a document is delete-then-upload.
 //!
-//! `stellar_address` is a separate identity from the login one — see the
-//! migration's module comment. `link_address` still trusts the client-supplied
-//! `stellar_address` with no proof of key ownership over *that* address; see
-//! `docs/exec-plans/tech-debt-tracker.md` TD-57. Since Issue #1379 removed the
-//! `kyb_status` gate on this endpoint, authorization (`/me` +
-//! `owner_account_id`) is the *only* remaining control.
+//! Settlement addresses are separate identities from the login one. They are
+//! linked through the signed challenge/verify pair in
+//! `routes::lp_settlement_address`, not by this module.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -80,7 +77,6 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
 
-use shared::chains::validate_stellar_address;
 use shared::email::{
     render_kyb_changes_requested_email, render_kyb_failed_email, render_kyb_passed_email,
     OutboundEmail, RejectedDocument,
@@ -91,7 +87,7 @@ use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPT
 
 use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
 use crate::config::KybLimits;
-use crate::error::{is_unique_violation, ApiError};
+use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::AppState;
 
@@ -116,6 +112,10 @@ pub struct LpResponse {
     pub stellar_address: Option<String>,
     /// ISO-8601 UTC.
     pub address_linked_at: Option<String>,
+    pub stellar_signer_address: Option<String>,
+    pub evm_address: Option<String>,
+    pub evm_signer_address: Option<String>,
+    pub evm_address_linked_at: Option<String>,
     /// `NotStarted` | `InProgress` | `UnderReview` | `ChangesRequested` |
     /// `Passed` | `Failed`.
     #[schema(example = "InProgress")]
@@ -159,6 +159,10 @@ impl LpResponse {
             contact_email: row.contact_email,
             stellar_address: row.stellar_address,
             address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
+            stellar_signer_address: row.stellar_signer_address,
+            evm_address: row.evm_address,
+            evm_signer_address: row.evm_signer_address,
+            evm_address_linked_at: row.evm_address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
             writable,
             notify_on_review: row.notify_on_review,
@@ -190,6 +194,11 @@ pub struct LpSummary {
     pub country: Option<String>,
     pub contact_email: String,
     pub stellar_address: Option<String>,
+    pub address_linked_at: Option<String>,
+    pub stellar_signer_address: Option<String>,
+    pub evm_address: Option<String>,
+    pub evm_signer_address: Option<String>,
+    pub evm_address_linked_at: Option<String>,
     pub kyb_status: String,
     /// ISO-8601 UTC. Also orders and filters the trustee review queue, which
     /// is `GET /v1/lps` filtered to `UnderReview` client-side.
@@ -210,6 +219,11 @@ impl From<LpRow> for LpSummary {
             country: row.country,
             contact_email: row.contact_email,
             stellar_address: row.stellar_address,
+            address_linked_at: row.address_linked_at.as_ref().map(iso_utc),
+            stellar_signer_address: row.stellar_signer_address,
+            evm_address: row.evm_address,
+            evm_signer_address: row.evm_signer_address,
+            evm_address_linked_at: row.evm_address_linked_at.as_ref().map(iso_utc),
             kyb_status: row.kyb_status,
             kyb_submitted_at: row.kyb_submitted_at.as_ref().map(iso_utc),
             kyb_decided_at: row.kyb_decided_at.as_ref().map(iso_utc),
@@ -297,13 +311,6 @@ pub struct UploadDocumentsResponse {
     pub files: Vec<FileResult>,
 }
 
-/// Request body for `POST /v1/lps/me/link-address`.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct LinkAddressRequest {
-    /// A Stellar account (`G…`) or contract (`C…`) Strkey.
-    pub stellar_address: String,
-}
-
 /// The staff decision in `POST /v1/lps/{id}/documents/{doc}/review`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
 pub enum DocumentReviewDecision {
@@ -383,7 +390,6 @@ pub struct UploadDocumentsForm {
         upload_my_documents,
         delete_my_document,
         review_document,
-        link_address,
         submit_my_lp,
         decide_kyb
     ),
@@ -396,14 +402,13 @@ pub struct UploadDocumentsForm {
         UpsertLpRequest,
         UploadDocumentsResponse,
         UploadDocumentsForm,
-        LinkAddressRequest,
         DocumentReviewDecision,
         DocumentReviewRequest,
         KybDecision,
         KybDecisionRequest,
     )),
     modifiers(&SecurityAddon),
-    tags((name = "Lps", description = "KYB: LP registration, documents, and Stellar address linking"))
+    tags((name = "Lps", description = "KYB: LP registration, documents, and settlement address linking"))
 )]
 pub struct LpsDoc;
 
@@ -422,7 +427,6 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
             post(upload_my_documents).layer(DefaultBodyLimit::max(limits.max_request_bytes())),
         )
         .route("/lps/me/documents/{doc}", delete(delete_my_document))
-        .route("/lps/me/link-address", post(link_address))
         .route("/lps/me/submit", post(submit_my_lp))
         .route("/lps/{id}", get(get_lp))
         .route("/lps/{id}/documents/{doc}/review", post(review_document))
@@ -904,85 +908,6 @@ async fn delete_my_document(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Sets or replaces the LP's settlement address; refused outright at `Failed`,
-/// and at `Passed` only when the LP already holds an address (see
-/// [`KybStatus::allows_address_write`]).
-///
-/// Deliberately not folded into [`upsert_my_lp`]: this endpoint is exempt from
-/// [`guard_writable`]'s freeze — the address is not evidence a review decision
-/// was made about, so it stays settable while the profile is frozen (e.g.
-/// `UnderReview`). `Failed` closes both, but for independent reasons: the
-/// profile because the verdict is final, the address because the column is
-/// UNIQUE across LPs and a refused applicant left writable could burn a real
-/// LP's address. Do not add a `guard_writable` call here; that would remove
-/// the exemption the rule depends on.
-#[utoipa::path(
-    post,
-    path = "/v1/lps/me/link-address",
-    request_body = LinkAddressRequest,
-    responses(
-        (status = 200, description = "Address linked", body = LpResponse),
-        (status = 400, description = "stellar_address is not a valid Strkey"),
-        (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 404, description = "This account has not registered an LP yet"),
-        (status = 409, description = "This LP was refused at KYB, or has passed and its address is fixed, or stellar_address belongs to another LP"),
-    ),
-    security(("bearer_auth" = [])),
-    tag = "Lps"
-)]
-async fn link_address(
-    AuthClaims(claims): AuthClaims,
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<LinkAddressRequest>,
-) -> Result<Json<LpResponse>, ApiError> {
-    let stellar_address = validate_stellar_address("stellar_address", req.stellar_address)
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-
-    let lp = my_lp(&claims, &state).await?;
-
-    let status =
-        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
-    if !status.allows_address_write(lp.stellar_address.is_some()) {
-        return Err(ApiError::Conflict(match status {
-            KybStatus::Failed => format!(
-                "LP {} was refused at KYB and cannot set a settlement address",
-                lp.id
-            ),
-            _ => format!(
-                "LP {} has passed KYB; its settlement address is fixed",
-                lp.id
-            ),
-        }));
-    }
-
-    let linked = state
-        .lp_repo
-        .link_address(lp.id, &stellar_address)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                return ApiError::Conflict(format!(
-                    "stellar_address `{stellar_address}` is already linked to another LP"
-                ));
-            }
-            ApiError::from(e)
-        })?;
-    if !linked {
-        return Err(ApiError::Conflict(format!(
-            "LP {} is no longer eligible to set a settlement address",
-            lp.id
-        )));
-    }
-
-    let row = state.lp_repo.find(lp.id).await?.ok_or_else(|| {
-        ApiError::Internal(anyhow::anyhow!(
-            "LP {} vanished immediately after linking",
-            lp.id
-        ))
-    })?;
-    Ok(Json(with_documents(&state, row).await?))
-}
-
 /// Submit the caller's LP for trustee review. Legal only from `NotStarted` or
 /// `ChangesRequested` ([`KybStatus::SUBMITTABLE`]) — **not** `InProgress`,
 /// which is writable but unreachable and therefore never submittable. Refused
@@ -1362,7 +1287,7 @@ fn guard_writable(lp: &LpRow) -> Result<(), ApiError> {
 /// A presigning failure degrades that one document to `download_url: null`
 /// rather than failing the read — the rest of the record is still useful, and
 /// the client can retry.
-async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiError> {
+pub(crate) async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiError> {
     let rows = state.kyb_document_repo.list_for_lp(lp.id).await?;
     with_documents_rows(state, lp, rows).await
 }

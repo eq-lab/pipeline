@@ -59,7 +59,7 @@ Per-chain on-chain state lives in the contract (`requests[requestId]`, `nextRequ
 
 ## LP Funding Details
 
-`GET /v1/lps/me/payment-details` (LP session; `LpBankDeposits` group, Issue #1815, which settles #1311 and #1700) answers `200 OK` with the trust account's receiving bank details and a **newly issued** payment reference for the LP to quote on the wire:
+`GET /v1/lps/me/payment-details?chain_id=<id>` (LP session; `LpBankDeposits` group, Issue #1815, which settles #1311 and #1700; chain-aware since #1824) answers `200 OK` with the trust account's receiving bank details, a **newly issued** payment reference for the LP to quote on the wire, and the chain and settlement address the PLUSD will be minted to:
 
 ```json
 {
@@ -69,7 +69,9 @@ Per-chain on-chain state lives in the contract (`requests[requestId]`, `nextRequ
   "account_number": "",
   "iban": "",
   "swift_bic_code": "",
-  "payment_details": "PL-7K3M-Q9TX-H2CD"
+  "payment_details": "PL-7K3M-Q9TX-H2CD",
+  "chain_id": 1,
+  "receiver_address": "G…"
 }
 ```
 
@@ -78,8 +80,9 @@ Per-chain on-chain state lives in the contract (`requests[requestId]`, `nextRequ
 By user decision this is a `GET` with a side effect: every successful call issues and stores a new reference, and nothing is reused. The response carries `Cache-Control: no-store`, so no HTTP cache serves one LP's reference again. The client calls it exactly once each time it shows the funding details (one modal open), with automatic refetching and retries off (`staleTime: Infinity`, and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off), so the history holds only references that were actually shown. Client wiring is #1817.
 
 - **Bank details.** One system-wide record (`system_configuration`, type `system_bank_details`), seeded empty and set by hand in the DB. There is no write endpoint. The DB enforces that the record is an object with all six keys as strings. Values are served verbatim, and an empty field is served as `""`, which the client renders as `—`.
-- **Access.** The LP needs a linked settlement address (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address) **and** `kyb_status = Passed`. Otherwise the response is `409`, naming every unmet precondition, and no reference is issued. No LP for the caller (including a trustee token) is `404`. A missing or malformed bank-details record is `500`, and no reference is issued. `Passed` is terminal and the address is fixed once `Passed` holds one, so the gate cannot stop being true between the check and the insert.
-- **Reference.** Every successful call inserts a row into `lp_requested_bank_details` (`lp_id`, `payment_details`, `created_at`). The full history is kept, earlier references stay valid and still belong to that LP, and `lp_id` is not unique. The format is `PL-XXXX-XXXX-XXXX`: a fixed `PL-` prefix and 12 symbols of the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no `I`, `L`, `O`, `U`), 60 bits from the OS CSPRNG, 17 characters. It is random, not derived from the LP id, so it reveals neither the LP nor how many references were requested. It fits the 18-character UK Faster Payments / BACS reference field and a single 35-character SWIFT field-70 line, and the charset is a subset of `[A-Z0-9-]`. It is unique across every reference ever issued (`UNIQUE` plus a `^[A-Z0-9-]{1,140}$` CHECK); on a collision the handler draws again, up to 3 attempts, then answers `500`.
+- **Chain.** `chain_id` is required (`RequiredChain`): missing, malformed or not in `CHAINS` is `400`. The chain's kind picks the settlement address: Stellar uses `lps.stellar_address`, EVM uses `lps.evm_address`. The response echoes `chain_id` and that `receiver_address`.
+- **Access.** The LP needs a linked settlement address **of the requested chain's kind** (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address) **and** `kyb_status = Passed`. Otherwise the response is `409`, naming every unmet precondition and the kind, and no reference is issued. No LP for the caller (including a trustee token) is `404`. A missing or malformed bank-details record is `500`, and no reference is issued. `Passed` is terminal and the address is fixed once `Passed` holds one, so the gate cannot stop being true between the check and the insert.
+- **Reference.** Every successful call inserts a row into `lp_requested_bank_details` (`lp_id`, `chain_id`, `receiver_address`, `payment_details`, `created_at`). Rows issued before #1824 have `chain_id NULL`, with `receiver_address` backfilled from `lps.stellar_address`; the migration cannot tell which configured chain is the Stellar one. Every new row must carry both, enforced by `NOT VALID` CHECK constraints that must never be validated. The full history is kept, earlier references stay valid and still belong to that LP, and `lp_id` is not unique. The format is `PL-XXXX-XXXX-XXXX`: a fixed `PL-` prefix and 12 symbols of the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no `I`, `L`, `O`, `U`), 60 bits from the OS CSPRNG, 17 characters. It is random, not derived from the LP id, so it reveals neither the LP nor how many references were requested. It fits the 18-character UK Faster Payments / BACS reference field and a single 35-character SWIFT field-70 line, and the charset is a subset of `[A-Z0-9-]`. It is unique across every reference ever issued (`UNIQUE` plus a `^[A-Z0-9-]{1,140}$` CHECK); on a collision the handler draws again, up to 3 attempts, then answers `500`.
 - **Wire matching (follow-up).** Attributing an arriving wire finds the LP by **any** reference ever issued to it, comparing with `-` and whitespace removed, since a bank may strip the hyphens. Not part of #1815.
 - **Not the per-wire reference.** The issued reference is **not** `lp_bank_deposits.payment_reference`, which is the bank's per-wire reference, unique per deposit and hashed into the minter's single-use `ref_hash`. An LP may quote one issued reference on more than one wire.
 - **Deploy prerequisite.** The seeded `system_bank_details` row is all empty strings, and an eligible LP is still issued a reference against blank details. There is no deploy checklist or runbook in `docs/`, so this is recorded here: fill `system_configuration.system_bank_details` with the real trust-account details before #1817 (Funding details modal) ships.

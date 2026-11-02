@@ -6,7 +6,7 @@ Spec: [docs/product-specs/deposits.md](../../product-specs/deposits.md) § LP Fu
 
 Backend-only. The stories are exercised against a running API with `curl` (or Swagger UI at `/swagger-ui`) and read the
 database to confirm what was stored. The frontend wiring is #1817, and wire matching by issued reference is a follow-up.
-Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer token.
+Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer token, and `$STELLAR_CHAIN_ID` / `$EVM_CHAIN_ID` with configured chain ids (`chain_id` is required since #1824).
 
 ---
 
@@ -19,16 +19,17 @@ Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer to
 
 **Steps:**
 
-1. `curl -i -H "Authorization: Bearer $TOKEN" $API/v1/lps/me/payment-details`
+1. `curl -i -H "Authorization: Bearer $TOKEN" $API/v1/lps/me/payment-details?chain_id=$STELLAR_CHAIN_ID`
 
 **Expected outcomes:**
 
-- `200 OK` with a JSON body of exactly seven string keys: `company_name`, `bank_name`, `bank_address`,
-  `account_number`, `iban`, `swift_bic_code`, `payment_details`.
+- `200 OK` with a JSON body of exactly nine keys: seven strings (`company_name`, `bank_name`, `bank_address`,
+  `account_number`, `iban`, `swift_bic_code`, `payment_details`), integer `chain_id` (the one requested) and string
+  `receiver_address` (the LP's `stellar_address`).
 - The six bank fields equal the values in `system_configuration`; an empty field is served as `""`.
 - `payment_details` matches `^PL-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`.
 - The response carries `Cache-Control: no-store`.
-- `lp_requested_bank_details` has one new row for this LP holding the same `payment_details`.
+- `lp_requested_bank_details` has one new row for this LP holding the same `payment_details`, the requested `chain_id` and the `receiver_address`.
 
 ---
 
@@ -40,7 +41,7 @@ Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer to
 
 **Steps:**
 
-1. Call `GET /v1/lps/me/payment-details` a second time.
+1. Call `GET /v1/lps/me/payment-details?chain_id=$STELLAR_CHAIN_ID` a second time.
 2. Query `lp_requested_bank_details` for this LP.
 
 **Expected outcomes:**
@@ -64,6 +65,23 @@ Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer to
 - `409 Conflict`; the body names every unmet precondition, e.g. "payment details require a linked settlement address and
   KYB status Passed (this LP is UnderReview with no linked address)".
 - The row count is unchanged.
+
+---
+
+## Story 3b: The gate is per chain kind
+
+**Persona:** `Passed` LP with a linked Stellar address and no EVM address.
+
+**Steps:**
+
+1. Call the endpoint with `chain_id=$EVM_CHAIN_ID`.
+2. Call it with no `chain_id`, and with `chain_id=999999`.
+
+**Expected outcomes:**
+
+- Step 1 is `409` naming "a linked EVM settlement address" (this LP is Passed with no linked EVM address); no row is added.
+- Step 2 is `400` (`chain_id is required`, then `unknown chain_id: 999999 (configured: …)`).
+- After linking an EVM address (#1824 stories), the EVM call is `200` with `chain_id` and the lowercase `evm_address` as `receiver_address`.
 
 ---
 

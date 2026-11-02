@@ -1,9 +1,15 @@
 //! The settlement-address write gate (Issues #1379, #1274; spec §"Settlement
-//! Address"): which `kyb_status` values leave `stellar_address` writable. Pure
-//! — no DB, and the SQL predicate in `LpRepo::link_address` is not exercised
-//! here; see the exec plan's manual checklist for that.
+//! Address"): which `kyb_status` values leave a settlement address writable,
+//! and the shape of the link SQL. Pure — no DB; the SQL is checked as text and
+//! its behaviour is covered by the user-stories checklist.
 
-use shared::lp_repo::KybStatus;
+use chrono::Utc;
+use shared::chains::ChainKind;
+use shared::lp_repo::{
+    KybStatus, LpRow, CONSUME_LINK_CHALLENGE_SQL, FIND_LINK_CHALLENGE_SQL,
+    ISSUE_OR_REUSE_LINK_CHALLENGE_SQL, LINK_EVM_ADDRESS_SQL, LINK_STELLAR_ADDRESS_SQL,
+};
+use uuid::Uuid;
 
 const NON_TERMINAL: [KybStatus; 4] = [
     KybStatus::NotStarted,
@@ -102,4 +108,107 @@ fn the_policy_is_independent_of_the_write_freeze() {
          containment between the two policies is one-directional rather than \
          a two-way crossing"
     );
+}
+
+fn flat(sql: &str) -> String {
+    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+const GUARD_TAIL: &str = "kyb_status <> 'Failed' AND (";
+
+#[test]
+fn the_stellar_link_sql_writes_its_own_columns_and_keeps_the_status_guard() {
+    let sql = flat(LINK_STELLAR_ADDRESS_SQL);
+    assert!(sql.contains(
+        "SET stellar_address = $2, stellar_signer_address = $3, address_linked_at = now()"
+    ));
+    assert!(sql.contains(&format!(
+        "{GUARD_TAIL}stellar_address IS NULL OR kyb_status <> 'Passed')"
+    )));
+    assert!(!sql.contains("evm_"));
+}
+
+#[test]
+fn the_evm_link_sql_writes_its_own_columns_and_keeps_the_status_guard() {
+    let sql = flat(LINK_EVM_ADDRESS_SQL);
+    assert!(sql
+        .contains("SET evm_address = $2, evm_signer_address = $3, evm_address_linked_at = now()"));
+    assert!(sql.contains(&format!(
+        "{GUARD_TAIL}evm_address IS NULL OR kyb_status <> 'Passed')"
+    )));
+    assert!(!sql.contains("stellar_"));
+}
+
+#[test]
+fn consume_is_one_guarded_delete_returning_the_binding() {
+    let sql = flat(CONSUME_LINK_CHALLENGE_SQL);
+    assert!(sql.starts_with("DELETE FROM lp_address_challenges WHERE"));
+    for guard in [
+        "lp_id = $1",
+        "chain_id = $2",
+        "nonce = $3",
+        "expires_at > now()",
+    ] {
+        assert!(sql.contains(guard), "missing {guard}");
+    }
+    assert!(sql.contains("RETURNING address, signer_address"));
+}
+
+#[test]
+fn find_only_reads_a_live_challenge() {
+    let sql = flat(FIND_LINK_CHALLENGE_SQL);
+    assert!(sql.starts_with(
+        "SELECT address, signer_address, nonce, expires_at FROM lp_address_challenges"
+    ));
+    assert!(sql.contains("expires_at > now()"));
+}
+
+#[test]
+fn issue_or_reuse_is_one_upsert_on_the_database_clock() {
+    let sql = flat(ISSUE_OR_REUSE_LINK_CHALLENGE_SQL);
+    assert!(sql.starts_with("INSERT INTO lp_address_challenges"));
+    assert!(sql.contains("ON CONFLICT (lp_id, chain_id) DO UPDATE"));
+    let reuse = "lp_address_challenges.address = EXCLUDED.address \
+        AND lp_address_challenges.signer_address = EXCLUDED.signer_address \
+        AND lp_address_challenges.expires_at > now() + make_interval(secs => $7::double precision)";
+    let reuse = flat(reuse);
+    assert_eq!(sql.matches(&reuse).count(), 2);
+    assert!(sql.contains("RETURNING nonce, expires_at"));
+    assert!(!sql.contains("$8"));
+    assert!(sql.contains("now() + make_interval(secs => $6::double precision)"));
+}
+
+fn lp(stellar: Option<&str>, evm: Option<&str>) -> LpRow {
+    LpRow {
+        id: 1,
+        legal_name: "Acme".to_owned(),
+        country: None,
+        contact_email: "a@b.c".to_owned(),
+        stellar_address: stellar.map(str::to_owned),
+        address_linked_at: None,
+        stellar_signer_address: None,
+        evm_address: evm.map(str::to_owned),
+        evm_signer_address: None,
+        evm_address_linked_at: None,
+        kyb_status: "NotStarted".to_owned(),
+        kyb_submitted_at: None,
+        kyb_decided_by: None,
+        kyb_decided_at: None,
+        kyb_decision_reason: None,
+        notify_on_review: false,
+        owner_account_id: Uuid::nil(),
+        owner_chain_id: None,
+        owner_address: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+#[test]
+fn settlement_address_returns_the_slot_of_the_kind() {
+    let row = lp(Some("GSTELLAR"), Some("0xevm"));
+    assert_eq!(row.settlement_address(ChainKind::Stellar), Some("GSTELLAR"));
+    assert_eq!(row.settlement_address(ChainKind::Evm), Some("0xevm"));
+    let only_stellar = lp(Some("GSTELLAR"), None);
+    assert_eq!(only_stellar.settlement_address(ChainKind::Evm), None);
 }
