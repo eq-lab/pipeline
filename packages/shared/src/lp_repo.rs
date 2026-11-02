@@ -495,10 +495,11 @@ pub const CONSUME_LINK_CHALLENGE_SQL: &str = "DELETE FROM lp_address_challenges 
      WHERE lp_id = $1 AND chain_id = $2 AND nonce = $3 AND expires_at > now() \
      RETURNING address, signer_address, nonce, expires_at";
 
+// The `kyb_status <> 'Failed'` guard below enforces `KybStatus::allows_address_write` at write time.
 pub const LINK_STELLAR_ADDRESS_SQL: &str = "WITH prev AS ( \
          SELECT id, stellar_address, stellar_signer_address FROM lps WHERE id = $1 FOR UPDATE \
      ), linked AS ( \
-         UPDATE lps SET stellar_address = $2, stellar_signer_address = $3, address_linked_at = now(), updated_at = now() \
+         UPDATE lps SET stellar_address = $2, stellar_signer_address = $3, address_linked_at = clock_timestamp(), updated_at = now() \
            FROM prev \
           WHERE lps.id = prev.id AND lps.kyb_status <> 'Failed' \
          RETURNING lps.id, prev.stellar_address AS previous_address, \
@@ -514,7 +515,7 @@ pub const LINK_STELLAR_ADDRESS_SQL: &str = "WITH prev AS ( \
 pub const LINK_EVM_ADDRESS_SQL: &str = "WITH prev AS ( \
          SELECT id, evm_address, evm_signer_address FROM lps WHERE id = $1 FOR UPDATE \
      ), linked AS ( \
-         UPDATE lps SET evm_address = $2, evm_signer_address = $3, evm_address_linked_at = now(), updated_at = now() \
+         UPDATE lps SET evm_address = $2, evm_signer_address = $3, evm_address_linked_at = clock_timestamp(), updated_at = now() \
            FROM prev \
           WHERE lps.id = prev.id AND lps.kyb_status <> 'Failed' \
          RETURNING lps.id, prev.evm_address AS previous_address, \
@@ -530,7 +531,7 @@ pub const LINK_EVM_ADDRESS_SQL: &str = "WITH prev AS ( \
 pub const LIST_SETTLEMENT_ADDRESS_HISTORY_SQL: &str = "SELECT id, lp_id, chain_kind, chain_id, \
      address, signer_address, previous_address, previous_signer_address, \
      linked_by_account_id, created_at \
-     FROM lp_settlement_address_history WHERE lp_id = $1 ORDER BY created_at DESC, id DESC";
+     FROM lp_settlement_address_history WHERE lp_id = $1 ORDER BY id DESC";
 
 pub const ADDRESS_HOLDER_STELLAR_SQL: &str = "SELECT id FROM lps WHERE stellar_address = $1";
 

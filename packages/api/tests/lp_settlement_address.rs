@@ -964,7 +964,7 @@ async fn repeated_relinks_each_need_a_fresh_challenge() {
 }
 
 #[tokio::test]
-async fn relinking_back_to_a_previous_address_is_allowed() {
+async fn re_verifying_the_current_address_and_signer_is_allowed() {
     let store = FakeLinkStore::new();
     store.with(|s| s.holder = Some(LP_ID));
     let key = stellar_key(7);

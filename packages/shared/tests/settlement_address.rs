@@ -86,7 +86,7 @@ fn the_link_sql_writes_its_own_columns_guards_only_failed_and_records_history() 
     for k in KINDS {
         let sql = flat(k.sql);
         let set = format!(
-            "SET {} = $2, {} = $3, {} = now()",
+            "SET {} = $2, {} = $3, {} = clock_timestamp()",
             k.addr, k.signer, k.linked_at
         );
         assert!(sql.contains(&set), "{}", k.name);
@@ -130,7 +130,7 @@ fn the_link_is_one_statement() {
 fn history_is_listed_newest_first_for_one_lp() {
     let sql = flat(LIST_SETTLEMENT_ADDRESS_HISTORY_SQL);
     assert!(sql.contains("FROM lp_settlement_address_history WHERE lp_id = $1"));
-    assert!(sql.ends_with("ORDER BY created_at DESC, id DESC"));
+    assert!(sql.ends_with("ORDER BY id DESC"));
 }
 
 #[test]

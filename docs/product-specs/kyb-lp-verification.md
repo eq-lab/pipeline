@@ -114,6 +114,7 @@ Stellar addresses linked before the signed flow (through the unsigned endpoint o
 `lp_settlement_address_history` is append-only. Columns: `id`, `lp_id`, `chain_kind` (`stellar` | `evm`), `chain_id`, `address`, `signer_address`, `previous_address`, `previous_signer_address`, `linked_by_account_id` (the authenticated account that verified the link), `created_at`.
 
 - **One row per successful link or relink**, written in the same SQL statement as the guarded update of `lps`, with `created_at` equal to `*_linked_at`. A refusal (`Failed`, an address held by another LP) or a failed proof writes nothing.
+- **Re-verifying the same address and signer is allowed.** It is a fresh proof event: it adds a history row (with `previous_*` equal to the current values) and moves `*_linked_at` forward. Timestamps use `clock_timestamp()` and rows are listed by `id DESC`, which is the true apply order because the insert runs under the `FOR UPDATE` lock on the LP row.
 - **Backfill:** the migration wrote one row per address set at that time, with `chain_id`, `linked_by_account_id` and `previous_*` NULL, and the signer NULL for legacy unproven links. A backfilled row is recognised by `chain_id IS NULL`. Every new row carries `chain_id`, `signer_address` and `linked_by_account_id`.
 - There is no read endpoint yet. The Trustee view, investigations and wire matching are later consumers.
 
