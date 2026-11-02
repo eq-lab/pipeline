@@ -20,7 +20,8 @@ use shared::signature::{verify_personal_sign, verify_stellar_personal_sign};
 use crate::auth::{AuthClaims, SecurityAddon};
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
-use crate::routes::auth::wallet::{challenge_domain, iso, ChallengeResponse, CHALLENGE_TTL_SECS};
+use crate::formatting::iso_utc;
+use crate::routes::auth::wallet::{challenge_domain, ChallengeResponse, CHALLENGE_TTL_SECS};
 use crate::routes::common::{require_chain_id, RequiredChain};
 use crate::routes::lps::{my_lp, with_documents, LpResponse};
 use crate::AppState;
@@ -72,11 +73,13 @@ pub struct LinkTarget {
     pub signer_address: String,
 }
 
-fn kind_name(kind: ChainKind) -> &'static str {
-    match kind {
-        ChainKind::Stellar => "Stellar",
-        ChainKind::Evm => "EVM",
-    }
+fn lp_kyb_status(lp: &LpRow) -> Result<KybStatus, ApiError> {
+    KybStatus::from_str(&lp.kyb_status).map_err(|e| {
+        ApiError::Internal(anyhow::anyhow!(
+            "LP {} has an unparseable kyb_status: {e}",
+            lp.id
+        ))
+    })
 }
 
 pub fn resolve_link_target(
@@ -141,19 +144,19 @@ pub fn link_challenge_message(
          Nonce: {nonce}\n\
          Issued At: {issued}\n\
          Expiration Time: {expires}",
-        issued = iso(issued_at),
-        expires = iso(expires_at),
+        issued = iso_utc(&issued_at),
+        expires = iso_utc(&expires_at),
     )
 }
 
 pub fn link_refusal(
     lp: &LpRow,
+    status: KybStatus,
     kind: ChainKind,
     holder: Option<i64>,
     address: &str,
 ) -> Result<(), String> {
-    let status = KybStatus::from_str(&lp.kyb_status)?;
-    let name = kind_name(kind);
+    let name = kind.label();
     if !status.allows_address_write(lp.settlement_address(kind).is_some()) {
         return Err(match status {
             KybStatus::Failed => format!(
@@ -200,8 +203,9 @@ pub async fn issue_link_challenge<S: SettlementLinkStore + ?Sized>(
     domain: &str,
     fresh_nonce: String,
 ) -> Result<ChallengeResponse, ApiError> {
+    let status = lp_kyb_status(lp)?;
     let holder = store.address_holder(target.kind, &target.address).await?;
-    link_refusal(lp, target.kind, holder, &target.address).map_err(ApiError::Conflict)?;
+    link_refusal(lp, status, target.kind, holder, &target.address).map_err(ApiError::Conflict)?;
 
     let (nonce, expires_at) = store
         .issue_or_reuse_challenge(
@@ -233,6 +237,7 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
     signature: &str,
     domain: &str,
 ) -> Result<(), ApiError> {
+    let status = lp_kyb_status(lp)?;
     let stored = store
         .find_challenge(lp.id, chain.chain_id)
         .await?
@@ -259,7 +264,7 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
         .ok_or_else(proof_failed)?;
 
     let holder = store.address_holder(target.kind, &consumed.address).await?;
-    link_refusal(lp, target.kind, holder, &consumed.address).map_err(ApiError::Conflict)?;
+    link_refusal(lp, status, target.kind, holder, &consumed.address).map_err(ApiError::Conflict)?;
 
     match store
         .link_settlement_address(
@@ -274,11 +279,11 @@ pub async fn verify_link<S: SettlementLinkStore + ?Sized>(
         LinkOutcome::Ineligible => Err(ApiError::Conflict(format!(
             "LP {} is no longer eligible to set a {} settlement address",
             lp.id,
-            kind_name(target.kind)
+            target.kind.label()
         ))),
         LinkOutcome::AddressTaken => Err(ApiError::Conflict(format!(
             "{} settlement address {} is already linked to another LP",
-            kind_name(target.kind),
+            target.kind.label(),
             consumed.address
         ))),
     }

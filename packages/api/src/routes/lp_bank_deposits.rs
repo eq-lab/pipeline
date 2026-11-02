@@ -387,10 +387,7 @@ pub fn payment_details_access(
     if status_ok && address_ok {
         return Ok(());
     }
-    let kind_name = match kind {
-        ChainKind::Stellar => "Stellar",
-        ChainKind::Evm => "EVM",
-    };
+    let kind_name = kind.label();
     let mut unmet = Vec::new();
     if !address_ok {
         unmet.push(format!("a linked {kind_name} settlement address"));
