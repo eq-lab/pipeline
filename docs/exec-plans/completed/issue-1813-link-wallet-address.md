@@ -78,8 +78,9 @@ Behaviour sources, in precedence order:
   address. An EVM-connected LP gets no link call; the row says a Stellar wallet is needed. The
   chain-aware address is backend issue #1816 (epic #1494) — not planned here (frontend-only).
 - Trustee app: no code change; it already reads `stellar_address`/`address_linked_at`. The
-  capital-wallet fallback in `-useLpBankDeposits.ts` and the `deposits.md` §Stellar wire-in paragraph
-  belong to #1763/#1768.
+  capital-wallet (custodian) receiver in `-useLpBankDeposits.ts` and the `deposits.md` §Stellar
+  wire-in paragraph stay as the reserve option when a mint is needed and the LP has no linked
+  wallet (decision 2026-11-02; #1763 no longer removes it).
 - Wallet-only visitors (no session): the wallet stays display-only (`account-page.md` §Wallet-only
   variant); no link without a session.
 - Proof of key control (TD-57) — unchanged; linking the *connected* wallet narrows but does not close
@@ -105,8 +106,8 @@ Behaviour sources, in precedence order:
   regression of this fix.
 - `AuthFlowProvider.test.tsx` mocks `@/wallet` with only `useConnectModal`; adding
   `useStellarWallet` to the provider requires widening that mock.
-- No dependency on unmerged work. #1763 (fallback removal) is independent: this fix is what makes
-  that removal safe.
+- No dependency on unmerged work. #1763 (escrow list, assign/return) is independent; the
+  capital-wallet reserve receiver stays, so this fix only makes the linked wallet the primary target.
 
 ## Open Questions
 
