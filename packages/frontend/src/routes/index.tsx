@@ -1,5 +1,5 @@
 // spec: docs/frontend/dashboard-components.md#home-route
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
@@ -14,6 +14,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useActiveChain,
   useWalletPresence,
   useConnectModal,
   useStellarDepositManagerAddresses,
@@ -45,6 +46,8 @@ import {
   LoadingBlock,
 } from "./-HomeDashboardGrid";
 import { FundingDetailsModal } from "@/components/FundingDetailsModal";
+import { useFundingDetails } from "@/components/useFundingDetails";
+import type { FundingRequest } from "@/components/useFundingDetails";
 import { usePnl, usePositionsHistory } from "@/api";
 import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
@@ -66,7 +69,11 @@ function deriveMobileHomeState(
 }
 
 function Home() {
-  const [fundingDetailsOpen, setFundingDetailsOpen] = useState(false);
+  const [fundingRequest, setFundingRequest] = useState<FundingRequest | null>(
+    null,
+  );
+  const fundingOpenCounter = useRef(0);
+  const activeChain = useActiveChain();
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
@@ -226,7 +233,15 @@ function Home() {
     navigate({ to: "/stake", search: { tab: "unstake" } });
   const onViewStatus = () =>
     navigate({ to: "/account", search: { state: undefined } });
-  const onAddFunds = () => setFundingDetailsOpen(true);
+  const fundingView = useFundingDetails(fundingRequest);
+  const onAddFunds = () => {
+    fundingOpenCounter.current += 1;
+    setFundingRequest({
+      openId: fundingOpenCounter.current,
+      chainId: activeChain.chainId,
+      kind: activeChain.kind,
+    });
+  };
 
   const onSignUp = () => openAuthFlow("create-account");
 
@@ -651,8 +666,13 @@ function Home() {
       </main>
 
       <FundingDetailsModal
-        open={fundingDetailsOpen}
-        onDismiss={() => setFundingDetailsOpen(false)}
+        open={fundingRequest !== null}
+        view={fundingView}
+        onDismiss={() => setFundingRequest(null)}
+        onOpenAccount={() => {
+          setFundingRequest(null);
+          navigate({ to: "/account", search: { state: undefined } });
+        }}
       />
     </div>
   );

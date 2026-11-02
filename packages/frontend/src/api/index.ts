@@ -31,8 +31,19 @@ export {
   uploadMyDocuments,
   deleteMyDocument,
   linkMyAddress,
+  getMyPaymentDetails,
 } from "./lps";
-export type { LpResponse, LpDocument, UploadDocumentsResponse } from "./lps";
+export type {
+  LpResponse,
+  LpDocument,
+  UploadDocumentsResponse,
+  PaymentDetailsResponse,
+} from "./lps";
+export { usePaymentDetails } from "./usePaymentDetails";
+export type {
+  PaymentDetailsRequest,
+  UsePaymentDetailsResult,
+} from "./usePaymentDetails";
 export { useRequests, useInvalidateRequests } from "./useRequests";
 export type {
   RequestItem,

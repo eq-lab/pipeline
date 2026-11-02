@@ -4,36 +4,121 @@ import { createPortal } from "react-dom";
 import { Button } from "@pipeline/ui";
 import copyUrl from "../assets/copy.svg?url";
 import hintUrl from "../assets/hint.svg?url";
-import { FUNDING_DETAIL_LABELS } from "./fundingDetails";
+import { useCopyToClipboard } from "@pipeline/ui";
+import {
+  FUNDING_DETAIL_LABELS,
+  PAYMENT_REFERENCE_LABEL,
+} from "./fundingDetails";
 import { useFundingDetailsModal } from "./useFundingDetailsModal";
-import type { FundingDetailRow } from "./fundingDetails";
+import type { FundingDetailRow, FundingDetailsView } from "./fundingDetails";
 
 export interface FundingDetailsModalProps {
   open: boolean;
   onDismiss: () => void;
-  details?: ReadonlyArray<FundingDetailRow>;
+  view?: FundingDetailsView;
+  onOpenAccount?: () => void;
   onContactSupport?: () => void;
 }
 
 const NOTE_TEXT = "Transfers may take from the same day up to 5 business days";
+const INSTRUCTION_TEXT =
+  "Add this reference to your transfer’s reference or remittance field. Without it we can’t match your transfer to your account.";
+const DESTINATION_TEXT = "Your transfer is credited to this wallet as sPLUSD.";
+const ERROR_NOTICE =
+  "Bank details are unavailable right now. Close this window and try again, or contact support.";
+
+const LOADING_VIEW: FundingDetailsView = { status: "loading" };
+const LABEL_CLASS = [
+  "flex-1",
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+].join(" ");
+const VALUE_CLASS = [
+  "min-w-0 break-all text-right",
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "text-[color:var(--color-pipeline-ink)]",
+].join(" ");
+const CAPTION_CLASS = [
+  "m-0",
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-caption)]",
+  "leading-[var(--text-pipeline-caption--line-height)]",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+].join(" ");
+
+function slug(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function copyIconStyle(size: number): React.CSSProperties {
+  return {
+    display: "inline-block",
+    width: size,
+    height: size,
+    backgroundColor: "currentColor",
+    WebkitMaskImage: `url(${copyUrl})`,
+    maskImage: `url(${copyUrl})`,
+    WebkitMaskRepeat: "no-repeat",
+    maskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskPosition: "center",
+    WebkitMaskSize: "contain",
+    maskSize: "contain",
+  };
+}
+
+function DetailRow({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex w-full items-center gap-3"
+      data-testid={`funding-details-row-${slug(label)}`}
+    >
+      <span className={LABEL_CLASS}>{label}</span>
+      <span className={VALUE_CLASS}>{value}</span>
+      {children}
+    </div>
+  );
+}
 
 export function FundingDetailsModal({
   open,
   onDismiss,
-  details,
+  view = LOADING_VIEW,
+  onOpenAccount,
   onContactSupport,
 }: FundingDetailsModalProps) {
   const headingId = React.useId();
-  const rows: FundingDetailRow[] = FUNDING_DETAIL_LABELS.map((label) => {
-    const match = details?.find((row) => row.label === label);
-    return { label, value: match?.value ?? "—" };
-  });
+  const ready = view.status === "ready";
+  const rows: FundingDetailRow[] = ready
+    ? view.rows
+    : [...FUNDING_DETAIL_LABELS, PAYMENT_REFERENCE_LABEL].map((label) => ({
+        label,
+        value: "—",
+      }));
+  const bankRows = rows.slice(0, FUNDING_DETAIL_LABELS.length);
+  const referenceValue = ready ? view.paymentReference : "—";
 
   const { copied, copy } = useFundingDetailsModal({
     open,
-    rows,
+    rows: ready ? view.rows : null,
     onDismiss,
   });
+  const { copied: referenceCopied, copy: copyReference } = useCopyToClipboard();
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -106,40 +191,73 @@ export function FundingDetailsModal({
           Funding details
         </h2>
 
-        <div className="flex w-full flex-col gap-4">
-          {rows.map((row) => (
-            <div
-              key={row.label}
-              className="flex w-full items-center gap-3"
-              data-testid={`funding-details-row-${row.label
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/^-|-$/g, "")}`}
-            >
-              <span
-                className={[
-                  "flex-1",
-                  "font-[family-name:var(--font-body)]",
-                  "text-[length:var(--text-pipeline-body)]",
-                  "leading-[var(--text-pipeline-body--line-height)]",
-                  "text-[color:var(--color-pipeline-ink-muted)]",
-                ].join(" ")}
-              >
-                {row.label}
-              </span>
-              <span
-                className={[
-                  "text-right",
-                  "font-[family-name:var(--font-body)]",
-                  "text-[length:var(--text-pipeline-body)]",
-                  "leading-[var(--text-pipeline-body--line-height)]",
-                  "text-[color:var(--color-pipeline-ink)]",
-                ].join(" ")}
-              >
-                {row.value}
-              </span>
-            </div>
+        {view.status === "unavailable" && (
+          <div
+            role="alert"
+            data-testid="funding-details-notice"
+            className={[
+              "flex flex-col gap-3 p-4",
+              "rounded-[var(--radius-pipeline-card)]",
+              "bg-[color:var(--color-pipeline-surface)]",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body)]",
+              "leading-[var(--text-pipeline-body--line-height)]",
+              "text-[color:var(--color-pipeline-ink)]",
+            ].join(" ")}
+          >
+            <p className="m-0">
+              {view.reason === "not-linked"
+                ? `Bank details need a ${view.chainName} wallet linked to your account. Link it on your Account page, or switch to a wallet you have already linked.`
+                : ERROR_NOTICE}
+            </p>
+            {view.reason === "not-linked" && (
+              <Button variant="secondary" size="m" onClick={onOpenAccount}>
+                Go to Account
+              </Button>
+            )}
+          </div>
+        )}
+
+        <div
+          className="flex w-full flex-col gap-4"
+          aria-busy={view.status === "loading"}
+        >
+          {bankRows.map((row) => (
+            <DetailRow key={row.label} label={row.label} value={row.value} />
           ))}
+          <DetailRow label={PAYMENT_REFERENCE_LABEL} value={referenceValue}>
+            <button
+              type="button"
+              aria-label="Copy payment reference"
+              data-testid="funding-details-copy-reference"
+              disabled={!ready}
+              onClick={() => void copyReference(referenceValue)}
+              className={[
+                "flex h-8 w-8 shrink-0 items-center justify-center",
+                "rounded-[var(--radius-pipeline-card)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
+              ].join(" ")}
+            >
+              <span aria-hidden="true" style={copyIconStyle(20)} />
+            </button>
+            {referenceCopied && ready && (
+              <span className={CAPTION_CLASS}>Copied</span>
+            )}
+          </DetailRow>
+          <p className={CAPTION_CLASS}>{INSTRUCTION_TEXT}</p>
+          <div
+            className="h-px w-full bg-[color:var(--color-pipeline-line)]"
+            aria-hidden="true"
+          />
+          <DetailRow label="Network" value={ready ? view.network : "—"} />
+          <DetailRow
+            label="Receiving wallet"
+            value={ready ? view.receiverAddress : "—"}
+          />
+          <p className={CAPTION_CLASS}>{DESTINATION_TEXT}</p>
         </div>
 
         <div className="flex w-full items-center gap-2">
@@ -162,25 +280,10 @@ export function FundingDetailsModal({
         <Button
           variant="primary-dark"
           onClick={copy}
+          disabled={!ready}
           className="flex w-full items-center justify-center gap-2"
         >
-          <span
-            aria-hidden="true"
-            style={{
-              display: "inline-block",
-              width: 20,
-              height: 20,
-              backgroundColor: "currentColor",
-              WebkitMaskImage: `url(${copyUrl})`,
-              maskImage: `url(${copyUrl})`,
-              WebkitMaskRepeat: "no-repeat",
-              maskRepeat: "no-repeat",
-              WebkitMaskPosition: "center",
-              maskPosition: "center",
-              WebkitMaskSize: "contain",
-              maskSize: "contain",
-            }}
-          />
+          <span aria-hidden="true" style={copyIconStyle(20)} />
           {copied ? "Copied" : "Copy"}
         </Button>
 

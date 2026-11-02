@@ -7,16 +7,19 @@ rather than a section in `auth-components.md` (scope: authentication modals) or
 growing through #1282, #1285, and #1276, the same reasoning `account-page.md` records for its own
 existence.
 
-**Presentational only.** No network call, no persistence, no auth. Every side-effecting action is
-a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who-wires-them).
+**Presentational, except the funding modal.** `AddUsdCard` makes no network call and has no auth;
+every side-effecting action is a named, no-op-by-default seam — see [Seams and who wires
+them](#seams-and-who-wires-them). `FundingDetailsModal` is wired on `/` to the authenticated
+`GET /v1/lps/me/payment-details` since #1817 (the modal itself stays presentational: it takes a
+`view`).
 
 **`FundingDetailsModal` is now also reachable from `/` (state 4, #1424), beyond `/test?tab=auth`.**
 `AddUsdCard` is mounted on `/`: the `"locked"` variant ships from #1421 (zero state), `"verify"`
 from #1422 (unverified state), `"verifying"` from #1423 (KYB-pending state), `"unlocked"` from
 #1424 (state 4, `kyb_status: "Passed"` with PLUSD held and sPLUSD zero), and `"declined"` from
 #1426 (state 6, `kyb_status: "ChangesRequested"` or `"Failed"`, gated on status alone) — its
-`onAddFunds` opens `FundingDetailsModal` with no `details`, so every row renders `—` just as the
-`/test` preview does. The variant for a given account state is decided by `deriveHomeState` in
+`onAddFunds` opens `FundingDetailsModal`, which fetches the served bank details and a fresh payment
+reference (#1817). The variant for a given account state is decided by `deriveHomeState` in
 `packages/frontend/src/components/homeState.ts`, not in this file — see
 `docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
 Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not wired to any route.
@@ -25,7 +28,8 @@ Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not w
 
 `packages/frontend/src/components/FundingDetailsModal.tsx` +
 `packages/frontend/src/components/useFundingDetailsModal.ts` — the static "Funding details" wire
-transfer modal, Figma node `6701-97113`. Not a form: no inputs, no amount, no submit.
+transfer modal, Figma node `6701-97113` (no Figma for the #1817 additions, see below). Not a form:
+no inputs, no amount, no submit.
 
 Shell follows `FirstConnectionModal.tsx`'s recipe (confirmed byte-identical via
 `get_variable_defs` against the frame's own bound tokens, not the codegen's stale Tailwind
@@ -46,6 +50,29 @@ component, since no such icon exists anywhere else in the repo; the plan's origi
 `packages/frontend/src/assets/copy.svg`, its first consumer) → a centred caption footer,
 `Need help? Contact Support`, the latter a real `<button>` calling `onContactSupport`.
 
+**Layout since #1817 (no Figma; built from the row pattern and the LP theme), top to bottom:** heading
+→ unavailable notice (only when unavailable) → six bank rows → `Payment reference` row (value plus
+a 32×32 copy icon button, `aria-label="Copy payment reference"`, `Copied` caption for 1500 ms) →
+instruction caption → 1px `--color-pipeline-line` divider → `Network` row and `Receiving wallet`
+row (`break-all`) → destination caption → note row → `Copy` → `Need help? Contact Support`.
+
+- **Chain.** `onAddFunds` captures `useActiveChain()` (`{ kind, chainId }`) with an incrementing
+  `openId`; the modal never re-fetches if the wallet view changes while open and has no chain
+  picker (a picker would mint a reference per toggle). `Network` is `chainDisplayName(kind,
+  response.chain_id)` and `Receiving wallet` is `response.receiver_address`, both as served.
+- **One fetch per open.** `usePaymentDetails` uses key `["lp-payment-details", openId, chainId]`
+  with `staleTime: Infinity`, `gcTime: 0`, `retry: false` and refetch on mount, focus and
+  reconnect all off, enabled only while open and authenticated: every 200 mints a reference, so a
+  hidden second request would issue one the LP never sees. Re-opening is the only retry.
+- **States.** Loading: every value cell is `—`, the rows container is `aria-busy`, both copy
+  buttons disabled. Unavailable `409` (no linked settlement address of that chain kind, or KYB not
+  passed): notice with a `Go to Account` button. Any other failure: generic notice. Rows stay `—`
+  and both copy buttons stay disabled; nothing crashes and no scratch value is ever shown.
+- **Copy-all** writes the seven wire rows (six bank + `Payment reference`); Network and Receiving
+  wallet are not wire fields and stay out.
+- **Mint lands as sPLUSD** (`docs/user-docs/lenders/deposit.md`), so the destination caption says
+  sPLUSD.
+
 `useFundingDetailsModal.ts` owns `copied` state (1500 ms reset), a feature-detected
 `navigator.clipboard` write that silently no-ops on rejection, the Escape listener via
 `stopImmediatePropagation` (the `useErrorDetailsDialog.ts` pattern — this modal will eventually
@@ -55,7 +82,8 @@ open over a home page that may itself host a dialog), and the body-scroll lock.
 export interface FundingDetailsModalProps {
   open: boolean;
   onDismiss: () => void;
-  details?: ReadonlyArray<FundingDetailRow>;   // omitted → every value renders "—"
+  view?: FundingDetailsView;                   // omitted → { status: "loading" }, every value "—"
+  onOpenAccount?: () => void;                  // "Go to Account" on the not-linked notice
   onContactSupport?: () => void;               // no-op default
 }
 ```
@@ -66,13 +94,19 @@ export interface FundingDetailsModalProps {
 
 - `FUNDING_DETAIL_LABELS` — the six labels in frame order: `Company Name`, `Bank Name`,
   `Bank Address`, `Account Number`, `IBAN`, `SWIFT / BIC code`.
-- `FUNDING_DETAILS_PLACEHOLDER` — the frame's values with the company-name typo corrected to
-  `Pipeline Trust LLC` (the frame reads `Pipiline Trust LLC`). `/test`-only fixture data; there is
-  **no backend endpoint serving real trust-account wire details** — see
-  [Out of scope](#out-of-scope).
+- `PAYMENT_REFERENCE_LABEL` — `Payment reference`.
+- `displayValue(v)` — `—` for empty, null or missing, else the value verbatim (no trimming).
+- `FundingDetailsView` — `loading`, `ready` (seven `rows`, `paymentReference`, `network`,
+  `receiverAddress`) or `unavailable` (`reason: "not-linked" | "error"`, `chainName`).
+  `toFundingDetailsView(response, kind)` maps the payload (`swift_bic_code` → `SWIFT / BIC code`,
+  `payment_details` → `Payment reference`); `toUnavailableView(error, chainName)` maps an
+  `ApiError` 409 to `not-linked` and anything else to `error`.
+- The former scratch placeholder (real-looking bank values) is gone from production code. Preview
+  fixtures live in `packages/frontend/src/routes/test/-fundingDetailsFixture.ts` with obviously fake
+  values (`Example Trust LLC`, `XX00 TEST …`, `PL-0000-0000-0000`).
 - `formatFundingDetailsForCopy(rows)` — one `"{label}: {value}"` line per row, joined by `\n`, `—`
-  rows included verbatim. This is the whole-block serialization the single `Copy` button writes —
-  the frame has exactly one Copy action and no per-row copy affordance.
+  rows included verbatim. The `Copy` button writes the seven wire rows; the reference row has its
+  own button that copies only the reference.
 
 ## AddUsdCard
 
@@ -238,6 +272,13 @@ Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `
 `Transfers may take from the same day up to 5 business days` · `Copy` / `Copied` · `Need help?` ·
 `Contact Support`.
 
+Added by #1817: `Payment reference` · `Add this reference to your transfer’s reference or remittance
+field. Without it we can’t match your transfer to your account.` · `Network` · `Receiving wallet` ·
+`Your transfer is credited to this wallet as sPLUSD.` · `Bank details need a {chainName} wallet
+linked to your account. Link it on your Account page, or switch to a wallet you have already
+linked.` · `Go to Account` · `Bank details are unavailable right now. Close this window and try
+again, or contact support.`
+
 Card: `Add USD` · `Use a bank transfer` · `KYB verification required` · `Transfers unlocked` ·
 `USD Balance` · `on Trust account` · `Add Funds` · `Withdraw` · `Verify your account` ·
 `Complete KYB to unlock bank transfers.` · `Verifying account…` · `We are reviewing your
@@ -283,11 +324,12 @@ class of staleness `account-page.md` documents for its own frame.
 
 | Seam | Default | Wired by |
 | --- | --- | --- |
-| `FundingDetailsModal.details` | every value renders `—` | backend source: `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824: `chain_id` is required and the response also echoes `chain_id` and `receiver_address`). Each call returns a fresh `payment_details` and adds a row to the history, so the client calls it exactly once per modal open with `staleTime: Infinity` and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off. The payload uses `swift_bic_code`. Client wiring: #1817 |
+| `FundingDetailsModal.view` | `{ status: "loading" }`, every value `—` | wired by #1817 on `/` from `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824); one call per modal open, see [FundingDetailsModal](#fundingdetailsmodal) |
+| `FundingDetailsModal.onOpenAccount` | no-op | #1817 (`/` closes the modal and navigates to `/account`) |
 | `FundingDetailsModal.onContactSupport` | no-op | unassigned — no destination exists in the design (tech debt) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
-| `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal` with no `details`) |
+| `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal`, #1817) |
 | `AddUsdCard.onWithdraw` | no-op | #1285 |
 | `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
 | `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`); reused as-is by #1426 (home state 6, `declined` variant) |
@@ -301,17 +343,16 @@ the transfer is the only string tying it to a statement line. Raised on epic #12
 design/backend sync (2026-09-22 approval comment on issue #1283); if a memo code is added, the
 modal's content model becomes per-LP data (a fetch), not a static constant — a follow-up issue.
 
-**Update (#1815).** The backend now issues a reference on every request for the LP to quote, and
-keeps every issued reference against the LP. The modal needs a seventh row for it (designer ask, as
-noted in #1311). Wire matching, which looks the LP up by any of its issued references, is still a
-follow-up.
+**Update (#1815, #1817).** The backend issues a reference on every request for the LP to quote and
+keeps every issued reference against the LP; the seventh `Payment reference` row shipped in #1817.
+Wire matching by issued reference is still a backend follow-up.
 
 ## `/test?tab=auth` preview seam
 
 `packages/frontend/src/routes/test.tsx` → `AuthTab`, a `Wire transfers (#1283)` block placed after
-the existing Account-page preview links: a `Button variant="secondary"` labelled
-`Open Funding details modal` (opens the modal with `details={FUNDING_DETAILS_PLACEHOLDER}`, so QA
-can Figma-compare a fully populated modal), and the six `AddUsdCard` variants rendered inline in
+the existing Account-page preview links: four `Button variant="secondary"` openers,
+`Open Funding details: ready | loading | not linked | error` (each opens the modal with the
+matching fixture view from `routes/test/-fundingDetailsFixture.ts`, no network), and the six `AddUsdCard` variants rendered inline in
 fixed `w-[313px]` boxes with their variant id as a caption. `onAddFunds` opens the same modal;
 `onWithdraw`/`onStartVerification`/`onViewStatus` each reveal a stand-in confirmation line by
 `data-testid` naming the owning issue. See [Diagnostics preview
@@ -325,8 +366,9 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Mounting `AddUsdCard` into the home grid for state 5 | #1425 (shipped for state 6 by #1426) |
 | A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
-| Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |
-| Real source for trust-account wire details | #1285 (folded), or a new backend issue |
+| Network call, persistence, or auth on `AddUsdCard` | #1254 / #1265 / #1285 |
+| Linking a settlement address (challenge, sign, verify) | #1825 |
+| Filling `system_configuration.system_bank_details` | ops, before release (`deposits.md`) |
 
 ## Accessibility
 

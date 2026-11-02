@@ -99,3 +99,25 @@ export function linkMyAddress(stellarAddress: string): Promise<LpResponse> {
     body: JSON.stringify({ stellar_address: stellarAddress }),
   });
 }
+
+export interface PaymentDetailsResponse {
+  company_name: string;
+  bank_name: string;
+  bank_address: string;
+  account_number: string;
+  iban: string;
+  swift_bic_code: string;
+  payment_details: string;
+  chain_id: number;
+  receiver_address: string;
+}
+
+export function getMyPaymentDetails(
+  chainId: number,
+  signal?: AbortSignal,
+): Promise<PaymentDetailsResponse> {
+  return apiFetch<PaymentDetailsResponse>(
+    `/v1/lps/me/payment-details?chain_id=${chainId}`,
+    { headers: authHeaders(), signal },
+  );
+}

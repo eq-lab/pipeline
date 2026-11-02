@@ -189,8 +189,8 @@ total, and summing them client-side is the derived-metric the project forbids; a
 out of scope for #1424 (human decision, 2026-10-12). The sub-line below it,
 "Stake PLUSD or Add USD to start earning", carries two real actions in one underlined brand-navy
 sentence: "Stake PLUSD" navigates to `/stake?tab=stake`; "Add USD" opens the `FundingDetailsModal`
-(#1283) with no `details`, so all six rows render `—` — the same inert-modal decision #1282 shipped
-for `/test`, now reachable from `/` for the first time. `RecentActivityCard` needs no change: with
+(#1283), which fetches the served bank details and a payment reference (#1817), reachable from
+`/` since #1424. `RecentActivityCard` needs no change: with
 PLUSD held, `useRequests` already populates real rows and the `View All` link.
 
 Values on these cards stay backend-served: the staking APY renders exactly as `GET /v1/stats`

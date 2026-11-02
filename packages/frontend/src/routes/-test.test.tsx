@@ -567,10 +567,10 @@ describe("TestPage — Wire transfers (#1283) preview seam", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("Open Funding details modal opens exactly one dialog; Escape closes it", () => {
+  it("Open Funding details opens exactly one dialog; Escape closes it", () => {
     renderTestPage("auth");
     fireEvent.click(
-      screen.getByRole("button", { name: /open funding details modal/i }),
+      screen.getByRole("button", { name: /open funding details: ready/i }),
     );
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     fireEvent.keyDown(document, { key: "Escape", bubbles: true });

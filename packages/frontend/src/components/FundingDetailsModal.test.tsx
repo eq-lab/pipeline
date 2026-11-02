@@ -3,13 +3,25 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FundingDetailsModal } from "./FundingDetailsModal";
-import { FUNDING_DETAILS_PLACEHOLDER } from "./fundingDetails";
+import type { FundingDetailsView } from "./fundingDetails";
+import {
+  FUNDING_DETAILS_FIXTURE_ERROR,
+  FUNDING_DETAILS_FIXTURE_NOT_LINKED,
+  FUNDING_DETAILS_FIXTURE_READY,
+} from "../routes/test/-fundingDetailsFixture";
+
+const READY = FUNDING_DETAILS_FIXTURE_READY as Extract<
+  FundingDetailsView,
+  { status: "ready" }
+>;
+const READY_TEXT = READY.rows.map((r) => `${r.label}: ${r.value}`).join("\n");
 
 function renderModal(
   overrides: Partial<{
     open: boolean;
     onDismiss: () => void;
-    details: typeof FUNDING_DETAILS_PLACEHOLDER;
+    view: FundingDetailsView;
+    onOpenAccount: () => void;
     onContactSupport: () => void;
   }> = {},
 ) {
@@ -20,7 +32,8 @@ function renderModal(
     <FundingDetailsModal
       open={open}
       onDismiss={onDismiss}
-      details={overrides.details}
+      view={overrides.view}
+      onOpenAccount={overrides.onOpenAccount}
       onContactSupport={overrides.onContactSupport}
     />,
   );
@@ -35,7 +48,7 @@ describe("FundingDetailsModal — not open", () => {
   });
 });
 
-describe("FundingDetailsModal — open, default (no details)", () => {
+describe("FundingDetailsModal — open, default (loading)", () => {
   it("renders role=dialog, aria-modal, and aria-labelledby resolving to the heading", () => {
     renderModal();
     const dialog = screen.getByRole("dialog");
@@ -57,16 +70,61 @@ describe("FundingDetailsModal — open, default (no details)", () => {
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    expect(screen.getAllByText("—")).toHaveLength(6);
+    expect(screen.getAllByText("—")).toHaveLength(9);
+  });
+
+  it("disables both copy buttons and shows no notice while loading", () => {
+    renderModal();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+    expect(screen.getByTestId("funding-details-copy-reference")).toBeDisabled();
+    expect(screen.queryByTestId("funding-details-notice")).toBeNull();
   });
 });
 
-describe("FundingDetailsModal — with FUNDING_DETAILS_PLACEHOLDER", () => {
-  it("renders all six values", () => {
-    renderModal({ details: FUNDING_DETAILS_PLACEHOLDER });
-    for (const row of FUNDING_DETAILS_PLACEHOLDER) {
+describe("FundingDetailsModal — ready", () => {
+  it("renders the served values, reference, instruction and destination rows", () => {
+    renderModal({ view: READY });
+    for (const row of READY.rows) {
       expect(screen.getByText(row.value)).toBeInTheDocument();
     }
+    expect(screen.getByText("Payment reference")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Add this reference to your transfer’s reference or remittance field. Without it we can’t match your transfer to your account.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("funding-details-row-network")).toHaveTextContent(
+      "Stellar",
+    );
+    expect(
+      screen.getByTestId("funding-details-row-receiving-wallet"),
+    ).toHaveTextContent(READY.receiverAddress);
+    expect(
+      screen.getByText("Your transfer is credited to this wallet as sPLUSD."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("FundingDetailsModal — unavailable", () => {
+  it("not-linked shows the chain notice and Go to Account calls onOpenAccount", async () => {
+    const user = userEvent.setup();
+    const onOpenAccount = vi.fn();
+    renderModal({ view: FUNDING_DETAILS_FIXTURE_NOT_LINKED, onOpenAccount });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Bank details need a Stellar wallet linked to your account. Link it on your Account page, or switch to a wallet you have already linked.",
+    );
+    expect(screen.getAllByText("—")).toHaveLength(9);
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Go to Account" }));
+    expect(onOpenAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("error shows the generic notice without Go to Account", () => {
+    renderModal({ view: FUNDING_DETAILS_FIXTURE_ERROR });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Bank details are unavailable right now. Close this window and try again, or contact support.",
+    );
+    expect(screen.queryByRole("button", { name: "Go to Account" })).toBeNull();
   });
 });
 
@@ -95,25 +153,29 @@ describe("FundingDetailsModal — Copy", () => {
   it("writes the serialized rows to the clipboard and flips the label to Copied", async () => {
     const user = userEvent.setup();
     installClipboardMock();
-    renderModal({ details: FUNDING_DETAILS_PLACEHOLDER });
+    renderModal({ view: READY });
 
-    await user.click(screen.getByRole("button", { name: /copy/i }));
+    await user.click(screen.getByRole("button", { name: "Copy" }));
 
-    expect(mockWriteText).toHaveBeenCalledWith(
-      FUNDING_DETAILS_PLACEHOLDER.map(
-        (row) => `${row.label}: ${row.value}`,
-      ).join("\n"),
-    );
+    expect(mockWriteText).toHaveBeenCalledWith(READY_TEXT);
     expect(
       await screen.findByRole("button", { name: "Copied" }),
     ).toBeInTheDocument();
+  });
+
+  it("the reference button copies only the reference", async () => {
+    const user = userEvent.setup();
+    installClipboardMock();
+    renderModal({ view: READY });
+    await user.click(screen.getByTestId("funding-details-copy-reference"));
+    expect(mockWriteText).toHaveBeenCalledWith("PL-0000-0000-0000");
   });
 
   it("a rejected clipboard promise does not throw and leaves the label at Copy", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     mockWriteText.mockRejectedValue(new Error("nope"));
-    renderModal();
+    renderModal({ view: READY });
 
     await expect(
       user.click(screen.getByRole("button", { name: "Copy" })),
@@ -130,7 +192,7 @@ describe("FundingDetailsModal — Copy", () => {
       configurable: true,
       value: exec,
     });
-    renderModal({ details: FUNDING_DETAILS_PLACEHOLDER });
+    renderModal({ view: READY });
 
     await user.click(screen.getByRole("button", { name: "Copy" }));
 
@@ -144,7 +206,7 @@ describe("FundingDetailsModal — Copy", () => {
   it("does not throw with no navigator.clipboard", async () => {
     const user = userEvent.setup();
     uninstallClipboardMock();
-    renderModal();
+    renderModal({ view: READY });
 
     await expect(
       user.click(screen.getByRole("button", { name: "Copy" })),

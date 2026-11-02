@@ -6,7 +6,7 @@ import type { FundingDetailRow } from "./fundingDetails";
 
 export interface UseFundingDetailsModalOptions {
   open: boolean;
-  rows: ReadonlyArray<FundingDetailRow>;
+  rows: ReadonlyArray<FundingDetailRow> | null;
   onDismiss: () => void;
 }
 
@@ -45,6 +45,7 @@ export function useFundingDetailsModal({
   }, [open]);
 
   const copy = useCallback(() => {
+    if (rows === null) return;
     void copyText(formatFundingDetailsForCopy(rows));
   }, [copyText, rows]);
 
