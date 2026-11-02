@@ -35,7 +35,17 @@ Out of scope:
 
 ## Open Questions
 
-- The Issue says "one row per defaulted loan the connected wallet has a share in", but the Pocket surface (`pocket`, `claimable`, `claimed`, `claim`) exposes no per-holder share/snapshot read. Should the card (a) list every existing pocket on the chain (plan default), or (b) hide rows where `claimable == 0 && claimed == 0` (which also hides a real share before the first recovery), or (c) is there a share read (e.g. sPLUSD snapshot balance-at) the LP app should use?
+_None_ — answered 2026-11-02 by the user: **option (a)**. The card lists every pocket that exists on
+the active chain (loan-book `Default` / `Closed` loans whose `pocket(loan_id)` read succeeds), with
+the connected wallet's `claimable` / `claimed` shown verbatim, zeros as `0`. Rows are never hidden
+on zero values, and no client-side share is derived.
+
+## Decision log
+
+- 2026-11-02 — Which rows to list (the Pocket contract has no per-holder share read): (a) every
+  existing pocket with the wallet's claimable/claimed **(chosen)**; (b) hide rows with both zero
+  (rejected: hides a real share before the first recovery); (c) a snapshot share read (none exists
+  in the LP app today).
 
 ## Implementation Steps
 
