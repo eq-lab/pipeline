@@ -26,7 +26,6 @@ export function usePaymentDetails(
       getMyPaymentDetails((request as PaymentDetailsRequest).chainId, signal),
     enabled,
     staleTime: Infinity,
-    gcTime: 0,
     retry: false,
     refetchOnMount: false,
     refetchOnWindowFocus: false,

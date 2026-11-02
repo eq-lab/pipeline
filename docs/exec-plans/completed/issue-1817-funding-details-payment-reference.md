@@ -30,7 +30,9 @@ Out of scope:
 
 - **Contract (verified on this branch).** `packages/api/src/routes/lp_bank_deposits.rs` `PaymentDetailsResponse` = `company_name`, `bank_name`, `bank_address`, `account_number`, `iban`, `swift_bic_code`, `payment_details` (strings), `chain_id` (int), `receiver_address` (string). `chain_id` required (`RequiredChain`): missing/malformed/unknown → 400. No LP → 404. KYB ≠ `Passed` or no settlement address of the chain's kind → 409 (message names the unmet preconditions; nothing minted). Missing bank record → 500. `Cache-Control: no-store`; `HEAD` → 405. Every 200 mints and stores a new reference.
 - **Default QueryClient retries 3× and refetches on focus/reconnect** (`wallet/evm/EvmWalletProvider.tsx` builds `new QueryClient()` with defaults). Every one of these must be off per query, including `refetchOnReconnect`, or a hidden request mints a reference the LP never sees.
-- **StrictMode / remounts.** Two observers of the same key share one fetch; `gcTime: 0` removal is deferred, so a StrictMode unmount/remount does not refetch. Covered by a test.
+- **StrictMode / remounts.** Two observers of the same key share one fetch, and the default
+  `gcTime` keeps the entry alive across a StrictMode unmount/remount, so no second request is
+  issued (see Decision log, 2026-11-02 CI fix).
 - **Linking is broken on main until #1825.** #1824 removed the unsigned `POST /v1/lps/me/link-address` that `useSettlementAddressLink` still calls, so new LPs cannot link an address from the LP app today. Until #1825 ships, most LPs will land in the 409 "link your wallet" state; LPs linked before #1824 (Stellar) get details. Not a blocker for #1817 — the 409 state is designed for exactly this — but the "Go to Account" action leads to a page that offers no link button until #1825.
 - **Merge overlap with #1825**: both touch `api/lps.ts` and `api/index.ts`. #1817 only appends a type and a function there; whichever merges second rebases trivially.
 - **Gate reachability.** Add Funds renders only in home states `plusd-held`, `passed-empty`, `passed-staked` (all `kyb_status === "Passed"` + session + connected wallet, `components/homeState.ts`), and `/` replaces the cards with `ChainNotServedNotice` when the active chain is not served. So a 409 in practice means "no address of this kind", and 400 is not expected; both are still handled.
@@ -117,3 +119,9 @@ Live check (no browser automation; ask the user to report): on staging with a li
 - User stories: new `docs/user-stories/epic-1247/1817-funding-details-payment-reference.md` (ready, not-linked, error, one-request-per-open, copy-all, reference copy) + row in `docs/user-stories/index.md`; amend `1283-lp-add-funds.md` Story 1 to the new fixture values and the `/test` openers.
 - `docs/product-specs/deposits.md`: no change needed ("Client wiring is #1817" stays accurate).
 - Move this plan to `docs/exec-plans/completed/` on completion.
+
+- 2026-11-02 (CI fix) — `gcTime: 0` was dropped. With it, a query with no subscriber was
+  garbage-collected at once, so StrictMode's unmount/remount and slow effect scheduling on CI
+  refetched and minted a second reference (CI: "expected fetch to be called 1 times, but got 2";
+  the StrictMode test also failed locally 1 in 3). The key already carries `openId`, so cached
+  entries from earlier opens are harmless under the default `gcTime`.

@@ -61,7 +61,7 @@ row (`break-all`) → destination caption → note row → `Copy` → `Need help
   picker (a picker would mint a reference per toggle). `Network` is `chainDisplayName(kind,
   response.chain_id)` and `Receiving wallet` is `response.receiver_address`, both as served.
 - **One fetch per open.** `usePaymentDetails` uses key `["lp-payment-details", openId, chainId]`
-  with `staleTime: Infinity`, `gcTime: 0`, `retry: false` and refetch on mount, focus and
+  with `staleTime: Infinity`, the default `gcTime`, `retry: false` and refetch on mount, focus and
   reconnect all off, enabled only while open and authenticated: every 200 mints a reference, so a
   hidden second request would issue one the LP never sees. Re-opening is the only retry.
 - **States.** Loading: every value cell is `—`, the rows container is `aria-busy`, both copy
