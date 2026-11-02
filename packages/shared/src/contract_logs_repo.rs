@@ -257,7 +257,7 @@ pub const PLUSD_LEDGER_SQL: &str = "WITH repayment_fees AS (
                   (p.params->'event'->>'repayment_id')::numeric,
                   p.log_index DESC
      )
-     SELECT block_timestamp, block_number, log_index, delta
+     SELECT block_timestamp, block_number, log_index::bigint AS log_index, delta
      FROM (
          SELECT block_timestamp, block_number, log_index,
                 CASE event_name
