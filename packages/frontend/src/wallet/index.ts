@@ -235,6 +235,11 @@ export type { WireOutRead, WireOutStatus } from "./useWireOutReads";
 export { useStellarRequestWireOut } from "./stellar/useStellarRequestWireOut";
 export type { UseRequestWireOutResult } from "./stellar/useStellarRequestWireOut";
 export { useEvmRequestWireOut } from "./evm/useEvmRequestWireOut";
+export { isPocketConfigured } from "./pocketConfig";
+export { usePocketReads } from "./usePocketReads";
+export type { PocketRead } from "./usePocketReads";
+export { usePocketClaim } from "./usePocketClaim";
+export type { UsePocketClaimResult } from "./stellar/useStellarPocketClaim";
 
 // ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
 export { useDepositFlow } from "./useDepositFlow";

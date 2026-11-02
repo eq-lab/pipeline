@@ -620,3 +620,18 @@ Bank wire-out for the LP app; behaviour in [`withdrawals.md`](../product-specs/w
 | `isWireOutMinterConfigured(kind)` | False for an empty Stellar minter id or an empty / zero EVM address; every hook short-circuits and the Bank tab shows the unavailable reason |
 
 Chain scoping follows `useWalletView().kind`; the audit-log query (`useWireOutRequests`) uses `ENV.STELLAR_CHAIN_ID` / `ENV.EVM_CHAIN_ID`. No localStorage is used; the just-submitted id lives in component state.
+
+### Pocket reads and claim (#1758)
+
+Default-pockets card on `/stake`; behaviour in [`staking.md`](../product-specs/staking.md#default-pockets).
+
+| Hook                                          | Role                                                                                                                                                                                                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useStellarPocketReads` (`wallet/stellar`)    | Per loan id `useQueries`: `pocket(loan_id)` first (`null` on `Error(Contract, #2)`), then `claimable` / `claimed` for the holder only when the pocket exists; keys `["pocket", "stellar", pocketId, loanId, field, holder?]`, 30 s polling, no retry |
+| `useEvmPocketReads` (`wallet/evm`)            | One `useReadContracts` batch, three calls per loan; a revert on `pocket(loanId)` means no pocket, any other failure is a per-loan `error`                                                                                                            |
+| `usePocketReads(kind, loanIds, holder)`       | Facade enabling only the active kind and only when `isPocketConfigured(kind)`; returns `Record<loanId, { exists?, balanceRaw?, claimableRaw?, claimedRaw?, error? }>`, raw values untouched                                                          |
+| `useStellarPocketClaim` / `useEvmPocketClaim` | `claim(loanId)` as the connected wallet (`claimPocket` / simulate, estimate, `writeContract`); result `{ claim, isPending, isSuccess, error, loanId, amountRaw, hash, reset }`, in-flight guard, `amountRaw` only on Stellar                         |
+| `usePocketClaim(kind)`                        | Picks the active kind; on success invalidates `["pocket"]`, `["stellarSacToken"]`, `["readContract"]`, `["readContracts"]`                                                                                                                           |
+| `isPocketConfigured(kind)`                    | False for an empty Stellar id or an empty / zero EVM address                                                                                                                                                                                         |
+
+Contract bindings: `readPocket`, `readPocketClaimable`, `readPocketClaimed`, `claimPocket` (`wallet-connect/src/stellar/contracts/pocket.ts`) and `pocketAbi` (`evm/contracts/pocket.ts`); the surface is assumed, see the spec.

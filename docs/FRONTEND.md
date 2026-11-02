@@ -218,11 +218,15 @@ Supported runtime keys:
 | `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` |
 | `VITE_EVM_MINTER_ADDRESS`       | `0x0000000000000000000000000000000000000000` |
 | `VITE_STELLAR_YIELD_MINTER_ID`  | empty (unconfigured)                         |
+| `VITE_EVM_POCKET_ADDRESS`       | `0x0000000000000000000000000000000000000000` |
+| `VITE_STELLAR_POCKET_ID`        | empty (unconfigured)                         |
 | `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 |
 
 `VITE_EVM_MINTER_ADDRESS` and `VITE_STELLAR_YIELD_MINTER_ID` (#1757) are the minter targets of the LP
 bank wire-out section; when the active chain's value is empty or the zero address the section stays
 hidden.
+`VITE_EVM_POCKET_ADDRESS` and `VITE_STELLAR_POCKET_ID` (#1758) are the Pocket targets of the
+default-pockets card on `/stake` and hide it the same way.
 
 Local container verification:
 

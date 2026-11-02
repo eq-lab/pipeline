@@ -21,6 +21,7 @@ import { useStakeFlow } from "@/wallet/useStakeFlow";
 import { toUserError } from "@/utils/userError";
 import { useChainServed } from "@/api";
 import { ChainNotServedNotice } from "@/components/ChainNotServedNotice";
+import { DefaultPocketsCard } from "@/components/stake/DefaultPocketsCard";
 
 /** Active tab of the stake page; also the `?tab=` search-param value. */
 type StakeTab = "stake" | "unstake";
@@ -374,6 +375,10 @@ function Stake() {
                 notice={chainNotice}
               />
             )}
+
+            <DefaultPocketsCard
+              claimBlocked={isStellar && flow.needsXlmFunding}
+            />
           </>
         )}
       </main>

@@ -250,6 +250,22 @@ export {
 } from "./evm/contracts/minter";
 export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
 
+export {
+  readPocket,
+  readPocketClaimable,
+  readPocketClaimed,
+  buildClaimEnvelope,
+  claimPocket,
+} from "./stellar/contracts/pocket";
+export type {
+  PocketData,
+  PocketHolderRead,
+  ClaimPocketParams,
+  ClaimPocketResult,
+  ClaimPocketStage,
+} from "./stellar/contracts/pocket";
+export { pocketAbi } from "./evm/contracts/pocket";
+
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";

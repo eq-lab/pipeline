@@ -110,3 +110,5 @@ export const usdcId: string = ENV.STELLAR_USDC_ID;
 export const usdcCustodyId: string = ENV.STELLAR_USDC_CUSTODY_ID;
 
 export const minterId: string = ENV.STELLAR_MINTER_ID;
+
+export const pocketId: string = ENV.STELLAR_POCKET_ID;

@@ -46,39 +46,49 @@ on zero values, and no client-side share is derived.
   existing pocket with the wallet's claimable/claimed **(chosen)**; (b) hide rows with both zero
   (rejected: hides a real share before the first recovery); (c) a snapshot share read (none exists
   in the LP app today).
+- 2026-11-02 — Contract surface (step 1): the Pocket sources and full ids are outside this repo and
+  the `stellar` CLI is not installed, so the surface is derived from the Issue body and **unverified**:
+  Stellar `pocket(loan_id)` is read as a map with an i128 `balance` (missing renders "—"), loan id
+  `u32`, not-found `Error(Contract, #2)`; EVM `pocket(uint256)` decoded as a tuple whose first field
+  is `balance`, a revert means no pocket. Recorded in `staking.md#default-pockets`; confirm when the
+  full contract ids reach `.env` (only `pocket.ts` in both wallet-connect folders changes).
+- 2026-11-02 — Stellar holder reads (`claimable` / `claimed`) run only after `pocket(loan_id)`
+  returns a pocket, to avoid calls for loans without one (two round trips, polled at 30 s).
+- 2026-11-02 — The card uses `InlineError` (built-in "View details" dialog) instead of the page's
+  `ErrorDetailsDialog`, so it takes no `onError` prop; `stake.tsx` passes only `claimBlocked`.
 
 ## Implementation Steps
 
-1. **Confirm the contract surface.** `stellar contract info interface --id <full Pocket id> --network testnet` and the hoodi-v5 `PipelinePocket` ABI (explorer / contracts repo). Record `PocketData` field names (which field is the current balance, which is total recovered/released, burned), the not-found error, and EVM `pocket(uint256)` return tuple. Put the findings in the spec section (step 9), not in code comments.
-2. **Env/config.**
+1. [x] **Confirm the contract surface.** `stellar contract info interface --id <full Pocket id> --network testnet` and the hoodi-v5 `PipelinePocket` ABI (explorer / contracts repo). Record `PocketData` field names (which field is the current balance, which is total recovered/released, burned), the not-found error, and EVM `pocket(uint256)` return tuple. Put the findings in the spec section (step 9), not in code comments.
+2. [x] **Env/config.**
    - `.env.example` (frontend block near line 250/263): `VITE_STELLAR_POCKET_ID=<testnet id>  # LP default-pockets card; empty hides it` and `VITE_EVM_POCKET_ADDRESS=` with the same comment.
    - `docker/frontend/entrypoint.sh`: add both `--arg` lines and the JSON keys, mirroring `VITE_EVM_MINTER_ADDRESS` / `VITE_STELLAR_YIELD_MINTER_ID`.
    - `packages/frontend/src/lib/env.ts`: `EVM_POCKET_ADDRESS` (`readString("VITE_EVM_POCKET_ADDRESS", ...)` like `EVM_MINTER_ADDRESS`) and `STELLAR_POCKET_ID`.
    - `packages/frontend/src/wallet/stellar/chain.ts`: export `pocketId`.
    - New `packages/frontend/src/wallet/pocketConfig.ts`: `isPocketConfigured(kind)` (copy `wireOutConfig.ts` shape, zero-address check).
-3. **Stellar contract module** `packages/wallet-connect/src/stellar/contracts/pocket.ts`:
+3. [x] **Stellar contract module** `packages/wallet-connect/src/stellar/contracts/pocket.ts`:
    - `readPocket({ pocketId, loanId, rpcUrl, networkPassphrase })` via `simulateRead` → `{ balance: string, ... } | null` (null on the not-found contract error; rethrow others). Loan id ScVal type must match the contract (`u32` like `readMinterRepayment`, or `u64` — confirm in step 1).
    - `readPocketClaimable` / `readPocketClaimed({ pocketId, holder, loanId, ... })` → raw `string`.
    - `buildClaimEnvelope` + `claimPocket({ pocketId, holder, loanId, rpcUrl, networkPassphrase, signTransaction, onStageChange })` → `{ hash, amount: string | null }`, structured exactly like `requestWireOut` in `minter.ts` (sign → send → poll → decode return).
    - Export from `packages/wallet-connect/src/index.ts`.
-4. **EVM ABI** `packages/wallet-connect/src/evm/contracts/pocket.ts`: `pocketAbi` (`as const`) with `pocket`, `claimable`, `claimed`, `claim`; export from index.
-5. **Frontend read hooks** (mirror `useStellarMinterReads.ts` / `useEvmMinterReads.ts` / `useWireOutReads.ts`):
+4. [x] **EVM ABI** `packages/wallet-connect/src/evm/contracts/pocket.ts`: `pocketAbi` (`as const`) with `pocket`, `claimable`, `claimed`, `claim`; export from index.
+5. [x] **Frontend read hooks** (mirror `useStellarMinterReads.ts` / `useEvmMinterReads.ts` / `useWireOutReads.ts`):
    - `packages/frontend/src/wallet/stellar/useStellarPocketReads.ts` — react-query `useQueries` per loan id: pocket + claimable + claimed, `staleTime`/`refetchInterval` 30 s, `retry: false`, keys `["pocket", "stellar", pocketId, loanId, holder]`.
    - `packages/frontend/src/wallet/evm/useEvmPocketReads.ts` — one `useReadContracts` batch (3 calls per loan), 30 s poll.
    - `packages/frontend/src/wallet/usePocketReads.ts` — `usePocketReads(kind, loanIds, holder)` → `Record<loanId, { exists?: boolean; balanceRaw?: string; claimableRaw?: string; claimedRaw?: string; error?: Error }>`; each chain hook enabled only for its kind and when `isPocketConfigured(kind)`.
-6. **Frontend write hooks:**
+6. [x] **Frontend write hooks:**
    - `packages/frontend/src/wallet/stellar/useStellarPocketClaim.ts` — copy `useStellarRequestWireOut` shape: `claim(loanId)`, `isPending`, `isSuccess`, `error`, `hash`, `reset`, in-flight ref guard.
    - `packages/frontend/src/wallet/evm/useEvmPocketClaim.ts` — `useWriteContract` + `useWaitForTransactionReceipt`, network guard like `useEvmRequestWireOut.ts`.
    - `packages/frontend/src/wallet/usePocketClaim.ts` dispatching on `kind`; on success invalidate `["pocket", ...]` queries (Stellar) / `refetch` (EVM) and the PLUSD balance query used by the stake flow.
    - Export the public hooks from `packages/frontend/src/wallet/index.ts`.
-7. **Component** `packages/frontend/src/components/stake/DefaultPocketsCard.tsx` + view hook `useDefaultPocketsCard.ts`:
+7. [x] **Component** `packages/frontend/src/components/stake/DefaultPocketsCard.tsx` + view hook `useDefaultPocketsCard.ts`:
    - `useActiveChain()` → `{ kind, chainId }`; `useLoanBook({ chainId })`; candidates = `loans.filter(l => l.status === "Default" || l.status === "Closed")`; holder = connected address for `kind`.
    - Rows = candidates whose pocket read `exists !== false` (pending reads keep the row with "—"); hide the whole card when not connected, not configured, no candidates, or every candidate's pocket is confirmed absent.
    - Layout: `Card variant="white"` with a title "Default pockets" and short helper text (copy from the user docs Recovery mechanics sentence); per loan a `Card variant="plain"` block (as in `WithdrawQueueCard`) with header "Loan #<id> · <borrower>" and `InfoRow`s "Pocket balance", "Claimable", "Claimed", then `Button variant="primary-dark" size="compact"` "Claim". Format raw amounts with the existing PLUSD formatter used by the stake flow (chain-specific decimals, 7 Stellar / 18 EVM — reuse, don't hardcode); "—" for undefined.
    - Errors: claim failure → `InlineError` + the page's `ErrorDetailsDialog` via `toUserError` (same as stake page); success → `useToast` "Claimed <amount> PLUSD" (amount from the contract return or the pre-claim `claimable` read — the served value, not computed).
    - File header: one 2-line spec pointer `// spec: docs/product-specs/staking.md#default-pockets`. No other comments.
-8. **Mount** in `packages/frontend/src/routes/stake.tsx` inside the served branch, after the steps/connect card: `<DefaultPocketsCard onError={setErrorDialog} />`. Not shown when `served === false`.
-9. **Docs** (see Docs to Update).
+8. [x] **Mount** in `packages/frontend/src/routes/stake.tsx` inside the served branch, after the steps/connect card: `<DefaultPocketsCard onError={setErrorDialog} />`. Not shown when `served === false`.
+9. [x] **Docs** (see Docs to Update).
 10. `yarn workspace` lint/typecheck/tests (`/test-fast`); `yarn build` for `packages/frontend` (no new route, no routeTree regen needed).
 
 ## Test Strategy
