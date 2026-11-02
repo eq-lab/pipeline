@@ -8,6 +8,7 @@ use alloy::signers::SignerSync;
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
+use axum::response::IntoResponse;
 use chrono::{DateTime, TimeZone, Utc};
 use ed25519_dalek::{Signer, SigningKey};
 use pipeline_api::config::{ConfiguredChain, KybLimits};
@@ -435,10 +436,14 @@ fn a_blank_signer_counts_as_omitted() {
 
 // ── link_refusal ─────────────────────────────────────────────────────────────
 
+fn refusal(row: &LpRow, kind: ChainKind, holder: Option<i64>, addr: &str) -> Result<(), String> {
+    link_refusal(row, row.kyb_status.parse().unwrap(), kind, holder, addr)
+}
+
 #[test]
 fn a_failed_lp_is_refused_with_or_without_an_address() {
     for row in [lp("Failed", None, None), lp("Failed", Some("GOLD"), None)] {
-        let msg = link_refusal(&row, ChainKind::Stellar, None, "GNEW").unwrap_err();
+        let msg = refusal(&row, ChainKind::Stellar, None, "GNEW").unwrap_err();
         assert_eq!(
             msg,
             "LP 42 was refused at KYB and cannot set a settlement address"
@@ -449,13 +454,13 @@ fn a_failed_lp_is_refused_with_or_without_an_address() {
 #[test]
 fn a_passed_lp_with_that_kind_set_is_fixed() {
     let stellar = lp("Passed", Some("GOLD"), None);
-    let msg = link_refusal(&stellar, ChainKind::Stellar, None, "GNEW").unwrap_err();
+    let msg = refusal(&stellar, ChainKind::Stellar, None, "GNEW").unwrap_err();
     assert_eq!(
         msg,
         "LP 42 has passed KYB; its Stellar settlement address is fixed"
     );
     let evm = lp("Passed", None, Some("0xold"));
-    let msg = link_refusal(&evm, ChainKind::Evm, None, "0xnew").unwrap_err();
+    let msg = refusal(&evm, ChainKind::Evm, None, "0xnew").unwrap_err();
     assert_eq!(
         msg,
         "LP 42 has passed KYB; its EVM settlement address is fixed"
@@ -465,12 +470,12 @@ fn a_passed_lp_with_that_kind_set_is_fixed() {
 #[test]
 fn a_passed_lp_may_still_link_the_other_kind() {
     let row = lp("Passed", Some("GOLD"), None);
-    assert!(link_refusal(&row, ChainKind::Evm, None, "0xnew").is_ok());
+    assert!(refusal(&row, ChainKind::Evm, None, "0xnew").is_ok());
 }
 
 #[test]
 fn another_lp_holding_the_address_is_a_conflict() {
-    let msg = link_refusal(&open_lp(), ChainKind::Evm, Some(7), "0xabc").unwrap_err();
+    let msg = refusal(&open_lp(), ChainKind::Evm, Some(7), "0xabc").unwrap_err();
     assert_eq!(
         msg,
         "EVM settlement address 0xabc is already linked to another LP"
@@ -480,7 +485,7 @@ fn another_lp_holding_the_address_is_a_conflict() {
 #[test]
 fn this_lp_holding_the_address_at_a_non_terminal_status_is_allowed() {
     let row = lp("UnderReview", Some("GOLD"), None);
-    assert!(link_refusal(&row, ChainKind::Stellar, Some(LP_ID), "GOLD").is_ok());
+    assert!(refusal(&row, ChainKind::Stellar, Some(LP_ID), "GOLD").is_ok());
 }
 
 // ── issue_link_challenge ─────────────────────────────────────────────────────
@@ -526,6 +531,55 @@ async fn an_address_held_by_another_lp_is_refused_at_challenge_time() {
         .unwrap_err();
     assert!(conflict(err).contains("is already linked to another LP"));
     assert_eq!(store.with(|s| s.issue_calls), 0);
+}
+
+async fn assert_opaque_500(err: ApiError) {
+    assert!(matches!(err, ApiError::Internal(_)), "{err:?}");
+    let resp = err.into_response();
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(text, r#"{"error":"internal error"}"#);
+    assert!(!text.contains("unknown kyb status") && !text.contains("Bogus"));
+}
+
+#[tokio::test]
+async fn a_corrupt_kyb_status_is_a_500_at_challenge_time() {
+    let store = FakeLinkStore::new();
+    let g = g_of(&stellar_key(7));
+    let tgt = target(ChainKind::Stellar, &g, None);
+    let err = issue_link_challenge(
+        &store,
+        &lp("Bogus", None, None),
+        STELLAR,
+        &tgt,
+        DOMAIN,
+        "n-1".to_owned(),
+    )
+    .await
+    .unwrap_err();
+    assert_opaque_500(err).await;
+    assert_eq!(store.with(|s| s.issue_calls), 0);
+}
+
+#[tokio::test]
+async fn a_corrupt_kyb_status_is_a_500_at_verify_and_keeps_the_challenge() {
+    let store = FakeLinkStore::new();
+    let key = stellar_key(7);
+    let g = g_of(&key);
+    let tgt = target(ChainKind::Stellar, &g, None);
+    let msg = issue(&store, STELLAR, &tgt).await;
+    let sig = hex::encode(sep53(&key, &msg));
+    let mut corrupt = open_lp();
+    corrupt.kyb_status = "Bogus".to_owned();
+    let err = verify_link(&store, &corrupt, STELLAR, &tgt, &sig, DOMAIN)
+        .await
+        .unwrap_err();
+    assert_opaque_500(err).await;
+    assert!(store.challenge_present());
+    assert!(store.links().is_empty());
 }
 
 // ── verify_link: refusals ────────────────────────────────────────────────────

@@ -208,3 +208,9 @@ fn stellar_settlement_address_accepts_g_and_c_and_rejects_the_rest() {
         assert_eq!(err.to_string(), msg, "{bad}");
     }
 }
+
+#[test]
+fn chain_kind_label_is_the_display_name() {
+    assert_eq!(ChainKind::Evm.label(), "EVM");
+    assert_eq!(ChainKind::Stellar.label(), "Stellar");
+}

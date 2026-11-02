@@ -26,6 +26,16 @@ pub enum ChainKind {
     Stellar,
 }
 
+impl ChainKind {
+    /// Human-readable name used in API messages.
+    pub const fn label(self) -> &'static str {
+        match self {
+            ChainKind::Evm => "EVM",
+            ChainKind::Stellar => "Stellar",
+        }
+    }
+}
+
 /// Read `CHAIN_<id>_TYPE` and return the discriminator.
 /// Defaults to `Evm` when unset. Returns `Err` for unknown values.
 ///
