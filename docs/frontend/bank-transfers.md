@@ -281,7 +281,7 @@ class of staleness `account-page.md` documents for its own frame.
 
 | Seam | Default | Wired by |
 | --- | --- | --- |
-| `FundingDetailsModal.details` | every value renders `—` | #1285 (or a new backend issue — see Open Questions on issue #1283) |
+| `FundingDetailsModal.details` | every value renders `—` | backend source: `GET /v1/lps/me/payment-details` (#1815). Each call returns a fresh `payment_details` and adds a row to the history, so the client calls it exactly once per modal open with `staleTime: Infinity` and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off. The payload uses `swift_bic_code`. Client wiring: #1817 |
 | `FundingDetailsModal.onContactSupport` | no-op | unassigned — no destination exists in the design (tech debt) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
@@ -298,6 +298,11 @@ modal shows no reference/memo "include this code" line — and that endpoint now
 the transfer is the only string tying it to a statement line. Raised on epic #1247 for the next
 design/backend sync (2026-09-22 approval comment on issue #1283); if a memo code is added, the
 modal's content model becomes per-LP data (a fetch), not a static constant — a follow-up issue.
+
+**Update (#1815).** The backend now issues a reference on every request for the LP to quote, and
+keeps every issued reference against the LP. The modal needs a seventh row for it (designer ask, as
+noted in #1311). Wire matching, which looks the LP up by any of its issued references, is still a
+follow-up.
 
 ## `/test?tab=auth` preview seam
 

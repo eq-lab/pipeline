@@ -23,7 +23,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 |------|--------|-------------|
 | [lp-onboarding.md](./lp-onboarding.md) | LP Onboarding & Compliance | KYT screening, three whitelist enrolment paths, freshness window, manual review |
 | [kyb-lp-verification.md](./kyb-lp-verification.md) | LP Onboarding & Compliance | KYB entity registration, document review lifecycle, notifications, settlement address |
-| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed |
+| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed; LP funding details (`GET /v1/lps/me/payment-details`) |
 | [evm-requests-queue.md](./evm-requests-queue.md) | Deposits & PLUSD Minting | Deployed EVM VerifiedRequestsQueue: DepositManager, WithdrawalQueue, `VerifiedRequests` EIP-712 voucher, rate limiter, voucher API |
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |

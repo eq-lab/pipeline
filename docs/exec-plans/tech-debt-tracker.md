@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-159.**
+**Next free number: TD-160.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1462,6 +1462,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Fold the read into #1285 (which already owns the LP-visible trust-account
   surface), raise a dedicated backend sub-issue, or accept the details as a hardcoded product
   constant — a designer/PM + backend decision, not a frontend one.
+- **Update (2026-11-02, #1815):** The backend source landed as `GET /v1/lps/me/payment-details`
+  (see `docs/product-specs/deposits.md` § LP Funding Details). Only the frontend wiring (#1817)
+  remains, so this stays open until that merges.
 
 ### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination
 
@@ -1754,6 +1757,16 @@ line, whichever section it lands in.
   lost once it clears.
 - **Suggested fix:** On timeout, rebroadcast the same nonce with bumped fees, or keep a per-chain
   nonce in the relayer and replace stale transactions explicitly.
+
+### TD-159: `GET /v1/lps/me/payment-details` issues an unbounded number of references per LP
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_bank_deposits.rs`, `lp_requested_bank_details`.
+- **Gap:** There is no rate limit or per-LP cap, and every successful call adds a row.
+- **Impact:** An eligible LP (`Passed` with a linked address) can grow the table without bound.
+  Every row still resolves to one LP, so attribution is not at risk.
+- **Suggested fix:** A per-LP rate limit, or reusing the most recent reference within a short
+  window, if product agrees.
 
 ---
 

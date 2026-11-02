@@ -183,10 +183,10 @@ _None_
 
 ## Implementation Steps
 
-1. **Spec first.** Add the section drafted under **Docs to Update → 1** to
+1. [x] **Spec first.** Add the section drafted under **Docs to Update → 1** to
    `docs/product-specs/deposits.md`, and make the other doc edits listed there in the same step.
 
-2. **Migration**: create `packages/shared/migrations/20261102000001_system_configuration_lp_payment_details.sql`.
+2. [x] **Migration**: create `packages/shared/migrations/20261102000001_system_configuration_lp_payment_details.sql`.
    - Header comment covers:
      - purpose: #1815, which settles #1311/#1700
      - one system-wide bank-details record
@@ -232,7 +232,7 @@ _None_
          ON lp_requested_bank_details (lp_id, created_at DESC);
      ```
 
-3. **Shared: system configuration repo**: new `packages/shared/src/system_configuration_repo.rs`
+3. [x] **Shared: system configuration repo**: new `packages/shared/src/system_configuration_repo.rs`
    (register `pub mod system_configuration_repo;` in `packages/shared/src/lib.rs`).
    - One `// spec:` header line pointing at `docs/product-specs/deposits.md` § LP Funding Details, and
      no other comments (AGENTS.md comment rule).
@@ -247,7 +247,7 @@ _None_
      - an implementation of `BankDetailsSource`. It deserializes the value and reports a malformed value
        as an `anyhow` error naming the row.
 
-4. **Shared: per-request reference repo**: new `packages/shared/src/lp_requested_bank_details_repo.rs`
+4. [x] **Shared: per-request reference repo**: new `packages/shared/src/lp_requested_bank_details_repo.rs`
    (register in `lib.rs`).
    - `pub enum InsertOutcome { Inserted, ReferenceTaken }`.
    - `#[async_trait] pub trait PaymentDetailsStore: Send + Sync { async fn insert(&self, lp_id: i64, payment_details: &str) -> Result<InsertOutcome, sqlx::Error>; }`.
@@ -259,7 +259,7 @@ _None_
    - Do not add a read or list method. Nothing in this issue reads the history back, and the matching
      follow-up will add its own lookup.
 
-5. **API: route, DTO, pure logic**: edit `packages/api/src/routes/lp_bank_deposits.rs`.
+5. [x] **API: route, DTO, pure logic**: edit `packages/api/src/routes/lp_bank_deposits.rs`.
    - Make `my_lp` in `packages/api/src/routes/lps.rs` `pub(crate)` and reuse it. Do not duplicate it.
    - Add `rand = "0.8"` to `packages/api/Cargo.toml` `[dependencies]`.
    - DTO: `#[derive(Debug, Serialize, ToSchema)] pub struct PaymentDetailsResponse { company_name, bank_name, bank_address, account_number, iban, swift_bic_code, payment_details: String }`
@@ -303,7 +303,7 @@ _None_
    - Router: add `.route("/lps/me/payment-details", get(get_my_payment_details))`. `get` is already imported.
    - Update the `// spec:` header to also reference Issue #1815 (still one header, at most 2–3 lines).
 
-6. **AppState wiring**
+6. [x] **AppState wiring**
    - `packages/api/src/lib.rs`: add `pub system_configuration_repo: SystemConfigurationRepo` and
      `pub lp_requested_bank_details_repo: LpRequestedBankDetailsRepo` to `AppState`.
    - `packages/api/src/main.rs`: construct both with `pool.clone()` and pass them into the state literal.
@@ -323,9 +323,9 @@ _None_
      Find them with `grep -rln "AppState {" packages/api/tests`. Building a repo on a `connect_lazy` pool
      opens no connection.
 
-7. **Tests**: see **Test Strategy**.
+7. [x] **Tests**: see **Test Strategy**.
 
-8. **Verify**: run these:
+8. [x] **Verify**: run these:
    - `cargo build --all`
    - `cargo test -p pipeline-api -p shared` (pure tests only, no DB env)
    - `cargo clippy --all -- -D warnings`

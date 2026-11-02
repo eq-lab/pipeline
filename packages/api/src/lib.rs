@@ -37,12 +37,14 @@ use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
+use shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo;
 use shared::object_store::ObjectStore;
 use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use shared::system_configuration_repo::SystemConfigurationRepo;
 
 use crate::auth::JwtKeys;
 use crate::captcha::CaptchaVerifier;
@@ -116,6 +118,8 @@ pub struct AppState {
     /// The trustee's record of wires received from an LP (`lp_bank_deposits`),
     /// backing `GET`/`POST /v1/lps/{id}/bank-deposits`.
     pub lp_bank_deposit_repo: LpBankDepositRepo,
+    pub system_configuration_repo: SystemConfigurationRepo,
+    pub lp_requested_bank_details_repo: LpRequestedBankDetailsRepo,
     /// KYB supporting documents (`kyb_documents`) — untyped files per LP.
     pub kyb_document_repo: KybDocumentRepo,
     /// Private Spaces bucket holding the bytes behind `kyb_documents.file_ref`.
