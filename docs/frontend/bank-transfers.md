@@ -41,16 +41,16 @@ a full-viewport two-pane frame with no scrim: `createPortal` into `document.body
 `FirstConnectionModal` already ships), scrim click and Escape both dismiss.
 
 Anatomy: `Funding details` heading (`<h2>`, Besley 28/36, `aria-labelledby` via `React.useId()`) →
-six label/value rows (label ink-muted, value ink, body 16/22) → a note row (`Transfers may take
-from the same day up to 5 business days`, ink-muted, with a trailing 20×20 info glyph that is an
-`InfoTooltip`, see below) → a full-width `Button variant="primary-dark"` labelled `Copy`/`Copied`
-with a leading 24×24 copy glyph → a centred caption footer, `Need help? Contact Support`, the
-latter a real `<button>` calling `onContactSupport`.
+six label/value rows (label ink-muted, value ink, body 16/22; each value is a click-to-copy
+button, see below) → a note row (`Transfers may take from the same day up to 5 business days`,
+ink-muted, with a trailing 20×20 info glyph that is an `InfoTooltip`, see below) → a centred
+caption footer, `Need help? Contact Support`, the latter a real `<button>` calling
+`onContactSupport`. There is **no** copy-all button (removed in the 2026-11-03 live review).
 
 **Glyphs (`components/FundingDetailsGlyphs.tsx`, live review 2026-11-03).** `CopyGlyph` and
 `InfoGlyph` are inline SVGs traced from the frame `6701-97134` exports (the filled two-sheet copy
-glyph, 24×24 in the `Copy` button and 20×20 in the row buttons, painting `currentColor`; the
-20×20 info circle at `#383538` 30 %). The earlier `copy.svg` CSS mask rendered as a solid square
+glyph at 18×18 inside each row's copy button, painting `currentColor`; the 20×20 info circle at
+`#383538` 30 %). The earlier `copy.svg` CSS mask rendered as a solid square
 in the browser and the stroked outline did not match the frame, so both `assets/copy.svg` and
 `assets/hint.svg` were deleted. `InfoTooltip` (`components/InfoTooltip.tsx`) is a 32×32 button
 (`aria-label`, `aria-describedby`) around `InfoGlyph` with a `role="tooltip"` bubble above it
@@ -58,15 +58,23 @@ in the browser and the stroked outline did not match the frame, so both `assets/
 for `align="start"` or `right-0` for `align="end"`) shown on hover and focus-within.
 
 **Layout since #1817 (no Figma; built from the row pattern and the LP theme), top to bottom:** heading
-→ unavailable notice (only when unavailable) → six bank rows → `Payment reference` row (value plus
-a 32×32 copy icon button, `aria-label="Copy payment reference"`, `Copied` caption for 1500 ms) →
-instruction caption → 1px `--color-pipeline-line` divider → `Network` row → `Receiving wallet` row
-(label followed by an `InfoTooltip align="start"` whose text is the destination sentence; value is
-the served address through `truncateAddress`, `GCGQVO…GQ5C`, with the full address as `title`; a
-32×32 copy button `aria-label="Copy receiving wallet address"` copies the **full** address and
-shows `Copied` for 1500 ms) → note row with its `InfoTooltip align="end"` (text: `Domestic
-transfers: Same day or within 1 business day` / `International transfers: 1–5 business days`, two
-lines) → `Copy` → `Need help? Contact Support`.
+→ unavailable notice (only when unavailable) → six bank rows → `Payment reference` row →
+instruction caption → 1px `--color-pipeline-line` divider → `Network` row (plain, not copyable) →
+`Receiving wallet` row (label followed by an `InfoTooltip align="start"` whose text is the
+destination sentence; value is the served address through `truncateAddress`, `GCGQVO…GQ5C`, with
+the full address as the button `title`) → note row with its `InfoTooltip align="end"` (text:
+`Domestic transfers: Same day or within 1 business day` / `International transfers: 1–5 business
+days`, two lines) → `Need help? Contact Support`.
+
+**Per-row copy (`CopyableRow`, live review 2026-11-03).** Every value in the six bank rows, the
+`Payment reference` row and the `Receiving wallet` row is one `<button type="button">`
+(`aria-label="Copy {label}"`, `data-testid="funding-details-copy-{slug}"`): the value text, then an
+18×18 `CopyGlyph` (ink-muted, ink on hover). Clicking writes that row's value — the **full** address
+for the wallet row — through the shared `useCopyToClipboard` and swaps the glyph for a `Copied`
+caption in that row only for 1500 ms (one `copiedLabel` state in the modal; copying another row
+moves the caption). Hover: `rgba(56,55,53,0.08)` background; disabled while not ready (no hover,
+glyph at 40 %). The modal mounts a single `useCopyToClipboard`; `useFundingDetailsModal.ts` keeps
+only the Escape listener and the body-scroll lock.
 
 - **Chain.** `onAddFunds` captures `useActiveChain()` (`{ kind, chainId }`) with an incrementing
   `openId`; the modal never re-fetches if the wallet view changes while open and has no chain
@@ -76,19 +84,18 @@ lines) → `Copy` → `Need help? Contact Support`.
   with `staleTime: Infinity`, the default `gcTime`, `retry: false` and refetch on mount, focus and
   reconnect all off, enabled only while open and authenticated: every 200 mints a reference, so a
   hidden second request would issue one the LP never sees. Re-opening is the only retry.
-- **States.** Loading: every value cell is `—`, the rows container is `aria-busy`, both copy
-  buttons disabled. Unavailable `409` (no linked settlement address of that chain kind, or KYB not
+- **States.** Loading: every value cell is `—`, the rows container is `aria-busy`, every row copy
+  button disabled. Unavailable `409` (no linked settlement address of that chain kind, or KYB not
   passed): notice with a `Go to Account` button. Any other failure: generic notice. Rows stay `—`
-  and both copy buttons stay disabled; nothing crashes and no scratch value is ever shown.
-- **Copy-all** writes the seven wire rows (six bank + `Payment reference`); Network and Receiving
-  wallet are not wire fields and stay out.
+  and every row copy button stays disabled; nothing crashes and no scratch value is ever shown.
 - **Mint lands as sPLUSD** (`docs/user-docs/lenders/deposit.md`), so the destination caption says
   sPLUSD.
 
-`useFundingDetailsModal.ts` owns `copied` state (1500 ms reset), a feature-detected
-`navigator.clipboard` write that silently no-ops on rejection, the Escape listener via
-`stopImmediatePropagation` (the `useErrorDetailsDialog.ts` pattern — this modal will eventually
-open over a home page that may itself host a dialog), and the body-scroll lock.
+`useFundingDetailsModal.ts` owns the Escape listener via `stopImmediatePropagation` (the
+`useErrorDetailsDialog.ts` pattern — this modal will eventually open over a home page that may
+itself host a dialog) and the body-scroll lock. Clipboard writes go through `@pipeline/ui`'s
+`useCopyToClipboard` (feature-detected `navigator.clipboard`, `execCommand` fallback, silent
+no-op on rejection).
 
 ```ts
 export interface FundingDetailsModalProps {
@@ -116,9 +123,6 @@ export interface FundingDetailsModalProps {
 - The former scratch placeholder (real-looking bank values) is gone from production code. Preview
   fixtures live in `packages/frontend/src/routes/test/-fundingDetailsFixture.ts` with obviously fake
   values (`Example Trust LLC`, `XX00 TEST …`, `PL-0000-0000-0000`).
-- `formatFundingDetailsForCopy(rows)` — one `"{label}: {value}"` line per row, joined by `\n`, `—`
-  rows included verbatim. The `Copy` button writes the seven wire rows; the reference row has its
-  own button that copies only the reference.
 
 ## AddUsdCard
 
@@ -281,14 +285,14 @@ square `236 / 236` aspect ratio). Full spec: `docs/frontend/ui-components.md#war
 
 Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `Account Number` ·
 `IBAN` · `SWIFT / BIC code` ·
-`Transfers may take from the same day up to 5 business days` · `Copy` / `Copied` · `Need help?` ·
+`Transfers may take from the same day up to 5 business days` · `Copied` · `Need help?` ·
 `Contact Support`.
 
 Added by #1817: `Payment reference` · `Add this reference to your transfer’s reference or remittance
 field. Without it we can’t match your transfer to your account.` · `Network` · `Receiving wallet` ·
 `Your transfer is credited to this wallet as sPLUSD.` (tooltip) · `Domestic transfers: Same day or
-within 1 business day` / `International transfers: 1–5 business days` (tooltip) · `Copy receiving
-wallet address` / `About the receiving wallet` / `Transfer timing` (aria-labels) · `Bank details need a {chainName} wallet
+within 1 business day` / `International transfers: 1–5 business days` (tooltip) · `Copy {label}`
+(one aria-label per copyable row) / `About the receiving wallet` / `Transfer timing` (aria-labels) · `Bank details need a {chainName} wallet
 linked to your account. Link it on your Account page, or switch to a wallet you have already
 linked.` · `Go to Account` · `Bank details are unavailable right now. Close this window and try
 again, or contact support.`

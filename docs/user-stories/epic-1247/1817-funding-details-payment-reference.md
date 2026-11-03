@@ -50,39 +50,44 @@ chain whose address is linked.
 
 ---
 
-## Story 3: Copy writes the seven wire rows
+## Story 3: Every value is click-to-copy; there is no copy-all button
 
 **Steps:**
 
-1. Click `Copy`.
+1. Hover a bank row's value (e.g. `IBAN`): the value and its copy glyph highlight as one button.
+2. Click it.
+3. Click another row (e.g. `Payment reference`).
 
 **Expected outcomes:**
 
-- The clipboard holds seven `{label}: {value}` lines ending `Payment reference: PL-…`; `Network` and
-  `Receiving wallet` are not included. The button reads `Copied` for about 1.5 seconds.
+- The clipboard holds exactly that row's value. The glyph in that row becomes `Copied` for about
+  1.5 seconds; no other row shows `Copied`. Clicking a second row moves the `Copied` caption there.
+- There is no full-width `Copy` button anywhere in the modal.
+- `Network` is plain text, not a button.
 
 ---
 
-## Story 3b: The receiving wallet has its own copy button
+## Story 3b: The receiving wallet copies the full address
 
 **Persona:** Story 1's LP.
 
 **Steps:**
-1. Click the copy icon beside the truncated `Receiving wallet` value.
+1. Click the truncated `Receiving wallet` value.
 
 **Expected:**
-- The clipboard holds the **full** served address, not the truncated text; `Copied` appears beside
-  the row for about 1.5 seconds.
+- The clipboard holds the **full** served address, not the truncated text (the full address is also
+  the button's hover `title`); `Copied` appears in that row for about 1.5 seconds.
 
-## Story 4: The reference has its own copy button
+## Story 4: Keyboard users can copy too
 
 **Steps:**
 
-1. Click the copy icon beside `Payment reference`.
+1. Tab to the `Payment reference` row's button (accessible name `Copy Payment reference`) and press
+   Enter.
 
 **Expected outcomes:**
 
-- The clipboard holds only the reference, and a `Copied` caption appears briefly.
+- The clipboard holds only the reference, and the `Copied` caption appears briefly.
 
 ---
 
@@ -97,7 +102,7 @@ chain whose address is linked.
 **Expected outcomes:**
 
 - A notice reads `Bank details need a {chain name} wallet linked to your account. …`; every value
-  is `—` and both copy buttons are disabled.
+  is `—` and every row copy button is disabled.
 - `Go to Account` closes the modal and opens `/account`.
 
 ---
@@ -113,7 +118,7 @@ chain whose address is linked.
 **Expected outcomes:**
 
 - A notice reads `Bank details are unavailable right now. Close this window and try again, or
-  contact support.`; no `Go to Account` button, every value `—`, both copy buttons disabled, no
+  contact support.`; no `Go to Account` button, every value `—`, every row copy button disabled, no
   crash, and no scratch values shown. Closing and reopening issues one new request.
 
 ---
@@ -127,4 +132,4 @@ chain whose address is linked.
 
 **Expected outcomes:**
 
-- All values are `—` and `Copy`, the reference copy button and the wallet copy button are disabled.
+- All values are `—` and every row copy button is disabled (no hover highlight, glyph dimmed).

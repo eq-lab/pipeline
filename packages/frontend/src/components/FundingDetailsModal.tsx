@@ -3,6 +3,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@pipeline/ui";
 import { useCopyToClipboard } from "@pipeline/ui";
+import { useState } from "react";
 import { truncateAddress } from "@/utils/truncateAddress";
 import { CopyGlyph } from "./FundingDetailsGlyphs";
 import { InfoTooltip } from "./InfoTooltip";
@@ -60,67 +61,78 @@ function slug(label: string): string {
     .replace(/^-|-$/g, "");
 }
 
-const COPY_BUTTON_CLASS = [
-  "flex h-8 w-8 shrink-0 items-center justify-center",
-  "rounded-[var(--radius-pipeline-card)]",
+const COPY_ROW_BUTTON_CLASS = [
+  "group -mr-2 flex min-w-0 items-center gap-2 rounded-[var(--radius-pipeline-card)] px-2 py-1",
   "text-[color:var(--color-pipeline-ink)]",
   "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
-  "disabled:cursor-not-allowed disabled:opacity-50",
+  "disabled:cursor-default disabled:hover:bg-transparent",
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
 ].join(" ");
+const COPY_GLYPH_CLASS = [
+  "flex h-5 w-5 shrink-0 items-center justify-center",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+  "group-hover:text-[color:var(--color-pipeline-ink)]",
+  "group-disabled:opacity-40",
+].join(" ");
 
-function DetailRow({
-  label,
-  labelAdornment,
-  value,
-  valueTitle,
-  children,
-}: {
-  label: string;
-  labelAdornment?: React.ReactNode;
-  value: string;
-  valueTitle?: string;
-  children?: React.ReactNode;
-}) {
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div
       className="flex w-full items-center gap-3"
       data-testid={`funding-details-row-${slug(label)}`}
     >
-      <span className={LABEL_CLASS}>
-        {label}
-        {labelAdornment}
-      </span>
-      <span className={VALUE_CLASS} title={valueTitle}>
-        {value}
-      </span>
-      {children}
+      <span className={LABEL_CLASS}>{label}</span>
+      <span className={VALUE_CLASS}>{value}</span>
     </div>
   );
 }
 
-function CopyIconButton({
+function CopyableRow({
   label,
-  testId,
-  disabled,
-  onClick,
+  labelAdornment,
+  value,
+  copyValue,
+  ready,
+  copied,
+  onCopy,
 }: {
   label: string;
-  testId: string;
-  disabled: boolean;
-  onClick: () => void;
+  labelAdornment?: React.ReactNode;
+  value: string;
+  copyValue: string;
+  ready: boolean;
+  copied: boolean;
+  onCopy: (label: string, text: string) => void;
 }) {
+  const key = slug(label);
   return (
-    <button
-      type="button"
-      aria-label={label}
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      className={COPY_BUTTON_CLASS}
+    <div
+      className="flex w-full items-center gap-3"
+      data-testid={`funding-details-row-${key}`}
     >
-      <CopyGlyph size={20} />
-    </button>
+      <span className={LABEL_CLASS}>
+        {label}
+        {labelAdornment}
+      </span>
+      <button
+        type="button"
+        aria-label={`Copy ${label}`}
+        title={ready && copyValue !== value ? copyValue : undefined}
+        data-testid={`funding-details-copy-${key}`}
+        disabled={!ready}
+        onClick={() => onCopy(label, copyValue)}
+        className={COPY_ROW_BUTTON_CLASS}
+      >
+        <span className={VALUE_CLASS}>{value}</span>
+        {copied ? (
+          <span className={CAPTION_CLASS}>Copied</span>
+        ) : (
+          <span className={COPY_GLYPH_CLASS} aria-hidden="true">
+            <CopyGlyph size={18} />
+          </span>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -142,13 +154,14 @@ export function FundingDetailsModal({
   const bankRows = rows.slice(0, FUNDING_DETAIL_LABELS.length);
   const referenceValue = ready ? view.paymentReference : "—";
 
-  const { copied, copy } = useFundingDetailsModal({
-    open,
-    rows: ready ? view.rows : null,
-    onDismiss,
-  });
-  const { copied: referenceCopied, copy: copyReference } = useCopyToClipboard();
-  const { copied: walletCopied, copy: copyWallet } = useCopyToClipboard();
+  useFundingDetailsModal({ open, onDismiss });
+  const { copied, copy } = useCopyToClipboard();
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  const onCopy = (label: string, text: string) => {
+    setCopiedLabel(label);
+    void copy(text);
+  };
+  const isCopied = (label: string) => copied && copiedLabel === label;
   const receiverAddress = ready ? view.receiverAddress : "";
 
   if (!open) return null;
@@ -254,26 +267,31 @@ export function FundingDetailsModal({
           aria-busy={view.status === "loading"}
         >
           {bankRows.map((row) => (
-            <DetailRow key={row.label} label={row.label} value={row.value} />
-          ))}
-          <DetailRow label={PAYMENT_REFERENCE_LABEL} value={referenceValue}>
-            <CopyIconButton
-              label="Copy payment reference"
-              testId="funding-details-copy-reference"
-              disabled={!ready}
-              onClick={() => void copyReference(referenceValue)}
+            <CopyableRow
+              key={row.label}
+              label={row.label}
+              value={row.value}
+              copyValue={row.value}
+              ready={ready}
+              copied={isCopied(row.label)}
+              onCopy={onCopy}
             />
-            {referenceCopied && ready && (
-              <span className={CAPTION_CLASS}>Copied</span>
-            )}
-          </DetailRow>
+          ))}
+          <CopyableRow
+            label={PAYMENT_REFERENCE_LABEL}
+            value={referenceValue}
+            copyValue={referenceValue}
+            ready={ready}
+            copied={isCopied(PAYMENT_REFERENCE_LABEL)}
+            onCopy={onCopy}
+          />
           <p className={CAPTION_CLASS}>{INSTRUCTION_TEXT}</p>
           <div
             className="h-px w-full bg-[color:var(--color-pipeline-line)]"
             aria-hidden="true"
           />
           <DetailRow label="Network" value={ready ? view.network : "—"} />
-          <DetailRow
+          <CopyableRow
             label="Receiving wallet"
             labelAdornment={
               <InfoTooltip
@@ -284,18 +302,11 @@ export function FundingDetailsModal({
               />
             }
             value={ready ? truncateAddress(receiverAddress) : "—"}
-            valueTitle={ready ? receiverAddress : undefined}
-          >
-            <CopyIconButton
-              label="Copy receiving wallet address"
-              testId="funding-details-copy-wallet"
-              disabled={!ready}
-              onClick={() => void copyWallet(receiverAddress)}
-            />
-            {walletCopied && ready && (
-              <span className={CAPTION_CLASS}>Copied</span>
-            )}
-          </DetailRow>
+            copyValue={receiverAddress}
+            ready={ready}
+            copied={isCopied("Receiving wallet")}
+            onCopy={onCopy}
+          />
         </div>
 
         <div className="flex w-full items-center gap-2">
@@ -317,16 +328,6 @@ export function FundingDetailsModal({
             data-testid="funding-details-note-info"
           />
         </div>
-
-        <Button
-          variant="primary-dark"
-          onClick={copy}
-          disabled={!ready}
-          className="flex w-full items-center justify-center gap-2"
-        >
-          <CopyGlyph size={24} />
-          {copied ? "Copied" : "Copy"}
-        </Button>
 
         <p
           className={[

@@ -14,7 +14,6 @@ const READY = FUNDING_DETAILS_FIXTURE_READY as Extract<
   FundingDetailsView,
   { status: "ready" }
 >;
-const READY_TEXT = READY.rows.map((r) => `${r.label}: ${r.value}`).join("\n");
 
 function renderModal(
   overrides: Partial<{
@@ -73,11 +72,12 @@ describe("FundingDetailsModal — open, default (loading)", () => {
     expect(screen.getAllByText("—")).toHaveLength(9);
   });
 
-  it("disables all three copy buttons and shows no notice while loading", () => {
+  it("disables every row copy button, has no copy-all button and shows no notice while loading", () => {
     renderModal();
-    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
-    expect(screen.getByTestId("funding-details-copy-reference")).toBeDisabled();
-    expect(screen.getByTestId("funding-details-copy-wallet")).toBeDisabled();
+    const rowButtons = screen.getAllByRole("button", { name: /^Copy / });
+    expect(rowButtons).toHaveLength(8);
+    for (const b of rowButtons) expect(b).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
     expect(screen.queryByTestId("funding-details-notice")).toBeNull();
   });
 });
@@ -128,7 +128,9 @@ describe("FundingDetailsModal — unavailable", () => {
       "Bank details need a Stellar wallet linked to your account. Link it on your Account page, or switch to a wallet you have already linked.",
     );
     expect(screen.getAllByText("—")).toHaveLength(9);
-    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Copy Payment reference" }),
+    ).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Go to Account" }));
     expect(onOpenAccount).toHaveBeenCalledTimes(1);
   });
@@ -142,7 +144,7 @@ describe("FundingDetailsModal — unavailable", () => {
   });
 });
 
-describe("FundingDetailsModal — Copy", () => {
+describe("FundingDetailsModal — per-row copy", () => {
   const mockWriteText = vi.fn();
 
   function installClipboardMock() {
@@ -164,32 +166,35 @@ describe("FundingDetailsModal — Copy", () => {
     });
   }
 
-  it("writes the serialized rows to the clipboard and flips the label to Copied", async () => {
+  it("clicking a bank row copies that row's value and shows Copied in that row only", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     renderModal({ view: READY });
-
-    await user.click(screen.getByRole("button", { name: "Copy" }));
-
-    expect(mockWriteText).toHaveBeenCalledWith(READY_TEXT);
-    expect(
-      await screen.findByRole("button", { name: "Copied" }),
-    ).toBeInTheDocument();
+    const iban = READY.rows.find((r) => r.label === "IBAN")!;
+    await user.click(screen.getByRole("button", { name: "Copy IBAN" }));
+    expect(mockWriteText).toHaveBeenCalledWith(iban.value);
+    const row = screen.getByTestId("funding-details-row-iban");
+    expect(await within(row).findByText("Copied")).toBeInTheDocument();
+    expect(screen.getAllByText("Copied")).toHaveLength(1);
   });
 
-  it("the reference button copies only the reference", async () => {
+  it("the reference row copies only the reference", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     renderModal({ view: READY });
-    await user.click(screen.getByTestId("funding-details-copy-reference"));
+    await user.click(
+      screen.getByRole("button", { name: "Copy Payment reference" }),
+    );
     expect(mockWriteText).toHaveBeenCalledWith("PL-0000-0000-0000");
   });
 
-  it("the wallet button copies the full receiving address", async () => {
+  it("the wallet row copies the full receiving address", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     renderModal({ view: READY });
-    await user.click(screen.getByTestId("funding-details-copy-wallet"));
+    await user.click(
+      screen.getByRole("button", { name: "Copy Receiving wallet" }),
+    );
     expect(mockWriteText).toHaveBeenCalledWith(READY.receiverAddress);
     expect(
       await within(
@@ -198,17 +203,15 @@ describe("FundingDetailsModal — Copy", () => {
     ).toBeInTheDocument();
   });
 
-  it("a rejected clipboard promise does not throw and leaves the label at Copy", async () => {
+  it("a rejected clipboard promise does not throw and shows no Copied", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     mockWriteText.mockRejectedValue(new Error("nope"));
     renderModal({ view: READY });
-
     await expect(
-      user.click(screen.getByRole("button", { name: "Copy" })),
+      user.click(screen.getByRole("button", { name: "Copy IBAN" })),
     ).resolves.not.toThrow();
-
-    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(screen.queryByText("Copied")).toBeNull();
   });
 
   it("falls back to execCommand and shows Copied when navigator.clipboard is unavailable (#1317)", async () => {
@@ -220,13 +223,9 @@ describe("FundingDetailsModal — Copy", () => {
       value: exec,
     });
     renderModal({ view: READY });
-
-    await user.click(screen.getByRole("button", { name: "Copy" }));
-
+    await user.click(screen.getByRole("button", { name: "Copy IBAN" }));
     expect(exec).toHaveBeenCalledWith("copy");
-    expect(
-      await screen.findByRole("button", { name: "Copied" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
     Reflect.deleteProperty(document, "execCommand");
   });
 
@@ -234,9 +233,8 @@ describe("FundingDetailsModal — Copy", () => {
     const user = userEvent.setup();
     uninstallClipboardMock();
     renderModal({ view: READY });
-
     await expect(
-      user.click(screen.getByRole("button", { name: "Copy" })),
+      user.click(screen.getByRole("button", { name: "Copy IBAN" })),
     ).resolves.not.toThrow();
   });
 });

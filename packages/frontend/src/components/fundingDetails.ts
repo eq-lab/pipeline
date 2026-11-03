@@ -75,9 +75,3 @@ export function toUnavailableView(
     chainName,
   };
 }
-
-export function formatFundingDetailsForCopy(
-  rows: ReadonlyArray<FundingDetailRow>,
-): string {
-  return rows.map((row) => `${row.label}: ${row.value}`).join("\n");
-}

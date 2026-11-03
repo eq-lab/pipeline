@@ -1,27 +1,15 @@
 // spec: docs/frontend/bank-transfers.md#fundingdetailsmodal
-import { useCallback, useEffect } from "react";
-import { useCopyToClipboard } from "@pipeline/ui";
-import { formatFundingDetailsForCopy } from "./fundingDetails";
-import type { FundingDetailRow } from "./fundingDetails";
+import { useEffect } from "react";
 
 export interface UseFundingDetailsModalOptions {
   open: boolean;
-  rows: ReadonlyArray<FundingDetailRow> | null;
   onDismiss: () => void;
-}
-
-export interface UseFundingDetailsModalResult {
-  copied: boolean;
-  copy: () => void;
 }
 
 export function useFundingDetailsModal({
   open,
-  rows,
   onDismiss,
-}: UseFundingDetailsModalOptions): UseFundingDetailsModalResult {
-  const { copied, copy: copyText } = useCopyToClipboard();
-
+}: UseFundingDetailsModalOptions): void {
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
@@ -43,11 +31,4 @@ export function useFundingDetailsModal({
       document.body.style.overflow = "";
     };
   }, [open]);
-
-  const copy = useCallback(() => {
-    if (rows === null) return;
-    void copyText(formatFundingDetailsForCopy(rows));
-  }, [copyText, rows]);
-
-  return { copied: open && copied, copy };
 }

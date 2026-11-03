@@ -4,11 +4,9 @@ import { ApiError } from "@/api";
 import * as fundingDetails from "./fundingDetails";
 import {
   displayValue,
-  formatFundingDetailsForCopy,
   toFundingDetailsView,
   toUnavailableView,
 } from "./fundingDetails";
-import type { FundingDetailRow } from "./fundingDetails";
 
 const RESPONSE = {
   company_name: "Example Trust LLC",
@@ -21,22 +19,6 @@ const RESPONSE = {
   chain_id: 99000001,
   receiver_address: "GAAA",
 };
-
-describe("formatFundingDetailsForCopy", () => {
-  it("emits one label: value line per row, joined by newline", () => {
-    const rows: FundingDetailRow[] = [
-      { label: "Company Name", value: "Example Trust LLC" },
-      { label: "Bank Name", value: "—" },
-    ];
-    expect(formatFundingDetailsForCopy(rows)).toBe(
-      "Company Name: Example Trust LLC\nBank Name: —",
-    );
-  });
-
-  it("returns an empty string for an empty row list", () => {
-    expect(formatFundingDetailsForCopy([])).toBe("");
-  });
-});
 
 describe("toFundingDetailsView", () => {
   it("maps the served fields in label order plus the reference row", () => {
@@ -54,14 +36,6 @@ describe("toFundingDetailsView", () => {
     expect(view.paymentReference).toBe("PL-0000-0000-0000");
     expect(view.receiverAddress).toBe("GAAA");
     expect(view.network).toBe("Stellar");
-  });
-
-  it("copy text is seven lines ending with the reference", () => {
-    const lines = formatFundingDetailsForCopy(
-      toFundingDetailsView(RESPONSE, "stellar").rows,
-    ).split("\n");
-    expect(lines).toHaveLength(7);
-    expect(lines[6]).toBe("Payment reference: PL-0000-0000-0000");
   });
 
   it("renders empty fields as — per field and for the receiver address", () => {
