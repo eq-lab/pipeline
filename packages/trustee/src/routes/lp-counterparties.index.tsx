@@ -108,6 +108,8 @@ function LpCounterpartyRowView({
       </div>
       <div
         role="cell"
+        data-testid="lp-counterparties-addresses"
+        title={row.blockchainAddress}
         className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] text-ellipsis text-[color:var(--color-pipeline-ink)]`}
       >
         {row.blockchainAddress}

@@ -931,7 +931,7 @@ View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-r
 | 2 | Jurisdiction | `country` (nullable) | **verbatim**, no code→name mapping; `null`/empty → `—` |
 | 3 | First Registration Date | `created_at` (ISO-8601 UTC) | `formatIsoDateUtc` → `"18 Jun 2026"` |
 | 4 | Account Status | `kyb_status` | chip, mapping below |
-| 5 | Blockchain Address Available | `stellar_address` | `Yes` when a non-empty string, else `No` |
+| 5 | Blockchain Address Available | `stellar_address`, `address_linked_at`, `stellar_signer_address`, `evm_address`, `evm_address_linked_at`, `evm_signer_address` | `linkedAddressesLabel`: `No`, `Stellar`, `EVM` or `Stellar + EVM`; `(unproven)` after a chain whose signer is null (#1826) |
 | 6 | Bank Info Available | *(none)* | always `—` until #1275 lands — **never** `No` |
 | 7 | *(unlabeled)* | — | 34px trailing `›` chevron, `aria-hidden`, Loan Book precedent |
 
@@ -1000,11 +1000,10 @@ The page is assembled from the [shared detail primitives](#shared-detail-primiti
   `grid grid-cols-1 gap-[16px] min-[900px]:grid-cols-2` row, so they sit side by side on a desk
   window and stack below 900px (design feedback on #1453: one tall key/value list buried the
   review state). **LP profile** holds the registration record — Legal name, Jurisdiction, Contact
-  email, Registered, Linked wallet. **KYB review** holds the review record — Status (a
+  email, Registered, then one settlement-address row per linked address ([Settlement addresses](#settlement-addresses); a single `Settlement address` row reading `—` when none). **KYB review** holds the review record — Status (a
   `StatusChip`, `lp-kyb-review-chip`, the same band as the hero chip), Submitted for review,
   Latest decision date, Reviewer, Latest decision reason. Absent values render `—`; the decision
-  reason keeps `whitespace-pre-wrap`; the linked wallet renders as an
-  [`AddressChip`](#shared-detail-primitives).
+  reason keeps `whitespace-pre-wrap`.
 - **Reviewer renders `—`, always — it is not served.** `LpResponse` deliberately withholds
   `kyb_decided_by` (`packages/api/src/routes/lps.rs`: it identifies the deciding operator and is
   never returned). The row is kept so the card states the shape of the review record, and follows
@@ -1061,6 +1060,25 @@ have explicit feedback and retry; a session-expiry response clears the trustee s
 error branch renders inside a `DetailCard` with the Retry action. Bank Info remains unavailable;
 bank deposits are below.
 
+### Settlement addresses
+
+Since #1824/#1831 an LP links a Stellar and an EVM settlement address, each with a signer, and may
+relink at any time. `-settlementAddresses.ts` holds the pure presenters over the six served fields
+(`stellar_address`, `address_linked_at`, `stellar_signer_address`, `evm_address`,
+`evm_address_linked_at`, `evm_signer_address`; `GET /v1/lps` and `GET /v1/lps/{id}`).
+
+- **Presence.** An address is linked when it is a non-empty string. The mint receiver additionally
+  requires its `*_linked_at` to be non-null (see [LP bank deposits](#lp-bank-deposits)).
+- **Unproven.** A null `*_signer_address` marks the address *Unproven*: it was linked before signed
+  linking existed. The list suffixes `(unproven)`; the profile shows an attention `StatusChip`
+  (`lp-settlement-{stellar|evm}-unproven`) instead of a signer.
+- **Profile rows.** One `KeyValueRow` per linked address, Stellar first, labelled
+  `{Stellar|EVM} settlement address`: the address as an `AddressChip`
+  (`lp-settlement-{kind}`), `Signer` + `AddressChip` (`-signer`), and `Linked <date, UTC>` (`-linked-at`,
+  `—` when not served). The signer is shown even when it equals the address: a separate signer
+  proves control of the signer only (TD-162), so the Trustee must see which case applies.
+- **History not shown.** `lp_settlement_address_history` has no Trustee read endpoint.
+
 ### Shared detail primitives
 
 `packages/trustee/src/components/detail/` is the single definition site for the trustee's detail-page
@@ -1074,7 +1092,7 @@ look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDeposits
 | `DetailCard.tsx` | `DetailCard` (card shell; renders a named `<section>` when given `ariaLabel`/`ariaLabelledBy`, a bare `<div>` otherwise) and `CardTitle` (26px display `h2`, optional `id`) |
 | `KeyValueRow.tsx` | `KeyValueRow` — 15px muted label / 16px right-aligned value, `LINE_COLOR` divider unless `isLast` |
 | `DetailHero.tsx` | `DetailHero` — back link → 44px `h1` → chip + meta row; `backTo`, `backLabel`, `title`, `status`, `meta`, `statusTestId`, `metaTestId` |
-| `AddressChip.tsx` | `AddressChip` — click-to-reveal/copy chip for a `G…` / `C…` key; `shortAddress(value)`, `copyAddress(value)` |
+| `AddressChip.tsx` | `AddressChip` — click-to-reveal/copy chip for a `G…` / `C…` / `0x…` key (settlement addresses and signers, documents' reviewer); `shortAddress(value)`, `copyAddress(value)` |
 | `AddressText.tsx` | `AddressText` — copy-to-toast plain-text key for table cells (no border, no inline reveal) |
 | `BandButton.tsx` | `BandButton` (32px text button, optional leading `icon`) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
 | `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon` (inline 16px stroked glyphs) |
@@ -1090,7 +1108,7 @@ appeared in out of shape. The chip renders `…` plus the **last five** characte
 the full value in its `title`, and is a `<button>`: the first click reveals the full value inline
 and copies it with `navigator.clipboard.writeText`, flashing a muted "Copied" for 1.6 s; a second
 click collapses it. A missing or rejecting clipboard is swallowed — the value still reveals, and
-nothing claims a copy that did not happen. Used for the linked wallet and the documents' reviewer
+nothing claims a copy that did not happen. Used for settlement addresses, signers and the documents' reviewer
 key. `lib/truncateAddress.ts` (head+tail form, sidebar wallet pill) is a different convention and
 is deliberately left alone.
 
@@ -1169,23 +1187,46 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   requirement and the 7-decimal scale). Arguments come only from served data: `amount` is the
   row's `amount` string, `value_date` is `occurred_at` in Unix seconds, `ref_hash` is the
   served hash.
-- **Receiver rule** — the LP's `stellar_address` when `address_linked_at` is non-null,
-  otherwise the dedicated capital wallet `VITE_STELLAR_CAPITAL_WALLET_ID` (#1449, amended
-  2026-10-09); when neither resolves the action is disabled with "This LP has no linked Stellar
-  wallet and no capital wallet is configured." The USDC custody account
-  (`VITE_STELLAR_USDC_CUSTODY_ID`) is **never** the receiver — it is the Deposit Manager's custody
-  account for LP USDC deposits and holds no authorized PLUSD trustline, so minting to it traps with
-  PLUSD `Error(Contract, #13)`. The
-  trustee's wallet is the signer and `caller`, never the receiver.
+- **Mint chain and scope line (#1826).** The card is a per-network surface: the mint chain is the
+  session's signed-in chain, `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`, mapped to a kind
+  by `chainKindOf`. A deposit row carries no chain (TD-164), so the Trustee picks the network by
+  signing in on it. A line under the title states the scope: `Mints on {chain} to <receiver chip>`,
+  plus `· capital wallet — this LP has no {Stellar|EVM} settlement address` for the fallback, or
+  `Mints on {chain} — no receiver`.
+- **Receiver rule** — `wireInReceiver(lp, kind, {stellar, evm})`: for the session's kind, the LP's
+  address of that kind (`stellar_address` / `evm_address`) when its `*_linked_at` is non-null,
+  otherwise that chain's capital wallet (`VITE_STELLAR_CAPITAL_WALLET_ID` /
+  `VITE_EVM_CAPITAL_WALLET_ADDRESS`; the fallback stays by decision 2026-11-02, #1763); when
+  neither resolves the action is disabled with "This LP has no linked {Stellar|EVM} wallet and no
+  capital wallet is configured." A receiver never crosses kinds. The USDC custody account
+  (`VITE_STELLAR_USDC_CUSTODY_ID`) is **never** the receiver — it holds no authorized PLUSD
+  trustline, so minting to it traps with PLUSD `Error(Contract, #13)`. The trustee's wallet is the
+  signer and `caller`, never the receiver.
+- **Mint confirm dialog (#1826).** `Mint PLUSD` opens `lp-mint-confirm` (the Record-deposit dialog
+  shell) and re-reads `GET /v1/lps/{id}`. It shows Network, Amount, Payment reference and the
+  **full** receiver (`lp-mint-receiver`, never truncated), labelled "LP settlement address" or
+  "Capital wallet". Confirm re-reads the LP again immediately before building the transaction and
+  mints only to that read's receiver, and only if it equals the one shown. On any difference
+  (another address, a switch to or from the capital wallet, no receiver) nothing is signed:
+  the dialog shows `lp-mint-receiver-changed` with "Previously shown" and "Now minting to" and
+  confirm stays disabled until "Mint to the new address" (`lp-mint-ack`) is checked. A failed read
+  (network, 401, 403, 404) blocks the mint with a Retry and never falls back to cached data; a read
+  that resolves after the dialog was closed is dropped. The dialog is locked while signing. The
+  residual window is wallet signing and submission (seconds): nothing on-chain or server-side checks
+  the receiver against the LP record.
+- **EVM sessions until #1501.** The receiver is resolved and shown in the scope line, but
+  `Mint PLUSD` is disabled with "PLUSD minting on {chain} is not available in the Trustee app
+  yet." as the first reason; `record_wire_in` is never called with an EVM receiver. #1501 replaces
+  that gate with the EVM write and inherits the dialog and re-read unchanged.
 - **States** — idle (`Mint PLUSD`) → `Awaiting signature…` → `Submitting…` → `Confirming…`
   as the button's own label while in flight, then the `Pending` chip over `Waiting for the
   indexer` until the served `is_minted` flips. The pending set is in-memory only, bounded to ~2 min, and only
   raises the deposits poll to 5 s; it is never persisted and never substitutes for the served
   flag. Each id's window is anchored to its own mint time (the set stores a deadline per id), so
   a later mint never restarts an earlier id's window, and unmounting clears every armed window. Disabled reasons, rendered as the button's `title` and an `aria-describedby` hint, in
-  order: wallet not connected, minter id unset, no receiver resolvable, already minted,
+  order: EVM session (#1826), wallet not connected, minter id unset, no receiver resolvable, already minted,
   waiting for the indexer, another mint in flight.
-- **Errors** — surfaced through `toUserError` in an `InlineError` with the raw contract text in
+- **Errors** — surfaced through `toUserError` in an `InlineError` inside the mint confirm dialog (a mint can only start there) with the raw contract text in
   the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has
   already been minted on-chain. Refresh the list." A PLUSD `Error(Contract, #13)` trap reads
   "The receiver has no authorized PLUSD trustline." — the receiver must be authorized by the
