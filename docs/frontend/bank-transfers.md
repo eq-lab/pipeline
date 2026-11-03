@@ -47,11 +47,10 @@ ink-muted, with a trailing 20×20 info glyph that is an `InfoTooltip`, see below
 caption footer, `Need help? Contact Support`, the latter a real `<button>` calling
 `onContactSupport`. There is **no** copy-all button (removed in the 2026-11-03 live review).
 
-**Glyphs (`components/FundingDetailsGlyphs.tsx`, live review 2026-11-03).** `CopyGlyph` and
-`InfoGlyph` are inline SVGs traced from the frame `6701-97134` exports (the filled two-sheet copy
-glyph at 18×18 inside each row's copy button, painting `currentColor`; the 20×20 info circle at
-`#383538` 30 %). The earlier `copy.svg` CSS mask rendered as a solid square
-in the browser and the stroked outline did not match the frame, so both `assets/copy.svg` and
+**Glyphs (`components/FundingDetailsGlyphs.tsx`, live review 2026-11-03).** `InfoGlyph` is an
+inline SVG traced from the frame `6701-97134` export (the 20×20 info circle at `#383538` 30 %).
+There is no copy glyph anywhere in the modal any more (removed on the user's request the same
+day; the earlier `copy.svg` CSS mask had rendered as a solid square), and `assets/copy.svg` /
 `assets/hint.svg` were deleted. `InfoTooltip` (`components/InfoTooltip.tsx`) is a 32×32 button
 (`aria-label`, `aria-describedby`) around `InfoGlyph` with a `role="tooltip"` bubble above it
 (ink background, on-dark caption text, `whitespace-pre-line`, `max-w-[280px]`, anchored `left-0`
@@ -68,13 +67,19 @@ days`, two lines) → `Need help? Contact Support`.
 
 **Per-row copy (`CopyableRow`, live review 2026-11-03).** Every value in the six bank rows, the
 `Payment reference` row and the `Receiving wallet` row is one `<button type="button">`
-(`aria-label="Copy {label}"`, `data-testid="funding-details-copy-{slug}"`): the value text, then an
-18×18 `CopyGlyph` (ink-muted, ink on hover). Clicking writes that row's value — the **full** address
-for the wallet row — through the shared `useCopyToClipboard` and swaps the glyph for a `Copied`
-caption in that row only for 1500 ms (one `copiedLabel` state in the modal; copying another row
-moves the caption). Hover: `rgba(56,55,53,0.08)` background; disabled while not ready (no hover,
-glyph at 40 %). The modal mounts a single `useCopyToClipboard`; `useFundingDetailsModal.ts` keeps
-only the Escape listener and the body-scroll lock.
+(`aria-label="Copy {label}"`, `data-testid="funding-details-copy-{slug}"`) holding just the value
+text — no icon — with `cursor-pointer`, `select-none` and `touch-manipulation`. A click or tap
+writes that row's value (the **full** address for the wallet row) through the shared
+`useCopyToClipboard` and shows a `Copied` caption after the value in that row only for 1500 ms (one
+`copiedLabel` state in the modal; copying another row moves the caption). **Hold to copy on touch
+screens:** `onPointerDown` with `pointerType === "touch"` arms a 500 ms timer (`HOLD_TO_COPY_MS`);
+when it fires the row copies and the release `click` is swallowed so nothing copies twice;
+`pointerup` / `pointercancel` / `pointerleave` before 500 ms disarm it and the tap's own click copies
+instead. Mouse presses never arm the hold. `contextmenu` is suppressed while a hold is armed or just
+fired and `-webkit-touch-callout: none` keeps iOS from showing its own callout. Hover:
+`rgba(56,55,53,0.08)` background; disabled while not ready (default cursor, no hover). The modal
+mounts a single `useCopyToClipboard`; `useFundingDetailsModal.ts` keeps only the Escape listener
+and the body-scroll lock.
 
 - **Chain.** `onAddFunds` captures `useActiveChain()` (`{ kind, chainId }`) with an incrementing
   `openId`; the modal never re-fetches if the wallet view changes while open and has no chain

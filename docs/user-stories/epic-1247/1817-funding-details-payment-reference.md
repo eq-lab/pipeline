@@ -54,16 +54,29 @@ chain whose address is linked.
 
 **Steps:**
 
-1. Hover a bank row's value (e.g. `IBAN`): the value and its copy glyph highlight as one button.
+1. Hover a bank row's value (e.g. `IBAN`): the cursor is a pointer and the value highlights; there
+   is no copy icon.
 2. Click it.
 3. Click another row (e.g. `Payment reference`).
 
 **Expected outcomes:**
 
-- The clipboard holds exactly that row's value. The glyph in that row becomes `Copied` for about
-  1.5 seconds; no other row shows `Copied`. Clicking a second row moves the `Copied` caption there.
-- There is no full-width `Copy` button anywhere in the modal.
+- The clipboard holds exactly that row's value. `Copied` appears after the value in that row for
+  about 1.5 seconds; no other row shows `Copied`. Clicking a second row moves the caption there.
+- There is no full-width `Copy` button and no copy icon anywhere in the modal.
 - `Network` is plain text, not a button.
+
+## Story 3a: On a phone, a tap or a press-and-hold copies
+
+**Steps:**
+1. On a touch device, tap the `IBAN` value.
+2. Then press and hold the `Payment reference` value for about half a second.
+
+**Expected:**
+- The tap copies the IBAN and shows `Copied`. The hold copies the reference when the half second
+  elapses (no need to release first), shows `Copied`, and releasing does not copy a second time or
+  open the browser's text-selection callout. A press released before half a second behaves as a
+  tap.
 
 ---
 
@@ -132,4 +145,4 @@ chain whose address is linked.
 
 **Expected outcomes:**
 
-- All values are `—` and every row copy button is disabled (no hover highlight, glyph dimmed).
+- All values are `—` and every row copy button is disabled (no hover highlight, default cursor).

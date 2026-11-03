@@ -3,9 +3,8 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@pipeline/ui";
 import { useCopyToClipboard } from "@pipeline/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { truncateAddress } from "@/utils/truncateAddress";
-import { CopyGlyph } from "./FundingDetailsGlyphs";
 import { InfoTooltip } from "./InfoTooltip";
 import {
   FUNDING_DETAIL_LABELS,
@@ -61,18 +60,14 @@ function slug(label: string): string {
     .replace(/^-|-$/g, "");
 }
 
+const HOLD_TO_COPY_MS = 500;
 const COPY_ROW_BUTTON_CLASS = [
-  "group -mr-2 flex min-w-0 items-center gap-2 rounded-[var(--radius-pipeline-card)] px-2 py-1",
+  "-mr-2 flex min-w-0 cursor-pointer items-center gap-2 rounded-[var(--radius-pipeline-card)] px-2 py-1",
+  "select-none touch-manipulation",
   "text-[color:var(--color-pipeline-ink)]",
   "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
   "disabled:cursor-default disabled:hover:bg-transparent",
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
-].join(" ");
-const COPY_GLYPH_CLASS = [
-  "flex h-5 w-5 shrink-0 items-center justify-center",
-  "text-[color:var(--color-pipeline-ink-muted)]",
-  "group-hover:text-[color:var(--color-pipeline-ink)]",
-  "group-disabled:opacity-40",
 ].join(" ");
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -105,6 +100,29 @@ function CopyableRow({
   onCopy: (label: string, text: string) => void;
 }) {
   const key = slug(label);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const held = useRef(false);
+  const clearHold = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!ready || e.pointerType !== "touch") return;
+    held.current = false;
+    clearHold();
+    holdTimer.current = setTimeout(() => {
+      holdTimer.current = null;
+      held.current = true;
+      onCopy(label, copyValue);
+    }, HOLD_TO_COPY_MS);
+  };
+  const onClick = () => {
+    if (held.current) {
+      held.current = false;
+      return;
+    }
+    onCopy(label, copyValue);
+  };
   return (
     <div
       className="flex w-full items-center gap-3"
@@ -120,17 +138,19 @@ function CopyableRow({
         title={ready && copyValue !== value ? copyValue : undefined}
         data-testid={`funding-details-copy-${key}`}
         disabled={!ready}
-        onClick={() => onCopy(label, copyValue)}
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onPointerUp={clearHold}
+        onPointerCancel={clearHold}
+        onPointerLeave={clearHold}
+        onContextMenu={(e) => {
+          if (holdTimer.current || held.current) e.preventDefault();
+        }}
+        style={{ WebkitTouchCallout: "none" }}
         className={COPY_ROW_BUTTON_CLASS}
       >
         <span className={VALUE_CLASS}>{value}</span>
-        {copied ? (
-          <span className={CAPTION_CLASS}>Copied</span>
-        ) : (
-          <span className={COPY_GLYPH_CLASS} aria-hidden="true">
-            <CopyGlyph size={18} />
-          </span>
-        )}
+        {copied && <span className={CAPTION_CLASS}>Copied</span>}
       </button>
     </div>
   );

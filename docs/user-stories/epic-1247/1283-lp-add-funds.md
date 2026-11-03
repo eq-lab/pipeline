@@ -31,9 +31,9 @@ fidelity is verified separately by the QA agent's Figma comparison against nodes
   `IBAN: XX00 TEST 0000 0000 0000 00`, `SWIFT / BIC code: TESTXXXXXXX`,
   `Payment reference: PL-0000-0000-0000`.
 - A note reads exactly "Transfers may take from the same day up to 5 business days".
-- Each value is a click-to-copy button with a copy glyph (per-row copy since the 2026-11-03 review
-  of #1817; the former full-width `Copy` button is gone) and a `Need help? Contact Support` footer
-  is present.
+- Each value is a click-to-copy target with a pointer cursor and no icon (per-row copy since the
+  2026-11-03 review of #1817; the former full-width `Copy` button is gone) and a `Need help?
+  Contact Support` footer is present.
 
 ---
 
@@ -48,7 +48,7 @@ fidelity is verified separately by the QA agent's Figma comparison against nodes
 **Expected outcomes:**
 
 - The clipboard receives that value only (`XX00 TEST 0000 0000 0000 00`).
-- The row's copy glyph reads `Copied` and reverts after ~1.5 seconds. (Superseded detail: the
+- `Copied` appears after the value and disappears after ~1.5 seconds. (Superseded detail: the
   original full-width `Copy` button that wrote all seven rows was removed on 2026-11-03.)
 
 ---

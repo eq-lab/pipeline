@@ -229,6 +229,53 @@ describe("FundingDetailsModal — per-row copy", () => {
     Reflect.deleteProperty(document, "execCommand");
   });
 
+  it("a touch press held for 500 ms copies the row, and the release click does not copy twice", () => {
+    vi.useFakeTimers();
+    try {
+      installClipboardMock();
+      renderModal({ view: READY });
+      const btn = screen.getByRole("button", { name: "Copy IBAN" });
+      fireEvent.pointerDown(btn, { pointerType: "touch" });
+      vi.advanceTimersByTime(499);
+      expect(mockWriteText).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(mockWriteText).toHaveBeenCalledTimes(1);
+      fireEvent.pointerUp(btn, { pointerType: "touch" });
+      fireEvent.click(btn);
+      expect(mockWriteText).toHaveBeenCalledTimes(1);
+      fireEvent.click(btn);
+      expect(mockWriteText).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a touch press released before 500 ms does not copy by itself, and a mouse press never arms the hold", () => {
+    vi.useFakeTimers();
+    try {
+      installClipboardMock();
+      renderModal({ view: READY });
+      const btn = screen.getByRole("button", { name: "Copy IBAN" });
+      fireEvent.pointerDown(btn, { pointerType: "touch" });
+      vi.advanceTimersByTime(200);
+      fireEvent.pointerUp(btn, { pointerType: "touch" });
+      vi.advanceTimersByTime(1000);
+      expect(mockWriteText).not.toHaveBeenCalled();
+      fireEvent.pointerDown(btn, { pointerType: "mouse" });
+      vi.advanceTimersByTime(1000);
+      expect(mockWriteText).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rows render no copy glyph — the value itself is the pointer target", () => {
+    renderModal({ view: READY });
+    const btn = screen.getByRole("button", { name: "Copy IBAN" });
+    expect(btn.querySelector("svg")).toBeNull();
+    expect(btn.className).toContain("cursor-pointer");
+  });
+
   it("does not throw with no navigator.clipboard", async () => {
     const user = userEvent.setup();
     uninstallClipboardMock();
