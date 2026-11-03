@@ -17,13 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-29: The Stellar yield-mint relayer phase signs `mint_yield` against a Minter that has no such function
-- **Date:** 2026-10-27
-- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (lines ~110-160), `yield_mint_outbox_repo.rs` (~150-180). Found while planning #1712.
-- **Symptom:** The phase simulates `mint_yield` on `CHAIN_99000001_RELAYER_STELLAR_YIELD_MINTER_ID`, which is the same Minter (`CAPL5WN3…AIFK` on testnet) whose deployed spec has no `mint_yield`. It discovers work from `PaymentRecorded`, so once repayments land through `Minter.repay` (#1712) each one creates an outbox row whose simulation fails with "non-existent contract function" on every cycle.
-- **Root cause:** The phase predates the Minter folding `repay` into one signature that mints the interest and fees itself. It cannot double-mint, but it adds noise and a stuck row per repayment. EVM already removed its phase for the same reason (see the TD referenced at `tech-debt-tracker.md` near line 1970).
-- **Workaround:** None. The fix is backend: delete the Stellar phase or skip rows whose `PaymentRecorded` has a same-transaction `CashRepaid`.
-
 ### BUG-28: The trustee wire-in error mapping treats Minter code 13 as a missing trustline, but the source has 13 = `NonExistentRepayment` and 15 = `ReceiverNotAuthorized`
 - **Date:** 2026-10-27
 - **Location:** `packages/trustee/src/routes/-useLpBankDeposits.ts` (`mintError`). Found while planning #1712.
@@ -76,22 +69,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** `GET /v1/loan-book`'s `documents` field was added by commit `f73d54d`. Loans whose `contract_logs.params.snapshot` row was indexed *before* that commit deserialize `documents` to `[]` (the field defaults on deserialize) rather than backfilling from the still-available on-chain metadata. This is correct never-fabricate behavior on the frontend — the API genuinely serves `[]` for these rows — but the underlying data gap is real.
 - **Workaround:** None applied. The loan-registry indexer resync (#442) re-indexes historical snapshots and will backfill `documents` for these loans once it runs; no frontend workaround should be attempted (do not re-fetch metadata client-side — see #1039's exec plan for why that was rejected).
 
-### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
-- **Tracked:** #1068
-- **Date:** 2026-07-29
-- **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
-- **Symptom:** The Stellar phase was fixed (`skip_nothing_to_mint_stellar`, discovered 2026-07-29) to skip pure-principal repayments before submit, because `yield_minter.mint_yield` reverts with `ZeroAmounts` when there is no yield to distribute, and that revert also rolls back the in-tx `consume_yield` mark, so the row retries every cycle forever. The EVM path has **no equivalent skip** — a `pending` row for a zero-yield repayment would submit repeatedly.
-- **Root cause:** The fix was scoped to Stellar (the confirmed live symptom). Whether EVM actually loops depends on the EVM `YieldMinter` contract's behaviour on zero amounts (separate contract, not confirmed here). The EVM `PaymentRecorded` params carry the same fields, so the same worker-side sweep is portable if needed.
-- **Workaround:** None. If EVM zero-yield repayments appear stuck in `pending`, port `skip_nothing_to_mint_stellar` to the EVM discover path (checksum-address variant).
-
-### BUG-12: Stellar yield-mint nothing-to-mint skip has no on-chain backstop
-- **Tracked:** #1069
-- **Date:** 2026-07-29
-- **Location:** `packages/shared/src/yield_mint_outbox_repo.rs::skip_nothing_to_mint_stellar`.
-- **Symptom:** The nothing-to-mint detection is now **worker-side only** (SQL over the `PaymentRecorded` event in `contract_logs`); the earlier contract-error fallback (`Error(Contract, #1)` → skip at submit) was intentionally removed. If a zero-yield row is ever *not* caught by the sweep — a NULL/missing amount field in the event, a `loan_registry` address mismatch, or the event field names drifting from `senior_interest / mgmt_fee / perf_fee / oet_alloc` — the row stays `pending` and retries forever with no backstop. The sweep is conservative (`NULL = 0` is unknown → not skipped), so the failure mode is "loops" not "wrongly skipped".
-- **Root cause:** Design choice (worker-side only, no on-chain call) trades the authoritative contract guard for avoiding an RPC round-trip. The Stellar parser (`loan_registry_parsers.rs:236-246`) always writes all seven fields, so NULLs shouldn't occur in practice — but nothing enforces that at the sweep. Also unrelated: the sweep duplicates the contract's mint rule in SQL, so if `pipeline-stellar-contracts` changes what counts as mintable, the sweep could skip a row that should mint (uncaught, since the mint is no longer attempted).
-- **Workaround:** None needed while the parser guarantees the fields. If robustness is required, re-add a submit-time contract-error fallback, or add a monitor that alerts on `pending` rows older than N cycles.
-
 ### BUG-9: `KycRepo::GroupedRequest::from_row` formats `amount`/`assets`/`shares` as raw on-chain integers, not dollar strings
 - **Tracked:** #1071
 - **Date:** 2026-07-21
@@ -101,6 +78,32 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-29: The Stellar yield-mint relayer phase signs `mint_yield` against a Minter that has no such function
+- **Date:** 2026-10-27
+- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (lines ~110-160), `yield_mint_outbox_repo.rs` (~150-180). Found while planning #1712.
+- **Symptom:** The phase simulates `mint_yield` on `CHAIN_99000001_RELAYER_STELLAR_YIELD_MINTER_ID`, which is the same Minter (`CAPL5WN3…AIFK` on testnet) whose deployed spec has no `mint_yield`. It discovers work from `PaymentRecorded`, so once repayments land through `Minter.repay` (#1712) each one creates an outbox row whose simulation fails with "non-existent contract function" on every cycle.
+- **Root cause:** The phase predates the Minter folding `repay` into one signature that mints the interest and fees itself. It cannot double-mint, but it adds noise and a stuck row per repayment. EVM already removed its phase for the same reason (see the TD referenced at `tech-debt-tracker.md` near line 1970).
+- **Workaround:** None. The fix is backend: delete the Stellar phase or skip rows whose `PaymentRecorded` has a same-transaction `CashRepaid`.
+- **Resolved:** 2026-11-03 — Resolved by #1793 (phase deleted).
+
+### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
+- **Tracked:** #1068
+- **Date:** 2026-07-29
+- **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
+- **Symptom:** The Stellar phase was fixed (`skip_nothing_to_mint_stellar`, discovered 2026-07-29) to skip pure-principal repayments before submit, because `yield_minter.mint_yield` reverts with `ZeroAmounts` when there is no yield to distribute, and that revert also rolls back the in-tx `consume_yield` mark, so the row retries every cycle forever. The EVM path has **no equivalent skip** — a `pending` row for a zero-yield repayment would submit repeatedly.
+- **Root cause:** The fix was scoped to Stellar (the confirmed live symptom). Whether EVM actually loops depends on the EVM `YieldMinter` contract's behaviour on zero amounts (separate contract, not confirmed here). The EVM `PaymentRecorded` params carry the same fields, so the same worker-side sweep is portable if needed.
+- **Workaround:** None. If EVM zero-yield repayments appear stuck in `pending`, port `skip_nothing_to_mint_stellar` to the EVM discover path (checksum-address variant).
+- **Resolved:** 2026-11-03 — Resolved by #1793 (phase deleted): obsolete. The EVM phase was deleted by `evm-relayer-v5` and `yield_mint_outbox_repo.rs::discover_pending` is deleted by #1793. #1068 can be closed.
+
+### BUG-12: Stellar yield-mint nothing-to-mint skip has no on-chain backstop
+- **Tracked:** #1069
+- **Date:** 2026-07-29
+- **Location:** `packages/shared/src/yield_mint_outbox_repo.rs::skip_nothing_to_mint_stellar`.
+- **Symptom:** The nothing-to-mint detection is now **worker-side only** (SQL over the `PaymentRecorded` event in `contract_logs`); the earlier contract-error fallback (`Error(Contract, #1)` → skip at submit) was intentionally removed. If a zero-yield row is ever *not* caught by the sweep — a NULL/missing amount field in the event, a `loan_registry` address mismatch, or the event field names drifting from `senior_interest / mgmt_fee / perf_fee / oet_alloc` — the row stays `pending` and retries forever with no backstop. The sweep is conservative (`NULL = 0` is unknown → not skipped), so the failure mode is "loops" not "wrongly skipped".
+- **Root cause:** Design choice (worker-side only, no on-chain call) trades the authoritative contract guard for avoiding an RPC round-trip. The Stellar parser (`loan_registry_parsers.rs:236-246`) always writes all seven fields, so NULLs shouldn't occur in practice — but nothing enforces that at the sweep. Also unrelated: the sweep duplicates the contract's mint rule in SQL, so if `pipeline-stellar-contracts` changes what counts as mintable, the sweep could skip a row that should mint (uncaught, since the mint is no longer attempted).
+- **Workaround:** None needed while the parser guarantees the fields. If robustness is required, re-add a submit-time contract-error fallback, or add a monitor that alerts on `pending` rows older than N cycles.
+- **Resolved:** 2026-11-03 — Resolved by #1793 (phase deleted): the nothing-to-mint sweep is gone with it.
 
 ### BUG-30: Trustee white screen after sign-in and after logout on staging (`Uncaught undefined`)
 - **Date:** 2026-10-28

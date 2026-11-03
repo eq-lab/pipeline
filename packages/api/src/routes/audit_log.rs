@@ -284,7 +284,7 @@ fn build_reference_name(originator: Option<&str>, commodity: Option<&str>) -> Op
 /// Looks at the top level first, then under `params.event`: the two indexer mappers
 /// store different shapes. `ContractLogMapper` writes parser fields flat, while
 /// `LoanEventMapper` rewraps them as `{loan_id, event: {...}, snapshot: {...}}`
-/// (`worker/src/indexer/loan_mapper.rs`), which is why `yield_mint_outbox_repo` reads
+/// (`worker/src/indexer/loan_mapper.rs`), which is why `LEGACY_YIELD_MINTED_SQL` (`shared::contract_logs_repo`) reads
 /// `params->'event'->>'repayment_id'`. Reading only the top level made every
 /// loan-registry `details` field null in production — issue #1096.
 fn param_str(params: &Value, key: &str) -> Option<String> {

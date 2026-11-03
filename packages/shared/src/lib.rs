@@ -50,4 +50,3 @@ pub mod submitted_loan_repo;
 pub mod sumsub;
 pub mod system_configuration_repo;
 pub mod time_weighted_return;
-pub mod yield_mint_outbox_repo;

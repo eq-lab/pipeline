@@ -244,7 +244,9 @@ line, whichever section it lands in.
 - **Impact:** Any future change to chain-selection logic (e.g. a third chain) must be applied in three places.
 - **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
 
-### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23]
+### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23] [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22 (incident 2026-06-23)
 - **Location:** `packages/shared/src/yield_mint_outbox_repo.rs` — `YieldMintOutboxRepo::discover_pending_stellar`
@@ -254,7 +256,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a DB-backed (or fixture-driven `contract_logs` → outbox) integration test that inserts a `PaymentRecorded` row in the indexer's exact enriched shape and asserts a pending outbox row is discovered with non-null `loan_id`/`repayment_id`. Gate it to skip gracefully when no test DB is available, matching the existing `discover_*` test convention.
 - **Dedup note:** post-fix, `discover_pending_stellar` is byte-identical to `discover_pending` (only the caller's `contract_address` bind value differs). Candidate to collapse into one method; kept separate for now (deliberate choice 2026-06-23) — fold into the integration-test work above.
 
-### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op
+### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` — `confirm_submitted_stellar`, the `row.tx_hash` `None` arm
@@ -270,7 +274,9 @@ line, whichever section it lands in.
 - **Impact:** Cosmetic only — row corners are square instead of 4px rounded as in Figma. No functional or accessibility impact.
 - **Suggested fix:** If the rounded corners are required, replace the semantic `<table>` with a `<div>`-based grid layout (role="table", role="row", role="cell" for accessibility). This is a layout restructure, not a one-liner, and should be a separate issue.
 
-### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`)
+### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`) [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (`SIM_FEE = 1_000_000`), `packages/worker/src/relayer/stellar/whitelist.rs` (`VIEW_PRECHECK_FEE = 1_000_000`)
@@ -1720,7 +1726,7 @@ line, whichever section it lands in.
 - **Gap:** The indexer's cursor is per chain, not per contract. Adding a contract id to an
   already-running chain starts polling it from the chain's *current* ledger, and nothing rewinds
   to pick up what that contract emitted before. This is not new to #1416 — `loan_registry_id` and
-  `yield_minter_id` have always had it — but #1416 makes it consequential, because the expected
+  `minter_id` (renamed in #1793) have always had it — but #1416 makes it consequential, because the expected
   rollout is exactly "ship the var unset, set it once the minter is deployed".
 - **Impact:** Every `WireIn` emitted between the contract going live and the variable being set is
   never indexed, so those deposits stay `is_minted = false` permanently. They are invisible to the
@@ -1733,19 +1739,18 @@ line, whichever section it lands in.
   start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
   and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
-### TD-140: The BitGo client and the EVM-only yield-mint outbox methods have no caller
+### TD-140: The BitGo client has no caller
 
 - **Date:** 2026-10-08
-- **Location:** `packages/shared/src/bitgo/`; `packages/shared/src/yield_mint_outbox_repo.rs`
-  (`discover_pending`, `OutboxStore::mark_submitted`). Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
-- **Gap:** The EVM yield-mint phase was their only consumer and is deleted: the reworked EVM
-  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. Both
-  were kept because the outbox trait is shared with the Stellar yield-mint phase, and BitGo is the
-  architecture's named MPC vendor. Any EVM rows already in `yield_mint_outbox` are inert.
+- **Location:** `packages/shared/src/bitgo/`. Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
+- **Outbox half:** resolved 2026-11-03 / #1793 (module deleted; table + LEGACY_YIELD_MINTED_SQL kept).
+- **Gap:** The EVM yield-mint phase was its only consumer and is deleted: the reworked EVM
+  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. It was
+  kept because BitGo is the architecture's named MPC vendor. Tracked by #1705.
 - **Impact:** Dead code that still compiles and reads like a live path; `BITGO_*` env vars are
   gone from `.env.example`, so the client cannot be configured from it.
-- **Suggested fix:** Delete `shared::bitgo`, `discover_pending` and `mark_submitted` (updating the
-  Stellar test fake that implements `OutboxStore`), or reconnect them when a BitGo signer returns.
+- **Suggested fix:** Delete `shared::bitgo` and `pub mod bitgo;` (and update the BitGo mention in
+  `ARCHITECTURE.md`), or reconnect it when a BitGo signer returns.
 
 ### TD-141: An EVM `allow` stuck in the mempool blocks every later one
 

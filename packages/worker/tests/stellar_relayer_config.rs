@@ -5,7 +5,9 @@
 
 use std::sync::Mutex;
 
-use pipeline_worker::relayer::config::{RelayerSettings, StellarRelayerSettings};
+use pipeline_worker::relayer::config::{
+    legacy_stellar_relayer_keys, RelayerSettings, StellarRelayerSettings,
+};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -36,6 +38,8 @@ fn clear_chain_env(id: i64) {
             "RELAYER_STELLAR_RPC_URL",
             "RELAYER_STELLAR_NETWORK_PASSPHRASE",
             "STELLAR_INDEXER_MINTER_ADDRESS",
+            "RELAYER_STELLAR_YIELD_MINTER_ID",
+            "RELAYER_STELLAR_LOAN_REGISTRY_ID",
             "EVM_RPC_URL",
         ] {
             std::env::remove_var(format!("{prefix}{suffix}"));
@@ -384,5 +388,84 @@ fn stellar_relayer_minter_id_rejects_a_bad_strkey_checksum() {
         result.is_err(),
         "a Strkey whose checksum does not match must fail startup"
     );
+    clear_chain_env(id);
+}
+
+const LEGACY_PREFIX: &str = "CHAIN_99000001_RELAYER_STELLAR_";
+const LEGACY_YIELD_MINTER_KEY: &str = "CHAIN_99000001_RELAYER_STELLAR_YIELD_MINTER_ID";
+const LEGACY_LOAN_REGISTRY_KEY: &str = "CHAIN_99000001_RELAYER_STELLAR_LOAN_REGISTRY_ID";
+
+#[test]
+fn legacy_keys_none_set_is_empty() {
+    assert!(legacy_stellar_relayer_keys(LEGACY_PREFIX, |_| false).is_empty());
+}
+
+#[test]
+fn legacy_keys_both_set_are_named_in_order() {
+    assert_eq!(
+        legacy_stellar_relayer_keys(LEGACY_PREFIX, |_| true),
+        vec![LEGACY_YIELD_MINTER_KEY, LEGACY_LOAN_REGISTRY_KEY]
+    );
+}
+
+#[test]
+fn legacy_keys_only_loan_registry_set() {
+    assert_eq!(
+        legacy_stellar_relayer_keys(LEGACY_PREFIX, |k| k == LEGACY_LOAN_REGISTRY_KEY),
+        vec![LEGACY_LOAN_REGISTRY_KEY]
+    );
+}
+
+#[test]
+fn stellar_relayer_boots_with_legacy_yield_mint_keys_set() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+    unsafe {
+        std::env::set_var(LEGACY_YIELD_MINTER_KEY, FIXTURE_CONTRACT);
+        std::env::set_var(LEGACY_LOAN_REGISTRY_KEY, "NOTASTRKEY");
+    }
+    let s = StellarRelayerSettings::from_chain_env(id).expect("legacy values are not parsed");
+    assert_eq!(
+        s.legacy_env_keys,
+        vec![LEGACY_YIELD_MINTER_KEY, LEGACY_LOAN_REGISTRY_KEY]
+    );
+    assert_eq!(s.minter_id, None);
+    clear_chain_env(id);
+}
+
+#[test]
+fn stellar_relayer_without_legacy_keys_has_none() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+    let s = StellarRelayerSettings::from_chain_env(id).expect("parses");
+    assert!(s.legacy_env_keys.is_empty());
+    clear_chain_env(id);
+}
+
+#[test]
+fn relayer_settings_all_from_env_accepts_legacy_stellar_keys() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    set_base_env(id);
+    unsafe {
+        std::env::set_var("CHAINS", "99000001");
+        std::env::set_var("CHAIN_99000001_TYPE", "stellar");
+        std::env::set_var(LEGACY_YIELD_MINTER_KEY, FIXTURE_CONTRACT);
+        std::env::set_var(LEGACY_LOAN_REGISTRY_KEY, "NOTASTRKEY");
+    }
+    let all = RelayerSettings::all_from_env().expect("dispatch ok");
+    assert_eq!(all.len(), 1);
+    assert!(matches!(all[0], RelayerSettings::Stellar(_)));
     clear_chain_env(id);
 }
