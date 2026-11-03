@@ -29,6 +29,7 @@ import { mapKybStatus } from "./-useLpCounterpartiesTable";
 import { LpReviewDialog } from "./-LpReviewDialog";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 import { formatIsoDateUtc } from "@/utils/formatDate";
+import { settlementAddressRows } from "./-settlementAddresses";
 
 const NOTE_CLASS =
   "font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]";
@@ -49,6 +50,7 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
   const detail = useLpCounterpartyDetail(id);
   const { lp } = detail;
   const status = lp ? mapKybStatus(lp.kyb_status) : null;
+  const settlementRows = lp ? settlementAddressRows(lp) : [];
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
       <DetailHero
@@ -108,16 +110,53 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
                 <KeyValueRow label="Registered">
                   {formatIsoDateUtc(lp.created_at)}
                 </KeyValueRow>
-                <KeyValueRow label="Linked wallet" isLast>
-                  {lp.stellar_address ? (
-                    <AddressChip
-                      value={lp.stellar_address}
-                      testId="lp-linked-wallet"
-                    />
-                  ) : (
-                    "—"
-                  )}
-                </KeyValueRow>
+                {settlementRows.length === 0 ? (
+                  <KeyValueRow label="Settlement address" isLast>
+                    —
+                  </KeyValueRow>
+                ) : (
+                  settlementRows.map((row, index) => (
+                    <KeyValueRow
+                      key={row.kind}
+                      label={`${row.chainLabel} settlement address`}
+                      isLast={index === settlementRows.length - 1}
+                    >
+                      <div className="flex flex-col items-end gap-[4px]">
+                        <AddressChip
+                          value={row.address}
+                          testId={`lp-settlement-${row.kind}`}
+                        />
+                        <span
+                          className={`${SUB_CLASS} inline-flex flex-wrap items-center justify-end gap-[6px]`}
+                          style={{ color: INK_MUTED }}
+                        >
+                          {row.signer ? (
+                            <>
+                              Signer
+                              <AddressChip
+                                value={row.signer}
+                                testId={`lp-settlement-${row.kind}-signer`}
+                              />
+                            </>
+                          ) : (
+                            <StatusChip
+                              band="attention"
+                              label="Unproven"
+                              testId={`lp-settlement-${row.kind}-unproven`}
+                            />
+                          )}
+                        </span>
+                        <span
+                          className={SUB_CLASS}
+                          style={{ color: INK_MUTED }}
+                          data-testid={`lp-settlement-${row.kind}-linked-at`}
+                        >
+                          Linked {row.linkedAt}
+                        </span>
+                      </div>
+                    </KeyValueRow>
+                  ))
+                )}
               </div>
             </DetailCard>
 

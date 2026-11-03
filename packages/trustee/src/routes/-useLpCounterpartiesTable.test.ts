@@ -8,6 +8,11 @@ const BASE_LP: LpSummary = {
   country: "CH",
   contact_email: "ops@acme.example",
   stellar_address: null,
+  address_linked_at: null,
+  stellar_signer_address: null,
+  evm_address: null,
+  evm_signer_address: null,
+  evm_address_linked_at: null,
   kyb_status: "NotStarted",
   owner_account_id: "00000000-0000-0000-0000-0000000000aa",
   created_at: "2026-06-18T23:40:00Z",
@@ -65,19 +70,27 @@ describe("mapLpToRow", () => {
     ).toBe("Switzerland");
   });
 
-  it("renders 'No' for a null or empty stellar_address", () => {
+  it("renders 'No' when neither address is linked (null or empty)", () => {
+    expect(mapLpToRow(BASE_LP).blockchainAddress).toBe("No");
     expect(
-      mapLpToRow({ ...BASE_LP, stellar_address: null }).blockchainAddress,
-    ).toBe("No");
-    expect(
-      mapLpToRow({ ...BASE_LP, stellar_address: "" }).blockchainAddress,
+      mapLpToRow({ ...BASE_LP, stellar_address: "", evm_address: "" })
+        .blockchainAddress,
     ).toBe("No");
   });
 
-  it("renders 'Yes' for a non-empty stellar_address", () => {
+  it("renders the linked chains and flags an unproven Stellar address", () => {
+    const stellar = { stellar_address: "GXYZ", stellar_signer_address: "GSIG" };
+    const evm = { evm_address: "0xabc", evm_signer_address: "0xabc" };
+    expect(mapLpToRow({ ...BASE_LP, ...stellar }).blockchainAddress).toBe(
+      "Stellar",
+    );
+    expect(mapLpToRow({ ...BASE_LP, ...evm }).blockchainAddress).toBe("EVM");
+    expect(
+      mapLpToRow({ ...BASE_LP, ...stellar, ...evm }).blockchainAddress,
+    ).toBe("Stellar + EVM");
     expect(
       mapLpToRow({ ...BASE_LP, stellar_address: "GXYZ" }).blockchainAddress,
-    ).toBe("Yes");
+    ).toBe("Stellar (unproven)");
   });
 
   it("always renders '—' for bankInfo, even with an unmapped future field on the payload", () => {

@@ -143,6 +143,8 @@ export const ENV = Object.freeze({
 
   STELLAR_CAPITAL_WALLET_ID: readString("VITE_STELLAR_CAPITAL_WALLET_ID", ""),
 
+  EVM_CAPITAL_WALLET_ADDRESS: readString("VITE_EVM_CAPITAL_WALLET_ADDRESS", ""),
+
   /**
    * Sibling-deployment URLs for the cross-deployment network switcher
    * (issue #1032), e.g. `"mainnet=https://dashboard.pipeline.one,testnet=https://dashboard.pipeline.stage.eqlab.net"`.

@@ -1,7 +1,9 @@
 // spec: docs/frontend/trustee-flows.md#lp-bank-deposits
 import { Button, InlineError } from "@pipeline/ui";
+import { AddressChip } from "@/components/detail/AddressChip";
 import { AddressText } from "@/components/detail/AddressText";
 import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
+import { KeyValueRow } from "@/components/detail/KeyValueRow";
 import { StatusChip } from "@/components/detail/StatusChip";
 import {
   DETAIL_SECONDARY_BUTTON_CLASS,
@@ -13,6 +15,7 @@ import { useLpReviewDialog } from "./-useLpReviewDialog";
 import {
   useLpBankDepositsSection,
   mintStageLabel,
+  noReceiverMessage,
   type DepositRow,
   type LpBankDepositsSection as Section,
 } from "./-useLpBankDeposits";
@@ -61,6 +64,7 @@ export function LpBankDepositsSection({
           Record deposit
         </Button>
       </div>
+      <MintScopeLine section={section} />
       {section.state === "loading" && (
         <p role="status" className={BODY_CLASS} style={{ color: INK_MUTED }}>
           Loading bank deposits…
@@ -146,18 +150,38 @@ export function LpBankDepositsSection({
           </table>
         </div>
       )}
-      {section.mintError && (
-        <div role="alert">
-          <InlineError
-            message={section.mintError.message}
-            details={section.mintError.details}
-          />
-        </div>
-      )}
       {section.open && (
         <RecordBankDepositDialog section={section} legalName={legalName} />
       )}
+      {section.confirm && (
+        <MintConfirmDialog section={section} legalName={legalName} />
+      )}
     </DetailCard>
+  );
+}
+
+function MintScopeLine({ section }: { section: Section }) {
+  const { receiver, chainLabel, kind } = section;
+  return (
+    <p
+      data-testid="lp-deposits-mint-scope"
+      className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+      style={{ color: INK_MUTED }}
+    >
+      {receiver ? (
+        <>
+          Mints on {chainLabel} to{" "}
+          <AddressChip
+            value={receiver.receiver}
+            testId="lp-deposits-receiver"
+          />
+          {receiver.isCapitalWallet &&
+            ` · capital wallet — this LP has no ${kind === "stellar" ? "Stellar" : "EVM"} settlement address`}
+        </>
+      ) : (
+        `Mints on ${chainLabel} — no receiver`
+      )}
+    </p>
   );
 }
 
@@ -194,7 +218,7 @@ function PlusdCell({ row, section }: { row: DepositRow; section: Section }) {
         variant="primary-blue"
         size="compact"
         className={MINT_BUTTON_CLASS}
-        onClick={() => void section.mintDeposit(row)}
+        onClick={() => void section.openMint(row)}
         disabled={reason !== null || inFlight}
         title={reason ?? undefined}
         aria-describedby={reason ? hintId : undefined}
@@ -331,6 +355,167 @@ function RecordBankDepositDialog({
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function MintConfirmDialog({
+  section,
+  legalName,
+}: {
+  section: Section;
+  legalName: string;
+}) {
+  const confirm = section.confirm!;
+  const minting = section.mintingDepositId !== null;
+  const dialogRef = useLpReviewDialog<HTMLDivElement>(
+    section.closeMint,
+    minting,
+  );
+  const ready = confirm.phase === "ready" ? confirm : null;
+  const canConfirm =
+    ready !== null && (!ready.changed || section.ack) && !minting;
+  return (
+    <div
+      className="bg-pipeline-ink/40 fixed inset-0 z-50 flex items-center justify-center px-4"
+      onClick={() => {
+        if (!minting) section.closeMint();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lp-mint-title"
+        aria-describedby="lp-mint-description"
+        tabIndex={-1}
+        data-testid="lp-mint-confirm"
+        className="rounded-pipeline-card-sm bg-pipeline-surface flex max-h-[90vh] w-full max-w-[640px] flex-col gap-4 overflow-y-auto p-7 shadow-xl outline-none"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2
+          id="lp-mint-title"
+          className="font-display text-[26px] leading-[36px]"
+        >
+          Mint PLUSD — {legalName}
+        </h2>
+        <p id="lp-mint-description" className="text-pipeline-ink-muted text-sm">
+          Check the receiver. PLUSD is minted to the LP&apos;s current
+          settlement address, re-read now.
+        </p>
+        {confirm.phase === "reading" && (
+          <p role="status" className={BODY_CLASS} style={{ color: INK_MUTED }}>
+            Reading the LP&apos;s current settlement address…
+          </p>
+        )}
+        {confirm.phase === "read-error" && (
+          <div role="alert" className="flex flex-col gap-[12px]">
+            <InlineError
+              message={confirm.error.message}
+              details={confirm.error.details}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="m"
+              className={`w-fit ${DETAIL_SECONDARY_BUTTON_CLASS}`}
+              style={detailSecondaryButtonStyle()}
+              onClick={() => void section.openMint(confirm.row)}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+        {confirm.phase === "no-receiver" && (
+          <p role="alert" className={BODY_CLASS} style={{ color: INK_MUTED }}>
+            {noReceiverMessage(section.kind)}
+          </p>
+        )}
+        {ready && (
+          <div className="flex flex-col">
+            <KeyValueRow label="Network">{section.chainLabel}</KeyValueRow>
+            <KeyValueRow label="Amount">{ready.row.amount}</KeyValueRow>
+            <KeyValueRow label="Payment reference">
+              <span className="break-all">{ready.row.reference}</span>
+            </KeyValueRow>
+            <KeyValueRow label="Receiver" isLast>
+              <span
+                data-testid="lp-mint-receiver"
+                className="font-mono text-[13px] leading-[18px] break-all"
+              >
+                {ready.receiver.receiver}
+              </span>
+              <span
+                className={`${HINT_CLASS} block`}
+                style={{ color: INK_MUTED }}
+              >
+                {ready.receiver.isCapitalWallet
+                  ? "Capital wallet"
+                  : "LP settlement address"}
+              </span>
+            </KeyValueRow>
+          </div>
+        )}
+        {ready?.changed && (
+          <div
+            role="alert"
+            data-testid="lp-mint-receiver-changed"
+            className="rounded-pipeline-card-sm flex flex-col gap-2 border p-4 text-sm"
+            style={{ borderColor: "var(--color-pipeline-warning)" }}
+          >
+            <p className="font-semibold">
+              This LP&apos;s settlement address changed since it was last shown.
+            </p>
+            <p className="break-all">
+              Previously shown: {ready.previous?.receiver ?? "—"}
+            </p>
+            <p className="break-all">
+              Now minting to: {ready.receiver.receiver}
+            </p>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                data-testid="lp-mint-ack"
+                checked={section.ack}
+                onChange={(event) => section.setAck(event.target.checked)}
+                disabled={minting}
+              />
+              Mint to the new address
+            </label>
+          </div>
+        )}
+        {section.mintError && (
+          <div role="alert">
+            <InlineError
+              message={section.mintError.message}
+              details={section.mintError.details}
+            />
+          </div>
+        )}
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            size="m"
+            className={DETAIL_SECONDARY_BUTTON_CLASS}
+            style={detailSecondaryButtonStyle()}
+            disabled={minting}
+            onClick={section.closeMint}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary-blue"
+            size="m"
+            data-testid="lp-mint-confirm-submit"
+            disabled={!canConfirm}
+            onClick={() => void section.confirmMint()}
+          >
+            {mintStageLabel(section.mintStage)}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-164.**
+**Next free number: TD-165.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2242,3 +2242,11 @@ line, whichever section it lands in.
 - **Gap:** By user decision (2026-11-02, #1831) an LP may relink its settlement address at any status except `Failed`, including after `Passed`, with a valid signed challenge for the new address and nothing else. There is no signature by the current address, no Trustee approval and no notification on change.
 - **Impact:** A hijacked LP session links an address it controls (with TD-162, even one it does not own) and receives every later mint.
 - **Suggested fix:** Any of a signature by the current address, Trustee approval of a change after `Passed`, or an email to the account's verified address on every change. `lp_settlement_address_history` makes changes auditable meanwhile.
+
+### TD-164: Bank deposits carry no chain or matched payment reference
+
+- **Date:** 2026-11-03
+- **Location:** `BankDepositResponse` in `packages/api/src/routes/lp_bank_deposits.rs`; `packages/trustee/src/routes/-useLpBankDeposits.ts`
+- **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
+- **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
+- **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.

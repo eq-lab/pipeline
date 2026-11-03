@@ -19,7 +19,6 @@ export interface LpDocument {
 }
 
 export interface LpDetail extends LpSummary {
-  address_linked_at: string | null;
   writable: boolean;
   notify_on_review: boolean;
   kyb_submitted_at: string | null;
@@ -49,10 +48,14 @@ export async function lpFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
+export function fetchLp(id: number, signal?: AbortSignal): Promise<LpDetail> {
+  return lpFetch<LpDetail>(`/v1/lps/${id}`, { signal });
+}
+
 export function useLp(id: number) {
   return useQuery<LpDetail, Error>({
     queryKey: ["lp", id],
-    queryFn: ({ signal }) => lpFetch<LpDetail>(`/v1/lps/${id}`, { signal }),
+    queryFn: ({ signal }) => fetchLp(id, signal),
     enabled: Number.isSafeInteger(id) && id > 0,
     refetchInterval: 30_000,
     retry: (count, error) =>
