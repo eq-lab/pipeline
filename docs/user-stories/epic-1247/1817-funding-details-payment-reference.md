@@ -61,8 +61,9 @@ chain whose address is linked.
 
 **Expected outcomes:**
 
-- The clipboard holds exactly that row's value. `Copied` appears after the value in that row for
-  about 1.5 seconds; no other row shows `Copied`. Clicking a second row moves the caption there.
+- The clipboard holds exactly that row's value. A success toast "IBAN copied" appears in the
+  bottom-right corner, outside the dialog, for about 2 seconds; nothing changes inside the modal
+  and it never grows a horizontal scrollbar. Clicking a second row replaces the toast text.
 - There is no full-width `Copy` button and no copy icon anywhere in the modal.
 - `Network` is plain text, not a button.
 
@@ -73,8 +74,8 @@ chain whose address is linked.
 2. Then press and hold the `Payment reference` value for about half a second.
 
 **Expected:**
-- The tap copies the IBAN and shows `Copied`. The hold copies the reference when the half second
-  elapses (no need to release first), shows `Copied`, and releasing does not copy a second time or
+- The tap copies the IBAN and raises the toast. The hold copies the reference when the half second
+  elapses (no need to release first), raises its toast, and releasing does not copy a second time or
   open the browser's text-selection callout. A press released before half a second behaves as a
   tap.
 
@@ -89,7 +90,7 @@ chain whose address is linked.
 
 **Expected:**
 - The clipboard holds the **full** served address, not the truncated text (the full address is also
-  the button's hover `title`); `Copied` appears in that row for about 1.5 seconds.
+  the button's hover `title`); the toast reads "Receiving wallet copied".
 
 ## Story 4: Keyboard users can copy too
 
@@ -100,7 +101,7 @@ chain whose address is linked.
 
 **Expected outcomes:**
 
-- The clipboard holds only the reference, and the `Copied` caption appears briefly.
+- The clipboard holds only the reference, and the toast reads "Payment reference copied".
 
 ---
 

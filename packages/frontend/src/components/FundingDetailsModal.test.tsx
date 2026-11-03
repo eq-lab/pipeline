@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FundingDetailsModal } from "./FundingDetailsModal";
+import { ToastProvider } from "@/lib/toast";
 import type { FundingDetailsView } from "./fundingDetails";
 import {
   FUNDING_DETAILS_FIXTURE_ERROR,
@@ -28,13 +29,15 @@ function renderModal(
   const open = overrides.open ?? true;
 
   const result = render(
-    <FundingDetailsModal
-      open={open}
-      onDismiss={onDismiss}
-      view={overrides.view}
-      onOpenAccount={overrides.onOpenAccount}
-      onContactSupport={overrides.onContactSupport}
-    />,
+    <ToastProvider>
+      <FundingDetailsModal
+        open={open}
+        onDismiss={onDismiss}
+        view={overrides.view}
+        onOpenAccount={overrides.onOpenAccount}
+        onContactSupport={overrides.onContactSupport}
+      />
+    </ToastProvider>,
   );
 
   return { onDismiss, ...result };
@@ -90,10 +93,10 @@ describe("FundingDetailsModal — ready", () => {
     }
     expect(screen.getByText("Payment reference")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Add this reference to your transfer’s reference or remittance field. Without it we can’t match your transfer to your account.",
-      ),
-    ).toBeInTheDocument();
+      screen.getByTestId("funding-details-reference-info"),
+    ).toHaveAccessibleDescription(
+      "Add this reference to your transfer’s reference or remittance field. Without it we can’t match your transfer to your account.",
+    );
     expect(screen.getByTestId("funding-details-row-network")).toHaveTextContent(
       "Stellar",
     );
@@ -115,7 +118,7 @@ describe("FundingDetailsModal — ready", () => {
     expect(noteInfo).toHaveAccessibleDescription(
       "Domestic transfers: Same day or within 1 business day\nInternational transfers: 1–5 business days",
     );
-    expect(screen.getAllByRole("tooltip")).toHaveLength(2);
+    expect(screen.getAllByRole("tooltip")).toHaveLength(3);
   });
 });
 
@@ -166,16 +169,18 @@ describe("FundingDetailsModal — per-row copy", () => {
     });
   }
 
-  it("clicking a bank row copies that row's value and shows Copied in that row only", async () => {
+  it("clicking a bank row copies that row's value and confirms with a toast outside the dialog", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     renderModal({ view: READY });
     const iban = READY.rows.find((r) => r.label === "IBAN")!;
     await user.click(screen.getByRole("button", { name: "Copy IBAN" }));
     expect(mockWriteText).toHaveBeenCalledWith(iban.value);
-    const row = screen.getByTestId("funding-details-row-iban");
-    expect(await within(row).findByText("Copied")).toBeInTheDocument();
-    expect(screen.getAllByText("Copied")).toHaveLength(1);
+    const toastTitle = await screen.findByText("IBAN copied");
+    expect(screen.getByRole("dialog")).not.toContainElement(toastTitle);
+    expect(
+      within(screen.getByRole("dialog")).queryByText(/copied/i),
+    ).toBeNull();
   });
 
   it("the reference row copies only the reference", async () => {
@@ -197,13 +202,11 @@ describe("FundingDetailsModal — per-row copy", () => {
     );
     expect(mockWriteText).toHaveBeenCalledWith(READY.receiverAddress);
     expect(
-      await within(
-        screen.getByTestId("funding-details-row-receiving-wallet"),
-      ).findByText("Copied"),
+      await screen.findByText("Receiving wallet copied"),
     ).toBeInTheDocument();
   });
 
-  it("a rejected clipboard promise does not throw and shows no Copied", async () => {
+  it("a rejected clipboard promise does not throw and shows no toast", async () => {
     const user = userEvent.setup();
     installClipboardMock();
     mockWriteText.mockRejectedValue(new Error("nope"));
@@ -211,7 +214,7 @@ describe("FundingDetailsModal — per-row copy", () => {
     await expect(
       user.click(screen.getByRole("button", { name: "Copy IBAN" })),
     ).resolves.not.toThrow();
-    expect(screen.queryByText("Copied")).toBeNull();
+    expect(screen.queryByText(/copied/i)).toBeNull();
   });
 
   it("falls back to execCommand and shows Copied when navigator.clipboard is unavailable (#1317)", async () => {
@@ -225,7 +228,7 @@ describe("FundingDetailsModal — per-row copy", () => {
     renderModal({ view: READY });
     await user.click(screen.getByRole("button", { name: "Copy IBAN" }));
     expect(exec).toHaveBeenCalledWith("copy");
-    expect(await screen.findByText("Copied")).toBeInTheDocument();
+    expect(await screen.findByText("IBAN copied")).toBeInTheDocument();
     Reflect.deleteProperty(document, "execCommand");
   });
 

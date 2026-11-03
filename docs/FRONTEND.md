@@ -76,7 +76,7 @@ See [`docs/frontend/index.md`](./frontend/index.md) for the catalogue index.
 
 ## Toast notifications
 
-Transient global feedback is rendered by `<ToastProvider>` in the bottom-right corner of the viewport. The imperative `useToast()` hook (imported from `@/lib/toast`) is the canonical surface for emitting notifications from page components.
+Transient global feedback is rendered by `<ToastProvider>` in the bottom-right corner of the viewport (stack at `z-[10000]`, above the `z-[9999]` modal scrims, so a toast raised from inside a modal is visible). The imperative `useToast()` hook (imported from `@/lib/toast`) is the canonical surface for emitting notifications from page components.
 
 **Rule:** toast emissions always live at the call site (e.g. the page component that owns the write hook), never inside the hook itself. The hook stays generic; the page decides what copy to show.
 

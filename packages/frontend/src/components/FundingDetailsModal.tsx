@@ -3,8 +3,9 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@pipeline/ui";
 import { useCopyToClipboard } from "@pipeline/ui";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { truncateAddress } from "@/utils/truncateAddress";
+import { useOptionalToast } from "@/lib/toast";
 import { InfoTooltip } from "./InfoTooltip";
 import {
   FUNDING_DETAIL_LABELS,
@@ -45,13 +46,6 @@ const VALUE_CLASS = [
   "leading-[var(--text-pipeline-body--line-height)]",
   "text-[color:var(--color-pipeline-ink)]",
 ].join(" ");
-const CAPTION_CLASS = [
-  "m-0",
-  "font-[family-name:var(--font-body)]",
-  "text-[length:var(--text-pipeline-caption)]",
-  "leading-[var(--text-pipeline-caption--line-height)]",
-  "text-[color:var(--color-pipeline-ink-muted)]",
-].join(" ");
 
 function slug(label: string): string {
   return label
@@ -61,6 +55,7 @@ function slug(label: string): string {
 }
 
 const HOLD_TO_COPY_MS = 500;
+const COPIED_TOAST_MS = 2000;
 const COPY_ROW_BUTTON_CLASS = [
   "-mr-2 flex min-w-0 cursor-pointer items-center gap-2 rounded-[var(--radius-pipeline-card)] px-2 py-1",
   "select-none touch-manipulation",
@@ -88,7 +83,6 @@ function CopyableRow({
   value,
   copyValue,
   ready,
-  copied,
   onCopy,
 }: {
   label: string;
@@ -96,7 +90,6 @@ function CopyableRow({
   value: string;
   copyValue: string;
   ready: boolean;
-  copied: boolean;
   onCopy: (label: string, text: string) => void;
 }) {
   const key = slug(label);
@@ -150,7 +143,6 @@ function CopyableRow({
         className={COPY_ROW_BUTTON_CLASS}
       >
         <span className={VALUE_CLASS}>{value}</span>
-        {copied && <span className={CAPTION_CLASS}>Copied</span>}
       </button>
     </div>
   );
@@ -175,13 +167,19 @@ export function FundingDetailsModal({
   const referenceValue = ready ? view.paymentReference : "—";
 
   useFundingDetailsModal({ open, onDismiss });
-  const { copied, copy } = useCopyToClipboard();
-  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  const { copy } = useCopyToClipboard();
+  const toast = useOptionalToast();
   const onCopy = (label: string, text: string) => {
-    setCopiedLabel(label);
-    void copy(text);
+    void copy(text).then((ok) => {
+      if (ok)
+        toast?.show({
+          id: "funding-details-copied",
+          tone: "success",
+          title: `${label} copied`,
+          durationMs: COPIED_TOAST_MS,
+        });
+    });
   };
-  const isCopied = (label: string) => copied && copiedLabel === label;
   const receiverAddress = ready ? view.receiverAddress : "";
 
   if (!open) return null;
@@ -293,19 +291,24 @@ export function FundingDetailsModal({
               value={row.value}
               copyValue={row.value}
               ready={ready}
-              copied={isCopied(row.label)}
               onCopy={onCopy}
             />
           ))}
           <CopyableRow
             label={PAYMENT_REFERENCE_LABEL}
+            labelAdornment={
+              <InfoTooltip
+                label="About the payment reference"
+                text={INSTRUCTION_TEXT}
+                align="start"
+                data-testid="funding-details-reference-info"
+              />
+            }
             value={referenceValue}
             copyValue={referenceValue}
             ready={ready}
-            copied={isCopied(PAYMENT_REFERENCE_LABEL)}
             onCopy={onCopy}
           />
-          <p className={CAPTION_CLASS}>{INSTRUCTION_TEXT}</p>
           <div
             className="h-px w-full bg-[color:var(--color-pipeline-line)]"
             aria-hidden="true"
@@ -324,7 +327,6 @@ export function FundingDetailsModal({
             value={ready ? truncateAddress(receiverAddress) : "—"}
             copyValue={receiverAddress}
             ready={ready}
-            copied={isCopied("Receiving wallet")}
             onCopy={onCopy}
           />
         </div>

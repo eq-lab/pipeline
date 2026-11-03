@@ -57,8 +57,9 @@ day; the earlier `copy.svg` CSS mask had rendered as a solid square), and `asset
 for `align="start"` or `right-0` for `align="end"`) shown on hover and focus-within.
 
 **Layout since #1817 (no Figma; built from the row pattern and the LP theme), top to bottom:** heading
-→ unavailable notice (only when unavailable) → six bank rows → `Payment reference` row →
-instruction caption → 1px `--color-pipeline-line` divider → `Network` row (plain, not copyable) →
+→ unavailable notice (only when unavailable) → six bank rows → `Payment reference` row (label
+followed by an `InfoTooltip align="start"` whose text is the instruction sentence — there is no
+instruction caption any more) → 1px `--color-pipeline-line` divider → `Network` row (plain, not copyable) →
 `Receiving wallet` row (label followed by an `InfoTooltip align="start"` whose text is the
 destination sentence; value is the served address through `truncateAddress`, `GCGQVO…GQ5C`, with
 the full address as the button `title`) → note row with its `InfoTooltip align="end"` (text:
@@ -70,8 +71,13 @@ days`, two lines) → `Need help? Contact Support`.
 (`aria-label="Copy {label}"`, `data-testid="funding-details-copy-{slug}"`) holding just the value
 text — no icon — with `cursor-pointer`, `select-none` and `touch-manipulation`. A click or tap
 writes that row's value (the **full** address for the wallet row) through the shared
-`useCopyToClipboard` and shows a `Copied` caption after the value in that row only for 1500 ms (one
-`copiedLabel` state in the modal; copying another row moves the caption). **Hold to copy on touch
+`useCopyToClipboard`; on success the confirmation is a **toast outside the dialog**
+(`useOptionalToast().show({ id: "funding-details-copied", tone: "success", title: "{label}
+copied", durationMs: 2000 })` — an in-row caption widened the row and gave the modal a horizontal
+scrollbar, so nothing is rendered inside the dialog on copy; the fixed `id` makes rapid copies
+replace one toast instead of stacking). The toast stack sits at `z-[10000]`, above the app's
+`z-[9999]` modal scrims. `useOptionalToast` returns `null` outside a `ToastProvider`, so the modal
+also renders provider-free (tests, previews) and simply skips the toast. **Hold to copy on touch
 screens:** `onPointerDown` with `pointerType === "touch"` arms a 500 ms timer (`HOLD_TO_COPY_MS`);
 when it fires the row copies and the release `click` is swallowed so nothing copies twice;
 `pointerup` / `pointercancel` / `pointerleave` before 500 ms disarm it and the tap's own click copies
@@ -290,14 +296,15 @@ square `236 / 236` aspect ratio). Full spec: `docs/frontend/ui-components.md#war
 
 Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `Account Number` ·
 `IBAN` · `SWIFT / BIC code` ·
-`Transfers may take from the same day up to 5 business days` · `Copied` · `Need help?` ·
+`Transfers may take from the same day up to 5 business days` · `{label} copied` (toast) · `Need help?` ·
 `Contact Support`.
 
 Added by #1817: `Payment reference` · `Add this reference to your transfer’s reference or remittance
 field. Without it we can’t match your transfer to your account.` · `Network` · `Receiving wallet` ·
 `Your transfer is credited to this wallet as sPLUSD.` (tooltip) · `Domestic transfers: Same day or
 within 1 business day` / `International transfers: 1–5 business days` (tooltip) · `Copy {label}`
-(one aria-label per copyable row) / `About the receiving wallet` / `Transfer timing` (aria-labels) · `Bank details need a {chainName} wallet
+(one aria-label per copyable row) / `About the payment reference` / `About the receiving wallet` /
+`Transfer timing` (aria-labels) · `Bank details need a {chainName} wallet
 linked to your account. Link it on your Account page, or switch to a wallet you have already
 linked.` · `Go to Account` · `Bank details are unavailable right now. Close this window and try
 again, or contact support.`
