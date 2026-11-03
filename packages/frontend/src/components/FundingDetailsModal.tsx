@@ -57,7 +57,7 @@ function slug(label: string): string {
 const HOLD_TO_COPY_MS = 500;
 const COPIED_TOAST_MS = 2000;
 const COPY_ROW_BUTTON_CLASS = [
-  "-mr-2 flex min-w-0 cursor-pointer items-center gap-2 rounded-[var(--radius-pipeline-card)] px-2 py-1",
+  "flex min-w-0 cursor-pointer items-center rounded-[var(--radius-pipeline-card)] px-2 py-1",
   "select-none touch-manipulation",
   "text-[color:var(--color-pipeline-ink)]",
   "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
@@ -68,7 +68,7 @@ const COPY_ROW_BUTTON_CLASS = [
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="flex w-full items-center gap-3"
+      className="relative flex w-full items-center gap-3"
       data-testid={`funding-details-row-${slug(label)}`}
     >
       <span className={LABEL_CLASS}>{label}</span>
@@ -118,7 +118,7 @@ function CopyableRow({
   };
   return (
     <div
-      className="flex w-full items-center gap-3"
+      className="relative flex w-full items-center gap-3"
       data-testid={`funding-details-row-${key}`}
     >
       <span className={LABEL_CLASS}>
@@ -197,7 +197,7 @@ export function FundingDetailsModal({
         aria-modal="true"
         aria-labelledby={headingId}
         onClick={(e) => e.stopPropagation()}
-        className="relative flex flex-col gap-6 overflow-y-auto"
+        className="relative flex flex-col gap-5 overflow-x-hidden overflow-y-auto"
         style={{
           width: 420,
           maxWidth: "calc(100vw - 32px)",
@@ -281,7 +281,7 @@ export function FundingDetailsModal({
         )}
 
         <div
-          className="flex w-full flex-col gap-4"
+          className="flex w-full flex-col gap-3"
           aria-busy={view.status === "loading"}
         >
           {bankRows.map((row) => (
@@ -331,13 +331,13 @@ export function FundingDetailsModal({
           />
         </div>
 
-        <div className="flex w-full items-center gap-2">
+        <div className="relative flex w-full items-center gap-1">
           <p
             className={[
-              "m-0 flex-1",
+              "m-0 min-w-0 flex-1",
               "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-body)]",
-              "leading-[var(--text-pipeline-body--line-height)]",
+              "text-[length:var(--text-pipeline-caption)]",
+              "leading-[var(--text-pipeline-caption--line-height)]",
               "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >

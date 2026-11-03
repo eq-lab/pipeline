@@ -42,8 +42,10 @@ a full-viewport two-pane frame with no scrim: `createPortal` into `document.body
 
 Anatomy: `Funding details` heading (`<h2>`, Besley 28/36, `aria-labelledby` via `React.useId()`) →
 six label/value rows (label ink-muted, value ink, body 16/22; each value is a click-to-copy
-button, see below) → a note row (`Transfers may take from the same day up to 5 business days`,
-ink-muted, with a trailing 20×20 info glyph that is an `InfoTooltip`, see below) → a centred
+button, see below; rows stacked `gap-3`, panel sections `gap-5`) → a note row (`Transfers may take
+from the same day up to 5 business days`, ink-muted **caption 12/16 so it fits one line** — live
+review 2026-11-03, to keep the panel inside `min(80vh, 90dvh)` without a vertical scrollbar — with
+a trailing info glyph that is an `InfoTooltip`, see below) → a centred
 caption footer, `Need help? Contact Support`, the latter a real `<button>` calling
 `onContactSupport`. There is **no** copy-all button (removed in the 2026-11-03 live review).
 
@@ -51,10 +53,16 @@ caption footer, `Need help? Contact Support`, the latter a real `<button>` calli
 inline SVG traced from the frame `6701-97134` export (the 20×20 info circle at `#383538` 30 %).
 There is no copy glyph anywhere in the modal any more (removed on the user's request the same
 day; the earlier `copy.svg` CSS mask had rendered as a solid square), and `assets/copy.svg` /
-`assets/hint.svg` were deleted. `InfoTooltip` (`components/InfoTooltip.tsx`) is a 32×32 button
-(`aria-label`, `aria-describedby`) around `InfoGlyph` with a `role="tooltip"` bubble above it
-(ink background, on-dark caption text, `whitespace-pre-line`, `max-w-[280px]`, anchored `left-0`
-for `align="start"` or `right-0` for `align="end"`) shown on hover and focus-within.
+`assets/hint.svg` were deleted. `InfoTooltip` (`components/InfoTooltip.tsx`) is a 24×24 button
+(`aria-label`, `aria-describedby`) around `InfoGlyph` with a `role="tooltip"` bubble (ink
+background, on-dark caption text, `whitespace-pre-line`) shown on hover and focus-within. The
+bubble is positioned against the **row** (every row and the note row is `relative`; the tooltip
+wrapper deliberately is not), `bottom-full` above it, `left-0` for `align="start"` or `right-0` for
+`align="end"`, `w-max max-w-full` — so it can never be wider than the row. That matters because an
+invisible (`opacity-0`) absolutely positioned bubble still counts toward scroll width: the earlier
+icon-anchored 280px bubble was one of two things giving the panel a horizontal scrollbar (the
+other was a `-mr-2` on the row buttons, also removed). The panel is `overflow-x-hidden
+overflow-y-auto` as a guard.
 
 **Layout since #1817 (no Figma; built from the row pattern and the LP theme), top to bottom:** heading
 → unavailable notice (only when unavailable) → six bank rows → `Payment reference` row (label
