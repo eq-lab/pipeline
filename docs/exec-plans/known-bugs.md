@@ -301,7 +301,7 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Suggested fix:** Parse addresses at config time with `?` instead of `.ok()`, and reject an empty resolved address set outright — an unfiltered `eth_getLogs` is never what the caller meant.
 
 ### BUG-31: `AddEmailModal.test.tsx` — "an async onSubmit disables Save while pending" is timing-flaky
-- **Tracked:** not yet filed — seen during #1817 verification (2026-11-02); the file is untouched on that branch.
+- **Tracked:** #1837 (filed 2026-11-03) — seen during #1817 verification (2026-11-02); the file is untouched on that branch.
 - **Date:** 2026-11-02
 - **Location:** `packages/frontend/src/components/AddEmailModal.test.tsx`, test "AddEmailModal (#1459) > an async onSubmit disables Save while pending, then re-enables it".
 - **Symptom:** Fails roughly 1 run in 4 under the full `vitest run` (passes 3/3 in isolation and in the same CI run). The pending-state assertion races the mocked async `onSubmit` resolving.
