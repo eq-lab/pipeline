@@ -139,6 +139,7 @@ pub struct AuditLogItem {
     pub event_name: String,
     /// Curated scalar fields backing `action` (amounts already in decimal dollar units),
     /// so clients can re-render without re-parsing raw params. Shape varies by event.
+    /// `DealRegistered.cargo` is `null` when the deal has no CARGO token (Stellar, from contracts #38).
     pub details: Value,
 }
 

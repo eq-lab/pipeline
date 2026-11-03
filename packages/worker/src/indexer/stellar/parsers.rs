@@ -520,7 +520,7 @@ fn u128_from_parts(hi: u64, lo: u64) -> u128 {
     ((hi as u128) << 64) | (lo as u128)
 }
 
-fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
+pub(crate) fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
     match addr {
         ScAddress::Account(account_id) => {
             use stellar_xdr::curr::PublicKey;

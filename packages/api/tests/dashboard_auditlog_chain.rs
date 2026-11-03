@@ -1014,6 +1014,15 @@ fn deal_token_factory_events_render_on_both_arms() {
     assert_eq!(a, "Deal tokens registered");
     assert_eq!(d["cargo"], "0xC");
 
+    for params in [
+        json!({ "loan_id": "7", "debt": "CD", "cargo": null }),
+        json!({ "loan_id": "7", "debt": "CD" }),
+    ] {
+        let (a, d) = act("DealRegistered", params, ChainKind::Stellar);
+        assert_eq!(a, "Deal tokens registered");
+        assert_eq!(d, json!({ "debt": "CD", "cargo": null }));
+    }
+
     let evm = json!({ "loan_id": "7", "target": "9000000", "previous": "8000000", "minted": "1000000", "clawed": "0" });
     let (a, d) = act("DebtSynced", evm, ChainKind::Evm);
     assert_eq!(

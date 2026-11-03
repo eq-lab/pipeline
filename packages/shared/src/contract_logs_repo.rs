@@ -654,7 +654,7 @@ pub struct RecordedPaymentRow {
 pub struct DealRegistrationRow {
     pub loan_id: String,
     pub debt: String,
-    pub cargo: String,
+    pub cargo: Option<String>,
 }
 
 pub struct ContractLogsRepo {
@@ -1473,7 +1473,6 @@ impl ContractLogsRepo {
                AND event_name = 'DealRegistered'
                AND params->>'loan_id' IS NOT NULL
                AND params->>'debt' IS NOT NULL
-               AND params->>'cargo' IS NOT NULL
              ORDER BY block_number ASC, log_index ASC",
         )
         .bind(chain_id)

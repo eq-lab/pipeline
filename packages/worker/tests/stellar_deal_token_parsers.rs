@@ -2,11 +2,14 @@
 use pipeline_worker::indexer::stellar::deal_token_factory_parsers::{
     parse_cargo_synced, parse_deal_registered, parse_deal_token_movement, parse_debt_synced,
     route_deal_token_events, DealTokenKind, DealTokenRef, DealTokenSet,
+    DEAL_TOKEN_FACTORY_EVENT_TOPICS,
 };
 use pipeline_worker::indexer::stellar::parsers::dispatch_parser;
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use serde_json::json;
 use shared::contract_logs_repo::DealRegistrationRow;
+use std::io;
+use std::sync::{Arc, Mutex};
 use stellar_xdr::curr::{
     AccountId, ContractId, Hash, Int128Parts, Limits, PublicKey, ScAddress, ScMap, ScMapEntry,
     ScString, ScSymbol, ScVal, StringM, Uint256, VecM, WriteXdr,
@@ -112,6 +115,15 @@ fn deal_registered_event() -> RawEvent {
     )
 }
 
+fn deal_registered_head_event() -> RawEvent {
+    raw_from(
+        FACTORY,
+        "deal_registered",
+        vec![encode_u32(42)],
+        encode_map(vec![("debt", contract_val(DEBT))]),
+    )
+}
+
 fn debt_synced_event(minted: i128, clawed: i128) -> RawEvent {
     raw_from(
         FACTORY,
@@ -196,13 +208,40 @@ fn deal_registered_rejects_wrong_name_missing_topic_and_missing_key() {
     no_topic.topics_base64.truncate(1);
     assert!(parse_deal_registered(&no_topic).is_none());
 
-    let missing_key = raw_from(
+    let missing_debt = raw_from(
         FACTORY,
         "deal_registered",
         vec![encode_u32(42)],
-        encode_map(vec![("debt", contract_val(DEBT))]),
+        encode_map(vec![("cargo", contract_val(CARGO))]),
     );
-    assert!(parse_deal_registered(&missing_key).is_none());
+    assert!(parse_deal_registered(&missing_debt).is_none());
+
+    let bad_cargo = raw_from(
+        FACTORY,
+        "deal_registered",
+        vec![encode_u32(42)],
+        encode_map(vec![("cargo", ScVal::U32(1)), ("debt", contract_val(DEBT))]),
+    );
+    assert!(parse_deal_registered(&bad_cargo).is_none());
+
+    let bad_debt = raw_from(
+        FACTORY,
+        "deal_registered",
+        vec![encode_u32(42)],
+        encode_map(vec![("debt", ScVal::U32(1))]),
+    );
+    assert!(parse_deal_registered(&bad_debt).is_none());
+}
+
+#[test]
+fn head_deal_registered_decodes_debt_and_null_cargo() {
+    let log = parse_deal_registered(&deal_registered_head_event()).unwrap();
+    assert_eq!(log.event_name, "DealRegistered");
+    assert_eq!(log.contract_address, FACTORY);
+    assert_eq!(
+        log.params,
+        json!({ "loan_id": "42", "debt": DEBT, "cargo": null })
+    );
 }
 
 #[test]
@@ -452,14 +491,132 @@ fn absorb_rejects_non_contract_token_addresses() {
     garbage.params["debt"] = json!("not-a-contract-id");
     assert!(!set.absorb_deal_registered(&garbage));
     assert!(set.is_empty());
+
+    let mut null_cargo = parse_deal_registered(&deal_registered_event()).unwrap();
+    null_cargo.params["cargo"] = json!(null);
+    assert!(set.absorb_deal_registered(&null_cargo));
+    assert_eq!(set.len(), 1);
+}
+
+#[test]
+fn absorb_accepts_absent_cargo_key_and_rejects_non_string_cargo() {
+    let mut set = DealTokenSet::default();
+    let mut absent = parse_deal_registered(&deal_registered_head_event()).unwrap();
+    absent.params.as_object_mut().unwrap().remove("cargo");
+    assert!(set.absorb_deal_registered(&absent));
+    assert_eq!(set.len(), 1);
+    assert_eq!(set.get(DEBT), Some(debt_ref()));
+
+    for bad in [json!(123), json!({"a": 1}), json!(true)] {
+        let mut set = DealTokenSet::default();
+        let mut log = parse_deal_registered(&deal_registered_head_event()).unwrap();
+        log.params["cargo"] = bad;
+        assert!(!set.absorb_deal_registered(&log));
+        assert!(set.is_empty());
+    }
+}
+
+#[test]
+fn absorb_head_log_tracks_debt_only() {
+    let log = parse_deal_registered(&deal_registered_head_event()).unwrap();
+    let mut set = DealTokenSet::default();
+    assert!(set.absorb_deal_registered(&log));
+    assert_eq!(set.len(), 1);
+    assert_eq!(set.get(DEBT), Some(debt_ref()));
+}
+
+#[test]
+fn absorb_rejects_null_cargo_with_non_contract_debt() {
+    let mut set = DealTokenSet::default();
+    let mut log = parse_deal_registered(&deal_registered_head_event()).unwrap();
+    log.params["debt"] = json!(HOLDER);
+    assert!(!set.absorb_deal_registered(&log));
+    assert!(set.is_empty());
+}
+
+#[test]
+fn legacy_and_head_deal_registered_from_the_same_factory_both_parse() {
+    let legacy = deal_registered_event();
+    let head = raw_from(
+        FACTORY,
+        "deal_registered",
+        vec![encode_u32(43)],
+        encode_map(vec![("debt", contract_val(DEBT_2))]),
+    );
+    for order in [[&legacy, &head], [&head, &legacy]] {
+        let mut set = DealTokenSet::default();
+        for raw in order {
+            assert_eq!(
+                dispatch(raw, Some(FACTORY)).as_deref(),
+                Some("DealRegistered")
+            );
+            let log = parse_deal_registered(raw).unwrap();
+            assert!(set.absorb_deal_registered(&log));
+        }
+        assert_eq!(set.len(), 3);
+        assert_eq!(set.get(DEBT), Some(debt_ref()));
+        assert_eq!(set.get(CARGO), Some(cargo_ref()));
+        assert_eq!(
+            set.get(DEBT_2),
+            Some(DealTokenRef {
+                loan_id: "43".to_owned(),
+                kind: DealTokenKind::Debt,
+            })
+        );
+        assert!(set.get(CARGO_2).is_none());
+    }
+}
+
+#[test]
+fn head_deal_debt_movements_become_deal_token_transfers() {
+    let mut set = DealTokenSet::default();
+    let log = parse_deal_registered(&deal_registered_head_event()).unwrap();
+    assert!(set.absorb_deal_registered(&log));
+    let raws = [
+        raw_from(
+            DEBT,
+            "mint",
+            vec![encode_address(HOLDER), asset_topic("DEBT0042")],
+            b64(&i128_val(5)),
+        ),
+        raw_from(
+            DEBT,
+            "clawback",
+            vec![encode_address(HOLDER), asset_topic("DEBT0042")],
+            b64(&i128_val(2)),
+        ),
+        raw_from(
+            DEBT,
+            "transfer",
+            vec![
+                encode_address(HOLDER),
+                encode_address(ADMIN),
+                asset_topic("DEBT0042"),
+            ],
+            b64(&i128_val(1)),
+        ),
+    ];
+    let logs = route_deal_token_events(&raws, &set);
+    assert_eq!(logs.len(), 3);
+    for l in &logs {
+        assert_eq!(l.event_name, "DealTokenTransfer");
+        assert_eq!(l.params["token_kind"], "debt");
+        assert_eq!(l.params["loan_id"], "42");
+    }
+    assert!(logs[0].params["from"].is_null());
+    assert_eq!(logs[0].params["to"], HOLDER);
+    assert_eq!(logs[1].params["from"], HOLDER);
+    assert!(logs[1].params["to"].is_null());
+    assert_eq!(logs[2].params["from"], HOLDER);
+    assert_eq!(logs[2].params["to"], ADMIN);
 }
 
 #[test]
 fn contract_ids_are_sorted_and_reinsert_is_idempotent() {
     let mut set = DealTokenSet::default();
-    assert_eq!(set.insert_deal("1", DEBT_2, CARGO_2), 2);
-    assert_eq!(set.insert_deal("2", DEBT, CARGO), 2);
-    assert_eq!(set.insert_deal("2", DEBT, CARGO), 0);
+    assert_eq!(set.insert_deal("1", DEBT_2, Some(CARGO_2)), 2);
+    assert_eq!(set.insert_deal("2", DEBT, Some(CARGO)), 2);
+    assert_eq!(set.insert_deal("2", DEBT, Some(CARGO)), 0);
     let ids = set.contract_ids();
     let mut sorted = ids.clone();
     sorted.sort();
@@ -469,22 +626,31 @@ fn contract_ids_are_sorted_and_reinsert_is_idempotent() {
 }
 
 #[test]
+fn debt_only_insert_adds_one_token_and_is_idempotent() {
+    let mut set = DealTokenSet::default();
+    assert_eq!(set.insert_deal("42", DEBT, None), 1);
+    assert_eq!(set.insert_deal("42", DEBT, None), 0);
+    assert_eq!(set.len(), 1);
+    assert_eq!(set.get(DEBT), Some(debt_ref()));
+}
+
+#[test]
 fn seed_loads_rows_from_any_factory_and_skips_non_stellar_addresses() {
     let rows = vec![
         DealRegistrationRow {
             loan_id: "1".into(),
             debt: DEBT_2.into(),
-            cargo: CARGO_2.into(),
+            cargo: Some(CARGO_2.into()),
         },
         DealRegistrationRow {
             loan_id: "2".into(),
             debt: DEBT.into(),
-            cargo: CARGO.into(),
+            cargo: Some(CARGO.into()),
         },
         DealRegistrationRow {
             loan_id: "3".into(),
             debt: "0x1111111111111111111111111111111111111111".into(),
-            cargo: "0x2222222222222222222222222222222222222222".into(),
+            cargo: Some("0x2222222222222222222222222222222222222222".into()),
         },
     ];
     let mut set = DealTokenSet::default();
@@ -494,12 +660,40 @@ fn seed_loads_rows_from_any_factory_and_skips_non_stellar_addresses() {
     assert_eq!(set.get(CARGO).unwrap().loan_id, "2");
 }
 
+#[test]
+fn seed_mixes_legacy_and_debt_only_rows() {
+    let rows = vec![
+        DealRegistrationRow {
+            loan_id: "1".into(),
+            debt: DEBT_2.into(),
+            cargo: Some(CARGO_2.into()),
+        },
+        DealRegistrationRow {
+            loan_id: "2".into(),
+            debt: DEBT.into(),
+            cargo: None,
+        },
+        DealRegistrationRow {
+            loan_id: "3".into(),
+            debt: UNKNOWN.into(),
+            cargo: Some("0x2222222222222222222222222222222222222222".into()),
+        },
+    ];
+    let mut set = DealTokenSet::default();
+    assert_eq!(set.seed(&rows), 3);
+    assert_eq!(set.len(), 3);
+    assert_eq!(set.get(DEBT_2).unwrap().kind, DealTokenKind::Debt);
+    assert_eq!(set.get(CARGO_2).unwrap().kind, DealTokenKind::Cargo);
+    assert_eq!(set.get(DEBT).unwrap().loan_id, "2");
+    assert!(set.get(UNKNOWN).is_none());
+}
+
 // ── Routing ──────────────────────────────────────────────────────────────────
 
 #[test]
 fn route_decodes_known_tokens_and_skips_unknown_and_non_movements() {
     let mut set = DealTokenSet::default();
-    set.insert_deal("42", DEBT, CARGO);
+    set.insert_deal("42", DEBT, Some(CARGO));
 
     let known = raw_from(
         DEBT,
@@ -554,10 +748,88 @@ fn dispatch_returns_none_for_undecodable_debt_synced() {
     assert!(dispatch(&raw, Some(FACTORY)).is_none());
 }
 
+fn admin_event(name: &str, key: &str) -> RawEvent {
+    raw_from(
+        FACTORY,
+        name,
+        vec![],
+        encode_map(vec![(key, contract_val(UNKNOWN))]),
+    )
+}
+
 #[test]
-fn dispatch_ignores_factory_admin_events() {
-    let raw = raw_from(FACTORY, "issuers_set", vec![], b64(&ScVal::Void));
-    assert!(dispatch(&raw, Some(FACTORY)).is_none());
+fn dispatch_ignores_head_and_legacy_factory_admin_events() {
+    for (name, key) in [
+        ("loan_registry_set", "loan_registry"),
+        ("debt_issuer_set", "debt_issuer"),
+        ("registries_set", "loan_registry"),
+        ("issuers_set", "debt_issuer"),
+    ] {
+        assert!(dispatch(&admin_event(name, key), Some(FACTORY)).is_none());
+        assert!(!DEAL_TOKEN_FACTORY_EVENT_TOPICS.contains(&name));
+    }
+}
+
+#[derive(Clone, Default)]
+struct Capture(Arc<Mutex<Vec<u8>>>);
+
+impl io::Write for Capture {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
+    type Writer = Capture;
+    fn make_writer(&'a self) -> Capture {
+        self.clone()
+    }
+}
+
+fn with_capture<F: FnOnce(&dyn Fn() -> String)>(f: F) {
+    let cap = Capture::default();
+    let sub = tracing_subscriber::fmt()
+        .with_writer(cap.clone())
+        .with_ansi(false)
+        .finish();
+    let snapshot = || String::from_utf8(cap.0.lock().unwrap().clone()).unwrap();
+    tracing::subscriber::with_default(sub, || f(&snapshot));
+}
+
+#[test]
+fn head_deal_registered_and_admin_events_log_no_warning() {
+    with_capture(|out| {
+        let head = deal_registered_head_event();
+        assert!(dispatch(&head, Some(FACTORY)).is_some());
+        let mut set = DealTokenSet::default();
+        assert!(set.absorb_deal_registered(&parse_deal_registered(&head).unwrap()));
+        assert!(dispatch(
+            &admin_event("loan_registry_set", "loan_registry"),
+            Some(FACTORY)
+        )
+        .is_none());
+        assert!(dispatch(
+            &admin_event("debt_issuer_set", "debt_issuer"),
+            Some(FACTORY)
+        )
+        .is_none());
+        let quiet = out();
+        assert!(!quiet.contains("WARN"), "unexpected warning: {quiet}");
+
+        let bad = raw_from(
+            FACTORY,
+            "deal_registered",
+            vec![encode_u32(42)],
+            encode_map(vec![("debt", ScVal::U32(1))]),
+        );
+        assert!(dispatch(&bad, Some(FACTORY)).is_none());
+        let added = out()[quiet.len()..].to_owned();
+        assert!(added.contains("not decodable"), "capture broken: {added}");
+    });
 }
 
 #[test]
