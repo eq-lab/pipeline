@@ -46,8 +46,9 @@ button, see below; rows stacked `gap-3`, panel sections `gap-5`) → a note row 
 from the same day up to 5 business days`, ink-muted **caption 12/16 so it fits one line** — live
 review 2026-11-03, to keep the panel inside `min(80vh, 90dvh)` without a vertical scrollbar — with
 a trailing info glyph that is an `InfoTooltip`, see below) → a centred
-caption footer, `Need help? Contact Support`, the latter a real `<button>` calling
-`onContactSupport`. There is **no** copy-all button (removed in the 2026-11-03 live review).
+caption footer, `Need help? Contact Support`, the latter an `<a href="mailto:support@pipeline.one">`
+(`SUPPORT_EMAIL`, exported from the modal; closes TD-89 — decision 2026-11-03: the link opens the
+LP's mail client). There is **no** copy-all button (removed in the 2026-11-03 live review).
 
 **Glyphs (`components/FundingDetailsGlyphs.tsx`, live review 2026-11-03).** `InfoGlyph` is an
 inline SVG traced from the frame `6701-97134` export (the 20×20 info circle at `#383538` 30 %).
@@ -122,7 +123,6 @@ export interface FundingDetailsModalProps {
   onDismiss: () => void;
   view?: FundingDetailsView;                   // omitted → { status: "loading" }, every value "—"
   onOpenAccount?: () => void;                  // "Go to Account" on the not-linked notice
-  onContactSupport?: () => void;               // no-op default
 }
 ```
 
@@ -364,7 +364,6 @@ class of staleness `account-page.md` documents for its own frame.
 | --- | --- | --- |
 | `FundingDetailsModal.view` | `{ status: "loading" }`, every value `—` | wired by #1817 on `/` from `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824); one call per modal open, see [FundingDetailsModal](#fundingdetailsmodal) |
 | `FundingDetailsModal.onOpenAccount` | no-op | #1817 (`/` closes the modal and navigates to `/account`) |
-| `FundingDetailsModal.onContactSupport` | no-op | unassigned — no destination exists in the design (tech debt) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
 | `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal`, #1817) |

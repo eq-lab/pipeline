@@ -19,8 +19,9 @@ export interface FundingDetailsModalProps {
   onDismiss: () => void;
   view?: FundingDetailsView;
   onOpenAccount?: () => void;
-  onContactSupport?: () => void;
 }
+
+export const SUPPORT_EMAIL = "support@pipeline.one";
 
 const NOTE_TEXT = "Transfers may take from the same day up to 5 business days";
 const INSTRUCTION_TEXT =
@@ -153,7 +154,6 @@ export function FundingDetailsModal({
   onDismiss,
   view = LOADING_VIEW,
   onOpenAccount,
-  onContactSupport,
 }: FundingDetailsModalProps) {
   const headingId = React.useId();
   const ready = view.status === "ready";
@@ -361,9 +361,9 @@ export function FundingDetailsModal({
           ].join(" ")}
         >
           Need help?{" "}
-          <button
-            type="button"
-            onClick={onContactSupport}
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            data-testid="funding-details-contact-support"
             className={[
               "text-[color:var(--color-pipeline-ink)]",
               "underline underline-offset-2",
@@ -371,7 +371,7 @@ export function FundingDetailsModal({
             ].join(" ")}
           >
             Contact Support
-          </button>
+          </a>
         </p>
       </div>
     </div>

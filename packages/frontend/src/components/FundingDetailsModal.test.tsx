@@ -22,7 +22,6 @@ function renderModal(
     onDismiss: () => void;
     view: FundingDetailsView;
     onOpenAccount: () => void;
-    onContactSupport: () => void;
   }> = {},
 ) {
   const onDismiss = overrides.onDismiss ?? vi.fn();
@@ -35,7 +34,6 @@ function renderModal(
         onDismiss={onDismiss}
         view={overrides.view}
         onOpenAccount={overrides.onOpenAccount}
-        onContactSupport={overrides.onContactSupport}
       />
     </ToastProvider>,
   );
@@ -318,21 +316,13 @@ describe("FundingDetailsModal — dismiss paths", () => {
   });
 });
 
-describe("FundingDetailsModal — Contact Support inert seam", () => {
-  it("clicking Contact Support with no handler wired does not throw", async () => {
-    const user = userEvent.setup();
-    renderModal();
-    await expect(
-      user.click(screen.getByRole("button", { name: "Contact Support" })),
-    ).resolves.not.toThrow();
-  });
+describe("FundingDetailsModal — Contact Support inert seam", () => {});
 
-  it("clicking Contact Support calls the supplied handler", async () => {
-    const onContactSupport = vi.fn();
-    const user = userEvent.setup();
-    renderModal({ onContactSupport });
-    await user.click(screen.getByRole("button", { name: "Contact Support" }));
-    expect(onContactSupport).toHaveBeenCalledTimes(1);
+describe("FundingDetailsModal — Contact Support", () => {
+  it("is a mail link to support@pipeline.one", () => {
+    renderModal();
+    const link = screen.getByRole("link", { name: "Contact Support" });
+    expect(link).toHaveAttribute("href", "mailto:support@pipeline.one");
   });
 });
 
