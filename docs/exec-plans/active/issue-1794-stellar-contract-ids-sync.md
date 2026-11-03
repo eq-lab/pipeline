@@ -86,9 +86,10 @@ The docs record this rule in that form.
    - **Stale notes:** fix the verifier pubkey note (192) and the relayer role note (173).
    - **Provenance:** record the contracts commit and the deployment numbers.
    - **Mainnet:** add a commented mainnet (99000002) id block.
-   - **Keys that no code reads yet:** add the pocket (#1789), security-registry (#1779), API
-     minter (#1790) and API withdrawal-queue (#1791) keys, each in a clearly labelled "not read
-     by this build" group with its issue number.
+   - **Keys that no code reads yet:** add the indexer and API pocket (#1789), security-registry
+     (#1779), API minter and capital-allocation switch (#1790) keys, each in a clearly labelled
+     "not read by this build" group with its issue number. #1791 adds no key (it reuses
+     `…_API_STELLAR_WQ_CONTRACT_ID`).
 2. **`docs/references/backend.md`:**
    - **New section:** "Stellar contract ids and signer roles". It holds the sync checklist, the
      key map, the trap, the cursor rule, the redeploy plan and the signer-role table.
@@ -141,7 +142,7 @@ like this:
 
 ### Keys that no code reads yet
 
-`rg -n 'POCKET_ADDRESS|SECURITY_REGISTRY_ADDRESS|STELLAR_API_MINTER_ADDRESS|STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS' packages/api/src packages/worker/src packages/shared/src`
+`rg -n 'POCKET_ADDRESS|SECURITY_REGISTRY_ADDRESS|STELLAR_API_MINTER_ADDRESS|STELLAR_API_POCKET_ADDRESS|CAPITAL_ALLOCATION_FROM_MINTER' packages/api/src packages/worker/src packages/shared/src`
 returns nothing at `a54ad106`.
 
 - `shared::chains::validate_chain_kind_keys` (`chains.rs:49-73`) rejects only keys of the
@@ -150,11 +151,14 @@ returns nothing at `a54ad106`.
 - The docs must say exactly that: "not read by this build; lands with #N".
 - The coder re-runs the `rg` at implementation time. If a sibling has merged its reader by then,
   that key moves to the live block with its real comment, and the "not read" label is dropped.
-- The key names are taken from the issue bodies:
+- The key names are taken from the issue bodies and the sibling plans (amended 2026-11-03):
   - `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` (#1789);
+  - `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS` (#1789);
   - `CHAIN_<id>_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (#1779, epic #1775);
   - `CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` (#1790);
-  - `CHAIN_<id>_STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS` (#1791).
+  - `CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` (#1790; a boolean switch, not an id).
+  - No `…_STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS`: #1791 scopes the recovery rate to the existing
+    `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID`.
 
   If a sibling's plan renames one, that sibling's PR updates the line. Each sibling issue
   already lists `.env.example` / `backend.md` in its own docs scope.
@@ -203,6 +207,16 @@ returns nothing at `a54ad106`.
 
 _None_
 
+### Amendment (human decisions on sibling plans, 2026-11-03)
+
+- #1791 adds no API key: it reuses `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID`. The commented
+  `…_STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS` line is dropped everywhere in this plan.
+- #1789 adds `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS` next to the indexer pocket key.
+- #1790 adds `CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` (boolean switch) next to
+  `…_STELLAR_API_MINTER_ADDRESS`.
+- Contracts HEAD is now `d0d5757` (#40, security-registry only; `deployments/` unchanged): record
+  it as the provenance commit, noting the ids match deployments #36 / #37.
+
 ## Implementation Steps
 
 All paths are relative to the worktree
@@ -215,7 +229,7 @@ All paths are relative to the worktree
    git -C $C log --format='%h %s' -3 -- deployments/networks/testnet/addresses.json deployments/networks/mainnet/addresses.json
    jq . $C/deployments/networks/{testnet,mainnet}/addresses.json
    jq '{usdc, dm_verifier: .deposit_manager.verifier, wq_verifier: .withdrawal_queue.verifier, wq_custodian: .withdrawal_queue.custodian, whitelist_admin: .access.whitelist_admin}' $C/deployments/networks/{testnet,mainnet}/config.json
-   rg -n 'POCKET_ADDRESS|SECURITY_REGISTRY_ADDRESS|STELLAR_API_MINTER_ADDRESS|STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS' packages/api/src packages/worker/src packages/shared/src
+   rg -n 'POCKET_ADDRESS|SECURITY_REGISTRY_ADDRESS|STELLAR_API_MINTER_ADDRESS|STELLAR_API_POCKET_ADDRESS|CAPITAL_ALLOCATION_FROM_MINTER' packages/api/src packages/worker/src packages/shared/src
    ```
    If the contracts HEAD moved and `addresses.json` changed (a #38 / #39 deploy), stop and report
    to the manager. The ids and the trap wording below assume #36 / #37.
@@ -272,7 +286,8 @@ All paths are relative to the worktree
      #
      # Not read by this build — each lands with the issue named; setting one today does nothing:
      # CHAIN_99000001_STELLAR_API_MINTER_ADDRESS=<testnet minter id>                 # #1790 — optional; cash-book scope
-     # CHAIN_99000001_STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS=<testnet WQ id>           # #1791 — optional; recovery-rate scope
+     # CHAIN_99000001_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=false               # #1790 — optional; switch only after the folds match on-chain
+     # CHAIN_99000001_STELLAR_API_POCKET_ADDRESS=<testnet pocket id>                 # #1789 — optional; pocket / recoveries scope
      ```
 
 5. **`.env.example`: new mainnet block**, inserted after the API LoanBook block (after the new
@@ -326,18 +341,20 @@ All paths are relative to the worktree
       - `deposit_manager`: indexer `…_DEPOSIT_MANAGER_ADDRESS` (required); API
         `CHAIN_<id>_API_STELLAR_DM_CONTRACT_ID` (vouchers).
       - `withdrawal_queue`: indexer `…_WITHDRAWAL_QUEUE_ADDRESS` (required); API
-        `…_API_STELLAR_WQ_CONTRACT_ID`; API `…_STELLAR_API_WITHDRAWAL_QUEUE_ADDRESS` (#1791, not
-        read yet).
+        `…_API_STELLAR_WQ_CONTRACT_ID` (vouchers; also scopes the recovery rate and totals from
+        #1791).
       - `staked_pl_usd`: indexer `…_STAKED_PLUSD_ADDRESS` (required); price poller
         `…_STELLAR_PRICE_POLLER_STAKED_PLUSD_ADDRESS` (required when the poller runs).
       - `loan_registry`: indexer `…_LOAN_REGISTRY_ADDRESS` (optional); API
         `…_STELLAR_API_LOAN_REGISTRY_ADDRESS` (required, must equal the indexer key).
       - `minter`: indexer `…_MINTER_ADDRESS` (optional; also gates relayer Phase 5); API
-        `…_STELLAR_API_MINTER_ADDRESS` (#1790, not read yet).
+        `…_STELLAR_API_MINTER_ADDRESS` (#1790, not read yet; `…_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER`
+        is its boolean switch).
       - `collateral_registry`: see the trap. Legacy → indexer `…_COLLATERAL_REGISTRY_ADDRESS`;
         SecurityRegistry → `…_SECURITY_REGISTRY_ADDRESS` (#1779, not read yet).
       - `deal_token_factory`: indexer `…_DEAL_TOKEN_FACTORY_ADDRESS` (optional).
-      - `pocket`: indexer `…_POCKET_ADDRESS` (#1789, not read yet).
+      - `pocket`: indexer `…_POCKET_ADDRESS` and API `…_STELLAR_API_POCKET_ADDRESS` (#1789, not
+        read yet).
       - `access_manager`: relayer `…_RELAYER_STELLAR_ACCESS_MANAGER_ID` (required for the
         relayer).
       - `plusd`: relayer `…_RELAYER_STELLAR_PLUSD_SAC_ID` (required for the relayer).
