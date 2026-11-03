@@ -2760,7 +2760,9 @@ describe("Home page — Funding details wiring (#1817)", () => {
     renderHome();
     await clickAddFunds();
     expect(await screen.findByText("PL-0000-0000-0000")).toBeInTheDocument();
-    expect(screen.getByText(readyDetails.receiver_address)).toBeInTheDocument();
+    expect(
+      screen.getByTitle(readyDetails.receiver_address),
+    ).toBeInTheDocument();
   });
 
   it("a 409 renders the not-linked notice and Go to Account navigates to /account", async () => {

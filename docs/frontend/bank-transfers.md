@@ -42,19 +42,31 @@ a full-viewport two-pane frame with no scrim: `createPortal` into `document.body
 
 Anatomy: `Funding details` heading (`<h2>`, Besley 28/36, `aria-labelledby` via `React.useId()`) →
 six label/value rows (label ink-muted, value ink, body 16/22) → a note row (`Transfers may take
-from the same day up to 5 business days`, ink-muted, with a trailing 20×20 hint-circle icon,
-`packages/frontend/src/assets/hint.svg`, exported from the frame — **not** a reuse of any existing
-component, since no such icon exists anywhere else in the repo; the plan's original claim that
-`EarnedCard` already renders a hint glyph is a documentation error, corrected here) → a full-width
-`Button variant="primary-dark"` labelled `Copy`/`Copied` with a leading copy glyph (masked from
-`packages/frontend/src/assets/copy.svg`, its first consumer) → a centred caption footer,
-`Need help? Contact Support`, the latter a real `<button>` calling `onContactSupport`.
+from the same day up to 5 business days`, ink-muted, with a trailing 20×20 info glyph that is an
+`InfoTooltip`, see below) → a full-width `Button variant="primary-dark"` labelled `Copy`/`Copied`
+with a leading 24×24 copy glyph → a centred caption footer, `Need help? Contact Support`, the
+latter a real `<button>` calling `onContactSupport`.
+
+**Glyphs (`components/FundingDetailsGlyphs.tsx`, live review 2026-11-03).** `CopyGlyph` and
+`InfoGlyph` are inline SVGs traced from the frame `6701-97134` exports (the filled two-sheet copy
+glyph, 24×24 in the `Copy` button and 20×20 in the row buttons, painting `currentColor`; the
+20×20 info circle at `#383538` 30 %). The earlier `copy.svg` CSS mask rendered as a solid square
+in the browser and the stroked outline did not match the frame, so both `assets/copy.svg` and
+`assets/hint.svg` were deleted. `InfoTooltip` (`components/InfoTooltip.tsx`) is a 32×32 button
+(`aria-label`, `aria-describedby`) around `InfoGlyph` with a `role="tooltip"` bubble above it
+(ink background, on-dark caption text, `whitespace-pre-line`, `max-w-[280px]`, anchored `left-0`
+for `align="start"` or `right-0` for `align="end"`) shown on hover and focus-within.
 
 **Layout since #1817 (no Figma; built from the row pattern and the LP theme), top to bottom:** heading
 → unavailable notice (only when unavailable) → six bank rows → `Payment reference` row (value plus
 a 32×32 copy icon button, `aria-label="Copy payment reference"`, `Copied` caption for 1500 ms) →
-instruction caption → 1px `--color-pipeline-line` divider → `Network` row and `Receiving wallet`
-row (`break-all`) → destination caption → note row → `Copy` → `Need help? Contact Support`.
+instruction caption → 1px `--color-pipeline-line` divider → `Network` row → `Receiving wallet` row
+(label followed by an `InfoTooltip align="start"` whose text is the destination sentence; value is
+the served address through `truncateAddress`, `GCGQVO…GQ5C`, with the full address as `title`; a
+32×32 copy button `aria-label="Copy receiving wallet address"` copies the **full** address and
+shows `Copied` for 1500 ms) → note row with its `InfoTooltip align="end"` (text: `Domestic
+transfers: Same day or within 1 business day` / `International transfers: 1–5 business days`, two
+lines) → `Copy` → `Need help? Contact Support`.
 
 - **Chain.** `onAddFunds` captures `useActiveChain()` (`{ kind, chainId }`) with an incrementing
   `openId`; the modal never re-fetches if the wallet view changes while open and has no chain
@@ -274,7 +286,9 @@ Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `
 
 Added by #1817: `Payment reference` · `Add this reference to your transfer’s reference or remittance
 field. Without it we can’t match your transfer to your account.` · `Network` · `Receiving wallet` ·
-`Your transfer is credited to this wallet as sPLUSD.` · `Bank details need a {chainName} wallet
+`Your transfer is credited to this wallet as sPLUSD.` (tooltip) · `Domestic transfers: Same day or
+within 1 business day` / `International transfers: 1–5 business days` (tooltip) · `Copy receiving
+wallet address` / `About the receiving wallet` / `Transfer timing` (aria-labels) · `Bank details need a {chainName} wallet
 linked to your account. Link it on your Account page, or switch to a wallet you have already
 linked.` · `Go to Account` · `Bank details are unavailable right now. Close this window and try
 again, or contact support.`
@@ -318,7 +332,7 @@ class of staleness `account-page.md` documents for its own frame.
 | `Button variant="primary-dark"` | **Reused verbatim** for the modal's `Copy` action and the `Section` shape's rectangular action, with `size="m"` for the latter. |
 | `packages/frontend/src/assets/copy.svg` | **First consumer** — the modal's Copy button glyph, painted via CSS mask like `ActivityEmptyIllustration`/`HeroIcon`. |
 | `useErrorDetailsDialog.ts`'s Escape pattern | **Pattern reused**, not imported — `stopImmediatePropagation` on a capture-phase listener, since this modal may one day open over a page hosting another dialog. |
-| A shared hint-icon component | **Does not exist.** The plan's claim that `EarnedCard` already renders one was incorrect; `hint.svg` is a new, dedicated asset exported from the frame. |
+| A shared hint-icon component | **Does not exist** outside this modal; `InfoGlyph` + `InfoTooltip` (`components/`) are the modal's own, traced from the frame. `IconButton`'s tooltip is top-bar specific (below the button, nowrap). |
 
 ## Seams and who wires them
 

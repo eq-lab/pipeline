@@ -1,6 +1,6 @@
 // spec: docs/frontend/bank-transfers.md#fundingdetailsmodal
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FundingDetailsModal } from "./FundingDetailsModal";
 import type { FundingDetailsView } from "./fundingDetails";
@@ -73,10 +73,11 @@ describe("FundingDetailsModal — open, default (loading)", () => {
     expect(screen.getAllByText("—")).toHaveLength(9);
   });
 
-  it("disables both copy buttons and shows no notice while loading", () => {
+  it("disables all three copy buttons and shows no notice while loading", () => {
     renderModal();
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
     expect(screen.getByTestId("funding-details-copy-reference")).toBeDisabled();
+    expect(screen.getByTestId("funding-details-copy-wallet")).toBeDisabled();
     expect(screen.queryByTestId("funding-details-notice")).toBeNull();
   });
 });
@@ -96,12 +97,25 @@ describe("FundingDetailsModal — ready", () => {
     expect(screen.getByTestId("funding-details-row-network")).toHaveTextContent(
       "Stellar",
     );
-    expect(
-      screen.getByTestId("funding-details-row-receiving-wallet"),
-    ).toHaveTextContent(READY.receiverAddress);
-    expect(
-      screen.getByText("Your transfer is credited to this wallet as sPLUSD."),
-    ).toBeInTheDocument();
+    const wallet = screen.getByTestId("funding-details-row-receiving-wallet");
+    expect(wallet).toHaveTextContent(
+      `${READY.receiverAddress.slice(0, 6)}…${READY.receiverAddress.slice(-4)}`,
+    );
+    expect(wallet).not.toHaveTextContent(READY.receiverAddress);
+    expect(screen.getByTitle(READY.receiverAddress)).toBeInTheDocument();
+  });
+
+  it("the wallet and note info glyphs carry their tooltips", () => {
+    renderModal({ view: READY });
+    const walletInfo = screen.getByTestId("funding-details-wallet-info");
+    expect(walletInfo).toHaveAccessibleDescription(
+      "Your transfer is credited to this wallet as sPLUSD.",
+    );
+    const noteInfo = screen.getByTestId("funding-details-note-info");
+    expect(noteInfo).toHaveAccessibleDescription(
+      "Domestic transfers: Same day or within 1 business day\nInternational transfers: 1–5 business days",
+    );
+    expect(screen.getAllByRole("tooltip")).toHaveLength(2);
   });
 });
 
@@ -169,6 +183,19 @@ describe("FundingDetailsModal — Copy", () => {
     renderModal({ view: READY });
     await user.click(screen.getByTestId("funding-details-copy-reference"));
     expect(mockWriteText).toHaveBeenCalledWith("PL-0000-0000-0000");
+  });
+
+  it("the wallet button copies the full receiving address", async () => {
+    const user = userEvent.setup();
+    installClipboardMock();
+    renderModal({ view: READY });
+    await user.click(screen.getByTestId("funding-details-copy-wallet"));
+    expect(mockWriteText).toHaveBeenCalledWith(READY.receiverAddress);
+    expect(
+      await within(
+        screen.getByTestId("funding-details-row-receiving-wallet"),
+      ).findByText("Copied"),
+    ).toBeInTheDocument();
   });
 
   it("a rejected clipboard promise does not throw and leaves the label at Copy", async () => {

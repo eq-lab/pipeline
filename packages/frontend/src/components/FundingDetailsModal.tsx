@@ -2,9 +2,10 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@pipeline/ui";
-import copyUrl from "../assets/copy.svg?url";
-import hintUrl from "../assets/hint.svg?url";
 import { useCopyToClipboard } from "@pipeline/ui";
+import { truncateAddress } from "@/utils/truncateAddress";
+import { CopyGlyph } from "./FundingDetailsGlyphs";
+import { InfoTooltip } from "./InfoTooltip";
 import {
   FUNDING_DETAIL_LABELS,
   PAYMENT_REFERENCE_LABEL,
@@ -24,12 +25,14 @@ const NOTE_TEXT = "Transfers may take from the same day up to 5 business days";
 const INSTRUCTION_TEXT =
   "Add this reference to your transfer’s reference or remittance field. Without it we can’t match your transfer to your account.";
 const DESTINATION_TEXT = "Your transfer is credited to this wallet as sPLUSD.";
+const NOTE_TOOLTIP_TEXT =
+  "Domestic transfers: Same day or within 1 business day\nInternational transfers: 1–5 business days";
 const ERROR_NOTICE =
   "Bank details are unavailable right now. Close this window and try again, or contact support.";
 
 const LOADING_VIEW: FundingDetailsView = { status: "loading" };
 const LABEL_CLASS = [
-  "flex-1",
+  "flex flex-1 items-center gap-1",
   "font-[family-name:var(--font-body)]",
   "text-[length:var(--text-pipeline-body)]",
   "leading-[var(--text-pipeline-body--line-height)]",
@@ -57,30 +60,26 @@ function slug(label: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function copyIconStyle(size: number): React.CSSProperties {
-  return {
-    display: "inline-block",
-    width: size,
-    height: size,
-    backgroundColor: "currentColor",
-    WebkitMaskImage: `url(${copyUrl})`,
-    maskImage: `url(${copyUrl})`,
-    WebkitMaskRepeat: "no-repeat",
-    maskRepeat: "no-repeat",
-    WebkitMaskPosition: "center",
-    maskPosition: "center",
-    WebkitMaskSize: "contain",
-    maskSize: "contain",
-  };
-}
+const COPY_BUTTON_CLASS = [
+  "flex h-8 w-8 shrink-0 items-center justify-center",
+  "rounded-[var(--radius-pipeline-card)]",
+  "text-[color:var(--color-pipeline-ink)]",
+  "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
+  "disabled:cursor-not-allowed disabled:opacity-50",
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
+].join(" ");
 
 function DetailRow({
   label,
+  labelAdornment,
   value,
+  valueTitle,
   children,
 }: {
   label: string;
+  labelAdornment?: React.ReactNode;
   value: string;
+  valueTitle?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -88,10 +87,40 @@ function DetailRow({
       className="flex w-full items-center gap-3"
       data-testid={`funding-details-row-${slug(label)}`}
     >
-      <span className={LABEL_CLASS}>{label}</span>
-      <span className={VALUE_CLASS}>{value}</span>
+      <span className={LABEL_CLASS}>
+        {label}
+        {labelAdornment}
+      </span>
+      <span className={VALUE_CLASS} title={valueTitle}>
+        {value}
+      </span>
       {children}
     </div>
+  );
+}
+
+function CopyIconButton({
+  label,
+  testId,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  testId: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      data-testid={testId}
+      disabled={disabled}
+      onClick={onClick}
+      className={COPY_BUTTON_CLASS}
+    >
+      <CopyGlyph size={20} />
+    </button>
   );
 }
 
@@ -119,6 +148,8 @@ export function FundingDetailsModal({
     onDismiss,
   });
   const { copied: referenceCopied, copy: copyReference } = useCopyToClipboard();
+  const { copied: walletCopied, copy: copyWallet } = useCopyToClipboard();
+  const receiverAddress = ready ? view.receiverAddress : "";
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -226,23 +257,12 @@ export function FundingDetailsModal({
             <DetailRow key={row.label} label={row.label} value={row.value} />
           ))}
           <DetailRow label={PAYMENT_REFERENCE_LABEL} value={referenceValue}>
-            <button
-              type="button"
-              aria-label="Copy payment reference"
-              data-testid="funding-details-copy-reference"
+            <CopyIconButton
+              label="Copy payment reference"
+              testId="funding-details-copy-reference"
               disabled={!ready}
               onClick={() => void copyReference(referenceValue)}
-              className={[
-                "flex h-8 w-8 shrink-0 items-center justify-center",
-                "rounded-[var(--radius-pipeline-card)]",
-                "text-[color:var(--color-pipeline-ink)]",
-                "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
-              ].join(" ")}
-            >
-              <span aria-hidden="true" style={copyIconStyle(20)} />
-            </button>
+            />
             {referenceCopied && ready && (
               <span className={CAPTION_CLASS}>Copied</span>
             )}
@@ -255,9 +275,27 @@ export function FundingDetailsModal({
           <DetailRow label="Network" value={ready ? view.network : "—"} />
           <DetailRow
             label="Receiving wallet"
-            value={ready ? view.receiverAddress : "—"}
-          />
-          <p className={CAPTION_CLASS}>{DESTINATION_TEXT}</p>
+            labelAdornment={
+              <InfoTooltip
+                label="About the receiving wallet"
+                text={DESTINATION_TEXT}
+                align="start"
+                data-testid="funding-details-wallet-info"
+              />
+            }
+            value={ready ? truncateAddress(receiverAddress) : "—"}
+            valueTitle={ready ? receiverAddress : undefined}
+          >
+            <CopyIconButton
+              label="Copy receiving wallet address"
+              testId="funding-details-copy-wallet"
+              disabled={!ready}
+              onClick={() => void copyWallet(receiverAddress)}
+            />
+            {walletCopied && ready && (
+              <span className={CAPTION_CLASS}>Copied</span>
+            )}
+          </DetailRow>
         </div>
 
         <div className="flex w-full items-center gap-2">
@@ -272,9 +310,12 @@ export function FundingDetailsModal({
           >
             {NOTE_TEXT}
           </p>
-          <span className="flex shrink-0 items-center p-2" aria-hidden="true">
-            <img src={hintUrl} alt="" width={20} height={20} />
-          </span>
+          <InfoTooltip
+            label="Transfer timing"
+            text={NOTE_TOOLTIP_TEXT}
+            align="end"
+            data-testid="funding-details-note-info"
+          />
         </div>
 
         <Button
@@ -283,7 +324,7 @@ export function FundingDetailsModal({
           disabled={!ready}
           className="flex w-full items-center justify-center gap-2"
         >
-          <span aria-hidden="true" style={copyIconStyle(20)} />
+          <CopyGlyph size={24} />
           {copied ? "Copied" : "Copy"}
         </Button>
 

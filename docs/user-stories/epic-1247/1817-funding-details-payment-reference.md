@@ -27,8 +27,12 @@ chain whose address is linked.
 - A dialog headed `Funding details` opens; the six bank rows and a `Payment reference` row
   (`PL-XXXX-XXXX-XXXX`) show the served values verbatim; an empty served field shows `—`.
 - An instruction line says to add the reference to the transfer's reference or remittance field.
-- `Network` shows the served chain's name and `Receiving wallet` the served address; a caption says
-  the transfer is credited to that wallet as sPLUSD.
+- `Network` shows the served chain's name. `Receiving wallet` shows the served address truncated
+  (`GCGQVO…GQ5C`, full address on hover via `title`), a copy icon beside it, and an info icon next
+  to the label whose tooltip reads "Your transfer is credited to this wallet as sPLUSD."
+- The note "Transfers may take from the same day up to 5 business days" ends with an info icon
+  whose tooltip reads "Domestic transfers: Same day or within 1 business day" / "International
+  transfers: 1–5 business days".
 
 ---
 
@@ -58,6 +62,17 @@ chain whose address is linked.
   `Receiving wallet` are not included. The button reads `Copied` for about 1.5 seconds.
 
 ---
+
+## Story 3b: The receiving wallet has its own copy button
+
+**Persona:** Story 1's LP.
+
+**Steps:**
+1. Click the copy icon beside the truncated `Receiving wallet` value.
+
+**Expected:**
+- The clipboard holds the **full** served address, not the truncated text; `Copied` appears beside
+  the row for about 1.5 seconds.
 
 ## Story 4: The reference has its own copy button
 
@@ -112,4 +127,4 @@ chain whose address is linked.
 
 **Expected outcomes:**
 
-- All values are `—` and `Copy` and the reference copy button are disabled.
+- All values are `—` and `Copy`, the reference copy button and the wallet copy button are disabled.
