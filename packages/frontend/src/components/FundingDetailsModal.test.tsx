@@ -316,8 +316,6 @@ describe("FundingDetailsModal — dismiss paths", () => {
   });
 });
 
-describe("FundingDetailsModal — Contact Support inert seam", () => {});
-
 describe("FundingDetailsModal — Contact Support", () => {
   it("is a mail link to support@pipeline.one", () => {
     renderModal();
