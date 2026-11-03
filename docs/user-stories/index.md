@@ -182,6 +182,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Amended by #1359 |
 | [#1281 KYB: create-account validation-error state](https://github.com/eq-lab/pipeline/issues/1281) | [1281-create-account-error.md](./epic-1247/1281-create-account-error.md) | Initial |
 | [#1284 LP: Account page — wallet, corporate email, KYB documents hub](https://github.com/eq-lab/pipeline/issues/1284) | [1284-lp-account-page.md](./epic-1247/1284-lp-account-page.md) | Initial |
+| [#1817 LP: Funding details modal — bank details and a fresh payment reference](https://github.com/eq-lab/pipeline/issues/1817) | [1817-funding-details-payment-reference.md](./epic-1247/1817-funding-details-payment-reference.md) | Amends #1283 |
 | [#1283 LP: Add Funds wire-transfer modal + bank-transfer home states](https://github.com/eq-lab/pipeline/issues/1283) | [1283-lp-add-funds.md](./epic-1247/1283-lp-add-funds.md) | Initial |
 | [#1278 KYB: Company Docs step V1.0 redesign](https://github.com/eq-lab/pipeline/issues/1278) | [1278-kyb-company-docs-v1.md](./epic-1247/1278-kyb-company-docs-v1.md) | Initial |
 | [#1362 LP: header Sign in / Sign up entry + signed-in state](https://github.com/eq-lab/pipeline/issues/1362) | [1362-header-auth-entry.md](./epic-1247/1362-header-auth-entry.md) | Initial |

@@ -178,7 +178,22 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
+const { mockUsePaymentDetails, MockApiError } = vi.hoisted(() => ({
+  mockUsePaymentDetails: vi.fn(),
+  MockApiError: class MockApiError extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+      super(message);
+      this.status = status;
+    }
+  },
+}));
+
 vi.mock("@/api", () => ({
+  ApiError: MockApiError,
+  usePaymentDetails: (request: unknown) => mockUsePaymentDetails(request),
+  chainDisplayName: (kind: string, chainId: number) =>
+    kind === "stellar" ? "Stellar" : `chain ${chainId}`,
   useChainServed: () => mockChainServed(),
   getMyLp: mockGetMyLp,
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
@@ -245,6 +260,7 @@ beforeEach(() => {
   mockOpenAccountSetup.mockClear();
   mockOpenAddEmail.mockClear();
   mockGetMyLp.mockClear();
+  mockUsePaymentDetails.mockReset().mockReturnValue({ status: "idle" });
 });
 
 describe("Home page — disconnected state", () => {
@@ -2664,5 +2680,109 @@ describe("Home — active chain not served by the API (#1605)", () => {
     expect(screen.getByTestId("home-welcome-header")).toBeInTheDocument();
     expect(screen.queryByTestId("home-mobile-layout")).not.toBeInTheDocument();
     expect(screen.queryByTestId("home-dashboard-card")).not.toBeInTheDocument();
+  });
+});
+
+describe("Home page — Funding details wiring (#1817)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockNavigate.mockClear();
+    mockAuthState.kybStatus = "Passed";
+    mockChainServed.mockReturnValue({
+      kind: "evm",
+      chainId: 560048,
+      chainName: "Hoodi",
+      served: true,
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  const readyDetails = {
+    company_name: "Example Trust LLC",
+    bank_name: "Example Bank",
+    bank_address: "1 Example Street",
+    account_number: "00000000",
+    iban: "XX00 TEST 0000 0000 0000 00",
+    swift_bic_code: "TESTXXXXXXX",
+    payment_details: "PL-0000-0000-0000",
+    chain_id: 560048,
+    receiver_address: "0x1234000000000000000000000000000000000001",
+  };
+
+  function connect() {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  }
+
+  async function clickAddFunds() {
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "Add Funds" });
+    await user.click(button);
+    return user;
+  }
+
+  it("requests nothing until Add Funds is clicked, then requests the active chain once per open", async () => {
+    connect();
+    mockUsePaymentDetails.mockReturnValue({ status: "loading" });
+    renderHome();
+    await screen.findByRole("button", { name: "Add Funds" });
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith(null);
+
+    const user = await clickAddFunds();
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith({
+      openId: 1,
+      chainId: 560048,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith(null);
+
+    await user.click(screen.getByRole("button", { name: "Add Funds" }));
+    expect(mockUsePaymentDetails).toHaveBeenLastCalledWith({
+      openId: 2,
+      chainId: 560048,
+    });
+  });
+
+  it("renders the served details and reference once ready", async () => {
+    connect();
+    mockUsePaymentDetails.mockReturnValue({
+      status: "ready",
+      data: readyDetails,
+    });
+    renderHome();
+    await clickAddFunds();
+    expect(await screen.findByText("PL-0000-0000-0000")).toBeInTheDocument();
+    expect(
+      screen.getByTitle(readyDetails.receiver_address),
+    ).toBeInTheDocument();
+  });
+
+  it("a 409 renders the not-linked notice and Go to Account navigates to /account", async () => {
+    connect();
+    mockUsePaymentDetails.mockReturnValue({
+      status: "unavailable",
+      error: new MockApiError(409, "no address"),
+    });
+    renderHome();
+    const user = await clickAddFunds();
+    expect(
+      await screen.findByTestId("funding-details-notice"),
+    ).toHaveTextContent("Bank details need a chain 560048 wallet linked");
+    await user.click(screen.getByRole("button", { name: "Go to Account" }));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/account",
+      search: { state: undefined },
+    });
+    expect(
+      screen.queryByTestId("funding-details-modal"),
+    ).not.toBeInTheDocument();
   });
 });

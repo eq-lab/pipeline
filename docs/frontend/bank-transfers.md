@@ -7,16 +7,19 @@ rather than a section in `auth-components.md` (scope: authentication modals) or
 growing through #1282, #1285, and #1276, the same reasoning `account-page.md` records for its own
 existence.
 
-**Presentational only.** No network call, no persistence, no auth. Every side-effecting action is
-a named, no-op-by-default seam — see [Seams and who wires them](#seams-and-who-wires-them).
+**Presentational, except the funding modal.** `AddUsdCard` makes no network call and has no auth;
+every side-effecting action is a named, no-op-by-default seam — see [Seams and who wires
+them](#seams-and-who-wires-them). `FundingDetailsModal` is wired on `/` to the authenticated
+`GET /v1/lps/me/payment-details` since #1817 (the modal itself stays presentational: it takes a
+`view`).
 
 **`FundingDetailsModal` is now also reachable from `/` (state 4, #1424), beyond `/test?tab=auth`.**
 `AddUsdCard` is mounted on `/`: the `"locked"` variant ships from #1421 (zero state), `"verify"`
 from #1422 (unverified state), `"verifying"` from #1423 (KYB-pending state), `"unlocked"` from
 #1424 (state 4, `kyb_status: "Passed"` with PLUSD held and sPLUSD zero), and `"declined"` from
 #1426 (state 6, `kyb_status: "ChangesRequested"` or `"Failed"`, gated on status alone) — its
-`onAddFunds` opens `FundingDetailsModal` with no `details`, so every row renders `—` just as the
-`/test` preview does. The variant for a given account state is decided by `deriveHomeState` in
+`onAddFunds` opens `FundingDetailsModal`, which fetches the served bank details and a fresh payment
+reference (#1817). The variant for a given account state is decided by `deriveHomeState` in
 `packages/frontend/src/components/homeState.ts`, not in this file — see
 `docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
 Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not wired to any route.
@@ -25,7 +28,8 @@ Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not w
 
 `packages/frontend/src/components/FundingDetailsModal.tsx` +
 `packages/frontend/src/components/useFundingDetailsModal.ts` — the static "Funding details" wire
-transfer modal, Figma node `6701-97113`. Not a form: no inputs, no amount, no submit.
+transfer modal, Figma node `6701-97113` (no Figma for the #1817 additions, see below). Not a form:
+no inputs, no amount, no submit.
 
 Shell follows `FirstConnectionModal.tsx`'s recipe (confirmed byte-identical via
 `get_variable_defs` against the frame's own bound tokens, not the codegen's stale Tailwind
@@ -37,26 +41,88 @@ a full-viewport two-pane frame with no scrim: `createPortal` into `document.body
 `FirstConnectionModal` already ships), scrim click and Escape both dismiss.
 
 Anatomy: `Funding details` heading (`<h2>`, Besley 28/36, `aria-labelledby` via `React.useId()`) →
-six label/value rows (label ink-muted, value ink, body 16/22) → a note row (`Transfers may take
-from the same day up to 5 business days`, ink-muted, with a trailing 20×20 hint-circle icon,
-`packages/frontend/src/assets/hint.svg`, exported from the frame — **not** a reuse of any existing
-component, since no such icon exists anywhere else in the repo; the plan's original claim that
-`EarnedCard` already renders a hint glyph is a documentation error, corrected here) → a full-width
-`Button variant="primary-dark"` labelled `Copy`/`Copied` with a leading copy glyph (masked from
-`packages/frontend/src/assets/copy.svg`, its first consumer) → a centred caption footer,
-`Need help? Contact Support`, the latter a real `<button>` calling `onContactSupport`.
+six label/value rows (label ink-muted, value ink, body 16/22; each value is a click-to-copy
+button, see below; rows stacked `gap-3`, panel sections `gap-5`) → a note row (`Transfers may take
+from the same day up to 5 business days`, ink-muted **caption 12/16 so it fits one line** — live
+review 2026-11-03, to keep the panel inside `min(80vh, 90dvh)` without a vertical scrollbar — with
+a trailing info glyph that is an `InfoTooltip`, see below) → a centred
+caption footer, `Need help? Contact Support`, the latter an `<a href="mailto:support@pipeline.one">`
+(`SUPPORT_EMAIL`, exported from the modal; closes TD-89 — decision 2026-11-03: the link opens the
+LP's mail client). There is **no** copy-all button (removed in the 2026-11-03 live review).
 
-`useFundingDetailsModal.ts` owns `copied` state (1500 ms reset), a feature-detected
-`navigator.clipboard` write that silently no-ops on rejection, the Escape listener via
-`stopImmediatePropagation` (the `useErrorDetailsDialog.ts` pattern — this modal will eventually
-open over a home page that may itself host a dialog), and the body-scroll lock.
+**Glyphs (`components/FundingDetailsGlyphs.tsx`, live review 2026-11-03).** `InfoGlyph` is an
+inline SVG traced from the frame `6701-97134` export (the 20×20 info circle at `#383538` 30 %).
+There is no copy glyph anywhere in the modal any more (removed on the user's request the same
+day; the earlier `copy.svg` CSS mask had rendered as a solid square), and `assets/copy.svg` /
+`assets/hint.svg` were deleted. `InfoTooltip` (`components/InfoTooltip.tsx`) is a 24×24 button
+(`aria-label`, `aria-describedby`) around `InfoGlyph` with a `role="tooltip"` bubble (ink
+background, on-dark caption text, `whitespace-pre-line`) shown on hover and focus-within. The
+bubble is positioned against the **row** (every row and the note row is `relative`; the tooltip
+wrapper deliberately is not), `bottom-full` above it, `left-0` for `align="start"` or `right-0` for
+`align="end"`, `w-max max-w-full` — so it can never be wider than the row. That matters because an
+invisible (`opacity-0`) absolutely positioned bubble still counts toward scroll width: the earlier
+icon-anchored 280px bubble was one of two things giving the panel a horizontal scrollbar (the
+other was a `-mr-2` on the row buttons, also removed). The panel is `overflow-x-hidden
+overflow-y-auto` as a guard.
+
+**Layout since #1817 (no Figma; built from the row pattern and the LP theme), top to bottom:** heading
+→ unavailable notice (only when unavailable) → six bank rows → `Payment reference` row (label
+followed by an `InfoTooltip align="start"` whose text is the instruction sentence — there is no
+instruction caption any more) → 1px `--color-pipeline-line` divider → `Network` row (plain, not copyable) →
+`Receiving wallet` row (label followed by an `InfoTooltip align="start"` whose text is the
+destination sentence; value is the served address through `truncateAddress`, `GCGQVO…GQ5C`, with
+the full address as the button `title`) → note row with its `InfoTooltip align="end"` (text:
+`Domestic transfers: Same day or within 1 business day` / `International transfers: 1–5 business
+days`, two lines) → `Need help? Contact Support`.
+
+**Per-row copy (`CopyableRow`, live review 2026-11-03).** Every value in the six bank rows, the
+`Payment reference` row and the `Receiving wallet` row is one `<button type="button">`
+(`aria-label="Copy {label}"`, `data-testid="funding-details-copy-{slug}"`) holding just the value
+text — no icon — with `cursor-pointer`, `select-none` and `touch-manipulation`. A click or tap
+writes that row's value (the **full** address for the wallet row) through the shared
+`useCopyToClipboard`; on success the confirmation is a **toast outside the dialog**
+(`useOptionalToast().show({ id: "funding-details-copied", tone: "success", title: "{label}
+copied", durationMs: 2000 })` — an in-row caption widened the row and gave the modal a horizontal
+scrollbar, so nothing is rendered inside the dialog on copy; the fixed `id` makes rapid copies
+replace one toast instead of stacking). The toast stack sits at `z-[10000]`, above the app's
+`z-[9999]` modal scrims. `useOptionalToast` returns `null` outside a `ToastProvider`, so the modal
+also renders provider-free (tests, previews) and simply skips the toast. **Hold to copy on touch
+screens:** `onPointerDown` with `pointerType === "touch"` arms a 500 ms timer (`HOLD_TO_COPY_MS`);
+when it fires the row copies and the release `click` is swallowed so nothing copies twice;
+`pointerup` / `pointercancel` / `pointerleave` before 500 ms disarm it and the tap's own click copies
+instead. Mouse presses never arm the hold. `contextmenu` is suppressed while a hold is armed or just
+fired and `-webkit-touch-callout: none` keeps iOS from showing its own callout. Hover:
+`rgba(56,55,53,0.08)` background; disabled while not ready (default cursor, no hover). The modal
+mounts a single `useCopyToClipboard`; `useFundingDetailsModal.ts` keeps only the Escape listener
+and the body-scroll lock.
+
+- **Chain.** `onAddFunds` captures `useActiveChain()` (`{ kind, chainId }`) with an incrementing
+  `openId`; the modal never re-fetches if the wallet view changes while open and has no chain
+  picker (a picker would mint a reference per toggle). `Network` is `chainDisplayName(kind,
+  response.chain_id)` and `Receiving wallet` is `response.receiver_address`, both as served.
+- **One fetch per open.** `usePaymentDetails` uses key `["lp-payment-details", openId, chainId]`
+  with `staleTime: Infinity`, the default `gcTime`, `retry: false` and refetch on mount, focus and
+  reconnect all off, enabled only while open and authenticated: every 200 mints a reference, so a
+  hidden second request would issue one the LP never sees. Re-opening is the only retry.
+- **States.** Loading: every value cell is `—`, the rows container is `aria-busy`, every row copy
+  button disabled. Unavailable `409` (no linked settlement address of that chain kind, or KYB not
+  passed): notice with a `Go to Account` button. Any other failure: generic notice. Rows stay `—`
+  and every row copy button stays disabled; nothing crashes and no scratch value is ever shown.
+- **Mint lands as sPLUSD** (`docs/user-docs/lenders/deposit.md`), so the destination caption says
+  sPLUSD.
+
+`useFundingDetailsModal.ts` owns the Escape listener via `stopImmediatePropagation` (the
+`useErrorDetailsDialog.ts` pattern — this modal will eventually open over a home page that may
+itself host a dialog) and the body-scroll lock. Clipboard writes go through `@pipeline/ui`'s
+`useCopyToClipboard` (feature-detected `navigator.clipboard`, `execCommand` fallback, silent
+no-op on rejection).
 
 ```ts
 export interface FundingDetailsModalProps {
   open: boolean;
   onDismiss: () => void;
-  details?: ReadonlyArray<FundingDetailRow>;   // omitted → every value renders "—"
-  onContactSupport?: () => void;               // no-op default
+  view?: FundingDetailsView;                   // omitted → { status: "loading" }, every value "—"
+  onOpenAccount?: () => void;                  // "Go to Account" on the not-linked notice
 }
 ```
 
@@ -66,13 +132,16 @@ export interface FundingDetailsModalProps {
 
 - `FUNDING_DETAIL_LABELS` — the six labels in frame order: `Company Name`, `Bank Name`,
   `Bank Address`, `Account Number`, `IBAN`, `SWIFT / BIC code`.
-- `FUNDING_DETAILS_PLACEHOLDER` — the frame's values with the company-name typo corrected to
-  `Pipeline Trust LLC` (the frame reads `Pipiline Trust LLC`). `/test`-only fixture data; there is
-  **no backend endpoint serving real trust-account wire details** — see
-  [Out of scope](#out-of-scope).
-- `formatFundingDetailsForCopy(rows)` — one `"{label}: {value}"` line per row, joined by `\n`, `—`
-  rows included verbatim. This is the whole-block serialization the single `Copy` button writes —
-  the frame has exactly one Copy action and no per-row copy affordance.
+- `PAYMENT_REFERENCE_LABEL` — `Payment reference`.
+- `displayValue(v)` — `—` for empty, null or missing, else the value verbatim (no trimming).
+- `FundingDetailsView` — `loading`, `ready` (seven `rows`, `paymentReference`, `network`,
+  `receiverAddress`) or `unavailable` (`reason: "not-linked" | "error"`, `chainName`).
+  `toFundingDetailsView(response, kind)` maps the payload (`swift_bic_code` → `SWIFT / BIC code`,
+  `payment_details` → `Payment reference`); `toUnavailableView(error, chainName)` maps an
+  `ApiError` 409 to `not-linked` and anything else to `error`.
+- The former scratch placeholder (real-looking bank values) is gone from production code. Preview
+  fixtures live in `packages/frontend/src/routes/test/-fundingDetailsFixture.ts` with obviously fake
+  values (`Example Trust LLC`, `XX00 TEST …`, `PL-0000-0000-0000`).
 
 ## AddUsdCard
 
@@ -235,8 +304,18 @@ square `236 / 236` aspect ratio). Full spec: `docs/frontend/ui-components.md#war
 
 Modal: `Funding details` · `Company Name` · `Bank Name` · `Bank Address` · `Account Number` ·
 `IBAN` · `SWIFT / BIC code` ·
-`Transfers may take from the same day up to 5 business days` · `Copy` / `Copied` · `Need help?` ·
+`Transfers may take from the same day up to 5 business days` · `{label} copied` (toast) · `Need help?` ·
 `Contact Support`.
+
+Added by #1817: `Payment reference` · `Add this reference to your transfer’s reference or remittance
+field. Without it we can’t match your transfer to your account.` · `Network` · `Receiving wallet` ·
+`Your transfer is credited to this wallet as sPLUSD.` (tooltip) · `Domestic transfers: Same day or
+within 1 business day` / `International transfers: 1–5 business days` (tooltip) · `Copy {label}`
+(one aria-label per copyable row) / `About the payment reference` / `About the receiving wallet` /
+`Transfer timing` (aria-labels) · `Bank details need a {chainName} wallet
+linked to your account. Link it on your Account page, or switch to a wallet you have already
+linked.` · `Go to Account` · `Bank details are unavailable right now. Close this window and try
+again, or contact support.`
 
 Card: `Add USD` · `Use a bank transfer` · `KYB verification required` · `Transfers unlocked` ·
 `USD Balance` · `on Trust account` · `Add Funds` · `Withdraw` · `Verify your account` ·
@@ -277,17 +356,17 @@ class of staleness `account-page.md` documents for its own frame.
 | `Button variant="primary-dark"` | **Reused verbatim** for the modal's `Copy` action and the `Section` shape's rectangular action, with `size="m"` for the latter. |
 | `packages/frontend/src/assets/copy.svg` | **First consumer** — the modal's Copy button glyph, painted via CSS mask like `ActivityEmptyIllustration`/`HeroIcon`. |
 | `useErrorDetailsDialog.ts`'s Escape pattern | **Pattern reused**, not imported — `stopImmediatePropagation` on a capture-phase listener, since this modal may one day open over a page hosting another dialog. |
-| A shared hint-icon component | **Does not exist.** The plan's claim that `EarnedCard` already renders one was incorrect; `hint.svg` is a new, dedicated asset exported from the frame. |
+| A shared hint-icon component | **Does not exist** outside this modal; `InfoGlyph` + `InfoTooltip` (`components/`) are the modal's own, traced from the frame. `IconButton`'s tooltip is top-bar specific (below the button, nowrap). |
 
 ## Seams and who wires them
 
 | Seam | Default | Wired by |
 | --- | --- | --- |
-| `FundingDetailsModal.details` | every value renders `—` | backend source: `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824: `chain_id` is required and the response also echoes `chain_id` and `receiver_address`). Each call returns a fresh `payment_details` and adds a row to the history, so the client calls it exactly once per modal open with `staleTime: Infinity` and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off. The payload uses `swift_bic_code`. Client wiring: #1817 |
-| `FundingDetailsModal.onContactSupport` | no-op | unassigned — no destination exists in the design (tech debt) |
+| `FundingDetailsModal.view` | `{ status: "loading" }`, every value `—` | wired by #1817 on `/` from `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824); one call per modal open, see [FundingDetailsModal](#fundingdetailsmodal) |
+| `FundingDetailsModal.onOpenAccount` | no-op | #1817 (`/` closes the modal and navigates to `/account`) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
 | `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
-| `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal` with no `details`) |
+| `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal`, #1817) |
 | `AddUsdCard.onWithdraw` | no-op | #1285 |
 | `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
 | `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`); reused as-is by #1426 (home state 6, `declined` variant) |
@@ -301,17 +380,16 @@ the transfer is the only string tying it to a statement line. Raised on epic #12
 design/backend sync (2026-09-22 approval comment on issue #1283); if a memo code is added, the
 modal's content model becomes per-LP data (a fetch), not a static constant — a follow-up issue.
 
-**Update (#1815).** The backend now issues a reference on every request for the LP to quote, and
-keeps every issued reference against the LP. The modal needs a seventh row for it (designer ask, as
-noted in #1311). Wire matching, which looks the LP up by any of its issued references, is still a
-follow-up.
+**Update (#1815, #1817).** The backend issues a reference on every request for the LP to quote and
+keeps every issued reference against the LP; the seventh `Payment reference` row shipped in #1817.
+Wire matching by issued reference is still a backend follow-up.
 
 ## `/test?tab=auth` preview seam
 
 `packages/frontend/src/routes/test.tsx` → `AuthTab`, a `Wire transfers (#1283)` block placed after
-the existing Account-page preview links: a `Button variant="secondary"` labelled
-`Open Funding details modal` (opens the modal with `details={FUNDING_DETAILS_PLACEHOLDER}`, so QA
-can Figma-compare a fully populated modal), and the six `AddUsdCard` variants rendered inline in
+the existing Account-page preview links: four `Button variant="secondary"` openers,
+`Open Funding details: ready | loading | not linked | error` (each opens the modal with the
+matching fixture view from `routes/test/-fundingDetailsFixture.ts`, no network), and the six `AddUsdCard` variants rendered inline in
 fixed `w-[313px]` boxes with their variant id as a caption. `onAddFunds` opens the same modal;
 `onWithdraw`/`onStartVerification`/`onViewStatus` each reveal a stand-in confirmation line by
 `data-testid` naming the owning issue. See [Diagnostics preview
@@ -325,8 +403,9 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Mounting `AddUsdCard` into the home grid for state 5 | #1425 (shipped for state 6 by #1426) |
 | A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
-| Any network call, persistence, or auth on either surface | #1254 / #1265 / #1285 |
-| Real source for trust-account wire details | #1285 (folded), or a new backend issue |
+| Network call, persistence, or auth on `AddUsdCard` | #1254 / #1265 / #1285 |
+| Linking a settlement address (challenge, sign, verify) | #1825 |
+| Filling `system_configuration.system_bank_details` | ops, before release (`deposits.md`) |
 
 ## Accessibility
 

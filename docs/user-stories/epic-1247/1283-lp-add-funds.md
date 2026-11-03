@@ -4,16 +4,16 @@ Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1283](https://github.com/eq-lab/pipeline/issues/1283)
 Spec: [docs/frontend/bank-transfers.md](../../frontend/bank-transfers.md)
 
-Both surfaces are presentational — no network call, no persistence, no auth. Neither is mounted on
-any production route; both are reachable only at `http://localhost:5173/test?tab=auth` under the
-dev server. Styling-only assertions (exact colors, radii, spacing) are out of scope — visual
+`AddUsdCard` is presentational. The modal is fetched on `/` since #1817 (see
+[1817-funding-details-payment-reference.md](./1817-funding-details-payment-reference.md)); these
+stories use the `/test?tab=auth` fixtures (`http://localhost:5173/test?tab=auth`, dev server). Styling-only assertions (exact colors, radii, spacing) are out of scope — visual
 fidelity is verified separately by the QA agent's Figma comparison against nodes `6701-97113`
 (modal), `6701-98220`, `6701-97538`, `6701-97942`, `6701-98417`, `6701-97340`, and `6701-97136`
 (card variants).
 
 ---
 
-## Story 1: Opening the Funding details modal with the placeholder fixture shows all six wire details
+## Story 1: Opening the Funding details modal with the ready fixture shows the wire details
 
 **Persona:** Any visitor to the diagnostics page.
 
@@ -21,31 +21,35 @@ fidelity is verified separately by the QA agent's Figma comparison against nodes
 
 **Steps:**
 
-1. Click `Open Funding details modal`.
+1. Click `Open Funding details: ready`.
 
 **Expected outcomes:**
 
 - A dialog opens headed `Funding details`.
-- Six rows are shown in order: `Company Name: Pipeline Trust LLC`, `Bank Name: HSBC Bank`,
-  `Bank Address: London, 1st Canary Wharf`, `Account Number: 1234567890`,
-  `IBAN: GB29 UKBP 1234 5678 9012 34`, `SWIFT / BIC code: UKBPLD2LXXX`.
+- Seven rows are shown in order: `Company Name: Example Trust LLC`, `Bank Name: Example Bank`,
+  `Bank Address: 1 Example Street`, `Account Number: 00000000`,
+  `IBAN: XX00 TEST 0000 0000 0000 00`, `SWIFT / BIC code: TESTXXXXXXX`,
+  `Payment reference: PL-0000-0000-0000`.
 - A note reads exactly "Transfers may take from the same day up to 5 business days".
-- A full-width `Copy` button and a `Need help? Contact Support` footer are present.
+- Each value is a click-to-copy target with a pointer cursor and no icon (per-row copy since the
+  2026-11-03 review of #1817; the former full-width `Copy` button is gone) and a `Need help?
+  Contact Support` footer is present.
 
 ---
 
-## Story 2: Copy writes the serialized block to the clipboard and confirms
+## Story 2: Clicking a value copies it and confirms
 
 **Pre-conditions:** The Funding details modal is open (Story 1).
 
 **Steps:**
 
-1. Click `Copy`.
+1. Click the `IBAN` value.
 
 **Expected outcomes:**
 
-- The clipboard receives the six rows as `"{label}: {value}"` lines joined by newlines.
-- The button label changes to `Copied` and reverts to `Copy` after ~1.5 seconds.
+- The clipboard receives that value only (`XX00 TEST 0000 0000 0000 00`).
+- `Copied` appears after the value and disappears after ~1.5 seconds. (Superseded detail: the
+  original full-width `Copy` button that wrote all seven rows was removed on 2026-11-03.)
 
 ---
 

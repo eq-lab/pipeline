@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { saveSession } from "@/auth/session";
+import { ApiError } from "./client";
 import {
   deleteMyDocument,
   getMyLp,
+  getMyPaymentDetails,
   linkMyAddress,
   upsertMyLp,
   uploadMyDocuments,
@@ -107,5 +109,33 @@ describe("LP API client", () => {
       method: "DELETE",
       headers: { Authorization: "Bearer jwt" },
     });
+  });
+
+  it("reads payment details for a chain with bearer auth", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ chain_id: 99000001 }), { status: 200 }),
+      );
+    await getMyPaymentDetails(99000001);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/v1\/lps\/me\/payment-details\?chain_id=99000001$/,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
+      Authorization: "Bearer jwt",
+    });
+  });
+
+  it("rejects payment details with an ApiError carrying status 409", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "no address" }), { status: 409 }),
+    );
+    await expect(getMyPaymentDetails(1)).rejects.toMatchObject({
+      status: 409,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("{}", { status: 409 }),
+    );
+    await expect(getMyPaymentDetails(1)).rejects.toBeInstanceOf(ApiError);
   });
 });

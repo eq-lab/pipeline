@@ -1468,7 +1468,7 @@ line, whichever section it lands in.
   (see `docs/product-specs/deposits.md` § LP Funding Details). Only the frontend wiring (#1817)
   remains, so this stays open until that merges.
 
-### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination
+### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination [RESOLVED 2026-11-03 / #1817]
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/FundingDetailsModal.tsx`.
@@ -1478,6 +1478,8 @@ line, whichever section it lands in.
 - **Impact:** None today — the surface isn't mounted in production yet.
 - **Suggested fix:** Designer ask: define the real destination (mailto, support page, chat widget)
   before #1282 mounts the modal.
+- **Resolution (2026-11-03, #1817 live review):** `Contact Support` is `<a href="mailto:support@pipeline.one">`
+  (`SUPPORT_EMAIL` in `FundingDetailsModal.tsx`); the `onContactSupport` seam was removed.
 
 ### TD-90: `AddUsdCard`'s "Verifying account…" typo-correction diverges from its home-card source
 

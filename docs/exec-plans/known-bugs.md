@@ -299,3 +299,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Impact:** Latent today (no EVM chain is in `CHAINS`), but #1436 configures five EVM address lists by hand against a fresh mainnet deployment — exactly the situation both modes are invisible in. The advancing cursor makes either unrecoverable without a manual cursor reset, and the total mode additionally requires deleting the foreign rows.
 - **Workaround:** Verify each configured address appears in the startup logs / produces rows before trusting a new EVM chain config.
 - **Suggested fix:** Parse addresses at config time with `?` instead of `.ok()`, and reject an empty resolved address set outright — an unfiltered `eth_getLogs` is never what the caller meant.
+
+### BUG-31: `AddEmailModal.test.tsx` — "an async onSubmit disables Save while pending" is timing-flaky
+- **Tracked:** not yet filed — seen during #1817 verification (2026-11-02); the file is untouched on that branch.
+- **Date:** 2026-11-02
+- **Location:** `packages/frontend/src/components/AddEmailModal.test.tsx`, test "AddEmailModal (#1459) > an async onSubmit disables Save while pending, then re-enables it".
+- **Symptom:** Fails roughly 1 run in 4 under the full `vitest run` (passes 3/3 in isolation and in the same CI run). The pending-state assertion races the mocked async `onSubmit` resolving.
+- **Root cause:** Suspected: the test awaits a real `setTimeout`-backed promise and asserts the disabled state in between; under load the submit settles before the assertion.
+- **Impact:** Spurious red CI on unrelated PRs.
+- **Workaround:** Re-run the job.
+- **Suggested fix:** Hold the `onSubmit` promise open with a deferred resolver, assert disabled, then resolve and assert re-enabled.
