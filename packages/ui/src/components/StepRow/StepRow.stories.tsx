@@ -12,8 +12,8 @@ const meta = {
           "Numbered step row used inside `StepsCard`. Renders a numbered square " +
           "(e.g. `1`), a label (e.g. `Allow contract to use USDC`), and a trailing " +
           "action `Button` (`Approve` / `Convert`). Matches the Figma `card-horizontal` " +
-          "list items at node 1498-100694. Disabled state renders the whole row at 30% " +
-          "opacity — matching the greyed-out appearance in the Figma design.",
+          "list items at node 1498-100694. Disabled state dims the step badge and action " +
+          "button to 30% opacity and mutes the label; the hint stays readable.",
       },
     },
   },

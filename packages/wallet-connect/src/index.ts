@@ -190,6 +190,11 @@ export {
   scheduleReverseRepay,
   executeReverseRepay,
   readReverseRepaySchedule,
+  encodeRequestWireOutArgs,
+  buildRequestWireOutEnvelope,
+  requestWireOut,
+  readMinterWireOut,
+  readMinterPaused,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -207,6 +212,15 @@ export type {
   ReadReverseRepayScheduleParams,
   MinterRepayment,
   ReadMinterRepaymentParams,
+  RequestWireOutArgs,
+  RequestWireOutParams,
+  RequestWireOutResult,
+  RequestWireOutStage,
+  BuildRequestWireOutEnvelopeParams,
+  MinterWireOut,
+  MinterWireOutStatus,
+  ReadMinterWireOutParams,
+  ReadMinterPausedParams,
 } from "./stellar/contracts/minter";
 
 export {
@@ -229,6 +243,8 @@ export type {
 
 export {
   minterRecoveryAbi,
+  minterWireOutAbi,
+  EVM_WIRE_OUT_STATUS,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,
 } from "./evm/contracts/minter";

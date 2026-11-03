@@ -108,3 +108,5 @@ export const usdcId: string = ENV.STELLAR_USDC_ID;
  * Empty string means "unconfigured" — hook short-circuits to `undefined`.
  */
 export const usdcCustodyId: string = ENV.STELLAR_USDC_CUSTODY_ID;
+
+export const minterId: string = ENV.STELLAR_MINTER_ID;

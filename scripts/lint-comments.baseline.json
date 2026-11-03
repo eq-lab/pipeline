@@ -375,10 +375,6 @@
     "header": 16,
     "nodeIds": 0
   },
-  "packages/frontend/src/wallet/evm/abis/withdrawalQueue.ts": {
-    "header": 19,
-    "nodeIds": 0
-  },
   "packages/frontend/src/wallet/evm/cache.ts": {
     "header": 11,
     "nodeIds": 0
@@ -493,10 +489,6 @@
   },
   "packages/frontend/src/wallet/stellar/contracts/token.ts": {
     "header": 19,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/stellar/contracts/withdrawalQueue.ts": {
-    "header": 17,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/stellar/mock.ts": {

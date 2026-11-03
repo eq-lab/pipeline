@@ -15,8 +15,24 @@ const mockUseRequests = vi.fn(() => ({
   refetch: mockRefetch,
 }));
 
+const mockWireOutItems = vi.hoisted(() => ({
+  items: [] as Array<{ id: string; timestamp: string }>,
+}));
+const mockWireOutReads = vi.hoisted(() => ({
+  reads: {} as Record<
+    string,
+    { amountRaw?: string; status?: "Pending" | "Settled" | "Cancelled" }
+  >,
+}));
+
 vi.mock("@/api", () => ({
   useRequests: () => mockUseRequests(),
+  useWireOutRequests: () => ({
+    items: mockWireOutItems.items,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 const mockUseWallet = vi.fn(() => ({
@@ -39,6 +55,7 @@ vi.mock("@/wallet", async (importOriginal) => {
     useStellarWallet: () => mockUseStellarWallet(),
     useWalletView: () => mockUseWalletView(),
     useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
+    useWireOuts: () => mockWireOutReads.reads,
   };
 });
 
@@ -623,5 +640,64 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
     expect(screen.getByText("−1,000.00 PLUSD")).toBeInTheDocument();
     expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
+  });
+});
+
+describe("RecentActivityCard — wire-out rows (#1757)", () => {
+  beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({
+      isConnected: true,
+      address: "0xEVM",
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE_3,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockWireOutItems.items = [{ id: "7", timestamp: "2026-05-14T12:00:00Z" }];
+    mockWireOutReads.reads = {
+      "7": { amountRaw: "2500000", status: "Pending" },
+    };
+  });
+
+  afterEach(() => {
+    mockWireOutItems.items = [];
+    mockWireOutReads.reads = {};
+    vi.clearAllMocks();
+  });
+
+  it("merges the wire-out between requests by served time", () => {
+    renderCard();
+    const rows = screen.getAllByTestId(/^home-activity-row-\d+$/);
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toHaveTextContent("Withdraw funds");
+    expect(rows[1]).toHaveTextContent("−2.50 PLUSD");
+    expect(rows[1]).toHaveTextContent("Bank transfer · Pending");
+  });
+
+  it("slices to five rows after the merge", () => {
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE_6,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderCard();
+    expect(screen.getAllByTestId(/^home-activity-row-\d+$/)).toHaveLength(5);
+  });
+
+  it("shows em dashes while the contract read has not resolved", () => {
+    mockWireOutReads.reads = {};
+    renderCard();
+    expect(screen.getByText("−— PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("Bank transfer · —")).toBeInTheDocument();
   });
 });

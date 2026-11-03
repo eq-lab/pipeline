@@ -14,7 +14,7 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
   label: string;
   /** Label for the trailing action button (e.g. "Approve", "Convert"). */
   actionLabel: string;
-  /** When true, the row dims and the action button is inert. Defaults to `false`. */
+  /** When true, the step badge and action button dim (label turns muted) and the action is inert. Defaults to `false`. */
   disabled?: boolean;
   /** Called when the action button is clicked (only fires when not disabled). */
   onAction?: React.MouseEventHandler<HTMLButtonElement>;
@@ -32,6 +32,7 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
    * spec: docs/frontend/error-handling.md
    */
   errorDetails?: string;
+  hint?: string;
 }
 
 const rootClasses = [
@@ -56,6 +57,14 @@ const stepNumberClasses = [
   "select-none",
 ].join(" ");
 
+const hintClasses = [
+  "mt-0.5 block",
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-caption)]",
+  "leading-[var(--text-pipeline-caption--line-height)]",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+].join(" ");
+
 const labelClasses = [
   "flex-1 min-w-0",
   "font-[family-name:var(--font-body)]",
@@ -77,6 +86,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
       state = "idle",
       errorMessage,
       errorDetails,
+      hint,
       className,
       ...rest
     },
@@ -84,14 +94,9 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
   ) {
     const isSuccess = state === "success";
     const isError = state === "error";
+    const dimmed = disabled && !isSuccess && !isError && !loading;
 
-    const composed = [
-      rootClasses,
-      disabled && !isSuccess && !isError && !loading ? "opacity-30" : "",
-      className,
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const composed = [rootClasses, className].filter(Boolean).join(" ");
 
     return (
       <div
@@ -104,7 +109,9 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
             deterministically beats the base classes regardless of Tailwind emit order. */}
         <div
           data-testid={`step-row-${step}-badge`}
-          className={stepCircleClasses}
+          className={[stepCircleClasses, dimmed ? "opacity-30" : ""]
+            .filter(Boolean)
+            .join(" ")}
           style={
             isError ? { backgroundColor: "rgba(192, 57, 43, 0.12)" } : undefined
           }
@@ -122,7 +129,14 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
 
         {/* A <div>, not a <span>: `InlineError` can render `ErrorDetailsDialog`'s
             backdrop <div> as a descendant, which is not valid inside a <span>. */}
-        <div className={labelClasses}>
+        <div
+          className={[
+            labelClasses,
+            dimmed ? "!text-[color:var(--color-pipeline-ink-muted)]" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           {label}
           {isError && errorMessage && (
             <InlineError
@@ -131,9 +145,19 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               className="mt-0.5 block"
             />
           )}
+          {!isError && hint && (
+            <span data-testid={`step-row-${step}-hint`} className={hintClasses}>
+              {hint}
+            </span>
+          )}
         </div>
 
-        <div data-testid={`step-row-${step}-action`} className="shrink-0 p-1">
+        <div
+          data-testid={`step-row-${step}-action`}
+          className={["shrink-0 p-1", dimmed ? "opacity-30" : ""]
+            .filter(Boolean)
+            .join(" ")}
+        >
           {isSuccess ? (
             <div
               className={[

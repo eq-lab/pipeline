@@ -1,8 +1,19 @@
 // spec: docs/product-specs/loan-repayment-recovery.md
 import { describe, it, expect } from "vitest";
-import { decodeFunctionData, toFunctionSelector } from "viem";
+import {
+  decodeEventLog,
+  decodeFunctionData,
+  decodeFunctionResult,
+  encodeAbiParameters,
+  encodeEventTopics,
+  encodeFunctionData,
+  encodeFunctionResult,
+  toFunctionSelector,
+} from "viem";
 import {
   minterRecoveryAbi,
+  minterWireOutAbi,
+  EVM_WIRE_OUT_STATUS,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,
 } from "./minter";
@@ -112,5 +123,60 @@ describe("encodeEvmRepayCalldata", () => {
     expect(() => encodeEvmRepayCalldata({ ...input, refHash: "0xzz" })).toThrow(
       /64 hex characters/,
     );
+  });
+});
+
+describe("minterWireOutAbi", () => {
+  const LP = "0x1111111111111111111111111111111111111111" as const;
+
+  it("round-trips requestWireOut(uint256)", () => {
+    const data = encodeFunctionData({
+      abi: minterWireOutAbi,
+      functionName: "requestWireOut",
+      args: [25n],
+    });
+    expect(data.slice(0, 10)).toBe(
+      toFunctionSelector("requestWireOut(uint256)"),
+    );
+    expect(decodeFunctionData({ abi: minterWireOutAbi, data }).args).toEqual([
+      25n,
+    ]);
+  });
+
+  it("decodes the wireOut tuple (lp, status, amount)", () => {
+    const data = encodeFunctionResult({
+      abi: minterWireOutAbi,
+      functionName: "wireOut",
+      result: { lp: LP, status: 2, amount: 5n },
+    });
+    expect(
+      decodeFunctionResult({
+        abi: minterWireOutAbi,
+        functionName: "wireOut",
+        data,
+      }),
+    ).toEqual({ lp: LP, status: 2, amount: 5n });
+  });
+
+  it("decodes WireOutRequested from a log", () => {
+    const topics = encodeEventTopics({
+      abi: minterWireOutAbi,
+      eventName: "WireOutRequested",
+      args: { id: 7n, lp: LP },
+    });
+    const data = encodeAbiParameters([{ type: "uint256" }], [9n]);
+    const decoded = decodeEventLog({
+      abi: minterWireOutAbi,
+      topics: topics as [`0x${string}`, ...`0x${string}`[]],
+      data,
+    });
+    expect(decoded.eventName).toBe("WireOutRequested");
+    expect(decoded.args).toEqual({ id: 7n, lp: LP, amount: 9n });
+  });
+
+  it("maps status indices to labels", () => {
+    expect(EVM_WIRE_OUT_STATUS[0]).toBe("Pending");
+    expect(EVM_WIRE_OUT_STATUS[1]).toBe("Settled");
+    expect(EVM_WIRE_OUT_STATUS[2]).toBe("Cancelled");
   });
 });

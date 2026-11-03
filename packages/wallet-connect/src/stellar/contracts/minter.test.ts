@@ -17,6 +17,11 @@ import {
   scheduleReverseRepay,
   executeReverseRepay,
   readReverseRepaySchedule,
+  encodeRequestWireOutArgs,
+  buildRequestWireOutEnvelope,
+  requestWireOut,
+  readMinterWireOut,
+  readMinterPaused,
   type RecordWireInStage,
   type RepayStage,
 } from "./minter";
@@ -849,5 +854,217 @@ describe("readReverseRepaySchedule", () => {
       t: "symbol",
       v: "reverse_repay",
     });
+  });
+});
+
+describe("encodeRequestWireOutArgs", () => {
+  it("emits the lp address and an i128 amount", () => {
+    expect(encodeRequestWireOutArgs({ lp: CALLER, amountRaw: 25n })).toEqual([
+      { t: "address", v: CALLER },
+      { t: "i128", v: 25n },
+    ]);
+  });
+
+  it("rejects zero and negative amounts", () => {
+    expect(() =>
+      encodeRequestWireOutArgs({ lp: CALLER, amountRaw: 0n }),
+    ).toThrow(/greater than zero/);
+    expect(() =>
+      encodeRequestWireOutArgs({ lp: CALLER, amountRaw: -1n }),
+    ).toThrow(/greater than zero/);
+  });
+});
+
+describe("buildRequestWireOutEnvelope", () => {
+  const params = {
+    minterId: MINTER_ID,
+    lp: CALLER,
+    amountRaw: 10_000_000n,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("calls request_wire_out with the lp as source account", async () => {
+    await expect(buildRequestWireOutEnvelope(params)).resolves.toBe(
+      "assembled-xdr",
+    );
+    expect(mockContractCtor).toHaveBeenCalledWith(MINTER_ID);
+    expect(mockGetAccount).toHaveBeenCalledWith(CALLER);
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "request_wire_out",
+      { t: "address", v: CALLER },
+      { t: "i128", v: 10_000_000n },
+    );
+  });
+
+  it("surfaces the simulation error text", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "HostError: #16" });
+    await expect(buildRequestWireOutEnvelope(params)).rejects.toThrow(
+      "requestWireOut simulation error: HostError: #16",
+    );
+  });
+
+  it("guards empty minter and lp", async () => {
+    await expect(
+      buildRequestWireOutEnvelope({ ...params, minterId: "" }),
+    ).rejects.toThrow(/minterId must not be empty/);
+    await expect(
+      buildRequestWireOutEnvelope({ ...params, lp: "" }),
+    ).rejects.toThrow(/lp must not be empty/);
+  });
+});
+
+describe("requestWireOut", () => {
+  function params(overrides: Record<string, unknown> = {}) {
+    return {
+      minterId: MINTER_ID,
+      lp: CALLER,
+      amountRaw: 10_000_000n,
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "signed" }),
+      ...overrides,
+    };
+  }
+
+  it("reports the stages and signs as the lp", async () => {
+    const stages: string[] = [];
+    const signTransaction = vi
+      .fn()
+      .mockResolvedValue({ signedTxXdr: "signed" });
+    const result = await requestWireOut(
+      params({ signTransaction, onStageChange: (s: string) => stages.push(s) }),
+    );
+    expect(stages).toEqual(["awaiting-signature", "submitting", "confirming"]);
+    expect(signTransaction).toHaveBeenCalledWith("assembled-xdr", {
+      networkPassphrase: PASSPHRASE,
+      address: CALLER,
+    });
+    expect(result).toEqual({ hash: "tx-hash", wireOutId: null });
+  });
+
+  it("accepts id 0 from the return value", async () => {
+    mockPollTransaction.mockResolvedValue({
+      status: "SUCCESS",
+      returnValue: { __native: 0 },
+    });
+    await expect(requestWireOut(params())).resolves.toEqual({
+      hash: "tx-hash",
+      wireOutId: 0,
+    });
+  });
+
+  it("falls back to the wire_out_requested event topic", async () => {
+    mockPollTransaction.mockResolvedValue({
+      status: "SUCCESS",
+      resultMetaXdr: {
+        v3: () => ({
+          sorobanMeta: () => ({
+            events: () => [
+              {
+                body: () => ({
+                  v0: () => ({
+                    topics: () => [
+                      { __native: "wire_out_requested" },
+                      { __native: 4 },
+                    ],
+                  }),
+                }),
+              },
+            ],
+          }),
+        }),
+      },
+    });
+    await expect(requestWireOut(params())).resolves.toEqual({
+      hash: "tx-hash",
+      wireOutId: 4,
+    });
+  });
+
+  it("never signs when the simulation fails", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "boom" });
+    const signTransaction = vi.fn();
+    await expect(requestWireOut(params({ signTransaction }))).rejects.toThrow(
+      /simulation error/,
+    );
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws on sendTransaction ERROR and non-SUCCESS polls", async () => {
+    mockSendTransaction.mockResolvedValue({ status: "ERROR", hash: "bad" });
+    await expect(requestWireOut(params())).rejects.toThrow(
+      /sendTransaction failed/,
+    );
+    mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "h" });
+    mockPollTransaction.mockResolvedValue({ status: "FAILED" });
+    await expect(requestWireOut(params())).rejects.toThrow(
+      /failed with status FAILED/,
+    );
+  });
+});
+
+describe("readMinterWireOut", () => {
+  const params = {
+    minterId: MINTER_ID,
+    id: 3,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  function sim(status: unknown) {
+    mockSimulateTransaction.mockResolvedValue({
+      result: {
+        retval: {
+          __native: {
+            lp: CALLER,
+            amount: 12_500_000n,
+            requested_at: 1_793_059_200n,
+            status,
+          },
+        },
+      },
+    });
+  }
+
+  it.each(["Pending", "Settled", "Cancelled"])("decodes %s", async (status) => {
+    sim([status]);
+    await expect(readMinterWireOut(params)).resolves.toEqual({
+      lp: CALLER,
+      amount: "12500000",
+      requestedAt: 1_793_059_200,
+      status,
+    });
+    expect(mockContractCall).toHaveBeenCalledWith("wire_out", {
+      t: "u32",
+      v: 3,
+    });
+  });
+
+  it("throws on an unknown variant and a missing amount", async () => {
+    sim(["Expired"]);
+    await expect(readMinterWireOut(params)).rejects.toThrow(/unknown status/);
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: {} } },
+    });
+    await expect(readMinterWireOut(params)).rejects.toThrow(/amount missing/);
+  });
+});
+
+describe("readMinterPaused", () => {
+  it("returns the simulated bool", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: true } },
+    });
+    await expect(
+      readMinterPaused({
+        minterId: MINTER_ID,
+        rpcUrl: RPC_URL,
+        networkPassphrase: PASSPHRASE,
+      }),
+    ).resolves.toBe(true);
+    expect(mockContractCall).toHaveBeenCalledWith("paused");
   });
 });

@@ -1,4 +1,5 @@
 // spec: docs/product-specs/loan-repayment-recovery.md
+// spec: docs/product-specs/withdrawals.md#bank-wire-withdrawals-lp-app
 import { encodeFunctionData, type Hex } from "viem";
 import type { RepaymentInput } from "../../stellar/contracts/loanRegistry";
 
@@ -40,6 +41,54 @@ export const minterRecoveryAbi = [
     outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
+
+export const minterWireOutAbi = [
+  {
+    type: "function",
+    name: "requestWireOut",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [{ name: "id", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "wireOut",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "lp", type: "address" },
+          { name: "status", type: "uint8" },
+          { name: "amount", type: "uint256" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "paused",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "event",
+    name: "WireOutRequested",
+    inputs: [
+      { name: "id", type: "uint256", indexed: true },
+      { name: "lp", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  { type: "error", name: "MinterInvalidAmount", inputs: [] },
+  { type: "error", name: "MinterNonExistentWireOut", inputs: [] },
+  { type: "error", name: "EnforcedPause", inputs: [] },
+] as const;
+
+export const EVM_WIRE_OUT_STATUS = ["Pending", "Settled", "Cancelled"] as const;
 
 export interface EvmReverseRepayArgs {
   loanId: number | bigint;

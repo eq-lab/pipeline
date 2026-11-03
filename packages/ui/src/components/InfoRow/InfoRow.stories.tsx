@@ -85,3 +85,12 @@ export const Pair: Story = {
     </div>
   ),
 };
+
+export const WrappingLabel: Story = {
+  name: "Wrapping label",
+  args: {
+    label: "Paid in order. Requests are paid first in, first out.",
+    value: "Learn more",
+    wrapLabel: true,
+  },
+};

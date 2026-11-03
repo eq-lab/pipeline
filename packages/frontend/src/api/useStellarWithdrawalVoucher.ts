@@ -32,6 +32,7 @@ export interface UseStellarWithdrawalVoucherResult {
   data: StellarWithdrawalVoucherResponse | undefined;
   signatureBytes: Uint8Array | undefined;
   status: StellarWithdrawalVoucherStatus;
+  expired: boolean;
   error: Error | null;
   refetch: () => void;
   invalidate: () => void;
@@ -129,6 +130,7 @@ export function useStellarWithdrawalVoucher(
     data: expired ? undefined : query.data,
     signatureBytes,
     status,
+    expired,
     error: query.error,
     refetch: () => void query.refetch(),
     invalidate: () =>

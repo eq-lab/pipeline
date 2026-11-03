@@ -174,6 +174,16 @@ Steps are labelled per (chain, direction):
 | 2 | Confirm USDC transfer | Confirm PLUSD burn | Confirm USDC transfer | Confirm PLUSD burn |
 | 3 | Claim PLUSD | Claim USDC | Claim PLUSD | Claim USDC |
 
+Each `StepInfo` may carry an optional `hint`, a muted caption under the step label (hidden while the
+step is in the error state). Withdraw direction only: `step2.hint` is the "A request cannot be
+cancelled" line while step 2 is idle, and `step3.hint` is the claim-step hint selected by
+`selectWithdrawClaimHint` (priority and copy in
+[withdrawals.md](../product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app)).
+`step3.disabled` also holds while `payableNow === false` or the queue is paused (strict `false` /
+`true`; an unknown value keeps today's behaviour). `FlowState.withdrawQueue` carries the raw queue
+values (`position`, `payableNow`, `totalQueued`, `totalClaimed`, `rateRaw`, `rateDecimals`,
+`recoveryActive`, `payout`, `plusdDecimals`, `usdcDecimals`) on withdraw and is `undefined` on deposit.
+
 ### Terminal-success toasts and navigation (#1142)
 
 Terminal success toasts carry the **action + amount** — "Staked 100.00 PLUSD" /
@@ -312,6 +322,33 @@ Consumers (home, `/dashboard`, `/transactions`, `/deposit`, `/stake`, `HomeStats
 `ChainNotServedNotice` ("Not available on <chain> … Switch your wallet to a supported network")
 instead of their protocol widgets when `served === false`, and keep their loading states while it
 is `undefined`.
+
+## Withdrawal queue reads
+
+Contract reads for the withdraw page, pending request rows and Protocol Dashboard Panel C. Value
+sources per chain are in
+[withdrawals.md](../product-specs/withdrawals.md#queue-position-payable-now-and-recovery-rate-lp-app).
+The mock layer is not used: values come from the contracts.
+
+- Stellar: `WithdrawalQueueClient` (`wallet/stellar/contracts/withdrawalQueue.ts`) adds `rate`,
+  `totalQueued`, `totalClaimed`, `claimable`, `withdrawalRequestQueued` and `simulateClaimPayout`
+  (simulates `claim_request` from the lender's address and returns the i128 payout). Hooks live in
+  `wallet/stellar/useStellarWithdrawalQueueReads.ts`.
+- EVM: `withdrawalQueueAbi` adds `isClaimable`, `withdrawalRequestQueued`, `queueMetadata`,
+  `convertToAssets` and `paused`. Hooks live in `wallet/evm/useEvmWithdrawalQueueReads.ts`. The
+  deployed queue has no rate getter, so the rate is `convertToAssets(10^plusdDecimals)` read at
+  USDC decimals.
+- Facade `wallet/useWithdrawalQueueReads.ts`: `useWithdrawalQueueTotals(kind)` returns
+  `{ totalQueued, totalClaimed, rateRaw, rateDecimals, paused, plusdDecimals, usdcDecimals }` and
+  `useWithdrawalRequestQueueState(kind, requestId)` returns `{ position, payableNow }`. Both call
+  the Stellar and EVM hooks unconditionally and enable only the active kind (`kind` is
+  `useWalletView().kind` in the flow, `useDashboardChain().kind` in Panel C).
+  `isRecoveryRateActive(totals)` is true only when the rate is defined and below its unit
+  (`1_000_000` on Stellar, `10^usdcDecimals` on EVM).
+- Cadence: position is immutable (`staleTime: Infinity`); `claimable` polls every 15 s; totals and
+  `paused` every 30 s; the rate every 60 s. Reads run only for non-`Completed` `Withdraw` rows.
+- A failed or unavailable read yields `undefined`, rendered "—". It never raises a step or panel
+  error.
 
 ## Network switcher (cross-deployment links)
 
@@ -568,3 +605,18 @@ everything else falls back to JSON, then `String`. All withdrawal-queue mutation
 through it. As of #1034 `toError` lives in `packages/frontend/src/utils/userError.ts` and is the
 first stage of `toUserError`, the mapping layer that turns normalized errors into user-facing copy
 — see [`error-handling.md`](./error-handling.md).
+
+### Minter wire-out reads and writes (#1757)
+
+Bank wire-out for the LP app; behaviour in [`withdrawals.md`](../product-specs/withdrawals.md#bank-wire-withdrawals-lp-app).
+
+| Hook | Role |
+| --- | --- |
+| `useStellarRequestWireOut` (`wallet/stellar`) | Wraps `requestWireOut` from `@pipeline/wallet-connect` with `ENV.STELLAR_MINTER_ID`; `lp` = connected G-address; result `{ request, isPending, isSuccess, error, wireOutId, hash, reset }` |
+| `useEvmRequestWireOut` (`wallet/evm`) | simulate, estimate, `writeContract` `requestWireOut(amount)`, id decoded from the receipt's `WireOutRequested` log; same result shape. The PLUSD approval reuses `useApproval({ token: plusd, spender: ENV.EVM_MINTER_ADDRESS })` |
+| `useStellarWireOuts` / `useEvmWireOuts` | One `wire_out(id)` / `wireOut(id)` read per id (`useQueries` / `useReadContracts`); Stellar per id `staleTime: Infinity` and no polling once Settled or Cancelled, 30 s polling while Pending |
+| `useStellarMinterPaused` / `useEvmMinterPaused` | `paused()`, polled every 30 s |
+| `useWireOuts(kind, ids)` / `useMinterPaused(kind)` | Facade: calls both chain hooks, enables only the active kind, returns `Record<id, { amountRaw?, status?, error? }>`; a per-id error does not affect other ids |
+| `isWireOutMinterConfigured(kind)` | False for an empty Stellar minter id or an empty / zero EVM address; every hook short-circuits and the Bank tab shows the unavailable reason |
+
+Chain scoping follows `useWalletView().kind`; the audit-log query (`useWireOutRequests`) uses `ENV.STELLAR_CHAIN_ID` / `ENV.EVM_CHAIN_ID`. No localStorage is used; the just-submitted id lives in component state.

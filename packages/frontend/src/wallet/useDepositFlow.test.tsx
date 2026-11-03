@@ -84,7 +84,8 @@ const defaultStellarRequests = () => [
   },
 ];
 
-vi.mock("@/wallet", () => ({
+vi.mock("@/wallet", async () => ({
+  formatUnits: (await import("viem")).formatUnits,
   useWalletView: () => ({ kind: mockXlmState.kind }),
 
   useEvmNetworkGuard: () => ({ wrongNetwork: undefined }),
@@ -288,9 +289,70 @@ vi.mock("@/api", () => ({
   }),
 }));
 
+const queue = vi.hoisted(() => ({
+  totalQueued: undefined as bigint | undefined,
+  totalClaimed: undefined as bigint | undefined,
+  rate: undefined as bigint | undefined,
+  paused: undefined as boolean | undefined,
+  position: undefined as bigint | undefined,
+  claimable: undefined as boolean | undefined,
+  payout: undefined as bigint | undefined,
+}));
+
+vi.mock("./stellar/useStellarWithdrawalQueueReads", () => ({
+  useStellarWithdrawalQueueTotals: () => ({
+    totalQueued: queue.totalQueued,
+    totalClaimed: queue.totalClaimed,
+    rate: queue.rate,
+    paused: queue.paused,
+    isLoading: false,
+    error: null,
+  }),
+  useStellarWithdrawalRequestQueueState: () => ({
+    position: queue.position,
+    claimable: queue.claimable,
+    isLoading: false,
+    error: null,
+  }),
+  useStellarClaimPayout: () => ({
+    data: queue.payout,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock("./evm/useEvmWithdrawalQueueReads", () => ({
+  useEvmWithdrawalQueueTotals: () => ({
+    totalQueued: undefined,
+    totalClaimed: undefined,
+    payoutPerPlusd: undefined,
+    paused: undefined,
+    plusdDecimals: undefined,
+    usdcDecimals: undefined,
+    isLoading: false,
+    error: null,
+  }),
+  useEvmWithdrawalRequestQueueState: () => ({
+    position: undefined,
+    claimable: undefined,
+    isLoading: false,
+    error: null,
+  }),
+  useEvmClaimPayout: () => ({ data: undefined, isLoading: false, error: null }),
+}));
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 function resetCtl() {
+  Object.assign(queue, {
+    totalQueued: undefined,
+    totalClaimed: undefined,
+    rate: undefined,
+    paused: undefined,
+    position: undefined,
+    claimable: undefined,
+    payout: undefined,
+  });
   ctl.evmConnected = false;
   ctl.approveError = null;
   ctl.isApprovePending = false;
@@ -749,5 +811,96 @@ describe("useDepositFlow — expired voucher claim retry (#1760)", () => {
 
     expect(ctl.voucherInvalidate).not.toHaveBeenCalled();
     expect(ctl.stellarClaimReset).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDepositFlow — withdraw queue state (#1759)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetCtl();
+    mockXlmState.kind = "stellar";
+    mockXlmState.xlmBalance = "100";
+    mockXlmState.accountExists = true;
+    mockStellarWithdrawVoucherData = { deadline: "1800000000" };
+  });
+
+  it("keeps Claim enabled with no hint while payable and paused are unknown", () => {
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    expect(result.current.step3.disabled).toBe(false);
+    expect(result.current.step3.hint).toBeUndefined();
+  });
+
+  it("shows Payable now under the claim step when the contract says payable", () => {
+    queue.claimable = true;
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    expect(result.current.step3.disabled).toBe(false);
+    expect(result.current.step3.hint).toBe("Payable now.");
+  });
+
+  it("disables Claim and shows the custody-short hint when not payable", () => {
+    queue.claimable = false;
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    expect(result.current.step3.disabled).toBe(true);
+    expect(result.current.step3.hint).toBe(
+      "The withdrawal custody account is short. Claims for your position wait until it is funded.",
+    );
+  });
+
+  it("paused disables Claim and wins over not payable", () => {
+    queue.paused = true;
+    queue.claimable = false;
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    expect(result.current.step3.disabled).toBe(true);
+    expect(result.current.step3.hint).toBe(
+      "The withdrawal queue is paused. Check the status page before retrying.",
+    );
+  });
+
+  it("shows the request hint on the idle withdraw step 2 only", () => {
+    ctl.requests = [];
+    const withdraw = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
+    expect(withdraw.result.current.step2.hint).toBe(
+      "A request cannot be cancelled. Your PLUSD stays in the queue until it is claimed.",
+    );
+    const deposit = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(deposit.result.current.step2.hint).toBeUndefined();
+  });
+
+  it("exposes raw queue values on withdraw and nothing on deposit", () => {
+    queue.position = 25_000_000_000n;
+    queue.claimable = true;
+    const withdraw = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
+    expect(withdraw.result.current.withdrawQueue).toMatchObject({
+      requestAmount: 10_000_000_000n,
+      position: 25_000_000_000n,
+      payableNow: true,
+      recoveryActive: false,
+    });
+    const deposit = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(deposit.result.current.withdrawQueue).toBeUndefined();
+    expect(deposit.result.current.step3.hint).toBeUndefined();
+  });
+
+  it("shows the contract payout in the recovery hint and — until it resolves", () => {
+    queue.claimable = true;
+    queue.rate = 950_000n;
+    const pending = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
+    expect(pending.result.current.withdrawQueue?.recoveryActive).toBe(true);
+    expect(pending.result.current.step3.hint).toBe(
+      "Payable now. Pays — USDC = 1,000.00 PLUSD × 0.95",
+    );
+    queue.payout = 9_500_000_000n;
+    const resolved = renderHook(() => useDepositFlow("withdraw", 0n, vi.fn()));
+    expect(resolved.result.current.step3.hint).toBe(
+      "Payable now. Pays 950.00 USDC = 1,000.00 PLUSD × 0.95",
+    );
   });
 });

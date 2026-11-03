@@ -29,9 +29,26 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
+const mockWireOutItems = vi.hoisted(() => ({
+  items: [] as Array<{ id: string; timestamp: string }>,
+  error: null as Error | null,
+}));
+const mockWireOutReads = vi.hoisted(() => ({
+  reads: {} as Record<
+    string,
+    { amountRaw?: string; status?: "Pending" | "Settled" | "Cancelled" }
+  >,
+}));
+
 vi.mock("@/api", () => ({
   useChainServed: () => mockChainServed(),
   useRequests: () => mockUseRequests(),
+  useWireOutRequests: () => ({
+    items: mockWireOutItems.items,
+    isLoading: false,
+    error: mockWireOutItems.error,
+    refetch: vi.fn(),
+  }),
 }));
 
 const mockUseWallet = vi.fn(() => ({ isConnected: true }));
@@ -49,6 +66,7 @@ vi.mock("@/wallet", async (importOriginal) => {
     useWalletView: () => mockUseWalletView(),
     useEvmStakeDecimals: () => ({ plusd: 6, splusd: 6 }),
     useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
+    useWireOuts: () => mockWireOutReads.reads,
   };
 });
 
@@ -1050,5 +1068,60 @@ describe("Shared renderRequestRow helper — EVM decimals (#1627)", () => {
     );
     expect(container.textContent).toContain("−— PLUSD");
     expect(container.textContent).toContain("+— sPLUSD");
+  });
+});
+
+describe("Transactions page — wire-out rows (#1757)", () => {
+  beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockWireOutItems.items = [{ id: "3", timestamp: "2999-01-01T00:00:00Z" }];
+    mockWireOutReads.reads = {
+      "3": { amountRaw: "5000000", status: "Settled" },
+    };
+  });
+
+  afterEach(() => {
+    mockWireOutItems.items = [];
+    mockWireOutItems.error = null;
+    mockWireOutReads.reads = {};
+    vi.clearAllMocks();
+  });
+
+  it("shows the wire-out first under All", () => {
+    renderTransactions();
+    expect(screen.getByTestId("transactions-row-0")).toHaveTextContent(
+      "Bank transfer · Settled",
+    );
+  });
+
+  it("shows the wire-out under Sell and hides it under Buy, Stake and Unstake", async () => {
+    const user = userEvent.setup();
+    renderTransactions();
+    await user.click(screen.getByRole("tab", { name: "Sell" }));
+    expect(screen.getByText("Bank transfer · Settled")).toBeInTheDocument();
+    for (const name of ["Buy", "Stake", "Unstake"]) {
+      await user.click(screen.getByRole("tab", { name }));
+      expect(
+        screen.queryByText("Bank transfer · Settled"),
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  it("keeps the request rows when the audit log fails", () => {
+    mockWireOutItems.items = [];
+    mockWireOutItems.error = new Error("audit log down");
+    renderTransactions();
+    expect(screen.getByTestId("transactions-row-0")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("transactions-error-state"),
+    ).not.toBeInTheDocument();
   });
 });

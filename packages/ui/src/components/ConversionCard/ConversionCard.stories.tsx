@@ -93,6 +93,21 @@ export const WithSelectedAmount: Story = {
 };
 
 /* -------------------------------------------------------------------------- */
+/*  With footer row                                                            */
+/* -------------------------------------------------------------------------- */
+
+export const WithFooter: Story = {
+  name: "With footer row",
+  args: {
+    footer: (
+      <span style={{ fontSize: 14 }}>
+        <strong>Paid in order.</strong> Requests are paid first in, first out.
+      </span>
+    ),
+  },
+};
+
+/* -------------------------------------------------------------------------- */
 /*  Max amount selected                                                        */
 /* -------------------------------------------------------------------------- */
 
