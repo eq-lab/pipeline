@@ -254,6 +254,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1576 Home: loading state while GET /v1/lps/me is in flight](https://github.com/eq-lab/pipeline/issues/1576) | [1576-home-loading-state.md](./epic-1419/1576-home-loading-state.md) | Initial |
 | [#1819 Home: show the "Transfers unlocked / Add Funds" card for every signed-in, wallet-connected, KYB-passed LP](https://github.com/eq-lab/pipeline/issues/1819) | [1819-home-passed-unlocked-card.md](./epic-1419/1819-home-passed-unlocked-card.md) | Initial |
 | [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
+| [#1837 AddEmailModal async-submit test is deterministic](https://github.com/eq-lab/pipeline/issues/1837) | [1837-add-email-modal-flaky-test.md](./epic-1419/1837-add-email-modal-flaky-test.md) | Initial |
 
 ---
 
