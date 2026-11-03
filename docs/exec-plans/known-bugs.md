@@ -300,7 +300,7 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** Verify each configured address appears in the startup logs / produces rows before trusting a new EVM chain config.
 - **Suggested fix:** Parse addresses at config time with `?` instead of `.ok()`, and reject an empty resolved address set outright — an unfiltered `eth_getLogs` is never what the caller meant.
 
-### BUG-31: `AddEmailModal.test.tsx` — "an async onSubmit disables Save while pending" is timing-flaky
+### BUG-31: `AddEmailModal.test.tsx` — "an async onSubmit disables Save while pending" is timing-flaky [FIXED 2026-11-03 / #1837]
 - **Tracked:** #1837 (filed 2026-11-03) — seen during #1817 verification (2026-11-02); the file is untouched on that branch.
 - **Date:** 2026-11-02
 - **Location:** `packages/frontend/src/components/AddEmailModal.test.tsx`, test "AddEmailModal (#1459) > an async onSubmit disables Save while pending, then re-enables it".
@@ -309,3 +309,4 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Impact:** Spurious red CI on unrelated PRs.
 - **Workaround:** Re-run the job.
 - **Suggested fix:** Hold the `onSubmit` promise open with a deferred resolver, assert disabled, then resolve and assert re-enabled.
+- **Resolved:** 2026-11-03 by #1837 — the real race was the post-resolve check: `findByRole("Save")` matched the already-present button immediately, before the `.finally(() => setIsSubmitting(false))` state update flushed. The test now resolves the deferred promise inside `act` and asserts re-enable via `waitFor`; `AddEmailModal.tsx` is unchanged.
