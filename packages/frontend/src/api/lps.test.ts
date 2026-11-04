@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { saveSession } from "@/auth/session";
-import { ApiError } from "./client";
+import { ApiError, subscribeSessionEnded } from "./client";
 import {
   deleteMyDocument,
   getMyLp,
   getMyPaymentDetails,
-  linkMyAddress,
+  getLinkAddressChallenge,
+  verifyLinkAddress,
   upsertMyLp,
   uploadMyDocuments,
 } from "./lps";
@@ -17,15 +18,37 @@ beforeEach(() => {
 });
 
 describe("LP API client", () => {
-  it("posts the connected Stellar address to link-address with bearer auth", async () => {
+  it("requests a challenge with query params and bearer auth, without a signer", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "m", nonce: "n" }), {
+        status: 200,
+      }),
+    );
+    const challenge = await getLinkAddressChallenge(99000001, "GABC");
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toMatch(/\/v1\/lps\/me\/link-address\/challenge\?/);
+    expect(url).toContain("chain_id=99000001");
+    expect(url).toContain("address=GABC");
+    expect(url).not.toContain("signer_address");
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.headers).toEqual({ Authorization: "Bearer jwt" });
+    expect(challenge).toEqual({ message: "m", nonce: "n" });
+  });
+
+  it("posts the exact verify body with bearer auth and returns the LP", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ id: 1, stellar_address: "GABC" }), {
         status: 200,
       }),
     );
-    const lp = await linkMyAddress("GABC");
+    const lp = await verifyLinkAddress({
+      chain_id: 99000001,
+      address: "GABC",
+      signature: "sig",
+    });
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
-      /\/v1\/lps\/me\/link-address$/,
+      /\/v1\/lps\/me\/link-address\/verify$/,
     );
     const init = fetchMock.mock.calls[0]?.[1];
     expect(init?.method).toBe("POST");
@@ -34,9 +57,24 @@ describe("LP API client", () => {
       "Content-Type": "application/json",
     });
     expect(JSON.parse(init?.body as string)).toEqual({
-      stellar_address: "GABC",
+      chain_id: 99000001,
+      address: "GABC",
+      signature: "sig",
     });
     expect(lp.stellar_address).toBe("GABC");
+  });
+
+  it("surfaces a 422 as ApiError without ending the session", async () => {
+    const ended = vi.fn();
+    const off = subscribeSessionEnded(ended);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "bad signature" }), { status: 422 }),
+    );
+    await expect(
+      verifyLinkAddress({ chain_id: 1, address: "GABC", signature: "x" }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(ended).not.toHaveBeenCalled();
+    off();
   });
 
   it("authenticates the read and sends a full JSON profile", async () => {

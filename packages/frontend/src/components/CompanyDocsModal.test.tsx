@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { CompanyDocsModal } from "./CompanyDocsModal";
 import { ApiError } from "@/api";
 import type { LpResponse } from "@/api";
+import type { SettlementRowView } from "@/components/account/settlementAddress";
 import { saveSession, clearSession } from "@/auth/session";
 import {
   CountriesWrapper,
@@ -309,6 +310,10 @@ function lp(
     contact_email: "existing@example.com",
     stellar_address: null,
     address_linked_at: null,
+    stellar_signer_address: null,
+    evm_address: null,
+    evm_signer_address: null,
+    evm_address_linked_at: null,
     kyb_status: "NotStarted",
     writable: true,
     notify_on_review: false,
@@ -830,41 +835,100 @@ describe("CompanyDocsModal — uncertain upload with duplicate filenames (#1572,
   });
 });
 
-describe("CompanyDocsModal — settlement row", () => {
+function settlementView(
+  overrides: Partial<SettlementRowView> = {},
+): SettlementRowView {
+  return {
+    kind: "stellar",
+    label: "Stellar settlement address",
+    address: "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK",
+    caption: null,
+    tone: "muted",
+    action: null,
+    confirm: null,
+    busy: false,
+    ...overrides,
+  };
+}
+
+function settlementControls(rows: SettlementRowView[]) {
+  return {
+    rows,
+    onLink: vi.fn(),
+    onChange: vi.fn(),
+    onCancel: vi.fn(),
+  };
+}
+
+describe("CompanyDocsModal — settlement rows", () => {
   const ADDRESS = "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK";
 
-  it("renders the read-only settlement row after Country for a production LP", () => {
+  it("renders one row per view after Country for a production LP", () => {
     renderModal({
       lp: lp([makeDocument(1)]),
-      settlement: {
-        address: ADDRESS,
-        caption: "Fixed once your entity passed verification.",
-        tone: "muted",
-      },
+      settlement: settlementControls([
+        settlementView({ caption: "Linked to your connected wallet." }),
+        settlementView({
+          kind: "evm",
+          label: "Ethereum settlement address",
+          address: null,
+        }),
+      ]),
     });
-    const row = screen.getByTestId("settlement-address-row");
-    expect(row).toHaveTextContent("Settlement address");
-    expect(row).toHaveTextContent(ADDRESS);
-    expect(row).toHaveTextContent(
-      "Fixed once your entity passed verification.",
-    );
-    expect(row.querySelector("input, button")).toBeNull();
+    const rows = screen.getAllByTestId("settlement-address-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Stellar settlement address");
+    expect(rows[0]).toHaveTextContent(ADDRESS);
+    expect(rows[0]).toHaveTextContent("Linked to your connected wallet.");
+    expect(within(rows[0]!).queryByRole("button")).toBeNull();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("uses role alert only for the negative tone", () => {
     renderModal({
       lp: null,
-      settlement: { address: null, caption: "Taken.", tone: "negative" },
+      settlement: settlementControls([
+        settlementView({ address: null, caption: "Taken.", tone: "negative" }),
+      ]),
     });
     expect(
       within(screen.getByTestId("settlement-address-row")).getByRole("alert"),
     ).toHaveTextContent("Taken.");
   });
 
+  it("wires the row buttons and the change confirmation", () => {
+    const settlement = settlementControls([
+      settlementView({ action: "link" }),
+      settlementView({
+        kind: "evm",
+        label: "Ethereum settlement address",
+        action: "change",
+      }),
+    ]);
+    renderModal({ lp: lp([makeDocument(1)]), settlement });
+    fireEvent.click(screen.getByRole("button", { name: "Link wallet" }));
+    expect(settlement.onLink).toHaveBeenCalledWith("stellar");
+    fireEvent.click(screen.getByRole("button", { name: "Change wallet" }));
+    expect(settlement.onChange).toHaveBeenCalledWith("evm");
+  });
+
+  it("shows the confirmation with From and To and calls Confirm change and Cancel", () => {
+    const settlement = settlementControls([
+      settlementView({ confirm: { from: ADDRESS, to: "GNEWADDRESS" } }),
+    ]);
+    renderModal({ lp: lp([makeDocument(1)]), settlement });
+    const confirm = screen.getByTestId("settlement-change-confirm");
+    expect(confirm).toHaveTextContent(`From ${ADDRESS}`);
+    expect(confirm).toHaveTextContent("To GNEWADDRESS");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm change" }));
+    expect(settlement.onLink).toHaveBeenCalledWith("stellar");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(settlement.onCancel).toHaveBeenCalledOnce();
+  });
+
   it("renders no row in preview mode", () => {
     renderModal({
-      settlement: { address: ADDRESS, caption: null, tone: "muted" },
+      settlement: settlementControls([settlementView({ action: "link" })]),
     });
     expect(screen.queryByTestId("settlement-address-row")).toBeNull();
   });

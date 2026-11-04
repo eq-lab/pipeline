@@ -8,15 +8,15 @@ Refreshed 2026-11-04 from the 2026-11-02 draft (Issue comment) against `main` at
 
 In scope (LP app, `packages/frontend` only):
 
-1. **API client** (`packages/frontend/src/api/lps.ts`).
+1. [x] **API client** (`packages/frontend/src/api/lps.ts`).
    - `LpResponse` gains the four fields `main` already serves: `stellar_signer_address`, `evm_address`, `evm_signer_address`, `evm_address_linked_at` (all `string | null`).
    - New `getLinkAddressChallenge` (`GET /v1/lps/me/link-address/challenge`) and `verifyLinkAddress` (`POST /v1/lps/me/link-address/verify`).
    - `linkMyAddress` is deleted. Its route is gone on `main`, so today's automatic link answers `404` on every signed-in visit with a connected Stellar wallet.
-2. **Wallet signing.** `signMessage(message)` is added to the LP app's own wallet hooks (`@/wallet`): `useStellarWallet` (SEP-0053 via `StellarWalletsKit.signMessage`) and `useEvmWallet` (EIP-191 via wagmi `useSignMessage`), ported from `packages/wallet-connect`.
-3. **Link hook.** `useSettlementAddressLink` stops being an on-load effect. It becomes an imperative, click-only flow: challenge, then `signMessage`, then verify, for both chain kinds. It has a confirmation step before a change of an already linked address.
-4. **Writability follows #1831.** `settlementWritable(lp)` refuses only `Failed`. A `Passed` LP can link, prove a legacy unproven address, and change its address.
-5. **Settlement rows.** The single read-only Stellar row becomes **one row per chain kind**. A row can carry `Link wallet`, `Change wallet` or `Try again`, and an inline change confirmation that names the old and new address. The rows render on the Account page (`AccountProfileCard`) and in `CompanyDocsModal`.
-6. **Docs, user stories and tech debt** for the above.
+2. [x] **Wallet signing.** `signMessage(message)` is added to the LP app's own wallet hooks (`@/wallet`): `useStellarWallet` (SEP-0053 via `StellarWalletsKit.signMessage`) and `useEvmWallet` (EIP-191 via wagmi `useSignMessage`), ported from `packages/wallet-connect`.
+3. [x] **Link hook.** `useSettlementAddressLink` stops being an on-load effect. It becomes an imperative, click-only flow: challenge, then `signMessage`, then verify, for both chain kinds. It has a confirmation step before a change of an already linked address.
+4. [x] **Writability follows #1831.** `settlementWritable(lp)` refuses only `Failed`. A `Passed` LP can link, prove a legacy unproven address, and change its address.
+5. [x] **Settlement rows.** The single read-only Stellar row becomes **one row per chain kind**. A row can carry `Link wallet`, `Change wallet` or `Try again`, and an inline change confirmation that names the old and new address. The rows render on the Account page (`AccountProfileCard`) and in `CompanyDocsModal`.
+6. [x] **Docs, user stories and tech debt** for the above.
 
 Out of scope:
 
@@ -79,9 +79,9 @@ _None_
 
 Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` header line and no other comments: no JSDoc, no body or test comments. Tests sit next to their source as `*.test.ts(x)`.
 
-1. **Docs first.** Make the changes listed under "Docs to Update", so the code follows the spec.
+1. [x] **Docs first.** Make the changes listed under "Docs to Update", so the code follows the spec.
 
-2. **`packages/frontend/src/api/lps.ts`.**
+2. [x] **`packages/frontend/src/api/lps.ts`.**
    - Add after `address_linked_at`: `stellar_signer_address: string | null; evm_address: string | null; evm_signer_address: string | null; evm_address_linked_at: string | null;`.
    - Add `export interface LinkChallenge { message: string; nonce: string }`.
    - Add `getLinkAddressChallenge(chainId: number, address: string): Promise<LinkChallenge>`:
@@ -93,7 +93,7 @@ Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` hea
    - Delete `linkMyAddress`.
    - In `packages/frontend/src/api/index.ts`, drop `linkMyAddress` and export the two functions plus `LinkChallenge`. Update `packages/frontend/src/api/README.md` if it lists the calls.
 
-3. **`packages/frontend/src/wallet/stellar/useStellarWallet.ts`.**
+3. [x] **`packages/frontend/src/wallet/stellar/useStellarWallet.ts`.**
    - Add `signMessage(message: string): Promise<{ signature: string }>` to `StellarWalletState`, as a `useCallback` on `[mockAddress, address]`.
    - On the mock path, reject with `Error("[stellar mock] signMessage is not mockable; connect a real wallet")`.
    - Otherwise:
@@ -106,14 +106,14 @@ Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` hea
      Here `networkPassphrase` comes from `./chain`. This mirrors `packages/wallet-connect/src/stellar/useStellarWallet.ts` `signMessage`.
    - Replace the header docblock with `// spec: packages/frontend/src/wallet/README.md#usestellarwallet` and delete the interface and function JSDoc.
 
-4. **`packages/frontend/src/wallet/evm/useEvmWallet.ts`.**
+4. [x] **`packages/frontend/src/wallet/evm/useEvmWallet.ts`.**
    - Add `signMessage(message: string): Promise<{ signature: string }>` to `WalletState`, using `const { signMessageAsync } = useSignMessage()` from `wagmi`.
    - On the mock path, reject with `Error("[wallet mock] signMessage is not mockable; connect a real wallet")`.
    - Otherwise return `{ signature: await signMessageAsync({ message }) }`.
    - Replace the header docblock with `// spec: packages/frontend/src/wallet/README.md#useevmwallet` and delete the remaining JSDoc.
    - Run `npx tsx scripts/lint-comments.ts --update-baseline` and confirm both wallet entries are gone from `scripts/lint-comments.baseline.json`.
 
-5. **`packages/frontend/src/components/account/settlementAddress.ts`** (pure view logic; header `// spec: docs/frontend/account-page.md#settlement-address`).
+5. [x] **`packages/frontend/src/components/account/settlementAddress.ts`** (pure view logic; header `// spec: docs/frontend/account-page.md#settlement-address`).
    - Types:
 
      ```ts
@@ -191,7 +191,7 @@ Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` hea
 
        `address: null` renders as `—`, as today.
 
-6. **`packages/frontend/src/auth/useSettlementAddressLink.ts`** (rewrite; header `// spec: docs/frontend/account-page.md#settlement-address`).
+6. [x] **`packages/frontend/src/auth/useSettlementAddressLink.ts`** (rewrite; header `// spec: docs/frontend/account-page.md#settlement-address`).
    - Signature:
 
      ```ts
@@ -224,7 +224,7 @@ Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` hea
    - **`finish(phase)`** clears `inFlight` and sets `{ kind, phase }`. `idle` sets `kind: null`.
    - Delete the `attempted` key set and the `tick` re-run. There are no automatic attempts left to deduplicate.
 
-7. **`packages/frontend/src/auth/AuthFlowContext.ts` and `AuthFlowProvider.tsx`.**
+7. [x] **`packages/frontend/src/auth/AuthFlowContext.ts` and `AuthFlowProvider.tsx`.**
    - Add `SettlementControls` to `settlementAddress.ts`:
 
      ```ts
@@ -243,7 +243,7 @@ Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` hea
      - memoizes `settlement = { rows, onLink: link, onChange: beginChange, onCancel: cancelChange }`;
      - passes `settlement` to `CompanyDocsModal` and the context, as today.
 
-8. **`packages/frontend/src/components/account/SettlementAddressRow.tsx`** (header re-pointed to `#settlement-address`).
+8. [x] **`packages/frontend/src/components/account/SettlementAddressRow.tsx`** (header re-pointed to `#settlement-address`).
    - `SettlementAddressRow` props: `SettlementRowView & Pick<SettlementControls, "onLink" | "onChange" | "onCancel">`.
    - `AccountListRow` gets `caption={label}`. Keep `data-testid="settlement-address-row"` and add `data-kind={kind ?? "none"}`.
    - When `action !== null && kind !== null`, the `trailing` slot gets one `Button variant="secondary" size="compact"`:
@@ -256,13 +256,13 @@ Code style follows AGENTS.md. Each new or rewritten file gets one `// spec:` hea
      - The block has `data-testid="settlement-change-confirm"`, and focus moves to `Confirm change` when it opens.
    - Export `SettlementAddressRows({ settlement }: { settlement: SettlementControls })` from the same file. It renders `settlement.rows.map((row) => <SettlementAddressRow key={row.kind ?? "none"} {...row} onLink=… onChange=… onCancel=… />)` in a `flex flex-col gap-2` wrapper.
 
-9. **`AccountProfileCard.tsx`, `AccountPage.tsx`, `CompanyDocsModal.tsx`.**
+9. [x] **`AccountProfileCard.tsx`, `AccountPage.tsx`, `CompanyDocsModal.tsx`.**
    - `settlement?: SettlementControls`. Replace `<SettlementAddressRow {...settlement} />` with `<SettlementAddressRows settlement={settlement} />` in the same slot: below Country, and in the modal's first surface card, still hidden in preview.
    - `AccountPage` passes the context value through, unchanged in shape.
 
-10. **Remove leftovers.** `grep -rn "linkMyAddress\|link-address\"" packages/frontend/src` returns nothing. Only `/challenge` and `/verify` remain.
+10. [x] **Remove leftovers.** `grep -rn "linkMyAddress\|link-address\"" packages/frontend/src` returns nothing. Only `/challenge` and `/verify` remain.
 
-11. **Run the gates** (Test Strategy). Fix everything before handing back.
+11. [x] **Run the gates** (Test Strategy). Fix everything before handing back.
 
 ## Test Strategy
 

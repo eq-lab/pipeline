@@ -13,6 +13,7 @@ vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
     ...original,
+    useSignMessage: vi.fn(() => ({ signMessageAsync: vi.fn() })),
     WagmiProvider: ({ children }: { children: React.ReactNode }) => (
       <>{children}</>
     ),

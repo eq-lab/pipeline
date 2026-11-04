@@ -7,7 +7,10 @@ import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
 import type { LpReadState } from "@/components/homeState";
 import { useConnectModal, useEvmWallet, useStellarWallet } from "@/wallet";
 import { useSettlementAddressLink } from "./useSettlementAddressLink";
-import { deriveSettlementRow } from "@/components/account/settlementAddress";
+import {
+  connectedWallet,
+  deriveSettlementRows,
+} from "@/components/account/settlementAddress";
 import { useAuthSession } from "./useAuthSession";
 import { isAccountSetupDismissed, markAccountSetupDismissed } from "./session";
 import { ApiError, getMyLp, upsertMyLp } from "@/api";
@@ -98,7 +101,7 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   const loadedLp =
     setup?.status === "loaded" && setup.token === token ? setup.lp : null;
 
-  const linkState = useSettlementAddressLink({
+  const { state, link, beginChange, cancelChange } = useSettlementAddressLink({
     token,
     lp: loadedLp,
     lpLoaded: loadedLp !== null,
@@ -106,18 +109,30 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   });
   const stellar = useStellarWallet();
   const evm = useEvmWallet();
-  const stellarAddress =
-    stellar.isConnected && stellar.address ? stellar.address : null;
-  const settlement = useMemo(
+  const connected = connectedWallet(evm, stellar);
+  const connectedKind = connected?.kind;
+  const connectedAddress = connected?.address;
+  const rows = useMemo(
     () =>
-      deriveSettlementRow({
+      deriveSettlementRows({
         lpRead,
         lp: loadedLp,
-        stellarAddress,
-        evmConnected: evm.isConnected,
-        link: linkState,
+        connected:
+          connectedKind && connectedAddress
+            ? { kind: connectedKind, address: connectedAddress }
+            : null,
+        link: state,
       }),
-    [lpRead, loadedLp, stellarAddress, evm.isConnected, linkState],
+    [lpRead, loadedLp, connectedKind, connectedAddress, state],
+  );
+  const settlement = useMemo(
+    () => ({
+      rows,
+      onLink: link,
+      onChange: beginChange,
+      onCancel: cancelChange,
+    }),
+    [rows, link, beginChange, cancelChange],
   );
 
   const contextValue = useMemo<AuthFlowContextValue>(

@@ -18,8 +18,17 @@ function LpReadConsumer() {
     <div>
       <span data-testid="lp-read">{lpRead}</span>
       <span data-testid="kyb-status">{kybStatus ?? ""}</span>
-      <span data-testid="settlement-address">{settlement.address ?? "—"}</span>
-      <span data-testid="settlement-caption">{settlement.caption ?? ""}</span>
+      {settlement.rows.map((row) => (
+        <div key={row.kind ?? "none"} data-testid={`settlement-${row.kind}`}>
+          <span data-testid="settlement-address">{row.address ?? "—"}</span>
+          <span data-testid="settlement-caption">{row.caption ?? ""}</span>
+          {row.action && row.kind && (
+            <button onClick={() => settlement.onLink(row.kind!)}>
+              Link wallet
+            </button>
+          )}
+        </div>
+      ))}
       <button onClick={openAccountSetup}>Reopen setup</button>
     </div>
   );
@@ -30,9 +39,14 @@ const createdLp = {
   id: 3,
   kyb_status: "NotStarted",
   stellar_address: null,
+  stellar_signer_address: null,
+  evm_address: null,
+  evm_signer_address: null,
   documents: [],
 };
-const mockLink = vi.fn();
+const mockChallenge = vi.fn();
+const mockVerify = vi.fn();
+const mockSign = vi.fn();
 const mockGet = vi.fn();
 const mockUpsert = vi.fn();
 vi.mock("@/api", async () => {
@@ -41,7 +55,8 @@ vi.mock("@/api", async () => {
     ...actual,
     getMyLp: (...args: unknown[]) => mockGet(...args),
     upsertMyLp: (...args: unknown[]) => mockUpsert(...args),
-    linkMyAddress: (...args: unknown[]) => mockLink(...args),
+    getLinkAddressChallenge: (...args: unknown[]) => mockChallenge(...args),
+    verifyLinkAddress: (...args: unknown[]) => mockVerify(...args),
   };
 });
 const mockStellar = vi.hoisted(() => ({
@@ -52,8 +67,12 @@ const mockStellar = vi.hoisted(() => ({
 }));
 vi.mock("@/wallet", () => ({
   useConnectModal: () => ({ open: vi.fn() }),
-  useStellarWallet: () => mockStellar.value,
-  useEvmWallet: () => ({ address: undefined, isConnected: false }),
+  useStellarWallet: () => ({ ...mockStellar.value, signMessage: mockSign }),
+  useEvmWallet: () => ({
+    address: undefined,
+    isConnected: false,
+    signMessage: vi.fn(),
+  }),
 }));
 vi.mock("@/components/EmailAuthFlow", () => ({ EmailAuthFlow: () => null }));
 vi.mock("@/components/CompanyDocsModal", () => ({
@@ -81,7 +100,9 @@ beforeEach(() => {
   clearSession();
   mockGet.mockReset();
   mockUpsert.mockReset();
-  mockLink.mockReset();
+  mockChallenge.mockReset().mockResolvedValue({ message: "msg", nonce: "n" });
+  mockVerify.mockReset();
+  mockSign.mockReset().mockResolvedValue({ signature: "sig" });
   mockStellar.value = { address: undefined, isConnected: false };
 });
 
@@ -397,22 +418,32 @@ describe("Account-setup dismissal persists across reloads (#1429)", () => {
   });
 });
 
-describe("Settlement address link (#1813)", () => {
-  it("links a connected Stellar wallet once the LP loads and exposes the served address", async () => {
+describe("Settlement address link", () => {
+  const linkedLp = {
+    ...createdLp,
+    documents: [{ id: 1 }],
+    stellar_address: ADDRESS,
+    stellar_signer_address: ADDRESS,
+  };
+
+  it("makes no request on sign-in and links only after the click", async () => {
     mockStellar.value = { address: ADDRESS, isConnected: true };
     mockGet.mockResolvedValueOnce({ ...createdLp, documents: [{ id: 1 }] });
-    mockLink.mockResolvedValueOnce({
-      ...createdLp,
-      documents: [{ id: 1 }],
-      stellar_address: ADDRESS,
-    });
+    mockVerify.mockResolvedValueOnce(linkedLp);
     render(
       <AuthFlowProvider>
         <LpReadConsumer />
       </AuthFlowProvider>,
     );
     signIn();
-    await waitFor(() => expect(mockLink).toHaveBeenCalledWith(ADDRESS));
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-read")).toHaveTextContent("loaded"),
+    );
+    expect(mockChallenge).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Link wallet" }));
+    await waitFor(() => expect(mockVerify).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenCalledOnce();
+    expect(mockSign).toHaveBeenCalledWith("msg");
     await waitFor(() =>
       expect(screen.getByTestId("settlement-address")).toHaveTextContent(
         ADDRESS,
@@ -421,13 +452,12 @@ describe("Settlement address link (#1813)", () => {
     expect(screen.getByTestId("settlement-caption")).toHaveTextContent(
       "Linked to your connected wallet.",
     );
-    expect(mockLink).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Link wallet" })).toBeNull();
   });
 
-  it("links after the LP is created through CompanyDocsModal", async () => {
+  it("shows the needs-LP caption without a button before the LP exists, then Link wallet after creation", async () => {
     mockStellar.value = { address: ADDRESS, isConnected: true };
     mockGet.mockRejectedValueOnce(new ApiError(404, "missing"));
-    mockLink.mockResolvedValueOnce({ ...createdLp, stellar_address: ADDRESS });
     render(
       <AuthFlowProvider>
         <LpReadConsumer />
@@ -435,15 +465,18 @@ describe("Settlement address link (#1813)", () => {
     );
     signIn();
     await screen.findByRole("dialog");
-    expect(mockLink).not.toHaveBeenCalled();
     expect(screen.getByTestId("settlement-caption")).toHaveTextContent(
-      "Linked when you submit your company details.",
+      "Save your company details first, then link this wallet.",
     );
+    expect(screen.queryByRole("button", { name: "Link wallet" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Create LP" }));
-    await waitFor(() => expect(mockLink).toHaveBeenCalledWith(ADDRESS));
+    expect(
+      await screen.findByRole("button", { name: "Link wallet" }),
+    ).toBeInTheDocument();
+    expect(mockChallenge).not.toHaveBeenCalled();
   });
 
-  it("does not link without a Stellar wallet", async () => {
+  it("shows the connect caption and no button without a wallet", async () => {
     mockGet.mockResolvedValueOnce({ ...createdLp, documents: [{ id: 1 }] });
     render(
       <AuthFlowProvider>
@@ -454,6 +487,10 @@ describe("Settlement address link (#1813)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("lp-read")).toHaveTextContent("loaded"),
     );
-    expect(mockLink).not.toHaveBeenCalled();
+    expect(screen.getByTestId("settlement-caption")).toHaveTextContent(
+      "Connect a wallet to name your settlement address.",
+    );
+    expect(screen.queryByRole("button", { name: "Link wallet" })).toBeNull();
+    expect(mockChallenge).not.toHaveBeenCalled();
   });
 });

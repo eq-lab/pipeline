@@ -30,12 +30,14 @@ export {
   upsertMyLp,
   uploadMyDocuments,
   deleteMyDocument,
-  linkMyAddress,
+  getLinkAddressChallenge,
+  verifyLinkAddress,
   getMyPaymentDetails,
 } from "./lps";
 export type {
   LpResponse,
   LpDocument,
+  LinkChallenge,
   UploadDocumentsResponse,
   PaymentDetailsResponse,
 } from "./lps";

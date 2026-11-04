@@ -2,7 +2,8 @@
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1813](https://github.com/eq-lab/pipeline/issues/1813)
-Spec: [docs/frontend/account-page.md](../../frontend/account-page.md#settlement-address-1813), [docs/product-specs/kyb-lp-verification.md](../../product-specs/kyb-lp-verification.md#settlement-address)
+Superseded by [#1825](./1825-signed-settlement-link-ui.md): the automatic link was removed; linking is signed and user-initiated.
+Spec: [docs/frontend/account-page.md](../../frontend/account-page.md#settlement-address), [docs/product-specs/kyb-lp-verification.md](../../product-specs/kyb-lp-verification.md#settlement-address)
 
 A signed-in LP with a connected Stellar wallet has that wallet linked to the LP record through
 `POST /v1/lps/me/link-address`. The Account page and the account-setup modal show the served settlement

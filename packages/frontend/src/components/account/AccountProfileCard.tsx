@@ -1,8 +1,8 @@
 // spec: docs/frontend/account-page.md#production-lp-data-contract-1373
 import { Button, TextField } from "@pipeline/ui";
 import { CountryField } from "./CountryField";
-import { SettlementAddressRow } from "./SettlementAddressRow";
-import type { SettlementRowView } from "./settlementAddress";
+import { SettlementAddressRows } from "./SettlementAddressRow";
+import type { SettlementControls } from "./settlementAddress";
 
 export interface AccountProfileCardProps {
   legalName: string;
@@ -15,7 +15,7 @@ export interface AccountProfileCardProps {
   writable: boolean;
   disabled: boolean;
   busy: boolean;
-  settlement?: SettlementRowView;
+  settlement?: SettlementControls;
 }
 
 export function AccountProfileCard({
@@ -55,7 +55,7 @@ export function AccountProfileCard({
           disabled={disabled}
         />
       </div>
-      {settlement && <SettlementAddressRow {...settlement} />}
+      {settlement && <SettlementAddressRows settlement={settlement} />}
       {writable && (
         <Button
           variant="primary-dark"

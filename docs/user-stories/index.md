@@ -202,9 +202,10 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Initial |
 | [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
-| [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Amended by #1824 (unsigned endpoint removed; LP app rewired by #1825) |
+| [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Superseded by #1825 (auto-link removed; linking is signed and user-initiated) |
 | [#1824 Backend: signed settlement-address linking (Stellar + EVM) + chain-aware payment-details](https://github.com/eq-lab/pipeline/issues/1824) | [1824-signed-settlement-address.md](./epic-1247/1824-signed-settlement-address.md) | Initial |
 | [#1831 Backend: let an LP change its linked settlement address at any time (including after KYB Passed)](https://github.com/eq-lab/pipeline/issues/1831) | [1831-relink-settlement-address.md](./epic-1247/1831-relink-settlement-address.md) | Initial |
+| [#1825 LP: link the settlement address by signing a challenge (Stellar + EVM)](https://github.com/eq-lab/pipeline/issues/1825) | [1825-signed-settlement-link-ui.md](./epic-1247/1825-signed-settlement-link-ui.md) | Initial |
 
 ---
 

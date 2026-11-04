@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-165.**
+**Next free number: TD-166.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2250,3 +2250,11 @@ line, whichever section it lands in.
 - **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
 - **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
 - **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+
+### TD-165: The LP app links only the connected wallet, never a `C…` address or a separate signer
+
+- **Date:** 2026-11-04
+- **Location:** `packages/frontend/src/auth/useSettlementAddressLink.ts`, `packages/frontend/src/components/account/SettlementAddressRow.tsx`
+- **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
+- **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
+- **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.

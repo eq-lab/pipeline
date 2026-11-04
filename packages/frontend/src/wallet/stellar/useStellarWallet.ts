@@ -1,22 +1,4 @@
-/**
- * Public Stellar wallet hook.
- *
- * Returns `{ address, isConnected, connect, disconnect }` backed by the
- * @creit.tech/stellar-wallets-kit v2.x singleton SDK API.
- *
- * Connection state is shared across all `useStellarWallet()` consumers via a
- * module-level external store (`connectionStore.ts`). Connecting or
- * disconnecting in any component immediately propagates to every other consumer
- * without a page reload. This mirrors how wagmi maintains a single shared store
- * for EVM wallet state.
- *
- * Mock layer: when `pipeline.mock.wallet.stellar.address` is set in localStorage,
- * `connect()` and `disconnect()` are no-ops (dev affordance, gate is bypassed).
- *
- * Terms gate: `connect()` routes through the shared chain-agnostic gate (same
- * `FirstConnectionModal` instance as EVM) before calling `StellarWalletsKit.authModal()`.
- * When the user has already acknowledged (any chain), `authModal()` is called directly.
- */
+// spec: packages/frontend/src/wallet/README.md#usestellarwallet
 import { useCallback, useEffect } from "react";
 import {
   StellarWalletsKit,
@@ -47,57 +29,21 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface StellarWalletState {
-  /** Stellar public key of the connected wallet, or `undefined` when disconnected. */
   address: string | undefined;
-  /** `true` when a wallet is connected (or mocked). */
   isConnected: boolean;
-  /** `true` once the mount-effect address hydration has settled (or mocked). */
   isSettled: boolean;
-  /**
-   * Open the Stellar wallet-picker modal.
-   *
-   * - When a mock address is set: no-op (dev affordance).
-   * - When terms are not yet acknowledged: opens the terms gate; connect
-   *   proceeds after the user attests.
-   * - When terms are already acknowledged: calls `StellarWalletsKit.authModal()`
-   *   directly.
-   *
-   * Returns `void` (fire-and-forget; state updates happen asynchronously).
-   */
   connect(): void;
-  /**
-   * Disconnect the Stellar wallet and clear local state.
-   *
-   * - When a mock address is set: no-op + console warning (dev affordance).
-   */
   disconnect(): void;
-  /**
-   * Sign a transaction XDR with the connected wallet.
-   *
-   * Delegates to `StellarWalletsKit.signTransaction` using the connected
-   * address and the configured network passphrase as defaults. Both can be
-   * overridden via `opts`.
-   *
-   * Mock path: when `pipeline.mock.wallet.stellar.address` is set in
-   * localStorage, `signTransaction` **rejects** with a clear error message —
-   * real Soroban signing is not mockable at the kit layer. The Stellar write
-   * hooks mock at their own result-level keys instead, so `signTransaction`
-   * is never called on the mock path.
-   *
-   * @param xdrStr - base64 XDR of the transaction envelope to sign.
-   * @param opts - optional overrides for `networkPassphrase` and `address`.
-   * @returns `{ signedTxXdr, signerAddress? }` on success.
-   */
   signTransaction(
     xdrStr: string,
     opts?: { networkPassphrase?: string; address?: string },
   ): Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  signMessage(message: string): Promise<{ signature: string }>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useStellarWallet(): StellarWalletState {
-  // Read from the shared module-level store — reactive across all consumers.
   const realAddress = useStellarConnectionAddress();
 
   const mockAddress = useMockStellarAddress();
@@ -106,10 +52,6 @@ export function useStellarWallet(): StellarWalletState {
   const { openGate } = useWalletGate();
   const connectionSettled = useStellarConnectionSettled();
 
-  // On mount, try to read the last-known address from kit memory.
-  // Guarded by a module-level `hydrated` flag so only one instance fires
-  // `getAddress()` per page lifetime (the store is shared; subsequent mounts
-  // already have the address in the store).
   useEffect(() => {
     if (isStellarConnectionHydrated()) return;
     markStellarConnectionHydrated();
@@ -121,14 +63,13 @@ export function useStellarWallet(): StellarWalletState {
           setStellarConnectionAddress(address);
         }
       } catch {
-        // No prior connection — leave address undefined.
+        return;
       } finally {
         markStellarConnectionSettled();
       }
     })();
   }, []);
 
-  // Resolved values — mock wins over real (same precedence as EVM).
   const address = mockAddress ?? realAddress;
   const isConnected = bothMocksConnected
     ? false
@@ -139,26 +80,20 @@ export function useStellarWallet(): StellarWalletState {
         : realAddress !== undefined;
   const isSettled = mockAddress !== undefined ? true : connectionSettled;
 
-  /**
-   * The actual kit connect flow. Opens the picker modal, waits for the user to
-   * select a wallet, and stores the returned public key in the shared store.
-   */
   const runConnect = useCallback(async () => {
     try {
       const { address: newAddress } = await StellarWalletsKit.authModal();
       setStellarConnectionAddress(newAddress);
     } catch {
-      // User dismissed the picker or the kit rejected — leave state unchanged.
+      return;
     }
   }, []);
 
   const connect = useCallback(() => {
-    // Mock short-circuit — dev affordance, bypasses the terms gate.
     if (mockAddress !== undefined) {
       return;
     }
 
-    // Check terms acknowledgement synchronously (chain-agnostic).
     if (!readTermsAcknowledged()) {
       openGate(() => void runConnect());
       return;
@@ -185,10 +120,6 @@ export function useStellarWallet(): StellarWalletState {
       xdrStr: string,
       opts?: { networkPassphrase?: string; address?: string },
     ): Promise<{ signedTxXdr: string; signerAddress?: string }> => {
-      // Mock path: signing a real Soroban tx is not mockable at the kit layer.
-      // The Stellar write hooks mock at their own result-level keys —
-      // signTransaction should never be reached on the mock path, but guard
-      // clearly anyway.
       if (mockAddress !== undefined) {
         return Promise.reject(
           new Error(
@@ -207,6 +138,24 @@ export function useStellarWallet(): StellarWalletState {
     [mockAddress, address],
   );
 
+  const signMessage = useCallback(
+    async (message: string): Promise<{ signature: string }> => {
+      if (mockAddress !== undefined) {
+        return Promise.reject(
+          new Error(
+            "[stellar mock] signMessage is not mockable; connect a real wallet",
+          ),
+        );
+      }
+      const { signedMessage } = await StellarWalletsKit.signMessage(message, {
+        networkPassphrase: networkPassphrase as string,
+        address,
+      });
+      return { signature: signedMessage };
+    },
+    [mockAddress, address],
+  );
+
   return {
     address,
     isConnected,
@@ -214,14 +163,12 @@ export function useStellarWallet(): StellarWalletState {
     connect,
     disconnect,
     signTransaction,
+    signMessage,
   };
 }
 
 // ── Per-wallet Soroban connect hook ───────────────────────────────────────────
 
-/**
- * Well-known Soroban wallet IDs (the subset the app exposes in the Connect modal).
- */
 export type SorobanWalletId =
   | typeof LOBSTR_ID
   | typeof FREIGHTER_ID
@@ -231,21 +178,6 @@ export type SorobanWalletId =
   | typeof RABET_ID;
 
 export interface UseStellarConnectorsResult {
-  /**
-   * Connect to a specific Soroban wallet by its kit module id.
-   *
-   * - When a mock address is set: no-op (dev affordance).
-   * - Otherwise: calls `StellarWalletsKit.setWallet(id)` then
-   *   `StellarWalletsKit.fetchAddress()` and stores the returned address in the
-   *   shared connection store so ALL `useStellarWallet()` consumers update.
-   *
-   * If the wallet is not installed/available, the kit will throw; callers
-   * should handle errors (e.g. open the wallet's website in a new tab).
-   *
-   * The terms gate is no longer triggered here. It is interposed by
-   * `ConnectModalProvider.open()` before `ConnectWalletModal` opens, so the
-   * gate always precedes the wallet picker (issue #639).
-   */
   connectWallet(walletId: string, onUnavailable?: () => void): Promise<void>;
 }
 
@@ -261,10 +193,8 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
       try {
         StellarWalletsKit.setWallet(walletId);
         const { address: newAddress } = await StellarWalletsKit.fetchAddress();
-        // Update the shared store so ALL consumers see the new address.
         setStellarConnectionAddress(newAddress);
       } catch {
-        // Wallet unavailable — invoke callback so the caller can redirect.
         onUnavailable?.();
       }
     },
