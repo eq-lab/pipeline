@@ -472,6 +472,8 @@ Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?no
 
 Right-column card on the home dashboard. Renders in two states:
 
+Rows refresh after a confirmed action through the same expectation poll (#1810), see [`wallet-flows.md`](./wallet-flows.md#activity-refresh-after-a-confirmed-action).
+
 - **Connected + data** (Figma frame `1497:95119`): shows the top 3 most recent requests as
   `ActivityRow` entries (identical visuals to `/transactions`) followed by a right-aligned "View
   All" button (node `1497:95216`) that navigates to `/transactions`. The button renders ~48px tall,
@@ -1961,6 +1963,8 @@ Activity page wired to `GET /v1/requests`.
 - Disconnected empty state additionally renders a primary-dark "Connect Wallet" button (16 px below the caption) that opens the shared connect modal (#1184); connected-but-empty keeps the caption-only state.
 - Mobile (< 768px, Figma node `1993-9958`): illustration (240×240) and caption are top-anchored just below the tab bar with natural spacing; no tall centering wrapper.
 - Desktop (≥ 768px, Figma node `1497-94912`): illustration is vertically centred inside a `min-h-[400px]` wrapper. The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`) to gate the desktop centering treatment without affecting mobile.
+
+**Refresh after a confirmed action (#1810):** rows refresh through the expectation poll of `useRequests`, so a new Buy / Sell / Stake row (or a claimed Deposit flipping to Completed) appears without a reload. See [`wallet-flows.md`](./wallet-flows.md#activity-refresh-after-a-confirmed-action).
 
 **Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does. The feed itself is chain-scoped too (#1567): `useRequests` sends `chain_id` for the active view and keys its query on it, so the rows are the active chain's requests only (see `src/api/README.md#userequests`). **Chain-served gate (#1605):** on an unserved EVM chain the page renders `ChainNotServedNotice` instead of the header, tabs and feed.
 

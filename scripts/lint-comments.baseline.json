@@ -67,10 +67,6 @@
     "header": 11,
     "nodeIds": 0
   },
-  "packages/frontend/src/api/useRequests.ts": {
-    "header": 24,
-    "nodeIds": 0
-  },
   "packages/frontend/src/api/useStats.test.tsx": {
     "header": 9,
     "nodeIds": 0

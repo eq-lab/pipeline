@@ -196,6 +196,44 @@ vi.mock("./evm/useEvmToken", async (importOriginal) => {
   };
 });
 
+const stakeCtl = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  ok: { evmStake: false, evmUnstake: false, stStake: false, stUnstake: false },
+}));
+
+vi.mock("@/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api")>();
+  return { ...actual, useActionConfirmedRefresh: () => stakeCtl.confirm };
+});
+
+vi.mock("./evm/useStakedPlusd", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./evm/useStakedPlusd")>();
+  return {
+    ...actual,
+    useStake: () => ({ ...actual.useStake(), isSuccess: stakeCtl.ok.evmStake }),
+    useUnstake: () => ({
+      ...actual.useUnstake(),
+      isSuccess: stakeCtl.ok.evmUnstake,
+    }),
+  };
+});
+
+vi.mock("./stellar/useStellarStakedPlusd", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./stellar/useStellarStakedPlusd")>();
+  return {
+    ...actual,
+    useStellarStake: () => ({
+      ...actual.useStellarStake(),
+      isSuccess: stakeCtl.ok.stStake,
+    }),
+    useStellarUnstake: () => ({
+      ...actual.useStellarUnstake(),
+      isSuccess: stakeCtl.ok.stUnstake,
+    }),
+  };
+});
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PROTOCOL_ISSUER =
@@ -580,4 +618,49 @@ describe("useStakeFlow — EVM step 1 error state (#1672)", () => {
     expect(result.current.steps[0]?.errorMessage).toBeUndefined();
     expect(result.current.step1Tx.error).toBeNull();
   });
+});
+
+describe("useStakeFlow — activity refresh on confirmed writes (#1810)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    seedStellarWalletKeys();
+    seedDepositManagerMockKeys();
+    stakeCtl.confirm.mockClear();
+    stakeCtl.ok = {
+      evmStake: false,
+      evmUnstake: false,
+      stStake: false,
+      stUnstake: false,
+    };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    evmCtl.kind = "stellar";
+  });
+
+  const cases: [string, "evm" | "stellar", "stake" | "unstake", string][] = [
+    ["EVM stake", "evm", "stake", "evmStake"],
+    ["EVM unstake", "evm", "unstake", "evmUnstake"],
+    ["Stellar stake", "stellar", "stake", "stStake"],
+    ["Stellar unstake", "stellar", "unstake", "stUnstake"],
+  ];
+
+  it.each(cases)(
+    "%s confirms once on the success edge with no request id",
+    (_name, kind, tab, flag) => {
+      evmCtl.kind = kind;
+      const { rerender } = renderHook(() => useStakeFlow(tab, 0n, () => {}), {
+        wrapper: makeWrapper().wrapper,
+      });
+      expect(stakeCtl.confirm).not.toHaveBeenCalled();
+      stakeCtl.ok[flag as keyof typeof stakeCtl.ok] = true;
+      rerender();
+      rerender();
+      expect(stakeCtl.confirm).toHaveBeenCalledTimes(1);
+      expect(stakeCtl.confirm).toHaveBeenCalledWith({
+        type: tab === "stake" ? "Stake" : "Unstake",
+      });
+    },
+  );
 });

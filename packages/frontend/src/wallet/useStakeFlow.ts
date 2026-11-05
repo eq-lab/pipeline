@@ -39,7 +39,9 @@ import {
   parseUnits,
 } from "@/wallet";
 import type { WrongNetworkInfo } from "@/wallet";
+import { useActionConfirmedRefresh } from "@/api";
 import { ENV } from "@/lib/env";
+import { useSuccessEdge } from "./useSuccessEdge";
 import { formatUsdc, formatUsdcInput } from "@/lib/usdc";
 import { formatUnits4 } from "@/utils/formatUnits4";
 import { toUserError, type UserFacingError } from "@/utils/userError";
@@ -251,6 +253,18 @@ export function useStakeFlow(
   // Write surfaces — always mounted.
   const stellarStake = useStellarStake();
   const stellarUnstake = useStellarUnstake();
+
+  const confirmAction = useActionConfirmedRefresh();
+  useSuccessEdge(evmStake.isSuccess, () => confirmAction({ type: "Stake" }));
+  useSuccessEdge(evmUnstake.isSuccess, () =>
+    confirmAction({ type: "Unstake" }),
+  );
+  useSuccessEdge(stellarStake.isSuccess, () =>
+    confirmAction({ type: "Stake" }),
+  );
+  useSuccessEdge(stellarUnstake.isSuccess, () =>
+    confirmAction({ type: "Unstake" }),
+  );
 
   // Trustline hooks — always mounted.
   // Stake: only classic-asset share deployments need an sPLUSD trustline.

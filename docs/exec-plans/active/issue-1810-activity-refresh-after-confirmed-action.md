@@ -122,7 +122,7 @@ _None_
 
 ## Implementation Steps
 
-1. **`packages/frontend/src/api/activityRefresh.ts`** (new). One 2–3-line header:
+1. [x] **`packages/frontend/src/api/activityRefresh.ts`** (new). One 2–3-line header:
    `// spec: docs/frontend/wallet-flows.md#activity-refresh-after-a-confirmed-action`.
    - Types: `ActivityExpectation = { wallet: string; chainId: number; type: RequestType;
      deadline: number } & ({ requestId: string; status?: "Completed" } | { baselineCount?: number })`.
@@ -140,7 +140,7 @@ _None_
      `queryClient.getQueriesData<RequestsResponse>({ queryKey: ["requests", kind, address, chainId] })`
      when there is no `requestId`. It then calls `addExpectation` and the invalidations listed in
      Scope 1. Stable via `useCallback`.
-2. **`packages/frontend/src/api/useRequests.ts`**
+2. [x] **`packages/frontend/src/api/useRequests.ts`**
    - Replace the 24-line header with a ≤3-line `spec:` header (pointing at
      `src/api/README.md#userequests` + `docs/frontend/wallet-flows.md#activity-refresh-after-a-confirmed-action`).
      Strip the other narrative/JSDoc comments in the file. Remove the
@@ -153,7 +153,7 @@ _None_
      `["pnl"]` and `["positionsHistory"]`.
    - Delete `useInvalidateRequests`. Update `packages/frontend/src/api/index.ts` to export
      `useActionConfirmedRefresh` (and the constants only if tests need them through the barrel).
-3. **`packages/frontend/src/wallet/useDepositFlow.ts`**
+3. [x] **`packages/frontend/src/wallet/useDepositFlow.ts`**
    - Swap the `useInvalidateRequests` import for `useActionConfirmedRefresh`. Delete the four #1658
      `useEffect`s.
    - Add rising-edge effects (a `useRef` prev flag each) for the request and claim mutations on both
@@ -164,17 +164,17 @@ _None_
    - Add `claimIdRef` (one per direction is enough; set inside each step-3 `onAction` before
      `write(...)`).
    - Keep `REQUESTS_FAST_POLL_MS`/`REQUESTS_POLL_MS` and the known-id interval as they are.
-4. **`packages/frontend/src/wallet/useStakeFlow.ts`**: import `useActionConfirmedRefresh` from
+4. [x] **`packages/frontend/src/wallet/useStakeFlow.ts`**: import `useActionConfirmedRefresh` from
    `@/api`. Add rising-edge effects on `evmStake`, `evmUnstake`, `stellarStake`, `stellarUnstake`
    `isSuccess` → `{ type: "Stake" | "Unstake" }` (baseline-count expectation). Check that no
    import cycle is introduced: `@/api` already imports from `@/wallet`, and `useDepositFlow` already
    imports `@/api`, so the same pattern is fine.
-5. **No route changes** in `routes/deposit.tsx`, `routes/stake.tsx`, `routes/transactions.tsx` or
+5. [x] **No route changes** in `routes/deposit.tsx`, `routes/stake.tsx`, `routes/transactions.tsx` or
    `components/RecentActivityCard.tsx`. Their existing `useRequests()` calls pick up the polling
    automatically.
-6. **Tech debt:** add a row to `docs/exec-plans/tech-debt-tracker.md`: "`useDepositFlow` known-id
+6. [x] **Tech debt:** add a row to `docs/exec-plans/tech-debt-tracker.md`: "`useDepositFlow` known-id
    5 s poll overlaps the activity-expectation store (#1810); fold into expectations".
-7. Run `yarn workspace @pipeline/frontend test`, `yarn workspace @pipeline/frontend lint`,
+7. [x] Run `yarn workspace @pipeline/frontend test`, `yarn workspace @pipeline/frontend lint`,
    `yarn workspace @pipeline/frontend build`, `npx tsx scripts/lint-docs.ts` and
    `npx tsx scripts/lint-comments.ts`. All must pass.
 

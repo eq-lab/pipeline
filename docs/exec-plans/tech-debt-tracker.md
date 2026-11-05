@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-167.**
+**Next free number: TD-168.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2272,3 +2272,11 @@ line, whichever section it lands in.
 - **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
 - **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.
 - **Resolved by #1849 (PR #1850):** each settlement row has an opt-in `Use a different address` form; the typed address (Stellar `G…`/`C…`, EVM `0x…`) is linked with the connected wallet as `signer_address` when it differs. A signer other than the connected wallet and EIP-1271 signers remain out of scope (see `docs/frontend/account-page.md#settlement-address`).
+
+### TD-167: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
+
+- **Date:** 2026-11-05
+- **Location:** `packages/frontend/src/wallet/useDepositFlow.ts`, `packages/frontend/src/api/activityRefresh.ts`
+- **Gap:** `useDepositFlow` polls `/v1/requests` every 5 s while a known request id is unlisted, and the activity-expectation store (#1810) now polls every 3 s for the same condition. `useRequests` takes the shorter of the two.
+- **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
+- **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
