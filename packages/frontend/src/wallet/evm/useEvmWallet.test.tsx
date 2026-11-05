@@ -9,6 +9,7 @@ import { useEvmWallet, useEvmConnectors } from "./useEvmWallet";
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
 const mockWagmiConnect = vi.fn();
+const mockSignMessageAsync = vi.fn();
 
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
@@ -28,6 +29,7 @@ vi.mock("wagmi", async (importOriginal) => {
       error: null,
     })),
     useConnect: vi.fn(() => ({ connect: mockWagmiConnect })),
+    useSignMessage: vi.fn(() => ({ signMessageAsync: mockSignMessageAsync })),
     useConnectors: vi.fn(() => [
       { id: "injected" },
       { id: "coinbaseWallet" },
@@ -138,6 +140,48 @@ describe("useEvmWallet — chainId", () => {
       address: undefined,
       isConnected: false,
     } as unknown as ReturnType<typeof useAccount>);
+  });
+});
+
+describe("useEvmWallet — signMessage()", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockSignMessageAsync.mockReset();
+  });
+
+  it("returns the EIP-191 signature from signMessageAsync", async () => {
+    mockSignMessageAsync.mockResolvedValue("0xsig");
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    const signed = await act(() => result.current.signMessage("hello"));
+    expect(signed).toEqual({ signature: "0xsig" });
+    expect(mockSignMessageAsync).toHaveBeenCalledWith({ message: "hello" });
+  });
+
+  it("pins the signing account when an address is given", async () => {
+    mockSignMessageAsync.mockResolvedValue("0xsig");
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    await act(() =>
+      result.current.signMessage(
+        "hello",
+        "0xAbC0000000000000000000000000000000000001",
+      ),
+    );
+    expect(mockSignMessageAsync).toHaveBeenCalledWith({
+      message: "hello",
+      account: "0xAbC0000000000000000000000000000000000001",
+    });
+  });
+
+  it("mock path: rejects without signing", async () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0x1234000000000000000000000000000000000000",
+    );
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    await expect(
+      act(() => result.current.signMessage("hello")),
+    ).rejects.toThrow("signMessage is not mockable");
+    expect(mockSignMessageAsync).not.toHaveBeenCalled();
   });
 });
 

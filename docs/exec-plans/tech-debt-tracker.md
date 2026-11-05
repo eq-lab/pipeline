@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-166.**
+**Next free number: TD-167.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2263,3 +2263,11 @@ line, whichever section it lands in.
 - **Gap:** The generated reference is a 2026-06-10 snapshot: its contract ids and WASM interfaces predate deployment #36.
 - **Impact:** Misleading contract ids for ops and agents.
 - **Suggested fix:** Regenerate it from `stellar contract info interface` against the #36 / #37 ids, or delete it in favour of the key map in `docs/references/backend.md#stellar-contract-ids-and-signer-roles`. Found while working on #1794.
+
+### TD-166: The LP app links only the connected wallet, never a `C…` address or a separate signer
+
+- **Date:** 2026-11-04
+- **Location:** `packages/frontend/src/auth/useSettlementAddressLink.ts`, `packages/frontend/src/components/account/SettlementAddressRow.tsx`
+- **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
+- **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
+- **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.

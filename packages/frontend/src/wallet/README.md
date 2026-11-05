@@ -102,16 +102,18 @@ mock bridge (which covers ALL `pipeline.mock.*` keys, including Stellar).
 ### `useEvmWallet()`
 
 ```ts
-const { address, isConnected, chainId, connect, disconnect } = useEvmWallet();
+const { address, isConnected, chainId, connect, disconnect, signMessage } =
+  useEvmWallet();
 ```
 
-| Field          | Type                       | Description                                                                         |
-| -------------- | -------------------------- | ----------------------------------------------------------------------------------- |
-| `address`      | `0x${string} \| undefined` | Connected wallet address, or `undefined`                                            |
-| `isConnected`  | `boolean`                  | True when a wallet is connected (or mocked)                                         |
-| `chainId`      | `number \| undefined`      | Connected wallet's chain id (`useAccount().chainId`), `undefined` when disconnected |
-| `connect()`    | `() => void`               | Opens the AppKit wallet modal                                                       |
-| `disconnect()` | `() => void`               | Disconnects the wallet                                                              |
+| Field                  | Type                                                  | Description                                                                                                                    |
+| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `address`              | `0x${string} \| undefined`                            | Connected wallet address, or `undefined`                                                                                       |
+| `isConnected`          | `boolean`                                             | True when a wallet is connected (or mocked)                                                                                    |
+| `chainId`              | `number \| undefined`                                 | Connected wallet's chain id (`useAccount().chainId`), `undefined` when disconnected                                            |
+| `connect()`            | `() => void`                                          | Opens the AppKit wallet modal                                                                                                  |
+| `disconnect()`         | `() => void`                                          | Disconnects the wallet                                                                                                         |
+| `signMessage(message)` | `(message: string) => Promise<{ signature: string }>` | EIP-191 `personal_sign` through wagmi `useSignMessage`; rejects on the mock path (`[wallet mock] signMessage is not mockable`) |
 
 ### `useEvmNetworkGuard()`
 
@@ -804,17 +806,24 @@ covers all `pipeline.mock.*` keys.
 ### `useStellarWallet()`
 
 ```ts
-const { address, isConnected, connect, disconnect, signTransaction } =
-  useStellarWallet();
+const {
+  address,
+  isConnected,
+  connect,
+  disconnect,
+  signTransaction,
+  signMessage,
+} = useStellarWallet();
 ```
 
-| Field                         | Type                  | Description                                                   |
-| ----------------------------- | --------------------- | ------------------------------------------------------------- |
-| `address`                     | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                |
-| `isConnected`                 | `boolean`             | True when a Stellar wallet is connected (or mocked)           |
-| `connect()`                   | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)          |
-| `disconnect()`                | `() => void`          | Disconnects the Stellar wallet and clears state               |
-| `signTransaction(xdr, opts?)` | async function        | Signs a transaction XDR with the connected wallet (see below) |
+| Field                         | Type                  | Description                                                      |
+| ----------------------------- | --------------------- | ---------------------------------------------------------------- |
+| `address`                     | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                   |
+| `isConnected`                 | `boolean`             | True when a Stellar wallet is connected (or mocked)              |
+| `connect()`                   | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)             |
+| `disconnect()`                | `() => void`          | Disconnects the Stellar wallet and clears state                  |
+| `signTransaction(xdr, opts?)` | async function        | Signs a transaction XDR with the connected wallet (see below)    |
+| `signMessage(message)`        | async function        | Signs a message (SEP-0053) with the connected wallet (see below) |
 
 **Shared connection state.** The real Stellar address is held in a single
 module-level external store (`stellar/connectionStore.ts`) backed by
@@ -840,6 +849,12 @@ write hooks mock at their own result-level keys instead.
 using the connected address and the configured network passphrase as defaults.
 Returns `{ signedTxXdr: string, signerAddress?: string }`. Used internally by
 the Stellar write hooks (DepositManager / WithdrawalQueue / sPLUSD).
+
+**`signMessage(message)`** delegates to `StellarWalletsKit.signMessage` (SEP-0053)
+with the connected address and the configured network passphrase, and returns
+`{ signature }` (the kit's `signedMessage`). Used by the LP settlement-address
+link flow. Rejects on the mock path (`[stellar mock] signMessage is not mockable`)
+and when the wallet does not support SEP-0053 (e.g. Albedo, Rabet).
 
 ### `useStellarToken()`
 

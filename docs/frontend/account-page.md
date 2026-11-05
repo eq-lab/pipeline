@@ -131,7 +131,7 @@ page shows the zero state. The forced session-end path (expiry, `401`, suspensio
 ## Page composition
 
 `AccountPage.tsx` (shell) → `AccountWalletCard.tsx`, `AccountEmailCard.tsx`,
-`AccountProfileCard.tsx` (Name, Country, then the read-only [settlement address row](#settlement-address-1813)), `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
+`AccountProfileCard.tsx` (Name, Country, then the [settlement address rows](#settlement-address)), `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
 column at `gap-8` (32px), below the fixed header. A 72×72 `--color-pipeline-fill-muted` circle with
 a user glyph sits above the centered Besley 28/36 `Account` heading.
 
@@ -157,8 +157,8 @@ was invisible to state-scoped snapshots).
 
 Design added a visitor state: a wallet is connected (EVM or Stellar) but there is no auth session.
 **The wallet is display-only, not a credential** — connecting it only lets the visitor see it on
-this page; without a session nothing links the address to an account (with a session the connected
-Stellar wallet is linked, see [Settlement address](#settlement-address-1813)). Renders when `useAuthSession().isAuthenticated`
+this page; without a session nothing links the address to an account (with a session the LP can link it
+from the settlement row, see [Settlement address](#settlement-address)). Renders when `useAuthSession().isAuthenticated`
 is `false` and the route gate has already admitted the visitor (i.e. a wallet is connected — see
 [Route gate](#route-gate)); `AccountPage` branches on `isAuthenticated` alone (not on wallet state
 again), since the gate already guarantees one of the two. In that branch `AccountPageContent`
@@ -202,67 +202,114 @@ No new `?state=` fixture: the variant is fully reachable for real (connect a wal
 so it is exercised live rather than through a dev-only preview — per the project's no-mocks rule,
 nothing about this variant is faked.
 
-## Settlement address (#1813)
+## Settlement address
 
-The LP app links the connected **Stellar** wallet to the signed-in LP's record through
-`POST /v1/lps/me/link-address { stellar_address }`, so the Trustee's "Linked wallet" row and the
-bank-deposit mint receiver have a served address. Behaviour sources, in precedence order:
+**Review fixes (2026-11-05, PR #1846):** a link in flight is abandoned as `idle` (no caption, no
+verify) if the session token or the connected wallet changes before it finishes; `signMessage`
+receives the challenged address so the wallet signs with that account (wagmi `account`, kit
+`address`); a generic verify failure re-reads `GET /v1/lps/me` best-effort before showing the
+error caption; the row carries `aria-busy` while requesting / signing / verifying; the hook also
+returns `connected` so the provider reads the wallet once.
+
+The LP links the **connected wallet** (as both address and signer) to its record by signing a challenge, so the Trustee's
+settlement rows and the bank-deposit mint receiver have a proven address. Behaviour sources, in precedence order:
 `docs/user-docs/lenders/onboarding.md` (§Entity verification), `docs/product-specs/kyb-lp-verification.md`
-§Settlement Address, and the API (`link_address` in `packages/api/src/routes/lps.rs`: 200 returns the full
-LP; 400 invalid strkey; 404 no LP; 409 when `Failed`, when `Passed` with an address already held, or when the
-address is linked to another LP).
+§Settlement Address, and the API (`routes/lp_settlement_address.rs`; contract in
+`docs/product-specs/api-authorization.md` § Settlement-address proof). **No Figma frame exists**; the rows are built from
+the existing settlement row and the LP theme (user decision 2026-11-04).
 
-**Who links.** `AuthFlowProvider` owns the call through `useSettlementAddressLink`
-(`packages/frontend/src/auth/useSettlementAddressLink.ts`). It fires when all hold, re-evaluated on every
-input change: a session token; the provider's LP read is `loaded`; a Stellar wallet is connected; the served
-`stellar_address` differs from the connected address (byte-equal, verbatim); the served state still allows the
-write (`settlementWritable`: not `Failed`, and not `Passed` with an address held, so the known-fixed case makes
-no request); no request is in flight; and this `(lp.id, address)` has not been attempted under the current token.
-That covers wallet connect while signed in, sign-in or restore with a wallet connected, and LP creation (the
-first `POST /v1/lps/me` adopts the LP into the provider through `onLpChange`, and the Account page pushes every
-LP it adopts through `adoptLp`). LPs created before this fix are back-filled on their next signed-in visit with a
-Stellar wallet connected.
+**Flow (click only).** `useSettlementAddressLink` (`packages/frontend/src/auth/useSettlementAddressLink.ts`), owned by
+`AuthFlowProvider`, runs `GET /v1/lps/me/link-address/challenge?chain_id&address`, then the wallet's `signMessage`
+(Stellar SEP-0053 through `useStellarWallet`, EVM EIP-191 through `useEvmWallet`; see
+[wallet README](../../packages/frontend/src/wallet/README.md#usestellarwallet)), then
+`POST /v1/lps/me/link-address/verify { chain_id, address, signature }`, and adopts the returned LP. A signature prompt
+opens only from a click (`Link wallet`, `Try again`, `Confirm change`): no effect fetches a challenge or signs, so sign-in,
+page load, LP creation and connecting a wallet never prompt. Every `Try again` and every new `Link wallet` click starts
+with a new challenge; the client never reuses a message. One flow runs at a time, and a response that arrives after the
+session token changed is dropped. `signer_address` is never sent (the backend defaults it to the address); a Stellar `C…`
+address or a separate signer is not offered (TD-166).
 
-**Serialization and idempotency.** One request at a time: a newer address waits until the in-flight request
-settles, the provider adopts the response, and the effect re-evaluates, so A then C reconnects yield A then C.
-A failed key is not retried; only an address, LP or token change makes a new key. A response that arrives after
-the session token changed is dropped. StrictMode's double effect posts once. Nothing is persisted.
+**Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none (the same order as
+`useWalletView().kind`). `chain_id` is `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. EVM addresses are sent lowercased and
+compared case-insensitively; Stellar addresses are compared verbatim. The write is refused only for `Failed`
+(`settlementWritable`): a `Passed` LP can link, prove a legacy unproven address and change its address (#1831).
 
-**Errors.** Any failure (400, 404, 409, 5xx, network) shows the app's error toast (`useToast`, tone `danger`)
-with the served message verbatim, or `Your wallet could not be linked.` when none is served. A 409 also
-re-reads `GET /v1/lps/me` and adopts it so the row shows the served state; no automatic retry. 401/403 stay on
-the app-wide session-end path (#1473, #1465). The hook reads the toast context optionally, so a tree without a
-`ToastProvider` links silently; `main.tsx` mounts `ToastProvider` above `AuthFlowProvider`.
+**Rows.** `SettlementAddressRows` renders one `SettlementAddressRow` per chain kind (Stellar, then EVM) that has a served
+address or a connected wallet of that kind; with neither there is one generic `Settlement address` row. Each row is an
+`AccountListRow variant="plain"` (caption = the row label; the title is `truncateAddress(address)`, `GCGQVO…GQ5C`, with the full address as the title span's `title` attribute via the row's `titleAttr` prop so it shows on hover — live review 2026-11-05; the From / To lines of the change confirmation keep the full addresses), a
+body-s caption (`--color-pipeline-ink-subtle`, or `--color-pipeline-negative-strong` with `role="alert"`), and at most one
+`Button variant="secondary" size="compact"` in the trailing slot. Labels: `Stellar settlement address`,
+`Ethereum settlement address`, `Settlement address`. The rows sit below Country in `AccountProfileCard` and in
+`CompanyDocsModal`'s first surface card (not in the `/test?tab=auth` preview), both fed by `useAuthFlow().settlement`
+(`{ rows, onLink, onChange, onCancel }`).
 
-**The row.** `SettlementAddressRow` (`components/account/SettlementAddressRow.tsx`) renders an `AccountListRow`
-`variant="plain"` (caption `Settlement address`, no leading icon, `wrapTitle` so the full G-address wraps with
-`break-all` instead of truncating) plus a body-s caption line, `--color-pipeline-ink-subtle`, or
-`--color-pipeline-negative-strong` with `role="alert"` for the negative tone. It is read-only in every state: no
-input, button or copy action. It sits below Country in `AccountProfileCard` and in `CompanyDocsModal`'s first
-surface card (not in the `/test?tab=auth` preview). Both read the provider's `settlement` view from
-`useAuthFlow()`. **No Figma frame exists for this row**; it is a stand-in built from the existing theme
-(decided 2026-10-30).
+**Change wallet.** A row whose served address differs from a connected wallet of the same kind offers `Change wallet`.
+It does not prompt the wallet: it opens an inline confirmation inside the row, `From` (served address) and `To`
+(connected address) in full, the `confirm` caption, and `Confirm change` / `Cancel`. Only `Confirm change` starts the
+signed flow; `Cancel` makes no request. The confirmation applies at every status. `Try again` after a failed change skips
+it. Changing the connected wallet or the token resets the row. A served row with no connected wallet of its kind shows the
+address with no caption or button: a change needs the new wallet connected.
 
-| State (first match wins) | Title | Caption |
-| --- | --- | --- |
-| Link request in flight | connected address | `Linking your connected wallet…` |
-| Link failed with 409 and the write is still allowed | served or `—` | `This wallet is already linked to another account. Connect a different Stellar wallet.` (negative) |
-| Link failed otherwise | served or `—` | `Your wallet could not be linked. Reconnect it to try again.` (negative) |
-| `Passed`, address served, a different Stellar wallet connected | served | `Your settlement address is fixed. The connected wallet is not linked.` |
-| `Passed`, address served | served | `Fixed once your entity passed verification.` |
-| Address served | served | `Linked to your connected wallet.` when it equals the connected address, else none |
-| No address served, LP not loaded yet, Stellar connected | connected address | `Linked when you submit your company details.` |
-| No address served, LP loaded, Stellar connected | `—` | none |
-| No address served, EVM connected | `—` | `Bank-wire settlement needs a Stellar wallet. Connect one to name your settlement address.` |
-| No address served, nothing connected | `—` | `Connect a Stellar wallet to name your settlement address.` |
+**Legacy unproven.** A served address equal to the connected one whose signer is `null` offers `Link wallet` with the
+`unproven` caption at any status but `Failed`, with no confirmation (the address does not change).
 
-The strings are exported from `components/account/settlementAddress.ts` (`SETTLEMENT_CAPTIONS`).
+**Errors.**
 
-**Out of scope.** EVM wallets (no link call; the LP record models no EVM settlement address; chain-aware settlement address is backend issue #1816 under epic #1494);
-wallet-only visitors (no session, no link); proof of key control (TD-57: linking the connected wallet narrows
-but does not close it, no signature is sent); unlinking on disconnect (no endpoint exists); no verification CTA
-for a connected wallet without an LP (#1570). The staging dev mock address
-(`pipeline.mock.wallet.stellar.address`) would be linked for real; QA uses a real Stellar wallet.
+| Failure | Result |
+| --- | --- |
+| Wallet throws (rejection, no SEP-0053, mock wallet) | No verify request, no toast, `declined` caption, base action offered again |
+| `422` on verify | `proofFailed` caption (negative), `Try again` (new challenge), no toast |
+| `409` on challenge or verify | Danger toast with the served message, re-read `GET /v1/lps/me` and adopt it, then `taken` (negative, no button) unless the refreshed LP is `Failed` |
+| Anything else (400, 404, 5xx, network) | Toast with the served message or `Your wallet could not be linked.`, `error` caption (negative), `Try again` |
+
+`401`/`403` stay on the app-wide session-end path (#1473, #1465). The hook reads the toast context optionally;
+`main.tsx` mounts `ToastProvider` above `AuthFlowProvider`.
+
+**Row rules** (per kind, first match wins; `s` served address, `c` connected address of this kind, `base` = `link` when
+nothing is served or the served address equals `c` with a `null` signer, `change` when `s` differs from `c`, else none; always
+none for `Failed` or without a connected wallet of the kind):
+
+| # | Condition | Caption | Button |
+| --- | --- | --- | --- |
+| 1 | Phase `requesting` / `verifying` for this kind | `linking` | none (busy) |
+| 2 | Phase `signing` | `signing` | none (busy) |
+| 3 | Phase `confirming` and `base` is `change` | `confirm` + `From` / `To` + `Confirm change` / `Cancel` | none |
+| 4 | Phase `declined` | `declined` | `base` |
+| 5 | Phase `proofFailed` | `proofFailed` (negative) | `Try again` when `base` |
+| 6 | Phase `taken` | `taken` (negative) | none |
+| 7 | Phase `error` | `error` (negative) | `Try again` when `base` |
+| 8 | `s` served, `c` equals `s`, `base` is `link` | `unproven` | `Link wallet` |
+| 9 | `s` served, `c` equals `s` | `linked` | none |
+| 10 | `s` served, `base` is `change` | `different` | `Change wallet` |
+| 11 | `s` served | none | none |
+| 12 | Nothing served, no LP, LP read `absent` | `needsLp`, title `—` | none |
+| 13 | Nothing served, `base` is `link` | `notLinked`, title `—` | `Link wallet` |
+| 14 | Otherwise (`Failed`, LP still loading or read error) | none, title `—` | none |
+
+Captions (`SETTLEMENT_CAPTIONS` in `components/account/settlementAddress.ts`):
+
+| Key | Text |
+| --- | --- |
+| `linking` | `Linking your connected wallet…` |
+| `signing` | `Approve the signature request in your wallet.` |
+| `confirm` | `Deposits processed after the change are minted to the new address.` |
+| `declined` | `Your wallet did not sign. Nothing was changed.` |
+| `proofFailed` | `The signature could not be verified. Try again to sign a new request.` |
+| `taken` | `This wallet is already linked to another account. Connect a different wallet.` |
+| `error` | `Your wallet could not be linked. Try again.` |
+| `linked` | `Linked to your connected wallet.` |
+| `unproven` | `Linked without a signature. Sign with this wallet to confirm you control it.` |
+| `different` | `Your connected wallet is not this address.` |
+| `notLinked` | `Link your connected wallet to receive bank deposits to it.` |
+| `needsLp` | `Save your company details first, then link this wallet.` |
+| `connect` | `Connect a wallet to name your settlement address.` (generic row only) |
+
+Buttons (`SETTLEMENT_ACTION_LABELS`): `Link wallet`, `Change wallet`, `Try again`; confirmation: `Confirm change`, `Cancel`.
+
+**Out of scope.** A Stellar `C…` address or any signer other than the connected wallet (TD-166); unlinking (no
+endpoint); wallet-only visitors (no session, no LP); wallets without SEP-0053 (Albedo, Rabet) are still listed in the
+connect modal and end on the `declined` caption. The staging dev mock wallets cannot sign (`signMessage` rejects);
+QA uses real Freighter and MetaMask wallets.
 
 ## Wallet card
 

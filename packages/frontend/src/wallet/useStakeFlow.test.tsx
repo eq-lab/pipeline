@@ -111,6 +111,7 @@ vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
     ...original,
+    useSignMessage: vi.fn(() => ({ signMessageAsync: vi.fn() })),
     useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
     useChainId: vi.fn(() => 560048),
     useSwitchChain: vi.fn(() => ({

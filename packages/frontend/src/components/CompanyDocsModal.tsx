@@ -13,8 +13,8 @@ import { readSession } from "@/auth/session";
 import { AuthModalShell } from "@/components/AuthModalShell";
 import { UploadedFileRow } from "@/components/UploadedFileRow";
 import { CountryField } from "@/components/account/CountryField";
-import { SettlementAddressRow } from "@/components/account/SettlementAddressRow";
-import type { SettlementRowView } from "@/components/account/settlementAddress";
+import { SettlementAddressRows } from "@/components/account/SettlementAddressRow";
+import type { SettlementControls } from "@/components/account/settlementAddress";
 import { AccountUploadRow } from "@/components/account/AccountUploadRow";
 import { AccountRequirementsList } from "@/components/account/AccountRequirementsList";
 import {
@@ -36,7 +36,7 @@ export interface CompanyDocsModalProps {
   lp?: LpResponse | null;
   sessionEmail?: string;
   onLpChange?: (lp: LpResponse) => void;
-  settlement?: SettlementRowView;
+  settlement?: SettlementControls;
   onSubmitSuccess?: () => void;
 }
 
@@ -387,7 +387,9 @@ export function CompanyDocsModal({
               disabled={!writable || busy}
             />
           </div>
-          {!preview && settlement && <SettlementAddressRow {...settlement} />}
+          {!preview && settlement && (
+            <SettlementAddressRows settlement={settlement} />
+          )}
         </div>
         <div
           data-node-id="6701:96889"

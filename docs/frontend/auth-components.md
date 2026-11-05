@@ -715,7 +715,7 @@ outside `{application/pdf, image/jpeg, image/png}` (falling back to the filename
 caption recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
 accepted pick. Neither Figma frame designs a rejection state — tracked as **TD-62**.
 
-**Settlement row (#1813).** An optional `settlement` prop (`SettlementRowView`, from `useAuthFlow().settlement`) renders the read-only `SettlementAddressRow` below Country in the first surface card; it is omitted in preview mode. See [`account-page.md#settlement-address-1813`](./account-page.md#settlement-address-1813).
+**Settlement rows (#1813, #1825).** An optional `settlement` prop (`SettlementControls`, from `useAuthFlow().settlement`) renders `SettlementAddressRows` (one row per chain kind, with `Link wallet` / `Change wallet` / `Try again` buttons and the inline change confirmation) below Country in the first surface card; it is omitted in preview mode. See [`account-page.md#settlement-address`](./account-page.md#settlement-address).
 
 **Out of scope for #1371.** Account-page document hub, home-page state matrix, and KYB review submission or status transitions. Wallet linking was out of scope here and is added by #1813.
 
@@ -983,7 +983,7 @@ instance — mirrors `wallet/ConnectModalProvider.tsx`'s single-instance pattern
 so every route renders under it.
 
 `useAuthFlow()` returns `{ open(screen?: EmailAuthScreen), close(), lpRead, kybStatus?,
-openAccountSetup(), openAddEmail(), adoptLp(lp), settlement }` (`adoptLp` and `settlement` added by #1813,
+openAccountSetup(), openAddEmail(), adoptLp(lp), settlement }` (`adoptLp` and `settlement` added by #1813 and reshaped by #1825,
 below; widened by #1422 for the home route's state derivation —
 `docs/frontend/dashboard-components.md#home-route` — and by #1458 for the Account page's
 wallet-only `Add email` row). `open()` defaults to the `"sign-in"` screen when called with no
@@ -1022,11 +1022,11 @@ and dismissal close it without logging out or navigating. Modal state belongs to
 session token and is cleared on session changes or reload. Submission adopts the server LP and freezes editing. Failed or partial uploads do not submit;
 unknown submission status requires Check submission status before writes resume.
 
-**Settlement address link (#1813).** The provider calls `useSettlementAddressLink` and owns the
-`POST /v1/lps/me/link-address` call for the connected Stellar wallet. `adoptLp(lp)` replaces the provider's LP
-(the single adopt path, shared with `CompanyDocsModal.onLpChange` and the Account page's `useAccountPage`
-`onLpAdopted`), and `settlement` is the derived `{ address, caption, tone }` row view. Trigger predicate,
-serialization, error handling and the caption table: [`account-page.md#settlement-address-1813`](./account-page.md#settlement-address-1813).
+**Settlement address link (#1813, #1825).** The provider calls `useSettlementAddressLink` but never links on its own:
+it exposes `settlement = { rows, onLink, onChange, onCancel }`, where `rows` come from `deriveSettlementRows` and the
+callbacks are the hook's `link`, `beginChange` and `cancelChange`. `adoptLp(lp)` replaces the provider's LP (the single
+adopt path, shared with `CompanyDocsModal.onLpChange` and the Account page's `useAccountPage` `onLpAdopted`). Flow, row
+rules, errors and captions: [`account-page.md#settlement-address`](./account-page.md#settlement-address).
 
 **Who opens it:** `TopBar`'s "Sign In"/"Sign Up" buttons (no session, no wallet) call
 `open("sign-in")` / `open("create-account")`; the account icon (session, or a connected wallet
