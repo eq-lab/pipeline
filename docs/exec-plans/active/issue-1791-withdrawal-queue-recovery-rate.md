@@ -246,7 +246,7 @@ Comment-less code throughout. At most one 2–3-line spec-pointer header per new
 field/function doc comments on new items and no body comments. Do not add comments while
 touching existing items.
 
-1. **Golden captures first, before any code change.** Write two golden tests and run them to
+1. [x] **Golden captures first, before any code change.** Write two golden tests and run them to
    capture today's output as literal strings:
    - In `packages/api/tests/withdrawal_queue.rs`: one EVM chain and one Stellar chain, with
      queued and completed rows.
@@ -254,12 +254,12 @@ touching existing items.
      `Stake` rows and a Stellar `Deposit` row.
 
    Freeze the strings. They are the byte-identity regression for steps 6–8.
-2. **Shared rate module.**
+2. [x] **Shared rate module.**
    - Create `packages/shared/src/withdrawal_rate.rs` with the items in Scope §3 and register
      `pub mod withdrawal_rate;` in `packages/shared/src/lib.rs`.
    - `convert_to_assets` is `(amount * rate / RATE_ONE).with_scale_round(0, RoundingMode::Down)`.
    - `current_rate` picks the max `LogPosition` among the matching points.
-3. **Worker parser.** In `packages/worker/src/indexer/stellar/parsers.rs`:
+3. [x] **Worker parser.** In `packages/worker/src/indexer/stellar/parsers.rs`:
    - Add `pub fn parse_rate_set(raw: &RawEvent) -> Option<StellarLog>`. It requires
      `raw.event_name == "rate_set"` and `topics_base64.len() >= 1`, and reads
      `extract_i128_from_map(&raw.value_base64, "new_rate")?`. It emits
@@ -269,7 +269,7 @@ touching existing items.
    - When the result is `None` and `raw.event_name == "rate_set"`, emit a `tracing::warn!` that
      names `contract_id`, `event_name` and `tx_hash`, the same shape as the DTF warn.
    - Update the doc table in `docs/references/backend.md` (step 10).
-4. **Audit log.** In `packages/api/src/routes/audit_log.rs`:
+4. [x] **Audit log.** In `packages/api/src/routes/audit_log.rs`:
    - Append `"WithdrawalRateSet"` to `AUDIT_EVENT_NAMES`.
    - Add a `format_action` arm. With `params.new_rate` parseable, the action is
      `format!("Withdrawal recovery rate set — {}", ratio)`, where `ratio` is
@@ -277,7 +277,7 @@ touching existing items.
      `to_plain_string`. Otherwise it is `"Withdrawal recovery rate set"`.
    - `details` is `pass(params, &["new_rate"])`.
    - Update the module-level allow-list sentence so it lists the WQ recovery-rate event.
-5. **API config.** In `packages/api/src/config.rs`:
+5. [x] **API config.** In `packages/api/src/config.rs`:
    - Add `pub withdrawal_queue_addresses: HashMap<i64, String>` to `ChainsConfig`.
    - Add `fn load_withdrawal_queue_scope(chain_id, kind, out)`, with no `Result`, because it never
      fails boot.
@@ -299,7 +299,7 @@ touching existing items.
      `loan_registry_scope.rs`, `lp_payment_details_head.rs`, `lp_settlement_address.rs`,
      `ramp_kyc_chain.rs`, `stats_prices_vaults_yield_chain.rs`, `voucher_signing.rs` and
      `vouchers_chain_required.rs`. Re-grep `AppState {` after rebasing.
-6. **Repo: `/v1/withdrawal-queue` data** (`packages/shared/src/contract_logs_repo.rs`).
+6. [x] **Repo: `/v1/withdrawal-queue` data** (`packages/shared/src/contract_logs_repo.rs`).
    - **`LIST_WITHDRAWAL_QUEUE_ROWS_SQL`.** Add a second
      `LEFT JOIN LATERAL (SELECT (s.params->>'new_rate')::numeric AS rate FROM contract_logs s
      WHERE s.chain_id = r.chain_id AND s.contract_address = r.contract_address AND s.event_name =
@@ -320,7 +320,7 @@ touching existing items.
      `COALESCE(SUM((params->>'amount')::numeric), 0)` over `RequestClaimed`. Both filter on
      `chain_id = $1`, `contract_address = $3` and `block_timestamp <= $2`. It returns raw values.
      The caller normalises each once with `normalize_usdc_amount(Stellar, …)`.
-7. **Route: `/v1/withdrawal-queue`** (`packages/api/src/routes/withdrawal_queue.rs`).
+7. [x] **Route: `/v1/withdrawal-queue`** (`packages/api/src/routes/withdrawal_queue.rs`).
    - **`WithdrawalQueueSummary`.** Add `total_queued: Option<String>`,
      `total_claimed: Option<String>` and `rate: Option<String>`, with utoipa descriptions on the
      DTO fields, since the existing DTOs carry them.
@@ -339,7 +339,7 @@ touching existing items.
      set it also loads the totals; otherwise the totals are `None`. Then it calls `compute`.
    - Update the module header and the `in_queue_usd` DTO description: "Σ of each queued
      request's USD value at its queue's recovery rate".
-8. **Repo + route: `/v1/requests`** (`packages/shared/src/kyc_repo.rs`,
+8. [x] **Repo + route: `/v1/requests`** (`packages/shared/src/kyc_repo.rs`,
    `packages/api/src/routes/analytics.rs`).
    - **SQL `base` select list.** Add `(r.params->>'queued')::numeric AS queued`,
      `claim.block_number AS claim_block_number`, `claim.log_index AS claim_log_index`,
@@ -371,12 +371,12 @@ touching existing items.
    - **`analytics.rs`.** Pass `|id| state.chains.iter().find(|c| c.chain_id == id).map(|c|
      c.kind)`. Add `queued_through` / `usdc_paid` to `RequestItem` with the same serde attribute
      and utoipa descriptions, and map them.
-9. **`.env.example`.** No new key. Extend the trailing comment on the existing
+9. [x] **`.env.example`.** No new key. Extend the trailing comment on the existing
    `# CHAIN_99000001_API_STELLAR_WQ_CONTRACT_ID=…` line with "also scopes the
    /v1/withdrawal-queue rate and totals". Coordinate the line with #1794, which syncs the contract
    ids in the same block. Run `scripts/check-chain-env-names.sh`.
-10. **Docs** (see "Docs to Update").
-11. **Verify.**
+10. [x] **Docs** (see "Docs to Update").
+11. [x] **Verify.**
     - `cargo fmt --all`.
     - `cargo clippy --all -- -D warnings`.
     - `cargo test -p shared -p pipeline-api -p pipeline-worker`.

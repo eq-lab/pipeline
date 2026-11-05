@@ -181,9 +181,9 @@ Served by `GET /v1/withdrawal-queue` (aggregate, sourced from `contract_logs`
 `requests_count`, `estimated_wait_days`, `liquid_cover`) and `items[]`
 (`chain_id`, `account`, `amount`, `status` ∈ {`Queued`, `Completed`}, newest first, ties by
 `(chain_id, request_id)`). A request is `Queued` until a `RequestClaimed` on the same chain and
-contract exists, then `Completed`; `in_queue_usd` sums
-each queued request's `amount`. (The event's `queued` field is a global all-time
-cumulative counter, not a per-request magnitude, and is not used for depth.)
+contract exists, then `Completed`; `in_queue_usd` sums each queued request's USD value at its queue's
+recovery rate (1:1 on EVM). `summary` also carries `total_queued`, `total_claimed` and `rate`, served
+for one Stellar chain scope (else `null`): see [withdrawals.md](./withdrawals.md#stellar-queue-read-model-1791).
 `liquid_cover` is served as `null` until a Capital-Wallet USDC-available source exists
 (arrives with the Panel A reserves endpoint); `estimated_wait_days` is the mean historical
 time-in-queue over completed requests.

@@ -314,6 +314,14 @@ minter contributes 15 of its 22 events (#1416, #1480):
 | Minter | `cash_recorded` | `CashRecorded` | A cash-ledger entry; topic field `kind` is stored as `reason` (`Disbursed`, `DisbursementReversed`, `Income`, `Expense`, `Correction`), `delta` is signed. A Stellar `Correction` is stored as `CashRecorded` with `reason = "Correction"`, where EVM emits `CashCorrected` |
 | Minter | `mint_corrected` / `loss_absorbed` | `MintCorrected` / `LossAbsorbed` | Supply correction and loss absorption |
 
+The WithdrawalQueue contributes 3 of its events (#1791); the others (`custodian_set`, `verifier_set`, `request_enqueued`, `paused` / `unpaused`, ownership and upgrade events) are not collected:
+
+| Contract | Event (topic) | Stored as | Why |
+|---|---|---|---|
+| WithdrawalQueue | `withdrawal_requested` | `WithdrawalRequested` | A queued request; `queued` is the cumulative PLUSD offset including it |
+| WithdrawalQueue | `request_claimed` | `RequestClaimed` | A claim; `amount` is the PLUSD burned, not the USDC paid (shared with the DepositManager) |
+| WithdrawalQueue | `rate_set` | `WithdrawalRateSet` | The one-time recovery rate; `new_rate` is the raw 6-dp integer string (`1000000` = 1:1). Served by `/v1/withdrawal-queue` and `/v1/requests` (see [withdrawals.md](../product-specs/withdrawals.md#stellar-queue-read-model-1791)) |
+
 The new events store `event_name` as the EVM PascalCase name and `params` keys as the EVM snake_case
 field names, so both arms are queried alike. All ids (`id`, `loan_id`, `entry_id`, `original_id`,
 `repayment_id`, `sale_id`), amounts and dates are decimal strings (signed amounts keep their sign);

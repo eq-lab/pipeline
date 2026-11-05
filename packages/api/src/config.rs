@@ -60,7 +60,7 @@ pub struct ConfiguredChain {
 /// # Per Stellar chain (replace <id> with each value from CHAINS where CHAIN_<id>_TYPE=stellar):
 /// STELLAR_VERIFIER_SECRET=S...
 /// CHAIN_<id>_API_STELLAR_DM_CONTRACT_ID=C...
-/// CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID=C...
+/// CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID=C...                     # also scopes /v1/withdrawal-queue rate + totals
 /// CHAIN_<id>_API_STELLAR_NETWORK_PASSPHRASE=...
 /// # Capital Allocation bucket sourcing (optional, per Stellar chain):
 /// CHAIN_<id>_API_STELLAR_CUSTODY_ADDRESSES=G...,C...              # in_transit
@@ -106,6 +106,7 @@ pub struct ChainsConfig {
     /// `contract_logs.contract_address` (EIP-55 on EVM, `C…` Strkey on Stellar).
     /// Every configured chain has an entry (startup fails otherwise).
     pub loan_registry_addresses: HashMap<i64, String>,
+    pub withdrawal_queue_addresses: HashMap<i64, String>,
 }
 
 /// Custody + ramp address sets used to classify indexed `AssetTransfer`
@@ -165,6 +166,7 @@ impl ChainsConfig {
         let mut withdrawal_queue_wallets = HashMap::new();
         let mut asset_decimals = HashMap::new();
         let mut loan_registry_addresses = HashMap::new();
+        let mut withdrawal_queue_addresses = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -177,6 +179,7 @@ impl ChainsConfig {
                 kind: chain_kind,
             });
             load_loan_registry_address(chain_id, chain_kind, &mut loan_registry_addresses)?;
+            load_withdrawal_queue_scope(chain_id, chain_kind, &mut withdrawal_queue_addresses);
             let decimals = load_asset_decimals(chain_id, chain_kind)?;
             load_transfer_addresses(chain_id, chain_kind, decimals, &mut transfer_addresses)?;
             load_withdrawal_queue_wallet(chain_id, chain_kind, &mut withdrawal_queue_wallets)?;
@@ -226,6 +229,7 @@ impl ChainsConfig {
             withdrawal_queue_wallets,
             asset_decimals,
             loan_registry_addresses,
+            withdrawal_queue_addresses,
         })
     }
 }
@@ -263,6 +267,31 @@ fn load_loan_registry_address(
     tracing::info!(chain_id, loan_registry = %normalized, "API LoanRegistry scope loaded");
     out.insert(chain_id, normalized);
     Ok(())
+}
+
+fn load_withdrawal_queue_scope(chain_id: i64, kind: ChainKind, out: &mut HashMap<i64, String>) {
+    if kind != ChainKind::Stellar {
+        return;
+    }
+    let key = format!("CHAIN_{chain_id}_API_STELLAR_WQ_CONTRACT_ID");
+    let raw = env::var(&key).unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return;
+    }
+    match stellar_strkey::Contract::from_string(raw) {
+        Ok(contract) => {
+            let normalized = format!("{contract}");
+            tracing::info!(chain_id, withdrawal_queue = %normalized, "API WithdrawalQueue scope loaded");
+            out.insert(chain_id, normalized);
+        }
+        Err(e) => {
+            tracing::warn!(
+                chain_id,
+                "{key} is not a valid C… contract Strkey, withdrawal-queue scope disabled: {e}"
+            );
+        }
+    }
 }
 
 /// API env key for one capital-allocation source on a chain: the legacy
