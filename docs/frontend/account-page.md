@@ -220,8 +220,9 @@ the existing settlement row and the LP theme (user decision 2026-11-04).
 
 **Flow (click only).** `useSettlementAddressLink` (`packages/frontend/src/auth/useSettlementAddressLink.ts`), owned by
 `AuthFlowProvider`, runs `GET /v1/lps/me/link-address/challenge?chain_id&address`, then the wallet's `signMessage`
-(Stellar SEP-0053 through `useStellarWallet`, EVM EIP-191 through `useEvmWallet`; see
-[wallet README](../../packages/frontend/src/wallet/README.md#usestellarwallet)), then
+(Stellar SEP-0053 through `useStellarWallet`, EVM EIP-191 through `useEvmSignMessage`; see
+[wallet README](../../packages/frontend/src/wallet/README.md#usestellarwallet) and
+[`useEvmSignMessage`](../../packages/frontend/src/wallet/README.md#useevmsignmessage)), then
 `POST /v1/lps/me/link-address/verify { chain_id, address, signature }`, and adopts the returned LP. A signature prompt
 opens only from a click (`Link wallet`, `Try again`, `Confirm change`): no effect fetches a challenge or signs, so sign-in,
 page load, LP creation and connecting a wallet never prompt. Every `Try again` and every new `Link wallet` click starts

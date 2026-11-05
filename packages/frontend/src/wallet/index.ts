@@ -17,6 +17,8 @@ export type {
   UseEvmConnectorsResult,
   EvmWalletConnectorId,
 } from "./evm/useEvmWallet";
+export { useEvmSignMessage } from "./evm/useEvmSignMessage";
+export type { EvmSignMessage } from "./evm/useEvmSignMessage";
 export { EvmChainAutoSwitch } from "./evm/EvmChainAutoSwitch";
 export { useEvmNetworkGuard } from "./evm/useEvmNetworkGuard";
 export type {

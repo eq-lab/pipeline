@@ -51,8 +51,8 @@ vi.mock("@/wallet", async () => ({
     ...wallets.stellar,
     signMessage: (...args: unknown[]) => mockStellarSign(...args),
   }),
-  useEvmWallet: () => ({
-    ...wallets.evm,
+  useEvmWallet: () => ({ ...wallets.evm }),
+  useEvmSignMessage: () => ({
     signMessage: (...args: unknown[]) => mockEvmSign(...args),
   }),
 }));
