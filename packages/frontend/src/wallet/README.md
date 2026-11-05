@@ -40,6 +40,7 @@ import {
   // EVM namespace
   EvmWalletProvider,
   useEvmWallet,
+  useEvmSignMessage,
   useEvmNetworkGuard,
   useEvmToken,
   useContractRead,
@@ -107,18 +108,30 @@ mock bridge (which covers ALL `pipeline.mock.*` keys, including Stellar).
 ### `useEvmWallet()`
 
 ```ts
-const { address, isConnected, chainId, connect, disconnect, signMessage } =
-  useEvmWallet();
+const { address, isConnected, chainId, connect, disconnect } = useEvmWallet();
 ```
 
-| Field                  | Type                                                  | Description                                                                                                                    |
-| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `address`              | `0x${string} \| undefined`                            | Connected wallet address, or `undefined`                                                                                       |
-| `isConnected`          | `boolean`                                             | True when a wallet is connected (or mocked)                                                                                    |
-| `chainId`              | `number \| undefined`                                 | Connected wallet's chain id (`useAccount().chainId`), `undefined` when disconnected                                            |
-| `connect()`            | `() => void`                                          | Opens the AppKit wallet modal                                                                                                  |
-| `disconnect()`         | `() => void`                                          | Disconnects the wallet                                                                                                         |
-| `signMessage(message)` | `(message: string) => Promise<{ signature: string }>` | EIP-191 `personal_sign` through wagmi `useSignMessage`; rejects on the mock path (`[wallet mock] signMessage is not mockable`) |
+| Field          | Type                       | Description                                                                         |
+| -------------- | -------------------------- | ----------------------------------------------------------------------------------- |
+| `address`      | `0x${string} \| undefined` | Connected wallet address, or `undefined`                                            |
+| `isConnected`  | `boolean`                  | True when a wallet is connected (or mocked)                                         |
+| `chainId`      | `number \| undefined`      | Connected wallet's chain id (`useAccount().chainId`), `undefined` when disconnected |
+| `connect()`    | `() => void`               | Opens the AppKit wallet modal                                                       |
+| `disconnect()` | `() => void`               | Disconnects the wallet                                                              |
+
+### `useEvmSignMessage()`
+
+```ts
+const { signMessage } = useEvmSignMessage();
+```
+
+| Field                            | Type                                                                    | Description                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `signMessage(message, address?)` | `(message: string, address?: string) => Promise<{ signature: string }>` | EIP-191 `personal_sign` through wagmi `useSignMessage`; `address` pins the signing account (`account`); rejects on the mock path (`[wallet mock] signMessage is not mockable`) |
+
+It is separate from `useEvmWallet` so the ~27 `useEvmWallet` consumers do not mount a wagmi mutation observer they
+never use (#1847); the only consumer is `useSettlementAddressLink`. The Stellar `signMessage` stays on
+`useStellarWallet` because the kit call carries no observer.
 
 ### `useEvmNetworkGuard()`
 
@@ -821,14 +834,14 @@ const {
 } = useStellarWallet();
 ```
 
-| Field                         | Type                  | Description                                                      |
-| ----------------------------- | --------------------- | ---------------------------------------------------------------- |
-| `address`                     | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                   |
-| `isConnected`                 | `boolean`             | True when a Stellar wallet is connected (or mocked)              |
-| `connect()`                   | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)             |
-| `disconnect()`                | `() => void`          | Disconnects the Stellar wallet and clears state                  |
-| `signTransaction(xdr, opts?)` | async function        | Signs a transaction XDR with the connected wallet (see below)    |
-| `signMessage(message)`        | async function        | Signs a message (SEP-0053) with the connected wallet (see below) |
+| Field                            | Type                  | Description                                                      |
+| -------------------------------- | --------------------- | ---------------------------------------------------------------- |
+| `address`                        | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                   |
+| `isConnected`                    | `boolean`             | True when a Stellar wallet is connected (or mocked)              |
+| `connect()`                      | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)             |
+| `disconnect()`                   | `() => void`          | Disconnects the Stellar wallet and clears state                  |
+| `signTransaction(xdr, opts?)`    | async function        | Signs a transaction XDR with the connected wallet (see below)    |
+| `signMessage(message, address?)` | async function        | Signs a message (SEP-0053) with the connected wallet (see below) |
 
 **Shared connection state.** The real Stellar address is held in a single
 module-level external store (`stellar/connectionStore.ts`) backed by

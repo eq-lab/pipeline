@@ -22,7 +22,7 @@ import {
 } from "@/components/account/settlementAddress";
 import { ENV } from "@/lib/env";
 import { ToastContext } from "@/lib/toast/useToast";
-import { useEvmWallet, useStellarWallet } from "@/wallet";
+import { useEvmSignMessage, useEvmWallet, useStellarWallet } from "@/wallet";
 import { readSession } from "./session";
 
 interface Args {
@@ -52,6 +52,7 @@ export function useSettlementAddressLink({
 }: Args): SettlementAddressLink {
   const stellar = useStellarWallet();
   const evm = useEvmWallet();
+  const evmSigner = useEvmSignMessage();
   const toast = useContext(ToastContext);
   const [state, setState] = useState<SettlementLinkState>(IDLE);
   const inFlight = useRef(false);
@@ -63,7 +64,7 @@ export function useSettlementAddressLink({
     onLp,
     toast,
     connected,
-    evm,
+    evmSigner,
     stellar,
   };
   const latest = useRef(snapshot);
@@ -153,7 +154,7 @@ export function useSettlementAddressLink({
         let signature: string;
         try {
           const signer =
-            kind === "evm" ? latest.current.evm : latest.current.stellar;
+            kind === "evm" ? latest.current.evmSigner : latest.current.stellar;
           ({ signature } = await signer.signMessage(message, wallet.address));
         } catch {
           return finish(stale() ? "idle" : "declined");
