@@ -58,6 +58,7 @@ import {
   // Stellar namespace
   StellarWalletProvider,
   useStellarWallet,
+  isStellarSettlementAddress,
   useStellarToken,
   // Utilities
   isMockKeyPresent,
@@ -1070,6 +1071,10 @@ To reset Stellar mocks:
   "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
 ].forEach((k) => localStorage.removeItem(k));
 ```
+
+### Settlement address format
+
+`isStellarSettlementAddress(value: string): boolean` (`stellar/settlementAddressFormat.ts`, exported from `@/wallet`) is a format-only check: a Strkey `G…` account or `C…` contract (length, alphabet and checksum, no network call). It does not normalise: callers trim and uppercase first. It lives here because `@stellar/stellar-sdk` is importable only from `src/wallet/stellar/**`. Used by `parseSettlementInput` for the `Use a different address` form ([`account-page.md#settlement-address`](../../../../docs/frontend/account-page.md#settlement-address)).
 
 ### Stellar ESLint boundary
 

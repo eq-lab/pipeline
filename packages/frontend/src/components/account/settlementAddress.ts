@@ -1,6 +1,7 @@
 // spec: docs/frontend/account-page.md#settlement-address
 import type { LpResponse } from "@/api";
 import type { LpReadState } from "@/components/homeState";
+import { isStellarSettlementAddress } from "@/wallet";
 
 export type SettlementKind = "stellar" | "evm";
 
@@ -11,6 +12,7 @@ export interface ConnectedWallet {
 
 export type SettlementPhase =
   | "idle"
+  | "editing"
   | "confirming"
   | "requesting"
   | "signing"
@@ -23,6 +25,12 @@ export type SettlementPhase =
 export interface SettlementLinkState {
   kind: SettlementKind | null;
   phase: SettlementPhase;
+  mode: "wallet" | "other";
+}
+
+export interface SettlementTarget {
+  address: string;
+  signer: string | null;
 }
 
 export type SettlementAction = "link" | "change" | "retry";
@@ -36,6 +44,9 @@ export interface SettlementRowView {
   action: SettlementAction | null;
   confirm: { from: string; to: string } | null;
   busy: boolean;
+  signer: string | null;
+  other: boolean;
+  form: { current: string | null; signer: string; busy: boolean } | null;
 }
 
 export interface SettlementControls {
@@ -43,6 +54,8 @@ export interface SettlementControls {
   onLink(kind: SettlementKind): void;
   onChange(kind: SettlementKind): void;
   onCancel(): void;
+  onOther(kind: SettlementKind): void;
+  onLinkOther(kind: SettlementKind, raw: string): void;
 }
 
 export const SETTLEMENT_LABELS = {
@@ -68,6 +81,26 @@ export const SETTLEMENT_CAPTIONS = {
   notLinked: "Link your connected wallet to receive bank deposits to it.",
   needsLp: "Save your company details first, then link this wallet.",
   connect: "Connect a wallet to name your settlement address.",
+  linkingAddress: "Linking this address…",
+  addressTaken:
+    "This address is already linked to another account. Enter a different address.",
+  addressError: "This address could not be linked. Try again.",
+  linkedSigner: "Linked. Your connected wallet is the signer of this address.",
+  otherHint: "Your connected wallet signs to link this address.",
+} as const;
+
+export const SETTLEMENT_FORM_COPY = {
+  entry: "Use a different address",
+  label: "New settlement address",
+  current: "Current",
+  signer: "Signer",
+  submit: "Link address",
+  cancel: "Cancel",
+  placeholder: { stellar: "G… or C…", evm: "0x…" },
+  invalid: {
+    stellar: "Enter a Stellar address: G… or C…, 56 characters.",
+    evm: "Enter an Ethereum address: 0x followed by 40 hexadecimal characters.",
+  },
 } as const;
 
 export const SETTLEMENT_ACTION_LABELS: Record<SettlementAction, string> = {
@@ -107,7 +140,9 @@ export function servedSigner(
   kind: SettlementKind,
 ): string | null {
   if (!lp) return null;
-  return kind === "evm" ? lp.evm_signer_address : lp.stellar_signer_address;
+  return (
+    (kind === "evm" ? lp.evm_signer_address : lp.stellar_signer_address) ?? null
+  );
 }
 
 export function sameAddress(
@@ -130,8 +165,53 @@ export function baseAction(
   if (!lp || !settlementWritable(lp) || connected?.kind !== kind) return null;
   const served = servedAddress(lp, kind);
   if (served === null) return "link";
-  if (!sameAddress(kind, served, connected.address)) return "change";
+  if (!sameAddress(kind, served, connected.address)) {
+    const signer = servedSigner(lp, kind);
+    return signer !== null && sameAddress(kind, signer, connected.address)
+      ? null
+      : "change";
+  }
   return servedSigner(lp, kind) === null ? "link" : null;
+}
+
+const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+export function parseSettlementInput(
+  kind: SettlementKind,
+  raw: string,
+): { ok: true; address: string } | { ok: false; error: string | null } {
+  const trimmed = raw.trim();
+  if (trimmed === "") return { ok: false, error: null };
+  if (kind === "evm")
+    return EVM_ADDRESS.test(trimmed)
+      ? { ok: true, address: trimmed }
+      : { ok: false, error: SETTLEMENT_FORM_COPY.invalid.evm };
+  const address = trimmed.toUpperCase();
+  return isStellarSettlementAddress(address)
+    ? { ok: true, address }
+    : { ok: false, error: SETTLEMENT_FORM_COPY.invalid.stellar };
+}
+
+export function otherTarget(
+  kind: SettlementKind,
+  address: string,
+  connected: ConnectedWallet,
+): SettlementTarget {
+  if (sameAddress(kind, address, connected.address))
+    return { address, signer: null };
+  return {
+    address,
+    signer:
+      kind === "evm" ? connected.address.toLowerCase() : connected.address,
+  };
+}
+
+export function otherAllowed(
+  lp: LpResponse | null,
+  kind: SettlementKind,
+  connected: ConnectedWallet | null,
+): boolean {
+  return lp !== null && settlementWritable(lp) && connected?.kind === kind;
 }
 
 export interface SettlementRowsInput {
@@ -161,28 +241,81 @@ export function deriveSettlementRows({
         action: null,
         confirm: null,
         busy: false,
+        signer: null,
+        other: false,
+        form: null,
       },
     ];
   return kinds.map((kind) => {
     const s = servedAddress(lp, kind);
     const c = connected?.kind === kind ? connected.address : null;
     const base = baseAction(lp, kind, connected);
+    const servedSignerValue = servedSigner(lp, kind);
+    const signer =
+      s !== null &&
+      servedSignerValue !== null &&
+      !sameAddress(kind, servedSignerValue, s)
+        ? servedSignerValue
+        : null;
+    const canOther = otherAllowed(lp, kind, connected);
     const row = (
       caption: string | null,
       tone: "muted" | "negative",
       action: SettlementAction | null,
       extra: Partial<SettlementRowView> = {},
-    ): SettlementRowView => ({
-      kind,
-      label: SETTLEMENT_LABELS[kind],
-      address: s,
-      caption,
-      tone,
-      action,
-      confirm: null,
-      busy: false,
-      ...extra,
-    });
+    ): SettlementRowView => {
+      const view: SettlementRowView = {
+        kind,
+        label: SETTLEMENT_LABELS[kind],
+        address: s,
+        caption,
+        tone,
+        action,
+        confirm: null,
+        busy: false,
+        signer,
+        other: false,
+        form: null,
+        ...extra,
+      };
+      view.other =
+        canOther && !view.busy && view.confirm === null && view.form === null;
+      return view;
+    };
+    if (link.kind === kind && link.mode === "other" && c !== null) {
+      const busy =
+        link.phase === "requesting" ||
+        link.phase === "signing" ||
+        link.phase === "verifying";
+      const form = { current: s, signer: c, busy };
+      const phaseCaption = (
+        text: string,
+        tone: "muted" | "negative" = "muted",
+      ) => row(text, tone, null, { busy, form });
+      switch (link.phase) {
+        case "requesting":
+        case "verifying":
+          return phaseCaption(SETTLEMENT_CAPTIONS.linkingAddress);
+        case "signing":
+          return phaseCaption(SETTLEMENT_CAPTIONS.signing);
+        case "declined":
+          return phaseCaption(SETTLEMENT_CAPTIONS.declined);
+        case "proofFailed":
+          return phaseCaption(SETTLEMENT_CAPTIONS.proofFailed, "negative");
+        case "taken":
+          return phaseCaption(SETTLEMENT_CAPTIONS.addressTaken, "negative");
+        case "error":
+          return phaseCaption(SETTLEMENT_CAPTIONS.addressError, "negative");
+        case "editing":
+          return phaseCaption(
+            s !== null
+              ? SETTLEMENT_CAPTIONS.confirm
+              : SETTLEMENT_CAPTIONS.otherHint,
+          );
+        default:
+          break;
+      }
+    }
     if (link.kind === kind) {
       switch (link.phase) {
         case "requesting":
@@ -225,6 +358,12 @@ export function deriveSettlementRows({
         return base === "link"
           ? row(SETTLEMENT_CAPTIONS.unproven, "muted", "link")
           : row(SETTLEMENT_CAPTIONS.linked, "muted", null);
+      if (
+        c !== null &&
+        servedSignerValue !== null &&
+        sameAddress(kind, servedSignerValue, c)
+      )
+        return row(SETTLEMENT_CAPTIONS.linkedSigner, "muted", null);
       if (base === "change")
         return row(SETTLEMENT_CAPTIONS.different, "muted", "change");
       return row(null, "muted", null);

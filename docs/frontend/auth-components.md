@@ -715,7 +715,7 @@ outside `{application/pdf, image/jpeg, image/png}` (falling back to the filename
 caption recolors to `--color-pipeline-negative-strong` with `role="alert"`, reverting on the next
 accepted pick. Neither Figma frame designs a rejection state — tracked as **TD-62**.
 
-**Settlement rows (#1813, #1825).** An optional `settlement` prop (`SettlementControls`, from `useAuthFlow().settlement`) renders `SettlementAddressRows` (one row per chain kind, with `Link wallet` / `Change wallet` / `Try again` buttons and the inline change confirmation) below Country in the first surface card; it is omitted in preview mode. See [`account-page.md#settlement-address`](./account-page.md#settlement-address).
+**Settlement rows (#1813, #1825).** An optional `settlement` prop (`SettlementControls`, from `useAuthFlow().settlement`) renders `SettlementAddressRows` (one row per chain kind, with `Link wallet` / `Change wallet` / `Try again` buttons, the inline change confirmation and the opt-in `Use a different address` form, #1849) below Country in the first surface card; it is omitted in preview mode. See [`account-page.md#settlement-address`](./account-page.md#settlement-address).
 
 **Out of scope for #1371.** Account-page document hub, home-page state matrix, and KYB review submission or status transitions. Wallet linking was out of scope here and is added by #1813.
 
@@ -1023,8 +1023,8 @@ session token and is cleared on session changes or reload. Submission adopts the
 unknown submission status requires Check submission status before writes resume.
 
 **Settlement address link (#1813, #1825).** The provider calls `useSettlementAddressLink` but never links on its own:
-it exposes `settlement = { rows, onLink, onChange, onCancel }`, where `rows` come from `deriveSettlementRows` and the
-callbacks are the hook's `link`, `beginChange` and `cancelChange`. `adoptLp(lp)` replaces the provider's LP (the single
+it exposes `settlement = { rows, onLink, onChange, onCancel, onOther, onLinkOther }`, where `rows` come from `deriveSettlementRows` and the
+callbacks are the hook's `link`, `beginChange`, `cancelChange`, `beginOther` and `linkOther`. `adoptLp(lp)` replaces the provider's LP (the single
 adopt path, shared with `CompanyDocsModal.onLpChange` and the Account page's `useAccountPage` `onLpAdopted`). Flow, row
 rules, errors and captions: [`account-page.md#settlement-address`](./account-page.md#settlement-address).
 

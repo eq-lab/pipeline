@@ -1,13 +1,4 @@
-/**
- * Public surface of the wallet module.
- *
- * Only import from this barrel outside of `src/wallet/evm/` or
- * `src/wallet/stellar/`.
- * Do NOT import wagmi, viem, @reown/appkit, @tanstack/react-query,
- * @creit.tech/stellar-wallets-kit, or @stellar/stellar-sdk directly
- * from outside this module — the ESLint `no-restricted-imports` rule enforces
- * this boundary.
- */
+// spec: packages/frontend/src/wallet/README.md#public-api
 
 // ── Shared gate ───────────────────────────────────────────────────────────────
 export { WalletGateProvider } from "./WalletGateProvider";
@@ -178,6 +169,8 @@ export type {
   UseStellarChangeTrustUsdcResult,
   InflightWithdrawal,
 } from "./stellar/useStellarWithdrawalQueue";
+
+export { isStellarSettlementAddress } from "./stellar/settlementAddressFormat";
 
 // ── View selection ────────────────────────────────────────────────────────────
 export { WalletViewProvider, useWalletView } from "./WalletViewContext";
