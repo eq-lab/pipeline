@@ -178,7 +178,7 @@ describe("useSettlementAddressLink", () => {
     act(() => result.current.link("stellar"));
     await waitFor(() => expect(phaseOf(result)).toBe("signing"));
     expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, A);
-    expect(mockStellarSign).toHaveBeenCalledWith("msg-1");
+    expect(mockStellarSign).toHaveBeenCalledWith("msg-1", A);
     await act(async () => releaseSign());
     await waitFor(() => expect(phaseOf(result)).toBe("verifying"));
     expect(mockVerify).toHaveBeenCalledWith({
@@ -203,7 +203,7 @@ describe("useSettlementAddressLink", () => {
       ENV.EVM_CHAIN_ID,
       E1.toLowerCase(),
     );
-    expect(mockEvmSign).toHaveBeenCalledWith("msg-1");
+    expect(mockEvmSign).toHaveBeenCalledWith("msg-1", E1);
     expect(mockStellarSign).not.toHaveBeenCalled();
     expect(mockVerify).toHaveBeenCalledWith({
       chain_id: ENV.EVM_CHAIN_ID,
@@ -298,7 +298,7 @@ describe("useSettlementAddressLink", () => {
     act(() => result.current.link("stellar"));
     await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
     expect(mockChallenge).toHaveBeenCalledTimes(2);
-    expect(mockStellarSign).toHaveBeenLastCalledWith("msg-2");
+    expect(mockStellarSign).toHaveBeenLastCalledWith("msg-2", A);
     expect(phaseOf(result)).toBe("idle");
   });
 
@@ -411,6 +411,54 @@ describe("useSettlementAddressLink", () => {
     await act(async () => release());
     expect(onLp).not.toHaveBeenCalled();
     await waitFor(() => expect(phaseOf(result)).toBe("idle"));
+  });
+
+  it("passes the challenged address to signMessage for both kinds", async () => {
+    connectStellar(A);
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.link("stellar"));
+    await waitFor(() => expect(mockVerify).toHaveBeenCalledOnce());
+    expect(mockStellarSign).toHaveBeenCalledWith("msg-1", A);
+    connectStellar(undefined);
+    connectEvm(E1);
+    rerender(loaded());
+    act(() => result.current.link("evm"));
+    await waitFor(() => expect(mockVerify).toHaveBeenCalledTimes(2));
+    expect(mockEvmSign).toHaveBeenCalledWith("msg-1", E1);
+  });
+
+  it("a wallet switched mid-flight goes idle: no verify, no caption for the new wallet", async () => {
+    connectStellar(A);
+    let resolveSign: (v: { signature: string }) => void = () => {};
+    mockStellarSign
+      .mockReset()
+      .mockImplementation(() => new Promise((r) => (resolveSign = r)));
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.link("stellar"));
+    await waitFor(() => expect(phaseOf(result)).toBe("signing"));
+    connectStellar(B);
+    rerender(loaded());
+    await act(async () => resolveSign({ signature: "sig-s" }));
+    await waitFor(() => expect(phaseOf(result)).toBe("idle"));
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(result.current.connected).toEqual({ kind: "stellar", address: B });
+  });
+
+  it("a generic verify failure re-reads the LP best-effort before reporting error", async () => {
+    connectStellar(A);
+    mockVerify.mockRejectedValueOnce(new ApiError(500, "boom"));
+    const committed = lp({ stellar_address: A, stellar_signer_address: A });
+    mockGet.mockResolvedValueOnce(committed);
+    const { result, onLp } = setup(loaded());
+    act(() => result.current.link("stellar"));
+    await waitFor(() => expect(phaseOf(result)).toBe("error"));
+    expect(mockGet).toHaveBeenCalledOnce();
+    expect(onLp).toHaveBeenCalledWith(committed);
+    mockVerify.mockRejectedValueOnce(new TypeError("offline"));
+    mockGet.mockRejectedValueOnce(new TypeError("offline"));
+    act(() => result.current.link("stellar"));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(phaseOf(result)).toBe("error"));
   });
 
   it("resets declined, proofFailed and confirming when the connected address changes", async () => {

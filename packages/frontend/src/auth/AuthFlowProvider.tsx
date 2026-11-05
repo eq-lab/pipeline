@@ -5,12 +5,9 @@ import type { AuthFlowContextValue } from "./AuthFlowContext";
 import { EmailAuthFlow } from "@/components/EmailAuthFlow";
 import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
 import type { LpReadState } from "@/components/homeState";
-import { useConnectModal, useEvmWallet, useStellarWallet } from "@/wallet";
+import { useConnectModal } from "@/wallet";
 import { useSettlementAddressLink } from "./useSettlementAddressLink";
-import {
-  connectedWallet,
-  deriveSettlementRows,
-} from "@/components/account/settlementAddress";
+import { deriveSettlementRows } from "@/components/account/settlementAddress";
 import { useAuthSession } from "./useAuthSession";
 import { isAccountSetupDismissed, markAccountSetupDismissed } from "./session";
 import { ApiError, getMyLp, upsertMyLp } from "@/api";
@@ -101,15 +98,13 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   const loadedLp =
     setup?.status === "loaded" && setup.token === token ? setup.lp : null;
 
-  const { state, link, beginChange, cancelChange } = useSettlementAddressLink({
-    token,
-    lp: loadedLp,
-    lpLoaded: loadedLp !== null,
-    onLp: adoptLp,
-  });
-  const stellar = useStellarWallet();
-  const evm = useEvmWallet();
-  const connected = connectedWallet(evm, stellar);
+  const { state, connected, link, beginChange, cancelChange } =
+    useSettlementAddressLink({
+      token,
+      lp: loadedLp,
+      lpLoaded: loadedLp !== null,
+      onLp: adoptLp,
+    });
   const connectedKind = connected?.kind;
   const connectedAddress = connected?.address;
   const rows = useMemo(

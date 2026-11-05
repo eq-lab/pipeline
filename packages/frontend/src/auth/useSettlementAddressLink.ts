@@ -11,6 +11,7 @@ import {
   baseAction,
   connectedWallet,
   settlementWritable,
+  type ConnectedWallet,
   type SettlementKind,
   type SettlementLinkState,
   type SettlementPhase,
@@ -29,6 +30,7 @@ interface Args {
 
 export interface SettlementAddressLink {
   state: SettlementLinkState;
+  connected: ConnectedWallet | null;
   link(kind: SettlementKind): void;
   beginChange(kind: SettlementKind): void;
   cancelChange(): void;
@@ -48,17 +50,7 @@ export function useSettlementAddressLink({
   const [state, setState] = useState<SettlementLinkState>(IDLE);
   const inFlight = useRef(false);
   const connected = connectedWallet(evm, stellar);
-  const latest = useRef({
-    token,
-    lp,
-    lpLoaded,
-    onLp,
-    toast,
-    connected,
-    evm,
-    stellar,
-  });
-  latest.current = {
+  const snapshot = {
     token,
     lp,
     lpLoaded,
@@ -68,6 +60,8 @@ export function useSettlementAddressLink({
     evm,
     stellar,
   };
+  const latest = useRef(snapshot);
+  latest.current = snapshot;
 
   useEffect(() => {
     if (!inFlight.current) setState(IDLE);
@@ -98,7 +92,10 @@ export function useSettlementAddressLink({
     const chainId = kind === "evm" ? ENV.EVM_CHAIN_ID : ENV.STELLAR_CHAIN_ID;
     const address =
       kind === "evm" ? wallet.address.toLowerCase() : wallet.address;
-    const stale = () => readSession()?.token !== sessionToken;
+    const stale = () =>
+      readSession()?.token !== sessionToken ||
+      latest.current.connected?.kind !== kind ||
+      latest.current.connected?.address !== wallet.address;
     const finish = (phase: SettlementPhase) => {
       inFlight.current = false;
       setState(phase === "idle" ? IDLE : { kind, phase });
@@ -124,6 +121,13 @@ export function useSettlementAddressLink({
           return finish("taken");
         }
       }
+      try {
+        const refreshed = await getMyLp();
+        if (stale()) return finish("idle");
+        latest.current.onLp(refreshed);
+      } catch {
+        if (stale()) return finish("idle");
+      }
       finish("error");
     };
     void (async () => {
@@ -139,7 +143,7 @@ export function useSettlementAddressLink({
       try {
         const signer =
           kind === "evm" ? latest.current.evm : latest.current.stellar;
-        ({ signature } = await signer.signMessage(message));
+        ({ signature } = await signer.signMessage(message, wallet.address));
       } catch {
         return finish(stale() ? "idle" : "declined");
       }
@@ -160,5 +164,5 @@ export function useSettlementAddressLink({
     })();
   }, []);
 
-  return { state, link, beginChange, cancelChange };
+  return { state, connected, link, beginChange, cancelChange };
 }

@@ -204,6 +204,13 @@ nothing about this variant is faked.
 
 ## Settlement address
 
+**Review fixes (2026-11-05, PR #1846):** a link in flight is abandoned as `idle` (no caption, no
+verify) if the session token or the connected wallet changes before it finishes; `signMessage`
+receives the challenged address so the wallet signs with that account (wagmi `account`, kit
+`address`); a generic verify failure re-reads `GET /v1/lps/me` best-effort before showing the
+error caption; the row carries `aria-busy` while requesting / signing / verifying; the hook also
+returns `connected` so the provider reads the wallet once.
+
 The LP links the **connected wallet** (as both address and signer) to its record by signing a challenge, so the Trustee's
 settlement rows and the bank-deposit mint receiver have a proven address. Behaviour sources, in precedence order:
 `docs/user-docs/lenders/onboarding.md` (§Entity verification), `docs/product-specs/kyb-lp-verification.md`

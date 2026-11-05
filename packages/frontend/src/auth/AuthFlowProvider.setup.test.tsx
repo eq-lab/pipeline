@@ -443,7 +443,7 @@ describe("Settlement address link", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Link wallet" }));
     await waitFor(() => expect(mockVerify).toHaveBeenCalledOnce());
     expect(mockChallenge).toHaveBeenCalledOnce();
-    expect(mockSign).toHaveBeenCalledWith("msg");
+    expect(mockSign).toHaveBeenCalledWith("msg", expect.any(String));
     await waitFor(() =>
       expect(screen.getByTestId("settlement-address")).toHaveTextContent(
         ADDRESS,

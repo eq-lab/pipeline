@@ -25,6 +25,7 @@ export function SettlementAddressRow({
   tone,
   action,
   confirm,
+  busy,
   onLink,
   onChange,
   onCancel,
@@ -39,6 +40,7 @@ export function SettlementAddressRow({
       className="flex w-full flex-col"
       data-testid="settlement-address-row"
       data-kind={kind ?? "none"}
+      aria-busy={busy || undefined}
     >
       <AccountListRow
         variant="plain"

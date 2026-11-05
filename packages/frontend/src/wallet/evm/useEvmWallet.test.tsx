@@ -157,6 +157,21 @@ describe("useEvmWallet — signMessage()", () => {
     expect(mockSignMessageAsync).toHaveBeenCalledWith({ message: "hello" });
   });
 
+  it("pins the signing account when an address is given", async () => {
+    mockSignMessageAsync.mockResolvedValue("0xsig");
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    await act(() =>
+      result.current.signMessage(
+        "hello",
+        "0xAbC0000000000000000000000000000000000001",
+      ),
+    );
+    expect(mockSignMessageAsync).toHaveBeenCalledWith({
+      message: "hello",
+      account: "0xAbC0000000000000000000000000000000000001",
+    });
+  });
+
   it("mock path: rejects without signing", async () => {
     localStorage.setItem(
       "pipeline.mock.wallet.address",

@@ -458,6 +458,9 @@ describe("useStellarWallet — signMessage()", () => {
     expect(call?.[0]).toBe("hello");
     expect(call?.[1]?.address).toBe(STELLAR_ADDR);
     expect(typeof call?.[1]?.networkPassphrase).toBe("string");
+
+    await act(() => result.current.signMessage("again", "GOTHER"));
+    expect(mockSignMessageKit.mock.calls[1]?.[1]?.address).toBe("GOTHER");
   });
 
   it("mock path: rejects without calling the kit", async () => {

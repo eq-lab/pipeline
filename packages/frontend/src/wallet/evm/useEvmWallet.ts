@@ -39,7 +39,10 @@ export interface WalletState {
   chainId: number | undefined;
   connect(): void;
   disconnect(): void;
-  signMessage(message: string): Promise<{ signature: string }>;
+  signMessage(
+    message: string,
+    address?: string,
+  ): Promise<{ signature: string }>;
 }
 
 export function useEvmWallet(): WalletState {
@@ -97,13 +100,21 @@ export function useEvmWallet(): WalletState {
     wagmiDisconnect();
   }
 
-  async function signMessage(message: string): Promise<{ signature: string }> {
+  async function signMessage(
+    message: string,
+    signer?: string,
+  ): Promise<{ signature: string }> {
     if (mockAddress !== undefined) {
       throw new Error(
         "[wallet mock] signMessage is not mockable; connect a real wallet",
       );
     }
-    return { signature: await signMessageAsync({ message }) };
+    return {
+      signature: await signMessageAsync({
+        message,
+        ...(signer ? { account: signer as `0x${string}` } : {}),
+      }),
+    };
   }
 
   return {

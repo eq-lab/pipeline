@@ -38,7 +38,10 @@ export interface StellarWalletState {
     xdrStr: string,
     opts?: { networkPassphrase?: string; address?: string },
   ): Promise<{ signedTxXdr: string; signerAddress?: string }>;
-  signMessage(message: string): Promise<{ signature: string }>;
+  signMessage(
+    message: string,
+    address?: string,
+  ): Promise<{ signature: string }>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -139,7 +142,10 @@ export function useStellarWallet(): StellarWalletState {
   );
 
   const signMessage = useCallback(
-    async (message: string): Promise<{ signature: string }> => {
+    async (
+      message: string,
+      signer?: string,
+    ): Promise<{ signature: string }> => {
       if (mockAddress !== undefined) {
         return Promise.reject(
           new Error(
@@ -149,7 +155,7 @@ export function useStellarWallet(): StellarWalletState {
       }
       const { signedMessage } = await StellarWalletsKit.signMessage(message, {
         networkPassphrase: networkPassphrase as string,
-        address,
+        address: signer ?? address,
       });
       return { signature: signedMessage };
     },

@@ -48,6 +48,20 @@ Out of scope:
 | D14 | **Before the LP exists** (`lpRead === "absent"`), a connected wallet's row shows `—` and a `needsLp` caption, with no button. Once `POST /v1/lps/me` is adopted, it turns into `Link wallet`. | Linking needs an LP (`404` otherwise). The old "Linked when you submit" no longer holds. |
 | D15 | The `account-page.md` section is renamed from `## Settlement address (#1813)` to `## Settlement address` (anchor `#settlement-address`), and every pointer is updated. | It is now a multi-issue section. A stable anchor stops the churn. `lint-docs` does not validate anchors, so the coder updates them by grep. |
 | D16 | **Copy** (stand-in, exported as `SETTLEMENT_CAPTIONS`; see step 5). | The no-Figma decision makes the copy a development decision. |
+- **D17 — `Try again` after a failed change skips the From/To confirmation (review item 3, 2026-11-05).**
+  Intentional: after `proofFailed` / `error` on a change the pair cannot have moved — a wallet
+  switch resets the flow (D18) — so re-confirming would only add a click. After `declined` the user
+  goes back through `Change wallet` because declining is a deliberate stop.
+- **D18 — Review fixes (PR #1846 automated review, 2026-11-05).** (1) A link is `stale()` when the
+  session token **or the connected wallet** (`kind` + `address` captured at click time) changes, so a
+  wallet switched mid-flight finishes `idle` with no leftover caption and no verify call. (2) The
+  challenged address is pinned to the signer: `signMessage(message, address)` passes wagmi
+  `account` / the kit's `address`, so an account switched between challenge and prompt can no
+  longer produce a vague 422. (3) A generic verify failure re-reads the LP best-effort (as the 409
+  path does) before reporting `error`, so a link committed before a late failure shows at once.
+  (4) `busy` renders as `aria-busy` on the row. (5) The hook returns `connected` and
+  `AuthFlowProvider` no longer calls the wallet hooks a second time. Items 5 (dedicated
+  `useEvmSignMessage`) and 6b (one source of wallet precedence) are issues #1847 / #1848.
 
 ## Assumptions and Risks
 
