@@ -2271,3 +2271,11 @@ line, whichever section it lands in.
 - **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
 - **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
 - **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.
+
+### TD-170: Pocket `complete` is not verified against the key having stayed configured
+
+- **Date:** 2026-11-05
+- **Location:** `shared::pocket::fold_pocket` in `packages/shared/src/pocket.rs`
+- **Gap:** Any indexed `PocketOpened` makes the fold `complete = true` with no check that later pocket events were all indexed. If `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` was unset for a period after the open, events in that gap are missing and the fold is silently short.
+- **Impact:** The loan-book `pocket` totals can differ from `pocket(loan_id)` while reporting `complete: true`.
+- **Suggested fix:** Compare the fold with a fresh `pocket(loan_id)` simulate in the seed loop and re-seed on mismatch, or store the cursor ledger at which the key was set. Documented in `docs/references/backend.md#stellar-pocket-indexing`. Number picked after main's TD-166 and past the #1790 / #1791 branches' TD-165..169; renumber at merge if it collides. Found while working on #1789.

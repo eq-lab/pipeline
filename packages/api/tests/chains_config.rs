@@ -494,3 +494,84 @@ fn stellar_chain_keeps_seven_decimal_default() {
         },
     );
 }
+
+const STELLAR_POCKET: &str = "CD464CN7ZWOYRGCTHE74Q5PR3JSRPTHDRZYD4OZR4DY64ZSBJ6YZ2RA5";
+
+#[test]
+fn stellar_pocket_address_is_parsed() {
+    with_env(
+        &[
+            ("CHAINS", "99000011"),
+            ("DEFAULT_CHAIN_ID", "99000011"),
+            ("CHAIN_99000011_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000011_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000011_STELLAR_API_POCKET_ADDRESS", STELLAR_POCKET),
+        ],
+        &[
+            "CHAIN_99000011_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000011_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with pocket key");
+            assert_eq!(cfg.pocket_addresses[&99_000_011], STELLAR_POCKET);
+        },
+    );
+}
+
+#[test]
+fn stellar_pocket_address_unset_or_blank_gives_no_entry() {
+    for (chain, value) in [(99_000_012_i64, None), (99_000_013_i64, Some("   "))] {
+        let key = format!("CHAIN_{chain}_STELLAR_API_POCKET_ADDRESS");
+        let chains = chain.to_string();
+        let registry_key = format!("CHAIN_{chain}_STELLAR_API_LOAN_REGISTRY_ADDRESS");
+        let type_key = format!("CHAIN_{chain}_TYPE");
+        let mut set: Vec<(&str, &str)> = vec![
+            ("CHAINS", &chains),
+            ("DEFAULT_CHAIN_ID", &chains),
+            (&type_key, "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (&registry_key, STELLAR_REGISTRY),
+        ];
+        if let Some(v) = value {
+            set.push((&key, v));
+        }
+        let dm = format!("CHAIN_{chain}_API_STELLAR_DM_CONTRACT_ID");
+        let wq = format!("CHAIN_{chain}_API_STELLAR_WQ_CONTRACT_ID");
+        with_env(&set, &[&dm, &wq, &key], || {
+            let cfg = ChainsConfig::from_env().expect("from_env without pocket key");
+            assert!(cfg.pocket_addresses.is_empty());
+        });
+    }
+}
+
+#[test]
+fn stellar_pocket_address_bad_strkey_is_error() {
+    with_env(
+        &[
+            ("CHAINS", "99000014"),
+            ("DEFAULT_CHAIN_ID", "99000014"),
+            ("CHAIN_99000014_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000014_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000014_STELLAR_API_POCKET_ADDRESS", "CNOTAREALID"),
+        ],
+        &[
+            "CHAIN_99000014_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000014_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_99000014_STELLAR_API_POCKET_ADDRESS"),
+                "unexpected error message: {msg}"
+            );
+        },
+    );
+}

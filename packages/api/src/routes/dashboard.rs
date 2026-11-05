@@ -386,7 +386,8 @@ async fn read_chain(
 }
 
 /// One chain's cumulative LP-yield step events: legacy `YieldMinted.s_plusd_amount` plus
-/// `CashRepaid.interest_minted` of non-carved-out loans (netted against reversals), all base-6.
+/// `CashRepaid.interest_minted` of non-carved-out loans (netted against reversals), all base-6;
+/// carved-out interest too on a Stellar chain with a pocket key.
 async fn read_chain_yield(
     state: &AppState,
     chain_id: i64,
@@ -410,6 +411,13 @@ async fn read_chain_yield(
                 .map_err(ApiError::from)
         },
     )?;
+    if kind == ChainKind::Stellar && state.pocket_addresses.contains_key(&chain_id) {
+        return Ok(chain_yield_deltas_counting_recoveries(
+            kind,
+            &legacy,
+            &repayments,
+        ));
+    }
     Ok(chain_yield_deltas(kind, &legacy, &repayments))
 }
 
@@ -428,12 +436,29 @@ pub fn chain_yield_deltas(
     legacy: &[YieldMintRow],
     repayments: &[RepaymentMintRow],
 ) -> Vec<YieldMintRow> {
+    yield_deltas(kind, false, legacy, repayments)
+}
+
+pub fn chain_yield_deltas_counting_recoveries(
+    kind: ChainKind,
+    legacy: &[YieldMintRow],
+    repayments: &[RepaymentMintRow],
+) -> Vec<YieldMintRow> {
+    yield_deltas(kind, true, legacy, repayments)
+}
+
+fn yield_deltas(
+    kind: ChainKind,
+    include_carved: bool,
+    legacy: &[YieldMintRow],
+    repayments: &[RepaymentMintRow],
+) -> Vec<YieldMintRow> {
     let mut by_loan: BTreeMap<String, Vec<(i64, BigDecimal)>> = BTreeMap::new();
     for r in repayments {
         if r.reversed_at.is_some_and(|rev| rev <= r.block_timestamp) {
             continue;
         }
-        if r.carved_out {
+        if r.carved_out && !include_carved {
             continue;
         }
         let raw = r.interest_minted.clone();
