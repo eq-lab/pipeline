@@ -122,13 +122,13 @@ The relayer's Phase 0 (profile population) and Phase 3 (whitelist sync) run for 
 
 ### On-chain mechanism
 
-Where EVM calls `WhitelistRegistry.allow(address)`, Stellar invokes `access_manager.execute(operation, caller)` where `operation = { target: PLUSD_SAC, function: "set_authorized", args: [Address(user), Bool(true)], predecessor: 0x00…, salt: <random 32 bytes> }`. The access-manager's `#[only_role(caller, "executor")]` macro requires the caller (the relayer's `G…` account, which doubles as the tx source) to hold the `executor` role — granted out-of-band via `just grant-executor <G-address>` in `pipeline-stellar-contracts/deployments`.
+Where EVM calls `WhitelistRegistry.allow(address)`, Stellar invokes `access_manager.execute(target = PLUSD_SAC, function = "set_authorized", args = [Address(user), Bool(true)], caller = relayer G…)`, four positional arguments (`worker/src/relayer/stellar/whitelist.rs`). The caller (the relayer's `G…` account, which doubles as the tx source) must hold `WHITELIST_ADMIN` with execution delay 0, granted by the contracts' `setup-access` or `just grant-role WHITELIST_ADMIN <G-address>` in `pipeline-stellar-contracts/deployments`.
 
-The `Operation` struct is encoded as `ScVal::Map` with entries alphabetically sorted by field name (`args`, `function`, `predecessor`, `salt`, `target`) — matches `soroban-sdk`'s `to_xdr(e)` for `#[contracttype]` structs, the same convention reused by `shared::stellar_voucher` for the voucher digest. A fresh random salt per submit makes `hash_operation(...)` unique, so the access-manager's dedup never collides across cycles.
+There is no operation struct or salt: an immediate caller executes directly. See [backend.md](../references/backend.md#stellar-contract-ids-and-signer-roles) for the signer-role check.
 
 ### Idempotency
 
-Phase 3 calls the SAC's `authorized(user) -> bool` view via `simulateTransaction` (no signing or submit) before each `set_authorized` call. On `true`, it skips the submit and flips `lp_profiles.on_chain_allowed` to keep the DB in sync. On error (e.g., the SAC view is unavailable), it falls through to submit — the salt-based on-chain dedup means a duplicate submit is just a wasted fee, not a correctness bug.
+Phase 3 calls the SAC's `authorized(user) -> bool` view via `simulateTransaction` (no signing or submit) before each `set_authorized` call. On `true`, it skips the submit and flips `lp_profiles.on_chain_allowed` to keep the DB in sync. On error (e.g., the SAC view is unavailable), it falls through to submit — `set_authorized(addr, true)` is idempotent on the SAC, so a duplicate submit is just a wasted fee, not a correctness bug.
 
 ### Case sensitivity
 

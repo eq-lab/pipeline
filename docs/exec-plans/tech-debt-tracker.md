@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-165.**
+**Next free number: TD-166.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2255,3 +2255,11 @@ line, whichever section it lands in.
 - **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
 - **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
 - **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+
+### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
+
+- **Date:** 2026-11-03
+- **Location:** `docs/generated/stellar-protocol-contracts.md`
+- **Gap:** The generated reference is a 2026-06-10 snapshot: its contract ids and WASM interfaces predate deployment #36.
+- **Impact:** Misleading contract ids for ops and agents.
+- **Suggested fix:** Regenerate it from `stellar contract info interface` against the #36 / #37 ids, or delete it in favour of the key map in `docs/references/backend.md#stellar-contract-ids-and-signer-roles`. Found while working on #1794.

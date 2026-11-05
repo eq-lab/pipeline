@@ -298,7 +298,7 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
 
 **Stellar (Soroban) events** are routed by contract id in
 `worker/src/indexer/stellar/parsers.rs`, each contract's id supplied by a
-`CHAIN_<id>_STELLAR_*_ID` variable; a contract whose id is unset has no branch at
+`CHAIN_<id>_STELLAR_INDEXER_*_ADDRESS` variable (key map: [Stellar contract ids and signer roles](#stellar-contract-ids-and-signer-roles)); a contract whose id is unset has no branch at
 all, so an un-deployed contract ships dark rather than warning every cycle. The
 minter contributes 15 of its 22 events (#1416, #1480):
 
@@ -817,6 +817,54 @@ UUPS proxies mean the implementation behind a contract can change. If `PLUSD_Imp
 2. On upgrade (detected via `Upgraded(implementation)` event from the proxy), Bridge alerts ops.
 3. Ops deploys updated Bridge with new ABI config. This is a coordinated deploy alongside the 48h upgrade timelock window — there is time to prepare.
 4. The indexer tolerates unknown events (logs them raw, skips handler routing) rather than crashing.
+
+### Stellar contract ids and signer roles
+
+Source of truth: `pipeline-stellar-contracts` `deployments/networks/<testnet|mainnet>/addresses.json` (contract ids) and `config.json` (mainnet `usdc`, the `verifier`s, the `custodian`s, the `access.<role>` holders). Current values are in `.env.example`, recorded at the contracts commit named there (`d0d5757`; testnet = deployment #36, mainnet = #37). `VITE_STELLAR_*` keys are synced separately (frontend).
+
+| `addresses.json` key | Contract | Worker keys | API keys | Relayer key |
+|---|---|---|---|---|
+| `deposit_manager` | DepositManager | indexer `CHAIN_<id>_STELLAR_INDEXER_DEPOSIT_MANAGER_ADDRESS` (required) | `CHAIN_<id>_API_STELLAR_DM_CONTRACT_ID` (vouchers) | n/a |
+| `withdrawal_queue` | WithdrawalQueue | indexer `…_STELLAR_INDEXER_WITHDRAWAL_QUEUE_ADDRESS` (required) | `…_API_STELLAR_WQ_CONTRACT_ID` (vouchers; #1791 also scopes the recovery rate to it) | n/a |
+| `staked_pl_usd` | sPLUSD | indexer `…_STELLAR_INDEXER_STAKED_PLUSD_ADDRESS` (required); price poller `…_STELLAR_PRICE_POLLER_STAKED_PLUSD_ADDRESS` (required when the poller runs) | n/a | n/a |
+| `loan_registry` | LoanRegistry | indexer `…_STELLAR_INDEXER_LOAN_REGISTRY_ADDRESS` (optional) | `…_STELLAR_API_LOAN_REGISTRY_ADDRESS` (required, equal to the indexer key) | n/a |
+| `minter` | Minter | indexer `…_STELLAR_INDEXER_MINTER_ADDRESS` (optional; also gates relayer wire-in matching) | `…_STELLAR_API_MINTER_ADDRESS` (#1790, not read yet) with boolean switch `…_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` | n/a |
+| `collateral_registry` | see the trap below | legacy: `…_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS`; SecurityRegistry: `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (#1779, not read yet) | n/a | n/a |
+| `deal_token_factory` | DealTokenFactory | indexer `…_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (optional) | n/a | n/a |
+| `pocket` | Pocket | indexer `…_STELLAR_INDEXER_POCKET_ADDRESS` (#1789, not read yet) | `…_STELLAR_API_POCKET_ADDRESS` (#1789, not read yet) | n/a |
+| `access_manager` | AccessManager | n/a | n/a | `…_RELAYER_STELLAR_ACCESS_MANAGER_ID` (required) |
+| `plusd` | PLUSD SAC | n/a | n/a | `…_RELAYER_STELLAR_PLUSD_SAC_ID` (required) |
+| `usdc` (testnet `addresses.json`, mainnet `config.json`) | USDC SAC | `JOB_INDEXER_STELLAR_ASSET_ID` (job-level: one network per worker) | n/a | n/a |
+| `config.json` `withdrawal_queue.custodian` | MPC G-account | indexer `…_STELLAR_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` | `…_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` | n/a |
+| `config.json` `deposit_manager.verifier` = `withdrawal_queue.verifier` | public key of `STELLAR_VERIFIER_SECRET` | n/a | n/a | n/a |
+
+Keys marked "not read yet" are ignored by this build and land with the issue named. `CHAIN_<id>_STELLAR_{ACCESS_MANAGER,USDC_ASSET,PLUSD_ASSET}_ID` in `.env.example` are documentation only. `…_RELAYER_STELLAR_YIELD_MINTER_ID` / `…_RELAYER_STELLAR_LOAN_REGISTRY_ID` belong to the Phase 4 yield-mint path (removed by #1793) and are not synced.
+
+**Trap: `collateral_registry`.** Deployments #36 / #37 stored the legacy CollateralRegistry under that key. The contracts' `deploy-security-registry` recipe stores the SecurityRegistry under the same key, and `deploy-all` keeps an existing `collateral_registry` id, so an unchanged id after a later deploy is still the legacy contract. Decide by the on-chain interface, never by the key name: `stellar contract info interface --id <id> --network <net>`. `pledge` / `lot` means CollateralRegistry, which goes to `…_COLLATERAL_REGISTRY_ADDRESS`. `register` / `perfect` / `record` means SecurityRegistry, which goes to `…_SECURITY_REGISTRY_ADDRESS` and never to the collateral key.
+
+**Cursor rule.** The Stellar cursor is one row per chain in `log_collector_state`, shared by every contract on the chain. `CHAIN_<id>_STELLAR_START_BLOCK` seeds it only while it is 0 (`stellar/poller.rs`). A contract key added to a running chain is indexed only from the current cursor. Set the key before the contract's deploy ledger passes, or rewind with `UPDATE log_collector_state SET last_indexed_block = <ledger> WHERE chain_id = <id>` (worker stopped) to a ledger within Soroban RPC retention (about 7 days). Re-indexed events are skipped by the `contract_logs` `UNIQUE (chain_id, contract_address, block_number, log_index)` constraint. Never truncate or delete `contract_logs` or `log_collector_state`: history older than retention cannot be re-fetched.
+
+**Full redeploy (every id changes).** Record each new contract's deploy ledger. Switch every key above in one config change. Make sure the cursor is at or below the earliest deploy ledger; if it is already past it, rewind within retention, otherwise accept the gap and note it. The old deployment's rows keep their old `contract_address`: readers scoped by the configured address ignore them, chain-scoped readers (for example the Minter rows in "Minted yield") still see them.
+
+**Signer roles.**
+
+| Env key | Signer | Access-manager role | Delay | Source |
+|---|---|---|---|---|
+| `CHAIN_<id>_RELAYER_STELLAR_SIGNER_SECRET` | relayer whitelist signer | `WHITELIST_ADMIN` | 0 | `setup-access` maps PLUSD `set_authorized` to it; `config.json` `access.whitelist_admin` |
+| `STELLAR_VERIFIER_SECRET` | API voucher signer | none | n/a | its G… must equal the DM / WQ `verifier()` (`config.json` at deploy; `set_verifier` can change it) |
+| none | indexer, price poller | none (read-only) | n/a | n/a |
+
+A delayed `WHITELIST_ADMIN` holder is rejected: `AccessManager::execute` lets only an immediate caller through, and the relayer never schedules an operation. Verify with `stellar contract invoke --id <AM> --network <net> --send=no -- has_role --role WHITELIST_ADMIN --account <relayer G…>` (expect `execution_delay: 0, is_member: true`) and `stellar contract invoke --id <DM|WQ> --network <net> --send=no -- verifier` (expect the verifier G… public key). Trustee wallet roles (`TRUSTEE`, `CASH_REPORTER` delay 0, `RISK_COUNCIL` delay 86400) are frontend signers; see `product-specs/deposits.md` and `product-specs/loan-repayment-recovery.md`.
+
+**Sync checklist.**
+
+1. Pick the contracts commit.
+2. Diff `addresses.json` / `config.json` against `.env.example` and both `argocd` files (`pipeline/test.yaml`, `pipeline/prod.yaml`).
+3. Map each key with the table above.
+4. Apply the `collateral_registry` trap check.
+5. For any new or changed contract, apply the cursor rule.
+6. Verify the signer roles.
+7. Update `.env.example` and the recorded commit. `argocd` changes go in their own PR in `eq-lab/argocd`, merged after the backend image that reads the key is deployed.
 
 ### Key Rotation (yield-attestor keys)
 
