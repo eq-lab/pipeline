@@ -1,4 +1,6 @@
 // spec: docs/frontend/account-page.md#settlement-address
+import { createElement } from "react";
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { LpResponse } from "@/api";
 import {
@@ -17,6 +19,24 @@ import {
   type SettlementLinkState,
   type SettlementRowsInput,
 } from "./settlementAddress";
+import { useEvmWallet } from "@/wallet/evm/useEvmWallet";
+import { useStellarWallet } from "@/wallet/stellar/useStellarWallet";
+import { WalletViewProvider, useWalletView } from "@/wallet/WalletViewContext";
+
+const walletState = vi.hoisted(() => ({
+  evm: { isConnected: false, address: undefined as string | undefined },
+  stellar: { isConnected: false, address: undefined as string | undefined },
+}));
+
+vi.mock("@/wallet/evm/useEvmWallet", () => ({
+  useEvmWallet: () => walletState.evm,
+}));
+vi.mock("@/wallet/stellar/useStellarWallet", () => ({
+  useStellarWallet: () => walletState.stellar,
+}));
+vi.mock("@/wallet/useSingleWalletInvariant", () => ({
+  useSingleWalletInvariant: () => {},
+}));
 
 vi.mock("@/wallet", async () => ({
   isStellarSettlementAddress: (
@@ -108,28 +128,63 @@ describe("sameAddress", () => {
 describe("connectedWallet", () => {
   const off = { isConnected: false, address: undefined };
   it.each([
-    [
-      "EVM wins over Stellar",
-      { isConnected: true, address: E1 },
-      { isConnected: true, address: A },
-      evm(E1),
-    ],
-    [
-      "Stellar when EVM is off",
-      off,
-      { isConnected: true, address: A },
-      stellar(A),
-    ],
     ["EVM alone", { isConnected: true, address: E1 }, off, evm(E1)],
-    ["none", off, off, null],
+    ["Stellar alone", off, { isConnected: true, address: A }, stellar(A)],
     [
-      "connected without address",
+      "winning wallet connected without address",
       { isConnected: true, address: undefined },
       off,
       null,
     ],
+    [
+      "EVM wins without address even when Stellar has one",
+      { isConnected: true, address: undefined },
+      { isConnected: true, address: A },
+      null,
+    ],
+    ["none", off, off, null],
   ])("%s", (_name, e, s, expected) => {
     expect(connectedWallet(e, s)).toEqual(expected);
+  });
+});
+
+describe("settlement rows follow the wallet view", () => {
+  function viewAndRows() {
+    const { result } = renderHook(
+      () => ({
+        view: useWalletView().kind,
+        rows: deriveSettlementRows({
+          lpRead: "loaded",
+          lp: lp(),
+          connected: connectedWallet(useEvmWallet(), useStellarWallet()),
+          link: idle,
+        }),
+      }),
+      {
+        wrapper: ({ children }) =>
+          createElement(WalletViewProvider, null, children),
+      },
+    );
+    return result.current;
+  }
+
+  it("both connected: the single row is the view's kind", () => {
+    walletState.evm = { isConnected: true, address: E1 };
+    walletState.stellar = { isConnected: true, address: A };
+    const { view, rows: result } = viewAndRows();
+    expect(view).toBe("evm");
+    expect(result).toHaveLength(1);
+    expect(result[0]?.kind).toBe(view);
+    expect(result[0]?.action).toBe("link");
+  });
+
+  it("Stellar only: the single row is stellar", () => {
+    walletState.evm = { isConnected: false, address: undefined };
+    walletState.stellar = { isConnected: true, address: A };
+    const { view, rows: result } = viewAndRows();
+    expect(view).toBe("stellar");
+    expect(result).toHaveLength(1);
+    expect(result[0]?.kind).toBe(view);
   });
 });
 

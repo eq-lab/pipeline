@@ -60,6 +60,10 @@ import {
   useStellarWallet,
   isStellarSettlementAddress,
   useStellarToken,
+  // View selection
+  WalletViewProvider,
+  useWalletView,
+  walletPrecedence,
   // Utilities
   isMockKeyPresent,
 } from "@/wallet";

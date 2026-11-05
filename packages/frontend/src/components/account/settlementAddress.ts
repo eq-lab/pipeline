@@ -2,6 +2,7 @@
 import type { LpResponse } from "@/api";
 import type { LpReadState } from "@/components/homeState";
 import { isStellarSettlementAddress } from "@/wallet";
+import { walletPrecedence } from "@/wallet/walletPrecedence";
 
 export type SettlementKind = "stellar" | "evm";
 
@@ -120,11 +121,10 @@ export function connectedWallet(
   evm: WalletLike,
   stellar: WalletLike,
 ): ConnectedWallet | null {
-  if (evm.isConnected && evm.address)
-    return { kind: "evm", address: evm.address };
-  if (stellar.isConnected && stellar.address)
-    return { kind: "stellar", address: stellar.address };
-  return null;
+  const kind = walletPrecedence(evm, stellar);
+  if (kind === null) return null;
+  const address = (kind === "evm" ? evm : stellar).address;
+  return address ? { kind, address } : null;
 }
 
 export function servedAddress(
