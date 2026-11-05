@@ -115,7 +115,7 @@ struct LocationUpdate {
     uint64       updatedAt;          // Timestamp of last location update
 }
 
-enum LoanStatus    { Performing, Watchlist, Default, Closed }  // no `Matured`/`Past Due` — display-only, #955
+enum LoanStatus    { Approved, Performing, Watchlist, Default, Closed }  // no `Matured`/`Past Due` — display-only, #955
 enum ClosureReason { None, ScheduledMaturity, EarlyRepayment, Default, OtherWriteDown }
 enum LocationType  { Vessel, Warehouse, TankFarm, Other }
 ```
