@@ -11,6 +11,7 @@ pub mod error;
 pub mod formatting;
 pub mod intervals;
 mod middleware;
+pub mod minter_cash_book;
 pub mod otp;
 pub mod password;
 pub mod password_reset;
@@ -82,6 +83,8 @@ pub struct AppState {
     /// LoanRegistry address keyed by chain_id (EIP-55 / Strkey, as the indexer writes it);
     /// scopes the LoanBook readers. Every configured chain has an entry.
     pub loan_registry_addresses: HashMap<i64, String>,
+    pub minter_addresses: HashMap<i64, String>,
+    pub capital_allocation_from_minter: std::collections::HashSet<i64>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.

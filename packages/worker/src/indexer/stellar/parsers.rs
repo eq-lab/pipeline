@@ -26,9 +26,9 @@ use crate::indexer::stellar::loan_registry_parsers::{
 
 use crate::indexer::stellar::minter_parsers::{
     parse_cash_disbursed, parse_cash_disbursement_reversed, parse_cash_recorded, parse_cash_repaid,
-    parse_cash_repayment_reversed, parse_loss_absorbed, parse_mint_corrected, parse_ramp_closed,
-    parse_ramp_opened, parse_wire_in_returned, parse_wire_out_cancelled, parse_wire_out_requested,
-    parse_wire_out_settled,
+    parse_cash_repayment_reversed, parse_loss_absorbed, parse_mint_corrected,
+    parse_minter_snapshot, parse_ramp_closed, parse_ramp_opened, parse_wire_in_returned,
+    parse_wire_out_cancelled, parse_wire_out_requested, parse_wire_out_settled,
 };
 
 pub use crate::stellar::scval::extract_i128;
@@ -52,6 +52,7 @@ const MINTER_COLLECTED_EVENTS: &[&str] = &[
     "cash_recorded",
     "mint_corrected",
     "loss_absorbed",
+    "snapshot",
 ];
 
 /// A fully-decoded Soroban contract event, ready to be persisted as a `contract_logs` row.
@@ -630,6 +631,7 @@ pub fn dispatch_parser(
             "cash_recorded" => parse_cash_recorded(raw),
             "mint_corrected" => parse_mint_corrected(raw),
             "loss_absorbed" => parse_loss_absorbed(raw),
+            "snapshot" => parse_minter_snapshot(raw),
             _ => None,
         };
         // A `None` for a collected topic means the on-chain encoding differs from what the

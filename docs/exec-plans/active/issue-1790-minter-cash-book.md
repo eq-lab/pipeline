@@ -537,3 +537,7 @@ the code path returns before any query. Test bodies have no comments.
 - `docs/exec-plans/tech-debt-tracker.md`: the entries from step 10.
 - PR body: state that Stellar `loan_capital_transfers` stop counting once the flag is set,
   the ops `snapshot()` step, "Supersedes #1690", and the overlap with #1687 / #931.
+
+## Progress
+
+Steps 1-11 are implemented (worker snapshot parser, shared reads, API fold, config, `GET /v1/cash-book`, LP `wire_outs`, capital-allocation switch, docs, tech debt TD-167 to TD-169, lint and tests). The manual acceptance on test remains an operator step (user-stories doc).

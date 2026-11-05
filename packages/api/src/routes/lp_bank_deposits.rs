@@ -22,11 +22,11 @@ use shared::lp_repo::KybStatus;
 use shared::lp_requested_bank_details_repo::{InsertOutcome, PaymentDetailsStore};
 use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
-use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
+use crate::auth::{AuthClaims, SecurityAddon};
 use crate::config::ConfiguredChain;
 use crate::error::{is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
-use crate::routes::common::RequiredChain;
+use crate::routes::common::{require_trustee, RequiredChain};
 use crate::routes::lps::my_lp;
 use crate::AppState;
 
@@ -286,15 +286,6 @@ async fn get_my_payment_details(
 
 async fn payment_details_head_not_allowed() -> Response {
     (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET")]).into_response()
-}
-
-fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
-    if claims.has_role(TRUSTEE_ROLE) {
-        return Ok(());
-    }
-    Err(ApiError::Forbidden(format!(
-        "this endpoint requires the `{TRUSTEE_ROLE}` role"
-    )))
 }
 
 async fn known_lp(state: &AppState, id: i64) -> Result<(), ApiError> {

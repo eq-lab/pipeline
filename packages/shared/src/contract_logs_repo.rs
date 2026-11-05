@@ -657,6 +657,91 @@ pub struct DealRegistrationRow {
     pub cargo: Option<String>,
 }
 
+pub const MINTER_CASH_BOOK_EVENT_NAMES: &[&str] = &[
+    "WireIn",
+    "WireInAssigned",
+    "WireInReturned",
+    "CashDisbursed",
+    "CashDisbursementReversed",
+    "CashRepaid",
+    "CashRepaymentReversed",
+    "WireOutRequested",
+    "WireOutSettled",
+    "WireOutCancelled",
+    "RampOpened",
+    "RampClosed",
+    "CashRecorded",
+    "MinterSnapshot",
+];
+
+pub const MINTER_EVENTS_SQL: &str = "SELECT
+         event_name,
+         block_number,
+         log_index,
+         block_timestamp,
+         params
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = ANY($3)
+     ORDER BY block_number, log_index";
+
+pub const MINTER_FOLD_EVENTS_SQL: &str = "WITH snap AS (
+         SELECT block_number AS b, log_index AS i
+           FROM contract_logs
+          WHERE chain_id = $1
+            AND contract_address = $2
+            AND event_name = 'MinterSnapshot'
+          ORDER BY block_number DESC, log_index DESC
+          LIMIT 1)
+     SELECT
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     LEFT JOIN snap s ON TRUE
+     WHERE c.chain_id = $1
+       AND c.contract_address = $2
+       AND c.event_name = ANY($3)
+       AND (c.event_name = 'RampOpened'
+            OR s.b IS NULL
+            OR c.block_number > s.b
+            OR (c.block_number = s.b AND c.log_index >= s.i))
+     ORDER BY c.block_number, c.log_index";
+
+pub const LP_WIRE_OUT_EVENTS_SQL: &str = "SELECT
+         event_name,
+         block_number,
+         log_index,
+         block_timestamp,
+         params
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND (
+            (event_name = 'WireOutRequested' AND LOWER(params->>'lp') = $3)
+            OR (event_name IN ('WireOutSettled', 'WireOutCancelled')
+                AND params->>'id' IN (
+                    SELECT params->>'id'
+                      FROM contract_logs
+                     WHERE chain_id = $1
+                       AND contract_address = $2
+                       AND event_name = 'WireOutRequested'
+                       AND LOWER(params->>'lp') = $3))
+       )
+     ORDER BY block_number, log_index";
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct MinterEventRow {
+    pub event_name: String,
+    pub block_number: i64,
+    pub log_index: i32,
+    pub block_timestamp: i64,
+    pub params: serde_json::Value,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -664,6 +749,57 @@ pub struct ContractLogsRepo {
 impl ContractLogsRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    pub async fn list_minter_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let names: Vec<String> = MINTER_CASH_BOOK_EVENT_NAMES
+            .iter()
+            .map(|n| (*n).to_owned())
+            .collect();
+        let rows = sqlx::query_as::<_, MinterEventRow>(MINTER_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(&names)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_minter_fold_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let names: Vec<String> = MINTER_CASH_BOOK_EVENT_NAMES
+            .iter()
+            .map(|n| (*n).to_owned())
+            .collect();
+        let rows = sqlx::query_as::<_, MinterEventRow>(MINTER_FOLD_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(&names)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_lp_wire_out_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+        wallet_lower: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_OUT_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(wallet_lower)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
     }
 
     /// `LoanStatusUpdated`/`LoanDefaulted`/`LoanClosed` events emitted by `contract_address`

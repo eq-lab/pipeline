@@ -494,3 +494,128 @@ fn stellar_chain_keeps_seven_decimal_default() {
         },
     );
 }
+
+const MINTER_ADDR_KEY: &str = "CHAIN_99000011_STELLAR_API_MINTER_ADDRESS";
+const MINTER_FLAG_KEY: &str = "CHAIN_99000011_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER";
+
+fn with_stellar_minter_env<F: FnOnce()>(extra: &[(&str, &str)], clear: &[&str], f: F) {
+    let mut set = vec![
+        ("CHAINS", "99000011"),
+        ("DEFAULT_CHAIN_ID", "99000011"),
+        ("CHAIN_99000011_TYPE", "stellar"),
+        ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+        (
+            "CHAIN_99000011_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+            STELLAR_REGISTRY,
+        ),
+    ];
+    set.extend_from_slice(extra);
+    let mut cleared = vec![
+        "CHAIN_99000011_API_STELLAR_DM_CONTRACT_ID",
+        "CHAIN_99000011_API_STELLAR_WQ_CONTRACT_ID",
+    ];
+    cleared.extend_from_slice(clear);
+    with_env(&set, &cleared, f);
+}
+
+#[test]
+fn minter_address_is_parsed_and_normalised() {
+    let padded = format!(" {STELLAR_REGISTRY_2} ");
+    with_stellar_minter_env(
+        &[(MINTER_ADDR_KEY, padded.as_str())],
+        &[MINTER_FLAG_KEY],
+        || {
+            let cfg = ChainsConfig::from_env().expect("config");
+            assert_eq!(cfg.minter_addresses[&99_000_011], STELLAR_REGISTRY_2);
+            assert!(cfg.capital_allocation_from_minter.is_empty());
+        },
+    );
+}
+
+#[test]
+fn unset_minter_keys_mean_absent() {
+    with_stellar_minter_env(&[], &[MINTER_ADDR_KEY, MINTER_FLAG_KEY], || {
+        let cfg = ChainsConfig::from_env().expect("config");
+        assert!(cfg.minter_addresses.is_empty());
+        assert!(cfg.capital_allocation_from_minter.is_empty());
+    });
+}
+
+#[test]
+fn malformed_minter_address_is_error() {
+    for bad in [STELLAR_ACCOUNT, "CNOTASTRKEY"] {
+        with_stellar_minter_env(&[(MINTER_ADDR_KEY, bad)], &[MINTER_FLAG_KEY], || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(msg.contains(MINTER_ADDR_KEY), "{bad}: {msg}");
+        });
+    }
+}
+
+#[test]
+fn the_switch_flag_parses_true_and_false_case_insensitively() {
+    for (raw, expected) in [
+        ("true", true),
+        (" TRUE ", true),
+        ("False", false),
+        ("false", false),
+    ] {
+        with_stellar_minter_env(
+            &[
+                (MINTER_ADDR_KEY, STELLAR_REGISTRY_2),
+                (MINTER_FLAG_KEY, raw),
+            ],
+            &[],
+            || {
+                let cfg = ChainsConfig::from_env().expect("config");
+                assert_eq!(
+                    cfg.capital_allocation_from_minter.contains(&99_000_011),
+                    expected,
+                    "{raw}"
+                );
+            },
+        );
+    }
+}
+
+#[test]
+fn malformed_switch_flag_is_error() {
+    for bad in ["yes", "1", "on"] {
+        with_stellar_minter_env(
+            &[
+                (MINTER_ADDR_KEY, STELLAR_REGISTRY_2),
+                (MINTER_FLAG_KEY, bad),
+            ],
+            &[],
+            || {
+                let msg = error_message(ChainsConfig::from_env());
+                assert!(msg.contains(MINTER_FLAG_KEY), "{bad}: {msg}");
+            },
+        );
+    }
+}
+
+#[test]
+fn the_switch_flag_without_a_minter_address_is_error() {
+    with_stellar_minter_env(&[(MINTER_FLAG_KEY, "true")], &[MINTER_ADDR_KEY], || {
+        let msg = error_message(ChainsConfig::from_env());
+        assert!(msg.contains(MINTER_FLAG_KEY), "{msg}");
+        assert!(msg.contains(MINTER_ADDR_KEY), "{msg}");
+    });
+}
+
+#[test]
+fn an_evm_chain_loads_with_neither_minter_entry() {
+    with_env(
+        &[
+            ("CHAINS", "7011"),
+            ("DEFAULT_CHAIN_ID", "7011"),
+            ("CHAIN_7011_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+        ],
+        &["CHAIN_7011_TYPE"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("config");
+            assert!(cfg.minter_addresses.is_empty());
+            assert!(cfg.capital_allocation_from_minter.is_empty());
+        },
+    );
+}

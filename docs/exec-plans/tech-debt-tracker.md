@@ -2271,3 +2271,27 @@ line, whichever section it lands in.
 - **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
 - **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
 - **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.
+
+### TD-167: The minter cash-book fold is recomputed on every request
+
+- **Date:** 2026-11-05
+- **Location:** `packages/api/src/minter_cash_book.rs`, `GET /v1/cash-book`, `GET /v1/capital-allocation` (flagged chains)
+- **Gap:** Every request reads the minter's full event history from `contract_logs` and folds it in memory. Nothing is materialised.
+- **Impact:** Cost grows with the minter's event count; `/v1/capital-allocation` is polled by the Trustee Overview card.
+- **Suggested fix:** Materialise the fold per `(chain_id, minter)` from the latest snapshot, or cache it keyed by the indexer cursor, once volume warrants it.
+
+### TD-168: Cash-book completeness depends on an operator-emitted snapshot
+
+- **Date:** 2026-11-05
+- **Location:** `packages/api/src/minter_cash_book.rs` (`fold_cash`), `docs/product-specs/minter-cash-book.md`
+- **Gap:** The minter emits no event at deploy and `log_collector_state` keeps only the current cursor, so the API cannot prove the indexer covered the minter from its deploy ledger. `complete` is `true` only when a `MinterSnapshot` exists, and someone must call `snapshot()` after each worker rollout. Completeness means no gap since the latest snapshot the indexer stored, not proof that no event was dropped: an event the worker could not decode is skipped while the cursor advances and the fold cannot see it.
+- **Impact:** Until `snapshot()` is called on a network, `summary.complete` is `false` and the Capital Allocation switch cannot engage. A snapshot emitted under an older worker is lost.
+- **Suggested fix:** Record the first indexed ledger and every dropped event per contract in the indexer so the fold can be complete from genesis, or have the relayer emit `snapshot()` after each rollout. Until then, call `snapshot()` again before setting the Capital Allocation flag and compare it with the fold.
+
+### TD-169: The EVM minter has no cash book
+
+- **Date:** 2026-11-05
+- **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
+- **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
+- **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.

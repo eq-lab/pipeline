@@ -300,7 +300,7 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
 `worker/src/indexer/stellar/parsers.rs`, each contract's id supplied by a
 `CHAIN_<id>_STELLAR_INDEXER_*_ADDRESS` variable (key map: [Stellar contract ids and signer roles](#stellar-contract-ids-and-signer-roles)); a contract whose id is unset has no branch at
 all, so an un-deployed contract ships dark rather than warning every cycle. The
-minter contributes 15 of its 22 events (#1416, #1480):
+minter contributes 16 of its 22 events (#1416, #1480, #1790):
 
 | Contract | Event (topic) | Stored as | Why |
 |---|---|---|---|
@@ -313,6 +313,7 @@ minter contributes 15 of its 22 events (#1416, #1480):
 | Minter | `ramp_opened` / `ramp_closed` | `RampOpened` / `RampClosed` | USDC/bank ramp lifecycle; `direction` is `UsdcToBank` or `BankToUsdc` |
 | Minter | `cash_recorded` | `CashRecorded` | A cash-ledger entry; topic field `kind` is stored as `reason` (`Disbursed`, `DisbursementReversed`, `Income`, `Expense`, `Correction`), `delta` is signed. A Stellar `Correction` is stored as `CashRecorded` with `reason = "Correction"`, where EVM emits `CashCorrected` |
 | Minter | `mint_corrected` / `loss_absorbed` | `MintCorrected` / `LossAbsorbed` | Supply correction and loss absorption |
+| Minter | `snapshot` | `MinterSnapshot` | The permissionless pool-state checkpoint the cash-book fold starts from; stores `ledger`, `bank_cash`, `in_flight`, `outstanding_total`, `unabsorbed_total`, `total_assets` (decimal strings, raw 7-dp) and `read_failed` (JSON bool); `custody` is not stored |
 
 The new events store `event_name` as the EVM PascalCase name and `params` keys as the EVM snake_case
 field names, so both arms are queried alike. All ids (`id`, `loan_id`, `entry_id`, `original_id`,
@@ -325,8 +326,21 @@ as `RampClosed.loss`.
 They are enabled by `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`. `pipeline-stellar-contracts`
 #33 rewrote the minter, deleting `mint_yield` and `YieldMinted`; the id serves the minter's
 business events (the wire-in pair and the cash events). `YieldMinted` is no longer parsed
-(#1433). `snapshot` (diagnostic, callable by
-anyone) and the config/role setters are not collected.
+(#1433). The config/role setters are not collected.
+
+#### Minter cash book
+
+`GET /v1/cash-book` folds the minter rows in `contract_logs` into `bank_cash` and `in_flight`
+(no RPC call). Rules, units and response shape live in
+[minter-cash-book.md](../product-specs/minter-cash-book.md). The two API keys are
+`CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` (equal to the indexer's minter key) and
+`CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` (`true`/`false`, default `false`; needs
+the address).
+
+Ops step: after the worker image that indexes `MinterSnapshot` is live on a network, call the
+permissionless `snapshot()` on that network's minter once. Until a `MinterSnapshot` row exists the
+fold reports `complete = false` and the Capital Allocation switch does not engage. A snapshot
+emitted under an older worker is lost and must be emitted again.
 
 The CollateralRegistry's 11 business events are collected when
 `CHAIN_<id>_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set. They are routed by contract id in
@@ -828,7 +842,7 @@ Source of truth: `pipeline-stellar-contracts` `deployments/networks/<testnet|mai
 | `withdrawal_queue` | WithdrawalQueue | indexer `…_STELLAR_INDEXER_WITHDRAWAL_QUEUE_ADDRESS` (required) | `…_API_STELLAR_WQ_CONTRACT_ID` (vouchers; #1791 also scopes the recovery rate to it) | n/a |
 | `staked_pl_usd` | sPLUSD | indexer `…_STELLAR_INDEXER_STAKED_PLUSD_ADDRESS` (required); price poller `…_STELLAR_PRICE_POLLER_STAKED_PLUSD_ADDRESS` (required when the poller runs) | n/a | n/a |
 | `loan_registry` | LoanRegistry | indexer `…_STELLAR_INDEXER_LOAN_REGISTRY_ADDRESS` (optional) | `…_STELLAR_API_LOAN_REGISTRY_ADDRESS` (required, equal to the indexer key) | n/a |
-| `minter` | Minter | indexer `…_STELLAR_INDEXER_MINTER_ADDRESS` (optional; also gates relayer wire-in matching) | `…_STELLAR_API_MINTER_ADDRESS` (#1790, not read yet) with boolean switch `…_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` | n/a |
+| `minter` | Minter | indexer `…_STELLAR_INDEXER_MINTER_ADDRESS` (optional; also gates relayer wire-in matching) | `…_STELLAR_API_MINTER_ADDRESS` (optional; cash-book scope) with boolean switch `…_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` | n/a |
 | `collateral_registry` | see the trap below | legacy: `…_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS`; SecurityRegistry: `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (#1779, not read yet) | n/a | n/a |
 | `deal_token_factory` | DealTokenFactory | indexer `…_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (optional) | n/a | n/a |
 | `pocket` | Pocket | indexer `…_STELLAR_INDEXER_POCKET_ADDRESS` (#1789, not read yet) | `…_STELLAR_API_POCKET_ADDRESS` (#1789, not read yet) | n/a |

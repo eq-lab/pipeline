@@ -76,6 +76,9 @@ pub struct ConfiguredChain {
 /// # indexer's CHAIN_<id>_{EVM,STELLAR}_INDEXER_LOAN_REGISTRY_ADDRESS):
 /// CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS=0x...                  # EVM chains
 /// CHAIN_<id>_STELLAR_API_LOAN_REGISTRY_ADDRESS=C...               # Stellar chains
+/// # Minter cash book (optional, Stellar chains only; see docs/product-specs/minter-cash-book.md):
+/// CHAIN_<id>_STELLAR_API_MINTER_ADDRESS=C...                      # must equal the indexer's minter
+/// CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=false     # true/false; needs the minter address
 /// ```
 pub struct ChainsConfig {
     pub default_chain_id: i64,
@@ -106,6 +109,8 @@ pub struct ChainsConfig {
     /// `contract_logs.contract_address` (EIP-55 on EVM, `C…` Strkey on Stellar).
     /// Every configured chain has an entry (startup fails otherwise).
     pub loan_registry_addresses: HashMap<i64, String>,
+    pub minter_addresses: HashMap<i64, String>,
+    pub capital_allocation_from_minter: HashSet<i64>,
 }
 
 /// Custody + ramp address sets used to classify indexed `AssetTransfer`
@@ -165,6 +170,8 @@ impl ChainsConfig {
         let mut withdrawal_queue_wallets = HashMap::new();
         let mut asset_decimals = HashMap::new();
         let mut loan_registry_addresses = HashMap::new();
+        let mut minter_addresses = HashMap::new();
+        let mut capital_allocation_from_minter = HashSet::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -177,6 +184,12 @@ impl ChainsConfig {
                 kind: chain_kind,
             });
             load_loan_registry_address(chain_id, chain_kind, &mut loan_registry_addresses)?;
+            load_minter_cash_book(
+                chain_id,
+                chain_kind,
+                &mut minter_addresses,
+                &mut capital_allocation_from_minter,
+            )?;
             let decimals = load_asset_decimals(chain_id, chain_kind)?;
             load_transfer_addresses(chain_id, chain_kind, decimals, &mut transfer_addresses)?;
             load_withdrawal_queue_wallet(chain_id, chain_kind, &mut withdrawal_queue_wallets)?;
@@ -226,8 +239,51 @@ impl ChainsConfig {
             withdrawal_queue_wallets,
             asset_decimals,
             loan_registry_addresses,
+            minter_addresses,
+            capital_allocation_from_minter,
         })
     }
+}
+
+fn load_minter_cash_book(
+    chain_id: i64,
+    kind: ChainKind,
+    minter_addresses: &mut HashMap<i64, String>,
+    switched: &mut HashSet<i64>,
+) -> Result<()> {
+    if kind != ChainKind::Stellar {
+        return Ok(());
+    }
+    let address_key = format!("CHAIN_{chain_id}_STELLAR_API_MINTER_ADDRESS");
+    let flag_key = format!("CHAIN_{chain_id}_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER");
+
+    let raw = env::var(&address_key).unwrap_or_default();
+    let raw = raw.trim();
+    if !raw.is_empty() {
+        let contract = stellar_strkey::Contract::from_string(raw).map_err(|e| {
+            anyhow::anyhow!("{address_key} must be a valid C… contract Strkey: {e}")
+        })?;
+        let normalized = format!("{contract}");
+        tracing::info!(chain_id, minter = %normalized, "API minter cash-book scope loaded");
+        minter_addresses.insert(chain_id, normalized);
+    }
+
+    let flag = match env::var(&flag_key) {
+        Ok(v) if !v.trim().is_empty() => match v.trim().to_ascii_lowercase().as_str() {
+            "true" => true,
+            "false" => false,
+            _ => anyhow::bail!("{flag_key} must be `true` or `false` (got '{}')", v.trim()),
+        },
+        _ => false,
+    };
+    if flag {
+        if !minter_addresses.contains_key(&chain_id) {
+            anyhow::bail!("{flag_key}=true requires {address_key} (chain {chain_id})");
+        }
+        tracing::info!(chain_id, "capital-allocation reads the minter cash book");
+        switched.insert(chain_id);
+    }
+    Ok(())
 }
 
 /// Load the LoanRegistry address the LoanBook readers are scoped to from

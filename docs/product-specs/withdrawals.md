@@ -64,6 +64,8 @@ The `/deposit` page (withdraw direction) shows a "Network fee" row in the Detail
 
 The deployed `requestWithdrawal` / `claimWithdrawal` surface, events and voucher endpoint are in [evm-requests-queue.md](./evm-requests-queue.md). The designed `IWithdrawalQueue` interface is in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
 
+On Stellar, an LP's wire-outs (`WireOutRequested` / `WireOutSettled` / `WireOutCancelled`) are listed under an optional `wire_outs` key of `GET /v1/requests`, present only when an in-scope chain has a minter address; see [minter-cash-book.md](./minter-cash-book.md).
+
 ---
 
 ## Data Model

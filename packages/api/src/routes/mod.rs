@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod audit_log;
 pub mod auth;
 pub mod capital_allocation;
+pub mod cash_book;
 pub mod ccr_history;
 pub mod chains;
 pub mod collateral_valuation;
