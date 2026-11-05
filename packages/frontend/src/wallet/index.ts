@@ -174,6 +174,7 @@ export { isStellarSettlementAddress } from "./stellar/settlementAddressFormat";
 
 // ── View selection ────────────────────────────────────────────────────────────
 export { WalletViewProvider, useWalletView } from "./WalletViewContext";
+export { walletPrecedence } from "./walletPrecedence";
 export type {
   WalletViewKind,
   WalletViewContextValue,

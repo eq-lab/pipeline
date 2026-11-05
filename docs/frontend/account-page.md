@@ -230,8 +230,9 @@ session token changed is dropped. The default connected-wallet path never sends 
 the address). The opt-in **Different address** path (below) sends it only when the typed address differs
 from the connected wallet (#1849, resolves TD-166).
 
-**Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none (the same order as
-`useWalletView().kind`). `chain_id` is `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. EVM addresses are sent lowercased and
+**Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none, decided by
+`walletPrecedence` (the single owner, see [`wallet-flows.md`](./wallet-flows.md#single-connected-wallet));
+`connectedWallet` adds the winning wallet's address and is `null` when that wallet has no address. `chain_id` is `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. EVM addresses are sent lowercased and
 compared case-insensitively; Stellar addresses are compared verbatim. The write is refused only for `Failed`
 (`settlementWritable`): a `Passed` LP can link, prove a legacy unproven address and change its address (#1831).
 
