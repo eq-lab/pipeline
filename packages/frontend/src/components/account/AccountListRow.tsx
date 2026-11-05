@@ -11,6 +11,7 @@ export interface AccountListRowProps extends Omit<
   trailing?: React.ReactNode;
   variant?: "card" | "plain";
   wrapTitle?: boolean;
+  titleAttr?: string;
   onActivate?: () => void;
 }
 
@@ -21,6 +22,7 @@ export function AccountListRow({
   trailing,
   variant = "card",
   wrapTitle = false,
+  titleAttr,
   onActivate,
   className,
   ...rest
@@ -64,6 +66,7 @@ export function AccountListRow({
             "leading-[var(--text-pipeline-body--line-height)]",
             "text-[color:var(--color-pipeline-ink)]",
           ].join(" ")}
+          title={titleAttr}
         >
           {title}
         </span>

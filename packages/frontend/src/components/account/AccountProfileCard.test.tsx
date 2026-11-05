@@ -1,4 +1,5 @@
 // spec: docs/frontend/account-page.md#country-select-1715
+import { truncateAddress } from "@/utils/truncateAddress";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fireEvent,
@@ -137,7 +138,9 @@ describe("AccountProfileCard settlement rows", () => {
     const rows = await screen.findAllByTestId("settlement-address-row");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("Stellar settlement address");
-    expect(rows[0]).toHaveTextContent(ADDRESS);
+    expect(rows[0]).toHaveTextContent(truncateAddress(ADDRESS));
+    expect(rows[0]).not.toHaveTextContent(ADDRESS);
+    expect(rows[0]!.querySelector("[title]")).toHaveAttribute("title", ADDRESS);
     expect(rows[0]).toHaveTextContent("Linked to your connected wallet.");
     expect(rows[1]).toHaveTextContent("Ethereum settlement address");
     expect(rows[1]).toHaveTextContent("—");

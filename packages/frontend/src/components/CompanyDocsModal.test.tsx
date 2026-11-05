@@ -1,3 +1,4 @@
+import { truncateAddress } from "@/utils/truncateAddress";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
@@ -878,7 +879,9 @@ describe("CompanyDocsModal — settlement rows", () => {
     const rows = screen.getAllByTestId("settlement-address-row");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("Stellar settlement address");
-    expect(rows[0]).toHaveTextContent(ADDRESS);
+    expect(rows[0]).toHaveTextContent(truncateAddress(ADDRESS));
+    expect(rows[0]).not.toHaveTextContent(ADDRESS);
+    expect(rows[0]!.querySelector("[title]")).toHaveAttribute("title", ADDRESS);
     expect(rows[0]).toHaveTextContent("Linked to your connected wallet.");
     expect(within(rows[0]!).queryByRole("button")).toBeNull();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

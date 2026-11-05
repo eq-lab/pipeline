@@ -1,6 +1,7 @@
 // spec: docs/frontend/account-page.md#settlement-address
 import { useEffect, useRef } from "react";
 import { Button } from "@pipeline/ui";
+import { truncateAddress } from "@/utils/truncateAddress";
 import { AccountListRow } from "./AccountListRow";
 import {
   SETTLEMENT_ACTION_LABELS,
@@ -43,8 +44,8 @@ export function SettlementAddressRow({
         variant="plain"
         leading={null}
         caption={label}
-        title={address ?? "—"}
-        wrapTitle
+        title={address ? truncateAddress(address) : "—"}
+        titleAttr={address ?? undefined}
         trailing={
           action !== null && kind !== null ? (
             <Button

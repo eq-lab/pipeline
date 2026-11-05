@@ -229,7 +229,7 @@ compared case-insensitively; Stellar addresses are compared verbatim. The write 
 
 **Rows.** `SettlementAddressRows` renders one `SettlementAddressRow` per chain kind (Stellar, then EVM) that has a served
 address or a connected wallet of that kind; with neither there is one generic `Settlement address` row. Each row is an
-`AccountListRow variant="plain"` (caption = the row label, `wrapTitle` so the full address wraps with `break-all`), a
+`AccountListRow variant="plain"` (caption = the row label; the title is `truncateAddress(address)`, `GCGQVO…GQ5C`, with the full address as the title span's `title` attribute via the row's `titleAttr` prop so it shows on hover — live review 2026-11-05; the From / To lines of the change confirmation keep the full addresses), a
 body-s caption (`--color-pipeline-ink-subtle`, or `--color-pipeline-negative-strong` with `role="alert"`), and at most one
 `Button variant="secondary" size="compact"` in the trailing slot. Labels: `Stellar settlement address`,
 `Ethereum settlement address`, `Settlement address`. The rows sit below Country in `AccountProfileCard` and in
