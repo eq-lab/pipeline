@@ -363,3 +363,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1788 Stellar DealTokenFactory: DEBT-only DealRegistered after contracts #38](https://github.com/eq-lab/pipeline/issues/1788) | [1788-stellar-debt-only-deal-registered.md](./epic-1776/1788-stellar-debt-only-deal-registered.md) | Initial |
+| [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |

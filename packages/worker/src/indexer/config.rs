@@ -38,16 +38,8 @@ pub struct StellarIndexerSettings {
     pub loan_registry_id: Option<String>,
     /// The minter contract — optional; set only after it is deployed to the target
     /// chain. When `None`, its indexer branch is a no-op (ships dark).
-    ///
-    /// Named for the contract's former identity: `pipeline-stellar-contracts` #33
-    /// renamed `yield-minter` to `minter` and rewrote it. Historically one id also
-    /// served `YieldMinted` (a pre-#33, EVM-parity event feeding the dashboard's
-    /// cumulative yield); that parser is retired (#1433) since the rework stopped
-    /// emitting it, so this id now serves only `WireIn`/`WireInAssigned` (#1416,
-    /// read by the relayer's wire-in matching phase). The dashboard's
-    /// cumulative-yield metrics read historical `YieldMinted` rows only.
     /// Read from `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`.
-    pub yield_minter_id: Option<String>,
+    pub minter_id: Option<String>,
     pub collateral_registry_id: Option<String>,
     pub deal_token_factory_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
@@ -107,7 +99,7 @@ impl StellarIndexerSettings {
         let wq_key = format!("{ip}WITHDRAWAL_QUEUE_ADDRESS");
         let splusd_key = format!("{ip}STAKED_PLUSD_ADDRESS");
         let lr_key = format!("{ip}LOAN_REGISTRY_ADDRESS");
-        let ym_key = format!("{ip}MINTER_ADDRESS");
+        let minter_key = format!("{ip}MINTER_ADDRESS");
         let cr_key = format!("{ip}COLLATERAL_REGISTRY_ADDRESS");
         let deposit_manager_id = validate_contract_id(&dm_key, env_require(&dm_key)?)?;
         let withdrawal_queue_id = validate_contract_id(&wq_key, env_require(&wq_key)?)?;
@@ -118,16 +110,16 @@ impl StellarIndexerSettings {
             _ => None,
         };
 
-        let yield_minter_id = match env::var(&ym_key) {
+        let minter_id = match env::var(&minter_key) {
             Ok(raw) if !raw.trim().is_empty() => {
-                let validated = validate_contract_id(&ym_key, raw)?;
+                let validated = validate_contract_id(&minter_key, raw)?;
                 // `validate_contract_id` checks length and alphabet, not the
                 // Strkey CRC16. The relayer parses this same variable strictly
                 // (`relayer::config`), so without this the two components would
                 // disagree about what is a valid id — one booting, the other
                 // refusing, on one typo.
                 stellar_strkey::Contract::from_string(&validated)
-                    .map_err(|e| anyhow::anyhow!("{ym_key} failed Strkey parse: {e}"))?;
+                    .map_err(|e| anyhow::anyhow!("{minter_key} failed Strkey parse: {e}"))?;
                 Some(validated)
             }
             _ => None,
@@ -244,8 +236,7 @@ impl StellarIndexerSettings {
         if let Some(id) = &loan_registry_id {
             roles.push(("LOAN_REGISTRY_ADDRESS", id));
         }
-        // Include yield_minter_id in the distinctness check when configured.
-        if let Some(id) = &yield_minter_id {
+        if let Some(id) = &minter_id {
             roles.push(("MINTER_ADDRESS", id));
         }
         if let Some(id) = &collateral_registry_id {
@@ -281,7 +272,7 @@ impl StellarIndexerSettings {
             withdrawal_queue_wallet_id,
             staked_plusd_id,
             loan_registry_id,
-            yield_minter_id,
+            minter_id,
             collateral_registry_id,
             deal_token_factory_id,
             asset_id,

@@ -12,8 +12,6 @@
 //! Sumsub (Phase 1) is a no-op everywhere — Sumsub statuses are populated by
 //! the API's webhook handler. Crystal (Phase 2) is skipped because Crystal does
 //! not support Stellar today; Elliptic is used instead when `ELLIPTIC_ENABLED=true`.
-//! Phase 4 (yield-mint) runs when the yield-minter and loan-registry contract ids
-//! are configured — it signs `mint_yield` directly with the relayer keypair (no BitGo).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,14 +21,10 @@ use shared::elliptic::client::EllipticClient;
 use shared::elliptic::config::EllipticSettings;
 use shared::kyc_repo::KycRepo;
 use shared::lp_bank_deposit_repo::LpBankDepositRepo;
-use shared::yield_mint_outbox_repo::YieldMintOutboxRepo;
 
 use crate::relayer::config::StellarRelayerSettings;
 use crate::relayer::elliptic_check::phase_check_elliptic;
 use crate::relayer::stellar::whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};
-use crate::relayer::stellar::yield_mint::{
-    phase_yield_mint_stellar, StellarPhase4Settings, StellarYieldMinter,
-};
 use crate::relayer::wire_in_match::phase_match_wire_ins;
 
 /// Stellar relayer loop body. Called only by the top-level dispatcher
@@ -59,38 +53,13 @@ pub(crate) async fn run_stellar_relayer_inner(
         "stellar relayer job running"
     );
 
-    // Phase 4 (yield-mint): enabled only when both contract ids are configured.
-    let yield_mint = if let (Some(yield_minter_id), Some(loan_registry_id)) =
-        (settings.yield_minter_id, settings.loan_registry_id)
-    {
-        let submitter = StellarYieldMinter::new(
-            &settings.rpc_url,
-            settings.network_passphrase.clone(),
-            settings.signing_key.clone(),
-            yield_minter_id,
-            loan_registry_id,
-        );
-        let outbox = YieldMintOutboxRepo::new(kyc_repo.pool.clone());
-        let phase_settings = StellarPhase4Settings {
-            chain_id: settings.chain_id,
-            yield_minter_id,
-            loan_registry_id,
-            batch_size: settings.batch_size,
-        };
-        tracing::info!(
+    if !settings.legacy_env_keys.is_empty() {
+        tracing::warn!(
             chain_id = settings.chain_id,
-            yield_minter = %yield_minter_id,
-            loan_registry = %loan_registry_id,
-            "stellar yield-mint phase enabled"
+            keys = ?settings.legacy_env_keys,
+            "deprecated Stellar relayer env vars are set and ignored — the yield-mint phase was removed; delete them"
         );
-        Some((submitter, outbox, phase_settings))
-    } else {
-        tracing::info!(
-            chain_id = settings.chain_id,
-            "stellar yield-mint phase disabled (YIELD_MINTER_ID/LOAN_REGISTRY_ID unset)"
-        );
-        None
-    };
+    }
 
     // Phase 5 (#1416): enabled only once the minter contract id is configured.
     // Pure database work — no RPC, no signing, so it needs nothing but the pool.
@@ -104,9 +73,7 @@ pub(crate) async fn run_stellar_relayer_inner(
     } else {
         tracing::info!(
             chain_id = settings.chain_id,
-            "stellar wire-in matching phase disabled — set \
-             CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS (the indexer key, not \
-             CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID)"
+            "stellar wire-in matching phase disabled — set CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS"
         );
         None
     };
@@ -155,14 +122,6 @@ pub(crate) async fn run_stellar_relayer_inner(
             settings.batch_size,
         )
         .await;
-
-        // Phase 4: yield-mint (when configured).
-        if let Some((submitter, outbox, phase_settings)) = yield_mint.as_ref() {
-            if let Err(e) = phase_yield_mint_stellar(phase_settings, submitter, outbox).await {
-                tracing::error!(error = %e,
-                    "stellar phase_yield_mint: cycle aborted (other phases unaffected)");
-            }
-        }
 
         // Phase 5: wire-in matching (when configured).
         if let Some((matcher, minter_id)) = wire_in_matching.as_ref() {

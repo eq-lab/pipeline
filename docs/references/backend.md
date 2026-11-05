@@ -322,11 +322,10 @@ field names, so both arms are queried alike. All ids (`id`, `loan_id`, `entry_id
 on `close_ramp` with a loss Stellar books the `Expense` entry silently, so the loss is visible only
 as `RampClosed.loss`.
 
-They are enabled by `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` — the minter under its
-former name. `pipeline-stellar-contracts` #33 renamed `yield-minter` to `minter`
-and rewrote it, deleting `mint_yield` and `YieldMinted`, so one id covers both
-event families: a pre-#33 deployment emits `YieldMinted`, a post-#33 one emits
-the wire-in pair, and no deployment emits both. `snapshot` (diagnostic, callable by
+They are enabled by `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`. `pipeline-stellar-contracts`
+#33 rewrote the minter, deleting `mint_yield` and `YieldMinted`; the id serves the minter's
+business events (the wire-in pair and the cash events). `YieldMinted` is no longer parsed
+(#1433). `snapshot` (diagnostic, callable by
 anyone) and the config/role setters are not collected.
 
 The CollateralRegistry's 11 business events are collected when
@@ -603,35 +602,15 @@ Required env:
 - `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`.
 - An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_EVM_RPC_URL`.
 
-#### Stellar yield-mint phase
+**No Stellar yield-mint phase.** There is no Stellar yield-mint phase either: `minter.repay` mints
+interest and fees in the same call (`pipeline-stellar-contracts` #33), and the phase was removed
+in #1793.
 
-The Stellar relayer runs a yield-mint phase against Soroban deployments that still have a
-separate yield-minter; it has no EVM counterpart. It reuses
-the `yield_mint_outbox` table (discover → skip-nothing-to-mint → submit → confirm)
-but signs `yield_minter.mint_yield(caller, loan_id, repayment_id)` directly with the
-relayer ed25519 keypair — no BitGo. Double-mint is prevented on-chain by
-`loan_registry.consume_yield`; the `can_yield_be_minted` view is a pre-submit
-optimization. On-chain `FAILED` is terminal (`failed`, operator review).
-
-Between discover and submit, `skip_nothing_to_mint_stellar` sweeps `pending` rows
-for pure-principal repayments (no yield to distribute) into the terminal
-`skipped_nothing_to_mint` state, computed entirely from the originating
-`PaymentRecorded` event in `contract_logs` — no on-chain call. This mirrors the
-contract's `mint_yield` `ZeroAmounts` guard (`senior_interest == 0` and
-`mgmt_fee + perf_fee + oet_alloc == 0`). Without it such a repayment would fail
-`mint_yield` forever, because that revert also rolls back the in-tx
-`consume_yield` mark, so `can_yield_be_minted` never flips to false.
-
-The phase is enabled only when both contract ids are configured:
-
-- `CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID` — Soroban `C…` yield-minter id.
-- `CHAIN_<id>_RELAYER_STELLAR_LOAN_REGISTRY_ID` — Soroban `C…` loan-registry id
-  (discovery filter + `can_yield_be_minted` target).
-- Batch size reuses `JOB_RELAYER_STELLAR_BATCH_SIZE` (default 50).
-
-Operational prerequisite: the relayer signer keypair must hold the minter role on
-the access-manager, and the yield-minter must hold the executor role (wired in
-`pipeline-stellar-contracts`).
+- The `yield_mint_outbox` table stays. Its `confirmed` rows feed the legacy `YieldMinted` part of
+  `minted_yield` (§Minted yield). Leftover Stellar rows in `pending`, `submitted`, `failed` or
+  `skipped_*` are inert, and nothing reads them.
+- If `CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID` or `CHAIN_<id>_RELAYER_STELLAR_LOAN_REGISTRY_ID`
+  is still set, the relayer ignores it and logs one deprecation warning per chain at startup.
 
 **Phase 5 — wire-in matching (#1416), both chains.** Pure database work: no RPC, no signing.
 Every cycle it joins indexed minter events to `lp_bank_deposits` by `ref_hash`
@@ -651,7 +630,7 @@ The phase has no configuration of its own: it runs when the indexer's
 — this phase makes no contract call, the id serves only the `receiver <> minter`
 comparison, and it must be the one the indexed rows came from. A second,
 relayer-scoped key could disagree, and escrowed wires would then be marked
-minted. (The relayer's own `RELAYER_STELLAR_*` contract ids belong to Phase 4,
+minted. (The relayer's own `RELAYER_STELLAR_*` access-manager and PLUSD SAC ids belong to Phase 3,
 which does submit transactions and so may target another deployment.)
 
 On EVM the phase runs when the indexer's `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` is set, and
