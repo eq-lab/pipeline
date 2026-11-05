@@ -226,8 +226,9 @@ the existing settlement row and the LP theme (user decision 2026-11-04).
 opens only from a click (`Link wallet`, `Try again`, `Confirm change`): no effect fetches a challenge or signs, so sign-in,
 page load, LP creation and connecting a wallet never prompt. Every `Try again` and every new `Link wallet` click starts
 with a new challenge; the client never reuses a message. One flow runs at a time, and a response that arrives after the
-session token changed is dropped. `signer_address` is never sent (the backend defaults it to the address); a Stellar `C…`
-address or a separate signer is not offered (TD-166).
+session token changed is dropped. The default connected-wallet path never sends `signer_address` (the backend defaults it to
+the address). The opt-in **Different address** path (below) sends it only when the typed address differs
+from the connected wallet (#1849, resolves TD-166).
 
 **Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none (the same order as
 `useWalletView().kind`). `chain_id` is `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. EVM addresses are sent lowercased and
@@ -241,7 +242,10 @@ body-s caption (`--color-pipeline-ink-subtle`, or `--color-pipeline-negative-str
 `Button variant="secondary" size="compact"` in the trailing slot. Labels: `Stellar settlement address`,
 `Ethereum settlement address`, `Settlement address`. The rows sit below Country in `AccountProfileCard` and in
 `CompanyDocsModal`'s first surface card (not in the `/test?tab=auth` preview), both fed by `useAuthFlow().settlement`
-(`{ rows, onLink, onChange, onCancel }`).
+(`{ rows, onLink, onChange, onCancel, onOther, onLinkOther }`). A linked row whose served signer differs from its
+address shows a body-s `Signer` line (`Signer` in `--color-pipeline-ink-muted`, `truncateAddress(signer)` in
+`--color-pipeline-ink`, full value as `title`, testid `settlement-signer`) directly under the `AccountListRow`, before
+the caption; the Trustee profile (#1826) uses the same word.
 
 **Change wallet.** A row whose served address differs from a connected wallet of the same kind offers `Change wallet`.
 It does not prompt the wallet: it opens an inline confirmation inside the row, `From` (served address) and `To`
@@ -249,6 +253,49 @@ It does not prompt the wallet: it opens an inline confirmation inside the row, `
 signed flow; `Cancel` makes no request. The confirmation applies at every status. `Try again` after a failed change skips
 it. Changing the connected wallet or the token resets the row. A served row with no connected wallet of its kind shows the
 address with no caption or button: a change needs the new wallet connected.
+
+**Different address (#1849).** No Figma frame exists (user decision 2026-11-05); the form is built from `TextField`
+(with the company-docs modal's `[&>div:not(:focus-within)]:border-[color:var(--color-pipeline-line)]` class), `Button`
+(`size="compact"`) and the LP tokens, on both surfaces.
+
+- **Entry.** A text-link button `Use a different address` (body-s, `--color-pipeline-ink`, `hover:underline`,
+  focus-visible outline, testid `settlement-other-entry`) under the row's caption. It is shown only when the LP is loaded
+  and not `Failed`, a wallet of this row's kind is connected, and the row is idle (not busy, not confirming, form not
+  open); never on the generic row. The connected-wallet button stays the single primary action.
+- **Signer.** Always the connected wallet, shown read-only; there is no signer input. Only the connected wallet can sign,
+  and the pinned-signer rule of #1825 requires the challenge's `signer_address` to equal the wallet passed to
+  `signMessage`. To use another signer, connect that wallet.
+- **Request shape.** `signer_address` is sent on both challenge and verify only when the typed address differs from the
+  connected wallet (`sameAddress`); typing the connected wallet's own address is the default link. The EVM signer is sent
+  lowercased. A Stellar `C…` needs a `G…` signer (the backend rejects it otherwise); a `G…` or `0x…` address may name a
+  different signer.
+- **Normalisation.** Stellar input is trimmed and uppercased. EVM input is trimmed and sent as typed, so the backend's
+  EIP-55 check rejects a mistyped mixed-case checksum (`400`); the backend lowercases before storing. The same strings go
+  to challenge and verify.
+- **Validation** (format only, backend authoritative for `400` / `409` / `422`). Stellar: Strkey `G…` or `C…`
+  (`isStellarSettlementAddress` from `@/wallet`, length + alphabet + checksum, no network call). EVM:
+  `/^0x[0-9a-fA-F]{40}$/`. The message shows through `TextField`'s `invalid` + `error` on blur and on submit and clears on
+  edit; `Link address` is disabled while the input is empty.
+- **Form** (inside the row below the caption, a `<form noValidate>`, testid `settlement-other-form`): `Current` line
+  with the full served address when one is served; `New settlement address` label + `TextField` (focused on open,
+  `autoComplete="off"`, `spellCheck` off, id from `useId()` because both surfaces can be mounted together); the read-only
+  `Signer` line (`truncateAddress`, full value in `title`); the caption; `Link address` (`primary-dark`) and `Cancel`
+  (`secondary`). Enter submits.
+- **Submitting is the confirmation.** There is no second From / To step: the `Current` line and the `confirm` caption sit
+  in the form the LP just filled (the confirmation is not a security control, TD-163). Re-linking the same address and
+  signer is allowed; the backend records a fresh proof.
+- **State.** `SettlementLinkState` has `mode: "wallet" | "other"` and the phase `editing`. The draft text and its
+  validation flag are local to the form, so they survive the busy and failure phases and are dropped on success,
+  `Cancel`, or a token / connected-wallet change (which resets to `idle`). The hook adds `beginOther(kind)` and
+  `linkOther(kind, raw)`; both modes share one `run()`, so the stale-wallet guard, single flight and pinned signer apply to
+  both.
+- **Phases in the form.** The caption renders inside the form, the input is disabled and the buttons hidden while busy.
+  After a failure the form keeps the draft and `Link address` starts a new challenge.
+- **EVM signer must be an EOA.** The backend verifies EIP-191 `ecrecover` only. A Safe is linked by typing the Safe
+  address with an owner EOA (MetaMask) connected; a smart-wallet signature gets `422` and the `proofFailed` caption.
+- **Connected wallet is the signer of a different linked address** (for example a linked `C…` signed by the connected
+  `G…`): `base` is none and the row shows `linkedSigner` with no button; the entry link remains. Switching back to the
+  wallet address is possible through the form (type the wallet address).
 
 **Legacy unproven.** A served address equal to the connected one whose signer is `null` offers `Link wallet` with the
 `unproven` caption at any status but `Failed`, with no confirmation (the address does not change).
@@ -262,12 +309,16 @@ address with no caption or button: a change needs the new wallet connected.
 | `409` on challenge or verify | Danger toast with the served message, re-read `GET /v1/lps/me` and adopt it, then `taken` (negative, no button) unless the refreshed LP is `Failed` |
 | Anything else (400, 404, 5xx, network) | Toast with the served message or `Your wallet could not be linked.`, `error` caption (negative), `Try again` |
 
+In the different-address form the same matrix applies with the address captions below (`linkingAddress`, `addressTaken`,
+`addressError`; the toast fallback is `This address could not be linked.`). On `409` the form stays open for an edit; on a
+failure the buttons are `Link address` / `Cancel` instead of `Try again`.
+
 `401`/`403` stay on the app-wide session-end path (#1473, #1465). The hook reads the toast context optionally;
 `main.tsx` mounts `ToastProvider` above `AuthFlowProvider`.
 
 **Row rules** (per kind, first match wins; `s` served address, `c` connected address of this kind, `base` = `link` when
-nothing is served or the served address equals `c` with a `null` signer, `change` when `s` differs from `c`, else none; always
-none for `Failed` or without a connected wallet of the kind):
+nothing is served or the served address equals `c` with a `null` signer, `change` when `s` differs from `c` (none instead when
+the served signer equals `c`, #1849), else none; always none for `Failed` or without a connected wallet of the kind):
 
 | # | Condition | Caption | Button |
 | --- | --- | --- | --- |
@@ -280,11 +331,19 @@ none for `Failed` or without a connected wallet of the kind):
 | 7 | Phase `error` | `error` (negative) | `Try again` when `base` |
 | 8 | `s` served, `c` equals `s`, `base` is `link` | `unproven` | `Link wallet` |
 | 9 | `s` served, `c` equals `s` | `linked` | none |
+| 9b | `s` served, `c` differs from `s`, the served signer equals `c` | `linkedSigner` | none |
 | 10 | `s` served, `base` is `change` | `different` | `Change wallet` |
 | 11 | `s` served | none | none |
 | 12 | Nothing served, no LP, LP read `absent` | `needsLp`, title `—` | none |
 | 13 | Nothing served, `base` is `link` | `notLinked`, title `—` | `Link wallet` |
 | 14 | Otherwise (`Failed`, LP still loading or read error) | none, title `—` | none |
+
+Rows 1-14 apply to `mode: "wallet"`. A row whose kind has `mode: "other"` and a connected wallet of its kind renders the
+form instead (the served row, `form` set, no button, `other` false): `editing` shows `otherHint`, or `confirm` when an
+address is served; `requesting` / `verifying` show `linkingAddress` (busy); `signing` shows `signing` (busy); `declined`
+shows `declined`; `proofFailed` shows `proofFailed` (negative); `taken` shows `addressTaken` (negative); `error` shows
+`addressError` (negative). The entry link (`other`) is true when the LP is loaded and not `Failed`, a wallet of the kind is
+connected, and the row is not busy, confirming or showing the form.
 
 Captions (`SETTLEMENT_CAPTIONS` in `components/account/settlementAddress.ts`):
 
@@ -303,10 +362,29 @@ Captions (`SETTLEMENT_CAPTIONS` in `components/account/settlementAddress.ts`):
 | `notLinked` | `Link your connected wallet to receive bank deposits to it.` |
 | `needsLp` | `Save your company details first, then link this wallet.` |
 | `connect` | `Connect a wallet to name your settlement address.` (generic row only) |
+| `linkingAddress` | `Linking this address…` |
+| `addressTaken` | `This address is already linked to another account. Enter a different address.` |
+| `addressError` | `This address could not be linked. Try again.` |
+| `linkedSigner` | `Linked. Your connected wallet is the signer of this address.` |
+| `otherHint` | `Your connected wallet signs to link this address.` |
 
 Buttons (`SETTLEMENT_ACTION_LABELS`): `Link wallet`, `Change wallet`, `Try again`; confirmation: `Confirm change`, `Cancel`.
 
-**Out of scope.** A Stellar `C…` address or any signer other than the connected wallet (TD-166); unlinking (no
+Form copy (`SETTLEMENT_FORM_COPY`):
+
+| Key | Text |
+| --- | --- |
+| `entry` | `Use a different address` |
+| `label` | `New settlement address` |
+| `current` | `Current` |
+| `signer` | `Signer` |
+| `submit` / `cancel` | `Link address` / `Cancel` |
+| `placeholder` | `G… or C…` (Stellar), `0x…` (EVM) |
+| `invalid.stellar` | `Enter a Stellar address: G… or C…, 56 characters.` |
+| `invalid.evm` | `Enter an Ethereum address: 0x followed by 40 hexadecimal characters.` |
+
+**Out of scope.** A signer other than the connected wallet; EIP-1271 / smart-wallet signers (the backend verifies EOA
+signatures only); proving that the signer controls the address (backend TD-162); unlinking (no
 endpoint); wallet-only visitors (no session, no LP); wallets without SEP-0053 (Albedo, Rabet) are still listed in the
 connect modal and end on the `declined` caption. The staging dev mock wallets cannot sign (`signMessage` rejects);
 QA uses real Freighter and MetaMask wallets.

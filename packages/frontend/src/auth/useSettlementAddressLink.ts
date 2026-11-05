@@ -10,11 +10,15 @@ import type { LpResponse } from "@/api";
 import {
   baseAction,
   connectedWallet,
+  otherAllowed,
+  otherTarget,
+  parseSettlementInput,
   settlementWritable,
   type ConnectedWallet,
   type SettlementKind,
   type SettlementLinkState,
   type SettlementPhase,
+  type SettlementTarget,
 } from "@/components/account/settlementAddress";
 import { ENV } from "@/lib/env";
 import { ToastContext } from "@/lib/toast/useToast";
@@ -34,9 +38,11 @@ export interface SettlementAddressLink {
   link(kind: SettlementKind): void;
   beginChange(kind: SettlementKind): void;
   cancelChange(): void;
+  beginOther(kind: SettlementKind): void;
+  linkOther(kind: SettlementKind, raw: string): void;
 }
 
-const IDLE: SettlementLinkState = { kind: null, phase: "idle" };
+const IDLE: SettlementLinkState = { kind: null, phase: "idle", mode: "wallet" };
 
 export function useSettlementAddressLink({
   token,
@@ -71,98 +77,160 @@ export function useSettlementAddressLink({
     const { lp: current, connected: wallet } = latest.current;
     if (inFlight.current || baseAction(current, kind, wallet) !== "change")
       return;
-    setState({ kind, phase: "confirming" });
+    setState({ kind, phase: "confirming", mode: "wallet" });
   }, []);
 
   const cancelChange = useCallback(() => {
     if (!inFlight.current) setState(IDLE);
   }, []);
 
-  const link = useCallback((kind: SettlementKind) => {
-    const {
-      token: sessionToken,
-      lp: current,
-      lpLoaded: loaded,
-      connected: wallet,
-    } = latest.current;
-    if (inFlight.current || !sessionToken || !loaded || !current) return;
-    if (!wallet || baseAction(current, kind, wallet) === null) return;
-    inFlight.current = true;
-    setState({ kind, phase: "requesting" });
-    const chainId = kind === "evm" ? ENV.EVM_CHAIN_ID : ENV.STELLAR_CHAIN_ID;
-    const address =
-      kind === "evm" ? wallet.address.toLowerCase() : wallet.address;
-    const stale = () =>
-      readSession()?.token !== sessionToken ||
-      latest.current.connected?.kind !== kind ||
-      latest.current.connected?.address !== wallet.address;
-    const finish = (phase: SettlementPhase) => {
-      inFlight.current = false;
-      setState(phase === "idle" ? IDLE : { kind, phase });
-    };
-    const fail = async (error: unknown) => {
-      if (stale()) return finish("idle");
-      if (error instanceof ApiError && error.status === 422)
-        return finish("proofFailed");
-      latest.current.toast?.show({
-        tone: "danger",
-        title:
-          error instanceof ApiError && error.message
-            ? error.message
-            : "Your wallet could not be linked.",
-      });
-      if (error instanceof ApiError && error.status === 409) {
+  const run = useCallback(
+    (
+      kind: SettlementKind,
+      mode: "wallet" | "other",
+      target: SettlementTarget,
+      wallet: ConnectedWallet,
+      sessionToken: string,
+    ) => {
+      inFlight.current = true;
+      setState({ kind, phase: "requesting", mode });
+      const chainId = kind === "evm" ? ENV.EVM_CHAIN_ID : ENV.STELLAR_CHAIN_ID;
+      const stale = () =>
+        readSession()?.token !== sessionToken ||
+        latest.current.connected?.kind !== kind ||
+        latest.current.connected?.address !== wallet.address;
+      const finish = (phase: SettlementPhase) => {
+        inFlight.current = false;
+        setState(phase === "idle" ? IDLE : { kind, phase, mode });
+      };
+      const failureTitle =
+        mode === "other"
+          ? "This address could not be linked."
+          : "Your wallet could not be linked.";
+      const fail = async (error: unknown) => {
+        if (stale()) return finish("idle");
+        if (error instanceof ApiError && error.status === 422)
+          return finish("proofFailed");
+        latest.current.toast?.show({
+          tone: "danger",
+          title:
+            error instanceof ApiError && error.message
+              ? error.message
+              : failureTitle,
+        });
+        if (error instanceof ApiError && error.status === 409) {
+          try {
+            const refreshed = await getMyLp();
+            if (stale()) return finish("idle");
+            latest.current.onLp(refreshed);
+            return finish(settlementWritable(refreshed) ? "taken" : "idle");
+          } catch {
+            return finish("taken");
+          }
+        }
         try {
           const refreshed = await getMyLp();
           if (stale()) return finish("idle");
           latest.current.onLp(refreshed);
-          return finish(settlementWritable(refreshed) ? "taken" : "idle");
         } catch {
-          return finish("taken");
+          if (stale()) return finish("idle");
         }
-      }
-      try {
-        const refreshed = await getMyLp();
+        finish("error");
+      };
+      void (async () => {
+        let message: string;
+        try {
+          ({ message } = await getLinkAddressChallenge(
+            chainId,
+            target.address,
+            target.signer,
+          ));
+        } catch (error) {
+          return fail(error);
+        }
         if (stale()) return finish("idle");
-        latest.current.onLp(refreshed);
-      } catch {
+        setState({ kind, phase: "signing", mode });
+        let signature: string;
+        try {
+          const signer =
+            kind === "evm" ? latest.current.evm : latest.current.stellar;
+          ({ signature } = await signer.signMessage(message, wallet.address));
+        } catch {
+          return finish(stale() ? "idle" : "declined");
+        }
         if (stale()) return finish("idle");
-      }
-      finish("error");
-    };
-    void (async () => {
-      let message: string;
-      try {
-        ({ message } = await getLinkAddressChallenge(chainId, address));
-      } catch (error) {
-        return fail(error);
-      }
-      if (stale()) return finish("idle");
-      setState({ kind, phase: "signing" });
-      let signature: string;
-      try {
-        const signer =
-          kind === "evm" ? latest.current.evm : latest.current.stellar;
-        ({ signature } = await signer.signMessage(message, wallet.address));
-      } catch {
-        return finish(stale() ? "idle" : "declined");
-      }
-      if (stale()) return finish("idle");
-      setState({ kind, phase: "verifying" });
-      try {
-        const linked = await verifyLinkAddress({
-          chain_id: chainId,
-          address,
-          signature,
-        });
-        if (stale()) return finish("idle");
-        latest.current.onLp(linked);
-        finish("idle");
-      } catch (error) {
-        return fail(error);
-      }
-    })();
+        setState({ kind, phase: "verifying", mode });
+        try {
+          const linked = await verifyLinkAddress({
+            chain_id: chainId,
+            address: target.address,
+            ...(target.signer ? { signer_address: target.signer } : {}),
+            signature,
+          });
+          if (stale()) return finish("idle");
+          latest.current.onLp(linked);
+          finish("idle");
+        } catch (error) {
+          return fail(error);
+        }
+      })();
+    },
+    [],
+  );
+
+  const link = useCallback(
+    (kind: SettlementKind) => {
+      const {
+        token: sessionToken,
+        lp: current,
+        lpLoaded: loaded,
+        connected: wallet,
+      } = latest.current;
+      if (inFlight.current || !sessionToken || !loaded || !current) return;
+      if (!wallet || baseAction(current, kind, wallet) === null) return;
+      const address =
+        kind === "evm" ? wallet.address.toLowerCase() : wallet.address;
+      run(kind, "wallet", { address, signer: null }, wallet, sessionToken);
+    },
+    [run],
+  );
+
+  const beginOther = useCallback((kind: SettlementKind) => {
+    const { lp: current, connected: wallet } = latest.current;
+    if (inFlight.current || !otherAllowed(current, kind, wallet)) return;
+    setState({ kind, phase: "editing", mode: "other" });
   }, []);
 
-  return { state, connected, link, beginChange, cancelChange };
+  const linkOther = useCallback(
+    (kind: SettlementKind, raw: string) => {
+      const {
+        token: sessionToken,
+        lp: current,
+        lpLoaded: loaded,
+        connected: wallet,
+      } = latest.current;
+      if (inFlight.current || !sessionToken || !loaded || !current) return;
+      if (!wallet || !otherAllowed(current, kind, wallet)) return;
+      const parsed = parseSettlementInput(kind, raw);
+      if (!parsed.ok) return;
+      run(
+        kind,
+        "other",
+        otherTarget(kind, parsed.address, wallet),
+        wallet,
+        sessionToken,
+      );
+    },
+    [run],
+  );
+
+  return {
+    state,
+    connected,
+    link,
+    beginChange,
+    cancelChange,
+    beginOther,
+    linkOther,
+  };
 }
