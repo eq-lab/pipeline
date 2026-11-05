@@ -104,11 +104,13 @@ export interface LinkChallenge {
 export function getLinkAddressChallenge(
   chainId: number,
   address: string,
+  signerAddress?: string | null,
 ): Promise<LinkChallenge> {
   const query = new URLSearchParams({
     chain_id: String(chainId),
     address,
   });
+  if (signerAddress) query.set("signer_address", signerAddress);
   return apiFetch<LinkChallenge>(`/v1/lps/me/link-address/challenge?${query}`, {
     headers: authHeaders(),
   });
@@ -117,6 +119,7 @@ export function getLinkAddressChallenge(
 export function verifyLinkAddress(body: {
   chain_id: number;
   address: string;
+  signer_address?: string;
   signature: string;
 }): Promise<LpResponse> {
   return apiFetch<LpResponse>("/v1/lps/me/link-address/verify", {
