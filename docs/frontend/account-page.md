@@ -227,7 +227,7 @@ opens only from a click (`Link wallet`, `Try again`, `Confirm change`): no effec
 page load, LP creation and connecting a wallet never prompt. Every `Try again` and every new `Link wallet` click starts
 with a new challenge; the client never reuses a message. One flow runs at a time, and a response that arrives after the
 session token changed is dropped. `signer_address` is never sent (the backend defaults it to the address); a Stellar `C…`
-address or a separate signer is not offered (TD-165).
+address or a separate signer is not offered (TD-166).
 
 **Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none (the same order as
 `useWalletView().kind`). `chain_id` is `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. EVM addresses are sent lowercased and
@@ -306,7 +306,7 @@ Captions (`SETTLEMENT_CAPTIONS` in `components/account/settlementAddress.ts`):
 
 Buttons (`SETTLEMENT_ACTION_LABELS`): `Link wallet`, `Change wallet`, `Try again`; confirmation: `Confirm change`, `Cancel`.
 
-**Out of scope.** A Stellar `C…` address or any signer other than the connected wallet (TD-165); unlinking (no
+**Out of scope.** A Stellar `C…` address or any signer other than the connected wallet (TD-166); unlinking (no
 endpoint); wallet-only visitors (no session, no LP); wallets without SEP-0053 (Albedo, Rabet) are still listed in the
 connect modal and end on the `declined` caption. The staging dev mock wallets cannot sign (`signMessage` rejects);
 QA uses real Freighter and MetaMask wallets.

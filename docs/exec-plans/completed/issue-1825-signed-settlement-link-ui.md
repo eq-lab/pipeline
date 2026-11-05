@@ -20,7 +20,7 @@ In scope (LP app, `packages/frontend` only):
 
 Out of scope:
 
-- **A Stellar `C…` settlement address, or any signer other than the connected wallet** (multisig, Safe). The LP app links **only the connected wallet**, as both the address and the signer. `signer_address` is never sent, and the backend defaults it to the address. The API supports both cases, so this is a UI gap. It is logged as **TD-165**. TD-163 is now taken by #1831's relink trade-off, so the draft's "TD-163" is renumbered.
+- **A Stellar `C…` settlement address, or any signer other than the connected wallet** (multisig, Safe). The LP app links **only the connected wallet**, as both the address and the signer. `signer_address` is never sent, and the backend defaults it to the address. The API supports both cases, so this is a UI gap. It is logged as **TD-166**. TD-163 is now taken by #1831's relink trade-off, so the draft's "TD-163" is renumbered.
 - **Unlinking an address.** No endpoint exists.
 - **Wallet-only visitors** (no session). They have no LP, so nothing links.
 - **Re-pointing `@/wallet` at `@pipeline/wallet-connect`** (TD-35).
@@ -34,7 +34,7 @@ Out of scope:
 |---|---|---|
 | D1 | **No Figma** (user, 2026-11-04). The rows, buttons, captions and the inline confirmation are built from the existing `SettlementAddressRow` (`AccountListRow variant="plain"` + body-s caption) and LP theme tokens on both surfaces. There is no `needs-figma` label and no design open question. | User decision on the Issue. |
 | D2 | Signing lives in `packages/frontend/src/wallet/{stellar,evm}`, not `@pipeline/wallet-connect`. | The LP app mounts its own providers from `@/wallet` (`main.tsx`). The shared package's hooks read their own Stellar store and gate context, so they would report "disconnected" here. TD-35 lint also forbids importing wagmi or the kit outside `src/wallet/**`. |
-| D3 | Only the connected wallet is linked, and `signer_address` is never sent. `C…` and separate signers go to TD-165. | The draft's decision. `main` does not contradict it. |
+| D3 | Only the connected wallet is linked, and `signer_address` is never sent. `C…` and separate signers go to TD-166. | The draft's decision. `main` does not contradict it. |
 | D4 | A signature prompt opens **only** from a click: `Link wallet`, `Try again` or `Confirm change`. No effect fetches a challenge or calls `signMessage`. Connecting a different wallet never starts a change by itself. | Issue § "No silent signature prompts" and § "Relink at any time". |
 | D5 | **One row per chain kind.** The order is Stellar, then EVM. A kind gets a row when its address is served or a wallet of that kind is connected. With neither, there is one generic row. Labels: `Stellar settlement address`, `Ethereum settlement address`, and `Settlement address` (generic). | The LP holds at most one wallet connection (#1512), but can hold both served addresses. `Ethereum` matches the Account wallet card's chain label. |
 | D6 | **Connected wallet** = the EVM wallet if connected, else the Stellar wallet, else none. This mirrors `useWalletView().kind`. `chain_id` = `ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`. `useActiveChain()` is not used, because `AuthFlowProvider` sits above `WalletViewProvider` in `main.tsx`. | Single-wallet rule. Provider order. |
@@ -389,7 +389,7 @@ Manual QA uses real wallets only: `docs/user-stories/epic-1247/1825-signed-settl
   - Add the #1825 row.
   - Change the #1813 row's status to "Superseded by #1825 (auto-link removed; linking is signed and user-initiated)".
 - **`docs/user-stories/epic-1247/1813-link-wallet-address.md`.** Add a one-line "Superseded by #1825" note under the header and re-point its `Spec:` anchor.
-- **`docs/exec-plans/tech-debt-tracker.md`.** Add **TD-165: the LP app links only the connected wallet**.
+- **`docs/exec-plans/tech-debt-tracker.md`.** Add **TD-166: the LP app links only the connected wallet**.
   - It cannot name a Stellar `C…` settlement address or a separate signer (multisig, Safe), though the API supports both (#1824). The UI would need address and signer inputs.
   - This issue logs it.
   - Bump "Next free number" to TD-166.

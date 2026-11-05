@@ -561,11 +561,9 @@ pub(crate) fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `loan_registry_id` is `None` when the contract has not yet been deployed
 /// (ships dark — the new branch is a no-op until the env var is set).
 ///
-/// `yield_minter_id` is `None` when the minter contract has not yet been deployed to
+/// `minter_id` is `None` when the minter contract has not yet been deployed to
 /// this chain. When set, the minter's business events (`MINTER_COLLECTED_EVENTS`) are
 /// collected and routed to `StellarLogMapper` (contract_logs) (#1416, #1480).
-/// `YieldMinted` is retired (#1433) — it belonged to a pre-#33 deployment this field
-/// no longer targets.
 ///
 /// `asset_id` is `Some` when asset-transfer tracking is configured (Issue #789 /
 /// #933). When set, `transfer` events from the asset contract are decoded to
@@ -579,7 +577,7 @@ pub fn dispatch_parser(
     withdrawal_queue_id: &str,
     staked_plusd_id: &str,
     loan_registry_id: Option<&str>,
-    yield_minter_id: Option<&str>,
+    minter_id: Option<&str>,
     asset_id: Option<&str>,
     deal_token_factory_id: Option<&str>,
 ) -> Option<StellarLog> {
@@ -598,7 +596,7 @@ pub fn dispatch_parser(
         // against `StakingDeposit` and must not simply be added here.
         parse_vault_deposit(raw)
             .or_else(|| parse_vault_withdraw(raw))
-            .or_else(|| parse_shares_burned(raw, yield_minter_id.unwrap_or(UNKNOWN_MINTER)))
+            .or_else(|| parse_shares_burned(raw, minter_id.unwrap_or(UNKNOWN_MINTER)))
             .or_else(|| parse_share_transfer(raw))
     } else if loan_registry_id == Some(raw.contract_id.as_str()) {
         // LoanRegistry events — all 12 collected events, tried in order.
@@ -615,10 +613,7 @@ pub fn dispatch_parser(
             .or_else(|| parse_loan_closed(raw))
             .or_else(|| parse_loan_rolled_over(raw))
             .or_else(|| parse_economics_amended(raw))
-    } else if yield_minter_id == Some(raw.contract_id.as_str()) {
-        // The minter contract, under its former name (see the config field). `YieldMinted`
-        // is retired (#1433). Its config/role events and the diagnostic `snapshot` are the
-        // only ones not collected; they fall through as `None` without a warn.
+    } else if minter_id == Some(raw.contract_id.as_str()) {
         let parsed = match raw.event_name.as_str() {
             "wire_in" => parse_wire_in(raw),
             "wire_in_assigned" => parse_wire_in_assigned(raw),

@@ -149,6 +149,22 @@ fn legacy_yield_minted_sql_requires_registry_scoped_payment_recorded() {
 }
 
 #[test]
+fn legacy_yield_minted_sql_reads_confirmed_outbox_rows_for_any_chain_kind() {
+    let sql = normalized(LEGACY_YIELD_MINTED_SQL);
+    for needle in [
+        "FROM yield_mint_outbox o",
+        "o.chain_id = $1",
+        "o.loan_id = $2",
+        "o.status = 'confirmed'",
+        "o.tx_hash IS NOT NULL",
+        "cl.event_name = 'YieldMinted'",
+    ] {
+        assert!(sql.contains(needle), "missing `{needle}` in {sql}");
+    }
+    assert!(!sql.contains("yield_minter_address"), "{sql}");
+}
+
+#[test]
 fn list_withdrawal_queue_rows_sql_matches_claims_on_the_same_chain_and_contract() {
     let sql = normalized(LIST_WITHDRAWAL_QUEUE_ROWS_SQL);
     assert!(sql.starts_with("SELECT r.chain_id,"), "{sql}");

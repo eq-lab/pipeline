@@ -312,7 +312,7 @@ fn interest_adjusted_action_renders_negative_delta() {
 //
 // Production rows are NOT flat. `LoanEventMapper` rewraps parser fields as
 // `{loan_id, event: {...}, snapshot: {...}}` — see `worker/src/indexer/loan_mapper.rs`
-// and the `params->'event'->>'repayment_id'` reads in `yield_mint_outbox_repo`. Every
+// and the `params->'event'->>'repayment_id'` reads in `LEGACY_YIELD_MINTED_SQL` (`shared::contract_logs_repo`). Every
 // other test in this file passes flat params, which is why #1096 stayed invisible: the
 // flat shape only ever occurs for `ContractLogMapper` events such as `YieldMinted`.
 

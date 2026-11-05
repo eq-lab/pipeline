@@ -81,7 +81,7 @@ pub struct StellarEventPoller {
     withdrawal_queue_wallet_id: Option<String>,
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
-    yield_minter_id: Option<String>,
+    minter_id: Option<String>,
     collateral_registry_id: Option<String>,
     deal_token_factory_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
@@ -105,7 +105,7 @@ impl StellarEventPoller {
         withdrawal_queue_wallet_id: Option<String>,
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
-        yield_minter_id: Option<String>,
+        minter_id: Option<String>,
         collateral_registry_id: Option<String>,
         deal_token_factory_id: Option<String>,
         deal_tokens: DealTokenSet,
@@ -122,7 +122,7 @@ impl StellarEventPoller {
             withdrawal_queue_wallet_id,
             staked_plusd_id,
             loan_registry_id,
-            yield_minter_id,
+            minter_id,
             collateral_registry_id,
             deal_token_factory_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
@@ -148,8 +148,8 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(lr_id) = &self.loan_registry_id {
             contract_ids.push(lr_id.clone());
         }
-        if let Some(ym_id) = &self.yield_minter_id {
-            contract_ids.push(ym_id.clone());
+        if let Some(minter_id) = &self.minter_id {
+            contract_ids.push(minter_id.clone());
         }
         if let Some(cr_id) = &self.collateral_registry_id {
             contract_ids.push(cr_id.clone());
@@ -177,7 +177,7 @@ impl ChainEventPoller for StellarEventPoller {
                     &self.withdrawal_queue_id,
                     &self.staked_plusd_id,
                     self.loan_registry_id.as_deref(),
-                    self.yield_minter_id.as_deref(),
+                    self.minter_id.as_deref(),
                     self.asset_id.as_deref(),
                     self.deal_token_factory_id.as_deref(),
                 )
@@ -387,7 +387,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.withdrawal_queue_wallet_id.clone(),
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
-        settings.yield_minter_id.clone(),
+        settings.minter_id.clone(),
         settings.collateral_registry_id.clone(),
         settings.deal_token_factory_id.clone(),
         deal_tokens,
