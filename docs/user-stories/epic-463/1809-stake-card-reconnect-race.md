@@ -2,7 +2,7 @@
 
 Epic: [#463 — Home page](https://github.com/eq-lab/pipeline/issues/463)
 Issue: [#1809](https://github.com/eq-lab/pipeline/issues/1809)
-Plan: `docs/exec-plans/active/issue-1809-stake-card-reconnect-race.md`
+Plan: `docs/exec-plans/completed/issue-1809-stake-card-reconnect-race.md`
 
 While a wallet is still reconnecting after a reload, the home grid shows the loading skeleton,
 Buy / Sell / Stake navigate immediately, and no connect or sign-up modal opens for that wallet.
