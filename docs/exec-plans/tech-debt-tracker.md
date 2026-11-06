@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-172.**
+**Next free number: TD-173.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2312,3 +2312,11 @@ line, whichever section it lands in.
 - **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
 - **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history.
 - **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
+
+### TD-172: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
+
+- **Date:** 2026-11-05
+- **Location:** `packages/frontend/src/wallet/useDepositFlow.ts`, `packages/frontend/src/api/activityRefresh.ts`
+- **Gap:** `useDepositFlow` polls `/v1/requests` every 5 s while a known request id is unlisted, and the activity-expectation store (#1810) now polls every 3 s for the same condition. `useRequests` takes the shorter of the two.
+- **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
+- **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
