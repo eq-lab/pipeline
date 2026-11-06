@@ -373,6 +373,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |
 | [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
 | [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |
+| [#1792 Loan submission: data_room_id → borrower_ref and the HEAD draw_loan inputs](https://github.com/eq-lab/pipeline/issues/1792) | [1792-draw-loan-data-room-id.md](./epic-1776/1792-draw-loan-data-room-id.md) | Initial |
 
 ---
 
@@ -382,3 +383,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1779 Stellar SecurityRegistry indexer: events, record enrichment, projection tables](https://github.com/eq-lab/pipeline/issues/1779) | [1779-stellar-security-registry-indexer.md](./epic-1775/1779-stellar-security-registry-indexer.md) | Initial |
 | [#1780 API: loan security state — terms, collateral value, debt, LTV, margin call, records](https://github.com/eq-lab/pipeline/issues/1780) | [1780-loan-security-state-api.md](./epic-1775/1780-loan-security-state-api.md) | Initial |
+| [#1781 Audit log: SecurityRegistry events, legacy CollateralRegistry rows as history](https://github.com/eq-lab/pipeline/issues/1781) | [1781-security-registry-audit-log.md](./epic-1775/1781-security-registry-audit-log.md) | Initial |

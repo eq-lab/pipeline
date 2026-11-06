@@ -41,13 +41,11 @@ use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{
-    loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
+    chain_kind, loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
     RequiredChain,
 };
+use crate::routes::lp_bank_deposits::reference_hash;
 use crate::AppState;
-/// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
-/// initial CCR must be at least 100 % (`>= ONE`), mirroring `draw_loan`.
-const CCR_ONE: u32 = 1_000_000;
 
 /// Derived display status: the loan is drawn but its USDC off-ramp is not yet marked
 /// complete. Overrides `Performing` / `WatchList`. See [`display_status`].
@@ -320,19 +318,19 @@ pub struct LoanBookResponse {
 
 // ── Submission DTOs ────────────────────────────────────────────────────────
 
-/// Loan economics fixed at origination — mirrors the contract's
-/// `ImmutableLoanData`. USDC amounts are base-6 decimal strings (matching the
-/// loan-book read conventions); the validator parses and checks the same
-/// invariants `draw_loan` enforces on-chain.
+/// Loan economics fixed at origination — the inputs behind the contract's
+/// `ImmutableLoanData`. USDC amounts are human-unit decimal strings with up to 6
+/// fractional digits; the validator parses and checks the same invariants `draw_loan`
+/// enforces on-chain, and `draw_loan` in the response serves the converted values.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct EconomicsInput {
-    /// Total facility size, USDC (6-decimal string). Must equal senior + equity.
+    /// Total facility size, USDC human-unit decimal string. Must equal senior + equity.
     pub original_facility_size: String,
-    /// Senior tranche, USDC (6-decimal string).
+    /// Senior tranche, USDC human-unit decimal string.
     pub original_senior_tranche: String,
-    /// Equity tranche, USDC (6-decimal string).
+    /// Equity tranche, USDC human-unit decimal string.
     pub original_equity_tranche: String,
-    /// Offtaker price, USDC (6-decimal string). Must be `>= original_facility_size`.
+    /// Offtaker price, USDC human-unit decimal string. Must be `>= original_facility_size`.
     pub original_offtaker_price: String,
     /// Senior interest rate in basis points.
     pub senior_interest_rate_bps: u32,
@@ -385,14 +383,22 @@ pub struct FeeScheduleInput {
     pub oet_alloc_rate_bps: u32,
 }
 
-/// Request body for `POST /v1/loan-book/loan` — every input required by the
-/// on-chain `draw_loan`, persisted verbatim for trustee review.
+/// Request body for `POST /v1/loan-book/loan`. Carries the `draw_loan` inputs
+/// (`metadata_uri`, `economics`, `data_room_id`), the off-chain metadata document
+/// fields, and the collateral-valuation and fee-schedule anchors. Persisted for
+/// trustee review.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct SubmitLoanRequest {
-    /// Address the soulbound loan token is minted to (`draw_loan`'s `to`).
-    pub to: String,
+    /// Deprecated: no longer a `draw_loan` input; accepted and stored verbatim, never validated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(deprecated)]
+    pub to: Option<String>,
     /// On-chain metadata URI pointer (`draw_loan`'s `metadata_uri`).
     pub metadata_uri: String,
+    /// The borrower's data-room id, trimmed at ingest; its sha256 is `borrower_ref`.
+    /// Optional for now and required in a later release.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_room_id: Option<String>,
     // ── Off-chain metadata document fields (the `LoanMetadataJson` shape) ──
     pub originator: String,
     pub borrower_id: String,
@@ -410,10 +416,14 @@ pub struct SubmitLoanRequest {
     pub documents: Vec<LoanDocumentDto>,
     /// Loan economics fixed at origination.
     pub economics: EconomicsInput,
-    /// Initial collateral-coverage ratio (1e6-scaled; must be `>= 1_000_000`).
-    pub initial_ccr: u32,
-    /// Initial collateral location.
-    pub initial_location: LocationInput,
+    /// Deprecated: no longer a `draw_loan` input; accepted and stored verbatim, never validated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(deprecated)]
+    pub initial_ccr: Option<u32>,
+    /// Deprecated: no longer a `draw_loan` input; accepted and stored verbatim, never validated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(deprecated)]
+    pub initial_location: Option<LocationInput>,
     /// Collateral-valuation anchor for this loan. Written to
     /// `loan_collateral_valuations` once the loan is drawn and linked.
     pub collateral_valuation: CollateralValuationInput,
@@ -428,6 +438,169 @@ pub struct SubmitLoanResponse {
     /// Identifier of the newly created submission (the `submitted_loans` PK — not
     /// the on-chain `loan_id`, which does not exist until the loan is drawn).
     pub id: i64,
+    /// Contract-ready Stellar `draw_loan` arguments for this submission. `null` for an
+    /// EVM target (until #1573) or an unconfigured `target_chain_id`.
+    pub draw_loan: Option<DrawLoanArgs>,
+}
+
+/// Contract-ready arguments of the Stellar loan-registry `draw_loan(metadata_uri, economics)`,
+/// derived at read time from the stored submission. Units are in
+/// `docs/product-specs/api-authorization-loan-submission.md`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct DrawLoanArgs {
+    /// `draw_loan`'s `metadata_uri`; `null` when absent from the submission.
+    pub metadata_uri: Option<String>,
+    /// The `ImmutableLoanData` argument.
+    pub economics: DrawLoanEconomics,
+    /// Names of inputs that are absent or not representable in the contract type
+    /// (`metadata_uri`, `data_room_id`, `economics.<input key>`), in a fixed order.
+    pub missing_inputs: Vec<String>,
+}
+
+/// The contract's `ImmutableLoanData`; keys are the exact contract field names and each is
+/// `null` when its input is absent or not representable.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct DrawLoanEconomics {
+    /// sha256 of the trimmed `data_room_id` (UTF-8), 64 lowercase hex characters without `0x`.
+    pub borrower_ref: Option<String>,
+    /// u128 in 7-decimal base units, as a plain integer string.
+    pub original_facility_size: Option<String>,
+    /// u128 in 7-decimal base units, as a plain integer string.
+    pub original_senior_tranche: Option<String>,
+    /// u128 in 7-decimal base units, as a plain integer string.
+    pub original_equity_tranche: Option<String>,
+    /// u128 in 7-decimal base units, as a plain integer string.
+    pub original_offtaker_price: Option<String>,
+    /// u32 fixed-point with `ONE = 1_000_000` = 100 %/yr, i.e. `senior_interest_rate_bps * 100`.
+    pub senior_interest_rate: Option<u32>,
+    /// u64 unix seconds.
+    pub origination_date: Option<u64>,
+    /// u64 unix seconds.
+    pub original_maturity_date: Option<u64>,
+}
+
+pub const STELLAR_LOAN_MONEY_DECIMALS: u32 = 7;
+
+pub fn normalize_data_room_id(raw: Option<String>) -> Option<String> {
+    raw.and_then(|s| {
+        let t = s.trim();
+        (!t.is_empty()).then(|| t.to_owned())
+    })
+}
+
+pub fn borrower_ref_hex(data_room_id: &str) -> Option<String> {
+    normalize_data_room_id(Some(data_room_id.to_owned())).map(|id| hex::encode(reference_hash(&id)))
+}
+
+const MAX_U128_INTEGER_DIGITS: usize = 39;
+
+pub fn is_usdc_decimal(amount: &str, max_fraction_digits: usize) -> bool {
+    let (int, frac) = match amount.split_once('.') {
+        Some((i, f)) => (i, Some(f)),
+        None => (amount, None),
+    };
+    let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
+    digits(int)
+        && int.len() <= MAX_U128_INTEGER_DIGITS
+        && frac.is_none_or(|f| digits(f) && f.len() <= max_fraction_digits)
+}
+
+pub fn usdc_to_base_units(amount: &str, decimals: u32) -> Option<String> {
+    let decimals = decimals as usize;
+    if !is_usdc_decimal(amount, decimals) {
+        return None;
+    }
+    let (int, frac) = amount.split_once('.').unwrap_or((amount, ""));
+    let padded = format!("{int}{frac:0<decimals$}");
+    padded.parse::<u128>().ok().map(|v| v.to_string())
+}
+
+pub fn draw_loan_args(loan_data: &serde_json::Value) -> DrawLoanArgs {
+    let mut missing: Vec<String> = Vec::new();
+    let mut take = |name: &str, v: Option<String>| -> Option<String> {
+        if v.is_none() {
+            missing.push(name.to_owned());
+        }
+        v
+    };
+    let str_of = |v: &serde_json::Value, key: &str| -> Option<String> {
+        v.get(key).and_then(|x| x.as_str()).map(str::to_owned)
+    };
+    let money = |econ: &serde_json::Value, key: &str| -> Option<String> {
+        str_of(econ, key).and_then(|a| usdc_to_base_units(&a, STELLAR_LOAN_MONEY_DECIMALS))
+    };
+    let empty = serde_json::Value::Null;
+    let econ = loan_data.get("economics").unwrap_or(&empty);
+
+    let metadata_uri = take(
+        "metadata_uri",
+        str_of(loan_data, "metadata_uri").filter(|s| !s.trim().is_empty()),
+    );
+    let borrower_ref = take(
+        "data_room_id",
+        str_of(loan_data, "data_room_id").and_then(|s| borrower_ref_hex(&s)),
+    );
+    let original_facility_size = take(
+        "economics.original_facility_size",
+        money(econ, "original_facility_size"),
+    );
+    let original_senior_tranche = take(
+        "economics.original_senior_tranche",
+        money(econ, "original_senior_tranche"),
+    );
+    let original_equity_tranche = take(
+        "economics.original_equity_tranche",
+        money(econ, "original_equity_tranche"),
+    );
+    let original_offtaker_price = take(
+        "economics.original_offtaker_price",
+        money(econ, "original_offtaker_price"),
+    );
+    let rate = econ
+        .get("senior_interest_rate_bps")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|x| u32::try_from(x).ok())
+        .and_then(|x| x.checked_mul(100));
+    if rate.is_none() {
+        missing.push("economics.senior_interest_rate_bps".to_owned());
+    }
+    let origination_date = econ
+        .get("origination_date")
+        .and_then(serde_json::Value::as_u64);
+    if origination_date.is_none() {
+        missing.push("economics.origination_date".to_owned());
+    }
+    let original_maturity_date = econ
+        .get("original_maturity_date")
+        .and_then(serde_json::Value::as_u64);
+    if original_maturity_date.is_none() {
+        missing.push("economics.original_maturity_date".to_owned());
+    }
+
+    DrawLoanArgs {
+        metadata_uri,
+        economics: DrawLoanEconomics {
+            borrower_ref,
+            original_facility_size,
+            original_senior_tranche,
+            original_equity_tranche,
+            original_offtaker_price,
+            senior_interest_rate: rate,
+            origination_date,
+            original_maturity_date,
+        },
+        missing_inputs: missing,
+    }
+}
+
+pub fn draw_loan_for(
+    kind: Option<ChainKind>,
+    loan_data: &serde_json::Value,
+) -> Option<DrawLoanArgs> {
+    match kind {
+        Some(ChainKind::Stellar) => Some(draw_loan_args(loan_data)),
+        Some(ChainKind::Evm) | None => None,
+    }
 }
 
 /// Query params for `GET /v1/loan-book/submissions`.
@@ -472,7 +645,10 @@ pub struct SubmissionView {
     /// lifted from `loan_data.documents` for direct consumption. Empty for legacy
     /// submissions that predate the field (`loan_data` still carries it verbatim).
     pub documents: Vec<LoanDocumentDto>,
-    /// The full submitted payload (all `draw_loan` inputs), passed through verbatim.
+    /// Stellar-target submissions only; `null` for an EVM target (until #1573), an
+    /// unconfigured `target_chain_id`, or once the submission is drawn or `Rejected`.
+    pub draw_loan: Option<DrawLoanArgs>,
+    /// The submitted payload, verbatim (legacy rows may carry `to`/`initial_ccr`/`initial_location`).
     pub loan_data: serde_json::Value,
 }
 
@@ -485,8 +661,12 @@ pub fn extract_documents(loan_data: &serde_json::Value) -> Vec<LoanDocumentDto> 
         .unwrap_or_default()
 }
 
-impl From<SubmittedLoanRow> for SubmissionView {
-    fn from(r: SubmittedLoanRow) -> Self {
+impl SubmissionView {
+    pub fn from_row(r: SubmittedLoanRow, kind: Option<ChainKind>) -> Self {
+        let draw_possible = r.loan_id.is_none() && r.status != SubmissionStatus::Rejected.as_str();
+        let draw_loan = draw_possible
+            .then(|| draw_loan_for(kind, &r.loan_data))
+            .flatten();
         SubmissionView {
             id: r.id,
             status: r.status,
@@ -498,6 +678,7 @@ impl From<SubmittedLoanRow> for SubmissionView {
             created_at: r.created_at.to_rfc3339(),
             updated_at: r.updated_at.to_rfc3339(),
             documents: extract_documents(&r.loan_data),
+            draw_loan,
             loan_data: r.loan_data,
         }
     }
@@ -548,6 +729,8 @@ pub struct ReviewRequest {
         SubmitLoanRequest,
         SubmitLoanResponse,
         EconomicsInput,
+        DrawLoanArgs,
+        DrawLoanEconomics,
         LocationInput,
         CollateralValuationInput,
         FeeScheduleInput,
@@ -604,16 +787,17 @@ async fn get_loan_book(
 /// (authenticate via `POST /v1/auth/verify`, then send the JWT as
 /// `Authorization: Bearer <token>`).
 ///
-/// Validates the payload against the same invariants `draw_loan` enforces, then
-/// persists it as an `InReview` submission for trustee review. The submitter's
-/// authenticated address (JWT `sub`) is recorded as the originator.
+/// Validates the payload against the same invariants `draw_loan` enforces (`data_room_id`
+/// is optional for now), then persists it as an `InReview` submission for trustee review.
+/// The submitter's authenticated address (JWT `sub`) is recorded as the originator. The
+/// response carries the contract-ready `draw_loan` args for a Stellar target.
 #[utoipa::path(
     post,
     path = "/v1/loan-book/loan",
     params(RequiredChain),
     request_body = SubmitLoanRequest,
     responses(
-        (status = 201, description = "Submission accepted; awaiting trustee review", body = SubmitLoanResponse),
+        (status = 201, description = "Submission accepted; awaiting trustee review. Carries the Stellar `draw_loan` args (`null` for an EVM target)", body = SubmitLoanResponse),
         (status = 400, description = "Payload failed validation, or missing, malformed, or unknown chain_id"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
@@ -625,7 +809,7 @@ async fn submit_loan(
     RequiredChain(chain): RequiredChain,
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<SubmitLoanRequest>,
+    Json(mut payload): Json<SubmitLoanRequest>,
 ) -> Result<(StatusCode, Json<SubmitLoanResponse>), ApiError> {
     if !claims.has_role(ORIGINATOR_ROLE) {
         return Err(ApiError::Forbidden(format!(
@@ -633,6 +817,7 @@ async fn submit_loan(
         )));
     }
 
+    payload.data_room_id = normalize_data_room_id(payload.data_room_id.take());
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
 
     // Structural checks pass; now confirm the on-chain metadata pointer resolves to a
@@ -655,7 +840,11 @@ async fn submit_loan(
 
     tx.commit().await?;
 
-    Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
+    let draw_loan = draw_loan_for(Some(chain.kind), &loan_data);
+    Ok((
+        StatusCode::CREATED,
+        Json(SubmitLoanResponse { id, draw_loan }),
+    ))
 }
 
 /// Parse a validated submission's typed valuation / fee fields and write its
@@ -722,7 +911,7 @@ async fn insert_valuation_and_fee_rows(
     params(("id" = i64, Path, description = "Submission id")),
     request_body = SubmitLoanRequest,
     responses(
-        (status = 200, description = "Resubmission accepted; submission reopened as InReview", body = SubmitLoanResponse),
+        (status = 200, description = "Resubmission accepted; submission reopened as InReview. Carries the Stellar `draw_loan` args (`null` for an EVM target)", body = SubmitLoanResponse),
         (status = 400, description = "Payload failed validation"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `originator` role"),
@@ -736,7 +925,7 @@ async fn resubmit_loan(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
-    Json(payload): Json<SubmitLoanRequest>,
+    Json(mut payload): Json<SubmitLoanRequest>,
 ) -> Result<(StatusCode, Json<SubmitLoanResponse>), ApiError> {
     if !claims.has_role(ORIGINATOR_ROLE) {
         return Err(ApiError::Forbidden(format!(
@@ -744,6 +933,7 @@ async fn resubmit_loan(
         )));
     }
 
+    payload.data_room_id = normalize_data_room_id(payload.data_room_id.take());
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
     validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri)
         .await
@@ -752,14 +942,12 @@ async fn resubmit_loan(
     // Distinguish "not found" (404) from "not resubmittable" (409): the guarded UPDATE
     // in `resubmit` only touches `ChangesRequested` rows, so a `false` result on an
     // existing row means the submission is InReview/Approved/Rejected.
-    let owned = state
+    let existing = state
         .submitted_loan_repo
         .find(id)
         .await?
-        .is_some_and(|row| row.originator == claims.sub);
-    if !owned {
-        return Err(ApiError::NotFound(format!("no submission with id {id}")));
-    }
+        .filter(|row| row.originator == claims.sub)
+        .ok_or_else(|| ApiError::NotFound(format!("no submission with id {id}")))?;
 
     let loan_data = serde_json::to_value(&payload)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
@@ -796,7 +984,8 @@ async fn resubmit_loan(
 
     tx.commit().await?;
 
-    Ok((StatusCode::OK, Json(SubmitLoanResponse { id })))
+    let draw_loan = draw_loan_for(chain_kind(&state, existing.target_chain_id), &loan_data);
+    Ok((StatusCode::OK, Json(SubmitLoanResponse { id, draw_loan })))
 }
 
 /// List loan submissions. Public — no authentication required. Optionally filter
@@ -860,10 +1049,13 @@ async fn list_submissions(
         }
     }
 
+    let kinds: HashMap<i64, ChainKind> =
+        state.chains.iter().map(|c| (c.chain_id, c.kind)).collect();
     let views = rows
         .into_iter()
         .map(|r| {
-            let mut view = SubmissionView::from(r);
+            let kind = kinds.get(&r.target_chain_id).copied();
+            let mut view = SubmissionView::from_row(r, kind);
             if let (Some(chain_id), Some(loan_id)) = (view.chain_id, view.loan_id.as_ref()) {
                 if let Some(status) = onchain_status.get(&(chain_id, loan_id.clone())) {
                     view.status.clone_from(status);
@@ -1015,9 +1207,6 @@ fn resolve_reason_required(
 /// Public so the unit test in `packages/api/tests/loan_submission.rs` can exercise
 /// it without the HTTP/DB layers.
 pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
-    if req.to.trim().is_empty() {
-        return Err("`to` must not be empty".to_owned());
-    }
     if req.metadata_uri.trim().is_empty() {
         return Err("`metadata_uri` must not be empty".to_owned());
     }
@@ -1025,6 +1214,30 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
     let parse = |label: &str, s: &str| -> Result<BigDecimal, String> {
         BigDecimal::from_str(s).map_err(|_| format!("`{label}` is not a valid decimal: {s}"))
     };
+    for (label, v) in [
+        (
+            "original_facility_size",
+            &req.economics.original_facility_size,
+        ),
+        (
+            "original_senior_tranche",
+            &req.economics.original_senior_tranche,
+        ),
+        (
+            "original_equity_tranche",
+            &req.economics.original_equity_tranche,
+        ),
+        (
+            "original_offtaker_price",
+            &req.economics.original_offtaker_price,
+        ),
+    ] {
+        if !is_usdc_decimal(v, 6) {
+            return Err(format!(
+                "`{label}` must be a non-negative decimal with at most 6 fractional digits: {v}"
+            ));
+        }
+    }
     let facility = parse(
         "original_facility_size",
         &req.economics.original_facility_size,
@@ -1050,20 +1263,6 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
     }
     if req.economics.original_maturity_date <= req.economics.origination_date {
         return Err("original_maturity_date must be after origination_date".to_owned());
-    }
-    if req.initial_ccr < CCR_ONE {
-        return Err(format!(
-            "initial_ccr must be >= {CCR_ONE} (100%); got {}",
-            req.initial_ccr
-        ));
-    }
-    match req.initial_location.location_type.as_str() {
-        "Vessel" | "Warehouse" | "TankFarm" | "Other" => {}
-        other => {
-            return Err(format!(
-                "unknown location_type `{other}` (expected Vessel, Warehouse, TankFarm, or Other)"
-            ))
-        }
     }
 
     match req.collateral_valuation.valuation_mode.as_str() {
@@ -1255,12 +1454,7 @@ async fn pockets_by_loan(
         let Some(pocket) = state.pocket_addresses.get(&chain_id) else {
             continue;
         };
-        let Some(kind) = state
-            .chains
-            .iter()
-            .find(|c| c.chain_id == chain_id)
-            .map(|c| c.kind)
-        else {
+        let Some(kind) = chain_kind(state, chain_id) else {
             continue;
         };
         let (events, claims, seeds) = tokio::try_join!(

@@ -20,16 +20,18 @@
 //! resolved `scope` (`Loan #<id>` / `Protocol`), an ISO-8601 `timestamp`, and `reference`
 //! — the friendly loan name (`"<originator> — <commodity>"`, sourced from the loan
 //! snapshot), empty string for protocol-scoped events, for loans missing either field, and
-//! for Minter / CollateralRegistry / DealTokenFactory / Pocket rows (no snapshot).
+//! for Minter / CollateralRegistry / SecurityRegistry / DealTokenFactory / Pocket rows (no snapshot).
 //!
 //! Besides the loan lifecycle, the feed carries the Minter cash events, the
-//! CollateralRegistry lot events, the DealTokenFactory events (#1478) and the Pocket events (#1789); per-transfer
+//! CollateralRegistry lot events, the DealTokenFactory events (#1478), the Pocket events (#1789) and the
+//! SecurityRegistry events (#1781); Stellar CollateralRegistry rows are marked legacy in `action`. Per-transfer
 //! `DealTokenTransfer` rows are deliberately left out. Historical `YieldMinted`,
 //! `LoanCCRUpdated` and `LoanLocationUpdated` rows are no longer indexed but keep rendering.
 //! The WithdrawalQueue's one-time `WithdrawalRateSet` recovery rate (#1791) is also listed.
 //!
 //! The feed is returned in full (newest first) — it is not paginated.
 
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -52,7 +54,7 @@ use crate::routes::common::LenientChainFilter;
 use crate::AppState;
 
 /// On-chain events surfaced in the Trustee audit feed: loan lifecycle, Minter cash,
-/// CollateralRegistry and DealTokenFactory events, plus the historical `YieldMinted` /
+/// CollateralRegistry, SecurityRegistry and DealTokenFactory events, plus the historical `YieldMinted` /
 /// `LoanCCRUpdated` / `LoanLocationUpdated` rows. LP-facing events (deposits, withdrawals,
 /// staking, raw transfers) and `DealTokenTransfer` are deliberately excluded as low-signal.
 /// This allow-list also gates the action formatter — an `event_name` outside it never
@@ -107,7 +109,52 @@ pub const AUDIT_EVENT_NAMES: &[&str] = &[
     "PocketUnreleased",
     "PocketBurned",
     "PocketClaimed",
+    "SecurityRecordRegistered",
+    "SecurityRecordPerfected",
+    "SecurityRecordHandedOver",
+    "SecurityRecordAttested",
+    "SecurityDocAdded",
+    "SecurityRecordReleased",
+    "SecurityMandateBreach",
+    "SecurityEnforcementStarted",
+    "SecurityRecordEnforced",
+    "SecurityTermsSet",
+    "SecurityRevalued",
+    "SecurityMarginCall",
+    "SecurityPriceStale",
+    "SecurityMarginCallCured",
+    "SecurityInspectionRecorded",
+    "SecurityInspectionApproved",
+    "SecurityFlagResolved",
+    "SecurityExtensionConsent",
+    "SecurityInspectorsSet",
+    "SecurityRegistryPaused",
+    "SecurityRegistryUnpaused",
 ];
+
+const LEGACY_COLLATERAL_REGISTRY_NAMES: [&str; 11] = [
+    "Pledged",
+    "HaircutSet",
+    "FloorSet",
+    "Revalued",
+    "StageUpdated",
+    "ControlUpdated",
+    "DocAdded",
+    "QuantityAdjusted",
+    "Released",
+    "Liquidated",
+    "MarginCall",
+];
+
+const LEGACY_COLLATERAL_REGISTRY_SUFFIX: &str = " (legacy collateral registry)";
+const UNBOUNDED_LTV_BPS: i64 = u32::MAX as i64;
+
+struct Proceeds {
+    repayment_ids: Vec<String>,
+    cash_raw: i128,
+}
+
+type ProceedsKey = (i64, String, String);
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -135,7 +182,7 @@ pub struct AuditLogItem {
     pub scope: AuditScope,
     /// Friendly loan name, `"<originator> — <commodity>"` (e.g. `"Open Mineral — Copper
     /// Concentrate"`), sourced from the loan's on-chain snapshot. Empty string for
-    /// rows without a snapshot (protocol-scoped, Minter, CollateralRegistry,
+    /// rows without a snapshot (protocol-scoped, Minter, CollateralRegistry, SecurityRegistry,
     /// DealTokenFactory) and for any
     /// loan-scoped row missing either the originator or the commodity. This is
     /// deliberately distinct from `scope.label` (`"Loan #<id>"` / `"Protocol"`), which
@@ -220,15 +267,86 @@ pub fn build_response(mut rows: Vec<AuditLogRow>, chains: &[ConfiguredChain]) ->
             a.chain_id,
         ))
     });
+    let proceeds = enforcement_proceeds(&rows, chains);
     let items = rows
         .into_iter()
         .filter(|row| !is_noop_sync(&row.event_name, &row.params))
         .filter_map(|row| {
             let kind = chains.iter().find(|c| c.chain_id == row.chain_id)?.kind;
-            Some(map_item(row, kind))
+            Some(map_item(row, kind, &proceeds))
         })
         .collect();
     AuditLogResponse { items }
+}
+
+fn enforcement_proceeds(
+    rows: &[AuditLogRow],
+    chains: &[ConfiguredChain],
+) -> HashMap<ProceedsKey, Proceeds> {
+    let configured = |row: &AuditLogRow| chains.iter().any(|c| c.chain_id == row.chain_id);
+    let loan_of = |row: &AuditLogRow| row.loan_id.clone().filter(|id| !id.is_empty());
+    let enforced: HashSet<ProceedsKey> = rows
+        .iter()
+        .filter(|row| row.event_name == "SecurityRecordEnforced" && configured(row))
+        .filter_map(|row| {
+            Some((
+                row.chain_id,
+                loan_of(row)?,
+                param_str(&row.params, "record_id")?,
+            ))
+        })
+        .collect();
+    let mut linked: HashMap<ProceedsKey, Proceeds> = HashMap::new();
+    if enforced.is_empty() {
+        return linked;
+    }
+    let loans: HashSet<(i64, String)> = enforced
+        .iter()
+        .map(|(chain, loan, _)| (*chain, loan.clone()))
+        .collect();
+    let reversed: HashSet<ProceedsKey> = rows
+        .iter()
+        .filter(|row| row.event_name == "CashRepaymentReversed")
+        .filter_map(|row| {
+            let loan = loan_of(row)?;
+            loans
+                .contains(&(row.chain_id, loan.clone()))
+                .then_some(())?;
+            Some((row.chain_id, loan, param_str(&row.params, "repayment_id")?))
+        })
+        .collect();
+    for row in rows
+        .iter()
+        .filter(|row| row.event_name == "CashRepaid" && configured(row))
+    {
+        let (Some(loan), Some(sale), Some(repayment), Some(cash)) = (
+            loan_of(row),
+            param_str(&row.params, "sale_id"),
+            param_str(&row.params, "repayment_id"),
+            param_str(&row.params, "cash").and_then(|c| parse_raw_amount(&c)),
+        ) else {
+            continue;
+        };
+        let key = (row.chain_id, loan.clone(), sale);
+        if !enforced.contains(&key) || reversed.contains(&(row.chain_id, loan, repayment.clone())) {
+            continue;
+        }
+        let entry = linked.entry(key).or_insert_with(|| Proceeds {
+            repayment_ids: Vec::new(),
+            cash_raw: 0,
+        });
+        let Some(total) = entry.cash_raw.checked_add(cash) else {
+            continue;
+        };
+        entry.cash_raw = total;
+        entry.repayment_ids.push(repayment);
+    }
+    for entry in linked.values_mut() {
+        entry
+            .repayment_ids
+            .sort_by(|a, b| (a.len(), a).cmp(&(b.len(), b)));
+    }
+    linked
 }
 
 /// A permissionless `DebtSynced` (`minted` and `clawed`) / `CargoSynced` (`minted` and
@@ -242,15 +360,24 @@ fn is_noop_sync(event_name: &str, params: &Value) -> bool {
     };
     keys.iter().all(|k| {
         param_str(params, k)
-            .and_then(|raw| BigDecimal::from_str(&raw).ok())
+            .and_then(|raw| parse_raw_amount(&raw))
             .is_some_and(|v| v == 0)
     })
 }
 
 /// Map one raw row to an API item, rendering the action string, scope, and friendly
 /// loan name.
-fn map_item(row: AuditLogRow, chain_kind: ChainKind) -> AuditLogItem {
-    let (action, details) = format_action(&row.event_name, &row.params, chain_kind);
+fn map_item(
+    row: AuditLogRow,
+    chain_kind: ChainKind,
+    proceeds: &HashMap<ProceedsKey, Proceeds>,
+) -> AuditLogItem {
+    let link = row
+        .loan_id
+        .clone()
+        .zip(param_str(&row.params, "record_id"))
+        .and_then(|(loan, record)| proceeds.get(&(row.chain_id, loan, record)));
+    let (action, details) = format_linked(&row.event_name, &row.params, chain_kind, link);
     let scope = match row.loan_id.as_deref() {
         Some(id) if !id.is_empty() => AuditScope {
             loan_id: Some(id.to_owned()),
@@ -325,11 +452,80 @@ fn param_i64(params: &Value, key: &str) -> Option<i64> {
 /// 7 decimals (#901), so the value is normalized to 6 decimals before formatting.
 /// Returns `None` when the value is missing or unparseable.
 fn param_amount(params: &Value, key: &str, chain_kind: ChainKind) -> Option<String> {
-    let raw = param_str(params, key)?;
-    let bd = BigDecimal::from_str(&raw).ok()?;
-    Some(base6_to_decimal_string(
-        &shared::chains::normalize_usdc_amount(chain_kind, &bd),
-    ))
+    let raw = parse_raw_amount(&param_str(params, key)?)?;
+    Some(amount_from_raw(raw, chain_kind))
+}
+
+fn parse_raw_amount(raw: &str) -> Option<i128> {
+    let digits = raw.strip_prefix('-').unwrap_or(raw);
+    if digits.is_empty() || digits.len() > 39 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    raw.parse().ok()
+}
+
+fn amount_from_raw(raw: i128, chain_kind: ChainKind) -> String {
+    let native = match chain_kind {
+        ChainKind::Evm => raw,
+        ChainKind::Stellar => raw / 10,
+    };
+    base6_to_decimal_string(&BigDecimal::from(native))
+}
+
+fn pct_from_bps(bps: i64) -> String {
+    (BigDecimal::from(bps) / BigDecimal::from(100))
+        .with_scale_round(2, RoundingMode::Down)
+        .to_plain_string()
+}
+
+fn bps_pct(params: &Value, key: &str) -> Option<String> {
+    param_i64(params, key).map(pct_from_bps)
+}
+
+fn ltv_pct(params: &Value) -> Option<String> {
+    param_i64(params, "ltv_bps")
+        .filter(|bps| *bps != UNBOUNDED_LTV_BPS)
+        .map(pct_from_bps)
+}
+
+fn ltv_label(params: &Value) -> Option<String> {
+    match param_i64(params, "ltv_bps")? {
+        UNBOUNDED_LTV_BPS => Some("unbounded".to_owned()),
+        bps => Some(format!("{}%", pct_from_bps(bps))),
+    }
+}
+
+fn signed_bps_pct(params: &Value, key: &str) -> Option<String> {
+    let bps = param_i64(params, key)?;
+    let pct = pct_from_bps(bps);
+    Some(if bps > 0 { format!("+{pct}") } else { pct })
+}
+
+fn duration_label(secs: u64) -> String {
+    match secs {
+        0 => "0s".to_owned(),
+        s if s % 86_400 == 0 => format!("{}d", s / 86_400),
+        s if s % 3_600 == 0 => format!("{}h", s / 3_600),
+        s if s % 60 == 0 => format!("{}m", s / 60),
+        s => format!("{s}s"),
+    }
+}
+
+fn duration_param(params: &Value, key: &str) -> Option<String> {
+    param_str(params, key)?.parse().ok().map(duration_label)
+}
+
+fn iso_param(params: &Value, key: &str) -> Option<String> {
+    let secs = i64::try_from(param_str(params, key)?.parse::<u64>().ok()?).ok()?;
+    chrono::DateTime::from_timestamp(secs, 0)?;
+    Some(iso_utc_from_unix(secs))
+}
+
+fn default_rate_pct(params: &Value) -> Option<String> {
+    let rate = u32::try_from(param_i64(params, "default_rate")?).ok()?;
+    Some(pct_from_bps(i64::from(economics_rate_to_bps(i64::from(
+        rate,
+    )))))
 }
 
 /// Map an `(event_name, params)` pair to a human-readable action string plus a curated
@@ -339,6 +535,30 @@ fn param_amount(params: &Value, key: &str, chain_kind: ChainKind) -> Option<Stri
 ///
 /// Public so `packages/api/tests/audit_log.rs` can exercise every branch without a DB.
 pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) -> (String, Value) {
+    format_linked(event_name, params, chain_kind, None)
+}
+
+fn format_linked(
+    event_name: &str,
+    params: &Value,
+    chain_kind: ChainKind,
+    link: Option<&Proceeds>,
+) -> (String, Value) {
+    let (mut action, details) = render(event_name, params, chain_kind, link);
+    if matches!(chain_kind, ChainKind::Stellar)
+        && LEGACY_COLLATERAL_REGISTRY_NAMES.contains(&event_name)
+    {
+        action.push_str(LEGACY_COLLATERAL_REGISTRY_SUFFIX);
+    }
+    (action, details)
+}
+
+fn render(
+    event_name: &str,
+    params: &Value,
+    chain_kind: ChainKind,
+    link: Option<&Proceeds>,
+) -> (String, Value) {
     match event_name {
         "LoanDrawn" => ("Loan approved & minted".to_owned(), json!({})),
 
@@ -858,8 +1078,305 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
             (action, pass(params, &["new_rate"]))
         }
 
+        name if name.starts_with("Security") => render_security(name, params, chain_kind, link),
+
         // Unreachable in practice — the SQL allow-list filters these out before they get
         // here — but keep it total rather than panicking on an unexpected event.
+        other => (other.to_owned(), json!({})),
+    }
+}
+
+fn render_enforced(
+    params: &Value,
+    chain_kind: ChainKind,
+    link: Option<&Proceeds>,
+) -> (String, Value) {
+    let record = param_str(params, "record_id");
+    let proceeds = link.map(|l| amount_from_raw(l.cash_raw, chain_kind));
+    let ids = link.map_or_else(Vec::new, |l| l.repayment_ids.clone());
+    let action = match (&record, &proceeds) {
+        (Some(r), Some(p)) => {
+            let listed = ids
+                .iter()
+                .map(|id| format!("#{id}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let noun = if ids.len() == 1 {
+                "repayment"
+            } else {
+                "repayments"
+            };
+            format!(
+                "Security record #{r} enforced — proceeds {} repaid ({noun} {listed})",
+                dollars(p)
+            )
+        }
+        (Some(r), None) => format!("Security record #{r} enforced"),
+        _ => "Security record enforced".to_owned(),
+    };
+    let mut details = pass(params, &["record_id", "proceeds_hash"]);
+    details["repayment_ids"] = json!(ids);
+    details["proceeds"] = json!(proceeds);
+    (action, details)
+}
+
+fn render_security(
+    event_name: &str,
+    params: &Value,
+    chain_kind: ChainKind,
+    link: Option<&Proceeds>,
+) -> (String, Value) {
+    let record = param_str(params, "record_id");
+    let inspection = param_str(params, "inspection_id");
+    let kind = param_str(params, "kind");
+    match event_name {
+        "SecurityRecordRegistered" => {
+            let lot = param_str(params, "lot_id");
+            let protection = param_str(params, "protection");
+            let action = match (&record, &protection, &lot) {
+                (Some(r), Some(p), Some(l)) => {
+                    format!("Security record #{r} registered — {p}, lot #{l}")
+                }
+                _ => "Security record registered".to_owned(),
+            };
+            (action, pass(params, &["record_id", "lot_id", "protection"]))
+        }
+
+        "SecurityRecordPerfected" => {
+            let action = match &record {
+                Some(r) => format!("Security record #{r} perfected"),
+                None => "Security record perfected".to_owned(),
+            };
+            (action, pass(params, &["record_id", "evidence_hash"]))
+        }
+
+        "SecurityRecordHandedOver" => {
+            let from = param_str(params, "from_record_id");
+            let to = param_str(params, "to_record_id");
+            let action = match (&from, &to) {
+                (Some(f), Some(t)) => format!("Security handed over — record #{f} → #{t}"),
+                _ => "Security handed over".to_owned(),
+            };
+            (
+                action,
+                pass(params, &["from_record_id", "to_record_id", "evidence_hash"]),
+            )
+        }
+
+        "SecurityRecordAttested" => {
+            let action = match &record {
+                Some(r) => format!("Security record #{r} attested"),
+                None => "Security record attested".to_owned(),
+            };
+            (action, pass(params, &["record_id", "attested_by"]))
+        }
+
+        "SecurityDocAdded" => {
+            let action = match (&kind, &record) {
+                (Some(k), Some(r)) => format!("Security document added — {k}, record #{r}"),
+                _ => "Security document added".to_owned(),
+            };
+            (action, pass(params, &["record_id", "kind", "sha256"]))
+        }
+
+        "SecurityRecordReleased" => {
+            let by_consent = param_value(params, "by_consent").and_then(Value::as_bool);
+            let action = match (&record, by_consent) {
+                (Some(r), Some(true)) => {
+                    format!("Security record #{r} released with Risk Council consent")
+                }
+                (Some(r), _) => format!("Security record #{r} released"),
+                (None, _) => "Security record released".to_owned(),
+            };
+            let mut details = pass(params, &["record_id", "reason_hash"]);
+            details["by_consent"] = json!(by_consent);
+            (action, details)
+        }
+
+        "SecurityMandateBreach" => (
+            "Mandate breach reported".to_owned(),
+            pass(params, &["evidence_hash"]),
+        ),
+
+        "SecurityEnforcementStarted" => {
+            let action = match &record {
+                Some(r) => format!("Enforcement started — security record #{r}"),
+                None => "Enforcement started".to_owned(),
+            };
+            (action, pass(params, &["record_id"]))
+        }
+
+        "SecurityRecordEnforced" => render_enforced(params, chain_kind, link),
+
+        "SecurityTermsSet" => {
+            let advance = bps_pct(params, "advance_ratio_bps");
+            let margin = bps_pct(params, "margin_call_ratio_bps");
+            let cure = duration_param(params, "cure_period");
+            let action = match (&advance, &margin, &cure) {
+                (Some(a), Some(m), Some(c)) => format!(
+                    "Security terms set — advance ratio {a}%, margin call ratio {m}%, cure period {c}"
+                ),
+                _ => "Security terms set".to_owned(),
+            };
+            let mut details = pass(
+                params,
+                &[
+                    "cure_period",
+                    "price_stale_after",
+                    "payment_term",
+                    "grace_period",
+                    "attestation_interval",
+                    "inspection_interval",
+                ],
+            );
+            details["advance_ratio_pct"] = json!(advance);
+            details["margin_call_ratio_pct"] = json!(margin);
+            details["default_rate_pct"] = json!(default_rate_pct(params));
+            details["tolerance_pct"] = json!(bps_pct(params, "tolerance_bps"));
+            details["grade_tolerance_pct"] = json!(bps_pct(params, "grade_tolerance_bps"));
+            (action, details)
+        }
+
+        "SecurityRevalued" => {
+            let value = param_amount(params, "value_per_unit", chain_kind);
+            let benchmark = param_str(params, "benchmark");
+            let action = match (&record, &value, &benchmark) {
+                (Some(r), Some(v), Some(b)) => {
+                    format!("Security record #{r} revalued — {}/unit ({b})", dollars(v))
+                }
+                (Some(r), Some(v), None) => {
+                    format!("Security record #{r} revalued — {}/unit", dollars(v))
+                }
+                _ => "Security record revalued".to_owned(),
+            };
+            let mut details = pass(params, &["record_id", "benchmark", "report_hash"]);
+            details["value_per_unit"] = json!(value);
+            (action, details)
+        }
+
+        "SecurityMarginCall" => {
+            let ratio = bps_pct(params, "margin_call_ratio_bps");
+            let cure_raw = param_str(params, "cure_by");
+            let clause = match (&cure_raw, iso_param(params, "cure_by")) {
+                (Some(_), Some(c)) => Some(format!(", cure by {c}")),
+                (Some(_), None) => Some(String::new()),
+                (None, _) => None,
+            };
+            let action = match (ltv_label(params), &ratio, clause) {
+                (Some(l), Some(m), Some(c)) => {
+                    format!("Margin call — LTV {l}, margin call ratio {m}%{c}")
+                }
+                _ => "Margin call".to_owned(),
+            };
+            let mut details = pass(params, &["cure_by"]);
+            details["ltv_pct"] = json!(ltv_pct(params));
+            details["margin_call_ratio_pct"] = json!(ratio);
+            (action, details)
+        }
+
+        "SecurityPriceStale" => {
+            let ratio = bps_pct(params, "margin_call_ratio_bps");
+            let action = match (ltv_label(params), &ratio) {
+                (Some(l), Some(m)) => format!(
+                    "Price stale — LTV {l} above {m}% margin call ratio, no margin call until revalued"
+                ),
+                _ => "Price stale".to_owned(),
+            };
+            (
+                action,
+                json!({ "ltv_pct": ltv_pct(params), "margin_call_ratio_pct": ratio }),
+            )
+        }
+
+        "SecurityMarginCallCured" => {
+            let action = match ltv_label(params) {
+                Some(l) => format!("Margin call cured — LTV {l}"),
+                None => "Margin call cured".to_owned(),
+            };
+            (action, json!({ "ltv_pct": ltv_pct(params) }))
+        }
+
+        "SecurityInspectionRecorded" => {
+            let action = match (&inspection, &kind, &record) {
+                (Some(i), Some(k), Some(r)) => {
+                    format!("Inspection #{i} recorded — {k}, security record #{r}")
+                }
+                _ => "Inspection recorded".to_owned(),
+            };
+            (
+                action,
+                pass(
+                    params,
+                    &["inspection_id", "record_id", "lot_id", "kind", "inspector"],
+                ),
+            )
+        }
+
+        "SecurityInspectionApproved" => {
+            let flagged = param_value(params, "flagged").and_then(Value::as_bool);
+            let action = match (
+                &inspection,
+                signed_bps_pct(params, "variance_reference_bps"),
+                signed_bps_pct(params, "variance_previous_bps"),
+                signed_bps_pct(params, "variance_grade_bps"),
+            ) {
+                (Some(i), Some(r), Some(p), Some(g)) => format!(
+                    "Inspection #{i} approved — variance vs reference {r}%, vs previous {p}%, grade {g}%{}",
+                    if flagged == Some(true) { ", flagged" } else { "" },
+                ),
+                _ => "Inspection approved".to_owned(),
+            };
+            let mut details = pass(params, &["inspection_id", "record_id", "approved_by"]);
+            details["variance_reference_pct"] = json!(bps_pct(params, "variance_reference_bps"));
+            details["variance_previous_pct"] = json!(bps_pct(params, "variance_previous_bps"));
+            details["variance_grade_pct"] = json!(bps_pct(params, "variance_grade_bps"));
+            details["flagged"] = json!(flagged);
+            (action, details)
+        }
+
+        "SecurityFlagResolved" => {
+            let outcome = param_str(params, "outcome");
+            let action = match (&outcome, &record, &inspection) {
+                (Some(o), Some(r), Some(i)) => {
+                    format!(
+                        "Inspection flag resolved — {o}, security record #{r} (inspection #{i})"
+                    )
+                }
+                _ => "Inspection flag resolved".to_owned(),
+            };
+            (
+                action,
+                pass(
+                    params,
+                    &["record_id", "inspection_id", "outcome", "reason_hash"],
+                ),
+            )
+        }
+
+        "SecurityExtensionConsent" => {
+            let action = match iso_param(params, "new_maturity") {
+                Some(m) => format!("Buyer extension consent — new maturity {m}"),
+                None => "Buyer extension consent".to_owned(),
+            };
+            (action, pass(params, &["new_maturity", "consent_hash"]))
+        }
+
+        "SecurityInspectorsSet" => {
+            let inspectors = param_value(params, "inspectors")
+                .filter(|v| v.is_array())
+                .cloned();
+            let action = match inspectors.as_ref().and_then(Value::as_array) {
+                Some(list) if list.len() == 1 => "Inspector panel set — 1 inspector".to_owned(),
+                Some(list) => format!("Inspector panel set — {} inspectors", list.len()),
+                None => "Inspector panel set".to_owned(),
+            };
+            (action, json!({ "inspectors": inspectors }))
+        }
+
+        "SecurityRegistryPaused" => ("SecurityRegistry paused".to_owned(), json!({})),
+
+        "SecurityRegistryUnpaused" => ("SecurityRegistry unpaused".to_owned(), json!({})),
+
         other => (other.to_owned(), json!({})),
     }
 }
