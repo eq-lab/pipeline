@@ -1,14 +1,14 @@
-# User story: #1794 — Stellar contract ids and signer roles synced with deployments #36 / #37
+# User story: #1794 / #1854 — Stellar contract ids and signer roles synced with deployments #36 + #42 (testnet) / #37 (mainnet)
 
 **Epic:** #1776
-**Issue:** https://github.com/eq-lab/pipeline/issues/1794
+**Issue:** https://github.com/eq-lab/pipeline/issues/1794 (testnet refresh: https://github.com/eq-lab/pipeline/issues/1854)
 **Status:** Initial
 
 ---
 
 ## Overview
 
-`.env.example` and `docs/references/backend.md` carry the Stellar contract ids and signer roles of the live testnet (#36) and mainnet (#37) deployments of `pipeline-stellar-contracts`, recorded at the commit named in `.env.example`. Spec: `docs/references/backend.md#stellar-contract-ids-and-signer-roles`.
+`.env.example` and `docs/references/backend.md` carry the Stellar contract ids and signer roles of the live testnet (#36 + #42) and mainnet (#37) deployments of `pipeline-stellar-contracts`, recorded at the commit named in `.env.example`. Spec: `docs/references/backend.md#stellar-contract-ids-and-signer-roles`.
 
 Persona: operator. Every step is a shell step (`jq`, `rg`, the `stellar` CLI) run from the repo root. `$C` is the local `pipeline-stellar-contracts` checkout at the commit recorded in `.env.example`; `$T` / `$M` are `$C/deployments/networks/testnet` and `.../mainnet`.
 
@@ -22,9 +22,10 @@ Persona: operator. Every step is a shell step (`jq`, `rg`, the `stellar` CLI) ru
 
 **Then:**
 
-- Each value appears in `$T/addresses.json` (`CHAIN_99000001_` keys), `$M/addresses.json` (`CHAIN_99000002_` keys), a `config.json` `usdc` / `withdrawal_queue.custodian` / `verifier` field, or is a documented example
-- Each key maps to the JSON key listed in the backend.md key map (for example `…_INDEXER_MINTER_ADDRESS` to `minter`, `…_COLLATERAL_REGISTRY_ADDRESS` to `collateral_registry`)
-- None of `CARFA2Q`, `CC3TWGF`, `CDO4X3H`, `CBJUO44`, `CAC7JMG`, `CCWX3TK`, `GDH66JAF` remains in `.env.example`
+- Each value (except the legacy testnet `…_COLLATERAL_REGISTRY_ADDRESS` `CBSMJS5Q…`, which testnet `addresses.json` no longer holds) appears in `$T/addresses.json` (`CHAIN_99000001_` keys), `$M/addresses.json` (`CHAIN_99000002_` keys), a `config.json` `usdc` / `withdrawal_queue.custodian` / `verifier` field, or is a documented example
+- Each key maps to the JSON key listed in the backend.md key map (for example `…_INDEXER_MINTER_ADDRESS` to `minter`; testnet `…_SECURITY_REGISTRY_ADDRESS` to `collateral_registry`)
+- None of `CARFA2Q`, `CC3TWGF`, `CDO4X3H`, `CBJUO44`, `CAC7JMG`, `CCWX3TK`, `GDH66JAF`, `CAPL5WN3`, `CAIBACM6` remains on a non-`VITE_` line of `.env.example`
+- `CDTUMAT6…` appears only on the `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` line
 
 ---
 
@@ -41,17 +42,17 @@ Persona: operator. Every step is a shell step (`jq`, `rg`, the `stellar` CLI) ru
 
 ---
 
-## Story 3 — The testnet `collateral_registry` id is the legacy CollateralRegistry
+## Story 3 — The testnet `collateral_registry` id is the SecurityRegistry
 
-**Given** `collateral_registry` in `$T/addresses.json`
+**Given** `collateral_registry` in `$T/addresses.json` (contracts #42), and the legacy `CBSMJS5Q…`
 
-**When** the operator runs `stellar contract info interface --id <id> --network testnet`
+**When** the operator runs `stellar contract info interface --id <id> --network testnet` for each
 
 **Then:**
 
-- The interface contains `pledge` and `lot`
-- It contains none of `register`, `perfect`, `record`
-- The id is therefore configured as `…_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS`, not `…_SECURITY_REGISTRY_ADDRESS`
+- `addresses.json` `collateral_registry` returns `register`, `perfect`, `record`, `attest`, `handover`, `record_inspection` and none of `pledge`, `lot`; it is configured as `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS`, not as the collateral key
+- `CBSMJS5Q…` returns `pledge` and `lot`; it stays on `…_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS`
+- Mainnet `collateral_registry` (`CA76K5CU…`) is still the legacy CollateralRegistry
 
 ---
 
