@@ -12,7 +12,7 @@ use sqlx::PgPool;
 
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher,
+    metadata_fetcher::MetadataFetcher, pocket_repo::PocketRepo,
 };
 
 use crate::indexer::config::StellarIndexerSettings;
@@ -30,6 +30,8 @@ use crate::indexer::{
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
         parsers::{dispatch_parser, transfer_between_tracked, transfer_touches_address},
+        pocket_parsers::dispatch_pocket,
+        pocket_seed::run_pocket_seed_loop,
         rpc::{EventFilter, StellarRpc},
     },
 };
@@ -84,6 +86,7 @@ pub struct StellarEventPoller {
     minter_id: Option<String>,
     collateral_registry_id: Option<String>,
     deal_token_factory_id: Option<String>,
+    pocket_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
@@ -108,6 +111,7 @@ impl StellarEventPoller {
         minter_id: Option<String>,
         collateral_registry_id: Option<String>,
         deal_token_factory_id: Option<String>,
+        pocket_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
@@ -125,6 +129,7 @@ impl StellarEventPoller {
             minter_id,
             collateral_registry_id,
             deal_token_factory_id,
+            pocket_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
             tracked_addresses,
@@ -160,6 +165,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(factory_id) = &self.deal_token_factory_id {
             contract_ids.push(factory_id.clone());
         }
+        if let Some(pocket_id) = &self.pocket_id {
+            contract_ids.push(pocket_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -170,6 +178,8 @@ impl ChainEventPoller for StellarEventPoller {
             let parsed = if self.collateral_registry_id.as_deref() == Some(raw.contract_id.as_str())
             {
                 dispatch_collateral_registry(&raw)
+            } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_pocket(&raw)
             } else {
                 dispatch_parser(
                     &raw,
@@ -344,6 +354,14 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    if let Some(pocket_id) = &settings.pocket_id {
+        tracing::info!(
+            pocket_id = %pocket_id,
+            chain_id,
+            "Stellar Pocket indexer enabled"
+        );
+    }
+
     // Asset-transfer tracking (custody/ramp flows). `asset_id` is `Some` only when
     // fully configured (asset id + custody + ramp addresses); the union of both
     // address lists is the membership filter applied in `poll`.
@@ -378,6 +396,24 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    let _seed_guard = match (&settings.pocket_id, &settings.loan_registry_id) {
+        (Some(pocket_id), Some(registry_id)) => Some(spawn_pocket_seed(
+            rpc.clone(),
+            PocketRepo::new(pool.clone()),
+            chain_id,
+            pocket_id.clone(),
+            registry_id.clone(),
+        )),
+        (Some(_), None) => {
+            tracing::warn!(
+                chain_id,
+                "pocket view seed disabled: LOAN_REGISTRY_ADDRESS is not set"
+            );
+            None
+        }
+        _ => None,
+    };
+
     let poller = StellarEventPoller::new(
         rpc,
         chain_id,
@@ -390,6 +426,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.minter_id.clone(),
         settings.collateral_registry_id.clone(),
         settings.deal_token_factory_id.clone(),
+        settings.pocket_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),
         tracked_addresses,
@@ -409,4 +446,37 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
 
     // `index_loop` never returns under normal operation.
     Ok(())
+}
+
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+fn spawn_pocket_seed(
+    rpc: Arc<StellarRpc>,
+    repo: PocketRepo,
+    chain_id: i64,
+    pocket_id: String,
+    registry_id: String,
+) -> AbortOnDrop {
+    let handle = tokio::spawn(run_pocket_seed_loop(
+        rpc,
+        repo,
+        chain_id,
+        pocket_id,
+        registry_id,
+    ));
+    let abort = handle.abort_handle();
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            if e.is_panic() {
+                tracing::error!(chain_id, error = %e, "pocket seed loop panicked");
+            }
+        }
+    });
+    AbortOnDrop(abort)
 }

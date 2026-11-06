@@ -46,6 +46,7 @@ fn make_test_state() -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses: HashMap::new(),
+        pocket_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -213,7 +214,7 @@ async fn requests_unconfigured_chain_id_is_200_empty_without_db() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, r#"{"requests":[]}"#);
+    assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
 }
 
 // ── OpenAPI ─────────────────────────────────────────────────────────────────

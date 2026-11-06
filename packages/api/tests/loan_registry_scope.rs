@@ -29,6 +29,7 @@ fn make_test_state(loan_registry_addresses: HashMap<i64, String>) -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses,
+        pocket_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
