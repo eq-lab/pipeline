@@ -372,6 +372,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |
 | [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
 | [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |
+| [#1792 Loan submission: data_room_id → borrower_ref and the HEAD draw_loan inputs](https://github.com/eq-lab/pipeline/issues/1792) | [1792-draw-loan-data-room-id.md](./epic-1776/1792-draw-loan-data-room-id.md) | Initial |
 
 ---
 
