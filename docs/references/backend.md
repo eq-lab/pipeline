@@ -362,7 +362,7 @@ configured LoanRegistry (the outbox stores no registry). Minter rows are otherwi
 leg counts on both sides; for minter-era repayments it is structurally about 0. The `interest` and
 `fees` fields are unchanged (they exclude `oet_alloc`). The query and arithmetic live in
 `shared::contract_logs_repo::list_repayment_mints` and `shared::minted_yield` for reuse by the
-dashboard cumulative yield (#1533), which counts interest of non-carved-out loans only and no fees (#1634, `yield-apy-semantics.md`).
+dashboard cumulative yield (#1533), which counts interest of non-carved-out loans only and no fees (#1634, `yield-apy-semantics.md`); a Stellar chain with `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS` also counts carved-out interest at release, net of reversal (#1789).
 
 #### Stellar deal-token-factory indexing
 
@@ -382,6 +382,46 @@ The token set is discovered at runtime. It is seeded once at startup from every 
 Both `deal_registered` shapes (legacy `{debt, cargo}` and HEAD `{debt}`) are accepted per event from the same factory address, so an in-place upgrade or a redeploy needs no mode switch; a `cargo` key that is present but not an address rejects the event. Factory admin events (`loan_registry_set`, `debt_issuer_set`, legacy `registries_set`, `issuers_set`) are not collected.
 
 Limitations: a deal registered before the indexer saw its `DealRegistered` is not tracked (remedy: rewind the cursor to before the registration, within RPC retention); history older than Soroban RPC retention is not backfilled (the next `DebtSynced` / `CargoSynced` carries the absolute `target`).
+
+#### Stellar Pocket indexing
+
+Enabled by `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` (#1789); unset ships dark — no pocket polling, no seed loop. The API side is a separate optional key, `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS`; unset means `pocket: null` in `GET /v1/loan-book`, `pocket_claims: []` in `GET /v1/requests`, `pocket_recovered: null` in `GET /v1/pnl`, and the dashboard yield unchanged. Both keys are validated as Strkey `C…` contract ids; the indexer key joins the distinct-role check as `POCKET_ADDRESS`. The Pocket stores no AccessManager or SecurityRegistry events (not indexed, by decision).
+
+Every Pocket event is a `#[contractevent]` with the default map format: `topics[0]` is the snake_case symbol, `#[topic]` fields follow, `value` is a map of the rest. Rows land in `contract_logs` only; amounts are decimal strings in the token's own 7-decimal scale.
+
+| On-chain topic | Topics | Value map | Stored `event_name` | Stored `params` |
+|---|---|---|---|---|
+| `pocket_opened` | `loan_id` | `amount`, `snapshot_ledger`, `supply_at_snapshot` | `PocketOpened` | `loan_id`, `amount`, `snapshot_ledger`, `supply_at_snapshot` |
+| `released` | `loan_id` | `principal`, `released`, `interest` | `PocketReleased` | `loan_id`, `principal`, `released`, `interest` |
+| `unreleased` | `loan_id` | `principal`, `interest` | `PocketUnreleased` | `loan_id`, `principal`, `interest` |
+| `burned` | `loan_id` | `amount`, `burned` | `PocketBurned` | `loan_id`, `amount`, `burned` |
+| `claimed` | `loan_id`, `holder` | `paid` | `PocketClaimed` | `loan_id`, `holder` (exact Strkey, `G…` or `C…`), `paid`, `paid_zero` (JSON bool) |
+
+`reporters_set` and the OpenZeppelin `paused` / `unpaused` / ownership / upgrade events are not stored. Every stored name carries the `Pocket` prefix because `Released` is already the CollateralRegistry name; the generic topics `released`, `burned` and `claimed` are decoded only when the event's `contract_id` equals the configured pocket id. The poller routes by contract id before `dispatch_parser`, right after the CollateralRegistry branch, and the pocket id is added to the `getEvents` filter. A recognised topic that fails to decode is dropped with a warning.
+
+**Fold.** `shared::pocket::fold_pocket` folds one loan's events, ordered by `(block_number, log_index)`:
+
+- `held = amount − Σ released.released + Σ unreleased.principal − Σ burned.burned`;
+- `released_total = Σ (released.released + released.interest) − Σ (unreleased.principal + unreleased.interest)`;
+- `burned_total = Σ burned.burned` (the burned amount, not the requested `amount`);
+- `claimed_total = Σ claimed.paid` (a zero claim adds 0).
+
+With an indexed `PocketOpened` the fold starts from zero, ignores any seed, and is `complete = true` with `opened = PocketOpened.amount`. Without one but with a seed, it starts from the seed totals and applies only events with `block_number > as_of_ledger`; it is `complete = false` and `opened` is `null`. With neither there is no pocket to serve. A row with a missing or unparsable amount is skipped with a warning.
+
+**View seed.** A defaulted loan whose `PocketOpened` was never indexed (the key was set after the default) is seeded by a separate loop in the worker, started from `run_stellar_indexer_job` when both the pocket and the loan-registry keys are set (without the registry key the seed is disabled with a warning). Every 60 seconds it takes the loans with a `LoanDefaulted` row on the configured registry that have no `PocketOpened` on the pocket and no `pocket_seeds` row, simulates `pocket(loan_id)`, and inserts the result with `as_of_ledger = simulateTransaction.latestLedger` (`ON CONFLICT DO NOTHING`). `NoPocket` (`Error(Contract, #2)`) is logged at debug level; any other failure is warned once per loan per process; errors never propagate, and the loop runs outside `index_once`, so it cannot stall Stellar indexing. Events at or below `as_of_ledger` are inside the seed; later ones are folded on top. A ledger closing during the simulate call is a residual best-effort race.
+
+`pocket_seeds` (migration `20261103000001_pocket_seeds.sql`) holds one row per `(chain_id, pocket_address, loan_id)`: `as_of_ledger`, `snapshot_ledger`, `supply_at_snapshot`, `held`, `released_total`, `burned_total`, `claimed_total`.
+
+**API.**
+
+- `GET /v1/loan-book`: each entry has `pocket` (`null` without the API key or without a fold). Fields: `snapshot_ledger`; `supply_at_snapshot` (raw sPLUSD share count, unscaled decimal string); `opened` (`null` when `complete` is `false`); `held`, `released_total`, `burned_total`, `claimed_total` as 6-decimal USDC strings via `normalize_usdc_amount`; `complete`.
+- `GET /v1/requests`: sibling list `pocket_claims` (always present, empty when none), items `{chain_id, loan_id, amount, tx_hash, created_at}` with `amount` raw PLUSD like `RequestItem.amount`. Built from `PocketClaimed` rows whose `holder` equals the `wallet` query value byte for byte, on Stellar chains in scope that have the API key; zero claims (`paid_zero`) are excluded, and `status=pending` returns it empty. `requests[]` gets no new `type`.
+- `GET /v1/pnl`: `pocket_recovered` is the sum of the wallet's `PocketClaimed.paid` on the chain, raw PLUSD like `total_realized_pnl`; `null` on EVM or without the key; the endpoint accepts only `G…` wallets, so a `C…` holder's claims appear in `pocket_claims` only. When non-null, `total_realized_pnl = Σ positions.realized_pnl + pocket_recovered` and `total_pnl = total_unrealized_pnl + total_realized_pnl`. `positions[]` and `avg_apy` are unchanged; unclaimed claimable is excluded.
+- Dashboard cumulative yield and the audit log are described in `yield-apy-semantics.md`, `dashboards.md` and `audit-logging.md`.
+
+**Cursor and retention.** Setting the key indexes from the current cursor. When the contract already emitted events, rewind the cursor within Soroban RPC retention (replays dedupe on `(chain_id, contract_address, block_number, log_index)`); beyond retention the view seed carries the totals. Claims emitted before the key was set are absent from `pocket_claims` and `pocket_recovered`, although `claimed_total` is right through the seed; there is no per-holder seed.
+
+**`complete` limitation.** Any indexed `PocketOpened` makes the fold `complete = true`; the code cannot tell whether later pocket events were missed. `complete` therefore assumes the pocket key stayed configured since the `PocketOpened` ledger. If the key was unset for a while, rewind the Stellar cursor within RPC retention so the gap is re-indexed (replays dedupe); past retention the folded totals can be short of the contract's `pocket(loan_id)` (TD-170).
 
 The CollateralRegistry's 11 business events are collected on EVM when
 `CHAIN_<id>_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set (unset ships dark) and stored as raw
@@ -706,6 +746,8 @@ QuickNode node
 | `GET` | `/v1/protocol/status` | Operational: paused contracts, shutdown state, rate-limit window |
 | `GET` | `/v1/protocol/limits` | Current `maxPerWindow`, `maxPerLPPerWindow`, `maxTotalSupply`, window utilization, per-LP utilization — for deposit UI to display caps before the LP submits |
 | `GET` | `/v1/protocol/reserve-health` | `reserveHealth()` view: backing, supply, headroom — for dashboard |
+| `GET` | `/v1/requests` | Activity feed; `pocket_claims` lists the wallet's non-zero Stellar Pocket claims (#1789, see "Stellar Pocket indexing") |
+| `GET` | `/v1/pnl` | Staking PnL; `pocket_recovered` adds the wallet's Pocket claims to the realised totals (#1789) |
 
 ### 3B. Trustee-Facing (consumed by Trustee tooling)
 
@@ -831,7 +873,7 @@ Source of truth: `pipeline-stellar-contracts` `deployments/networks/<testnet|mai
 | `minter` | Minter | indexer `…_STELLAR_INDEXER_MINTER_ADDRESS` (optional; also gates relayer wire-in matching) | `…_STELLAR_API_MINTER_ADDRESS` (#1790, not read yet) with boolean switch `…_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` | n/a |
 | `collateral_registry` | see the trap below | legacy: `…_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS`; SecurityRegistry: `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (#1779, not read yet) | n/a | n/a |
 | `deal_token_factory` | DealTokenFactory | indexer `…_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (optional) | n/a | n/a |
-| `pocket` | Pocket | indexer `…_STELLAR_INDEXER_POCKET_ADDRESS` (#1789, not read yet) | `…_STELLAR_API_POCKET_ADDRESS` (#1789, not read yet) | n/a |
+| `pocket` | Pocket | indexer `…_STELLAR_INDEXER_POCKET_ADDRESS` (optional; needs the loan-registry key for the view seed) | `…_STELLAR_API_POCKET_ADDRESS` (optional) | n/a |
 | `access_manager` | AccessManager | n/a | n/a | `…_RELAYER_STELLAR_ACCESS_MANAGER_ID` (required) |
 | `plusd` | PLUSD SAC | n/a | n/a | `…_RELAYER_STELLAR_PLUSD_SAC_ID` (required) |
 | `usdc` (testnet `addresses.json`, mainnet `config.json`) | USDC SAC | `JOB_INDEXER_STELLAR_ASSET_ID` (job-level: one network per worker) | n/a | n/a |

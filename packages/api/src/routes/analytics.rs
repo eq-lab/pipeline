@@ -8,10 +8,14 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use crate::config::ConfiguredChain;
+use crate::formatting::iso_utc_from_unix;
 use crate::routes::common::{ChainScope, LenientChainFilter};
+use crate::routes::loan_book::loan_key;
 use crate::AppState;
 use shared::chains::ChainKind;
 use shared::kyc_repo::kyt_gate_for_kind;
+use shared::pocket_repo::{PocketClaimRow, PocketRepo};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/requests", get(get_requests))
@@ -20,7 +24,7 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_requests),
-    components(schemas(RequestsQuery, RequestsResponse, RequestItem)),
+    components(schemas(RequestsQuery, RequestsResponse, RequestItem, PocketClaimItem)),
     tags(
         (name = "Analytics", description = "Transaction history and activity feed")
     )
@@ -64,6 +68,59 @@ pub struct RequestItem {
 #[derive(Serialize, ToSchema)]
 pub struct RequestsResponse {
     pub requests: Vec<RequestItem>,
+    pub pocket_claims: Vec<PocketClaimItem>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PocketClaimItem {
+    pub chain_id: i64,
+    pub loan_id: String,
+    pub amount: String,
+    pub tx_hash: String,
+    pub created_at: String,
+}
+
+pub fn includes_pocket_claims(status: Option<&str>) -> bool {
+    status != Some("pending")
+}
+
+pub fn pocket_claim_items(chain_id: i64, rows: Vec<PocketClaimRow>) -> Vec<PocketClaimItem> {
+    rows.into_iter()
+        .map(|r| PocketClaimItem {
+            chain_id,
+            loan_id: loan_key(&r.loan_id),
+            amount: r.paid.to_plain_string(),
+            tx_hash: r.tx_hash,
+            created_at: iso_utc_from_unix(r.block_timestamp),
+        })
+        .collect()
+}
+
+async fn pocket_claims(
+    state: &AppState,
+    scope: ChainScope,
+    wallet: &str,
+) -> anyhow::Result<Vec<PocketClaimItem>> {
+    let chains: Vec<ConfiguredChain> = match scope {
+        ChainScope::All => state.chains.clone(),
+        ChainScope::One(c) => vec![c],
+        ChainScope::Unconfigured(_) => Vec::new(),
+    };
+    let repo = PocketRepo::new(state.pool.clone());
+    let mut out = Vec::new();
+    for chain in chains {
+        if chain.kind != ChainKind::Stellar {
+            continue;
+        }
+        let Some(pocket) = state.pocket_addresses.get(&chain.chain_id) else {
+            continue;
+        };
+        let rows = repo
+            .list_holder_claims(chain.chain_id, pocket, wallet)
+            .await?;
+        out.extend(pocket_claim_items(chain.chain_id, rows));
+    }
+    Ok(out)
 }
 
 #[utoipa::path(
@@ -95,6 +152,7 @@ async fn get_requests(
         ChainScope::Unconfigured(_) => {
             return Json(RequestsResponse {
                 requests: Vec::new(),
+                pocket_claims: Vec::new(),
             })
             .into_response();
         }
@@ -128,7 +186,26 @@ async fn get_requests(
                     created_at: e.created_at,
                 })
                 .collect();
-            Json(RequestsResponse { requests: items }).into_response()
+            let claims = if includes_pocket_claims(query.status.as_deref()) {
+                pocket_claims(&state, scope, query.wallet.trim()).await
+            } else {
+                Ok(Vec::new())
+            };
+            match claims {
+                Ok(pocket_claims) => Json(RequestsResponse {
+                    requests: items,
+                    pocket_claims,
+                })
+                .into_response(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to fetch pocket claims");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "internal error"})),
+                    )
+                        .into_response()
+                }
+            }
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to fetch requests");

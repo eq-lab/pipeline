@@ -106,6 +106,7 @@ pub struct ChainsConfig {
     /// `contract_logs.contract_address` (EIP-55 on EVM, `C…` Strkey on Stellar).
     /// Every configured chain has an entry (startup fails otherwise).
     pub loan_registry_addresses: HashMap<i64, String>,
+    pub pocket_addresses: HashMap<i64, String>,
 }
 
 /// Custody + ramp address sets used to classify indexed `AssetTransfer`
@@ -165,6 +166,7 @@ impl ChainsConfig {
         let mut withdrawal_queue_wallets = HashMap::new();
         let mut asset_decimals = HashMap::new();
         let mut loan_registry_addresses = HashMap::new();
+        let mut pocket_addresses = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -177,6 +179,7 @@ impl ChainsConfig {
                 kind: chain_kind,
             });
             load_loan_registry_address(chain_id, chain_kind, &mut loan_registry_addresses)?;
+            load_pocket_address(chain_id, chain_kind, &mut pocket_addresses)?;
             let decimals = load_asset_decimals(chain_id, chain_kind)?;
             load_transfer_addresses(chain_id, chain_kind, decimals, &mut transfer_addresses)?;
             load_withdrawal_queue_wallet(chain_id, chain_kind, &mut withdrawal_queue_wallets)?;
@@ -226,6 +229,7 @@ impl ChainsConfig {
             withdrawal_queue_wallets,
             asset_decimals,
             loan_registry_addresses,
+            pocket_addresses,
         })
     }
 }
@@ -261,6 +265,28 @@ fn load_loan_registry_address(
         }
     };
     tracing::info!(chain_id, loan_registry = %normalized, "API LoanRegistry scope loaded");
+    out.insert(chain_id, normalized);
+    Ok(())
+}
+
+fn load_pocket_address(
+    chain_id: i64,
+    kind: ChainKind,
+    out: &mut HashMap<i64, String>,
+) -> Result<()> {
+    if kind != ChainKind::Stellar {
+        return Ok(());
+    }
+    let key = format!("CHAIN_{chain_id}_STELLAR_API_POCKET_ADDRESS");
+    let raw = env::var(&key).unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(());
+    }
+    let contract = stellar_strkey::Contract::from_string(raw)
+        .map_err(|e| anyhow::anyhow!("{key} must be a valid C… contract Strkey: {e}"))?;
+    let normalized = format!("{contract}");
+    tracing::info!(chain_id, pocket = %normalized, "API Pocket scope loaded");
     out.insert(chain_id, normalized);
     Ok(())
 }

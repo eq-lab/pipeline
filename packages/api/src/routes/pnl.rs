@@ -16,6 +16,8 @@ use crate::intervals::{Interval, MAX_SAMPLES};
 use crate::routes::common::{RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
+use shared::chains::ChainKind;
+use shared::pocket_repo::PocketRepo;
 use shared::position_repo::{BalanceEventRow, PositionHistoryBucket};
 use shared::time_weighted_return::{time_weighted_apy, VaultHolding};
 
@@ -73,6 +75,7 @@ pub struct PnlResponse {
     pub total_unrealized_pnl: String,
     pub total_realized_pnl: String,
     pub total_pnl: String,
+    pub pocket_recovered: Option<String>,
     /// Time-weighted annualised share-price return over the wallet's holding intervals
     /// (`shares_balance > 0`): `Π(price_end / price_start)` annualised (365 d) over total held
     /// time, independent of buy timing. Null with under 1 day held or no price at a boundary.
@@ -109,7 +112,7 @@ async fn get_pnl(
         }
     };
 
-    match compute_pnl(&state, &wallet, chain_id).await {
+    match compute_pnl(&state, &wallet, chain_id, chain_kind).await {
         Ok(response) => Json(response).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "failed to compute PnL");
@@ -122,7 +125,47 @@ async fn get_pnl(
     }
 }
 
-async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::Result<PnlResponse> {
+pub fn pnl_totals(
+    unrealized: &BigDecimal,
+    realized: &BigDecimal,
+    pocket_recovered: Option<&BigDecimal>,
+) -> (String, String, Option<String>) {
+    let realized = match pocket_recovered {
+        Some(recovered) => realized + recovered,
+        None => realized.clone(),
+    };
+    let total = unrealized + &realized;
+    (
+        realized.to_plain_string(),
+        total.to_plain_string(),
+        pocket_recovered.map(BigDecimal::to_plain_string),
+    )
+}
+
+async fn pocket_recovered(
+    state: &AppState,
+    wallet: &str,
+    chain_id: i64,
+    kind: ChainKind,
+) -> anyhow::Result<Option<BigDecimal>> {
+    if kind != ChainKind::Stellar {
+        return Ok(None);
+    }
+    let Some(pocket) = state.pocket_addresses.get(&chain_id) else {
+        return Ok(None);
+    };
+    let claims = PocketRepo::new(state.pool.clone())
+        .list_holder_claims(chain_id, pocket, wallet)
+        .await?;
+    Ok(Some(claims.iter().map(|c| c.paid.clone()).sum()))
+}
+
+async fn compute_pnl(
+    state: &AppState,
+    wallet: &str,
+    chain_id: i64,
+    kind: ChainKind,
+) -> anyhow::Result<PnlResponse> {
     let summaries = state
         .position_repo
         .get_position_summaries(chain_id, wallet)
@@ -158,7 +201,9 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
         });
     }
 
-    let total_pnl = &total_unrealized + &total_realized;
+    let recovered = pocket_recovered(state, wallet, chain_id, kind).await?;
+    let (total_realized_pnl, total_pnl, pocket_recovered) =
+        pnl_totals(&total_unrealized, &total_realized, recovered.as_ref());
 
     let avg_apy = compute_avg_apy(state, wallet, chain_id).await?;
 
@@ -166,8 +211,9 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
         wallet: wallet.to_owned(),
         positions,
         total_unrealized_pnl: total_unrealized.to_string(),
-        total_realized_pnl: total_realized.to_string(),
-        total_pnl: total_pnl.to_string(),
+        total_realized_pnl,
+        total_pnl,
+        pocket_recovered,
         avg_apy: avg_apy.map(|v| format!("{v:.6}")),
     })
 }
