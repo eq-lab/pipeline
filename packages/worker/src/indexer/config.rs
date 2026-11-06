@@ -43,6 +43,7 @@ pub struct StellarIndexerSettings {
     pub collateral_registry_id: Option<String>,
     pub deal_token_factory_id: Option<String>,
     pub pocket_id: Option<String>,
+    pub security_registry_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
     /// `Some` enables asset-transfer polling outright — when `withdrawal_queue_wallet_id`
     /// is also set, every transfer touching it (one-sided: either side, any
@@ -142,6 +143,17 @@ impl StellarIndexerSettings {
                 let validated = validate_contract_id(&pocket_key, raw)?;
                 stellar_strkey::Contract::from_string(&validated)
                     .map_err(|e| anyhow::anyhow!("{pocket_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let security_key = format!("{ip}SECURITY_REGISTRY_ADDRESS");
+        let security_registry_id = match env::var(&security_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&security_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{security_key} failed Strkey parse: {e}"))?;
                 Some(validated)
             }
             _ => None,
@@ -260,6 +272,9 @@ impl StellarIndexerSettings {
         if let Some(id) = &pocket_id {
             roles.push(("POCKET_ADDRESS", id));
         }
+        if let Some(id) = &security_registry_id {
+            roles.push(("SECURITY_REGISTRY_ADDRESS", id));
+        }
         // Include the asset id when transfer tracking is enabled — it is polled
         // alongside the other roles and routed by the same if/else dispatch ladder.
         if let Some(id) = &asset_id {
@@ -291,6 +306,7 @@ impl StellarIndexerSettings {
             collateral_registry_id,
             deal_token_factory_id,
             pocket_id,
+            security_registry_id,
             asset_id,
             custody_addresses,
             ramp_addresses,
