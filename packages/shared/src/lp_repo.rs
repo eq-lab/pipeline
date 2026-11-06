@@ -277,6 +277,24 @@ impl LpRepo {
             .await
     }
 
+    pub async fn holders_of_stellar_addresses(
+        &self,
+        chain_id: i64,
+        links: &[(String, i64)],
+    ) -> Result<Vec<StellarAddressHolder>, sqlx::Error> {
+        if links.is_empty() {
+            return Ok(Vec::new());
+        }
+        let addresses: Vec<String> = links.iter().map(|(a, _)| a.clone()).collect();
+        let times: Vec<i64> = links.iter().map(|(_, t)| *t).collect();
+        sqlx::query_as::<_, StellarAddressHolder>(STELLAR_ADDRESS_HOLDERS_SQL)
+            .bind(addresses)
+            .bind(times)
+            .bind(chain_id)
+            .fetch_all(&self.pool)
+            .await
+    }
+
     fn writable_statuses() -> Vec<String> {
         KybStatus::owner_writable_strs()
             .into_iter()
@@ -534,6 +552,34 @@ pub const LIST_SETTLEMENT_ADDRESS_HISTORY_SQL: &str = "SELECT id, lp_id, chain_k
      FROM lp_settlement_address_history WHERE lp_id = $1 ORDER BY id DESC";
 
 pub const ADDRESS_HOLDER_STELLAR_SQL: &str = "SELECT id FROM lps WHERE stellar_address = $1";
+
+pub const STELLAR_ADDRESS_HOLDERS_SQL: &str =
+    "SELECT q.address, q.requested_at, l.id AS lp_id, l.legal_name \
+     FROM unnest($1::text[], $2::bigint[]) AS q(address, requested_at) \
+     JOIN LATERAL ( \
+         SELECT h.lp_id \
+           FROM lp_settlement_address_history h \
+          WHERE h.chain_kind = 'stellar' \
+            AND h.address = q.address \
+            AND (h.chain_id IS NULL OR h.chain_id = $3) \
+            AND h.created_at <= to_timestamp(q.requested_at) \
+            AND NOT EXISTS ( \
+                SELECT 1 FROM lp_settlement_address_history n \
+                 WHERE n.lp_id = h.lp_id \
+                   AND n.chain_kind = 'stellar' \
+                   AND (n.created_at, n.id) > (h.created_at, h.id) \
+                   AND n.created_at <= to_timestamp(q.requested_at)) \
+          ORDER BY h.created_at DESC, h.id DESC \
+          LIMIT 1) a ON TRUE \
+     JOIN lps l ON l.id = a.lp_id";
+
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct StellarAddressHolder {
+    pub address: String,
+    pub requested_at: i64,
+    pub lp_id: i64,
+    pub legal_name: String,
+}
 
 pub const ADDRESS_HOLDER_EVM_SQL: &str = "SELECT id FROM lps WHERE evm_address = $1";
 

@@ -368,6 +368,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1788 Stellar DealTokenFactory: DEBT-only DealRegistered after contracts #38](https://github.com/eq-lab/pipeline/issues/1788) | [1788-stellar-debt-only-deal-registered.md](./epic-1776/1788-stellar-debt-only-deal-registered.md) | Initial |
+| [#1789 Index the Stellar Pocket; pocket state in the loan book; recoveries in LP PnL and cumulative yield](https://github.com/eq-lab/pipeline/issues/1789) | [1789-stellar-pocket-indexing.md](./epic-1776/1789-stellar-pocket-indexing.md) | Initial |
+| [#1791 Withdrawal queue: index the recovery rate; serve queue offsets, aggregates and rate-scaled USD](https://github.com/eq-lab/pipeline/issues/1791) | [1791-withdrawal-queue-recovery-rate.md](./epic-1776/1791-withdrawal-queue-recovery-rate.md) | Initial |
 | [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |
 | [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
-| [#1789 Index the Stellar Pocket; pocket state in the loan book; recoveries in LP PnL and cumulative yield](https://github.com/eq-lab/pipeline/issues/1789) | [1789-stellar-pocket-indexing.md](./epic-1776/1789-stellar-pocket-indexing.md) | Initial |
+| [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |

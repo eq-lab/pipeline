@@ -131,6 +131,26 @@ struct Case {
     params: Value,
 }
 
+fn pool_val(read_failed: bool) -> ScVal {
+    map_val(vec![
+        ("custody", ScVal::Vec(None)),
+        ("read_failed", ScVal::Bool(read_failed)),
+        ("bank_cash", i128_val(-1_234)),
+        ("in_flight", i128_val(5)),
+        ("outstanding_total", i128_val(i128::MAX)),
+        ("unabsorbed_total", i128_val(0)),
+        ("total_assets", i128_val(7)),
+    ])
+}
+
+fn snapshot_event(read_failed: bool) -> RawEvent {
+    raw(
+        "snapshot",
+        vec![ScVal::U32(55)],
+        map_val(vec![("pool", pool_val(read_failed))]),
+    )
+}
+
 fn cases() -> Vec<Case> {
     vec![
         Case {
@@ -343,6 +363,30 @@ fn cases() -> Vec<Case> {
                 map_val(vec![("requested", i128_val(100)), ("pulled", i128_val(60))]),
             ),
             params: json!({"requested": "100", "pulled": "60"}),
+        },
+        Case {
+            topic: "snapshot",
+            stored: "MinterSnapshot",
+            keys: &[
+                "bank_cash",
+                "in_flight",
+                "ledger",
+                "outstanding_total",
+                "read_failed",
+                "total_assets",
+                "unabsorbed_total",
+            ],
+            parser: parse_minter_snapshot,
+            event: snapshot_event(false),
+            params: json!({
+                "ledger": "55",
+                "bank_cash": "-1234",
+                "in_flight": "5",
+                "outstanding_total": "170141183460469231731687303715884105727",
+                "unabsorbed_total": "0",
+                "total_assets": "7",
+                "read_failed": false,
+            }),
         },
     ]
 }
@@ -603,12 +647,7 @@ fn each_minter_topic_routes_to_its_stored_name() {
 
 #[test]
 fn uncollected_minter_topics_are_dropped() {
-    for name in [
-        "snapshot",
-        "treasury_set",
-        "rate_limit_applied",
-        "tx_limit_set",
-    ] {
+    for name in ["treasury_set", "rate_limit_applied", "tx_limit_set"] {
         let ev = raw(name, vec![], map_val(vec![]));
         assert!(dispatch(&ev, Some(MINTER), None).is_none(), "{name}");
     }
@@ -635,4 +674,59 @@ fn no_new_event_name_is_claimed_by_the_loan_registry_path() {
     for c in cases() {
         assert!(!is_loan_registry_event(c.stored), "{}", c.stored);
     }
+}
+
+// ── Snapshot ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn snapshot_read_failed_true_is_stored_as_a_json_bool() {
+    let log = parse_minter_snapshot(&snapshot_event(true)).unwrap();
+    assert_eq!(log.params["read_failed"], json!(true));
+}
+
+#[test]
+fn snapshot_with_a_wrong_arity_a_missing_pool_or_a_non_map_pool_is_rejected() {
+    let mut no_topic = snapshot_event(false);
+    no_topic.topics_base64.truncate(1);
+    assert!(parse_minter_snapshot(&no_topic).is_none());
+
+    let missing = raw("snapshot", vec![ScVal::U32(1)], map_val(vec![]));
+    assert!(parse_minter_snapshot(&missing).is_none());
+
+    let non_map = raw(
+        "snapshot",
+        vec![ScVal::U32(1)],
+        map_val(vec![("pool", ScVal::U32(3))]),
+    );
+    assert!(parse_minter_snapshot(&non_map).is_none());
+}
+
+#[test]
+fn snapshot_with_a_mistyped_pool_field_is_rejected() {
+    let pool = map_val(vec![
+        ("read_failed", ScVal::U32(1)),
+        ("bank_cash", i128_val(1)),
+        ("in_flight", i128_val(1)),
+        ("outstanding_total", i128_val(1)),
+        ("unabsorbed_total", i128_val(1)),
+        ("total_assets", i128_val(1)),
+    ]);
+    let ev = raw(
+        "snapshot",
+        vec![ScVal::U32(1)],
+        map_val(vec![("pool", pool)]),
+    );
+    assert!(parse_minter_snapshot(&ev).is_none());
+}
+
+#[test]
+fn a_snapshot_from_the_loan_registry_is_not_parsed() {
+    let mut ev = snapshot_event(false);
+    ev.contract_id = REGISTRY.to_owned();
+    assert!(dispatch(&ev, Some(MINTER), Some(REGISTRY)).is_none());
+}
+
+#[test]
+fn minter_snapshot_is_not_claimed_by_the_loan_registry_path() {
+    assert!(!is_loan_registry_event("MinterSnapshot"));
 }

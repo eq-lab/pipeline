@@ -85,10 +85,11 @@ use shared::kyb_document_repo::{DocumentStatus, KybDocumentRepo, KybDocumentRow}
 use shared::lp_repo::{KybStatus, LpRow};
 use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPTED_CONTENT_TYPES};
 
-use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
+use crate::auth::{AuthClaims, Claims, SecurityAddon};
 use crate::config::KybLimits;
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
+use crate::routes::common::require_trustee;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -1249,15 +1250,6 @@ async fn store_one(state: &AppState, lp_id: i64, file: UploadedFile) -> FileResu
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
-    if claims.has_role(TRUSTEE_ROLE) {
-        return Ok(());
-    }
-    Err(ApiError::Forbidden(format!(
-        "this endpoint requires the `{TRUSTEE_ROLE}` role"
-    )))
-}
 
 /// The caller's LP, or `404`. Replaces the old `lp_owner_guard`: with the owner
 /// routes keyed on `/me`, ownership is not something to check after the fact —

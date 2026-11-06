@@ -44,6 +44,13 @@
 //!   base-6 scaling — a cash-rail movement has no on-chain native scale); this
 //!   endpoint scales it to base-6 units only when folding it into `total` alongside
 //!   `deployed`/`in_transit`.
+//! - **Minter cash book switch** — on a Stellar chain with
+//!   `CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=true` **and** a `complete`
+//!   minter fold (`minter_cash`), `in_transit` is the minter's `in_flight` and the chain's
+//!   `trust_account` contribution is the minter's `bank_cash` (dollars); that chain's
+//!   Trustee-entered `loan_capital_transfers` trust-account and on/off-ramp figures stop
+//!   counting and `deployed` is unchanged. An incomplete fold, and every EVM chain, keep
+//!   the sources above (see `docs/product-specs/minter-cash-book.md`).
 //! - **`withdrawal_queue`** — the Withdrawal Queue Wallet's current USDC balance
 //!   (Issue #933), read from the running `params.wallet_balance_after` the indexer
 //!   computes on each tracked `AssetTransfer` (`ContractLogsRepo::get_wallet_balance_as_of`).
@@ -56,7 +63,7 @@
 //! - **`tbills`** — `null`. TODO: index the USYC / T-Bills holding.
 
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::extract::State;
 use axum::routing::get;
@@ -72,6 +79,7 @@ use shared::loan_status::is_active_at;
 use crate::config::{TransferAddressSets, CANONICAL_AMOUNT_DECIMALS};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
+use crate::minter_cash_book::{fold_cash, normalized_base6};
 use crate::routes::common::LenientChainFilter;
 use crate::AppState;
 
@@ -177,7 +185,14 @@ async fn get_capital_allocation(
         // The five reads are independent of each other — run them concurrently
         // rather than as a serial chain of round-trips (this endpoint is polled by
         // the Trustee Overview card).
-        let (chain_loans, chain_events, transfers, withdrawal_queue_balance, capital_transfers) = tokio::try_join!(
+        let (
+            chain_loans,
+            chain_events,
+            transfers,
+            withdrawal_queue_balance,
+            capital_transfers,
+            minter_fold,
+        ) = tokio::try_join!(
             async {
                 state
                     .contract_logs_repo
@@ -216,7 +231,31 @@ async fn get_capital_allocation(
                     .await
                     .map_err(ApiError::from)
             },
+            async {
+                match state.minter_addresses.get(&chain_id) {
+                    Some(minter) if state.capital_allocation_from_minter.contains(&chain_id) => {
+                        let rows = state
+                            .contract_logs_repo
+                            .list_minter_fold_events(chain_id, minter)
+                            .await
+                            .map_err(ApiError::from)?;
+                        Ok(Some(fold_cash(&rows)))
+                    }
+                    _ => Ok(None),
+                }
+            },
         )?;
+        let minter_cash = minter_fold.and_then(|fold| {
+            if fold.complete {
+                Some(MinterCashTotals {
+                    bank_cash: normalized_base6(fold.bank_cash),
+                    in_flight: normalized_base6(fold.in_flight),
+                })
+            } else {
+                log_incomplete_fold(chain_id);
+                None
+            }
+        });
         loans.extend(chain_loans);
         events.extend(chain_events);
         reads.push((
@@ -225,13 +264,21 @@ async fn get_capital_allocation(
             transfers,
             withdrawal_queue_balance,
             capital_transfers,
+            minter_cash,
         ));
     }
 
     let chains: Vec<ChainCapitalInputs> = reads
         .iter()
         .map(
-            |(chain_id, asset_decimals, transfers, withdrawal_queue_balance, capital_transfers)| {
+            |(
+                chain_id,
+                asset_decimals,
+                transfers,
+                withdrawal_queue_balance,
+                capital_transfers,
+                minter_cash,
+            )| {
                 ChainCapitalInputs {
                     chain_id: *chain_id,
                     transfers,
@@ -239,6 +286,7 @@ async fn get_capital_allocation(
                     asset_decimals: *asset_decimals,
                     withdrawal_queue_balance: withdrawal_queue_balance.as_ref(),
                     capital_transfers,
+                    minter_cash: minter_cash.clone(),
                 }
             },
         )
@@ -247,6 +295,26 @@ async fn get_capital_allocation(
     Ok(Json(compute_capital_allocation(
         &loans, &events, to, &chains,
     )))
+}
+
+static INCOMPLETE_FOLD_WARNED: OnceLock<Mutex<HashSet<i64>>> = OnceLock::new();
+
+fn log_incomplete_fold(chain_id: i64) {
+    let first = INCOMPLETE_FOLD_WARNED
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .map_or(true, |mut seen| seen.insert(chain_id));
+    if first {
+        tracing::warn!(
+            chain_id,
+            "capital-allocation: minter fold incomplete; using legacy sources"
+        );
+    } else {
+        tracing::debug!(
+            chain_id,
+            "capital-allocation: minter fold incomplete; using legacy sources"
+        );
+    }
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -291,6 +359,13 @@ pub struct ChainCapitalInputs<'a> {
     pub asset_decimals: u32,
     pub withdrawal_queue_balance: Option<&'a BigDecimal>,
     pub capital_transfers: &'a [LoanCapitalTransfersRow],
+    pub minter_cash: Option<MinterCashTotals>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MinterCashTotals {
+    pub bank_cash: BigDecimal,
+    pub in_flight: BigDecimal,
 }
 
 /// Pure computation: no DB calls. Builds the capital allocation from pre-fetched
@@ -304,7 +379,10 @@ pub struct ChainCapitalInputs<'a> {
 /// custody↔ramp flow (both legs, absolute — only Trustee-Approved events count, #936),
 /// normalized from that chain's `asset_decimals`, minus that chain's
 /// `Σ(on_ramp_transferred + off_ramp_transferred)` scaled to base-6; **not clamped** —
-/// sourced only when the chain's `addr` is `Some`. Per chain, `withdrawal_queue` =
+/// sourced only when the chain's `addr` is `Some`. A chain with `minter_cash` `Some`
+/// (flag on and fold complete) instead takes `in_transit` = the minter's `in_flight` and
+/// its `trust_account` contribution = the minter's `bank_cash` in dollars, ignoring its
+/// custody/ramp sets and `loan_capital_transfers` trust/ramp figures. Per chain, `withdrawal_queue` =
 /// `withdrawal_queue_balance` normalized to canonical scale, **not** clamped — sourced
 /// only when it is `Some`. Across chains each of those two buckets is the sum over the
 /// chains that source it, and `null` only when none does. `trust_account` =
@@ -355,12 +433,7 @@ pub fn compute_capital_allocation(
     // trust_account = Σ deposits − Σ withdrawals over the in-scope chains'
     // Trustee-entered rows, a plain dollar figure. Deliberately NOT clamped — a
     // negative value is a real bookkeeping error that should surface.
-    let trust_account = chains
-        .iter()
-        .flat_map(|c| c.capital_transfers)
-        .fold(BigDecimal::from(0), |acc, r| {
-            acc + &r.trust_account_deposit - &r.trust_account_withdrawal
-        });
+    let trust_account = chains.iter().map(chain_trust_account).sum::<BigDecimal>();
 
     // Total = Σ of the sourced buckets (deployed + in_transit when present +
     // withdrawal_queue when present + trust_account). trust_account is a plain
@@ -398,6 +471,9 @@ pub fn compute_capital_allocation(
 /// canonical base-6 units; the per-loan confirmed amounts are plain dollars and are
 /// scaled up to the same units for the subtraction.
 fn chain_in_transit(c: &ChainCapitalInputs) -> Option<BigDecimal> {
+    if let Some(cash) = &c.minter_cash {
+        return Some(cash.in_flight.clone());
+    }
     c.addr.map(|sets| {
         let mut gross = BigDecimal::from(0);
         for t in c.transfers {
@@ -424,6 +500,17 @@ fn chain_in_transit(c: &ChainCapitalInputs) -> Option<BigDecimal> {
         // per-loan transfers than the indexer observed as approved ramp flow.
         gross - dollars_to_base6(&confirmed)
     })
+}
+
+fn chain_trust_account(c: &ChainCapitalInputs) -> BigDecimal {
+    if let Some(cash) = &c.minter_cash {
+        return &cash.bank_cash / BigDecimal::from(10i128.pow(CANONICAL_AMOUNT_DECIMALS));
+    }
+    c.capital_transfers
+        .iter()
+        .fold(BigDecimal::from(0), |acc, r| {
+            acc + &r.trust_account_deposit - &r.trust_account_withdrawal
+        })
 }
 
 /// Σ over the chains that source a bucket; `None` only when no chain does.

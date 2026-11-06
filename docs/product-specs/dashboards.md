@@ -103,7 +103,7 @@ Per chain, LP yield only (full definition in [yield-apy-semantics.md](./yield-ap
 - USDC balance (units and USD value).
 - USYC holding (units and current USD value at issuer's published NAV), shown as a separate line.
 - USDC deployed on active loans (from the trustee feed). `GET /v1/capital-allocation`: `deployed` = Σ senior tranche over loans that are active (originated and Approved / Performing / WatchList, see [loan-status-timeline.md](./loan-status-timeline.md)) **and** Trustee-flagged `is_loan_deployed` (#1027); a past-maturity open loan still counts.
-- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation` (#1027): `in_transit` = gross Trustee-approved custody↔ramp flow of the tracked asset (both legs, absolute, 6-decimal-normalized) minus the per-loan confirmed transfers (`Σ(on_ramp_transferred + off_ramp_transferred)`); `null` unless custody/ramp sets are configured, **not clamped** — may go negative. `trust_account` = `sum(trust_account_deposit) − sum(trust_account_withdrawal)` over the in-scope chains' Trustee-entered `loan_capital_transfers` records (not clamped — see route module docs). `withdrawal_queue` = the withdrawal-queue wallet's indexed USDC balance (on EVM the WithdrawalQueue's `assetHolder`), `null` unless the wallet is configured. The per-loan records are written via the trustee-only full-upsert `POST /v1/loan-book/{loan_id}/transfers` (read back via `GET` on the same path).
+- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation` (#1027): `in_transit` = gross Trustee-approved custody↔ramp flow of the tracked asset (both legs, absolute, 6-decimal-normalized) minus the per-loan confirmed transfers (`Σ(on_ramp_transferred + off_ramp_transferred)`); `null` unless custody/ramp sets are configured, **not clamped** — may go negative. `trust_account` = `sum(trust_account_deposit) − sum(trust_account_withdrawal)` over the in-scope chains' Trustee-entered `loan_capital_transfers` records (not clamped — see route module docs). `withdrawal_queue` = the withdrawal-queue wallet's indexed USDC balance (on EVM the WithdrawalQueue's `assetHolder`), `null` unless the wallet is configured. The per-loan records are written via the trustee-only full-upsert `POST /v1/loan-book/{loan_id}/transfers` (read back via `GET` on the same path). With `CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER=true` and a `complete` minter fold, that Stellar chain's `in_transit` is the minter's `in_flight` and its `trust_account` is its `bank_cash` (dollars), and its Trustee-entered `loan_capital_transfers` trust-account and on/off-ramp figures stop counting; `deployed` is unchanged and an incomplete fold keeps the legacy sources. See [minter-cash-book.md](./minter-cash-book.md).
 
 **Liquidity ratio**
 - Current USDC ratio vs 15% target, with upper band (20%) and lower band (10%) indicators.
@@ -182,9 +182,9 @@ Served by `GET /v1/withdrawal-queue` (aggregate, sourced from `contract_logs`
 `requests_count`, `estimated_wait_days`, `liquid_cover`) and `items[]`
 (`chain_id`, `account`, `amount`, `status` ∈ {`Queued`, `Completed`}, newest first, ties by
 `(chain_id, request_id)`). A request is `Queued` until a `RequestClaimed` on the same chain and
-contract exists, then `Completed`; `in_queue_usd` sums
-each queued request's `amount`. (The event's `queued` field is a global all-time
-cumulative counter, not a per-request magnitude, and is not used for depth.)
+contract exists, then `Completed`; `in_queue_usd` sums each queued request's USD value at its queue's
+recovery rate (1:1 on EVM). `summary` also carries `total_queued`, `total_claimed` and `rate`, served
+for one Stellar chain scope (else `null`): see [withdrawals.md](./withdrawals.md#stellar-queue-read-model-1791).
 `liquid_cover` is served as `null` until a Capital-Wallet USDC-available source exists
 (arrives with the Panel A reserves endpoint); `estimated_wait_days` is the mean historical
 time-in-queue over completed requests.

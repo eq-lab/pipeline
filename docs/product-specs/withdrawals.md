@@ -64,6 +64,8 @@ The `/deposit` page (withdraw direction) shows a "Network fee" row in the Detail
 
 The deployed `requestWithdrawal` / `claimWithdrawal` surface, events and voucher endpoint are in [evm-requests-queue.md](./evm-requests-queue.md). The designed `IWithdrawalQueue` interface is in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
 
+On Stellar, an LP's wire-outs (`WireOutRequested` / `WireOutSettled` / `WireOutCancelled`) are listed under an optional `wire_outs` key of `GET /v1/requests`, present only when an in-scope chain has a minter address; see [minter-cash-book.md](./minter-cash-book.md).
+
 ---
 
 ## Data Model
@@ -80,3 +82,20 @@ Per-request state is `requests[requestId] { amount, user, timestamp, claimed }` 
 - **PLUSD burned with the USDC payout, one-way queue.** No cancel; escrowed PLUSD stays until claimed.
 - **Pause and shutdown.** A restricted `pause()` freezes requests and claims; `setShutdownRate` is one-way and fixes the payout ratio.
 - **Custody-side circuit breaker.** The asset holder's hardware breaker revokes the queue's allowance independently of any on-chain action.
+
+---
+
+## Stellar queue read model (#1791)
+
+The Stellar WithdrawalQueue emits `RateSet { new_rate }` at most once, from `set_rate` (owner-only, `0 < new_rate < RATE_ONE`, `RATE_ONE = 1_000_000`), which puts the queue into shutdown. The worker stores it as `WithdrawalRateSet` with `params.new_rate` as the raw 6-dp integer string. A claim pays `floor(amount * rate / 1e6)` USDC and burns `amount` PLUSD; no event carries the USDC paid.
+
+- **`GET /v1/requests`, Stellar `Withdraw` rows only** (EVM rows and every other type are unchanged; both fields are omitted when they do not apply). Both are raw integers at token decimals (7 on Stellar), like `amount`.
+  - `queued_through` is the event's cumulative `queued`: the PLUSD queue offset including this request (`withdrawal_request_queued(id)` on chain). `queued_ahead = queued_through - amount`.
+  - `usdc_paid` appears once the request is claimed: `floor(amount * rate_at_claim / 1e6)`. The rate is the one in force at the claim on the request's own queue contract: a claim ordered before that contract's `WithdrawalRateSet` by `(block_number, log_index)` pays at `1e6`.
+- **`GET /v1/withdrawal-queue`.**
+  - `in_queue_usd` values each queued request at its own queue contract's rate (`floor(amount * rate / 1e6)` per row, then summed). It is 1:1 until a `WithdrawalRateSet` exists, and always 1:1 on EVM. `items[].amount` stays the raw requested amount.
+  - `summary.rate` is the raw 6-dp integer string `rate()` returns (`"1000000"` = 1:1). It is served only for a single Stellar chain scope (`chain_id` of a Stellar chain) and is `null` for EVM, the union and an unconfigured chain.
+  - `summary.total_queued` and `summary.total_claimed` are PLUSD base-6 decimal strings, `null` outside the same scope. `total_queued = MAX(queued)` over `WithdrawalRequested`, `total_claimed = SUM(amount)` over `RequestClaimed`, both over one contract, each normalised once from the raw sum (`total_queued() / 10`, truncated).
+- **Scope key.** The existing optional `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID` is the queue contract the rate and totals are scoped to; no new key. Unset or malformed (a warning, never a boot failure), `rate` falls back to the latest `WithdrawalRateSet` on the chain (or `1000000`) and the totals are `null`. The key must name the queue contract the worker indexes: a stale or different id scopes the rate and totals to a contract with no rows and serves zeros.
+- **Known limits.** A `rate_set` emitted before the worker indexed the contract is lost once it leaves RPC retention (about 7 days), so the API would serve `1000000` for a queue in shutdown; rewind the Stellar cursor while it is in retention. `total_claimed` undercounts if early `RequestClaimed` history was never indexed.
+- **Payable now** stays a frontend `claimable(id)` read: it needs the custodian USDC balance, which is not indexed. The paused flag, a pre-claim payout preview and EVM parity are tracked in #1801.

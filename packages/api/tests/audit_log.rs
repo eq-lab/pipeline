@@ -683,3 +683,43 @@ fn pocket_rows_are_loan_scoped_with_empty_reference() {
     assert_eq!(item.scope.loan_id.as_deref(), Some("7"));
     assert_eq!(item.reference, "");
 }
+
+#[test]
+fn withdrawal_rate_set_is_in_the_allow_list() {
+    assert!(pipeline_api::routes::audit_log::AUDIT_EVENT_NAMES.contains(&"WithdrawalRateSet"));
+}
+
+#[test]
+fn withdrawal_rate_set_renders_ratio_and_raw_rate() {
+    let (action, details) = format_action(
+        "WithdrawalRateSet",
+        &json!({"new_rate": "850000"}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(action, "Withdrawal recovery rate set — 0.850000");
+    assert_eq!(details["new_rate"], "850000");
+}
+
+#[test]
+fn withdrawal_rate_set_without_rate_is_bare_label() {
+    let (action, details) = format_action("WithdrawalRateSet", &json!({}), ChainKind::Stellar);
+    assert_eq!(action, "Withdrawal recovery rate set");
+    assert_eq!(details["new_rate"], Value::Null);
+}
+
+#[test]
+fn withdrawal_rate_set_row_is_protocol_scoped() {
+    let rows = vec![row(
+        1,
+        "WithdrawalRateSet",
+        None,
+        json!({"new_rate": "850000"}),
+    )];
+    let chains = [ConfiguredChain {
+        chain_id: 1,
+        kind: ChainKind::Stellar,
+    }];
+    let resp = build_response(rows, &chains);
+    assert_eq!(resp.items[0].scope.label, "Protocol");
+    assert_eq!(resp.items[0].event_name, "WithdrawalRateSet");
+}
