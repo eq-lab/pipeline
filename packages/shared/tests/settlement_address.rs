@@ -1,105 +1,237 @@
 //! The settlement-address write gate (Issues #1379, #1274; spec §"Settlement
-//! Address"): which `kyb_status` values leave `stellar_address` writable. Pure
-//! — no DB, and the SQL predicate in `LpRepo::link_address` is not exercised
-//! here; see the exec plan's manual checklist for that.
+//! Address"): which `kyb_status` values leave a settlement address writable,
+//! and the shape of the link SQL. Pure — no DB; the SQL is checked as text and
+//! its behaviour is covered by the user-stories checklist.
 
-use shared::lp_repo::KybStatus;
-
-const NON_TERMINAL: [KybStatus; 4] = [
-    KybStatus::NotStarted,
-    KybStatus::InProgress,
-    KybStatus::UnderReview,
-    KybStatus::ChangesRequested,
-];
-
-#[test]
-fn an_unlinked_lp_may_set_an_address_at_any_non_terminal_status() {
-    for status in NON_TERMINAL {
-        assert!(
-            status.allows_address_write(false),
-            "{status} must allow a first address write; if this fails the gate came back"
-        );
-    }
-}
+use chrono::Utc;
+use shared::chains::ChainKind;
+use shared::lp_repo::{
+    KybStatus, LpRow, CONSUME_LINK_CHALLENGE_SQL, FIND_LINK_CHALLENGE_SQL,
+    ISSUE_OR_REUSE_LINK_CHALLENGE_SQL, LINK_EVM_ADDRESS_SQL, LINK_STELLAR_ADDRESS_SQL,
+    LIST_SETTLEMENT_ADDRESS_HISTORY_SQL, STELLAR_ADDRESS_HOLDERS_SQL,
+};
+use uuid::Uuid;
 
 #[test]
-fn a_linked_address_may_be_replaced_until_the_decision_is_final() {
-    for status in NON_TERMINAL {
-        assert!(
-            status.allows_address_write(true),
-            "{status} must allow replacing an already-linked address"
-        );
-    }
-}
-
-#[test]
-fn the_two_terminal_statuses_close_the_address_differently() {
-    assert!(
-        !KybStatus::Passed.allows_address_write(true),
-        "a Passed LP's address is fixed once it holds one"
-    );
-    assert!(
-        KybStatus::Passed.allows_address_write(false),
-        "a Passed LP with no address must not be locked out forever — it has \
-         a real, ongoing use for the field"
-    );
-    assert!(
-        !KybStatus::Failed.allows_address_write(true),
-        "a Failed LP with an address must stay refused: left writable it \
-         could burn a real LP's address through the UNIQUE column"
-    );
-    assert!(
-        !KybStatus::Failed.allows_address_write(false),
-        "a Failed LP with no address must still be refused on its first \
-         attempt — the Failed exclusion in LpRepo::link_address's WHERE must \
-         sit outside the `stellar_address IS NULL` disjunction, not inside it"
-    );
-}
-
-#[test]
-fn the_policy_is_total_and_classifies_every_status_deliberately() {
-    fn expected(status: KybStatus, has_address: bool) -> bool {
+fn every_status_but_failed_allows_a_link_or_relink() {
+    fn expected(status: KybStatus) -> bool {
         match status {
             KybStatus::Failed => false,
-            KybStatus::Passed => !has_address,
             KybStatus::NotStarted
             | KybStatus::InProgress
             | KybStatus::UnderReview
-            | KybStatus::ChangesRequested => true,
+            | KybStatus::ChangesRequested
+            | KybStatus::Passed => true,
         }
     }
 
     for status in KybStatus::ALL {
-        for has_address in [false, true] {
-            assert_eq!(
-                status.allows_address_write(has_address),
-                expected(status, has_address),
-                "{status} with has_address={has_address} must match the \
-                 deliberate classification in `expected` — when a new status \
-                 is added, this match must stop compiling until it is \
-                 classified on purpose"
-            );
-        }
+        assert_eq!(status.allows_address_write(), expected(status), "{status}");
     }
+}
+
+#[test]
+fn passed_allows_a_relink() {
+    assert!(
+        KybStatus::Passed.allows_address_write(),
+        "user decision 2026-11-02 (#1831): a Passed LP may relink"
+    );
+    assert!(!KybStatus::Failed.allows_address_write());
 }
 
 #[test]
 fn the_policy_is_independent_of_the_write_freeze() {
     assert!(
-        KybStatus::UnderReview.allows_address_write(false)
-            && !KybStatus::UnderReview.allows_owner_writes(),
-        "the settlement address is exempt from the freeze at UnderReview"
+        KybStatus::UnderReview.allows_address_write()
+            && !KybStatus::UnderReview.allows_owner_writes()
     );
-    assert!(
-        KybStatus::Passed.allows_address_write(false) && !KybStatus::Passed.allows_owner_writes(),
-        "the crossing that survives Issue #1274: Passed with no address yet \
-         still allows one address write while the profile stays frozen"
-    );
-    assert!(
-        !KybStatus::Failed.allows_address_write(true) && !KybStatus::Failed.allows_owner_writes(),
-        "Failed now closes both policies, for independent reasons — after \
-         Issue #1274 owner-writable implies address-writable, so the \
-         containment between the two policies is one-directional rather than \
-         a two-way crossing"
-    );
+    assert!(KybStatus::Passed.allows_address_write() && !KybStatus::Passed.allows_owner_writes());
+    assert!(!KybStatus::Failed.allows_address_write() && !KybStatus::Failed.allows_owner_writes());
+}
+
+fn flat(sql: &str) -> String {
+    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+struct Kind {
+    sql: &'static str,
+    name: &'static str,
+    addr: &'static str,
+    signer: &'static str,
+    linked_at: &'static str,
+    other: &'static str,
+}
+
+const KINDS: [Kind; 2] = [
+    Kind {
+        sql: LINK_STELLAR_ADDRESS_SQL,
+        name: "stellar",
+        addr: "stellar_address",
+        signer: "stellar_signer_address",
+        linked_at: "address_linked_at",
+        other: "evm_",
+    },
+    Kind {
+        sql: LINK_EVM_ADDRESS_SQL,
+        name: "evm",
+        addr: "evm_address",
+        signer: "evm_signer_address",
+        linked_at: "evm_address_linked_at",
+        other: "stellar_",
+    },
+];
+
+#[test]
+fn the_link_sql_writes_its_own_columns_guards_only_failed_and_records_history() {
+    for k in KINDS {
+        let sql = flat(k.sql);
+        let set = format!(
+            "SET {} = $2, {} = $3, {} = clock_timestamp()",
+            k.addr, k.signer, k.linked_at
+        );
+        assert!(sql.contains(&set), "{}", k.name);
+        assert!(sql.contains("lps.kyb_status <> 'Failed'"));
+        assert!(!sql.contains("kyb_status <> 'Passed'"));
+        assert!(!sql.contains("IS NULL OR"));
+        assert!(sql.contains("FOR UPDATE"));
+        let insert = sql
+            .find("INSERT INTO lp_settlement_address_history")
+            .expect("history insert");
+        let from = sql.find("FROM linked").expect("reads the update");
+        let ret = sql.rfind("RETURNING id").expect("returns the id");
+        assert!(insert < from && from < ret);
+        assert!(sql.contains(&format!("SELECT id, '{}', $4, $2, $3,", k.name)));
+        assert!(sql.contains(&format!("prev.{} AS previous_address", k.addr)));
+        assert!(sql.contains(&format!("prev.{} AS previous_signer_address", k.signer)));
+        assert!(sql.contains(
+            "(lp_id, chain_kind, chain_id, address, signer_address, previous_address, \
+previous_signer_address, linked_by_account_id, created_at)"
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .as_str()
+        ));
+        assert!(sql.contains("previous_signer_address, $5, linked_at"));
+        assert!(!sql.contains(k.other), "{}", k.name);
+    }
+}
+
+#[test]
+fn the_link_is_one_statement() {
+    for k in KINDS {
+        let sql = flat(k.sql);
+        assert_eq!(sql.matches("INSERT").count(), 1, "{}", k.name);
+        assert_eq!(sql.matches("UPDATE lps").count(), 1, "{}", k.name);
+        assert!(!sql.contains(';'), "{}", k.name);
+    }
+}
+
+#[test]
+fn history_is_listed_newest_first_for_one_lp() {
+    let sql = flat(LIST_SETTLEMENT_ADDRESS_HISTORY_SQL);
+    assert!(sql.contains("FROM lp_settlement_address_history WHERE lp_id = $1"));
+    assert!(sql.ends_with("ORDER BY id DESC"));
+}
+
+#[test]
+fn history_is_append_only_in_code() {
+    let src = include_str!("../src/lp_repo.rs");
+    assert!(!src.contains("UPDATE lp_settlement_address_history"));
+    assert!(!src.contains("DELETE FROM lp_settlement_address_history"));
+}
+
+#[test]
+fn consume_is_one_guarded_delete_returning_the_binding() {
+    let sql = flat(CONSUME_LINK_CHALLENGE_SQL);
+    assert!(sql.starts_with("DELETE FROM lp_address_challenges WHERE"));
+    for guard in [
+        "lp_id = $1",
+        "chain_id = $2",
+        "nonce = $3",
+        "expires_at > now()",
+    ] {
+        assert!(sql.contains(guard), "missing {guard}");
+    }
+    assert!(sql.contains("RETURNING address, signer_address"));
+}
+
+#[test]
+fn find_only_reads_a_live_challenge() {
+    let sql = flat(FIND_LINK_CHALLENGE_SQL);
+    assert!(sql.starts_with(
+        "SELECT address, signer_address, nonce, expires_at FROM lp_address_challenges"
+    ));
+    assert!(sql.contains("expires_at > now()"));
+}
+
+#[test]
+fn issue_or_reuse_is_one_upsert_on_the_database_clock() {
+    let sql = flat(ISSUE_OR_REUSE_LINK_CHALLENGE_SQL);
+    assert!(sql.starts_with("INSERT INTO lp_address_challenges"));
+    assert!(sql.contains("ON CONFLICT (lp_id, chain_id) DO UPDATE"));
+    let reuse = "lp_address_challenges.address = EXCLUDED.address \
+        AND lp_address_challenges.signer_address = EXCLUDED.signer_address \
+        AND lp_address_challenges.expires_at > now() + make_interval(secs => $7::double precision)";
+    let reuse = flat(reuse);
+    assert_eq!(sql.matches(&reuse).count(), 2);
+    assert!(sql.contains("RETURNING nonce, expires_at"));
+    assert!(!sql.contains("$8"));
+    assert!(sql.contains("now() + make_interval(secs => $6::double precision)"));
+}
+
+fn lp(stellar: Option<&str>, evm: Option<&str>) -> LpRow {
+    LpRow {
+        id: 1,
+        legal_name: "Acme".to_owned(),
+        country: None,
+        contact_email: "a@b.c".to_owned(),
+        stellar_address: stellar.map(str::to_owned),
+        address_linked_at: None,
+        stellar_signer_address: None,
+        evm_address: evm.map(str::to_owned),
+        evm_signer_address: None,
+        evm_address_linked_at: None,
+        kyb_status: "NotStarted".to_owned(),
+        kyb_submitted_at: None,
+        kyb_decided_by: None,
+        kyb_decided_at: None,
+        kyb_decision_reason: None,
+        notify_on_review: false,
+        owner_account_id: Uuid::nil(),
+        owner_chain_id: None,
+        owner_address: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+#[test]
+fn settlement_address_returns_the_slot_of_the_kind() {
+    let row = lp(Some("GSTELLAR"), Some("0xevm"));
+    assert_eq!(row.settlement_address(ChainKind::Stellar), Some("GSTELLAR"));
+    assert_eq!(row.settlement_address(ChainKind::Evm), Some("0xevm"));
+    let only_stellar = lp(Some("GSTELLAR"), None);
+    assert_eq!(only_stellar.settlement_address(ChainKind::Evm), None);
+}
+
+#[test]
+fn stellar_address_holders_sql_attributes_by_the_link_active_at_the_request_time() {
+    let sql = STELLAR_ADDRESS_HOLDERS_SQL
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for needle in [
+        "unnest($1::text[], $2::bigint[]) AS q(address, requested_at)",
+        "FROM lp_settlement_address_history h",
+        "h.chain_kind = 'stellar'",
+        "h.address = q.address",
+        "(h.chain_id IS NULL OR h.chain_id = $3)",
+        "h.created_at <= to_timestamp(q.requested_at)",
+        "NOT EXISTS ( SELECT 1 FROM lp_settlement_address_history n WHERE n.lp_id = h.lp_id",
+        "(n.created_at, n.id) > (h.created_at, h.id)",
+        "n.created_at <= to_timestamp(q.requested_at)",
+        "ORDER BY h.created_at DESC, h.id DESC LIMIT 1",
+    ] {
+        assert!(sql.contains(needle), "missing `{needle}` in {sql}");
+    }
 }

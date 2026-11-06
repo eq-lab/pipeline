@@ -1,10 +1,4 @@
-/**
- * Public wallet hooks — all blockchain access in the app goes through here.
- *
- * Each hook consults the `pipeline.mock.wallet.*` localStorage layer first.
- * When a mock key is present the real wagmi/viem call is skipped entirely
- * (no network request).
- */
+// spec: packages/frontend/src/wallet/README.md#useevmwallet
 import {
   useAccount,
   useDisconnect,
@@ -63,7 +57,6 @@ export function useEvmWallet(): WalletState {
   const bothMocksConnected = useBothWalletMocksConnected();
 
   const address = mockAddress ?? realAddress;
-  // If the mock address is set but isConnected key is absent → default true.
   const isConnected = bothMocksConnected
     ? false
     : mockIsConnected !== undefined
@@ -77,14 +70,10 @@ export function useEvmWallet(): WalletState {
     (status !== "connecting" && status !== "reconnecting");
 
   function connect() {
-    // Mock short-circuit — dev affordance, bypasses the terms gate.
     if (mockAddress !== undefined) {
       return;
     }
 
-    // Check terms acknowledgement synchronously (chain-agnostic, argument-less).
-    // If not acknowledged, open the gate and pass AppKit open() as the onProceed
-    // callback — the gate will invoke it after the user attests.
     if (!readTermsAcknowledged()) {
       openGate(() => void open());
       return;
@@ -105,39 +94,24 @@ export function useEvmWallet(): WalletState {
     wagmiDisconnect();
   }
 
-  return { address, isConnected, isSettled, chainId, connect, disconnect };
+  return {
+    address,
+    isConnected,
+    isSettled,
+    chainId,
+    connect,
+    disconnect,
+  };
 }
 
 // ── Per-wallet EVM connect hook ───────────────────────────────────────────────
 
-/**
- * A well-known EVM connector id (the subset the app exposes in the Connect modal).
- *
- * These are the ids that wagmi / Reown AppKit registers for the bundled wallets:
- *   - "injected"        — MetaMask (and other injected providers)
- *   - "coinbaseWallet"  — Coinbase Wallet SDK
- *   - "walletConnect"   — WalletConnect v2 (covers Trust and other mobile wallets)
- *
- * Trust Wallet does not have a dedicated AppKit adapter in the current config;
- * it is accessible via WalletConnect or the injected provider path.
- */
 export type EvmWalletConnectorId =
   | "injected"
   | "coinbaseWallet"
   | "walletConnect";
 
 export interface UseEvmConnectorsResult {
-  /**
-   * Connect to a specific EVM wallet by its connector id.
-   *
-   * - When a mock address is set: no-op (dev affordance).
-   * - Otherwise: calls wagmi `connect({ connector })` for the matching connector.
-   * - When no matching connector is found: falls back to the generic AppKit modal.
-   *
-   * The terms gate is no longer triggered here. It is interposed by
-   * `ConnectModalProvider.open()` before `ConnectWalletModal` opens, so the
-   * gate always precedes the wallet picker (issue #639).
-   */
   connectWallet(connectorId: EvmWalletConnectorId): void;
 }
 
@@ -149,7 +123,6 @@ export function useEvmConnectors(): UseEvmConnectorsResult {
   const mockAddress = useMock(KEYS.address, parseAddress);
 
   function connectWallet(connectorId: EvmWalletConnectorId) {
-    // Mock short-circuit.
     if (mockAddress !== undefined) {
       return;
     }
@@ -158,7 +131,6 @@ export function useEvmConnectors(): UseEvmConnectorsResult {
     if (connector) {
       connect({ connector });
     } else {
-      // No matching connector — fall back to the generic AppKit modal.
       void open();
     }
   }
@@ -192,10 +164,6 @@ export function useContractRead<TAbi extends Abi, TFunctionName extends string>(
 
   const hasMock = mockValue !== undefined;
 
-  // wagmi's useReadContract has complex generics that don't extend easily
-  // when the caller passes a generic TAbi + TFunctionName pair.
-  // We widen to `any` at the boundary; the return type is constrained to
-  // `ContractReadResult<unknown>` so call sites remain type-safe.
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const realRead = useReadContract({
     address: params.address,

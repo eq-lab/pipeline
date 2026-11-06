@@ -419,10 +419,6 @@
     "header": 20,
     "nodeIds": 0
   },
-  "packages/frontend/src/wallet/evm/useEvmWallet.ts": {
-    "header": 7,
-    "nodeIds": 0
-  },
   "packages/frontend/src/wallet/evm/useNetworkFeeEstimate.test.tsx": {
     "header": 16,
     "nodeIds": 0
@@ -445,10 +441,6 @@
   },
   "packages/frontend/src/wallet/evm/useWithdrawalQueue.ts": {
     "header": 20,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/index.ts": {
-    "header": 11,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/stellar/StellarWalletProvider.tsx": {
@@ -557,10 +549,6 @@
   },
   "packages/frontend/src/wallet/stellar/useStellarToken.ts": {
     "header": 34,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/stellar/useStellarWallet.ts": {
-    "header": 19,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.test.tsx": {

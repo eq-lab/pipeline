@@ -182,6 +182,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Amended by #1359 |
 | [#1281 KYB: create-account validation-error state](https://github.com/eq-lab/pipeline/issues/1281) | [1281-create-account-error.md](./epic-1247/1281-create-account-error.md) | Initial |
 | [#1284 LP: Account page — wallet, corporate email, KYB documents hub](https://github.com/eq-lab/pipeline/issues/1284) | [1284-lp-account-page.md](./epic-1247/1284-lp-account-page.md) | Initial |
+| [#1817 LP: Funding details modal — bank details and a fresh payment reference](https://github.com/eq-lab/pipeline/issues/1817) | [1817-funding-details-payment-reference.md](./epic-1247/1817-funding-details-payment-reference.md) | Amends #1283 |
 | [#1283 LP: Add Funds wire-transfer modal + bank-transfer home states](https://github.com/eq-lab/pipeline/issues/1283) | [1283-lp-add-funds.md](./epic-1247/1283-lp-add-funds.md) | Initial |
 | [#1278 KYB: Company Docs step V1.0 redesign](https://github.com/eq-lab/pipeline/issues/1278) | [1278-kyb-company-docs-v1.md](./epic-1247/1278-kyb-company-docs-v1.md) | Initial |
 | [#1362 LP: header Sign in / Sign up entry + signed-in state](https://github.com/eq-lab/pipeline/issues/1362) | [1362-header-auth-entry.md](./epic-1247/1362-header-auth-entry.md) | Initial |
@@ -198,8 +199,16 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
 | [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
+| [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Initial |
 | [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
+| [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Superseded by #1825 (auto-link removed; linking is signed and user-initiated) |
+| [#1824 Backend: signed settlement-address linking (Stellar + EVM) + chain-aware payment-details](https://github.com/eq-lab/pipeline/issues/1824) | [1824-signed-settlement-address.md](./epic-1247/1824-signed-settlement-address.md) | Initial |
+| [#1831 Backend: let an LP change its linked settlement address at any time (including after KYB Passed)](https://github.com/eq-lab/pipeline/issues/1831) | [1831-relink-settlement-address.md](./epic-1247/1831-relink-settlement-address.md) | Initial |
+| [#1825 LP: link the settlement address by signing a challenge (Stellar + EVM)](https://github.com/eq-lab/pipeline/issues/1825) | [1825-signed-settlement-link-ui.md](./epic-1247/1825-signed-settlement-link-ui.md) | Initial |
+| [#1849 LP: link a Stellar C… contract address or a separate signer as the settlement address](https://github.com/eq-lab/pipeline/issues/1849) | [1849-settlement-address-signer.md](./epic-1247/1849-settlement-address-signer.md) | Initial |
+| [#1848 LP app: one source of wallet precedence](https://github.com/eq-lab/pipeline/issues/1848) | [1848-wallet-precedence.md](./epic-1247/1848-wallet-precedence.md) | Initial |
+| [#1847 LP app: move wagmi useSignMessage out of the shared useEvmWallet into a dedicated useEvmSignMessage](https://github.com/eq-lab/pipeline/issues/1847) | [1847-evm-sign-message-hook.md](./epic-1247/1847-evm-sign-message-hook.md) | Initial |
 
 ---
 
@@ -212,6 +221,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1413 Backend: per-LP bank deposits](https://github.com/eq-lab/pipeline/issues/1413) | [1413-lp-bank-deposits.md](./epic-1269/1413-lp-bank-deposits.md) | Initial |
 | [#1449 Trustee: mint the PLUSD leg of an LP bank deposit](https://github.com/eq-lab/pipeline/issues/1449) | [1449-trustee-mint-bank-deposit.md](./epic-1269/1449-trustee-mint-bank-deposit.md) | Initial |
 | [#1453 Trustee: align the LP counterparty detail page with the Loan detail conventions](https://github.com/eq-lab/pipeline/issues/1453) | [1453-lp-detail-loan-conventions.md](./epic-1269/1453-lp-detail-loan-conventions.md) | Initial |
+| [#1826 Trustee: show both LP settlement addresses and mint each deposit to the address for its chain](https://github.com/eq-lab/pipeline/issues/1826) | [1826-trustee-settlement-addresses.md](./epic-1269/1826-trustee-settlement-addresses.md) | Initial |
 
 ---
 
@@ -221,7 +231,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | --- | --- | --- |
 | [#1715 LP: Country as a searchable select with flags](https://github.com/eq-lab/pipeline/issues/1715) | [1715-country-select.md](./epic-1376/1715-country-select.md) | Initial |
 | [#1380 Backend: enforce accounts.status = 'Suspended' in authorization](https://github.com/eq-lab/pipeline/issues/1380) | [1380-enforce-account-suspension.md](./epic-1376/1380-enforce-account-suspension.md) | Initial |
-| [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Initial |
+| [#1379 Backend: ungate POST /v1/lps/me/link-address from kyb_status](https://github.com/eq-lab/pipeline/issues/1379) | [1379-ungate-link-address.md](./epic-1376/1379-ungate-link-address.md) | Superseded (endpoint removed, #1824) |
 | [#1274 Backend: KYB state machine — submit for review + trustee verdict endpoints](https://github.com/eq-lab/pipeline/issues/1274) | [1274-kyb-state-machine.md](./epic-1376/1274-kyb-state-machine.md) | Initial |
 | [#1377 Backend: notify_on_review flag on POST /v1/lps/me + narrowed write freeze](https://github.com/eq-lab/pipeline/issues/1377) | [1377-notify-on-review.md](./epic-1376/1377-notify-on-review.md) | Initial |
 | [#1378 Backend: KYB decision emails to the LP](https://github.com/eq-lab/pipeline/issues/1378) | [1378-kyb-decision-emails.md](./epic-1376/1378-kyb-decision-emails.md) | Initial |
@@ -246,7 +256,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1475 Account page opens on the connected wallet's tab; LP home heading reads "Welcome back" whenever the header shows the account icon](https://github.com/eq-lab/pipeline/issues/1475) | [1475-account-entry-tab-welcome-back.md](./epic-1419/1475-account-entry-tab-welcome-back.md) | Initial |
 | [#1577 Home: collapse the desktop home-grid branches into one shared layout](https://github.com/eq-lab/pipeline/issues/1577) | [1577-home-grid-shared-layout.md](./epic-1419/1577-home-grid-shared-layout.md) | Initial |
 | [#1576 Home: loading state while GET /v1/lps/me is in flight](https://github.com/eq-lab/pipeline/issues/1576) | [1576-home-loading-state.md](./epic-1419/1576-home-loading-state.md) | Initial |
+| [#1819 Home: show the "Transfers unlocked / Add Funds" card for every signed-in, wallet-connected, KYB-passed LP](https://github.com/eq-lab/pipeline/issues/1819) | [1819-home-passed-unlocked-card.md](./epic-1419/1819-home-passed-unlocked-card.md) | Initial |
 | [#1465 Suspended (KYB-rejected) account: sign-in shows the 403 error; an already signed-in LP is signed out](https://github.com/eq-lab/pipeline/issues/1465) | [1465-suspended-account-signout.md](./epic-1419/1465-suspended-account-signout.md) | Amended by #1473 |
+| [#1837 AddEmailModal async-submit test is deterministic](https://github.com/eq-lab/pipeline/issues/1837) | [1837-add-email-modal-flaky-test.md](./epic-1419/1837-add-email-modal-flaky-test.md) | Initial |
 
 ---
 
@@ -347,3 +359,24 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
+
+---
+
+## Epic #1776 — Stellar minter-era read models
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1788 Stellar DealTokenFactory: DEBT-only DealRegistered after contracts #38](https://github.com/eq-lab/pipeline/issues/1788) | [1788-stellar-debt-only-deal-registered.md](./epic-1776/1788-stellar-debt-only-deal-registered.md) | Initial |
+| [#1789 Index the Stellar Pocket; pocket state in the loan book; recoveries in LP PnL and cumulative yield](https://github.com/eq-lab/pipeline/issues/1789) | [1789-stellar-pocket-indexing.md](./epic-1776/1789-stellar-pocket-indexing.md) | Initial |
+| [#1791 Withdrawal queue: index the recovery rate; serve queue offsets, aggregates and rate-scaled USD](https://github.com/eq-lab/pipeline/issues/1791) | [1791-withdrawal-queue-recovery-rate.md](./epic-1776/1791-withdrawal-queue-recovery-rate.md) | Initial |
+| [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |
+| [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
+| [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |
+
+---
+
+## Epic #1775 — Stellar SecurityRegistry
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1779 Stellar SecurityRegistry indexer: events, record enrichment, projection tables](https://github.com/eq-lab/pipeline/issues/1779) | [1779-stellar-security-registry-indexer.md](./epic-1775/1779-stellar-security-registry-indexer.md) | Initial |

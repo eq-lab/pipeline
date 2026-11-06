@@ -12,7 +12,8 @@ use sqlx::PgPool;
 
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher,
+    metadata_fetcher::MetadataFetcher, pocket_repo::PocketRepo,
+    security_registry_repo::SecurityRegistryRepo,
 };
 
 use crate::indexer::config::StellarIndexerSettings;
@@ -30,7 +31,12 @@ use crate::indexer::{
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
         parsers::{dispatch_parser, transfer_between_tracked, transfer_touches_address},
+        pocket_parsers::dispatch_pocket,
+        pocket_seed::run_pocket_seed_loop,
         rpc::{EventFilter, StellarRpc},
+        security_registry_parsers::dispatch_security_registry,
+        security_registry_sync::run_security_registry_sync_loop,
+        supervise::spawn_supervised,
     },
 };
 
@@ -81,9 +87,11 @@ pub struct StellarEventPoller {
     withdrawal_queue_wallet_id: Option<String>,
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
-    yield_minter_id: Option<String>,
+    minter_id: Option<String>,
     collateral_registry_id: Option<String>,
     deal_token_factory_id: Option<String>,
+    pocket_id: Option<String>,
+    security_registry_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
@@ -105,9 +113,11 @@ impl StellarEventPoller {
         withdrawal_queue_wallet_id: Option<String>,
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
-        yield_minter_id: Option<String>,
+        minter_id: Option<String>,
         collateral_registry_id: Option<String>,
         deal_token_factory_id: Option<String>,
+        pocket_id: Option<String>,
+        security_registry_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
@@ -122,9 +132,11 @@ impl StellarEventPoller {
             withdrawal_queue_wallet_id,
             staked_plusd_id,
             loan_registry_id,
-            yield_minter_id,
+            minter_id,
             collateral_registry_id,
             deal_token_factory_id,
+            pocket_id,
+            security_registry_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
             tracked_addresses,
@@ -148,8 +160,8 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(lr_id) = &self.loan_registry_id {
             contract_ids.push(lr_id.clone());
         }
-        if let Some(ym_id) = &self.yield_minter_id {
-            contract_ids.push(ym_id.clone());
+        if let Some(minter_id) = &self.minter_id {
+            contract_ids.push(minter_id.clone());
         }
         if let Some(cr_id) = &self.collateral_registry_id {
             contract_ids.push(cr_id.clone());
@@ -159,6 +171,12 @@ impl ChainEventPoller for StellarEventPoller {
         }
         if let Some(factory_id) = &self.deal_token_factory_id {
             contract_ids.push(factory_id.clone());
+        }
+        if let Some(pocket_id) = &self.pocket_id {
+            contract_ids.push(pocket_id.clone());
+        }
+        if let Some(security_id) = &self.security_registry_id {
+            contract_ids.push(security_id.clone());
         }
 
         let filter = EventFilter { contract_ids };
@@ -170,6 +188,10 @@ impl ChainEventPoller for StellarEventPoller {
             let parsed = if self.collateral_registry_id.as_deref() == Some(raw.contract_id.as_str())
             {
                 dispatch_collateral_registry(&raw)
+            } else if self.security_registry_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_security_registry(&raw)
+            } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_pocket(&raw)
             } else {
                 dispatch_parser(
                     &raw,
@@ -177,7 +199,7 @@ impl ChainEventPoller for StellarEventPoller {
                     &self.withdrawal_queue_id,
                     &self.staked_plusd_id,
                     self.loan_registry_id.as_deref(),
-                    self.yield_minter_id.as_deref(),
+                    self.minter_id.as_deref(),
                     self.asset_id.as_deref(),
                     self.deal_token_factory_id.as_deref(),
                 )
@@ -344,6 +366,22 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    if let Some(pocket_id) = &settings.pocket_id {
+        tracing::info!(
+            pocket_id = %pocket_id,
+            chain_id,
+            "Stellar Pocket indexer enabled"
+        );
+    }
+
+    if let Some(security_id) = &settings.security_registry_id {
+        tracing::info!(
+            security_registry_id = %security_id,
+            chain_id,
+            "Stellar SecurityRegistry indexer enabled"
+        );
+    }
+
     // Asset-transfer tracking (custody/ramp flows). `asset_id` is `Some` only when
     // fully configured (asset id + custody + ramp addresses); the union of both
     // address lists is the membership filter applied in `poll`.
@@ -378,6 +416,48 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    let _seed_guard = match (&settings.pocket_id, &settings.loan_registry_id) {
+        (Some(pocket_id), Some(registry_id)) => {
+            let rpc = rpc.clone();
+            let repo = PocketRepo::new(pool.clone());
+            let pocket_id = pocket_id.clone();
+            let registry_id = registry_id.clone();
+            Some(spawn_supervised("pocket-seed", chain_id, move || {
+                let (rpc, repo) = (rpc.clone(), repo.clone());
+                let (pocket_id, registry_id) = (pocket_id.clone(), registry_id.clone());
+                async move {
+                    run_pocket_seed_loop(rpc, repo, chain_id, pocket_id, registry_id).await;
+                    Ok(())
+                }
+            }))
+        }
+        (Some(_), None) => {
+            tracing::warn!(
+                chain_id,
+                "pocket view seed disabled: LOAN_REGISTRY_ADDRESS is not set"
+            );
+            None
+        }
+        _ => None,
+    };
+
+    let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let security_id = security_id.clone();
+        let loan_registry_id = settings.loan_registry_id.clone();
+        spawn_supervised("security-registry-sync", chain_id, move || {
+            run_security_registry_sync_loop(
+                rpc.clone(),
+                SecurityRegistryRepo::new(pool.clone()),
+                EventRepo::new(pool.clone()),
+                chain_id,
+                security_id.clone(),
+                loan_registry_id.clone(),
+            )
+        })
+    });
+
     let poller = StellarEventPoller::new(
         rpc,
         chain_id,
@@ -387,9 +467,11 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.withdrawal_queue_wallet_id.clone(),
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
-        settings.yield_minter_id.clone(),
+        settings.minter_id.clone(),
         settings.collateral_registry_id.clone(),
         settings.deal_token_factory_id.clone(),
+        settings.pocket_id.clone(),
+        settings.security_registry_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),
         tracked_addresses,

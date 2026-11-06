@@ -8,6 +8,11 @@ export interface LpSummary {
   country: string | null;
   contact_email: string;
   stellar_address: string | null;
+  address_linked_at: string | null;
+  stellar_signer_address: string | null;
+  evm_address: string | null;
+  evm_signer_address: string | null;
+  evm_address_linked_at: string | null;
   kyb_status: string;
   kyb_submitted_at?: string | null;
   kyb_decided_at?: string | null;

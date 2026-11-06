@@ -26,9 +26,9 @@ use crate::indexer::stellar::loan_registry_parsers::{
 
 use crate::indexer::stellar::minter_parsers::{
     parse_cash_disbursed, parse_cash_disbursement_reversed, parse_cash_recorded, parse_cash_repaid,
-    parse_cash_repayment_reversed, parse_loss_absorbed, parse_mint_corrected, parse_ramp_closed,
-    parse_ramp_opened, parse_wire_in_returned, parse_wire_out_cancelled, parse_wire_out_requested,
-    parse_wire_out_settled,
+    parse_cash_repayment_reversed, parse_loss_absorbed, parse_mint_corrected,
+    parse_minter_snapshot, parse_ramp_closed, parse_ramp_opened, parse_wire_in_returned,
+    parse_wire_out_cancelled, parse_wire_out_requested, parse_wire_out_settled,
 };
 
 pub use crate::stellar::scval::extract_i128;
@@ -52,6 +52,7 @@ const MINTER_COLLECTED_EVENTS: &[&str] = &[
     "cash_recorded",
     "mint_corrected",
     "loss_absorbed",
+    "snapshot",
 ];
 
 /// A fully-decoded Soroban contract event, ready to be persisted as a `contract_logs` row.
@@ -134,6 +135,29 @@ pub fn parse_withdrawal_requested(raw: &RawEvent) -> Option<StellarLog> {
             "request_id": request_id.to_string(),
             "amount": amount.to_string(),
             "queued": queued.to_string(),
+        }),
+    })
+}
+
+pub fn parse_rate_set(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "rate_set" {
+        return None;
+    }
+    if raw.topics_base64.is_empty() {
+        return None;
+    }
+
+    let new_rate = extract_i128_from_map(&raw.value_base64, "new_rate")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "WithdrawalRateSet".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "new_rate": new_rate.to_string(),
         }),
     })
 }
@@ -520,7 +544,7 @@ fn u128_from_parts(hi: u64, lo: u64) -> u128 {
     ((hi as u128) << 64) | (lo as u128)
 }
 
-fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
+pub(crate) fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
     match addr {
         ScAddress::Account(account_id) => {
             use stellar_xdr::curr::PublicKey;
@@ -561,11 +585,9 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `loan_registry_id` is `None` when the contract has not yet been deployed
 /// (ships dark — the new branch is a no-op until the env var is set).
 ///
-/// `yield_minter_id` is `None` when the minter contract has not yet been deployed to
+/// `minter_id` is `None` when the minter contract has not yet been deployed to
 /// this chain. When set, the minter's business events (`MINTER_COLLECTED_EVENTS`) are
 /// collected and routed to `StellarLogMapper` (contract_logs) (#1416, #1480).
-/// `YieldMinted` is retired (#1433) — it belonged to a pre-#33 deployment this field
-/// no longer targets.
 ///
 /// `asset_id` is `Some` when asset-transfer tracking is configured (Issue #789 /
 /// #933). When set, `transfer` events from the asset contract are decoded to
@@ -579,14 +601,27 @@ pub fn dispatch_parser(
     withdrawal_queue_id: &str,
     staked_plusd_id: &str,
     loan_registry_id: Option<&str>,
-    yield_minter_id: Option<&str>,
+    minter_id: Option<&str>,
     asset_id: Option<&str>,
     deal_token_factory_id: Option<&str>,
 ) -> Option<StellarLog> {
     if raw.contract_id == deposit_manager_id {
         parse_deposit_requested(raw).or_else(|| parse_request_claimed(raw))
     } else if raw.contract_id == withdrawal_queue_id {
-        parse_withdrawal_requested(raw).or_else(|| parse_request_claimed(raw))
+        let parsed = parse_withdrawal_requested(raw)
+            .or_else(|| parse_request_claimed(raw))
+            .or_else(|| parse_rate_set(raw));
+        if parsed.is_none() && raw.event_name == "rate_set" {
+            tracing::warn!(
+                contract_id = %raw.contract_id,
+                event_name = %raw.event_name,
+                tx_hash = %raw.tx_hash,
+                "withdrawal-queue event recognised by name but not decodable — its field \
+                 encoding differs from what the parser expects; no contract_logs \
+                 row was written"
+            );
+        }
+        parsed
     } else if raw.contract_id == staked_plusd_id {
         // Vault mint/burn (`deposit`/`withdraw` events, covering all four of
         // `deposit`/`mint`/`withdraw`/`redeem`) plus peer-to-peer share
@@ -598,7 +633,7 @@ pub fn dispatch_parser(
         // against `StakingDeposit` and must not simply be added here.
         parse_vault_deposit(raw)
             .or_else(|| parse_vault_withdraw(raw))
-            .or_else(|| parse_shares_burned(raw, yield_minter_id.unwrap_or(UNKNOWN_MINTER)))
+            .or_else(|| parse_shares_burned(raw, minter_id.unwrap_or(UNKNOWN_MINTER)))
             .or_else(|| parse_share_transfer(raw))
     } else if loan_registry_id == Some(raw.contract_id.as_str()) {
         // LoanRegistry events — all 12 collected events, tried in order.
@@ -615,10 +650,7 @@ pub fn dispatch_parser(
             .or_else(|| parse_loan_closed(raw))
             .or_else(|| parse_loan_rolled_over(raw))
             .or_else(|| parse_economics_amended(raw))
-    } else if yield_minter_id == Some(raw.contract_id.as_str()) {
-        // The minter contract, under its former name (see the config field). `YieldMinted`
-        // is retired (#1433). Its config/role events and the diagnostic `snapshot` are the
-        // only ones not collected; they fall through as `None` without a warn.
+    } else if minter_id == Some(raw.contract_id.as_str()) {
         let parsed = match raw.event_name.as_str() {
             "wire_in" => parse_wire_in(raw),
             "wire_in_assigned" => parse_wire_in_assigned(raw),
@@ -635,6 +667,7 @@ pub fn dispatch_parser(
             "cash_recorded" => parse_cash_recorded(raw),
             "mint_corrected" => parse_mint_corrected(raw),
             "loss_absorbed" => parse_loss_absorbed(raw),
+            "snapshot" => parse_minter_snapshot(raw),
             _ => None,
         };
         // A `None` for a collected topic means the on-chain encoding differs from what the

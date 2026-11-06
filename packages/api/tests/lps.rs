@@ -539,49 +539,35 @@ fn the_length_limits_count_characters_not_bytes() {
 // ── Settlement address (Issue #1379) ─────────────────────────────────────────
 
 #[test]
-fn link_address_is_documented_with_every_response_status() {
+fn the_unsigned_link_address_path_and_schema_are_gone() {
     let doc = openapi_json();
-    let responses = &doc["paths"]["/v1/lps/me/link-address"]["post"]["responses"];
-    for status in ["200", "400", "401", "404", "409"] {
-        assert!(
-            responses.get(status).is_some(),
-            "link-address must still document {status}, got {responses}"
-        );
+    let paths = doc["paths"].as_object().unwrap();
+    assert!(!paths.contains_key("/v1/lps/me/link-address"));
+    assert!(doc["components"]["schemas"]
+        .get("LinkAddressRequest")
+        .is_none());
+}
+
+#[test]
+fn lp_response_and_summary_carry_the_new_nullable_address_fields() {
+    let doc = openapi_json();
+    for schema in ["LpResponse", "LpSummary"] {
+        let props = &doc["components"]["schemas"][schema]["properties"];
+        for field in [
+            "stellar_signer_address",
+            "evm_address",
+            "evm_signer_address",
+            "evm_address_linked_at",
+        ] {
+            assert!(props.get(field).is_some(), "{schema} is missing {field}");
+            assert!(
+                has_type(&props[field], "null"),
+                "{schema}.{field} must be nullable"
+            );
+        }
     }
-}
-
-#[test]
-fn link_address_request_requires_a_stellar_address_string() {
-    let doc = openapi_json();
-    let schema = &doc["components"]["schemas"]["LinkAddressRequest"];
-    assert!(
-        has_type(&schema["properties"]["stellar_address"], "string"),
-        "stellar_address must be a string field, got {}",
-        schema["properties"]["stellar_address"]
-    );
-    let required = schema["required"].as_array().cloned().unwrap_or_default();
-    assert!(
-        required.iter().any(|f| f == "stellar_address"),
-        "stellar_address must be required"
-    );
-}
-
-#[test]
-fn link_address_409_no_longer_requires_passed_kyb() {
-    let doc = openapi_json();
-    let description = doc["paths"]["/v1/lps/me/link-address"]["post"]["responses"]["409"]
-        ["description"]
-        .as_str()
-        .expect("a 409 description")
-        .to_owned();
-    assert!(
-        !description.contains("has not passed"),
-        "the 409 description must not claim KYB must have passed first, got {description:?}"
-    );
-    assert!(
-        description.contains("refused"),
-        "the 409 description must mention the Failed refusal case, got {description:?}"
-    );
+    let summary = &doc["components"]["schemas"]["LpSummary"]["properties"];
+    assert!(summary.get("address_linked_at").is_some());
 }
 
 #[test]

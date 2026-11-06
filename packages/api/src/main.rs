@@ -23,12 +23,14 @@ use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
+use shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo;
 use shared::metadata_fetcher::MetadataFetcher;
 use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use shared::system_configuration_repo::SystemConfigurationRepo;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -69,6 +71,8 @@ async fn main() -> anyhow::Result<()> {
     let lp_repo = LpRepo::new(pool.clone());
     let lp_ledger_repo = LpLedgerRepo::new(pool.clone());
     let lp_bank_deposit_repo = LpBankDepositRepo::new(pool.clone());
+    let system_configuration_repo = SystemConfigurationRepo::new(pool.clone());
+    let lp_requested_bank_details_repo = LpRequestedBankDetailsRepo::new(pool.clone());
     let kyb_document_repo = KybDocumentRepo::new(pool.clone());
 
     // Required, not optional: an API that booted without storage would accept
@@ -127,6 +131,10 @@ async fn main() -> anyhow::Result<()> {
     let withdrawal_queue_wallets = chains_config.withdrawal_queue_wallets;
     let asset_decimals = chains_config.asset_decimals;
     let loan_registry_addresses = chains_config.loan_registry_addresses;
+    let minter_addresses = chains_config.minter_addresses;
+    let capital_allocation_from_minter = chains_config.capital_allocation_from_minter;
+    let withdrawal_queue_addresses = chains_config.withdrawal_queue_addresses;
+    let pocket_addresses = chains_config.pocket_addresses;
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -153,6 +161,10 @@ async fn main() -> anyhow::Result<()> {
         withdrawal_queue_wallets,
         asset_decimals,
         loan_registry_addresses,
+        minter_addresses,
+        capital_allocation_from_minter,
+        withdrawal_queue_addresses,
+        pocket_addresses,
         crystal_enabled,
         elliptic_enabled,
         auth_user_repo,
@@ -167,6 +179,8 @@ async fn main() -> anyhow::Result<()> {
         lp_repo,
         lp_ledger_repo,
         lp_bank_deposit_repo,
+        system_configuration_repo,
+        lp_requested_bank_details_repo,
         kyb_document_repo,
         object_store,
         kyb_limits,
@@ -199,8 +213,10 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());
     api_docs.merge(pipeline_api::routes::audit_log::AuditLogDoc::openapi());
     api_docs.merge(pipeline_api::routes::lps::LpsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::lp_settlement_address::LpSettlementAddressDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_ledger::LpLedgerDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_bank_deposits::LpBankDepositsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::cash_book::CashBookDoc::openapi());
     api_docs.merge(pipeline_api::routes::chains::ChainsDoc::openapi());
 
     let app = Router::new()
@@ -225,8 +241,10 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::ramp::router())
         .nest("/v1", pipeline_api::routes::audit_log::router())
         .nest("/v1", pipeline_api::routes::lps::router(kyb_limits))
+        .nest("/v1", pipeline_api::routes::lp_settlement_address::router())
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .nest("/v1", pipeline_api::routes::lp_bank_deposits::router())
+        .nest("/v1", pipeline_api::routes::cash_book::router())
         .nest("/v1", pipeline_api::routes::chains::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())

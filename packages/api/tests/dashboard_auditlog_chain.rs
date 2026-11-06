@@ -8,8 +8,8 @@ use bigdecimal::BigDecimal;
 use pipeline_api::config::ConfiguredChain;
 use pipeline_api::routes::audit_log::{self, build_response, format_action, AuditLogDoc};
 use pipeline_api::routes::dashboard::{
-    self, chain_yield_deltas, compute_summary, compute_tvl_history, compute_yield_history,
-    merge_flows, merge_yield_deltas, DashboardDoc,
+    self, chain_yield_deltas, chain_yield_deltas_counting_recoveries, compute_summary,
+    compute_tvl_history, compute_yield_history, merge_flows, merge_yield_deltas, DashboardDoc,
 };
 use pipeline_api::AppState;
 use serde_json::{json, Value};
@@ -55,6 +55,10 @@ fn make_test_state() -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses: HashMap::new(),
+        minter_addresses: HashMap::new(),
+        capital_allocation_from_minter: std::collections::HashSet::new(),
+        withdrawal_queue_addresses: HashMap::new(),
+        pocket_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -83,6 +87,11 @@ fn make_test_state() -> AppState {
         lp_repo: shared::lp_repo::LpRepo::new(pool.clone()),
         lp_ledger_repo: shared::lp_ledger_repo::LpLedgerRepo::new(pool.clone()),
         lp_bank_deposit_repo: shared::lp_bank_deposit_repo::LpBankDepositRepo::new(pool.clone()),
+        system_configuration_repo: shared::system_configuration_repo::SystemConfigurationRepo::new(
+            pool.clone(),
+        ),
+        lp_requested_bank_details_repo:
+            shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo::new(pool.clone()),
         kyb_document_repo: shared::kyb_document_repo::KybDocumentRepo::new(pool.clone()),
         object_store: shared::object_store::ObjectStore::new(
             "test-key",
@@ -1009,6 +1018,15 @@ fn deal_token_factory_events_render_on_both_arms() {
     assert_eq!(a, "Deal tokens registered");
     assert_eq!(d["cargo"], "0xC");
 
+    for params in [
+        json!({ "loan_id": "7", "debt": "CD", "cargo": null }),
+        json!({ "loan_id": "7", "debt": "CD" }),
+    ] {
+        let (a, d) = act("DealRegistered", params, ChainKind::Stellar);
+        assert_eq!(a, "Deal tokens registered");
+        assert_eq!(d, json!({ "debt": "CD", "cargo": null }));
+    }
+
     let evm = json!({ "loan_id": "7", "target": "9000000", "previous": "8000000", "minted": "1000000", "clawed": "0" });
     let (a, d) = act("DebtSynced", evm, ChainKind::Evm);
     assert_eq!(
@@ -1228,4 +1246,103 @@ fn negative_cash_amounts_put_the_sign_before_the_dollar() {
         ChainKind::Stellar,
     );
     assert_eq!(a, "Cash recorded — Fee -$12.340000");
+}
+
+fn mixed_yield_fixture() -> (Vec<YieldMintRow>, Vec<RepaymentMintRow>) {
+    let carved = |loan: i64, day: i64, interest: i64, reversed: Option<i64>| RepaymentMintRow {
+        carved_out: true,
+        ..loan_repaid(loan, day, interest, None, reversed)
+    };
+    (
+        vec![legacy_mint(1, 5)],
+        vec![
+            loan_repaid(1, 2, 100_000_000, None, None),
+            carved(2, 3, 40_000_000, None),
+            loan_repaid(3, 4, 7_000_000, None, Some(6)),
+            carved(4, 5, 9_000_000, Some(7)),
+        ],
+    )
+}
+
+fn delta_vector(deltas: &[YieldMintRow]) -> Vec<(i64, BigDecimal)> {
+    deltas
+        .iter()
+        .map(|d| (d.block_timestamp / DAY, d.s_plusd_amount.clone()))
+        .collect()
+}
+
+fn expected(pairs: &[(i64, i64)]) -> Vec<(i64, BigDecimal)> {
+    pairs
+        .iter()
+        .map(|(day, amount)| (*day, BigDecimal::from(*amount)))
+        .collect()
+}
+
+#[test]
+fn evm_default_path_ignores_carved_out_rows_pinned() {
+    let (legacy, repaid) = mixed_yield_fixture();
+    let deltas = chain_yield_deltas(ChainKind::Evm, &legacy, &repaid);
+    assert_eq!(
+        delta_vector(&deltas),
+        expected(&[
+            (1, 5_000_000),
+            (2, 100_000_000),
+            (4, 7_000_000),
+            (6, -7_000_000)
+        ])
+    );
+}
+
+#[test]
+fn stellar_default_path_is_unchanged_pinned() {
+    let (legacy, repaid) = mixed_yield_fixture();
+    let deltas = chain_yield_deltas(ChainKind::Stellar, &legacy, &repaid);
+    assert_eq!(
+        delta_vector(&deltas),
+        expected(&[(1, 5_000_000), (2, 10_000_000), (4, 700_000), (6, -700_000)])
+    );
+}
+
+#[test]
+fn stellar_recoveries_count_at_release_and_net_at_reversal() {
+    let (legacy, repaid) = mixed_yield_fixture();
+    let deltas = chain_yield_deltas_counting_recoveries(ChainKind::Stellar, &legacy, &repaid);
+    assert_eq!(
+        delta_vector(&deltas),
+        expected(&[
+            (1, 5_000_000),
+            (2, 10_000_000),
+            (3, 4_000_000),
+            (4, 700_000),
+            (5, 900_000),
+            (6, -700_000),
+            (7, -900_000),
+        ])
+    );
+    let at_release = compute_summary(&[], &[], &[], &deltas, 5 * DAY);
+    assert_eq!(at_release.cumulative_yield_total, "20.600000");
+    let after_reversals = compute_summary(&[], &[], &[], &deltas, 8 * DAY);
+    assert_eq!(after_reversals.cumulative_yield_total, "19.000000");
+}
+
+#[test]
+fn stellar_recoveries_path_with_no_rows_is_exactly_zero() {
+    let deltas = chain_yield_deltas_counting_recoveries(ChainKind::Stellar, &[], &[]);
+    assert!(deltas.is_empty());
+    let summary = compute_summary(&[], &[], &[], &deltas, 8 * DAY);
+    assert_eq!(summary.cumulative_yield_total, "0.000000");
+}
+
+#[test]
+fn recoveries_path_without_carved_rows_equals_default_path() {
+    let repaid = vec![
+        loan_repaid(1, 2, 100_000_000, Some(3_000_000), None),
+        loan_repaid(2, 3, 7_000_000, None, Some(5)),
+    ];
+    for kind in [ChainKind::Evm, ChainKind::Stellar] {
+        assert_eq!(
+            delta_vector(&chain_yield_deltas(kind, &[], &repaid)),
+            delta_vector(&chain_yield_deltas_counting_recoveries(kind, &[], &repaid))
+        );
+    }
 }

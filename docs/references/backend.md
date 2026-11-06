@@ -298,9 +298,9 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
 
 **Stellar (Soroban) events** are routed by contract id in
 `worker/src/indexer/stellar/parsers.rs`, each contract's id supplied by a
-`CHAIN_<id>_STELLAR_*_ID` variable; a contract whose id is unset has no branch at
+`CHAIN_<id>_STELLAR_INDEXER_*_ADDRESS` variable (key map: [Stellar contract ids and signer roles](#stellar-contract-ids-and-signer-roles)); a contract whose id is unset has no branch at
 all, so an un-deployed contract ships dark rather than warning every cycle. The
-minter contributes 15 of its 22 events (#1416, #1480):
+minter contributes 16 of its 22 events (#1416, #1480, #1790):
 
 | Contract | Event (topic) | Stored as | Why |
 |---|---|---|---|
@@ -313,6 +313,15 @@ minter contributes 15 of its 22 events (#1416, #1480):
 | Minter | `ramp_opened` / `ramp_closed` | `RampOpened` / `RampClosed` | USDC/bank ramp lifecycle; `direction` is `UsdcToBank` or `BankToUsdc` |
 | Minter | `cash_recorded` | `CashRecorded` | A cash-ledger entry; topic field `kind` is stored as `reason` (`Disbursed`, `DisbursementReversed`, `Income`, `Expense`, `Correction`), `delta` is signed. A Stellar `Correction` is stored as `CashRecorded` with `reason = "Correction"`, where EVM emits `CashCorrected` |
 | Minter | `mint_corrected` / `loss_absorbed` | `MintCorrected` / `LossAbsorbed` | Supply correction and loss absorption |
+| Minter | `snapshot` | `MinterSnapshot` | The permissionless pool-state checkpoint the cash-book fold starts from; stores `ledger`, `bank_cash`, `in_flight`, `outstanding_total`, `unabsorbed_total`, `total_assets` (decimal strings, raw 7-dp) and `read_failed` (JSON bool); `custody` is not stored |
+
+The WithdrawalQueue contributes 3 of its events (#1791); the others (`custodian_set`, `verifier_set`, `request_enqueued`, `paused` / `unpaused`, ownership and upgrade events) are not collected:
+
+| Contract | Event (topic) | Stored as | Why |
+|---|---|---|---|
+| WithdrawalQueue | `withdrawal_requested` | `WithdrawalRequested` | A queued request; `queued` is the cumulative PLUSD offset including it |
+| WithdrawalQueue | `request_claimed` | `RequestClaimed` | A claim; `amount` is the PLUSD burned, not the USDC paid (shared with the DepositManager) |
+| WithdrawalQueue | `rate_set` | `WithdrawalRateSet` | The one-time recovery rate; `new_rate` is the raw 6-dp integer string (`1000000` = 1:1). Served by `/v1/withdrawal-queue` and `/v1/requests` (see [withdrawals.md](../product-specs/withdrawals.md#stellar-queue-read-model-1791)) |
 
 The new events store `event_name` as the EVM PascalCase name and `params` keys as the EVM snake_case
 field names, so both arms are queried alike. All ids (`id`, `loan_id`, `entry_id`, `original_id`,
@@ -322,12 +331,24 @@ field names, so both arms are queried alike. All ids (`id`, `loan_id`, `entry_id
 on `close_ramp` with a loss Stellar books the `Expense` entry silently, so the loss is visible only
 as `RampClosed.loss`.
 
-They are enabled by `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` — the minter under its
-former name. `pipeline-stellar-contracts` #33 renamed `yield-minter` to `minter`
-and rewrote it, deleting `mint_yield` and `YieldMinted`, so one id covers both
-event families: a pre-#33 deployment emits `YieldMinted`, a post-#33 one emits
-the wire-in pair, and no deployment emits both. `snapshot` (diagnostic, callable by
-anyone) and the config/role setters are not collected.
+They are enabled by `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS`. `pipeline-stellar-contracts`
+#33 rewrote the minter, deleting `mint_yield` and `YieldMinted`; the id serves the minter's
+business events (the wire-in pair and the cash events). `YieldMinted` is no longer parsed
+(#1433). The config/role setters are not collected.
+
+#### Minter cash book
+
+`GET /v1/cash-book` folds the minter rows in `contract_logs` into `bank_cash` and `in_flight`
+(no RPC call). Rules, units and response shape live in
+[minter-cash-book.md](../product-specs/minter-cash-book.md). The two API keys are
+`CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` (equal to the indexer's minter key) and
+`CHAIN_<id>_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` (`true`/`false`, default `false`; needs
+the address).
+
+Ops step: after the worker image that indexes `MinterSnapshot` is live on a network, call the
+permissionless `snapshot()` on that network's minter once. Until a `MinterSnapshot` row exists the
+fold reports `complete = false` and the Capital Allocation switch does not engage. A snapshot
+emitted under an older worker is lost and must be emitted again.
 
 The CollateralRegistry's 11 business events are collected when
 `CHAIN_<id>_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set. They are routed by contract id in
@@ -363,24 +384,66 @@ configured LoanRegistry (the outbox stores no registry). Minter rows are otherwi
 leg counts on both sides; for minter-era repayments it is structurally about 0. The `interest` and
 `fees` fields are unchanged (they exclude `oet_alloc`). The query and arithmetic live in
 `shared::contract_logs_repo::list_repayment_mints` and `shared::minted_yield` for reuse by the
-dashboard cumulative yield (#1533), which counts interest of non-carved-out loans only and no fees (#1634, `yield-apy-semantics.md`).
+dashboard cumulative yield (#1533), which counts interest of non-carved-out loans only and no fees (#1634, `yield-apy-semantics.md`); a Stellar chain with `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS` also counts carved-out interest at release, net of reversal (#1789).
 
 #### Stellar deal-token-factory indexing
 
-Enabled by `CHAIN_<id>_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (#1482); unset ships dark — no factory polling, no seed query, no token polling. Rows land in `contract_logs` only; amounts and ids are decimal strings, and the shapes are identical on the EVM arm.
+Enabled by `CHAIN_<id>_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (#1482); unset ships dark — no factory polling, no seed query, no token polling. Rows land in `contract_logs` only; amounts and ids are decimal strings, and the shapes match the EVM arm except that a Stellar `DealRegistered.cargo` can be `null` (EVM `cargo` is never `null`).
 
 | Source | Event (topic) | Stored as | `params` |
 |---|---|---|---|
-| Factory | `deal_registered` | `DealRegistered` | `loan_id`, `debt`, `cargo` |
+| Factory | `deal_registered` | `DealRegistered` | `loan_id`, `debt`, `cargo` (JSON `null` for deals registered after contracts #38, whose event carries `debt` only) |
 | Factory | `debt_synced` | `DebtSynced` | `loan_id`, `target`, `previous`, `minted`, `clawed` |
-| Factory | `cargo_synced` | `CargoSynced` | `loan_id`, `target`, `previous`, `minted`, `burned` |
-| Per-deal DEBT / CARGO token | `mint`, `clawback`, `burn`, `transfer` | `DealTokenTransfer` | `loan_id`, `token_kind` (`"debt"` / `"cargo"`), `token`, `from`, `to`, `amount` |
+| Factory | `cargo_synced` | `CargoSynced` | `loan_id`, `target`, `previous`, `minted`, `burned` (legacy factories only; removed in #38, parser kept for history) |
+| Per-deal DEBT / CARGO token (CARGO only for pre-#38 deals) | `mint`, `clawback`, `burn`, `transfer` | `DealTokenTransfer` | `loan_id`, `token_kind` (`"debt"` / `"cargo"`), `token`, `from`, `to`, `amount` |
 
 In `DealTokenTransfer` the absent side is JSON `null`, never a zero address: `mint` has `from: null`, `clawback` / `burn` have `to: null`, `transfer` has both. `amount` is stored raw at the token's scale (7 decimals for a Stellar SAC). `debt_synced` / `cargo_synced` are stored as emitted, including no-ops (`minted`, `clawed`, `burned` all `"0"`); consumers filter on that.
 
-The token set is discovered at runtime. It is seeded once at startup from every `DealRegistered` row already in `contract_logs` for the chain (`ContractLogsRepo::list_deal_registrations`, any factory address, no on-chain sweep) and grows from each newly indexed `DealRegistered`. A poll is two-phase: the configured contracts plus the factory first, then the token set including tokens just discovered in that range, split into `getEvents` requests of at most 25 contract ids. A seed-query failure aborts the Stellar indexer task.
+The token set is discovered at runtime. It is seeded once at startup from every `DealRegistered` row already in `contract_logs` for the chain (`ContractLogsRepo::list_deal_registrations`, any factory address, no on-chain sweep) and grows from each newly indexed `DealRegistered`. A poll is two-phase: the configured contracts plus the factory first, then the token set including tokens just discovered in that range, split into `getEvents` requests of at most 25 contract ids. Rows without `cargo` seed the DEBT token only. A seed-query failure aborts the Stellar indexer task.
+
+Both `deal_registered` shapes (legacy `{debt, cargo}` and HEAD `{debt}`) are accepted per event from the same factory address, so an in-place upgrade or a redeploy needs no mode switch; a `cargo` key that is present but not an address rejects the event. Factory admin events (`loan_registry_set`, `debt_issuer_set`, legacy `registries_set`, `issuers_set`) are not collected.
 
 Limitations: a deal registered before the indexer saw its `DealRegistered` is not tracked (remedy: rewind the cursor to before the registration, within RPC retention); history older than Soroban RPC retention is not backfilled (the next `DebtSynced` / `CargoSynced` carries the absolute `target`).
+
+#### Stellar Pocket indexing
+
+Enabled by `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` (#1789); unset ships dark — no pocket polling, no seed loop. The API side is a separate optional key, `CHAIN_<id>_STELLAR_API_POCKET_ADDRESS`; unset means `pocket: null` in `GET /v1/loan-book`, `pocket_claims: []` in `GET /v1/requests`, `pocket_recovered: null` in `GET /v1/pnl`, and the dashboard yield unchanged. Both keys are validated as Strkey `C…` contract ids; the indexer key joins the distinct-role check as `POCKET_ADDRESS`. The Pocket stores no AccessManager or SecurityRegistry events (not indexed, by decision).
+
+Every Pocket event is a `#[contractevent]` with the default map format: `topics[0]` is the snake_case symbol, `#[topic]` fields follow, `value` is a map of the rest. Rows land in `contract_logs` only; amounts are decimal strings in the token's own 7-decimal scale.
+
+| On-chain topic | Topics | Value map | Stored `event_name` | Stored `params` |
+|---|---|---|---|---|
+| `pocket_opened` | `loan_id` | `amount`, `snapshot_ledger`, `supply_at_snapshot` | `PocketOpened` | `loan_id`, `amount`, `snapshot_ledger`, `supply_at_snapshot` |
+| `released` | `loan_id` | `principal`, `released`, `interest` | `PocketReleased` | `loan_id`, `principal`, `released`, `interest` |
+| `unreleased` | `loan_id` | `principal`, `interest` | `PocketUnreleased` | `loan_id`, `principal`, `interest` |
+| `burned` | `loan_id` | `amount`, `burned` | `PocketBurned` | `loan_id`, `amount`, `burned` |
+| `claimed` | `loan_id`, `holder` | `paid` | `PocketClaimed` | `loan_id`, `holder` (exact Strkey, `G…` or `C…`), `paid`, `paid_zero` (JSON bool) |
+
+`reporters_set` and the OpenZeppelin `paused` / `unpaused` / ownership / upgrade events are not stored. Every stored name carries the `Pocket` prefix because `Released` is already the CollateralRegistry name; the generic topics `released`, `burned` and `claimed` are decoded only when the event's `contract_id` equals the configured pocket id. The poller routes by contract id before `dispatch_parser`, right after the CollateralRegistry branch, and the pocket id is added to the `getEvents` filter. A recognised topic that fails to decode is dropped with a warning.
+
+**Fold.** `shared::pocket::fold_pocket` folds one loan's events, ordered by `(block_number, log_index)`:
+
+- `held = amount − Σ released.released + Σ unreleased.principal − Σ burned.burned`;
+- `released_total = Σ (released.released + released.interest) − Σ (unreleased.principal + unreleased.interest)`;
+- `burned_total = Σ burned.burned` (the burned amount, not the requested `amount`);
+- `claimed_total = Σ claimed.paid` (a zero claim adds 0).
+
+With an indexed `PocketOpened` the fold starts from zero, ignores any seed, and is `complete = true` with `opened = PocketOpened.amount`. Without one but with a seed, it starts from the seed totals and applies only events with `block_number > as_of_ledger`; it is `complete = false` and `opened` is `null`. With neither there is no pocket to serve. A row with a missing or unparsable amount is skipped with a warning.
+
+**View seed.** A defaulted loan whose `PocketOpened` was never indexed (the key was set after the default) is seeded by a separate loop in the worker, started from `run_stellar_indexer_job` when both the pocket and the loan-registry keys are set (without the registry key the seed is disabled with a warning). Every 60 seconds it takes the loans with a `LoanDefaulted` row on the configured registry that have no `PocketOpened` on the pocket and no `pocket_seeds` row, simulates `pocket(loan_id)`, and inserts the result with `as_of_ledger = simulateTransaction.latestLedger` (`ON CONFLICT DO NOTHING`). `NoPocket` (`Error(Contract, #2)`) is logged at debug level; any other failure is warned once per loan per process; errors never propagate, and the loop runs outside `index_once`, so it cannot stall Stellar indexing. Events at or below `as_of_ledger` are inside the seed; later ones are folded on top. A ledger closing during the simulate call is a residual best-effort race.
+
+`pocket_seeds` (migration `20261103000001_pocket_seeds.sql`) holds one row per `(chain_id, pocket_address, loan_id)`: `as_of_ledger`, `snapshot_ledger`, `supply_at_snapshot`, `held`, `released_total`, `burned_total`, `claimed_total`.
+
+**API.**
+
+- `GET /v1/loan-book`: each entry has `pocket` (`null` without the API key or without a fold). Fields: `snapshot_ledger`; `supply_at_snapshot` (raw sPLUSD share count, unscaled decimal string); `opened` (`null` when `complete` is `false`); `held`, `released_total`, `burned_total`, `claimed_total` as 6-decimal USDC strings via `normalize_usdc_amount`; `complete`.
+- `GET /v1/requests`: sibling list `pocket_claims` (always present, empty when none), items `{chain_id, loan_id, amount, tx_hash, created_at}` with `amount` raw PLUSD like `RequestItem.amount`. Built from `PocketClaimed` rows whose `holder` equals the `wallet` query value byte for byte, on Stellar chains in scope that have the API key; zero claims (`paid_zero`) are excluded, and `status=pending` returns it empty. `requests[]` gets no new `type`.
+- `GET /v1/pnl`: `pocket_recovered` is the sum of the wallet's `PocketClaimed.paid` on the chain, raw PLUSD like `total_realized_pnl`; `null` on EVM or without the key; the endpoint accepts only `G…` wallets, so a `C…` holder's claims appear in `pocket_claims` only. When non-null, `total_realized_pnl = Σ positions.realized_pnl + pocket_recovered` and `total_pnl = total_unrealized_pnl + total_realized_pnl`. `positions[]` and `avg_apy` are unchanged; unclaimed claimable is excluded.
+- Dashboard cumulative yield and the audit log are described in `yield-apy-semantics.md`, `dashboards.md` and `audit-logging.md`.
+
+**Cursor and retention.** Setting the key indexes from the current cursor. When the contract already emitted events, rewind the cursor within Soroban RPC retention (replays dedupe on `(chain_id, contract_address, block_number, log_index)`); beyond retention the view seed carries the totals. Claims emitted before the key was set are absent from `pocket_claims` and `pocket_recovered`, although `claimed_total` is right through the seed; there is no per-holder seed.
+
+**`complete` limitation.** Any indexed `PocketOpened` makes the fold `complete = true`; the code cannot tell whether later pocket events were missed. `complete` therefore assumes the pocket key stayed configured since the `PocketOpened` ledger. If the key was unset for a while, rewind the Stellar cursor within RPC retention so the gap is re-indexed (replays dedupe); past retention the folded totals can be short of the contract's `pocket(loan_id)` (TD-170).
 
 The CollateralRegistry's 11 business events are collected on EVM when
 `CHAIN_<id>_EVM_INDEXER_COLLATERAL_REGISTRY_ADDRESS` is set (unset ships dark) and stored as raw
@@ -400,6 +463,10 @@ deltas and `value_date`, lowercase hex hashes with no `0x`, and enum names (`dir
 
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
+#### Stellar SecurityRegistry indexing
+
+Enabled by `CHAIN_<id>_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (#1779); unset ships dark: no polling, no sync task, empty tables. The key joins the distinct-role check as `SECURITY_REGISTRY_ADDRESS` and must not equal the legacy `COLLATERAL_REGISTRY_ADDRESS`. The worker stores 22 events under `Security…` names in `contract_logs`, keeps a view-snapshot table for what events do not carry, and projects records, terms, inspections, lots, docs, margin-call history, extension consents and a per-loan valuation (`coverage_detail` plus `loan_money`) into ten additive tables (migration `20261106000001_security_registry.sql`). Nothing runs inside `index_once` except the usual log write; a separate sync task (30 s) does the view reads, the fold and the valuation, and cannot stall indexing. Full spec: [security-registry-events.md](./security-registry-events.md).
+
 #### EVM DealTokenFactory (#1485)
 
 `PipelineDealTokenFactory` mints a DEBT and a CARGO `DealToken` per loan (`registerDeal`, CREATE2, salt = `loanId`). The indexer records the factory's three deal events and every DealToken `Transfer`. It is enabled by the optional `CHAIN_<id>_EVM_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS`; unset or blank ships dark (no handler, no extra `eth_getLogs` addresses, no seed query). A malformed value fails startup naming `DEAL_TOKEN_FACTORY_ADDRESS`.
@@ -413,7 +480,7 @@ deltas and `value_date`, lowercase hex hashes with no `0x`, and enum names (`dir
 
 `loan_id` and every amount are decimal strings; addresses are EIP-55 checksummed. `DealTokenTransfer.from` is JSON `null` on a mint and `to` is JSON `null` on a burn (the zero address is never stored); `token` repeats `contract_address`. `amount` is the raw on-chain integer (the EVM DealToken has 6 decimals, the Stellar SAC 7); nothing is normalised at write time. The Stellar indexer (#1482) writes the same shapes. The name is deliberately not `Transfer` / `AssetTransfer`: those consumers filter on `event_name` without `contract_address`, so sharing a name would fold deal-token supply into USDC custody balances. A DealToken only ever emits mint and burn transfers (`_update` reverts otherwise). `DebtSynced` / `CargoSynced` are permissionless and are emitted even when nothing moves, so rows with `minted = clawed / burned = 0` are stored as emitted.
 
-**Runtime address discovery.** Token addresses are known only from `DealRegistered` (never from `debtAddress()` / `cargoAddress()`, which recompute from the current creation code). `DealTokenRegistry` (`indexer/deal_tokens.rs`) is a `DynamicAddressSource` of `EvmEventPoller`: at startup it is seeded from every indexed `DealRegistered` row on the chain (`ContractLogsRepo::list_deal_registrations`, regardless of `contract_address`, so a factory address change keeps watching earlier tokens); during a poll each chunk is fetched with one `eth_getLogs` over the static (core) addresses only, then the registry's token addresses go in separate `eth_getLogs` calls over the same range, at most `MAX_DYNAMIC_ADDRESSES_PER_REQUEST` (25) addresses each, so a growing token list never hits a provider's address limit or touches the core filter; any failed call fails the chunk. When that fetch reveals a new `DealRegistered`, the same batched fetch over just the new token addresses covers the same range, so a mint in the registering block or transaction is not missed. The merged logs are sorted by `(block_number, log_index)`. The second fetch never runs with an empty address list. The token decoder returns `None` unless the log's emitter is a registered token, because the sPLUSD vault's ERC-20 `Transfer` shares the same topic.
+**Runtime address discovery.** Token addresses are known only from `DealRegistered` (never from `debtAddress()` / `cargoAddress()`, which recompute from the current creation code). `DealTokenRegistry` (`indexer/deal_tokens.rs`) is a `DynamicAddressSource` of `EvmEventPoller`: at startup it is seeded from every indexed `DealRegistered` row on the chain (`ContractLogsRepo::list_deal_registrations`, regardless of `contract_address`, so a factory address change keeps watching earlier tokens; the query is shared with Stellar and a row without `cargo` seeds DEBT only, which never happens on EVM); during a poll each chunk is fetched with one `eth_getLogs` over the static (core) addresses only, then the registry's token addresses go in separate `eth_getLogs` calls over the same range, at most `MAX_DYNAMIC_ADDRESSES_PER_REQUEST` (25) addresses each, so a growing token list never hits a provider's address limit or touches the core filter; any failed call fails the chunk. When that fetch reveals a new `DealRegistered`, the same batched fetch over just the new token addresses covers the same range, so a mint in the registering block or transaction is not missed. The merged logs are sorted by `(block_number, log_index)`. The second fetch never runs with an empty address list. The token decoder returns `None` unless the log's emitter is a registered token, because the sPLUSD vault's ERC-20 `Transfer` shares the same topic.
 
 **Limitation.** There is no `deal(loanId)` sweep: deals registered before the factory was indexed are not discovered. Set the factory address at deploy time, or rewind the chain cursor to at or before the factory's first `registerDeal`. Deal token addresses are fetched in separate `eth_getLogs` batches of at most 25, so a large deal count does not enlarge the core filter.
 
@@ -601,35 +668,15 @@ Required env:
 - `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`.
 - An RPC URL: `CHAIN_<id>_RELAYER_ETH_RPC_URL`, falling back to `CHAIN_<id>_EVM_RPC_URL`.
 
-#### Stellar yield-mint phase
+**No Stellar yield-mint phase.** There is no Stellar yield-mint phase either: `minter.repay` mints
+interest and fees in the same call (`pipeline-stellar-contracts` #33), and the phase was removed
+in #1793.
 
-The Stellar relayer runs a yield-mint phase against Soroban deployments that still have a
-separate yield-minter; it has no EVM counterpart. It reuses
-the `yield_mint_outbox` table (discover → skip-nothing-to-mint → submit → confirm)
-but signs `yield_minter.mint_yield(caller, loan_id, repayment_id)` directly with the
-relayer ed25519 keypair — no BitGo. Double-mint is prevented on-chain by
-`loan_registry.consume_yield`; the `can_yield_be_minted` view is a pre-submit
-optimization. On-chain `FAILED` is terminal (`failed`, operator review).
-
-Between discover and submit, `skip_nothing_to_mint_stellar` sweeps `pending` rows
-for pure-principal repayments (no yield to distribute) into the terminal
-`skipped_nothing_to_mint` state, computed entirely from the originating
-`PaymentRecorded` event in `contract_logs` — no on-chain call. This mirrors the
-contract's `mint_yield` `ZeroAmounts` guard (`senior_interest == 0` and
-`mgmt_fee + perf_fee + oet_alloc == 0`). Without it such a repayment would fail
-`mint_yield` forever, because that revert also rolls back the in-tx
-`consume_yield` mark, so `can_yield_be_minted` never flips to false.
-
-The phase is enabled only when both contract ids are configured:
-
-- `CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID` — Soroban `C…` yield-minter id.
-- `CHAIN_<id>_RELAYER_STELLAR_LOAN_REGISTRY_ID` — Soroban `C…` loan-registry id
-  (discovery filter + `can_yield_be_minted` target).
-- Batch size reuses `JOB_RELAYER_STELLAR_BATCH_SIZE` (default 50).
-
-Operational prerequisite: the relayer signer keypair must hold the minter role on
-the access-manager, and the yield-minter must hold the executor role (wired in
-`pipeline-stellar-contracts`).
+- The `yield_mint_outbox` table stays. Its `confirmed` rows feed the legacy `YieldMinted` part of
+  `minted_yield` (§Minted yield). Leftover Stellar rows in `pending`, `submitted`, `failed` or
+  `skipped_*` are inert, and nothing reads them.
+- If `CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID` or `CHAIN_<id>_RELAYER_STELLAR_LOAN_REGISTRY_ID`
+  is still set, the relayer ignores it and logs one deprecation warning per chain at startup.
 
 **Phase 5 — wire-in matching (#1416), both chains.** Pure database work: no RPC, no signing.
 Every cycle it joins indexed minter events to `lp_bank_deposits` by `ref_hash`
@@ -649,7 +696,7 @@ The phase has no configuration of its own: it runs when the indexer's
 — this phase makes no contract call, the id serves only the `receiver <> minter`
 comparison, and it must be the one the indexed rows came from. A second,
 relayer-scoped key could disagree, and escrowed wires would then be marked
-minted. (The relayer's own `RELAYER_STELLAR_*` contract ids belong to Phase 4,
+minted. (The relayer's own `RELAYER_STELLAR_*` access-manager and PLUSD SAC ids belong to Phase 3,
 which does submit transactions and so may target another deployment.)
 
 On EVM the phase runs when the indexer's `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS` is set, and
@@ -725,6 +772,8 @@ QuickNode node
 | `GET` | `/v1/protocol/status` | Operational: paused contracts, shutdown state, rate-limit window |
 | `GET` | `/v1/protocol/limits` | Current `maxPerWindow`, `maxPerLPPerWindow`, `maxTotalSupply`, window utilization, per-LP utilization — for deposit UI to display caps before the LP submits |
 | `GET` | `/v1/protocol/reserve-health` | `reserveHealth()` view: backing, supply, headroom — for dashboard |
+| `GET` | `/v1/requests` | Activity feed; `pocket_claims` lists the wallet's non-zero Stellar Pocket claims (#1789, see "Stellar Pocket indexing") |
+| `GET` | `/v1/pnl` | Staking PnL; `pocket_recovered` adds the wallet's Pocket claims to the realised totals (#1789) |
 
 ### 3B. Trustee-Facing (consumed by Trustee tooling)
 
@@ -836,6 +885,64 @@ UUPS proxies mean the implementation behind a contract can change. If `PLUSD_Imp
 2. On upgrade (detected via `Upgraded(implementation)` event from the proxy), Bridge alerts ops.
 3. Ops deploys updated Bridge with new ABI config. This is a coordinated deploy alongside the 48h upgrade timelock window — there is time to prepare.
 4. The indexer tolerates unknown events (logs them raw, skips handler routing) rather than crashing.
+
+### Stellar contract ids and signer roles
+
+Source of truth: `pipeline-stellar-contracts` `deployments/networks/<testnet|mainnet>/addresses.json` (contract ids) and `config.json` (mainnet `usdc`, the `verifier`s, the `custodian`s, the `access.<role>` holders). Current values are in `.env.example`, recorded at the contracts commit named there (`d0d5757`; testnet = deployment #36, mainnet = #37). `VITE_STELLAR_*` keys are synced separately (frontend).
+
+| `addresses.json` key | Contract | Worker keys | API keys | Relayer key |
+|---|---|---|---|---|
+| `deposit_manager` | DepositManager | indexer `CHAIN_<id>_STELLAR_INDEXER_DEPOSIT_MANAGER_ADDRESS` (required) | `CHAIN_<id>_API_STELLAR_DM_CONTRACT_ID` (vouchers) | n/a |
+| `withdrawal_queue` | WithdrawalQueue | indexer `…_STELLAR_INDEXER_WITHDRAWAL_QUEUE_ADDRESS` (required) | `…_API_STELLAR_WQ_CONTRACT_ID` (vouchers; #1791 also scopes the recovery rate to it) | n/a |
+| `staked_pl_usd` | sPLUSD | indexer `…_STELLAR_INDEXER_STAKED_PLUSD_ADDRESS` (required); price poller `…_STELLAR_PRICE_POLLER_STAKED_PLUSD_ADDRESS` (required when the poller runs) | n/a | n/a |
+| `loan_registry` | LoanRegistry | indexer `…_STELLAR_INDEXER_LOAN_REGISTRY_ADDRESS` (optional) | `…_STELLAR_API_LOAN_REGISTRY_ADDRESS` (required, equal to the indexer key) | n/a |
+| `minter` | Minter | indexer `…_STELLAR_INDEXER_MINTER_ADDRESS` (optional; also gates relayer wire-in matching) | `…_STELLAR_API_MINTER_ADDRESS` (optional; cash-book scope) with boolean switch `…_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER` | n/a |
+| `collateral_registry` | see the trap below | legacy: `…_STELLAR_INDEXER_COLLATERAL_REGISTRY_ADDRESS`; SecurityRegistry: `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (optional, #1779; see "Stellar SecurityRegistry indexing") | n/a | n/a |
+| `deal_token_factory` | DealTokenFactory | indexer `…_STELLAR_INDEXER_DEAL_TOKEN_FACTORY_ADDRESS` (optional) | n/a | n/a |
+| `pocket` | Pocket | indexer `…_STELLAR_INDEXER_POCKET_ADDRESS` (optional; needs the loan-registry key for the view seed) | `…_STELLAR_API_POCKET_ADDRESS` (optional) | n/a |
+| `access_manager` | AccessManager | n/a | n/a | `…_RELAYER_STELLAR_ACCESS_MANAGER_ID` (required) |
+| `plusd` | PLUSD SAC | n/a | n/a | `…_RELAYER_STELLAR_PLUSD_SAC_ID` (required) |
+| `usdc` (testnet `addresses.json`, mainnet `config.json`) | USDC SAC | `JOB_INDEXER_STELLAR_ASSET_ID` (job-level: one network per worker) | n/a | n/a |
+| `config.json` `withdrawal_queue.custodian` | MPC G-account | indexer `…_STELLAR_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS` | `…_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` | n/a |
+| `config.json` `deposit_manager.verifier` = `withdrawal_queue.verifier` | public key of `STELLAR_VERIFIER_SECRET` | n/a | n/a | n/a |
+
+Keys marked "not read yet" are ignored by this build and land with the issue named. `CHAIN_<id>_STELLAR_{ACCESS_MANAGER,USDC_ASSET,PLUSD_ASSET}_ID` in `.env.example` are documentation only. `…_RELAYER_STELLAR_YIELD_MINTER_ID` / `…_RELAYER_STELLAR_LOAN_REGISTRY_ID` belong to the Phase 4 yield-mint path (removed by #1793) and are not synced.
+
+**Trap: `collateral_registry`.** Deployments #36 / #37 stored the legacy CollateralRegistry under that key. The contracts' `deploy-security-registry` recipe stores the SecurityRegistry under the same key, and `deploy-all` keeps an existing `collateral_registry` id, so an unchanged id after a later deploy is still the legacy contract. Decide by the on-chain interface, never by the key name: `stellar contract info interface --id <id> --network <net>`. `pledge` / `lot` means CollateralRegistry, which goes to `…_COLLATERAL_REGISTRY_ADDRESS`. `register` / `perfect` / `record` means SecurityRegistry, which goes to `…_SECURITY_REGISTRY_ADDRESS` and never to the collateral key.
+
+**Cursor rule.** The Stellar cursor is one row per chain in `log_collector_state`, shared by every contract on the chain. `CHAIN_<id>_STELLAR_START_BLOCK` seeds it only while it is 0 (`stellar/poller.rs`). A contract key added to a running chain is indexed only from the current cursor. Set the key before the contract's deploy ledger passes, or rewind with `UPDATE log_collector_state SET last_indexed_block = <ledger> WHERE chain_id = <id>` (worker stopped) to a ledger within Soroban RPC retention (about 7 days). Re-indexed events are skipped by the `contract_logs` `UNIQUE (chain_id, contract_address, block_number, log_index)` constraint. Never truncate or delete `contract_logs` or `log_collector_state`: history older than retention cannot be re-fetched.
+
+**SecurityRegistry rollout (#1779, pipeline-test chain 99000001).** The testnet deploy ledger 5 569 998 leaves Soroban RPC retention around 2026-11-12 (`oldestLedger` 5 464 933 on 2026-11-06 at 5.0 s per ledger, about 120 960 ledgers); re-check `oldestLedger` from `getEvents` on the day.
+
+1. Wait until the worker image containing #1779 is live on pipeline-test; older images ignore the key.
+2. Trap check: `stellar contract info interface --id CDTUMAT6XMYRX6XWHXZF3RDSQIVMRUPFXXXO57NT4VTMUU2R77SWZLUX --network testnet` must list `register` / `perfect` / `record`.
+3. First-event check: `getEvents` with `startLedger` 5569998 and a `contract` filter on that id. No events: no rewind is needed, because setting the key indexes from the current cursor and the contract emitted nothing before. Events found: with the worker stopped run `UPDATE log_collector_state SET last_indexed_block = 5569998 WHERE chain_id = 99000001` (or any ledger at or below the first event) and restart; this must happen while 5 569 998 is still at or above `oldestLedger`. Replays dedupe on `contract_logs`.
+4. Set `CHAIN_99000001_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS=CDTUMAT6XMYRX6XWHXZF3RDSQIVMRUPFXXXO57NT4VTMUU2R77SWZLUX` in the `eq-lab/argocd` PR (`pipeline/test.yaml`, worker env). Keep the legacy `…_COLLATERAL_REGISTRY_ADDRESS=CBSMJS5Q…`.
+5. Verify within a minute: the log line "Stellar SecurityRegistry indexer enabled"; a `security_registry_state` row with `loan_registry = CDWN5B3F…`, `paused = false`, `inspectors = []`; no SecurityRegistry `warn` lines; after the first testnet write, `contract_logs` rows named `Security…`.
+
+After retention with nothing written before the key was set the steps are the same without the rewind. If something was written and fell out of retention, the events between the deploy and `oldestLedger` cannot be fetched again: rewind to `oldestLedger` if retained events precede the cursor, and the sync loop's discovery seeds the current state from views (`record(id)` / `inspection(id)` probing, `terms`, `extension_consents`, `inspectors`, `paused`, `loan_registry`) with `complete = false` on seeded rows and the lost history listed in the reference's known limitations. Rollback: unset the key; the tables stay unused and the previous image boots against the additive schema. Mainnet is still deployment #37 (legacy CollateralRegistry); the same steps apply once a SecurityRegistry is deployed there.
+
+**Full redeploy (every id changes).** Record each new contract's deploy ledger. Switch every key above in one config change. Make sure the cursor is at or below the earliest deploy ledger; if it is already past it, rewind within retention, otherwise accept the gap and note it. The old deployment's rows keep their old `contract_address`: readers scoped by the configured address ignore them, chain-scoped readers (for example the Minter rows in "Minted yield") still see them.
+
+**Signer roles.**
+
+| Env key | Signer | Access-manager role | Delay | Source |
+|---|---|---|---|---|
+| `CHAIN_<id>_RELAYER_STELLAR_SIGNER_SECRET` | relayer whitelist signer | `WHITELIST_ADMIN` | 0 | `setup-access` maps PLUSD `set_authorized` to it; `config.json` `access.whitelist_admin` |
+| `STELLAR_VERIFIER_SECRET` | API voucher signer | none | n/a | its G… must equal the DM / WQ `verifier()` (`config.json` at deploy; `set_verifier` can change it) |
+| none | indexer, price poller | none (read-only) | n/a | n/a |
+
+A delayed `WHITELIST_ADMIN` holder is rejected: `AccessManager::execute` lets only an immediate caller through, and the relayer never schedules an operation. Verify with `stellar contract invoke --id <AM> --network <net> --send=no -- has_role --role WHITELIST_ADMIN --account <relayer G…>` (expect `execution_delay: 0, is_member: true`) and `stellar contract invoke --id <DM|WQ> --network <net> --send=no -- verifier` (expect the verifier G… public key). Trustee wallet roles (`TRUSTEE`, `CASH_REPORTER` delay 0, `RISK_COUNCIL` delay 86400) are frontend signers; see `product-specs/deposits.md` and `product-specs/loan-repayment-recovery.md`.
+
+**Sync checklist.**
+
+1. Pick the contracts commit.
+2. Diff `addresses.json` / `config.json` against `.env.example` and both `argocd` files (`pipeline/test.yaml`, `pipeline/prod.yaml`).
+3. Map each key with the table above.
+4. Apply the `collateral_registry` trap check.
+5. For any new or changed contract, apply the cursor rule.
+6. Verify the signer roles.
+7. Update `.env.example` and the recorded commit. `argocd` changes go in their own PR in `eq-lab/argocd`, merged after the backend image that reads the key is deployed.
 
 ### Key Rotation (yield-attestor keys)
 

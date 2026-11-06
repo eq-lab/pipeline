@@ -59,7 +59,12 @@ const LP: LpDetail = {
   kyb_status: "UnderReview",
   owner_account_id: "00000000-0000-0000-0000-0000000000aa",
   created_at: "2026-06-18T23:40:00Z",
-  address_linked_at: null,
+  address_linked_at: "2026-10-01T10:30:00Z",
+  stellar_signer_address:
+    "GSIGNER0000000000000000000000000000000000000000000000AB",
+  evm_address: null,
+  evm_signer_address: null,
+  evm_address_linked_at: null,
   writable: true,
   notify_on_review: false,
   kyb_submitted_at: "2026-06-20T10:00:00Z",
@@ -214,10 +219,93 @@ describe("LP counterparty detail — profile and KYB review cards", () => {
     expect(card).toHaveTextContent("CH");
     expect(card).toHaveTextContent("ops@acme.example");
     expect(card).toHaveTextContent("18 Jun 2026");
-    expect(within(card).getByTestId("lp-linked-wallet")).toHaveAttribute(
+    expect(within(card).getByTestId("lp-settlement-stellar")).toHaveAttribute(
       "title",
       LP.stellar_address,
     );
+    expect(within(card).queryByText("Linked wallet")).not.toBeInTheDocument();
+  });
+
+  it("shows a single Settlement address row with a dash when nothing is linked", () => {
+    served(lp({ stellar_address: null, address_linked_at: null }));
+    renderRoute();
+    const card = screen.getByRole("region", { name: "LP profile" });
+    expect(card).toHaveTextContent("Settlement address");
+    expect(within(card).queryByTestId("lp-settlement-stellar")).toBeNull();
+    expect(within(card).queryByTestId("lp-settlement-evm")).toBeNull();
+  });
+
+  it("shows the Stellar address with its signer and linked-at", () => {
+    renderRoute();
+    expect(screen.getByTestId("lp-settlement-stellar-signer")).toHaveAttribute(
+      "title",
+      LP.stellar_signer_address,
+    );
+    expect(
+      screen.getByTestId("lp-settlement-stellar-linked-at"),
+    ).toHaveTextContent("Linked 1 Oct 2026, 10:30 UTC");
+    expect(screen.queryByTestId("lp-settlement-stellar-unproven")).toBeNull();
+  });
+
+  it("shows a signer that differs from a contract address", () => {
+    served(
+      lp({
+        stellar_address:
+          "CCONTRACT00000000000000000000000000000000000000000000AB",
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("lp-settlement-stellar")).toHaveAttribute(
+      "title",
+      "CCONTRACT00000000000000000000000000000000000000000000AB",
+    );
+    expect(screen.getByTestId("lp-settlement-stellar-signer")).toHaveAttribute(
+      "title",
+      LP.stellar_signer_address,
+    );
+  });
+
+  it("flags a legacy Stellar address with no signer as Unproven", () => {
+    served(lp({ stellar_signer_address: null }));
+    renderRoute();
+    expect(
+      screen.getByTestId("lp-settlement-stellar-unproven"),
+    ).toHaveTextContent("Unproven");
+    expect(screen.queryByTestId("lp-settlement-stellar-signer")).toBeNull();
+  });
+
+  it("shows an EVM row and dashes a missing linked-at", () => {
+    served(
+      lp({
+        stellar_address: null,
+        evm_address: "0xabc0000000000000000000000000000000000001",
+        evm_signer_address: "0xabc0000000000000000000000000000000000001",
+        evm_address_linked_at: null,
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("lp-settlement-evm")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-settlement-evm-signer")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-settlement-evm-linked-at")).toHaveTextContent(
+      "Linked —",
+    );
+    expect(screen.queryByTestId("lp-settlement-stellar")).toBeNull();
+  });
+
+  it("renders both rows, Stellar first", () => {
+    served(
+      lp({
+        evm_address: "0xabc0000000000000000000000000000000000001",
+        evm_signer_address: "0xabc0000000000000000000000000000000000001",
+        evm_address_linked_at: "2026-09-02T00:00:00Z",
+      }),
+    );
+    renderRoute();
+    const stellar = screen.getByTestId("lp-settlement-stellar");
+    const evm = screen.getByTestId("lp-settlement-evm");
+    expect(
+      stellar.compareDocumentPosition(evm) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("renders every served KYB review value", () => {
@@ -285,7 +373,7 @@ describe("LP counterparty detail — profile and KYB review cards", () => {
     expect(reason.textContent).toContain("\n");
   });
 
-  it("reveals and copies the linked wallet on click", async () => {
+  it("reveals and copies the settlement address on click", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
@@ -293,7 +381,7 @@ describe("LP counterparty detail — profile and KYB review cards", () => {
       writable: true,
     });
     renderRoute();
-    const chip = screen.getByTestId("lp-linked-wallet");
+    const chip = screen.getByTestId("lp-settlement-stellar");
     expect(chip).toHaveTextContent("…00000");
     fireEvent.click(chip);
     expect(chip).toHaveTextContent(LP.stellar_address!);

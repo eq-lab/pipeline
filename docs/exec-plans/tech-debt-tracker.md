@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-159.**
+**Next free number: TD-172.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -244,7 +244,9 @@ line, whichever section it lands in.
 - **Impact:** Any future change to chain-selection logic (e.g. a third chain) must be applied in three places.
 - **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
 
-### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23]
+### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23] [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22 (incident 2026-06-23)
 - **Location:** `packages/shared/src/yield_mint_outbox_repo.rs` — `YieldMintOutboxRepo::discover_pending_stellar`
@@ -254,7 +256,9 @@ line, whichever section it lands in.
 - **Suggested fix:** Add a DB-backed (or fixture-driven `contract_logs` → outbox) integration test that inserts a `PaymentRecorded` row in the indexer's exact enriched shape and asserts a pending outbox row is discovered with non-null `loan_id`/`repayment_id`. Gate it to skip gracefully when no test DB is available, matching the existing `discover_*` test convention.
 - **Dedup note:** post-fix, `discover_pending_stellar` is byte-identical to `discover_pending` (only the caller's `contract_address` bind value differs). Candidate to collapse into one method; kept separate for now (deliberate choice 2026-06-23) — fold into the integration-test work above.
 
-### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op
+### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` — `confirm_submitted_stellar`, the `row.tx_hash` `None` arm
@@ -270,7 +274,9 @@ line, whichever section it lands in.
 - **Impact:** Cosmetic only — row corners are square instead of 4px rounded as in Figma. No functional or accessibility impact.
 - **Suggested fix:** If the rounded corners are required, replace the semantic `<table>` with a `<div>`-based grid layout (role="table", role="row", role="cell" for accessibility). This is a layout restructure, not a one-liner, and should be a separate issue.
 
-### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`)
+### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`) [RESOLVED 2026-11-03 / #1793]
+
+- **Resolved:** obsolete: Stellar Phase 4 deleted by #1793.
 
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (`SIM_FEE = 1_000_000`), `packages/worker/src/relayer/stellar/whitelist.rs` (`VIEW_PRECHECK_FEE = 1_000_000`)
@@ -944,7 +950,9 @@ line, whichever section it lands in.
   the existing `state="error"` treatment. Not built as part of #1234 — that issue only fixed the
   specific parsing bug; this is the containment gap around it.
 
-### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership
+### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership [RESOLVED 2026-11-02 / #1824]
+
+- **Resolved:** #1824 deleted `POST /v1/lps/me/link-address` and links addresses only through a signed challenge (`GET`/`POST /v1/lps/me/link-address/{challenge,verify}`); see `docs/product-specs/kyb-lp-verification.md` § Settlement Address. Rows linked before it are kept with a `NULL` (unproven) signer. The original entry follows.
 
 - **Date:** 2026-09-15 (narrowed 2026-09-15, widened 2026-09-30 — see below)
 - **Location:** `packages/api/src/routes/lps.rs` — `link_address`
@@ -1462,8 +1470,11 @@ line, whichever section it lands in.
 - **Suggested fix:** Fold the read into #1285 (which already owns the LP-visible trust-account
   surface), raise a dedicated backend sub-issue, or accept the details as a hardcoded product
   constant — a designer/PM + backend decision, not a frontend one.
+- **Update (2026-11-02, #1815):** The backend source landed as `GET /v1/lps/me/payment-details`
+  (see `docs/product-specs/deposits.md` § LP Funding Details). Only the frontend wiring (#1817)
+  remains, so this stays open until that merges.
 
-### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination
+### TD-89: `FundingDetailsModal`'s `Contact Support` has no destination [RESOLVED 2026-11-03 / #1817]
 
 - **Date:** 2026-09-22
 - **Location:** `packages/frontend/src/components/FundingDetailsModal.tsx`.
@@ -1473,6 +1484,8 @@ line, whichever section it lands in.
 - **Impact:** None today — the surface isn't mounted in production yet.
 - **Suggested fix:** Designer ask: define the real destination (mailto, support page, chat widget)
   before #1282 mounts the modal.
+- **Resolution (2026-11-03, #1817 live review):** `Contact Support` is `<a href="mailto:support@pipeline.one">`
+  (`SUPPORT_EMAIL` in `FundingDetailsModal.tsx`); the `onContactSupport` seam was removed.
 
 ### TD-90: `AddUsdCard`'s "Verifying account…" typo-correction diverges from its home-card source
 
@@ -1715,7 +1728,7 @@ line, whichever section it lands in.
 - **Gap:** The indexer's cursor is per chain, not per contract. Adding a contract id to an
   already-running chain starts polling it from the chain's *current* ledger, and nothing rewinds
   to pick up what that contract emitted before. This is not new to #1416 — `loan_registry_id` and
-  `yield_minter_id` have always had it — but #1416 makes it consequential, because the expected
+  `minter_id` (renamed in #1793) have always had it — but #1416 makes it consequential, because the expected
   rollout is exactly "ship the var unset, set it once the minter is deployed".
 - **Impact:** Every `WireIn` emitted between the contract going live and the variable being set is
   never indexed, so those deposits stay `is_minted = false` permanently. They are invisible to the
@@ -1728,19 +1741,18 @@ line, whichever section it lands in.
   start ledger. Short of that, the deploy checklist must set the id *before* the contract is used,
   and TD-118's "deposits awaiting a wire" count would at least make the gap visible.
 
-### TD-140: The BitGo client and the EVM-only yield-mint outbox methods have no caller
+### TD-140: The BitGo client has no caller
 
 - **Date:** 2026-10-08
-- **Location:** `packages/shared/src/bitgo/`; `packages/shared/src/yield_mint_outbox_repo.rs`
-  (`discover_pending`, `OutboxStore::mark_submitted`). Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
-- **Gap:** The EVM yield-mint phase was their only consumer and is deleted: the reworked EVM
-  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. Both
-  were kept because the outbox trait is shared with the Stellar yield-mint phase, and BitGo is the
-  architecture's named MPC vendor. Any EVM rows already in `yield_mint_outbox` are inert.
+- **Location:** `packages/shared/src/bitgo/`. Left behind by `docs/exec-plans/active/evm-relayer-v5.md`.
+- **Outbox half:** resolved 2026-11-03 / #1793 (module deleted; table + LEGACY_YIELD_MINTED_SQL kept).
+- **Gap:** The EVM yield-mint phase was its only consumer and is deleted: the reworked EVM
+  contracts mint yield inside `PipelineMinter.repay`, so there is nothing for it to submit. It was
+  kept because BitGo is the architecture's named MPC vendor. Tracked by #1705.
 - **Impact:** Dead code that still compiles and reads like a live path; `BITGO_*` env vars are
   gone from `.env.example`, so the client cannot be configured from it.
-- **Suggested fix:** Delete `shared::bitgo`, `discover_pending` and `mark_submitted` (updating the
-  Stellar test fake that implements `OutboxStore`), or reconnect them when a BitGo signer returns.
+- **Suggested fix:** Delete `shared::bitgo` and `pub mod bitgo;` (and update the BitGo mention in
+  `ARCHITECTURE.md`), or reconnect it when a BitGo signer returns.
 
 ### TD-141: An EVM `allow` stuck in the mempool blocks every later one
 
@@ -1754,6 +1766,16 @@ line, whichever section it lands in.
   lost once it clears.
 - **Suggested fix:** On timeout, rebroadcast the same nonce with bumped fees, or keep a per-chain
   nonce in the relayer and replace stale transactions explicitly.
+
+### TD-159: `GET /v1/lps/me/payment-details` issues an unbounded number of references per LP
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_bank_deposits.rs`, `lp_requested_bank_details`.
+- **Gap:** There is no rate limit or per-LP cap, and every successful call adds a row.
+- **Impact:** An eligible LP (`Passed` with a linked address) can grow the table without bound.
+  Every row still resolves to one LP, so attribution is not at risk.
+- **Suggested fix:** A per-LP rate limit, or reusing the most recent reference within a short
+  window, if product agrees.
 
 ---
 
@@ -2201,3 +2223,92 @@ line, whichever section it lands in.
 - **Gap:** The user docs say a voucher is valid for 24 hours, but the EVM signature does not cover a deadline, so an EVM voucher never expires. The LP hooks (#1760) already honour a served `deadline`, so nothing changes in the app once the backend serves one.
 - **Impact:** The documented 24-hour expiry and fresh-voucher behaviour only exist on Stellar.
 - **Suggested fix:** Backend follow-up #1798: add a deadline to the EVM `VerifiedRequests` digest and serve it.
+
+### TD-161: The interim `"passed-staked"` home grid has no staked-balance card and no `Unstake` entry
+
+- **Date:** 2026-11-02
+- **Location:** `packages/frontend/src/routes/index.tsx` (`"passed-staked"` branch), `packages/frontend/src/components/StakeCard.tsx` (compact layout)
+- **Gap:** #1819 shows the `unlocked` AddUsdCard to every connected `Passed` LP. For sPLUSD holders it uses the compact grid, whose compact `StakeCard` has only the marketing variant; the designed state-5 frame (`6701:97136`) has a compact "Staked PLUSD / value / Stake More / Unstake" card (`6701:97273`) that does not exist in code. The legacy grid's full `StakeCard` used to show the staked value and `Unstake` here.
+- **Impact:** A verified, staked LP sees their sPLUSD value only in the hero's Total Balance and reaches `Unstake` via `/stake?tab=unstake`, not from the home grid (user decision 2026-11-02, option (a) on #1819).
+- **Suggested fix:** #1425 (home state 5) builds the compact staked-balance card and takes over the `"passed-staked"` composition; #1820 swaps in the `funded` card.
+
+### TD-162: A settlement address with a separate signer is proven only through that signer
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_settlement_address.rs` (`verify_link`)
+- **Gap:** When `signer_address` differs from the settlement address, the challenge signature proves control of the signer only. This is required for a Stellar `C…` contract, and allowed by user decision (2026-11-02) for any `G…` or `0x…` address, so that Stellar multisig accounts and EVM smart wallets (Safe) can be linked. Nothing checks, on-chain or off, that the signer controls or is authorized for the settlement address.
+- **Impact:** An LP can link any well-formed address it does not control, as long as it signs with a key it does hold. A typo is caught by the Strkey or EIP-55 checksum (EIP-55 only for mixed-case input), but a valid address belonging to someone else is not. Only `signer_address = address` proves ownership of the settlement address itself.
+- **Suggested fix:** Verify the signer's authority per address type: Stellar account signers via Horizon, `C…` via the contract or an allow-list, EVM smart wallets via EIP-1271. Alternatively, require `signer_address = address` except where such a check exists. Until then the Trustee view (#1826) can flag links whose signer differs from the address.
+
+### TD-163: A settlement address can be relinked at any time on session authority alone
+
+- **Date:** 2026-11-02
+- **Location:** `packages/api/src/routes/lp_settlement_address.rs` (`verify_link`), `KybStatus::allows_address_write` in `packages/shared/src/lp_repo.rs`
+- **Gap:** By user decision (2026-11-02, #1831) an LP may relink its settlement address at any status except `Failed`, including after `Passed`, with a valid signed challenge for the new address and nothing else. There is no signature by the current address, no Trustee approval and no notification on change.
+- **Impact:** A hijacked LP session links an address it controls (with TD-162, even one it does not own) and receives every later mint.
+- **Suggested fix:** Any of a signature by the current address, Trustee approval of a change after `Passed`, or an email to the account's verified address on every change. `lp_settlement_address_history` makes changes auditable meanwhile.
+
+### TD-164: Bank deposits carry no chain or matched payment reference
+
+- **Date:** 2026-11-03
+- **Location:** `BankDepositResponse` in `packages/api/src/routes/lp_bank_deposits.rs`; `packages/trustee/src/routes/-useLpBankDeposits.ts`
+- **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
+- **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
+- **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+
+### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
+
+- **Date:** 2026-11-03
+- **Location:** `docs/generated/stellar-protocol-contracts.md`
+- **Gap:** The generated reference is a 2026-06-10 snapshot: its contract ids and WASM interfaces predate deployment #36.
+- **Impact:** Misleading contract ids for ops and agents.
+- **Suggested fix:** Regenerate it from `stellar contract info interface` against the #36 / #37 ids, or delete it in favour of the key map in `docs/references/backend.md#stellar-contract-ids-and-signer-roles`. Found while working on #1794.
+
+### TD-166: The LP app links only the connected wallet, never a `C…` address or a separate signer [RESOLVED 2026-11-05 / #1849]
+
+- **Date:** 2026-11-04
+- **Location:** `packages/frontend/src/auth/useSettlementAddressLink.ts`, `packages/frontend/src/components/account/SettlementAddressRow.tsx`
+- **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
+- **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
+- **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.
+- **Resolved by #1849 (PR #1850):** each settlement row has an opt-in `Use a different address` form; the typed address (Stellar `G…`/`C…`, EVM `0x…`) is linked with the connected wallet as `signer_address` when it differs. A signer other than the connected wallet and EIP-1271 signers remain out of scope (see `docs/frontend/account-page.md#settlement-address`).
+
+### TD-167: The minter cash-book fold is recomputed on every request
+
+- **Date:** 2026-11-05
+- **Location:** `packages/api/src/minter_cash_book.rs`, `GET /v1/cash-book`, `GET /v1/capital-allocation` (flagged chains)
+- **Gap:** Every request reads the minter's full event history from `contract_logs` and folds it in memory. Nothing is materialised.
+- **Impact:** Cost grows with the minter's event count; `/v1/capital-allocation` is polled by the Trustee Overview card.
+- **Suggested fix:** Materialise the fold per `(chain_id, minter)` from the latest snapshot, or cache it keyed by the indexer cursor, once volume warrants it.
+
+### TD-168: Cash-book completeness depends on an operator-emitted snapshot
+
+- **Date:** 2026-11-05
+- **Location:** `packages/api/src/minter_cash_book.rs` (`fold_cash`), `docs/product-specs/minter-cash-book.md`
+- **Gap:** The minter emits no event at deploy and `log_collector_state` keeps only the current cursor, so the API cannot prove the indexer covered the minter from its deploy ledger. `complete` is `true` only when a `MinterSnapshot` exists, and someone must call `snapshot()` after each worker rollout. Completeness means no gap since the latest snapshot the indexer stored, not proof that no event was dropped: an event the worker could not decode is skipped while the cursor advances and the fold cannot see it.
+- **Impact:** Until `snapshot()` is called on a network, `summary.complete` is `false` and the Capital Allocation switch cannot engage. A snapshot emitted under an older worker is lost.
+- **Suggested fix:** Record the first indexed ledger and every dropped event per contract in the indexer so the fold can be complete from genesis, or have the relayer emit `snapshot()` after each rollout. Until then, call `snapshot()` again before setting the Capital Allocation flag and compare it with the fold.
+
+### TD-169: The EVM minter has no cash book
+
+- **Date:** 2026-11-05
+- **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
+- **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
+- **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.
+
+### TD-170: Pocket `complete` is not verified against the key having stayed configured
+
+- **Date:** 2026-11-05
+- **Location:** `shared::pocket::fold_pocket` in `packages/shared/src/pocket.rs`
+- **Gap:** Any indexed `PocketOpened` makes the fold `complete = true` with no check that later pocket events were all indexed. If `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` was unset for a period after the open, events in that gap are missing and the fold is silently short.
+- **Impact:** The loan-book `pocket` totals can differ from `pocket(loan_id)` while reporting `complete: true`.
+- **Suggested fix:** Compare the fold with a fresh `pocket(loan_id)` simulate in the seed loop and re-seed on mismatch, or store the cursor ledger at which the key was set. Documented in `docs/references/backend.md#stellar-pocket-indexing`. Number picked after main's TD-166 and past the #1790 / #1791 branches' TD-165..169; renumber at merge if it collides. Found while working on #1789.
+
+### TD-171: SecurityRegistry valuation and snapshots are current-state reads; pre-key history is view-seeded
+
+- **Date:** 2026-11-06
+- **Location:** `packages/worker/src/indexer/stellar/security_registry_sync.rs`, `shared::security_registry`
+- **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
+- **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history.
+- **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.

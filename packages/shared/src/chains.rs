@@ -26,6 +26,16 @@ pub enum ChainKind {
     Stellar,
 }
 
+impl ChainKind {
+    /// Human-readable name used in API messages.
+    pub const fn label(self) -> &'static str {
+        match self {
+            ChainKind::Evm => "EVM",
+            ChainKind::Stellar => "Stellar",
+        }
+    }
+}
+
 /// Read `CHAIN_<id>_TYPE` and return the discriminator.
 /// Defaults to `Evm` when unset. Returns `Err` for unknown values.
 ///
@@ -132,6 +142,46 @@ pub fn validate_contract_id(key: &str, raw: String) -> Result<String> {
 /// 56-char base32 Strkey shape; accepts a leading `G` or `C`.
 pub fn validate_stellar_address(key: &str, raw: String) -> Result<String> {
     validate_strkey(key, raw, &['G', 'C'])
+}
+
+pub fn validate_evm_address(key: &str, raw: &str) -> Result<String> {
+    let raw = raw.trim();
+    let hex = raw
+        .strip_prefix("0x")
+        .filter(|h| h.len() == 40 && h.bytes().all(|b| b.is_ascii_hexdigit()));
+    let Some(hex) = hex else {
+        anyhow::bail!("{key} must be a 0x-prefixed 20-byte hex EVM address");
+    };
+    let has_lower = hex.bytes().any(|b| b.is_ascii_lowercase());
+    let has_upper = hex.bytes().any(|b| b.is_ascii_uppercase());
+    if has_lower && has_upper && alloy::primitives::Address::parse_checksummed(raw, None).is_err() {
+        anyhow::bail!("{key} is not a valid EIP-55 checksum");
+    }
+    Ok(raw.to_ascii_lowercase())
+}
+
+pub fn validate_stellar_account(key: &str, raw: &str) -> Result<String> {
+    let invalid =
+        || anyhow::anyhow!("{key} must be a Stellar account (G…) Strkey with a valid checksum");
+    let upper = validate_strkey(key, raw.trim().to_owned(), &['G']).map_err(|_| invalid())?;
+    stellar_strkey::ed25519::PublicKey::from_string(&upper).map_err(|_| invalid())?;
+    Ok(upper)
+}
+
+pub fn validate_stellar_settlement_address(key: &str, raw: &str) -> Result<String> {
+    let invalid = || {
+        anyhow::anyhow!(
+            "{key} must be a Stellar account (G…) or contract (C…) Strkey with a valid checksum"
+        )
+    };
+    let upper = validate_strkey(key, raw.trim().to_owned(), &['G', 'C']).map_err(|_| invalid())?;
+    let checked = if upper.starts_with('G') {
+        stellar_strkey::ed25519::PublicKey::from_string(&upper).map(|_| ())
+    } else {
+        stellar_strkey::Contract::from_string(&upper).map(|_| ())
+    };
+    checked.map_err(|_| invalid())?;
+    Ok(upper)
 }
 
 /// Shared Strkey normalizer: uppercases `raw`, enforces the 56-char base32

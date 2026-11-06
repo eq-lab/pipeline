@@ -72,6 +72,10 @@ export const ToastContext = React.createContext<ToastApi | null>(null);
 
 ToastContext.displayName = "ToastContext";
 
+export function useOptionalToast(): ToastApi | null {
+  return React.useContext(ToastContext);
+}
+
 /**
  * useToast — returns the imperative toast API.
  *

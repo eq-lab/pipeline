@@ -7,8 +7,10 @@
 //! over all configured chains, a well-formed unconfigured id = an empty queue.
 //!
 //! A request is **Queued** while it has no matching `RequestClaimed`; once claimed it is
-//! **Completed**. `in_queue_usd` sums each queued request's `amount` (the value owed to
-//! the withdrawer); `requests_count` counts them. `estimated_wait_days` is the mean
+//! **Completed**. `in_queue_usd` sums each queued request's USD value at its queue's
+//! recovery rate (1:1 until a `WithdrawalRateSet`, always 1:1 on EVM); `requests_count`
+//! counts them. `total_queued`, `total_claimed` and `rate` are served only when `chain_id` names a
+//! Stellar chain (#1791); the totals also need the WQ contract key. `estimated_wait_days` is the mean
 //! historical time-in-queue over completed requests. `liquid_cover` needs available
 //! Capital-Wallet USDC, which is not yet in `contract_logs`, so it is served as `null`
 //! until the Panel A reserves endpoint exists.
@@ -24,11 +26,14 @@ use bigdecimal::{BigDecimal, RoundingMode};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
+use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::contract_logs_repo::WithdrawalQueueRow;
+use shared::withdrawal_rate::current_rate;
 
+use crate::config::ConfiguredChain;
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
-use crate::routes::common::LenientChainFilter;
+use crate::routes::common::{ChainScope, LenientChainFilter};
 use crate::AppState;
 
 /// Seconds per day, for `estimated_wait_days`.
@@ -39,8 +44,8 @@ const SECS_PER_DAY: i64 = 86_400;
 /// Aggregate header metrics for the Withdrawal Queue panel.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WithdrawalQueueSummary {
-    /// Total amount currently in the queue = Σ each queued request's `amount`, USDC
-    /// (6-decimal string).
+    /// Total amount currently in the queue = Σ each queued request's USD value at its
+    /// queue's recovery rate, USDC (6-decimal string).
     pub in_queue_usd: String,
     /// Number of requests currently queued (no matching `RequestClaimed` yet).
     pub requests_count: i64,
@@ -51,6 +56,18 @@ pub struct WithdrawalQueueSummary {
     /// Always `null` for now — the USDC-available source is not yet in the API (pending
     /// the Panel A reserves endpoint).
     pub liquid_cover: Option<String>,
+    /// Cumulative PLUSD ever queued on the configured Stellar queue, 6-decimal string. Null unless `chain_id` names a Stellar chain with `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID` set.
+    pub total_queued: Option<String>,
+    /// Cumulative PLUSD claimed on the configured Stellar queue, 6-decimal string. Null unless `chain_id` names a Stellar chain with `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID` set.
+    pub total_claimed: Option<String>,
+    /// Recovery rate as the raw 6-decimal integer string (1000000 = 1:1). Null unless `chain_id` names a Stellar chain.
+    pub rate: Option<String>,
+}
+
+pub struct QueueState {
+    pub total_queued: Option<BigDecimal>,
+    pub total_claimed: Option<BigDecimal>,
+    pub rate: BigDecimal,
 }
 
 /// One row of the Withdrawal Queue table.
@@ -113,17 +130,58 @@ async fn get_withdrawal_queue(
         .unwrap_or_default()
         .as_secs() as i64;
 
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await?;
+
+    let state_chain = queue_state_chain(&chain.0);
     let mut rows = Vec::new();
+    let mut queue_state = None;
     for c in chain.configured(&state.chains) {
+        let points = state
+            .contract_logs_repo
+            .list_withdrawal_rate_sets(&mut *tx, c.chain_id, now)
+            .await?;
         rows.extend(
             state
                 .contract_logs_repo
-                .list_withdrawal_queue_rows(&state.pool, c.chain_id, now)
+                .list_withdrawal_queue_rows(&mut *tx, c.chain_id, now, &points)
                 .await?,
         );
+        if state_chain.is_some() {
+            let wq = state.withdrawal_queue_addresses.get(&c.chain_id);
+            let rate = current_rate(&points, wq.map(String::as_str));
+            let (total_queued, total_claimed) = match wq {
+                Some(address) => {
+                    let (queued, claimed) = state
+                        .contract_logs_repo
+                        .get_withdrawal_queue_totals(&mut *tx, c.chain_id, now, address)
+                        .await?;
+                    (
+                        Some(normalize_usdc_amount(ChainKind::Stellar, &queued)),
+                        Some(normalize_usdc_amount(ChainKind::Stellar, &claimed)),
+                    )
+                }
+                None => (None, None),
+            };
+            queue_state = Some(QueueState {
+                total_queued,
+                total_claimed,
+                rate,
+            });
+        }
     }
+    tx.commit().await?;
 
-    Ok(Json(compute_withdrawal_queue(&rows)))
+    Ok(Json(compute_withdrawal_queue(&rows, queue_state.as_ref())))
+}
+
+pub fn queue_state_chain(scope: &ChainScope) -> Option<ConfiguredChain> {
+    match scope {
+        ChainScope::One(c) if c.kind == ChainKind::Stellar => Some(*c),
+        _ => None,
+    }
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -137,7 +195,7 @@ fn is_queued(row: &WithdrawalQueueRow) -> bool {
 /// rows.
 ///
 /// A row is **Queued** iff it has no matching claim (see [`is_queued`]), otherwise
-/// **Completed**. `in_queue_usd` sums each queued row's `amount`; `requests_count` counts
+/// **Completed**. `in_queue_usd` sums each queued row's rate-scaled `value`; `requests_count` counts
 /// queued rows. `estimated_wait_days` is the mean `claimed_at − requested_at` over
 /// completed rows that carry a claim timestamp, in days. `liquid_cover` is `null` pending
 /// a USDC source. Items are ordered by `requested_at` descending (newest first), ties
@@ -145,7 +203,10 @@ fn is_queued(row: &WithdrawalQueueRow) -> bool {
 ///
 /// Public so the compute-layer test in `packages/api/tests/withdrawal_queue.rs` can
 /// exercise it without the HTTP/DB layers.
-pub fn compute_withdrawal_queue(rows: &[WithdrawalQueueRow]) -> WithdrawalQueueResponse {
+pub fn compute_withdrawal_queue(
+    rows: &[WithdrawalQueueRow],
+    state: Option<&QueueState>,
+) -> WithdrawalQueueResponse {
     let mut in_queue = BigDecimal::from(0);
     let mut requests_count = 0_i64;
 
@@ -156,7 +217,7 @@ pub fn compute_withdrawal_queue(rows: &[WithdrawalQueueRow]) -> WithdrawalQueueR
     for row in rows {
         if is_queued(row) {
             // Queue depth = value owed to still-unclaimed withdrawers.
-            in_queue += &row.amount;
+            in_queue += &row.value;
             requests_count += 1;
         } else if let Some(claimed_at) = row.claimed_at {
             wait_sum += (claimed_at - row.requested_at).max(0);
@@ -195,6 +256,13 @@ pub fn compute_withdrawal_queue(rows: &[WithdrawalQueueRow]) -> WithdrawalQueueR
             requests_count,
             estimated_wait_days,
             liquid_cover: None,
+            total_queued: state
+                .and_then(|s| s.total_queued.as_ref())
+                .map(base6_to_decimal_string),
+            total_claimed: state
+                .and_then(|s| s.total_claimed.as_ref())
+                .map(base6_to_decimal_string),
+            rate: state.map(|s| s.rate.to_plain_string()),
         },
         items,
     }

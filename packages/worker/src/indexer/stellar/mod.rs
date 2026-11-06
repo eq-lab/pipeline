@@ -17,7 +17,13 @@ pub mod loan_registry_reader;
 pub mod mappers;
 pub mod minter_parsers;
 pub mod parsers;
+pub mod pocket_parsers;
+pub mod pocket_seed;
 pub mod poller;
 pub mod rpc;
+pub mod security_registry_parsers;
+pub mod security_registry_sync;
+pub mod security_registry_views;
+pub mod supervise;
 
 pub use poller::run_stellar_indexer_job;

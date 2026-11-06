@@ -6,6 +6,8 @@ import { EmailAuthFlow } from "@/components/EmailAuthFlow";
 import type { EmailAuthScreen } from "@/components/useEmailAuthFlow";
 import type { LpReadState } from "@/components/homeState";
 import { useConnectModal } from "@/wallet";
+import { useSettlementAddressLink } from "./useSettlementAddressLink";
+import { deriveSettlementRows } from "@/components/account/settlementAddress";
 import { useAuthSession } from "./useAuthSession";
 import { isAccountSetupDismissed, markAccountSetupDismissed } from "./session";
 import { ApiError, getMyLp, upsertMyLp } from "@/api";
@@ -80,13 +82,84 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
     setSetup((previous) => (previous ? { ...previous, open: true } : previous));
   }, []);
 
+  const adoptLp = useCallback(
+    (lp: LpResponse) =>
+      setSetup((previous) =>
+        previous && previous.token === token
+          ? { ...previous, status: "loaded", lp }
+          : previous,
+      ),
+    [token],
+  );
+
   const lpRead = toLpReadState(setup?.status);
   const kybStatus =
     setup?.status === "loaded" ? setup.lp?.kyb_status : undefined;
+  const loadedLp =
+    setup?.status === "loaded" && setup.token === token ? setup.lp : null;
+
+  const {
+    state,
+    connected,
+    link,
+    beginChange,
+    cancelChange,
+    beginOther,
+    linkOther,
+  } = useSettlementAddressLink({
+    token,
+    lp: loadedLp,
+    lpLoaded: loadedLp !== null,
+    onLp: adoptLp,
+  });
+  const connectedKind = connected?.kind;
+  const connectedAddress = connected?.address;
+  const rows = useMemo(
+    () =>
+      deriveSettlementRows({
+        lpRead,
+        lp: loadedLp,
+        connected:
+          connectedKind && connectedAddress
+            ? { kind: connectedKind, address: connectedAddress }
+            : null,
+        link: state,
+      }),
+    [lpRead, loadedLp, connectedKind, connectedAddress, state],
+  );
+  const settlement = useMemo(
+    () => ({
+      rows,
+      onLink: link,
+      onChange: beginChange,
+      onCancel: cancelChange,
+      onOther: beginOther,
+      onLinkOther: linkOther,
+    }),
+    [rows, link, beginChange, cancelChange, beginOther, linkOther],
+  );
 
   const contextValue = useMemo<AuthFlowContextValue>(
-    () => ({ open, close, lpRead, kybStatus, openAccountSetup, openAddEmail }),
-    [open, close, lpRead, kybStatus, openAccountSetup, openAddEmail],
+    () => ({
+      open,
+      close,
+      lpRead,
+      kybStatus,
+      openAccountSetup,
+      openAddEmail,
+      adoptLp,
+      settlement,
+    }),
+    [
+      open,
+      close,
+      lpRead,
+      kybStatus,
+      openAccountSetup,
+      openAddEmail,
+      adoptLp,
+      settlement,
+    ],
   );
 
   const subscribeToReview = useCallback(async () => {
@@ -134,13 +207,8 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
               }
               lp={setup.lp}
               sessionEmail={email}
-              onLpChange={(lp) =>
-                setSetup((previous) =>
-                  previous?.token === token
-                    ? { ...previous, status: "loaded", lp }
-                    : previous,
-                )
-              }
+              onLpChange={adoptLp}
+              settlement={settlement}
             />
             <AccountInReviewModal
               key={`review-${token}`}

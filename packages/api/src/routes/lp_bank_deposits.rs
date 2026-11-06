@@ -1,24 +1,33 @@
-// spec: Issue #1413, epic #1269
+// spec: Issue #1413, epic #1269; docs/product-specs/deposits.md#lp-funding-details (Issue #1815)
 
 use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::routing::get;
+use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, on, MethodFilter};
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use argon2::password_hash::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
+use shared::chains::ChainKind;
 use shared::lp_bank_deposit_repo::{LpBankDepositRepo, LpBankDepositRow};
 use shared::lp_ledger_repo::LpLedgerRepo;
+use shared::lp_repo::KybStatus;
+use shared::lp_requested_bank_details_repo::{InsertOutcome, PaymentDetailsStore};
+use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
-use crate::auth::{AuthClaims, Claims, SecurityAddon, TRUSTEE_ROLE};
+use crate::auth::{AuthClaims, SecurityAddon};
+use crate::config::ConfiguredChain;
 use crate::error::{is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
+use crate::routes::common::{require_trustee, RequiredChain};
+use crate::routes::lps::my_lp;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -79,18 +88,53 @@ pub struct BankDepositsResponse {
     pub deposits: Vec<BankDepositResponse>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaymentDetailsResponse {
+    pub company_name: String,
+    pub bank_name: String,
+    pub bank_address: String,
+    pub account_number: String,
+    pub iban: String,
+    pub swift_bic_code: String,
+    pub payment_details: String,
+    pub chain_id: i64,
+    pub receiver_address: String,
+}
+
+impl PaymentDetailsResponse {
+    pub fn new(
+        details: SystemBankDetails,
+        payment_details: String,
+        chain_id: i64,
+        receiver_address: String,
+    ) -> Self {
+        Self {
+            company_name: details.company_name,
+            bank_name: details.bank_name,
+            bank_address: details.bank_address,
+            account_number: details.account_number,
+            iban: details.iban,
+            swift_bic_code: details.swift_bic_code,
+            payment_details,
+            chain_id,
+            receiver_address,
+        }
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_bank_deposits, record_bank_deposit),
+    paths(list_bank_deposits, record_bank_deposit, get_my_payment_details),
     components(schemas(
         RecordBankDepositRequest,
         BankDepositResponse,
-        BankDepositsResponse
+        BankDepositsResponse,
+        PaymentDetailsResponse
     )),
     modifiers(&SecurityAddon),
     tags((
         name = "LpBankDeposits",
-        description = "Per-LP record of wires received from that LP"
+        description = "Per-LP wires: where an LP sends a wire, and the record of wires received from it"
     ))
 )]
 pub struct LpBankDepositsDoc;
@@ -98,10 +142,15 @@ pub struct LpBankDepositsDoc;
 // ── Router ───────────────────────────────────────────────────────────────────
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route(
-        "/lps/{id}/bank-deposits",
-        get(list_bank_deposits).post(record_bank_deposit),
-    )
+    Router::new()
+        .route(
+            "/lps/me/payment-details",
+            on(MethodFilter::GET, get_my_payment_details).head(payment_details_head_not_allowed),
+        )
+        .route(
+            "/lps/{id}/bank-deposits",
+            get(list_bank_deposits).post(record_bank_deposit),
+        )
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -200,13 +249,43 @@ async fn record_bank_deposit(
     ))
 }
 
-fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
-    if claims.has_role(TRUSTEE_ROLE) {
-        return Ok(());
-    }
-    Err(ApiError::Forbidden(format!(
-        "this endpoint requires the `{TRUSTEE_ROLE}` role"
-    )))
+#[utoipa::path(
+    get,
+    path = "/v1/lps/me/payment-details",
+    params(RequiredChain),
+    responses(
+        (status = 200, description = "The bank details with a newly issued payment reference and the chain and receiver address; every call issues a new one", body = PaymentDetailsResponse),
+        (status = 400, description = "Missing, malformed, or unknown chain_id"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 404, description = "This account has not registered an LP yet"),
+        (status = 409, description = "No linked settlement address of this chain's kind, or KYB status is not Passed"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "LpBankDeposits"
+)]
+async fn get_my_payment_details(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    RequiredChain(chain): RequiredChain,
+) -> Result<Response, ApiError> {
+    let lp = my_lp(&claims, &state).await?;
+    let status =
+        KybStatus::from_str(&lp.kyb_status).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    let body = request_payment_details(
+        &state.system_configuration_repo,
+        &state.lp_requested_bank_details_repo,
+        lp.id,
+        status,
+        chain,
+        lp.settlement_address(chain.kind),
+        new_payment_details,
+    )
+    .await?;
+    Ok(payment_details_reply(body))
+}
+
+async fn payment_details_head_not_allowed() -> Response {
+    (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET")]).into_response()
 }
 
 async fn known_lp(state: &AppState, id: i64) -> Result<(), ApiError> {
@@ -279,4 +358,112 @@ fn parse_iso8601(label: &str, raw: &str) -> Result<DateTime<Utc>, String> {
         .map_err(|_| {
             format!("`{label}` is not an ISO-8601 timestamp with an offset (e.g. `2026-10-05T15:41:00Z`): {raw}")
         })
+}
+
+// ── LP payment details (pure over the two store traits) ──────────────────────
+
+pub const PAYMENT_DETAILS_PREFIX: &str = "PL";
+
+const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+pub const MAX_ISSUE_ATTEMPTS: usize = 3;
+
+pub fn payment_details_access(
+    kyb_status: KybStatus,
+    kind: ChainKind,
+    settlement_address: Option<&str>,
+) -> Result<(), String> {
+    let status_ok = kyb_status == KybStatus::Passed;
+    let address_ok = settlement_address.is_some();
+    if status_ok && address_ok {
+        return Ok(());
+    }
+    let kind_name = kind.label();
+    let mut unmet = Vec::new();
+    if !address_ok {
+        unmet.push(format!("a linked {kind_name} settlement address"));
+    }
+    if !status_ok {
+        unmet.push("KYB status Passed".to_owned());
+    }
+    let address_state = if address_ok {
+        format!("with a linked {kind_name} address")
+    } else {
+        format!("with no linked {kind_name} address")
+    };
+    Err(format!(
+        "payment details require {} (this LP is {kyb_status} {address_state})",
+        unmet.join(" and ")
+    ))
+}
+
+pub fn payment_details_from(random: u64) -> String {
+    let bits = random & ((1u64 << 60) - 1);
+    let symbols: Vec<char> = (0..12)
+        .map(|i| CROCKFORD[((bits >> (5 * (11 - i))) & 0x1f) as usize] as char)
+        .collect();
+    let groups: Vec<String> = symbols.chunks(4).map(|g| g.iter().collect()).collect();
+    format!("{PAYMENT_DETAILS_PREFIX}-{}", groups.join("-"))
+}
+
+fn new_payment_details() -> String {
+    payment_details_from(OsRng.next_u64())
+}
+
+pub async fn issue_payment_details<S: PaymentDetailsStore + ?Sized>(
+    store: &S,
+    lp_id: i64,
+    chain_id: i64,
+    receiver_address: &str,
+    mut next: impl FnMut() -> String,
+) -> Result<String, ApiError> {
+    for _ in 0..MAX_ISSUE_ATTEMPTS {
+        let candidate = next();
+        match store
+            .insert(lp_id, chain_id, receiver_address, &candidate)
+            .await?
+        {
+            InsertOutcome::Inserted => return Ok(candidate),
+            InsertOutcome::ReferenceTaken => {}
+        }
+    }
+    Err(ApiError::Internal(anyhow::anyhow!(
+        "could not issue a unique payment reference for LP {lp_id} after {MAX_ISSUE_ATTEMPTS} attempts"
+    )))
+}
+
+pub async fn request_payment_details(
+    bank: &(impl BankDetailsSource + ?Sized),
+    store: &(impl PaymentDetailsStore + ?Sized),
+    lp_id: i64,
+    kyb_status: KybStatus,
+    chain: ConfiguredChain,
+    settlement_address: Option<&str>,
+    next: impl FnMut() -> String,
+) -> Result<PaymentDetailsResponse, ApiError> {
+    payment_details_access(kyb_status, chain.kind, settlement_address)
+        .map_err(ApiError::Conflict)?;
+    let receiver_address = settlement_address
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("settlement address vanished")))?;
+    let details = bank
+        .bank_details()
+        .await?
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("system_bank_details row is missing")))?;
+    let payment_details =
+        issue_payment_details(store, lp_id, chain.chain_id, receiver_address, next).await?;
+    Ok(PaymentDetailsResponse::new(
+        details,
+        payment_details,
+        chain.chain_id,
+        receiver_address.to_owned(),
+    ))
+}
+
+pub fn payment_details_reply(body: PaymentDetailsResponse) -> Response {
+    (
+        StatusCode::OK,
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(body),
+    )
+        .into_response()
 }

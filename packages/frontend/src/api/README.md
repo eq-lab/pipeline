@@ -141,6 +141,14 @@ configured the same `0x…` address only sees the active chain's requests. The q
 key is `["requests", kind, address, chainId, mockVer]`, so switching the view
 refetches and the two histories never mix in the React Query cache.
 
+### `getMyPaymentDetails(chainId)` / `usePaymentDetails(request)` (#1817)
+
+`getMyPaymentDetails` calls the authenticated `GET /v1/lps/me/payment-details?chain_id=<id>`.
+`usePaymentDetails({ openId, chainId } | null)` wraps it for `FundingDetailsModal`: exactly one
+request per `openId` (`staleTime: Infinity`, default `gcTime`, `retry` and every refetch trigger off),
+because each 200 mints a new payment reference. Returns `{ status, data?, error? }`. Use the real
+API only; do not seed a `pipeline.mock.api.GET./v1/lps/me/payment-details` key.
+
 ### Types
 
 | Type               | Description                                                                      |

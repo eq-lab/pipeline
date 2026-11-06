@@ -63,16 +63,10 @@ pub struct StellarRelayerSettings {
     pub network_passphrase: String,
     pub access_manager_id: Contract,
     pub plusd_sac_id: Contract,
-    /// Soroban yield-minter contract id. `None` disables the yield-mint phase.
-    pub yield_minter_id: Option<Contract>,
-    /// Soroban loan-registry contract id — `can_yield_be_minted` view target and
-    /// `PaymentRecorded` discovery filter. `None` disables the yield-mint phase.
-    pub loan_registry_id: Option<Contract>,
     /// Soroban minter contract id, as the plain Strkey the matching phase binds
     /// into SQL (#1416). `None` disables the wire-in matching phase. Read from
     /// the indexer's `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` — one id for one
-    /// contract (renamed from `yield-minter` to `minter` by contracts #33), and
-    /// this phase interprets rows that indexer wrote, so the two must never be
+    /// contract, and this phase interprets rows that indexer wrote, so the two must never be
     /// configured apart.
     pub minter_id: Option<String>,
     pub signing_key: SigningKey,
@@ -81,6 +75,15 @@ pub struct StellarRelayerSettings {
     pub elliptic_enabled: bool,
     /// Maximum addresses processed per Phase 3 cycle.
     pub batch_size: usize,
+    pub legacy_env_keys: Vec<String>,
+}
+
+pub fn legacy_stellar_relayer_keys(prefix: &str, is_set: impl Fn(&str) -> bool) -> Vec<String> {
+    ["YIELD_MINTER_ID", "LOAN_REGISTRY_ID"]
+        .iter()
+        .map(|suffix| format!("{prefix}{suffix}"))
+        .filter(|key| is_set(key))
+        .collect()
 }
 
 impl StellarRelayerSettings {
@@ -123,21 +126,6 @@ impl StellarRelayerSettings {
             .map_err(|e| anyhow::anyhow!("{signer_key} must be a Stellar S… Strkey: {e}"))?;
         let signing_key = SigningKey::from_bytes(&priv_key.0);
 
-        let parse_opt_contract = |suffix: &str| -> Result<Option<Contract>> {
-            let key = format!("{p}{suffix}");
-            match env::var(&key) {
-                Err(_) => Ok(None),
-                Ok(raw) => {
-                    let validated = validate_contract_id(&key, raw)?;
-                    let c = Contract::from_string(&validated)
-                        .map_err(|e| anyhow::anyhow!("{key} failed Strkey parse: {e}"))?;
-                    Ok(Some(c))
-                }
-            }
-        };
-        let yield_minter_id = parse_opt_contract("YIELD_MINTER_ID")?;
-        let loan_registry_id = parse_opt_contract("LOAN_REGISTRY_ID")?;
-
         // Deliberately the INDEXER's key, with no relayer-scoped variant: the
         // matching phase never calls the minter, it reads rows the indexer
         // wrote. A second key could disagree with the one those rows came from,
@@ -165,6 +153,7 @@ impl StellarRelayerSettings {
         // ELLIPTIC_ENABLED, so the two components never disagree on the same value.
         let elliptic_enabled = env_flag("ELLIPTIC_ENABLED", false);
         let batch_size = env_parse("JOB_RELAYER_STELLAR_BATCH_SIZE", 50usize)?;
+        let legacy_env_keys = legacy_stellar_relayer_keys(&p, |k| env::var_os(k).is_some());
 
         Ok(Self {
             chain_id,
@@ -173,13 +162,12 @@ impl StellarRelayerSettings {
             network_passphrase,
             access_manager_id,
             plusd_sac_id,
-            yield_minter_id,
-            loan_registry_id,
             minter_id,
             signing_key,
             sumsub_enabled,
             elliptic_enabled,
             batch_size,
+            legacy_env_keys,
         })
     }
 }

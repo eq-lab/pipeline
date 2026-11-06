@@ -111,6 +111,11 @@ describe("useEvmWallet — no mocks, no real wallet", () => {
     expect(result.current.isConnected).toBe(false);
     expect(result.current.address).toBeUndefined();
   });
+
+  it("does not expose message signing", () => {
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+    expect(result.current).not.toHaveProperty("signMessage");
+  });
 });
 
 describe("useEvmWallet — chainId", () => {

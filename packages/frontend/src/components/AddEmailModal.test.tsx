@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddEmailModal } from "./AddEmailModal";
 
@@ -211,9 +217,12 @@ describe("AddEmailModal (#1459)", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
-    resolveSubmit();
-    await screen.findByRole("button", { name: "Save" });
-    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    await act(async () => {
+      resolveSubmit();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled(),
+    );
   });
 
   it("renders the turnstileSlot when provided", () => {

@@ -24,6 +24,11 @@ const RESPONSE: LpsResponse = {
       country: null,
       contact_email: "b@example.com",
       stellar_address: "GSECOND",
+      address_linked_at: "2026-06-20T00:00:00Z",
+      stellar_signer_address: "GSECOND",
+      evm_address: "0xsecond",
+      evm_signer_address: "0xsecond",
+      evm_address_linked_at: "2026-06-21T00:00:00Z",
       kyb_status: "Failed",
       owner_account_id: "00000000-0000-0000-0000-0000000000a1",
       created_at: "2026-06-20T00:00:00Z",
@@ -34,6 +39,11 @@ const RESPONSE: LpsResponse = {
       country: "CH",
       contact_email: "a@example.com",
       stellar_address: null,
+      address_linked_at: null,
+      stellar_signer_address: null,
+      evm_address: null,
+      evm_signer_address: null,
+      evm_address_linked_at: null,
       kyb_status: "NotStarted",
       owner_account_id: "00000000-0000-0000-0000-0000000000a2",
       created_at: "2026-06-18T00:00:00Z",
@@ -95,11 +105,25 @@ describe("LP Counterparties list route (ready)", () => {
     expect(rows[1]).toHaveTextContent("CH");
   });
 
-  it("renders Blockchain Address Available Yes only for a linked stellar_address", () => {
+  it("renders the linked-address states in the Blockchain Address Available column", () => {
     renderRoute();
-    const rows = screen.getAllByTestId("lp-counterparties-row");
-    expect(rows[0]).toHaveTextContent("Yes");
-    expect(rows[1]).toHaveTextContent("No");
+    const cells = screen.getAllByTestId("lp-counterparties-addresses");
+    expect(cells[0]).toHaveTextContent("Stellar + EVM");
+    expect(cells[1]).toHaveTextContent("No");
+  });
+
+  it("renders EVM only and an unproven Stellar address", () => {
+    const base = RESPONSE.lps[1]!;
+    ready({
+      lps: [
+        { ...base, id: 3, evm_address: "0xonly", evm_signer_address: "0xonly" },
+        { ...base, id: 4, stellar_address: "GLEGACY" },
+      ],
+    });
+    renderRoute();
+    const cells = screen.getAllByTestId("lp-counterparties-addresses");
+    expect(cells[0]).toHaveTextContent(/^EVM$/);
+    expect(cells[1]).toHaveTextContent("Stellar (unproven)");
   });
 
   it("renders Bank Info Available as '—' for every row", () => {

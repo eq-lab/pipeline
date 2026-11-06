@@ -42,6 +42,15 @@ pub fn loan_registry_address(state: &AppState, chain_id: i64) -> Result<&str, Ap
         .ok_or_else(|| ApiError::BadRequest(format!("unknown chain_id: {chain_id}")))
 }
 
+pub fn require_trustee(claims: &Claims) -> Result<(), ApiError> {
+    if claims.has_role(TRUSTEE_ROLE) {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden(format!(
+        "this endpoint requires the `{TRUSTEE_ROLE}` role"
+    )))
+}
+
 /// Pure pre-checks of the trustee per-loan guard (no I/O): trustee role → 403, malformed
 /// loan id → 400, then the LoanRegistry address scoped to `chain_id`. Returns the parsed
 /// loan id and the registry address.

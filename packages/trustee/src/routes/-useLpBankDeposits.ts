@@ -6,10 +6,13 @@ import {
   LP_BANK_DEPOSITS_REFETCH_MS,
   type LpBankDeposit,
 } from "@/api/useLpBankDeposits";
-import { useLp, type LpDetail } from "@/api/useLp";
+import { fetchLp, useLp, type LpDetail } from "@/api/useLp";
 import { useRecordWireIn, type RecordWireInStage } from "@/api/useRecordWireIn";
 import { ApiError } from "@/api/client";
 import { ENV } from "@/lib/env";
+import { useSessionState } from "@/auth/sessionStore";
+import { targetChainLabel } from "@/lib/targetChains";
+import { chainKindOf, type SettlementChainKind } from "./-settlementAddresses";
 import {
   parseSorobanContractErrorCode,
   toUserError,
@@ -81,22 +84,69 @@ export function mintStageLabel(stage: RecordWireInStage | null): string {
   }
 }
 
+export interface CapitalWallets {
+  stellar: string;
+  evm: string;
+}
+
 export interface WireInReceiver {
   receiver: string;
   isCapitalWallet: boolean;
+  kind: SettlementChainKind;
 }
 
 export function wireInReceiver(
-  lp: Pick<LpDetail, "stellar_address" | "address_linked_at"> | undefined,
-  capitalWalletId: string,
+  lp:
+    | Pick<
+        LpDetail,
+        | "stellar_address"
+        | "address_linked_at"
+        | "evm_address"
+        | "evm_address_linked_at"
+      >
+    | undefined,
+  kind: SettlementChainKind,
+  capitalWallets: CapitalWallets,
 ): WireInReceiver | null {
-  if (lp?.stellar_address && lp.address_linked_at) {
-    return { receiver: lp.stellar_address, isCapitalWallet: false };
+  const address = kind === "stellar" ? lp?.stellar_address : lp?.evm_address;
+  const linkedAt =
+    kind === "stellar" ? lp?.address_linked_at : lp?.evm_address_linked_at;
+  if (address && linkedAt) {
+    return { receiver: address, isCapitalWallet: false, kind };
   }
-  if (capitalWalletId) {
-    return { receiver: capitalWalletId, isCapitalWallet: true };
+  const capitalWallet = capitalWallets[kind];
+  if (capitalWallet) {
+    return { receiver: capitalWallet, isCapitalWallet: true, kind };
   }
   return null;
+}
+
+export function sameReceiver(
+  a: WireInReceiver | null,
+  b: WireInReceiver | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.receiver === b.receiver &&
+    a.isCapitalWallet === b.isCapitalWallet &&
+    a.kind === b.kind
+  );
+}
+
+export type MintConfirm =
+  | { row: DepositRow; phase: "reading" }
+  | { row: DepositRow; phase: "read-error"; error: UserFacingError }
+  | { row: DepositRow; phase: "no-receiver" }
+  | {
+      row: DepositRow;
+      phase: "ready";
+      receiver: WireInReceiver;
+      previous: WireInReceiver | null;
+      changed: boolean;
+    };
+
+export function noReceiverMessage(kind: SettlementChainKind): string {
+  return `This LP has no linked ${kind === "stellar" ? "Stellar" : "EVM"} wallet and no capital wallet is configured.`;
 }
 
 export interface DepositRow {
@@ -151,6 +201,9 @@ export function useLpBankDepositsSection(lpId: number) {
   const [touched, setTouched] = useState(false);
   const [mintingDepositId, setMintingDepositId] = useState<number | null>(null);
   const submitting = useRef(false);
+  const [confirm, setConfirm] = useState<MintConfirm | null>(null);
+  const [ack, setAck] = useState(false);
+  const readToken = useRef(0);
 
   const deposits = query.data?.deposits ?? [];
   const mintedIdsKey = deposits
@@ -189,10 +242,20 @@ export function useLpBankDepositsSection(lpId: number) {
     };
   }, [pendingDeadlines]);
 
-  const receiver = wireInReceiver(lpQuery.data, ENV.STELLAR_CAPITAL_WALLET_ID);
+  const chainId = useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID;
+  const kind = chainKindOf(chainId);
+  const chainLabel = targetChainLabel(chainId);
+  const capitalWallets: CapitalWallets = {
+    stellar: ENV.STELLAR_CAPITAL_WALLET_ID,
+    evm: ENV.EVM_CAPITAL_WALLET_ADDRESS,
+  };
+  const receiver = wireInReceiver(lpQuery.data, kind, capitalWallets);
 
   const mintDisabledReason = useCallback(
     (row: DepositRow): string | null => {
+      if (kind === "evm") {
+        return `PLUSD minting on ${chainLabel} is not available in the Trustee app yet.`;
+      }
       if (!wallet.isConnected || !wallet.address) {
         return "Connect your trustee wallet to mint PLUSD.";
       }
@@ -200,7 +263,7 @@ export function useLpBankDepositsSection(lpId: number) {
         return "On-chain PLUSD minting is not configured for this environment.";
       }
       if (!receiver) {
-        return "This LP has no linked Stellar wallet and no capital wallet is configured.";
+        return noReceiverMessage(kind);
       }
       if (row.isMinted) return "This deposit is already minted.";
       if (row.isPending) {
@@ -211,7 +274,14 @@ export function useLpBankDepositsSection(lpId: number) {
       }
       return null;
     },
-    [wallet.isConnected, wallet.address, receiver, mintingDepositId],
+    [
+      kind,
+      chainLabel,
+      wallet.isConnected,
+      wallet.address,
+      receiver,
+      mintingDepositId,
+    ],
   );
 
   const normalizedAmount = parseUsdCentsInput(amount);
@@ -259,27 +329,105 @@ export function useLpBankDepositsSection(lpId: number) {
     }
   }
 
-  async function mintDeposit(row: DepositRow) {
-    if (mintDisabledReason(row) !== null || !receiver) return;
+  function readFailure(error: unknown): UserFacingError {
+    return {
+      message: "Could not re-read this LP's settlement address. Try again.",
+      details: error instanceof Error ? error.message : String(error),
+      isSpecific: true,
+    };
+  }
+
+  async function openMint(row: DepositRow) {
+    if (mintDisabledReason(row) !== null) return;
     mint.reset();
+    setAck(false);
+    const token = ++readToken.current;
+    setConfirm({ row, phase: "reading" });
+    try {
+      const fresh = await fetchLp(lpId);
+      if (token !== readToken.current) return;
+      const next = wireInReceiver(fresh, kind, capitalWallets);
+      if (next === null) {
+        setConfirm({ row, phase: "no-receiver" });
+        return;
+      }
+      const changed = !sameReceiver(next, receiver);
+      setConfirm({
+        row,
+        phase: "ready",
+        receiver: next,
+        previous: receiver,
+        changed,
+      });
+      if (changed) void lpQuery.refetch();
+    } catch (error) {
+      if (token !== readToken.current) return;
+      setConfirm({ row, phase: "read-error", error: readFailure(error) });
+    }
+  }
+
+  async function confirmMint() {
+    if (
+      !confirm ||
+      confirm.phase !== "ready" ||
+      (confirm.changed && !ack) ||
+      mintingDepositId !== null
+    ) {
+      return;
+    }
+    const { row } = confirm;
+    const token = readToken.current;
     setMintingDepositId(row.id);
     try {
-      await mint.mutateAsync({
-        lpId,
-        depositId: row.id,
-        receiver: receiver.receiver,
-        amount: row.amountRaw,
-        occurredAt: row.occurredAtIso,
-        refHash: row.refHash,
-      });
+      const fresh = await fetchLp(lpId);
+      if (token !== readToken.current) return;
+      const next = wireInReceiver(fresh, kind, capitalWallets);
+      if (next === null) {
+        setConfirm({ row, phase: "no-receiver" });
+        return;
+      }
+      if (!sameReceiver(next, confirm.receiver)) {
+        setConfirm({
+          row,
+          phase: "ready",
+          receiver: next,
+          previous: confirm.receiver,
+          changed: true,
+        });
+        setAck(false);
+        void lpQuery.refetch();
+        return;
+      }
+      try {
+        await mint.mutateAsync({
+          lpId,
+          depositId: row.id,
+          receiver: next.receiver,
+          amount: row.amountRaw,
+          occurredAt: row.occurredAtIso,
+          refHash: row.refHash,
+        });
+      } catch {
+        return;
+      }
       setPendingDeadlines((prev) =>
         new Map(prev).set(row.id, Date.now() + MINT_PENDING_WINDOW_MS),
       );
-    } catch {
-      return;
+      readToken.current += 1;
+      setConfirm(null);
+    } catch (error) {
+      if (token !== readToken.current) return;
+      setConfirm({ row, phase: "read-error", error: readFailure(error) });
     } finally {
       setMintingDepositId(null);
     }
+  }
+
+  function closeMint() {
+    if (mintingDepositId !== null) return;
+    readToken.current += 1;
+    setConfirm(null);
+    mint.reset();
   }
 
   return {
@@ -309,8 +457,15 @@ export function useLpBankDepositsSection(lpId: number) {
     validationError: touched ? validationError : null,
     busy: mutation.isPending,
     mutationError: depositError(mutation.error),
+    chainLabel,
+    kind,
     receiver,
-    mintDeposit,
+    confirm,
+    ack,
+    setAck,
+    openMint,
+    confirmMint,
+    closeMint,
     mintDisabledReason,
     mintingDepositId,
     mintStage: mint.stage,

@@ -8,9 +8,10 @@
 use std::collections::HashSet;
 
 use pipeline_worker::indexer::stellar::parsers::{
-    dispatch_parser, parse_asset_transfer, parse_deposit_requested, parse_request_claimed,
-    parse_share_transfer, parse_shares_burned, parse_vault_deposit, parse_vault_withdraw,
-    parse_withdrawal_requested, transfer_between_tracked, transfer_touches_address,
+    dispatch_parser, parse_asset_transfer, parse_deposit_requested, parse_rate_set,
+    parse_request_claimed, parse_share_transfer, parse_shares_burned, parse_vault_deposit,
+    parse_vault_withdraw, parse_withdrawal_requested, transfer_between_tracked,
+    transfer_touches_address,
 };
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::{
@@ -1200,4 +1201,98 @@ fn shares_burned_rejects_other_event_names() {
     let mut raw = shares_burned_raw();
     raw.event_name = "withdraw".to_owned();
     assert!(parse_shares_burned(&raw, MINTER_CONTRACT).is_none());
+}
+
+fn make_rate_set(contract_id: &str) -> RawEvent {
+    make_raw_event(
+        contract_id,
+        "rate_set",
+        vec![],
+        encode_map_i128(&[("new_rate", 850_000)]),
+    )
+}
+
+#[test]
+fn rate_set_decodes_fixture() {
+    let log = parse_rate_set(&make_rate_set(WQ_CONTRACT)).expect("should decode RateSet");
+    assert_eq!(log.event_name, "WithdrawalRateSet");
+    assert_eq!(log.params["new_rate"], "850000");
+    assert_eq!(log.contract_address, WQ_CONTRACT);
+}
+
+#[test]
+fn rate_set_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        WQ_CONTRACT,
+        "rate_changed",
+        vec![],
+        encode_map_i128(&[("new_rate", 850_000)]),
+    );
+    assert!(parse_rate_set(&raw).is_none());
+}
+
+#[test]
+fn rate_set_rejects_missing_new_rate_key() {
+    let raw = make_raw_event(
+        WQ_CONTRACT,
+        "rate_set",
+        vec![],
+        encode_map_i128(&[("rate", 850_000)]),
+    );
+    assert!(parse_rate_set(&raw).is_none());
+}
+
+#[test]
+fn dispatch_rate_set_from_wq_succeeds() {
+    let log = dispatch_parser(
+        &make_rate_set(WQ_CONTRACT),
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("WQ-emitted rate_set should decode");
+    assert_eq!(log.event_name, "WithdrawalRateSet");
+}
+
+#[test]
+fn dispatch_rate_set_from_dm_and_splusd_rejected() {
+    for origin in [DM_CONTRACT, SPLUSD_CONTRACT] {
+        let raw = make_rate_set(origin);
+        assert!(dispatch_parser(
+            &raw,
+            DM_CONTRACT,
+            WQ_CONTRACT,
+            SPLUSD_CONTRACT,
+            None,
+            None,
+            None,
+            None,
+        )
+        .is_none());
+    }
+}
+
+#[test]
+fn dispatch_undecodable_rate_set_from_wq_returns_none() {
+    let raw = make_raw_event(
+        WQ_CONTRACT,
+        "rate_set",
+        vec![],
+        encode_map_i128(&[("rate", 1)]),
+    );
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+        None,
+    )
+    .is_none());
 }

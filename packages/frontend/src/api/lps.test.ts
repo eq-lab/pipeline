@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { saveSession } from "@/auth/session";
+import { ApiError, subscribeSessionEnded } from "./client";
 import {
   deleteMyDocument,
   getMyLp,
+  getMyPaymentDetails,
+  getLinkAddressChallenge,
+  verifyLinkAddress,
   upsertMyLp,
   uploadMyDocuments,
 } from "./lps";
@@ -14,6 +18,102 @@ beforeEach(() => {
 });
 
 describe("LP API client", () => {
+  it("requests a challenge with query params and bearer auth, without a signer", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "m", nonce: "n" }), {
+        status: 200,
+      }),
+    );
+    const challenge = await getLinkAddressChallenge(99000001, "GABC");
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toMatch(/\/v1\/lps\/me\/link-address\/challenge\?/);
+    expect(url).toContain("chain_id=99000001");
+    expect(url).toContain("address=GABC");
+    expect(url).not.toContain("signer_address");
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.headers).toEqual({ Authorization: "Bearer jwt" });
+    expect(challenge).toEqual({ message: "m", nonce: "n" });
+  });
+
+  it("adds signer_address to the challenge only when one is given", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ message: "m", nonce: "n" }), {
+          status: 200,
+        }),
+    );
+    await getLinkAddressChallenge(99000001, "CABC", "GSIGNER");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "signer_address=GSIGNER",
+    );
+    await getLinkAddressChallenge(99000001, "GABC", null);
+    expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain(
+      "signer_address",
+    );
+  });
+
+  it("includes signer_address in the verify body when given", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 1 }), { status: 200 }),
+      );
+    await verifyLinkAddress({
+      chain_id: 99000001,
+      address: "CABC",
+      signer_address: "GSIGNER",
+      signature: "sig",
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string)).toEqual({
+      chain_id: 99000001,
+      address: "CABC",
+      signer_address: "GSIGNER",
+      signature: "sig",
+    });
+  });
+
+  it("posts the exact verify body with bearer auth and returns the LP", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 1, stellar_address: "GABC" }), {
+        status: 200,
+      }),
+    );
+    const lp = await verifyLinkAddress({
+      chain_id: 99000001,
+      address: "GABC",
+      signature: "sig",
+    });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/v1\/lps\/me\/link-address\/verify$/,
+    );
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Authorization: "Bearer jwt",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      chain_id: 99000001,
+      address: "GABC",
+      signature: "sig",
+    });
+    expect(lp.stellar_address).toBe("GABC");
+  });
+
+  it("surfaces a 422 as ApiError without ending the session", async () => {
+    const ended = vi.fn();
+    const off = subscribeSessionEnded(ended);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "bad signature" }), { status: 422 }),
+    );
+    await expect(
+      verifyLinkAddress({ chain_id: 1, address: "GABC", signature: "x" }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(ended).not.toHaveBeenCalled();
+    off();
+  });
+
   it("authenticates the read and sends a full JSON profile", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -84,5 +184,33 @@ describe("LP API client", () => {
       method: "DELETE",
       headers: { Authorization: "Bearer jwt" },
     });
+  });
+
+  it("reads payment details for a chain with bearer auth", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ chain_id: 99000001 }), { status: 200 }),
+      );
+    await getMyPaymentDetails(99000001);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(
+      /\/v1\/lps\/me\/payment-details\?chain_id=99000001$/,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
+      Authorization: "Bearer jwt",
+    });
+  });
+
+  it("rejects payment details with an ApiError carrying status 409", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "no address" }), { status: 409 }),
+    );
+    await expect(getMyPaymentDetails(1)).rejects.toMatchObject({
+      status: 409,
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("{}", { status: 409 }),
+    );
+    await expect(getMyPaymentDetails(1)).rejects.toBeInstanceOf(ApiError);
   });
 });

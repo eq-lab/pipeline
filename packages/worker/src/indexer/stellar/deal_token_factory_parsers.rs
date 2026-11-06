@@ -4,12 +4,13 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 use shared::contract_logs_repo::DealRegistrationRow;
 
-use crate::indexer::stellar::loan_registry_parsers::extract_u32;
+use crate::indexer::stellar::loan_registry_parsers::{extract_u32, get_map_entry};
 use crate::indexer::stellar::parsers::{
     extract_address, extract_address_from_map, extract_i128, extract_i128_from_map,
-    synthesise_log_index, StellarLog,
+    sc_address_to_strkey, synthesise_log_index, StellarLog,
 };
 use crate::indexer::stellar::rpc::RawEvent;
+use stellar_xdr::curr::ScVal;
 
 pub const DEAL_TOKEN_FACTORY_EVENT_TOPICS: [&str; 3] =
     ["deal_registered", "debt_synced", "cargo_synced"];
@@ -41,9 +42,13 @@ pub struct DealTokenSet {
 }
 
 impl DealTokenSet {
-    pub fn insert_deal(&mut self, loan_id: &str, debt: &str, cargo: &str) -> usize {
+    pub fn insert_deal(&mut self, loan_id: &str, debt: &str, cargo: Option<&str>) -> usize {
         let mut added = 0;
-        for (id, kind) in [(debt, DealTokenKind::Debt), (cargo, DealTokenKind::Cargo)] {
+        let pairs = [
+            Some((debt, DealTokenKind::Debt)),
+            cargo.map(|c| (c, DealTokenKind::Cargo)),
+        ];
+        for (id, kind) in pairs.into_iter().flatten() {
             if !self.tokens.contains_key(id) {
                 self.tokens.insert(
                     id.to_owned(),
@@ -61,16 +66,16 @@ impl DealTokenSet {
     pub fn seed(&mut self, rows: &[DealRegistrationRow]) -> usize {
         let mut added = 0;
         for row in rows {
-            if !is_contract_pair(&row.debt, &row.cargo) {
+            if !is_valid_deal(&row.debt, row.cargo.as_deref()) {
                 tracing::warn!(
                     loan_id = %row.loan_id,
                     debt = %row.debt,
-                    cargo = %row.cargo,
+                    cargo = ?row.cargo,
                     "skipping DealRegistered row whose debt/cargo is not a Stellar contract id"
                 );
                 continue;
             }
-            added += self.insert_deal(&row.loan_id, &row.debt, &row.cargo);
+            added += self.insert_deal(&row.loan_id, &row.debt, row.cargo.as_deref());
         }
         added
     }
@@ -98,16 +103,16 @@ impl DealTokenSet {
             return false;
         }
         let field = |k: &str| log.params.get(k).and_then(Value::as_str);
-        let (Some(loan_id), Some(debt), Some(cargo)) =
-            (field("loan_id"), field("debt"), field("cargo"))
-        else {
+        let (Some(loan_id), Some(debt)) = (field("loan_id"), field("debt")) else {
             return false;
         };
-        if !is_contract_pair(debt, cargo) {
+        let raw_cargo = log.params.get("cargo").filter(|v| !v.is_null());
+        let cargo = raw_cargo.and_then(Value::as_str);
+        if !is_valid_deal(debt, cargo) || (raw_cargo.is_some() && cargo.is_none()) {
             tracing::warn!(
                 loan_id,
                 debt,
-                cargo,
+                cargo = ?raw_cargo,
                 "not tracking DealRegistered whose debt/cargo is not a Stellar contract id"
             );
             return false;
@@ -117,9 +122,12 @@ impl DealTokenSet {
     }
 }
 
-fn is_contract_pair(debt: &str, cargo: &str) -> bool {
-    stellar_strkey::Contract::from_string(debt).is_ok()
-        && stellar_strkey::Contract::from_string(cargo).is_ok()
+fn is_contract_id(id: &str) -> bool {
+    stellar_strkey::Contract::from_string(id).is_ok()
+}
+
+fn is_valid_deal(debt: &str, cargo: Option<&str>) -> bool {
+    is_contract_id(debt) && cargo.is_none_or(is_contract_id)
 }
 
 fn base_log(raw: &RawEvent, event_name: &str, params: Value) -> StellarLog {
@@ -148,7 +156,11 @@ pub fn parse_deal_registered(raw: &RawEvent) -> Option<StellarLog> {
     }
     let loan_id = loan_id_topic(raw)?;
     let debt = extract_address_from_map(&raw.value_base64, "debt")?;
-    let cargo = extract_address_from_map(&raw.value_base64, "cargo")?;
+    let cargo = match get_map_entry(&raw.value_base64, "cargo") {
+        None => None,
+        Some(ScVal::Address(addr)) => Some(sc_address_to_strkey(&addr)?),
+        Some(_) => return None,
+    };
     Some(base_log(
         raw,
         "DealRegistered",

@@ -46,7 +46,7 @@ Relayer does NOT call `requestWithdrawal`, does NOT call `claim`, and does NOT f
 
 ### 3. Yield Minting — Repayment
 
-On EVM the relayer mints no yield: `PipelineMinter.repay` records the payment and mints interest and fees in one call, under `MINT_CALLER_ROLE`, which the relayer does not hold. Sections 3 and 4 apply only where a separate yield-minter exists. There, when a loan repayment USDC inflow is detected at the Capital Wallet:
+On EVM the relayer mints no yield: `PipelineMinter.repay` records the payment and mints interest and fees in one call, under `MINT_CALLER_ROLE`, which the relayer does not hold. On Stellar it likewise mints none: Soroban `minter.repay` mints interest and fees in one call. Sections 3 and 4 describe a separate yield-minter that no deployment the platform runs (testnet, mainnet) has. Where one exists, when a loan repayment USDC inflow is detected at the Capital Wallet:
 
 1. Relayer presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
 2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve` and broadcasts

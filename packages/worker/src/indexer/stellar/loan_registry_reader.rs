@@ -71,42 +71,43 @@ impl StellarLoanRegistryReader {
         fn_name: &str,
         loan_id: u32,
     ) -> Result<ScVal> {
-        let contract = ContractStrkey::from_string(contract_id).with_context(|| {
-            format!("StellarLoanRegistryReader: invalid contract id {contract_id}")
-        })?;
-
-        let dummy_source = Ed25519Pub([0u8; 32]);
-        let args = vec![ScVal::U32(loan_id)];
-
-        let envelope = build_invoke_envelope(
-            &dummy_source,
-            0, // seq_num
-            0, // fee
-            &contract,
-            fn_name,
-            args,
-            vec![], // no auth entries
-            None,   // no soroban_data
-        );
-        let envelope_b64 = envelope_to_base64(&envelope)?;
-
-        let sim = self.rpc.simulate_transaction(&envelope_b64).await?;
-
-        if let Some(err) = &sim.error {
-            anyhow::bail!("simulateTransaction({fn_name}) error: {err}");
-        }
-
-        let first = sim
-            .results
-            .first()
-            .context("simulateTransaction returned empty results")?;
-
-        let xdr_bytes = STANDARD
-            .decode(first.return_value_xdr_base64.as_bytes())
-            .context("decode return_value_xdr_base64")?;
-        ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none())
-            .context("decode ScVal from return value XDR")
+        let (value, _latest_ledger) =
+            simulate_view(&self.rpc, contract_id, fn_name, vec![ScVal::U32(loan_id)]).await?;
+        Ok(value)
     }
+}
+
+pub(crate) async fn simulate_view(
+    rpc: &StellarRpc,
+    contract_id: &str,
+    fn_name: &str,
+    args: Vec<ScVal>,
+) -> Result<(ScVal, u64)> {
+    let contract = ContractStrkey::from_string(contract_id)
+        .with_context(|| format!("StellarLoanRegistryReader: invalid contract id {contract_id}"))?;
+
+    let dummy_source = Ed25519Pub([0u8; 32]);
+    let envelope =
+        build_invoke_envelope(&dummy_source, 0, 0, &contract, fn_name, args, vec![], None);
+    let envelope_b64 = envelope_to_base64(&envelope)?;
+
+    let sim = rpc.simulate_transaction(&envelope_b64).await?;
+
+    if let Some(err) = &sim.error {
+        anyhow::bail!("simulateTransaction({fn_name}) error: {err}");
+    }
+
+    let first = sim
+        .results
+        .first()
+        .context("simulateTransaction returned empty results")?;
+
+    let xdr_bytes = STANDARD
+        .decode(first.return_value_xdr_base64.as_bytes())
+        .context("decode return_value_xdr_base64")?;
+    let value = ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none())
+        .context("decode ScVal from return value XDR")?;
+    Ok((value, sim.latest_ledger))
 }
 
 // ── Trait impls ───────────────────────────────────────────────────────────────
@@ -308,9 +309,9 @@ pub fn decode_cumulative_repayment_data(scval: &ScVal) -> Result<RepaymentDataVi
 
 // ── Private decoder primitives ────────────────────────────────────────────────
 
-type ScMapSlice = stellar_xdr::curr::ScMap;
+pub(crate) type ScMapSlice = stellar_xdr::curr::ScMap;
 
-fn expect_map(scval: &ScVal, ctx: &str) -> Result<ScMapSlice>
+pub(crate) fn expect_map(scval: &ScVal, ctx: &str) -> Result<ScMapSlice>
 where
     ScMapSlice: Clone,
 {
@@ -320,7 +321,7 @@ where
     }
 }
 
-fn map_entry<'a>(map: &'a ScMapSlice, key: &str) -> Option<&'a ScVal> {
+pub(crate) fn map_entry<'a>(map: &'a ScMapSlice, key: &str) -> Option<&'a ScVal> {
     map.0.iter().find_map(|e| {
         if let ScVal::Symbol(sym) = &e.key {
             if sym.0.to_utf8_string_lossy() == key {
@@ -331,7 +332,7 @@ fn map_entry<'a>(map: &'a ScMapSlice, key: &str) -> Option<&'a ScVal> {
     })
 }
 
-fn map_u128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u128> {
+pub(crate) fn map_u128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u128> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::U128(parts) => Ok(u128_from_hi_lo(parts.hi, parts.lo)),
@@ -339,7 +340,7 @@ fn map_u128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u128> {
     }
 }
 
-fn map_u64(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u64> {
+pub(crate) fn map_u64(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u64> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::U64(v) => Ok(*v),
@@ -347,7 +348,7 @@ fn map_u64(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u64> {
     }
 }
 
-fn map_u32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u32> {
+pub(crate) fn map_u32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u32> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::U32(v) => Ok(*v),
@@ -355,7 +356,7 @@ fn map_u32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u32> {
     }
 }
 
-fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
+pub(crate) fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::Bool(v) => Ok(*v),
@@ -363,7 +364,7 @@ fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
     }
 }
 
-fn map_i128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<i128> {
+pub(crate) fn map_i128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<i128> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::I128(parts) => Ok(i128_from_parts(parts.hi, parts.lo)),
@@ -371,7 +372,7 @@ fn map_i128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<i128> {
     }
 }
 
-fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
+pub(crate) fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::Bytes(bytes) if bytes.0.len() == 32 => {
@@ -383,7 +384,7 @@ fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
     }
 }
 
-fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
+pub(crate) fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::String(s) => Ok(s.to_utf8_string_lossy()),
@@ -392,7 +393,7 @@ fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
 }
 
 /// Read a `#[contracttype]` unit-enum field encoded as `ScVal::Vec([Symbol("Variant")])`.
-fn map_enum_variant(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
+pub(crate) fn map_enum_variant(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::Vec(Some(vec_inner)) if vec_inner.0.len() == 1 => {

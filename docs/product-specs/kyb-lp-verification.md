@@ -64,19 +64,60 @@ Delivery is best-effort. The decision is recorded first and a delivery failure i
 
 ### Settlement Address
 
-An LP settles to a blockchain address held on the LP record — a separate identity from whatever credential its owner signs in with. The owner sets it through its own endpoint rather than through the profile upsert. It may be set at any KYB status short of a terminal verdict, and replaced freely until the decision is final. `Passed` fixes the address already held, because from that point downstream systems treat it as the account money moves to — an LP that passed before naming one may still name it, once. `Failed` closes the endpoint outright, whether or not an address is stored: addresses are unique across all LPs, so an applicant who could keep rewriting the field after a terminal refusal could burn one real LP's address after another purely by naming them, and a refused LP will never settle, so permitting even a first write buys nothing against that.
+An LP settles to blockchain addresses held on the LP record, a separate identity from whatever credential its owner signs in with. It holds **one settlement address per chain kind**, and each is linked on its own:
 
-The exemption from the freeze is never an exemption from the account gate. `Failed` also suspends the account, and a suspended account is refused at authorization before any of this is reached — so the address endpoint is closed to it along with everything else. The fixing rule above is deliberately not left to depend on that: it holds on its own, whether or not suspension is being enforced.
+- **Stellar:** an account `G…` or a contract `C…` Strkey with a valid checksum, in `lps.stellar_address` (`address_linked_at`, `stellar_signer_address`).
+- **EVM:** `0x` plus 40 hex digits, in `lps.evm_address` (`evm_address_linked_at`, `evm_signer_address`). Mixed-case input must be a valid EIP-55 checksum; all-lowercase and all-uppercase are accepted. It is stored lowercase.
 
-Authorization is the only control. The endpoint is keyed on the caller's session, so only the account owning an LP can set that LP's address. Pipeline does not require the LP to prove it controls the address it names — an open gap, because a wrong or hostile entry both misdirects settlement and, through the uniqueness constraint, permanently denies that address to the LP that really holds it.
+The rules below apply to each kind independently. An address of each kind may be linked and relinked at any KYB status except `Failed`, including `Passed` (user decision 2026-11-02, #1831), with no limit on relinks. Each link or relink needs its own signed challenge and nothing else: no signature by the old address and no Trustee approval (TD-163). A relink replaces the address, the signer and `*_linked_at`. The previous address is released, and another LP may then link it. `Failed` closes linking outright, whether or not an address is stored: addresses are unique across all LPs within a kind, so a refused applicant who could keep naming addresses could burn one real LP's address after another, and a refused LP will never settle.
 
-Only a Stellar address is modelled. An LP has no EVM settlement address.
+The exemption from the freeze is never an exemption from the account gate. `Failed` also suspends the account, and a suspended account is refused at authorization before any of this is reached. The `Failed` refusal above does not depend on that.
+
+#### Proof of control
+
+An address is linked only through a signed challenge, in two calls (`routes::lp_settlement_address`). Both are LP-authenticated and keyed on the caller's session, and `chain_id` is required, its kind picking the Stellar or EVM slot and the verifier.
+
+1. `GET /v1/lps/me/link-address/challenge?chain_id&address&signer_address` validates the inputs and the LP's eligibility, then issues a single-use nonce bound to `(lp_id, chain_id, address, signer_address)` and returns `{ message, nonce }`.
+2. `POST /v1/lps/me/link-address/verify` with `{ chain_id, address, signer_address?, signature }` verifies the signature over the message rebuilt from the **stored** challenge, consumes it, re-checks eligibility, and links the address and signer. It answers `200` with the refreshed `LpResponse`.
+
+`signer_address` is the wallet that signs. It defaults to the settlement address for a Stellar `G…` and for an EVM `0x…`, and is **required** for a Stellar `C…`, which cannot sign for itself. A Stellar signer must be a `G…` account and an EVM signer a `0x…` EOA, so a `G…` or `0x…` settlement address may name a different signer. The signer is stored next to the address it proved.
+
+The message is distinct from the sign-in message, so neither signature can be replayed as the other. It is a single line (no line breaks), so it survives copy-paste from a JSON response, and it must be signed exactly as returned. A challenge is valid for 1 hour (`Issued At` = `Expiration Time` − 1 hour):
+
+```
+{domain} wants you to link a settlement address to your Pipeline LP account. Settlement address: {address} Signed by: {signer_address} Sign this message to prove you control this wallet. This request will not trigger a blockchain transaction or cost any gas. LP ID: {lp_id} Chain ID: {chain_id} Nonce: {nonce} Issued At: {issued_at} Expiration Time: {expires_at}
+```
+
+Eligibility is checked at challenge time and again at verify time, after the challenge is consumed. A valid signature followed by a refused link therefore spends the challenge, and the LP requests a new one. A bad signature does not spend it. An LP that is `Failed`, or whose address is held by another LP in that kind, gets `409`.
+
+A failed proof is `422 Unprocessable Entity` with the single body `settlement address proof failed`, never `401`. The cases are a bad signature, no live challenge (never issued, expired, or already consumed), and an address or signer that does not match the challenge. One body means a caller cannot tell them apart. `401` is kept for a missing or invalid token, because the LP app ends the session on any authenticated `401`.
+
+The earlier unsigned `POST /v1/lps/me/link-address` is deleted and answers `404`. Challenge storage, TTL and reuse rules are in [api-authorization.md](./api-authorization.md) § Settlement-address proof.
+
+#### Existing unsigned addresses
+
+Stellar addresses linked before the signed flow (through the unsigned endpoint or the automatic link of #1813) are kept, with `stellar_signer_address = NULL`. A `NULL` signer next to a non-null address means the address is **unproven**. The Trustee view (#1826) shows such addresses as unproven. An unproven address still serves payment details. The LP proves it by relinking the **same** address through the signed flow, at any status except `Failed`, including `Passed`; the signer then becomes non-null. This supersedes #1829.
+
+#### Link history
+
+`lp_settlement_address_history` is append-only. Columns: `id`, `lp_id`, `chain_kind` (`stellar` | `evm`), `chain_id`, `address`, `signer_address`, `previous_address`, `previous_signer_address`, `linked_by_account_id` (the authenticated account that verified the link), `created_at`.
+
+- **One row per successful link or relink**, written in the same SQL statement as the guarded update of `lps`, with `created_at` equal to `*_linked_at`. A refusal (`Failed`, an address held by another LP) or a failed proof writes nothing.
+- **Re-verifying the same address and signer is allowed.** It is a fresh proof event: it adds a history row (with `previous_*` equal to the current values) and moves `*_linked_at` forward. Timestamps use `clock_timestamp()` and rows are listed by `id DESC`, which is the true apply order because the insert runs under the `FOR UPDATE` lock on the LP row.
+- **Backfill:** the migration wrote one row per address set at that time, with `chain_id`, `linked_by_account_id` and `previous_*` NULL, and the signer NULL for legacy unproven links. A backfilled row is recognised by `chain_id IS NULL`. Every new row carries `chain_id`, `signer_address` and `linked_by_account_id`.
+- There is no read endpoint yet. The Trustee view, investigations and wire matching are later consumers.
+
+#### Known limit
+
+When `signer_address` differs from the settlement address (always for a Stellar `C…`, and optionally for a `G…` or `0x…`, e.g. a Stellar multisig account or an EVM Safe), the signature proves control of `signer_address` only, not that the signer controls the settlement address. There is no on-chain check (TD-162). Ownership of the settlement address itself is proven only when `signer_address` equals it.
 
 ---
 
 ## Security Considerations
 
-- **The LP settlement address is unverified.** An LP names its own Stellar address and Pipeline accepts it on the owner's authority alone, with no signature proving control of that key. A wrong entry misdirects settlement; a hostile one also burns the address for its real holder, since the column is unique across LPs. Tracked as TD-57.
+- **The LP settlement address is proven by a signature.** Linking needs a signed single-use challenge bound to the LP, chain, address and signer, so an address cannot be named without the signer's key. When the signer is the address itself, this proves ownership of the address. When a separate signer is named (required for `C…`, allowed for `G…`/`0x…`), the proof covers the signer only (TD-162). Addresses linked before this are kept and shown as unproven (`NULL` signer). The unsigned-address gap TD-57 is resolved (#1824).
+
+- **The settlement address can be changed at any time with a valid signed challenge.** A hijacked LP session can therefore redirect future mints to an address it controls (TD-163). `lp_settlement_address_history` records every change: who, when, old to new.
 
 - **The LP contact address is unverified, and decision emails avoid it.** `lps.contact_email` is a required field of the owner-controlled full-replace profile endpoint; nothing proves the owner holds it. Decision messages therefore go to the account's verified address, and fall back to the contact address only for an account that has none. Because delivery failures are logged rather than propagated, a misdirected message would otherwise leave no trace.
 

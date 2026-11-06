@@ -23,6 +23,10 @@ export interface LpResponse {
   contact_email: string;
   stellar_address: string | null;
   address_linked_at: string | null;
+  stellar_signer_address: string | null;
+  evm_address: string | null;
+  evm_signer_address: string | null;
+  evm_address_linked_at: string | null;
   kyb_status: string;
   kyb_submitted_at?: string | null;
   kyb_decided_at?: string | null;
@@ -90,4 +94,59 @@ export function submitMyLp(): Promise<LpResponse> {
     method: "POST",
     headers: authHeaders(),
   });
+}
+
+export interface LinkChallenge {
+  message: string;
+  nonce: string;
+}
+
+export function getLinkAddressChallenge(
+  chainId: number,
+  address: string,
+  signerAddress?: string | null,
+): Promise<LinkChallenge> {
+  const query = new URLSearchParams({
+    chain_id: String(chainId),
+    address,
+  });
+  if (signerAddress) query.set("signer_address", signerAddress);
+  return apiFetch<LinkChallenge>(`/v1/lps/me/link-address/challenge?${query}`, {
+    headers: authHeaders(),
+  });
+}
+
+export function verifyLinkAddress(body: {
+  chain_id: number;
+  address: string;
+  signer_address?: string;
+  signature: string;
+}): Promise<LpResponse> {
+  return apiFetch<LpResponse>("/v1/lps/me/link-address/verify", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export interface PaymentDetailsResponse {
+  company_name: string;
+  bank_name: string;
+  bank_address: string;
+  account_number: string;
+  iban: string;
+  swift_bic_code: string;
+  payment_details: string;
+  chain_id: number;
+  receiver_address: string;
+}
+
+export function getMyPaymentDetails(
+  chainId: number,
+  signal?: AbortSignal,
+): Promise<PaymentDetailsResponse> {
+  return apiFetch<PaymentDetailsResponse>(
+    `/v1/lps/me/payment-details?chain_id=${chainId}`,
+    { headers: authHeaders(), signal },
+  );
 }

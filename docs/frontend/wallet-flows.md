@@ -274,6 +274,12 @@ Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee ap
   Ethereum / Stellar tabs for that choice).
 - **`kind` is derived**, never stored: see [`hooks.md`](./hooks.md) (`useWalletView`). The
   `pipeline.wallet.view.kind` key and `setKind` no longer exist.
+- **One precedence owner (#1848).** `walletPrecedence(evm, stellar)`
+  (`packages/frontend/src/wallet/walletPrecedence.ts`) decides which wallet wins: EVM if connected,
+  else Stellar, else `null`. `WalletViewProvider` maps `null` to the default `evm`, and the settlement
+  link (`connectedWallet`) pairs the winner with that wallet's address. It is a pure function so
+  `useSettlementAddressLink` can use it inside `AuthFlowProvider`, which is mounted above
+  `WalletViewProvider`.
 - **Legacy both-connected state.** If both kits come back connected (a session restored from before
   this change, or both `pipeline.mock.wallet.*` and `pipeline.mock.wallet.stellar.*` set), the app
   disconnects **both** once `useWalletPresence().isSettled` is true and leaves the LP disconnected to

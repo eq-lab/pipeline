@@ -12,7 +12,7 @@ use bigdecimal::BigDecimal;
 
 use pipeline_api::config::TransferAddressSets;
 use pipeline_api::routes::capital_allocation::{
-    compute_capital_allocation, CapitalAllocationResponse, ChainCapitalInputs,
+    compute_capital_allocation, CapitalAllocationResponse, ChainCapitalInputs, MinterCashTotals,
 };
 use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 use shared::loan_capital_transfers_repo::LoanCapitalTransfersRow;
@@ -141,6 +141,7 @@ fn one_chain(
             asset_decimals,
             withdrawal_queue_balance,
             capital_transfers,
+            minter_cash: None,
         }],
     )
 }
@@ -657,6 +658,7 @@ fn chain<'a>(
         asset_decimals,
         withdrawal_queue_balance,
         capital_transfers,
+        minter_cash: None,
     }
 }
 
@@ -838,4 +840,132 @@ fn no_chain_in_scope_is_all_zero_and_null() {
     assert_eq!(r.buckets.in_transit, None);
     assert_eq!(r.buckets.withdrawal_queue, None);
     assert_eq!(r.total, Some("0.000000".to_owned()));
+}
+
+// ── Minter cash book switch ──────────────────────────────────────────────────────
+
+fn switched<'a>(
+    chain_id: i64,
+    bank_cash_base6: i64,
+    in_flight_base6: i64,
+    transfers: &'a [AssetTransferRow],
+    addr: Option<&'a TransferAddressSets>,
+    capital_transfers: &'a [LoanCapitalTransfersRow],
+) -> ChainCapitalInputs<'a> {
+    ChainCapitalInputs {
+        minter_cash: Some(MinterCashTotals {
+            bank_cash: BigDecimal::from(bank_cash_base6),
+            in_flight: BigDecimal::from(in_flight_base6),
+        }),
+        ..chain(chain_id, transfers, addr, 7, None, capital_transfers)
+    }
+}
+
+#[test]
+fn a_switched_chain_reads_in_transit_and_trust_account_from_the_minter() {
+    let sets = addr_sets();
+    let transfers = vec![approved_transfer(CUSTODY, RAMP, 999)];
+    let ct = vec![ct_row(1, true, 70, 30, 500, 100)];
+    let loans = vec![make_loan(1, 80, 20, 0, 180)];
+    let r = compute_capital_allocation(
+        &loans,
+        &[],
+        60 * DAY,
+        &[switched(
+            1,
+            12_500_000,
+            3_000_000,
+            &transfers,
+            Some(&sets),
+            &ct,
+        )],
+    );
+    assert_eq!(r.buckets.in_transit, Some("3.000000".to_owned()));
+    assert_eq!(r.buckets.trust_account, Some("12.500000".to_owned()));
+    assert_eq!(r.buckets.deployed, Some("80000.000000".to_owned()));
+    assert_eq!(r.total, Some("80015.500000".to_owned()));
+}
+
+#[test]
+fn a_switched_chain_without_custody_and_ramp_sets_still_sources_in_transit() {
+    let r = compute_capital_allocation(&[], &[], 0, &[switched(1, 0, 7_000_000, &[], None, &[])]);
+    assert_eq!(r.buckets.in_transit, Some("7.000000".to_owned()));
+}
+
+#[test]
+fn a_switched_chain_can_report_a_negative_bank_cash() {
+    let r = compute_capital_allocation(&[], &[], 0, &[switched(1, -2_000_000, 0, &[], None, &[])]);
+    assert_eq!(r.buckets.trust_account, Some("-2.000000".to_owned()));
+    assert_eq!(r.total, Some("-2.000000".to_owned()));
+}
+
+fn evm_legacy_chain<'a>(
+    transfers: &'a [AssetTransferRow],
+    sets: &'a TransferAddressSets,
+    ct: &'a [LoanCapitalTransfersRow],
+) -> ChainCapitalInputs<'a> {
+    chain(2, transfers, Some(sets), 6, None, ct)
+}
+
+#[test]
+fn the_evm_contribution_is_the_legacy_formula_with_or_without_a_switched_chain() {
+    let sets = addr_sets();
+    let evm_transfers = vec![AssetTransferRow {
+        chain_id: 2,
+        ..approved_transfer(CUSTODY, RAMP, 100)
+    }];
+    let evm_ct = vec![ct_on(2, ct_row(1, false, 40, 0, 300, 50))];
+    let alone = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[evm_legacy_chain(&evm_transfers, &sets, &evm_ct)],
+    );
+    assert_eq!(alone.buckets.in_transit, Some("60.000000".to_owned()));
+    assert_eq!(alone.buckets.trust_account, Some("250.000000".to_owned()));
+
+    let stellar_ct = vec![ct_row(1, false, 999, 999, 999, 0)];
+    let both = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[
+            switched(1, 10_000_000, 4_000_000, &[], None, &stellar_ct),
+            evm_legacy_chain(&evm_transfers, &sets, &evm_ct),
+        ],
+    );
+    assert_eq!(both.buckets.in_transit, Some("64.000000".to_owned()));
+    assert_eq!(both.buckets.trust_account, Some("260.000000".to_owned()));
+    assert_eq!(both.total, Some("324.000000".to_owned()));
+}
+
+#[test]
+fn an_incomplete_fold_leaves_the_legacy_output_untouched() {
+    let sets = addr_sets();
+    let transfers = vec![approved_transfer(CUSTODY, RAMP, 100)];
+    let ct = vec![ct_row(1, false, 40, 0, 300, 50)];
+    let legacy = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[chain(1, &transfers, Some(&sets), 7, None, &ct)],
+    );
+    let flag_on_fold_incomplete = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[ChainCapitalInputs {
+            minter_cash: None,
+            ..chain(1, &transfers, Some(&sets), 7, None, &ct)
+        }],
+    );
+    assert_eq!(
+        legacy.buckets.in_transit,
+        flag_on_fold_incomplete.buckets.in_transit
+    );
+    assert_eq!(
+        legacy.buckets.trust_account,
+        flag_on_fold_incomplete.buckets.trust_account
+    );
+    assert_eq!(legacy.total, flag_on_fold_incomplete.total);
 }

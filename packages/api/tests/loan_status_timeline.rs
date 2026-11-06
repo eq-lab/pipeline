@@ -147,6 +147,7 @@ fn deployed_senior(loans: &[LoanSnapshotRow], events: &[LifecycleRow], day: i64)
             asset_decimals: 6,
             withdrawal_queue_balance: None,
             capital_transfers: &flags,
+            minter_cash: None,
         }],
     )
     .buckets

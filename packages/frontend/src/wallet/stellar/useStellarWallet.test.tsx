@@ -14,6 +14,7 @@ const {
   mockGetAddress,
   mockDisconnect,
   mockSignTransactionKit,
+  mockSignMessageKit,
   mockSetWallet,
   mockFetchAddress,
 } = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const {
   mockGetAddress: vi.fn(),
   mockDisconnect: vi.fn(),
   mockSignTransactionKit: vi.fn(),
+  mockSignMessageKit: vi.fn(),
   mockSetWallet: vi.fn(),
   mockFetchAddress: vi.fn(),
 }));
@@ -31,6 +33,7 @@ vi.mock("./config", () => ({
     getAddress: mockGetAddress,
     disconnect: mockDisconnect,
     signTransaction: mockSignTransactionKit,
+    signMessage: mockSignMessageKit,
     setWallet: mockSetWallet,
     fetchAddress: mockFetchAddress,
   },
@@ -423,6 +426,50 @@ describe("useStellarWallet — signTransaction()", () => {
 
     // Kit.signTransaction should NOT be called on mock path.
     expect(mockSignTransactionKit).not.toHaveBeenCalled();
+  });
+});
+
+describe("useStellarWallet — signMessage()", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    _resetStellarConnectionStoreForTests();
+    mockAuthModal.mockClear();
+    mockSignMessageKit.mockClear();
+    mockGetAddress.mockRejectedValue(new Error("no prior connection"));
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    _resetStellarConnectionStoreForTests();
+  });
+
+  it("delegates to StellarWalletsKit.signMessage with the passphrase and address and returns the signature", async () => {
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    mockAuthModal.mockResolvedValue({ address: STELLAR_ADDR });
+    mockSignMessageKit.mockResolvedValue({ signedMessage: "sig-b64" });
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+    act(() => result.current.connect());
+    await waitFor(() => expect(result.current.address).toBe(STELLAR_ADDR));
+
+    const signed = await act(() => result.current.signMessage("hello"));
+
+    expect(signed).toEqual({ signature: "sig-b64" });
+    const call = mockSignMessageKit.mock.calls[0];
+    expect(call?.[0]).toBe("hello");
+    expect(call?.[1]?.address).toBe(STELLAR_ADDR);
+    expect(typeof call?.[1]?.networkPassphrase).toBe("string");
+
+    await act(() => result.current.signMessage("again", "GOTHER"));
+    expect(mockSignMessageKit.mock.calls[1]?.[1]?.address).toBe("GOTHER");
+  });
+
+  it("mock path: rejects without calling the kit", async () => {
+    localStorage.setItem("pipeline.mock.wallet.stellar.address", STELLAR_ADDR);
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+    await expect(
+      act(() => result.current.signMessage("hello")),
+    ).rejects.toThrow("signMessage is not mockable");
+    expect(mockSignMessageKit).not.toHaveBeenCalled();
   });
 });
 

@@ -11,6 +11,7 @@ pub mod error;
 pub mod formatting;
 pub mod intervals;
 mod middleware;
+pub mod minter_cash_book;
 pub mod otp;
 pub mod password;
 pub mod password_reset;
@@ -37,12 +38,14 @@ use shared::login_attempt_repo::LoginAttemptRepo;
 use shared::lp_bank_deposit_repo::LpBankDepositRepo;
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::LpRepo;
+use shared::lp_requested_bank_details_repo::LpRequestedBankDetailsRepo;
 use shared::object_store::ObjectStore;
 use shared::otp_repo::OtpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use shared::system_configuration_repo::SystemConfigurationRepo;
 
 use crate::auth::JwtKeys;
 use crate::captcha::CaptchaVerifier;
@@ -80,6 +83,10 @@ pub struct AppState {
     /// LoanRegistry address keyed by chain_id (EIP-55 / Strkey, as the indexer writes it);
     /// scopes the LoanBook readers. Every configured chain has an entry.
     pub loan_registry_addresses: HashMap<i64, String>,
+    pub minter_addresses: HashMap<i64, String>,
+    pub capital_allocation_from_minter: std::collections::HashSet<i64>,
+    pub withdrawal_queue_addresses: HashMap<i64, String>,
+    pub pocket_addresses: HashMap<i64, String>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.
@@ -116,6 +123,8 @@ pub struct AppState {
     /// The trustee's record of wires received from an LP (`lp_bank_deposits`),
     /// backing `GET`/`POST /v1/lps/{id}/bank-deposits`.
     pub lp_bank_deposit_repo: LpBankDepositRepo,
+    pub system_configuration_repo: SystemConfigurationRepo,
+    pub lp_requested_bank_details_repo: LpRequestedBankDetailsRepo,
     /// KYB supporting documents (`kyb_documents`) — untyped files per LP.
     pub kyb_document_repo: KybDocumentRepo,
     /// Private Spaces bucket holding the bytes behind `kyb_documents.file_ref`.

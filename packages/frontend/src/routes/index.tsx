@@ -1,5 +1,5 @@
 // spec: docs/frontend/dashboard-components.md#home-route
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
@@ -14,6 +14,7 @@ import {
   useEvmWallet,
   useStellarWallet,
   useWalletView,
+  useActiveChain,
   useWalletPresence,
   useConnectModal,
   useStellarDepositManagerAddresses,
@@ -45,6 +46,8 @@ import {
   LoadingBlock,
 } from "./-HomeDashboardGrid";
 import { FundingDetailsModal } from "@/components/FundingDetailsModal";
+import { useFundingDetails } from "@/components/useFundingDetails";
+import type { FundingRequest } from "@/components/useFundingDetails";
 import { usePnl, usePositionsHistory } from "@/api";
 import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 import { computeAxisTicks } from "@/utils/chartAxis";
@@ -66,7 +69,11 @@ function deriveMobileHomeState(
 }
 
 function Home() {
-  const [fundingDetailsOpen, setFundingDetailsOpen] = useState(false);
+  const [fundingRequest, setFundingRequest] = useState<FundingRequest | null>(
+    null,
+  );
+  const fundingOpenCounter = useRef(0);
+  const activeChain = useActiveChain();
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
@@ -139,13 +146,16 @@ function Home() {
   const plusdDecimals = isStellar ? SAC_DECIMALS : evmPlusdDecimals;
   const splusdDecimals = isStellar ? SAC_DECIMALS : evmSplusdDecimals;
 
+  const plusdIsZero = isDisplayZero(plusdBalanceActive, plusdDecimals);
+  const splusdIsZero = isDisplayZero(splusdSharesActive, splusdDecimals);
+
   const homeState = deriveHomeState({
     hasSession: isAuthenticated,
     isConnected,
     lpRead,
     kybStatus,
-    plusdIsZero: isDisplayZero(plusdBalanceActive, plusdDecimals),
-    splusdIsZero: isDisplayZero(splusdSharesActive, splusdDecimals),
+    plusdIsZero,
+    splusdIsZero,
   });
 
   const plusdFormattedActive: string | undefined = isStellar
@@ -194,11 +204,9 @@ function Home() {
         })
       : undefined;
 
-  const stakeDisabled =
-    isConnected && isDisplayZero(plusdBalanceActive, plusdDecimals);
+  const stakeDisabled = isConnected && plusdIsZero;
 
-  const sellDisabled =
-    !isConnected || isDisplayZero(plusdBalanceActive, plusdDecimals);
+  const sellDisabled = !isConnected || plusdIsZero;
 
   const onBuy = () => {
     if (!isConnected) {
@@ -225,7 +233,15 @@ function Home() {
     navigate({ to: "/stake", search: { tab: "unstake" } });
   const onViewStatus = () =>
     navigate({ to: "/account", search: { state: undefined } });
-  const onAddFunds = () => setFundingDetailsOpen(true);
+  const fundingView = useFundingDetails(fundingRequest);
+  const onAddFunds = () => {
+    fundingOpenCounter.current += 1;
+    setFundingRequest({
+      openId: fundingOpenCounter.current,
+      chainId: activeChain.chainId,
+      kind: activeChain.kind,
+    });
+  };
 
   const onSignUp = () => openAuthFlow("create-account");
 
@@ -507,6 +523,66 @@ function Home() {
                     </CompactAddUsdStack>
                   }
                 />
+              ) : homeState === "passed-empty" ? (
+                <HomeDashboardGrid
+                  hero={
+                    <PortfolioPlaceholderCard
+                      variant="get-plusd"
+                      balanceLabel={splusdBalanceFormatted}
+                      {...portfolioChartProps}
+                    />
+                  }
+                  activityPadding="md"
+                  balancesNodeId="6701:98773"
+                  balances={<CompactBalances {...compactWalletActions} />}
+                  third={
+                    <CompactAddUsdStack nodeId="6701:97493">
+                      <AddUsdCard
+                        variant="unlocked"
+                        className="flex-1"
+                        onAddFunds={onAddFunds}
+                        data-testid="home-add-usd-card"
+                      />
+                    </CompactAddUsdStack>
+                  }
+                />
+              ) : homeState === "passed-staked" ? (
+                <HomeDashboardGrid
+                  hero={
+                    <PortfolioPlaceholderCard
+                      mobileHomeState={mobileHomeState}
+                      balanceLabel={splusdBalanceFormatted}
+                      unrealizedPnlLabel={unrealizedPnlFormatted}
+                      {...portfolioChartProps}
+                    />
+                  }
+                  activityPadding="md"
+                  balancesNodeId="6701:97257"
+                  balances={
+                    <CompactBalances
+                      {...compactWalletActions}
+                      {...(plusdIsZero
+                        ? {}
+                        : {
+                            compactVariant: "balance" as const,
+                            compactBalanceLabel: plusdFormattedActive,
+                          })}
+                    />
+                  }
+                  third={
+                    <CompactAddUsdStack
+                      nodeId="6701:97288"
+                      earnedPnlLabel={earnedPnlLabel}
+                    >
+                      <AddUsdCard
+                        variant="unlocked"
+                        className="flex-1"
+                        onAddFunds={onAddFunds}
+                        data-testid="home-add-usd-card"
+                      />
+                    </CompactAddUsdStack>
+                  }
+                />
               ) : homeState === "kyb-problem" ? (
                 <HomeDashboardGrid
                   hero={
@@ -590,8 +666,13 @@ function Home() {
       </main>
 
       <FundingDetailsModal
-        open={fundingDetailsOpen}
-        onDismiss={() => setFundingDetailsOpen(false)}
+        open={fundingRequest !== null}
+        view={fundingView}
+        onDismiss={() => setFundingRequest(null)}
+        onOpenAccount={() => {
+          setFundingRequest(null);
+          navigate({ to: "/account", search: { state: undefined } });
+        }}
       />
     </div>
   );

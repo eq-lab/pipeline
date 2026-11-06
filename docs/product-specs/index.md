@@ -23,7 +23,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 |------|--------|-------------|
 | [lp-onboarding.md](./lp-onboarding.md) | LP Onboarding & Compliance | KYT screening, three whitelist enrolment paths, freshness window, manual review |
 | [kyb-lp-verification.md](./kyb-lp-verification.md) | LP Onboarding & Compliance | KYB entity registration, document review lifecycle, notifications, settlement address |
-| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed |
+| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed; LP funding details (`GET /v1/lps/me/payment-details`) |
 | [evm-requests-queue.md](./evm-requests-queue.md) | Deposits & PLUSD Minting | Deployed EVM VerifiedRequestsQueue: DepositManager, WithdrawalQueue, `VerifiedRequests` EIP-712 voucher, rate limiter, voucher API |
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
@@ -55,6 +55,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [dashboards-tvl-ledger.md](./dashboards-tvl-ledger.md) | Dashboards | TVL definition: PLUSD supply ledger (mint / burn paths, pending deposits, carve-out), per chain and summed |
 | [dashboards-balance-sheet-sources.md](./dashboards-balance-sheet-sources.md) | Dashboards | Protocol Dashboard Panel A on-chain sources: Stellar and EVM PLUSD supply / USDC custody reads |
 | [dashboards-yield-history.md](./dashboards-yield-history.md) | Dashboards | Protocol Dashboard Panel D: yield history, T-bill accrual, exchange rate, trailing yield |
+| [minter-cash-book.md](./minter-cash-book.md) | Dashboards | Stellar minter cash book folded from indexed events: `GET /v1/cash-book`, LP wire-outs on `/v1/requests`, the Capital Allocation switch |
 | [home-screen-states.md](./home-screen-states.md) | Dashboards | LP home route (`/`) state table and precedence rule (epic #1419) |
 | [audit-logging.md](./audit-logging.md) | Audit Logging | Append-only log, third-party sink, compliance traceability |
 | [api-authorization.md](./api-authorization.md) | API Authorization | Signature-based login (EVM EIP-191 + Stellar SEP-0053), single-use nonce, ES256 JWT, allow-list & roles |

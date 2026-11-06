@@ -23,6 +23,7 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 use shared::book_weighting::{
     bps_to_fraction_string, current_rate_bps, current_tenor_days, weighted_mean,
 };
+use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
 use shared::collateral_valuation_repo::{
     AssayRow, CollateralValuationRepo, CollateralValuationRow, OfftakeTermsRow, ValuationMode,
@@ -31,6 +32,8 @@ use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
 use shared::loan_status::LoanTimeline;
+use shared::pocket::{fold_pockets, PocketFold};
+use shared::pocket_repo::PocketRepo;
 use shared::price_provider::{is_known_provider, known_provider_keys};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
@@ -282,6 +285,19 @@ pub struct LoanBookEntry {
     /// render an exact "since `<date>`" sub-label instead of back-computing an
     /// approximate date from the day count. Same nullability as `days_on_watchlist`.
     pub watchlist_entered_at: Option<i64>,
+    pub pocket: Option<LoanPocket>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LoanPocket {
+    pub snapshot_ledger: u32,
+    pub supply_at_snapshot: String,
+    pub opened: Option<String>,
+    pub held: String,
+    pub released_total: String,
+    pub burned_total: String,
+    pub claimed_total: String,
+    pub complete: bool,
 }
 
 /// A single document reference (name + URI) from the loan metadata document.
@@ -527,6 +543,7 @@ pub struct ReviewRequest {
         LoanBookSummary,
         TopConcentration,
         LoanBookEntry,
+        LoanPocket,
         LoanDocumentDto,
         SubmitLoanRequest,
         SubmitLoanResponse,
@@ -1214,7 +1231,7 @@ pub async fn handle_loan_book(
     let collateral_by_loan = collateral_by_loan(&anchors, &assays, &offtakes, &latest_prices)?;
     let spot_by_loan = spot_by_loan(state, to, &anchors, &latest_prices).await?;
 
-    Ok(compute_loan_book(
+    let mut resp = compute_loan_book(
         &loans,
         &events,
         to,
@@ -1222,7 +1239,66 @@ pub async fn handle_loan_book(
         &spot_by_loan,
         &disbursement_by_loan,
         &watchlist_entry_by_loan,
-    ))
+    );
+    let pockets = pockets_by_loan(state, chain_ids).await?;
+    attach_pockets(&mut resp, &pockets);
+    Ok(resp)
+}
+
+async fn pockets_by_loan(
+    state: &AppState,
+    chain_ids: &[i64],
+) -> Result<HashMap<LoanRef, (ChainKind, PocketFold)>, ApiError> {
+    let repo = PocketRepo::new(state.pool.clone());
+    let mut out = HashMap::new();
+    for &chain_id in chain_ids {
+        let Some(pocket) = state.pocket_addresses.get(&chain_id) else {
+            continue;
+        };
+        let Some(kind) = state
+            .chains
+            .iter()
+            .find(|c| c.chain_id == chain_id)
+            .map(|c| c.kind)
+        else {
+            continue;
+        };
+        let (events, claims, seeds) = tokio::try_join!(
+            repo.list_events(chain_id, pocket),
+            repo.list_claim_totals(chain_id, pocket),
+            repo.list_seeds(chain_id, pocket),
+        )?;
+        for (loan_id, fold) in fold_pockets(&events, &claims, &seeds) {
+            out.insert(loan_ref(chain_id, &loan_id), (kind, fold));
+        }
+    }
+    Ok(out)
+}
+
+pub fn loan_pocket(kind: ChainKind, fold: &PocketFold) -> LoanPocket {
+    let usdc = |raw: &BigDecimal| base6_to_decimal_string(&normalize_usdc_amount(kind, raw));
+    LoanPocket {
+        snapshot_ledger: fold.snapshot_ledger as u32,
+        supply_at_snapshot: fold.supply_at_snapshot.to_plain_string(),
+        opened: fold.opened.as_ref().map(usdc),
+        held: usdc(&fold.held),
+        released_total: usdc(&fold.released_total),
+        burned_total: usdc(&fold.burned_total),
+        claimed_total: usdc(&fold.claimed_total),
+        complete: fold.complete,
+    }
+}
+
+pub fn attach_pockets<S: std::hash::BuildHasher>(
+    resp: &mut LoanBookResponse,
+    pockets: &HashMap<LoanRef, (ChainKind, PocketFold), S>,
+) {
+    for entry in &mut resp.loans {
+        let key = (entry.chain_id, entry.loan_id.clone());
+        entry.pocket = pockets
+            .get(&key)
+            .map(|(kind, fold)| loan_pocket(*kind, fold));
+    }
 }
 
 /// Build the per-loan spot map: `(chain_id, loan_id) → { latest price, trailing 7-day change }`,
@@ -1502,6 +1578,7 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         disbursed: off_ramp_complete,
         days_on_watchlist,
         watchlist_entered_at,
+        pocket: None,
     };
 
     EntryComputation {

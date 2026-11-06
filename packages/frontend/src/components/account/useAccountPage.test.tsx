@@ -51,6 +51,10 @@ function lp(overrides: Partial<LpResponse> = {}): LpResponse {
     contact_email: "stored@example.com",
     stellar_address: null,
     address_linked_at: null,
+    stellar_signer_address: null,
+    evm_address: null,
+    evm_signer_address: null,
+    evm_address_linked_at: null,
     kyb_status: "NotStarted",
     writable: true,
     notify_on_review: false,
@@ -80,6 +84,29 @@ beforeEach(() => {
 });
 
 describe("useAccountPage", () => {
+  it("hands every adopted LP to onLpAdopted and ignores a missing LP", async () => {
+    signIn("session@example.com");
+    const loaded = lp();
+    const saved = lp({ legal_name: "Renamed Ltd" });
+    mockGet.mockResolvedValueOnce(loaded);
+    mockUpsert.mockResolvedValueOnce(saved);
+    const onLpAdopted = vi.fn();
+    const { result } = renderHook(() => useAccountPage(true, onLpAdopted));
+    await waitFor(() => expect(onLpAdopted).toHaveBeenCalledWith(loaded));
+    act(() => result.current.setLegalName("Renamed Ltd"));
+    await act(async () => result.current.saveProfile());
+    expect(onLpAdopted).toHaveBeenLastCalledWith(saved);
+  });
+
+  it("does not call onLpAdopted on a 404", async () => {
+    signIn("session@example.com");
+    mockGet.mockRejectedValueOnce(new ApiError(404, "missing"));
+    const onLpAdopted = vi.fn();
+    const { result } = renderHook(() => useAccountPage(true, onLpAdopted));
+    await waitFor(() => expect(result.current.readState).toBe("absent"));
+    expect(onLpAdopted).not.toHaveBeenCalled();
+  });
+
   it("keeps loading distinct from a missing LP and retries a failed read", async () => {
     signIn("session@example.com");
     let reject!: (error: Error) => void;
