@@ -20,10 +20,10 @@
 //! resolved `scope` (`Loan #<id>` / `Protocol`), an ISO-8601 `timestamp`, and `reference`
 //! — the friendly loan name (`"<originator> — <commodity>"`, sourced from the loan
 //! snapshot), empty string for protocol-scoped events, for loans missing either field, and
-//! for Minter / CollateralRegistry / DealTokenFactory rows (no snapshot).
+//! for Minter / CollateralRegistry / DealTokenFactory / Pocket rows (no snapshot).
 //!
 //! Besides the loan lifecycle, the feed carries the Minter cash events, the
-//! CollateralRegistry lot events and the DealTokenFactory events (#1478); per-transfer
+//! CollateralRegistry lot events, the DealTokenFactory events (#1478) and the Pocket events (#1789); per-transfer
 //! `DealTokenTransfer` rows are deliberately left out. Historical `YieldMinted`,
 //! `LoanCCRUpdated` and `LoanLocationUpdated` rows are no longer indexed but keep rendering.
 //! The WithdrawalQueue's one-time `WithdrawalRateSet` recovery rate (#1791) is also listed.
@@ -102,6 +102,11 @@ pub const AUDIT_EVENT_NAMES: &[&str] = &[
     "DebtSynced",
     "CargoSynced",
     "WithdrawalRateSet",
+    "PocketOpened",
+    "PocketReleased",
+    "PocketUnreleased",
+    "PocketBurned",
+    "PocketClaimed",
 ];
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -694,6 +699,86 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
                     "quantity": param_amount(params, "quantity", chain_kind),
                     "reason": reason,
                     "ref_hash": param_str(params, "ref_hash"),
+                }),
+            )
+        }
+
+        "PocketOpened" => {
+            let amount = param_amount(params, "amount", chain_kind);
+            let action = match &amount {
+                Some(a) => format!("Pocket opened — {a}"),
+                None => "Pocket opened".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "amount": amount,
+                    "snapshot_ledger": param_str(params, "snapshot_ledger"),
+                    "supply_at_snapshot": param_str(params, "supply_at_snapshot"),
+                }),
+            )
+        }
+
+        "PocketReleased" => {
+            let released = param_amount(params, "released", chain_kind);
+            let interest = param_amount(params, "interest", chain_kind);
+            let action = match (&released, &interest) {
+                (Some(r), Some(i)) => {
+                    format!("Pocket recovery released — {r} principal, {i} interest")
+                }
+                _ => "Pocket recovery released".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "principal": param_amount(params, "principal", chain_kind),
+                    "released": released,
+                    "interest": interest,
+                }),
+            )
+        }
+
+        "PocketUnreleased" => {
+            let principal = param_amount(params, "principal", chain_kind);
+            let interest = param_amount(params, "interest", chain_kind);
+            let action = match (&principal, &interest) {
+                (Some(p), Some(i)) => {
+                    format!("Pocket release reversed — {p} principal, {i} interest burned")
+                }
+                _ => "Pocket release reversed".to_owned(),
+            };
+            (
+                action,
+                json!({ "principal": principal, "interest": interest }),
+            )
+        }
+
+        "PocketBurned" => {
+            let amount = param_amount(params, "amount", chain_kind);
+            let burned = param_amount(params, "burned", chain_kind);
+            let action = match (&burned, &amount) {
+                (Some(b), Some(a)) => format!("Pocket write-down — {b} burned of {a}"),
+                _ => "Pocket write-down".to_owned(),
+            };
+            (action, json!({ "amount": amount, "burned": burned }))
+        }
+
+        "PocketClaimed" => {
+            let paid = param_amount(params, "paid", chain_kind);
+            let paid_zero = param_value(params, "paid_zero")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let action = match (&paid, paid_zero) {
+                (_, true) => "Pocket claim — nothing claimable".to_owned(),
+                (Some(p), false) => format!("Pocket claim — {p}"),
+                (None, false) => "Pocket claim".to_owned(),
+            };
+            (
+                action,
+                json!({
+                    "holder": param_str(params, "holder"),
+                    "paid": paid,
+                    "paid_zero": paid_zero,
                 }),
             )
         }

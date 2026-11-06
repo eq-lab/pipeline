@@ -108,6 +108,9 @@ function view(overrides: Partial<SettlementRowView> = {}): SettlementRowView {
     action: null,
     confirm: null,
     busy: false,
+    signer: null,
+    other: false,
+    form: null,
     ...overrides,
   };
 }
@@ -118,6 +121,8 @@ function controls(rows: SettlementRowView[]) {
     onLink: vi.fn(),
     onChange: vi.fn(),
     onCancel: vi.fn(),
+    onOther: vi.fn(),
+    onLinkOther: vi.fn(),
   };
 }
 
@@ -189,6 +194,15 @@ describe("AccountProfileCard settlement rows", () => {
     });
     const row = await screen.findByTestId("settlement-address-row");
     expect(within(row).queryByRole("button")).toBeNull();
+  });
+
+  it("offers Use a different address and calls onOther with the kind", async () => {
+    const settlement = controls([view({ other: true })]);
+    renderCard({ settlement });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Use a different address" }),
+    );
+    expect(settlement.onOther).toHaveBeenCalledWith("stellar");
   });
 
   it("renders no row without a settlement view", async () => {

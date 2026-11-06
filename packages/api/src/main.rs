@@ -132,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
     let asset_decimals = chains_config.asset_decimals;
     let loan_registry_addresses = chains_config.loan_registry_addresses;
     let withdrawal_queue_addresses = chains_config.withdrawal_queue_addresses;
+    let pocket_addresses = chains_config.pocket_addresses;
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -159,6 +160,7 @@ async fn main() -> anyhow::Result<()> {
         asset_decimals,
         loan_registry_addresses,
         withdrawal_queue_addresses,
+        pocket_addresses,
         crystal_enabled,
         elliptic_enabled,
         auth_user_repo,

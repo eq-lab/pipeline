@@ -36,6 +36,43 @@ describe("LP API client", () => {
     expect(challenge).toEqual({ message: "m", nonce: "n" });
   });
 
+  it("adds signer_address to the challenge only when one is given", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ message: "m", nonce: "n" }), {
+          status: 200,
+        }),
+    );
+    await getLinkAddressChallenge(99000001, "CABC", "GSIGNER");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "signer_address=GSIGNER",
+    );
+    await getLinkAddressChallenge(99000001, "GABC", null);
+    expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain(
+      "signer_address",
+    );
+  });
+
+  it("includes signer_address in the verify body when given", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 1 }), { status: 200 }),
+      );
+    await verifyLinkAddress({
+      chain_id: 99000001,
+      address: "CABC",
+      signer_address: "GSIGNER",
+      signature: "sig",
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string)).toEqual({
+      chain_id: 99000001,
+      address: "CABC",
+      signer_address: "GSIGNER",
+      signature: "sig",
+    });
+  });
+
   it("posts the exact verify body with bearer auth and returns the LP", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ id: 1, stellar_address: "GABC" }), {
