@@ -113,6 +113,7 @@ pub struct ChainsConfig {
     pub capital_allocation_from_minter: HashSet<i64>,
     pub withdrawal_queue_addresses: HashMap<i64, String>,
     pub pocket_addresses: HashMap<i64, String>,
+    pub security_registry_addresses: HashMap<i64, String>,
 }
 
 /// Custody + ramp address sets used to classify indexed `AssetTransfer`
@@ -176,6 +177,7 @@ impl ChainsConfig {
         let mut capital_allocation_from_minter = HashSet::new();
         let mut withdrawal_queue_addresses = HashMap::new();
         let mut pocket_addresses = HashMap::new();
+        let mut security_registry_addresses = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -196,6 +198,7 @@ impl ChainsConfig {
             )?;
             load_withdrawal_queue_scope(chain_id, chain_kind, &mut withdrawal_queue_addresses);
             load_pocket_address(chain_id, chain_kind, &mut pocket_addresses)?;
+            load_security_registry_address(chain_id, chain_kind, &mut security_registry_addresses)?;
             let decimals = load_asset_decimals(chain_id, chain_kind)?;
             load_transfer_addresses(chain_id, chain_kind, decimals, &mut transfer_addresses)?;
             load_withdrawal_queue_wallet(chain_id, chain_kind, &mut withdrawal_queue_wallets)?;
@@ -249,6 +252,7 @@ impl ChainsConfig {
             capital_allocation_from_minter,
             withdrawal_queue_addresses,
             pocket_addresses,
+            security_registry_addresses,
         })
     }
 }
@@ -372,6 +376,28 @@ fn load_pocket_address(
         .map_err(|e| anyhow::anyhow!("{key} must be a valid C… contract Strkey: {e}"))?;
     let normalized = format!("{contract}");
     tracing::info!(chain_id, pocket = %normalized, "API Pocket scope loaded");
+    out.insert(chain_id, normalized);
+    Ok(())
+}
+
+fn load_security_registry_address(
+    chain_id: i64,
+    kind: ChainKind,
+    out: &mut HashMap<i64, String>,
+) -> Result<()> {
+    if kind != ChainKind::Stellar {
+        return Ok(());
+    }
+    let key = format!("CHAIN_{chain_id}_STELLAR_API_SECURITY_REGISTRY_ADDRESS");
+    let raw = env::var(&key).unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(());
+    }
+    let contract = stellar_strkey::Contract::from_string(raw)
+        .map_err(|e| anyhow::anyhow!("{key} must be a valid C… contract Strkey: {e}"))?;
+    let normalized = format!("{contract}");
+    tracing::info!(chain_id, security_registry = %normalized, "API SecurityRegistry scope loaded");
     out.insert(chain_id, normalized);
     Ok(())
 }

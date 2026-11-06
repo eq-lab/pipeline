@@ -6,7 +6,7 @@ Source of truth: `pipeline-stellar-contracts@e9881ac`, `contracts/security-regis
 
 ## Configuration
 
-`CHAIN_<id>_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (optional). Unset or whitespace ships dark: no polling, no sync task, empty tables. A set value is validated as a Strkey `C…` contract id (CRC included) and joins the distinct-role check as `SECURITY_REGISTRY_ADDRESS`; a value equal to the legacy `COLLATERAL_REGISTRY_ADDRESS` (or any other role) fails boot. The worker logs "Stellar SecurityRegistry indexer enabled". No API key exists here (#1780).
+`CHAIN_<id>_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS` (optional). Unset or whitespace ships dark: no polling, no sync task, empty tables. A set value is validated as a Strkey `C…` contract id (CRC included) and joins the distinct-role check as `SECURITY_REGISTRY_ADDRESS`; a value equal to the legacy `COLLATERAL_REGISTRY_ADDRESS` (or any other role) fails boot. The worker logs "Stellar SecurityRegistry indexer enabled". The API side is a separate optional key, `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS` (#1780), which must equal this one; it serves `GET /v1/loan-book/{loan_id}/security` ([loan-security-state.md](../product-specs/loan-security-state.md)).
 
 ## Encoding rules
 

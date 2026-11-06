@@ -176,7 +176,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Pure contract mirrors.** Add `packages/shared/src/security_state.rs` and register it in
+1. [x] **Pure contract mirrors.** Add `packages/shared/src/security_state.rs` and register it in
    `packages/shared/src/lib.rs`. Header: `// spec: docs/product-specs/loan-security-state.md#computed-fields`.
    No other comments.
    - `pub const UNIT: i128 = 10_000_000; pub const BPS_ONE: u128 = 10_000; pub const U32_MAX_BPS: u32 = u32::MAX;`
@@ -206,7 +206,7 @@ _None_
    - `pub fn cure_by(margin_call_at, open_events: &[(block_timestamp, cure_by)], snapshot: Option<(margin_call_at, cure_by)>) -> (Option<u64>, Option<&'static str>)`.
    - `pub fn format_7dp(raw: &BigDecimal) -> String`. It is exact (`raw / 1e7`, scale 7, plain string,
      never exponent). Place it here or in `packages/api/src/formatting.rs`; it must be pure.
-2. **Read SQL and repo.** Add the reads to `packages/shared/src/security_registry_repo.rs` as `pub const`.
+2. [x] **Read SQL and repo.** Add the reads to `packages/shared/src/security_registry_repo.rs` as `pub const`.
    Every query binds `chain_id = $1 AND contract_address = $2`, and per-loan queries also bind
    `loan_id = $3`:
    - `GET_TERMS_SQL`;
@@ -232,12 +232,12 @@ _None_
    `SecurityRegistryRepo::load_loan_security(chain_id, contract, loan_id) -> anyhow::Result<LoanSecurityRows>`.
    It opens one transaction with `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY` and runs the
    reads in order. The repayment read runs last and uses the record ids.
-3. **API config.** In `packages/api/src/config.rs`, add `security_registry_addresses: HashMap<i64, String>`
+3. [x] **API config.** In `packages/api/src/config.rs`, add `security_registry_addresses: HashMap<i64, String>`
    to `ChainsConfig` and `fn load_security_registry_address(chain_id, kind, out) -> Result<()>`. It is a
    copy of `load_pocket_address` with key `CHAIN_{id}_STELLAR_API_SECURITY_REGISTRY_ADDRESS` and log
    "API SecurityRegistry scope loaded". Then wire `packages/api/src/main.rs` and add the
    `AppState.security_registry_addresses` field in `packages/api/src/lib.rs`.
-4. **Assembly (pure).** Add `packages/api/src/security_state.rs` and register it in `lib.rs`, next to
+4. [x] **Assembly (pure).** Add `packages/api/src/security_state.rs` and register it in `lib.rs`, next to
    `minter_cash_book.rs`. It holds the DTOs (`LoanSecurityResponse`, `SecurityTermsDto`,
    `SecurityValuationDto`, `MarginCallDto`, `MarginEventDto`, `PricesDto`, `ConsentDto`, `SecurityRecordDto`,
    `RecordDocDto`, `RecordMarkDto`, `LotDto`, `RecordValuationDto`, `InspectionDto`, `SaleRepaymentDto`, all
@@ -251,7 +251,7 @@ _None_
    - Derive `last_margin_call_ltv_bps` from the latest `open` event and `last_price_stale` from the latest
      `price_stale` event.
    - Set `refresh_pending = sr_log_id > projected_log_id || (terms.is_some() && valuation.map_or(true, |v| valuation_log_id > v.source_log_id))`.
-5. **Route.** Add `packages/api/src/routes/loan_security.rs` with header
+5. [x] **Route.** Add `packages/api/src/routes/loan_security.rs` with header
    `// spec: docs/product-specs/loan-security-state.md#api-contract`, and register it in
    `routes/mod.rs`, `main.rs` (`.nest("/v1", …)`) and the OpenAPI merge (`LoanSecurityDoc`, tag
    `LoanBook`).
@@ -267,13 +267,13 @@ _None_
      6. call `build_security_response`.
    - The `#[utoipa::path]` lists 200 / 400 / 404 (`security_registry_not_configured`) / 500.
    - Code is comment-less apart from the header.
-6. **Env and test-state plumbing.**
+6. [x] **Env and test-state plumbing.**
    - Add `security_registry_addresses: HashMap::new()` to every `AppState { … }` literal under
      `packages/api/tests/` (`grep -l pocket_addresses packages/api/tests`).
    - Add a commented `CHAIN_99000001_STELLAR_API_SECURITY_REGISTRY_ADDRESS=CDTUMAT6…` line to `.env.example`
      next to the API Pocket key: "optional — `GET /v1/loan-book/{loan_id}/security`; must equal the
      indexer key".
-7. **Docs** (see Docs to Update). Run `cargo fmt`, `cargo clippy --all -- -D warnings`,
+7. [x] **Docs** (see Docs to Update). Run `cargo fmt`, `cargo clippy --all -- -D warnings`,
    `cargo test -p shared -p pipeline-api`, and
    `/Users/aabliazimov/Documents/work/pipeline/node_modules/.bin/tsx scripts/lint-docs.ts` from the
    worktree.

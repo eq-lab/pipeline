@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-172.**
+**Next free number: TD-173.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2310,5 +2310,14 @@ line, whichever section it lands in.
 - **Date:** 2026-11-06
 - **Location:** `packages/worker/src/indexer/stellar/security_registry_sync.rs`, `shared::security_registry`
 - **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
-- **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history.
+- **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history. The API's computed staleness flags (`GET /v1/loan-book/{loan_id}/security`, #1780) use the API clock, not the ledger timestamp, so they can flip a few seconds apart from the contract's.
 - **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
+
+### TD-172: Per-loan `contract_logs` reads filter on JSON `params` with no supporting index
+
+- **Date:** 2026-11-06
+- **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`
+- **Gap:** `contract_logs` has only the `(chain_id, contract_address, block_number, log_index)` unique index and `idx_contract_logs_event` (`20260428000001_init.sql`). Filters on `params->>'loan_id'` or `params @> jsonb_build_object('loan_id', …)` therefore scan every row of the scoped contract(s); the `@>` form written in #1780 only pays off once a GIN index exists.
+- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow linearly with each contract's log count.
+- **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first.
+
