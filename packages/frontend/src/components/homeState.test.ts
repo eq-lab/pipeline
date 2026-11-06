@@ -481,4 +481,44 @@ describe("deriveHomeState — wallet-only (#1460)", () => {
       }),
     ).toBe("legacy");
   });
+
+  describe("walletPending (#1809)", () => {
+    it("returns loading for a sessionless visitor instead of zero", () => {
+      expect(
+        deriveHomeState({
+          hasSession: false,
+          isConnected: false,
+          walletPending: true,
+        }),
+      ).toBe("loading");
+    });
+
+    it.each([
+      "NotStarted",
+      "UnderReview",
+      "Passed",
+      "ChangesRequested",
+      "Failed",
+    ])("returns loading for a loaded session with KYB %s", (kybStatus) => {
+      expect(
+        deriveHomeState({
+          hasSession: true,
+          isConnected: false,
+          lpRead: "loaded",
+          kybStatus,
+          walletPending: true,
+        }),
+      ).toBe("loading");
+    });
+
+    it("false leaves the derivation unchanged", () => {
+      expect(
+        deriveHomeState({
+          hasSession: false,
+          isConnected: false,
+          walletPending: false,
+        }),
+      ).toBe("zero");
+    });
+  });
 });

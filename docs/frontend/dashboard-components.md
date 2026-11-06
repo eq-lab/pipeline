@@ -1642,7 +1642,7 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
    | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                |
    | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                  |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — both CTAs open the auth flow, Sell forced disabled. |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — Buy and Stake navigate to `/deposit` and `/stake?tab=stake` like every other state (#1809), Sell forced disabled; sign-up stays on the promo card only. |
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled. |
    | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                            |
 
@@ -1759,9 +1759,13 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
 
-**Disconnected CTA rule (#1152, #1151):** with no wallet connected, Buy and the Stake circle open
-the shared connect modal (`useConnectModal().open()`) instead of navigating (supersedes the
-#408-era "Stake navigates when disconnected" behavior); Sell is disabled (`sellDisabled`,
+**Disconnected CTA rule (#1152, #1151, #1809):** once the wallet layer has settled with no wallet
+connected, Buy and the Stake circle open the shared connect modal (`useConnectModal().open()`)
+instead of navigating (supersedes the #408-era "Stake navigates when disconnected" behavior); while
+`useWalletPresence().isConnectionPending` they treat the reconnecting wallet as connected and
+navigate immediately. In the zero state (no session, no wallet) Buy and Stake navigate to
+`/deposit` and `/stake?tab=stake`; the connect row on those pages renders nothing while pending.
+Sell is disabled (`sellDisabled`,
 32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
 (deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
@@ -1783,7 +1787,7 @@ state is layout-stable: hero 274px (col 1–4, row 1), Balances 164 + 164px, thi
 Recent activity and the FAQ strip render normally (neither depends on the LP read); no CTA renders
 during the window; the Balances wrapper carries no `data-node-id`. No Figma loading frame exists —
 the skeleton is derived from the cards' own heights. The mobile stack is unaffected (it never reads
-`homeState`), and `lpRead === "error"` still falls back to `"legacy"`.
+`homeState`), and `lpRead === "error"` still falls back to `"legacy"`. It also covers a pending wallet reconnect (`walletPending`, #1809).
 
 **Chain-served gate (#1605).** When `useChainServed().served === false` (the active EVM chain is not
 served by the API), the route keeps `WelcomeHeader` and replaces both the mobile stack and the
@@ -1793,11 +1797,11 @@ desktop dashboard card with `ChainNotServedNotice` — no home state is derived 
 `packages/frontend/src/components/homeState.ts` exports
 `HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "passed-empty" | "passed-staked" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
-`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
+`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero?, walletPending? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
 `"kyb-pending"` / `"plusd-held"` / `"wallet-only"`. The precedence rule (not re-derived here — see
 `docs/product-specs/home-screen-states.md` for the authoritative seven-state table and its
-precedence clause) is evaluated in order: when `hasSession` is `false`, `"wallet-only"` if
+precedence clause) is evaluated in order: `"loading"` first when `walletPending` (a wallet reconnect is in flight, #1809); else when `hasSession` is `false`, `"wallet-only"` if
 `isConnected && plusdIsZero && splusdIsZero`, else `"zero"` (this is the one short-circuit #1460
 changed — every sessionless caller still resolves to exactly one of these two, and can never reach
 the KYB branches below); else `"loading"` when `lpRead === "unknown"` — the `GET /v1/lps/me` read

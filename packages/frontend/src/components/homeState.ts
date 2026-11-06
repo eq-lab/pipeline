@@ -19,6 +19,7 @@ export interface DeriveHomeStateInput {
   kybStatus?: string;
   plusdIsZero?: boolean;
   splusdIsZero?: boolean;
+  walletPending?: boolean;
 }
 
 export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
@@ -29,7 +30,9 @@ export function deriveHomeState(input: DeriveHomeStateInput): HomeState {
     kybStatus,
     plusdIsZero = false,
     splusdIsZero = false,
+    walletPending = false,
   } = input;
+  if (walletPending) return "loading";
   if (!hasSession) {
     return isConnected && plusdIsZero && splusdIsZero ? "wallet-only" : "zero";
   }

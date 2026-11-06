@@ -10,7 +10,12 @@ import {
   InlineError,
   useCopyToClipboard,
 } from "@pipeline/ui";
-import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
+import {
+  useDepositFlow,
+  useWalletView,
+  useConnectModal,
+  useWalletPresence,
+} from "@/wallet";
 import { useChainNotice } from "@/components/useChainNotice";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import {
@@ -83,6 +88,7 @@ function Deposit() {
   const amountBig = parseUsdc(amountInput, lastDecimals);
 
   // ── Flow adapter ──────────────────────────────────────────────────────
+  const { isConnectionPending } = useWalletPresence();
   const flow = useDepositFlow(
     direction,
     amountBig,
@@ -588,7 +594,7 @@ function Deposit() {
             )}
 
             {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
-            {!flow.isConnected ? (
+            {isConnectionPending ? null : !flow.isConnected ? (
               <Card
                 variant="yellow"
                 data-testid="connect-wallet-banner"
