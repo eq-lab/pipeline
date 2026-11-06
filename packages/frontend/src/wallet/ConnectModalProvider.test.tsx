@@ -1,14 +1,4 @@
-/**
- * ConnectModalProvider — unit tests.
- *
- * Covers:
- *   - `useConnectModal()` outside the provider returns a no-op (no throw).
- *   - `open()` renders the ConnectWalletModal (testid `connect-wallet-modal`).
- *   - `close()` / `onDismiss` removes the modal.
- *   - Multiple call sites share the single modal instance (no duplicates).
- *   - Gate ordering (issue #639): gate fires first when terms are absent;
- *     skipped when already acknowledged; dismissing gate does not open modal.
- */
+// spec: docs/frontend/wallet-flows.md#single-connected-wallet
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -19,8 +9,6 @@ import { useConnectModal } from "./ConnectModalContext";
 import { WalletGateProvider } from "./WalletGateProvider";
 
 // ── Mock ConnectWalletModal ──────────────────────────────────────────────────
-// Avoid pulling in the full ConnectWalletModal rendering machinery (wagmi, appkit,
-// stellar kit, createPortal, etc.) in the unit test environment.
 vi.mock("../components/ConnectWalletModal", () => ({
   ConnectWalletModal: ({
     open,
@@ -41,7 +29,7 @@ vi.mock("../components/ConnectWalletModal", () => ({
 }));
 
 const { presence } = vi.hoisted(() => ({
-  presence: { isAnyConnected: false },
+  presence: { isAnyConnected: false, isConnectionPending: false },
 }));
 
 vi.mock("./useWalletPresence", () => ({
@@ -49,8 +37,6 @@ vi.mock("./useWalletPresence", () => ({
 }));
 
 // ── Mock FirstConnectionModal ─────────────────────────────────────────────────
-// Capture gate props so tests can trigger Continue / Dismiss without rendering
-// the real modal UI (which has portal / DOM setup issues in unit tests).
 
 let capturedGateProps: {
   open: boolean;
@@ -102,7 +88,6 @@ function CloseButton() {
   return <button onClick={close}>Close Modal Via Context</button>;
 }
 
-/** Wrapper that includes WalletGateProvider so ConnectModalProvider can call useWalletGate(). */
 function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WalletGateProvider>
@@ -361,6 +346,7 @@ describe("ConnectModalProvider — single connected wallet (#1512)", () => {
     localStorage.clear();
     localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
     presence.isAnyConnected = false;
+    presence.isConnectionPending = false;
   });
 
   it("open() does nothing while a wallet is connected", async () => {
@@ -382,6 +368,87 @@ describe("ConnectModalProvider — single connected wallet (#1512)", () => {
         <ConsumerButton />
       </Providers>,
     );
+    await userEvent.click(screen.getByText("Open Modal"));
+    expect(screen.getByTestId("connect-wallet-modal")).toBeInTheDocument();
+  });
+});
+
+describe("ConnectModalProvider — pending reconnect (#1809)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    presence.isAnyConnected = false;
+    presence.isConnectionPending = true;
+    capturedGateProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
+  });
+
+  const tree = () => (
+    <Providers>
+      <ConsumerButton />
+    </Providers>
+  );
+
+  it("open() while pending renders no modal and no gate", async () => {
+    render(tree());
+    await userEvent.click(screen.getByText("Open Modal"));
+    expect(
+      screen.queryByTestId("connect-wallet-modal"),
+    ).not.toBeInTheDocument();
+    expect(capturedGateProps.open).toBe(false);
+  });
+
+  it("never opens when a wallet connected by the time it settles", async () => {
+    const { rerender } = render(tree());
+    await userEvent.click(screen.getByText("Open Modal"));
+    presence.isAnyConnected = true;
+    presence.isConnectionPending = false;
+    rerender(tree());
+    expect(
+      screen.queryByTestId("connect-wallet-modal"),
+    ).not.toBeInTheDocument();
+    expect(capturedGateProps.open).toBe(false);
+  });
+
+  it("opens the modal when it settles with nothing connected", async () => {
+    const { rerender } = render(tree());
+    await userEvent.click(screen.getByText("Open Modal"));
+    presence.isConnectionPending = false;
+    rerender(tree());
+    expect(
+      await screen.findByTestId("connect-wallet-modal"),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the terms gate first when terms are not acknowledged", async () => {
+    localStorage.clear();
+    const { rerender } = render(tree());
+    await userEvent.click(screen.getByText("Open Modal"));
+    presence.isConnectionPending = false;
+    rerender(tree());
+    await waitFor(() => expect(capturedGateProps.open).toBe(true));
+    expect(
+      screen.queryByTestId("connect-wallet-modal"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("a second open() while pending still yields a single open", async () => {
+    const { rerender } = render(tree());
+    await userEvent.click(screen.getByText("Open Modal"));
+    await userEvent.click(screen.getByText("Open Modal"));
+    presence.isConnectionPending = false;
+    rerender(tree());
+    expect(await screen.findAllByTestId("connect-wallet-modal")).toHaveLength(
+      1,
+    );
+  });
+
+  it("open() when settled and disconnected behaves as before", async () => {
+    presence.isConnectionPending = false;
+    render(tree());
     await userEvent.click(screen.getByText("Open Modal"));
     expect(screen.getByTestId("connect-wallet-modal")).toBeInTheDocument();
   });

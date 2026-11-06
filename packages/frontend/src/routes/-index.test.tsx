@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useAccount } from "wagmi";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider } from "@/wallet";
 import { Route } from "./index";
@@ -1316,31 +1317,39 @@ describe("Home page — zero state, no session (#1421)", () => {
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 
-  it("clicking Buy on the desktop grid opens the create-account auth flow", async () => {
+  it("clicking Buy on the desktop grid navigates to /deposit without opening sign-up", async () => {
     const user = userEvent.setup();
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
-    const buyBtn = within(grid).getByRole("button", { name: "Buy" });
+    const buyBtn = await within(grid).findByRole("button", { name: "Buy" });
     await user.click(buyBtn);
 
     await waitFor(() => {
-      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/deposit",
+        search: { direction: "deposit" },
+      });
     });
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 
-  it("clicking the Stake CTA on the desktop grid opens the create-account auth flow", async () => {
+  it("clicking the Stake CTA on the desktop grid navigates to /stake?tab=stake without opening sign-up", async () => {
     const user = userEvent.setup();
     renderHome();
 
     const grid = await screen.findByTestId("home-dashboard-grid");
-    const stakeBtn = within(grid).getByRole("button", { name: "Stake" });
+    const stakeBtn = await within(grid).findByRole("button", { name: "Stake" });
     await user.click(stakeBtn);
 
     await waitFor(() => {
-      expect(mockAuthFlowOpen).toHaveBeenCalledWith("create-account");
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/stake",
+        search: { tab: "stake" },
+      });
     });
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
     expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 
@@ -2784,5 +2793,122 @@ describe("Home page — Funding details wiring (#1817)", () => {
     expect(
       screen.queryByTestId("funding-details-modal"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Home page — pending wallet reconnect (#1809)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    mockAuthState.isAuthenticated = false;
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      status: "reconnecting",
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  it("the desktop grid renders the loading skeleton, not the zero-state promo", async () => {
+    renderHome();
+    const grid = await screen.findByTestId("home-dashboard-grid");
+    expect(grid).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(grid).getAllByTestId("home-loading-block").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(grid).queryByTestId("home-connect-wallet-card"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Stake and Buy navigate immediately without opening the connect modal", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    await user.click(stakeBtns[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/stake",
+      search: { tab: "stake" },
+    });
+
+    const buyBtns = await screen.findAllByRole("button", { name: "Buy" });
+    await user.click(buyBtns[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/deposit",
+      search: { direction: "deposit" },
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+    expect(mockAuthFlowOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — nothing navigates after the connect modal opens (#1809)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("settled and disconnected: Stake opens the modal, and a later connect does not navigate", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    await user.click(stakeBtns[0]!);
+    expect(mockConnectModalOpen).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    const HomePage = Route.options.component as React.ComponentType;
+    rerender(
+      <EvmWalletProvider>
+        <HomePage />
+      </EvmWalletProvider>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("settled and connected: Stake navigates immediately", async () => {
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000",
+    );
+    const user = userEvent.setup();
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    await user.click(stakeBtns[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/stake",
+      search: { tab: "stake" },
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
   });
 });

@@ -13,7 +13,7 @@ import {
   TokenInput,
   InlineError,
 } from "@pipeline/ui";
-import { useWalletView, useConnectModal } from "@/wallet";
+import { useWalletView, useConnectModal, useWalletPresence } from "@/wallet";
 import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import { useChainNotice } from "@/components/useChainNotice";
 import { useToast } from "@/lib/toast";
@@ -63,6 +63,7 @@ function Stake() {
   const amountBig = parseUsdc(amountInput, lastDecimals);
 
   // ── Flow adapter ──────────────────────────────────────────────────────
+  const { isConnectionPending } = useWalletPresence();
   const flow = useStakeFlow(activeTab, amountBig, setAmountInput);
   const chainNotice = useChainNotice(flow.wrongNetwork);
 
@@ -341,7 +342,7 @@ function Stake() {
             </Card>
 
             {/* Steps card — conditional on wallet connection. Figma node 1994-7226 (banner). */}
-            {!flow.isConnected ? (
+            {isConnectionPending ? null : !flow.isConnected ? (
               <Card
                 variant="yellow"
                 data-testid="connect-wallet-banner"

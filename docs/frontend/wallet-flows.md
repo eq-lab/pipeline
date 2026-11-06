@@ -317,7 +317,7 @@ Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee ap
 
 - **One wallet at a time.** While an EVM or Stellar wallet is connected, no connect entry point for
   the other chain is offered: every connect CTA keys on the active `kind`'s wallet, and
-  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`. Nothing is
+  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`; a call made while `isConnectionPending` waits for the state to settle and opens only if nothing connected (#1809). Nothing is
   auto-disconnected on connect; the LP disconnects, then connects again (the connect modal keeps its
   Ethereum / Stellar tabs for that choice).
 - **`kind` is derived**, never stored: see [`hooks.md`](./hooks.md) (`useWalletView`). The

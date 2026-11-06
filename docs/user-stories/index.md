@@ -26,6 +26,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#509 Mobile home StartHereCard (connected): missing '$X USDC' sub-line](https://github.com/eq-lab/pipeline/issues/509)                                          | [509-starthere-usdc-subline.md](./epic-463/509-starthere-usdc-subline.md)                                 | Initial                         |
 | [#684 [FE] [Stellar] Home page shows "Connect wallet" when only a Stellar wallet is connected](https://github.com/eq-lab/pipeline/issues/684)                    | [684-home-stellar-connection-gate.md](./epic-463/684-home-stellar-connection-gate.md)                     | Initial                         |
 | [#688 [FE] [Stellar] Home page Total Balance & Stake-CTA read EVM tokens only (follow-up to #684)](https://github.com/eq-lab/pipeline/issues/688)                | [688-home-stellar-balances.md](./epic-463/688-home-stellar-balances.md)                                   | Initial                         |
+| [#1809 LP home: Stake card opens the connect/sign-in flow for an already-connected wallet, then jumps to /stake](https://github.com/eq-lab/pipeline/issues/1809) | [1809-stake-card-reconnect-race.md](./epic-463/1809-stake-card-reconnect-race.md) | Initial |
 
 ---
 
