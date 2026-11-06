@@ -31,6 +31,8 @@ fn make_test_state(loan_registry_addresses: HashMap<i64, String>) -> AppState {
         loan_registry_addresses,
         minter_addresses: HashMap::new(),
         capital_allocation_from_minter: std::collections::HashSet::new(),
+        withdrawal_queue_addresses: HashMap::new(),
+        pocket_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),

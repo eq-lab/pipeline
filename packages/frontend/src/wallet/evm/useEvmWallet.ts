@@ -5,7 +5,6 @@ import {
   useReadContract,
   useConnect,
   useConnectors,
-  useSignMessage,
 } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import type { Abi } from "viem";
@@ -39,10 +38,6 @@ export interface WalletState {
   chainId: number | undefined;
   connect(): void;
   disconnect(): void;
-  signMessage(
-    message: string,
-    address?: string,
-  ): Promise<{ signature: string }>;
 }
 
 export function useEvmWallet(): WalletState {
@@ -53,7 +48,6 @@ export function useEvmWallet(): WalletState {
     chainId: realChainId,
   } = useAccount();
   const { disconnect: wagmiDisconnect } = useDisconnect();
-  const { signMessageAsync } = useSignMessage();
   const { open } = useAppKit();
   const { openGate } = useWalletGate();
 
@@ -100,23 +94,6 @@ export function useEvmWallet(): WalletState {
     wagmiDisconnect();
   }
 
-  async function signMessage(
-    message: string,
-    signer?: string,
-  ): Promise<{ signature: string }> {
-    if (mockAddress !== undefined) {
-      throw new Error(
-        "[wallet mock] signMessage is not mockable; connect a real wallet",
-      );
-    }
-    return {
-      signature: await signMessageAsync({
-        message,
-        ...(signer ? { account: signer as `0x${string}` } : {}),
-      }),
-    };
-  }
-
   return {
     address,
     isConnected,
@@ -124,7 +101,6 @@ export function useEvmWallet(): WalletState {
     chainId,
     connect,
     disconnect,
-    signMessage,
   };
 }
 

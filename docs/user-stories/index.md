@@ -206,6 +206,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1824 Backend: signed settlement-address linking (Stellar + EVM) + chain-aware payment-details](https://github.com/eq-lab/pipeline/issues/1824) | [1824-signed-settlement-address.md](./epic-1247/1824-signed-settlement-address.md) | Initial |
 | [#1831 Backend: let an LP change its linked settlement address at any time (including after KYB Passed)](https://github.com/eq-lab/pipeline/issues/1831) | [1831-relink-settlement-address.md](./epic-1247/1831-relink-settlement-address.md) | Initial |
 | [#1825 LP: link the settlement address by signing a challenge (Stellar + EVM)](https://github.com/eq-lab/pipeline/issues/1825) | [1825-signed-settlement-link-ui.md](./epic-1247/1825-signed-settlement-link-ui.md) | Initial |
+| [#1849 LP: link a Stellar C… contract address or a separate signer as the settlement address](https://github.com/eq-lab/pipeline/issues/1849) | [1849-settlement-address-signer.md](./epic-1247/1849-settlement-address-signer.md) | Initial |
+| [#1848 LP app: one source of wallet precedence](https://github.com/eq-lab/pipeline/issues/1848) | [1848-wallet-precedence.md](./epic-1247/1848-wallet-precedence.md) | Initial |
+| [#1847 LP app: move wagmi useSignMessage out of the shared useEvmWallet into a dedicated useEvmSignMessage](https://github.com/eq-lab/pipeline/issues/1847) | [1847-evm-sign-message-hook.md](./epic-1247/1847-evm-sign-message-hook.md) | Initial |
 
 ---
 
@@ -364,6 +367,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1788 Stellar DealTokenFactory: DEBT-only DealRegistered after contracts #38](https://github.com/eq-lab/pipeline/issues/1788) | [1788-stellar-debt-only-deal-registered.md](./epic-1776/1788-stellar-debt-only-deal-registered.md) | Initial |
+| [#1789 Index the Stellar Pocket; pocket state in the loan book; recoveries in LP PnL and cumulative yield](https://github.com/eq-lab/pipeline/issues/1789) | [1789-stellar-pocket-indexing.md](./epic-1776/1789-stellar-pocket-indexing.md) | Initial |
+| [#1791 Withdrawal queue: index the recovery rate; serve queue offsets, aggregates and rate-scaled USD](https://github.com/eq-lab/pipeline/issues/1791) | [1791-withdrawal-queue-recovery-rate.md](./epic-1776/1791-withdrawal-queue-recovery-rate.md) | Initial |
 | [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |
 | [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
 | [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |

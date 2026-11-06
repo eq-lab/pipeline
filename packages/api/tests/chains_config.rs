@@ -495,24 +495,223 @@ fn stellar_chain_keeps_seven_decimal_default() {
     );
 }
 
-const MINTER_ADDR_KEY: &str = "CHAIN_99000011_STELLAR_API_MINTER_ADDRESS";
-const MINTER_FLAG_KEY: &str = "CHAIN_99000011_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER";
+const STELLAR_POCKET: &str = "CD464CN7ZWOYRGCTHE74Q5PR3JSRPTHDRZYD4OZR4DY64ZSBJ6YZ2RA5";
+
+#[test]
+fn stellar_pocket_address_is_parsed() {
+    with_env(
+        &[
+            ("CHAINS", "99000011"),
+            ("DEFAULT_CHAIN_ID", "99000011"),
+            ("CHAIN_99000011_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000011_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000011_STELLAR_API_POCKET_ADDRESS", STELLAR_POCKET),
+        ],
+        &[
+            "CHAIN_99000011_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000011_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with pocket key");
+            assert_eq!(cfg.pocket_addresses[&99_000_011], STELLAR_POCKET);
+        },
+    );
+}
+
+#[test]
+fn stellar_pocket_address_unset_or_blank_gives_no_entry() {
+    for (chain, value) in [(99_000_012_i64, None), (99_000_013_i64, Some("   "))] {
+        let key = format!("CHAIN_{chain}_STELLAR_API_POCKET_ADDRESS");
+        let chains = chain.to_string();
+        let registry_key = format!("CHAIN_{chain}_STELLAR_API_LOAN_REGISTRY_ADDRESS");
+        let type_key = format!("CHAIN_{chain}_TYPE");
+        let mut set: Vec<(&str, &str)> = vec![
+            ("CHAINS", &chains),
+            ("DEFAULT_CHAIN_ID", &chains),
+            (&type_key, "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (&registry_key, STELLAR_REGISTRY),
+        ];
+        if let Some(v) = value {
+            set.push((&key, v));
+        }
+        let dm = format!("CHAIN_{chain}_API_STELLAR_DM_CONTRACT_ID");
+        let wq = format!("CHAIN_{chain}_API_STELLAR_WQ_CONTRACT_ID");
+        with_env(&set, &[&dm, &wq, &key], || {
+            let cfg = ChainsConfig::from_env().expect("from_env without pocket key");
+            assert!(cfg.pocket_addresses.is_empty());
+        });
+    }
+}
+
+#[test]
+fn stellar_pocket_address_bad_strkey_is_error() {
+    with_env(
+        &[
+            ("CHAINS", "99000014"),
+            ("DEFAULT_CHAIN_ID", "99000014"),
+            ("CHAIN_99000014_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000014_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000014_STELLAR_API_POCKET_ADDRESS", "CNOTAREALID"),
+        ],
+        &[
+            "CHAIN_99000014_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000014_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_99000014_STELLAR_API_POCKET_ADDRESS"),
+                "unexpected error message: {msg}"
+            );
+        },
+    );
+}
+
+#[test]
+fn wq_scope_unset_has_no_entry_and_boot_is_ok() {
+    with_env(
+        &[
+            ("CHAINS", "99000010"),
+            ("DEFAULT_CHAIN_ID", "99000010"),
+            ("CHAIN_99000010_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000010_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+        ],
+        &[
+            "CHAIN_99000010_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000010_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("boot without WQ key");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_valid_is_stored_canonical_even_without_dm_key() {
+    with_env(
+        &[
+            ("CHAINS", "99000011"),
+            ("DEFAULT_CHAIN_ID", "99000011"),
+            ("CHAIN_99000011_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000011_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            (
+                "CHAIN_99000011_API_STELLAR_WQ_CONTRACT_ID",
+                " CABQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGCK3 ",
+            ),
+        ],
+        &["CHAIN_99000011_API_STELLAR_DM_CONTRACT_ID"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("boot with WQ key only");
+            assert_eq!(
+                cfg.withdrawal_queue_addresses[&99_000_011],
+                STELLAR_REGISTRY_2
+            );
+            assert!(cfg.stellar_voucher.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_blank_has_no_entry() {
+    with_env(
+        &[
+            ("CHAINS", "99000012"),
+            ("DEFAULT_CHAIN_ID", "99000012"),
+            ("CHAIN_99000012_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000012_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000012_API_STELLAR_WQ_CONTRACT_ID", "   "),
+        ],
+        &["CHAIN_99000012_API_STELLAR_DM_CONTRACT_ID"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("boot with blank WQ key");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_malformed_without_dm_key_does_not_fail_boot() {
+    with_env(
+        &[
+            ("CHAINS", "99000013"),
+            ("DEFAULT_CHAIN_ID", "99000013"),
+            ("CHAIN_99000013_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000013_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            (
+                "CHAIN_99000013_API_STELLAR_WQ_CONTRACT_ID",
+                "not-a-contract",
+            ),
+        ],
+        &["CHAIN_99000013_API_STELLAR_DM_CONTRACT_ID"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("malformed WQ key must not fail boot");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_is_not_read_on_evm_chains() {
+    with_env(
+        &[
+            ("CHAINS", "7010"),
+            ("DEFAULT_CHAIN_ID", "7010"),
+            ("CHAIN_7010_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7010_API_STELLAR_WQ_CONTRACT_ID", STELLAR_REGISTRY_2),
+        ],
+        &["CHAIN_7010_TYPE", "CHAIN_7010_SIGNER_KEY"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("EVM boot ignores the Stellar WQ key");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+            assert!(cfg.voucher.is_empty());
+        },
+    );
+}
+
+const MINTER_ADDR_KEY: &str = "CHAIN_99000021_STELLAR_API_MINTER_ADDRESS";
+const MINTER_FLAG_KEY: &str = "CHAIN_99000021_STELLAR_API_CAPITAL_ALLOCATION_FROM_MINTER";
 
 fn with_stellar_minter_env<F: FnOnce()>(extra: &[(&str, &str)], clear: &[&str], f: F) {
     let mut set = vec![
-        ("CHAINS", "99000011"),
-        ("DEFAULT_CHAIN_ID", "99000011"),
-        ("CHAIN_99000011_TYPE", "stellar"),
+        ("CHAINS", "99000021"),
+        ("DEFAULT_CHAIN_ID", "99000021"),
+        ("CHAIN_99000021_TYPE", "stellar"),
         ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
         (
-            "CHAIN_99000011_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+            "CHAIN_99000021_STELLAR_API_LOAN_REGISTRY_ADDRESS",
             STELLAR_REGISTRY,
         ),
     ];
     set.extend_from_slice(extra);
     let mut cleared = vec![
-        "CHAIN_99000011_API_STELLAR_DM_CONTRACT_ID",
-        "CHAIN_99000011_API_STELLAR_WQ_CONTRACT_ID",
+        "CHAIN_99000021_API_STELLAR_DM_CONTRACT_ID",
+        "CHAIN_99000021_API_STELLAR_WQ_CONTRACT_ID",
     ];
     cleared.extend_from_slice(clear);
     with_env(&set, &cleared, f);
@@ -526,7 +725,7 @@ fn minter_address_is_parsed_and_normalised() {
         &[MINTER_FLAG_KEY],
         || {
             let cfg = ChainsConfig::from_env().expect("config");
-            assert_eq!(cfg.minter_addresses[&99_000_011], STELLAR_REGISTRY_2);
+            assert_eq!(cfg.minter_addresses[&99_000_021], STELLAR_REGISTRY_2);
             assert!(cfg.capital_allocation_from_minter.is_empty());
         },
     );
@@ -568,7 +767,7 @@ fn the_switch_flag_parses_true_and_false_case_insensitively() {
             || {
                 let cfg = ChainsConfig::from_env().expect("config");
                 assert_eq!(
-                    cfg.capital_allocation_from_minter.contains(&99_000_011),
+                    cfg.capital_allocation_from_minter.contains(&99_000_021),
                     expected,
                     "{raw}"
                 );

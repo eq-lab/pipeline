@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-167.**
+**Next free number: TD-171.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2264,13 +2264,14 @@ line, whichever section it lands in.
 - **Impact:** Misleading contract ids for ops and agents.
 - **Suggested fix:** Regenerate it from `stellar contract info interface` against the #36 / #37 ids, or delete it in favour of the key map in `docs/references/backend.md#stellar-contract-ids-and-signer-roles`. Found while working on #1794.
 
-### TD-166: The LP app links only the connected wallet, never a `C…` address or a separate signer
+### TD-166: The LP app links only the connected wallet, never a `C…` address or a separate signer [RESOLVED 2026-11-05 / #1849]
 
 - **Date:** 2026-11-04
 - **Location:** `packages/frontend/src/auth/useSettlementAddressLink.ts`, `packages/frontend/src/components/account/SettlementAddressRow.tsx`
 - **Gap:** The signed link flow of #1825 sends the connected wallet as both address and signer and never sends `signer_address`. The API supports a Stellar `C…` contract address and a signer that differs from the address (multisig accounts, Safe), but the LP app has no input for either.
 - **Impact:** An LP whose settlement address is a contract or a multisig cannot link it from the LP app; it has to use the API directly.
 - **Suggested fix:** Add address and signer inputs to the settlement row, request the challenge with `signer_address`, and sign with the connected wallet as the signer.
+- **Resolved by #1849 (PR #1850):** each settlement row has an opt-in `Use a different address` form; the typed address (Stellar `G…`/`C…`, EVM `0x…`) is linked with the connected wallet as `signer_address` when it differs. A signer other than the connected wallet and EIP-1271 signers remain out of scope (see `docs/frontend/account-page.md#settlement-address`).
 
 ### TD-167: The minter cash-book fold is recomputed on every request
 
@@ -2295,3 +2296,11 @@ line, whichever section it lands in.
 - **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
 - **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.
+
+### TD-170: Pocket `complete` is not verified against the key having stayed configured
+
+- **Date:** 2026-11-05
+- **Location:** `shared::pocket::fold_pocket` in `packages/shared/src/pocket.rs`
+- **Gap:** Any indexed `PocketOpened` makes the fold `complete = true` with no check that later pocket events were all indexed. If `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` was unset for a period after the open, events in that gap are missing and the fold is silently short.
+- **Impact:** The loan-book `pocket` totals can differ from `pocket(loan_id)` while reporting `complete: true`.
+- **Suggested fix:** Compare the fold with a fresh `pocket(loan_id)` simulate in the seed loop and re-seed on mismatch, or store the cursor ledger at which the key was set. Documented in `docs/references/backend.md#stellar-pocket-indexing`. Number picked after main's TD-166 and past the #1790 / #1791 branches' TD-165..169; renumber at merge if it collides. Found while working on #1789.

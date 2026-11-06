@@ -20,7 +20,9 @@
 use serde_json::{json, Value};
 
 use pipeline_api::config::ConfiguredChain;
-use pipeline_api::routes::audit_log::{build_response, format_action, AuditLogDoc};
+use pipeline_api::routes::audit_log::{
+    build_response, format_action, AuditLogDoc, AUDIT_EVENT_NAMES,
+};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::AuditLogRow;
 use utoipa::OpenApi;
@@ -544,4 +546,180 @@ fn openapi_doc_exposes_the_route() {
     let doc = AuditLogDoc::openapi();
     let json = serde_json::to_value(&doc).unwrap();
     assert!(json["paths"]["/v1/audit-log"]["get"].is_object());
+}
+
+fn stellar_chain() -> [ConfiguredChain; 1] {
+    [ConfiguredChain {
+        chain_id: 1,
+        kind: ChainKind::Stellar,
+    }]
+}
+
+const POCKET_EVENT_NAMES: [&str; 5] = [
+    "PocketOpened",
+    "PocketReleased",
+    "PocketUnreleased",
+    "PocketBurned",
+    "PocketClaimed",
+];
+
+#[test]
+fn pocket_event_names_are_in_the_allow_list() {
+    for name in POCKET_EVENT_NAMES {
+        assert!(AUDIT_EVENT_NAMES.contains(&name), "{name}");
+    }
+}
+
+#[test]
+fn pocket_opened_renders_amount_and_unscaled_supply() {
+    let (action, details) = format_action(
+        "PocketOpened",
+        &json!({
+            "loan_id": "3",
+            "amount": "5000000000",
+            "snapshot_ledger": "5500000",
+            "supply_at_snapshot": "10000000000",
+        }),
+        ChainKind::Stellar,
+    );
+    assert_eq!(action, "Pocket opened — 500.000000");
+    assert_eq!(
+        details,
+        json!({
+            "amount": "500.000000",
+            "snapshot_ledger": "5500000",
+            "supply_at_snapshot": "10000000000",
+        })
+    );
+}
+
+#[test]
+fn pocket_released_renders_principal_and_interest() {
+    let (action, details) = format_action(
+        "PocketReleased",
+        &json!({"principal": "2000000000", "released": "1500000000", "interest": "500000000"}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(
+        action,
+        "Pocket recovery released — 150.000000 principal, 50.000000 interest"
+    );
+    assert_eq!(
+        details,
+        json!({"principal": "200.000000", "released": "150.000000", "interest": "50.000000"})
+    );
+}
+
+#[test]
+fn pocket_unreleased_renders_interest_burned() {
+    let (action, details) = format_action(
+        "PocketUnreleased",
+        &json!({"principal": "2000000000", "interest": "500000000"}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(
+        action,
+        "Pocket release reversed — 200.000000 principal, 50.000000 interest burned"
+    );
+    assert_eq!(
+        details,
+        json!({"principal": "200.000000", "interest": "50.000000"})
+    );
+}
+
+#[test]
+fn pocket_burned_uses_burned_not_requested_amount() {
+    let (action, details) = format_action(
+        "PocketBurned",
+        &json!({"amount": "4000000000", "burned": "3000000000"}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(
+        action,
+        "Pocket write-down — 300.000000 burned of 400.000000"
+    );
+    assert_eq!(
+        details,
+        json!({"amount": "400.000000", "burned": "300.000000"})
+    );
+}
+
+#[test]
+fn pocket_claimed_renders_paid_and_zero_claims() {
+    let holder = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
+    let (action, details) = format_action(
+        "PocketClaimed",
+        &json!({"holder": holder, "paid": "1500000000", "paid_zero": false}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(action, "Pocket claim — 150.000000");
+    assert_eq!(
+        details,
+        json!({"holder": holder, "paid": "150.000000", "paid_zero": false})
+    );
+
+    let (action, details) = format_action(
+        "PocketClaimed",
+        &json!({"holder": holder, "paid": "0", "paid_zero": true}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(action, "Pocket claim — nothing claimable");
+    assert_eq!(details["paid_zero"], json!(true));
+}
+
+#[test]
+fn pocket_rows_are_loan_scoped_with_empty_reference() {
+    let resp = build_response(
+        vec![row(
+            1,
+            "PocketReleased",
+            Some("7"),
+            json!({"principal": "10", "released": "10", "interest": "0"}),
+        )],
+        &stellar_chain(),
+    );
+    let item = &resp.items[0];
+    assert_eq!(item.scope.label, "Loan #7");
+    assert_eq!(item.scope.loan_id.as_deref(), Some("7"));
+    assert_eq!(item.reference, "");
+}
+
+#[test]
+fn withdrawal_rate_set_is_in_the_allow_list() {
+    assert!(pipeline_api::routes::audit_log::AUDIT_EVENT_NAMES.contains(&"WithdrawalRateSet"));
+}
+
+#[test]
+fn withdrawal_rate_set_renders_ratio_and_raw_rate() {
+    let (action, details) = format_action(
+        "WithdrawalRateSet",
+        &json!({"new_rate": "850000"}),
+        ChainKind::Stellar,
+    );
+    assert_eq!(action, "Withdrawal recovery rate set — 0.850000");
+    assert_eq!(details["new_rate"], "850000");
+}
+
+#[test]
+fn withdrawal_rate_set_without_rate_is_bare_label() {
+    let (action, details) = format_action("WithdrawalRateSet", &json!({}), ChainKind::Stellar);
+    assert_eq!(action, "Withdrawal recovery rate set");
+    assert_eq!(details["new_rate"], Value::Null);
+}
+
+#[test]
+fn withdrawal_rate_set_row_is_protocol_scoped() {
+    let rows = vec![row(
+        1,
+        "WithdrawalRateSet",
+        None,
+        json!({"new_rate": "850000"}),
+    )];
+    let chains = [ConfiguredChain {
+        chain_id: 1,
+        kind: ChainKind::Stellar,
+    }];
+    let resp = build_response(rows, &chains);
+    assert_eq!(resp.items[0].scope.label, "Protocol");
+    assert_eq!(resp.items[0].event_name, "WithdrawalRateSet");
 }

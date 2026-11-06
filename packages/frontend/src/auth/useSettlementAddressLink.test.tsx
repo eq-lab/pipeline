@@ -13,6 +13,8 @@ const A = "GA2OA4PKOQKVIOUZFNHMKBMQCCUZRMGRTFZ7LKOZHCCPCBXHN5RNH7YK";
 const B = "GBBM6BKZPEHWYO3E3YKREDPQXMS4VK35YLNU7NFBRI26RAN7GI5POFBB";
 const E1 = "0xAbC0000000000000000000000000000000000001";
 const E2 = "0xdef0000000000000000000000000000000000002";
+const G2 = "GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H";
+const CONTRACT = "CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR";
 
 const mockChallenge = vi.fn();
 const mockVerify = vi.fn();
@@ -39,13 +41,18 @@ vi.mock("@/api", async () => {
     getMyLp: (...args: unknown[]) => mockGet(...args),
   };
 });
-vi.mock("@/wallet", () => ({
+vi.mock("@/wallet", async () => ({
+  isStellarSettlementAddress: (
+    await vi.importActual<
+      typeof import("@/wallet/stellar/settlementAddressFormat")
+    >("@/wallet/stellar/settlementAddressFormat")
+  ).isStellarSettlementAddress,
   useStellarWallet: () => ({
     ...wallets.stellar,
     signMessage: (...args: unknown[]) => mockStellarSign(...args),
   }),
-  useEvmWallet: () => ({
-    ...wallets.evm,
+  useEvmWallet: () => ({ ...wallets.evm }),
+  useEvmSignMessage: () => ({
     signMessage: (...args: unknown[]) => mockEvmSign(...args),
   }),
 }));
@@ -177,7 +184,7 @@ describe("useSettlementAddressLink", () => {
     const { result, onLp } = setup(loaded());
     act(() => result.current.link("stellar"));
     await waitFor(() => expect(phaseOf(result)).toBe("signing"));
-    expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, A);
+    expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, A, null);
     expect(mockStellarSign).toHaveBeenCalledWith("msg-1", A);
     await act(async () => releaseSign());
     await waitFor(() => expect(phaseOf(result)).toBe("verifying"));
@@ -202,6 +209,7 @@ describe("useSettlementAddressLink", () => {
     expect(mockChallenge).toHaveBeenCalledWith(
       ENV.EVM_CHAIN_ID,
       E1.toLowerCase(),
+      null,
     );
     expect(mockEvmSign).toHaveBeenCalledWith("msg-1", E1);
     expect(mockStellarSign).not.toHaveBeenCalled();
@@ -229,6 +237,7 @@ describe("useSettlementAddressLink", () => {
     expect(change.result.current.state).toEqual({
       kind: "stellar",
       phase: "confirming",
+      mode: "wallet",
     });
 
     mockChallenge.mockClear();
@@ -247,6 +256,7 @@ describe("useSettlementAddressLink", () => {
     expect(result.current.state).toEqual({
       kind: "stellar",
       phase: "confirming",
+      mode: "wallet",
     });
     expect(mockChallenge).not.toHaveBeenCalled();
     act(() => result.current.cancelChange());
@@ -256,7 +266,7 @@ describe("useSettlementAddressLink", () => {
     act(() => result.current.beginChange("stellar"));
     act(() => result.current.link("stellar"));
     await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
-    expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, B);
+    expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, B, null);
   });
 
   it("beginChange is a no-op for a matching or other-kind wallet", () => {
@@ -477,6 +487,224 @@ describe("useSettlementAddressLink", () => {
     await waitFor(() => expect(phaseOf(result)).toBe("declined"));
     connectStellar(undefined);
     rerender(loaded({ stellar_address: A }));
+    await waitFor(() => expect(phaseOf(result)).toBe("idle"));
+  });
+});
+
+describe("useSettlementAddressLink: use a different address", () => {
+  it("links a C… address with the connected G… wallet as the signer", async () => {
+    connectStellar(A);
+    const { result, onLp } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    expect(result.current.state).toEqual({
+      kind: "stellar",
+      phase: "editing",
+      mode: "other",
+    });
+    act(() =>
+      result.current.linkOther("stellar", `  ${CONTRACT.toLowerCase()} `),
+    );
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenCalledWith(
+      ENV.STELLAR_CHAIN_ID,
+      CONTRACT,
+      A,
+    );
+    expect(mockStellarSign).toHaveBeenCalledWith("msg-1", A);
+    expect(mockVerify).toHaveBeenCalledWith({
+      chain_id: ENV.STELLAR_CHAIN_ID,
+      address: CONTRACT,
+      signer_address: A,
+      signature: "sig-s",
+    });
+    expect(phaseOf(result)).toBe("idle");
+    expect(result.current.state.mode).toBe("wallet");
+  });
+
+  it("links a G… address with the connected wallet as the signer", async () => {
+    connectStellar(A);
+    const { result, onLp } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", G2));
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    expect(mockVerify.mock.calls[0]?.[0]).toMatchObject({
+      address: G2,
+      signer_address: A,
+    });
+  });
+
+  it("links a typed EVM address as typed with the lowercased connected EOA as signer", async () => {
+    connectEvm(E1);
+    const { result, onLp } = setup(loaded());
+    act(() => result.current.beginOther("evm"));
+    act(() =>
+      result.current.linkOther("evm", `  ${E2.replace("def", "DeF")} `),
+    );
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    const typed = E2.replace("def", "DeF");
+    expect(mockChallenge).toHaveBeenCalledWith(
+      ENV.EVM_CHAIN_ID,
+      typed,
+      E1.toLowerCase(),
+    );
+    expect(mockEvmSign).toHaveBeenCalledWith("msg-1", E1);
+    expect(mockVerify).toHaveBeenCalledWith({
+      chain_id: ENV.EVM_CHAIN_ID,
+      address: typed,
+      signer_address: E1.toLowerCase(),
+      signature: "0xsig",
+    });
+  });
+
+  it("typing the connected wallet address sends no signer_address", async () => {
+    connectEvm(E1);
+    const evmHook = setup(loaded());
+    act(() => evmHook.result.current.beginOther("evm"));
+    act(() => evmHook.result.current.linkOther("evm", E1.toLowerCase()));
+    await waitFor(() => expect(evmHook.onLp).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenLastCalledWith(
+      ENV.EVM_CHAIN_ID,
+      E1.toLowerCase(),
+      null,
+    );
+    expect(Object.keys(mockVerify.mock.calls[0]?.[0])).not.toContain(
+      "signer_address",
+    );
+  });
+
+  it("makes no request for invalid or empty input", async () => {
+    connectStellar(A);
+    const { result } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", "nope"));
+    act(() => result.current.linkOther("stellar", "   "));
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+    expect(phaseOf(result)).toBe("editing");
+  });
+
+  it("beginOther is a no-op for a Failed LP, no wallet, another kind, a missing LP and a flow in flight", async () => {
+    connectStellar(A);
+    const failed = setup(loaded({ kyb_status: "Failed" }));
+    act(() => failed.result.current.beginOther("stellar"));
+    expect(phaseOf(failed.result)).toBe("idle");
+    const otherKind = setup(loaded());
+    act(() => otherKind.result.current.beginOther("evm"));
+    expect(phaseOf(otherKind.result)).toBe("idle");
+    const noLp = setup({ token: "t", lp: null, lpLoaded: false });
+    act(() => noLp.result.current.beginOther("stellar"));
+    expect(phaseOf(noLp.result)).toBe("idle");
+    connectStellar(undefined);
+    const noWallet = setup(loaded());
+    act(() => noWallet.result.current.beginOther("stellar"));
+    expect(phaseOf(noWallet.result)).toBe("idle");
+
+    connectStellar(A);
+    mockStellarSign.mockImplementation(() => new Promise(() => {}));
+    const busy = setup(loaded());
+    act(() => busy.result.current.link("stellar"));
+    await waitFor(() => expect(phaseOf(busy.result)).toBe("signing"));
+    act(() => busy.result.current.beginOther("stellar"));
+    act(() => busy.result.current.linkOther("stellar", G2));
+    expect(phaseOf(busy.result)).toBe("signing");
+    expect(mockChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancelChange closes the form", () => {
+    connectStellar(A);
+    const { result } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.cancelChange());
+    expect(result.current.state).toEqual({
+      kind: null,
+      phase: "idle",
+      mode: "wallet",
+    });
+  });
+
+  it("a declined signature keeps the form and a resubmit asks for a new challenge", async () => {
+    connectStellar(A);
+    mockStellarSign.mockRejectedValueOnce(new Error("no"));
+    mockChallenge
+      .mockResolvedValueOnce({ message: "msg-1", nonce: "n1" })
+      .mockResolvedValueOnce({ message: "msg-2", nonce: "n2" });
+    const { result, onLp } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", CONTRACT));
+    await waitFor(() => expect(phaseOf(result)).toBe("declined"));
+    expect(result.current.state.mode).toBe("other");
+    act(() => result.current.linkOther("stellar", CONTRACT));
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenCalledTimes(2);
+    expect(mockStellarSign).toHaveBeenLastCalledWith("msg-2", A);
+  });
+
+  it("422 reports proofFailed without a toast and keeps the other mode", async () => {
+    connectStellar(A);
+    mockVerify.mockRejectedValueOnce(new ApiError(422, "bad signature"));
+    const { result } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", CONTRACT));
+    await waitFor(() => expect(phaseOf(result)).toBe("proofFailed"));
+    expect(result.current.state.mode).toBe("other");
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it("409 toasts, re-reads the LP and keeps the form open as taken", async () => {
+    connectStellar(A);
+    mockVerify.mockRejectedValueOnce(
+      new ApiError(409, "address already linked to another account"),
+    );
+    mockGet.mockResolvedValueOnce(lp());
+    const { result, onLp } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", CONTRACT));
+    await waitFor(() => expect(phaseOf(result)).toBe("taken"));
+    expect(result.current.state.mode).toBe("other");
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "address already linked to another account",
+      }),
+    );
+    expect(onLp).toHaveBeenCalledOnce();
+  });
+
+  it("other errors toast the address fallback and report error", async () => {
+    connectStellar(A);
+    mockVerify.mockRejectedValueOnce(new TypeError("offline"));
+    mockGet.mockRejectedValueOnce(new TypeError("offline"));
+    const { result } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", CONTRACT));
+    await waitFor(() => expect(phaseOf(result)).toBe("error"));
+    expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "This address could not be linked." }),
+    );
+  });
+
+  it("a wallet switched mid-flight goes idle with no verify", async () => {
+    connectStellar(A);
+    let resolveSign: (v: { signature: string }) => void = () => {};
+    mockStellarSign
+      .mockReset()
+      .mockImplementation(() => new Promise((r) => (resolveSign = r)));
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    act(() => result.current.linkOther("stellar", CONTRACT));
+    await waitFor(() => expect(phaseOf(result)).toBe("signing"));
+    connectStellar(B);
+    rerender(loaded());
+    await act(async () => resolveSign({ signature: "sig-s" }));
+    await waitFor(() => expect(phaseOf(result)).toBe("idle"));
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("a token change closes an open form", async () => {
+    connectStellar(A);
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.beginOther("stellar"));
+    expect(phaseOf(result)).toBe("editing");
+    rerender({ ...loaded(), token: "t2" });
     await waitFor(() => expect(phaseOf(result)).toBe("idle"));
   });
 });

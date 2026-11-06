@@ -98,13 +98,20 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   const loadedLp =
     setup?.status === "loaded" && setup.token === token ? setup.lp : null;
 
-  const { state, connected, link, beginChange, cancelChange } =
-    useSettlementAddressLink({
-      token,
-      lp: loadedLp,
-      lpLoaded: loadedLp !== null,
-      onLp: adoptLp,
-    });
+  const {
+    state,
+    connected,
+    link,
+    beginChange,
+    cancelChange,
+    beginOther,
+    linkOther,
+  } = useSettlementAddressLink({
+    token,
+    lp: loadedLp,
+    lpLoaded: loadedLp !== null,
+    onLp: adoptLp,
+  });
   const connectedKind = connected?.kind;
   const connectedAddress = connected?.address;
   const rows = useMemo(
@@ -126,8 +133,10 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
       onLink: link,
       onChange: beginChange,
       onCancel: cancelChange,
+      onOther: beginOther,
+      onLinkOther: linkOther,
     }),
-    [rows, link, beginChange, cancelChange],
+    [rows, link, beginChange, cancelChange, beginOther, linkOther],
   );
 
   const contextValue = useMemo<AuthFlowContextValue>(

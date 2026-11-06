@@ -13,9 +13,11 @@ use crate::config::ConfiguredChain;
 use crate::formatting::iso_utc_from_unix;
 use crate::minter_cash_book::{build_wire_outs, to_base6_string, WireOutStatus};
 use crate::routes::common::{ChainScope, LenientChainFilter};
+use crate::routes::loan_book::loan_key;
 use crate::AppState;
 use shared::chains::ChainKind;
 use shared::kyc_repo::kyt_gate_for_kind;
+use shared::pocket_repo::{PocketClaimRow, PocketRepo};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/requests", get(get_requests))
@@ -24,7 +26,13 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_requests),
-    components(schemas(RequestsQuery, RequestsResponse, RequestItem, LpWireOutItem)),
+    components(schemas(
+        RequestsQuery,
+        RequestsResponse,
+        RequestItem,
+        LpWireOutItem,
+        PocketClaimItem
+    )),
     tags(
         (name = "Analytics", description = "Transaction history and activity feed")
     )
@@ -62,12 +70,19 @@ pub struct RequestItem {
     pub status: String,
     /// ISO-8601 timestamp.
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Stellar Withdraw only: cumulative PLUSD queue offset including this request, raw integer at token decimals (queued_ahead = queued_through - amount).
+    pub queued_through: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Stellar Withdraw only, once claimed: USDC paid, raw integer at token decimals, floor(amount x rate at the claim / 1e6).
+    pub usdc_paid: Option<String>,
 }
 
 /// Response wrapper for the requests endpoint.
 #[derive(Serialize, ToSchema)]
 pub struct RequestsResponse {
     pub requests: Vec<RequestItem>,
+    pub pocket_claims: Vec<PocketClaimItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wire_outs: Option<Vec<LpWireOutItem>>,
 }
@@ -158,6 +173,58 @@ async fn lp_wire_outs(
     Ok(Some(items.into_iter().map(|(_, i)| i).collect()))
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PocketClaimItem {
+    pub chain_id: i64,
+    pub loan_id: String,
+    pub amount: String,
+    pub tx_hash: String,
+    pub created_at: String,
+}
+
+pub fn includes_pocket_claims(status: Option<&str>) -> bool {
+    status != Some("pending")
+}
+
+pub fn pocket_claim_items(chain_id: i64, rows: Vec<PocketClaimRow>) -> Vec<PocketClaimItem> {
+    rows.into_iter()
+        .map(|r| PocketClaimItem {
+            chain_id,
+            loan_id: loan_key(&r.loan_id),
+            amount: r.paid.to_plain_string(),
+            tx_hash: r.tx_hash,
+            created_at: iso_utc_from_unix(r.block_timestamp),
+        })
+        .collect()
+}
+
+async fn pocket_claims(
+    state: &AppState,
+    scope: ChainScope,
+    wallet: &str,
+) -> anyhow::Result<Vec<PocketClaimItem>> {
+    let chains: Vec<ConfiguredChain> = match scope {
+        ChainScope::All => state.chains.clone(),
+        ChainScope::One(c) => vec![c],
+        ChainScope::Unconfigured(_) => Vec::new(),
+    };
+    let repo = PocketRepo::new(state.pool.clone());
+    let mut out = Vec::new();
+    for chain in chains {
+        if chain.kind != ChainKind::Stellar {
+            continue;
+        }
+        let Some(pocket) = state.pocket_addresses.get(&chain.chain_id) else {
+            continue;
+        };
+        let rows = repo
+            .list_holder_claims(chain.chain_id, pocket, wallet)
+            .await?;
+        out.extend(pocket_claim_items(chain.chain_id, rows));
+    }
+    Ok(out)
+}
+
 #[utoipa::path(
     get,
     path = "/v1/requests",
@@ -188,25 +255,35 @@ async fn get_requests(
             return Json(RequestsResponse {
                 requests: Vec::new(),
                 wire_outs: None,
+                pocket_claims: Vec::new(),
             })
             .into_response();
         }
     };
 
-    let kyt_gate = |id: i64| {
-        let kind = state
+    let chain_kind = |id: i64| {
+        state
             .chains
             .iter()
             .find(|c| c.chain_id == id)
-            .map_or(ChainKind::Evm, |c| c.kind);
-        kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled)
+            .map(|c| c.kind)
     };
+    let kyt_gate =
+        |kind: ChainKind| kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled);
 
-    let (requests, wire_outs) = tokio::join!(
+    let claims_wanted = includes_pocket_claims(query.status.as_deref());
+    let (requests, wire_outs, claims) = tokio::join!(
         state
             .kyc_repo
-            .get_all_requests(&wallet, pending_only, kyt_gate, chain_id),
+            .get_all_requests(&wallet, pending_only, chain_kind, kyt_gate, chain_id),
         lp_wire_outs(&state, scope, &wallet, pending_only),
+        async {
+            if claims_wanted {
+                pocket_claims(&state, scope, query.wallet.trim()).await
+            } else {
+                Ok(Vec::new())
+            }
+        },
     );
     let wire_outs = degrade_wire_outs(wire_outs);
 
@@ -223,13 +300,26 @@ async fn get_requests(
                     shares: e.shares,
                     status: e.status,
                     created_at: e.created_at,
+                    queued_through: e.queued_through,
+                    usdc_paid: e.usdc_paid,
                 })
                 .collect();
-            Json(RequestsResponse {
-                requests: items,
-                wire_outs,
-            })
-            .into_response()
+            match claims {
+                Ok(pocket_claims) => Json(RequestsResponse {
+                    requests: items,
+                    pocket_claims,
+                    wire_outs,
+                })
+                .into_response(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to fetch pocket claims");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "internal error"})),
+                    )
+                        .into_response()
+                }
+            }
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to fetch requests");

@@ -71,8 +71,8 @@ vi.mock("@/wallet", () => ({
   useEvmWallet: () => ({
     address: undefined,
     isConnected: false,
-    signMessage: vi.fn(),
   }),
+  useEvmSignMessage: () => ({ signMessage: vi.fn() }),
 }));
 vi.mock("@/components/EmailAuthFlow", () => ({ EmailAuthFlow: () => null }));
 vi.mock("@/components/CompanyDocsModal", () => ({

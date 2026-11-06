@@ -848,6 +848,9 @@ function settlementView(
     action: null,
     confirm: null,
     busy: false,
+    signer: null,
+    other: false,
+    form: null,
     ...overrides,
   };
 }
@@ -858,6 +861,8 @@ function settlementControls(rows: SettlementRowView[]) {
     onLink: vi.fn(),
     onChange: vi.fn(),
     onCancel: vi.fn(),
+    onOther: vi.fn(),
+    onLinkOther: vi.fn(),
   };
 }
 
@@ -934,5 +939,15 @@ describe("CompanyDocsModal — settlement rows", () => {
       settlement: settlementControls([settlementView({ action: "link" })]),
     });
     expect(screen.queryByTestId("settlement-address-row")).toBeNull();
+    expect(screen.queryByTestId("settlement-other-entry")).toBeNull();
+  });
+
+  it("offers Use a different address and opens the form through onOther", () => {
+    const settlement = settlementControls([settlementView({ other: true })]);
+    renderModal({ lp: lp([makeDocument(1)]), settlement });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use a different address" }),
+    );
+    expect(settlement.onOther).toHaveBeenCalledWith("stellar");
   });
 });

@@ -85,6 +85,8 @@ pub struct AppState {
     pub loan_registry_addresses: HashMap<i64, String>,
     pub minter_addresses: HashMap<i64, String>,
     pub capital_allocation_from_minter: std::collections::HashSet<i64>,
+    pub withdrawal_queue_addresses: HashMap<i64, String>,
+    pub pocket_addresses: HashMap<i64, String>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.

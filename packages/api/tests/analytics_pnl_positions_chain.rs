@@ -51,6 +51,8 @@ fn make_test_state() -> AppState {
         loan_registry_addresses: HashMap::new(),
         minter_addresses: HashMap::new(),
         capital_allocation_from_minter: std::collections::HashSet::new(),
+        withdrawal_queue_addresses: HashMap::new(),
+        pocket_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -218,7 +220,7 @@ async fn requests_unconfigured_chain_id_is_200_empty_without_db() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, r#"{"requests":[]}"#);
+    assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
 }
 
 // ── OpenAPI ─────────────────────────────────────────────────────────────────
@@ -292,16 +294,18 @@ fn only_minter_chains_are_in_scope_for_all_and_one() {
 fn a_response_without_wire_outs_serialises_without_the_key() {
     let body = serde_json::to_string(&RequestsResponse {
         requests: Vec::new(),
+        pocket_claims: Vec::new(),
         wire_outs: None,
     })
     .unwrap();
-    assert_eq!(body, r#"{"requests":[]}"#);
+    assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
 }
 
 #[test]
 fn a_response_with_wire_outs_serialises_the_list() {
     let body = serde_json::to_value(RequestsResponse {
         requests: Vec::new(),
+        pocket_claims: Vec::new(),
         wire_outs: Some(Vec::new()),
     })
     .unwrap();
