@@ -30,16 +30,14 @@ Parent epic: #1775, merge-order step 3 (in parallel with #1780). Depends on #177
 Only `packages/api/src/routes/audit_log.rs` (pure rendering and the allow-list), tests and docs. No
 migration, no SQL change, no worker change, no new env key, no new endpoint, no DTO field change.
 
-1. **Allow-list.** Append 19 SecurityRegistry names to `AUDIT_EVENT_NAMES`:
+1. **Allow-list.** Append 21 SecurityRegistry names to `AUDIT_EVENT_NAMES` (the 19 below plus `SecurityRegistryPaused` and `SecurityRegistryUnpaused`, per the resolved questions):
    `SecurityRecordRegistered`, `SecurityRecordPerfected`, `SecurityRecordHandedOver`,
    `SecurityRecordAttested`, `SecurityDocAdded`, `SecurityRecordReleased`, `SecurityMandateBreach`,
    `SecurityEnforcementStarted`, `SecurityRecordEnforced`, `SecurityTermsSet`, `SecurityRevalued`,
    `SecurityMarginCall`, `SecurityPriceStale`, `SecurityMarginCallCured`, `SecurityInspectionRecorded`,
    `SecurityInspectionApproved`, `SecurityFlagResolved`, `SecurityExtensionConsent`,
    `SecurityInspectorsSet`.
-   Not listed (see Open Questions): `SecurityLoanRegistrySet`, `SecurityRegistryPaused`,
-   `SecurityRegistryUnpaused`. These are contract-administration rows, and no other contract's pause or
-   wiring event is in the feed today.
+   Not listed: `SecurityLoanRegistrySet` (contract wiring). The pause rows are listed (resolved questions).
 2. **Renderers.** One `format_action` arm per new name (table below).
 3. **Enforcement proceeds link.** `SecurityRecordEnforced` shows the minter `CashRepaid` rows that booked
    its proceeds. The contract books them with `repay(..., sale_id = record_id)`
@@ -57,26 +55,27 @@ migration, no SQL change, no worker change, no new env key, no new endpoint, no 
 - Ids (`record_id`, `lot_id`, `inspection_id`, `from_record_id`, `to_record_id`, `repayment_id`) are
   strings in `details` (`param_str`).
 - Amounts use the row's chain decimals: `param_amount` (Stellar 7 dp → 6 dp string, e.g.
-  `"10000000"` → `"1.000000"`). Only `value_per_unit` and the linked `CashRepaid.cash` are amounts. No
+  `"10000000"` → `"1.000000"`). Raw amounts are parsed as plain `i128` decimal integers only (`-?\d{1,39}`);
+  exponent, decimal-point, sign-plus, underscore and overflowing strings count as missing (null amount, bare
+  label). Sums use `checked_add`; overflow skips the repayment. This hardens every audit-log amount. Only `value_per_unit` and the linked `CashRepaid.cash` are amounts. No
   SecurityRegistry event carries a quantity (inspection quantities live only in the `inspection(id)` view).
 - Bps become percent strings with 2 dp, keys suffixed `_pct`: `8750` → `"87.50"`, `-250` → `"-2.50"`,
   `-5` → `"-0.05"`, `0` → `"0.00"`. Computed with `BigDecimal::from(bps) / 100` at scale 2. The action adds
   `%`; variances in the action carry an explicit `+` when positive (`+0.10%`).
 - `ltv_bps == 4294967295` (`u32::MAX`: debt with no counted value, or overflow) is not a percentage:
   `ltv_pct` is `null` and the action says `LTV unbounded`.
-- `default_rate` is on the loan-registry 1e6 scale (`types.rs` `Terms`). It is converted with the existing
-  `economics_rate_to_bps`, then to `default_rate_pct`.
-- Times (`cure_by`, `new_maturity`) stay raw unix-second strings in `details`. The action shows them with
-  `iso_utc_from_unix`. Durations (`cure_period`, `price_stale_after`, `grace_period`,
+- `default_rate` is on the loan-registry 1e6 scale (`types.rs` `Terms`). It goes through `u32::try_from`
+  (negative or out of range → `null`), the existing `economics_rate_to_bps`, then `default_rate_pct`.
+- Times (`cure_by`, `new_maturity`) stay raw unix-second strings in `details`. The action shows them as ISO
+  when the `u64` fits chrono's range; out of range, the `cure by …` clause (margin call) or the maturity
+  (extension consent) is dropped, never a raw integer. Durations (`cure_period`, `price_stale_after`, `grace_period`,
   `attestation_interval`, `inspection_interval`) stay raw second strings in `details`. The action shows
   `cure_period` as the largest exact unit: `1209600` → `14d`, `7200` → `2h`, `90` → `90s`, `0` → `0s`.
 - Hashes (`evidence_hash`, `sha256`, `reason_hash`, `proceeds_hash`, `report_hash`, `consent_hash`) are
   passed through verbatim in `details` and never appear in `action`. This matches `DocAdded.hash`,
   `Revalued.report_hash` and `Released.ref_hash` today.
-- Addresses (`attested_by`, `inspector`, `approved_by`, `inspectors[]`) are verbatim Strkeys in `details`.
-  The action shows only `attested_by`, which the issue asks for ("attested (by)"), shortened to
-  `GABC…WXYZ` (first 4 + `…` + last 4). No address appears in any action today, so this is new (see Open
-  Questions).
+- Addresses (`attested_by`, `inspector`, `approved_by`, `inspectors[]`) are verbatim Strkeys in `details`
+  only; no address appears in any action (resolved questions).
 - Enum variants (`protection`, `kind`, `outcome`, `payment_term`) are rendered verbatim, like
   `Document added — Assay` and `Lot control updated → Cma`.
 - Booleans (`by_consent`, `flagged`) stay JSON booleans, like `PocketClaimed.paid_zero`.
@@ -94,14 +93,14 @@ missing.
 | `SecurityRecordRegistered` | `Security record #{r} registered — {protection}, lot #{lot_id}` | `record_id`, `lot_id`, `protection` |
 | `SecurityRecordPerfected` | `Security record #{r} perfected` | `record_id`, `evidence_hash` |
 | `SecurityRecordHandedOver` | `Security handed over — record #{from} → #{to}` | `from_record_id`, `to_record_id`, `evidence_hash` |
-| `SecurityRecordAttested` | `Security record #{r} attested by {GABC…WXYZ}` | `record_id`, `attested_by` |
+| `SecurityRecordAttested` | `Security record #{r} attested` | `record_id`, `attested_by` |
 | `SecurityDocAdded` | `Security document added — {kind}, record #{r}` | `record_id`, `kind`, `sha256` |
 | `SecurityRecordReleased` | `Security record #{r} released` or `Security record #{r} released with Risk Council consent` | `record_id`, `by_consent`, `reason_hash` |
 | `SecurityMandateBreach` | `Mandate breach reported` | `evidence_hash` |
 | `SecurityEnforcementStarted` | `Enforcement started — security record #{r}` | `record_id` |
 | `SecurityRecordEnforced` | unlinked: `Security record #{r} enforced`; linked: `Security record #{r} enforced — proceeds $X repaid (repayment #2)` / `(repayments #2, #3)` | `record_id`, `proceeds_hash`, `repayment_ids` (array of strings, `[]` when unlinked), `proceeds` (6-dp string, `null` when unlinked) |
 | `SecurityTermsSet` | `Security terms set — advance ratio 80.00%, margin call ratio 85.00%, cure period 14d` | `advance_ratio_pct`, `margin_call_ratio_pct`, `cure_period`, `price_stale_after`, `payment_term`, `grace_period`, `default_rate_pct`, `attestation_interval`, `inspection_interval`, `tolerance_pct`, `grade_tolerance_pct` |
-| `SecurityRevalued` | `Security record #{r} revalued — $V/unit (BENCH)` | `record_id`, `value_per_unit`, `benchmark`, `report_hash` |
+| `SecurityRevalued` | `Security record #{r} revalued — $V/unit (BENCH)` (`dollars()`: `-$V` when negative) | `record_id`, `value_per_unit`, `benchmark`, `report_hash` |
 | `SecurityMarginCall` | `Margin call — LTV 87.50%, margin call ratio 85.00%, cure by 2026-11-20T00:00:00Z` | `ltv_pct`, `margin_call_ratio_pct`, `cure_by` |
 | `SecurityPriceStale` | `Price stale — LTV 87.50% above 85.00% margin call ratio, no margin call until revalued` | `ltv_pct`, `margin_call_ratio_pct` |
 | `SecurityMarginCallCured` | `Margin call cured — LTV 78.00%` | `ltv_pct` |
@@ -128,8 +127,11 @@ Inside `build_response`, before mapping, over the already chain-filtered rows of
   chain-decimal normalisation as `param_amount`;
 - order-independent: a repay before or after `mark_enforced` links the same way.
 
-`format_action("SecurityRecordEnforced", …)` renders the unlinked form, so the public signature stays.
-`CashRepaid` items are not changed.
+`format_action` keeps its public signature and renders the unlinked form. It delegates to a private
+`format_linked(…, link: Option<&Proceeds>)`, which `map_item` calls with the looked-up link, so
+`SecurityRecordEnforced` has one dispatch (`render` → `render_security` → `render_enforced`). The link is only
+computed when the response holds a `SecurityRecordEnforced` row, and only for repayments whose
+`(chain, loan, sale_id)` matches one. `CashRepaid` items are not changed.
 
 ### Out of scope
 
@@ -184,56 +186,56 @@ _None_
 
 ## Implementation Steps
 
-1. **Regression test first (EVM byte-identity).** Before any change in `src/`, add
+1. [x] **Regression test first (EVM byte-identity).** Before any change in `src/`, add
    `evm_collateral_registry_rows_render_byte_identically` to `packages/api/tests/dashboard_auditlog_chain.rs`.
    Build one EVM feed (`build_response(rows, &[EVM])`) with one row of each of the 11 CollateralRegistry
    names plus `LoanCCRUpdated`, `CashRepaid` and `CashRepaymentReversed`, using the params of the existing
    `collateral_registry_events_render_on_both_arms` and `cash_repaid_and_reversal_render_on_both_arms`.
    Assert `serde_json::to_value(&resp)` equals a literal `json!` of the full items (action, details, scope,
    reference, event_name, timestamp, chain_id). Run it on the unchanged code and confirm it is green.
-2. **Allow-list** (`packages/api/src/routes/audit_log.rs`). Append the 19 names to `AUDIT_EVENT_NAMES` in a
+2. [x] **Allow-list** (`packages/api/src/routes/audit_log.rs`). Append the 21 names to `AUDIT_EVENT_NAMES` in a
    block after `PocketClaimed`, in the order of the table above. Add
    `const LEGACY_COLLATERAL_REGISTRY_NAMES: [&str; 11]` with the 11 names.
-3. **Legacy marker.** Rename the current `format_action` body to a private `render(event_name, params,
+3. [x] **Legacy marker.** Rename the current `format_action` body to a private `render(event_name, params,
    chain_kind) -> (String, Value)`. The new `pub fn format_action` calls `render`. When
    `chain_kind == ChainKind::Stellar` and the name is in `LEGACY_COLLATERAL_REGISTRY_NAMES`, it appends
    ` (legacy collateral registry)` to the action. `details` are untouched.
-4. **Helpers** (private, same file, no comments):
-   - `amount_from_raw(raw: &BigDecimal, chain_kind) -> String`, and `param_amount` reuses it;
+4. [x] **Helpers** (private, same file, no comments):
+   - `parse_raw_amount(&str) -> Option<i128>` and `amount_from_raw(raw: i128, chain_kind) -> String`;
+     `param_amount` reuses both;
    - `bps_pct(params, key) -> Option<String>` (2-dp percent string, `None` when missing);
    - `ltv_pct(params) -> Option<String>` (`None` also for `4294967295`) and
      `ltv_label(params) -> Option<String>` (`"87.50%"` or `"unbounded"`);
-   - `signed_pct(&str) -> String` (`+` for positive, for the variance actions);
+   - `signed_bps_pct(params, key) -> Option<String>` (sign from the integer bps; `+` when positive, for the variance actions);
    - `duration_label(secs: u64) -> String` (`d` / `h` / `m` / `s`, largest exact unit);
-   - `short_address(&str) -> String` (`GABC…WXYZ`; returned unchanged when 9 chars or fewer);
-   - `iso_param(params, key) -> Option<String>` (parse a unix-seconds string, `iso_utc_from_unix`);
+    - `iso_param(params, key) -> Option<String>` (parse a unix-seconds string, `iso_utc_from_unix`);
    - `default_rate_pct(params)` via `economics_rate_to_bps`.
-5. **Renderers.** In `render`, one arm per new name, as specified in
+5. [x] **Renderers.** In `render`, one arm per new name, as specified in
    [Action and details per event](#action-and-details-per-event). `details` keys appear exactly as
    listed; ids, amounts and percents use `json!(Option<String>)` (string or `null`); `by_consent` /
    `flagged` use `param_value(..).and_then(Value::as_bool)`; `inspectors` is the stored array or `null`.
    `SecurityRecordEnforced` goes through `render_enforced(params, chain_kind, link: Option<&Proceeds>)`,
    and `render` passes `None`.
-6. **Enforcement link** in `build_response`. After sorting, build
+6. [x] **Enforcement link** in `build_response`. After sorting, build
    `HashMap<(i64, String, String), Proceeds>` keyed by `(chain_id, loan_id, sale_id)` from `CashRepaid`
    rows with `sale_id != "0"`. Skip any whose `(chain_id, loan_id, repayment_id)` is in the set built
    from `CashRepaymentReversed` rows. `Proceeds { repayment_ids: Vec<String>, cash_raw: BigDecimal }`.
    `map_item` gets the map. For `SecurityRecordEnforced` it calls `render_enforced` with the entry for
    `(row.chain_id, row.loan_id, params.record_id)`. Other rows go through `format_action` as today.
-7. **Stale doc comments, corrected in place, nothing added:** the module header list of sources (add "the
+7. [x] **Stale doc comments, corrected in place, nothing added:** the module header list of sources (add "the
    SecurityRegistry events (#1781)" and "Stellar CollateralRegistry rows are marked legacy"), the
    `AUDIT_EVENT_NAMES` doc (add SecurityRegistry), and `AuditLogItem::reference` (add SecurityRegistry
    to the no-snapshot list, since it feeds OpenAPI).
-8. **Existing tests.** In `packages/api/tests/dashboard_auditlog_chain.rs`,
+8. [x] **Existing tests.** In `packages/api/tests/dashboard_auditlog_chain.rs`,
    `collateral_registry_events_render_on_both_arms`: the Stellar-arm assertions (`HaircutSet`, `Revalued`,
    `StageUpdated`, `DocAdded`, `QuantityAdjusted`, `Released`) gain the ` (legacy collateral registry)`
    suffix; EVM assertions unchanged. Extend `allow_list_has_the_new_events_and_not_deal_token_transfer` with
-   the 19 names.
-9. **New test file** `packages/api/tests/audit_log_security_registry.rs` (see Test Strategy). Header: one
+   the 21 names.
+9. [x] **New test file** `packages/api/tests/audit_log_security_registry.rs` (see Test Strategy). Header: one
    2-line spec pointer to `docs/product-specs/audit-logging.md#trustee-dashboard-feed-get-v1audit-log`;
    no other comments.
-10. **Docs** (see Docs to Update).
-11. **Verify:** `cargo fmt --all`, `cargo clippy --all -- -D warnings`,
+10. [x] **Docs** (see Docs to Update).
+11. [x] **Verify:** `cargo fmt --all`, `cargo clippy --all -- -D warnings`,
     `cargo test -p pipeline-api --test audit_log --test audit_log_security_registry --test dashboard_auditlog_chain`,
     then `cargo test -p pipeline-api`. Run the docs linter as
     `/Users/aabliazimov/Documents/work/pipeline/node_modules/.bin/tsx scripts/lint-docs.ts` from the
@@ -249,16 +251,15 @@ enums as variant names, addresses as Strkeys. No comments in test code.
 `packages/api/tests/audit_log_security_registry.rs`:
 
 - **Allow-list:**
-  - `security_registry_names_are_allow_listed`: the 19 names are in `AUDIT_EVENT_NAMES`.
+  - `security_registry_names_are_allow_listed`: the 21 names are in `AUDIT_EVENT_NAMES`.
   - `only_the_expected_security_names_are_allow_listed`: the `Security`-prefixed subset of
-    `AUDIT_EVENT_NAMES` equals the 19 exactly. This excludes `SecurityLoanRegistrySet`,
-    `SecurityRegistryPaused` and `SecurityRegistryUnpaused`.
+    `AUDIT_EVENT_NAMES` equals the 21 exactly. This excludes only `SecurityLoanRegistrySet`.
   - `record_nft_topics_never_reach_the_feed`: none of `mint`, `burn`, `Mint`, `Burn`,
     `ownership_transfer`, `ownership_transfer_completed`, `ownership_renounced` is in `AUDIT_EVENT_NAMES`.
-- **One renderer test per event** (19). Each asserts the full `action` string and the full `details`
+- **One renderer test per event** (21, with the two pause rows). Each asserts the full `action` string and the full `details`
   object (`assert_eq!(details, json!({...}))`) on `ChainKind::Stellar`:
   - `record_registered_…` / `record_perfected_…` / `record_handed_over_…` / `record_attested_…` (the
-    shortened address in the action, the full one in details) / `doc_added_…`.
+    no address in the action, the full one in details) / `doc_added_…`.
   - `record_released_…`: both `by_consent` values.
   - `mandate_breach_…` / `enforcement_started_…`.
   - `record_enforced_unlinked_…`: `repayment_ids: []`, `proceeds: null`.
@@ -300,10 +301,9 @@ Stellar CollateralRegistry assertion and is unchanged; it must stay green.
 ## Docs to Update
 
 - `docs/product-specs/audit-logging.md`, section "Trustee dashboard feed":
-  - add a **SecurityRegistry events (#1781)** bullet: the 19 names, scope, the rendering conventions
-    (`_pct` from bps, `LTV unbounded`, raw times and durations in `details`, hashes in `details` only, the
-    shortened attester), the enforcement-proceeds link rule, and that NFT `mint` / `burn` and the
-    administration rows are not listed;
+  - add a **SecurityRegistry events (#1781)** bullet: the 21 names, scope, the rendering conventions
+    (`_pct` from bps, `LTV unbounded`, raw times and durations in `details`, hashes and addresses in `details` only), the enforcement-proceeds link rule, and that NFT `mint` / `burn` and
+    `SecurityLoanRegistrySet` are not listed;
   - rename the CollateralRegistry bullet to "CollateralRegistry lot events (#1478, legacy)" and state that
     Stellar rows of those names carry the ` (legacy collateral registry)` suffix in `action` (details
     unchanged) while EVM rows render as before;

@@ -380,3 +380,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1779 Stellar SecurityRegistry indexer: events, record enrichment, projection tables](https://github.com/eq-lab/pipeline/issues/1779) | [1779-stellar-security-registry-indexer.md](./epic-1775/1779-stellar-security-registry-indexer.md) | Initial |
+| [#1781 Audit log: SecurityRegistry events, legacy CollateralRegistry rows as history](https://github.com/eq-lab/pipeline/issues/1781) | [1781-security-registry-audit-log.md](./epic-1775/1781-security-registry-audit-log.md) | Initial |

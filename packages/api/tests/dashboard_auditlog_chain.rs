@@ -774,6 +774,27 @@ fn allow_list_has_the_new_events_and_not_deal_token_transfer() {
         "YieldMinted",
         "LoanCCRUpdated",
         "LoanLocationUpdated",
+        "SecurityRecordRegistered",
+        "SecurityRecordPerfected",
+        "SecurityRecordHandedOver",
+        "SecurityRecordAttested",
+        "SecurityDocAdded",
+        "SecurityRecordReleased",
+        "SecurityMandateBreach",
+        "SecurityEnforcementStarted",
+        "SecurityRecordEnforced",
+        "SecurityTermsSet",
+        "SecurityRevalued",
+        "SecurityMarginCall",
+        "SecurityPriceStale",
+        "SecurityMarginCallCured",
+        "SecurityInspectionRecorded",
+        "SecurityInspectionApproved",
+        "SecurityFlagResolved",
+        "SecurityExtensionConsent",
+        "SecurityInspectorsSet",
+        "SecurityRegistryPaused",
+        "SecurityRegistryUnpaused",
     ] {
         assert!(audit_log::AUDIT_EVENT_NAMES.contains(&name), "{name}");
     }
@@ -923,7 +944,7 @@ fn collateral_registry_events_render_on_both_arms() {
         json!({ "loan_id": "7", "lot_id": "2", "bps": 1500 }),
         ChainKind::Stellar,
     );
-    assert_eq!(a, "Haircut set — 1500 bps");
+    assert_eq!(a, "Haircut set — 1500 bps (legacy collateral registry)");
     assert_eq!(d["bps"], "1500");
 
     let (a, _) = act(
@@ -940,7 +961,7 @@ fn collateral_registry_events_render_on_both_arms() {
     let stellar = json!({ "loan_id": "7", "lot_id": "2", "value_per_unit": "10000000", "benchmark": "PAR", "report_hash": "ab" });
     assert_eq!(
         act("Revalued", stellar, ChainKind::Stellar).0,
-        "Collateral revalued — $1.000000/unit (PAR)"
+        "Collateral revalued — $1.000000/unit (PAR) (legacy collateral registry)"
     );
 
     let located = json!({
@@ -950,11 +971,12 @@ fn collateral_registry_events_render_on_both_arms() {
     let (a, d) = act("StageUpdated", located, ChainKind::Evm);
     assert_eq!(a, "Lot stage updated → InStorage");
     assert_eq!(d["location"]["identifier"], "W1");
-    let (_, d) = act(
+    let (a, d) = act(
         "StageUpdated",
         json!({ "loan_id": "7", "lot_id": "2", "stage": "Sold", "location": null }),
         ChainKind::Stellar,
     );
+    assert_eq!(a, "Lot stage updated → Sold (legacy collateral registry)");
     assert_eq!(d["location"], Value::Null);
 
     let (a, d) = act(
@@ -970,7 +992,7 @@ fn collateral_registry_events_render_on_both_arms() {
         json!({ "loan_id": "7", "lot_id": "2", "kind": "Assay", "hash": "ab" }),
         ChainKind::Stellar,
     );
-    assert_eq!(a, "Document added — Assay");
+    assert_eq!(a, "Document added — Assay (legacy collateral registry)");
     assert_eq!(d["hash"], "ab");
 
     let evm = json!({ "loan_id": "7", "lot_id": "2", "old_quantity": "5000000", "new_quantity": "4000000", "reason": "shrink", "hash": "ab" });
@@ -980,7 +1002,7 @@ fn collateral_registry_events_render_on_both_arms() {
     let stellar = json!({ "loan_id": "7", "lot_id": "2", "old_quantity": "50000000", "new_quantity": "40000000", "reason": "shrink", "hash": "ab" });
     assert_eq!(
         act("QuantityAdjusted", stellar, ChainKind::Stellar).0,
-        "Quantity adjusted — 5.000000 → 4.000000"
+        "Quantity adjusted — 5.000000 → 4.000000 (legacy collateral registry)"
     );
 
     let (a, d) = act(
@@ -988,7 +1010,10 @@ fn collateral_registry_events_render_on_both_arms() {
         json!({ "loan_id": "7", "lot_id": "2", "quantity": "10000000", "reason": "Payment", "ref_hash": "ab" }),
         ChainKind::Stellar,
     );
-    assert_eq!(a, "Collateral released — Payment");
+    assert_eq!(
+        a,
+        "Collateral released — Payment (legacy collateral registry)"
+    );
     assert_eq!(d["quantity"], "1.000000");
 
     let (a, d) = act(
@@ -1006,6 +1031,186 @@ fn collateral_registry_events_render_on_both_arms() {
     );
     assert_eq!(a, "Margin call — coverage 9000 bps vs floor 12000 bps");
     assert_eq!(d["floor_bps"], "12000");
+}
+
+#[test]
+fn evm_collateral_registry_rows_render_byte_identically() {
+    let located = json!({
+        "loan_id": "7", "lot_id": "2", "stage": "InStorage",
+        "location": { "location_type": "Warehouse", "identifier": "W1", "tracking_url": "" },
+    });
+    let events: Vec<(&str, Value)> = vec![
+        ("Pledged", json!({ "loan_id": "7", "lot_id": "2" })),
+        (
+            "HaircutSet",
+            json!({ "loan_id": "7", "lot_id": "2", "bps": 1500 }),
+        ),
+        ("FloorSet", json!({ "loan_id": "7", "bps": 12000 })),
+        (
+            "Revalued",
+            json!({ "loan_id": "7", "lot_id": "2", "value_per_unit": "1000000", "benchmark": "PAR", "report_hash": "ab" }),
+        ),
+        ("StageUpdated", located),
+        (
+            "ControlUpdated",
+            json!({ "loan_id": "7", "lot_id": "2", "control": { "kind": "Cma", "ref": "R1" } }),
+        ),
+        (
+            "DocAdded",
+            json!({ "loan_id": "7", "lot_id": "2", "kind": "Assay", "hash": "ab" }),
+        ),
+        (
+            "QuantityAdjusted",
+            json!({ "loan_id": "7", "lot_id": "2", "old_quantity": "5000000", "new_quantity": "4000000", "reason": "shrink", "hash": "ab" }),
+        ),
+        (
+            "Released",
+            json!({ "loan_id": "7", "lot_id": "2", "quantity": "10000000", "reason": "Payment", "ref_hash": "ab" }),
+        ),
+        (
+            "Liquidated",
+            json!({ "loan_id": "7", "lot_id": "2", "sale_id": "4", "quantity": "3000000" }),
+        ),
+        (
+            "MarginCall",
+            json!({ "loan_id": "7", "coverage_bps": 9000, "floor_bps": 12000 }),
+        ),
+        (
+            "LoanCCRUpdated",
+            json!({ "loan_id": "7", "new_ccr": 1_500_000 }),
+        ),
+        (
+            "CashRepaid",
+            json!({
+                "loan_id": "7", "repayment_id": "2", "sale_id": "0", "cash": "100000000",
+                "interest_minted": "5000000", "fee_shares": "400000", "value_date": "1700000000", "ref_hash": "ab",
+            }),
+        ),
+        (
+            "CashRepaymentReversed",
+            json!({ "loan_id": "7", "repayment_id": "2", "cash": "100000000", "ref_hash": "ab" }),
+        ),
+    ];
+    let rows: Vec<AuditLogRow> = events
+        .into_iter()
+        .enumerate()
+        .map(|(i, (name, params))| {
+            let i = i as i64;
+            log_row(
+                i + 1,
+                1,
+                (1_700_000_000 - 60 * i, 100 - i, 0),
+                name,
+                Some("7"),
+                params,
+            )
+        })
+        .collect();
+    let resp = build_response(rows, &[EVM]);
+
+    let expected_rows: Vec<(&str, &str, Value)> = vec![
+        ("Pledged", "Collateral pledged", json!({ "lot_id": "2" })),
+        (
+            "HaircutSet",
+            "Haircut set — 1500 bps",
+            json!({ "lot_id": "2", "bps": "1500" }),
+        ),
+        (
+            "FloorSet",
+            "Coverage floor set — 12000 bps",
+            json!({ "bps": "12000" }),
+        ),
+        (
+            "Revalued",
+            "Collateral revalued — $1.000000/unit (PAR)",
+            json!({ "lot_id": "2", "value_per_unit": "1.000000", "benchmark": "PAR", "report_hash": "ab" }),
+        ),
+        (
+            "StageUpdated",
+            "Lot stage updated → InStorage",
+            json!({ "lot_id": "2", "stage": "InStorage", "location": { "location_type": "Warehouse", "identifier": "W1", "tracking_url": "" } }),
+        ),
+        (
+            "ControlUpdated",
+            "Lot control updated → Cma",
+            json!({ "lot_id": "2", "control": { "kind": "Cma", "ref": "R1" } }),
+        ),
+        (
+            "DocAdded",
+            "Document added — Assay",
+            json!({ "lot_id": "2", "kind": "Assay", "hash": "ab" }),
+        ),
+        (
+            "QuantityAdjusted",
+            "Quantity adjusted — 5.000000 → 4.000000",
+            json!({ "lot_id": "2", "old_quantity": "5.000000", "new_quantity": "4.000000", "reason": "shrink", "hash": "ab" }),
+        ),
+        (
+            "Released",
+            "Collateral released — Payment",
+            json!({ "lot_id": "2", "quantity": "10.000000", "reason": "Payment", "ref_hash": "ab" }),
+        ),
+        (
+            "Liquidated",
+            "Collateral liquidated",
+            json!({ "lot_id": "2", "sale_id": "4", "quantity": "3.000000" }),
+        ),
+        (
+            "MarginCall",
+            "Margin call — coverage 9000 bps vs floor 12000 bps",
+            json!({ "coverage_bps": "9000", "floor_bps": "12000" }),
+        ),
+        (
+            "LoanCCRUpdated",
+            "CCR written on-chain",
+            json!({ "new_ccr": 1_500_000 }),
+        ),
+        (
+            "CashRepaid",
+            "Cash repaid — $100.000000",
+            json!({ "repayment_id": "2", "sale_id": "0", "value_date": "1700000000", "fee_shares": "400000", "cash": "100.000000", "interest_minted": "5.000000" }),
+        ),
+        (
+            "CashRepaymentReversed",
+            "Cash repayment reversed — $100.000000",
+            json!({ "repayment_id": "2", "cash": "100.000000" }),
+        ),
+    ];
+    let stamps = [
+        "2023-11-14T22:13:20Z",
+        "2023-11-14T22:12:20Z",
+        "2023-11-14T22:11:20Z",
+        "2023-11-14T22:10:20Z",
+        "2023-11-14T22:09:20Z",
+        "2023-11-14T22:08:20Z",
+        "2023-11-14T22:07:20Z",
+        "2023-11-14T22:06:20Z",
+        "2023-11-14T22:05:20Z",
+        "2023-11-14T22:04:20Z",
+        "2023-11-14T22:03:20Z",
+        "2023-11-14T22:02:20Z",
+        "2023-11-14T22:01:20Z",
+        "2023-11-14T22:00:20Z",
+    ];
+    let items: Vec<Value> = expected_rows
+        .into_iter()
+        .zip(stamps)
+        .map(|((name, action, details), ts)| {
+            json!({
+                "chain_id": 1,
+                "timestamp": ts,
+                "action": action,
+                "scope": { "loan_id": "7", "label": "Loan #7" },
+                "reference": "",
+                "event_name": name,
+                "details": details,
+            })
+        })
+        .collect();
+    assert_eq!(
+        serde_json::to_value(&resp).unwrap(),
+        json!({ "items": items })
+    );
 }
 
 #[test]
