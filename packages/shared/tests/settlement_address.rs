@@ -8,7 +8,7 @@ use shared::chains::ChainKind;
 use shared::lp_repo::{
     KybStatus, LpRow, CONSUME_LINK_CHALLENGE_SQL, FIND_LINK_CHALLENGE_SQL,
     ISSUE_OR_REUSE_LINK_CHALLENGE_SQL, LINK_EVM_ADDRESS_SQL, LINK_STELLAR_ADDRESS_SQL,
-    LIST_SETTLEMENT_ADDRESS_HISTORY_SQL,
+    LIST_SETTLEMENT_ADDRESS_HISTORY_SQL, STELLAR_ADDRESS_HOLDERS_SQL,
 };
 use uuid::Uuid;
 
@@ -212,4 +212,26 @@ fn settlement_address_returns_the_slot_of_the_kind() {
     assert_eq!(row.settlement_address(ChainKind::Evm), Some("0xevm"));
     let only_stellar = lp(Some("GSTELLAR"), None);
     assert_eq!(only_stellar.settlement_address(ChainKind::Evm), None);
+}
+
+#[test]
+fn stellar_address_holders_sql_attributes_by_the_link_active_at_the_request_time() {
+    let sql = STELLAR_ADDRESS_HOLDERS_SQL
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for needle in [
+        "unnest($1::text[], $2::bigint[]) AS q(address, requested_at)",
+        "FROM lp_settlement_address_history h",
+        "h.chain_kind = 'stellar'",
+        "h.address = q.address",
+        "(h.chain_id IS NULL OR h.chain_id = $3)",
+        "h.created_at <= to_timestamp(q.requested_at)",
+        "NOT EXISTS ( SELECT 1 FROM lp_settlement_address_history n WHERE n.lp_id = h.lp_id",
+        "(n.created_at, n.id) > (h.created_at, h.id)",
+        "n.created_at <= to_timestamp(q.requested_at)",
+        "ORDER BY h.created_at DESC, h.id DESC LIMIT 1",
+    ] {
+        assert!(sql.contains(needle), "missing `{needle}` in {sql}");
+    }
 }

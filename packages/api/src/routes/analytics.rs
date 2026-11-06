@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -10,6 +11,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use crate::config::ConfiguredChain;
 use crate::formatting::iso_utc_from_unix;
+use crate::minter_cash_book::{build_wire_outs, to_base6_string, WireOutStatus};
 use crate::routes::common::{ChainScope, LenientChainFilter};
 use crate::routes::loan_book::loan_key;
 use crate::AppState;
@@ -24,7 +26,13 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_requests),
-    components(schemas(RequestsQuery, RequestsResponse, RequestItem, PocketClaimItem)),
+    components(schemas(
+        RequestsQuery,
+        RequestsResponse,
+        RequestItem,
+        LpWireOutItem,
+        PocketClaimItem
+    )),
     tags(
         (name = "Analytics", description = "Transaction history and activity feed")
     )
@@ -75,6 +83,94 @@ pub struct RequestItem {
 pub struct RequestsResponse {
     pub requests: Vec<RequestItem>,
     pub pocket_claims: Vec<PocketClaimItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire_outs: Option<Vec<LpWireOutItem>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LpWireOutItem {
+    pub chain_id: i64,
+    pub id: i64,
+    pub status: String,
+    pub amount: String,
+    pub requested_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settled_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ref_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cancelled_at: Option<String>,
+}
+
+pub fn minter_chains_in_scope<S: std::hash::BuildHasher>(
+    scope: ChainScope,
+    chains: &[ConfiguredChain],
+    minter_addresses: &HashMap<i64, String, S>,
+) -> Vec<(i64, String)> {
+    let in_scope: Vec<i64> = match scope {
+        ChainScope::All => chains.iter().map(|c| c.chain_id).collect(),
+        ChainScope::One(c) => vec![c.chain_id],
+        ChainScope::Unconfigured(_) => Vec::new(),
+    };
+    in_scope
+        .into_iter()
+        .filter_map(|id| minter_addresses.get(&id).map(|m| (id, m.clone())))
+        .collect()
+}
+
+pub fn degrade_wire_outs(
+    result: anyhow::Result<Option<Vec<LpWireOutItem>>>,
+) -> Option<Vec<LpWireOutItem>> {
+    result.unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "failed to fetch wire-outs; omitting them");
+        None
+    })
+}
+
+async fn lp_wire_outs(
+    state: &AppState,
+    scope: ChainScope,
+    wallet: &str,
+    pending_only: bool,
+) -> anyhow::Result<Option<Vec<LpWireOutItem>>> {
+    let minters = minter_chains_in_scope(scope, &state.chains, &state.minter_addresses);
+    if minters.is_empty() {
+        return Ok(None);
+    }
+    let mut items: Vec<(i64, LpWireOutItem)> = Vec::new();
+    for (chain_id, minter) in minters {
+        let rows = state
+            .contract_logs_repo
+            .list_lp_wire_out_events(chain_id, &minter, wallet)
+            .await?;
+        for w in build_wire_outs(&rows) {
+            if pending_only && w.status != WireOutStatus::Pending {
+                continue;
+            }
+            items.push((
+                w.requested_at,
+                LpWireOutItem {
+                    chain_id,
+                    id: w.id,
+                    status: w.status.as_str().to_owned(),
+                    amount: to_base6_string(w.amount),
+                    requested_at: iso_utc_from_unix(w.requested_at),
+                    settled_at: w.settled_at.map(iso_utc_from_unix),
+                    value_date: w.value_date.map(iso_utc_from_unix),
+                    ref_hash: w.ref_hash,
+                    cancelled_at: w.cancelled_at.map(iso_utc_from_unix),
+                },
+            ));
+        }
+    }
+    items.sort_by(|(ta, a), (tb, b)| {
+        tb.cmp(ta)
+            .then_with(|| a.chain_id.cmp(&b.chain_id))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    Ok(Some(items.into_iter().map(|(_, i)| i).collect()))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -158,6 +254,7 @@ async fn get_requests(
         ChainScope::Unconfigured(_) => {
             return Json(RequestsResponse {
                 requests: Vec::new(),
+                wire_outs: None,
                 pocket_claims: Vec::new(),
             })
             .into_response();
@@ -174,11 +271,23 @@ async fn get_requests(
     let kyt_gate =
         |kind: ChainKind| kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled);
 
-    match state
-        .kyc_repo
-        .get_all_requests(&wallet, pending_only, chain_kind, kyt_gate, chain_id)
-        .await
-    {
+    let claims_wanted = includes_pocket_claims(query.status.as_deref());
+    let (requests, wire_outs, claims) = tokio::join!(
+        state
+            .kyc_repo
+            .get_all_requests(&wallet, pending_only, chain_kind, kyt_gate, chain_id),
+        lp_wire_outs(&state, scope, &wallet, pending_only),
+        async {
+            if claims_wanted {
+                pocket_claims(&state, scope, query.wallet.trim()).await
+            } else {
+                Ok(Vec::new())
+            }
+        },
+    );
+    let wire_outs = degrade_wire_outs(wire_outs);
+
+    match requests {
         Ok(events) => {
             let items: Vec<RequestItem> = events
                 .into_iter()
@@ -195,15 +304,11 @@ async fn get_requests(
                     usdc_paid: e.usdc_paid,
                 })
                 .collect();
-            let claims = if includes_pocket_claims(query.status.as_deref()) {
-                pocket_claims(&state, scope, query.wallet.trim()).await
-            } else {
-                Ok(Vec::new())
-            };
             match claims {
                 Ok(pocket_claims) => Json(RequestsResponse {
                     requests: items,
                     pocket_claims,
+                    wire_outs,
                 })
                 .into_response(),
                 Err(e) => {

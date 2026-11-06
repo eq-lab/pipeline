@@ -40,6 +40,7 @@ fn empty_claims_serialise_as_an_empty_list() {
     let resp = RequestsResponse {
         requests: Vec::new(),
         pocket_claims: Vec::new(),
+        wire_outs: None,
     };
     let json = serde_json::to_value(&resp).unwrap();
     assert_eq!(json["pocket_claims"], serde_json::json!([]));

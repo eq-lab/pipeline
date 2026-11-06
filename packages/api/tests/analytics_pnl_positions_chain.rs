@@ -5,7 +5,10 @@ use std::sync::Arc;
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use pipeline_api::config::ConfiguredChain;
-use pipeline_api::routes::analytics::{self, AnalyticsDoc};
+use pipeline_api::routes::analytics::{
+    self, degrade_wire_outs, minter_chains_in_scope, AnalyticsDoc, RequestsResponse,
+};
+use pipeline_api::routes::common::ChainScope;
 use pipeline_api::routes::pnl::{self, PnlDoc};
 use pipeline_api::AppState;
 use shared::chains::ChainKind;
@@ -46,6 +49,8 @@ fn make_test_state() -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses: HashMap::new(),
+        minter_addresses: HashMap::new(),
+        capital_allocation_from_minter: std::collections::HashSet::new(),
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         crystal_enabled: false,
@@ -248,4 +253,84 @@ fn openapi_marks_chain_id_optional_on_requests_and_exposes_it_on_items() {
         .unwrap()
         .iter()
         .any(|v| v == "chain_id"));
+}
+
+// ── LP wire-outs on /v1/requests ────────────────────────────────────────────
+
+const STELLAR_MINTER: &str = "CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX";
+const STELLAR_B: ConfiguredChain = ConfiguredChain {
+    chain_id: 99_000_002,
+    kind: ChainKind::Stellar,
+};
+
+fn minters() -> HashMap<i64, String> {
+    HashMap::from([(STELLAR.chain_id, STELLAR_MINTER.to_owned())])
+}
+
+#[test]
+fn no_minter_chain_is_in_scope_for_evm_unconfigured_or_minterless_stellar() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    assert!(minter_chains_in_scope(ChainScope::One(EVM), &all, &minters()).is_empty());
+    assert!(minter_chains_in_scope(ChainScope::Unconfigured(5), &all, &minters()).is_empty());
+    assert!(minter_chains_in_scope(ChainScope::One(STELLAR_B), &all, &minters()).is_empty());
+    assert!(minter_chains_in_scope(ChainScope::All, &all, &HashMap::new()).is_empty());
+}
+
+#[test]
+fn only_minter_chains_are_in_scope_for_all_and_one() {
+    let all = [EVM, STELLAR, STELLAR_B];
+    let expected = vec![(STELLAR.chain_id, STELLAR_MINTER.to_owned())];
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::All, &all, &minters()),
+        expected
+    );
+    assert_eq!(
+        minter_chains_in_scope(ChainScope::One(STELLAR), &all, &minters()),
+        expected
+    );
+}
+
+#[test]
+fn a_response_without_wire_outs_serialises_without_the_key() {
+    let body = serde_json::to_string(&RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: None,
+    })
+    .unwrap();
+    assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
+}
+
+#[test]
+fn a_response_with_wire_outs_serialises_the_list() {
+    let body = serde_json::to_value(RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: Some(Vec::new()),
+    })
+    .unwrap();
+    assert_eq!(body["wire_outs"], serde_json::json!([]));
+}
+
+#[test]
+fn openapi_exposes_wire_outs_as_optional() {
+    let doc = serde_json::to_value(AnalyticsDoc::openapi()).unwrap();
+    let schema = &doc["components"]["schemas"]["RequestsResponse"];
+    assert!(schema["properties"]["wire_outs"].is_object());
+    assert!(!schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "wire_outs"));
+    assert!(doc["components"]["schemas"]["LpWireOutItem"].is_object());
+}
+
+#[test]
+fn a_failed_wire_out_lookup_degrades_to_an_omitted_list() {
+    assert!(degrade_wire_outs(Err(anyhow::anyhow!("db down"))).is_none());
+    assert_eq!(
+        degrade_wire_outs(Ok(Some(Vec::new()))).map(|v| v.len()),
+        Some(0)
+    );
+    assert!(degrade_wire_outs(Ok(None)).is_none());
 }

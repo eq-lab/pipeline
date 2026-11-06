@@ -131,6 +131,8 @@ async fn main() -> anyhow::Result<()> {
     let withdrawal_queue_wallets = chains_config.withdrawal_queue_wallets;
     let asset_decimals = chains_config.asset_decimals;
     let loan_registry_addresses = chains_config.loan_registry_addresses;
+    let minter_addresses = chains_config.minter_addresses;
+    let capital_allocation_from_minter = chains_config.capital_allocation_from_minter;
     let withdrawal_queue_addresses = chains_config.withdrawal_queue_addresses;
     let pocket_addresses = chains_config.pocket_addresses;
 
@@ -159,6 +161,8 @@ async fn main() -> anyhow::Result<()> {
         withdrawal_queue_wallets,
         asset_decimals,
         loan_registry_addresses,
+        minter_addresses,
+        capital_allocation_from_minter,
         withdrawal_queue_addresses,
         pocket_addresses,
         crystal_enabled,
@@ -212,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::lp_settlement_address::LpSettlementAddressDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_ledger::LpLedgerDoc::openapi());
     api_docs.merge(pipeline_api::routes::lp_bank_deposits::LpBankDepositsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::cash_book::CashBookDoc::openapi());
     api_docs.merge(pipeline_api::routes::chains::ChainsDoc::openapi());
 
     let app = Router::new()
@@ -239,6 +244,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::lp_settlement_address::router())
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .nest("/v1", pipeline_api::routes::lp_bank_deposits::router())
+        .nest("/v1", pipeline_api::routes::cash_book::router())
         .nest("/v1", pipeline_api::routes::chains::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
