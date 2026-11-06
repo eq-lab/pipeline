@@ -3633,6 +3633,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "ed25519-dalek",
+ "futures",
  "hex",
  "rand 0.8.6",
  "reqwest",

@@ -13,6 +13,7 @@ use sqlx::PgPool;
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
     metadata_fetcher::MetadataFetcher, pocket_repo::PocketRepo,
+    security_registry_repo::SecurityRegistryRepo,
 };
 
 use crate::indexer::config::StellarIndexerSettings;
@@ -33,6 +34,9 @@ use crate::indexer::{
         pocket_parsers::dispatch_pocket,
         pocket_seed::run_pocket_seed_loop,
         rpc::{EventFilter, StellarRpc},
+        security_registry_parsers::dispatch_security_registry,
+        security_registry_sync::run_security_registry_sync_loop,
+        supervise::spawn_supervised,
     },
 };
 
@@ -87,6 +91,7 @@ pub struct StellarEventPoller {
     collateral_registry_id: Option<String>,
     deal_token_factory_id: Option<String>,
     pocket_id: Option<String>,
+    security_registry_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
@@ -112,6 +117,7 @@ impl StellarEventPoller {
         collateral_registry_id: Option<String>,
         deal_token_factory_id: Option<String>,
         pocket_id: Option<String>,
+        security_registry_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
@@ -130,6 +136,7 @@ impl StellarEventPoller {
             collateral_registry_id,
             deal_token_factory_id,
             pocket_id,
+            security_registry_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
             tracked_addresses,
@@ -168,6 +175,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(pocket_id) = &self.pocket_id {
             contract_ids.push(pocket_id.clone());
         }
+        if let Some(security_id) = &self.security_registry_id {
+            contract_ids.push(security_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -178,6 +188,8 @@ impl ChainEventPoller for StellarEventPoller {
             let parsed = if self.collateral_registry_id.as_deref() == Some(raw.contract_id.as_str())
             {
                 dispatch_collateral_registry(&raw)
+            } else if self.security_registry_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_security_registry(&raw)
             } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
                 dispatch_pocket(&raw)
             } else {
@@ -362,6 +374,14 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    if let Some(security_id) = &settings.security_registry_id {
+        tracing::info!(
+            security_registry_id = %security_id,
+            chain_id,
+            "Stellar SecurityRegistry indexer enabled"
+        );
+    }
+
     // Asset-transfer tracking (custody/ramp flows). `asset_id` is `Some` only when
     // fully configured (asset id + custody + ramp addresses); the union of both
     // address lists is the membership filter applied in `poll`.
@@ -397,13 +417,20 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
     }
 
     let _seed_guard = match (&settings.pocket_id, &settings.loan_registry_id) {
-        (Some(pocket_id), Some(registry_id)) => Some(spawn_pocket_seed(
-            rpc.clone(),
-            PocketRepo::new(pool.clone()),
-            chain_id,
-            pocket_id.clone(),
-            registry_id.clone(),
-        )),
+        (Some(pocket_id), Some(registry_id)) => {
+            let rpc = rpc.clone();
+            let repo = PocketRepo::new(pool.clone());
+            let pocket_id = pocket_id.clone();
+            let registry_id = registry_id.clone();
+            Some(spawn_supervised("pocket-seed", chain_id, move || {
+                let (rpc, repo) = (rpc.clone(), repo.clone());
+                let (pocket_id, registry_id) = (pocket_id.clone(), registry_id.clone());
+                async move {
+                    run_pocket_seed_loop(rpc, repo, chain_id, pocket_id, registry_id).await;
+                    Ok(())
+                }
+            }))
+        }
         (Some(_), None) => {
             tracing::warn!(
                 chain_id,
@@ -413,6 +440,23 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         }
         _ => None,
     };
+
+    let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let security_id = security_id.clone();
+        let loan_registry_id = settings.loan_registry_id.clone();
+        spawn_supervised("security-registry-sync", chain_id, move || {
+            run_security_registry_sync_loop(
+                rpc.clone(),
+                SecurityRegistryRepo::new(pool.clone()),
+                EventRepo::new(pool.clone()),
+                chain_id,
+                security_id.clone(),
+                loan_registry_id.clone(),
+            )
+        })
+    });
 
     let poller = StellarEventPoller::new(
         rpc,
@@ -427,6 +471,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.collateral_registry_id.clone(),
         settings.deal_token_factory_id.clone(),
         settings.pocket_id.clone(),
+        settings.security_registry_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),
         tracked_addresses,
@@ -446,37 +491,4 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
 
     // `index_loop` never returns under normal operation.
     Ok(())
-}
-
-struct AbortOnDrop(tokio::task::AbortHandle);
-
-impl Drop for AbortOnDrop {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
-fn spawn_pocket_seed(
-    rpc: Arc<StellarRpc>,
-    repo: PocketRepo,
-    chain_id: i64,
-    pocket_id: String,
-    registry_id: String,
-) -> AbortOnDrop {
-    let handle = tokio::spawn(run_pocket_seed_loop(
-        rpc,
-        repo,
-        chain_id,
-        pocket_id,
-        registry_id,
-    ));
-    let abort = handle.abort_handle();
-    tokio::spawn(async move {
-        if let Err(e) = handle.await {
-            if e.is_panic() {
-                tracing::error!(chain_id, error = %e, "pocket seed loop panicked");
-            }
-        }
-    });
-    AbortOnDrop(abort)
 }
