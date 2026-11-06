@@ -82,6 +82,7 @@ pub struct AppState {
     /// LoanRegistry address keyed by chain_id (EIP-55 / Strkey, as the indexer writes it);
     /// scopes the LoanBook readers. Every configured chain has an entry.
     pub loan_registry_addresses: HashMap<i64, String>,
+    pub withdrawal_queue_addresses: HashMap<i64, String>,
     pub pocket_addresses: HashMap<i64, String>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,

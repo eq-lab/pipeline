@@ -575,3 +575,121 @@ fn stellar_pocket_address_bad_strkey_is_error() {
         },
     );
 }
+
+#[test]
+fn wq_scope_unset_has_no_entry_and_boot_is_ok() {
+    with_env(
+        &[
+            ("CHAINS", "99000010"),
+            ("DEFAULT_CHAIN_ID", "99000010"),
+            ("CHAIN_99000010_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000010_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+        ],
+        &[
+            "CHAIN_99000010_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000010_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("boot without WQ key");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_valid_is_stored_canonical_even_without_dm_key() {
+    with_env(
+        &[
+            ("CHAINS", "99000011"),
+            ("DEFAULT_CHAIN_ID", "99000011"),
+            ("CHAIN_99000011_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000011_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            (
+                "CHAIN_99000011_API_STELLAR_WQ_CONTRACT_ID",
+                " CABQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGCK3 ",
+            ),
+        ],
+        &["CHAIN_99000011_API_STELLAR_DM_CONTRACT_ID"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("boot with WQ key only");
+            assert_eq!(
+                cfg.withdrawal_queue_addresses[&99_000_011],
+                STELLAR_REGISTRY_2
+            );
+            assert!(cfg.stellar_voucher.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_blank_has_no_entry() {
+    with_env(
+        &[
+            ("CHAINS", "99000012"),
+            ("DEFAULT_CHAIN_ID", "99000012"),
+            ("CHAIN_99000012_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000012_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000012_API_STELLAR_WQ_CONTRACT_ID", "   "),
+        ],
+        &["CHAIN_99000012_API_STELLAR_DM_CONTRACT_ID"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("boot with blank WQ key");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_malformed_without_dm_key_does_not_fail_boot() {
+    with_env(
+        &[
+            ("CHAINS", "99000013"),
+            ("DEFAULT_CHAIN_ID", "99000013"),
+            ("CHAIN_99000013_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000013_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            (
+                "CHAIN_99000013_API_STELLAR_WQ_CONTRACT_ID",
+                "not-a-contract",
+            ),
+        ],
+        &["CHAIN_99000013_API_STELLAR_DM_CONTRACT_ID"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("malformed WQ key must not fail boot");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+        },
+    );
+}
+
+#[test]
+fn wq_scope_is_not_read_on_evm_chains() {
+    with_env(
+        &[
+            ("CHAINS", "7010"),
+            ("DEFAULT_CHAIN_ID", "7010"),
+            ("CHAIN_7010_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7010_API_STELLAR_WQ_CONTRACT_ID", STELLAR_REGISTRY_2),
+        ],
+        &["CHAIN_7010_TYPE", "CHAIN_7010_SIGNER_KEY"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("EVM boot ignores the Stellar WQ key");
+            assert!(cfg.withdrawal_queue_addresses.is_empty());
+            assert!(cfg.voucher.is_empty());
+        },
+    );
+}

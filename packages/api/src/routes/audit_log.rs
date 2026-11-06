@@ -26,6 +26,7 @@
 //! CollateralRegistry lot events, the DealTokenFactory events (#1478) and the Pocket events (#1789); per-transfer
 //! `DealTokenTransfer` rows are deliberately left out. Historical `YieldMinted`,
 //! `LoanCCRUpdated` and `LoanLocationUpdated` rows are no longer indexed but keep rendering.
+//! The WithdrawalQueue's one-time `WithdrawalRateSet` recovery rate (#1791) is also listed.
 //!
 //! The feed is returned in full (newest first) — it is not paginated.
 
@@ -35,7 +36,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, RoundingMode};
 use serde::Serialize;
 use serde_json::{json, Value};
 use utoipa::{OpenApi, ToSchema};
@@ -100,6 +101,7 @@ pub const AUDIT_EVENT_NAMES: &[&str] = &[
     "DealRegistered",
     "DebtSynced",
     "CargoSynced",
+    "WithdrawalRateSet",
     "PocketOpened",
     "PocketReleased",
     "PocketUnreleased",
@@ -839,6 +841,21 @@ pub fn format_action(event_name: &str, params: &Value, chain_kind: ChainKind) ->
                     "burned": burned,
                 }),
             )
+        }
+
+        "WithdrawalRateSet" => {
+            let ratio = param_str(params, "new_rate")
+                .and_then(|r| BigDecimal::from_str(&r).ok())
+                .map(|r| {
+                    (r / shared::withdrawal_rate::rate_one())
+                        .with_scale_round(6, RoundingMode::Down)
+                        .to_plain_string()
+                });
+            let action = match ratio {
+                Some(r) => format!("Withdrawal recovery rate set — {r}"),
+                None => "Withdrawal recovery rate set".to_owned(),
+            };
+            (action, pass(params, &["new_rate"]))
         }
 
         // Unreachable in practice — the SQL allow-list filters these out before they get

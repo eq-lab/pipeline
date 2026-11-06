@@ -184,7 +184,7 @@ dialog are JSX-only and read `useWithdrawalQueueView`.
   the same rule (#1669).
   A self-contained hand-mirror of the backend shape
   (TD-42; the trustee app does not depend on `@pipeline/frontend`, whose `useWithdrawalQueue` reads
-  the same endpoint). `in_queue_usd`/`amount` are base-6 decimal strings in human units — format
+  the same endpoint). `in_queue_usd` (valued at the queue's recovery rate)/`amount` are base-6 decimal strings in human units — format
   with `@/utils/formatUsd`.
 - `useWithdrawalQueueView` (`-cash-management-withdrawals.ts`) — presenter; `chainLabel` =
   `targetChainLabel(chainId)` from the hook's resolved chain.

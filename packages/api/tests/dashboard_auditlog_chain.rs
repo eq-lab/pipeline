@@ -55,6 +55,7 @@ fn make_test_state() -> AppState {
         withdrawal_queue_wallets: HashMap::new(),
         asset_decimals: HashMap::new(),
         loan_registry_addresses: HashMap::new(),
+        withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,

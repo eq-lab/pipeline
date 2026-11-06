@@ -62,6 +62,12 @@ pub struct RequestItem {
     pub status: String,
     /// ISO-8601 timestamp.
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Stellar Withdraw only: cumulative PLUSD queue offset including this request, raw integer at token decimals (queued_ahead = queued_through - amount).
+    pub queued_through: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Stellar Withdraw only, once claimed: USDC paid, raw integer at token decimals, floor(amount x rate at the claim / 1e6).
+    pub usdc_paid: Option<String>,
 }
 
 /// Response wrapper for the requests endpoint.
@@ -158,18 +164,19 @@ async fn get_requests(
         }
     };
 
-    let kyt_gate = |id: i64| {
-        let kind = state
+    let chain_kind = |id: i64| {
+        state
             .chains
             .iter()
             .find(|c| c.chain_id == id)
-            .map_or(ChainKind::Evm, |c| c.kind);
-        kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled)
+            .map(|c| c.kind)
     };
+    let kyt_gate =
+        |kind: ChainKind| kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled);
 
     match state
         .kyc_repo
-        .get_all_requests(&wallet, pending_only, kyt_gate, chain_id)
+        .get_all_requests(&wallet, pending_only, chain_kind, kyt_gate, chain_id)
         .await
     {
         Ok(events) => {
@@ -184,6 +191,8 @@ async fn get_requests(
                     shares: e.shares,
                     status: e.status,
                     created_at: e.created_at,
+                    queued_through: e.queued_through,
+                    usdc_paid: e.usdc_paid,
                 })
                 .collect();
             let claims = if includes_pocket_claims(query.status.as_deref()) {
