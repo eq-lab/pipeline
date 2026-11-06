@@ -688,6 +688,7 @@ line, whichever section it lands in.
   event, closing the reload gap without any frontend change. Consider the same shared
   `loan_data`-parsing package suggested by TD-42's fix, extended to also host the ScVal-encoding
   transform matrix, if a third on-chain consumer ever needs it.
+- **2026-11-06 (#1792):** the API now serves contract-ready `draw_loan` args (`SubmissionView.draw_loan`), so the wallet-connect transform can shrink to ScVal encoding in the frontend follow-up #1805. The hand-mirrored `SubmitLoanRequest` copies remain.
 
 ### TD-44: Stellar vault `assets`/`shares` (`StakingDeposit`/`StakingWithdrawal`) have no read-time USDC normalization yet
 

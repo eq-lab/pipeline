@@ -54,26 +54,68 @@ another chain leaves the submission unlinked and is logged at `warn`; so is a dr
 `(chain_id, loan_id)` is already linked to another submission. The submission link is not
 registry-scoped (TD-150).
 
-**Payload.** `POST /v1/loan-book/loan` carries every input to the on-chain
-`draw_loan`: the holder `to`, the on-chain `metadata_uri`, the off-chain metadata
-document fields (`originator`, `borrower_id`, `commodity`, `corridor`,
-`governing_law`, `protection`, optional `secondary_metadata_uri`, and
-`documents` — an array of `{ name, uri }` links such as the Agreement,
-License, and Terms & Conditions), the
-`economics` block (`ImmutableLoanData` — base-6 USDC amount strings, bps rate,
-origination/maturity timestamps), `initial_ccr`, and `initial_location`
-(`LocationUpdate`). The whole payload is stored verbatim as JSONB. Submission
-validation mirrors the contract invariants: tranches sum to the facility size,
-maturity is after origination, offtaker price covers the facility, `initial_ccr`
-is at least `1_000_000` (100 %), and `location_type` is one of
-`Vessel`/`Warehouse`/`TankFarm`/`Other`.
+**Payload.** `POST /v1/loan-book/loan` carries the on-chain `metadata_uri`, the
+off-chain metadata document fields (`originator`, `borrower_id`, `commodity`,
+`corridor`, `governing_law`, `protection`, optional `secondary_metadata_uri`, and
+`documents` — an array of `{ name, uri }` links such as the Agreement, License, and
+Terms & Conditions), the `economics` block (human-unit USDC decimal strings with at
+most 6 fractional digits, bps rate, origination/maturity timestamps), an optional
+`data_room_id` (required in a later release), `collateral_valuation` and
+`fee_schedule`. `to`, `initial_ccr` and `initial_location` are deprecated: still
+accepted and stored verbatim when sent, never validated, and not `draw_loan` inputs.
+The whole payload is stored verbatim as JSONB. `data_room_id` is trimmed at ingest and
+an empty value is treated as absent. Submission validation mirrors the three contract
+invariants (tranches sum to the facility size, maturity is after origination, offtaker
+price covers the facility) plus the valuation and fee-schedule checks.
+
+### `draw_loan` arguments
+
+`POST /loan` (`201`), `POST /resubmit` (`200`) and each item of `GET /submissions`
+carry a contract-ready `draw_loan` block, derived at read time from `loan_data`:
+
+```json
+"draw_loan": {
+  "metadata_uri": "ipfs://…",
+  "economics": {
+    "borrower_ref": "aeaa7d34…d5d7",
+    "original_facility_size": "1000000000000",
+    "original_senior_tranche": "800000000000",
+    "original_equity_tranche": "200000000000",
+    "original_offtaker_price": "1050000000000",
+    "senior_interest_rate": 120000,
+    "origination_date": 1700000000,
+    "original_maturity_date": 1715000000
+  },
+  "missing_inputs": []
+}
+```
+
+The `economics` keys are exactly the 8 fields of the Stellar loan-registry
+`ImmutableLoanData`; `draw_loan(metadata_uri, economics)` is called through
+`access_manager.execute`.
+
+| Field | Served as | Unit |
+|-------|-----------|------|
+| `original_*` money | plain integer string | u128, 7-decimal base units (USDC-SAC / PLUSD scale): human amount × 10^7, never rounded |
+| `senior_interest_rate` | JSON number | u32 fixed point with `ONE = 1_000_000` = 100 %/yr, i.e. `senior_interest_rate_bps × 100` |
+| `origination_date`, `original_maturity_date` | JSON number | u64 unix seconds |
+| `borrower_ref` | 64 lowercase hex, no `0x` | `sha256(UTF-8 bytes of the trimmed data_room_id)`, computed at read time and never stored |
+
+- **Stellar targets only.** The block is `null` for an EVM target until #1573 decides the EVM shape, and `null` when the submission's `target_chain_id` is not in `CHAINS`.
+- **`missing_inputs`.** Any input that is absent or not representable in the contract type (a negative or non-numeric amount, more than 7 fractional digits, above `u128::MAX`, a rate overflowing `u32`) is served as `null` and its name is listed, in this order: `metadata_uri`, `data_room_id`, `economics.original_facility_size`, `economics.original_senior_tranche`, `economics.original_equity_tranche`, `economics.original_offtaker_price`, `economics.senior_interest_rate_bps`, `economics.origination_date`, `economics.original_maturity_date`. The names are the input keys the submitter must fix.
+- **Amount format.** An amount must match `^\d+(\.\d+)?$` (no sign, exponent, underscore, leading dot or trailing dot) with at most 39 integer digits and at most 7 fractional digits to be served; `POST /loan` and `POST /resubmit` reject an amount with more than 6 fractional digits or outside that format (`400`, naming the field).
+- **Drawn or rejected.** `draw_loan` in `GET /submissions` is `null` once the submission is drawn (`loan_id` set) or `Rejected`.
+- **Do not draw while `missing_inputs` is non-empty.** Economics of rows submitted before #1620 may be in base units; such rows carry no `data_room_id`, report `missing_inputs`, and must be resubmitted through the current UI.
+- **Existing rows are not migrated.** Rows without `data_room_id` serve `borrower_ref: null` and `missing_inputs: ["data_room_id"]`.
+- **Public exposure.** `GET /submissions` is public, so `data_room_id` in `loan_data` is served verbatim, like `borrower_id`.
+- **Rollout.** Step 1 (this change) makes `data_room_id` optional and serves the block; step 2, after the frontend follow-up #1805 is deployed, makes `data_room_id` required.
 
 `submitted_loans` — one row per application:
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `BIGINT` (identity) | surrogate PK — the submission id used by the review endpoint. **Not** the on-chain `loan_id`, which does not exist until the loan is drawn |
-| `loan_data` | `JSONB` | the full submitted payload, verbatim |
+| `loan_data` | `JSONB` | the full submitted payload, verbatim; may carry `data_room_id` (trimmed) |
 | `status` | `TEXT` | `InReview` \| `Approved` \| `Rejected` \| `ChangesRequested` (CHECK-constrained) |
 | `reason` | `TEXT` | rejection/feedback reason; present **iff** `status IN (Rejected, ChangesRequested)` (CHECK-enforced) |
 | `originator` | `TEXT` | the submitter's authenticated address (JWT `sub`) |

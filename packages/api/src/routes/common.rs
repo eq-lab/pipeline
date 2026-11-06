@@ -31,6 +31,14 @@ pub struct SeriesStat {
     pub average: String,
 }
 
+pub fn chain_kind(state: &AppState, chain_id: i64) -> Option<shared::chains::ChainKind> {
+    state
+        .chains
+        .iter()
+        .find(|c| c.chain_id == chain_id)
+        .map(|c| c.kind)
+}
+
 /// LoanRegistry address the LoanBook readers are scoped to on `chain_id`.
 /// Startup guarantees every configured chain has one, so the error is reachable only
 /// for a chain that is not configured.

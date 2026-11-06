@@ -1,8 +1,8 @@
 //! Originator-submitted loan applications awaiting trustee review.
 //!
 //! Backs the loan-submission workflow (see `docs/product-specs/api-authorization-loan-submission.md`
-//! and `routes::loan_book`). An originator submits the full set of `draw_loan`
-//! inputs, stored verbatim as JSONB in `loan_data`; a trustee then approves or
+//! and `routes::loan_book`). An originator submits a loan payload,
+//! stored verbatim as JSONB in `loan_data`; a trustee then approves or
 //! rejects each submission. The surrogate `id` is the submission identifier — the
 //! on-chain `loan_id` does not exist until the loan is actually drawn.
 
@@ -165,7 +165,7 @@ pub fn classify_unlinked_draw(
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SubmittedLoanRow {
     pub id: i64,
-    /// The full submitted loan payload (all `draw_loan` inputs), stored verbatim.
+    /// The submitted loan payload, stored verbatim.
     pub loan_data: Value,
     /// `InReview` | `Approved` | `Rejected` | `ChangesRequested`.
     pub status: String,
