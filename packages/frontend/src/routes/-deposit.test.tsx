@@ -261,7 +261,7 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
-const mockInvalidateRequests = vi.hoisted(() => vi.fn());
+const mockConfirmAction = vi.hoisted(() => vi.fn());
 
 vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
   useStellarDepositManagerMinDeposit: () => ({
@@ -279,7 +279,7 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  useInvalidateRequests: () => mockInvalidateRequests,
+  useActionConfirmedRefresh: () => mockConfirmAction,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useDepositVoucher: (_requestId: string | undefined) => ({
     data: mockVoucherData,

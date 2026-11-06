@@ -1,34 +1,16 @@
-/**
- * React Query hook — fetches the connected wallet's request history from the
- * Pipeline API (`GET /v1/requests?wallet=<address>&chain_id=<id>`).
- *
- * Chain awareness (#552, #1567)
- * -----------------------------
- * The hook follows the active wallet view (`useWalletView().kind`), the same
- * way `usePnl` does:
- *   - EVM view     → `wallet=<0x…>&chain_id=<ENV.EVM_CHAIN_ID>`
- *   - Stellar view → `wallet=<G…>&chain_id=<ENV.STELLAR_CHAIN_ID>`
- * The backend filters by `chain_id` (omitted = every chain, #1565), so the
- * same `0x…` address never pulls in another EVM chain's requests. The query
- * key carries the view kind, the address and the chain id, so switching the
- * view refetches.
- *
- * Mock layer
- * ----------
- * The hook is reactive to changes in `pipeline.mock.api.GET./v1/requests*`
- * localStorage keys. When the mock bridge dispatches a `pipeline-mock:wallet`
- * event (any `pipeline.mock.*` write), the hook increments a version counter
- * that is included in the React Query `queryKey`, causing a fresh fetch.
- *
- * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
- */
+// spec: docs/frontend/wallet-flows.md#activity-refresh-after-a-confirmed-action
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
-import { useSyncExternalStore } from "react";
-import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
+import { useEffect, useSyncExternalStore } from "react";
 import { subscribeMock } from "@/wallet";
 import { apiFetch } from "./client";
-import { ENV } from "@/lib/env";
+import {
+  ACTIVITY_POLL_MS,
+  getExpectations,
+  openExpectationsFor,
+  settleExpectations,
+  subscribeExpectations,
+  useActiveRequestsScope,
+} from "./activityRefresh";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,16 +25,11 @@ export type RequestType = "Deposit" | "Withdraw" | "Stake" | "Unstake";
 export interface RequestItem {
   type: RequestType;
   chain_id: number;
-  /** Omitted for Stake / Unstake */
   request_id?: string;
-  /** Raw bigint string at the token's decimals: USDC for Deposit/Withdraw, PLUSD for Stake/Unstake (6 on EVM, 7 on Stellar) */
   amount: string;
-  /** Stake/Unstake only */
   assets?: string;
-  /** Stake/Unstake only */
   shares?: string;
   status: RequestStatus;
-  /** ISO-8601 UTC */
   created_at: string;
 }
 
@@ -61,8 +38,6 @@ export interface RequestsResponse {
 }
 
 // ── Mock-version external store ────────────────────────────────────────────────
-// A simple counter that increments on every `pipeline.mock.*` change. Including
-// it in the React Query queryKey forces a fresh fetch when mock data changes.
 
 let mockVersion = 0;
 const mockListeners = new Set<() => void>();
@@ -74,9 +49,7 @@ function getMockVersion() {
 function subscribeMockVersion(listener: () => void) {
   return subscribeMock("pipeline.mock.api", () => {
     mockVersion += 1;
-    // Notify React's useSyncExternalStore listener
     listener();
-    // Also notify all other listeners (in case there are multiple)
     for (const l of mockListeners) {
       if (l !== listener) l();
     }
@@ -86,8 +59,6 @@ function subscribeMockVersion(listener: () => void) {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export interface UseRequestsOptions {
-  /** Polling interval in milliseconds. When provided, the query refetches on
-   *  this cadence in addition to mock-key-change refetches. */
   refetchInterval?:
     | number
     | ((data: RequestsResponse | undefined) => number | false);
@@ -100,35 +71,21 @@ export interface UseRequestsResult {
   refetch: () => void;
 }
 
-/**
- * Returns the connected wallet's request history.
- *
- * - Switches between EVM and Stellar wallet addresses based on `useWalletView().kind`.
- * - Disabled when the active chain's wallet is disconnected (`enabled: false`).
- * - Refetches automatically when any `pipeline.mock.*` key changes (same-tab
- *   mock bridge) — keeps the DevTools console experience seamless.
- * - Pass `refetchInterval` to enable background polling (e.g. 60_000 for the
- *   deposit page state machine).
- */
 export function useRequests(
   options: UseRequestsOptions = {},
 ): UseRequestsResult {
-  const { kind } = useWalletView();
-  const { address: evmAddress, isConnected: isEvmConnected } = useEvmWallet();
-  const { address: stellarAddress, isConnected: isStellarConnected } =
-    useStellarWallet();
+  const queryClient = useQueryClient();
+  const { kind, address, isConnected, chainId } = useActiveRequestsScope();
 
-  // Select address and connection state based on the active wallet view.
-  const address = kind === "stellar" ? stellarAddress : evmAddress;
-  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
-  const chainId = kind === "stellar" ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
-
-  // Subscribe to mock-key changes — version is included in queryKey to force
-  // React Query to issue a fresh fetch when mock data is written.
   const mockVer = useSyncExternalStore(
     subscribeMockVersion,
     getMockVersion,
     getMockVersion,
+  );
+  const expectations = useSyncExternalStore(
+    subscribeExpectations,
+    getExpectations,
+    getExpectations,
   );
 
   const interval = options.refetchInterval;
@@ -140,16 +97,29 @@ export function useRequests(
         `/v1/requests?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled: isConnected && !!address,
-    ...(interval !== undefined
-      ? {
-          refetchInterval:
-            typeof interval === "function"
-              ? (q: { state: { data: RequestsResponse | undefined } }) =>
-                  interval(q.state.data)
-              : interval,
-        }
-      : {}),
+    refetchInterval: (q) => {
+      const data = q.state.data;
+      const caller = typeof interval === "function" ? interval(data) : interval;
+      const open = openExpectationsFor(
+        expectations,
+        address,
+        chainId,
+        data,
+        Date.now(),
+      );
+      if (open.length === 0) return caller ?? false;
+      return Math.min(ACTIVITY_POLL_MS, caller || Infinity);
+    },
   });
+
+  const { data, dataUpdatedAt } = query;
+  useEffect(() => {
+    if (!dataUpdatedAt) return;
+    if (settleExpectations(data, address, chainId, Date.now())) {
+      void queryClient.invalidateQueries({ queryKey: ["pnl"] });
+      void queryClient.invalidateQueries({ queryKey: ["positionsHistory"] });
+    }
+  }, [data, dataUpdatedAt, address, chainId, queryClient]);
 
   return {
     data: query.data,
@@ -157,11 +127,4 @@ export function useRequests(
     error: query.error,
     refetch: () => void query.refetch(),
   };
-}
-
-export function useInvalidateRequests(): () => void {
-  const queryClient = useQueryClient();
-  return useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["requests"] });
-  }, [queryClient]);
 }

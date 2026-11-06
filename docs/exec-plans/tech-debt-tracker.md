@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-173.**
+**Next free number: TD-174.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2313,7 +2313,15 @@ line, whichever section it lands in.
 - **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history. The API's computed staleness flags (`GET /v1/loan-book/{loan_id}/security`, #1780) use the API clock, not the ledger timestamp, so they can flip a few seconds apart from the contract's.
 - **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
 
-### TD-172: Per-loan `contract_logs` reads filter on JSON `params` with no supporting index
+### TD-172: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
+
+- **Date:** 2026-11-05
+- **Location:** `packages/frontend/src/wallet/useDepositFlow.ts`, `packages/frontend/src/api/activityRefresh.ts`
+- **Gap:** `useDepositFlow` polls `/v1/requests` every 5 s while a known request id is unlisted, and the activity-expectation store (#1810) now polls every 3 s for the same condition. `useRequests` takes the shorter of the two.
+- **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
+- **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
+
+### TD-173: Per-loan `contract_logs` reads filter on JSON `params` with no supporting index
 
 - **Date:** 2026-11-06
 - **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`

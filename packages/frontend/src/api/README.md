@@ -141,6 +141,11 @@ configured the same `0x…` address only sees the active chain's requests. The q
 key is `["requests", kind, address, chainId, mockVer]`, so switching the view
 refetches and the two histories never mix in the React Query cache.
 
+**Expectation-driven polling (#1810).** After a confirmed write, `useActionConfirmedRefresh()`
+registers an activity expectation, and `useRequests` refetches every 3 s (up to 60 s) until the
+served list meets it. Only the served list is shown, never an optimistic row. See
+[`docs/frontend/wallet-flows.md`](../../../../docs/frontend/wallet-flows.md#activity-refresh-after-a-confirmed-action).
+
 ### `getMyPaymentDetails(chainId)` / `usePaymentDetails(request)` (#1817)
 
 `getMyPaymentDetails` calls the authenticated `GET /v1/lps/me/payment-details?chain_id=<id>`.
