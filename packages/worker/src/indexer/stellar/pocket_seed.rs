@@ -1,5 +1,4 @@
 // spec: docs/references/backend.md#stellar-pocket-indexing
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -12,47 +11,33 @@ use shared::pocket_repo::PocketRepo;
 
 use crate::indexer::stellar::loan_registry_reader::{expect_map, map_i128, map_u32, simulate_view};
 use crate::indexer::stellar::rpc::StellarRpc;
+use crate::indexer::stellar::supervise::KeyedBackoff;
 
 pub const POCKET_SEED_INTERVAL: Duration = Duration::from_mins(1);
-const BACKOFF_BASE: Duration = Duration::from_mins(1);
-const BACKOFF_CAP: Duration = Duration::from_hours(1);
-
-pub fn backoff_delay(failures: u32) -> Duration {
-    let exp = failures.saturating_sub(1).min(16);
-    BACKOFF_BASE.saturating_mul(1u32 << exp).min(BACKOFF_CAP)
-}
+pub use crate::indexer::stellar::supervise::backoff_delay;
 
 #[derive(Default)]
-pub struct SeedBackoff {
-    entries: HashMap<u32, (u32, Instant)>,
-    read_warned: HashSet<u32>,
-    insert_warned: HashSet<u32>,
-}
+pub struct SeedBackoff(KeyedBackoff<u32>);
 
 impl SeedBackoff {
     pub fn is_due(&self, loan_id: u32, now: Instant) -> bool {
-        self.entries
-            .get(&loan_id)
-            .is_none_or(|(_, next)| now >= *next)
+        self.0.is_due(loan_id, now)
     }
 
     pub fn record_failure(&mut self, loan_id: u32, now: Instant) -> u32 {
-        let entry = self.entries.entry(loan_id).or_insert((0, now));
-        entry.0 += 1;
-        entry.1 = now + backoff_delay(entry.0);
-        entry.0
+        self.0.record_failure(loan_id, now)
     }
 
     pub fn clear(&mut self, loan_id: u32) {
-        self.entries.remove(&loan_id);
+        self.0.clear(loan_id);
     }
 
     pub fn first_read_warning(&mut self, loan_id: u32) -> bool {
-        self.read_warned.insert(loan_id)
+        self.0.first_warning_on(loan_id, 0)
     }
 
     pub fn first_insert_warning(&mut self, loan_id: u32) -> bool {
-        self.insert_warned.insert(loan_id)
+        self.0.first_warning_on(loan_id, 1)
     }
 }
 

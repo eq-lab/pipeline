@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-172.**
+**Next free number: TD-173.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2305,7 +2305,15 @@ line, whichever section it lands in.
 - **Impact:** The loan-book `pocket` totals can differ from `pocket(loan_id)` while reporting `complete: true`.
 - **Suggested fix:** Compare the fold with a fresh `pocket(loan_id)` simulate in the seed loop and re-seed on mismatch, or store the cursor ledger at which the key was set. Documented in `docs/references/backend.md#stellar-pocket-indexing`. Number picked after main's TD-166 and past the #1790 / #1791 branches' TD-165..169; renumber at merge if it collides. Found while working on #1789.
 
-### TD-171: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
+### TD-171: SecurityRegistry valuation and snapshots are current-state reads; pre-key history is view-seeded
+
+- **Date:** 2026-11-06
+- **Location:** `packages/worker/src/indexer/stellar/security_registry_sync.rs`, `shared::security_registry`
+- **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
+- **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history.
+- **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
+
+### TD-172: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
 
 - **Date:** 2026-11-05
 - **Location:** `packages/frontend/src/wallet/useDepositFlow.ts`, `packages/frontend/src/api/activityRefresh.ts`

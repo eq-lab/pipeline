@@ -229,7 +229,7 @@ Stellar balance reads `["stellarSacToken"]`, `["stellarUsdcBalance"]`,
 more because the same indexer pass feeds them.
 
 The toasts and the `navigate("/")` calls are unchanged. The `/deposit` known-id 5 s poll stays
-(TD-171 tracks folding it into expectations).
+(TD-172 tracks folding it into expectations).
 
 ### Step error state
 
