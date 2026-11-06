@@ -48,6 +48,7 @@ pub mod position_repo;
 pub mod price_provider;
 pub mod security_registry;
 pub mod security_registry_repo;
+pub mod security_state;
 pub mod signature;
 pub mod stellar_voucher;
 pub mod submitted_loan_repo;

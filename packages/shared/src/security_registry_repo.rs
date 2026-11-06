@@ -7,8 +7,9 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::security_registry::{
-    ContractView, InspectionView, LoanProjection, LoanView, RecordEventLedgers, RecordView,
-    RegistryStateRow, SecurityEventRow, Snapshot, ValuationRow,
+    ConsentRow, ContractView, DocRow, InspectionRow, InspectionView, LoanProjection, LoanView,
+    LotRow, MarginCallEventRow, RecordEventLedgers, RecordRow, RecordView, RegistryStateRow,
+    SecurityEventRow, Snapshot, TermsRow, ValuationRow,
 };
 
 pub const LIST_LOAN_EVENTS_SQL: &str = "SELECT id, event_name, block_number, log_index,
@@ -305,6 +306,111 @@ pub const UPSERT_VALUATION_SQL: &str = "INSERT INTO security_loan_valuations
             source_log_id = EXCLUDED.source_log_id,
             fetched_at = now()";
 
+pub const SECURITY_READ_TX_SQL: &str = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
+
+pub const GET_TERMS_SQL: &str = "SELECT loan_id, advance_ratio_bps, margin_call_ratio_bps,
+            cure_period, price_stale_after, payment_term, grace_period, default_rate,
+            attestation_interval, inspection_interval, tolerance_bps, grade_tolerance_bps,
+            margin_call_at, set_ledger, complete
+     FROM security_terms
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3";
+
+pub const LIST_RECORDS_FOR_LOAN_SQL: &str = "SELECT record_id, loan_id, lot_id, protection,
+            commodity, unit, reference_quantity, reference_grade, region, site_hash,
+            control_kind, control_reference, perfection, release_condition, status,
+            perfected_at, attested_by, attested_at, flagged_by, mark_value_per_unit, mark_at,
+            mark_benchmark, mark_report_hash, registered_ledger, closed_ledger,
+            release_reason_hash, released_by_consent, complete, needs_view, view_ledger
+     FROM security_records
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
+     ORDER BY record_id";
+
+pub const LIST_DOCS_FOR_LOAN_SQL: &str = "SELECT record_id, position, loan_id, kind, sha256,
+            source, ledger
+     FROM security_record_docs
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
+     ORDER BY record_id, position";
+
+pub const LIST_INSPECTIONS_FOR_LOAN_SQL: &str = "SELECT inspection_id, loan_id, record_id, lot_id,
+            inspector, kind, inspected_at, region, site_hash, quantity, grade,
+            certificate_hash, certificate_no, entered_by, entered_at, approved_by, approved_at,
+            variance_reference_bps, variance_previous_bps, variance_grade_bps, flagged,
+            resolution, resolution_reason_hash, resolved_at, recorded_ledger, approved_ledger,
+            complete, needs_view
+     FROM security_inspections
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
+     ORDER BY record_id, inspection_id";
+
+pub const LIST_LOTS_FOR_LOAN_SQL: &str = "SELECT lot_id, loan_id, latest_inspection_id,
+            latest_inspected_at, latest_quantity, complete
+     FROM security_lots
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
+     ORDER BY lot_id";
+
+pub const LIST_MARGIN_EVENTS_FOR_LOAN_SQL: &str = "SELECT block_number,
+            log_index::bigint AS log_index, loan_id, kind, ltv_bps, margin_call_ratio_bps,
+            cure_by, block_timestamp, tx_hash
+     FROM security_margin_call_events
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
+     ORDER BY block_number, log_index";
+
+pub const LIST_CONSENTS_FOR_LOAN_SQL: &str = "SELECT loan_id, position, consent_hash,
+            new_maturity, ledger, block_timestamp
+     FROM security_extension_consents
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
+     ORDER BY position";
+
+pub const GET_REGISTRY_STATE_SQL: &str = "SELECT paused, inspectors, loan_registry,
+            projected_log_id
+     FROM security_registry_state
+     WHERE chain_id = $1 AND contract_address = $2";
+
+pub const GET_VALUATION_SQL: &str = "SELECT loan_id, value, stale_value, flagged_value, debt,
+            coverage_bps, ltv_bps, margin_call_at, cure_by, price_stale, counted_records,
+            detail_ledger, loan_registry, outstanding, accrued_interest, money_ledger,
+            source_log_id, fetched_at
+     FROM security_loan_valuations
+     WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3";
+
+pub const LOAN_LOG_WATERMARKS_SQL: &str = "SELECT
+            COALESCE(MAX(id) FILTER (WHERE contract_address = $2), 0) AS sr_log_id,
+            COALESCE(MAX(id), 0) AS valuation_log_id
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = ANY($4)
+       AND params @> jsonb_build_object('loan_id', $3::text)";
+
+pub const LIST_SALE_REPAYMENTS_SQL: &str = "SELECT r.params, r.tx_hash, r.block_timestamp,
+            rev.block_timestamp AS reversed_at
+     FROM contract_logs r
+     LEFT JOIN LATERAL (
+         SELECT v.block_timestamp
+         FROM contract_logs v
+         WHERE v.chain_id = r.chain_id
+           AND v.contract_address = r.contract_address
+           AND v.event_name = 'CashRepaymentReversed'
+           AND v.params->>'loan_id' = r.params->>'loan_id'
+           AND v.params->>'repayment_id' = r.params->>'repayment_id'
+         ORDER BY v.block_number, v.log_index
+         LIMIT 1
+     ) rev ON TRUE
+     WHERE r.chain_id = $1
+       AND r.event_name = 'CashRepaid'
+       AND (r.params @> jsonb_build_object('loan_id', $2::text)
+            OR r.params @> jsonb_build_object('loan_id', $2::bigint))
+       AND r.params->>'sale_id' = ANY($3)
+       AND EXISTS (
+           SELECT 1
+           FROM contract_logs e
+           WHERE e.chain_id = r.chain_id
+             AND e.contract_address = $4
+             AND e.event_name IN ('SecurityEnforcementStarted', 'SecurityRecordEnforced')
+             AND e.params @> jsonb_build_object('loan_id', $2::text,
+                                                'record_id', r.params->>'sale_id')
+             AND (e.block_number, e.log_index) <= (r.block_number, r.log_index)
+       )
+     ORDER BY r.block_number, r.log_index";
+
 pub type ValuationTuple = (
     i64,
     Option<i64>,
@@ -357,6 +463,45 @@ fn to_u32(v: i64) -> Option<u32> {
 
 fn names(list: &[&str]) -> Vec<String> {
     list.iter().map(|s| (*s).to_owned()).collect()
+}
+
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct SaleRepaymentRow {
+    pub params: Value,
+    pub tx_hash: String,
+    pub block_timestamp: i64,
+    pub reversed_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LoanSecurityRows {
+    pub loan_status: Option<String>,
+    pub terms: Option<TermsRow>,
+    pub records: Vec<RecordRow>,
+    pub docs: Vec<DocRow>,
+    pub inspections: Vec<InspectionRow>,
+    pub lots: Vec<LotRow>,
+    pub margin_events: Vec<MarginCallEventRow>,
+    pub consents: Vec<ConsentRow>,
+    pub registry: Option<(RegistryStateRow, i64)>,
+    pub valuation: Option<(ValuationRow, DateTime<Utc>)>,
+    pub sr_log_id: i64,
+    pub valuation_log_id: i64,
+    pub repayments: Vec<SaleRepaymentRow>,
+}
+
+#[derive(sqlx::FromRow)]
+struct RegistryStateWithWatermark {
+    #[sqlx(flatten)]
+    state: RegistryStateRow,
+    projected_log_id: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct ValuationWithFetchedAt {
+    #[sqlx(flatten)]
+    valuation: ValuationRow,
+    fetched_at: DateTime<Utc>,
 }
 
 #[derive(Clone)]
@@ -899,6 +1044,136 @@ impl SecurityRegistryRepo {
                 })
             })
             .collect())
+    }
+
+    pub async fn load_loan_security(
+        &self,
+        chain_id: i64,
+        contract: &str,
+        loan_id: u32,
+        configured_loan_registry: &str,
+    ) -> anyhow::Result<LoanSecurityRows> {
+        let loan = i64::from(loan_id);
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(SECURITY_READ_TX_SQL).execute(&mut *tx).await?;
+        let terms = sqlx::query_as::<_, TermsRow>(GET_TERMS_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let records = sqlx::query_as::<_, RecordRow>(LIST_RECORDS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_all(&mut *tx)
+            .await?;
+        let docs = sqlx::query_as::<_, DocRow>(LIST_DOCS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_all(&mut *tx)
+            .await?;
+        let inspections = sqlx::query_as::<_, InspectionRow>(LIST_INSPECTIONS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_all(&mut *tx)
+            .await?;
+        let lots = sqlx::query_as::<_, LotRow>(LIST_LOTS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_all(&mut *tx)
+            .await?;
+        let margin_events =
+            sqlx::query_as::<_, MarginCallEventRow>(LIST_MARGIN_EVENTS_FOR_LOAN_SQL)
+                .bind(chain_id)
+                .bind(contract)
+                .bind(loan)
+                .fetch_all(&mut *tx)
+                .await?;
+        let consents = sqlx::query_as::<_, ConsentRow>(LIST_CONSENTS_FOR_LOAN_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_all(&mut *tx)
+            .await?;
+        let registry = sqlx::query_as::<_, RegistryStateWithWatermark>(GET_REGISTRY_STATE_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|r| (r.state, r.projected_log_id));
+        let valuation = sqlx::query_as::<_, ValuationWithFetchedAt>(GET_VALUATION_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|v| (v.valuation, v.fetched_at));
+        let mut log_contracts = vec![contract.to_owned()];
+        if let Some((v, _)) = &valuation {
+            log_contracts.push(v.loan_registry.clone());
+        }
+        let (sr_log_id, valuation_log_id): (i64, i64) = sqlx::query_as(LOAN_LOG_WATERMARKS_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .bind(loan_id.to_string())
+            .bind(&log_contracts)
+            .fetch_one(&mut *tx)
+            .await?;
+        let loan_registry = valuation
+            .as_ref()
+            .map(|(v, _)| v.loan_registry.clone())
+            .or_else(|| registry.as_ref().and_then(|(s, _)| s.loan_registry.clone()))
+            .unwrap_or_else(|| configured_loan_registry.to_owned());
+        if loan_registry != configured_loan_registry {
+            tracing::warn!(
+                projected = %loan_registry,
+                configured = configured_loan_registry,
+                "security projection loan registry differs from the configured one"
+            );
+        }
+        let loan_status = crate::contract_logs_repo::ContractLogsRepo::new(self.pool.clone())
+            .latest_status_by_loans(
+                &mut *tx,
+                chain_id,
+                &loan_registry,
+                &[BigDecimal::from(loan_id)],
+            )
+            .await?
+            .into_iter()
+            .next()
+            .map(|(_, status)| status);
+        let sale_ids: Vec<String> = records.iter().map(|r| r.record_id.to_string()).collect();
+        let repayments = if sale_ids.is_empty() {
+            Vec::new()
+        } else {
+            sqlx::query_as::<_, SaleRepaymentRow>(LIST_SALE_REPAYMENTS_SQL)
+                .bind(chain_id)
+                .bind(loan_id.to_string())
+                .bind(&sale_ids)
+                .bind(contract)
+                .fetch_all(&mut *tx)
+                .await?
+        };
+        tx.commit().await?;
+        Ok(LoanSecurityRows {
+            loan_status,
+            terms,
+            records,
+            docs,
+            inspections,
+            lots,
+            margin_events,
+            consents,
+            registry,
+            valuation,
+            sr_log_id,
+            valuation_log_id,
+            repayments,
+        })
     }
 
     pub async fn upsert_valuation(
