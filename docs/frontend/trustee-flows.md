@@ -218,6 +218,86 @@ Trustee specify it). Signature collection header `12px` uppercase `tracking-[0.9
 a `9px` dot + name `15px` + optional `mandatory` chip + right-aligned "not signed" `13px`. Buttons
 `h-[40px]`: Cancel white-bordered, Co-sign `BRAND` (disabled).
 
+## Cash Management — Escrowed wires
+
+**Sources:** `packages/trustee/src/routes/-EscrowedWiresSection.tsx` (view — tab, `AssignWireDialog`,
+`ReturnWireDialog`), `-escrowed-wires.ts` (section hook), `lib/wireEscrow.ts` (copy and presenters),
+`api/useCashBook.ts`, `api/useEscrowedWires.ts`, and `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts`.
+**Spec:** [deposits.md §Escrowed Wires](../product-specs/deposits.md#escrowed-wires). Issue #1763, the
+fourth tab of the Cash Management page. No Figma: it reuses the page's card, table and chip patterns
+and the dialog shell of `MintConfirmDialog` (`useLpReviewDialog`).
+
+### Chain scope
+
+Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session), shown
+as a chip (`cash-management-escrow-chain`) and the sub-line "Unmatched incoming wires held by the minter
+on {chain} — assign each to its lender or return it." An EVM session renders "Escrowed wires on {chain}
+are not available in the Trustee app yet." and fetches nothing (the API serves no EVM cash book and the
+app has no EVM write client, #1573).
+
+### Data sourcing
+
+- `useCashBook(chainId, { enabled, refetchMs })` — `GET /v1/cash-book?chain_id=`, key
+  `["cash-book", chainId]`, the full served response (#1764 and #1765 reuse it); no retry on a 4xx.
+  Refetch is 30 s, or 5 s while a row is `*-pending-index`, bounded to 120 s per row.
+- Rows are `wire_ins` whose served `status === "Escrowed"`, in served order. Nothing is derived
+  client-side. `amount` is shown verbatim with its 6 decimals (`formatUsdExact`).
+- Each row is confirmed by `readMinterWireIn` (`wire_in(id)`, key `["minter-wire-in", minterId, id]`,
+  stale time 0). The cash book's `minter` must equal `ENV.STELLAR_YIELD_MINTER_ID`, otherwise every action
+  is disabled.
+
+### Table
+
+Columns: wire `#id`, amount, value date, bank reference hash (first 8 / last 8, full value in `title`),
+recorded at (`formatIsoDateTimeUtc`), on-chain status, actions. States: loading skeleton, `InlineError`
+(`404 minter_not_configured` -> "The cash book is not configured for {chain} on this server.", `403`,
+`401`), empty "No incoming wires are in escrow."
+
+### Row states and gating
+
+On-chain label: "Escrowed (confirmed on-chain)", "Assigned on-chain — waiting for the indexer",
+"Returned on-chain — waiting for the indexer", "On-chain status {s} differs from the cash book",
+"Could not confirm on-chain". Actions (`Assign to lender`, `Return`) are disabled with a visible reason
+(`escrow-row-{id}-reason`), first match wins: wallet not connected; minter or AccessManager not
+configured; minter mismatch; role (`can_call(wallet, minter, fn)` must be `immediate`, via
+`useWireEscrowAccess`; a delayed grant gets a reason and no schedule path); on-chain state not
+`confirmed`; another action in flight.
+
+### Assign dialog
+
+Wire summary, an LP select (`useLps`, only LPs with `stellar_address` and `address_linked_at`, sorted by
+name, "{legal_name} — {truncated address}"), the full receiver address and the authorisation result
+(`PLUSD.authorized`; "This lender's address is not authorised to hold PLUSD. It cannot receive this
+wire." / "This lender's address has no PLUSD trustline."). Confirm is enabled only when authorised. On
+confirm, before signing: re-read `fetchLp` (a changed settlement address returns to the select with a
+notice), re-read `wire_in(id)` (not `Escrowed` aborts), re-read the authorisation. Then
+`AM.execute(minter, assign_wire_in, [id, receiver])`.
+
+### Return dialog
+
+Wire summary and an "Outgoing bank reference" input (trimmed, non-empty, at most 140 characters); the
+computed `ref_hash` shows read-only. On confirm, before signing: `ref_hash_seen` (true shows "This bank
+reference is already recorded on-chain. Use the outgoing wire's own reference."), then re-read
+`wire_in(id)`. Then `AM.execute(minter, return_wire_in, [id, ref_hash])`.
+
+### Shell, errors and result
+
+Escape and backdrop cancel and never confirm; both are blocked while a step is pending, and the confirm
+label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"). Errors show inline with
+"View details". Pre-sign on-chain reads carry the specific copy; `wireEscrowErrorCopy` maps contract codes
+only as a fallback (`#7` / `RefHashSeen` on return, `#15` on assign, `#14` not in escrow, `#9` unknown
+wire) and keeps the wallet-rejection copy. After the transaction lands the app re-reads `wire_in(id)` and
+shows a green notice built from that read: "Wire #{id} assigned on-chain to {legal name} ({receiver}).
+Status {status}. Transaction {hash}. It leaves this list once indexed." or "Wire #{id} returned on-chain.
+Status {status}, return reference {ref}. Transaction {hash}. It leaves this list once indexed."
+
+### Testnet caveat
+
+No escrowed wire exists on testnet: BUG-32 (logged with #1762) blocks `record_wire_in(receiver = minter)`
+because the minter lacks the PLUSD `MINTER` role. `return_wire_in` burns PLUSD and may also fail until
+the minter holds the burn role. Both are live-testing risks, covered by unit tests meanwhile. The
+capital-wallet fallback of Mint PLUSD is unaffected (decision 2026-11-02).
+
 ## Loan book & tables
 
 **Sources:** `packages/trustee/src/api/useLoanBook.ts` (data hook),

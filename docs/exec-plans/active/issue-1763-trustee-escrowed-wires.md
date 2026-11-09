@@ -70,7 +70,7 @@ _None_
 
 ## Implementation Steps
 
-1. **wallet-connect: escrow bindings.** Create the new file `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts`, with a header `// spec: docs/product-specs/deposits.md#escrowed-wires` and no other comments. It reuses `hexToBytes32ScVal` from `./minter`, `relay` / `RelayParams` / `RelayResult` from `./accessManager`, and `simulateRead` from `./simulateRead`.
+1. [x] **wallet-connect: escrow bindings.** Create the new file `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts`, with a header `// spec: docs/product-specs/deposits.md#escrowed-wires` and no other comments. It reuses `hexToBytes32ScVal` from `./minter`, `relay` / `RelayParams` / `RelayResult` from `./accessManager`, and `simulateRead` from `./simulateRead`.
    - `type WireInStatus = "Direct" | "Escrowed" | "Assigned" | "Returned"`.
    - `interface MinterWireIn { id; amount: string /* raw i128 as decimal string */; receiver; refHash: string /* 64 lowercase hex */; returnRef: string; status: WireInStatus; valueDate: number }`.
    - `readMinterWireIn({ minterId, id, rpcUrl, networkPassphrase })`: `simulateRead(minterId, "wire_in", [u32(id)])`. It normalises the `["Escrowed"]`-style enum to the string, bytes to hex, and bigint to string, and throws on an unknown status or missing field (never defaults).
@@ -79,17 +79,17 @@ _None_
    - `encodeAssignWireInArgs({ id, receiver })` gives `[u32, Address]`. `encodeReturnWireInArgs({ id, refHash })` gives `[u32, BytesN<32>]`. Both reject a non-integer id or an id below 1. Return also rejects the zero hash.
    - `assignWireIn(params)` / `returnWireIn(params)` are thin wrappers over `relay({ mode: "execute", target: minterId, fn, args })`, mirroring `scheduleReverseRepay` / `executeReverseRepay`.
    - Only if #1874 is not on `main` at coding time: `readWireInRefHashSeen` (`ref_hash_seen`) and `wireInReturnRefHash(reference)` = sha256 of the trimmed reference as lowercase hex, via `crypto.subtle`. If #1874 is merged, skip these two and use its `readRefHashSeen` / `bankReferenceRefHash`.
-2. **wallet-connect exports.** Append one new `export { … } from "./stellar/contracts/wireInEscrow"` block and one `export type { … }` block at the end of the minter export area in `packages/wallet-connect/src/index.ts`, without touching existing lines. Grep for name collisions with #1761 and #1762 exports.
-3. **trustee: cash-book data hook.** Create the new file `packages/trustee/src/api/useCashBook.ts`, with header `// spec: docs/product-specs/minter-cash-book.md#api-contract`.
+2. [x] **wallet-connect exports.** Append one new `export { … } from "./stellar/contracts/wireInEscrow"` block and one `export type { … }` block at the end of the minter export area in `packages/wallet-connect/src/index.ts`, without touching existing lines. Grep for name collisions with #1761 and #1762 exports.
+3. [x] **trustee: cash-book data hook.** Create the new file `packages/trustee/src/api/useCashBook.ts`, with header `// spec: docs/product-specs/minter-cash-book.md#api-contract`.
    - It holds the typed `CashBookResponse` (summary, `wire_ins`, `wire_outs`, `ramps`) exactly as served.
    - `useCashBook(chainId, { enabled, refetchMs })` uses key `["cash-book", chainId]` and calls `apiFetch("/v1/cash-book?chain_id=…")`.
    - It is enabled only for a Stellar session chain and runs with `retry: false` on 4xx.
-4. **trustee: on-chain confirmations and access.** Create the new file `packages/trustee/src/api/useEscrowedWires.ts`.
+4. [x] **trustee: on-chain confirmations and access.** Create the new file `packages/trustee/src/api/useEscrowedWires.ts`.
    - `useMinterWireIns(ids)`: `useQueries`, each with key `["minter-wire-in", minterId, id]` and `staleTime` 0, calling `readMinterWireIn`.
    - `useMinterPlusdId()`: key `["minter-plusd", minterId]` and `staleTime: Infinity`.
    - `useWireEscrowAccess(fn: "assign_wire_in" | "return_wire_in", enabled)`: a copy of #1762's `useCashReporterAccess` shape. It calls `readCanCall({ accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID, caller: address, target: ENV.STELLAR_YIELD_MINTER_ID, fn })` under key `["wire-escrow-access", address, fn]`, with `staleTime` 30 s and `retry: false`.
    - `useAssignWireIn()` / `useReturnWireIn()` are mutations patterned on `useRecordWireIn`: a stage state, preflight guards ("not configured for this environment" when either the minter id or the executor id is empty, "Stellar wallet not connected"), and the call to `assignWireIn` / `returnWireIn`. `onSuccess` invalidates `["cash-book"]` and `["minter-wire-in", minterId, id]`.
-5. **trustee: presenter and copy.** Create the new file `packages/trustee/src/lib/wireEscrow.ts` (pure functions, unit-tested).
+5. [x] **trustee: presenter and copy.** Create the new file `packages/trustee/src/lib/wireEscrow.ts` (pure functions, unit-tested).
    - `escrowAccessReason(fn, { access, isPending, isError })` returns:
      - `null` when `access.immediate`.
      - "Checking this wallet's Trustee role…" while pending.
@@ -114,7 +114,7 @@ _None_
      - `401`: "Your session expired. Sign in again."
      - Anything else: `toUserError`.
    - `formatUsdExact(amount)`: add it to `packages/trustee/src/utils/formatUsd.ts`. It prints `$` + the grouped whole part + `.` + the served fraction, verbatim with no truncation (cash-book amounts carry 6 decimals; `formatUsdDecimal` would cut them to 2).
-6. **trustee: section hook.** Create the new file `packages/trustee/src/routes/-escrowed-wires.ts`, `useEscrowedWiresSection()`.
+6. [x] **trustee: section hook.** Create the new file `packages/trustee/src/routes/-escrowed-wires.ts`, `useEscrowedWiresSection()`.
    - It reads `chainId` from the session, `kind = chainKindOf(chainId)` and `chainLabel = targetChainLabel(chainId)`.
    - EVM: state `"unsupported"` with reason "Escrowed wires on {chainLabel} are not available in the Trustee app yet." No fetch.
    - Stellar: it runs `useCashBook` and builds `rows` = `wire_ins.filter(w => w.status === "Escrowed")`, newest id first as served. Each row carries `useMinterWireIns(rows.map(r => r.id))`.
@@ -137,7 +137,7 @@ _None_
        2. Re-reads `wire_in(id)`.
        3. Signs `useReturnWireIn`.
        4. On success, re-reads `wire_in(id)` and sets `lastResult = { kind: "returned", id, returnRef: chain.returnRef, status, hash }`.
-7. **trustee: UI.** Create the new file `packages/trustee/src/routes/-EscrowedWiresSection.tsx`, with header `// spec: docs/frontend/trustee-flows.md#cash-management--escrowed-wires`.
+7. [x] **trustee: UI.** Create the new file `packages/trustee/src/routes/-EscrowedWiresSection.tsx`, with header `// spec: docs/frontend/trustee-flows.md#cash-management--escrowed-wires`.
    - **Header card:** the title "Escrowed wires", a chain chip (`data-testid="cash-management-escrow-chain"`), and the sub-line "Unmatched incoming wires held by the minter on {chain} — assign each to its lender or return it."
    - **States:**
      - Loading: skeleton rows.
@@ -164,14 +164,14 @@ _None_
      - Assigned: "Wire #{id} assigned on-chain to {legalName} ({receiver}). Status {status}. Transaction {hash}."
      - Returned: "Wire #{id} returned on-chain. Status {status}, return reference {returnRef}. Transaction {hash}."
      - Both end with "It leaves this list once indexed." All values come from the post-success chain read.
-8. **trustee: wire the tab** in `packages/trustee/src/routes/cash-management.tsx`. These are additive lines only:
+8. [x] **trustee: wire the tab** in `packages/trustee/src/routes/cash-management.tsx`. These are additive lines only:
    - add `"escrow"` to `TabKey`;
    - add `{ key: "escrow", label: "Escrowed wires" }` to `TABS`, after `onofframp`;
    - import `EscrowedWiresSection`;
    - add an `activeTab === "escrow" ? <EscrowedWiresSection /> :` branch before the final withdrawals fallback;
    - append `#cash-management--escrowed-wires` to the existing spec-pointer header.
    - The section owns its dialogs, so the page's close-all handler needs no change unless the tab switch must close them. In that case, mirror #1762's `income.close()` with a `key` remount.
-9. **Lint and build.**
+9. [x] **Lint and build.**
    - `yarn workspace @pipeline/wallet-connect test`, `yarn workspace @pipeline/trustee test`, and lint for both.
    - `yarn workspace @pipeline/trustee build`. No new route, so no `routeTree.gen.ts` regeneration.
    - `npx tsx scripts/lint-docs.ts` and `npx tsx scripts/lint-comments.ts`. New files carry only the one spec header.

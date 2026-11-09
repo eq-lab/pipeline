@@ -28,6 +28,9 @@ vi.mock("@/api/useCapitalAllocation", () => ({
 }));
 // The Withdrawal Queue tab's useWithdrawalQueueView reads the queue endpoint.
 vi.mock("@/api/useWithdrawalQueue", () => ({ useWithdrawalQueue: vi.fn() }));
+vi.mock("./-EscrowedWiresSection", () => ({
+  EscrowedWiresSection: () => <div data-testid="escrow-section-stub" />,
+}));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
@@ -180,6 +183,24 @@ describe("Cash Management route — shell", () => {
     expect(
       screen.queryByTestId("cash-management-onofframp"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — Escrowed wires tab (#1763)", () => {
+  beforeEach(() => readyEvents());
+
+  it("renders the tab and switches to the section", () => {
+    renderRoute();
+    const tab = screen.getByTestId("cash-management-tab-escrow");
+    expect(tab).toHaveTextContent("Escrowed wires");
+    expect(screen.queryByTestId("escrow-section-stub")).not.toBeInTheDocument();
+    fireEvent.click(tab);
+    expect(screen.getByTestId("escrow-section-stub")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-onofframp"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-tab-onofframp"));
+    expect(screen.getByTestId("cash-management-onofframp")).toBeInTheDocument();
   });
 });
 

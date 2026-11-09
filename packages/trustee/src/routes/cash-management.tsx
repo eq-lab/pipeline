@@ -11,6 +11,7 @@ import {
   type WithdrawalQueueView,
 } from "./-cash-management-withdrawals";
 import { InlineError } from "@pipeline/ui";
+import { EscrowedWiresSection } from "./-EscrowedWiresSection";
 
 /**
  * Cash Management — replaces the #786 placeholder. Per `docs/FRONTEND.md`
@@ -19,7 +20,8 @@ import { InlineError } from "@pipeline/ui";
  * `-cash-management-withdrawals.ts`.
  *
  * spec: docs/frontend/trustee-flows.md#cash-management--onoff-ramp--t-bills,
- * docs/frontend/trustee-flows.md#cash-management--withdrawal-queue.
+ * docs/frontend/trustee-flows.md#cash-management--withdrawal-queue,
+ * docs/frontend/trustee-flows.md#cash-management--escrowed-wires.
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -30,12 +32,13 @@ const NEGATIVE_RED = "#b20000";
 const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 const BRAND = "var(--color-pipeline-brand)";
 
-type TabKey = "onofframp" | "tbills" | "withdrawals";
+type TabKey = "onofframp" | "tbills" | "withdrawals" | "escrow";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "onofframp", label: "On / Off-ramp" },
   { key: "tbills", label: "T-Bills" },
   { key: "withdrawals", label: "Withdrawal Queue" },
+  { key: "escrow", label: "Escrowed wires" },
 ];
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
@@ -1205,6 +1208,8 @@ function CashManagement() {
             New swap
           </button>
         </div>
+      ) : activeTab === "escrow" ? (
+        <EscrowedWiresSection />
       ) : (
         <WithdrawalQueueSection
           withdrawals={withdrawals}

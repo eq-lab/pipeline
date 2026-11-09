@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-174.**
+**Next free number: TD-175.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -1698,6 +1698,7 @@ line, whichever section it lands in.
   `WireIn` row for this chain and contract — reported beside the other three, and worth a `warn`
   once it has been non-zero for longer than an operator would take to act. Pairs naturally with
   TD-116, which wants the same row to distinguish `Returned`.
+- **Update 2026-11-09 (#1763):** the Trustee console now lists escrowed wires (Cash Management → Escrowed wires); the worker-side count and warn are still open.
 
 ---
 
@@ -2332,3 +2333,10 @@ line, whichever section it lands in.
 - **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow linearly with each contract's log count.
 - **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first.
 
+### TD-174: Escrow bindings carry local copies of the ref-hash helpers
+
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts` (`readWireInRefHashSeen`, `wireInReturnRefHash`) — Issue #1763.
+- **Gap:** #1874 (#1762) adds `readRefHashSeen` / `bankReferenceRefHash` to `minter.ts` and #1873 (#1761) moves `sha256Hex` into `stellar/contracts/hash.ts`. Neither was on `main` when #1763 was built, so the escrow bindings hold their own `ref_hash_seen` read and sha256-of-trimmed-reference helper.
+- **Impact:** Two copies of the same on-chain read and hash rule can drift.
+- **Suggested fix:** After #1873 and #1874 merge, drop the local helpers and import `readRefHashSeen` / `bankReferenceRefHash` from `@pipeline/wallet-connect`.

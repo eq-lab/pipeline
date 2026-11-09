@@ -210,6 +210,31 @@ export type {
 } from "./stellar/contracts/minter";
 
 export {
+  readMinterWireIn,
+  readMinterPlusdId,
+  readPlusdAuthorization,
+  readWireInRefHashSeen,
+  wireInReturnRefHash,
+  encodeAssignWireInArgs,
+  encodeReturnWireInArgs,
+  assignWireIn,
+  returnWireIn,
+} from "./stellar/contracts/wireInEscrow";
+export type {
+  WireInStatus,
+  MinterWireIn,
+  PlusdAuthorization,
+  ReadMinterWireInParams,
+  ReadMinterPlusdIdParams,
+  ReadPlusdAuthorizationParams,
+  ReadWireInRefHashSeenParams,
+  AssignWireInArgs,
+  ReturnWireInArgs,
+  AssignWireInParams,
+  ReturnWireInParams,
+} from "./stellar/contracts/wireInEscrow";
+
+export {
   readCanCall,
   readOperationSchedule,
   buildRelayEnvelope,
