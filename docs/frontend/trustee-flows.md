@@ -235,8 +235,9 @@ view-model, the per-row mapping, CCR classification, and the client-side status 
 
 - `useLoanBook(chainId?)` (`api/`) — React Query hook over `GET /v1/loan-book`, 30 s poll. No
   `chain_id` by default (#1537: every configured chain, `summary` server-computed over the union,
-  each row carrying its own `chain_id`); the Loans page's **chain filter** (All chains / Stellar /
-  `<EVM chain>`, `TARGET_CHAINS`) passes a configured id so the narrowing — and the summary tiles —
+  each row carrying its own `chain_id`); the Loans page's **chain filter** ("All chains" plus the
+  served `TARGET_CHAINS` from `useServedTargetChains`, #1667 — disabled with only "All chains"
+  while loading, env list on request failure) passes a configured id so the narrowing — and the summary tiles —
   stay server-side (no client-side recomputation, [[no-frontend-computed-metrics]]). Query key
   `["loan-book", chainId ?? "all"]`; `invalidateQueries({ queryKey: ["loan-book"] })` prefixes hit
   every variant. Loan ids repeat across chains, so the row key is `` `${chain_id}:${loan_id}` ``
@@ -1380,14 +1381,22 @@ complete `SubmitLoanRequest` contract of `POST /v1/loan-book/loan` (mirrored fie
 No Figma exists for this screen (product decision on #1100) — it reuses the Record
 Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
 
-- **Target chain (#1536):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
-  `FieldInput` renders a select instead of a text input when set) listing this deployment's two
-  configured chains from `TARGET_CHAINS` — Stellar (`ENV.STELLAR_CHAIN_ID`, the default) and the
-  EVM chain (`ENV.EVM_CHAIN_ID`, labelled by name). The value is **not** part of the body: the
-  builder returns `{ chainId, input }` and `useSubmitLoan` posts to
-  `POST /v1/loan-book/loan?chain_id=<id>` (`SubmitLoanVariables`). An id the API does not have
-  in `CHAINS` is a `400` rendered inline like any other rejection. The `to` label reads "Mint to
-  (address on the target chain)" — no client-side address-format check (the split below).
+- **Target chain (#1536, #1667):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
+  `FieldInput` renders a select instead of a text input when set). Its options are
+  `TARGET_CHAINS ∩ GET /v1/chains` (`useServedTargetChains`, `api/useChains.ts`; query key
+  `["chains"]`, `staleTime: Infinity`, `retry: false`, public endpoint — not gated on a session):
+  Stellar (`ENV.STELLAR_CHAIN_ID`) and the EVM chain (`ENV.EVM_CHAIN_ID`, labelled by name), kept
+  in `TARGET_CHAINS` order, each only when the API serves it. Chains the API serves that are not
+  in `TARGET_CHAINS` are not offered (no label source). The default is the served
+  `default_chain_id` when it is among the options, else the first option. The select is disabled
+  with no options while the request is pending; on request failure it falls back to the env
+  `TARGET_CHAINS` with the Stellar default. An empty intersection renders an empty disabled
+  select and submit fails client-side with "Required." on `target_chain_id`. The value is **not**
+  part of the body: the builder returns `{ chainId, input }` and `useSubmitLoan` posts to
+  `POST /v1/loan-book/loan?chain_id=<id>` (`SubmitLoanVariables`). An id the API does not serve is
+  a `400`, now reachable only on the fallback path, rendered inline via the #1602 copy. The `to`
+  label reads "Mint to (address on the target chain)" — no client-side address-format check (the
+  split below).
 - **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
   Loan & metadata (`target_chain_id`, `to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
   `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
@@ -1405,7 +1414,7 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   **Required paths absent from the JSON are listed in a warning banner** while the rest
   autofills (the #1100 example payload warns exactly the `collateral_valuation.*` +
   `fee_schedule.*` paths). A `target_chain_id` in the JSON sets the selector when it is one of
-  the configured ids; otherwise the selector keeps its current value and is never listed as
+  the offered (served) ids; otherwise the selector keeps its current value and is never listed as
   missing (#1536). Malformed JSON or a non-object root keeps the dialog open with an
   inline parse error and touches nothing — a single JSON object is required (resolved open
   question: wrapped/array fixture forms are not accepted).
