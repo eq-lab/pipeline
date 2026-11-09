@@ -306,6 +306,28 @@ pub const UPSERT_VALUATION_SQL: &str = "INSERT INTO security_loan_valuations
             source_log_id = EXCLUDED.source_log_id,
             fetched_at = now()";
 
+pub const LIST_OPEN_GOODS_COMMODITIES_SQL: &str = "SELECT DISTINCT commodity
+     FROM security_records
+     WHERE commodity IS NOT NULL
+       AND protection IN ('EndorsedBl','WarehousePledge','CollateralManagement')
+       AND status NOT IN ('Released','Enforced')";
+
+pub const LIST_OPEN_GOODS_OFFTAKE_METALS_SQL: &str =
+    "SELECT DISTINCT r.commodity, term ->> 'metal' AS metal
+     FROM security_records r
+     JOIN LATERAL (
+         SELECT payable_terms
+         FROM loan_offtake_terms
+         WHERE chain_id = r.chain_id AND loan_id = r.loan_id
+         ORDER BY effective_at DESC
+         LIMIT 1
+     ) o ON true
+     CROSS JOIN LATERAL jsonb_array_elements(o.payable_terms) AS term
+     WHERE r.commodity IS NOT NULL
+       AND r.protection IN ('EndorsedBl','WarehousePledge','CollateralManagement')
+       AND r.status NOT IN ('Released','Enforced')
+       AND term ->> 'metal' IS NOT NULL";
+
 pub const SECURITY_READ_TX_SQL: &str = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
 
 pub const GET_TERMS_SQL: &str = "SELECT loan_id, advance_ratio_bps, margin_call_ratio_bps,
@@ -597,6 +619,19 @@ impl SecurityRegistryRepo {
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
+    }
+
+    pub async fn list_open_goods_commodities(&self) -> anyhow::Result<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(LIST_OPEN_GOODS_COMMODITIES_SQL)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|(c,)| c).collect())
+    }
+
+    pub async fn list_open_goods_offtake_metals(&self) -> anyhow::Result<Vec<(String, String)>> {
+        Ok(sqlx::query_as(LIST_OPEN_GOODS_OFFTAKE_METALS_SQL)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     pub async fn list_all_loans(&self, chain_id: i64, contract: &str) -> anyhow::Result<Vec<u32>> {
