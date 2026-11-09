@@ -214,7 +214,7 @@ pub struct LoanMoneyView {
     pub carved_out: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, sqlx::FromRow)]
 pub struct RecordRow {
     pub record_id: i64,
     pub loan_id: i64,
@@ -248,7 +248,7 @@ pub struct RecordRow {
     pub view_ledger: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct DocRow {
     pub record_id: i64,
     pub position: i32,
@@ -259,7 +259,7 @@ pub struct DocRow {
     pub ledger: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, sqlx::FromRow)]
 pub struct TermsRow {
     pub loan_id: i64,
     pub advance_ratio_bps: i64,
@@ -278,7 +278,7 @@ pub struct TermsRow {
     pub complete: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct MarginCallEventRow {
     pub block_number: i64,
     pub log_index: i64,
@@ -291,7 +291,7 @@ pub struct MarginCallEventRow {
     pub tx_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, sqlx::FromRow)]
 pub struct InspectionRow {
     pub inspection_id: i64,
     pub loan_id: i64,
@@ -323,7 +323,7 @@ pub struct InspectionRow {
     pub needs_view: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct LotRow {
     pub lot_id: i64,
     pub loan_id: i64,
@@ -333,7 +333,7 @@ pub struct LotRow {
     pub complete: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct ConsentRow {
     pub loan_id: i64,
     pub position: i32,
@@ -343,14 +343,14 @@ pub struct ConsentRow {
     pub block_timestamp: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, sqlx::FromRow)]
 pub struct RegistryStateRow {
     pub paused: Option<bool>,
     pub inspectors: Option<Value>,
     pub loan_registry: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
 pub struct ValuationRow {
     pub loan_id: i64,
     pub value: BigDecimal,
@@ -382,11 +382,11 @@ pub struct LoanProjection {
     pub consents: Vec<ConsentRow>,
 }
 
-fn p_str(p: &Value, k: &str) -> Option<String> {
+pub fn p_str(p: &Value, k: &str) -> Option<String> {
     p.get(k)?.as_str().map(str::to_owned)
 }
 
-fn p_i64(p: &Value, k: &str) -> Option<i64> {
+pub fn p_i64(p: &Value, k: &str) -> Option<i64> {
     match p.get(k)? {
         Value::String(s) => s.parse().ok(),
         Value::Number(n) => n.as_i64(),
@@ -394,7 +394,7 @@ fn p_i64(p: &Value, k: &str) -> Option<i64> {
     }
 }
 
-fn p_dec(p: &Value, k: &str) -> Option<BigDecimal> {
+pub fn p_dec(p: &Value, k: &str) -> Option<BigDecimal> {
     match p.get(k)? {
         Value::String(s) => BigDecimal::from_str(s).ok(),
         Value::Number(n) => BigDecimal::from_str(&n.to_string()).ok(),
