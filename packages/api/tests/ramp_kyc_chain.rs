@@ -58,6 +58,7 @@ fn make_test_state(transfer_addresses: HashMap<i64, TransferAddressSets>) -> App
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: HashMap::new(),
+        plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,

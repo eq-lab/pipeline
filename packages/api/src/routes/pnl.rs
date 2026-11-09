@@ -13,12 +13,12 @@ use utoipa::{OpenApi, ToSchema};
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
-use crate::minter_cash_book::{build_wire_outs, wire_out_escrow_steps};
+use crate::minter_cash_book::{build_wire_outs, wire_out_escrow_steps, wire_out_raw_steps};
 use crate::routes::common::{RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::total_balance::{
-    build_composite_history, composite_window_start, escrow_outcome, fold_escrow, plain_bounded,
-    CompositeInputs, CompositeSeries,
+    build_composite_history, composite_window_start, fold_term, plain_bounded, plusd_holder_key,
+    plusd_steps, term_outcomes, CompositeInputs, CompositeSeries, Folded, WireTerm,
 };
 use crate::AppState;
 use shared::chains::ChainKind;
@@ -280,6 +280,8 @@ pub struct PositionHistoryItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wire_out_escrow: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub plusd_balance: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total_balance: Option<String>,
 }
 
@@ -350,11 +352,8 @@ async fn get_position_history(
         .map_err(|(_, msg)| ApiError::BadRequest(msg))?;
     let now = Utc::now();
     let interval = query.interval;
-    let minter = (chain.kind == ChainKind::Stellar)
-        .then(|| state.minter_addresses.get(&chain_id))
-        .flatten();
-    let lp = wallet.to_uppercase();
-    let wire_out = || wire_out_steps(&state, chain_id, minter, &lp);
+    let wire_out = || wire_out_term(&state, chain.kind, chain_id, &wallet, interval);
+    let plusd = || plusd_term(&state, chain.kind, chain_id, &wallet, interval);
     let vaults = state.position_repo.get_vaults(chain_id);
 
     let (vault, since, prefetched) = if let Some(d) = query.days {
@@ -364,22 +363,26 @@ async fn get_position_history(
             None,
         )
     } else {
-        let (vaults, first_position, wire) = tokio::join!(
+        let (vaults, first_position, wire, plusd) = tokio::join!(
             vaults,
             state
                 .position_repo
                 .get_first_position_timestamp(chain_id, &wallet),
             wire_out(),
+            plusd(),
         );
         let first_position = first_position?;
-        let wire = escrow_outcome(first_position.is_some(), wire)?;
+        let (wire, plusd) = term_outcomes(first_position.is_some(), wire, plusd)?;
         let first_escrow = wire
             .as_ref()
-            .and_then(|steps| steps.first().map(|step| step.0));
+            .and_then(|t| t.escrow.first().map(|step| step.0.timestamp()));
+        let first_plusd = plusd
+            .as_ref()
+            .and_then(|f| f.first().map(|step| step.0.timestamp()));
         (
             vaults?.into_iter().next(),
-            composite_window_start(first_position, first_escrow),
-            Some(wire),
+            composite_window_start(&[first_position, first_escrow, first_plusd]),
+            Some((wire, plusd)),
         )
     };
 
@@ -416,33 +419,25 @@ async fn get_position_history(
             ),
         )
     };
-    let (rows, closings, wire) = if let Some(wire) = prefetched {
+    let (rows, closings, (wire, plusd)) = if let Some(terms) = prefetched {
         let (rows, closings) = fetch.await?;
-        (rows, closings, wire)
+        (rows, closings, terms)
     } else {
-        let (history, wire) = tokio::join!(fetch, wire_out());
+        let (history, wire, plusd) = tokio::join!(fetch, wire_out(), plusd());
         let (rows, closings) = history?;
-        let wire = escrow_outcome(!rows.is_empty(), wire)?;
-        (rows, closings, wire)
+        let terms = term_outcomes(!rows.is_empty(), wire, plusd)?;
+        (rows, closings, terms)
     };
-
-    let escrow = wire.and_then(|steps| {
-        let folded = fold_escrow(steps, interval);
-        if folded.is_none() {
-            tracing::warn!(
-                chain_id,
-                "wire-out escrow fold failed; omitting wire_out_escrow"
-            );
-        }
-        folded
-    });
 
     let composite = build_composite_history(
         &CompositeInputs {
             positions: &rows,
             prices: &closings,
-            escrow: escrow.as_deref(),
+            escrow: wire.as_ref().map(|t| t.escrow.as_slice()),
+            escrow_raw: wire.as_ref().and_then(|t| t.raw.as_deref()),
+            plusd: plusd.as_deref(),
             share_decimals: u32::try_from(vault.share_decimals).unwrap_or(u32::MAX),
+            asset_decimals: u32::try_from(vault.asset_decimals).unwrap_or(u32::MAX),
         },
         interval,
         start,
@@ -466,7 +461,10 @@ fn empty_series(interval: Interval, now: DateTime<Utc>) -> CompositeSeries {
             positions: &[],
             prices: &[],
             escrow: None,
+            escrow_raw: None,
+            plusd: None,
             share_decimals: 0,
+            asset_decimals: 0,
         },
         interval,
         now,
@@ -492,20 +490,82 @@ fn history_response(
     }
 }
 
-async fn wire_out_steps(
+async fn wire_out_term(
     state: &AppState,
+    kind: ChainKind,
     chain_id: i64,
-    minter: Option<&String>,
-    lp: &str,
-) -> anyhow::Result<Option<Vec<(i64, i128)>>> {
-    let Some(minter) = minter else {
+    wallet: &str,
+    interval: Interval,
+) -> anyhow::Result<Option<WireTerm>> {
+    let rows = match kind {
+        ChainKind::Stellar => {
+            let Some(minter) = state.minter_addresses.get(&chain_id) else {
+                return Ok(None);
+            };
+            let lp = wallet.to_uppercase();
+            state
+                .contract_logs_repo
+                .list_lp_wire_out_events(chain_id, minter, &lp)
+                .await?
+        }
+        ChainKind::Evm => {
+            let Some(lp) = state
+                .plusd_addresses
+                .contains_key(&chain_id)
+                .then(|| plusd_holder_key(kind, wallet))
+                .flatten()
+            else {
+                return Ok(None);
+            };
+            state
+                .contract_logs_repo
+                .list_lp_wire_out_events_inferred_minter(chain_id, &lp)
+                .await?
+        }
+    };
+    let wire_outs = build_wire_outs(&rows);
+    let Some(escrow) = fold_term(
+        wire_out_escrow_steps(&wire_outs, kind),
+        interval,
+        chain_id,
+        "wire_out_escrow",
+    ) else {
+        return Ok(None);
+    };
+    let raw = fold_term(
+        wire_out_raw_steps(&wire_outs),
+        interval,
+        chain_id,
+        "wire_out_escrow_raw",
+    );
+    Ok(Some(WireTerm { escrow, raw }))
+}
+
+async fn plusd_term(
+    state: &AppState,
+    kind: ChainKind,
+    chain_id: i64,
+    wallet: &str,
+    interval: Interval,
+) -> anyhow::Result<Option<Folded>> {
+    let (Some(plusd), Some(holder)) = (
+        state.plusd_addresses.get(&chain_id),
+        plusd_holder_key(kind, wallet),
+    ) else {
         return Ok(None);
     };
     let rows = state
         .contract_logs_repo
-        .list_lp_wire_out_events(chain_id, minter, lp)
+        .list_plusd_holder_steps(chain_id, plusd, &holder)
         .await?;
-    Ok(Some(wire_out_escrow_steps(&build_wire_outs(&rows))))
+    let Some(steps) = plusd_steps(&rows) else {
+        tracing::warn!(
+            chain_id,
+            "PLUSD balance steps malformed; omitting plusd_balance"
+        );
+        return Ok(None);
+    };
+    Ok(fold_term(steps, interval, chain_id, "plusd_balance"))
 }
 
 pub fn history_item(
@@ -524,6 +584,7 @@ pub fn history_item(
         ),
         splusd_value: None,
         wire_out_escrow: None,
+        plusd_balance: None,
         total_balance: None,
     }
 }

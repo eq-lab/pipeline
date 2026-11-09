@@ -1,9 +1,12 @@
 // spec: docs/product-specs/lp-total-balance.md#behavior
 use std::str::FromStr;
 
+use alloy::primitives::Address;
 use bigdecimal::num_bigint::BigInt;
 use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use chrono::{DateTime, Utc};
+use shared::chains::ChainKind;
+use shared::contract_logs_repo::PlusdStepRow;
 use shared::position_repo::{PositionHistoryBucket, SharePriceBucket};
 
 use crate::intervals::Interval;
@@ -43,7 +46,7 @@ fn fmt6(v: &BigDecimal) -> String {
         .to_plain_string()
 }
 
-pub fn fold_escrow(
+pub fn fold_steps(
     steps: Vec<(i64, i128)>,
     interval: Interval,
 ) -> Option<Vec<(DateTime<Utc>, i128)>> {
@@ -63,29 +66,73 @@ pub fn fold_escrow(
     Some(out)
 }
 
-pub fn escrow_outcome(
-    has_positions: bool,
-    wire: anyhow::Result<Option<Vec<(i64, i128)>>>,
-) -> anyhow::Result<Option<Vec<(i64, i128)>>> {
-    match wire {
-        Err(e) if has_positions => {
-            tracing::warn!(error = %e, "failed to fetch wire-outs; omitting wire_out_escrow");
+pub type Folded = Vec<(DateTime<Utc>, i128)>;
+
+pub struct WireTerm {
+    pub escrow: Folded,
+    pub raw: Option<Folded>,
+}
+
+pub fn fold_term(
+    steps: Vec<(i64, i128)>,
+    interval: Interval,
+    chain_id: i64,
+    field: &str,
+) -> Option<Folded> {
+    let folded = fold_steps(steps, interval);
+    if folded.is_none() {
+        tracing::warn!(chain_id, field, "balance term fold failed; omitting it");
+    }
+    folded
+}
+
+pub fn term_outcome<T>(
+    has_other_data: bool,
+    result: anyhow::Result<Option<T>>,
+    field: &str,
+) -> anyhow::Result<Option<T>> {
+    match result {
+        Err(e) if has_other_data => {
+            tracing::warn!(error = %e, field, "failed to fetch balance term; omitting it");
             Ok(None)
         }
         other => other,
     }
 }
 
-pub fn composite_window_start(
-    first_position: Option<i64>,
-    first_escrow: Option<i64>,
-) -> Option<DateTime<Utc>> {
-    let earliest = match (first_position, first_escrow) {
-        (Some(a), Some(b)) => a.min(b),
-        (Some(a), None) | (None, Some(a)) => a,
-        (None, None) => return None,
-    };
+pub fn term_outcomes(
+    has_positions: bool,
+    wire: anyhow::Result<Option<WireTerm>>,
+    plusd: anyhow::Result<Option<Folded>>,
+) -> anyhow::Result<(Option<WireTerm>, Option<Folded>)> {
+    let wire_present = matches!(&wire, Ok(Some(t)) if !t.escrow.is_empty());
+    let plusd_present = matches!(&plusd, Ok(Some(f)) if !f.is_empty());
+    let wire = term_outcome(has_positions || plusd_present, wire, "wire_out_escrow")?;
+    let plusd = term_outcome(has_positions || wire_present, plusd, "plusd_balance")?;
+    Ok((wire, plusd))
+}
+
+pub fn composite_window_start(firsts: &[Option<i64>]) -> Option<DateTime<Utc>> {
+    let earliest = firsts.iter().flatten().min().copied()?;
     DateTime::from_timestamp(earliest, 0)
+}
+
+pub fn plusd_holder_key(kind: ChainKind, wallet: &str) -> Option<String> {
+    match kind {
+        ChainKind::Evm => Some(wallet.parse::<Address>().ok()?.to_checksum(None)),
+        ChainKind::Stellar => Some(wallet.to_uppercase()),
+    }
+}
+
+pub fn plusd_steps(rows: &[PlusdStepRow]) -> Option<Vec<(i64, i128)>> {
+    rows.iter()
+        .map(|r| {
+            let amount: i128 = r.amount.as_deref()?.parse().ok()?;
+            let credit = if r.incoming { amount } else { 0 };
+            let debit = if r.outgoing { amount } else { 0 };
+            Some((r.block_timestamp, credit.checked_sub(debit)?))
+        })
+        .collect()
 }
 
 pub struct Carry<'a, T> {
@@ -135,7 +182,10 @@ pub struct CompositeInputs<'a> {
     pub positions: &'a [PositionHistoryBucket],
     pub prices: &'a [SharePriceBucket],
     pub escrow: Option<&'a [(DateTime<Utc>, i128)]>,
+    pub escrow_raw: Option<&'a [(DateTime<Utc>, i128)]>,
+    pub plusd: Option<&'a [(DateTime<Utc>, i128)]>,
     pub share_decimals: u32,
+    pub asset_decimals: u32,
 }
 
 pub struct CompositeSeries {
@@ -226,7 +276,10 @@ pub fn build_composite_history(
     window_start: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> CompositeSeries {
-    if inputs.positions.is_empty() && inputs.escrow.is_none_or(<[_]>::is_empty) {
+    if inputs.positions.is_empty()
+        && inputs.escrow.is_none_or(<[_]>::is_empty)
+        && inputs.plusd.is_none_or(<[_]>::is_empty)
+    {
         return CompositeSeries {
             items: Vec::new(),
             shares_balance: zero_stat(),
@@ -251,9 +304,34 @@ pub fn build_composite_history(
             .collect()
     });
 
+    if inputs.plusd.is_some() && inputs.asset_decimals > MAX_DECIMALS {
+        tracing::warn!(
+            asset_decimals = inputs.asset_decimals,
+            "asset decimals out of range; omitting plusd_balance"
+        );
+    }
+    let plusd: Option<Vec<(DateTime<Utc>, BigDecimal)>> = inputs
+        .plusd
+        .filter(|_| inputs.asset_decimals <= MAX_DECIMALS)
+        .map(|rows| {
+            rows.iter()
+                .map(|&(bucket, raw)| {
+                    let units =
+                        BigDecimal::new(BigInt::from(raw), i64::from(inputs.asset_decimals));
+                    (
+                        bucket,
+                        units.with_scale_round(OUT_SCALE, RoundingMode::Down),
+                    )
+                })
+                .collect()
+        });
+
     let mut pos_carry = Carry::new(inputs.positions);
     let mut price_carry = Carry::new(&prices);
     let mut escrow_carry = Carry::new(escrow.as_deref().unwrap_or(&[]));
+    let mut plusd_carry = Carry::new(plusd.as_deref().unwrap_or(&[]));
+    let mut plusd_raw_carry = Carry::new(inputs.plusd.unwrap_or(&[]));
+    let mut escrow_raw_carry = Carry::new(inputs.escrow_raw.unwrap_or(&[]));
 
     let end = interval.truncate(now);
     let step_secs = interval.step().num_seconds();
@@ -274,10 +352,31 @@ pub fn build_composite_history(
                 .at(bucket, |e| e.0)
                 .map_or_else(|| base6_decimal(0), |e| e.1.clone())
         });
+        let plusd_now = plusd.as_ref().map(|_| {
+            plusd_carry
+                .at(bucket, |e| e.0)
+                .map_or_else(|| base6_decimal(0), |e| e.1.clone())
+        });
         let splusd = splusd_value(carried, price, inputs.share_decimals);
-        let total = splusd.as_ref().map(|s| match &escrow_now {
-            Some(e) => s + e,
-            None => s.clone(),
+        let plusd_raw = plusd_raw_carry.at(bucket, |e| e.0).map_or(0, |e| e.1);
+        let escrow_raw = escrow_raw_carry.at(bucket, |e| e.0).map_or(0, |e| e.1);
+        let exact_held =
+            (plusd_now.is_some() && escrow_now.is_some() && inputs.escrow_raw.is_some())
+                .then(|| plusd_raw.checked_add(escrow_raw))
+                .flatten()
+                .map(|raw| BigDecimal::new(BigInt::from(raw), i64::from(inputs.asset_decimals)));
+        let total = splusd.as_ref().map(|s| {
+            if let Some(held) = &exact_held {
+                return (s + held).with_scale_round(OUT_SCALE, RoundingMode::Down);
+            }
+            let mut sum = s.clone();
+            if let Some(e) = &escrow_now {
+                sum += e;
+            }
+            if let Some(p) = &plusd_now {
+                sum += p;
+            }
+            sum
         });
 
         let hold = if bucket == end {
@@ -297,6 +396,7 @@ pub fn build_composite_history(
         let mut item = history_item(bucket, carried);
         item.splusd_value = splusd.as_ref().map(fmt6);
         item.wire_out_escrow = escrow_now.as_ref().map(fmt6);
+        item.plusd_balance = plusd_now.as_ref().map(fmt6);
         item.total_balance = total.as_ref().map(fmt6);
         items.push(item);
     });

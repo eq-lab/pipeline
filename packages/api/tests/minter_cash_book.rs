@@ -196,7 +196,7 @@ fn wire_out_settled(id: i64, amount: i128, block: i64) -> MinterEventRow {
 }
 
 fn escrow_of(rows: &[MinterEventRow]) -> Vec<(i64, i128)> {
-    wire_out_escrow_steps(&build_wire_outs(rows))
+    wire_out_escrow_steps(&build_wire_outs(rows), shared::chains::ChainKind::Stellar)
 }
 
 #[test]

@@ -238,13 +238,14 @@ pub fn build_wire_outs(rows: &[MinterEventRow]) -> Vec<CashBookWireOut> {
     out
 }
 
-pub fn wire_out_escrow_steps(wire_outs: &[CashBookWireOut]) -> Vec<(i64, i128)> {
+fn escrow_steps_with(
+    wire_outs: &[CashBookWireOut],
+    units_of: impl Fn(i128) -> Option<i128>,
+) -> Vec<(i64, i128)> {
     let mut steps = Vec::with_capacity(wire_outs.len() * 2);
     let mut dropped = 0usize;
     for w in wire_outs {
-        let units = (w.amount > 0)
-            .then(|| normalized_base6(w.amount).to_i128())
-            .flatten();
+        let units = (w.amount > 0).then(|| units_of(w.amount)).flatten();
         let Some(units) = units else {
             dropped += 1;
             continue;
@@ -262,6 +263,17 @@ pub fn wire_out_escrow_steps(wire_outs: &[CashBookWireOut]) -> Vec<(i64, i128)> 
     }
     steps.sort_by_key(|&(at, delta)| (at, delta < 0));
     steps
+}
+
+pub fn wire_out_escrow_steps(wire_outs: &[CashBookWireOut], kind: ChainKind) -> Vec<(i64, i128)> {
+    escrow_steps_with(wire_outs, |amount| match kind {
+        ChainKind::Stellar => normalized_base6(amount).to_i128(),
+        ChainKind::Evm => Some(amount),
+    })
+}
+
+pub fn wire_out_raw_steps(wire_outs: &[CashBookWireOut]) -> Vec<(i64, i128)> {
+    escrow_steps_with(wire_outs, Some)
 }
 
 pub fn build_ramps(rows: &[MinterEventRow]) -> Vec<CashBookRamp> {

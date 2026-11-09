@@ -7,8 +7,8 @@ use pipeline_api::intervals::Interval;
 use pipeline_api::routes::common::SeriesStat;
 use pipeline_api::routes::pnl::PositionHistoryItem;
 use pipeline_api::total_balance::{
-    build_composite_history, composite_window_start, escrow_outcome, fold_escrow,
-    parse_bounded_decimal, plain_bounded, CompositeInputs, CompositeSeries,
+    build_composite_history, composite_window_start, fold_steps, parse_bounded_decimal,
+    plain_bounded, term_outcome, CompositeInputs, CompositeSeries,
 };
 use shared::position_repo::{PositionHistoryBucket, SharePriceBucket};
 
@@ -60,7 +60,10 @@ fn build(
             positions,
             prices,
             escrow,
+            escrow_raw: None,
+            plusd: None,
             share_decimals: 6,
+            asset_decimals: 6,
         },
         Interval::Daily,
         ts(start),
@@ -79,7 +82,10 @@ fn history_of(
             positions: rows,
             prices: &[],
             escrow: None,
+            escrow_raw: None,
+            plusd: None,
             share_decimals: 0,
+            asset_decimals: 6,
         },
         interval,
         start,
@@ -99,7 +105,10 @@ fn stats_of(
             positions: rows,
             prices: &[],
             escrow: None,
+            escrow_raw: None,
+            plusd: None,
             share_decimals: 0,
+            asset_decimals: 6,
         },
         interval,
         start,
@@ -228,7 +237,7 @@ fn an_absurd_share_scale_is_not_served() {
 }
 
 fn folded(steps: &[(i64, i128)]) -> Vec<(DateTime<Utc>, i128)> {
-    fold_escrow(steps.to_vec(), Interval::Daily).unwrap()
+    fold_steps(steps.to_vec(), Interval::Daily).unwrap()
 }
 
 #[test]
@@ -289,14 +298,14 @@ fn no_escrow_input_omits_the_field_and_the_total_equals_splusd() {
 
 #[test]
 fn a_negative_fold_or_an_overflow_is_rejected() {
-    assert!(fold_escrow(vec![(10, 5), (20, -6)], Interval::Daily).is_none());
-    assert!(fold_escrow(vec![(10, -1)], Interval::Daily).is_none());
-    assert!(fold_escrow(vec![(10, i128::MAX), (20, 1)], Interval::Daily).is_none());
+    assert!(fold_steps(vec![(10, 5), (20, -6)], Interval::Daily).is_none());
+    assert!(fold_steps(vec![(10, -1)], Interval::Daily).is_none());
+    assert!(fold_steps(vec![(10, i128::MAX), (20, 1)], Interval::Daily).is_none());
 }
 
 #[test]
 fn a_same_second_request_and_settle_do_not_trip_the_negative_guard() {
-    assert!(fold_escrow(vec![(10, 5), (10, -5)], Interval::Daily).is_some());
+    assert!(fold_steps(vec![(10, 5), (10, -5)], Interval::Daily).is_some());
 }
 
 #[test]
@@ -318,13 +327,16 @@ fn the_total_is_the_sum_of_the_rounded_terms() {
 #[test]
 fn a_wire_out_only_wallet_gets_a_dense_series_from_its_first_request() {
     let escrow = folded(&[(unix(DAY), 1_000_000)]);
-    let start = composite_window_start(None, Some(unix(DAY))).unwrap();
+    let start = composite_window_start(&[None, Some(unix(DAY))]).unwrap();
     let s = build_composite_history(
         &CompositeInputs {
             positions: &[],
             prices: &[],
             escrow: Some(&escrow),
+            escrow_raw: None,
+            plusd: None,
             share_decimals: 6,
+            asset_decimals: 6,
         },
         Interval::Daily,
         start,
@@ -345,22 +357,22 @@ fn a_wire_out_only_wallet_gets_a_dense_series_from_its_first_request() {
 #[test]
 fn the_window_starts_at_the_earliest_of_position_and_escrow() {
     assert_eq!(
-        composite_window_start(Some(100), Some(50)),
+        composite_window_start(&[Some(100), Some(50)]),
         DateTime::from_timestamp(50, 0)
     );
     assert_eq!(
-        composite_window_start(Some(100), Some(500)),
+        composite_window_start(&[Some(100), Some(500)]),
         DateTime::from_timestamp(100, 0)
     );
     assert_eq!(
-        composite_window_start(None, Some(7)),
+        composite_window_start(&[None, Some(7)]),
         DateTime::from_timestamp(7, 0)
     );
     assert_eq!(
-        composite_window_start(Some(7), None),
+        composite_window_start(&[Some(7), None]),
         DateTime::from_timestamp(7, 0)
     );
-    assert_eq!(composite_window_start(None, None), None);
+    assert_eq!(composite_window_start(&[None, None]), None);
 }
 
 #[test]
@@ -543,14 +555,20 @@ fn absurd_scale_values_keep_the_previous_output_instead_of_expanding() {
 
 #[test]
 fn a_failed_wire_out_read_degrades_only_when_the_wallet_has_positions() {
-    let failed = || Err(anyhow::anyhow!("db down"));
-    assert!(escrow_outcome(true, failed()).unwrap().is_none());
-    assert!(escrow_outcome(false, failed()).is_err());
+    let failed = || -> anyhow::Result<Option<Vec<(i64, i128)>>> { Err(anyhow::anyhow!("db down")) };
+    assert!(term_outcome(true, failed(), "wire_out_escrow")
+        .unwrap()
+        .is_none());
+    assert!(term_outcome(false, failed(), "wire_out_escrow").is_err());
     assert_eq!(
-        escrow_outcome(false, Ok(Some(vec![(1, 2)]))).unwrap(),
+        term_outcome(false, Ok(Some(vec![(1, 2)])), "wire_out_escrow").unwrap(),
         Some(vec![(1, 2)])
     );
-    assert!(escrow_outcome(false, Ok(None)).unwrap().is_none());
+    assert!(
+        term_outcome::<Vec<(i64, i128)>>(false, Ok(None), "wire_out_escrow")
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
