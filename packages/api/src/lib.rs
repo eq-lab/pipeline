@@ -17,6 +17,7 @@ pub mod password;
 pub mod password_reset;
 pub mod routes;
 pub mod security_state;
+pub mod total_balance;
 
 use std::collections::HashMap;
 use std::sync::Arc;

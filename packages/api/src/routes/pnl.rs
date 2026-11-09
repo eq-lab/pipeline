@@ -13,8 +13,13 @@ use utoipa::{OpenApi, ToSchema};
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
+use crate::minter_cash_book::{build_wire_outs, wire_out_escrow_steps};
 use crate::routes::common::{RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
+use crate::total_balance::{
+    build_composite_history, composite_window_start, escrow_outcome, fold_escrow, plain_bounded,
+    CompositeInputs, CompositeSeries,
+};
 use crate::AppState;
 use shared::chains::ChainKind;
 use shared::pocket_repo::PocketRepo;
@@ -270,6 +275,12 @@ pub struct PositionHistoryItem {
     /// Realized PnL accumulated over the wallet's full history up to and
     /// including this bucket — not just within the requested window.
     pub cumulative_realized_pnl: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub splusd_value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire_out_escrow: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_balance: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -287,6 +298,10 @@ pub struct PositionHistoryResponse {
     pub shares_balance: SeriesStat,
     /// Max/min/time-weighted-average cumulative realized PnL over the window.
     pub cumulative_realized_pnl: SeriesStat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub splusd_value: Option<SeriesStat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_balance: Option<SeriesStat>,
 }
 
 /// Position history for a wallet, bucketed like `/v1/stats/prices`.
@@ -296,19 +311,19 @@ pub struct PositionHistoryResponse {
 /// redeployed, the series covers the current address only; positions on a
 /// superseded one are dropped, since after a redeploy they no longer matter.
 ///
-/// Each entry is the **closing** position for its bucket, and buckets with no
-/// activity are omitted rather than forward-filled — a position persists until
-/// the next entry, so clients should step-interpolate. Emitting rows for quiet
-/// periods would fabricate history the indexer never observed.
+/// Each entry is the **closing** position for its bucket. The series is dense:
+/// one entry per interval step from the window start to now, with quiet
+/// buckets carrying the previous closing values and leading buckets zero-filled.
 ///
 /// Covers every balance-moving event: staking mint/burn plus peer-to-peer
 /// `ShareTransfer`, so a wallet that only ever received shares still has a
 /// history.
 ///
 /// This is a **balance and cost-basis** series, deliberately not named a PnL
-/// series: it carries realized PnL (which the position ledger knows) but no
-/// unrealized PnL, which would require joining the per-bucket share price from
-/// `share_prices`. Use `/v1/pnl` for point-in-time unrealized and total PnL.
+/// series: it carries realized PnL but no unrealized PnL. Use `/v1/pnl` for
+/// point-in-time unrealized and total PnL. The composite balance terms
+/// (`splusd_value`, `wire_out_escrow`, `total_balance`) are specified in
+/// `docs/product-specs/lp-total-balance.md`.
 #[utoipa::path(
     get,
     path = "/v1/positions/history",
@@ -331,34 +346,45 @@ async fn get_position_history(
     Query(query): Query<PositionHistoryQuery>,
 ) -> Result<Json<PositionHistoryResponse>, ApiError> {
     let chain_id = chain.chain_id;
-
     let wallet = normalise_wallet(chain.kind, &query.wallet)
         .map_err(|(_, msg)| ApiError::BadRequest(msg))?;
-
-    // One `now` for the whole request: the sample cap, the grid end and the
-    // window start must agree, or a request straddling a bucket boundary could
-    // produce one more bucket than the cap allowed.
     let now = Utc::now();
+    let interval = query.interval;
+    let minter = (chain.kind == ChainKind::Stellar)
+        .then(|| state.minter_addresses.get(&chain_id))
+        .flatten();
+    let lp = wallet.to_uppercase();
+    let wire_out = || wire_out_steps(&state, chain_id, minter, &lp);
+    let vaults = state.position_repo.get_vaults(chain_id);
 
-    // Resolve the lookback window. `days = Some(d)` starts at `now - d × 86400`.
-    // `days = None` means all history, bounded by the wallet's first position so
-    // the sample cap below has something real to check — mirroring how
-    // `/stats/prices` bounds full-history queries by the earliest recorded price.
-    let since = match query.days {
-        Some(d) => Some(now - Duration::days(i64::from(d))),
-        None => state
-            .position_repo
-            .get_first_position_timestamp(chain_id, &wallet)
-            .await?
-            .and_then(|ts| DateTime::from_timestamp(ts, 0)),
+    let (vault, since, prefetched) = if let Some(d) = query.days {
+        (
+            vaults.await?.into_iter().next(),
+            Some(now - Duration::days(i64::from(d))),
+            None,
+        )
+    } else {
+        let (vaults, first_position, wire) = tokio::join!(
+            vaults,
+            state
+                .position_repo
+                .get_first_position_timestamp(chain_id, &wallet),
+            wire_out(),
+        );
+        let first_position = first_position?;
+        let wire = escrow_outcome(first_position.is_some(), wire)?;
+        let first_escrow = wire
+            .as_ref()
+            .and_then(|steps| steps.first().map(|step| step.0));
+        (
+            vaults?.into_iter().next(),
+            composite_window_start(first_position, first_escrow),
+            Some(wire),
+        )
     };
 
-    // The cap now bounds the *actual* row count rather than an upper estimate,
-    // since the response carries one bucket per step across the whole window.
     if let Some(start) = since {
-        let step = query.interval.step_secs();
-        let secs_window = (now - start).num_seconds().max(0);
-        let est_samples = secs_window / step + 1;
+        let est_samples = (now - start).num_seconds().max(0) / interval.step_secs() + 1;
         if est_samples > MAX_SAMPLES {
             return Err(ApiError::BadRequest(format!(
                 "request could produce up to {est_samples} samples (max {MAX_SAMPLES}); reduce `days` or use a coarser `interval`"
@@ -366,227 +392,138 @@ async fn get_position_history(
         }
     }
 
-    // `since = None` here means the wallet has no indexed position at all — fall
-    // through and return an empty series rather than erroring.
-    let rows = state
-        .position_repo
-        .get_position_history(chain_id, &wallet, query.interval.as_pg_trunc(), since)
-        .await?;
-
-    let (vault_address, history) = build_history_series(&rows, query.interval, since, now);
-    let (shares_balance, cumulative_realized_pnl) =
-        compute_position_history_stats(&rows, query.interval, since, now);
-
-    Ok(Json(PositionHistoryResponse {
-        wallet,
-        vault_address,
-        interval: query.interval.as_str().to_owned(),
-        history,
-        shares_balance,
-        cumulative_realized_pnl,
-    }))
-}
-
-/// Expand the repo's sparse event buckets into one bucket per interval step
-/// across `[window_start, now]`, paired with the vault the series belongs to.
-///
-/// **Why densify.** A balance is a step function: it only changes when an event
-/// changes it, so between events the previous closing value is the actual
-/// balance, not a guess. Carrying it forward states what the ledger already
-/// entails rather than inventing data. Sparse output, by contrast, breaks two
-/// things for consumers: charts that render samples equidistantly distort the
-/// time axis when adjacent buckets are a day apart in one place and a month in
-/// another, and the first timestamp becomes the wallet's first activity instead
-/// of the requested window start — so a 1Y tab would label its axis with a date
-/// three days ago.
-///
-/// **Leading buckets are zero-filled**, not omitted, so the series always starts
-/// at the window start and the client can render it verbatim. A wallet that
-/// staked three days ago genuinely held nothing over the preceding year, so the
-/// zeros are accurate rather than padding.
-///
-/// **Caveat.** Carry-forward is exactly as trustworthy as event coverage: a
-/// missing event becomes a confident flat line rather than a visible gap. See
-/// the resync note in `docs/references/backend.md`.
-///
-/// The repo scopes to one vault, so every row shares a `vault_address`, read off
-/// the first row — `None` when there is no history at all, in which case the
-/// series is empty too. `window_start` falls back to the first bucket for a
-/// caller that did not resolve a window.
-///
-/// The caller must have applied `MAX_SAMPLES` to the window: this bounds nothing
-/// itself, and silently truncating would misreport coverage.
-pub fn build_history_series(
-    rows: &[PositionHistoryBucket],
-    interval: Interval,
-    window_start: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-) -> (Option<String>, Vec<PositionHistoryItem>) {
-    let Some(first) = rows.first() else {
-        return (None, Vec::new());
+    let (Some(start), Some(vault)) = (since, vault) else {
+        return Ok(Json(history_response(
+            wallet,
+            interval,
+            None,
+            empty_series(interval, now),
+        )));
     };
 
-    let mut history = Vec::new();
-    walk_history_grid(rows, interval, window_start, now, |bucket, carried| {
-        history.push(PositionHistoryItem {
-            timestamp: iso_utc(&bucket),
-            shares_balance: carried
-                .map_or_else(|| "0".to_owned(), |r| r.shares_balance.to_string()),
-            avg_cost_basis: carried
-                .map_or_else(|| "0".to_owned(), |r| r.avg_buy_share_price.to_string()),
-            cumulative_realized_pnl: carried
-                .map_or_else(|| "0".to_owned(), |r| r.cumulative_realized_pnl.to_string()),
-        });
+    let fetch = async {
+        tokio::try_join!(
+            state.position_repo.get_position_history(
+                chain_id,
+                &wallet,
+                interval.as_pg_trunc(),
+                Some(start)
+            ),
+            state.position_repo.get_share_price_closings(
+                chain_id,
+                interval.as_pg_trunc(),
+                interval.truncate(start)
+            ),
+        )
+    };
+    let (rows, closings, wire) = if let Some(wire) = prefetched {
+        let (rows, closings) = fetch.await?;
+        (rows, closings, wire)
+    } else {
+        let (history, wire) = tokio::join!(fetch, wire_out());
+        let (rows, closings) = history?;
+        let wire = escrow_outcome(!rows.is_empty(), wire)?;
+        (rows, closings, wire)
+    };
+
+    let escrow = wire.and_then(|steps| {
+        let folded = fold_escrow(steps, interval);
+        if folded.is_none() {
+            tracing::warn!(
+                chain_id,
+                "wire-out escrow fold failed; omitting wire_out_escrow"
+            );
+        }
+        folded
     });
 
-    (Some(first.vault_address.clone()), history)
+    let composite = build_composite_history(
+        &CompositeInputs {
+            positions: &rows,
+            prices: &closings,
+            escrow: escrow.as_deref(),
+            share_decimals: u32::try_from(vault.share_decimals).unwrap_or(u32::MAX),
+        },
+        interval,
+        start,
+        now,
+    );
+    let vault_address = (!composite.items.is_empty()).then(|| match chain.kind {
+        ChainKind::Evm => vault.address.to_lowercase(),
+        ChainKind::Stellar => vault.address.clone(),
+    });
+    Ok(Json(history_response(
+        wallet,
+        interval,
+        vault_address,
+        composite,
+    )))
 }
 
-/// Walk the same grid `build_history_series` renders — bucket boundaries from
-/// `window_start` (or the first row) through `now`, truncated to `interval` —
-/// carrying the closing row at each grid point forward, and hand each
-/// `(bucket_timestamp, carried_row)` to `visit`.
-///
-/// Factored out so `compute_position_history_stats` integrates over exactly
-/// the values `build_history_series` renders, without duplicating the
-/// carry-forward pointer walk.
-fn walk_history_grid<'a>(
-    rows: &'a [PositionHistoryBucket],
+fn empty_series(interval: Interval, now: DateTime<Utc>) -> CompositeSeries {
+    build_composite_history(
+        &CompositeInputs {
+            positions: &[],
+            prices: &[],
+            escrow: None,
+            share_decimals: 0,
+        },
+        interval,
+        now,
+        now,
+    )
+}
+
+fn history_response(
+    wallet: String,
     interval: Interval,
-    window_start: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-    mut visit: impl FnMut(DateTime<Utc>, Option<&'a PositionHistoryBucket>),
-) {
-    let Some(first) = rows.first() else {
-        return;
-    };
-
-    // Align the grid to bucket boundaries so its instants coincide with the
-    // query's `DATE_TRUNC`ed event buckets.
-    let mut bucket = interval.truncate(window_start.unwrap_or(first.bucket));
-    let end = interval.truncate(now);
-    let step = interval.step();
-
-    let mut carried: Option<&PositionHistoryBucket> = None;
-    let mut next = 0;
-
-    while bucket <= end {
-        // Adopt every event at or before this grid bucket; the last one wins,
-        // which is both the closing value and the state to carry forward. Rows
-        // arrive ordered by bucket, so this walks each exactly once. Matching on
-        // `<=` rather than equality also absorbs the seed bucket from before the
-        // window without special-casing it.
-        while let Some(row) = rows.get(next).filter(|r| r.bucket <= bucket) {
-            carried = Some(row);
-            next += 1;
-        }
-
-        visit(bucket, carried);
-
-        bucket += step;
+    vault_address: Option<String>,
+    composite: CompositeSeries,
+) -> PositionHistoryResponse {
+    PositionHistoryResponse {
+        wallet,
+        vault_address,
+        interval: interval.as_str().to_owned(),
+        history: composite.items,
+        shares_balance: composite.shares_balance,
+        cumulative_realized_pnl: composite.cumulative_realized_pnl,
+        splusd_value: composite.splusd_value,
+        total_balance: composite.total_balance,
     }
 }
 
-/// Max/min/time-weighted-average of `shares_balance` and
-/// `cumulative_realized_pnl` over the same window and carry-forward series
-/// `build_history_series` renders as `history`.
-///
-/// Each grid value holds until the next grid point, except the last, which
-/// holds until `now` (real, not truncated to the grid) — so the average is the
-/// integral of the rendered series over `[window_start, now]` divided by that
-/// span, matching the `/v1/dashboard/*-history` convention.
-///
-/// Public so `packages/api/tests/positions_history.rs` can exercise it without
-/// the HTTP/DB layers.
-pub fn compute_position_history_stats(
-    rows: &[PositionHistoryBucket],
-    interval: Interval,
-    window_start: Option<DateTime<Utc>>,
-    now: DateTime<Utc>,
-) -> (SeriesStat, SeriesStat) {
-    let zero = BigDecimal::from(0);
-    let Some(first) = rows.first() else {
-        let z = SeriesStat {
-            max: zero.to_string(),
-            min: zero.to_string(),
-            average: zero.to_string(),
-        };
-        return (z.clone(), z);
+async fn wire_out_steps(
+    state: &AppState,
+    chain_id: i64,
+    minter: Option<&String>,
+    lp: &str,
+) -> anyhow::Result<Option<Vec<(i64, i128)>>> {
+    let Some(minter) = minter else {
+        return Ok(None);
     };
+    let rows = state
+        .contract_logs_repo
+        .list_lp_wire_out_events(chain_id, minter, lp)
+        .await?;
+    Ok(Some(wire_out_escrow_steps(&build_wire_outs(&rows))))
+}
 
-    let start = interval.truncate(window_start.unwrap_or(first.bucket));
-    let end = interval.truncate(now);
-    let step_secs = interval.step().num_seconds();
-    let total_secs = (now - start).num_seconds().max(0);
-
-    let mut shares_integral = zero.clone();
-    let mut shares_max: Option<BigDecimal> = None;
-    let mut shares_min: Option<BigDecimal> = None;
-    let mut shares_last = zero.clone();
-    let mut pnl_integral = zero.clone();
-    let mut pnl_max: Option<BigDecimal> = None;
-    let mut pnl_min: Option<BigDecimal> = None;
-    let mut pnl_last = zero.clone();
-
-    walk_history_grid(rows, interval, window_start, now, |bucket, carried| {
-        let shares = carried.map_or_else(|| zero.clone(), |r| r.shares_balance.clone());
-        let pnl = carried.map_or_else(|| zero.clone(), |r| r.cumulative_realized_pnl.clone());
-
-        // The last grid point holds until `now`, which may fall short of a
-        // full `step` past it; every earlier point holds for a full `step`.
-        let hold_secs = if bucket == end {
-            (now - bucket).num_seconds().max(0)
-        } else {
-            step_secs
-        };
-
-        shares_integral += &shares * BigDecimal::from(hold_secs);
-        pnl_integral += &pnl * BigDecimal::from(hold_secs);
-
-        shares_max = Some(shares_max.take().map_or_else(
-            || shares.clone(),
-            |m| if shares > m { shares.clone() } else { m },
-        ));
-        shares_min = Some(shares_min.take().map_or_else(
-            || shares.clone(),
-            |m| if shares < m { shares.clone() } else { m },
-        ));
-        pnl_max = Some(
-            pnl_max
-                .take()
-                .map_or_else(|| pnl.clone(), |m| if pnl > m { pnl.clone() } else { m }),
-        );
-        pnl_min = Some(
-            pnl_min
-                .take()
-                .map_or_else(|| pnl.clone(), |m| if pnl < m { pnl.clone() } else { m }),
-        );
-
-        shares_last = shares;
-        pnl_last = pnl;
-    });
-
-    let shares_average = if total_secs > 0 {
-        shares_integral / BigDecimal::from(total_secs)
-    } else {
-        shares_last
-    };
-    let pnl_average = if total_secs > 0 {
-        pnl_integral / BigDecimal::from(total_secs)
-    } else {
-        pnl_last
-    };
-
-    (
-        SeriesStat {
-            max: shares_max.unwrap_or(zero.clone()).to_string(),
-            min: shares_min.unwrap_or(zero.clone()).to_string(),
-            average: shares_average.to_string(),
-        },
-        SeriesStat {
-            max: pnl_max.unwrap_or(zero.clone()).to_string(),
-            min: pnl_min.unwrap_or(zero).to_string(),
-            average: pnl_average.to_string(),
-        },
-    )
+pub fn history_item(
+    bucket: DateTime<Utc>,
+    carried: Option<&PositionHistoryBucket>,
+) -> PositionHistoryItem {
+    PositionHistoryItem {
+        timestamp: iso_utc(&bucket),
+        shares_balance: carried
+            .map_or_else(|| "0".to_owned(), |r| plain_bounded(&r.shares_balance)),
+        avg_cost_basis: carried
+            .map_or_else(|| "0".to_owned(), |r| plain_bounded(&r.avg_buy_share_price)),
+        cumulative_realized_pnl: carried.map_or_else(
+            || "0".to_owned(),
+            |r| plain_bounded(&r.cumulative_realized_pnl),
+        ),
+        splusd_value: None,
+        wire_out_escrow: None,
+        total_balance: None,
+    }
 }

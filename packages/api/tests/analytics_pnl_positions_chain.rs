@@ -243,6 +243,37 @@ fn openapi_marks_chain_id_required_on_pnl_and_positions() {
 }
 
 #[test]
+fn openapi_exposes_composite_balance_fields_as_optional_without_plusd_balance() {
+    let doc = serde_json::to_value(PnlDoc::openapi()).unwrap();
+    let schemas = &doc["components"]["schemas"];
+    let item = &schemas["PositionHistoryItem"];
+    for field in ["splusd_value", "wire_out_escrow", "total_balance"] {
+        assert!(item["properties"][field].is_object(), "{field}");
+        assert!(
+            !item["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == field),
+            "{field}"
+        );
+    }
+    assert!(item["properties"]["plusd_balance"].is_null());
+    let response = &schemas["PositionHistoryResponse"];
+    for field in ["splusd_value", "total_balance"] {
+        assert!(response["properties"][field].is_object(), "{field}");
+        assert!(
+            !response["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == field),
+            "{field}"
+        );
+    }
+}
+
+#[test]
 fn openapi_marks_chain_id_optional_on_requests_and_exposes_it_on_items() {
     let doc = serde_json::to_value(AnalyticsDoc::openapi()).unwrap();
     assert_eq!(chain_param(&doc, "/v1/requests")["required"], false);

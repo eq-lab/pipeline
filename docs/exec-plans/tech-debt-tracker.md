@@ -2296,7 +2296,7 @@ line, whichever section it lands in.
 - **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
 - **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
-- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is absent until then.
 
 ### TD-170: Pocket `complete` is not verified against the key having stayed configured
 
@@ -2328,5 +2328,5 @@ line, whichever section it lands in.
 - **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`
 - **Gap:** `contract_logs` has only the `(chain_id, contract_address, block_number, log_index)` unique index and `idx_contract_logs_event` (`20260428000001_init.sql`). Filters on `params->>'loan_id'` or `params @> jsonb_build_object('loan_id', …)` therefore scan every row of the scoped contract(s); the `@>` form written in #1780 only pays off once a GIN index exists.
 - **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow linearly with each contract's log count.
-- **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first.
+- **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first. The `share_prices` closing-price read of `GET /v1/positions/history` (#1313) filters `LOWER(vault_address)` like the other `position_repo.rs` readers, so it cannot use a plain index on `vault_address` either.
 

@@ -738,26 +738,28 @@ pub const MINTER_FOLD_EVENTS_SQL: &str = "WITH snap AS (
      ORDER BY c.block_number, c.log_index";
 
 pub const LP_WIRE_OUT_EVENTS_SQL: &str = "SELECT
-         event_name,
-         block_number,
-         log_index,
-         block_timestamp,
-         params
-     FROM contract_logs
-     WHERE chain_id = $1
-       AND contract_address = $2
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     WHERE c.chain_id = $1
+       AND c.contract_address = $2
        AND (
-            (event_name = 'WireOutRequested' AND LOWER(params->>'lp') = $3)
-            OR (event_name IN ('WireOutSettled', 'WireOutCancelled')
-                AND params->>'id' IN (
-                    SELECT params->>'id'
-                      FROM contract_logs
-                     WHERE chain_id = $1
-                       AND contract_address = $2
-                       AND event_name = 'WireOutRequested'
-                       AND LOWER(params->>'lp') = $3))
+            (c.event_name = 'WireOutRequested'
+                AND c.params @> jsonb_build_object('lp', $3::text))
+            OR (c.event_name IN ('WireOutSettled', 'WireOutCancelled')
+                AND EXISTS (
+                    SELECT 1
+                      FROM contract_logs r
+                     WHERE r.chain_id = $1
+                       AND r.contract_address = $2
+                       AND r.event_name = 'WireOutRequested'
+                       AND r.params @> jsonb_build_object('lp', $3::text)
+                       AND c.params @> jsonb_build_object('id', r.params->>'id')))
        )
-     ORDER BY block_number, log_index";
+     ORDER BY c.block_number, c.log_index";
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct MinterEventRow {
@@ -817,12 +819,12 @@ impl ContractLogsRepo {
         &self,
         chain_id: i64,
         minter: &str,
-        wallet_lower: &str,
+        lp: &str,
     ) -> anyhow::Result<Vec<MinterEventRow>> {
         let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_OUT_EVENTS_SQL)
             .bind(chain_id)
             .bind(minter)
-            .bind(wallet_lower)
+            .bind(lp)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows)
