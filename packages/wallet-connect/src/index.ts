@@ -235,6 +235,23 @@ export type {
 } from "./stellar/contracts/wireInEscrow";
 
 export {
+  readWireOutRecord,
+  encodeSettleWireOutArgs,
+  encodeCancelWireOutArgs,
+  settleWireOut,
+  cancelWireOut,
+} from "./stellar/contracts/wireOutSettlement";
+export type {
+  WireOutRecordStatus,
+  WireOutRecord,
+  ReadWireOutRecordParams,
+  SettleWireOutArgs,
+  CancelWireOutArgs,
+  SettleWireOutParams,
+  CancelWireOutParams,
+} from "./stellar/contracts/wireOutSettlement";
+
+export {
   readCanCall,
   readOperationSchedule,
   buildRelayEnvelope,

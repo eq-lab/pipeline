@@ -298,6 +298,96 @@ because the minter lacks the PLUSD `MINTER` role. `return_wire_in` burns PLUSD a
 the minter holds the burn role. Both are live-testing risks, covered by unit tests meanwhile. The
 capital-wallet fallback of Mint PLUSD is unaffected (decision 2026-11-02).
 
+## Cash Management — Bank wire-outs
+
+**Sources:** `packages/trustee/src/routes/-WireOutsSection.tsx` (view — tab, `SettleWireOutDialog`,
+`CancelWireOutDialog`), `-wire-outs.ts` (section hook), `lib/wireOut.ts` (copy and presenters),
+`api/useWireOuts.ts`, `api/useCashBook.ts`, `api/useEscrowedWires.ts` (`useMinterPlusdId`,
+`ensureMinterPlusdId`), and `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts`.
+**Spec:** [withdrawals.md §Bank wire withdrawals (Trustee console)](../product-specs/withdrawals.md#bank-wire-withdrawals-trustee-console).
+Issue #1764, the fifth tab of the Cash Management page. No Figma: it reuses the Escrowed wires table,
+chip and dialog patterns (`useLpReviewDialog`). The `// spec:` pointers of the bindings, hooks and view
+files target this section and the withdrawals spec section above.
+
+### Chain scope
+
+Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session),
+shown as a chip (`cash-management-wireouts-chain`) and the sub-line "Lender bank withdrawals held in
+escrow by the minter on {chain} — settle once the wire is sent, or cancel to return the PLUSD." An EVM
+session renders "Bank wire-outs on {chain} are not available in the Trustee app yet." and fetches nothing
+(no EVM cash book is served and the app has no EVM write client, #1573).
+
+### Data sourcing
+
+- `useCashBook` (shared with Escrowed wires) — every served `wire_outs[]` row, in served order. Refetch is
+  30 s, or 5 s while a row is `*-pending-index`, bounded to 120 s per row.
+- The lender name is the served `lp_legal_name` ("—" when absent), resolved server-side from the LP link
+  active at `requested_at`; `lp_id` links to `/lp-counterparties/{id}`. The app joins nothing.
+- Amounts, dates, statuses and hashes are shown as served (amount grouped with a "PLUSD" suffix, no
+  rescaling). Only `Pending` rows are read on-chain: `readWireOutRecord` (`wire_out(id)`, key
+  `["minter-wire-out", minterId, id]`, stale time 0). The cash book's `minter` must equal
+  `ENV.STELLAR_YIELD_MINTER_ID`, otherwise every action is disabled.
+
+### Table
+
+Columns: ID, Lender (name link plus address chip), Amount, Requested at, Status, On-chain, Actions.
+`Settled` rows add the served `settled_at`, `value_date` and `ref_hash` (first 8 / last 8, full value in
+`title`); `Cancelled` rows add `cancelled_at`. States: loading skeleton, `InlineError` (`404
+minter_not_configured`, `403`, `401`, as Escrowed wires), empty "No bank wire-outs on {chain}."
+
+### Row states and gating
+
+On-chain label (Pending rows only): "Pending (confirmed on-chain)", "Settled on-chain — waiting for the
+indexer", "Cancelled on-chain — waiting for the indexer", "On-chain status {s} differs from the cash
+book", "Could not confirm on-chain". `Settle` and `Cancel` appear only on `Pending` rows and are disabled
+with a visible reason (`wireout-row-{id}-reason`), first match wins: wallet not connected; minter or
+AccessManager not configured; minter mismatch; role (`can_call(wallet, minter, fn)` must be `immediate`,
+via `useWireOutAccess`; a delayed grant gets a reason and no schedule path); on-chain state not
+`confirmed`; another action in flight.
+
+### Settle dialog
+
+Summary (wire-out id, lender, address, requested amount, requested at) and the row "Destination bank
+account" with "—" and the hint "The API does not serve the lender's bank account yet." (#1812). Inputs:
+"Amount wired (PLUSD)" pre-filled with the exact on-chain 7-decimal amount, "Value date" (UTC, not in the
+future, defaults to today) and "Outgoing bank reference" (trimmed, 1 to 140 characters); the computed
+`ref_hash` shows read-only. The minter settles only the full requested amount, so an amount that differs
+is blocked with "The minter settles only the full requested amount ({amount} PLUSD). If a different amount
+was wired, cancel this request instead." On confirm, before signing: `ref_hash_seen` (true shows "This bank
+reference is already recorded on-chain. Use the outgoing wire's own reference."), then re-read
+`wire_out(id)` (not `Pending` aborts; the fresh on-chain amount is checked again). Then
+`AM.execute(minter, settle_wire_out, [id, amount_raw, value_date, ref_hash])`, where `amount_raw` is the
+on-chain i128 and `value_date` is the UTC midnight in Unix seconds.
+
+### Cancel dialog
+
+Summary and "The escrowed PLUSD returns to the lender's address." On open the app reads
+`PLUSD.authorized(lp)`: authorised enables confirm; not authorised shows "This lender's address is not
+authorised to hold PLUSD, so the PLUSD cannot be returned. Cancel is blocked until it is authorised
+again."; no trustline shows "This lender's address has no PLUSD trustline."; a failed read shows "Could
+not check the lender's PLUSD authorisation." with details. On confirm the app re-reads `wire_out(id)` and
+the authorisation, then calls `AM.execute(minter, cancel_wire_out, [id])`.
+
+### Shell, errors and result
+
+Escape and backdrop cancel and never confirm; both are blocked while a step is pending, and the confirm
+label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"). Errors show inline with
+"View details". Pre-sign on-chain reads carry the specific copy; `wireOutErrorCopy` maps contract codes
+only as a fallback (`#7` / `RefHashSeen`, `#17`, `#8` on settle; `#16` on cancel; `#14` not pending; `#10`
+unknown id) and keeps the wallet-rejection copy; `details` always holds the raw contract error. After the
+transaction lands the app re-reads `wire_out(id)` and shows a green notice built from that read:
+"Wire-out #{id} settled on-chain. Status {status}; the escrowed PLUSD was burned. Transaction {hash}. It
+updates in this list once indexed." or "Wire-out #{id} cancelled on-chain. Status {status}; the PLUSD was
+returned to {lp}. Transaction {hash}. It updates in this list once indexed."
+
+### Testnet caveat
+
+No wire-out exists on testnet (`wire_out(0..6)` answers `#10` on both minters): settle and cancel can be
+exercised live only after a lender calls `request_wire_out` (LP UI #1757). `bank_cash` on the API minter
+`CD2LPGLX…` is 0, so settling there fails `#8` until wire-ins are booked. When the app's minter
+(`VITE_STELLAR_YIELD_MINTER_ID`) differs from the cash book's, every action is disabled (env alignment,
+not code). Unit tests cover the flows meanwhile.
+
 ## Loan book & tables
 
 **Sources:** `packages/trustee/src/api/useLoanBook.ts` (data hook),

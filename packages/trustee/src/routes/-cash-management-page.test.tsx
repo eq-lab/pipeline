@@ -31,6 +31,9 @@ vi.mock("@/api/useWithdrawalQueue", () => ({ useWithdrawalQueue: vi.fn() }));
 vi.mock("./-EscrowedWiresSection", () => ({
   EscrowedWiresSection: () => <div data-testid="escrow-section-stub" />,
 }));
+vi.mock("./-WireOutsSection", () => ({
+  WireOutsSection: () => <div data-testid="wireouts-section-stub" />,
+}));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
@@ -201,6 +204,24 @@ describe("Cash Management route — Escrowed wires tab (#1763)", () => {
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("cash-management-tab-onofframp"));
     expect(screen.getByTestId("cash-management-onofframp")).toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — Bank wire-outs tab (#1764)", () => {
+  beforeEach(() => readyEvents());
+
+  it("renders the fifth tab and switches to the section", () => {
+    renderRoute();
+    const tab = screen.getByTestId("cash-management-tab-wireouts");
+    expect(tab).toHaveTextContent("Bank wire-outs");
+    expect(
+      screen.queryByTestId("wireouts-section-stub"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(tab);
+    expect(screen.getByTestId("wireouts-section-stub")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-onofframp"),
+    ).not.toBeInTheDocument();
   });
 });
 
