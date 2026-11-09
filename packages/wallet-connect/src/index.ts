@@ -252,6 +252,31 @@ export type {
 } from "./stellar/contracts/wireOutSettlement";
 
 export {
+  readMinterRamp,
+  readMinterPoolState,
+  readMinterPaused,
+  encodeOpenRampArgs,
+  encodeCloseRampArgs,
+  encodeRecordExpenseArgs,
+  openRamp,
+  closeRamp,
+  recordExpense,
+} from "./stellar/contracts/minterRamps";
+export type {
+  RampDirection,
+  MinterRamp,
+  MinterPoolState,
+  ReadMinterRampParams,
+  ReadMinterPoolStateParams,
+  OpenRampArgs,
+  CloseRampArgs,
+  RecordExpenseArgs,
+  OpenRampParams,
+  CloseRampParams,
+  RecordExpenseParams,
+} from "./stellar/contracts/minterRamps";
+
+export {
   readCanCall,
   readOperationSchedule,
   buildRelayEnvelope,

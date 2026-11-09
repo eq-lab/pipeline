@@ -24,24 +24,24 @@ import {
   type WireOutsSection as Section,
 } from "./-wire-outs";
 
-const BODY_CLASS =
+export const BODY_CLASS =
   "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
-const HINT_CLASS =
+export const HINT_CLASS =
   "font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px]";
-const HEAD_CELL_CLASS =
+export const HEAD_CELL_CLASS =
   "py-[12px] pr-[16px] font-normal font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]";
-const BODY_CELL_CLASS =
+export const BODY_CELL_CLASS =
   "py-[12px] pr-[16px] align-top font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[#262524]";
-const ACTION_BUTTON_CLASS =
+export const ACTION_BUTTON_CLASS =
   "!rounded-[4px] text-[13px] whitespace-nowrap disabled:opacity-[0.32]";
-const DIALOG_CLASS =
+export const DIALOG_CLASS =
   "rounded-pipeline-card-sm bg-pipeline-surface flex max-h-[90vh] w-full max-w-[640px] flex-col gap-4 overflow-y-auto p-7 shadow-xl outline-none";
-const INPUT_CLASS =
+export const INPUT_CLASS =
   "rounded-pipeline-card border-pipeline-line bg-pipeline-surface text-pipeline-ink focus:border-pipeline-brand w-full border p-3 focus:outline-none disabled:opacity-50";
 const NO_BANK_ACCOUNT_HINT =
   "The API does not serve the lender's bank account yet.";
 
-function shortHash(hash: string): string {
+export function shortHash(hash: string): string {
   return hash.length > 20 ? `${hash.slice(0, 8)}…${hash.slice(-8)}` : hash;
 }
 

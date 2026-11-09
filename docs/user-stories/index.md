@@ -368,6 +368,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
 | [#1763 Trustee: escrowed incoming wires — list, assign to lender or return](https://github.com/eq-lab/pipeline/issues/1763) | [1763-trustee-escrowed-wires.md](./epic-1795/1763-trustee-escrowed-wires.md) | Initial |
 | [#1764 Trustee: settle or cancel lender bank withdrawals with a pending wire-outs list](https://github.com/eq-lab/pipeline/issues/1764) | [1764-trustee-wire-outs.md](./epic-1795/1764-trustee-wire-outs.md) | Initial |
+| [#1765 Trustee: book USDC/USD conversions and bank charges on-chain](https://github.com/eq-lab/pipeline/issues/1765) | [1765-trustee-conversions-bank-charges.md](./epic-1795/1765-trustee-conversions-bank-charges.md) | Initial |
 
 ---
 

@@ -320,3 +320,12 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** Re-run the job.
 - **Suggested fix:** Hold the `onSubmit` promise open with a deferred resolver, assert disabled, then resolve and assert re-enabled.
 - **Resolved:** 2026-11-03 by #1837 — the real race was the post-resolve check: `findByRole("Save")` matched the already-present button immediately, before the `.finally(() => setIsSubmitting(false))` state update flushed. The test now resolves the deferred promise inside `act` and asserts re-enable via `waitFor`; `AddEmailModal.tsx` is unchanged.
+
+### BUG-33: Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0 [FIXED 2026-11-09 / #1765]
+- **Tracked:** #1765 — originated in the unmerged #1763 and #1764 PRs; found while planning #1765.
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts` and `wireOutSettlement.ts` (`requireWireId`, `id < 1`).
+- **Symptom:** `wire_in(0)` exists on `CAPL5WN3…`. An escrowed wire-in 0, or the first wire-out on a fresh minter, cannot be confirmed or acted on.
+- **Root cause:** `contracts/minter/src/storage.rs` `next_id` returns 0 first, so ids start at 0.
+- **Workaround:** None.
+- **Resolved:** 2026-11-09 by #1765 — both guards accept any non-negative integer; their tests cover id 0.

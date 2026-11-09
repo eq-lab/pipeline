@@ -5,21 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 
-// The presenter statically imports the balance/address hooks, whose module
-// graph reaches `@stellar/freighter-api` (CommonJS) and breaks under Vitest's
-// ESM loader. These pure-helper tests never touch the hooks — stub the modules
-// so importing `./-cash-management` doesn't pull that graph in.
-vi.mock("@/api/useUsdcCustodyBalance", () => ({
-  useUsdcCustodyBalance: vi.fn(),
-}));
-vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
 vi.mock("@/api/useRampEvents", () => ({ useRampEvents: vi.fn() }));
 vi.mock("@/api/useReviewRampEvent", () => ({ useReviewRampEvent: vi.fn() }));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
-import { useRampAddresses } from "@/api/useRampAddresses";
-import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import {
   truncateStrkey,
   formatRelativeAge,
@@ -90,17 +80,6 @@ describe("useCashManagement chain scope", () => {
       reset: vi.fn(),
       pendingId: null,
     });
-    vi.mocked(useRampAddresses).mockReturnValue({
-      data: { ramp_addresses: [] },
-      isLoading: false,
-      error: null,
-      refetch: () => {},
-    });
-    vi.mocked(useUsdcCustodyBalance).mockReturnValue({
-      data: "8400000.0000000",
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useUsdcCustodyBalance>);
   });
 
   function withChain(chainId: number) {
@@ -114,16 +93,11 @@ describe("useCashManagement chain scope", () => {
     return renderHook(() => useCashManagement()).result.current;
   }
 
-  it("labels the Stellar session and shows the custody balance", () => {
-    const view = withChain(99_000_001);
-    expect(view.chainLabel).toBe("Stellar");
-    expect(view.usdcBalanceValue).toBe(8_400_000);
+  it("labels the Stellar session", () => {
+    expect(withChain(99_000_001).chainLabel).toBe("Stellar");
   });
 
-  it("labels an EVM session and never shows the Stellar custody balance", () => {
-    const view = withChain(560048);
-    expect(view.chainLabel).toBe("Hoodi");
-    expect(view.usdcBalanceValue).toBeNull();
-    expect(view.usdcBalanceDisplay).toBe("—");
+  it("labels an EVM session", () => {
+    expect(withChain(560048).chainLabel).toBe("Hoodi");
   });
 });

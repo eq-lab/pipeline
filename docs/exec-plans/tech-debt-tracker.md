@@ -2188,13 +2188,14 @@ line, whichever section it lands in.
 - **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
 - **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.
 
-### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session
+### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session [RESOLVED 2026-11-09 / #1765]
 
 - **Date:** 2026-10-27
 - **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar SAC `getSacBalance` only), `packages/trustee/src/routes/-cash-management.ts` (`usdcBalanceValue` gated to the Stellar session) — found while fixing #1669.
 - **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
 - **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
 - **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.
+- **Resolution:** Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more.
 
 ### TD-157: Trustee has no on-chain `Minter.disburse`, so trustee-drawn Stellar loans stay `Approved` and `repay` reverts `WrongCurrentStatus`
 
@@ -2362,7 +2363,23 @@ line, whichever section it lands in.
 ### TD-177: Wire-out bindings duplicate the epic's reader and the date and ref-hash helpers
 
 - **Date:** 2026-11-09
-- **Location:** `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` (`readWireOutRecord`), `packages/trustee/src/lib/wireOut.ts` (`valueDateSeconds`, `todayUtcDateInput`), `packages/trustee/src/routes/-wire-outs.ts` (`wireInReturnRefHash` / `readWireInRefHashSeen` for the bank reference) — Issue #1764.
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` (`readWireOutRecord`), `packages/trustee/src/lib/wireOut.ts` (`valueDateSeconds`, `todayUtcDateInput`), `packages/trustee/src/routes/-wire-outs.ts` (`wireInReturnRefHash` / `readWireInRefHashSeen` for the bank reference), `packages/trustee/src/routes/-conversions.ts` (the same ref-hash helpers, plus `lib/wireOut.ts`'s date helpers) — Issues #1764, #1765.
 - **Gap:** `epic/1795-lp-ui` adds `readMinterWireOut` / `MinterWireOut` to `stellar/contracts/minter.ts` (no `ref_hash`). #1761 and #1762 add `dateInputToUnixUtc` / `dateInputToValueDate`, and #1762 adds `bankReferenceRefHash` / `readRefHashSeen`. None was on this branch, so #1764 holds its own wire-out reader and UTC date helpers and reuses #1763's wire-in-named ref-hash helpers for a wire-out reference.
 - **Impact:** Several copies of the same on-chain read, date conversion and sha256 rule can drift.
 - **Suggested fix:** After #1761, #1762, #1763 and the epic land, add one `minterRefs.ts` (ref-hash read and hash) and one date helper, merge the two wire-out readers, and drop the wire-in names.
+
+### TD-176: The Cash Management pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/-conversions.ts` (`summary`), `packages/trustee/src/api/useConversions.ts` (`useMinterPoolState`), `packages/api/src/routes/cash_book.rs` (`CashBookSummary`) — Issue #1765.
+- **Gap:** `summary` serves `bank_cash` and `in_flight` but not `total_assets` or the snapshot's `read_failed`. So the three summary figures come from one on-chain `pool_state()` read of the app's minter instead of the API.
+- **Impact:** The summary needs an RPC read and the app's minter, and it cannot show a figure for a chain the app has no minter for.
+- **Suggested fix:** Serve `total_assets` and `read_failed` from the cash book, then switch the summary to the served values and drop `readMinterPoolState`.
+
+### TD-177: The Withdrawal Queue tab still renders the #945 "Top up" MPC co-sign shell
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/cash-management.tsx` (`WithdrawalTopUpDialog`) — found while fixing #1765.
+- **Gap:** The dialog shows a Capital Wallet MPC 3-of-5 co-sign flow, but `trustee-dashboard.md` flow note C now says a top-up is a custody-to-custody transfer under the custody signing policy, which the console does not co-sign.
+- **Impact:** The Trustee sees a co-sign shell for an action the console does not perform.
+- **Suggested fix:** Retire the dialog and its "Top up" button in a follow-up frontend issue.

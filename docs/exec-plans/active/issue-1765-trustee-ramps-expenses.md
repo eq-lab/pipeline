@@ -129,7 +129,7 @@ _None_
 
 ## Implementation Steps
 
-1. **wallet-connect bindings.** New file `packages/wallet-connect/src/stellar/contracts/minterRamps.ts`. Header: `// spec: docs/frontend/trustee-flows.md#cash-management--conversions-and-bank-charges`. Mirror `wireOutSettlement.ts`:
+1. **wallet-connect bindings.** [done] New file `packages/wallet-connect/src/stellar/contracts/minterRamps.ts`. Header: `// spec: docs/frontend/trustee-flows.md#cash-management--conversions-and-bank-charges`. Mirror `wireOutSettlement.ts`:
    - Types:
      - `RampDirection = "UsdcToBank" | "BankToUsdc"`
      - `MinterRamp { id: number; direction: RampDirection; amount: string /* raw i128 */; openedAt: number; closed: boolean; closedAt: number; received: string /* raw */ }`
@@ -146,7 +146,7 @@ _None_
    - Relays `openRamp`, `closeRamp` and `recordExpense` call `relay({ ...rest, mode: "execute", target: minterId, fn, args })`, with the same param shape as `settleWireOut`. Reuse `hexToBytes32ScVal` from `./minter`.
    - Export the functions and types from `packages/wallet-connect/src/index.ts` in a new block placed directly after the `./stellar/contracts/wireOutSettlement` blocks.
 
-2. **Trustee data hooks.** New file `packages/trustee/src/api/useConversions.ts`, with header `// spec: docs/frontend/trustee-flows.md#cash-management--conversions-and-bank-charges`. Mirror `useWireOuts.ts`:
+2. **Trustee data hooks.** [done] New file `packages/trustee/src/api/useConversions.ts`, with header `// spec: docs/frontend/trustee-flows.md#cash-management--conversions-and-bank-charges`. Mirror `useWireOuts.ts`:
    - `ConversionFn = "open_ramp" | "close_ramp" | "record_expense"`.
    - `minterRampKey(minterId, id)` = `["minter-ramp", minterId, id]`, `fetchMinterRamp(id)`, and `useMinterRamps(ids, enabled)` (`useQueries`, `staleTime: 0`, `retry: false`).
    - `minterPoolStateKey(minterId)` = `["minter-pool-state", minterId]` and `useMinterPoolState(enabled)` (`refetchInterval` 30 s, `retry: false`).
@@ -154,7 +154,7 @@ _None_
    - `useConversionAccess(fn, enabled)`: `readCanCall` against `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID` / `ENV.STELLAR_YIELD_MINTER_ID`, key `["conversion-access", address, fn]`, `staleTime` 30 s.
    - `useOpenRamp()`, `useCloseRamp()` and `useRecordExpense()`: copy the `useWireOutMutation` shape (stage state, not-configured / not-connected preflight). `onSuccess` invalidates `["cash-book"]`, `minterPoolStateKey`, and `minterRampKey` for a close. Not-configured copy: "Conversion and bank-charge actions are not configured for this environment."
 
-3. **Presenters and copy.** New file `packages/trustee/src/lib/conversions.ts`, with header `// spec: …#cash-management--conversions-and-bank-charges`.
+3. **Presenters and copy.** [done] New file `packages/trustee/src/lib/conversions.ts`, with header `// spec: …#cash-management--conversions-and-bank-charges`.
    - `RAMP_DIRECTION_LABEL`: `UsdcToBank` → "USDC → USD", `BankToUsdc` → "USD → USDC".
    - `conversionAccessReason(fn, { access, isPending, isError })`. Reasons, parallel to `wireOutAccessReason`:
      - "Checking this wallet's Trustee role…"
@@ -191,7 +191,7 @@ _None_
      Every mapped error keeps `details` as the raw text.
    - Reuse `rawToDecimal7`, `valueDateSeconds` and `todayUtcDateInput` from `@/lib/wireOut`, and `cashBookError` from `@/lib/wireEscrow`. Define no copies.
 
-4. **Section hook.** New file `packages/trustee/src/routes/-conversions.ts`, `useConversionsSection()`, modelled on `useWireOutsSection`:
+4. **Section hook.** [done] New file `packages/trustee/src/routes/-conversions.ts`, `useConversionsSection()`, modelled on `useWireOutsSection`:
    - Chain: `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`. `chainKindOf` gives `unsupported` for EVM, with no cash-book fetch and no pool or paused read. `targetChainLabel` supplies the chip label.
    - **Summary:** `useMinterPoolState(stellar && !!ENV.STELLAR_YIELD_MINTER_ID)`. The view fields are `bankCash`, `inFlight` and `totalAssets`, each `formatUsdExact(rawToDecimal7(raw))`; `readFailed`; `sourceMinter` (truncated `ENV.STELLAR_YIELD_MINTER_ID`); and the states `loading | error | ready`. The error copy is "Could not read the minter's pool state.", with details.
    - **List:** `useCashBook(chainId, { enabled: stellar, refetchMs })`. Export `CONVERSION_REFETCH_MS = 30_000`, `CONVERSION_PENDING_REFETCH_MS = 5_000` and `CONVERSION_PENDING_WINDOW_MS = 120_000`.
@@ -225,7 +225,7 @@ _None_
      - Result: "Bank charge of {amountInput} booked on-chain, value date {date}; it was burned from the vault. Transaction {hash}. It appears in the Audit Log once indexed." with a link to `/audit-log` (the #1762 pattern). Refetch the pool state.
    - Export `ConversionsSection = ReturnType<typeof useConversionsSection>`.
 
-5. **View.** New file `packages/trustee/src/routes/-ConversionsSection.tsx`, JSX only (FRONTEND.md rule 2), with a one-line spec header. Reuse the `-WireOutsSection.tsx` styling constants and patterns.
+5. **View.** [done] New file `packages/trustee/src/routes/-ConversionsSection.tsx`, JSX only (FRONTEND.md rule 2), with a one-line spec header. Reuse the `-WireOutsSection.tsx` styling constants and patterns.
    - **Summary card** (`cash-management-pool-summary`): three tiles, "Booked bank cash", "Cash in transit" and "Pool total" (`pool-summary-bank-cash`, `-in-flight`, `-total`).
      - Caption: "Read on-chain from the minter {truncated id} (pool_state)."
      - When `readFailed`: "A custody balance could not be read; the minter counts it as 0 in the pool total."
@@ -235,7 +235,7 @@ _None_
    - **Dialogs** `OpenConversionDialog`, `CloseConversionDialog` and `RecordExpenseDialog`. Each uses the `useLpReviewDialog` shell (`role="dialog"`, `aria-modal`). Escape and backdrop cancel, and both are blocked while pending. The confirm label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"). Errors use `InlineError` with "View details". Direction is a two-option radio group (`conversion-direction-UsdcToBank` / `-BankToUsdc`), and the value date is an `<input type="date" max={today}>`.
    - A green result notice (`conversion-result`).
 
-6. **Tab wiring.** `packages/trustee/src/routes/cash-management.tsx`:
+6. **Tab wiring.** [done] `packages/trustee/src/routes/cash-management.tsx`:
    - import `ConversionsSection` from `./-ConversionsSection`;
    - in the `onofframp` branch, remove the "New swap" button and render `<ConversionsSection />` between the header row and the existing review-queue card. Leave the review-queue card markup unchanged, except for a small heading "Ramp-event review" with the note "Ramp transfers detected on-chain, approved in the database (#936)."
    - change the sub-line to "{chain} — the network you signed in with. Book conversions between USDC and bank dollars, and bank charges, on the minter.";
@@ -243,19 +243,19 @@ _None_
    - update the header spec list: replace `#cash-management--onoff-ramp--t-bills` with `#cash-management--onoff-ramp` and add `#cash-management--conversions-and-bank-charges`;
    - add no other comments.
 
-7. **Presenter clean-up.**
+7. **Presenter clean-up.** [done]
    - `packages/trustee/src/routes/-cash-management.ts`: drop `usdcBalanceValue`, `usdcBalanceDisplay`, `rampAddressDisplay`, the `useRampAddresses` / `useUsdcCustodyBalance` calls and their imports. Update the header anchor to `#cash-management--onoff-ramp`. `useUsdcCustodyBalance` stays, because `CapitalAllocationCard` and `useDrawLoan` use it.
    - Delete `packages/trustee/src/api/useRampAddresses.ts`, `routes/-cash-management-tbills.ts` and `routes/-cash-management-tbills.test.ts`.
    - Remove the tbills test's entry from `scripts/lint-comments.baseline.json`. Shrink the baseline for `-cash-management.ts` / `-cash-management.test.ts` / `-cash-management-page.test.tsx` / `cash-management.tsx` if their counts drop (`npx tsx scripts/lint-comments.ts --update-baseline`; commit only shrinks).
    - Leave the `// spec:` headers of `useRampEvents.ts`, `useReviewRampEvent.ts` and `-useRampHooks.test.tsx` unchanged; they point at `#onoff-ramp-tab`, and that heading is kept. Delete only the `useRampAddresses` case from `-useRampHooks.test.tsx`.
 
-8. **Tech debt** in `docs/exec-plans/tech-debt-tracker.md`. Bump "Next free number" to TD-178.
+8. **Tech debt** [done] in `docs/exec-plans/tech-debt-tracker.md`. Bump "Next free number" to TD-178.
    - **TD-176.** The pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`. Fix: serve `total_assets` (and the snapshot `read_failed`) from the cash book, then switch the summary to served values.
    - **TD-177.** The Withdrawal Queue tab still renders the #945 "Top up" MPC 3-of-5 co-sign shell (`WithdrawalTopUpDialog`), but `trustee-dashboard.md` flow 9 now says the top-up is a custody transfer under the custody policy, which the console does not co-sign. Fix: retire the dialog in a follow-up frontend issue.
    - Append #1765 to TD-175's Location: `-conversions.ts` reuses `wireInReturnRefHash` / `readWireInRefHashSeen` and `lib/wireOut.ts`'s date helpers.
    - Mark **TD-156** resolved: "Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more." Leave its body unchanged otherwise.
 
-9. **Known bug** in `docs/exec-plans/known-bugs.md`. Add **BUG-33**: "Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0".
+9. **Known bug** [done] in `docs/exec-plans/known-bugs.md`. Add **BUG-33**: "Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0".
    - Location: `wireInEscrow.ts` / `wireOutSettlement.ts` `requireWireId` (`id < 1`).
    - Root cause: `storage.rs` `next_id` returns 0 first.
    - Symptom: `wire_in(0)` exists on `CAPL5WN3…`. An escrowed wire-in 0, or the first wire-out on a fresh minter, cannot be confirmed or acted on.
@@ -263,7 +263,7 @@ _None_
 
    Do not fix it in this issue.
 
-10. **Docs.** See Docs to Update.
+10. **Docs.** [done] See Docs to Update.
 
 ## Test Strategy
 
