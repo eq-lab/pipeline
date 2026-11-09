@@ -44,6 +44,7 @@ pub struct StellarIndexerSettings {
     pub deal_token_factory_id: Option<String>,
     pub pocket_id: Option<String>,
     pub security_registry_id: Option<String>,
+    pub plusd_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
     /// `Some` enables asset-transfer polling outright — when `withdrawal_queue_wallet_id`
     /// is also set, every transfer touching it (one-sided: either side, any
@@ -154,6 +155,17 @@ impl StellarIndexerSettings {
                 let validated = validate_contract_id(&security_key, raw)?;
                 stellar_strkey::Contract::from_string(&validated)
                     .map_err(|e| anyhow::anyhow!("{security_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let plusd_key = format!("{ip}PLUSD_ADDRESS");
+        let plusd_id = match env::var(&plusd_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&plusd_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated)
+                    .map_err(|e| anyhow::anyhow!("{plusd_key} failed Strkey parse: {e}"))?;
                 Some(validated)
             }
             _ => None,
@@ -275,6 +287,9 @@ impl StellarIndexerSettings {
         if let Some(id) = &security_registry_id {
             roles.push(("SECURITY_REGISTRY_ADDRESS", id));
         }
+        if let Some(id) = &plusd_id {
+            roles.push(("PLUSD_ADDRESS", id));
+        }
         // Include the asset id when transfer tracking is enabled — it is polled
         // alongside the other roles and routed by the same if/else dispatch ladder.
         if let Some(id) = &asset_id {
@@ -307,6 +322,7 @@ impl StellarIndexerSettings {
             deal_token_factory_id,
             pocket_id,
             security_registry_id,
+            plusd_id,
             asset_id,
             custody_addresses,
             ramp_addresses,
@@ -376,6 +392,7 @@ pub struct IndexerJobSettings {
     pub minter_address: String,
     pub collateral_registry_address: Option<String>,
     pub deal_token_factory_address: Option<String>,
+    pub plusd_address: Option<Address>,
     pub asset_tracking: Option<EvmAssetTracking>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
@@ -405,6 +422,12 @@ impl IndexerJobSettings {
             deal_token_factory_address: match env::var(format!("{ip}DEAL_TOKEN_FACTORY_ADDRESS")) {
                 Ok(raw) if !raw.trim().is_empty() => Some(raw.trim().to_owned()),
                 _ => None,
+            },
+            plusd_address: {
+                let plusd_key = format!("{ip}PLUSD_ADDRESS");
+                env_nonblank(&plusd_key)
+                    .map(|raw| parse_evm_address(&plusd_key, &raw))
+                    .transpose()?
             },
             asset_tracking: evm_asset_tracking_from_env(chain_id)?,
             polling_block_range: require_nonzero(

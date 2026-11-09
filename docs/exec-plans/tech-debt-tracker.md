@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-175.**
+**Next free number: TD-176.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2298,7 +2298,7 @@ line, whichever section it lands in.
 - **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
 - **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
-- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is absent until then.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is served only when `CHAIN_<id>_EVM_API_PLUSD_ADDRESS` is set (#1865), with the minter inferred from the wallet's latest `WireOutRequested` row; a minter redeploy hides earlier minters' requests until an EVM API minter key exists.
 
 ### TD-170: Pocket `complete` is not verified against the key having stayed configured
 
@@ -2340,3 +2340,12 @@ line, whichever section it lands in.
 - **Gap:** `GET /v1/attention-counts` re-reads each in-scope chain's whole minter cash-book event history and `AssetTransfer` list, plus an `lp_bank_deposits` / `contract_logs` anti-join, on every call. Nothing is materialised or cached. The pending bank deposit count is also chain-agnostic because `lp_bank_deposits` has no `chain_id` (TD-117).
 - **Impact:** The Trustee sidebar polls this on every page (#1350), so the cost grows with history and with open Trustee sessions.
 - **Suggested fix:** Materialise the counts (or the folded minter and ramp state) in the indexer or relayer tick, or add a short server-side cache; add `chain_id` to `lp_bank_deposits` and serve the deposit count per chain.
+
+### TD-175: Stellar PLUSD history predates indexing; `plusd_balance` off on 99000001/99000002
+
+- **Date:** 2026-11-09
+- **Location:** `packages/worker/src/indexer/stellar/plusd_parsers.rs`, `packages/api/src/routes/pnl.rs` (`plusd_series`), `CHAIN_<id>_STELLAR_API_PLUSD_ADDRESS`
+- **Gap:** The Stellar PLUSD SACs (testnet `CDGHLVGY…`, mainnet `CD5CFMJ4…`, deployment #37) predate the `…_STELLAR_INDEXER_PLUSD_ADDRESS` key and Soroban RPC retention (about 7 days). A fold over indexed rows alone starts from a zero balance that is not the wallet's real one, so the API key stays unset on both chains and `GET /v1/positions/history` serves no `plusd_balance` there. The EVM arm is unaffected once the cursor is rewound to the PLUSD deploy block.
+- **Impact:** Stellar LPs' Total Balance excludes PLUSD held in the wallet (it still includes sPLUSD and wire-out escrow); the card cannot show the PLUSD part on Stellar.
+- **Suggested fix:** #1878 — a one-off per-holder starting balance: Soroban `simulateTransaction` of the SAC `balance(holder)` (the `pocket_seeds` pattern, `simulate_view` plus a supervised loop), stored in `plusd_balance_seeds (chain_id, token_address, holder, as_of_ledger, balance, created_at)` for the chain's whitelisted LP wallets; at read time the balance is the seed plus the deltas with `block_number > as_of_ledger`, so the fold takes the seed as one leading step. Decide the buckets before the seed, the SAC `balance` result for a missing trustline, and candidate refresh for newly whitelisted wallets.
+- **Also:** Classic PLUSD payments (CAP-67) reach `getEvents` only when the RPC emits unified classic events (protocol 23+). The testnet RPC reports protocol 30, but the coder did not confirm that a classic payment between two G-accounts produces a `PlusdTransfer` row (it needs a signed classic payment, which was not sent). Confirm it with the Stellar manual step in `docs/user-stories/epic-1247/1865-plusd-balance.md` before relying on the term for a wallet that moved PLUSD classically.

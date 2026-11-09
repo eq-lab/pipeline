@@ -182,7 +182,7 @@ _None_
 
 ### Resolved (human, 2026-11-09)
 
-- Plan approved as written. The per-holder Stellar seed is follow-up #1878 (TD-176); the term stays off on 99000001 / 99000002 until it lands.
+- Plan approved as written. The per-holder Stellar seed is follow-up #1878 (TD-175); the term stays off on 99000001 / 99000002 until it lands.
 
 ## Implementation Steps
 
@@ -190,9 +190,9 @@ All new code is comment-less, with at most one `// spec:` header per new file po
 `docs/product-specs/lp-total-balance.md` (API) or `docs/references/backend.md#plusd-transfer-indexing`
 (worker and shared). Numbers are served as plain strings. SQL is defined as `pub const`.
 
-1. **Spec and reference docs first** (see Docs to Update). Write the behavior before the code.
+1. [x] **Spec and reference docs first** (see Docs to Update). Write the behavior before the code.
 
-2. **Shared helper for SAC movements** (`packages/worker/src/indexer/stellar/parsers.rs`).
+2. [x] **Shared helper for SAC movements** (`packages/worker/src/indexer/stellar/parsers.rs`).
    - Add `pub fn sac_holder_strkey(addr: &ScAddress) -> Option<String>`:
      - `Account` → `G…`;
      - `Contract` → `C…`;
@@ -212,7 +212,7 @@ All new code is comment-less, with at most one `// spec:` header per new file po
      `stellar_deal_token_parsers.rs` tests stay green. Drop the private `last_address_topic` in
      `deal_token_factory_parsers.rs`.
 
-3. **Stellar PLUSD parser** (new `packages/worker/src/indexer/stellar/plusd_parsers.rs`, and
+3. [x] **Stellar PLUSD parser** (new `packages/worker/src/indexer/stellar/plusd_parsers.rs`, and
    `pub mod` in `stellar/mod.rs`).
    - `pub const PLUSD_EVENT_TOPICS: [&str; 4] = ["transfer", "mint", "burn", "clawback"];`
    - `pub fn parse_plusd_event(raw: &RawEvent) -> Option<StellarLog>`:
@@ -225,14 +225,14 @@ All new code is comment-less, with at most one `// spec:` header per new file po
        ("recognised by name but not decodable");
      - other SAC topics (`approve`, `set_authorized`, `set_admin`) return `None` silently.
 
-4. **Stellar config** (`packages/worker/src/indexer/config.rs`).
+4. [x] **Stellar config** (`packages/worker/src/indexer/config.rs`).
    - `StellarIndexerSettings` gains `pub plusd_id: Option<String>`, read from
      `CHAIN_<id>_STELLAR_INDEXER_PLUSD_ADDRESS`. It uses the same `validate_contract_id` and
      `stellar_strkey::Contract::from_string` pattern as `POCKET_ADDRESS`.
    - Push `("PLUSD_ADDRESS", id)` into the distinct-roles check. It must differ from `ASSET_ID`,
      `STAKED_PLUSD_ADDRESS` and every other role.
 
-5. **Stellar poller** (`packages/worker/src/indexer/stellar/poller.rs`).
+5. [x] **Stellar poller** (`packages/worker/src/indexer/stellar/poller.rs`).
    - Add a `plusd_id: Option<String>` field and constructor argument.
    - Push the id into `contract_ids`.
    - In the routing ladder, add `else if self.plusd_id.as_deref() == Some(raw.contract_id.as_str()) { dispatch_plusd(&raw) }`
@@ -242,7 +242,7 @@ All new code is comment-less, with at most one `// spec:` header per new file po
    - Filter `plusd_id` out of `token_ids` before the deal-token `getEvents`.
    - Add an info log "Stellar PLUSD transfer indexing enabled" in `run_stellar_indexer_job`.
 
-6. **EVM PLUSD transfers** (new `packages/worker/src/indexer/plusd_transfers.rs`, with `pub mod`
+6. [x] **EVM PLUSD transfers** (new `packages/worker/src/indexer/plusd_transfers.rs`, with `pub mod`
    in `indexer/mod.rs`).
    - `pub fn plusd_transfer_filter(plusd: Address) -> Filter`: `.address(plusd).event_signature(Transfer::SIGNATURE_HASH)`.
      Reuse the `Transfer` `sol!` from `asset_transfers.rs` by making it `pub`.
@@ -266,13 +266,13 @@ All new code is comment-less, with at most one `// spec:` header per new file po
      - log an info line;
      - register the handler after the asset handler.
 
-7. **Migration** (new `packages/shared/migrations/20261109000001_plusd_transfer_params_index.sql`).
+7. [x] **Migration** (new `packages/shared/migrations/20261109000001_plusd_transfer_params_index.sql`).
    - Header comments: purpose, a spec pointer, and the rollback `DROP INDEX IF EXISTS …`.
    - Body:
      `CREATE INDEX IF NOT EXISTS idx_contract_logs_plusd_transfer_params ON contract_logs USING GIN (params jsonb_path_ops) WHERE event_name = 'PlusdTransfer';`
    - Before naming the file, check that no other in-flight branch uses the same timestamp prefix.
 
-8. **Holder steps read** (`packages/shared/src/contract_logs_repo.rs`).
+8. [x] **Holder steps read** (`packages/shared/src/contract_logs_repo.rs`).
    - Add `pub const PLUSD_HOLDER_STEPS_SQL: &str`:
      ```sql
      SELECT block_timestamp,
@@ -290,7 +290,7 @@ All new code is comment-less, with at most one `// spec:` header per new file po
    - Add `#[derive(sqlx::FromRow)] pub struct PlusdStepRow { block_timestamp: i64, amount: Option<String>, incoming: bool, outgoing: bool }`
      and `ContractLogsRepo::list_plusd_holder_steps(chain_id, plusd, holder)`.
 
-9. **API config** (`packages/api/src/config.rs`, `lib.rs`, `main.rs`).
+9. [x] **API config** (`packages/api/src/config.rs`, `lib.rs`, `main.rs`).
    - Add `load_plusd_address(chain_id, kind, &mut plusd_addresses)`. It reads
      `CHAIN_<id>_EVM_API_PLUSD_ADDRESS` or `CHAIN_<id>_STELLAR_API_PLUSD_ADDRESS`, which are
      optional (blank or unset = none).
@@ -300,7 +300,7 @@ All new code is comment-less, with at most one `// spec:` header per new file po
    - Add `plusd_addresses: HashMap::new()` to every `AppState { … }` literal in `packages/api/tests`
      (grep `minter_addresses:`).
 
-10. **Pure compute** (`packages/api/src/total_balance.rs`).
+10. [x] **Pure compute** (`packages/api/src/total_balance.rs`).
     - Rename `fold_escrow` to `fold_steps`, keeping the behaviour, and update the call site and the
       tests. The function now serves both escrow and PLUSD.
     - `pub fn plusd_holder_key(kind: ChainKind, wallet: &str) -> Option<String>`:
@@ -328,7 +328,7 @@ All new code is comment-less, with at most one `// spec:` header per new file po
       `#[serde(skip_serializing_if = "Option::is_none")] pub plusd_balance: Option<String>`.
       Set it in `history_item` as `None` by default.
 
-11. **Handler** (`routes/pnl.rs::get_position_history`).
+11. [x] **Handler** (`routes/pnl.rs::get_position_history`).
     - `let plusd = state.plusd_addresses.get(&chain_id)` and
       `let holder = plusd_holder_key(chain.kind, &wallet)`.
     - Add `plusd_series()`:
@@ -345,18 +345,18 @@ All new code is comment-less, with at most one `// spec:` header per new file po
       into `CompositeInputs`.
     - `empty_series` passes `plusd: None`.
 
-12. **Env and checks.**
+12. [x] **Env and checks.**
     - Add commented examples of the four keys to `.env.example`: indexer and API, for an EVM chain
       and for 99000001/99000002. Note on the Stellar ones: "leave unset until the PLUSD seed
-      (TD-176) lands".
+      (TD-175) lands".
     - Run:
       - `scripts/check-chain-env-names.sh`
       - `cargo clippy --all -- -D warnings`
       - `cargo test -p pipeline-worker -p pipeline-api -p shared`
       - `/Users/aabliazimov/Documents/work/pipeline/node_modules/.bin/tsx scripts/lint-docs.ts`
 
-13. **Follow-up and tech debt.**
-    - Add **TD-176** to `docs/exec-plans/tech-debt-tracker.md`, using the next free number (TD-175
+13. [x] **Follow-up and tech debt.**
+    - Add **TD-175** to `docs/exec-plans/tech-debt-tracker.md`, using the next free number (TD-175
       is the last today): "Stellar PLUSD history predates indexing; `plusd_balance` off on
       99000001/99000002".
     - File the follow-up issue described below. The manager does this together with the PR, since
@@ -501,7 +501,7 @@ environment is available)
      cursor is past `L`; the DB fold over `block_number <= L` must equal the balance exactly.
    - The shared testnet API key stays unset.
 3. **Classic events.** Send PLUSD between two whitelisted testnet G-accounts with a classic payment,
-   and confirm that a `PlusdTransfer` row appears. If it does not, record that in TD-176.
+   and confirm that a `PlusdTransfer` row appears. If it does not, record that in TD-175.
 
 ## Docs to Update
 
@@ -510,7 +510,7 @@ environment is available)
   - `total_balance = splusd_value + wire_out_escrow? + plusd_balance?`.
   - Replace the "reserved / not served" paragraph.
   - Add the coverage rule: the API key is set only once indexing covers PLUSD from its deployment.
-    The term is off on Stellar 99000001/99000002 until TD-176.
+    The term is off on Stellar 99000001/99000002 until TD-175.
   - Add the PLUSD fold: per-movement, the negative, overflow and malformed guard, rounding down
     with the vault `asset_decimals`.
   - The window and empty rules now include the first PLUSD movement.
@@ -534,7 +534,7 @@ environment is available)
   movements as `PlusdTransfer` rows behind `CHAIN_<id>_<TYPE>_INDEXER_PLUSD_ADDRESS`, and EVM
   fetches them by address + topic filter.
 - **`.env.example`:** the four keys (step 12).
-- **`docs/exec-plans/tech-debt-tracker.md`:** TD-176 (step 13).
+- **`docs/exec-plans/tech-debt-tracker.md`:** TD-175 (step 13).
 - **`docs/user-stories/epic-1247/1865-plusd-balance.md`** (new). API-level stories:
   - `plusd_balance` per bucket and in the total;
   - the term is absent without the API key;

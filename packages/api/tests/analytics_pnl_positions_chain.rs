@@ -54,6 +54,7 @@ fn make_test_state() -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: HashMap::new(),
+        plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
@@ -244,11 +245,16 @@ fn openapi_marks_chain_id_required_on_pnl_and_positions() {
 }
 
 #[test]
-fn openapi_exposes_composite_balance_fields_as_optional_without_plusd_balance() {
+fn openapi_exposes_composite_balance_fields_as_optional() {
     let doc = serde_json::to_value(PnlDoc::openapi()).unwrap();
     let schemas = &doc["components"]["schemas"];
     let item = &schemas["PositionHistoryItem"];
-    for field in ["splusd_value", "wire_out_escrow", "total_balance"] {
+    for field in [
+        "splusd_value",
+        "wire_out_escrow",
+        "plusd_balance",
+        "total_balance",
+    ] {
         assert!(item["properties"][field].is_object(), "{field}");
         assert!(
             !item["required"]
@@ -259,7 +265,6 @@ fn openapi_exposes_composite_balance_fields_as_optional_without_plusd_balance() 
             "{field}"
         );
     }
-    assert!(item["properties"]["plusd_balance"].is_null());
     let response = &schemas["PositionHistoryResponse"];
     for field in ["splusd_value", "total_balance"] {
         assert!(response["properties"][field].is_object(), "{field}");

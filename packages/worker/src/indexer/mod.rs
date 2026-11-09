@@ -10,6 +10,7 @@ pub mod loan_metadata;
 pub mod loan_registry_reader;
 pub mod mappers;
 pub mod parsers;
+pub mod plusd_transfers;
 pub mod poller;
 pub mod stellar;
 
@@ -148,7 +149,9 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
             let factory = parse_address("DEAL_TOKEN_FACTORY_ADDRESS", raw)?;
             deal_tokens::reject_core_collision(chain_id, factory, &core_roles)?;
             core_roles.push(("DEAL_TOKEN_FACTORY_ADDRESS", factory));
-            let registry = Arc::new(deal_tokens::DealTokenRegistry::new(factory));
+            let registry = Arc::new(
+                deal_tokens::DealTokenRegistry::new(factory).excluding(settings.plusd_address),
+            );
             let rows = contract_logs_repo.list_deal_registrations(chain_id).await?;
             let deals = registry.seed(&rows);
             tracing::info!(chain_id, deals, "deal-token registry seeded");
@@ -195,6 +198,18 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
                 tracking,
                 repo.clone(),
             )
+        }
+        None => builder,
+    };
+    let builder = match settings.plusd_address {
+        Some(plusd) => {
+            let mut roles = core_roles.clone();
+            if let Some(tracking) = &settings.asset_tracking {
+                roles.push(("ASSET_ADDRESS", tracking.asset));
+            }
+            plusd_transfers::reject_plusd_collision(chain_id, plusd, &roles)?;
+            tracing::info!(chain_id, plusd = %plusd, "EVM PLUSD transfer indexing enabled");
+            plusd_transfers::register_plusd_transfer_handler(builder, chain_id, plusd, repo.clone())
         }
         None => builder,
     };

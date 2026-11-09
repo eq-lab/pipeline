@@ -73,6 +73,7 @@ fn make_test_state(security: HashMap<i64, String>) -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: security,
+        plusd_addresses: HashMap::new(),
         security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
