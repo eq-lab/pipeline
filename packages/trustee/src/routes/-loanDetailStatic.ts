@@ -50,12 +50,12 @@ export const PERFORMING_OTHER_ACTIONS: OtherActions = {
     "Close loan",
     "Escalate to Risk Council",
   ],
-  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  note: "Declaring default, cure, write-down and amendments belong to the Risk Council.",
 };
 
 export const DISBURSING_OTHER_ACTIONS: OtherActions = {
   actions: ["Update lifecycle", "Escalate to Risk Council"],
-  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  note: "Declaring default, cure, write-down and amendments belong to the Risk Council.",
 };
 
 /** A closed loan is terminal — no lifecycle or cash actions remain (#1092). */
@@ -90,5 +90,5 @@ export const MATURED_OTHER_ACTIONS: OtherActions = {
     "Roll over",
     "Escalate to Risk Council",
   ],
-  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  note: "Declaring default, cure, write-down and amendments belong to the Risk Council.",
 };

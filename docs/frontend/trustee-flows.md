@@ -605,7 +605,8 @@ own border/title).
   (`loan-detail-onchain-blocked`), the Matured rollover button is disabled, `onOtherAction` is a
   no-op for them, and the Record Coupon / Record Repayment pages null their
   `recordPaymentInput` / `closureReason` and print the same line. Escalate to Risk Council
-  (read-only page) and Disbursement complete (DB-only) stay available.
+  (navigation to the Risk Council pages, which carry their own Stellar-only gate, TD-152) and
+  Disbursement complete (DB-only) stay available.
 
 ### Repayment recovery (#1711)
 
@@ -1604,88 +1605,64 @@ latter was redundant with the confirmation dialog's copy.
 
 ## Risk Council actions
 
-**Sources:** `packages/trustee/src/routes/-risk-council-escalate.ts` + `risk-council.escalate.$id.tsx`
-(Escalate, flow 10), `-risk-council-reterm.ts` + `risk-council.reterm.$id.tsx` (Amend economics /
-off-cycle re-term, flow 11), `-risk-council-writedown.ts` + `risk-council.writedown.$id.tsx`
-(Write-down close, flow 12), `risk-council.tsx` (pass-through layout), `risk-council.index.tsx`
-(hub placeholder). Issue #782. Spec: `docs/product-specs/trustee-dashboard.md` §"Type 3 — RISK_COUNCIL
-proposals"; escalation's proposal-builder shape: `docs/product-specs/trustee-risk-watchlist.md`.
+**Sources:** user docs [risk-committee](../user-docs/governance/risk-committee.md), [multisig-roles](../user-docs/governance/multisig-roles.md), [fiduciary-trustee](../user-docs/governance/fiduciary-trustee.md) §"Independence", [protocol-layer](../user-docs/how-it-works/protocol-layer.md) §"Roles", [default-management](../user-docs/risks/default-management.md) (closure table, §"Declaration", §"Write-down", §"Cure"), [emergency-response](../user-docs/security/emergency-response.md). Code: `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts`; trustee `api/useRiskCouncil.ts`, `lib/accessManagerAction.ts`, `lib/riskCouncilOps.ts`, `routes/-risk-council-shared.ts` (presenter base and action view), `routes/-RiskCouncilParts.tsx`, then per page `-risk-council-{escalate,reterm,writedown,hub}.ts` with `risk-council.{escalate,reterm,writedown}.$id.tsx` and `risk-council.index.tsx`. Issues #782 (shells), #1761 (AccessManager model, epic #1795). Product spec: [trustee-dashboard.md](../product-specs/trustee-dashboard.md) §"Type 3"; escalation context: [trustee-risk-watchlist.md](../product-specs/trustee-risk-watchlist.md). User stories: [1761](../user-stories/epic-1795/1761-risk-council-access-manager.md).
 
-### Routing
+### Model
 
-`risk-council.tsx` is a pass-through layout (`<Outlet/>`, no chrome of its own, mirrors
-`loans.tsx` / `origination.tsx`, #821) so sibling pages can live under `/risk-council`:
-`risk-council.index.tsx` (placeholder hub, pending a live Watchlist-candidates list), and the
-three flow pages. Without this layout, TanStack's generated route tree would reference a parent
-route with no `<Outlet/>`, so a child would fail to register — the same class of issue `loans.tsx`
-fixes for `/loans/$id`. Escalate/reterm/writedown register at `/risk-council/{escalate,reterm,
-writedown}/$id` without the `$id_` trailing-underscore escape (unlike
-`loans.$id_.record-coupon.tsx`) because there is no leaf file they'd otherwise collide with. All
-three validate the `chain` search param (`parseLoanRouteSearch`, #1537) and pass it to their
-presenter hook as the first argument.
+A Risk Council wallet calls the AccessManager (AM). When `can_call` returns `immediate` it runs one `execute`. Otherwise it runs `schedule`, waits for the delay, then runs `execute`. There is no Safe, proposal, vote or timer in the app. The Trustee role cannot call any of these functions. The Figma frames are styling only.
 
-### Escalate to Default (flow 10) — proposal builder, not a typed payload
+LoanRegistry functions, all `RISK_COUNCIL` through the AM (`target = ENV.STELLAR_LOAN_REGISTRY_ID`, AM = `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`; guardian role `GUARDIAN`):
 
-Per the Risk & Watchlist spec (docs are the source of truth, Figma is styling), escalation is a
-**generic proposal builder**: the Trustee reviews the loan's risk evidence (ledger card) and
-writes a free-form proposal **name + text** for the Risk Council — **not** a type-specific
-`setDefault` payload composed by the dashboard. The 3-of-5 Safe executes the underlying action
-after the 24h timelock; the Trustee cannot execute. The read-only re-term / write-down frames are
-the Risk-Council **display** screens for flows 11/12.
+| Page | Function | Arguments |
+|---|---|---|
+| Escalate | `set_default` | `loan_id: u32` |
+| Default resolution | `cure` | `loan_id: u32` |
+| Default resolution | `write_down` | `loan_id: u32`, `amount: u128` (7-decimal SAC base units) |
+| Default resolution | `close_defaulted` | `loan_id: u32`, `reason: ClosureReason` (`Default` or `OtherWriteDown`, `scvVec([scvSymbol])`) |
+| Amend economics | `amend_economics` | `loan_id: u32`, `new_rate: u32` (bps × 100, as `rollover`), `new_maturity_timestamp: u64` |
+| Amend economics | `adjust_interest` | `loan_id: u32`, `delta: i128` (negative = waiver), `reason_hash: BytesN<32>` |
 
-**Real vs. mock data:**
+Reads: `loan_money(loan_id)` (`accrued_interest, carved_out, disbursed, outstanding, repaid, written_down`) and `mutable_loan_data(loan_id)` (`status, closure_reason, current_rate, current_maturity_timestamp, interest_adjustment, written_down, carved_out, …`). The AM id of a scheduled operation is `hash_operation(caller, target, fn, args)`, so it covers the caller; `get_schedule(id)` is `0` when nothing is scheduled.
 
-- **Real** (sourced live, per-loan): Days on watchlist (`entry.days_on_watchlist`, `—` when
-  `null`, #1626); Originator / Facility (`principal`) / senior deployed
-  (`senior_outstanding`) / Collateral (loan-book entry, served display-scale as-is, #906;
-  `ccr_bps` used as-is); Repaid to date (`useLoanFinancials`, `offtaker − offtaker_outstanding`);
-  CCR trend (`useLoanCcrHistory` + `buildCcrTrend`, reused from `-useLoanDetail.ts`); current
-  at-risk % (`summary.at_risk_wl_and_default_pct`); concentration (`summary.top_concentration`,
-  only when it names *this* loan's own commodity — the endpoint serves a single portfolio-wide top
-  concentration, not a per-commodity share — `—` otherwise).
-- **Mock** (no backend source, flagged, not per-loan): the "→ Y% if
-  defaulted" portfolio-impact projection (no projection endpoint, and `at_risk_wl_and_default_pct`
-  already combines WatchList+Default so a same-loan transition barely moves the combined figure —
-  no real formula to derive the Figma's forward-looking delta); the proposal builder itself (name +
-  text form, Draft → Submitted, the 24h-timelock timer — no Safe/proposal/voting/timelock backend
-  exists yet, `RiskCouncilSafe.propose` is RISK_COUNCIL-only, not Trustee-callable — local UI state
-  only, no network/wallet).
+The rate scale is pinned by the encoder test: `rateBps 1450` encodes `u32(145000)`; the current-terms card shows `current_rate / 100` bps through `formatBpsRate`. This is the contract's fixed unit, not a derived metric.
 
-The collateral sub-label uses the real 7-day spot-change basis (`spot_change_7d`), matching the
-Loans page's never-fabricate rule (exec-plan RISK 3) rather than the Figma's "30d" literal; the
-Figma's "unchanged · 3.9%" concentration qualifier has no trend/history source, so "unchanged" is
-dropped — only the served share renders.
+### Availability (`can_call`)
 
-### Amend economics / off-cycle re-term (flow 11) — read-only review
+`useRiskCouncilAccess(chainId, call | null, fn)` reads `can_call(wallet, registry, fn)`; when `delay > 0` and `call` is set it also reads the schedule. `accessAction` maps it:
 
-A RISK_COUNCIL `amendEconomics` proposal. Unlike Escalate (which the Trustee drafts + submits),
-this is a **read-only review** screen: the dashboard only shows the review, evidence, and voting
-status — execution stays with the Risk Council Safe after the 24h timelock, GUARDIAN-cancelable.
-"View Safe proposal" is a placeholder for the (unbuilt) Safe link. There is no submit action.
+- `execute-now` (`immediate`): one click, a single `AM.execute`; the chip reads "Risk Council · executes at once".
+- `schedule` (`delay > 0`, nothing scheduled): `AM.schedule` (`when = 0`); chip "Risk Council · {N h} delay".
+- `execute-scheduled`: "Scheduled. Executable from {UTC}." from the on-chain ready time, then `AM.execute`.
+- `no-role` (`immediate: false, delay: 0`, for example Trustee-only): the page renders read-only with the per-action copy, the button is disabled, chip "Risk Council only".
 
-- **Real** — the loan's **current** terms, per-loan: Loan (originator — commodity), CCR
-  (`ccr_bps`), Maturity (`maturity`) from the loan-book entry; current coupon — the current
-  epoch APY (`useLoanFinancials` `epoch.current_apy_bps`), falling back to the loan-book `rate`
-  when no epoch is on record, `—` when neither is available.
-- **Mock** — the **proposed** amendment + the proposal timestamp. No Safe/proposal backend exists
-  (`RiskCouncilSafe.propose(amendEconomics)` is RISK_COUNCIL-only), so the proposed coupon /
-  maturity extension / covenant / expected status and the timestamp stamp are static Figma
-  literals until that infra lands — the same convention as flow 10's proposal section.
+Chain state is read through `useRiskCouncilLoanState` (`["risk-council-loan", chainId, loanId]`, `staleTime` 15 s) and shown raw through `formatChainAmount`; nothing is computed client-side. Mutations invalidate `risk-council-access`, `risk-council-loan`, `risk-council-hub`, `loan-book`, `loan-financials` and `audit-log` immediately and again at 5 s and 15 s.
 
-### Write-down close / Default resolution (flow 12) — read-only, no action
+### Finding a schedule after a reload
 
-A RISK_COUNCIL `closeLoan(reason: OtherWriteDown)` proposal. Like flow 11 (and unlike flow 10) a
-**read-only review** screen — the Trustee has **no close button** on this flow ("PLUSD backing
-impact and audit trail are shown before execution"). Execution stays with the Risk Council Safe
-after the timelock, GUARDIAN-cancelable.
+No `localStorage`. `set_default` and `cure` are looked up from `[loan_id]` alone on every page load and on the hub. The forms with arguments run the schedule read on the form's current valid arguments, so re-entering the same values shows "Scheduled. Executable from …". `adjust_interest` uses `reason_hash = sha256(utf8(reason.trim()))`, shown as hex under the field. Lookups use the connected wallet as `caller`: a Trustee-only wallet never sees the Risk Council's pending operations.
 
-- **Real** — the loan's resolution ledger identity, per-loan: Loan (originator — commodity) and
-  Principal outstanding (`senior_outstanding`, served display-scale as-is, #906).
-- **Mock** — the write-down resolution + the Safe voting layer: recovery-received figure, the
-  pending `closeLoan` proposal (`loanId` string / recoveryAmount / writeDown), per-signer voting
-  status, and the queue timelock. Nothing serves any of these; `RiskCouncilSafe.propose(closeLoan)`
-  is RISK_COUNCIL-only. Static Figma literals until that infra lands (same convention as flows
-  10/11).
+The page-local store (`lib/riskCouncilOps.ts`, in memory, `useSyncExternalStore`) records operations this console scheduled in this browser session (`{ chainId, call, scheduledAt, executedHere }`). `get_schedule` reads `0` after execute, cancel and expiry, so the state cannot tell them apart. For a recorded operation that was not executed here and now reads `0` (at least 14 s after it was scheduled), the card shows "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session." The chain-state card beside it shows what happened.
+
+### Pages
+
+Per-loan pages validate the `chain` search param (`parseLoanRouteSearch`) and reuse the shells, cards and tokens of #782 for styling. Each action card has: role line, button, stage text ("Waiting for wallet signature…", "Submitting on-chain…", "Confirming…"), inline error, and the submitted hash.
+
+- **Escalate to Default** (`/risk-council/escalate/$id`, flow 10). Left: the ledger card (facility / senior, Principal repaid from chain `loan_money.repaid`, collateral, CCR, days on watchlist, CCR trend, at-risk %, concentration; the CCR rows stay as they are, #1767). Right: "Declare default" with the effects text from default-management §"Declaration", then the chain-state rows (Status, Outstanding principal, Written down, Pocket opened). Enabled when chain status is `Performing` or `WatchList`; a `Default` loan shows "This loan is in Default." with a link to the resolution page; `Closed`/`Approved` show "Not available for a {status} loan." Buttons: "Declare default" / "Schedule default" / "Execute default"; the primary button opens a confirm dialog ("Declare default on Loan #{id}? The pocket opens on the first default.", `role="dialog"`, Escape and backdrop cancel). No-role copy: "Declaring a default belongs to the Risk Council."
+- **Amend economics** (`/risk-council/reterm/$id`, flow 11). Current terms from chain (coupon from `current_rate`, maturity, accrued interest, interest adjustment, signed) plus CCR from the loan book. Amend card: new rate % (live "= N bps" echo, same rules as the rollover dialog) and a date input (`dateInputToUnixUtc`, UTC midnight), buttons "Amend economics" / "Schedule amendment" / "Execute amendment". Adjust-interest card: signed USD delta (optional leading `-`) and reason, with the hash; buttons "Adjust interest" / "Schedule adjustment" / "Execute adjustment". Available for any chain status except `Closed` and `Approved`. No-role copy: "Changing loan economics belongs to the Risk Council."
+- **Default resolution** (`/risk-council/writedown/$id`, flow 12). Left: chain state (Status, Outstanding principal, Disbursed, Repaid, Written down, Pocket opened, Closure reason). Right, in order: **Write down** (USD amount, initial value from chain `outstanding` via `formatChainAmount`, editable, converted with `usdInputToSacBaseUnits`); **Close defaulted loan** (radio `Default` / `OtherWriteDown`, each with "Risk Council only · 24 hours" from the closure table); **Cure** (effects: "The loan returns to WatchList. The pocket stays open; later repayments still go to the pocket holders."). All three need chain status `Default`; otherwise the page shows "This loan is not in Default." with a link back to Escalate. No-role copy: "Writing down, closing a defaulted loan and curing belong to the Risk Council."
+- **Close-defaulted split.** Scheduling is not closing, so **Schedule close** is allowed whenever the status is `Default` and can run in parallel with the write-down delay. **Execute close** (immediate or scheduled) is enabled only when chain `loan_money.outstanding` is the string `"0"`; otherwise "Executable once the outstanding principal is zero." A close scheduled too early can expire (7 days after its ready time).
+- **Hub** (`/risk-council`, `-risk-council-hub.ts`). Chain: `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID` (chain-scope rule). It shows the docs sentence ("The Risk Council acts through the access manager. Declaring a default executes at once; every other Risk Council action waits 24 hours, and the Guardian or the Admin can cancel it during the wait."), a "Scheduled operations" table and a per-loan action index. Scheduled rows come from (a) the page-local store and (b) deterministic lookups per loan on the session's chain: `set_default` for `Performing`/`WatchList` loans, `cure` for `Default` loans (`useRiskCouncilHubLookups`, one query per call, `staleTime` 30 s, only `readyAt > 0` kept). Columns: loan, action, arguments (verbatim: rate bps / maturity date / USD amount / reason / signed delta), executable from, state, link. Empty state "No scheduled operations found."; footnote: "Lists operations scheduled from this console in this session, and declared defaults or cures pending for any loan. Other scheduled operations need an indexer and are not listed yet." A no-role wallet sees "Risk Council actions belong to the Risk Council. Pending operations are visible to the scheduling wallet only." and "—" in the table. Loan index: `Performing`/`WatchList` → Declare default, Amend economics; `Default` → Resolve default, Amend economics; `Closed` → none. Links carry `chain`.
+
+### EVM
+
+Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence still renders, the chain-state card shows "—", and every action card is disabled and prints `stellarOnlyActionReason(chainId)` (TD-152). On the hub, when the session chain is not Stellar, only the header and the same reason line render. There are no EVM reads and no EVM encoders for these actions (#1573, #1574).
+
+### Errors, config and roles
+
+- Generic `toUserError` plus local AM copy (`RISK_COUNCIL_AM_ERROR_COPY`): `execute:6` nothing scheduled, `execute:7` not ready, `execute:8` expired ("Schedule it again"), `schedule:9` already scheduled. Local because Soroban codes collide across contracts.
+- Config: `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives "On-chain Risk Council actions are not configured for this environment." The Risk Council wallet must also be a trustee in the API's `auth_users`, or the pages cannot be opened (deployment fact). Until #1756 lands the whole role is delayed on the current deployment, so `set_default` takes the scheduled path there.
+- Contract preconditions are not readable from this repo; the UI gates follow the docs (one constant per function) and the contract stays the authority. Simulation errors surface through `toUserError` and the AM copy.
+- Not in the app: cancelling a scheduled operation (`AM.cancel`, TD-159), and listing operations scheduled elsewhere (TD-174).
 
 ## Overview page
 

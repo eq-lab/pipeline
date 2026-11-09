@@ -1,19 +1,9 @@
-/**
- * View-model + data wiring for the Trustee Risk Council — Escalate page
- * (`risk-council.escalate.$id.tsx`). Per `docs/FRONTEND.md` Code structure
- * rule 2 the `.tsx` route is JSX/styling only; this hook owns the live
- * fetches and the value→display mapping (mirrors `-useLoanDetail.ts` /
- * `-record-coupon.ts`).
- *
- * spec: docs/frontend/trustee-flows.md#escalate-to-default-flow-10--proposal-builder-not-a-typed-payload
- * (proposal-builder model, real-vs-mock data sourcing).
- */
-import { useState } from "react";
-import { useLoanBook } from "@/api/useLoanBook";
-import { findLoanEntry } from "@/lib/loanRoute";
+// spec: docs/frontend/trustee-flows.md#risk-council-actions
 import type { TopConcentration } from "@/api/useLoanBook";
-import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
+import { formatFractionPct } from "@/utils/formatFractionPct";
+import { formatFullUsd } from "@/utils/formatUsd";
+import { useLoanBook } from "@/api/useLoanBook";
 import { buildCcrTrend, ccrSeriesFrom, type CcrTrend } from "./-useLoanDetail";
 import {
   classifyCcr,
@@ -21,23 +11,32 @@ import {
   MAINTENANCE_MARGIN_BPS,
   HEALTHY_MARGIN_BPS,
 } from "./-useLoansTable";
-import { formatFractionPct } from "@/utils/formatFractionPct";
-import { formatFullUsd } from "@/utils/formatUsd";
-import { toUserError } from "@/utils/userError";
+import { formatChainAmount } from "./-repayment-recovery";
+import {
+  chainStateRows,
+  notAvailableNote,
+  useRiskCouncilActionView,
+  useRiskCouncilLoanBase,
+  type ActionView,
+  type LabelValue,
+  type PageState,
+} from "./-risk-council-shared";
 
-// ── Mock constants (see module doc — no backend source, not per-loan) ───────
-
-/** MOCK — no if-defaulted portfolio-impact projection endpoint exists. */
-export const MOCK_AT_RISK_PROJECTED_PCT = "4.3%";
-
-/** Protocol hard-margin-call floor (110%), in whole percent — the lowest CCR band (#939). */
 const MARGIN_CALL_PCT = 110;
 const MAINTENANCE_MARGIN_PCT = MAINTENANCE_MARGIN_BPS / 100;
 const HEALTHY_MARGIN_PCT = HEALTHY_MARGIN_BPS / 100;
 
-// ── Pure helpers (exported for unit tests) ──────────────────────────────────
+export const SET_DEFAULT_STATUSES: ReadonlySet<string> = new Set([
+  "Performing",
+  "WatchList",
+]);
 
-// Protocol CCR thresholds (130/120/110%, spec §9.6); null once at/below the lowest.
+export const DEFAULT_EFFECTS =
+  "The loan moves to Default. On the first default its outstanding principal moves out of the staking vault into a pocket for this loan; the sPLUSD share price falls by the amount moved.";
+
+export const DEFAULT_NO_ROLE =
+  "Declaring a default belongs to the Risk Council.";
+
 export function nextCcrAlertPct(ccrBps: number | null): number | null {
   if (ccrBps == null || !Number.isFinite(ccrBps)) return null;
   const pct = ccrBps / 100;
@@ -47,11 +46,6 @@ export function nextCcrAlertPct(ccrBps: number | null): number | null {
   return null;
 }
 
-/**
- * The CCR ledger-row text, e.g. `"114% — next alert at 110%"`. `—` when CCR
- * is unavailable; omits the alert clause once there is no further threshold
- * to name.
- */
 export function formatCcrLine(ccrBps: number | null): string {
   if (ccrBps == null || !Number.isFinite(ccrBps)) return "—";
   const pct = Math.round(ccrBps / 100);
@@ -59,7 +53,6 @@ export function formatCcrLine(ccrBps: number | null): string {
   return alert != null ? `${pct}% — next alert at ${alert}%` : `${pct}%`;
 }
 
-/** `"$2,300,000 / $1,840,000"` — Facility / senior deployed, served display-scale as-is (#906). */
 export function formatFacilityLine(
   principal: string | null | undefined,
   seniorOutstanding: string | null | undefined,
@@ -67,38 +60,6 @@ export function formatFacilityLine(
   return `${formatFullUsd(principal)} / ${formatFullUsd(seniorOutstanding)}`;
 }
 
-/**
- * Repaid to date = `offtaker − offtaker_outstanding` (both served display-scale
- * as-is, #906), clamped at 0. `—` when either financials field is unavailable —
- * never fabricated.
- */
-export function buildRepaidToDate(
-  offtaker: string | null | undefined,
-  offtakerOutstanding: string | null | undefined,
-): string {
-  const total = offtaker;
-  const outstanding = offtakerOutstanding;
-  if (total == null || outstanding == null) return "—";
-  const totalNum = parseFloat(total);
-  const outstandingNum = parseFloat(outstanding);
-  if (!Number.isFinite(totalNum) || !Number.isFinite(outstandingNum)) {
-    return "—";
-  }
-  const repaid = Math.max(0, totalNum - outstandingNum);
-  return formatFullUsdNumber(repaid);
-}
-
-/** Formats an already-scaled USD number as fully-expanded whole dollars. */
-function formatFullUsdNumber(n: number): string {
-  return `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n)}`;
-}
-
-/**
- * The real 7-day spot-change fragment (`"−18% 7d"`), matching the Loans page's
- * never-fabricate rule (exec-plan RISK 3): the served basis is 7-day, never
- * relabelled "30d" to match the Figma literal. `null` when unavailable (the
- * label then omits the parenthetical entirely).
- */
 function formatChangeFragment(
   spotChange7d: string | null | undefined,
 ): string | null {
@@ -106,12 +67,10 @@ function formatChangeFragment(
   const change = parseFloat(spotChange7d);
   if (!Number.isFinite(change)) return null;
   const pct = Math.round(Math.abs(change) * 100);
-  // U+2212 MINUS SIGN / U+002B PLUS SIGN, matching the Figma glyphs.
   const sign = change < 0 ? "−" : "+";
   return `${sign}${pct}% 7d`;
 }
 
-/** `"Collateral (coffee −18% 7d)"`, or plain `"Collateral"` when no spot change is served. */
 export function buildCollateralLabel(
   commodity: string,
   spotChange7d: string | null | undefined,
@@ -122,28 +81,6 @@ export function buildCollateralLabel(
     : "Collateral";
 }
 
-/**
- * The "Portfolio impact if defaulted" at-risk row: the real current
- * WatchList+Default % and the MOCK if-defaulted projection (see module doc —
- * no projection endpoint exists).
- */
-export function buildAtRiskLine(atRiskPct: string | null | undefined): {
-  current: string;
-  projected: string;
-} {
-  return {
-    current: formatFractionPct(atRiskPct),
-    projected: MOCK_AT_RISK_PROJECTED_PCT,
-  };
-}
-
-/**
- * The commodity-concentration row. The loan-book summary serves only ONE
- * portfolio-wide top concentration (a single commodity + share), so its
- * figure is only rendered when it actually names THIS loan's commodity —
- * otherwise `—` (never fabricate a per-commodity share the endpoint doesn't
- * serve for every commodity).
- */
 export function buildConcentration(
   commodity: string,
   topConcentration: TopConcentration | null | undefined,
@@ -158,121 +95,102 @@ export function buildConcentration(
   return { label, value: formatFractionPct(topConcentration.share) };
 }
 
-// ── View types ──────────────────────────────────────────────────────────────
+export type Eligibility =
+  | { kind: "eligible" }
+  | { kind: "default" }
+  | { kind: "unavailable"; note: string }
+  | { kind: "unknown" };
+
+export function escalateEligibility(status: string | null): Eligibility {
+  if (status == null) return { kind: "unknown" };
+  if (SET_DEFAULT_STATUSES.has(status)) return { kind: "eligible" };
+  if (status === "Default") return { kind: "default" };
+  return {
+    kind: "unavailable",
+    note: notAvailableNote(status) ?? `Not available for a ${status} loan.`,
+  };
+}
 
 export interface LedgerView {
   facilityAndSeniorDeployed: string;
-  repaidToDate: string;
+  principalRepaid: string;
   collateralLabel: string;
   collateralValue: string;
   ccrLine: string;
   ccrBand: CcrBand | null;
-  /** MOCK — see module doc. */
   daysOnWatchlist: string;
 }
 
 export interface PortfolioImpactView {
   atRiskCurrentPct: string;
-  /** MOCK — see module doc. */
-  atRiskProjectedPct: string;
   concentrationLabel: string;
   concentrationValue: string;
 }
 
-export type ProposalStatus = "draft" | "submitted";
-
 export interface RiskCouncilEscalateView {
-  state: "loading" | "error" | "not-found" | "ready";
+  state: PageState;
   errorMessage: string | null;
   errorDetails: string | null;
   loanId: string;
   originator: string;
   title: string;
   ledger: LedgerView;
-  /** `null` while the CCR-history series has no points yet (loading, or never priced). */
   ccrTrend: CcrTrend | null;
   portfolioImpact: PortfolioImpactView;
-  /** Mock Draft/Submitted proposal state — local UI only, no network/wallet. */
-  status: ProposalStatus;
-  /** Free-form proposal name (`Risk UX.md` proposal-builder — the Trustee's ask, not composed calldata). */
-  proposalName: string;
-  /** Free-form proposal text / rationale. */
-  proposalText: string;
-  onNameChange: (value: string) => void;
-  onTextChange: (value: string) => void;
-  /** `true` once both name and text are non-empty — the submit control's gate. */
-  canSubmit: boolean;
-  onSubmit: () => void;
+  chainState: LabelValue[];
+  eligibility: Eligibility;
+  effects: string;
+  action: ActionView;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-/**
- * Wires the matching loan-book row (ledger identity, facility/senior/
- * collateral/CCR, at-risk %, concentration), the loan's financials (repaid to
- * date), and the CCR-history series (trend chart) for `loanId`; composes them
- * with the still-mock sections (days on watchlist, if-defaulted projection)
- * and the local mock Draft→Submitted proposal state.
- */
 export function useRiskCouncilEscalate(
   chainId: number,
   loanId: string,
 ): RiskCouncilEscalateView {
   const loanBook = useLoanBook();
-  const financials = useLoanFinancials(chainId, loanId);
-  const [status, setStatus] = useState<ProposalStatus>("draft");
-  const [proposalName, setProposalName] = useState("");
-  const [proposalText, setProposalText] = useState("");
-  const canSubmit =
-    proposalName.trim().length > 0 && proposalText.trim().length > 0;
+  const base = useRiskCouncilLoanBase(chainId, loanId);
+  const entry = base.entry;
+  const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrSeriesFrom(entry));
 
-  const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
-
-  const ccrFrom = ccrSeriesFrom(entry);
-  const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
-
-  const state: RiskCouncilEscalateView["state"] = loanBook.isLoading
-    ? "loading"
-    : loanBook.error
-      ? "error"
-      : entry == null
-        ? "not-found"
-        : "ready";
+  const eligibility = escalateEligibility(base.chainStatus);
+  const action = useRiskCouncilActionView({
+    chainId,
+    call:
+      base.loanId === null ? null : { fn: "set_default", loanId: base.loanId },
+    fn: "set_default",
+    noRoleCopy: DEFAULT_NO_ROLE,
+    labels: {
+      now: "Declare default",
+      schedule: "Schedule default",
+      execute: "Execute default",
+    },
+    enabled: eligibility.kind === "eligible",
+  });
 
   const originator = entry?.originator ?? "";
-  const title =
-    entry != null
-      ? `Escalate to Risk Council — ${originator}`
-      : `Escalate to Risk Council — Loan #${loanId}`;
-
-  const atRisk = buildAtRiskLine(
-    loanBook.data?.summary.at_risk_wl_and_default_pct,
-  );
   const concentration = buildConcentration(
     entry?.commodity ?? "",
     loanBook.data?.summary.top_concentration,
   );
-
-  const loanBookError = loanBook.error
-    ? toUserError(loanBook.error, "Failed to load the loan.")
-    : null;
+  const repaid = base.chainState?.money.repaid;
 
   return {
-    state,
-    errorMessage: loanBookError?.message ?? null,
-    errorDetails: loanBookError?.details ?? null,
+    state: base.state,
+    errorMessage: base.errorMessage,
+    errorDetails: base.errorDetails,
     loanId,
     originator,
-    title,
+    title:
+      entry != null
+        ? `Escalate to Default — ${originator}`
+        : `Escalate to Default — Loan #${loanId}`,
     ledger: {
       facilityAndSeniorDeployed: formatFacilityLine(
         entry?.principal,
         entry?.senior_outstanding,
       ),
-      repaidToDate: buildRepaidToDate(
-        financials.data?.offtaker,
-        financials.data?.offtaker_outstanding,
-      ),
+      principalRepaid:
+        repaid == null ? "—" : formatChainAmount(repaid, chainId),
       collateralLabel: buildCollateralLabel(
         entry?.commodity ?? "—",
         entry?.spot_change_7d,
@@ -287,19 +205,20 @@ export function useRiskCouncilEscalate(
     },
     ccrTrend: buildCcrTrend(ccrHistory),
     portfolioImpact: {
-      atRiskCurrentPct: atRisk.current,
-      atRiskProjectedPct: atRisk.projected,
+      atRiskCurrentPct: formatFractionPct(
+        loanBook.data?.summary.at_risk_wl_and_default_pct,
+      ),
       concentrationLabel: concentration.label,
       concentrationValue: concentration.value,
     },
-    status,
-    proposalName,
-    proposalText,
-    onNameChange: setProposalName,
-    onTextChange: setProposalText,
-    canSubmit,
-    onSubmit: () => {
-      if (canSubmit) setStatus("submitted");
-    },
+    chainState: chainStateRows(chainId, base.chainState, [
+      "status",
+      "outstanding",
+      "writtenDown",
+      "pocket",
+    ]),
+    eligibility,
+    effects: DEFAULT_EFFECTS,
+    action,
   };
 }

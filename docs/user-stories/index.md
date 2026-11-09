@@ -361,6 +361,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
+| [#1761 Trustee: Risk Council pages on the AccessManager model](https://github.com/eq-lab/pipeline/issues/1761) | [1761-risk-council-access-manager.md](./epic-1795/1761-risk-council-access-manager.md) | Initial |
 
 ---
 

@@ -6,7 +6,7 @@ import type { CcrTrend } from "./-useLoanDetail";
  * unwrapped, inside the Risk Council "Escalate to Default" ledger card.
  *
  * spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868,
- * docs/frontend/trustee-flows.md#escalate-to-default-flow-10--proposal-builder-not-a-typed-payload.
+ * docs/frontend/trustee-flows.md#risk-council-actions.
  */
 
 const NEGATIVE_RED = "#b20000";

@@ -1,161 +1,134 @@
-/**
- * Tests for the Risk Council "Escalate to Default" presenter's pure helpers
- * (`-risk-council-escalate.ts`, issue #782). All pure — no DOM, no query
- * layer, no `renderHook` (mirrors `-useLoanDetail.test.ts` / `-record-coupon.test.ts`'s
- * convention: the hook's own wiring is exercised end-to-end via the page
- * render test, `-risk-council-escalate-page.test.tsx`).
- *
- * Covers the CCR next-alert threshold math, the registry ×1000 (#840) full-USD
- * facility/repaid/collateral formatting, the real-7d (never-"30d") collateral
- * label, the at-risk line (real current % + MOCK projection), and the
- * commodity-concentration match/no-match logic.
- */
+// spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { describe, it, expect } from "vitest";
 import type { TopConcentration } from "@/api/useLoanBook";
+import * as escalate from "./-risk-council-escalate";
 import {
-  buildAtRiskLine,
   buildCollateralLabel,
   buildConcentration,
-  buildRepaidToDate,
+  escalateEligibility,
   formatCcrLine,
   formatFacilityLine,
   nextCcrAlertPct,
-  MOCK_AT_RISK_PROJECTED_PCT,
 } from "./-risk-council-escalate";
+import { chainStateRows } from "./-risk-council-shared";
+import { loanState, STELLAR } from "./-riskCouncilFixtures";
 
 describe("nextCcrAlertPct", () => {
-  it("returns 110 for a CCR between 110% and 120% (pre-default band)", () => {
+  it("returns the next protocol threshold below the CCR", () => {
     expect(nextCcrAlertPct(11_400)).toBe(110);
-  });
-
-  it("returns 120 for a CCR between 120% and 130% (attention band)", () => {
     expect(nextCcrAlertPct(12_500)).toBe(120);
-  });
-
-  it("returns null for a CCR at/above the 130% healthy floor", () => {
-    expect(nextCcrAlertPct(13_500)).toBeNull();
     expect(nextCcrAlertPct(13_000)).toBe(120);
   });
 
-  it("returns null at/below the 110% margin-call floor (no lower alert to name)", () => {
+  it("returns null above 130%, at or below 110% and for bad input", () => {
+    expect(nextCcrAlertPct(13_500)).toBeNull();
     expect(nextCcrAlertPct(11_000)).toBeNull();
-    expect(nextCcrAlertPct(9_000)).toBeNull();
-  });
-
-  it("returns null for null/non-finite input (never fabricates)", () => {
     expect(nextCcrAlertPct(null)).toBeNull();
     expect(nextCcrAlertPct(Number.NaN)).toBeNull();
   });
 });
 
 describe("formatCcrLine", () => {
-  it('formats "114% — next alert at 110%" for a declining pre-default CCR', () => {
+  it("formats the alert clause only when a threshold remains", () => {
     expect(formatCcrLine(11_400)).toBe("114% — next alert at 110%");
-  });
-
-  it("omits the alert clause once there is no further threshold to name", () => {
     expect(formatCcrLine(10_500)).toBe("105%");
-  });
-
-  it('returns "—" for null/non-finite CCR', () => {
     expect(formatCcrLine(null)).toBe("—");
-    expect(formatCcrLine(Number.NaN)).toBe("—");
   });
 });
 
 describe("formatFacilityLine", () => {
-  it("formats served display-scale amounts as full USD (#906, as-is)", () => {
-    // Served display-scale ⇒ $2,300,000 / $1,840,000 as-is (no ×1000, #906).
+  it("formats served amounts as full USD and dashes missing ones", () => {
     expect(formatFacilityLine("2300000.000000", "1840000.000000")).toBe(
       "$2,300,000 / $1,840,000",
     );
-  });
-
-  it('renders "—" for missing amounts', () => {
     expect(formatFacilityLine(null, null)).toBe("— / —");
   });
 });
 
-describe("buildRepaidToDate", () => {
-  it("computes offtaker − offtaker_outstanding, both served display-scale (#906)", () => {
-    // $2,000,000 − $1,200,000 as-is.
-    expect(buildRepaidToDate("2000000.000000", "1200000.000000")).toBe(
-      "$800,000",
-    );
-  });
-
-  it("clamps at $0 (never negative)", () => {
-    expect(buildRepaidToDate("1000000.000000", "1500000.000000")).toBe("$0");
-  });
-
-  it('returns "—" when either financials field is unavailable', () => {
-    expect(buildRepaidToDate(null, "1200000.000000")).toBe("—");
-    expect(buildRepaidToDate("2000000.000000", undefined)).toBe("—");
-  });
-});
-
 describe("buildCollateralLabel", () => {
-  it('uses the REAL 7-day basis, never a fabricated "30d" relabel (exec-plan RISK 3)', () => {
+  it("uses the served 7-day basis and omits it when unserved", () => {
     expect(buildCollateralLabel("Coffee", "-0.18")).toBe(
       "Collateral (coffee −18% 7d)",
     );
-  });
-
-  it("renders a positive change with the + sign", () => {
     expect(buildCollateralLabel("Copper Concentrate", "0.05")).toBe(
       "Collateral (copper concentrate +5% 7d)",
     );
-  });
-
-  it("omits the parenthetical entirely when no spot change is served (never fabricated)", () => {
     expect(buildCollateralLabel("Coffee", null)).toBe("Collateral");
-    expect(buildCollateralLabel("Coffee", undefined)).toBe("Collateral");
-  });
-});
-
-describe("buildAtRiskLine", () => {
-  it("formats the real current at-risk % and pairs it with the MOCK projection", () => {
-    const line = buildAtRiskLine("0.0210");
-    expect(line.current).toBe("2.1%");
-    expect(line.projected).toBe(MOCK_AT_RISK_PROJECTED_PCT);
-  });
-
-  it('renders "—" for the current % when unavailable', () => {
-    expect(buildAtRiskLine(null).current).toBe("—");
   });
 });
 
 describe("buildConcentration", () => {
-  const topConcentration: TopConcentration = {
-    commodity: "Coffee",
-    share: "0.0390",
-  };
+  const top: TopConcentration = { commodity: "Coffee", share: "0.0390" };
 
-  it("renders the served share when the top concentration names THIS loan's commodity", () => {
-    const result = buildConcentration("Coffee", topConcentration);
-    expect(result).toEqual({ label: "Coffee concentration", value: "3.9%" });
-  });
-
-  it("matches case-insensitively", () => {
-    const result = buildConcentration("coffee", topConcentration);
-    expect(result.value).toBe("3.9%");
-  });
-
-  it("renders — when the top concentration names a different commodity (never fabricated)", () => {
-    const result = buildConcentration("Lithium", topConcentration);
-    expect(result).toEqual({ label: "Lithium concentration", value: "—" });
-  });
-
-  it("renders — when no top concentration is served", () => {
-    expect(buildConcentration("Coffee", null)).toEqual({
+  it("renders the share only for this loan's commodity", () => {
+    expect(buildConcentration("Coffee", top)).toEqual({
       label: "Coffee concentration",
-      value: "—",
+      value: "3.9%",
     });
+    expect(buildConcentration("coffee", top).value).toBe("3.9%");
+    expect(buildConcentration("Lithium", top).value).toBe("—");
+    expect(buildConcentration("Coffee", null).value).toBe("—");
   });
 });
 
-describe("mock constants (issue #782 — no backend source, not per-loan)", () => {
-  it("are documented, stable Figma literals", () => {
-    expect(MOCK_AT_RISK_PROJECTED_PCT).toBe("4.3%");
+describe("escalateEligibility", () => {
+  it("enables Performing and WatchList", () => {
+    expect(escalateEligibility("Performing").kind).toBe("eligible");
+    expect(escalateEligibility("WatchList").kind).toBe("eligible");
+  });
+
+  it("points a Default loan to the resolution page", () => {
+    expect(escalateEligibility("Default").kind).toBe("default");
+  });
+
+  it("blocks Closed and Approved and waits for an unread status", () => {
+    expect(escalateEligibility("Closed")).toEqual({
+      kind: "unavailable",
+      note: "Not available for a Closed loan.",
+    });
+    expect(escalateEligibility("Approved").kind).toBe("unavailable");
+    expect(escalateEligibility(null).kind).toBe("unknown");
+  });
+});
+
+describe("chain state rows", () => {
+  const keys = ["status", "outstanding", "writtenDown", "pocket"] as const;
+
+  it("shows the pocket as Yes or No from carved_out", () => {
+    const yes = chainStateRows(STELLAR, loanState({ carvedOut: true }), keys);
+    const no = chainStateRows(STELLAR, loanState({ carvedOut: false }), keys);
+    expect(yes.find((r) => r.label === "Pocket opened")?.value).toBe("Yes");
+    expect(no.find((r) => r.label === "Pocket opened")?.value).toBe("No");
+  });
+
+  it("formats raw chain amounts and dashes everything when unread", () => {
+    const rows = chainStateRows(
+      STELLAR,
+      loanState({ status: "Default", outstanding: "18400000000000" }),
+      keys,
+    );
+    expect(rows[0]).toEqual({ label: "Status (on chain)", value: "Default" });
+    expect(rows[1]).toEqual({
+      label: "Outstanding principal",
+      value: "$1,840,000.00",
+    });
+    expect(
+      chainStateRows(STELLAR, undefined, keys).map((r) => r.value),
+    ).toEqual(["—", "—", "—", "—"]);
+  });
+
+  it("formats Principal repaid from the raw chain value", () => {
+    const rows = chainStateRows(STELLAR, loanState({ repaid: "100000000" }), [
+      "repaid",
+    ]);
+    expect(rows[0]).toEqual({ label: "Principal repaid", value: "$10.00" });
+  });
+});
+
+describe("module surface", () => {
+  it("exports no mock constants", () => {
+    expect(Object.keys(escalate).filter((k) => k.startsWith("MOCK_"))).toEqual(
+      [],
+    );
   });
 });
