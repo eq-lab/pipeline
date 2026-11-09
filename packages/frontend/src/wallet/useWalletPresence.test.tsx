@@ -180,3 +180,64 @@ describe("useWalletPresence — disconnectAll", () => {
     expect(stellarDisconnect).not.toHaveBeenCalled();
   });
 });
+
+describe("useWalletPresence — isConnectionPending (#1809)", () => {
+  const cases: Array<[string, Parameters<typeof setWallets>[0], boolean]> = [
+    [
+      "neither connected, both settled",
+      {
+        evmConnected: false,
+        evmSettled: true,
+        stellarConnected: false,
+        stellarSettled: true,
+      },
+      false,
+    ],
+    [
+      "neither connected, EVM unsettled",
+      {
+        evmConnected: false,
+        evmSettled: false,
+        stellarConnected: false,
+        stellarSettled: true,
+      },
+      true,
+    ],
+    [
+      "neither connected, Stellar unsettled",
+      {
+        evmConnected: false,
+        evmSettled: true,
+        stellarConnected: false,
+        stellarSettled: false,
+      },
+      true,
+    ],
+    [
+      "Stellar connected, EVM unsettled",
+      {
+        evmConnected: false,
+        evmSettled: false,
+        stellarConnected: true,
+        stellarSettled: true,
+      },
+      false,
+    ],
+    [
+      "EVM connected, Stellar unsettled",
+      {
+        evmConnected: true,
+        evmSettled: true,
+        stellarConnected: false,
+        stellarSettled: false,
+      },
+      false,
+    ],
+  ];
+
+  it.each(cases)("%s", (_name, opts, expected) => {
+    setWallets(opts);
+    const { result } = renderHook(() => useWalletPresence());
+    expect(result.current.isConnectionPending).toBe(expected);
+  });
+});

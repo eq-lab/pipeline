@@ -343,14 +343,6 @@
     "header": 21,
     "nodeIds": 0
   },
-  "packages/frontend/src/wallet/ConnectModalProvider.test.tsx": {
-    "header": 11,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/ConnectModalProvider.tsx": {
-    "header": 23,
-    "nodeIds": 0
-  },
   "packages/frontend/src/wallet/WalletGateContext.ts": {
     "header": 17,
     "nodeIds": 0
