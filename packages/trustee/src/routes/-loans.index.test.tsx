@@ -28,7 +28,18 @@ vi.mock("@tanstack/react-router", async () => {
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 import { useLoanBook } from "@/api/useLoanBook";
+vi.mock("@/api/useChains", () => ({ useServedTargetChains: vi.fn() }));
+import { useServedTargetChains } from "@/api/useChains";
 import { Route } from "./loans.index";
+const mockServed = vi.mocked(useServedTargetChains);
+const BOTH_CHAINS = {
+  options: [
+    { id: 99_000_001, label: "Stellar" },
+    { id: 560048, label: "Hoodi" },
+  ],
+  defaultChainId: 99_000_001,
+  isLoading: false,
+};
 const mockUseLoanBook = vi.mocked(useLoanBook);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -122,6 +133,7 @@ function ready(data: LoanBookResponse) {
 }
 
 beforeEach(() => {
+  mockServed.mockReturnValue(BOTH_CHAINS);
   mockUseLoanBook.mockReset();
   mockNavigate.mockReset();
 });
@@ -184,6 +196,37 @@ describe("Loans list route (ready)", () => {
       "all",
     );
     expect(mockUseLoanBook).toHaveBeenLastCalledWith(null);
+  });
+
+  it("offers only served chains in the filter, with All chains always present (#1667)", () => {
+    mockServed.mockReturnValue({
+      ...BOTH_CHAINS,
+      options: [BOTH_CHAINS.options[0]!],
+    });
+    renderRoute();
+    const select = screen.getByTestId(
+      "loans-chain-filter",
+    ) as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "All chains",
+      "Stellar",
+    ]);
+  });
+
+  it("disables the filter with only All chains while the served list loads (#1667)", () => {
+    mockServed.mockReturnValue({
+      options: [],
+      defaultChainId: null,
+      isLoading: true,
+    });
+    renderRoute();
+    const select = screen.getByTestId(
+      "loans-chain-filter",
+    ) as HTMLSelectElement;
+    expect(select).toBeDisabled();
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "All chains",
+    ]);
   });
 
   it("renders the five summary cards with the Figma values", () => {
