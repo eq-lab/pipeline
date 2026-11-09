@@ -2,7 +2,7 @@
 
 ## Overview
 
-`GET /v1/loan-book/{loan_id}/security?chain_id=<id>` serves the Stellar SecurityRegistry state of one loan: terms, the collateral valuation, margin-call state, price staleness, pause state, the inspector panel, extension consents, and every record with its docs, mark, lot, inspections, flag and linked minter repayments. It is read from the projection tables the worker folds every 30 s ([security-registry-events.md](../references/security-registry-events.md#projection-tables)). The API has no RPC client and never recomputes the loan's value, LTV or coverage: it serves the `coverage_detail` snapshot the worker stored. On-chain inspections are served here (the read side of #1782).
+`GET /v1/loan-book/{loan_id}/security?chain_id=<id>` serves the Stellar SecurityRegistry state of one loan: terms, the collateral valuation, margin-call state, price staleness, pause state, the inspector panel, extension consents, and every record with its docs, mark, lot, inspections, flag and linked minter repayments. It is read from the projection tables the worker folds every 30 s ([security-registry-events.md](../references/security-registry-events.md#projection-tables)). The API has no RPC client and never recomputes the loan's value, LTV or coverage: it serves the `coverage_detail` snapshot the worker stored. On-chain inspections are served here (the read side of #1782). Each open goods record also carries a suggested per-unit mark and a mark-due flag for the Trustee's manual `revalue` ([Mark Suggestions](#mark-suggestions), #1783), computed from off-chain prices, assays and offtake terms.
 
 Scope is Stellar only. The route needs `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`, equal to the worker's `…_STELLAR_INDEXER_SECURITY_REGISTRY_ADDRESS`. A chain without it, including every EVM chain, answers `404 {"error":"security_registry_not_configured"}`.
 
@@ -23,6 +23,8 @@ Scope is Stellar only. The route needs `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY
 | `margin_call.open_call_curable` | computed: a call is open, a valuation exists, `valuation.ltv_bps <= advance_ratio_bps` (a `check_coverage` would cure it, `lib.rs:986-990`) |
 | `margin_call.last_margin_call_ltv_bps`, `last_price_stale`, `events[]` | `security_margin_call_events` |
 | `prices.mark_age`, `price_stale`, `records[].mark_stale`, `attestation_stale`, `inspection_stale` | computed at the API clock `now` from the projection |
+| `records[].suggested_mark`, `suggestion_status` | computed by `shared::security_marks::suggest` from `loan_asset_prices` and, for concentrates, the loan's latest `loan_assays` and `loan_offtake_terms`; `null` for non-goods and closed records |
+| `records[].move_bps`, `mark_due`, `mark_due_reasons`, `mark_due_at`, `prices.mark_max_age`, `mark_move_bps`, `marks_due` | computed at the API clock from the projected mark, the suggestion, `price_stale_after` and the policy keys |
 | `records[].counts_toward_value` | computed: `Active` and not `InsuranceLossPayee` |
 | `records[].agent_release` | computed from the snapshot: `allowed` when the Security Agent's own `release` passes `ensure_releasable` (`lib.rs:1199-1216`), else `needs_consent` (the Risk Council's `release_with_consent`). `PendingPerfection`, `InsuranceLossPayee` and zero outstanding are `allowed` before any snapshot is needed; the LTV branch is `null` without a snapshot or when a counted record cannot be resolved; `null` for a closed record |
 | `records[].repayments[]` | minter `CashRepaid` rows with this loan and `sale_id == record_id`, with the earliest `CashRepaymentReversed` of the same repayment. A repayment links only when it is at or after the record's `SecurityEnforcementStarted` or `SecurityRecordEnforced` event on this loan, because minter sale ids collide with legacy CollateralRegistry ids |
@@ -54,6 +56,7 @@ The contract mirrors live in `shared::security_state`, so the alerts (#1784) and
 | `mark_age`, `price_stale` | `mark_age`, `807-827`, and the per-record price-stale rule |
 | `counts_toward_value`, `is_in_storage` | `Protection::counts` (`types.rs`) and the `is_stale` storage test |
 | `cure_by(…)` | the event-over-snapshot rule above |
+| `security_marks::{normalize_commodity, quote_factor, bounded_dec, bounded_dec_str, standard_vpu_raw, concentrate_vpu_raw, suggest, report_hash, effective_max_age, move_bps, moved, mark_due}` | the mark suggestion and mark-due rules below; reused by #1784 and #1785 |
 | `format_7dp`, `format_7dp_i128` | exact `raw / 1e7` as a plain 7-decimal string, never an exponent |
 
 Stored decimals are read with a bounded exponent: Postgres decoding returns round numbers with a negative exponent (`12500000000` as `125E+8`), which is rescaled; an exponent below -40 or above 20000 is rejected, never expanded. An undecodable number is served as `null`, and every flag that depends on it is `null` (unknown), never `false` or `0`.
@@ -81,7 +84,7 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
     "ltv_above_ratio_no_onchain_call": false, "open_call_curable": false,
     "events": [{ "kind": "open|price_stale|cured", "ltv_bps": 9000, "margin_call_ratio_bps": 8500,
                  "cure_by": "...", "at": "...", "block_number": 1, "tx_hash": "..." }] },
-  "prices": { "mark_age": "0", "price_stale": false },
+  "prices": { "mark_age": "0", "price_stale": false, "mark_max_age": "86400", "mark_move_bps": 200, "marks_due": 0 },
   "extension_consents": [{ "position": 0, "consent_hash": "hex", "new_maturity": "...", "ledger": 1, "at": "..." }],
   "records": [{ "record_id": "1", "lot_id": "1", "protection": "WarehousePledge", "commodity": "...",
     "unit": "Mt", "reference_quantity": "...", "reference_grade": "...", "region": "...",
@@ -92,6 +95,11 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
     "complete": true, "needs_view": false,
     "docs": [{ "position": 0, "kind": "WarehouseReceipt", "sha256": "hex", "source": "register", "ledger": null }],
     "mark": { "value_per_unit": "...", "at": "...", "benchmark": "LME", "report_hash": "hex" },
+    "suggested_mark": { "value_per_unit": "...", "benchmark": "XAU", "source_price": "4000", "source_at": "...",
+      "asset": "XAU", "price_provider": "metal_price", "quote_unit": "TroyOz", "mode": "StandardGoods",
+      "assay_id": null, "offtake_id": null, "report": "pipeline-mark/v1\n...", "report_hash": "hex" },
+    "suggestion_status": "ok|unmapped|unsupported_unit|no_price|inputs_missing|unreadable",
+    "move_bps": 120, "mark_due": false, "mark_due_reasons": [], "mark_due_at": "...",
     "lot": { "latest_inspection_id": "2", "latest_inspected_at": "...", "latest_quantity": "...", "complete": true },
     "counts_toward_value": true, "attestation_stale": false, "inspection_stale": false, "mark_stale": false,
     "valuation": { "counted_quantity": "...", "value_per_unit": "...", "mark_at": "...", "value": "...",
@@ -108,8 +116,32 @@ The inspection object carries every `security_inspections` column (region, site 
 
 ## Data Model
 
-No table or migration. The route reads the tables in [security-registry-events.md](../references/security-registry-events.md#projection-tables) and the minter `CashRepaid` / `CashRepaymentReversed` rows of `contract_logs`. Every read is scoped by `chain_id` and the configured `contract_address`, except the minter repayment join, which is scoped by chain, loan and sale id.
+No table or migration. The route also reads `loan_asset_prices`, `loan_assays` and `loan_offtake_terms` when `SECURITY_MARK_COMMODITIES` is set. The route reads the tables in [security-registry-events.md](../references/security-registry-events.md#projection-tables) and the minter `CashRepaid` / `CashRepaymentReversed` rows of `contract_logs`. Every read is scoped by `chain_id` and the configured `contract_address`, except the minter repayment join, which is scoped by chain, loan and sale id.
 
 ## Security
 
-Public and read-only. The response is on-chain data only: no personal data, no RPC call, no write. Operator wallets (`entered_by`, `approved_by`, `attested_by`) are on-chain addresses and are not mapped to accounts. AccessManager roles (`can_call`) and the record NFT holder are not indexed and not served. `loan_id` is parsed as a `u32`, never as an arbitrary decimal, so a request cannot make the server expand a huge exponent.
+Public and read-only. The response is on-chain data plus the off-chain prices and the net smelter return derived from offtake terms, which `GET /v1/loan-book/{id}/valuations` already exposes: no personal data, no RPC call, no write. Operator wallets (`entered_by`, `approved_by`, `attested_by`) are on-chain addresses and are not mapped to accounts. AccessManager roles (`can_call`) and the record NFT holder are not indexed and not served. `loan_id` is parsed as a `u32`, never as an arbitrary decimal, so a request cannot make the server expand a huge exponent.
+
+Every stored string or `NUMERIC` that feeds the suggestion arithmetic is bounded first (`bounded_dec`, `bounded_dec_str`): strings at most 64 bytes, scale in [-40, 200], at most 400 digits and at most 60 integer digits; a negative scale from Postgres is rescaled to 0. A longer scale (the collector stores up to 100-digit prices) is truncated down to scale 18 before any arithmetic. Anything else gives `unreadable` and a warning. An unreadable price of a payable metal gives `unreadable`, never `no_price`.
+
+## Mark Suggestions
+
+The Trustee holds `revalue`; the backend only suggests and flags. The worker holds no key and writes nothing. `value_per_unit` is USD per one record unit at 7 dp (`$100 / Mt` is `1000000000` raw). A suggestion never applies `haircut_pct`.
+
+**Config** (all optional; unset ships dark): `SECURITY_MARK_COMMODITIES` (API and worker, same value), `SECURITY_MARK_MAX_AGE_SECS` (default `86400`, `0` off), `SECURITY_MARK_MOVE_BPS` (default `200`, `0` off). The map is a JSON array of `{commodity, mode, asset, price_provider, quote_unit, benchmark}` with `deny_unknown_fields`: at most 16 KiB and 64 entries, unique normalized keys, `asset` `[A-Z0-9_-]{1,16}`, a known `price_provider`, `quote_unit` one of `TroyOz`, `Mt`, `Lb`, `Bbl` (required for `StandardGoods`, absent or `TroyOz` for `MetalConcentrate`), `benchmark` `[A-Za-z0-9_]{1,32}` defaulting to `asset`. A malformed value fails boot naming the key; set the API first.
+
+**Normalization.** Trim, ASCII-lowercase, collapse runs of whitespace, `-` and `_` into one `_`. Empty, non-ASCII or over 64 bytes never matches. Matching is exact on the normalized key; there is no fuzzy match and no fallback to the loan's valuation anchor.
+
+**Units** (quote units per record unit): `Mt` and `Dmt` to `TroyOz` `10000000000 / 311035`; to `Mt` `1`; to `Lb` `100000000000 / 45359237`; `Bbl` to `Bbl` `1`; anything else is `unsupported_unit`. `Dmt` is a mass in tonnes with no moisture applied.
+
+**Standard goods.** `floor(price x factor x 1e7)` in exact integer math, clamped at 0, from the latest `loan_asset_prices` row of `(asset, price_provider)`; a result outside `i128` is `unreadable`.
+
+**Metal concentrate.** The record must be in `Dmt`. Inputs are the loan's latest assay and offtake, applied to every concentrate record of the loan. `value_per_unit = max(0, NSR per dry tonne)` from `collateral_valuation::nsr_per_dmt` (no realisation costs, no haircut, the record's grade unused). Each payable metal is priced at `(asset_for_metal(metal), price_provider)`.
+
+**Statuses.** `ok`, `unmapped`, `unsupported_unit`, `no_price`, `inputs_missing`, `unreadable`. `suggestion_status` and `suggested_mark` are `null` for non-goods and closed records and are served for every open goods record, `PendingPerfection` included. A failing price, assay or offtake read degrades to `no_price` or `inputs_missing`, never `500`.
+
+**Report.** `report` is `pipeline-mark/v1` then, newline-joined with no trailing newline, `chain_id`, `security_registry`, `record_id`, `commodity`, `unit`, `mode`, `asset`, `price_provider`, `price`, `price_at`, `quote_unit` (`-` for concentrates), `value_per_unit`, `benchmark`; concentrates append `assay_id`, `offtake_id` and one `metal.<ASSET>=<price>@<unix>` line per metal sorted by asset. `report_hash` is the lowercase hex sha256 of `report`. If the Trustee overrides the value, the suggestion's hash no longer describes the mark, so the UI hashes its own evidence (#1859).
+
+**Mark due.** Computed for counted goods records only; others are `false` with `[]`. `effective_max_age = min(max_age, price_stale_after)` over the non-zero values, `0` meaning no age trigger. Reasons, in order: `missing` (no mark), `age` (`now - mark_at > effective_max_age`, strict), `moved` (`|suggested - mark| x 10000 > move_bps x mark`, strict; a zero mark with a positive suggestion is moved). `move_bps` and the on-chain mark decode apply to counted goods records only. `move_bps` is the signed `trunc((suggested - mark) x 10000 / mark)` saturated to `i32`, `null` without a mark or suggestion or for a zero mark with a positive suggestion. `mark_due_at` is `mark_at + effective_max_age`. `mark_due` and `prices.marks_due` are `null` when the mark time, mark value or `price_stale_after` cannot be decoded.
+
+**Collector.** With the map set, the asset price collector also collects the `(asset, price_provider)` of every open goods record whose commodity is mapped, and the payable-metal assets of mapped concentrates, from each loan's latest offtake row (not scoped to the configured registry; keeping a series warm is harmless). With the map unset the collected list and queries are unchanged. The API and the worker must carry the same map; a difference shows as `no_price`, never a wrong price.
