@@ -8,7 +8,7 @@ import type {
   SubmitLoanInput,
   SubmitLoanVariables,
 } from "@/api/useSubmitLoan";
-import { DEFAULT_TARGET_CHAIN_ID, TARGET_CHAINS } from "@/lib/targetChains";
+import type { ServedTargetChains } from "@/lib/targetChains";
 
 // ── Field model ───────────────────────────────────────────────────────────────
 
@@ -39,10 +39,7 @@ export const FORM_SECTIONS: SectionDef[] = [
         path: TARGET_CHAIN_FIELD,
         label: "Target chain",
         required: true,
-        options: TARGET_CHAINS.map((chain) => ({
-          value: String(chain.id),
-          label: chain.label,
-        })),
+        options: [],
       },
       {
         path: "to",
@@ -211,7 +208,7 @@ const ALL_FIELDS: FieldDef[] = FORM_SECTIONS.flatMap((s) => s.fields);
 export function emptyFormValues(): Record<string, string> {
   return {
     ...Object.fromEntries(ALL_FIELDS.map((f) => [f.path, ""])),
-    [TARGET_CHAIN_FIELD]: String(DEFAULT_TARGET_CHAIN_ID),
+    [TARGET_CHAIN_FIELD]: "",
   };
 }
 
@@ -233,7 +230,10 @@ function readPath(root: unknown, path: string): unknown {
   }, root);
 }
 
-export function parseSubmissionJson(text: string): ParsedSubmissionJson {
+export function parseSubmissionJson(
+  text: string,
+  targetChainIds: ReadonlyArray<number>,
+): ParsedSubmissionJson {
   let root: unknown;
   try {
     root = JSON.parse(text);
@@ -256,10 +256,11 @@ export function parseSubmissionJson(text: string): ParsedSubmissionJson {
         ? String(raw)
         : undefined;
     if (field.options) {
-      if (
-        candidate !== undefined &&
-        field.options.some((option) => option.value === candidate)
-      ) {
+      const offered =
+        field.path === TARGET_CHAIN_FIELD
+          ? targetChainIds.map(String)
+          : field.options.map((option) => option.value);
+      if (candidate !== undefined && offered.includes(candidate)) {
         values[field.path] = candidate;
       }
     } else if (candidate !== undefined) {
@@ -382,14 +383,32 @@ export interface OriginationNewForm {
   importWarning: string[] | null;
   importFromJson: (text: string) => string | null;
   fieldErrors: Record<string, string>;
+  targetChainOptions: ReadonlyArray<{ value: string; label: string }>;
   buildForSubmit: () => SubmitLoanVariables | null;
 }
 
-export function useOriginationNewForm(): OriginationNewForm {
-  const [values, setValues] = useState<Record<string, string>>(emptyFormValues);
+export function useOriginationNewForm(
+  targetChains: Pick<ServedTargetChains, "options" | "defaultChainId">,
+): OriginationNewForm {
+  const [storedValues, setValues] =
+    useState<Record<string, string>>(emptyFormValues);
   const [documents, setDocuments] = useState<LoanDocumentInput[]>([]);
   const [importWarning, setImportWarning] = useState<string[] | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const targetChainOptions = targetChains.options.map((option) => ({
+    value: String(option.id),
+    label: option.label,
+  }));
+  const storedTarget = storedValues[TARGET_CHAIN_FIELD] ?? "";
+  const targetChainValue = targetChainOptions.some(
+    (option) => option.value === storedTarget,
+  )
+    ? storedTarget
+    : targetChains.defaultChainId == null
+      ? ""
+      : String(targetChains.defaultChainId);
+  const values = { ...storedValues, [TARGET_CHAIN_FIELD]: targetChainValue };
 
   const setValue = (path: string, value: string) => {
     setValues((prev) => ({ ...prev, [path]: value }));
@@ -402,12 +421,14 @@ export function useOriginationNewForm(): OriginationNewForm {
   };
 
   const importFromJson = (text: string): string | null => {
-    const parsed = parseSubmissionJson(text);
+    const parsed = parseSubmissionJson(
+      text,
+      targetChains.options.map((option) => option.id),
+    );
     if (!parsed.ok) return parsed.error;
-    setValues((prev) => ({
+    setValues(() => ({
       ...emptyFormValues(),
-      [TARGET_CHAIN_FIELD]:
-        prev[TARGET_CHAIN_FIELD] ?? String(DEFAULT_TARGET_CHAIN_ID),
+      [TARGET_CHAIN_FIELD]: targetChainValue,
       ...parsed.values,
     }));
     setDocuments(parsed.documents ?? []);
@@ -440,6 +461,7 @@ export function useOriginationNewForm(): OriginationNewForm {
     importWarning,
     importFromJson,
     fieldErrors,
+    targetChainOptions,
     buildForSubmit,
   };
 }
