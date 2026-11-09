@@ -8,8 +8,9 @@ use pipeline_worker::indexer::stellar::parsers::dispatch_parser;
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use serde_json::json;
 use shared::contract_logs_repo::DealRegistrationRow;
+use std::cell::RefCell;
 use std::io;
-use std::sync::{Arc, Mutex};
+use std::sync::Once;
 use stellar_xdr::curr::{
     AccountId, ContractId, Hash, Int128Parts, Limits, PublicKey, ScAddress, ScMap, ScMapEntry,
     ScString, ScSymbol, ScVal, StringM, Uint256, VecM, WriteXdr,
@@ -770,12 +771,21 @@ fn dispatch_ignores_head_and_legacy_factory_admin_events() {
     }
 }
 
-#[derive(Clone, Default)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
+thread_local! {
+    static CAPTURED: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
+}
 
-impl io::Write for Capture {
+/// Appends to the calling thread's capture buffer; output from threads that are not
+/// capturing is dropped.
+struct ThreadCapture;
+
+impl io::Write for ThreadCapture {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        CAPTURED.with(|c| {
+            if let Some(out) = c.borrow_mut().as_mut() {
+                out.extend_from_slice(buf);
+            }
+        });
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
@@ -783,21 +793,24 @@ impl io::Write for Capture {
     }
 }
 
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
-    type Writer = Capture;
-    fn make_writer(&'a self) -> Capture {
-        self.clone()
-    }
-}
-
+// A global subscriber rather than `with_default`: tracing caches a callsite's interest
+// process-wide on its first hit, and a parallel test hitting the same `warn!` from a
+// thread with no scoped subscriber caches `Interest::never`, silencing it here too.
 fn with_capture<F: FnOnce(&dyn Fn() -> String)>(f: F) {
-    let cap = Capture::default();
-    let sub = tracing_subscriber::fmt()
-        .with_writer(cap.clone())
-        .with_ansi(false)
-        .finish();
-    let snapshot = || String::from_utf8(cap.0.lock().unwrap().clone()).unwrap();
-    tracing::subscriber::with_default(sub, || f(&snapshot));
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let sub = tracing_subscriber::fmt()
+            .with_writer(|| ThreadCapture)
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::set_global_default(sub).unwrap();
+        tracing::callsite::rebuild_interest_cache();
+    });
+    CAPTURED.with(|c| *c.borrow_mut() = Some(Vec::new()));
+    let snapshot =
+        || CAPTURED.with(|c| String::from_utf8(c.borrow().clone().unwrap_or_default()).unwrap());
+    f(&snapshot);
+    CAPTURED.with(|c| *c.borrow_mut() = None);
 }
 
 #[test]
