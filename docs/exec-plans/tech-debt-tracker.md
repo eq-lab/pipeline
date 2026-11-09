@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-175.**
+**Next free number: TD-176.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2340,3 +2340,11 @@ line, whichever section it lands in.
 - **Gap:** #1874 (#1762) adds `readRefHashSeen` / `bankReferenceRefHash` to `minter.ts` and #1873 (#1761) moves `sha256Hex` into `stellar/contracts/hash.ts`. Neither was on `main` when #1763 was built, so the escrow bindings hold their own `ref_hash_seen` read and sha256-of-trimmed-reference helper.
 - **Impact:** Two copies of the same on-chain read and hash rule can drift.
 - **Suggested fix:** After #1873 and #1874 merge, drop the local helpers and import `readRefHashSeen` / `bankReferenceRefHash` from `@pipeline/wallet-connect`.
+
+### TD-175: Wire-out bindings duplicate the epic's reader and the date and ref-hash helpers
+
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` (`readWireOutRecord`), `packages/trustee/src/lib/wireOut.ts` (`valueDateSeconds`, `todayUtcDateInput`), `packages/trustee/src/routes/-wire-outs.ts` (`wireInReturnRefHash` / `readWireInRefHashSeen` for the bank reference) — Issue #1764.
+- **Gap:** `epic/1795-lp-ui` adds `readMinterWireOut` / `MinterWireOut` to `stellar/contracts/minter.ts` (no `ref_hash`). #1761 and #1762 add `dateInputToUnixUtc` / `dateInputToValueDate`, and #1762 adds `bankReferenceRefHash` / `readRefHashSeen`. None was on this branch, so #1764 holds its own wire-out reader and UTC date helpers and reuses #1763's wire-in-named ref-hash helpers for a wire-out reference.
+- **Impact:** Several copies of the same on-chain read, date conversion and sha256 rule can drift.
+- **Suggested fix:** After #1761, #1762, #1763 and the epic land, add one `minterRefs.ts` (ref-hash read and hash) and one date helper, merge the two wire-out readers, and drop the wire-in names.

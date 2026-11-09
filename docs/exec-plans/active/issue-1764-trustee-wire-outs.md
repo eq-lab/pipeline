@@ -73,7 +73,7 @@ _None_
 
 ## Implementation Steps
 
-0. **Manager, before the coder starts.** Rebase the branch and retarget the PR:
+0. **Manager, before the coder starts.** [done] Rebase the branch and retarget the PR:
    ```bash
    git fetch origin
    git rebase --onto origin/feat/1763-trustee-escrowed-wires main feat/1764-trustee-wire-outs
@@ -82,7 +82,7 @@ _None_
    ```
    This carries the plan commit along. Note the merge order in the PR body: #1875 first, then retarget #1876 to `main`.
 
-1. **wallet-connect bindings.** New file `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` with header `// spec: docs/product-specs/withdrawals.md#bank-wire-withdrawals-trustee-console`. Mirror `wireInEscrow.ts`:
+1. **wallet-connect bindings.** [done] New file `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` with header `// spec: docs/product-specs/withdrawals.md#bank-wire-withdrawals-trustee-console`. Mirror `wireInEscrow.ts`:
    - Types:
      - `WireOutRecordStatus = "Pending" | "Settled" | "Cancelled"`
      - `WireOutRecord { id: number; lp: string; amount: string /* raw i128 */; requestedAt: number; status: WireOutRecordStatus; refHash: string /* hex */ }`
@@ -96,7 +96,7 @@ _None_
    - Reuse `hexToBytes32ScVal` from `./minter`. Do not re-implement `readPlusdAuthorization`, `readWireInRefHashSeen`, `readMinterPlusdId` or `wireInReturnRefHash`; they come from `wireInEscrow.ts`.
    - Export everything from `packages/wallet-connect/src/index.ts` as a new export block placed directly after the `./stellar/contracts/wireInEscrow` block.
 
-2. **Trustee data hooks.** New file `packages/trustee/src/api/useWireOuts.ts` (spec header to the trustee-flows section). Mirror `useEscrowedWires.ts`:
+2. **Trustee data hooks.** [done] New file `packages/trustee/src/api/useWireOuts.ts` (spec header to the trustee-flows section). Mirror `useEscrowedWires.ts`:
    - `WireOutFn = "settle_wire_out" | "cancel_wire_out"`.
    - `wireOutRecordKey(minterId, id)` = `["minter-wire-out", minterId, id]`.
    - `fetchWireOutRecord(id)`.
@@ -105,7 +105,7 @@ _None_
    - `useSettleWireOut()` and `useCancelWireOut()`: copy the shape of `useWireEscrowMutation`, with the stage state, the not-configured / not-connected preflight, and `onSuccess` invalidating `["cash-book"]` and `wireOutRecordKey`.
    - Reuse `useMinterPlusdId` / `ensureMinterPlusdId` from `@/api/useEscrowedWires`.
 
-3. **Presenters and copy.** New file `packages/trustee/src/lib/wireOut.ts`, the counterpart of `lib/wireEscrow.ts`:
+3. **Presenters and copy.** [done] New file `packages/trustee/src/lib/wireOut.ts`, the counterpart of `lib/wireEscrow.ts`:
    - `wireOutAccessReason(fn, { access, isPending, isError })`. Reasons:
      - "Checking this wallet's Trustee role…"
      - "Could not verify this wallet's Trustee role."
@@ -132,7 +132,7 @@ _None_
      Every mapped error keeps `details` as the raw error text. That is the verbatim contract error, shown through `InlineError` "View details".
    - Reuse `cashBookError` from `@/lib/wireEscrow`.
 
-4. **Section hook.** New file `packages/trustee/src/routes/-wire-outs.ts`, `useWireOutsSection()`, modelled on `useEscrowedWiresSection`:
+4. **Section hook.** [done] New file `packages/trustee/src/routes/-wire-outs.ts`, `useWireOutsSection()`, modelled on `useEscrowedWiresSection`:
    - Chain: `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`; `chainKindOf` decides `unsupported` for EVM and no fetch; `targetChainLabel` for the chip.
    - `useCashBook(chainId, { enabled: stellar, refetchMs })`: 30 s, or 5 s while a row is pending-index, bounded to 120 s per id. Export constants mirroring `ESCROW_*`.
    - Rows: every served `wire_outs[]` entry in served order (newest id first). Only `Pending` ids get `useWireOutRecords` confirmations.
@@ -169,28 +169,28 @@ _None_
      - The `unverified` variant when the re-read fails.
    - States: `unsupported | loading | error | empty ("No bank wire-outs on {chain}.") | ready`.
 
-5. **View.** New file `packages/trustee/src/routes/-WireOutsSection.tsx`, which is JSX only (FRONTEND.md rule 2):
+5. **View.** [done] New file `packages/trustee/src/routes/-WireOutsSection.tsx`, which is JSX only (FRONTEND.md rule 2):
    - Card header "Bank wire-outs", a chain chip (`cash-management-wireouts-chain`), and the sub-line "Lender bank withdrawals held in escrow by the minter on {chain} — settle once the wire is sent, or cancel to return the PLUSD."
    - Table columns: ID, Lender (name link plus `AddressChip` / truncated address), Amount, Requested at, Status (`StatusChip`), On-chain, Actions. Row test ids follow the `wireout-row-{id}-…` pattern of #1763.
    - `SettleWireOutDialog` (`useLpReviewDialog` shell, `role="dialog"`, `aria-modal`; Escape and backdrop cancel, both blocked while pending). It shows a summary (wire id, lender, address, requested amount, requested at). **"Destination bank account: —"** comes with the hint "The API does not serve the lender's bank account yet." The form has "Amount wired (PLUSD)", "Value date" (`type="date"`, `max` = today), "Outgoing bank reference", and the read-only "Reference hash". The confirm label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"), and `InlineError` shows "View details".
    - `CancelWireOutDialog`: the same shell, a summary, the authorisation result, and the copy "The escrowed PLUSD returns to the lender's address."
    - The green result notice.
 
-6. **Tab.** `packages/trustee/src/routes/cash-management.tsx`:
+6. **Tab.** [done] `packages/trustee/src/routes/cash-management.tsx`:
    - add `"wireouts"` to `TabKey` with the label "Bank wire-outs", after "Escrowed wires";
    - add the branch `activeTab === "wireouts" ? <WireOutsSection /> : …`;
    - add one line to the existing header spec list (`docs/frontend/trustee-flows.md#cash-management--bank-wire-outs`).
 
    Keep the edits additive next to #1763's lines.
 
-7. **Tech debt.** Add one entry to `docs/exec-plans/tech-debt-tracker.md`, using the next free number on the base branch and bumping the "Next free number" line. It records:
+7. **Tech debt.** [done] Add one entry to `docs/exec-plans/tech-debt-tracker.md`, using the next free number on the base branch and bumping the "Next free number" line. It records:
    - `readWireOutRecord` duplicates the epic branch's `readMinterWireOut`;
    - `valueDateSeconds` / `todayUtcDateInput` duplicate #1761's `dateInputToUnixUtc` and #1762's `dateInputToValueDate`;
    - `wireInReturnRefHash` / `readWireInRefHashSeen` are generic helpers with wire-in names that #1762's `bankReferenceRefHash` / `readRefHashSeen` duplicate.
 
    Suggested fix: one `minterRefs.ts` and one date helper after #1761, #1762, #1763 and the epic land.
 
-8. **Docs.** See Docs to Update.
+8. **Docs.** [done] See Docs to Update.
 
 ## Test Strategy
 

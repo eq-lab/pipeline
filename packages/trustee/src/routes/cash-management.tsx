@@ -12,6 +12,7 @@ import {
 } from "./-cash-management-withdrawals";
 import { InlineError } from "@pipeline/ui";
 import { EscrowedWiresSection } from "./-EscrowedWiresSection";
+import { WireOutsSection } from "./-WireOutsSection";
 
 /**
  * Cash Management — replaces the #786 placeholder. Per `docs/FRONTEND.md`
@@ -21,7 +22,8 @@ import { EscrowedWiresSection } from "./-EscrowedWiresSection";
  *
  * spec: docs/frontend/trustee-flows.md#cash-management--onoff-ramp--t-bills,
  * docs/frontend/trustee-flows.md#cash-management--withdrawal-queue,
- * docs/frontend/trustee-flows.md#cash-management--escrowed-wires.
+ * docs/frontend/trustee-flows.md#cash-management--escrowed-wires,
+ * docs/frontend/trustee-flows.md#cash-management--bank-wire-outs.
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -32,13 +34,14 @@ const NEGATIVE_RED = "#b20000";
 const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 const BRAND = "var(--color-pipeline-brand)";
 
-type TabKey = "onofframp" | "tbills" | "withdrawals" | "escrow";
+type TabKey = "onofframp" | "tbills" | "withdrawals" | "escrow" | "wireouts";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "onofframp", label: "On / Off-ramp" },
   { key: "tbills", label: "T-Bills" },
   { key: "withdrawals", label: "Withdrawal Queue" },
   { key: "escrow", label: "Escrowed wires" },
+  { key: "wireouts", label: "Bank wire-outs" },
 ];
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
@@ -1210,6 +1213,8 @@ function CashManagement() {
         </div>
       ) : activeTab === "escrow" ? (
         <EscrowedWiresSection />
+      ) : activeTab === "wireouts" ? (
+        <WireOutsSection />
       ) : (
         <WithdrawalQueueSection
           withdrawals={withdrawals}
