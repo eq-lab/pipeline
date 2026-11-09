@@ -1656,6 +1656,7 @@ line, whichever section it lands in.
   on-chain outcomes do not fit one flag. A nullable `minted_at` plus a `returned_at`, or a status
   column, both work; the choice belongs with whatever first needs to display it.
 - **Update (#1480):** `WireInReturned` is now indexed; the remaining gap is only the deposit's terminal state in `lp_bank_deposits` / the matching phase.
+- **Update (#1285):** the LP pending-deposit read excludes returned wires at read time. A deposit the Trustee returned off-chain without ever minting still reads as pending; a Trustee "mark returned" write is the follow-up.
 
 ---
 
@@ -2324,11 +2325,11 @@ line, whichever section it lands in.
 - **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
 - **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
 
-### TD-173: Per-loan `contract_logs` reads filter on JSON `params` with no supporting index
+### TD-173: Per-loan `contract_logs` reads written as `params->>'x' = …` cannot use the GIN index
 
 - **Date:** 2026-11-06
 - **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`
-- **Gap:** `contract_logs` has only the `(chain_id, contract_address, block_number, log_index)` unique index and `idx_contract_logs_event` (`20260428000001_init.sql`). Filters on `params->>'loan_id'` or `params @> jsonb_build_object('loan_id', …)` therefore scan every row of the scoped contract(s); the `@>` form written in #1780 only pays off once a GIN index exists.
-- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow linearly with each contract's log count.
-- **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first.
+- **Gap:** `contract_logs.params` has a GIN index, `idx_contract_logs_params` (`20260521000001_contract_logs_jsonb.sql`), but it only serves containment (`params @> jsonb_build_object(…)`). Filters and joins written as `params->>'loan_id' = …` (for example the correlated `v.params->>'loan_id' = r.params->>'loan_id'` in `LIST_SALE_REPAYMENTS_SQL`) cannot use it and scan the scoped contract(s).
+- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow with each contract's log count where they are not written with `@>`.
+- **Suggested fix:** rewrite those predicates with `@>` (`LOAN_LOG_WATERMARKS_SQL` already does), and only add an expression index if a correlated join still cannot use the GIN index; measure on pipeline-test first.
 
