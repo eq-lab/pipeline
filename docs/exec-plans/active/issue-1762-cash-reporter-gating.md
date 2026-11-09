@@ -62,35 +62,35 @@ _None_
 
 ## Implementation Steps
 
-0. If PR #1873 has merged: `git fetch origin && git rebase origin/main`, then `yarn install`.
+0. [skipped, #1873 not merged] If PR #1873 has merged: `git fetch origin && git rebase origin/main`, then `yarn install`.
 
-1. **`packages/wallet-connect/src/stellar/contracts/minter.ts`** (keep the existing two `// spec:` lines and add `// spec: docs/product-specs/cash-reporter-bookings.md`):
+1. [x] **`packages/wallet-connect/src/stellar/contracts/minter.ts`** (keep the existing two `// spec:` lines and add `// spec: docs/product-specs/cash-reporter-bookings.md`):
    - `export interface RecordIncomeArgs { caller: string; amount: string; valueDate: number; refHash: string }`
    - `export function encodeRecordIncomeArgs(args): xdr.ScVal[]` → `[Address(caller), i128(parseUsdDollarsToI128(amount)), u64(valueDate), hexToBytes32ScVal(refHash)]`. Throw on a non-positive-integer `valueDate` and on the zero hash (same messages as `encodeRepayArgs`).
    - `export async function buildRecordIncomeEnvelope({ minterId, rpcUrl, networkPassphrase, ...args })` follows `buildRepayEnvelope`: `contract.call("record_income", ...)`, source = `caller`, and a simulation error is rethrown as `recordIncome simulation error: …`.
    - `export async function recordIncome({ signTransaction, onStageChange, ...build }): Promise<{ hash: string }>` uses the same stage sequence and send/poll error handling as `repay`. Type `RecordIncomeStage = RelayStage`.
    - `export async function readRefHashSeen({ minterId, refHash, rpcUrl, networkPassphrase }): Promise<boolean>` via `simulateRead(minterId, "ref_hash_seen", [hexToBytes32ScVal(refHash)])`, returning `=== true`.
    - `export function bankReferenceRefHash(reference: string): Promise<string>` returns `sha256Hex(reference.trim())`. It throws on an empty trimmed reference. Byte-identical to the backend `reference_hash`.
-2. **`packages/wallet-connect/src/index.ts`**: export the five functions above and their types next to the existing minter exports.
-3. **`packages/trustee/src/lib/cashReporter.ts`** (new, one `// spec: docs/frontend/trustee-flows.md#cash-reporter-bookings` header):
+2. [x] **`packages/wallet-connect/src/index.ts`**: export the five functions above and their types next to the existing minter exports.
+3. [x] **`packages/trustee/src/lib/cashReporter.ts`** (new, one `// spec: docs/frontend/trustee-flows.md#cash-reporter-bookings` header):
    - `export type CashReporterFn = "record_wire_in" | "repay" | "record_income";`
    - `export const CASH_REPORTER_NO_ROLE: Record<CashReporterFn, string>` holds the three sentences in Scope §1.
    - `export function cashReporterReason(fn, state: { access?: CanCall; isPending: boolean; isError: boolean }): string | null`. It returns null only when `access.immediate`. Otherwise it returns the checking / could-not-verify / delay / no-role copy from Risks.
-4. **`packages/trustee/src/api/useCashReporterAccess.ts`** (new): `useCashReporterAccess(fn: CashReporterFn, enabled: boolean)` uses `useStellarWallet().address` and `useQuery` with key `["cash-reporter-access", address, fn]`. It is enabled when `enabled && address && ENV.STELLAR_YIELD_MINTER_ID && ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, with `staleTime 30_000` and `retry false`. It calls `readCanCall({ accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID, caller: address, target: ENV.STELLAR_YIELD_MINTER_ID, fn, rpcUrl, networkPassphrase })`. It returns `{ reason: cashReporterReason(fn, …) }` plus the raw query. Pass `enabled = false` on EVM sessions.
-5. **Mint PLUSD gating**, in `packages/trustee/src/routes/-useLpBankDeposits.ts`:
+4. [x] **`packages/trustee/src/api/useCashReporterAccess.ts`** (new): `useCashReporterAccess(fn: CashReporterFn, enabled: boolean)` uses `useStellarWallet().address` and `useQuery` with key `["cash-reporter-access", address, fn]`. It is enabled when `enabled && address && ENV.STELLAR_YIELD_MINTER_ID && ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, with `staleTime 30_000` and `retry false`. It calls `readCanCall({ accessManagerId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID, caller: address, target: ENV.STELLAR_YIELD_MINTER_ID, fn, rpcUrl, networkPassphrase })`. It returns `{ reason: cashReporterReason(fn, …) }` plus the raw query. Pass `enabled = false` on EVM sessions.
+5. [x] **Mint PLUSD gating**, in `packages/trustee/src/routes/-useLpBankDeposits.ts`:
    - Call `useCashReporterAccess("record_wire_in", kind === "stellar")`.
    - In `mintDisabledReason`, insert the role reason after the "Connect your trustee wallet" and "not configured" checks and before the receiver/minted/pending checks. Add it to the `useCallback` deps.
    - In `packages/trustee/src/api/useRecordWireIn.ts`, before `recordWireIn`, `await readRefHashSeen({ minterId, refHash, … })`. When true, throw `new Error("RefHashSeen: this deposit's ref_hash is already consumed on the minter.")` so the existing `mintError` `/RefHashSeen/` branch renders "This deposit's reference has already been minted on-chain. Refresh the list."
    - Keep `wireInReceiver` and the capital-wallet fallback unchanged (decision 2026-11-02).
-6. **Record Coupon / Record Repayment gating**:
+6. [x] **Record Coupon / Record Repayment gating**:
    - `routes/-record-coupon.ts` `useRecordCoupon` and `routes/-record-repayment.ts` `useRecordRepayment` call `useCashReporterAccess("repay", entry != null && stellarOnlyActionReason(entry.chain_id) === null)`. Expose a new view field `roleBlockedReason: string | null`. It is `null` when `onChainBlockedReason` is set, so the EVM reason wins.
    - `recordPaymentInput` becomes `null` when `roleBlockedReason !== null`. In Record Repayment, `closureReason` keeps depending on `onChainBlockedReason` only, so close-loan is not gated by the Cash reporter role.
    - In `loans.$id_.record-coupon.tsx` / `loans.$id_.record-repayment.tsx`, render `view.roleBlockedReason` in the same muted `<p>` style as the on-chain reason, with `data-testid="record-coupon-role-blocked"` / `"record-repayment-role-blocked"`.
-7. **EVM arm (read-only, existing reasons)**:
+7. [x] **EVM arm (read-only, existing reasons)**:
    - Mint PLUSD keeps "PLUSD minting on {chain} is not available in the Trustee app yet."
    - Record Coupon/Repayment keep `stellarOnlyActionReason`.
    - Bank income on an EVM session renders the tab, with the "Book income" button disabled and the line "Booking bank income on {chain} is not available in the Trustee app yet." (same shape as the Mint PLUSD reason). No `can_call` read on EVM.
-8. **Bank income**:
+8. [x] **Bank income**:
    - `packages/trustee/src/api/useRecordIncome.ts` (new) follows the `useRecordWireIn` shape. Input `{ amount: string; valueDate: number; reference: string }`. It short-circuits with "On-chain bank income booking is not configured for this environment." when `ENV.STELLAR_YIELD_MINTER_ID` is empty, and with "Stellar wallet not connected." when no wallet is connected. Then `refHash = await bankReferenceRefHash(reference)`. If `await readRefHashSeen(...)` is true, it throws an `Error` whose message starts with `RefHashSeen`. Then it calls `recordIncome({... caller: address, onStageChange: setStage })`. `onSuccess` invalidates `["capital-allocation"]` and `["audit-log"]` immediately and again after 5 s and 15 s (the `useRecordPayment` pattern).
    - `packages/trustee/src/routes/-cash-management-income.ts` (new presenter): `useBankIncome()` holds the dialog state (`amount`, `valueDateInput` defaulting to today's UTC date, `reference`, `touched`) and the chain from `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`, plus `kind` and `chainLabel`.
      - Validation messages: "Enter an amount greater than 0 with at most 2 decimal places." (`parseUsdCentsInput`), "Enter the bank's reference for this income.", "Enter the value date." and "The value date cannot be in the future."
@@ -100,8 +100,8 @@ _None_
      - On success: close the dialog and keep `lastBooked = { hash, amount, valueDate }` in memory for a success line.
    - `packages/trustee/src/routes/-BankIncomeDialog.tsx` (new, JSX only) copies the `WithdrawalTopUpDialog` / Bank-deposits "Record deposit" dialog shell: backdrop, Escape closes, no close while pending. It has three fields (Amount (USD), Value date (`type="date"`, max today UTC), Bank reference), the role/EVM reason line, `InlineError` with details, and a submit button labelled from `stageLabel(stage, "Book income")`. Testids use the `cash-management-income-*` prefix.
    - `packages/trustee/src/routes/cash-management.tsx`: add `{ key: "income", label: "Bank income" }` to `TABS` and an `income` branch. The branch renders a header card in the same layout as the T-Bills card: title "Bank income", the session chain chip, the sub-line "Bank interest booked by the Cash reporter is minted into the vault.", and a "Book income" button disabled with `openReason`. It also renders the success line "Booked {amount} income, value date {date}. Transaction {hash}. It appears in the Audit Log once indexed." with a link to `/audit-log`. Close the income dialog on tab change, like the other dialogs. Shrink this file's `scripts/lint-comments.baseline.json` entry if its comment count drops. Add no new comments.
-9. **Lint/build**: `npx tsx scripts/lint-docs.ts`, `npx tsx scripts/lint-comments.ts`, then `yarn workspace @pipeline/wallet-connect test`, `yarn workspace @pipeline/trustee test`, and the typecheck/build for both packages. No new route, so no `routeTree.gen.ts` regeneration.
-10. **Docs**: see Docs to Update.
+9. [x] **Lint/build**: `npx tsx scripts/lint-docs.ts`, `npx tsx scripts/lint-comments.ts`, then `yarn workspace @pipeline/wallet-connect test`, `yarn workspace @pipeline/trustee test`, and the typecheck/build for both packages. No new route, so no `routeTree.gen.ts` regeneration.
+10. [x] **Docs**: see Docs to Update.
 
 ## Test Strategy
 

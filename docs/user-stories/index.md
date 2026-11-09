@@ -362,6 +362,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
+| [#1762 Trustee: Cash reporter gating and bank income booking](https://github.com/eq-lab/pipeline/issues/1762) | [1762-cash-reporter-bookings.md](./epic-1795/1762-cash-reporter-bookings.md) | Initial |
 
 ---
 

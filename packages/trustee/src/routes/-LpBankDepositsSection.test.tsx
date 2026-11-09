@@ -20,6 +20,16 @@ vi.mock("@/api/useLp", () => ({ useLp: vi.fn(), fetchLp: vi.fn() }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
 vi.mock("@/api/useRecordWireIn", () => ({ useRecordWireIn: vi.fn() }));
 vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+const roleMock = vi.hoisted(() => ({
+  reason: null as string | null,
+  calls: [] as { fn: string; enabled: boolean }[],
+}));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: (fn: string, enabled: boolean) => {
+    roleMock.calls.push({ fn, enabled });
+    return { reason: enabled ? roleMock.reason : null };
+  },
+}));
 
 const showToast = vi.fn();
 vi.mock("@/components/ToastProvider", () => ({
@@ -190,6 +200,8 @@ beforeEach(() => {
   mockWallet.mockReset();
   mockFetchLp.mockReset();
   mockSession.mockReset();
+  roleMock.reason = null;
+  roleMock.calls = [];
   lpRefetch.mockReset();
   session(undefined);
   mutateAsync.mockReset();
@@ -610,6 +622,31 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     expect(screen.getAllByRole("row")[1]).toHaveTextContent(
       "Connect your trustee wallet to mint PLUSD.",
     );
+  });
+
+  it.each([
+    "Only the Cash reporter can book incoming wires.",
+    "Checking this wallet's Cash reporter role…",
+    "Could not verify this wallet's Cash reporter role.",
+  ])("disables the action with the role reason: %s", (reason) => {
+    roleMock.reason = reason;
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(reason);
+    expect(roleMock.calls.at(-1)).toEqual({
+      fn: "record_wire_in",
+      enabled: true,
+    });
+  });
+
+  it("does not run the role read on an EVM session", () => {
+    session(560048);
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    expect(roleMock.calls.every((c) => c.enabled === false)).toBe(true);
   });
 
   it("disables the action when the minter id is unset", () => {

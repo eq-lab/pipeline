@@ -78,3 +78,11 @@ export function utcDateTimeInputToIso(value: string): string | null {
   const iso = `${value}:00Z`;
   return Number.isNaN(Date.parse(iso)) ? null : iso;
 }
+
+export function todayDateInput(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function dateInputToValueDate(dateInput: string): number {
+  return Date.parse(`${dateInput}T00:00:00Z`) / 1000;
+}

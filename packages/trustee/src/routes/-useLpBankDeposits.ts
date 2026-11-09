@@ -7,6 +7,7 @@ import {
   type LpBankDeposit,
 } from "@/api/useLpBankDeposits";
 import { fetchLp, useLp, type LpDetail } from "@/api/useLp";
+import { useCashReporterAccess } from "@/api/useCashReporterAccess";
 import { useRecordWireIn, type RecordWireInStage } from "@/api/useRecordWireIn";
 import { ApiError } from "@/api/client";
 import { ENV } from "@/lib/env";
@@ -250,6 +251,10 @@ export function useLpBankDepositsSection(lpId: number) {
     evm: ENV.EVM_CAPITAL_WALLET_ADDRESS,
   };
   const receiver = wireInReceiver(lpQuery.data, kind, capitalWallets);
+  const roleReason = useCashReporterAccess(
+    "record_wire_in",
+    kind === "stellar",
+  ).reason;
 
   const mintDisabledReason = useCallback(
     (row: DepositRow): string | null => {
@@ -262,6 +267,7 @@ export function useLpBankDepositsSection(lpId: number) {
       if (!ENV.STELLAR_YIELD_MINTER_ID) {
         return "On-chain PLUSD minting is not configured for this environment.";
       }
+      if (roleReason !== null) return roleReason;
       if (!receiver) {
         return noReceiverMessage(kind);
       }
@@ -279,6 +285,7 @@ export function useLpBankDepositsSection(lpId: number) {
       chainLabel,
       wallet.isConnected,
       wallet.address,
+      roleReason,
       receiver,
       mintingDepositId,
     ],

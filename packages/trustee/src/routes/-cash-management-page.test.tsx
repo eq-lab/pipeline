@@ -28,6 +28,26 @@ vi.mock("@/api/useCapitalAllocation", () => ({
 }));
 // The Withdrawal Queue tab's useWithdrawalQueueView reads the queue endpoint.
 vi.mock("@/api/useWithdrawalQueue", () => ({ useWithdrawalQueue: vi.fn() }));
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+      <a href={to}>{children}</a>
+    ),
+  };
+});
+vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
+vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+vi.mock("@/api/useRecordIncome", () => ({ useRecordIncome: vi.fn() }));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: vi.fn(),
+}));
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  return { ENV: { ...actual.ENV, STELLAR_YIELD_MINTER_ID: "CMINTER" } };
+});
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
@@ -35,6 +55,10 @@ import { useRampAddresses } from "@/api/useRampAddresses";
 import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
+import { useSessionState } from "@/auth/sessionStore";
+import { useStellarWallet } from "@pipeline/wallet-connect";
+import { useRecordIncome } from "@/api/useRecordIncome";
+import { useCashReporterAccess } from "@/api/useCashReporterAccess";
 import { Route } from "./cash-management";
 
 const mockUseRampEvents = vi.mocked(useRampEvents);
@@ -44,6 +68,11 @@ const mockUseUsdcCustodyBalance = vi.mocked(useUsdcCustodyBalance);
 const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
 const mockUseWithdrawalQueue = vi.mocked(useWithdrawalQueue);
 const mockReview = vi.fn();
+const mockSession = vi.mocked(useSessionState);
+const mockWallet = vi.mocked(useStellarWallet);
+const mockUseRecordIncome = vi.mocked(useRecordIncome);
+const mockUseRole = vi.mocked(useCashReporterAccess);
+const incomeAsync = vi.fn();
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -86,6 +115,18 @@ function reviewHook(overrides: Record<string, unknown> = {}) {
     pendingId: null as number | null,
     ...overrides,
   };
+}
+
+function incomeHook(overrides: Record<string, unknown> = {}) {
+  mockUseRecordIncome.mockReturnValue({
+    mutateAsync: incomeAsync,
+    reset: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    error: null,
+    stage: null,
+    ...overrides,
+  } as unknown as ReturnType<typeof useRecordIncome>);
 }
 
 function readyEvents(data: RampEventsResponse = EVENTS) {
@@ -135,6 +176,23 @@ beforeEach(() => {
     error: null,
     refetch: () => {},
   });
+  mockSession.mockReturnValue({
+    status: "authenticated",
+    address: "GTRUSTEE",
+    chainId: 99_000_001,
+    error: undefined,
+  });
+  mockWallet.mockReturnValue({
+    address: "GTRUSTEE",
+    isConnected: true,
+    signTransaction: vi.fn(),
+  } as unknown as ReturnType<typeof useStellarWallet>);
+  incomeAsync.mockReset();
+  incomeAsync.mockResolvedValue({ hash: "income-tx-hash" });
+  incomeHook();
+  mockUseRole.mockReturnValue({
+    reason: null,
+  } as unknown as ReturnType<typeof useCashReporterAccess>);
   mockUseWithdrawalQueue.mockReset();
   mockUseWithdrawalQueue.mockReturnValue({
     chainId: 99_000_001,
@@ -162,7 +220,7 @@ describe("Cash Management route — shell", () => {
       screen.getByRole("heading", { name: "Cash Management" }),
     ).toBeInTheDocument();
     const tabs = screen.getByTestId("cash-management-tabs");
-    for (const key of ["onofframp", "tbills", "withdrawals"]) {
+    for (const key of ["onofframp", "tbills", "income", "withdrawals"]) {
       expect(
         within(tabs).getByTestId(`cash-management-tab-${key}`),
       ).toBeInTheDocument();
@@ -510,5 +568,134 @@ describe("Cash Management route — states", () => {
     expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
+  });
+});
+
+describe("Cash Management route — Bank income tab", () => {
+  beforeEach(() => readyEvents());
+
+  async function openDialog() {
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("cash-management-tab-income"));
+    await user.click(screen.getByTestId("cash-management-income-open"));
+    return user;
+  }
+
+  async function fill(
+    user: ReturnType<typeof userEvent.setup>,
+    { amount = "1250.50", reference = "BANK-REF-1" } = {},
+  ) {
+    if (amount) {
+      await user.type(
+        screen.getByTestId("cash-management-income-amount"),
+        amount,
+      );
+    }
+    if (reference) {
+      await user.type(
+        screen.getByTestId("cash-management-income-reference"),
+        reference,
+      );
+    }
+  }
+
+  it("renders the chain chip and an enabled Book income button", async () => {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-income"));
+    expect(
+      screen.getByTestId("cash-management-income-chain"),
+    ).toHaveTextContent("Stellar");
+    expect(screen.getByTestId("cash-management-income-open")).toBeEnabled();
+  });
+
+  it("disables Book income with the EVM reason on an EVM session", () => {
+    mockSession.mockReturnValue({
+      status: "authenticated",
+      address: "0xabc",
+      chainId: 560048,
+      error: undefined,
+    });
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-income"));
+    expect(screen.getByTestId("cash-management-income-open")).toBeDisabled();
+    expect(
+      screen.getByTestId("cash-management-income-open-reason"),
+    ).toHaveTextContent(
+      "Booking bank income on Hoodi is not available in the Trustee app yet.",
+    );
+    expect(mockUseRole).toHaveBeenCalledWith("record_income", false);
+  });
+
+  it("shows the validation messages and refuses a future value date", async () => {
+    renderRoute();
+    const user = await openDialog();
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(
+      screen.getByTestId("cash-management-income-validation"),
+    ).toHaveTextContent(
+      "Enter an amount greater than 0 with at most 2 decimal places.",
+    );
+
+    await fill(user, { reference: "" });
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(
+      screen.getByTestId("cash-management-income-validation"),
+    ).toHaveTextContent("Enter the bank's reference for this income.");
+
+    await fill(user, { amount: "", reference: "BANK-REF-1" });
+    fireEvent.change(screen.getByTestId("cash-management-income-date"), {
+      target: { value: "2999-01-01" },
+    });
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(
+      screen.getByTestId("cash-management-income-validation"),
+    ).toHaveTextContent("The value date cannot be in the future.");
+    expect(incomeAsync).not.toHaveBeenCalled();
+  });
+
+  it("disables submit with the role reason for a wallet without the role", async () => {
+    mockUseRole.mockReturnValue({
+      reason: "Only the Cash reporter can book bank income.",
+    } as unknown as ReturnType<typeof useCashReporterAccess>);
+    renderRoute();
+    await openDialog();
+    expect(
+      screen.getByTestId("cash-management-income-blocked"),
+    ).toHaveTextContent("Only the Cash reporter can book bank income.");
+    expect(screen.getByTestId("cash-management-income-submit")).toBeDisabled();
+  });
+
+  it("shows the reference copy when the reference is already booked", async () => {
+    incomeHook({
+      error: new Error(
+        "RefHashSeen: this bank reference's ref_hash is already consumed",
+      ),
+    });
+    renderRoute();
+    await openDialog();
+    expect(
+      screen.getByTestId("cash-management-income-error"),
+    ).toHaveTextContent("This bank reference is already booked on-chain.");
+  });
+
+  it("books the income, closes the dialog and shows the hash with an Audit Log link", async () => {
+    renderRoute();
+    const user = await openDialog();
+    await fill(user);
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(incomeAsync).toHaveBeenCalledWith({
+      amount: "1250.50",
+      valueDate: expect.any(Number),
+      reference: "BANK-REF-1",
+    });
+    const success = await screen.findByTestId("cash-management-income-success");
+    expect(success).toHaveTextContent("Booked $1,250.50 income");
+    expect(success).toHaveTextContent("income-tx-hash");
+    expect(
+      within(success).getByRole("link", { name: "Audit Log" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-income-dialog"),
+    ).not.toBeInTheDocument();
   });
 });

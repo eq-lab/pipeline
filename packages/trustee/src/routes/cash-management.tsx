@@ -11,6 +11,10 @@ import {
   type WithdrawalQueueView,
 } from "./-cash-management-withdrawals";
 import { InlineError } from "@pipeline/ui";
+import { Link } from "@tanstack/react-router";
+import { useBankIncome } from "./-cash-management-income";
+import { BankIncomeDialog } from "./-BankIncomeDialog";
+import { formatUsdDecimal } from "@/utils/formatUsd";
 
 /**
  * Cash Management — replaces the #786 placeholder. Per `docs/FRONTEND.md`
@@ -30,11 +34,12 @@ const NEGATIVE_RED = "#b20000";
 const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 const BRAND = "var(--color-pipeline-brand)";
 
-type TabKey = "onofframp" | "tbills" | "withdrawals";
+type TabKey = "onofframp" | "tbills" | "income" | "withdrawals";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "onofframp", label: "On / Off-ramp" },
   { key: "tbills", label: "T-Bills" },
+  { key: "income", label: "Bank income" },
   { key: "withdrawals", label: "Withdrawal Queue" },
 ];
 
@@ -1028,6 +1033,7 @@ function CashManagement() {
   const view = useCashManagement();
   const tbills = useTbillsSwap();
   const withdrawals = useWithdrawalQueueView();
+  const income = useBankIncome();
 
   const onReview = (
     id: number,
@@ -1051,6 +1057,7 @@ function CashManagement() {
           setSwapOpen(false);
           setTbillsSwapOpen(false);
           setWithdrawalTopUpOpen(false);
+          income.close();
         }}
       />
 
@@ -1205,6 +1212,76 @@ function CashManagement() {
             New swap
           </button>
         </div>
+      ) : activeTab === "income" ? (
+        <div className="flex w-full flex-col gap-[16px]">
+          <div
+            className="flex flex-wrap items-center justify-between gap-[12px] rounded-[4px] bg-white px-[27px] py-[25px]"
+            style={{ border: `1px solid ${LINE_COLOR}` }}
+          >
+            <div className="flex flex-col gap-[2px]">
+              <span className="flex items-center gap-[10px]">
+                <span
+                  className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
+                  style={{ color: INK }}
+                >
+                  Bank income
+                </span>
+                <span
+                  data-testid="cash-management-income-chain"
+                  className="rounded-[4px] px-[8px] py-[2px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+                  style={{
+                    border: `1px solid ${LINE_COLOR}`,
+                    color: INK_MUTED,
+                  }}
+                >
+                  {income.chainLabel}
+                </span>
+              </span>
+              <span
+                className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+                style={{ color: INK_MUTED }}
+              >
+                Bank interest booked by the Cash reporter is minted into the
+                vault.
+              </span>
+              {income.openReason && (
+                <span
+                  data-testid="cash-management-income-open-reason"
+                  className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+                  style={{ color: INK_MUTED }}
+                >
+                  {income.openReason}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              data-testid="cash-management-income-open"
+              disabled={income.openReason !== null}
+              onClick={income.openDialog}
+              className="flex h-[44px] items-center justify-center rounded-[4px] px-[20px] font-[family-name:var(--font-body)] text-[15px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: BRAND }}
+            >
+              Book income
+            </button>
+          </div>
+          {income.lastBooked && (
+            <p
+              data-testid="cash-management-income-success"
+              className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+              style={{ color: POSITIVE_GREEN }}
+            >
+              Booked {formatUsdDecimal(income.lastBooked.amount)} income, value
+              date {income.lastBooked.valueDate}. Transaction{" "}
+              <span className="break-all">{income.lastBooked.hash}</span>. It
+              appears in the{" "}
+              <Link to="/audit-log" className="underline">
+                Audit Log
+              </Link>{" "}
+              once indexed.
+            </p>
+          )}
+        </div>
       ) : (
         <WithdrawalQueueSection
           withdrawals={withdrawals}
@@ -1232,6 +1309,8 @@ function CashManagement() {
         onClose={() => setTbillsSwapOpen(false)}
         tbills={tbills}
       />
+
+      <BankIncomeDialog income={income} />
 
       <WithdrawalTopUpDialog
         open={withdrawalTopUpOpen}
