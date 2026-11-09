@@ -21,6 +21,14 @@ pub struct LpBankDepositRow {
     pub created_at: DateTime<Utc>,
 }
 
+pub const COUNT_PENDING_BANK_DEPOSITS_SQL: &str = "SELECT COUNT(*) FROM lp_bank_deposits d \
+     WHERE NOT d.is_minted \
+       AND NOT EXISTS ( \
+           SELECT 1 FROM contract_logs w \
+           WHERE w.event_name = 'WireIn' \
+             AND w.params @> jsonb_build_object('ref_hash', encode(d.ref_hash, 'hex')) \
+       )";
+
 const COLUMNS: &str = "id, lp_id, amount, payment_reference, ref_hash, occurred_at, \
                        is_minted, recorded_by, created_at";
 
@@ -56,6 +64,12 @@ impl LpBankDepositRepo {
         .bind(recorded_by)
         .fetch_one(&mut *conn)
         .await
+    }
+
+    pub async fn count_pending(&self) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar::<_, i64>(COUNT_PENDING_BANK_DEPOSITS_SQL)
+            .fetch_one(&self.pool)
+            .await
     }
 
     pub async fn list_for_lp(&self, lp_id: i64) -> Result<Vec<LpBankDepositRow>, sqlx::Error> {

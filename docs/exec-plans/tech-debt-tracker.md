@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-174.**
+**Next free number: TD-175.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -437,15 +437,14 @@ line, whichever section it lands in.
 - **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
 - **Gap:** The Figma design (node `4116:8855`) shows count badges on Origination (1), Loans
   (4), and Cash Management (3) — presumably counts of pending/actionable items per section.
-  There is no backend endpoint serving these counts today, so per the project rule [no
-  frontend-computed metrics] issue #786 omits the numbers entirely rather than deriving them
-  client-side. The badge slot (`NavBadge`) is built and renders nothing when
+  The backend source now exists (`GET /v1/attention-counts`, #1864); the frontend wiring is #1350.
+  Until then issue #786 omits the numbers entirely rather than deriving them client-side. The badge slot (`NavBadge`) is built and renders nothing when
   `TrusteeNavItem.badgeCount` is `undefined`, ready to light up once a real count exists.
 - **Impact:** The sidebar under-represents the Figma mock (no badges) until a backend source
   lands; no functional impact, just a deferred visual/product feature.
-- **Suggested fix:** When a backend endpoint for per-section pending-item counts exists,
-  populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS` entries (likely via a query hook
-  passed into `TrusteeSidebar`/`NavItem`, not a hardcoded value).
+- **Suggested fix:** In #1350, populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS`
+  entries from `GET /v1/attention-counts` (via a query hook passed into
+  `TrusteeSidebar`/`NavItem`, not a hardcoded value).
 
 ### TD-37: Trustee sidebar has no mobile/responsive behavior
 
@@ -2330,3 +2329,10 @@ line, whichever section it lands in.
 - **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow linearly with each contract's log count.
 - **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first.
 
+### TD-174: Attention counts are recomputed per request over full minter and transfer history
+
+- **Date:** 2026-11-09
+- **Location:** `packages/api/src/routes/attention_counts.rs`, `ContractLogsRepo::list_minter_events`, `ContractLogsRepo::list_asset_transfers`, `LpBankDepositRepo::count_pending`
+- **Gap:** `GET /v1/attention-counts` re-reads each in-scope chain's whole minter cash-book event history and `AssetTransfer` list, plus an `lp_bank_deposits` / `contract_logs` anti-join, on every call. Nothing is materialised or cached. The pending bank deposit count is also chain-agnostic because `lp_bank_deposits` has no `chain_id` (TD-117).
+- **Impact:** The Trustee sidebar polls this on every page (#1350), so the cost grows with history and with open Trustee sessions.
+- **Suggested fix:** Materialise the counts (or the folded minter and ramp state) in the indexer or relayer tick, or add a short server-side cache; add `chain_id` to `lp_bank_deposits` and serve the deposit count per chain.

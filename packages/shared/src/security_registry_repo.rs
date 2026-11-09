@@ -315,6 +315,11 @@ pub const GET_TERMS_SQL: &str = "SELECT loan_id, advance_ratio_bps, margin_call_
      FROM security_terms
      WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3";
 
+pub const LIST_OPEN_MARGIN_CALL_LOANS_SQL: &str = "SELECT loan_id
+     FROM security_terms
+     WHERE chain_id = $1 AND contract_address = $2 AND margin_call_at <> 0
+     ORDER BY loan_id";
+
 pub const LIST_RECORDS_FOR_LOAN_SQL: &str = "SELECT record_id, loan_id, lot_id, protection,
             commodity, unit, reference_quantity, reference_grade, region, site_hash,
             control_kind, control_reference, perfection, release_condition, status,
@@ -787,6 +792,19 @@ impl SecurityRegistryRepo {
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
+    }
+
+    pub async fn list_open_margin_call_loans(
+        &self,
+        chain_id: i64,
+        contract: &str,
+    ) -> anyhow::Result<Vec<i64>> {
+        let rows: Vec<(i64,)> = sqlx::query_as(LIST_OPEN_MARGIN_CALL_LOANS_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|(l,)| l).collect())
     }
 
     pub async fn list_record_loans(
