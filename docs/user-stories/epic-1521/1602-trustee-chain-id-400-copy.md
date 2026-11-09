@@ -16,6 +16,8 @@ chain (prod today: Trustee `VITE_EVM_CHAIN_ID=1`, API `CHAINS=99000002`; or a lo
 
 **Steps:**
 
+Precondition: since #1667 an unserved chain is only selectable when `GET /v1/chains` fails (block it in DevTools).
+
 1. On `/origination/new` choose the EVM chain in "Target chain", fill the form, submit.
 
 **Expected outcomes:**

@@ -6,10 +6,12 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   FORM_SECTIONS,
+  TARGET_CHAIN_FIELD,
   useOriginationNewForm,
   type FieldDef,
 } from "./-origination-new";
 import { ImportJsonDialog } from "./-ImportJsonDialog";
+import { useServedTargetChains } from "@/api/useChains";
 import { useSubmitLoan } from "@/api/useSubmitLoan";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
@@ -35,11 +37,15 @@ function FieldInput({
   field,
   value,
   error,
+  options,
+  disabled,
   onChange,
 }: {
   field: FieldDef;
   value: string;
   error: string | undefined;
+  options?: ReadonlyArray<{ value: string; label: string }>;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -52,10 +58,11 @@ function FieldInput({
           <select
             data-testid={`submit-loan-field-${field.path}`}
             value={value}
+            disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
-            className={FIELD_INPUT_CLASS}
+            className={`${FIELD_INPUT_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
           >
-            {field.options.map((option) => (
+            {(options ?? field.options).map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -86,7 +93,8 @@ function FieldInput({
 }
 
 function OriginationNew() {
-  const form = useOriginationNewForm();
+  const targetChains = useServedTargetChains();
+  const form = useOriginationNewForm(targetChains);
   const submit = useSubmitLoan();
   const navigate = useNavigate();
   const [importOpen, setImportOpen] = useState(false);
@@ -166,6 +174,16 @@ function OriginationNew() {
                   field={field}
                   value={form.values[field.path] ?? ""}
                   error={form.fieldErrors[field.path]}
+                  options={
+                    field.path === TARGET_CHAIN_FIELD
+                      ? form.targetChainOptions
+                      : undefined
+                  }
+                  disabled={
+                    field.path === TARGET_CHAIN_FIELD &&
+                    (targetChains.isLoading ||
+                      form.targetChainOptions.length === 0)
+                  }
                   onChange={(value) => form.setValue(field.path, value)}
                 />
               ))}
