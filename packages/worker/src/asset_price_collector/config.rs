@@ -40,7 +40,7 @@ impl PriceInterval {
 }
 
 /// Settings for [`crate::asset_price_collector::run_asset_price_collector_job`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AssetPriceCollectorSettings {
     /// Grid resolution (hourly vs daily).
     pub interval: PriceInterval,
@@ -54,6 +54,7 @@ pub struct AssetPriceCollectorSettings {
     /// production deployment cannot resolve a non-market provider for a live loan
     /// unless it opts in explicitly.
     pub allow_non_market: bool,
+    pub security_marks: shared::security_marks::CommodityMap,
 }
 
 impl AssetPriceCollectorSettings {
@@ -79,6 +80,7 @@ impl AssetPriceCollectorSettings {
             interval,
             retention,
             allow_non_market,
+            security_marks: shared::security_marks::CommodityMap::from_env()?,
         })
     }
 }

@@ -88,7 +88,7 @@ use shared::object_store::{extension_for, object_key, sniff_content_type, ACCEPT
 use crate::auth::{AuthClaims, Claims, SecurityAddon};
 use crate::config::KybLimits;
 use crate::error::ApiError;
-use crate::formatting::iso_utc;
+use crate::formatting::{iso_utc, pending_bank_deposits_field};
 use crate::routes::common::require_trustee;
 use crate::AppState;
 
@@ -147,10 +147,16 @@ pub struct LpResponse {
     /// ISO-8601 UTC.
     pub created_at: String,
     pub documents: Vec<DocumentResponse>,
+    #[schema(example = "1500.00")]
+    pub pending_bank_deposits: Option<String>,
 }
 
 impl LpResponse {
-    fn new(row: LpRow, documents: Vec<DocumentResponse>) -> Self {
+    fn new(
+        row: LpRow,
+        documents: Vec<DocumentResponse>,
+        pending_bank_deposits: Option<String>,
+    ) -> Self {
         let writable = KybStatus::from_str(&row.kyb_status).is_ok_and(|s| s.allows_owner_writes());
         Self {
             id: row.id,
@@ -174,6 +180,7 @@ impl LpResponse {
             owner_address: row.owner_address,
             created_at: iso_utc(&row.created_at),
             documents,
+            pending_bank_deposits,
         }
     }
 }
@@ -1308,7 +1315,14 @@ async fn with_documents_rows(
         };
         documents.push(DocumentResponse::new(row, url));
     }
-    Ok(LpResponse::new(lp, documents))
+    let pending = pending_bank_deposits_field(
+        lp.id,
+        state
+            .lp_bank_deposit_repo
+            .pending_bank_deposits_for_lp(lp.id)
+            .await,
+    );
+    Ok(LpResponse::new(lp, documents, pending))
 }
 
 /// An LP's documents as `(id, status)` pairs, for [`submit_blockers`] and

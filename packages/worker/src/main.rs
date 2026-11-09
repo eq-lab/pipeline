@@ -15,6 +15,7 @@ use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::position_repo::PositionRepo;
+use shared::security_registry_repo::SecurityRegistryRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 use std::sync::Arc;
@@ -120,11 +121,19 @@ async fn main() -> anyhow::Result<()> {
 
         // Fail fast at boot if a drawn loan already resolves to a non-market price
         // provider and the dev/test escape hatch is off — see #1023.
-        assert_live_loans_use_market_providers(&anchors_repo, settings.allow_non_market).await?;
+        assert_live_loans_use_market_providers(
+            &anchors_repo,
+            settings.allow_non_market,
+            &settings.security_marks.providers(),
+        )
+        .await?;
+        let security_repo = Arc::new(SecurityRegistryRepo::new(pool.clone()));
 
         tracing::info!("asset price collector job started");
         tokio::spawn(async move {
-            if let Err(e) = run_asset_price_collector_job(settings, anchors_repo, price_repo).await
+            if let Err(e) =
+                run_asset_price_collector_job(settings, anchors_repo, price_repo, security_repo)
+                    .await
             {
                 tracing::error!("asset price collector job exited with error: {e:?}");
             }

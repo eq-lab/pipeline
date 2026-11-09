@@ -930,3 +930,117 @@ fn an_evm_chain_loads_with_neither_minter_entry() {
         },
     );
 }
+
+#[test]
+fn evm_plusd_address_is_optional_and_normalised_to_eip55() {
+    let lower = EVM_REGISTRY.to_lowercase();
+    with_env(
+        &[
+            ("CHAINS", "7101"),
+            ("DEFAULT_CHAIN_ID", "7101"),
+            ("CHAIN_7101_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7101_EVM_API_PLUSD_ADDRESS", &format!(" {lower} ")),
+        ],
+        &["CHAIN_7101_TYPE"],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with plusd key");
+            assert_eq!(cfg.plusd_addresses[&7101], EVM_REGISTRY);
+        },
+    );
+}
+
+#[test]
+fn plusd_address_unset_or_blank_gives_no_entry() {
+    for (chain, value) in [(7102_i64, None), (7103_i64, Some("   "))] {
+        let key = format!("CHAIN_{chain}_EVM_API_PLUSD_ADDRESS");
+        let chains = chain.to_string();
+        let registry_key = format!("CHAIN_{chain}_EVM_API_LOAN_REGISTRY_ADDRESS");
+        let type_key = format!("CHAIN_{chain}_TYPE");
+        let mut set: Vec<(&str, &str)> = vec![
+            ("CHAINS", &chains),
+            ("DEFAULT_CHAIN_ID", &chains),
+            (&registry_key, EVM_REGISTRY),
+        ];
+        if let Some(v) = value {
+            set.push((&key, v));
+        }
+        with_env(&set, &[&type_key, &key], || {
+            let cfg = ChainsConfig::from_env().expect("from_env without plusd key");
+            assert!(cfg.plusd_addresses.is_empty());
+        });
+    }
+}
+
+#[test]
+fn evm_plusd_address_that_is_not_an_address_is_error() {
+    with_env(
+        &[
+            ("CHAINS", "7104"),
+            ("DEFAULT_CHAIN_ID", "7104"),
+            ("CHAIN_7104_EVM_API_LOAN_REGISTRY_ADDRESS", EVM_REGISTRY),
+            ("CHAIN_7104_EVM_API_PLUSD_ADDRESS", "0xnope"),
+        ],
+        &["CHAIN_7104_TYPE"],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_7104_EVM_API_PLUSD_ADDRESS"),
+                "unexpected error message: {msg}"
+            );
+        },
+    );
+}
+
+#[test]
+fn stellar_plusd_address_is_parsed_and_normalised() {
+    let padded = format!(" {STELLAR_REGISTRY_2} ");
+    with_env(
+        &[
+            ("CHAINS", "99000031"),
+            ("DEFAULT_CHAIN_ID", "99000031"),
+            ("CHAIN_99000031_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000031_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000031_STELLAR_API_PLUSD_ADDRESS", &padded),
+        ],
+        &[
+            "CHAIN_99000031_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000031_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let cfg = ChainsConfig::from_env().expect("from_env with stellar plusd key");
+            assert_eq!(cfg.plusd_addresses[&99_000_031], STELLAR_REGISTRY_2);
+        },
+    );
+}
+
+#[test]
+fn stellar_plusd_address_bad_strkey_is_error() {
+    with_env(
+        &[
+            ("CHAINS", "99000032"),
+            ("DEFAULT_CHAIN_ID", "99000032"),
+            ("CHAIN_99000032_TYPE", "stellar"),
+            ("STELLAR_VERIFIER_SECRET", STELLAR_SECRET),
+            (
+                "CHAIN_99000032_STELLAR_API_LOAN_REGISTRY_ADDRESS",
+                STELLAR_REGISTRY,
+            ),
+            ("CHAIN_99000032_STELLAR_API_PLUSD_ADDRESS", "CNOTAREALID"),
+        ],
+        &[
+            "CHAIN_99000032_API_STELLAR_DM_CONTRACT_ID",
+            "CHAIN_99000032_API_STELLAR_WQ_CONTRACT_ID",
+        ],
+        || {
+            let msg = error_message(ChainsConfig::from_env());
+            assert!(
+                msg.contains("CHAIN_99000032_STELLAR_API_PLUSD_ADDRESS"),
+                "unexpected error message: {msg}"
+            );
+        },
+    );
+}

@@ -738,26 +738,80 @@ pub const MINTER_FOLD_EVENTS_SQL: &str = "WITH snap AS (
      ORDER BY c.block_number, c.log_index";
 
 pub const LP_WIRE_OUT_EVENTS_SQL: &str = "SELECT
-         event_name,
-         block_number,
-         log_index,
-         block_timestamp,
-         params
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     WHERE c.chain_id = $1
+       AND c.contract_address = $2
+       AND (
+            (c.event_name = 'WireOutRequested'
+                AND c.params @> jsonb_build_object('lp', $3::text))
+            OR (c.event_name IN ('WireOutSettled', 'WireOutCancelled')
+                AND EXISTS (
+                    SELECT 1
+                      FROM contract_logs r
+                     WHERE r.chain_id = $1
+                       AND r.contract_address = $2
+                       AND r.event_name = 'WireOutRequested'
+                       AND r.params @> jsonb_build_object('lp', $3::text)
+                       AND c.params @> jsonb_build_object('id', r.params->>'id')))
+       )
+     ORDER BY c.block_number, c.log_index";
+
+pub const LP_WIRE_OUT_EVENTS_INFERRED_MINTER_SQL: &str = "WITH minter AS (
+         SELECT contract_address
+           FROM contract_logs
+          WHERE chain_id = $1
+            AND event_name = 'WireOutRequested'
+            AND params @> jsonb_build_object('lp', $2::text)
+          ORDER BY block_number DESC, log_index DESC
+          LIMIT 1)
+     SELECT
+         c.event_name,
+         c.block_number,
+         c.log_index,
+         c.block_timestamp,
+         c.params
+     FROM contract_logs c
+     JOIN minter m ON m.contract_address = c.contract_address
+     WHERE c.chain_id = $1
+       AND (
+            (c.event_name = 'WireOutRequested'
+                AND c.params @> jsonb_build_object('lp', $2::text))
+            OR (c.event_name IN ('WireOutSettled', 'WireOutCancelled')
+                AND EXISTS (
+                    SELECT 1
+                      FROM contract_logs r
+                     WHERE r.chain_id = $1
+                       AND r.contract_address = c.contract_address
+                       AND r.event_name = 'WireOutRequested'
+                       AND r.params @> jsonb_build_object('lp', $2::text)
+                       AND c.params @> jsonb_build_object('id', r.params->>'id')))
+       )
+     ORDER BY c.block_number, c.log_index";
+
+pub const PLUSD_HOLDER_STEPS_SQL: &str = "SELECT block_timestamp,
+         CASE WHEN params->>'amount' ~ '^[0-9]{1,39}$' THEN params->>'amount' END AS amount,
+         params @> jsonb_build_object('to', $3::text) AS incoming,
+         params @> jsonb_build_object('from', $3::text) AS outgoing
      FROM contract_logs
      WHERE chain_id = $1
        AND contract_address = $2
-       AND (
-            (event_name = 'WireOutRequested' AND LOWER(params->>'lp') = $3)
-            OR (event_name IN ('WireOutSettled', 'WireOutCancelled')
-                AND params->>'id' IN (
-                    SELECT params->>'id'
-                      FROM contract_logs
-                     WHERE chain_id = $1
-                       AND contract_address = $2
-                       AND event_name = 'WireOutRequested'
-                       AND LOWER(params->>'lp') = $3))
-       )
+       AND event_name = 'PlusdTransfer'
+       AND (params @> jsonb_build_object('to', $3::text)
+            OR params @> jsonb_build_object('from', $3::text))
      ORDER BY block_number, log_index";
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PlusdStepRow {
+    pub block_timestamp: i64,
+    pub amount: Option<String>,
+    pub incoming: bool,
+    pub outgoing: bool,
+}
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct MinterEventRow {
@@ -817,12 +871,40 @@ impl ContractLogsRepo {
         &self,
         chain_id: i64,
         minter: &str,
-        wallet_lower: &str,
+        lp: &str,
     ) -> anyhow::Result<Vec<MinterEventRow>> {
         let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_OUT_EVENTS_SQL)
             .bind(chain_id)
             .bind(minter)
-            .bind(wallet_lower)
+            .bind(lp)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_lp_wire_out_events_inferred_minter(
+        &self,
+        chain_id: i64,
+        lp: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_OUT_EVENTS_INFERRED_MINTER_SQL)
+            .bind(chain_id)
+            .bind(lp)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_plusd_holder_steps(
+        &self,
+        chain_id: i64,
+        plusd: &str,
+        holder: &str,
+    ) -> anyhow::Result<Vec<PlusdStepRow>> {
+        let rows = sqlx::query_as::<_, PlusdStepRow>(PLUSD_HOLDER_STEPS_SQL)
+            .bind(chain_id)
+            .bind(plusd)
+            .bind(holder)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows)

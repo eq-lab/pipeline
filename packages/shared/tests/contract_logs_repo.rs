@@ -254,17 +254,20 @@ fn minter_events_sql_scopes_by_chain_and_contract_and_orders_by_position() {
 }
 
 #[test]
-fn lp_wire_out_events_sql_scopes_by_chain_contract_and_lowercased_lp() {
+fn lp_wire_out_events_sql_scopes_by_chain_contract_and_canonical_lp_with_gin_containment() {
     let sql = normalized(LP_WIRE_OUT_EVENTS_SQL);
     for needle in [
-        "WHERE chain_id = $1",
-        "AND contract_address = $2",
-        "event_name = 'WireOutRequested' AND LOWER(params->>'lp') = $3",
-        "event_name IN ('WireOutSettled', 'WireOutCancelled')",
-        "ORDER BY block_number, log_index",
+        "WHERE c.chain_id = $1",
+        "AND c.contract_address = $2",
+        "c.event_name = 'WireOutRequested' AND c.params @> jsonb_build_object('lp', $3::text)",
+        "c.event_name IN ('WireOutSettled', 'WireOutCancelled')",
+        "r.params @> jsonb_build_object('lp', $3::text)",
+        "c.params @> jsonb_build_object('id', r.params->>'id')",
+        "ORDER BY c.block_number, c.log_index",
     ] {
         assert!(sql.contains(needle), "missing `{needle}` in {sql}");
     }
+    assert!(!sql.contains("LOWER("), "{sql}");
     assert_eq!(sql.matches("contract_address = $2").count(), 2, "{sql}");
 }
 

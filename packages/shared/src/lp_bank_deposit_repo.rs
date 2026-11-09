@@ -21,8 +21,49 @@ pub struct LpBankDepositRow {
     pub created_at: DateTime<Utc>,
 }
 
+pub const COUNT_PENDING_BANK_DEPOSITS_SQL: &str = "SELECT COUNT(*) FROM lp_bank_deposits d \
+     WHERE NOT d.is_minted \
+       AND NOT EXISTS ( \
+           SELECT 1 FROM contract_logs w \
+           WHERE w.event_name = 'WireIn' \
+             AND w.params @> jsonb_build_object('ref_hash', encode(d.ref_hash, 'hex')) \
+       )";
+
 const COLUMNS: &str = "id, lp_id, amount, payment_reference, ref_hash, occurred_at, \
                        is_minted, recorded_by, created_at";
+
+macro_rules! pending_bank_deposits_filter {
+    () => {
+        "NOT d.is_minted \
+         AND NOT EXISTS ( \
+             SELECT 1 FROM contract_logs w \
+              WHERE w.event_name = 'WireIn' \
+                AND w.params @> jsonb_build_object('ref_hash', encode(d.ref_hash, 'hex')) \
+                AND ( NOT (w.params @> jsonb_build_object('receiver', w.contract_address)) \
+                      OR EXISTS ( \
+                          SELECT 1 FROM contract_logs a \
+                           WHERE a.chain_id         = w.chain_id \
+                             AND a.contract_address = w.contract_address \
+                             AND a.event_name       = 'WireInAssigned' \
+                             AND a.params->>'id'    = w.params->>'id' ) ) \
+         ) \
+         AND ( SELECT e.event_name FROM contract_logs e \
+                WHERE e.event_name IN ('WireIn', 'WireInReturned') \
+                  AND e.params @> jsonb_build_object('ref_hash', encode(d.ref_hash, 'hex')) \
+                ORDER BY e.block_timestamp DESC, e.id DESC LIMIT 1 ) \
+               IS DISTINCT FROM 'WireInReturned'"
+    };
+}
+
+pub const PENDING_BANK_DEPOSITS_FOR_LP_SQL: &str = concat!(
+    "SELECT COALESCE(SUM(d.amount), 0) FROM lp_bank_deposits d WHERE d.lp_id = $1 AND ",
+    pending_bank_deposits_filter!()
+);
+
+pub const PENDING_BANK_DEPOSITS_ALL_SQL: &str = concat!(
+    "SELECT COUNT(*), COALESCE(SUM(d.amount), 0) FROM lp_bank_deposits d WHERE ",
+    pending_bank_deposits_filter!()
+);
 
 pub struct LpBankDepositRepo {
     pool: PgPool,
@@ -56,6 +97,28 @@ impl LpBankDepositRepo {
         .bind(recorded_by)
         .fetch_one(&mut *conn)
         .await
+    }
+
+    pub async fn count_pending(&self) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar::<_, i64>(COUNT_PENDING_BANK_DEPOSITS_SQL)
+            .fetch_one(&self.pool)
+            .await
+    }
+
+    pub async fn pending_bank_deposits_for_lp(
+        &self,
+        lp_id: i64,
+    ) -> Result<BigDecimal, sqlx::Error> {
+        sqlx::query_scalar(PENDING_BANK_DEPOSITS_FOR_LP_SQL)
+            .bind(lp_id)
+            .fetch_one(&self.pool)
+            .await
+    }
+
+    pub async fn pending_bank_deposits_all(&self) -> Result<(i64, BigDecimal), sqlx::Error> {
+        sqlx::query_as(PENDING_BANK_DEPOSITS_ALL_SQL)
+            .fetch_one(&self.pool)
+            .await
     }
 
     pub async fn list_for_lp(&self, lp_id: i64) -> Result<Vec<LpBankDepositRow>, sqlx::Error> {

@@ -86,7 +86,7 @@ pub fn parse_cargo_synced(log: &Log) -> Option<ContractLog> {
     )
 }
 
-fn side(addr: Address) -> Value {
+pub(crate) fn side(addr: Address) -> Value {
     if addr == Address::ZERO {
         Value::Null
     } else {

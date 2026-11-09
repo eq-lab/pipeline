@@ -1,19 +1,26 @@
 // spec: docs/product-specs/loan-security-state.md#behavior
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow};
+use shared::security_marks::{
+    effective_max_age, mark_due, mark_pairs, move_bps, suggest_with, CommodityMap,
+    CommodityMapping, MarkMode, MarkPolicy, MarkSettings, PriceMap, SuggestCtx, Suggestion,
+    SuggestionStatus,
+};
 use shared::security_registry::{
     is_goods, p_dec, p_i64, p_str, ConsentRow, CountedRecordView, DocRow, InspectionRow, LotRow,
     MarginCallEventRow, RecordRow, TermsRow, ValuationRow,
 };
 use shared::security_registry_repo::{LoanSecurityRows, SaleRepaymentRow};
 use shared::security_state::{
-    agent_release, attestation_stale, counts_toward_value, cure_by, dec_to_u128, dec_to_u64,
-    format_7dp, format_7dp_i128, inspection_stale, integer_string, is_open_status, mark_age,
-    mark_stale, price_stale, record_term_value, release_unconditional, CountedTerm,
+    agent_release, attestation_stale, counts_toward_value, cure_by, dec_to_i128, dec_to_u128,
+    dec_to_u64, format_7dp, format_7dp_i128, inspection_stale, integer_string, is_open_status,
+    mark_age, mark_stale, price_stale, record_term_value, release_unconditional, CountedTerm,
 };
 use utoipa::ToSchema;
 
@@ -100,6 +107,25 @@ pub struct PricesDto {
     /// Seconds since the oldest counted goods mark; `18446744073709551615` when one is unmarked.
     pub mark_age: Option<String>,
     pub price_stale: Option<bool>,
+    pub mark_max_age: Option<String>,
+    pub mark_move_bps: u32,
+    pub marks_due: Option<u32>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SuggestedMarkDto {
+    pub value_per_unit: String,
+    pub benchmark: String,
+    pub source_price: String,
+    pub source_at: String,
+    pub asset: String,
+    pub price_provider: String,
+    pub quote_unit: Option<String>,
+    pub mode: String,
+    pub assay_id: Option<String>,
+    pub offtake_id: Option<String>,
+    pub report: String,
+    pub report_hash: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -219,6 +245,12 @@ pub struct SecurityRecordDto {
     pub needs_view: bool,
     pub docs: Vec<RecordDocDto>,
     pub mark: Option<RecordMarkDto>,
+    pub suggested_mark: Option<SuggestedMarkDto>,
+    pub suggestion_status: Option<String>,
+    pub move_bps: Option<i32>,
+    pub mark_due: Option<bool>,
+    pub mark_due_reasons: Vec<String>,
+    pub mark_due_at: Option<String>,
     pub lot: Option<LotDto>,
     pub counts_toward_value: bool,
     /// `null` unless the record is `Active`.
@@ -262,9 +294,35 @@ struct CountedEntry {
     flagged: bool,
 }
 
+static NO_MARKS: LazyLock<MarkSettings> = LazyLock::new(MarkSettings::default);
+
+pub struct MarkInputs<'a> {
+    pub settings: &'a MarkSettings,
+    pub prices: PriceMap,
+    pub concentrate: Option<(AssayRow, OfftakeTermsRow)>,
+}
+
+impl Default for MarkInputs<'static> {
+    fn default() -> Self {
+        Self {
+            settings: &NO_MARKS,
+            prices: PriceMap::new(),
+            concentrate: None,
+        }
+    }
+}
+
 struct Unreadable(Cell<bool>);
 
 impl Unreadable {
+    fn i128(&self, d: &BigDecimal) -> Option<i128> {
+        let v = dec_to_i128(d);
+        if v.is_none() {
+            self.0.set(true);
+        }
+        v
+    }
+
     fn u64(&self, d: &BigDecimal) -> Option<u64> {
         let v = dec_to_u64(d);
         if v.is_none() {
@@ -462,7 +520,47 @@ fn mark_state(r: &RecordRow, un: &Unreadable) -> Result<Option<u64>, ()> {
     }
 }
 
+fn is_open_goods(r: &RecordRow) -> bool {
+    is_goods(&r.protection) && is_open_status(&r.status)
+}
+
+fn mapping_of<'a>(map: &'a CommodityMap, r: &RecordRow) -> Option<&'a CommodityMapping> {
+    if !is_open_goods(r) {
+        return None;
+    }
+    map.get(r.commodity.as_deref()?)
+}
+
+pub fn needs_concentrate_inputs(rows: &LoanSecurityRows, map: &CommodityMap) -> bool {
+    rows.records
+        .iter()
+        .filter_map(|r| mapping_of(map, r))
+        .any(|m| m.mode == MarkMode::MetalConcentrate)
+}
+
+pub fn mark_price_pairs(
+    rows: &LoanSecurityRows,
+    map: &CommodityMap,
+    offtake: Option<&OfftakeTermsRow>,
+) -> Vec<(String, String)> {
+    let metals = || -> Vec<&str> {
+        offtake
+            .iter()
+            .flat_map(|o| o.payable_terms.0.iter().map(|t| t.metal.as_str()))
+            .collect()
+    };
+    mark_pairs(
+        rows.records
+            .iter()
+            .filter_map(|r| mapping_of(map, r))
+            .map(|m| (m, metals())),
+    )
+}
+
 struct Ctx<'a> {
+    chain_id: i64,
+    contract: &'a str,
+    marks: &'a MarkInputs<'a>,
     now: u64,
     terms: Option<&'a TermsRow>,
     valuation: Option<&'a ValuationRow>,
@@ -587,6 +685,98 @@ fn mark_flag(ctx: &Ctx<'_>, r: &RecordRow, t: &TermsRow) -> Option<bool> {
     Some(mark_stale(ctx.now, is_goods(&r.protection), mark_at, psa))
 }
 
+fn suggested_mark_dto(s: &Suggestion) -> SuggestedMarkDto {
+    SuggestedMarkDto {
+        value_per_unit: format_7dp_i128(s.value_per_unit),
+        benchmark: s.benchmark.clone(),
+        source_price: s.source_price.clone(),
+        source_at: s.source_at.to_string(),
+        asset: s.asset.clone(),
+        price_provider: s.price_provider.clone(),
+        quote_unit: s.quote_unit.clone(),
+        mode: s.mode.as_str().to_owned(),
+        assay_id: s.assay_id.clone(),
+        offtake_id: s.offtake_id.clone(),
+        report: s.report.clone(),
+        report_hash: s.report_hash.clone(),
+    }
+}
+
+fn suggestion_of(
+    ctx: &Ctx<'_>,
+    r: &RecordRow,
+    mapping: Option<&CommodityMapping>,
+) -> (Option<Suggestion>, Option<SuggestionStatus>) {
+    if !is_open_goods(r) {
+        return (None, None);
+    }
+    let Ok(record_id) = u32::try_from(r.record_id) else {
+        return (None, Some(SuggestionStatus::Unreadable));
+    };
+    let Some(mapping) = mapping else {
+        return (None, Some(SuggestionStatus::Unmapped));
+    };
+    let Some(unit) = r.unit.as_deref() else {
+        return (None, Some(SuggestionStatus::UnsupportedUnit));
+    };
+    let sctx = SuggestCtx {
+        chain_id: ctx.chain_id,
+        security_registry: ctx.contract,
+        record_id,
+        map: &ctx.marks.settings.map,
+        prices: &ctx.marks.prices,
+        concentrate: ctx.marks.concentrate.as_ref().map(|(a, o)| (a, o)),
+    };
+    match suggest_with(&sctx, mapping, unit) {
+        Ok(s) => (Some(s), Some(SuggestionStatus::Ok)),
+        Err(status) => {
+            if status == SuggestionStatus::Unreadable {
+                tracing::warn!(record_id, "mark suggestion inputs unreadable");
+            }
+            (None, Some(status))
+        }
+    }
+}
+
+type OnchainMark = Result<Option<(i128, u64)>, ()>;
+
+fn onchain_mark(ctx: &Ctx<'_>, r: &RecordRow, counted_goods: bool) -> OnchainMark {
+    if !counted_goods {
+        return Ok(None);
+    }
+    match (&r.mark_value_per_unit, &r.mark_at) {
+        (Some(v), Some(at)) => match (ctx.un.i128(v), ctx.un.u64(at)) {
+            (Some(v), Some(at)) => Ok(Some((v, at))),
+            _ => Err(()),
+        },
+        _ => Ok(None),
+    }
+}
+
+fn due_fields(
+    ctx: &Ctx<'_>,
+    counted_goods: bool,
+    mark: &OnchainMark,
+    suggested: Option<i128>,
+) -> (Option<bool>, Vec<String>, Option<String>) {
+    if !counted_goods {
+        return (Some(false), Vec::new(), None);
+    }
+    let psa = match ctx.terms {
+        Some(t) => ctx.un.u64(&t.price_stale_after),
+        None => Some(0),
+    };
+    let (Some(psa), Ok(mark)) = (psa, mark) else {
+        return (None, Vec::new(), None);
+    };
+    let due = mark_due(ctx.now, *mark, suggested, psa, &ctx.marks.settings.policy);
+    (
+        Some(due.due),
+        due.reasons.iter().map(|s| (*s).to_owned()).collect(),
+        due.due_at.map(|a| a.to_string()),
+    )
+}
+
 fn record_dto(
     ctx: &Ctx<'_>,
     r: &RecordRow,
@@ -615,6 +805,16 @@ fn record_dto(
     } else {
         Some(false)
     };
+    let counted_goods = counts && is_goods(&r.protection);
+    let mapping = mapping_of(&ctx.marks.settings.map, r);
+    let (suggestion, status) = suggestion_of(ctx, r, mapping);
+    let suggested_vpu = suggestion.as_ref().map(|s| s.value_per_unit);
+    let onchain = onchain_mark(ctx, r, counted_goods);
+    let move_bps_value = match (&onchain, suggested_vpu) {
+        (Ok(Some((m, _))), Some(sv)) => move_bps(*m, sv),
+        _ => None,
+    };
+    let (due, due_reasons, due_at) = due_fields(ctx, counted_goods, &onchain, suggested_vpu);
     let flagged_by = r.flagged_by.filter(|f| *f != 0).map(|f| f.to_string());
     let lot_latest_id = lot.and_then(|l| l.latest_inspection_id);
     SecurityRecordDto {
@@ -645,6 +845,12 @@ fn record_dto(
         needs_view: r.needs_view,
         docs: docs.iter().map(|d| doc_dto(d)).collect(),
         mark,
+        suggested_mark: suggestion.as_ref().map(suggested_mark_dto),
+        suggestion_status: status.map(|s| s.as_str().to_owned()),
+        move_bps: move_bps_value,
+        mark_due: due,
+        mark_due_reasons: due_reasons,
+        mark_due_at: due_at,
         lot: lot.map(lot_dto),
         counts_toward_value: counts,
         attestation_stale: attestation,
@@ -664,17 +870,44 @@ fn record_dto(
     }
 }
 
-fn prices_dto(now: u64, terms: &TermsRow, records: &[RecordRow], un: &Unreadable) -> PricesDto {
-    let states: Result<Vec<Option<u64>>, ()> = records
+fn marks_due_count(records: &[SecurityRecordDto]) -> Option<u32> {
+    let mut n = 0u32;
+    for r in records
+        .iter()
+        .filter(|r| r.counts_toward_value && is_goods(&r.protection))
+    {
+        match r.mark_due {
+            Some(true) => n = n.saturating_add(1),
+            Some(false) => {}
+            None => return None,
+        }
+    }
+    Some(n)
+}
+
+fn prices_dto(
+    now: u64,
+    terms: &TermsRow,
+    rows: &LoanSecurityRows,
+    policy: &MarkPolicy,
+    marks_due: Option<u32>,
+    un: &Unreadable,
+) -> PricesDto {
+    let states: Result<Vec<Option<u64>>, ()> = rows
+        .records
         .iter()
         .filter(|r| counts_toward_value(&r.status, &r.protection) && is_goods(&r.protection))
         .map(|r| mark_state(r, un))
         .collect();
     let psa = un.u64(&terms.price_stale_after);
+    let mark_max_age = psa.map(|p| effective_max_age(policy.max_age, p).to_string());
     let Ok(marks) = states else {
         return PricesDto {
             mark_age: None,
             price_stale: None,
+            mark_max_age,
+            mark_move_bps: policy.move_bps,
+            marks_due,
         };
     };
     let age = mark_age(now, &marks);
@@ -682,6 +915,9 @@ fn prices_dto(now: u64, terms: &TermsRow, records: &[RecordRow], un: &Unreadable
     PricesDto {
         mark_age: Some(age.to_string()),
         price_stale: psa.map(|p| price_stale(age, p, any_unmarked)),
+        mark_max_age,
+        mark_move_bps: policy.move_bps,
+        marks_due,
     }
 }
 
@@ -744,6 +980,7 @@ pub fn build_security_response(
     loan_id: &str,
     rows: &LoanSecurityRows,
     now: u64,
+    marks: &MarkInputs<'_>,
 ) -> LoanSecurityResponse {
     let terms = rows.terms.as_ref();
     let valuation = rows.valuation.as_ref().map(|(v, _)| v);
@@ -762,6 +999,9 @@ pub fn build_security_response(
     let (resolved_terms, terms_complete) = resolve_terms(counted.as_ref(), parsed_all, &by_id);
     let un = Unreadable(Cell::new(false));
     let ctx = Ctx {
+        chain_id,
+        contract,
+        marks,
         now,
         terms,
         valuation,
@@ -792,7 +1032,7 @@ pub fn build_security_response(
     }
     let lots: HashMap<i64, &LotRow> = rows.lots.iter().map(|l| (l.lot_id, l)).collect();
 
-    let records = rows
+    let records: Vec<SecurityRecordDto> = rows
         .records
         .iter()
         .map(|r| {
@@ -811,7 +1051,8 @@ pub fn build_security_response(
 
     let margin_call =
         terms.map(|t| margin_call_dto(now, closed, t, valuation, &rows.margin_events, &un));
-    let prices = terms.map(|t| prices_dto(now, t, &rows.records, &un));
+    let marks_due = marks_due_count(&records);
+    let prices = terms.map(|t| prices_dto(now, t, rows, &marks.settings.policy, marks_due, &un));
     if un.0.get() {
         tracing::warn!(
             loan_id,
