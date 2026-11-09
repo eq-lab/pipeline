@@ -12,7 +12,7 @@ use sqlx::PgPool;
 
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher, pocket_repo::PocketRepo,
+    metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo, pocket_repo::PocketRepo,
     security_registry_repo::SecurityRegistryRepo,
 };
 
@@ -32,6 +32,7 @@ use crate::indexer::{
         mappers::StellarLogMapper,
         parsers::{dispatch_parser, transfer_between_tracked, transfer_touches_address},
         plusd_parsers::dispatch_plusd,
+        plusd_seed::{run_plusd_seed_loop, PlusdSeedCtx},
         pocket_parsers::dispatch_pocket,
         pocket_seed::run_pocket_seed_loop,
         rpc::{EventFilter, StellarRpc},
@@ -388,7 +389,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         tracing::info!(
             plusd_id = %plusd_id,
             chain_id,
-            "Stellar PLUSD transfer indexing enabled"
+            "Stellar PLUSD transfer indexing enabled (balance seed + drift check on)"
         );
     }
 
@@ -458,6 +459,26 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         }
         _ => None,
     };
+
+    let _plusd_seed_guard = settings.plusd_id.as_ref().map(|plusd_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let plusd_id = plusd_id.clone();
+        spawn_supervised("plusd-seed", chain_id, move || {
+            let ctx = PlusdSeedCtx {
+                rpc: rpc.clone(),
+                seeds: PlusdSeedRepo::new(pool.clone()),
+                logs: ContractLogsRepo::new(pool.clone()),
+                events: EventRepo::new(pool.clone()),
+                chain_id,
+                plusd_id: plusd_id.clone(),
+            };
+            async move {
+                run_plusd_seed_loop(ctx).await;
+                Ok(())
+            }
+        })
+    });
 
     let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
         let rpc = rpc.clone();

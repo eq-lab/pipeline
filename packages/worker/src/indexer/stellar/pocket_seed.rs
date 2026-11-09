@@ -11,35 +11,11 @@ use shared::pocket_repo::PocketRepo;
 
 use crate::indexer::stellar::loan_registry_reader::{expect_map, map_i128, map_u32, simulate_view};
 use crate::indexer::stellar::rpc::StellarRpc;
-use crate::indexer::stellar::supervise::KeyedBackoff;
 
 pub const POCKET_SEED_INTERVAL: Duration = Duration::from_mins(1);
 pub use crate::indexer::stellar::supervise::backoff_delay;
 
-#[derive(Default)]
-pub struct SeedBackoff(KeyedBackoff<u32>);
-
-impl SeedBackoff {
-    pub fn is_due(&self, loan_id: u32, now: Instant) -> bool {
-        self.0.is_due(loan_id, now)
-    }
-
-    pub fn record_failure(&mut self, loan_id: u32, now: Instant) -> u32 {
-        self.0.record_failure(loan_id, now)
-    }
-
-    pub fn clear(&mut self, loan_id: u32) {
-        self.0.clear(loan_id);
-    }
-
-    pub fn first_read_warning(&mut self, loan_id: u32) -> bool {
-        self.0.first_warning_on(loan_id, 0)
-    }
-
-    pub fn first_insert_warning(&mut self, loan_id: u32) -> bool {
-        self.0.first_warning_on(loan_id, 1)
-    }
-}
+pub type SeedBackoff = crate::indexer::stellar::supervise::SeedBackoff<u32>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PocketDataView {

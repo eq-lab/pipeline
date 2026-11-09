@@ -18,10 +18,13 @@ use crate::routes::common::{RequiredChain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::total_balance::{
     build_composite_history, composite_window_start, fold_term, plain_bounded, plusd_holder_key,
-    plusd_steps, term_outcomes, CompositeInputs, CompositeSeries, Folded, WireTerm,
+    plusd_term_from, term_outcomes, CompositeInputs, CompositeSeries, PlusdTerm, SeedInputs,
+    WireTerm,
 };
 use crate::AppState;
 use shared::chains::ChainKind;
+use shared::db::EventRepo;
+use shared::plusd_seed_repo::PlusdSeedRepo;
 use shared::pocket_repo::PocketRepo;
 use shared::position_repo::{BalanceEventRow, PositionHistoryBucket};
 use shared::time_weighted_return::{time_weighted_apy, VaultHolding};
@@ -378,7 +381,7 @@ async fn get_position_history(
             .and_then(|t| t.escrow.first().map(|step| step.0.timestamp()));
         let first_plusd = plusd
             .as_ref()
-            .and_then(|f| f.first().map(|step| step.0.timestamp()));
+            .and_then(|t| t.folded.first().map(|step| step.0.timestamp()));
         (
             vaults?.into_iter().next(),
             composite_window_start(&[first_position, first_escrow, first_plusd]),
@@ -435,7 +438,9 @@ async fn get_position_history(
             prices: &closings,
             escrow: wire.as_ref().map(|t| t.escrow.as_slice()),
             escrow_raw: wire.as_ref().and_then(|t| t.raw.as_deref()),
-            plusd: plusd.as_deref(),
+            plusd: plusd.as_ref().map(|t| t.folded.as_slice()),
+            plusd_from: plusd.as_ref().and_then(|t| t.from),
+            blank_total_before: plusd.as_ref().is_some_and(|t| t.blank_total_before),
             share_decimals: u32::try_from(vault.share_decimals).unwrap_or(u32::MAX),
             asset_decimals: u32::try_from(vault.asset_decimals).unwrap_or(u32::MAX),
         },
@@ -463,6 +468,8 @@ fn empty_series(interval: Interval, now: DateTime<Utc>) -> CompositeSeries {
             escrow: None,
             escrow_raw: None,
             plusd: None,
+            plusd_from: None,
+            blank_total_before: false,
             share_decimals: 0,
             asset_decimals: 0,
         },
@@ -547,25 +554,43 @@ async fn plusd_term(
     chain_id: i64,
     wallet: &str,
     interval: Interval,
-) -> anyhow::Result<Option<Folded>> {
+) -> anyhow::Result<Option<PlusdTerm>> {
     let (Some(plusd), Some(holder)) = (
         state.plusd_addresses.get(&chain_id),
         plusd_holder_key(kind, wallet),
     ) else {
         return Ok(None);
     };
-    let rows = state
+    let steps = state
         .contract_logs_repo
-        .list_plusd_holder_steps(chain_id, plusd, &holder)
-        .await?;
-    let Some(steps) = plusd_steps(&rows) else {
-        tracing::warn!(
-            chain_id,
-            "PLUSD balance steps malformed; omitting plusd_balance"
-        );
-        return Ok(None);
+        .list_plusd_holder_steps(chain_id, plusd, &holder);
+    let (rows, seed, coverage, cursor) = match kind {
+        ChainKind::Evm => (steps.await?, None, None, 0),
+        ChainKind::Stellar => {
+            let seeds = PlusdSeedRepo::new(state.pool.clone());
+            let events = EventRepo::new(state.pool.clone());
+            tokio::try_join!(
+                steps,
+                seeds.latest(chain_id, plusd, &holder),
+                state
+                    .contract_logs_repo
+                    .plusd_coverage_start(chain_id, plusd),
+                events.get_cursor(chain_id),
+            )?
+        }
     };
-    Ok(fold_term(steps, interval, chain_id, "plusd_balance"))
+    Ok(plusd_term_from(
+        kind,
+        &SeedInputs {
+            seed: seed.as_ref(),
+            coverage,
+            cursor,
+            holder: &holder,
+        },
+        &rows,
+        interval,
+        chain_id,
+    ))
 }
 
 pub fn history_item(

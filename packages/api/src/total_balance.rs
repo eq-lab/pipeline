@@ -1,5 +1,7 @@
 // spec: docs/product-specs/lp-total-balance.md#behavior
+use std::collections::HashSet;
 use std::str::FromStr;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 use alloy::primitives::Address;
 use bigdecimal::num_bigint::BigInt;
@@ -7,6 +9,9 @@ use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use chrono::{DateTime, Utc};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::PlusdStepRow;
+use shared::plusd_seed::{
+    parse_seed, plusd_delta, seeded_plusd, Backfill, PlusdCoverage, PlusdSeedRow,
+};
 use shared::position_repo::{PositionHistoryBucket, SharePriceBucket};
 
 use crate::intervals::Interval;
@@ -100,13 +105,19 @@ pub fn term_outcome<T>(
     }
 }
 
+pub struct PlusdTerm {
+    pub folded: Folded,
+    pub from: Option<DateTime<Utc>>,
+    pub blank_total_before: bool,
+}
+
 pub fn term_outcomes(
     has_positions: bool,
     wire: anyhow::Result<Option<WireTerm>>,
-    plusd: anyhow::Result<Option<Folded>>,
-) -> anyhow::Result<(Option<WireTerm>, Option<Folded>)> {
+    plusd: anyhow::Result<Option<PlusdTerm>>,
+) -> anyhow::Result<(Option<WireTerm>, Option<PlusdTerm>)> {
     let wire_present = matches!(&wire, Ok(Some(t)) if !t.escrow.is_empty());
-    let plusd_present = matches!(&plusd, Ok(Some(f)) if !f.is_empty());
+    let plusd_present = matches!(&plusd, Ok(Some(t)) if !t.folded.is_empty());
     let wire = term_outcome(has_positions || plusd_present, wire, "wire_out_escrow")?;
     let plusd = term_outcome(has_positions || wire_present, plusd, "plusd_balance")?;
     Ok((wire, plusd))
@@ -126,13 +137,104 @@ pub fn plusd_holder_key(kind: ChainKind, wallet: &str) -> Option<String> {
 
 pub fn plusd_steps(rows: &[PlusdStepRow]) -> Option<Vec<(i64, i128)>> {
     rows.iter()
-        .map(|r| {
-            let amount: i128 = r.amount.as_deref()?.parse().ok()?;
-            let credit = if r.incoming { amount } else { 0 };
-            let debit = if r.outgoing { amount } else { 0 };
-            Some((r.block_timestamp, credit.checked_sub(debit)?))
-        })
+        .map(|r| Some((r.block_timestamp, plusd_delta(r)?)))
         .collect()
+}
+
+pub struct SeedInputs<'a> {
+    pub seed: Option<&'a PlusdSeedRow>,
+    pub coverage: Option<PlusdCoverage>,
+    pub cursor: u64,
+    pub holder: &'a str,
+}
+
+const INCONSISTENT_WARNED_CAP: usize = 10_000;
+
+fn first_inconsistent_warning(chain_id: i64, holder: &str, ledger: i64) -> bool {
+    static WARNED: OnceLock<Mutex<HashSet<(i64, String, i64)>>> = OnceLock::new();
+    let mut set = WARNED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if set.len() >= INCONSISTENT_WARNED_CAP {
+        set.clear();
+    }
+    set.insert((chain_id, holder.to_owned(), ledger))
+}
+
+pub fn plusd_term_from(
+    kind: ChainKind,
+    inputs: &SeedInputs<'_>,
+    rows: &[PlusdStepRow],
+    interval: Interval,
+    chain_id: i64,
+) -> Option<PlusdTerm> {
+    if kind == ChainKind::Evm {
+        let Some(steps) = plusd_steps(rows) else {
+            tracing::warn!(
+                chain_id,
+                "PLUSD balance steps malformed; omitting plusd_balance"
+            );
+            return None;
+        };
+        return fold_term(steps, interval, chain_id, "plusd_balance").map(|folded| PlusdTerm {
+            folded,
+            from: None,
+            blank_total_before: false,
+        });
+    }
+    let Some(seed_row) = inputs.seed else {
+        tracing::debug!(
+            chain_id,
+            "no PLUSD balance seed for wallet; omitting plusd_balance"
+        );
+        return None;
+    };
+    let Some(seed) = parse_seed(seed_row) else {
+        tracing::warn!(
+            chain_id,
+            "PLUSD balance seed malformed; omitting plusd_balance"
+        );
+        return None;
+    };
+    let indexed_through = i64::try_from(inputs.cursor).unwrap_or(i64::MAX) - 1;
+    if indexed_through < seed.as_of_ledger {
+        tracing::debug!(
+            chain_id,
+            seed_ledger = seed.as_of_ledger,
+            indexed_through,
+            "PLUSD balance seed is ahead of the indexer; omitting plusd_balance"
+        );
+        return None;
+    }
+    let Some(seeded) = seeded_plusd(&seed, rows, inputs.coverage) else {
+        tracing::warn!(
+            chain_id,
+            "PLUSD balance steps malformed; omitting plusd_balance"
+        );
+        return None;
+    };
+    if seeded.backfill == Backfill::Inconsistent && !seed.reanchor {
+        if first_inconsistent_warning(chain_id, inputs.holder, seed.as_of_ledger) {
+            tracing::warn!(
+                chain_id,
+                holder = inputs.holder,
+                "PLUSD back-computed balance inconsistent; pre-seed buckets incomplete"
+            );
+        } else {
+            tracing::debug!(
+                chain_id,
+                holder = inputs.holder,
+                "PLUSD back-computed balance inconsistent; pre-seed buckets incomplete"
+            );
+        }
+    }
+    let folded = fold_term(seeded.steps, interval, chain_id, "plusd_balance")?;
+    Some(PlusdTerm {
+        folded,
+        from: DateTime::from_timestamp(seeded.from, 0),
+        blank_total_before: seeded.blank_total_before,
+    })
 }
 
 pub struct Carry<'a, T> {
@@ -184,6 +286,8 @@ pub struct CompositeInputs<'a> {
     pub escrow: Option<&'a [(DateTime<Utc>, i128)]>,
     pub escrow_raw: Option<&'a [(DateTime<Utc>, i128)]>,
     pub plusd: Option<&'a [(DateTime<Utc>, i128)]>,
+    pub plusd_from: Option<DateTime<Utc>>,
+    pub blank_total_before: bool,
     pub share_decimals: u32,
     pub asset_decimals: u32,
 }
@@ -352,7 +456,10 @@ pub fn build_composite_history(
                 .at(bucket, |e| e.0)
                 .map_or_else(|| base6_decimal(0), |e| e.1.clone())
         });
-        let plusd_now = plusd.as_ref().map(|_| {
+        let complete = inputs
+            .plusd_from
+            .is_none_or(|from| bucket >= interval.truncate(from));
+        let plusd_now = plusd.as_ref().filter(|_| complete).map(|_| {
             plusd_carry
                 .at(bucket, |e| e.0)
                 .map_or_else(|| base6_decimal(0), |e| e.1.clone())
@@ -365,7 +472,8 @@ pub fn build_composite_history(
                 .then(|| plusd_raw.checked_add(escrow_raw))
                 .flatten()
                 .map(|raw| BigDecimal::new(BigInt::from(raw), i64::from(inputs.asset_decimals)));
-        let total = splusd.as_ref().map(|s| {
+        let blank_total = !complete && inputs.blank_total_before;
+        let total = splusd.as_ref().filter(|_| !blank_total).map(|s| {
             if let Some(held) = &exact_held {
                 return (s + held).with_scale_round(OUT_SCALE, RoundingMode::Down);
             }

@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use crate::chains::{normalize_usdc_amount, parse_chain_type, ChainKind};
 use crate::loan_event_params::json_i64;
 use crate::loan_snapshot::LoanSnapshot;
+use crate::plusd_seed::{PlusdCoverage, PlusdWindowSums};
 use crate::withdrawal_rate::{convert_to_assets, current_rate, LogPosition, RateSetPoint};
 
 /// Every `event_name` that carries a `LoanSnapshot` (`params->'snapshot'`), shared by
@@ -793,7 +794,8 @@ pub const LP_WIRE_OUT_EVENTS_INFERRED_MINTER_SQL: &str = "WITH minter AS (
        )
      ORDER BY c.block_number, c.log_index";
 
-pub const PLUSD_HOLDER_STEPS_SQL: &str = "SELECT block_timestamp,
+pub const PLUSD_HOLDER_STEPS_SQL: &str = "SELECT block_number,
+         block_timestamp,
          CASE WHEN params->>'amount' ~ '^[0-9]{1,39}$' THEN params->>'amount' END AS amount,
          params @> jsonb_build_object('to', $3::text) AS incoming,
          params @> jsonb_build_object('from', $3::text) AS outgoing
@@ -805,8 +807,34 @@ pub const PLUSD_HOLDER_STEPS_SQL: &str = "SELECT block_timestamp,
             OR params @> jsonb_build_object('from', $3::text))
      ORDER BY block_number, log_index";
 
+pub const PLUSD_COVERAGE_START_SQL: &str = "SELECT block_number, block_timestamp
+     FROM contract_logs
+     WHERE chain_id = $1
+       AND contract_address = $2
+       AND event_name = 'PlusdTransfer'
+     ORDER BY block_number, log_index
+     LIMIT 1";
+
+pub const PLUSD_WINDOW_SUMS_SQL: &str = "SELECT COALESCE(SUM(w.amt) FILTER (WHERE w.incoming), 0)::text AS credit,
+         COALESCE(SUM(w.amt) FILTER (WHERE w.outgoing), 0)::text AS debit,
+         COUNT(*) FILTER (WHERE w.amt IS NULL) AS malformed
+     FROM (
+         SELECT CASE WHEN params->>'amount' ~ '^[0-9]{1,39}$' THEN (params->>'amount')::numeric END AS amt,
+                params @> jsonb_build_object('to', $3::text) AS incoming,
+                params @> jsonb_build_object('from', $3::text) AS outgoing
+           FROM contract_logs
+          WHERE chain_id = $1
+            AND contract_address = $2
+            AND event_name = 'PlusdTransfer'
+            AND block_number > $4
+            AND block_number <= $5
+            AND (params @> jsonb_build_object('to', $3::text)
+                 OR params @> jsonb_build_object('from', $3::text))
+     ) w";
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct PlusdStepRow {
+    pub block_number: i64,
     pub block_timestamp: i64,
     pub amount: Option<String>,
     pub incoming: bool,
@@ -908,6 +936,38 @@ impl ContractLogsRepo {
             .fetch_all(&self.pool)
             .await?;
         Ok(rows)
+    }
+
+    pub async fn plusd_window_sums(
+        &self,
+        chain_id: i64,
+        plusd: &str,
+        holder: &str,
+        after_ledger: i64,
+        up_to_ledger: i64,
+    ) -> anyhow::Result<PlusdWindowSums> {
+        let sums = sqlx::query_as::<_, PlusdWindowSums>(PLUSD_WINDOW_SUMS_SQL)
+            .bind(chain_id)
+            .bind(plusd)
+            .bind(holder)
+            .bind(after_ledger)
+            .bind(up_to_ledger)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(sums)
+    }
+
+    pub async fn plusd_coverage_start(
+        &self,
+        chain_id: i64,
+        plusd: &str,
+    ) -> anyhow::Result<Option<PlusdCoverage>> {
+        let row = sqlx::query_as::<_, PlusdCoverage>(PLUSD_COVERAGE_START_SQL)
+            .bind(chain_id)
+            .bind(plusd)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row)
     }
 
     /// `LoanStatusUpdated`/`LoanDefaulted`/`LoanClosed` events emitted by `contract_address`

@@ -42,6 +42,8 @@ pub mod migrations;
 pub mod minted_yield;
 pub mod object_store;
 pub mod otp_repo;
+pub mod plusd_seed;
+pub mod plusd_seed_repo;
 pub mod pocket;
 pub mod pocket_repo;
 pub mod position_repo;
