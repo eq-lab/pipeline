@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-178.**
+**Next free number: TD-180.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2368,7 +2368,7 @@ line, whichever section it lands in.
 - **Impact:** Several copies of the same on-chain read, date conversion and sha256 rule can drift.
 - **Suggested fix:** After #1761, #1762, #1763 and the epic land, add one `minterRefs.ts` (ref-hash read and hash) and one date helper, merge the two wire-out readers, and drop the wire-in names.
 
-### TD-176: The Cash Management pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`
+### TD-178: The Cash Management pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`
 
 - **Date:** 2026-11-09
 - **Location:** `packages/trustee/src/routes/-conversions.ts` (`summary`), `packages/trustee/src/api/useConversions.ts` (`useMinterPoolState`), `packages/api/src/routes/cash_book.rs` (`CashBookSummary`) — Issue #1765.
@@ -2376,7 +2376,7 @@ line, whichever section it lands in.
 - **Impact:** The summary needs an RPC read and the app's minter, and it cannot show a figure for a chain the app has no minter for.
 - **Suggested fix:** Serve `total_assets` and `read_failed` from the cash book, then switch the summary to the served values and drop `readMinterPoolState`.
 
-### TD-177: The Withdrawal Queue tab still renders the #945 "Top up" MPC co-sign shell
+### TD-179: The Withdrawal Queue tab still renders the #945 "Top up" MPC co-sign shell
 
 - **Date:** 2026-11-09
 - **Location:** `packages/trustee/src/routes/cash-management.tsx` (`WithdrawalTopUpDialog`) — found while fixing #1765.

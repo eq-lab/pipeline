@@ -15,7 +15,7 @@ In scope:
 1. **Pool summary** at the top of the tab, with three figures: "Booked bank cash", "Cash in transit" and "Pool total".
    - Source: **one on-chain `pool_state()` read** of the minter the console signs against (`ENV.STELLAR_YIELD_MINTER_ID`). Its fields `bank_cash`, `in_flight` and `total_assets` are raw 7-dp values, rendered exactly as `formatUsdExact(rawToDecimal7(raw))`. The `read_failed` flag is shown verbatim as a caption.
    - Why not the cash book: `GET /v1/cash-book` serves `summary.bank_cash` / `in_flight` but **not `total_assets`** (verified on `origin/main`, `packages/api/src/routes/cash_book.rs` `CashBookSummary`). Following the manager's rule (all three served, else chain), and so all three figures come from one ledger and one minter, the summary reads the chain.
-   - This replaces the shell's fee "—" placeholders. Log TD-176 so the summary can move to the API once it serves `total_assets`.
+   - This replaces the shell's fee "—" placeholders. Log TD-178 so the summary can move to the API once it serves `total_assets`.
 2. **Conversions list.** Source is the served `GET /v1/cash-book?chain_id=` `ramps[]` (#1790, already typed as `CashBookRamp` in `api/useCashBook.ts`):
    - row fields: `{ id, status: Open|Closed, direction: UsdcToBank|BankToUsdc, amount, opened_at, open_ref_hash, received?, loss?, closed_at?, close_ref_hash? }`;
    - each served `Open` row is confirmed on-chain with `ramp(id)`;
@@ -46,9 +46,9 @@ In scope:
 Out of scope:
 
 - **EVM.** The tab's conversions block is read-only on EVM with the existing Stellar-only reason ("Conversions and bank charges on {chain} are not available in the Trustee app yet."). It sends no `/v1/cash-book` request and makes no RPC read. hoodi-v5 has `openRamp / closeRamp / recordExpense`, but the app has no EVM write client (#1573) and the API serves no EVM cash book.
-- **Backend work of any kind**, including serving `total_assets` (TD-176 only) and retiring the ramp-event review queue.
+- **Backend work of any kind**, including serving `total_assets` (TD-178 only) and retiring the ramp-event review queue.
 - **Loan disbursement booking** (`disburse`, Type 2 flow 7). The spec row is rewritten to the booking model and points at the existing TD-157. No UI here.
-- **The Withdrawal Queue tab's "Top up" MPC co-sign shell** (#945, flow 9's old model). The spec flow 9 is rewritten, and the leftover shell is logged as TD-177 rather than removed. The issue names only the swap and T-Bills shells.
+- **The Withdrawal Queue tab's "Top up" MPC co-sign shell** (#945, flow 9's old model). The spec flow 9 is rewritten, and the leftover shell is logged as TD-179 rather than removed. The issue names only the swap and T-Bills shells.
 - The `tbills` bucket in `CapitalAllocationCard` (shared with Overview; #1768 / backend).
 - Any client-side figure. Amounts, dates, statuses and shortfalls are served (cash book) or read (chain) verbatim. The only arithmetic is input validation (comparing typed amounts with on-chain raw integers), never a displayed number.
 - Figma and design work. The tab reuses the #1763/#1764 card, table, chip and `useLpReviewDialog` patterns. No design questions.
@@ -120,7 +120,7 @@ Reuse them; do not copy them. If #1875 or #1876 change in review, rebase. After 
 
   `trustee-flows.md` §On/Off-ramp conflicts the same way with #1874's "Bank income tab" lines; keep both. Record this in the PR body.
 - **Wire ids start at 0 too.** `wire_in(0)` exists on `CAPL5WN3…` (status `Direct`). `requireWireId` in `wireInEscrow.ts` and `wireOutSettlement.ts` rejects `id < 1`, so wire-in 0 and the first wire-out on a fresh minter cannot be acted on. This is unrelated to this issue's scope, so per AGENTS it is **logged, not fixed** (BUG-33, step 9).
-- **Numbering.** The next free TD on this branch is TD-176. BUG-32 is held by #1874, so take BUG-33. Renumber at merge if main moved.
+- **Numbering.** The next free TD on this branch is TD-178. BUG-32 is held by #1874, so take BUG-33. Renumber at merge if main moved.
 - **`trustee-dashboard.md` cap.** It is 199 lines and the cap is 200. Every edit must be a same-line-count rewrite; check with `wc -l` and `lint-docs`.
 
 ## Open Questions
@@ -249,10 +249,10 @@ _None_
    - Remove the tbills test's entry from `scripts/lint-comments.baseline.json`. Shrink the baseline for `-cash-management.ts` / `-cash-management.test.ts` / `-cash-management-page.test.tsx` / `cash-management.tsx` if their counts drop (`npx tsx scripts/lint-comments.ts --update-baseline`; commit only shrinks).
    - Leave the `// spec:` headers of `useRampEvents.ts`, `useReviewRampEvent.ts` and `-useRampHooks.test.tsx` unchanged; they point at `#onoff-ramp-tab`, and that heading is kept. Delete only the `useRampAddresses` case from `-useRampHooks.test.tsx`.
 
-8. **Tech debt** [done] in `docs/exec-plans/tech-debt-tracker.md`. Bump "Next free number" to TD-178.
-   - **TD-176.** The pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`. Fix: serve `total_assets` (and the snapshot `read_failed`) from the cash book, then switch the summary to served values.
-   - **TD-177.** The Withdrawal Queue tab still renders the #945 "Top up" MPC 3-of-5 co-sign shell (`WithdrawalTopUpDialog`), but `trustee-dashboard.md` flow 9 now says the top-up is a custody transfer under the custody policy, which the console does not co-sign. Fix: retire the dialog in a follow-up frontend issue.
-   - Append #1765 to TD-175's Location: `-conversions.ts` reuses `wireInReturnRefHash` / `readWireInRefHashSeen` and `lib/wireOut.ts`'s date helpers.
+8. **Tech debt** [done] in `docs/exec-plans/tech-debt-tracker.md`. Bump "Next free number" to TD-180.
+   - **TD-178.** The pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`. Fix: serve `total_assets` (and the snapshot `read_failed`) from the cash book, then switch the summary to served values.
+   - **TD-179.** The Withdrawal Queue tab still renders the #945 "Top up" MPC 3-of-5 co-sign shell (`WithdrawalTopUpDialog`), but `trustee-dashboard.md` flow 9 now says the top-up is a custody transfer under the custody policy, which the console does not co-sign. Fix: retire the dialog in a follow-up frontend issue.
+   - Append #1765 to TD-177's Location: `-conversions.ts` reuses `wireInReturnRefHash` / `readWireInRefHashSeen` and `lib/wireOut.ts`'s date helpers.
    - Mark **TD-156** resolved: "Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more." Leave its body unchanged otherwise.
 
 9. **Known bug** [done] in `docs/exec-plans/known-bugs.md`. Add **BUG-33**: "Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0".
@@ -342,7 +342,7 @@ Every test file has a single `// spec:` header line and no other comments (`lint
   - Add `## Cash Management — Conversions and bank charges` directly after "Cash Management — Bank wire-outs", with the same sub-structure as #1764:
     - Sources;
     - Chain scope (EVM reason, no fetch);
-    - Pool summary (`pool_state` on-chain, verbatim, why not the cash book, TD-176);
+    - Pool summary (`pool_state` on-chain, verbatim, why not the cash book, TD-178);
     - Data sourcing (`ramps[]`, `ramp(id)` for Open rows, `loss` served, never computed);
     - Table;
     - Row states and gating (the order above; paused applies to open only);
@@ -366,5 +366,5 @@ Every test file has a single `// spec:` header line and no other comments (`lint
   12. Paused minter: Open is disabled with a reason, and Close and Record stay enabled (only when ops pauses the minter; optional).
   13. Minter mismatch disables all actions.
 - **`docs/user-stories/index.md`.** Add a row for #1765 under epic #1795, after #1764.
-- **`docs/exec-plans/tech-debt-tracker.md`.** TD-176, TD-177, the TD-175 append and the TD-156 resolution (step 8).
+- **`docs/exec-plans/tech-debt-tracker.md`.** TD-178, TD-179, the TD-177 append and the TD-156 resolution (step 8).
 - **`docs/exec-plans/known-bugs.md`.** BUG-33 (step 9).

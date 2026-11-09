@@ -408,7 +408,7 @@ refetch 30 s). The raw 7-decimal `bank_cash`, `in_flight` and `total_assets` are
 minter {truncated id} (pool_state)."; `read_failed` adds "A custody balance could not be read; the minter
 counts it as 0 in the pool total.". The cash book is not the source because `GET /v1/cash-book` serves
 `summary.bank_cash` and `in_flight` but not `total_assets`; all three figures come from one ledger and one
-minter (TD-176 moves the summary to the API once it serves `total_assets`). A failed read shows "Could not
+minter (TD-178 moves the summary to the API once it serves `total_assets`). A failed read shows "Could not
 read the minter's pool state." with details and Retry.
 
 ### Data sourcing
