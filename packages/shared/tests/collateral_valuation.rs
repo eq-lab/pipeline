@@ -7,8 +7,8 @@ use std::str::FromStr;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
 use shared::collateral_valuation::{
-    asset_for_metal, ccr_bps, compute_collateral, ConcentrateInputs, PayableMetal, PenaltyTier,
-    StandardGoodsInputs,
+    asset_for_metal, ccr_bps, compute_collateral, nsr_per_dmt, ConcentrateInputs, PayableMetal,
+    PenaltyTier, StandardGoodsInputs,
 };
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
@@ -477,4 +477,38 @@ fn pct_and_ppm_tiers_agree() {
     // in scale but not value).
     approx(&(&ppm - &pct), 0.0, 0.000_001);
     approx(&ppm, 12_480.0, 0.01);
+}
+
+#[test]
+fn nsr_per_dmt_scales_linearly_to_the_anchor_quantity() {
+    let mut anchor = concentrate_anchor();
+    anchor.quantity_dmt = bd("100");
+    anchor.haircut_pct = bd("0");
+    let px = prices(&[("XAU", "4200"), ("XAG", "50")]);
+    let full = compute_collateral(
+        &anchor,
+        Some(&assay_gold_silver()),
+        Some(&offtake_gold_silver()),
+        &px,
+    )
+    .unwrap()
+    .unwrap()
+    .concentrate
+    .unwrap();
+    let per = nsr_per_dmt(&assay_gold_silver(), &offtake_gold_silver(), &px)
+        .unwrap()
+        .unwrap();
+    let scale = |v: &BigDecimal| v.with_scale_round(7, bigdecimal::RoundingMode::HalfUp);
+    assert_eq!(scale(&(per * BigDecimal::from(100))), scale(&full.nsr));
+}
+
+#[test]
+fn nsr_per_dmt_is_none_when_a_metal_is_unpriced() {
+    let out = nsr_per_dmt(
+        &assay_gold_silver(),
+        &offtake_gold_silver(),
+        &prices(&[("XAU", "4200")]),
+    )
+    .unwrap();
+    assert!(out.is_none());
 }
