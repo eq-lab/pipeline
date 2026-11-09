@@ -12,7 +12,7 @@ API-level stories for `GET /v1/positions/history`. There is no UI in this issue;
 
 **Persona:** LP viewing the home graph.
 
-**Pre-conditions:** A chain with `CHAIN_<id>_<EVM|STELLAR>_API_PLUSD_ADDRESS` set and indexing covering PLUSD from its deployment. The wallet claimed a deposit (mint), staked, and unstaked part of it.
+**Pre-conditions:** A chain with `CHAIN_<id>_<EVM|STELLAR>_API_PLUSD_ADDRESS` set and indexing covering PLUSD from its deployment (Stellar: the wallet has a PLUSD seed, #1878). The wallet claimed a deposit (mint), staked, and unstaked part of it.
 
 **Steps:**
 
@@ -32,7 +32,7 @@ API-level stories for `GET /v1/positions/history`. There is no UI in this issue;
 
 **Steps:**
 
-1. Request the history on a chain with no `…_API_PLUSD_ADDRESS` (Stellar 99000001 and 99000002 until TD-175 lands).
+1. Request the history on a chain with no `…_API_PLUSD_ADDRESS` (Stellar 99000001 and 99000002 until the #1878 acceptance passes).
 
 **Expected outcomes:**
 
@@ -90,14 +90,14 @@ API-level stories for `GET /v1/positions/history`. There is no UI in this issue;
 
 ## Story 6: Stellar parser acceptance (testnet, local API only)
 
-**Pre-conditions:** A fresh testnet wallet whose first PLUSD movement happens after `CHAIN_99000001_STELLAR_INDEXER_PLUSD_ADDRESS` is set on a local worker. A local API with the matching `…_API_PLUSD_ADDRESS`. The shared testnet API key stays unset.
+**Pre-conditions:** A fresh testnet wallet whose first PLUSD movement happens after `CHAIN_99000001_STELLAR_INDEXER_PLUSD_ADDRESS` is set on a local worker. A local API with the matching `…_API_PLUSD_ADDRESS`. The shared testnet API key stays unset until the #1878 acceptance passes.
 
 **Steps:**
 
 1. Run: deposit claim, stake, wire-out request, wire-out cancel.
 2. After each step, simulate the SAC `balance(W)`; the result carries `latestLedger L`. Wait until the indexer cursor is past `L`.
 3. Compare the DB fold of `W`'s rows with `block_number <= L` to the balance.
-4. Send PLUSD between two whitelisted testnet G-accounts with a classic payment and check that a `PlusdTransfer` row appears (CAP-67). If it does not, record it in TD-175.
+4. Send PLUSD between two whitelisted testnet G-accounts with a classic payment and check that a `PlusdTransfer` row appears (CAP-67). If it does not, record it in TD-175 and TD-176.
 
 **Expected outcomes:**
 

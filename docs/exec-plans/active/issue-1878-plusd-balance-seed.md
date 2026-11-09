@@ -259,9 +259,9 @@ All new code is comment-less, with at most one `// spec:` header per new file po
 `docs/product-specs/lp-total-balance.md#behavior` (API). SQL is defined as `pub const`. Numbers are
 plain strings. Raw amounts are `i128`.
 
-1. [ ] **Docs first** (see Docs to Update): write the spec and reference text before the code.
+1. [x] **Docs first** (see Docs to Update): write the spec and reference text before the code.
 
-2. [ ] **Migration** (new `packages/shared/migrations/20261110000001_plusd_balance_seeds.sql`).
+2. [x] **Migration** (new `packages/shared/migrations/20261110000001_plusd_balance_seeds.sql`).
    - The header gives the purpose (#1878), the spec pointer, and the rollback
      `DROP TABLE plusd_balance_seeds;`.
    - Body:
@@ -281,7 +281,7 @@ plain strings. Raw amounts are `i128`.
    - The PK serves the latest-seed lookup and the `NOT EXISTS` candidate filter, so no extra index
      is needed.
 
-3. [ ] **Shared pure model** (new `packages/shared/src/plusd_seed.rs`, with `pub mod` in `lib.rs`).
+3. [x] **Shared pure model** (new `packages/shared/src/plusd_seed.rs`, with `pub mod` in `lib.rs`).
    - `#[derive(Debug, Clone, sqlx::FromRow)] pub struct PlusdSeedRow { as_of_ledger: i64, as_of_timestamp: i64, balance: Option<String>, kind: String }`.
      `balance` is the SQL-guarded text, so a negative-scale NUMERIC never reaches Rust.
    - `pub struct PlusdSeed { as_of_ledger: i64, as_of_timestamp: i64, balance: i128, reanchor: bool }`
@@ -309,7 +309,7 @@ plain strings. Raw amounts are `i128`.
      - `None` on a malformed amount or an overflow;
      - the result may be negative, and that counts as drift.
 
-4. [ ] **Holder steps carry the ledger** (`packages/shared/src/contract_logs_repo.rs`).
+4. [x] **Holder steps carry the ledger** (`packages/shared/src/contract_logs_repo.rs`).
    - Add `block_number` to the `PLUSD_HOLDER_STEPS_SQL` select list and to `PlusdStepRow`
      (`pub block_number: i64`).
    - Nothing else changes: the same `@>` filters, the amount guard and the ordering.
@@ -318,7 +318,7 @@ plain strings. Raw amounts are `i128`.
      It has no holder filter, because the bound is chain-wide.
    - Add `ContractLogsRepo::plusd_coverage_start(chain_id, plusd) -> Option<PlusdCoverage>`.
 
-5. [ ] **Seed repository** (new `packages/shared/src/plusd_seed_repo.rs`, with `pub mod`).
+5. [x] **Seed repository** (new `packages/shared/src/plusd_seed_repo.rs`, with `pub mod`).
    `PlusdSeedRepo { pool }` with these `pub const`s:
    - `PLUSD_SEED_CANDIDATES_SQL` (`$1` chain_id, `$2` token, `$3` limit): the union in Scope →
      Decisions (a) to (e). Use `UNION`, not `UNION ALL`. Then
@@ -338,7 +338,7 @@ plain strings. Raw amounts are `i128`.
      `latest(chain_id, token, holder) -> Option<PlusdSeedRow>`,
      `seeded_holders(chain_id, token) -> Vec<String>`.
 
-6. [ ] **Worker seed loop** (new `packages/worker/src/indexer/stellar/plusd_seed.rs`, with `pub mod`
+6. [x] **Worker seed loop** (new `packages/worker/src/indexer/stellar/plusd_seed.rs`, with `pub mod`
    in `stellar/mod.rs`).
    - Constants: `PLUSD_SEED_INTERVAL = 1 min`, `MAX_SEEDS_PER_CYCLE = 50`,
      `MAX_VERIFY_READS_PER_CYCLE = 10`, `PLUSD_VERIFY_INTERVAL = 6 h`.
@@ -392,14 +392,14 @@ plain strings. Raw amounts are `i128`.
      runs `seed_cycle`, then `verify_cycle`, then sleeps. A cycle error logs a `warn` and the loop
      continues.
 
-7. [ ] **Wire the loop** (`packages/worker/src/indexer/stellar/poller.rs::run_stellar_indexer_job`).
+7. [x] **Wire the loop** (`packages/worker/src/indexer/stellar/poller.rs::run_stellar_indexer_job`).
    - Add
      `let _plusd_seed_guard = settings.plusd_id.as_ref().map(|id| spawn_supervised("plusd-seed", chain_id, move || { … run_plusd_seed_loop(...).await; Ok(()) }))`,
      next to `_seed_guard`.
    - Extend the existing "Stellar PLUSD transfer indexing enabled" info log with
      `"(balance seed + drift check on)"`. There is no new env key.
 
-8. [ ] **API: seeded term** (`packages/api/src/total_balance.rs`).
+8. [x] **API: seeded term** (`packages/api/src/total_balance.rs`).
    - `pub struct PlusdTerm { pub folded: Folded, pub from: Option<DateTime<Utc>>, pub blank_total_before: bool }`.
    - `pub fn plusd_term_from(kind: ChainKind, seed: Option<&PlusdSeedRow>, coverage: Option<PlusdCoverage>, rows: &[PlusdStepRow], interval, chain_id) -> Option<PlusdTerm>`:
      - EVM: `plusd_steps(rows)`, then `fold_term`. The result has `from: None` and
@@ -426,7 +426,7 @@ plain strings. Raw amounts are `i128`.
      `blank_total_before` then do not apply, and every bucket keeps the present-terms total, as in
      #1865.
 
-9. [ ] **API handler** (`packages/api/src/routes/pnl.rs::plusd_term`).
+9. [x] **API handler** (`packages/api/src/routes/pnl.rs::plusd_term`).
    - On Stellar, run `tokio::try_join!` over three reads:
      - `list_plusd_holder_steps`;
      - `PlusdSeedRepo::new(state.pool.clone()).latest(chain_id, plusd, &holder)`;
@@ -440,7 +440,7 @@ plain strings. Raw amounts are `i128`.
    - `empty_series` passes `plusd_from: None` and `blank_total_before: false`.
    - No route or query change.
 
-10. [ ] **Env, checks and lint.**
+10. [x] **Env, checks and lint.**
     - `.env.example`: change the `CHAIN_99000001_STELLAR_API_PLUSD_ADDRESS` comment to "set only
       after the PLUSD seed ran and the acceptance check passed (#1878)". Change the indexer-key
       comment to mention that it also starts the seed and drift loop.
@@ -450,7 +450,7 @@ plain strings. Raw amounts are `i128`.
       - `cargo test -p pipeline-worker -p pipeline-api -p shared`;
       - `/Users/aabliazimov/Documents/work/pipeline/node_modules/.bin/tsx scripts/lint-docs.ts`.
 
-11. [ ] **Tech debt.** Mark TD-175 `- **Resolved by #1878:** …`, and record there the outcome of
+11. [x] **Tech debt.** Mark TD-175 `- **Resolved by #1878:** …`, and record there the outcome of
     the classic-payment check (manual step 3). If classic events are **not** visible, add a new
     TD that states:
     - the drift check is the only guard for classic PLUSD payments after the seed, and its cadence;
