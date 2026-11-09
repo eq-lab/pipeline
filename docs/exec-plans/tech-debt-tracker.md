@@ -570,7 +570,9 @@ line, whichever section it lands in.
   `packages/frontend/src/components/dashboard/originationRow.ts` (`mapSubmissionToRow`, issue
   #814), and the `formatFullUsd` (in `packages/frontend/src/utils/formatCompactUsd.ts`) /
   `formatMaturityDate` / `formatSubmittedDate` (`packages/frontend/src/utils/formatDate.ts`)
-  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`.
+  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`;
+  further pair (issue #1667): `packages/frontend/src/api/useChainServed.ts` ↔
+  `packages/trustee/src/api/useChains.ts` (`ChainItem` / `ChainsResponse` types and the `["chains"]` query).
 - **Gap:** The Trustee Origination page and the LP Protocol Dashboard's In-Origination tab (#814)
   both read `GET /v1/loan-book/submissions` and now render the **same eight-column field set**
   (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), but the two apps
