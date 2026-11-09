@@ -83,9 +83,15 @@ describe("readWireOutRecord", () => {
       readWireOutRecord({ minterId: "", id: 4, ...RPC }),
     ).rejects.toThrow(/minterId/);
     await expect(
-      readWireOutRecord({ minterId: MINTER, id: 0, ...RPC }),
+      readWireOutRecord({ minterId: MINTER, id: -1, ...RPC }),
     ).rejects.toThrow(/invalid wire id/);
     expect(mockSimulateRead).not.toHaveBeenCalled();
+  });
+
+  it("accepts id 0, the first minter id", async () => {
+    mockSimulateRead.mockResolvedValue(chainWireOut());
+    const wire = await readWireOutRecord({ minterId: MINTER, id: 0, ...RPC });
+    expect(wire.id).toBe(0);
   });
 });
 
@@ -119,7 +125,7 @@ describe("encoders", () => {
       valueDate: 1_700_000_000,
       refHash: HASH,
     };
-    expect(() => encodeSettleWireOutArgs({ ...ok, id: 0 })).toThrow(
+    expect(() => encodeSettleWireOutArgs({ ...ok, id: -1 })).toThrow(
       /invalid wire id/,
     );
     expect(() =>
@@ -146,7 +152,9 @@ describe("encoders", () => {
     const args = encodeCancelWireOutArgs({ id: 7 });
     expect(args).toHaveLength(1);
     expect(scValToNative(args[0]!)).toBe(7);
-    expect(() => encodeCancelWireOutArgs({ id: 0 })).toThrow();
+    expect(() => encodeCancelWireOutArgs({ id: -1 })).toThrow();
+    expect(() => encodeCancelWireOutArgs({ id: 1.5 })).toThrow();
+    expect(scValToNative(encodeCancelWireOutArgs({ id: 0 })[0]!)).toBe(0);
   });
 });
 

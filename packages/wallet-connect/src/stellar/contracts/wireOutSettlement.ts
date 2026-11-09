@@ -29,7 +29,7 @@ function toHex(bytes: Uint8Array): string {
 }
 
 function requireWireId(id: number, who: string): void {
-  if (!Number.isInteger(id) || id < 1) {
+  if (!Number.isInteger(id) || id < 0) {
     throw new Error(`${who}: invalid wire id ${id}`);
   }
 }

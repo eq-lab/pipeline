@@ -80,7 +80,7 @@ describe("readMinterWireIn", () => {
       readMinterWireIn({ minterId: "", id: 4, ...RPC }),
     ).rejects.toThrow(/minterId/);
     await expect(
-      readMinterWireIn({ minterId: MINTER, id: 0, ...RPC }),
+      readMinterWireIn({ minterId: MINTER, id: -1, ...RPC }),
     ).rejects.toThrow(/invalid wire id/);
     expect(mockSimulateRead).not.toHaveBeenCalled();
   });
@@ -165,8 +165,11 @@ describe("encoders", () => {
     ).toBe(HASH);
   });
 
-  it("rejects a non-integer id, an id below 1 and the zero hash", () => {
-    expect(() => encodeAssignWireInArgs({ id: 0, receiver: LP })).toThrow();
+  it("accepts id 0 and rejects a non-integer id, a negative id and the zero hash", () => {
+    expect(
+      scValToNative(encodeAssignWireInArgs({ id: 0, receiver: LP })[0]!),
+    ).toBe(0);
+    expect(() => encodeAssignWireInArgs({ id: -1, receiver: LP })).toThrow();
     expect(() => encodeAssignWireInArgs({ id: 1.5, receiver: LP })).toThrow();
     expect(() => encodeReturnWireInArgs({ id: -1, refHash: HASH })).toThrow();
     expect(() =>
