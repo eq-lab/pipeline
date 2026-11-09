@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod attention_counts;
 pub mod audit_log;
 pub mod auth;
 pub mod capital_allocation;

@@ -408,6 +408,18 @@ fn a_sale_repayment_links_only_from_the_records_enforcement_onward() {
 }
 
 #[test]
+fn open_margin_call_loans_are_read_from_terms_scoped_to_chain_and_contract() {
+    assert_has(
+        LIST_OPEN_MARGIN_CALL_LOANS_SQL,
+        &[
+            "FROM security_terms",
+            "chain_id = $1 AND contract_address = $2",
+            "margin_call_at <> 0",
+        ],
+    );
+}
+
+#[test]
 fn open_goods_commodity_queries_filter_open_goods_records() {
     for sql in [
         LIST_OPEN_GOODS_COMMODITIES_SQL,

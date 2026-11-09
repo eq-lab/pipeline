@@ -1993,8 +1993,9 @@ trace: `docs/exec-plans/completed/issue-786-trustee-app-shell.md` "Decisions" + 
   reliably "active wins". Instead the base className carries only layout (no color/background);
   active/inactive surface + text color are mutually exclusive, only one ever present.
 - **Count badge slot** renders nothing unless a backend-served count is supplied on the nav item
-  (`TrusteeNavItem.badgeCount`) — there is no backend source for the Figma mock's 1/4/3 today
-  (decision #786-2, [[no-frontend-computed-metrics]]).
+  (`TrusteeNavItem.badgeCount`). The backend source is `GET /v1/attention-counts` (#1864,
+  [spec](../product-specs/trustee-attention-counts.md)); wiring it is #1350. Origination and Loans
+  read the combined sections; Cash Management reads the session chain's `chains[]` entry `count` (decision #786-2, [[no-frontend-computed-metrics]]).
 - **Account chip**, pinned to the bottom: avatar circle, truncated address, "Trustee · connected"
   subtitle, and a `⋯` affordance opening a small popover menu with "Sign out" (decision #786-4),
   wired to `useTrusteeSession().signOut`. Renders nothing when `address` is undefined (never the
@@ -2095,9 +2096,9 @@ table cell reflows the row.
 `docs/product-specs/trustee-dashboard.md` (spec #453): Overview, Origination, Loans, Cash
 Management, Risk Council, Audit Log. This replaced the #777 scaffold's `TRUSTEE_FLOW_TYPES`
 (Type-1..4 taxonomy) — the Figma nav is the real product navigation (#786). `badgeCount` is
-intentionally unpopulated: there is no backend source for the counts in the Figma mock (1/4/3),
-and per [[no-frontend-computed-metrics]] the badge slot renders only when a count is supplied
-(see [Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)); wiring a real count is
+unpopulated until #1350: the backend source now exists (`GET /v1/attention-counts`), and per
+[[no-frontend-computed-metrics]] the badge slot renders only when a count is supplied
+(see [Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)); the remaining wiring is
 tracked in `docs/exec-plans/tech-debt-tracker.md`.
 
 ### Auth endpoint wrappers (`api/auth.ts`)

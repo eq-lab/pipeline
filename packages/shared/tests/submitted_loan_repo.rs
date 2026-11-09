@@ -2,8 +2,9 @@
 
 use bigdecimal::BigDecimal;
 use shared::submitted_loan_repo::{
-    classify_unlinked_draw, LinkCandidate, LinkOutcome, FIND_SUBMISSION_SQL, INSERT_SUBMISSION_SQL,
-    LINK_DRAWN_SQL, LIST_SUBMISSIONS_SQL, RESUBMIT_SQL, UNLINKED_DRAW_CANDIDATES_SQL,
+    classify_unlinked_draw, LinkCandidate, LinkOutcome, COUNT_UNDRAWN_SUBMISSIONS_SQL,
+    FIND_SUBMISSION_SQL, INSERT_SUBMISSION_SQL, LINK_DRAWN_SQL, LIST_SUBMISSIONS_SQL, RESUBMIT_SQL,
+    UNLINKED_DRAW_CANDIDATES_SQL,
 };
 use std::str::FromStr;
 
@@ -178,4 +179,16 @@ fn is_unexpected_truth_table() {
         candidate_submission_id: 2
     }
     .is_unexpected());
+}
+
+#[test]
+fn count_undrawn_sql_groups_undrawn_rows_by_target_chain() {
+    let sql = flat(COUNT_UNDRAWN_SUBMISSIONS_SQL);
+    assert!(sql.contains("loan_id IS NULL"));
+    assert!(sql.contains("target_chain_id = ANY($1::bigint[])"));
+    assert!(sql.contains("GROUP BY target_chain_id"));
+    for status in ["InReview", "ChangesRequested", "Approved"] {
+        assert!(sql.contains(&format!("FILTER (WHERE status = '{status}')")));
+    }
+    assert!(!sql.contains("'Rejected'"));
 }
