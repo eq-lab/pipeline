@@ -2299,7 +2299,7 @@ line, whichever section it lands in.
 - **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
 - **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
-- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is absent until then.
 
 ### TD-170: Pocket `complete` is not verified against the key having stayed configured
 
@@ -2332,4 +2332,5 @@ line, whichever section it lands in.
 - **Gap:** `contract_logs.params` has a GIN index, `idx_contract_logs_params` (`20260521000001_contract_logs_jsonb.sql`), but it only serves containment (`params @> jsonb_build_object(…)`). Filters and joins written as `params->>'loan_id' = …` (for example the correlated `v.params->>'loan_id' = r.params->>'loan_id'` in `LIST_SALE_REPAYMENTS_SQL`) cannot use it and scan the scoped contract(s).
 - **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow with each contract's log count where they are not written with `@>`.
 - **Suggested fix:** rewrite those predicates with `@>` (`LOAN_LOG_WATERMARKS_SQL` already does), and only add an expression index if a correlated join still cannot use the GIN index; measure on pipeline-test first.
+- **Also:** the share-price reads in `position_repo.rs` (incl. #1313's closing-price query) filter `LOWER(vault_address) = …`, which keeps `idx_share_prices_latest` from serving the vault column; same cleanup.
 

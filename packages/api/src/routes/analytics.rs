@@ -143,7 +143,7 @@ async fn lp_wire_outs(
     for (chain_id, minter) in minters {
         let rows = state
             .contract_logs_repo
-            .list_lp_wire_out_events(chain_id, &minter, wallet)
+            .list_lp_wire_out_events(chain_id, &minter, &wallet.to_uppercase())
             .await?;
         for w in build_wire_outs(&rows) {
             if pending_only && w.status != WireOutStatus::Pending {
