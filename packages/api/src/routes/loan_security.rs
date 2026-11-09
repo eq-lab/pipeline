@@ -7,17 +7,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use shared::security_registry_repo::SecurityRegistryRepo;
+use bigdecimal::BigDecimal;
+use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow};
+use shared::security_registry_repo::{LoanSecurityRows, SecurityRegistryRepo};
 use utoipa::OpenApi;
 
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
 use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::security_state::{
-    build_security_response, ConsentDto, InspectionDto, LastPriceStaleDto, LoanSecurityResponse,
-    LotDto, MarginCallDto, MarginEventDto, PricesDto, RecordDocDto, RecordMarkDto,
-    RecordValuationDto, SaleRepaymentDto, SecurityRecordDto, SecurityTermsDto,
-    SecurityValuationDto, ValuationAsOfDto,
+    build_security_response, mark_price_pairs, needs_concentrate_inputs, ConsentDto, InspectionDto,
+    LastPriceStaleDto, LoanSecurityResponse, LotDto, MarginCallDto, MarginEventDto, MarkInputs,
+    PricesDto, RecordDocDto, RecordMarkDto, RecordValuationDto, SaleRepaymentDto,
+    SecurityRecordDto, SecurityTermsDto, SecurityValuationDto, SuggestedMarkDto, ValuationAsOfDto,
 };
 use crate::AppState;
 
@@ -37,6 +39,7 @@ use crate::AppState;
         SecurityRecordDto,
         RecordDocDto,
         RecordMarkDto,
+        SuggestedMarkDto,
         LotDto,
         RecordValuationDto,
         InspectionDto,
@@ -80,7 +83,7 @@ pub fn parse_loan_id(raw: &str) -> Result<u32, ApiError> {
         RequiredChain
     ),
     responses(
-        (status = 200, description = "Terms, valuation, margin-call state, prices and every record of the loan; an unknown loan id returns empty state (`terms: null`, `records: []`)", body = LoanSecurityResponse),
+        (status = 200, description = "Terms, valuation, margin-call state, prices and every record of the loan, with a suggested mark per open goods record; an unknown loan id returns empty state (`terms: null`, `records: []`)", body = LoanSecurityResponse),
         (status = 400, description = "Missing, malformed, or unknown chain_id, or malformed loan_id"),
         (status = 404, description = "The chain has no SecurityRegistry configured (`security_registry_not_configured`)"),
         (status = 500, description = "Internal error"),
@@ -98,6 +101,7 @@ async fn get_loan_security(
     let rows = SecurityRegistryRepo::new(state.pool.clone())
         .load_loan_security(chain.chain_id, contract, id, registry)
         .await?;
+    let marks = load_mark_inputs(&state, chain.chain_id, id, &rows).await;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -107,5 +111,67 @@ async fn get_loan_security(
         &id.to_string(),
         &rows,
         now,
+        &marks,
     )))
+}
+
+async fn load_mark_inputs<'a>(
+    state: &'a AppState,
+    chain_id: i64,
+    loan_id: u32,
+    rows: &LoanSecurityRows,
+) -> MarkInputs<'a> {
+    let settings = &state.security_marks;
+    if settings.map.is_empty() {
+        return MarkInputs {
+            settings,
+            ..MarkInputs::default()
+        };
+    }
+    let concentrate = if needs_concentrate_inputs(rows, &settings.map) {
+        read_concentrate(state, chain_id, loan_id).await
+    } else {
+        None
+    };
+    let pairs = mark_price_pairs(
+        rows,
+        &settings.map,
+        concentrate.as_ref().map(|(_, offtake)| offtake),
+    );
+    let prices = match state.loan_asset_price_repo.latest_prices_for(&pairs).await {
+        Ok(found) => found
+            .into_iter()
+            .map(|(asset, provider, price, at)| ((asset, provider), (price, at)))
+            .collect(),
+        Err(e) => {
+            tracing::warn!(error = ?e, loan_id, "mark source prices unreadable; suggestions degrade");
+            HashMap::new()
+        }
+    };
+    MarkInputs {
+        settings,
+        prices,
+        concentrate,
+    }
+}
+
+async fn read_concentrate(
+    state: &AppState,
+    chain_id: i64,
+    loan_id: u32,
+) -> Option<(AssayRow, OfftakeTermsRow)> {
+    let key = BigDecimal::from(loan_id);
+    let repo = &state.collateral_valuation_repo;
+    let (assay, offtake) = tokio::join!(
+        repo.latest_assay(chain_id, &key),
+        repo.latest_offtake(chain_id, &key)
+    );
+    match (assay, offtake) {
+        (Ok(Some(a)), Ok(Some(o))) => Some((a, o)),
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::warn!(error = ?e, loan_id, "assay or offtake unreadable; concentrate marks degrade");
+            None
+        }
+        _ => None,
+    }
 }

@@ -65,6 +65,7 @@ fn make_test_state() -> AppState {
         capital_allocation_from_minter: std::collections::HashSet::new(),
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
+        security_marks: shared::security_marks::MarkSettings::default(),
         security_registry_addresses: HashMap::new(),
         crystal_enabled: false,
         elliptic_enabled: false,

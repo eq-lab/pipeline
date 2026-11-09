@@ -23,12 +23,12 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 |------|--------|-------------|
 | [lp-onboarding.md](./lp-onboarding.md) | LP Onboarding & Compliance | KYT screening, three whitelist enrolment paths, freshness window, manual review |
 | [kyb-lp-verification.md](./kyb-lp-verification.md) | LP Onboarding & Compliance | KYB entity registration, document review lifecycle, notifications, settlement address |
-| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed; LP funding details (`GET /v1/lps/me/payment-details`) |
+| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed; LP funding details (`GET /v1/lps/me/payment-details`); LP pending bank deposits (`pending_bank_deposits` on `GET /v1/lps/me`) |
 | [evm-requests-queue.md](./evm-requests-queue.md) | Deposits & PLUSD Minting | Deployed EVM VerifiedRequestsQueue: DepositManager, WithdrawalQueue, `VerifiedRequests` EIP-712 voucher, rate limiter, voucher API |
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
-| [loan-security-state.md](./loan-security-state.md) | Loan Management | `GET /v1/loan-book/{loan_id}/security`: Stellar SecurityRegistry terms, valuation, margin call, records, inspections and repayments from the indexed projection |
+| [loan-security-state.md](./loan-security-state.md) | Loan Management | `GET /v1/loan-book/{loan_id}/security`: Stellar SecurityRegistry terms, valuation, margin call, records, inspections and repayments from the indexed projection, plus suggested marks and mark-due flags |
 | [loan-repay-minter.md](./loan-repay-minter.md) | Loan Management | How the Trustee records a repayment: `Minter.repay` signature, roles, `ref_hash`, mint budget, side effects, testnet verification |
 | [loan-repayment-recovery.md](./loan-repayment-recovery.md) | Loan Management | Recovery procedure for a mis-split coupon: Minter reverse then corrected repay, roles, effects, limits |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |

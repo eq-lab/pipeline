@@ -418,3 +418,36 @@ fn open_margin_call_loans_are_read_from_terms_scoped_to_chain_and_contract() {
         ],
     );
 }
+
+#[test]
+fn open_goods_commodity_queries_filter_open_goods_records() {
+    for sql in [
+        LIST_OPEN_GOODS_COMMODITIES_SQL,
+        LIST_OPEN_GOODS_OFFTAKE_METALS_SQL,
+    ] {
+        assert_has(
+            sql,
+            &[
+                "FROM security_records",
+                "commodity IS NOT NULL",
+                "protection IN ('EndorsedBl','WarehousePledge','CollateralManagement')",
+                "status NOT IN ('Released','Enforced')",
+            ],
+        );
+    }
+}
+
+#[test]
+fn offtake_metals_join_the_loans_payable_terms() {
+    assert_has(
+        LIST_OPEN_GOODS_OFFTAKE_METALS_SQL,
+        &[
+            "FROM loan_offtake_terms WHERE chain_id = r.chain_id AND loan_id = r.loan_id",
+            "ORDER BY effective_at DESC LIMIT 1",
+            ") o ON true",
+            "jsonb_array_elements(o.payable_terms)",
+            "term ->> 'metal' IS NOT NULL",
+            "SELECT DISTINCT r.commodity",
+        ],
+    );
+}

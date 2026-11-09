@@ -9,7 +9,8 @@ import {
   type LoansSummaryView,
 } from "./-useLoansTable";
 import { InlineError } from "@pipeline/ui";
-import { TARGET_CHAINS } from "@/lib/targetChains";
+import { useServedTargetChains } from "@/api/useChains";
+import type { TargetChainOption } from "@/lib/targetChains";
 
 /**
  * Loans — the Trustee list page at `/loans`; the sibling detail page lives at
@@ -192,9 +193,13 @@ const ALL_CHAINS = "all";
 
 function ChainFilter({
   value,
+  options,
+  disabled,
   onChange,
 }: {
   value: number | null;
+  options: ReadonlyArray<TargetChainOption>;
+  disabled: boolean;
   onChange: (chainId: number | null) => void;
 }) {
   return (
@@ -204,6 +209,7 @@ function ChainFilter({
         data-testid="loans-chain-filter"
         aria-label="Chain filter"
         value={value == null ? ALL_CHAINS : String(value)}
+        disabled={disabled}
         onChange={(e) =>
           onChange(
             e.target.value === ALL_CHAINS
@@ -215,7 +221,7 @@ function ChainFilter({
         style={{ border: `1px solid ${LINE_COLOR}` }}
       >
         <option value={ALL_CHAINS}>All chains</option>
-        {TARGET_CHAINS.map((chain) => (
+        {options.map((chain) => (
           <option key={chain.id} value={String(chain.id)}>
             {chain.label}
           </option>
@@ -480,6 +486,7 @@ function LoansIndex() {
   const [activeTab, setActiveTab] = useState<LoanTab>("All");
   const [chainFilter, setChainFilter] = useState<number | null>(null);
   const navigate = useNavigate();
+  const targetChains = useServedTargetChains();
   const { state, errorMessage, errorDetails, summary, counts, rows } =
     useLoansTable(activeTab, chainFilter);
 
@@ -529,7 +536,12 @@ function LoansIndex() {
               counts={counts}
               onSelect={setActiveTab}
             />
-            <ChainFilter value={chainFilter} onChange={setChainFilter} />
+            <ChainFilter
+              value={chainFilter}
+              options={targetChains.options}
+              disabled={targetChains.isLoading}
+              onChange={setChainFilter}
+            />
           </div>
           {/* White surface card (Figma "Background" 4116:10040) — the "Payments
               due" banner + "Record coupon" action are OMITTED (resolved Open

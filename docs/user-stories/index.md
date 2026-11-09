@@ -203,6 +203,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
 | [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
 | [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Initial |
+| [#1285 Backend: serve the LP's pending bank deposits on GET /v1/lps/me](https://github.com/eq-lab/pipeline/issues/1285) | [1285-lp-pending-bank-deposits.md](./epic-1247/1285-lp-pending-bank-deposits.md) | Initial |
 | [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
 | [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Superseded by #1825 (auto-link removed; linking is signed and user-initiated) |
@@ -354,6 +355,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1773 Trustee: reversal effects name the capital wallet, not the treasury](https://github.com/eq-lab/pipeline/issues/1773) | [1773-capital-wallet-fee-shares-label.md](./epic-1521/1773-capital-wallet-fee-shares-label.md) | Initial |
 | [#1731 Trustee (staging): white screen after wallet sign-in and after logout](https://github.com/eq-lab/pipeline/issues/1731) | [1731-trustee-auth-transition-white-screen.md](./epic-1521/1731-trustee-auth-transition-white-screen.md) | Initial |
 | [#1749 Trustee: remove the /sign-in URL layer](https://github.com/eq-lab/pipeline/issues/1749) | [1749-remove-sign-in-url-layer.md](./epic-1521/1749-remove-sign-in-url-layer.md) | Initial |
+| [#1667 Trustee: hide target-chain options the API does not serve](https://github.com/eq-lab/pipeline/issues/1667) | [1667-trustee-served-chains.md](./epic-1521/1667-trustee-served-chains.md) | Initial |
 
 ---
 
@@ -386,3 +388,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1779 Stellar SecurityRegistry indexer: events, record enrichment, projection tables](https://github.com/eq-lab/pipeline/issues/1779) | [1779-stellar-security-registry-indexer.md](./epic-1775/1779-stellar-security-registry-indexer.md) | Initial |
 | [#1780 API: loan security state — terms, collateral value, debt, LTV, margin call, records](https://github.com/eq-lab/pipeline/issues/1780) | [1780-loan-security-state-api.md](./epic-1775/1780-loan-security-state-api.md) | Initial |
 | [#1781 Audit log: SecurityRegistry events, legacy CollateralRegistry rows as history](https://github.com/eq-lab/pipeline/issues/1781) | [1781-security-registry-audit-log.md](./epic-1775/1781-security-registry-audit-log.md) | Initial |
+| [#1783 Manual marks: suggested per-unit price and mark-due flags for the Trustee's revalue](https://github.com/eq-lab/pipeline/issues/1783) | [1783-manual-marks-suggested-price.md](./epic-1775/1783-manual-marks-suggested-price.md) | Initial |
