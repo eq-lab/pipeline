@@ -18,9 +18,10 @@ use crate::error::ApiError;
 use crate::formatting::iso_utc_from_unix;
 use crate::minter_cash_book::{
     build_ramps, build_wire_ins, build_wire_outs, fold_cash, to_base6_string, CashBookFold,
-    CashBookWireOut,
+    CashBookWireOut, WireOutStatus,
 };
 use crate::routes::common::{parse_required_chain, require_trustee, RequiredChain};
+use crate::routes::lps::SettlementBankAccountDetails;
 use crate::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -68,6 +69,8 @@ pub struct CashBookWireOutItem {
     pub ref_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cancelled_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bank_account: Option<SettlementBankAccountDetails>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -106,6 +109,7 @@ pub struct CashBookResponse {
         CashBookSummary,
         CashBookWireInItem,
         CashBookWireOutItem,
+        SettlementBankAccountDetails,
         CashBookRampItem
     )),
     modifiers(&SecurityAddon),
@@ -239,6 +243,10 @@ pub fn build_response(
         .into_iter()
         .map(|w| {
             let holder = by_link.get(&(w.lp.as_str(), w.requested_at));
+            let bank_account = holder
+                .and_then(|h| h.settlement_bank_account.as_ref())
+                .filter(|_| w.status == WireOutStatus::Pending)
+                .map(|a| (&a.0).into());
             CashBookWireOutItem {
                 id: w.id,
                 status: w.status.as_str().to_owned(),
@@ -251,6 +259,7 @@ pub fn build_response(
                 value_date: w.value_date.map(iso_utc_from_unix),
                 ref_hash: w.ref_hash,
                 cancelled_at: w.cancelled_at.map(iso_utc_from_unix),
+                bank_account,
             }
         })
         .collect();

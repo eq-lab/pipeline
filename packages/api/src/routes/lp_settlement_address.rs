@@ -23,7 +23,7 @@ use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::routes::auth::wallet::{challenge_domain, ChallengeResponse};
 use crate::routes::common::{require_chain_id, RequiredChain};
-use crate::routes::lps::{my_lp, with_documents, LpResponse};
+use crate::routes::lps::{my_lp, with_documents, LpAudience, LpResponse};
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -364,5 +364,7 @@ async fn link_verify(
             lp.id
         ))
     })?;
-    Ok(Json(with_documents(&state, refreshed).await?))
+    Ok(Json(
+        with_documents(&state, refreshed, LpAudience::Owner).await?,
+    ))
 }

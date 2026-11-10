@@ -5,6 +5,7 @@
 
 pub mod account_repo;
 pub mod auth_user_repo;
+pub mod bank_account;
 pub mod bitgo;
 pub mod book_weighting;
 pub mod chains;

@@ -77,6 +77,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 use uuid::Uuid;
 
+use shared::bank_account::{
+    self, account_last4, SettlementBankAccount, SettlementBankAccountInput,
+};
 use shared::email::{
     render_kyb_changes_requested_email, render_kyb_failed_email, render_kyb_passed_email,
     OutboundEmail, RejectedDocument,
@@ -149,6 +152,84 @@ pub struct LpResponse {
     pub documents: Vec<DocumentResponse>,
     #[schema(example = "1500.00")]
     pub pending_bank_deposits: Option<String>,
+    /// Masked view of the LP's settlement bank account, `null` when none is on file.
+    pub settlement_bank_account: Option<SettlementBankAccountSummary>,
+    /// Every field of the account. Trustee responses only: the key is omitted for the owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_bank_account_details: Option<SettlementBankAccountDetails>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SettlementBankAccountSummary {
+    #[schema(example = "Acme Trading Ltd")]
+    pub account_holder_name: String,
+    #[schema(example = "Example Bank N.A.")]
+    pub bank_name: String,
+    /// Last 4 characters of the IBAN (else the account number); `null` when that identifier has 4 or fewer.
+    #[schema(example = "7654")]
+    pub account_last4: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SettlementBankAccountDetails {
+    pub account_holder_name: String,
+    pub bank_name: String,
+    #[schema(required = true, nullable)]
+    pub bank_address: Option<String>,
+    #[schema(required = true, nullable)]
+    pub account_number: Option<String>,
+    #[schema(required = true, nullable)]
+    pub iban: Option<String>,
+    #[schema(required = true, nullable)]
+    pub swift_bic_code: Option<String>,
+    #[schema(required = true, nullable)]
+    pub routing_number: Option<String>,
+}
+
+impl std::fmt::Debug for SettlementBankAccountDetails {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SettlementBankAccountDetails")
+            .finish_non_exhaustive()
+    }
+}
+
+impl From<&SettlementBankAccount> for SettlementBankAccountDetails {
+    fn from(a: &SettlementBankAccount) -> Self {
+        Self {
+            account_holder_name: a.account_holder_name.clone(),
+            bank_name: a.bank_name.clone(),
+            bank_address: a.bank_address.clone(),
+            account_number: a.account_number.clone(),
+            iban: a.iban.clone(),
+            swift_bic_code: a.swift_bic_code.clone(),
+            routing_number: a.routing_number.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LpAudience {
+    Owner,
+    Trustee,
+}
+
+pub fn bank_account_views(
+    account: Option<&SettlementBankAccount>,
+    audience: LpAudience,
+) -> (
+    Option<SettlementBankAccountSummary>,
+    Option<SettlementBankAccountDetails>,
+) {
+    let Some(a) = account else {
+        return (None, None);
+    };
+    let summary = SettlementBankAccountSummary {
+        account_holder_name: a.account_holder_name.clone(),
+        bank_name: a.bank_name.clone(),
+        account_last4: account_last4(a),
+    };
+    let details = (audience == LpAudience::Trustee).then(|| a.into());
+    (Some(summary), details)
 }
 
 impl LpResponse {
@@ -156,7 +237,10 @@ impl LpResponse {
         row: LpRow,
         documents: Vec<DocumentResponse>,
         pending_bank_deposits: Option<String>,
+        audience: LpAudience,
     ) -> Self {
+        let (settlement_bank_account, settlement_bank_account_details) =
+            bank_account_views(row.settlement_bank_account.as_ref().map(|j| &j.0), audience);
         let writable = KybStatus::from_str(&row.kyb_status).is_ok_and(|s| s.allows_owner_writes());
         Self {
             id: row.id,
@@ -181,6 +265,8 @@ impl LpResponse {
             created_at: iso_utc(&row.created_at),
             documents,
             pending_bank_deposits,
+            settlement_bank_account,
+            settlement_bank_account_details,
         }
     }
 }
@@ -358,6 +444,11 @@ pub struct UpsertLpRequest {
     #[serde(default)]
     #[schema(example = true, nullable)]
     pub notify_on_review: Option<bool>,
+    /// USD settlement bank account for wire-outs. Absent or `null` means *do not change*;
+    /// frozen with the KYB record at `UnderReview` / `Passed` / `Failed`.
+    #[serde(default)]
+    #[schema(nullable)]
+    pub settlement_bank_account: Option<SettlementBankAccountInput>,
 }
 
 /// The `multipart/form-data` body of `POST /v1/lps/me/documents`.
@@ -407,6 +498,9 @@ pub struct UploadDocumentsForm {
         DocumentResponse,
         FileResult,
         UpsertLpRequest,
+        SettlementBankAccountInput,
+        SettlementBankAccountSummary,
+        SettlementBankAccountDetails,
         UploadDocumentsResponse,
         UploadDocumentsForm,
         DocumentReviewDecision,
@@ -490,7 +584,7 @@ async fn get_lp(
         .find(id)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("no LP with id {id}")))?;
-    Ok(Json(with_documents(&state, lp).await?))
+    Ok(Json(with_documents(&state, lp, LpAudience::Trustee).await?))
 }
 
 /// Approve or reject an LP's document. Trustee-only, and only while the LP
@@ -667,7 +761,9 @@ async fn decide_kyb(
         }
     }
 
-    Ok(Json(with_documents_rows(&state, row, docs).await?))
+    Ok(Json(
+        with_documents_rows(&state, row, docs, LpAudience::Trustee).await?,
+    ))
 }
 
 // ── Handlers: owner ──────────────────────────────────────────────────────────
@@ -693,7 +789,7 @@ async fn get_my_lp(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LpResponse>, ApiError> {
     let lp = my_lp(&claims, &state).await?;
-    Ok(Json(with_documents(&state, lp).await?))
+    Ok(Json(with_documents(&state, lp, LpAudience::Owner).await?))
 }
 
 /// Register or update the caller's LP.
@@ -718,9 +814,9 @@ async fn get_my_lp(
     responses(
         (status = 200, description = "LP updated, or only notify_on_review updated", body = LpResponse),
         (status = 201, description = "LP registered", body = LpResponse),
-        (status = 400, description = "legal_name or contact_email empty, or a field over its length limit"),
+        (status = 400, description = "legal_name or contact_email empty, a field over its length limit, or an invalid settlement_bank_account (the message names the field, never the value)"),
         (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 409, description = "The LP is frozen and the submitted profile differs from the stored one"),
+        (status = 409, description = "The LP is frozen and the submitted profile or settlement bank account differs from the stored one"),
     ),
     security(("bearer_auth" = [])),
     tag = "Lps"
@@ -747,7 +843,7 @@ async fn upsert_my_lp(
             == UpsertOutcome::Refuse
         {
             return Err(ApiError::Conflict(format!(
-                "this LP is {} and its profile can no longer be changed; \
+                "this LP is {} and its profile and settlement bank account can no longer be changed; \
                  notify_on_review may still be updated",
                 lp.kyb_status
             )));
@@ -764,12 +860,13 @@ async fn upsert_my_lp(
             claims.chain_id,
             claims.chain_id.map(|_| claims.sub.as_str()),
             req.notify_on_review,
+            profile.bank_account.as_ref(),
         )
         .await?
         .ok_or_else(|| {
             ApiError::Conflict(
-                "this LP was frozen before the change was applied, and the submitted profile \
-                 differs from the stored one"
+                "this LP was frozen before the change was applied, and the submitted profile or \
+                 settlement bank account differs from the stored one"
                     .to_owned(),
             )
         })?;
@@ -784,7 +881,11 @@ async fn upsert_my_lp(
     } else {
         StatusCode::OK
     };
-    Ok((status, Json(with_documents(&state, lp).await?)).into_response())
+    Ok((
+        status,
+        Json(with_documents(&state, lp, LpAudience::Owner).await?),
+    )
+        .into_response())
 }
 
 /// Append documents to the caller's LP.
@@ -844,7 +945,7 @@ async fn upload_my_documents(
         ApiError::Internal(anyhow::anyhow!("LP {} vanished during upload", lp.id))
     })?;
     let body = UploadDocumentsResponse {
-        lp: with_documents(&state, refreshed).await?,
+        lp: with_documents(&state, refreshed, LpAudience::Owner).await?,
         files: results,
     };
 
@@ -961,7 +1062,7 @@ async fn submit_my_lp(
             lp.id
         ))
     })?;
-    Ok(Json(with_documents(&state, row).await?))
+    Ok(Json(with_documents(&state, row, LpAudience::Owner).await?))
 }
 
 // ── Upload plumbing ──────────────────────────────────────────────────────────
@@ -1285,15 +1386,20 @@ fn guard_writable(lp: &LpRow) -> Result<(), ApiError> {
 /// A presigning failure degrades that one document to `download_url: null`
 /// rather than failing the read — the rest of the record is still useful, and
 /// the client can retry.
-pub(crate) async fn with_documents(state: &AppState, lp: LpRow) -> Result<LpResponse, ApiError> {
+pub(crate) async fn with_documents(
+    state: &AppState,
+    lp: LpRow,
+    audience: LpAudience,
+) -> Result<LpResponse, ApiError> {
     let rows = state.kyb_document_repo.list_for_lp(lp.id).await?;
-    with_documents_rows(state, lp, rows).await
+    with_documents_rows(state, lp, rows, audience).await
 }
 
 async fn with_documents_rows(
     state: &AppState,
     lp: LpRow,
     rows: Vec<KybDocumentRow>,
+    audience: LpAudience,
 ) -> Result<LpResponse, ApiError> {
     let mut documents = Vec::with_capacity(rows.len());
     for row in rows {
@@ -1322,7 +1428,7 @@ async fn with_documents_rows(
             .pending_bank_deposits_for_lp(lp.id)
             .await,
     );
-    Ok(LpResponse::new(lp, documents, pending))
+    Ok(LpResponse::new(lp, documents, pending, audience))
 }
 
 /// An LP's documents as `(id, status)` pairs, for [`submit_blockers`] and
@@ -1368,6 +1474,7 @@ pub struct ValidatedProfile<'a> {
     pub legal_name: &'a str,
     pub country: Option<&'a str>,
     pub contact_email: &'a str,
+    pub bank_account: Option<SettlementBankAccount>,
 }
 
 /// Check the profile half of an upsert. `country` collapses blank to `None`, so
@@ -1408,6 +1515,12 @@ pub fn validate_profile(form: &UpsertLpRequest) -> Result<ValidatedProfile<'_>, 
     if let Some(country) = form.country.as_deref() {
         bounded("country", country.trim(), MAX_COUNTRY_LEN)?;
     }
+    let bank_account = form
+        .settlement_bank_account
+        .as_ref()
+        .map(bank_account::normalize)
+        .transpose()
+        .map_err(|e| ApiError::BadRequest(format!("settlement_bank_account.{e}")))?;
     Ok(ValidatedProfile {
         legal_name,
         country: form
@@ -1416,6 +1529,7 @@ pub fn validate_profile(form: &UpsertLpRequest) -> Result<ValidatedProfile<'_>, 
             .map(str::trim)
             .filter(|c| !c.is_empty()),
         contact_email,
+        bank_account,
     })
 }
 
@@ -1427,6 +1541,7 @@ pub struct StoredProfile<'a> {
     pub legal_name: &'a str,
     pub country: Option<&'a str>,
     pub contact_email: &'a str,
+    pub bank_account: Option<&'a SettlementBankAccount>,
 }
 
 impl<'a> From<&'a LpRow> for StoredProfile<'a> {
@@ -1435,6 +1550,7 @@ impl<'a> From<&'a LpRow> for StoredProfile<'a> {
             legal_name: &row.legal_name,
             country: row.country.as_deref(),
             contact_email: &row.contact_email,
+            bank_account: row.settlement_bank_account.as_ref().map(|j| &j.0),
         }
     }
 }
@@ -1465,6 +1581,10 @@ pub fn profile_is_unchanged(stored: StoredProfile<'_>, submitted: &ValidatedProf
     stored.legal_name == submitted.legal_name
         && stored.country == submitted.country
         && stored.contact_email == submitted.contact_email
+        && submitted
+            .bank_account
+            .as_ref()
+            .is_none_or(|b| stored.bank_account == Some(b))
 }
 
 /// The narrowed freeze in one place (spec § Review Notifications). Restated,

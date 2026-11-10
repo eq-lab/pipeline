@@ -31,6 +31,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth_user_repo::NONCE_REUSE_MIN_REMAINING_SECS;
+use crate::bank_account::SettlementBankAccount;
 use crate::chains::ChainKind;
 
 /// KYB lifecycle state of an LP. Stored as TEXT (with a CHECK constraint) in
@@ -241,13 +242,14 @@ pub struct LpRow {
     pub owner_address: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub settlement_bank_account: Option<sqlx::types::Json<SettlementBankAccount>>,
 }
 
 const COLUMNS: &str = "id, legal_name, country, contact_email, stellar_address, \
                        address_linked_at, stellar_signer_address, evm_address, \
                        evm_signer_address, evm_address_linked_at, kyb_status, kyb_submitted_at, kyb_decided_by, \
                        kyb_decided_at, kyb_decision_reason, notify_on_review, owner_account_id, \
-                       owner_chain_id, owner_address, created_at, updated_at";
+                       owner_chain_id, owner_address, created_at, updated_at, settlement_bank_account";
 
 impl LpRow {
     pub fn settlement_address(&self, kind: ChainKind) -> Option<&str> {
@@ -341,6 +343,10 @@ impl LpRepo {
     /// out on every unrelated profile edit. Referencing `$8` directly on the
     /// update path is what keeps an omitted preference unchanged.
     ///
+    /// `settlement_bank_account` is part of the frozen KYB record: `None` leaves it
+    /// unchanged, and a frozen row matches the `WHERE` only when it is `None` or
+    /// equal to the stored value (same rule as `routes::lps::decide_upsert`).
+    ///
     /// Returns the LP's `id` and whether this call created it.
     #[allow(clippy::too_many_arguments)]
     pub async fn upsert_by_owner_account_id(
@@ -352,32 +358,20 @@ impl LpRepo {
         owner_chain_id: Option<i64>,
         owner_address: Option<&str>,
         notify_on_review: Option<bool>,
+        settlement_bank_account: Option<&SettlementBankAccount>,
     ) -> Result<Option<(i64, bool)>, sqlx::Error> {
-        sqlx::query_as::<_, (i64, bool)>(
-            "INSERT INTO lps (legal_name, country, contact_email, owner_account_id, \
-             owner_chain_id, owner_address, notify_on_review) \
-             VALUES ($1, $2, $3, $4, $5, $6, COALESCE($8::boolean, false)) \
-             ON CONFLICT (owner_account_id) DO UPDATE SET \
-             legal_name = EXCLUDED.legal_name, country = EXCLUDED.country, \
-             contact_email = EXCLUDED.contact_email, \
-             notify_on_review = COALESCE($8::boolean, lps.notify_on_review), \
-             updated_at = now() \
-             WHERE lps.kyb_status = ANY($7) \
-                OR (lps.legal_name    IS NOT DISTINCT FROM EXCLUDED.legal_name \
-                AND lps.country       IS NOT DISTINCT FROM EXCLUDED.country \
-                AND lps.contact_email IS NOT DISTINCT FROM EXCLUDED.contact_email) \
-             RETURNING id, (xmax = 0) AS created",
-        )
-        .bind(legal_name)
-        .bind(country)
-        .bind(contact_email)
-        .bind(owner_account_id)
-        .bind(owner_chain_id)
-        .bind(owner_address)
-        .bind(Self::writable_statuses())
-        .bind(notify_on_review)
-        .fetch_optional(&self.pool)
-        .await
+        sqlx::query_as::<_, (i64, bool)>(UPSERT_LP_BY_OWNER_SQL)
+            .bind(legal_name)
+            .bind(country)
+            .bind(contact_email)
+            .bind(owner_account_id)
+            .bind(owner_chain_id)
+            .bind(owner_address)
+            .bind(Self::writable_statuses())
+            .bind(notify_on_review)
+            .bind(settlement_bank_account.map(sqlx::types::Json))
+            .fetch_optional(&self.pool)
+            .await
     }
 
     /// The LP owned by `owner_account_id`, if the account has registered one.
@@ -553,8 +547,26 @@ pub const LIST_SETTLEMENT_ADDRESS_HISTORY_SQL: &str = "SELECT id, lp_id, chain_k
 
 pub const ADDRESS_HOLDER_STELLAR_SQL: &str = "SELECT id FROM lps WHERE stellar_address = $1";
 
+pub const UPSERT_LP_BY_OWNER_SQL: &str =
+    "INSERT INTO lps (legal_name, country, contact_email, owner_account_id, \
+     owner_chain_id, owner_address, notify_on_review, settlement_bank_account) \
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($8::boolean, false), $9::jsonb) \
+     ON CONFLICT (owner_account_id) DO UPDATE SET \
+     legal_name = EXCLUDED.legal_name, country = EXCLUDED.country, \
+     contact_email = EXCLUDED.contact_email, \
+     notify_on_review = COALESCE($8::boolean, lps.notify_on_review), \
+     settlement_bank_account = COALESCE($9::jsonb, lps.settlement_bank_account), \
+     updated_at = now() \
+     WHERE lps.kyb_status = ANY($7) \
+        OR (lps.legal_name    IS NOT DISTINCT FROM EXCLUDED.legal_name \
+        AND lps.country       IS NOT DISTINCT FROM EXCLUDED.country \
+        AND lps.contact_email IS NOT DISTINCT FROM EXCLUDED.contact_email \
+        AND ($9::jsonb IS NULL OR lps.settlement_bank_account IS NOT DISTINCT FROM $9::jsonb)) \
+     RETURNING id, (xmax = 0) AS created";
+
 pub const STELLAR_ADDRESS_HOLDERS_SQL: &str =
-    "SELECT q.address, q.requested_at, l.id AS lp_id, l.legal_name \
+    "SELECT q.address, q.requested_at, l.id AS lp_id, l.legal_name, \
+     l.settlement_bank_account \
      FROM unnest($1::text[], $2::bigint[]) AS q(address, requested_at) \
      JOIN LATERAL ( \
          SELECT h.lp_id \
@@ -579,6 +591,7 @@ pub struct StellarAddressHolder {
     pub requested_at: i64,
     pub lp_id: i64,
     pub legal_name: String,
+    pub settlement_bank_account: Option<sqlx::types::Json<SettlementBankAccount>>,
 }
 
 pub const ADDRESS_HOLDER_EVM_SQL: &str = "SELECT id FROM lps WHERE evm_address = $1";

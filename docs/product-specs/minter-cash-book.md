@@ -70,13 +70,16 @@ Scope is Stellar only. An EVM chain has no minter address configured and no cash
                   "assigned_at?": "ISO", "returned_at?": "ISO", "return_ref_hash?": "hex" }],
   "wire_outs": [{ "id": 1, "status": "Pending", "lp": "G...", "lp_id?": 7, "lp_legal_name?": "...",
                   "amount": "0.000000", "requested_at": "ISO", "settled_at?": "ISO",
-                  "value_date?": "ISO", "ref_hash?": "hex", "cancelled_at?": "ISO" }],
+                  "value_date?": "ISO", "ref_hash?": "hex", "cancelled_at?": "ISO",
+                  "bank_account?": { "account_holder_name": "...", "bank_name": "...", "bank_address": null,
+                                    "account_number": null, "iban": null, "swift_bic_code": null,
+                                    "routing_number": null } }],
   "ramps":     [{ "id": 1, "status": "Open", "direction": "UsdcToBank", "amount": "0.000000",
                   "opened_at": "ISO", "open_ref_hash": "hex", "received?": "0.000000",
                   "loss?": "0.000000", "closed_at?": "ISO", "close_ref_hash?": "hex" }] }
 ```
 
-`as_of_ledger` is the last ledger the indexer has fully covered (its stored cursor holds the next ledger, so the API reports it minus one); the cursor is read before the events, so the fold never claims ledgers it lacks. A wire-out's `lp_id` and `lp_legal_name` come from the LP whose link to that Stellar address was active at the wire-out's `requested_at` (linked at or before it and not replaced by a later link of the same LP before it), on the same chain or a legacy link with no recorded chain, so a relinked LP keeps its earlier wire-outs; both are absent when no link was active. The `trustee` role is required because the response joins on-chain addresses to LP accounts. The Trustee console's Escrowed wires tab (#1763) reads `wire_ins` with `status = Escrowed` ([deposits.md](./deposits.md#escrowed-wires)).
+`as_of_ledger` is the last ledger the indexer has fully covered (its stored cursor holds the next ledger, so the API reports it minus one); the cursor is read before the events, so the fold never claims ledgers it lacks. A wire-out's `lp_id` and `lp_legal_name` come from the LP whose link to that Stellar address was active at the wire-out's `requested_at` (linked at or before it and not replaced by a later link of the same LP before it), on the same chain or a legacy link with no recorded chain, so a relinked LP keeps its earlier wire-outs; both are absent when no link was active. The `trustee` role is required because the response joins on-chain addresses to LP accounts. The Trustee console's Escrowed wires tab (#1763) reads `wire_ins` with `status = Escrowed` ([deposits.md](./deposits.md#escrowed-wires)). `bank_account` is the resolved LP's current settlement bank account in full ([kyb-lp-verification.md](./kyb-lp-verification.md#settlement-bank-account)), on `Pending` rows only, so the Trustee settles from the row; settled and cancelled rows and rows with no resolved LP omit it.
 
 `GET /v1/requests` gains an optional `wire_outs` list beside `requests`: the wallet's own wire-outs on the in-scope chains that have a minter address, as `{ chain_id, id, status, amount, requested_at, settled_at?, value_date?, ref_hash?, cancelled_at? }`, newest first. With `status=pending` only `Pending` ones are kept. The key is omitted when no in-scope chain has a minter address, so EVM-only responses are unchanged. `requests[]` gets no new `type` value.
 
