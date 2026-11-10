@@ -201,6 +201,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1373 LP Account page: load and edit profile and documents from LP API](https://github.com/eq-lab/pipeline/issues/1373) | [1373-account-page-lp-api.md](./epic-1247/1373-account-page-lp-api.md) | Initial |
 | [#1313 Backend: composite Total-Balance series for the LP home graph](https://github.com/eq-lab/pipeline/issues/1313) | [1313-composite-total-balance.md](./epic-1247/1313-composite-total-balance.md) | Initial |
 | [#1865 Backend: index PLUSD token movements and serve the LP's PLUSD balance history](https://github.com/eq-lab/pipeline/issues/1865) | [1865-plusd-balance.md](./epic-1247/1865-plusd-balance.md) | Amends #1313 |
+| [#1878 Backend: seed per-holder PLUSD balances (Stellar SAC) so plusd_balance can be enabled on testnet / mainnet](https://github.com/eq-lab/pipeline/issues/1878) | [1878-plusd-balance-seed.md](./epic-1247/1878-plusd-balance-seed.md) | Amends #1865 |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
 | [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
@@ -366,6 +367,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
+| [#1761 Trustee: Risk Council pages on the AccessManager model](https://github.com/eq-lab/pipeline/issues/1761) | [1761-risk-council-access-manager.md](./epic-1795/1761-risk-council-access-manager.md) | Initial |
+| [#1762 Trustee: Cash reporter gating and bank income booking](https://github.com/eq-lab/pipeline/issues/1762) | [1762-cash-reporter-bookings.md](./epic-1795/1762-cash-reporter-bookings.md) | Initial |
 | [#1763 Trustee: escrowed incoming wires — list, assign to lender or return](https://github.com/eq-lab/pipeline/issues/1763) | [1763-trustee-escrowed-wires.md](./epic-1795/1763-trustee-escrowed-wires.md) | Initial |
 | [#1764 Trustee: settle or cancel lender bank withdrawals with a pending wire-outs list](https://github.com/eq-lab/pipeline/issues/1764) | [1764-trustee-wire-outs.md](./epic-1795/1764-trustee-wire-outs.md) | Initial |
 | [#1765 Trustee: book USDC/USD conversions and bank charges on-chain](https://github.com/eq-lab/pipeline/issues/1765) | [1765-trustee-conversions-bank-charges.md](./epic-1795/1765-trustee-conversions-bank-charges.md) | Initial |

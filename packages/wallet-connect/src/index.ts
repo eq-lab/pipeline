@@ -190,6 +190,11 @@ export {
   scheduleReverseRepay,
   executeReverseRepay,
   readReverseRepaySchedule,
+  recordIncome,
+  buildRecordIncomeEnvelope,
+  encodeRecordIncomeArgs,
+  readRefHashSeen,
+  bankReferenceRefHash,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -207,6 +212,12 @@ export type {
   ReadReverseRepayScheduleParams,
   MinterRepayment,
   ReadMinterRepaymentParams,
+  RecordIncomeArgs,
+  RecordIncomeParams,
+  RecordIncomeResult,
+  RecordIncomeStage,
+  BuildRecordIncomeEnvelopeParams,
+  ReadRefHashSeenParams,
 } from "./stellar/contracts/minter";
 
 export {
@@ -293,6 +304,24 @@ export type {
   ReadOperationScheduleParams,
   BuildRelayEnvelopeParams,
 } from "./stellar/contracts/accessManager";
+
+export {
+  encodeRiskCouncilArgs,
+  relayRiskCouncil,
+  readRiskCouncilSchedule,
+  riskCouncilReasonHash,
+  readLoanMoney,
+  readLoanChainState,
+} from "./stellar/contracts/riskCouncil";
+export type {
+  RiskCouncilCall,
+  RiskCouncilClosureReason,
+  RiskCouncilRelayParams,
+  ReadRiskCouncilScheduleParams,
+  LoanMoney,
+  LoanChainState,
+  ReadLoanParams,
+} from "./stellar/contracts/riskCouncil";
 
 export {
   minterRecoveryAbi,

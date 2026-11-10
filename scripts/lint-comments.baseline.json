@@ -755,34 +755,6 @@
     "header": 8,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-risk-council-escalate-page.test.tsx": {
-    "header": 20,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/routes/-risk-council-escalate.test.ts": {
-    "header": 12,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council-reterm-page.test.tsx": {
-    "header": 11,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/routes/-risk-council-reterm.test.ts": {
-    "header": 5,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council-writedown-page.test.tsx": {
-    "header": 11,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/routes/-risk-council-writedown.test.ts": {
-    "header": 4,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council.index.test.tsx": {
-    "header": 5,
-    "nodeIds": 0
-  },
   "packages/trustee/src/routes/-useLoanDetail.test.ts": {
     "header": 9,
     "nodeIds": 0

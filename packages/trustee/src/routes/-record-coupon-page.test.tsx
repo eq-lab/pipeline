@@ -81,6 +81,15 @@ vi.mock("@/api/useRecordPayment", () => ({
   useRecordPayment: () => mockRecord,
 }));
 
+const { mockRole } = vi.hoisted(() => ({
+  mockRole: { reason: null as string | null },
+}));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: (_fn: string, enabled: boolean) => ({
+    reason: enabled ? mockRole.reason : null,
+  }),
+}));
+
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
@@ -223,6 +232,7 @@ beforeEach(() => {
   mockRecord.isPending = false;
   mockRecord.error = null;
   mockRecord.stage = null;
+  mockRole.reason = null;
 });
 
 describe("Record Coupon route — ready state", () => {
@@ -243,6 +253,56 @@ describe("Record Coupon route — ready state", () => {
     mockWaterfall(undefined);
     renderRoute();
     expect(screen.getByTestId("record-coupon-submit")).toBeDisabled();
+  });
+
+  it("disables the submit and shows the Cash reporter reason for a wallet without the role", async () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+      target: { value: "45000" },
+    });
+    expect(screen.getByTestId("record-coupon-role-blocked")).toHaveTextContent(
+      "Only the Cash reporter can book repayments.",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(screen.getByTestId("record-coupon-submit")).toBeDisabled();
+  });
+
+  it("shows no role reason for a Cash reporter wallet", () => {
+    renderRoute();
+    expect(
+      screen.queryByTestId("record-coupon-role-blocked"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows only the Stellar-only reason on an EVM loan", () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    const RouteWithSearch = Route as unknown as {
+      useSearch: () => { chain: number };
+    };
+    const previous = RouteWithSearch.useSearch;
+    RouteWithSearch.useSearch = () => ({ chain: 560048 });
+    mockUseLoanBook.mockReturnValue({
+      data: {
+        ...LOAN_BOOK_RESPONSE,
+        loans: [{ ...LOAN_BOOK_RESPONSE.loans[0]!, chain_id: 560048 }],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    try {
+      renderRoute();
+      expect(
+        screen.getByTestId("record-coupon-onchain-blocked"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("record-coupon-role-blocked"),
+      ).not.toBeInTheDocument();
+    } finally {
+      RouteWithSearch.useSearch = previous;
+    }
   });
 
   it("records the payment on-chain with the built RepaymentData split (#882)", async () => {

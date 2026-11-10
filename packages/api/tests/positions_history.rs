@@ -56,6 +56,8 @@ fn composite(
             escrow: None,
             escrow_raw: None,
             plusd: None,
+            plusd_from: None,
+            blank_total_before: false,
             share_decimals: 0,
             asset_decimals: 6,
         },

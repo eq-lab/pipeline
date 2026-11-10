@@ -19,7 +19,7 @@ All checks use the real API on staging (Stellar testnet), no localStorage mocks.
 - On the API minter `CD2LPGLX…`, USD → USDC and bank charges fail with "The minter's booked bank cash is below this amount.", because `bank_cash` is 0. `CAPL5WN3…` holds booked cash (734,122).
 - On `CAPL5WN3…`, `record_expense` and any close with a shortfall fail inside the vault's `pull` with the vault's own `#2`. `#2` is not mapped, so the dialog shows the generic message and "View details" shows the raw error. A close with the full amount does not touch the vault and should succeed.
 - The app signs against `VITE_STELLAR_YIELD_MINTER_ID`. If the cash book reports a different minter, every action is disabled with "The app's minter differs from the server's cash-book minter." This is an environment alignment for ops, not a defect. The pool summary still renders and labels its source minter.
-- The pool summary is read on-chain from the app's minter because the cash book does not serve `total_assets` (TD-178). Recorded bank charges are not listed by the cash book, so their notice points to the Audit Log.
+- The pool summary is read on-chain from the app's minter because the cash book does not serve `total_assets` (TD-180). Recorded bank charges are not listed by the cash book, so their notice points to the Audit Log.
 
 ---
 

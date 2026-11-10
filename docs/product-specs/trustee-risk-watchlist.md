@@ -32,7 +32,7 @@ When a loan's maturity date passes, it shows as **Past Due**. This is a **derive
 Past Due is not Watchlist, and it is not Default — it points the Trustee to one of two existing actions:
 
 - **Record the payment** — if the money arrived and simply has not been recorded yet, go record the coupon / repayment. Recording is still allowed; the on-chain status is unchanged.
-- **Escalate to default** — if the money genuinely did not arrive, escalate the loan to Default via the Risk Council (24h timelock). This is the destructive, hard-to-reverse path, and it carries its own confirmation on the escalation flow.
+- **Escalate to default** — if the money genuinely did not arrive, escalate the loan to Default via the Risk Council. This is the destructive, hard-to-reverse path, and it carries its own confirmation on the escalation flow.
 
 The Trustee never flips a status to "lock" a Past Due loan; the response is always one of those two actions. The loan card surfaces both directly so the choice is obvious.
 
@@ -40,13 +40,8 @@ The Trustee never flips a status to "lock" a Past Due loan; the response is alwa
 
 Moving a loan from Watchlist back to Performing uses the same Update lifecycle form — one button, instant, no timelock. The exit is as prominent in the UI as the entry; otherwise loans accumulate in Watchlist and are never cleared.
 
-## Escalation (Default and write-down close)
+## Escalation (Default, write-down and close)
 
-The Trustee cannot set Default or close a loan with a loss directly — ever. Both are **RISK_COUNCIL** proposals: a 3-of-5 Safe, a 24h timelock, GUARDIAN-cancelable. The Trustee only **assembles** the proposal:
+The Trustee cannot declare Default, cure a default, write a loan down or close it with a loss — ever. The Trustee **escalates off-chain**: the loan card's **Escalate to Risk Council** action opens the evidence page (ledger, CCR trend, portfolio impact, on-chain status).
 
-1. From the loan card, an **Escalate to council** action.
-2. A **Proposal builder** — a form where the Trustee enters the proposal's **name** and **text**.
-3. A **timer** — the 24h timelock countdown once submitted.
-4. Display in the **Risk Council** section, styled per the Figma mockups.
-
-The proposal the Trustee raises drives the council's on-chain action (`setDefault`, `amendEconomics`, or a write-down `closeLoan`); the Trustee never executes it. See the Type 3 flows in the Trustee Dashboard spec for the underlying calls and guardrails.
+The **Risk Council** acts through the access manager. It declares Default on the loan registry at once (scheduled while #1756 is open), and every other Risk Council action (amend economics, write down, close a defaulted loan, cure) waits 24 hours, which the Guardian or the Admin can cancel. The console shows the Risk Council's action pages, enabled only for a wallet whose on-chain `can_call` allows them; a Trustee-only wallet sees them read-only. See the Type 3 flows in the Trustee Dashboard spec and [Trustee flows](../frontend/trustee-flows.md#risk-council-actions) for the calls and gates.

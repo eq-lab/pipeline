@@ -11,7 +11,8 @@ use pipeline_api::minter_cash_book::{build_wire_outs, wire_out_escrow_steps, wir
 use pipeline_api::routes::pnl::PositionHistoryItem;
 use pipeline_api::total_balance::{
     build_composite_history, composite_window_start, fold_steps, fold_term, plusd_holder_key,
-    plusd_steps, term_outcome, term_outcomes, CompositeInputs, CompositeSeries, WireTerm,
+    plusd_steps, term_outcome, term_outcomes, CompositeInputs, CompositeSeries, PlusdTerm,
+    WireTerm,
 };
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::{MinterEventRow, PlusdStepRow};
@@ -52,10 +53,19 @@ fn price(secs: i64, p: &str) -> SharePriceBucket {
 
 fn step_row(at: i64, amount: Option<&str>, incoming: bool, outgoing: bool) -> PlusdStepRow {
     PlusdStepRow {
+        block_number: at,
         block_timestamp: at,
         amount: amount.map(str::to_owned),
         incoming,
         outgoing,
+    }
+}
+
+fn plain_term(folded: Vec<(DateTime<Utc>, i128)>) -> PlusdTerm {
+    PlusdTerm {
+        folded,
+        from: None,
+        blank_total_before: false,
     }
 }
 
@@ -79,6 +89,8 @@ fn build(
             escrow,
             escrow_raw: None,
             plusd,
+            plusd_from: None,
+            blank_total_before: false,
             share_decimals: 6,
             asset_decimals,
         },
@@ -269,6 +281,8 @@ fn a_plusd_only_wallet_gets_a_dense_series_from_its_first_movement() {
             escrow: None,
             escrow_raw: None,
             plusd: Some(&plusd),
+            plusd_from: None,
+            blank_total_before: false,
             share_decimals: 6,
             asset_decimals: 7,
         },
@@ -447,6 +461,8 @@ fn the_evm_total_stays_continuous_through_request_settle_and_cancel() {
                 escrow: Some(&escrow),
                 escrow_raw: Some(&raw),
                 plusd: Some(&plusd),
+                plusd_from: None,
+                blank_total_before: false,
                 share_decimals: 6,
                 asset_decimals: 6,
             },
@@ -478,6 +494,8 @@ fn a_wire_out_request_never_moves_the_total_by_a_rounding_step() {
             escrow: Some(&escrow),
             escrow_raw: Some(&escrow_raw),
             plusd: Some(&plusd_after),
+            plusd_from: None,
+            blank_total_before: false,
             share_decimals: 6,
             asset_decimals: 7,
         },
@@ -509,16 +527,12 @@ fn a_failed_plusd_fold_does_not_stretch_the_window() {
 #[test]
 fn a_failing_plusd_fold_is_not_other_data_for_a_failed_wire_out_read() {
     let wire: anyhow::Result<Option<WireTerm>> = Err(anyhow::anyhow!("db down"));
-    let plusd = Ok(fold_term(
-        vec![(unix(0), -5)],
-        Interval::Daily,
-        1,
-        "plusd_balance",
-    ));
+    let plusd =
+        Ok(fold_term(vec![(unix(0), -5)], Interval::Daily, 1, "plusd_balance").map(plain_term));
     assert!(term_outcomes(false, wire, plusd).is_err());
 
     let wire: anyhow::Result<Option<WireTerm>> = Err(anyhow::anyhow!("db down"));
-    let sound = Ok(Some(folded(&[(unix(0), 5)])));
+    let sound = Ok(Some(plain_term(folded(&[(unix(0), 5)]))));
     let (wire, plusd) = term_outcomes(false, wire, sound).unwrap();
     assert!(wire.is_none() && plusd.is_some());
 

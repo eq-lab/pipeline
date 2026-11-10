@@ -321,6 +321,15 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Suggested fix:** Hold the `onSubmit` promise open with a deferred resolver, assert disabled, then resolve and assert re-enabled.
 - **Resolved:** 2026-11-03 by #1837 — the real race was the post-resolve check: `findByRole("Save")` matched the already-present button immediately, before the `.finally(() => setIsSubmitting(false))` state update flushed. The test now resolves the deferred promise inside `act` and asserts re-enable via `waitFor`; `AddEmailModal.tsx` is unchanged.
 
+### BUG-32: Testnet minter lacks the PLUSD `MINTER` role — every minter mint fails at simulation
+- **Date:** 2026-11-09
+- **Location:** Testnet deployment, AccessManager `CDP7TUNBGIKDBGEUZCA6WEDVJ7BTJFXNIPQF6HWEDV7SAAS7VN75WHTW` (`VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`), minter `CAPL5WN3FAUAD3TTUNU7NTEMKCW24D7GM7UXJMNYRS6BHO3WTAJKAIFK`.
+- **Symptom:** `record_wire_in`, `record_income` and the interest/fee leg of `repay` fail at simulation with the AccessManager's `Error(Contract, #1)` after the Cash reporter role check passes.
+- **Root cause:** `get_target_function_role(PLUSD, mint) = MINTER` and `can_call(minter, PLUSD, mint) = {immediate: false}`: the minter has not been granted `MINTER` on PLUSD.
+- **Impact:** The Trustee app's Mint PLUSD, Bank income and Record Coupon / Repayment bookings cannot complete on testnet (found while verifying #1762). The role gating and the `ref_hash_seen` pre-check are unaffected.
+- **Workaround:** None in the app; ops must grant `MINTER` on PLUSD to the minter.
+- **Suggested fix:** Grant the role on the AccessManager, then re-run the #1762 user stories end to end.
+
 ### BUG-33: Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0 [FIXED 2026-11-09 / #1765]
 - **Tracked:** #1765 — originated in the unmerged #1763 and #1764 PRs; found while planning #1765.
 - **Date:** 2026-11-09

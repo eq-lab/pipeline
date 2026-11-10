@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useRecordWireIn, toValueDateSeconds } from "./useRecordWireIn";
 
 const recordWireInMock = vi.fn();
+const readRefHashSeenMock = vi.fn();
 const signTransactionMock = vi.fn();
 let stellarWalletState = {
   address: "GCALLER0000000000000000000000000000000000000000000000000",
@@ -15,6 +16,7 @@ let stellarWalletState = {
 
 vi.mock("@pipeline/wallet-connect", () => ({
   recordWireIn: (...args: unknown[]) => recordWireInMock(...args),
+  readRefHashSeen: (...args: unknown[]) => readRefHashSeenMock(...args),
   useStellarWallet: () => stellarWalletState,
 }));
 
@@ -63,6 +65,8 @@ beforeEach(() => {
     signTransaction: signTransactionMock,
   };
   recordWireInMock.mockReset();
+  readRefHashSeenMock.mockReset();
+  readRefHashSeenMock.mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -106,6 +110,26 @@ describe("useRecordWireIn", () => {
       ENV_CONFIGURED.STELLAR_NETWORK_PASSPHRASE,
     );
     expect(call.signTransaction).toBe(signTransactionMock);
+  });
+
+  it("refuses a consumed ref_hash before recordWireIn is called", async () => {
+    readRefHashSeenMock.mockResolvedValueOnce(true);
+    const { result } = renderHook(() => useRecordWireIn(), {
+      wrapper: makeWrapper(),
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync(INPUT)).rejects.toThrow(
+        /^RefHashSeen/,
+      );
+    });
+    expect(readRefHashSeenMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        minterId: ENV_CONFIGURED.STELLAR_YIELD_MINTER_ID,
+        refHash: INPUT.refHash,
+      }),
+    );
+    expect(recordWireInMock).not.toHaveBeenCalled();
   });
 
   it("invalidates the deposits and LP queries on success", async () => {
