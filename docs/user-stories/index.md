@@ -201,6 +201,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1373 LP Account page: load and edit profile and documents from LP API](https://github.com/eq-lab/pipeline/issues/1373) | [1373-account-page-lp-api.md](./epic-1247/1373-account-page-lp-api.md) | Initial |
 | [#1313 Backend: composite Total-Balance series for the LP home graph](https://github.com/eq-lab/pipeline/issues/1313) | [1313-composite-total-balance.md](./epic-1247/1313-composite-total-balance.md) | Initial |
 | [#1865 Backend: index PLUSD token movements and serve the LP's PLUSD balance history](https://github.com/eq-lab/pipeline/issues/1865) | [1865-plusd-balance.md](./epic-1247/1865-plusd-balance.md) | Amends #1313 |
+| [#1314 Backend: LP wire-ins on the activity feed](https://github.com/eq-lab/pipeline/issues/1314) | [1314-lp-wire-ins-activity.md](./epic-1247/1314-lp-wire-ins-activity.md) | Initial |
 | [#1878 Backend: seed per-holder PLUSD balances (Stellar SAC) so plusd_balance can be enabled on testnet / mainnet](https://github.com/eq-lab/pipeline/issues/1878) | [1878-plusd-balance-seed.md](./epic-1247/1878-plusd-balance-seed.md) | Amends #1865 |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |

@@ -2296,7 +2296,7 @@ line, whichever section it lands in.
 
 - **Date:** 2026-11-05
 - **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
-- **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
+- **Gap:** The cash book, the LP `wire_ins` / `wire_outs` lists and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
 - **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is served only when `CHAIN_<id>_EVM_API_PLUSD_ADDRESS` is set (#1865), with the minter inferred from the wallet's latest `WireOutRequested` row; a minter redeploy hides earlier minters' requests until an EVM API minter key exists.
 

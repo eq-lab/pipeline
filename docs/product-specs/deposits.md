@@ -49,6 +49,8 @@ The `/deposit` page shows a "Network fee" row in the Details section of the depo
 
 The deployed `requestDeposit` / `claimDeposit` surface, `Request` struct, events and voucher endpoint are in [evm-requests-queue.md](./evm-requests-queue.md). The designed `IDepositManager` interface is in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
 
+On Stellar, an LP's minted bank wires (`WireIn` direct to the LP, or escrowed and then `WireInAssigned`) are listed under an optional `wire_ins` key of `GET /v1/requests`, present only when an in-scope chain has a minter address; see [minter-cash-book.md](./minter-cash-book.md).
+
 ---
 
 ## Data Model

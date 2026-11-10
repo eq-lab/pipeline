@@ -762,6 +762,29 @@ pub const LP_WIRE_OUT_EVENTS_SQL: &str = "SELECT
        )
      ORDER BY c.block_number, c.log_index";
 
+pub const LP_WIRE_IN_EVENTS_SQL: &str = "WITH assigned AS (
+        SELECT params->'id' AS id
+          FROM contract_logs
+         WHERE chain_id = $1
+           AND contract_address = $2
+           AND event_name = 'WireInAssigned'
+           AND params @> jsonb_build_object('receiver', $3::text))
+     SELECT event_name, block_number, log_index, block_timestamp, params
+       FROM contract_logs
+      WHERE chain_id = $1
+        AND contract_address = $2
+        AND (
+             (event_name IN ('WireIn', 'WireInAssigned')
+              AND params @> jsonb_build_object('receiver', $3::text))
+          OR (event_name = 'WireIn'
+              AND params @> ANY(ARRAY(
+                  SELECT jsonb_build_object('id', (id #>> '{}')::bigint) FROM assigned
+                   WHERE id #>> '{}' ~ '^[0-9]{1,10}$'
+                  UNION ALL
+                  SELECT jsonb_build_object('id', id #>> '{}') FROM assigned)))
+        )
+      ORDER BY block_number, log_index";
+
 pub const LP_WIRE_OUT_EVENTS_INFERRED_MINTER_SQL: &str = "WITH minter AS (
          SELECT contract_address
            FROM contract_logs
@@ -905,6 +928,21 @@ impl ContractLogsRepo {
             .bind(chain_id)
             .bind(minter)
             .bind(lp)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_lp_wire_in_events(
+        &self,
+        chain_id: i64,
+        minter: &str,
+        wallet_strkey: &str,
+    ) -> anyhow::Result<Vec<MinterEventRow>> {
+        let rows = sqlx::query_as::<_, MinterEventRow>(LP_WIRE_IN_EVENTS_SQL)
+            .bind(chain_id)
+            .bind(minter)
+            .bind(wallet_strkey)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows)
