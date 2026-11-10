@@ -23,7 +23,7 @@ use crate::indexer::loan_metadata::{
     BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, MutableDataResolver,
     MutableLoanDataView, RepaymentDataView,
 };
-use crate::indexer::stellar::rpc::StellarRpc;
+use crate::indexer::stellar::rpc::{SimulateResponse, StellarRpc};
 use crate::stellar::scval::i128_from_parts;
 use crate::stellar::tx::{build_invoke_envelope, envelope_to_base64};
 
@@ -77,12 +77,12 @@ impl StellarLoanRegistryReader {
     }
 }
 
-pub(crate) async fn simulate_view(
+pub(crate) async fn simulate_call(
     rpc: &StellarRpc,
     contract_id: &str,
     fn_name: &str,
     args: Vec<ScVal>,
-) -> Result<(ScVal, u64)> {
+) -> Result<SimulateResponse> {
     let contract = ContractStrkey::from_string(contract_id)
         .with_context(|| format!("StellarLoanRegistryReader: invalid contract id {contract_id}"))?;
 
@@ -91,8 +91,10 @@ pub(crate) async fn simulate_view(
         build_invoke_envelope(&dummy_source, 0, 0, &contract, fn_name, args, vec![], None);
     let envelope_b64 = envelope_to_base64(&envelope)?;
 
-    let sim = rpc.simulate_transaction(&envelope_b64).await?;
+    rpc.simulate_transaction(&envelope_b64).await
+}
 
+pub(crate) fn simulate_value(sim: &SimulateResponse, fn_name: &str) -> Result<ScVal> {
     if let Some(err) = &sim.error {
         anyhow::bail!("simulateTransaction({fn_name}) error: {err}");
     }
@@ -105,8 +107,18 @@ pub(crate) async fn simulate_view(
     let xdr_bytes = STANDARD
         .decode(first.return_value_xdr_base64.as_bytes())
         .context("decode return_value_xdr_base64")?;
-    let value = ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none())
-        .context("decode ScVal from return value XDR")?;
+    ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none())
+        .context("decode ScVal from return value XDR")
+}
+
+pub(crate) async fn simulate_view(
+    rpc: &StellarRpc,
+    contract_id: &str,
+    fn_name: &str,
+    args: Vec<ScVal>,
+) -> Result<(ScVal, u64)> {
+    let sim = simulate_call(rpc, contract_id, fn_name, args).await?;
+    let value = simulate_value(&sim, fn_name)?;
     Ok((value, sim.latest_ledger))
 }
 

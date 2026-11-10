@@ -17,6 +17,7 @@ pub mod password;
 pub mod password_reset;
 pub mod routes;
 pub mod security_state;
+pub mod total_balance;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -89,6 +90,8 @@ pub struct AppState {
     pub withdrawal_queue_addresses: HashMap<i64, String>,
     pub pocket_addresses: HashMap<i64, String>,
     pub security_registry_addresses: HashMap<i64, String>,
+    pub plusd_addresses: HashMap<i64, String>,
+    pub security_marks: shared::security_marks::MarkSettings,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.

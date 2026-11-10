@@ -235,8 +235,9 @@ view-model, the per-row mapping, CCR classification, and the client-side status 
 
 - `useLoanBook(chainId?)` (`api/`) — React Query hook over `GET /v1/loan-book`, 30 s poll. No
   `chain_id` by default (#1537: every configured chain, `summary` server-computed over the union,
-  each row carrying its own `chain_id`); the Loans page's **chain filter** (All chains / Stellar /
-  `<EVM chain>`, `TARGET_CHAINS`) passes a configured id so the narrowing — and the summary tiles —
+  each row carrying its own `chain_id`); the Loans page's **chain filter** ("All chains" plus the
+  served `TARGET_CHAINS` from `useServedTargetChains`, #1667 — disabled with only "All chains"
+  while loading, env list on request failure) passes a configured id so the narrowing — and the summary tiles —
   stay server-side (no client-side recomputation, [[no-frontend-computed-metrics]]). Query key
   `["loan-book", chainId ?? "all"]`; `invalidateQueries({ queryKey: ["loan-book"] })` prefixes hit
   every variant. Loan ids repeat across chains, so the row key is `` `${chain_id}:${loan_id}` ``
@@ -1381,14 +1382,22 @@ complete `SubmitLoanRequest` contract of `POST /v1/loan-book/loan` (mirrored fie
 No Figma exists for this screen (product decision on #1100) — it reuses the Record
 Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
 
-- **Target chain (#1536):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
-  `FieldInput` renders a select instead of a text input when set) listing this deployment's two
-  configured chains from `TARGET_CHAINS` — Stellar (`ENV.STELLAR_CHAIN_ID`, the default) and the
-  EVM chain (`ENV.EVM_CHAIN_ID`, labelled by name). The value is **not** part of the body: the
-  builder returns `{ chainId, input }` and `useSubmitLoan` posts to
-  `POST /v1/loan-book/loan?chain_id=<id>` (`SubmitLoanVariables`). An id the API does not have
-  in `CHAINS` is a `400` rendered inline like any other rejection. The `to` label reads "Mint to
-  (address on the target chain)" — no client-side address-format check (the split below).
+- **Target chain (#1536, #1667):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
+  `FieldInput` renders a select instead of a text input when set). Its options are
+  `TARGET_CHAINS ∩ GET /v1/chains` (`useServedTargetChains`, `api/useChains.ts`; query key
+  `["chains"]`, `staleTime: Infinity`, `retry: false`, public endpoint — not gated on a session):
+  Stellar (`ENV.STELLAR_CHAIN_ID`) and the EVM chain (`ENV.EVM_CHAIN_ID`, labelled by name), kept
+  in `TARGET_CHAINS` order, each only when the API serves it. Chains the API serves that are not
+  in `TARGET_CHAINS` are not offered (no label source). The default is the served
+  `default_chain_id` when it is among the options, else the first option. The select is disabled
+  with no options while the request is pending; on request failure it falls back to the env
+  `TARGET_CHAINS` with the Stellar default. An empty intersection renders an empty disabled
+  select and submit fails client-side with "Required." on `target_chain_id`. The value is **not**
+  part of the body: the builder returns `{ chainId, input }` and `useSubmitLoan` posts to
+  `POST /v1/loan-book/loan?chain_id=<id>` (`SubmitLoanVariables`). An id the API does not serve is
+  a `400`, now reachable only on the fallback path, rendered inline via the #1602 copy. The `to`
+  label reads "Mint to (address on the target chain)" — no client-side address-format check (the
+  split below).
 - **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
   Loan & metadata (`target_chain_id`, `to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
   `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
@@ -1406,7 +1415,7 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   **Required paths absent from the JSON are listed in a warning banner** while the rest
   autofills (the #1100 example payload warns exactly the `collateral_valuation.*` +
   `fee_schedule.*` paths). A `target_chain_id` in the JSON sets the selector when it is one of
-  the configured ids; otherwise the selector keeps its current value and is never listed as
+  the offered (served) ids; otherwise the selector keeps its current value and is never listed as
   missing (#1536). Malformed JSON or a non-object root keeps the dialog open with an
   inline parse error and touches nothing — a single JSON object is required (resolved open
   question: wrapped/array fixture forms are not accepted).
@@ -1662,7 +1671,7 @@ Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence st
 - Generic `toUserError` plus local AM copy (`RISK_COUNCIL_AM_ERROR_COPY`): `execute:6` nothing scheduled, `execute:7` not ready, `execute:8` expired ("Schedule it again"), `schedule:9` already scheduled. Local because Soroban codes collide across contracts.
 - Config: `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives "On-chain Risk Council actions are not configured for this environment." The Risk Council wallet must also be a trustee in the API's `auth_users`, or the pages cannot be opened (deployment fact). Until #1756 lands the whole role is delayed on the current deployment, so `set_default` takes the scheduled path there.
 - Contract preconditions are not readable from this repo; the UI gates follow the docs (one constant per function) and the contract stays the authority. Simulation errors surface through `toUserError` and the AM copy.
-- Not in the app: cancelling a scheduled operation (`AM.cancel`, TD-159), and listing operations scheduled elsewhere (TD-174).
+- Not in the app: cancelling a scheduled operation (`AM.cancel`, TD-159), and listing operations scheduled elsewhere (TD-177).
 
 ## Overview page
 
@@ -1961,8 +1970,9 @@ trace: `docs/exec-plans/completed/issue-786-trustee-app-shell.md` "Decisions" + 
   reliably "active wins". Instead the base className carries only layout (no color/background);
   active/inactive surface + text color are mutually exclusive, only one ever present.
 - **Count badge slot** renders nothing unless a backend-served count is supplied on the nav item
-  (`TrusteeNavItem.badgeCount`) — there is no backend source for the Figma mock's 1/4/3 today
-  (decision #786-2, [[no-frontend-computed-metrics]]).
+  (`TrusteeNavItem.badgeCount`). The backend source is `GET /v1/attention-counts` (#1864,
+  [spec](../product-specs/trustee-attention-counts.md)); wiring it is #1350. Origination and Loans
+  read the combined sections; Cash Management reads the session chain's `chains[]` entry `count` (decision #786-2, [[no-frontend-computed-metrics]]).
 - **Account chip**, pinned to the bottom: avatar circle, truncated address, "Trustee · connected"
   subtitle, and a `⋯` affordance opening a small popover menu with "Sign out" (decision #786-4),
   wired to `useTrusteeSession().signOut`. Renders nothing when `address` is undefined (never the
@@ -2063,9 +2073,9 @@ table cell reflows the row.
 `docs/product-specs/trustee-dashboard.md` (spec #453): Overview, Origination, Loans, Cash
 Management, Risk Council, Audit Log. This replaced the #777 scaffold's `TRUSTEE_FLOW_TYPES`
 (Type-1..4 taxonomy) — the Figma nav is the real product navigation (#786). `badgeCount` is
-intentionally unpopulated: there is no backend source for the counts in the Figma mock (1/4/3),
-and per [[no-frontend-computed-metrics]] the badge slot renders only when a count is supplied
-(see [Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)); wiring a real count is
+unpopulated until #1350: the backend source now exists (`GET /v1/attention-counts`), and per
+[[no-frontend-computed-metrics]] the badge slot renders only when a count is supplied
+(see [Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)); the remaining wiring is
 tracked in `docs/exec-plans/tech-debt-tracker.md`.
 
 ### Auth endpoint wrappers (`api/auth.ts`)

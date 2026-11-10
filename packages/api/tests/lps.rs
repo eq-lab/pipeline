@@ -1016,3 +1016,20 @@ fn the_chosen_address_reaches_the_rendered_email() {
     );
     assert_eq!(email.to, ACCOUNT_EMAIL);
 }
+
+// ── Pending bank deposits ────────────────────────────────────────────────────
+
+#[test]
+fn lp_response_exposes_pending_bank_deposits_as_a_nullable_string() {
+    let doc = openapi_json();
+    let prop = &doc["components"]["schemas"]["LpResponse"]["properties"]["pending_bank_deposits"];
+    assert!(has_type(prop, "string"), "got {prop}");
+    assert!(has_type(prop, "null"), "got {prop}");
+}
+
+#[test]
+fn lp_summary_does_not_carry_pending_bank_deposits() {
+    let doc = openapi_json();
+    let props = &doc["components"]["schemas"]["LpSummary"]["properties"];
+    assert!(props.get("pending_bank_deposits").is_none());
+}

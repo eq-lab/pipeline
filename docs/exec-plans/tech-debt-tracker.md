@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-175.**
+**Next free number: TD-178.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -437,15 +437,14 @@ line, whichever section it lands in.
 - **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
 - **Gap:** The Figma design (node `4116:8855`) shows count badges on Origination (1), Loans
   (4), and Cash Management (3) — presumably counts of pending/actionable items per section.
-  There is no backend endpoint serving these counts today, so per the project rule [no
-  frontend-computed metrics] issue #786 omits the numbers entirely rather than deriving them
-  client-side. The badge slot (`NavBadge`) is built and renders nothing when
+  The backend source now exists (`GET /v1/attention-counts`, #1864); the frontend wiring is #1350.
+  Until then issue #786 omits the numbers entirely rather than deriving them client-side. The badge slot (`NavBadge`) is built and renders nothing when
   `TrusteeNavItem.badgeCount` is `undefined`, ready to light up once a real count exists.
 - **Impact:** The sidebar under-represents the Figma mock (no badges) until a backend source
   lands; no functional impact, just a deferred visual/product feature.
-- **Suggested fix:** When a backend endpoint for per-section pending-item counts exists,
-  populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS` entries (likely via a query hook
-  passed into `TrusteeSidebar`/`NavItem`, not a hardcoded value).
+- **Suggested fix:** In #1350, populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS`
+  entries from `GET /v1/attention-counts` (via a query hook passed into
+  `TrusteeSidebar`/`NavItem`, not a hardcoded value).
 
 ### TD-37: Trustee sidebar has no mobile/responsive behavior
 
@@ -570,7 +569,9 @@ line, whichever section it lands in.
   `packages/frontend/src/components/dashboard/originationRow.ts` (`mapSubmissionToRow`, issue
   #814), and the `formatFullUsd` (in `packages/frontend/src/utils/formatCompactUsd.ts`) /
   `formatMaturityDate` / `formatSubmittedDate` (`packages/frontend/src/utils/formatDate.ts`)
-  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`.
+  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`;
+  further pair (issue #1667): `packages/frontend/src/api/useChainServed.ts` ↔
+  `packages/trustee/src/api/useChains.ts` (`ChainItem` / `ChainsResponse` types and the `["chains"]` query).
 - **Gap:** The Trustee Origination page and the LP Protocol Dashboard's In-Origination tab (#814)
   both read `GET /v1/loan-book/submissions` and now render the **same eight-column field set**
   (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), but the two apps
@@ -1654,6 +1655,7 @@ line, whichever section it lands in.
   on-chain outcomes do not fit one flag. A nullable `minted_at` plus a `returned_at`, or a status
   column, both work; the choice belongs with whatever first needs to display it.
 - **Update (#1480):** `WireInReturned` is now indexed; the remaining gap is only the deposit's terminal state in `lp_bank_deposits` / the matching phase.
+- **Update (#1285):** the LP pending-deposit read excludes returned wires at read time. A deposit the Trustee returned off-chain without ever minting still reads as pending; a Trustee "mark returned" write is the follow-up.
 
 ---
 
@@ -2216,7 +2218,6 @@ line, whichever section it lands in.
 - **Gap:** The repayment recovery dialog (#1711) and the Risk Council pages (#1761: `amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, `cure`, and `set_default` while it is delayed) schedule and execute through `AM.schedule` / `AM.execute` but have no `AM.cancel`. Cancelling is the scheduler, the Guardian or the Admin only.
 - **Impact:** A wrongly scheduled reversal or Risk Council operation can only be left to expire (7 days after its ready time) or cancelled outside the app.
 - **Suggested fix:** Add a `cancel` mode to the AccessManager relay and a "Cancel scheduled reversal" action gated on the wallet's guardian or admin role, while the delayed path is still in use (it disappears once #1756 makes `reverse_repay` immediate).
-
 ### TD-160: EVM vouchers carry no deadline, so the 24-hour voucher validity is unenforced on EVM
 
 - **Date:** 2026-10-29
@@ -2296,7 +2297,7 @@ line, whichever section it lands in.
 - **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
 - **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
-- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is served only when `CHAIN_<id>_EVM_API_PLUSD_ADDRESS` is set (#1865), with the minter inferred from the wallet's latest `WireOutRequested` row; a minter redeploy hides earlier minters' requests until an EVM API minter key exists.
 
 ### TD-170: Pocket `complete` is not verified against the key having stayed configured
 
@@ -2322,15 +2323,42 @@ line, whichever section it lands in.
 - **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
 - **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
 
-### TD-173: Per-loan `contract_logs` reads filter on JSON `params` with no supporting index
+### TD-173: Per-loan `contract_logs` reads written as `params->>'x' = …` cannot use the GIN index
 
 - **Date:** 2026-11-06
 - **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`
-- **Gap:** `contract_logs` has only the `(chain_id, contract_address, block_number, log_index)` unique index and `idx_contract_logs_event` (`20260428000001_init.sql`). Filters on `params->>'loan_id'` or `params @> jsonb_build_object('loan_id', …)` therefore scan every row of the scoped contract(s); the `@>` form written in #1780 only pays off once a GIN index exists.
-- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow linearly with each contract's log count.
-- **Suggested fix:** an additive migration with `CREATE INDEX CONCURRENTLY … ON contract_logs USING GIN (params jsonb_path_ops)` or an expression index on `(chain_id, contract_address, (params->>'loan_id'))`, then align the per-loan queries with whichever index is chosen; measure on pipeline-test first.
+- **Gap:** `contract_logs.params` has a GIN index, `idx_contract_logs_params` (`20260521000001_contract_logs_jsonb.sql`), but it only serves containment (`params @> jsonb_build_object(…)`). Filters and joins written as `params->>'loan_id' = …` (for example the correlated `v.params->>'loan_id' = r.params->>'loan_id'` in `LIST_SALE_REPAYMENTS_SQL`) cannot use it and scan the scoped contract(s).
+- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow with each contract's log count where they are not written with `@>`.
+- **Suggested fix:** rewrite those predicates with `@>` (`LOAN_LOG_WATERMARKS_SQL` already does), and only add an expression index if a correlated join still cannot use the GIN index; measure on pipeline-test first.
+- **Also:** the share-price reads in `position_repo.rs` (incl. #1313's closing-price query) filter `LOWER(vault_address) = …`, which keeps `idx_share_prices_latest` from serving the vault column; same cleanup.
 
-### TD-174: Risk Council hub cannot list operations scheduled elsewhere
+### TD-174: Attention counts are recomputed per request over full minter and transfer history
+
+- **Date:** 2026-11-09
+- **Location:** `packages/api/src/routes/attention_counts.rs`, `ContractLogsRepo::list_minter_events`, `ContractLogsRepo::list_asset_transfers`, `LpBankDepositRepo::count_pending`
+- **Gap:** `GET /v1/attention-counts` re-reads each in-scope chain's whole minter cash-book event history and `AssetTransfer` list, plus an `lp_bank_deposits` / `contract_logs` anti-join, on every call. Nothing is materialised or cached. The pending bank deposit count is also chain-agnostic because `lp_bank_deposits` has no `chain_id` (TD-117).
+- **Impact:** The Trustee sidebar polls this on every page (#1350), so the cost grows with history and with open Trustee sessions.
+- **Suggested fix:** Materialise the counts (or the folded minter and ramp state) in the indexer or relayer tick, or add a short server-side cache; add `chain_id` to `lp_bank_deposits` and serve the deposit count per chain.
+
+### TD-175: Stellar PLUSD history predates indexing; `plusd_balance` off on 99000001/99000002
+
+- **Date:** 2026-11-09
+- **Location:** `packages/worker/src/indexer/stellar/plusd_parsers.rs`, `packages/api/src/routes/pnl.rs` (`plusd_series`), `CHAIN_<id>_STELLAR_API_PLUSD_ADDRESS`
+- **Gap:** The Stellar PLUSD SACs (testnet `CDGHLVGY…`, mainnet `CD5CFMJ4…`, deployment #37) predate the `…_STELLAR_INDEXER_PLUSD_ADDRESS` key and Soroban RPC retention (about 7 days). A fold over indexed rows alone starts from a zero balance that is not the wallet's real one, so the API key stays unset on both chains and `GET /v1/positions/history` serves no `plusd_balance` there. The EVM arm is unaffected once the cursor is rewound to the PLUSD deploy block.
+- **Impact:** Stellar LPs' Total Balance excludes PLUSD held in the wallet (it still includes sPLUSD and wire-out escrow); the card cannot show the PLUSD part on Stellar.
+- **Resolved by #1878:** `plusd_balance_seeds` plus a supervised seed and drift-check loop (`stellar/plusd_seed.rs`); the API folds from the wallet's latest seed, back-computed to the coverage bound (the chain's earliest `PlusdTransfer`), and omits the term for an unseeded wallet. Classic-payment check (manual step 3 of `docs/user-stories/epic-1247/1878-plusd-balance-seed.md`): NOT RUN by the coder (needs a signed classic payment on testnet); until it is run, the drift check is the only guard for classic PLUSD payments after the seed (one read per holder every 6 h) and the pre-seed back-compute cannot see a classic payment between the coverage bound and the seed, see TD-176.
+- **Original suggested fix:** #1878 — a one-off per-holder starting balance: Soroban `simulateTransaction` of the SAC `balance(holder)` (the `pocket_seeds` pattern, `simulate_view` plus a supervised loop), stored in `plusd_balance_seeds (chain_id, token_address, holder, as_of_ledger, balance, created_at)` for the chain's whitelisted LP wallets; at read time the balance is the seed plus the deltas with `block_number > as_of_ledger`, so the fold takes the seed as one leading step. Decide the buckets before the seed, the SAC `balance` result for a missing trustline, and candidate refresh for newly whitelisted wallets.
+- **Also:** Classic PLUSD payments (CAP-67) reach `getEvents` only when the RPC emits unified classic events (protocol 23+). The testnet RPC reports protocol 30, but the coder did not confirm that a classic payment between two G-accounts produces a `PlusdTransfer` row (it needs a signed classic payment, which was not sent). Confirm it with the Stellar manual step in `docs/user-stories/epic-1247/1865-plusd-balance.md` before relying on the term for a wallet that moved PLUSD classically.
+
+### TD-176: PLUSD balance seed trusts indexed rows between the coverage bound and the seed
+
+- **Date:** 2026-11-10
+- **Location:** `packages/shared/src/plusd_seed.rs` (`seeded_plusd`), `packages/worker/src/indexer/stellar/plusd_seed.rs`
+- **Gap:** The drift check verifies a holder only after its seed. The pre-seed back-compute (`seed − Σ deltas`) assumes every PLUSD movement between the coverage bound and the seed was indexed. If classic PLUSD payments do not reach `getEvents` (unconfirmed, see TD-175 "Also"), a classic payment in that window silently shifts every back-computed value before it unless a value goes negative. After the seed, the same payments are caught by the drift check (one read per seeded holder every 6 h, 10 per minute) and re-anchored.
+- **Impact:** A wrong early part of a Stellar LP's PLUSD history for a wallet that moved PLUSD with classic payments before its seed.
+- **Suggested fix:** Run the classic-payment check (manual step 3 of the #1878 user stories). If classic events are visible, close this item. If not, drop the back-compute for chains where it is proven wrong (treat every seed as NoCoverage) or verify the first seed against a Horizon payment history.
+
+### TD-177: Risk Council hub cannot list operations scheduled elsewhere
 
 - **Date:** 2026-11-09
 - **Location:** `packages/trustee/src/routes/-risk-council-hub.ts`, `packages/trustee/src/api/useRiskCouncil.ts` (`useRiskCouncilHubLookups`)

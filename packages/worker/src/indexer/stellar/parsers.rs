@@ -528,6 +528,70 @@ pub fn extract_bytes32_from_map(b64: &str, key: &str) -> Option<String> {
     }
 }
 
+pub fn sac_holder_strkey(addr: &ScAddress) -> Option<String> {
+    use stellar_xdr::curr::ClaimableBalanceId;
+    match addr {
+        ScAddress::Account(_) | ScAddress::Contract(_) => sc_address_to_strkey(addr),
+        ScAddress::MuxedAccount(muxed) => Some(
+            stellar_strkey::ed25519::PublicKey(muxed.ed25519.0)
+                .to_string()
+                .to_string(),
+        ),
+        ScAddress::ClaimableBalance(ClaimableBalanceId::ClaimableBalanceIdTypeV0(hash)) => Some(
+            stellar_strkey::ClaimableBalance::V0(hash.0)
+                .to_string()
+                .to_string(),
+        ),
+        ScAddress::LiquidityPool(pool) => Some(
+            stellar_strkey::LiquidityPool(pool.0 .0)
+                .to_string()
+                .to_string(),
+        ),
+    }
+}
+
+pub fn extract_sac_holder(b64: &str) -> Option<String> {
+    match ScVal::from_xdr_base64(b64, Limits::none()).ok()? {
+        ScVal::Address(addr) => sac_holder_strkey(&addr),
+        _ => None,
+    }
+}
+
+fn last_sac_holder(raw: &RawEvent) -> Option<String> {
+    raw.topics_base64
+        .iter()
+        .skip(1)
+        .rev()
+        .find_map(|t| extract_sac_holder(t))
+}
+
+pub fn decode_sac_movement(
+    raw: &RawEvent,
+) -> Option<(&'static str, Option<String>, Option<String>, i128)> {
+    let (kind, from, to) = match raw.event_name.as_str() {
+        "mint" => ("mint", None, Some(last_sac_holder(raw)?)),
+        "burn" => ("burn", Some(last_sac_holder(raw)?), None),
+        "clawback" => ("clawback", Some(last_sac_holder(raw)?), None),
+        "transfer" => {
+            if raw.topics_base64.len() < 3 {
+                return None;
+            }
+            (
+                "transfer",
+                Some(extract_sac_holder(&raw.topics_base64[1])?),
+                Some(extract_sac_holder(&raw.topics_base64[2])?),
+            )
+        }
+        _ => return None,
+    };
+    let amount = extract_i128(&raw.value_base64)
+        .or_else(|| extract_i128_from_map(&raw.value_base64, "amount"))?;
+    if amount < 0 {
+        return None;
+    }
+    Some((kind, from, to, amount))
+}
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 /// Synthesise a `log_index` from Soroban event coordinates.

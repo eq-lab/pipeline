@@ -1,7 +1,7 @@
 // spec: docs/product-specs/loan-security-state.md#api-contract
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
@@ -13,13 +13,16 @@ use pipeline_api::error::ApiError;
 use pipeline_api::routes::loan_security::{
     self, parse_loan_id, resolve_security_registry, LoanSecurityDoc,
 };
-use pipeline_api::security_state::build_security_response;
+use pipeline_api::security_state::{
+    build_security_response, mark_price_pairs, needs_concentrate_inputs, MarkInputs,
+};
 use pipeline_api::AppState;
 use serde_json::{json, Value};
 use shared::chains::ChainKind;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::position_repo::PositionRepo;
+use shared::security_marks::{CommodityMap, MarkSettings};
 use shared::security_registry::{
     ConsentRow, DocRow, InspectionRow, LotRow, MarginCallEventRow, RecordRow, RegistryStateRow,
     TermsRow, ValuationRow,
@@ -70,6 +73,8 @@ fn make_test_state(security: HashMap<i64, String>) -> AppState {
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
         security_registry_addresses: security,
+        plusd_addresses: HashMap::new(),
+        security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -270,6 +275,7 @@ fn build(rows: &LoanSecurityRows, status: Option<&str>) -> Value {
         "7",
         &rows,
         NOW,
+        &MarkInputs::default(),
     ))
     .unwrap()
 }
@@ -1155,6 +1161,7 @@ fn the_loan_status_comes_from_the_rows() {
         "7",
         &rows,
         NOW,
+        &MarkInputs::default(),
     ))
     .unwrap();
     assert_eq!(v["loan_status"], "Closed");
@@ -1172,4 +1179,350 @@ fn repayment_params_may_be_json_numbers_or_strings() {
     let v = build(&rows, None);
     assert_eq!(v["records"][1]["repayments"][0]["repayment_id"], "3");
     assert_eq!(v["records"][1]["repayments"][0]["value_date"], "1762300000");
+}
+
+const MARK_MAP: &str = r#"[
+ {"commodity":"zinc","mode":"StandardGoods","asset":"XZN","price_provider":"metal_price","quote_unit":"Mt"},
+ {"commodity":"gold pyrite concentrate","mode":"MetalConcentrate","asset":"XAU","price_provider":"metal_price"}
+]"#;
+
+static MARK_SETTINGS: LazyLock<MarkSettings> =
+    LazyLock::new(|| MarkSettings::parse(Some(MARK_MAP), None, None).unwrap());
+
+fn mark_settings() -> &'static MarkSettings {
+    &MARK_SETTINGS
+}
+
+fn zinc_prices(price: &str) -> shared::security_marks::PriceMap {
+    HashMap::from([(
+        ("XZN".to_owned(), "metal_price".to_owned()),
+        (
+            BigDecimal::from_str(price).unwrap(),
+            Utc.timestamp_opt(i64::try_from(NOW).unwrap() - 3_600, 0)
+                .unwrap(),
+        ),
+    )])
+}
+
+fn marks(price: &str) -> MarkInputs<'static> {
+    MarkInputs {
+        settings: mark_settings(),
+        prices: zinc_prices(price),
+        concentrate: None,
+    }
+}
+
+fn build_marked(rows: &LoanSecurityRows, marks: &MarkInputs<'_>) -> Value {
+    serde_json::to_value(build_security_response(
+        STELLAR.chain_id,
+        REGISTRY,
+        "7",
+        rows,
+        NOW,
+        marks,
+    ))
+    .unwrap()
+}
+
+fn zinc_rows(mark_vpu: Option<i128>) -> LoanSecurityRows {
+    let mut rows = base_rows();
+    let r = &mut rows.records[0];
+    r.commodity = Some("Zinc".to_owned());
+    r.unit = Some("Mt".to_owned());
+    r.mark_value_per_unit = mark_vpu.map(dec);
+    if mark_vpu.is_none() {
+        r.mark_at = None;
+    }
+    rows
+}
+
+#[test]
+fn unset_marks_leave_suggestions_unmapped_and_due_from_age_and_missing() {
+    let mut rows = base_rows();
+    rows.records[0].commodity = Some("zinc".to_owned());
+    rows.records[0].unit = Some("Mt".to_owned());
+    rows.records[0].mark_value_per_unit = None;
+    rows.records[0].mark_at = None;
+    rows.records.push(record(2, "InsuranceLossPayee", "Active"));
+    rows.records.push(record(3, "WarehousePledge", "Released"));
+    let v = build(&rows, None);
+    let r = &v["records"][0];
+    assert_eq!(r["suggestion_status"], "unmapped");
+    assert!(r["suggested_mark"].is_null());
+    assert!(r["move_bps"].is_null());
+    assert_eq!(r["mark_due"], true);
+    assert_eq!(r["mark_due_reasons"], json!(["missing"]));
+    assert!(r["mark_due_at"].is_null());
+    let usd = &v["records"][1];
+    assert!(usd["suggestion_status"].is_null());
+    assert!(usd["suggested_mark"].is_null());
+    assert_eq!(usd["mark_due"], false);
+    assert_eq!(usd["mark_due_reasons"], json!([]));
+    let released = &v["records"][2];
+    assert!(released["suggestion_status"].is_null());
+    assert_eq!(released["mark_due"], false);
+    assert_eq!(v["prices"]["marks_due"], 1);
+    assert_eq!(v["prices"]["mark_max_age"], "86400");
+    assert_eq!(v["prices"]["mark_move_bps"], 200);
+}
+
+#[test]
+fn a_goods_record_without_commodity_or_unit_reports_why() {
+    let mut rows = base_rows();
+    let v = build_marked(&rows, &marks("100"));
+    assert_eq!(v["records"][0]["suggestion_status"], "unmapped");
+    rows.records[0].commodity = Some("zinc".to_owned());
+    let v = build_marked(&rows, &marks("100"));
+    assert_eq!(v["records"][0]["suggestion_status"], "unsupported_unit");
+}
+
+#[test]
+fn a_mapped_record_gets_the_exact_suggestion() {
+    let v = build_marked(&zinc_rows(Some(UNIT)), &marks("100"));
+    let r = &v["records"][0];
+    assert_eq!(r["suggestion_status"], "ok");
+    let s = &r["suggested_mark"];
+    assert_eq!(s["value_per_unit"], "100.0000000");
+    assert_eq!(s["benchmark"], "XZN");
+    assert_eq!(s["source_price"], "100");
+    assert_eq!(s["source_at"], (NOW - 3_600).to_string());
+    assert_eq!(s["asset"], "XZN");
+    assert_eq!(s["price_provider"], "metal_price");
+    assert_eq!(s["quote_unit"], "Mt");
+    assert_eq!(s["mode"], "StandardGoods");
+    assert!(s["assay_id"].is_null() && s["offtake_id"].is_null());
+    assert_eq!(s["report_hash"].as_str().unwrap().len(), 64);
+    assert!(s["report"]
+        .as_str()
+        .unwrap()
+        .starts_with("pipeline-mark/v1\nchain_id=99000001\n"));
+    assert!(s["report"].as_str().unwrap().contains("\nrecord_id=1\n"));
+    assert_eq!(r["move_bps"], 990_000);
+    assert_eq!(r["mark_due"], true);
+    assert_eq!(r["mark_due_reasons"], json!(["moved"]));
+    assert_eq!(r["mark_due_at"], (NOW - 100 + 86_400).to_string());
+    assert_eq!(v["prices"]["marks_due"], 1);
+}
+
+#[test]
+fn a_mark_equal_to_the_suggestion_is_not_due() {
+    let v = build_marked(&zinc_rows(Some(100 * UNIT)), &marks("100"));
+    let r = &v["records"][0];
+    assert_eq!(r["move_bps"], 0);
+    assert_eq!(r["mark_due"], false);
+    assert_eq!(r["mark_due_reasons"], json!([]));
+    assert_eq!(v["prices"]["marks_due"], 0);
+}
+
+#[test]
+fn a_missing_price_degrades_to_no_price_without_blocking_age() {
+    let inputs = MarkInputs {
+        settings: mark_settings(),
+        ..MarkInputs::default()
+    };
+    let v = build_marked(&zinc_rows(Some(UNIT)), &inputs);
+    let r = &v["records"][0];
+    assert_eq!(r["suggestion_status"], "no_price");
+    assert!(r["suggested_mark"].is_null());
+    assert!(r["move_bps"].is_null());
+    assert_eq!(r["mark_due"], false);
+}
+
+#[test]
+fn a_pending_perfection_record_is_suggested_but_not_due() {
+    let mut rows = zinc_rows(None);
+    rows.records[0].status = "PendingPerfection".to_owned();
+    let v = build_marked(&rows, &marks("100"));
+    let r = &v["records"][0];
+    assert_eq!(r["suggestion_status"], "ok");
+    assert!(r["suggested_mark"].is_object());
+    assert_eq!(r["mark_due"], false);
+    assert_eq!(r["mark_due_reasons"], json!([]));
+    assert_eq!(v["prices"]["marks_due"], 0);
+}
+
+#[test]
+fn an_under_enforcement_record_is_still_suggested() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.records[0].status = "UnderEnforcement".to_owned();
+    let v = build_marked(&rows, &marks("100"));
+    assert_eq!(v["records"][0]["suggestion_status"], "ok");
+}
+
+#[test]
+fn an_unreadable_mark_time_makes_due_unknown() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.records[0].mark_at = Some(sqlx_dec(1, -41));
+    let v = build_marked(&rows, &marks("100"));
+    let r = &v["records"][0];
+    assert!(r["mark_due"].is_null());
+    assert_eq!(r["mark_due_reasons"], json!([]));
+    assert!(r["mark_due_at"].is_null());
+    assert!(r["move_bps"].is_null());
+    assert!(v["prices"]["marks_due"].is_null());
+}
+
+#[test]
+fn an_unreadable_mark_value_makes_due_unknown() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.records[0].mark_value_per_unit = Some(sqlx_dec(1, -41));
+    let v = build_marked(&rows, &marks("100"));
+    assert!(v["records"][0]["mark_due"].is_null());
+    assert!(v["prices"]["marks_due"].is_null());
+}
+
+#[test]
+fn an_unreadable_price_stale_after_makes_due_and_the_age_unknown() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.terms.as_mut().unwrap().price_stale_after = sqlx_dec(1, -41);
+    let v = build_marked(&rows, &marks("100"));
+    assert!(v["records"][0]["mark_due"].is_null());
+    assert!(v["prices"]["mark_max_age"].is_null());
+    assert!(v["prices"]["marks_due"].is_null());
+}
+
+#[test]
+fn negative_scale_marks_decode() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.records[0].mark_value_per_unit = Some(sqlx_dec(2, -9));
+    rows.records[0].mark_at = Some(sqlx_dec(176_230_000, 0));
+    let v = build_marked(&rows, &marks("100"));
+    assert_eq!(v["records"][0]["move_bps"], -5_000);
+}
+
+#[test]
+fn without_terms_the_age_policy_alone_applies() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.terms = None;
+    rows.records[0].mark_at = Some(dec(i128::from(NOW) - 90_000));
+    let v = build_marked(&rows, &MarkInputs::default());
+    assert_eq!(v["records"][0]["mark_due"], true);
+    assert_eq!(v["records"][0]["mark_due_reasons"], json!(["age"]));
+    assert!(v["prices"].is_null());
+}
+
+#[test]
+fn a_shorter_loan_staleness_window_sets_the_effective_age() {
+    let mut rows = zinc_rows(Some(100 * UNIT));
+    rows.terms.as_mut().unwrap().price_stale_after = dec(60);
+    let v = build_marked(&rows, &marks("100"));
+    assert_eq!(v["prices"]["mark_max_age"], "60");
+    assert_eq!(v["records"][0]["mark_due"], true);
+    assert_eq!(v["records"][0]["mark_due_reasons"], json!(["age"]));
+    assert_eq!(v["records"][0]["mark_due_at"], (NOW - 100 + 60).to_string());
+}
+
+#[test]
+fn a_custom_policy_is_echoed() {
+    let custom = MarkSettings::parse(None, Some("0"), Some("50")).unwrap();
+    let inputs = MarkInputs {
+        settings: &custom,
+        ..MarkInputs::default()
+    };
+    let v = build_marked(&zinc_rows(Some(UNIT)), &inputs);
+    assert_eq!(v["prices"]["mark_move_bps"], 50);
+    assert_eq!(v["prices"]["mark_max_age"], "86400");
+}
+
+#[test]
+fn the_price_pairs_follow_the_mapped_open_goods_records() {
+    let map: &CommodityMap = &mark_settings().map;
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.records.push(record(2, "WarehousePledge", "Released"));
+    rows.records[1].commodity = Some("gold pyrite concentrate".to_owned());
+    assert_eq!(
+        mark_price_pairs(&rows, map, None),
+        vec![("XZN".to_owned(), "metal_price".to_owned())]
+    );
+    assert!(!needs_concentrate_inputs(&rows, map));
+    rows.records[1].status = "Active".to_owned();
+    assert!(needs_concentrate_inputs(&rows, map));
+    assert_eq!(
+        mark_price_pairs(&rows, map, None),
+        vec![
+            ("XZN".to_owned(), "metal_price".to_owned()),
+            ("XAU".to_owned(), "metal_price".to_owned()),
+        ]
+    );
+    assert!(mark_price_pairs(&rows, &CommodityMap::default(), None).is_empty());
+    assert!(!needs_concentrate_inputs(&rows, &CommodityMap::default()));
+}
+
+#[test]
+fn the_openapi_document_lists_the_suggestion_schema() {
+    let doc = serde_json::to_value(LoanSecurityDoc::openapi()).unwrap();
+    let schemas = &doc["components"]["schemas"];
+    let suggested = &schemas["SuggestedMarkDto"]["properties"];
+    for key in [
+        "value_per_unit",
+        "benchmark",
+        "source_price",
+        "source_at",
+        "asset",
+        "price_provider",
+        "quote_unit",
+        "mode",
+        "assay_id",
+        "offtake_id",
+        "report",
+        "report_hash",
+    ] {
+        assert!(suggested.get(key).is_some(), "missing {key}");
+    }
+    let record = &schemas["SecurityRecordDto"]["properties"];
+    for key in [
+        "suggested_mark",
+        "suggestion_status",
+        "move_bps",
+        "mark_due",
+        "mark_due_reasons",
+        "mark_due_at",
+    ] {
+        assert!(record.get(key).is_some(), "missing {key}");
+    }
+    let prices = &schemas["PricesDto"]["properties"];
+    for key in ["mark_max_age", "mark_move_bps", "marks_due"] {
+        assert!(prices.get(key).is_some(), "missing {key}");
+    }
+}
+
+#[tokio::test]
+async fn an_evm_chain_stays_404_with_marks_configured() {
+    let mut state = make_test_state(registries());
+    state.security_marks = mark_settings().clone();
+    let (status, body) = get(state, "/v1/loan-book/7/security?chain_id=1").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v, json!({"error": "security_registry_not_configured"}));
+}
+
+#[test]
+fn an_out_of_range_mark_on_a_non_goods_or_closed_record_stays_quiet() {
+    let mut rows = zinc_rows(Some(UNIT));
+    rows.records.push(record(2, "InsuranceLossPayee", "Active"));
+    rows.records.push(record(3, "WarehousePledge", "Released"));
+    rows.records[1].mark_value_per_unit = Some(sqlx_dec(1, -41));
+    rows.records[2].mark_value_per_unit = Some(sqlx_dec(1, -41));
+    let v = build_marked(&rows, &marks("100"));
+    assert_eq!(v["prices"]["marks_due"], 1);
+    assert_eq!(v["records"][1]["mark_due"], false);
+    assert_eq!(v["records"][2]["mark_due"], false);
+    assert!(v["records"][0]["mark_due"].is_boolean());
+}
+
+#[test]
+fn a_long_scale_price_gives_a_suggestion() {
+    let digits = "3".repeat(99);
+    let long = BigDecimal::from_str(&format!("0.{digits}")).unwrap();
+    let mut inputs = marks("100");
+    inputs.prices.insert(
+        ("XZN".to_owned(), "metal_price".to_owned()),
+        (long, Utc.timestamp_opt(1_762_396_400, 0).unwrap()),
+    );
+    let v = build_marked(&zinc_rows(Some(UNIT)), &inputs);
+    assert_eq!(v["records"][0]["suggestion_status"], "ok");
+    assert_eq!(
+        v["records"][0]["suggested_mark"]["value_per_unit"],
+        "0.3333333"
+    );
 }

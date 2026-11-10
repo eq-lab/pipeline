@@ -3,9 +3,12 @@
 
 use chrono::{TimeZone, Utc};
 use pipeline_worker::asset_price_collector::{
-    align_down_to_grid, expected_grid, latest_is_live, missing_points, non_market_providers_in_use,
-    retention_cutoff, PriceInterval,
+    align_down_to_grid, collection_pairs, expected_grid, latest_is_live, missing_points,
+    non_market_providers_in_use, retention_cutoff, PriceInterval,
 };
+use shared::collateral_valuation::asset_for_metal;
+use shared::collateral_valuation_repo::AssetProvider;
+use shared::security_marks::{CommodityMap, MarkSettings};
 
 #[test]
 fn align_down_hourly_truncates_to_top_of_hour() {
@@ -206,4 +209,158 @@ fn non_market_providers_in_use_filters_mixed_list() {
         non_market_providers_in_use(&providers, false),
         vec!["static".to_owned()]
     );
+}
+
+fn pair(asset: &str, provider: &str) -> AssetProvider {
+    AssetProvider {
+        asset: asset.to_owned(),
+        price_provider: provider.to_owned(),
+    }
+}
+
+fn legacy_union(anchors: Vec<AssetProvider>, metals: &[(String, String)]) -> Vec<AssetProvider> {
+    let mut pairs = anchors;
+    for (metal, provider) in metals {
+        let Some(asset) = asset_for_metal(metal) else {
+            continue;
+        };
+        let p = pair(asset, provider);
+        if !pairs.contains(&p) {
+            pairs.push(p);
+        }
+    }
+    pairs
+}
+
+fn anchors() -> Vec<AssetProvider> {
+    vec![pair("XAU", "metal_price"), pair("XAG", "static")]
+}
+
+fn metals() -> Vec<(String, String)> {
+    vec![
+        ("silver".to_owned(), "metal_price".to_owned()),
+        ("gold".to_owned(), "metal_price".to_owned()),
+        ("platinum".to_owned(), "static".to_owned()),
+        ("unobtainium".to_owned(), "metal_price".to_owned()),
+    ]
+}
+
+fn mark_map() -> CommodityMap {
+    MarkSettings::parse(
+        Some(
+            r#"[
+ {"commodity":"copper cathode","mode":"StandardGoods","asset":"XCU","price_provider":"metal_price","quote_unit":"TroyOz"},
+ {"commodity":"gold","mode":"StandardGoods","asset":"XAU","price_provider":"metal_price","quote_unit":"TroyOz"},
+ {"commodity":"gold pyrite concentrate","mode":"MetalConcentrate","asset":"XAU","price_provider":"static"},
+ {"commodity":"silver","mode":"StandardGoods","asset":"XAG","price_provider":"static","quote_unit":"TroyOz"}
+]"#,
+        ),
+        None,
+        None,
+    )
+    .unwrap()
+    .map
+}
+
+#[test]
+fn the_collected_list_is_byte_identical_with_the_key_unset() {
+    let expected = legacy_union(anchors(), &metals());
+    let got = collection_pairs(anchors(), &metals(), &CommodityMap::default(), &[], &[]);
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn the_collected_list_is_identical_without_security_registry_rows() {
+    let expected = legacy_union(anchors(), &metals());
+    let got = collection_pairs(anchors(), &metals(), &mark_map(), &[], &[]);
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn an_empty_map_ignores_security_registry_rows() {
+    let expected = legacy_union(anchors(), &metals());
+    let got = collection_pairs(
+        anchors(),
+        &metals(),
+        &CommodityMap::default(),
+        &["gold".to_owned()],
+        &[("gold pyrite concentrate".to_owned(), "gold".to_owned())],
+    );
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn a_mapped_commodity_appends_its_pair_once() {
+    let got = collection_pairs(
+        vec![],
+        &[],
+        &mark_map(),
+        &["Copper-Cathode".to_owned(), "copper cathode".to_owned()],
+        &[],
+    );
+    assert_eq!(got, vec![pair("XCU", "metal_price")]);
+}
+
+#[test]
+fn an_already_collected_pair_is_not_duplicated() {
+    let got = collection_pairs(anchors(), &[], &mark_map(), &["gold".to_owned()], &[]);
+    assert_eq!(got, anchors());
+}
+
+#[test]
+fn an_unmapped_commodity_adds_nothing() {
+    let expected = legacy_union(anchors(), &metals());
+    let got = collection_pairs(
+        anchors(),
+        &metals(),
+        &mark_map(),
+        &["wheat".to_owned()],
+        &[("wheat".to_owned(), "gold".to_owned())],
+    );
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn a_mapped_concentrate_appends_each_metal_asset() {
+    let got = collection_pairs(
+        vec![],
+        &[],
+        &mark_map(),
+        &["gold pyrite concentrate".to_owned()],
+        &[
+            ("gold pyrite concentrate".to_owned(), "gold".to_owned()),
+            ("gold pyrite concentrate".to_owned(), "silver".to_owned()),
+            (
+                "gold pyrite concentrate".to_owned(),
+                "unobtainium".to_owned(),
+            ),
+        ],
+    );
+    assert_eq!(got, vec![pair("XAU", "static"), pair("XAG", "static")]);
+}
+
+#[test]
+fn offtake_metals_of_a_standard_goods_commodity_are_ignored() {
+    let got = collection_pairs(
+        vec![],
+        &[],
+        &mark_map(),
+        &[],
+        &[("gold".to_owned(), "silver".to_owned())],
+    );
+    assert!(got.is_empty());
+}
+
+#[test]
+fn the_boot_guard_flags_a_static_map_provider() {
+    let providers = mark_map().providers();
+    assert_eq!(
+        providers,
+        vec!["metal_price".to_owned(), "static".to_owned()]
+    );
+    assert_eq!(
+        non_market_providers_in_use(&providers, false),
+        vec!["static".to_owned()]
+    );
+    assert!(non_market_providers_in_use(&providers, true).is_empty());
 }

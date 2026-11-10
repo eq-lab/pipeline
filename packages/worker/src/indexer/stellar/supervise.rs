@@ -1,5 +1,5 @@
 // spec: docs/references/security-registry-events.md#sync-loop
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::future::Future;
 use std::hash::Hash;
 use std::time::{Duration, Instant};
@@ -22,14 +22,14 @@ pub fn restart_delay(failures: u32) -> Duration {
 
 pub struct KeyedBackoff<K> {
     entries: HashMap<K, (u32, Instant)>,
-    warned: HashSet<(K, u8)>,
+    warned: HashMap<K, u8>,
 }
 
 impl<K> Default for KeyedBackoff<K> {
     fn default() -> Self {
         Self {
             entries: HashMap::new(),
-            warned: HashSet::new(),
+            warned: HashMap::new(),
         }
     }
 }
@@ -48,6 +48,7 @@ impl<K: Hash + Eq + Copy> KeyedBackoff<K> {
 
     pub fn clear(&mut self, key: K) {
         self.entries.remove(&key);
+        self.warned.remove(&key);
     }
 
     pub fn failures(&self, key: K) -> u32 {
@@ -59,7 +60,45 @@ impl<K: Hash + Eq + Copy> KeyedBackoff<K> {
     }
 
     pub fn first_warning_on(&mut self, key: K, channel: u8) -> bool {
-        self.warned.insert((key, channel))
+        let bit = 1u8 << (channel & 7);
+        let seen = self.warned.entry(key).or_insert(0);
+        let first = *seen & bit == 0;
+        *seen |= bit;
+        first
+    }
+}
+
+pub struct SeedBackoff<K>(KeyedBackoff<K>);
+
+impl<K> Default for SeedBackoff<K> {
+    fn default() -> Self {
+        Self(KeyedBackoff::default())
+    }
+}
+
+impl<K: Hash + Eq + Copy> SeedBackoff<K> {
+    pub fn is_due(&self, key: K, now: Instant) -> bool {
+        self.0.is_due(key, now)
+    }
+
+    pub fn record_failure(&mut self, key: K, now: Instant) -> u32 {
+        self.0.record_failure(key, now)
+    }
+
+    pub fn clear(&mut self, key: K) {
+        self.0.clear(key);
+    }
+
+    pub fn first_read_warning(&mut self, key: K) -> bool {
+        self.0.first_warning_on(key, 0)
+    }
+
+    pub fn first_insert_warning(&mut self, key: K) -> bool {
+        self.0.first_warning_on(key, 1)
+    }
+
+    pub fn first_verify_warning(&mut self, key: K) -> bool {
+        self.0.first_warning_on(key, 2)
     }
 }
 

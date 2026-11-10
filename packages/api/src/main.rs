@@ -136,6 +136,14 @@ async fn main() -> anyhow::Result<()> {
     let withdrawal_queue_addresses = chains_config.withdrawal_queue_addresses;
     let pocket_addresses = chains_config.pocket_addresses;
     let security_registry_addresses = chains_config.security_registry_addresses;
+    let plusd_addresses = chains_config.plusd_addresses;
+    let security_marks = shared::security_marks::MarkSettings::from_env()?;
+    tracing::info!(
+        mapped = security_marks.map.len(),
+        max_age = security_marks.policy.max_age,
+        move_bps = security_marks.policy.move_bps,
+        "security mark suggestions configured"
+    );
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -167,6 +175,8 @@ async fn main() -> anyhow::Result<()> {
         withdrawal_queue_addresses,
         pocket_addresses,
         security_registry_addresses,
+        plusd_addresses,
+        security_marks,
         crystal_enabled,
         elliptic_enabled,
         auth_user_repo,
@@ -221,6 +231,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::cash_book::CashBookDoc::openapi());
     api_docs.merge(pipeline_api::routes::loan_security::LoanSecurityDoc::openapi());
     api_docs.merge(pipeline_api::routes::chains::ChainsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::attention_counts::AttentionCountsDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -250,6 +261,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::cash_book::router())
         .nest("/v1", pipeline_api::routes::loan_security::router())
         .nest("/v1", pipeline_api::routes::chains::router())
+        .nest("/v1", pipeline_api::routes::attention_counts::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

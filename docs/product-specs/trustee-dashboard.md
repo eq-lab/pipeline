@@ -179,10 +179,10 @@ already minted), and days left to maturity.
 | Reserves | The backing check and how far off it is, the USYC price and band, and the cash forecast | Surface 14, Flow 8 |
 | Withdrawal queue | How big the queue is, how much USDC the Withdrawal Queue Wallet holds, the coverage ratio, and the oldest waiting request | Flow 9 |
 | Audit log | The running list of everything the Trustee has done | Surface 17 |
+| Sidebar attention counts (`GET /v1/attention-counts`) | One pending count per sidebar badge (Origination, Loans, Cash Management), with a per-chain breakdown. See [trustee-attention-counts.md](./trustee-attention-counts.md) | Sidebar badges |
 
 The Type 1 actions are sent straight from the Trustee key. For `mintLoan`, `updateMutable`,
-`rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the
-transaction, shows it in readable form for review, and sends it once confirmed. These do not
+`rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the transaction, shows it in readable form for review, and sends it once confirmed. These do not
 go through the Relayer.
 
 ---

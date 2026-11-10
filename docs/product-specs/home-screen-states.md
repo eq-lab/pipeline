@@ -92,7 +92,7 @@ non-zero, any PLUSD; its designed frame is state 5 (`6701:97136`, #1425, blocked
 interim compact grid (connected hero, compact Buy/Sell in balance mode when PLUSD is held, compact
 Stake, `unlocked` + Earnings) — the staked-value line and `Unstake` stay on `/stake` (TD-161).
 Compositions: [`dashboard-components.md#home-route`](../frontend/dashboard-components.md#home-route).
-"Bank transfer unlocked" is the `Passed` rendering, not a served flag on `GET /v1/lps/me`.
+"Bank transfer unlocked" is the `Passed` rendering, not a served flag on `GET /v1/lps/me`. `GET /v1/lps/me` does serve `pending_bank_deposits` (#1285); which card uses it is #1820's to specify.
 
 **State 6 (KYB problem)** requires only an auth session, `lpRead === "loaded"`, and
 `kyb_status` in (`"ChangesRequested"`, `"Failed"`) — **no wallet-connection condition and no

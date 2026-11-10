@@ -233,7 +233,7 @@ Run `yarn workspace @pipeline/wallet-connect test`, `yarn workspace @pipeline/tr
   11. An EVM loan or EVM session is read-only with the Stellar-only reason.
   12. The immediate path (after #1756) is a single execute.
 - **`docs/exec-plans/tech-debt-tracker.md`.**
-  - New **TD-175**: "Risk Council hub cannot list operations scheduled elsewhere". Location `routes/-risk-council-hub.ts`. Gap: no `OperationScheduled` / `OperationCanceled` / `OperationExecuted` indexer or API. Fix: worker parser + `/v1/risk-council/operations` (backend).
+  - New **TD-177**: "Risk Council hub cannot list operations scheduled elsewhere". Location `routes/-risk-council-hub.ts`. Gap: no `OperationScheduled` / `OperationCanceled` / `OperationExecuted` indexer or API. Fix: worker parser + `/v1/risk-council/operations` (backend).
   - Extend TD-159's location and gap to the Risk Council operations.
   - TD-152: add the Risk Council pages to the EVM-gated list.
 
@@ -319,5 +319,5 @@ Unit and component tests with Vitest. Stub wallet-connect reads and relays with 
 - `docs/product-specs/trustee-risk-watchlist.md` §"Escalation" and the Past Due bullet (52 lines now).
 - `docs/product-specs/loans-data.md` RISK_COUNCIL security bullet (197 lines now; net lines ≤ 0).
 - `docs/user-stories/epic-1795/1761-risk-council-access-manager.md` (new).
-- `docs/exec-plans/tech-debt-tracker.md`: TD-175 (new), TD-159 and TD-152 (extended).
+- `docs/exec-plans/tech-debt-tracker.md`: TD-177 (new), TD-159 and TD-152 (extended).
 - `scripts/lint-comments.baseline.json`: remove entries for the rewritten `-risk-council-*` test files.
