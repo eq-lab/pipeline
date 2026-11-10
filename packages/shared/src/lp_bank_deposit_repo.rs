@@ -1,4 +1,4 @@
-// spec: packages/shared/migrations/20261005000001_lp_bank_deposits_ref_hash.sql, Issue #1413
+// spec: docs/product-specs/deposits.md#wire-matching-by-payment-reference
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -19,6 +19,11 @@ pub struct LpBankDepositRow {
     pub is_minted: bool,
     pub recorded_by: String,
     pub created_at: DateTime<Utc>,
+    pub requested_bank_details_id: Option<i64>,
+    pub matched_payment_details: Option<String>,
+    pub matched_chain_id: Option<i64>,
+    pub matched_receiver_address: Option<String>,
+    pub matched_issued_at: Option<DateTime<Utc>>,
 }
 
 pub const COUNT_PENDING_BANK_DEPOSITS_SQL: &str = "SELECT COUNT(*) FROM lp_bank_deposits d \
@@ -29,8 +34,32 @@ pub const COUNT_PENDING_BANK_DEPOSITS_SQL: &str = "SELECT COUNT(*) FROM lp_bank_
              AND w.params @> jsonb_build_object('ref_hash', encode(d.ref_hash, 'hex')) \
        )";
 
-const COLUMNS: &str = "id, lp_id, amount, payment_reference, ref_hash, occurred_at, \
-                       is_minted, recorded_by, created_at";
+macro_rules! joined_columns {
+    () => {
+        "d.id, d.lp_id, d.amount, d.payment_reference, d.ref_hash, d.occurred_at, \
+         d.is_minted, d.recorded_by, d.created_at, d.requested_bank_details_id, \
+         r.payment_details AS matched_payment_details, r.chain_id AS matched_chain_id, \
+         r.receiver_address AS matched_receiver_address, r.created_at AS matched_issued_at"
+    };
+}
+
+pub const LIST_FOR_LP_SQL: &str = concat!(
+    "SELECT ",
+    joined_columns!(),
+    " FROM lp_bank_deposits d \
+     LEFT JOIN lp_requested_bank_details r ON r.id = d.requested_bank_details_id \
+     WHERE d.lp_id = $1 \
+     ORDER BY d.occurred_at DESC, d.id DESC"
+);
+
+pub const INSERT_SQL: &str = concat!(
+    "WITH d AS ( INSERT INTO lp_bank_deposits \
+         (lp_id, amount, payment_reference, ref_hash, occurred_at, recorded_by, \
+          requested_bank_details_id) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING * ) SELECT ",
+    joined_columns!(),
+    " FROM d LEFT JOIN lp_requested_bank_details r ON r.id = d.requested_bank_details_id"
+);
 
 macro_rules! pending_bank_deposits_filter {
     () => {
@@ -74,6 +103,7 @@ impl LpBankDepositRepo {
         Self { pool }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert(
         conn: &mut PgConnection,
         lp_id: i64,
@@ -82,21 +112,18 @@ impl LpBankDepositRepo {
         ref_hash: &[u8],
         occurred_at: DateTime<Utc>,
         recorded_by: &str,
+        requested_bank_details_id: Option<i64>,
     ) -> Result<LpBankDepositRow, sqlx::Error> {
-        sqlx::query_as::<_, LpBankDepositRow>(&format!(
-            "INSERT INTO lp_bank_deposits \
-                 (lp_id, amount, payment_reference, ref_hash, occurred_at, recorded_by) \
-             VALUES ($1, $2, $3, $4, $5, $6) \
-             RETURNING {COLUMNS}"
-        ))
-        .bind(lp_id)
-        .bind(amount)
-        .bind(payment_reference)
-        .bind(ref_hash)
-        .bind(occurred_at)
-        .bind(recorded_by)
-        .fetch_one(&mut *conn)
-        .await
+        sqlx::query_as::<_, LpBankDepositRow>(INSERT_SQL)
+            .bind(lp_id)
+            .bind(amount)
+            .bind(payment_reference)
+            .bind(ref_hash)
+            .bind(occurred_at)
+            .bind(recorded_by)
+            .bind(requested_bank_details_id)
+            .fetch_one(&mut *conn)
+            .await
     }
 
     pub async fn count_pending(&self) -> Result<i64, sqlx::Error> {
@@ -122,14 +149,10 @@ impl LpBankDepositRepo {
     }
 
     pub async fn list_for_lp(&self, lp_id: i64) -> Result<Vec<LpBankDepositRow>, sqlx::Error> {
-        sqlx::query_as::<_, LpBankDepositRow>(&format!(
-            "SELECT {COLUMNS} FROM lp_bank_deposits \
-             WHERE lp_id = $1 \
-             ORDER BY occurred_at DESC, id DESC"
-        ))
-        .bind(lp_id)
-        .fetch_all(&self.pool)
-        .await
+        sqlx::query_as::<_, LpBankDepositRow>(LIST_FOR_LP_SQL)
+            .bind(lp_id)
+            .fetch_all(&self.pool)
+            .await
     }
 }
 
