@@ -12,7 +12,7 @@ use sqlx::PgPool;
 
 use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher, pocket_repo::PocketRepo,
+    metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo, pocket_repo::PocketRepo,
     security_registry_repo::SecurityRegistryRepo,
 };
 
@@ -31,6 +31,8 @@ use crate::indexer::{
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
         parsers::{dispatch_parser, transfer_between_tracked, transfer_touches_address},
+        plusd_parsers::dispatch_plusd,
+        plusd_seed::{run_plusd_seed_loop, PlusdSeedCtx},
         pocket_parsers::dispatch_pocket,
         pocket_seed::run_pocket_seed_loop,
         rpc::{EventFilter, StellarRpc},
@@ -92,6 +94,7 @@ pub struct StellarEventPoller {
     deal_token_factory_id: Option<String>,
     pocket_id: Option<String>,
     security_registry_id: Option<String>,
+    plusd_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
     /// asset-transfer tracking is fully configured.
@@ -118,6 +121,7 @@ impl StellarEventPoller {
         deal_token_factory_id: Option<String>,
         pocket_id: Option<String>,
         security_registry_id: Option<String>,
+        plusd_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
         tracked_addresses: HashSet<String>,
@@ -137,6 +141,7 @@ impl StellarEventPoller {
             deal_token_factory_id,
             pocket_id,
             security_registry_id,
+            plusd_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
             tracked_addresses,
@@ -178,6 +183,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(security_id) = &self.security_registry_id {
             contract_ids.push(security_id.clone());
         }
+        if let Some(plusd_id) = &self.plusd_id {
+            contract_ids.push(plusd_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -192,6 +200,8 @@ impl ChainEventPoller for StellarEventPoller {
                 dispatch_security_registry(&raw)
             } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
                 dispatch_pocket(&raw)
+            } else if self.plusd_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_plusd(&raw)
             } else {
                 dispatch_parser(
                     &raw,
@@ -264,11 +274,12 @@ impl ChainEventPoller for StellarEventPoller {
         }
 
         if self.deal_token_factory_id.is_some() {
-            let token_ids = self
+            let mut token_ids = self
                 .deal_tokens
                 .lock()
                 .expect("deal_tokens lock poisoned")
                 .contract_ids();
+            token_ids.retain(|id| self.plusd_id.as_deref() != Some(id.as_str()));
             if !token_ids.is_empty() {
                 let filter = EventFilter {
                     contract_ids: token_ids,
@@ -374,6 +385,14 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    if let Some(plusd_id) = &settings.plusd_id {
+        tracing::info!(
+            plusd_id = %plusd_id,
+            chain_id,
+            "Stellar PLUSD transfer indexing enabled (balance seed + drift check on)"
+        );
+    }
+
     if let Some(security_id) = &settings.security_registry_id {
         tracing::info!(
             security_registry_id = %security_id,
@@ -441,6 +460,26 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         _ => None,
     };
 
+    let _plusd_seed_guard = settings.plusd_id.as_ref().map(|plusd_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let plusd_id = plusd_id.clone();
+        spawn_supervised("plusd-seed", chain_id, move || {
+            let ctx = PlusdSeedCtx {
+                rpc: rpc.clone(),
+                seeds: PlusdSeedRepo::new(pool.clone()),
+                logs: ContractLogsRepo::new(pool.clone()),
+                events: EventRepo::new(pool.clone()),
+                chain_id,
+                plusd_id: plusd_id.clone(),
+            };
+            async move {
+                run_plusd_seed_loop(ctx).await;
+                Ok(())
+            }
+        })
+    });
+
     let _security_guard = settings.security_registry_id.as_ref().map(|security_id| {
         let rpc = rpc.clone();
         let pool = pool.clone();
@@ -472,6 +511,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.deal_token_factory_id.clone(),
         settings.pocket_id.clone(),
         settings.security_registry_id.clone(),
+        settings.plusd_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),
         tracked_addresses,

@@ -1,18 +1,23 @@
-/**
- * Render tests for the Risk Council "Write-down close — Default resolution"
- * route (`risk-council.writedown.$id.tsx`, issue #782, flow 12, Figma
- * `4116-13625`). Mocks `useLoanBook`; mirrors
- * `-risk-council-reterm-page.test.tsx`.
- *
- * Covers: the header + MOCK timestamp, the three chips, the Resolution summary
- * (REAL loan + principal outstanding, MOCK recovery/write-down), the Close
- * payload code block + MOCK signer voting (signed/pending), the absence of any
- * action button (read-only), and the loading / error / not-found states.
- */
+// spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { LoanBookResponse } from "@/api/useLoanBook";
+import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  DELAYED,
+  IMMEDIATE,
+  NO_ROLE,
+  SCHEDULED,
+  STELLAR,
+  accessResult,
+  loanBookResult,
+  loanEntry,
+  loanState,
+  relayResult,
+} from "./-riskCouncilFixtures";
+import type { RiskCouncilAccess } from "@/api/useRiskCouncil";
+import {
+  _resetRiskCouncilOpsForTests,
+  recordScheduledOp,
+} from "@/lib/riskCouncilOps";
 
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
@@ -23,206 +28,296 @@ vi.mock("@tanstack/react-router", async () => {
     Link: ({
       children,
       to,
-      ...rest
+      params,
     }: {
       children: React.ReactNode;
       to: string;
-    } & Record<string, unknown>) => (
-      <a href={to} {...rest}>
-        {children}
-      </a>
-    ),
+      params?: Record<string, string>;
+    }) => <a href={to.replace("$id", params?.id ?? "")}>{children}</a>,
   };
 });
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
+vi.mock("@/api/useRiskCouncil", () => ({
+  useRiskCouncilAccess: vi.fn(),
+  useRiskCouncilLoanState: vi.fn(),
+  useRiskCouncilRelay: vi.fn(),
+}));
 
 import { useLoanBook } from "@/api/useLoanBook";
+import {
+  useRiskCouncilAccess,
+  useRiskCouncilLoanState,
+  useRiskCouncilRelay,
+} from "@/api/useRiskCouncil";
 import { Route } from "./risk-council.writedown.$id";
 
-const mockUseLoanBook = vi.mocked(useLoanBook);
+const mockLoanBook = vi.mocked(useLoanBook);
+const mockAccess = vi.mocked(useRiskCouncilAccess);
+const mockLoanState = vi.mocked(useRiskCouncilLoanState);
+const mockRelay = vi.mocked(useRiskCouncilRelay);
 
+let chain = STELLAR;
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "4471",
 });
 (Route as unknown as { useSearch: () => { chain: number } }).useSearch =
-  () => ({
-    chain: 99_000_001,
-  });
+  () => ({ chain });
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
 
-const LOAN_BOOK_RESPONSE: LoanBookResponse = {
-  summary: {
-    total_deployed: "0.000000",
-    total_collateral: null,
-    senior_debt_coverage: null,
-    avg_yield: null,
-    avg_duration_days: null,
-    deployed_senior: "0.000000",
-    weighted_rate: null,
-    weighted_tenor_days: null,
-    at_risk_wl_and_default_senior: "0.000000",
-    at_risk_wl_and_default_pct: null,
-    top_concentration: null,
-  },
-  loans: [
-    {
-      loan_id: "4471",
-      chain_id: 99_000_001,
-      originator: "Delta Commodities",
-      borrower: "b1",
-      commodity: "Coffee",
-      principal: "3200000.000000",
-      // Principal outstanding = $3,200,000, as-is (#906).
-      senior_outstanding: "3200000.000000",
-      original_senior_tranche: "3200000.000000",
-      maturity: 1_786_838_400,
-      next_payment_timestamp: 1_786_838_400,
-      days_overdue: null,
-      spot_price: "4500",
-      spot_change_7d: "-0.18",
-      collateral: "2106000.000000",
-      ltv: null,
-      ccr_bps: 9_800,
-      duration_days: 88,
-      rate: "0.120000",
-      protection: null,
-      status: "Default",
-      onchain_status: "Default",
-      documents: [],
-      repaid_to_date: "0.000000",
-      disbursed: true,
-      days_on_watchlist: null,
-      watchlist_entered_at: null,
-    },
-  ],
-};
+let relay: ReturnType<typeof relayResult>;
 
-function ready() {
-  mockUseLoanBook.mockReturnValue({
-    data: LOAN_BOOK_RESPONSE,
-    isLoading: false,
-    error: null,
-    refetch: () => {},
-  });
+function setup({
+  access = DELAYED,
+  perFn = {},
+  status = "Default",
+  outstanding = "18400000000000",
+}: {
+  access?: RiskCouncilAccess | undefined;
+  perFn?: Partial<Record<string, RiskCouncilAccess>>;
+  status?: string;
+  outstanding?: string;
+} = {}) {
+  mockLoanBook.mockReturnValue(
+    loanBookResult([loanEntry({ chain_id: chain, onchain_status: status })]),
+  );
+  mockAccess.mockImplementation(((_c: number, _call: unknown, fn: string) =>
+    accessResult(perFn[fn] ?? access)) as never);
+  mockLoanState.mockReturnValue({
+    data: chain === STELLAR ? loanState({ status, outstanding }) : undefined,
+  } as never);
+  mockRelay.mockReturnValue(relay as never);
 }
 
 beforeEach(() => {
-  mockUseLoanBook.mockReset();
+  vi.clearAllMocks();
+  chain = STELLAR;
+  relay = relayResult();
+  _resetRiskCouncilOpsForTests();
 });
 
-describe("Risk Council — Write-down close route (ready)", () => {
-  beforeEach(ready);
-
-  it("renders the header, MOCK timestamp, and the three chips", () => {
+describe("Default resolution — layout", () => {
+  it("renders the title, the chain state and three action cards with role lines", () => {
+    setup();
     renderRoute();
     expect(
-      screen.getByRole("heading", { name: "Risk proposal" }),
+      screen.getByRole("heading", {
+        name: "Default resolution — Delta Commodities — Coffee",
+      }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("risk-council-writedown-timestamp"),
-    ).toHaveTextContent("21 Jun 2026, 14:32 UTC");
-    expect(
-      screen.getByTestId("risk-council-writedown-chip-queue"),
-    ).toHaveTextContent("queued · 18h remaining");
-    expect(
-      screen.getByTestId("risk-council-writedown-chip-safe"),
-    ).toHaveTextContent("Safe proposal");
-    expect(
-      screen.getByTestId("risk-council-writedown-chip-guardian"),
-    ).toHaveTextContent("Guardian cancel enabled");
+    const rows = screen.getByTestId("risk-council-writedown-chain-state");
+    expect(rows).toHaveTextContent("Status (on chain)Default");
+    expect(rows).toHaveTextContent("Outstanding principal$1,840,000.00");
+    expect(rows).toHaveTextContent("Closure reasonNone");
+    for (const prefix of ["writedown", "close", "cure"]) {
+      expect(
+        screen.getByTestId(`risk-council-writedown-${prefix}-role`),
+      ).toHaveTextContent(/24 h delay/);
+    }
+    const cards = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((h) => h.textContent);
+    expect(cards).toEqual([
+      "Chain state",
+      "Write down",
+      "Close defaulted loan",
+      "Cure",
+    ]);
   });
 
-  it("renders the Resolution summary — REAL loan + principal outstanding, MOCK recovery/write-down", () => {
-    renderRoute();
-    const card = screen.getByTestId("risk-council-writedown-resolution");
-    expect(card).toHaveTextContent("Delta Commodities — Coffee");
-    // senior_outstanding "3200000.000000" as-is (#906) ⇒ $3,200,000.
-    expect(card).toHaveTextContent("$3,200,000");
-    // MOCK.
-    expect(card).toHaveTextContent("$2,640,000");
-    expect(card).toHaveTextContent("$560,000");
-  });
-
-  it("renders the Close payload code block with the MOCK closeLoan proposal", () => {
-    renderRoute();
-    const code = screen.getByTestId("risk-council-writedown-code");
-    expect(code).toHaveTextContent("closeLoan");
-    expect(code).toHaveTextContent("DELTA-COFFEE-04");
-    expect(code).toHaveTextContent("OtherWriteDown");
-    expect(code).toHaveTextContent("2,640,000");
-    expect(code).toHaveTextContent("560,000");
-  });
-
-  it("renders the MOCK per-signer voting status (signed / pending)", () => {
-    renderRoute();
-    const signers = screen.getAllByTestId("risk-council-writedown-signer");
-    expect(signers).toHaveLength(3);
-    expect(signers[0]).toHaveTextContent("Risk Council signer 1");
-    expect(signers[0]).toHaveTextContent("signed");
-    expect(signers[1]).toHaveTextContent("signed");
-    expect(signers[2]).toHaveTextContent("Risk Council signer 3");
-    expect(signers[2]).toHaveTextContent("pending");
-  });
-
-  it("is read-only — no action button, only the audit-trail footer note", () => {
-    renderRoute();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  it("has no signer rows, code block, Safe or proposal text", () => {
+    setup();
+    const { container } = renderRoute();
+    expect(container.querySelector("pre")).toBeNull();
+    expect(container.textContent).not.toMatch(/safe|proposal|signer|queued/i);
     expect(
-      within(screen.getByTestId("risk-council-writedown-footer")).getByText(
-        /trustee has no direct close button on this flow/,
-      ),
-    ).toBeInTheDocument();
+      screen.getByTestId("risk-council-writedown-close"),
+    ).toHaveTextContent("Other write-down — Risk Council only · 24 hours");
   });
 });
 
-describe("Risk Council — Write-down close route (top-level states)", () => {
-  it("renders a loading skeleton while the loan book is loading", () => {
-    mockUseLoanBook.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-      refetch: () => {},
-    });
+describe("Default resolution — write down", () => {
+  it("prefills the amount from the chain outstanding and schedules it", () => {
+    setup();
     renderRoute();
-    expect(
-      screen.getByTestId("risk-council-writedown-loading"),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
-    const user = userEvent.setup();
-    mockUseLoanBook.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error("network error"),
-      refetch: () => {},
-    });
-    renderRoute();
-    const alert = screen.getByTestId("risk-council-writedown-error");
-    expect(alert).toHaveTextContent("Failed to load the loan.");
-    expect(alert).not.toHaveTextContent("network error");
-
-    await user.click(screen.getByTestId("inline-error-view-details"));
-    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
-      "network error",
+    const input = screen.getByTestId("risk-council-writedown-amount");
+    expect(input).toHaveValue("$1,840,000.00");
+    const button = screen.getByTestId(
+      "risk-council-writedown-writedown-button",
     );
+    expect(button).toHaveTextContent("Schedule write-down");
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: { fn: "write_down", loanId: 4471, amount: "18400000000000" },
+      chainId: STELLAR,
+    });
   });
 
-  it("renders a not-found state when the loan isn't in the book", () => {
-    mockUseLoanBook.mockReturnValue({
-      data: { ...LOAN_BOOK_RESPONSE, loans: [] },
-      isLoading: false,
-      error: null,
-      refetch: () => {},
+  it("sends an edited amount and executes once scheduled", () => {
+    setup({ perFn: { write_down: SCHEDULED } });
+    renderRoute();
+    fireEvent.change(screen.getByTestId("risk-council-writedown-amount"), {
+      target: { value: "500" },
     });
+    const button = screen.getByTestId(
+      "risk-council-writedown-writedown-button",
+    );
+    expect(button).toHaveTextContent("Execute write-down");
+    fireEvent.click(button);
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "execute",
+      call: { fn: "write_down", loanId: 4471, amount: "5000000000" },
+      chainId: STELLAR,
+    });
+  });
+});
+
+describe("Default resolution — close", () => {
+  it("sends Default by default and OtherWriteDown when selected", () => {
+    setup();
     renderRoute();
     expect(
-      screen.getByTestId("risk-council-writedown-not-found"),
-    ).toBeInTheDocument();
+      screen.getByTestId("risk-council-writedown-reason-Default"),
+    ).toBeChecked();
+    fireEvent.click(
+      screen.getByTestId("risk-council-writedown-reason-OtherWriteDown"),
+    );
+    fireEvent.click(screen.getByTestId("risk-council-writedown-close-button"));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: { fn: "close_defaulted", loanId: 4471, reason: "OtherWriteDown" },
+      chainId: STELLAR,
+    });
+  });
+
+  it("allows scheduling while the outstanding principal is above zero", () => {
+    setup({ outstanding: "1" });
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-close-button"),
+    ).toBeEnabled();
+  });
+
+  it("blocks the execute with the copy until the outstanding principal is zero", () => {
+    setup({ perFn: { close_defaulted: SCHEDULED }, outstanding: "1" });
+    const { unmount } = renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-close-button"),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId("risk-council-writedown-close-notice"),
+    ).toHaveTextContent("Executable once the outstanding principal is zero.");
+    unmount();
+    setup({ perFn: { close_defaulted: SCHEDULED }, outstanding: "0" });
+    renderRoute();
+    const button = screen.getByTestId("risk-council-writedown-close-button");
+    expect(button).toBeEnabled();
+    expect(button).toHaveTextContent("Execute close");
+    expect(
+      screen.queryByTestId("risk-council-writedown-close-notice"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gates the immediate execute as well", () => {
+    setup({ perFn: { close_defaulted: IMMEDIATE }, outstanding: "5" });
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-close-button"),
+    ).toBeDisabled();
+  });
+});
+
+describe("Default resolution — cure", () => {
+  it("shows the effects and schedules the cure", () => {
+    setup();
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-cure-effects"),
+    ).toHaveTextContent("The loan returns to WatchList. The pocket stays open");
+    fireEvent.click(screen.getByTestId("risk-council-writedown-cure-button"));
+    expect(relay.mutateAsync).toHaveBeenCalledWith({
+      mode: "schedule",
+      call: { fn: "cure", loanId: 4471 },
+      chainId: STELLAR,
+    });
+  });
+});
+
+describe("Default resolution — roles and states", () => {
+  it("is read-only for a wallet without the role", () => {
+    setup({ access: NO_ROLE });
+    renderRoute();
+    for (const prefix of ["writedown", "close", "cure"]) {
+      expect(
+        screen.getByTestId(`risk-council-writedown-${prefix}-button`),
+      ).toBeDisabled();
+      expect(
+        screen.getByTestId(`risk-council-writedown-${prefix}-role`),
+      ).toHaveTextContent(
+        "Writing down, closing a defaulted loan and curing belong to the Risk Council.",
+      );
+    }
+  });
+
+  it("points a non-Default loan back to escalate and disables the actions", () => {
+    setup({ status: "WatchList" });
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-not-default"),
+    ).toHaveTextContent("This loan is not in Default.");
+    expect(
+      screen.getByRole("link", { name: /Back to Escalate to Default/ }),
+    ).toHaveAttribute("href", "/risk-council/escalate/4471");
+    expect(
+      screen.getByTestId("risk-council-writedown-cure-button"),
+    ).toBeDisabled();
+  });
+
+  it("says the schedule is gone when a page-local op reads zero and was not executed here", () => {
+    setup();
+    recordScheduledOp({
+      chainId: STELLAR,
+      call: { fn: "cure", loanId: 4471 },
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 60_000);
+    mockAccess.mockImplementation(((
+      _c: number,
+      _call: unknown,
+      fn: string,
+    ) => ({
+      ...accessResult(DELAYED),
+      dataUpdatedAt: fn === "cure" ? Date.now() : 0,
+    })) as never);
+    renderRoute();
+    vi.useRealTimers();
+    expect(
+      screen.getByTestId("risk-council-writedown-cure-no-longer"),
+    ).toHaveTextContent(
+      "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session.",
+    );
+    expect(
+      screen.queryByTestId("risk-council-writedown-close-no-longer"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stays read-only on another chain with the Stellar-only reason", () => {
+    chain = 1;
+    setup({ access: undefined });
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-writedown-cure-button"),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId("risk-council-writedown-cure-role"),
+    ).toHaveTextContent(/On-chain actions run on Stellar only/);
+    expect(
+      screen.getByTestId("risk-council-writedown-chain-state"),
+    ).toHaveTextContent("Status (on chain)—");
   });
 });

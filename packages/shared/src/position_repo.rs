@@ -101,6 +101,33 @@ pub fn position_history_sql(interval: &str) -> String {
     )
 }
 
+pub fn share_price_closing_sql(interval: &str) -> String {
+    format!(
+        "SELECT bucket, price FROM (
+             (SELECT DISTINCT ON (DATE_TRUNC('{interval}', block_timestamp))
+                 DATE_TRUNC('{interval}', block_timestamp) AS bucket,
+                 price::text AS price,
+                 1 AS arm
+              FROM share_prices
+              WHERE chain_id = $1
+                AND LOWER(vault_address) = (SELECT LOWER(address) FROM vaults WHERE chain_id = $1)
+                AND block_timestamp >= $2
+              ORDER BY DATE_TRUNC('{interval}', block_timestamp), block_timestamp DESC, block_number DESC)
+             UNION ALL
+             (SELECT DATE_TRUNC('{interval}', block_timestamp) AS bucket,
+                 price::text AS price,
+                 0 AS arm
+              FROM share_prices
+              WHERE chain_id = $1
+                AND LOWER(vault_address) = (SELECT LOWER(address) FROM vaults WHERE chain_id = $1)
+                AND block_timestamp < $2
+              ORDER BY block_timestamp DESC, block_number DESC
+              LIMIT 1)
+         ) closings
+         ORDER BY bucket, arm",
+    )
+}
+
 pub struct PositionRepo {
     pub pool: PgPool,
 }
@@ -132,6 +159,12 @@ pub struct BalanceEventRow {
 pub struct AvgPriceBucket {
     pub bucket: DateTime<Utc>,
     pub avg_price: bigdecimal::BigDecimal,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct SharePriceBucket {
+    pub bucket: DateTime<Utc>,
+    pub price: String,
 }
 
 #[derive(sqlx::FromRow, Debug)]
@@ -395,6 +428,21 @@ impl PositionRepo {
         .bind(since)
         .fetch_all(&self.pool)
         .await?)
+    }
+
+    pub async fn get_share_price_closings(
+        &self,
+        chain_id: i64,
+        interval: &str,
+        since: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<SharePriceBucket>> {
+        Ok(
+            sqlx::query_as::<_, SharePriceBucket>(&share_price_closing_sql(interval))
+                .bind(chain_id)
+                .bind(since)
+                .fetch_all(&self.pool)
+                .await?,
+        )
     }
 
     /// Get the highest block number we have a price for (per vault).

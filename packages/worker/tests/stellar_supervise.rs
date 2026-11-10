@@ -38,6 +38,9 @@ fn keyed_backoff_works_for_any_key_and_warns_once_per_channel() {
     assert!(by_pair.first_warning((2, 2)));
     assert!(by_pair.first_warning_on((1, 2), 1));
     assert!(!by_pair.first_warning_on((1, 2), 1));
+    by_pair.clear((1, 2));
+    assert!(by_pair.first_warning((1, 2)));
+    assert!(by_pair.first_warning_on((1, 2), 1));
 }
 
 #[tokio::test(start_paused = true)]

@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-32: Assay and offtake validation accepts unbounded decimal exponents, which the valuation math then expands
+- **Date:** 2026-11-09
+- **Location:** `packages/api/src/routes/collateral_valuation.rs` (`parse_dec`, `validate_assay`, `validate_offtake`) and `packages/shared/src/collateral_valuation/mod.rs` (`dec`, `compute_collateral`). Found while planning #1783.
+- **Symptom:** A stored `grade_g_per_t` or `payable_pct` such as `1e999999999` passes validation. Reads that call `compute_collateral` (`/valuations`, the loan book, `ccr-history`) can then spend unbounded time and memory expanding it.
+- **Root cause:** `parse_dec` only calls `BigDecimal::from_str`; neither the string length nor the exponent is bounded, and `dec` parses the stored strings the same way.
+- **Workaround:** The #1783 mark suggestion path bounds every such decimal first (`shared::security_marks::bounded_dec_str`: at most 64 bytes, exponent in [-40, 40], at most 60 digits). Apply the same bound at write time and in `dec`.
+
 ### BUG-28: The trustee wire-in error mapping treats Minter code 13 as a missing trustline, but the source has 13 = `NonExistentRepayment` and 15 = `ReceiverNotAuthorized`
 - **Date:** 2026-10-27
 - **Location:** `packages/trustee/src/routes/-useLpBankDeposits.ts` (`mintError`). Found while planning #1712.

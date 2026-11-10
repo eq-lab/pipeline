@@ -298,6 +298,26 @@ pub fn compute_collateral<S: std::hash::BuildHasher>(
     }
 }
 
+pub fn nsr_per_dmt<S: std::hash::BuildHasher>(
+    assay: &AssayRow,
+    offtake: &OfftakeTermsRow,
+    prices: &HashMap<String, BigDecimal, S>,
+) -> anyhow::Result<Option<BigDecimal>> {
+    let Some(metals) = assemble_metals(assay, offtake, prices)? else {
+        return Ok(None);
+    };
+    let valuation = ConcentrateInputs {
+        quantity_dmt: BigDecimal::from(1),
+        metals,
+        treatment_charge_per_dmt: offtake.treatment_charge_per_dmt.clone(),
+        penalties: assemble_penalties(assay, offtake)?,
+        realisation_costs: BigDecimal::zero(),
+        haircut: BigDecimal::zero(),
+    }
+    .valuate();
+    Ok(Some(valuation.nsr))
+}
+
 /// Parse a stored JSON decimal string, tagging the field on failure.
 fn dec(field: &str, value: &str) -> anyhow::Result<BigDecimal> {
     BigDecimal::from_str(value)

@@ -239,6 +239,24 @@ export type {
 } from "./stellar/contracts/accessManager";
 
 export {
+  encodeRiskCouncilArgs,
+  relayRiskCouncil,
+  readRiskCouncilSchedule,
+  riskCouncilReasonHash,
+  readLoanMoney,
+  readLoanChainState,
+} from "./stellar/contracts/riskCouncil";
+export type {
+  RiskCouncilCall,
+  RiskCouncilClosureReason,
+  RiskCouncilRelayParams,
+  ReadRiskCouncilScheduleParams,
+  LoanMoney,
+  LoanChainState,
+  ReadLoanParams,
+} from "./stellar/contracts/riskCouncil";
+
+export {
   minterRecoveryAbi,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,

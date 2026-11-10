@@ -49,10 +49,10 @@ use crate::AppState;
 
 /// Derived display status: the loan is drawn but its USDC off-ramp is not yet marked
 /// complete. Overrides `Performing` / `WatchList`. See [`display_status`].
-const STATUS_DISBURSING: &str = "Disbursing";
+pub const STATUS_DISBURSING: &str = "Disbursing";
 /// Derived display status: past the current (rollover-adjusted) maturity and still
 /// `Performing` / `WatchList`. See [`display_status`].
-const STATUS_PAST_DUE: &str = "Past Due";
+pub const STATUS_PAST_DUE: &str = "Past Due";
 
 /// Compute the **displayed** loan status, layering two derived states over the raw
 /// on-chain status:
