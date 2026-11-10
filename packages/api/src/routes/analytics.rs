@@ -143,7 +143,7 @@ pub fn degrade_minter_list<T>(
     result: anyhow::Result<Option<Vec<T>>>,
 ) -> Option<Vec<T>> {
     result.unwrap_or_else(|e| {
-        tracing::warn!(error = %e, "failed to fetch {what}; omitting them");
+        tracing::warn!(error = %e, list = what, "failed to fetch a minter list; omitting it");
         None
     })
 }
@@ -349,7 +349,7 @@ async fn get_requests(
         |kind: ChainKind| kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled);
 
     let claims_wanted = includes_pocket_claims(query.status.as_deref());
-    let wire_in_wallet = query.wallet.trim().to_uppercase();
+    let wire_in_wallet = wallet.to_uppercase();
     let (requests, wire_outs, wire_ins, claims) = tokio::join!(
         state
             .kyc_repo

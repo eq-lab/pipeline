@@ -505,7 +505,7 @@ fn raw_seven_dp_amounts_render_as_floored_six_dp_dollars() {
 
 const OTHER: &str = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
 
-fn assigned(id: Value, receiver: &str, block: i64) -> MinterEventRow {
+fn assigned(id: &Value, receiver: &str, block: i64) -> MinterEventRow {
     ev(
         "WireInAssigned",
         block,
@@ -524,7 +524,7 @@ fn lp_wire_ins_keep_a_direct_wire_to_the_wallet() {
 #[test]
 fn lp_wire_ins_keep_an_escrowed_wire_assigned_to_the_wallet_for_both_id_forms() {
     for id in [json!(1), json!("1")] {
-        let rows = vec![wire_in(1, MINTER, 10, 2), assigned(id, LP, 3)];
+        let rows = vec![wire_in(1, MINTER, 10, 2), assigned(&id, LP, 3)];
         let list = build_lp_wire_ins(&rows, MINTER, LP);
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].status, WireInStatus::Assigned);
@@ -546,8 +546,8 @@ fn lp_wire_ins_drop_unassigned_returned_and_foreign_wires() {
             ),
         ],
         vec![wire_in(1, OTHER, 10, 2)],
-        vec![wire_in(1, MINTER, 10, 2), assigned(json!(1), OTHER, 3)],
-        vec![assigned(json!(9), LP, 3)],
+        vec![wire_in(1, MINTER, 10, 2), assigned(&json!(1), OTHER, 3)],
+        vec![assigned(&json!(9), LP, 3)],
     ];
     for rows in cases {
         assert!(build_lp_wire_ins(&rows, MINTER, LP).is_empty(), "{rows:?}");

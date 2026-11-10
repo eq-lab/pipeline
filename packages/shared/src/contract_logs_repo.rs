@@ -779,6 +779,7 @@ pub const LP_WIRE_IN_EVENTS_SQL: &str = "WITH assigned AS (
           OR (event_name = 'WireIn'
               AND params @> ANY(ARRAY(
                   SELECT jsonb_build_object('id', (id #>> '{}')::bigint) FROM assigned
+                   WHERE id #>> '{}' ~ '^[0-9]{1,10}$'
                   UNION ALL
                   SELECT jsonb_build_object('id', id #>> '{}') FROM assigned)))
         )

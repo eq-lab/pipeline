@@ -280,6 +280,7 @@ fn lp_wire_in_events_sql_matches_receiver_and_parent_ids_with_gin_containment() 
         "event_name IN ('WireIn', 'WireInAssigned')",
         "@> ANY(",
         "(id #>> '{}')::bigint",
+        "WHERE id #>> '{}' ~ '^[0-9]{1,10}$'",
         "jsonb_build_object('id', id #>> '{}')",
         "ORDER BY block_number, log_index",
     ] {
