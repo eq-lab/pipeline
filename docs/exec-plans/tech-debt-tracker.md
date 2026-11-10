@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-176.**
+**Next free number: TD-178.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2156,7 +2156,7 @@ line, whichever section it lands in.
 
 - **Date:** 2026-10-16
 - **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
-- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
+- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carry the same gate: every action card is disabled with `stellarOnlyActionReason`, the chain-state card shows `—`, and the hub shows only the reason for a non-Stellar session.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
 - **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
@@ -2211,14 +2211,13 @@ line, whichever section it lands in.
 - **Impact:** A falsy throw from the router blanks the page until a refresh; in the LP app nothing reports it.
 - **Suggested fix:** Still worthwhile, but no longer tied to auth navigation (the trustee no longer navigates on auth changes; #1749). Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.
 
-### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay`
+### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay` or Risk Council operation
 
 - **Date:** 2026-10-28
-- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
-- **Gap:** The repayment recovery dialog (#1711) schedules and executes the reversal through `AM.schedule` / `AM.execute` but has no `AM.cancel`. Cancelling is admin or guardian only for other callers.
-- **Impact:** A wrongly scheduled reversal can only be left to expire (7 days after its ready time) or cancelled outside the app.
+- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/trustee/src/api/useRiskCouncil.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
+- **Gap:** The repayment recovery dialog (#1711) and the Risk Council pages (#1761: `amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, `cure`, and `set_default` while it is delayed) schedule and execute through `AM.schedule` / `AM.execute` but have no `AM.cancel`. Cancelling is the scheduler, the Guardian or the Admin only.
+- **Impact:** A wrongly scheduled reversal or Risk Council operation can only be left to expire (7 days after its ready time) or cancelled outside the app.
 - **Suggested fix:** Add a `cancel` mode to the AccessManager relay and a "Cancel scheduled reversal" action gated on the wallet's guardian or admin role, while the delayed path is still in use (it disappears once #1756 makes `reverse_repay` immediate).
-
 ### TD-160: EVM vouchers carry no deadline, so the 24-hour voucher validity is unenforced on EVM
 
 - **Date:** 2026-10-29
@@ -2358,3 +2357,11 @@ line, whichever section it lands in.
 - **Gap:** The drift check verifies a holder only after its seed. The pre-seed back-compute (`seed − Σ deltas`) assumes every PLUSD movement between the coverage bound and the seed was indexed. If classic PLUSD payments do not reach `getEvents` (unconfirmed, see TD-175 "Also"), a classic payment in that window silently shifts every back-computed value before it unless a value goes negative. After the seed, the same payments are caught by the drift check (one read per seeded holder every 6 h, 10 per minute) and re-anchored.
 - **Impact:** A wrong early part of a Stellar LP's PLUSD history for a wallet that moved PLUSD with classic payments before its seed.
 - **Suggested fix:** Run the classic-payment check (manual step 3 of the #1878 user stories). If classic events are visible, close this item. If not, drop the back-compute for chains where it is proven wrong (treat every seed as NoCoverage) or verify the first seed against a Horizon payment history.
+
+### TD-177: Risk Council hub cannot list operations scheduled elsewhere
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/-risk-council-hub.ts`, `packages/trustee/src/api/useRiskCouncil.ts` (`useRiskCouncilHubLookups`)
+- **Gap:** Nothing indexes the AccessManager's `OperationScheduled`, `OperationCanceled` or `OperationExecuted` events. Operations with arguments (`amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`) scheduled by another session or browser cannot be listed; only `set_default` / `cure` (arguments are just the loan id) and operations this console scheduled in this session are shown. `hash_operation` also covers the caller, so a Trustee-only wallet never sees the Risk Council's operations.
+- **Impact:** The "Scheduled operations" table is incomplete after a reload, and a cancelled or executed operation cannot be told apart from an expired one.
+- **Suggested fix:** Backend: a worker parser for the three AccessManager events and a `/v1/risk-council/operations` route, then replace the page-local store and the per-loan lookups with it.

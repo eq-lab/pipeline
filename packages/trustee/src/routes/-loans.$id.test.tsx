@@ -486,7 +486,7 @@ describe("Loan detail route — static action sections", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the Other actions buttons + timelock note", () => {
+  it("renders the Other actions buttons + Risk Council note", () => {
     renderRoute();
     const actions = screen.getByTestId("loan-detail-other-actions");
     for (const label of PERFORMING_OTHER_ACTIONS.actions) {
@@ -495,7 +495,9 @@ describe("Loan detail route — static action sections", () => {
       ).toBeInTheDocument();
     }
     expect(
-      within(actions).getByText(/Risk Council proposals under a 24h timelock/),
+      within(actions).getByText(
+        /Declaring default, cure, write-down and amendments belong to the Risk Council/,
+      ),
     ).toBeInTheDocument();
   });
 });

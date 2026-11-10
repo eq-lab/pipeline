@@ -1,193 +1,155 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+// spec: docs/frontend/trustee-flows.md#risk-council-actions
+import { createFileRoute } from "@tanstack/react-router";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   useRiskCouncilReterm,
+  type AdjustFormView,
+  type AmendFormView,
   type RetermCurrentTerms,
-  type RetermProposedTerms,
 } from "./-risk-council-reterm";
-import { InlineError } from "@pipeline/ui";
-
-/**
- * Risk Council — Amend economics (off-cycle re-term). The second of the
- * three Type-3 RISK_COUNCIL proposal screens.
- *
- * spec: docs/frontend/trustee-flows.md#amend-economics--off-cycle-re-term-flow-11--read-only-review
- * (flow, routing).
- */
-
-const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
-const INK = "#262524";
-const INK_MUTED = "rgba(56,55,53,0.6)";
-const INK_SUBTLE = "rgba(56,55,53,0.3)";
-const NEGATIVE_RED = "#b20000";
-const ATTENTION_AMBER = "#6e6400";
-const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
-const BRAND = "var(--color-pipeline-brand)";
-
-// ── Small building blocks ─────────────────────────────────────────────────────
-
-function Chip({
-  children,
-  color,
-  bg,
-  border,
-  testId,
-}: {
-  children: React.ReactNode;
-  color: string;
-  bg: string;
-  border: string;
-  testId?: string;
-}) {
-  return (
-    <span
-      data-testid={testId}
-      className="inline-flex items-center rounded-[4px] border border-solid px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap"
-      style={{ color, backgroundColor: bg, borderColor: border }}
-    >
-      {children}
-    </span>
-  );
-}
-
-/** A provenance tag with a coloured dot, e.g. `● loan state`. */
-function DotTag({ label, dotColor }: { label: string; dotColor: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-[6px] rounded-[4px] border border-solid px-[8px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
-      style={{ color: INK_MUTED, borderColor: LINE_COLOR }}
-    >
-      <span
-        aria-hidden="true"
-        className="inline-block size-[7px] rounded-full"
-        style={{ backgroundColor: dotColor }}
-      />
-      {label}
-    </span>
-  );
-}
-
-function TermRow({
-  label,
-  value,
-  isLast,
-  testId,
-}: {
-  label: string;
-  value: string;
-  isLast?: boolean;
-  testId?: string;
-}) {
-  return (
-    <div
-      data-testid={testId}
-      className="flex items-end justify-between gap-[16px] py-[12px]"
-      style={isLast ? undefined : { borderBottom: `1px solid ${LINE_COLOR}` }}
-    >
-      <span
-        className="font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
-        style={{ color: INK_MUTED }}
-      >
-        {label}
-      </span>
-      <span
-        className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]"
-        style={{ color: INK }}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function TermsCard({
-  title,
-  children,
-  tags,
-  testId,
-}: {
-  title: string;
-  children: React.ReactNode;
-  tags: React.ReactNode;
-  testId: string;
-}) {
-  return (
-    <div
-      data-testid={testId}
-      className="flex w-full flex-1 flex-col rounded-[4px] bg-white px-[26px] py-[24px]"
-      style={{ border: `1px solid ${LINE_COLOR}` }}
-    >
-      <h2 className="pb-[6px] font-[family-name:var(--font-display)] text-[26px] leading-[35.84px] text-[#262524]">
-        {title}
-      </h2>
-      <div>{children}</div>
-      <div className="flex flex-wrap items-center gap-[8px] pt-[16px]">
-        {tags}
-      </div>
-    </div>
-  );
-}
+import {
+  ActionControls,
+  BackLink,
+  Card,
+  Chip,
+  FIELD_CLASS,
+  Field,
+  INK_MUTED,
+  LINE_COLOR,
+  MAIN_CLASS,
+  Muted,
+  PageGate,
+  Row,
+} from "./-RiskCouncilParts";
 
 function CurrentTermsCard({ current }: { current: RetermCurrentTerms }) {
   return (
-    <TermsCard
-      title="Current terms"
-      testId="risk-council-reterm-current"
-      tags={
-        <>
-          <DotTag label="loan state" dotColor={BRAND} />
-          <DotTag label="collateral report" dotColor={ATTENTION_AMBER} />
-        </>
-      }
-    >
-      <TermRow
-        label="Loan"
-        value={current.loan}
-        testId="risk-council-reterm-loan"
-      />
-      <TermRow label="Coupon" value={current.coupon} />
-      <TermRow label="Maturity" value={current.maturity} />
-      <TermRow label="CCR" value={current.ccr} isLast />
-    </TermsCard>
+    <Card testId="risk-council-reterm-current" title="Current terms">
+      <div>
+        <Row
+          label="Loan"
+          value={current.loan}
+          testId="risk-council-reterm-loan"
+        />
+        <Row
+          label="Coupon"
+          value={current.coupon}
+          testId="risk-council-reterm-coupon"
+        />
+        <Row
+          label="Maturity"
+          value={current.maturity}
+          testId="risk-council-reterm-maturity"
+        />
+        <Row label="CCR" value={current.ccr} />
+        <Row
+          label="Accrued interest"
+          value={current.accruedInterest}
+          testId="risk-council-reterm-accrued"
+        />
+        <Row
+          label="Interest adjustment"
+          value={current.interestAdjustment}
+          testId="risk-council-reterm-adjustment"
+          isLast
+        />
+      </div>
+    </Card>
   );
 }
 
-function ProposedTermsCard({ proposed }: { proposed: RetermProposedTerms }) {
+function AmendEconomicsCard({ form }: { form: AmendFormView }) {
   return (
-    <TermsCard
-      title="Proposed terms"
-      testId="risk-council-reterm-proposed"
-      tags={<DotTag label="proposal payload" dotColor={POSITIVE_GREEN} />}
-    >
-      <TermRow
-        label="Coupon"
-        value={proposed.coupon}
-        testId="risk-council-reterm-proposed-coupon"
-      />
-      <TermRow label="Maturity extension" value={proposed.maturityExtension} />
-      <TermRow
-        label="Additional collateral covenant"
-        value={proposed.covenant}
-      />
-      <TermRow
-        label="Expected status after execute"
-        value={proposed.expectedStatus}
-        isLast
-      />
-    </TermsCard>
+    <Card testId="risk-council-reterm-amend" title="Amend economics">
+      <Field label="New rate (%)">
+        <input
+          type="text"
+          inputMode="decimal"
+          data-testid="risk-council-reterm-rate"
+          value={form.ratePercent}
+          onChange={(e) => form.setRatePercent(e.target.value)}
+          placeholder="e.g. 14.5"
+          className={FIELD_CLASS}
+          style={{ borderColor: LINE_COLOR }}
+        />
+        <span
+          data-testid="risk-council-reterm-rate-bps"
+          className="font-[family-name:var(--font-body)] text-[12px]"
+          style={{ color: INK_MUTED }}
+        >
+          {form.bps !== null ? `= ${form.bps} bps` : "1 bp = 0.01%"}
+        </span>
+        {form.rateInvalid && (
+          <span
+            data-testid="risk-council-reterm-rate-error"
+            role="alert"
+            className="font-[family-name:var(--font-body)] text-[12px] text-[color:var(--color-pipeline-negative)]"
+          >
+            Enter a rate between 0.01% and 100% with at most two decimals.
+          </span>
+        )}
+      </Field>
+      <Field label="New maturity">
+        <input
+          type="date"
+          data-testid="risk-council-reterm-maturity-input"
+          value={form.maturityDate}
+          onChange={(e) => form.setMaturityDate(e.target.value)}
+          className={FIELD_CLASS}
+          style={{ borderColor: LINE_COLOR }}
+        />
+      </Field>
+      <ActionControls prefix="risk-council-reterm-amend" view={form.action} />
+    </Card>
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
-
-function BackLink() {
+function AdjustInterestCard({ form }: { form: AdjustFormView }) {
   return (
-    <Link
-      to="/risk-council"
-      className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
-    >
-      ‹ Risk Council
-    </Link>
+    <Card testId="risk-council-reterm-adjust" title="Adjust interest">
+      <Field label="Delta (USD, negative = waiver)">
+        <input
+          type="text"
+          inputMode="decimal"
+          data-testid="risk-council-reterm-delta"
+          value={form.deltaUsd}
+          onChange={(e) => form.setDeltaUsd(e.target.value)}
+          placeholder="e.g. -1,000.50"
+          className={FIELD_CLASS}
+          style={{ borderColor: LINE_COLOR }}
+        />
+        {form.deltaInvalid && (
+          <span
+            data-testid="risk-council-reterm-delta-error"
+            role="alert"
+            className="font-[family-name:var(--font-body)] text-[12px] text-[color:var(--color-pipeline-negative)]"
+          >
+            Enter a non-zero USD amount, with an optional leading minus.
+          </span>
+        )}
+      </Field>
+      <Field label="Reason">
+        <input
+          type="text"
+          data-testid="risk-council-reterm-reason"
+          value={form.reason}
+          onChange={(e) => form.setReason(e.target.value)}
+          className={FIELD_CLASS}
+          style={{ borderColor: LINE_COLOR }}
+        />
+      </Field>
+      <Field label="Reason hash (sha256)">
+        <input
+          type="text"
+          readOnly
+          data-testid="risk-council-reterm-reason-hash"
+          value={form.reasonHash ?? ""}
+          className={FIELD_CLASS}
+          style={{ borderColor: LINE_COLOR }}
+        />
+      </Field>
+      <ActionControls prefix="risk-council-reterm-adjust" view={form.action} />
+    </Card>
   );
 }
 
@@ -196,155 +158,39 @@ function RiskCouncilReterm() {
   const { chain } = Route.useSearch();
   const view = useRiskCouncilReterm(chain, id);
 
-  if (view.state === "error") {
-    return (
-      <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
-        <BackLink />
-        <div
-          data-testid="risk-council-reterm-error"
-          className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
-        >
-          <InlineError
-            message={view.errorMessage ?? "Failed to load the loan."}
-            details={view.errorDetails ?? undefined}
-          />
-        </div>
-      </main>
-    );
-  }
-
-  if (view.state === "loading") {
-    return (
-      <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
-        <div
-          data-testid="risk-council-reterm-loading"
-          className="flex w-full flex-col gap-3"
-          aria-busy="true"
-          aria-label="Loading loan"
-        >
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-[120px] w-full animate-pulse rounded-[4px] bg-[color:var(--color-pipeline-surface-muted)]"
-            />
-          ))}
-        </div>
-      </main>
-    );
-  }
-
-  if (view.state === "not-found") {
-    return (
-      <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
-        <p
-          data-testid="risk-council-reterm-not-found"
-          className="font-[family-name:var(--font-body)] text-[16px]"
-          style={{ color: INK_MUTED }}
-        >
-          Loan not found.{" "}
-          <Link to="/risk-council" className="text-[#000080] underline">
-            Back to Risk Council
-          </Link>
-        </p>
-      </main>
-    );
-  }
-
   return (
-    <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[8px] px-[56px] pt-[39px] pb-[105px]">
-      <BackLink />
-      <div className="flex items-baseline justify-between gap-[16px] pt-[4px]">
-        <h1
-          className="font-[family-name:var(--font-display)] text-[44px] leading-[48.4px]"
-          style={{ color: INK_SUBTLE }}
-        >
-          Risk proposal
-        </h1>
-        <span
-          data-testid="risk-council-reterm-timestamp"
-          className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
-          style={{ color: INK_MUTED }}
-        >
-          {view.timestamp}
-        </span>
-      </div>
-
-      <div
-        data-testid="risk-council-reterm-card"
-        className="mt-[8px] flex w-full flex-col gap-[16px] rounded-[6px] bg-white px-[30px] py-[28px]"
-        style={{ border: `1px solid ${LINE_COLOR}` }}
-      >
-        <p className="font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]">
-          <span className="font-semibold" style={{ color: INK }}>
-            Risk Council
-          </span>{" "}
-          <span style={{ color: INK_MUTED }}>/ Proposal</span>
-        </p>
-        <h2 className="font-[family-name:var(--font-display)] text-[40px] leading-[44px] text-[#262524]">
+    <PageGate
+      state={view.state}
+      errorMessage={view.errorMessage}
+      errorDetails={view.errorDetails}
+      prefix="risk-council-reterm"
+    >
+      <main className={MAIN_CLASS}>
+        <BackLink />
+        <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-[48.4px] text-[#262524]">
           Amend economics — off-cycle re-term
-        </h2>
-
-        <div className="flex flex-wrap items-center gap-[8px]">
-          <Chip
-            testId="risk-council-reterm-chip-timelock"
-            color={ATTENTION_AMBER}
-            bg="rgba(211,235,117,0.16)"
-            border={LINE_COLOR}
-          >
-            24h timelock
-          </Chip>
-          <Chip
-            testId="risk-council-reterm-chip-guardian"
-            color={BRAND}
-            bg="rgba(0,0,128,0.06)"
-            border="rgba(0,0,128,0.3)"
-          >
-            Guardian can cancel
-          </Chip>
-          <Chip
-            testId="risk-council-reterm-chip-cannot-execute"
-            color={NEGATIVE_RED}
-            bg="rgba(178,0,0,0.06)"
-            border="rgba(178,0,0,0.3)"
-          >
-            Trustee cannot execute
-          </Chip>
-        </div>
-
-        <div className="flex w-full flex-col gap-[20px] pt-[8px] lg:flex-row lg:items-start">
+        </h1>
+        {view.amend.action.chip && (
+          <div className="flex flex-wrap items-center gap-[8px] pt-[4px]">
+            <Chip testId="risk-council-reterm-chip">
+              {view.amend.action.chip}
+            </Chip>
+          </div>
+        )}
+        {view.eligibilityNote && (
+          <Muted testId="risk-council-reterm-eligibility">
+            {view.eligibilityNote}
+          </Muted>
+        )}
+        <div className="flex w-full flex-col gap-[20px] pt-[16px] lg:flex-row lg:items-start">
           <CurrentTermsCard current={view.current} />
-          <ProposedTermsCard proposed={view.proposed} />
+          <div className="flex w-full flex-1 flex-col gap-[20px]">
+            <AmendEconomicsCard form={view.amend} />
+            <AdjustInterestCard form={view.adjust} />
+          </div>
         </div>
-
-        <div
-          data-testid="risk-council-reterm-footer"
-          className="mt-[6px] flex flex-col items-start justify-between gap-[16px] rounded-[4px] px-[19px] py-[16px] sm:flex-row sm:items-center"
-          style={{
-            backgroundColor: "rgba(211,235,117,0.16)",
-            border: `1px solid ${LINE_COLOR}`,
-          }}
-        >
-          <p
-            className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-            style={{ color: INK }}
-          >
-            Execution path stays with Risk Council Safe after timelock. Trustee
-            dashboard only shows review, evidence, and voting status.
-          </p>
-          {/* Placeholder for the (unbuilt) Safe link — read-only, no wallet /
-              no network. */}
-          <button
-            type="button"
-            data-testid="risk-council-reterm-view-safe"
-            disabled
-            className="flex h-[48px] shrink-0 items-center justify-center rounded-[4px] px-[24px] text-center font-[family-name:var(--font-body)] text-[16px] leading-[19px] text-white disabled:cursor-not-allowed disabled:opacity-70"
-            style={{ backgroundColor: BRAND }}
-          >
-            View Safe proposal
-          </button>
-        </div>
-      </div>
-    </main>
+      </main>
+    </PageGate>
   );
 }
 

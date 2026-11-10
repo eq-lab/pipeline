@@ -21,6 +21,7 @@ import {
   type RelayResult,
 } from "./accessManager";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
+import { sha256Hex } from "./hash";
 
 export type RecordWireInStage = RelayStage;
 
@@ -450,16 +451,6 @@ export async function repay({
       repaymentIdFromReturnValue(finalResult) ??
       repaymentIdFromEvents(finalResult),
   };
-}
-
-async function sha256Hex(preimage: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(preimage),
-  );
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
 }
 
 export function repaymentRefHash({
