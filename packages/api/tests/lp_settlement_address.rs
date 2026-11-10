@@ -132,6 +132,7 @@ fn lp(status: &str, stellar: Option<&str>, evm: Option<&str>) -> LpRow {
         owner_address: None,
         created_at: t(0),
         updated_at: t(0),
+        settlement_bank_account: None,
     }
 }
 
