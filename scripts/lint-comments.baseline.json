@@ -699,10 +699,6 @@
     "header": 10,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-cash-management-tbills.test.ts": {
-    "header": 6,
-    "nodeIds": 0
-  },
   "packages/trustee/src/routes/-cash-management-withdrawals.test.ts": {
     "header": 5,
     "nodeIds": 0

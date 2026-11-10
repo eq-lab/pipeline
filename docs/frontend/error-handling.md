@@ -334,6 +334,6 @@ copy with `details: ""`.
   discard the raw value at the `catch` and never read `.message`, so they already meet the
   acceptance bar without adopting `toUserError`.
 - **Trustee T-Bills swap form / On-off-ramp `SwapDialog`** (#1037, #983/#943) — UI shells with no
-  wired error state at all (execution blocked on Type-2 MPC #781) — nothing to adopt.
+  wired error state at all; both were removed by #1765 (conversions use `conversionErrorCopy`).
 - **Trustee risk-council submit errors** (#1037) — the three risk-council pages have no mutations
   wired yet, only load errors (which the sweep does cover).

@@ -329,3 +329,12 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Impact:** The Trustee app's Mint PLUSD, Bank income and Record Coupon / Repayment bookings cannot complete on testnet (found while verifying #1762). The role gating and the `ref_hash_seen` pre-check are unaffected.
 - **Workaround:** None in the app; ops must grant `MINTER` on PLUSD to the minter.
 - **Suggested fix:** Grant the role on the AccessManager, then re-run the #1762 user stories end to end.
+
+### BUG-33: Escrowed-wire and wire-out bindings reject id 0, but minter ids start at 0 [FIXED 2026-11-09 / #1765]
+- **Tracked:** #1765 — originated in the unmerged #1763 and #1764 PRs; found while planning #1765.
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts` and `wireOutSettlement.ts` (`requireWireId`, `id < 1`).
+- **Symptom:** `wire_in(0)` exists on `CAPL5WN3…`. An escrowed wire-in 0, or the first wire-out on a fresh minter, cannot be confirmed or acted on.
+- **Root cause:** `contracts/minter/src/storage.rs` `next_id` returns 0 first, so ids start at 0.
+- **Workaround:** None.
+- **Resolved:** 2026-11-09 by #1765 — both guards accept any non-negative integer; their tests cover id 0.

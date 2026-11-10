@@ -221,6 +221,73 @@ export type {
 } from "./stellar/contracts/minter";
 
 export {
+  readMinterWireIn,
+  readMinterPlusdId,
+  readPlusdAuthorization,
+  readWireInRefHashSeen,
+  wireInReturnRefHash,
+  encodeAssignWireInArgs,
+  encodeReturnWireInArgs,
+  assignWireIn,
+  returnWireIn,
+} from "./stellar/contracts/wireInEscrow";
+export type {
+  WireInStatus,
+  MinterWireIn,
+  PlusdAuthorization,
+  ReadMinterWireInParams,
+  ReadMinterPlusdIdParams,
+  ReadPlusdAuthorizationParams,
+  ReadWireInRefHashSeenParams,
+  AssignWireInArgs,
+  ReturnWireInArgs,
+  AssignWireInParams,
+  ReturnWireInParams,
+} from "./stellar/contracts/wireInEscrow";
+
+export {
+  readWireOutRecord,
+  encodeSettleWireOutArgs,
+  encodeCancelWireOutArgs,
+  settleWireOut,
+  cancelWireOut,
+} from "./stellar/contracts/wireOutSettlement";
+export type {
+  WireOutRecordStatus,
+  WireOutRecord,
+  ReadWireOutRecordParams,
+  SettleWireOutArgs,
+  CancelWireOutArgs,
+  SettleWireOutParams,
+  CancelWireOutParams,
+} from "./stellar/contracts/wireOutSettlement";
+
+export {
+  readMinterRamp,
+  readMinterPoolState,
+  readMinterPaused,
+  encodeOpenRampArgs,
+  encodeCloseRampArgs,
+  encodeRecordExpenseArgs,
+  openRamp,
+  closeRamp,
+  recordExpense,
+} from "./stellar/contracts/minterRamps";
+export type {
+  RampDirection,
+  MinterRamp,
+  MinterPoolState,
+  ReadMinterRampParams,
+  ReadMinterPoolStateParams,
+  OpenRampArgs,
+  CloseRampArgs,
+  RecordExpenseArgs,
+  OpenRampParams,
+  CloseRampParams,
+  RecordExpenseParams,
+} from "./stellar/contracts/minterRamps";
+
+export {
   readCanCall,
   readOperationSchedule,
   buildRelayEnvelope,

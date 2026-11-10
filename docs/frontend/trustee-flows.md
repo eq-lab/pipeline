@@ -106,56 +106,48 @@ Matches the `loans.index.tsx` precedent (raw Figma literals mapped to `--color-p
   truncate served data.
 - Caption `13px` / ink-muted, `leading-[18.2px]`, `pt-[16px]`.
 
-## Cash Management — On/Off-ramp & T-Bills
+## Cash Management — On/Off-ramp
 
-**Sources:** `packages/trustee/src/routes/cash-management.tsx` (view — all three tabs +
-`SwapDialog` / `TbillsSwapDialog`), `routes/-cash-management.ts` (On/Off-ramp presenter),
-`routes/-cash-management-tbills.ts` (T-Bills swap presenter), `routes/-cash-management-income.ts` (Bank income, #1762). Issue #943 (shell #943, extended
-#944), Figma node `4116-11802` for styling. Source of truth:
-`docs/product-specs/trustee-dashboard.md` (§Type 1 flow 2, §Type 4) + the working doc "Cash
-management.md" — on mismatch the doc wins, Figma is styling only. (No Refunds tab — the working
+**Sources:** `packages/trustee/src/routes/cash-management.tsx` (view — all tabs),
+`routes/-cash-management.ts` (On/Off-ramp review-queue presenter), `routes/-cash-management-income.ts`
+(Bank income, #1762), `routes/-ConversionsSection.tsx` (conversions block). Issue #943 (shell), #1762
+(bank income), #1765 (conversions and bank charges), Figma node `4116-11802` for styling. Source of
+truth: the user docs (`docs/user-docs/how-it-works/capital-layer.md`, `governance/fiduciary-trustee.md`,
+`security/custody.md`) and `docs/product-specs/trustee-dashboard.md`
+(§Type 2, §Type 4); on mismatch the user docs win, Figma is styling only. (No Refunds tab — the working
 doc has no such section.)
 
 ### On/Off-ramp tab
 
 Two parts:
 
-1. A **"New swap" button** opening the doc's swap form in a modal (`SwapDialog`, Transak-style) —
-   off/on-ramp toggle, USDC amount + real on-chain balance (`useUsdcCustodyBalance`), bank-wire
-   method, ramp destination (`GET /v1/ramp/addresses`), and a 1:1 receive summary. This is a **UI
-   shell**: off-ramp execution is a Capital-Wallet MPC 3-of-5 transfer with no backend endpoint yet
-   (#781), and there is no ramp-quote endpoint, so submit is disabled and the fee shows `—` (never
-   fabricated). USDC ↔ USD is 1:1, so "You receive" mirrors the amount — a disabled twin of the
-   amount input.
-2. The **review queue** below it — the pending ramp-boundary events (`GET /v1/ramp/events`, #936)
-   the Trustee Approves/Rejects (`POST …/review`), which is what actually moves the on-chain
-   state. Events are split by leg into **inbound** (`OnRamp`, ramp→custody) and **outbound**
-   (`OffRamp`, custody→ramp), matching the Figma's INBOUND/OUTBOUND sections.
+1. The **conversions block** (#1765): a pool summary, the conversions list and the dialogs that book
+   conversions and bank charges on the minter. Detail in
+   [Conversions and bank charges](#cash-management--conversions-and-bank-charges). It replaces the old
+   "New swap" MPC shell (`SwapDialog`), which is removed.
+2. The **"Ramp-event review" queue** below it — the pending ramp-boundary events
+   (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects (`POST …/review`). Events are split by leg
+   into **inbound** (`OnRamp`, ramp→custody) and **outbound** (`OffRamp`, custody→ramp), matching the
+   Figma's INBOUND/OUTBOUND sections. The DB approval is kept exactly as it was; whether it is retired is
+   a separate backend decision.
    Cash Management is per-network (#1669): `useRampEvents` (`GET /v1/ramp/events?chain_id=`, key
-   `["ramp-events", chainId]`) and `useRampAddresses` (`GET /v1/ramp/addresses?chain_id=`, key
-   `["ramp-addresses", chainId]`) read `useSessionState().chainId`, with `ENV.STELLAR_CHAIN_ID` only
-   as the no-session fallback. The scope is explicit in the UI: a chain chip
-   (`cash-management-ramp-chain`) beside the heading and the sub-line "<chain> ramp — the network you
-   signed in with.". An unconfigured chain returns an empty queue, shown as the empty state. Each
-   `RampEvent` carries `chain_id` (#1609); the review `POST /v1/ramp/events/{id}/review` takes the
-   chain from the event, so it sends no query string. The body is `{decision}` for Approved and `{decision, reason}` for Rejected (a non-empty `reason` is required); success is `200` with no JSON body, and `useReviewRampEvent` then invalidates the `["ramp-events"]` prefix. `useRampAddresses` returns the chain's configured ramp addresses (empty when unconfigured). Ramp addresses may be Strkeys or 0x hex, both
-   truncated first-4/last-4. The SwapDialog balance (`useUsdcCustodyBalance`) is a Stellar SAC read,
-   so it shows only on a Stellar session and `—` otherwise (the EVM custody read is TD-156).
+   `["ramp-events", chainId]`) reads `useSessionState().chainId`, with `ENV.STELLAR_CHAIN_ID` only as the
+   no-session fallback. The scope is explicit in the UI: a chain chip (`cash-management-ramp-chain`)
+   beside the heading and the sub-line "{chain} — the network you signed in with. Book conversions between
+   USDC and bank dollars, and bank charges, on the minter.". An unconfigured chain returns an empty queue,
+   shown as the empty state. Each `RampEvent` carries `chain_id` (#1609); the review
+   `POST /v1/ramp/events/{id}/review` takes the chain from the event, so it sends no query string. The body
+   is `{decision}` for Approved and `{decision, reason}` for Rejected (a non-empty `reason` is required);
+   success is `200` with no JSON body, and `useReviewRampEvent` then invalidates the `["ramp-events"]`
+   prefix. Ramp addresses may be Strkeys or 0x hex, both truncated first-4/last-4.
 
 **Data-sourcing:** everything shown in the review queue is real — the served `RampEvent`
 (id/chain_id/type/to/from/amount/created_at). The Figma's richer per-loan tagging/batch grouping/progress
 is not in the contract (#943) and is deliberately not fabricated.
 
-### T-Bills tab (#944)
+### T-Bills tab (retired)
 
-Same "New swap" modal UX as On/Off-ramp — a Buy/Sell USYC swap-form UI shell (`TbillsSwapDialog`).
-Balances shown against the shared Capital Allocation section: **Buy** spends **USDC** — the real
-on-chain Capital-Wallet balance; **Sell** spends **USYC** — the total T-Bills value at issuer NAV
-(`useCapitalAllocation().buckets.tbills`), currently `null` → `—` (the bucket is hardcoded `None`
-server-side, #931/#944). Buying/selling USYC is a Capital-Wallet MPC action (3-of-5, Type 2, flow
-8) with no backend assembly/quote path yet (follow-up filed with #944) — submit is disabled, "You
-receive" is a disabled twin of the amount input that stays empty (no USYC price/NAV served), and
-the fee shows `—`.
+Retired by #1765: T-bills / USYC are not part of the documented pool (`capital-layer.md`).
 
 ### Bank income tab (#1762)
 
@@ -227,6 +219,296 @@ ink-muted / value `16px` `#262524` right-aligned (Amount is a right-aligned inpu
 Trustee specify it). Signature collection header `12px` uppercase `tracking-[0.96px]`; signer rows
 a `9px` dot + name `15px` + optional `mandatory` chip + right-aligned "not signed" `13px`. Buttons
 `h-[40px]`: Cancel white-bordered, Co-sign `BRAND` (disabled).
+
+## Cash Management — Escrowed wires
+
+**Sources:** `packages/trustee/src/routes/-EscrowedWiresSection.tsx` (view — tab, `AssignWireDialog`,
+`ReturnWireDialog`), `-escrowed-wires.ts` (section hook), `lib/wireEscrow.ts` (copy and presenters),
+`api/useCashBook.ts`, `api/useEscrowedWires.ts`, and `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts`.
+**Spec:** [deposits.md §Escrowed Wires](../product-specs/deposits.md#escrowed-wires). Issue #1763, the
+fourth tab of the Cash Management page. No Figma: it reuses the page's card, table and chip patterns
+and the dialog shell of `MintConfirmDialog` (`useLpReviewDialog`).
+
+### Chain scope
+
+Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session), shown
+as a chip (`cash-management-escrow-chain`) and the sub-line "Unmatched incoming wires held by the minter
+on {chain} — assign each to its lender or return it." An EVM session renders "Escrowed wires on {chain}
+are not available in the Trustee app yet." and fetches nothing (the API serves no EVM cash book and the
+app has no EVM write client, #1573).
+
+### Data sourcing
+
+- `useCashBook(chainId, { enabled, refetchMs })` — `GET /v1/cash-book?chain_id=`, key
+  `["cash-book", chainId]`, the full served response (#1764 and #1765 reuse it); no retry on a 4xx.
+  Refetch is 30 s, or 5 s while a row is `*-pending-index`, bounded to 120 s per row.
+- Rows are `wire_ins` whose served `status === "Escrowed"`, in served order. Nothing is derived
+  client-side. `amount` is shown verbatim with its 6 decimals (`formatUsdExact`).
+- Each row is confirmed by `readMinterWireIn` (`wire_in(id)`, key `["minter-wire-in", minterId, id]`,
+  stale time 0). The cash book's `minter` must equal `ENV.STELLAR_YIELD_MINTER_ID`, otherwise every action
+  is disabled.
+
+### Table
+
+Columns: wire `#id`, amount, value date, bank reference hash (first 8 / last 8, full value in `title`),
+recorded at (`formatIsoDateTimeUtc`), on-chain status, actions. States: loading skeleton, `InlineError`
+(`404 minter_not_configured` -> "The cash book is not configured for {chain} on this server.", `403`,
+`401`), empty "No incoming wires are in escrow."
+
+### Row states and gating
+
+On-chain label: "Escrowed (confirmed on-chain)", "Assigned on-chain — waiting for the indexer",
+"Returned on-chain — waiting for the indexer", "On-chain status {s} differs from the cash book",
+"Could not confirm on-chain". Actions (`Assign to lender`, `Return`) are disabled with a visible reason
+(`escrow-row-{id}-reason`), first match wins: wallet not connected; minter or AccessManager not
+configured; minter mismatch; role (`can_call(wallet, minter, fn)` must be `immediate`, via
+`useWireEscrowAccess`; a delayed grant gets a reason and no schedule path); on-chain state not
+`confirmed`; another action in flight.
+
+### Assign dialog
+
+Wire summary, an LP select (`useLps`, only LPs with `stellar_address` and `address_linked_at`, sorted by
+name, "{legal_name} — {truncated address}"), the full receiver address and the authorisation result
+(`PLUSD.authorized`; "This lender's address is not authorised to hold PLUSD. It cannot receive this
+wire." / "This lender's address has no PLUSD trustline."). Confirm is enabled only when authorised. On
+confirm, before signing: re-read `fetchLp` (a changed settlement address returns to the select with a
+notice), re-read `wire_in(id)` (not `Escrowed` aborts), re-read the authorisation. Then
+`AM.execute(minter, assign_wire_in, [id, receiver])`.
+
+### Return dialog
+
+Wire summary and an "Outgoing bank reference" input (trimmed, non-empty, at most 140 characters); the
+computed `ref_hash` shows read-only. On confirm, before signing: `ref_hash_seen` (true shows "This bank
+reference is already recorded on-chain. Use the outgoing wire's own reference."), then re-read
+`wire_in(id)`. Then `AM.execute(minter, return_wire_in, [id, ref_hash])`.
+
+### Shell, errors and result
+
+Escape and backdrop cancel and never confirm; both are blocked while a step is pending, and the confirm
+label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"). Errors show inline with
+"View details". Pre-sign on-chain reads carry the specific copy; `wireEscrowErrorCopy` maps contract codes
+only as a fallback (`#7` / `RefHashSeen` on return, `#15` on assign, `#14` not in escrow, `#9` unknown
+wire) and keeps the wallet-rejection copy. After the transaction lands the app re-reads `wire_in(id)` and
+shows a green notice built from that read: "Wire #{id} assigned on-chain to {legal name} ({receiver}).
+Status {status}. Transaction {hash}. It leaves this list once indexed." or "Wire #{id} returned on-chain.
+Status {status}, return reference {ref}. Transaction {hash}. It leaves this list once indexed."
+
+### Testnet caveat
+
+No escrowed wire exists on testnet: BUG-32 (logged with #1762) blocks `record_wire_in(receiver = minter)`
+because the minter lacks the PLUSD `MINTER` role. `return_wire_in` burns PLUSD and may also fail until
+the minter holds the burn role. Both are live-testing risks, covered by unit tests meanwhile. The
+capital-wallet fallback of Mint PLUSD is unaffected (decision 2026-11-02).
+
+## Cash Management — Bank wire-outs
+
+**Sources:** `packages/trustee/src/routes/-WireOutsSection.tsx` (view — tab, `SettleWireOutDialog`,
+`CancelWireOutDialog`), `-wire-outs.ts` (section hook), `lib/wireOut.ts` (copy and presenters),
+`api/useWireOuts.ts`, `api/useCashBook.ts`, `api/useEscrowedWires.ts` (`useMinterPlusdId`,
+`ensureMinterPlusdId`), and `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts`.
+**Spec:** [withdrawals.md §Bank wire withdrawals (Trustee console)](../product-specs/withdrawals.md#bank-wire-withdrawals-trustee-console).
+Issue #1764, the fifth tab of the Cash Management page. No Figma: it reuses the Escrowed wires table,
+chip and dialog patterns (`useLpReviewDialog`). The `// spec:` pointers of the bindings, hooks and view
+files target this section and the withdrawals spec section above.
+
+### Chain scope
+
+Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session),
+shown as a chip (`cash-management-wireouts-chain`) and the sub-line "Lender bank withdrawals held in
+escrow by the minter on {chain} — settle once the wire is sent, or cancel to return the PLUSD." An EVM
+session renders "Bank wire-outs on {chain} are not available in the Trustee app yet." and fetches nothing
+(no EVM cash book is served and the app has no EVM write client, #1573).
+
+### Data sourcing
+
+- `useCashBook` (shared with Escrowed wires) — every served `wire_outs[]` row, in served order. Refetch is
+  30 s, or 5 s while a row is `*-pending-index`, bounded to 120 s per row.
+- The lender name is the served `lp_legal_name` ("—" when absent), resolved server-side from the LP link
+  active at `requested_at`; `lp_id` links to `/lp-counterparties/{id}`. The app joins nothing.
+- Amounts, dates, statuses and hashes are shown as served (amount grouped with a "PLUSD" suffix, no
+  rescaling). Only `Pending` rows are read on-chain: `readWireOutRecord` (`wire_out(id)`, key
+  `["minter-wire-out", minterId, id]`, stale time 0). The cash book's `minter` must equal
+  `ENV.STELLAR_YIELD_MINTER_ID`, otherwise every action is disabled.
+
+### Table
+
+Columns: ID, Lender (name link plus address chip), Amount, Requested at, Status, On-chain, Actions.
+`Settled` rows add the served `settled_at`, `value_date` and `ref_hash` (first 8 / last 8, full value in
+`title`); `Cancelled` rows add `cancelled_at`. States: loading skeleton, `InlineError` (`404
+minter_not_configured`, `403`, `401`, as Escrowed wires), empty "No bank wire-outs on {chain}."
+
+### Row states and gating
+
+On-chain label (Pending rows only): "Pending (confirmed on-chain)", "Settled on-chain — waiting for the
+indexer", "Cancelled on-chain — waiting for the indexer", "On-chain status {s} differs from the cash
+book", "Could not confirm on-chain". `Settle` and `Cancel` appear only on `Pending` rows and are disabled
+with a visible reason (`wireout-row-{id}-reason`), first match wins: wallet not connected; minter or
+AccessManager not configured; minter mismatch; role (`can_call(wallet, minter, fn)` must be `immediate`,
+via `useWireOutAccess`; a delayed grant gets a reason and no schedule path); on-chain state not
+`confirmed`; another action in flight.
+
+### Settle dialog
+
+Summary (wire-out id, lender, address, requested amount, requested at) and the row "Destination bank
+account" with "—" and the hint "The API does not serve the lender's bank account yet." (#1812). Inputs:
+"Amount wired (PLUSD)" pre-filled with the exact on-chain 7-decimal amount, "Value date" (UTC, not in the
+future, defaults to today) and "Outgoing bank reference" (trimmed, 1 to 140 characters); the computed
+`ref_hash` shows read-only. The minter settles only the full requested amount, so an amount that differs
+is blocked with "The minter settles only the full requested amount ({amount} PLUSD). If a different amount
+was wired, cancel this request instead." On confirm, before signing: `ref_hash_seen` (true shows "This bank
+reference is already recorded on-chain. Use the outgoing wire's own reference."), then re-read
+`wire_out(id)` (not `Pending` aborts; the fresh on-chain amount is checked again). Then
+`AM.execute(minter, settle_wire_out, [id, amount_raw, value_date, ref_hash])`, where `amount_raw` is the
+on-chain i128 and `value_date` is the UTC midnight in Unix seconds.
+
+### Cancel dialog
+
+Summary and "The escrowed PLUSD returns to the lender's address." On open the app reads
+`PLUSD.authorized(lp)`: authorised enables confirm; not authorised shows "This lender's address is not
+authorised to hold PLUSD, so the PLUSD cannot be returned. Cancel is blocked until it is authorised
+again."; no trustline shows "This lender's address has no PLUSD trustline."; a failed read shows "Could
+not check the lender's PLUSD authorisation." with details. On confirm the app re-reads `wire_out(id)` and
+the authorisation, then calls `AM.execute(minter, cancel_wire_out, [id])`.
+
+### Shell, errors and result
+
+Escape and backdrop cancel and never confirm; both are blocked while a step is pending, and the confirm
+label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"). Errors show inline with
+"View details". Pre-sign on-chain reads carry the specific copy; `wireOutErrorCopy` maps contract codes
+only as a fallback (`#7` / `RefHashSeen`, `#17`, `#8` on settle; `#16` on cancel; `#14` not pending; `#10`
+unknown id) and keeps the wallet-rejection copy; `details` always holds the raw contract error. After the
+transaction lands the app re-reads `wire_out(id)` and shows a green notice built from that read:
+"Wire-out #{id} settled on-chain. Status {status}; the escrowed PLUSD was burned. Transaction {hash}. It
+updates in this list once indexed." or "Wire-out #{id} cancelled on-chain. Status {status}; the PLUSD was
+returned to {lp}. Transaction {hash}. It updates in this list once indexed."
+
+### Testnet caveat
+
+No wire-out exists on testnet (`wire_out(0..6)` answers `#10` on both minters): settle and cancel can be
+exercised live only after a lender calls `request_wire_out` (LP UI #1757). `bank_cash` on the API minter
+`CD2LPGLX…` is 0, so settling there fails `#8` until wire-ins are booked. When the app's minter
+(`VITE_STELLAR_YIELD_MINTER_ID`) differs from the cash book's, every action is disabled (env alignment,
+not code). Unit tests cover the flows meanwhile.
+
+## Cash Management — Conversions and bank charges
+
+**Sources:** `packages/trustee/src/routes/-ConversionsSection.tsx` (view — pool summary, table,
+`OpenConversionDialog`, `CloseConversionDialog`, `RecordExpenseDialog`), `-conversions.ts` (section
+hook), `lib/conversions.ts` (copy and presenters), `api/useConversions.ts`, `api/useCashBook.ts`, and
+`packages/wallet-connect/src/stellar/contracts/minterRamps.ts`. **Spec:**
+[trustee-dashboard.md §Type 2](../product-specs/trustee-dashboard.md) flows 8 and 9, and the user docs
+(`capital-layer.md` cash-book rows "USDC to USD or USD to USDC conversion" and "Bank charges", both
+Trustee). Issue #1765, inside the On/Off-ramp tab. No Figma: it reuses the #1763/#1764 card, table, chip
+and `useLpReviewDialog` patterns. The `// spec:` pointers of the bindings, hooks and view files target
+this section. Custody accounts sign their own USDC moves; the console never co-signs, it only books.
+
+### Chain scope
+
+Per-network: the chain is `useSessionState().chainId` (`ENV.STELLAR_CHAIN_ID` only with no session),
+shown as a chip (`cash-management-conversions-chain`). An EVM session renders "Conversions and bank
+charges on {chain} are not available in the Trustee app yet." and sends no `/v1/cash-book` request and
+makes no `pool_state`, `paused` or `ramp` read (no EVM cash book is served and the app has no EVM write
+client, #1573).
+
+### Pool summary
+
+Three tiles: "Booked bank cash", "Cash in transit" and "Pool total", from one `pool_state()` read of the
+minter the console signs against (`ENV.STELLAR_YIELD_MINTER_ID`, key `["minter-pool-state", minterId]`,
+refetch 30 s). The raw 7-decimal `bank_cash`, `in_flight` and `total_assets` are shown exactly as
+`formatUsdExact(rawToDecimal7(raw))`, never rescaled or derived. A caption reads "Read on-chain from the
+minter {truncated id} (pool_state)."; `read_failed` adds "A custody balance could not be read; the minter
+counts it as 0 in the pool total.". The cash book is not the source because `GET /v1/cash-book` serves
+`summary.bank_cash` and `in_flight` but not `total_assets`; all three figures come from one ledger and one
+minter (TD-180 moves the summary to the API once it serves `total_assets`). A failed read shows "Could not
+read the minter's pool state." with details and Retry.
+
+### Data sourcing
+
+- `useCashBook` (shared with Escrowed wires and Bank wire-outs) — every served `ramps[]` row, in served
+  order. Refetch is 30 s, or 5 s for 120 s after an open or close.
+- Each served `Open` row is confirmed on-chain with `readMinterRamp` (`ramp(id)`, key
+  `["minter-ramp", minterId, id]`, stale time 0). `Closed` rows are not read.
+- Amounts, dates, statuses and hashes are shown as served (`formatUsdExact`, no rescaling). The shortfall
+  is the served `loss`, which the API takes from the contract's `RampClosed` event; it is never computed
+  as `amount − received`. A missing `received`, `loss` or `closed_at` renders "—".
+- Ramp ids start at 0 (`next_id` returns 0 first); the bindings accept 0.
+
+### Table
+
+Columns: ID, Direction ("USDC → USD" / "USD → USDC"), Amount, Opened at, Reference hash (open and close,
+first 8 / last 8, full value in `title`), Status (Open / Closed chip), Received, Shortfall, Closed at,
+On-chain, Actions. States: loading skeleton, `InlineError` (`404 minter_not_configured`, `403`, `401`, as
+Escrowed wires), empty "No conversions on {chain}.". Test ids are `ramp-row-{id}-…`.
+
+### Row states and gating
+
+On-chain label (Open rows only): "Open (confirmed on-chain)", "Closed on-chain — waiting for the
+indexer", "On-chain status differs from the cash book", "Could not confirm on-chain". Every action is
+disabled with a visible reason (`conversion-open-reason`, `expense-open-reason`,
+`ramp-row-{id}-reason`), first match wins: wallet not connected; minter or AccessManager not configured;
+minter mismatch (the cash book's `minter` must equal `ENV.STELLAR_YIELD_MINTER_ID`, so the cash book must
+be loaded for every action); role (`can_call(wallet, minter, fn)` must be `immediate` for `open_ramp`,
+`close_ramp` and `record_expense`, via `useConversionAccess`; a delayed grant gets a reason and no
+schedule path); then, per action, **Open** needs `paused() === false` ("The minter is paused;
+conversions cannot be opened.") and **Close** needs the row's on-chain state `confirmed`; last, another
+action in flight. Only `open_ramp` is pause-gated on the contract; close and record stay available while
+paused.
+
+### Open dialog
+
+Button "Open conversion". Inputs: a direction ("USDC → USD" = `UsdcToBank`, "USD → USDC" = `BankToUsdc`,
+radio group), "Amount (USD)" (up to 7 decimals) and "Transfer reference" (trimmed, 1 to 140 characters);
+`ref_hash = sha256(reference.trim())` shows read-only. USDC → USD explains "Books USDC sent from custody
+to the bank as cash in transit. The custody balance must cover it."; USD → USDC "Takes the amount out of
+booked bank cash into cash in transit." On confirm, before signing: `ref_hash_seen` (true shows "This bank
+reference is already recorded on-chain. Use the outgoing wire's own reference."), then `paused()` re-read,
+then `AM.execute(minter, open_ramp, [direction, amount_raw, ref_hash])`. The direction encodes as
+`scvVec([scvSymbol(name)])`. The relay returns only the transaction hash, so the notice says "Conversion
+opened on-chain ({direction}, {amount}). Transaction {hash}. It appears in the list once indexed." with no
+id.
+
+### Close dialog
+
+Row action "Close" on an `Open` row. Opening the dialog reads `ramp(id)`; confirm is enabled only while
+the ramp is open on-chain. It shows the opened amount from the cash book and from the chain. Inputs:
+"Amount received" (empty by default, `0` allowed) and "Closing reference". Fixed copy: "Any shortfall
+between the opened amount and the amount received is booked by the contract as an expense and absorbed by
+the vault." Received above the on-chain opened amount is blocked ("The amount received cannot exceed the
+opened amount ({amount})."). On confirm: `ref_hash_seen`, then `ramp(id)` re-read (closed aborts), then
+`AM.execute(minter, close_ramp, [id, received_raw, ref_hash])`. The notice is built from a re-read:
+"Conversion #{id} closed on-chain. Received {received}; any shortfall is booked as an expense and shows in
+this list once indexed. Transaction {hash}." The served `loss` appears in the list once indexed.
+
+### Record bank charge dialog
+
+Button "Record bank charge". Inputs: "Charge amount (USD)", "Value date" (UTC date, not in the future,
+defaults to today) and "Bank reference" (trimmed, 1 to 140 characters). On confirm: `ref_hash_seen`, then
+`AM.execute(minter, record_expense, [delta_raw, value_date, ref_hash])`, where `value_date` is the UTC
+midnight in Unix seconds. The amount is taken out of booked bank cash and burned from the vault. The
+notice "Bank charge of {amount} booked on-chain, value date {date}; it was burned from the vault.
+Transaction {hash}. It appears in the Audit Log once indexed." links to `/audit-log` (`CashRecorded`);
+the cash book lists no cash entries.
+
+### Shell, errors and result
+
+Escape and backdrop cancel and never confirm; both are blocked while a step is pending, and the confirm
+label follows the stage ("Awaiting signature…" / "Submitting…" / "Confirming…"). Errors show inline with
+"View details". Encoders refuse the all-zero reference hash, because the contract skips it silently.
+`conversionErrorCopy` maps contract codes: `#7` / `RefHashSeen` (reused reference), `#1000` /
+`EnforcedPause` (open), `#8` (bank cash below the amount), `#18` (open: custody USDC below the amount),
+`#19` (received above the opened amount), `#20` (already closed), `#11` (unknown id), `#6` (amount not
+positive). `#2` collides with the minter's `SameValue` and is left unmapped, so it shows the generic
+message with the raw details; `details` always holds the raw contract error. The wallet-rejection copy is
+kept.
+
+### Testnet caveat
+
+No ramp exists on testnet (`ramp(0..8)` answers `#11` on both minters). USDC → USD fails `#18` on both
+minters (custody USDC is 0). On the API minter `CD2LPGLX…`, USD → USDC and bank charges fail `#8`
+(`bank_cash` is 0). On the app minter `CAPL5WN3…`, USD → USDC opens (id 0), but `record_expense` and a
+close with a shortfall fail inside the vault's `pull` with the vault's own `#2`; a full-amount close does
+not touch the vault. When the app's minter differs from the cash book's, every action is disabled (env
+alignment, not code). Unit tests cover the flows meanwhile.
 
 ## Loan book & tables
 

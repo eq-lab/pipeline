@@ -4,7 +4,6 @@ import React from "react";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useRampEvents } from "./useRampEvents";
-import { useRampAddresses } from "./useRampAddresses";
 import { useReviewRampEvent } from "./useReviewRampEvent";
 
 vi.mock("@/lib/env", () => ({
@@ -79,18 +78,6 @@ describe.each(CASES)("ramp hooks for %s", (_label, session, expected) => {
     await waitFor(() => expect(result.current.data).toEqual({ events: [] }));
     expect(firstUrl()).toContain(`/v1/ramp/events?chain_id=${expected}`);
     expect(result.current.chainId).toBe(expected);
-  });
-
-  it("useRampAddresses requests the session chain", async () => {
-    sessionChain.chainId = session;
-    fetchMock.mockResolvedValueOnce(ok({ ramp_addresses: [] }));
-    const { result } = renderHook(() => useRampAddresses(), {
-      wrapper: makeWrapper(),
-    });
-    await waitFor(() =>
-      expect(result.current.data).toEqual({ ramp_addresses: [] }),
-    );
-    expect(firstUrl()).toContain(`/v1/ramp/addresses?chain_id=${expected}`);
   });
 });
 

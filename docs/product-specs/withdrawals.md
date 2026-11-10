@@ -99,3 +99,19 @@ The Stellar WithdrawalQueue emits `RateSet { new_rate }` at most once, from `set
 - **Scope key.** The existing optional `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID` is the queue contract the rate and totals are scoped to; no new key. Unset or malformed (a warning, never a boot failure), `rate` falls back to the latest `WithdrawalRateSet` on the chain (or `1000000`) and the totals are `null`. The key must name the queue contract the worker indexes: a stale or different id scopes the rate and totals to a contract with no rows and serves zeros.
 - **Known limits.** A `rate_set` emitted before the worker indexed the contract is lost once it leaves RPC retention (about 7 days), so the API would serve `1000000` for a queue in shutdown; rewind the Stellar cursor while it is in retention. `total_claimed` undercounts if early `RequestClaimed` history was never indexed.
 - **Payable now** stays a frontend `claimable(id)` read: it needs the custodian USDC balance, which is not indexed. The paused flag, a pre-claim payout preview and EVM parity are tracked in #1801.
+
+---
+
+## Bank wire withdrawals (Trustee console)
+
+Sources: `docs/user-docs/lenders/withdraw.md` §"Bank wire withdrawals", `docs/user-docs/governance/fiduciary-trustee.md`, and the "Lender wire out" row of `docs/user-docs/how-it-works/capital-layer.md`. Issue #1764 adds the Cash Management → Bank wire-outs tab (`docs/frontend/trustee-flows.md#cash-management--bank-wire-outs`). Stellar only; EVM is read-only with no request.
+
+- **List.** `GET /v1/cash-book?chain_id=` `wire_outs[]` ([minter-cash-book.md](./minter-cash-book.md)): `id`, `status` (`Pending | Settled | Cancelled`), `lp`, `lp_id?`, `lp_legal_name?`, `amount`, `requested_at`, `settled_at?`, `value_date?`, `ref_hash?`, `cancelled_at?`, shown as served. Each `Pending` row is confirmed on-chain with `wire_out(id)`.
+- **Settle.** `settle_wire_out(id: u32, amount: i128, value_date: u64, ref_hash: BytesN<32>)`.
+  - The contract settles only the full requested amount (`#17` otherwise), so the app pre-fills the on-chain 7-decimal amount, checks equality before signing and sends that raw value, never the cash book's 6-decimal one.
+  - `ref_hash = sha256(trimmed reference)`, single-use: `ref_hash_seen` is read before signing (`#7` as a fallback). The all-zero hash is refused because the contract would skip it silently.
+  - The contract burns the escrowed PLUSD and takes the cash out of `bank_cash` (`#8` when short).
+- **Cancel.** `cancel_wire_out(id: u32)` returns the escrowed PLUSD to the lender and needs `PLUSD.authorized(lp)` (`#16` otherwise), checked before signing.
+- **Gating.** Both are `TRUSTEE`, called through `AccessManager.execute`; the app requires `can_call(wallet, minter, fn)` to be `immediate` and never schedules.
+- **Wrong status** is `#14` and an unknown id `#10`; both are re-checked with `wire_out(id)` before signing.
+- **Destination bank account** is not served until #1812; the settle dialog shows "—" and never guesses one.
