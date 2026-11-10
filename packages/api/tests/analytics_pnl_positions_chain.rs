@@ -5,8 +5,10 @@ use std::sync::Arc;
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use pipeline_api::config::ConfiguredChain;
+use pipeline_api::minter_cash_book::{CashBookWireIn, WireInStatus};
 use pipeline_api::routes::analytics::{
-    self, degrade_wire_outs, minter_chains_in_scope, AnalyticsDoc, RequestsResponse,
+    self, degrade_minter_list, lp_wire_in_items, minter_chains_in_scope, AnalyticsDoc,
+    RequestsResponse,
 };
 use pipeline_api::routes::common::ChainScope;
 use pipeline_api::routes::pnl::{self, PnlDoc};
@@ -334,6 +336,7 @@ fn a_response_without_wire_outs_serialises_without_the_key() {
         requests: Vec::new(),
         pocket_claims: Vec::new(),
         wire_outs: None,
+        wire_ins: None,
     })
     .unwrap();
     assert_eq!(body, r#"{"requests":[],"pocket_claims":[]}"#);
@@ -345,6 +348,7 @@ fn a_response_with_wire_outs_serialises_the_list() {
         requests: Vec::new(),
         pocket_claims: Vec::new(),
         wire_outs: Some(Vec::new()),
+        wire_ins: None,
     })
     .unwrap();
     assert_eq!(body["wire_outs"], serde_json::json!([]));
@@ -364,11 +368,111 @@ fn openapi_exposes_wire_outs_as_optional() {
 }
 
 #[test]
-fn a_failed_wire_out_lookup_degrades_to_an_omitted_list() {
-    assert!(degrade_wire_outs(Err(anyhow::anyhow!("db down"))).is_none());
+fn a_failed_minter_list_lookup_degrades_to_an_omitted_list() {
+    assert!(degrade_minter_list::<u8>("wire-outs", Err(anyhow::anyhow!("db down"))).is_none());
     assert_eq!(
-        degrade_wire_outs(Ok(Some(Vec::new()))).map(|v| v.len()),
+        degrade_minter_list::<u8>("wire-ins", Ok(Some(Vec::new()))).map(|v| v.len()),
         Some(0)
     );
-    assert!(degrade_wire_outs(Ok(None)).is_none());
+    assert!(degrade_minter_list::<u8>("wire-ins", Ok(None)).is_none());
+}
+
+fn lp_wire(id: i64, status: WireInStatus, recorded: i64, assigned: Option<i64>) -> CashBookWireIn {
+    CashBookWireIn {
+        id,
+        status,
+        receiver: STELLAR_ADDR.to_owned(),
+        amount: 12_345_678,
+        value_date: 1_700_000_000,
+        ref_hash: "aa".to_owned(),
+        recorded_at: recorded,
+        assigned_at: assigned,
+        returned_at: None,
+        return_ref_hash: None,
+    }
+}
+
+#[test]
+fn lp_wire_in_items_map_amount_dates_and_omit_assigned_at_for_direct() {
+    let items = lp_wire_in_items(vec![(
+        STELLAR.chain_id,
+        vec![lp_wire(7, WireInStatus::Direct, 1_700_000_100, None)],
+    )]);
+    let v = serde_json::to_value(&items).unwrap();
+    assert_eq!(
+        v[0],
+        serde_json::json!({
+            "chain_id": STELLAR.chain_id,
+            "id": 7,
+            "status": "Direct",
+            "amount": "1.234567",
+            "value_date": "2023-11-14T22:13:20Z",
+            "ref_hash": "aa",
+            "recorded_at": "2023-11-14T22:15:00Z",
+        })
+    );
+}
+
+#[test]
+fn lp_wire_in_items_sort_by_assignment_time_then_chain_then_id() {
+    let items = lp_wire_in_items(vec![
+        (
+            STELLAR_B.chain_id,
+            vec![lp_wire(1, WireInStatus::Direct, 500, None)],
+        ),
+        (
+            STELLAR.chain_id,
+            vec![
+                lp_wire(3, WireInStatus::Direct, 500, None),
+                lp_wire(2, WireInStatus::Direct, 500, None),
+                lp_wire(9, WireInStatus::Assigned, 100, Some(900)),
+                lp_wire(8, WireInStatus::Direct, 700, None),
+            ],
+        ),
+    ]);
+    let order: Vec<(i64, i64)> = items.iter().map(|i| (i.chain_id, i.id)).collect();
+    assert_eq!(
+        order,
+        vec![
+            (STELLAR.chain_id, 9),
+            (STELLAR.chain_id, 8),
+            (STELLAR.chain_id, 2),
+            (STELLAR.chain_id, 3),
+            (STELLAR_B.chain_id, 1),
+        ]
+    );
+    assert!(items[0].assigned_at.is_some());
+}
+
+#[test]
+fn a_response_serialises_wire_ins_only_when_present() {
+    let some = serde_json::to_value(RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: None,
+        wire_ins: Some(Vec::new()),
+    })
+    .unwrap();
+    assert_eq!(some["wire_ins"], serde_json::json!([]));
+    let none = serde_json::to_value(RequestsResponse {
+        requests: Vec::new(),
+        pocket_claims: Vec::new(),
+        wire_outs: None,
+        wire_ins: None,
+    })
+    .unwrap();
+    assert!(none.get("wire_ins").is_none());
+}
+
+#[test]
+fn openapi_exposes_wire_ins_as_optional() {
+    let doc = serde_json::to_value(AnalyticsDoc::openapi()).unwrap();
+    let schema = &doc["components"]["schemas"]["RequestsResponse"];
+    assert!(schema["properties"]["wire_ins"].is_object());
+    assert!(!schema["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "wire_ins"));
+    assert!(doc["components"]["schemas"]["LpWireInItem"].is_object());
 }

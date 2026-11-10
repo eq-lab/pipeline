@@ -4,9 +4,9 @@ use shared::contract_logs_repo::{
     LATEST_WATCHLIST_ENTRY_SQL, LEGACY_YIELD_MINTED_SQL, LIST_LATEST_LOAN_SNAPSHOTS_SQL,
     LIST_REPAYMENT_MINTS_SQL, LIST_WITHDRAWAL_QUEUE_ROWS_SQL, LIST_WITHDRAWAL_RATE_SETS_SQL,
     LOAN_ECONOMICS_EVENTS_SQL, LOAN_LIFECYCLE_EVENTS_FOR_REGISTRY_SQL, LOAN_LIFECYCLE_EVENT_NAMES,
-    LOAN_RATE_EVENTS_FOR_REGISTRY_SQL, LOAN_SNAPSHOT_AS_OF_SQL, LP_WIRE_OUT_EVENTS_SQL,
-    MINTER_CASH_BOOK_EVENT_NAMES, MINTER_EVENTS_SQL, MINTER_FOLD_EVENTS_SQL,
-    WITHDRAWAL_QUEUE_TOTALS_SQL,
+    LOAN_RATE_EVENTS_FOR_REGISTRY_SQL, LOAN_SNAPSHOT_AS_OF_SQL, LP_WIRE_IN_EVENTS_SQL,
+    LP_WIRE_OUT_EVENTS_SQL, MINTER_CASH_BOOK_EVENT_NAMES, MINTER_EVENTS_SQL,
+    MINTER_FOLD_EVENTS_SQL, WITHDRAWAL_QUEUE_TOTALS_SQL,
 };
 
 fn normalized(sql: &str) -> String {
@@ -269,6 +269,27 @@ fn lp_wire_out_events_sql_scopes_by_chain_contract_and_canonical_lp_with_gin_con
     }
     assert!(!sql.contains("LOWER("), "{sql}");
     assert_eq!(sql.matches("contract_address = $2").count(), 2, "{sql}");
+}
+
+#[test]
+fn lp_wire_in_events_sql_matches_receiver_and_parent_ids_with_gin_containment() {
+    let sql = normalized(LP_WIRE_IN_EVENTS_SQL);
+    for needle in [
+        "params @> jsonb_build_object('receiver', $3::text)",
+        "event_name = 'WireInAssigned'",
+        "event_name IN ('WireIn', 'WireInAssigned')",
+        "@> ANY(",
+        "(id #>> '{}')::bigint",
+        "jsonb_build_object('id', id #>> '{}')",
+        "ORDER BY block_number, log_index",
+    ] {
+        assert!(sql.contains(needle), "missing `{needle}` in {sql}");
+    }
+    for forbidden in ["->>'receiver'", "LOWER(", "WireInReturned"] {
+        assert!(!sql.contains(forbidden), "`{forbidden}` in {sql}");
+    }
+    assert_eq!(sql.matches("contract_address = $2").count(), 2, "{sql}");
+    assert_eq!(sql.matches("chain_id = $1").count(), 2, "{sql}");
 }
 
 #[test]

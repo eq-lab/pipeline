@@ -813,7 +813,7 @@ QuickNode node
 | `GET` | `/v1/protocol/status` | Operational: paused contracts, shutdown state, rate-limit window |
 | `GET` | `/v1/protocol/limits` | Current `maxPerWindow`, `maxPerLPPerWindow`, `maxTotalSupply`, window utilization, per-LP utilization — for deposit UI to display caps before the LP submits |
 | `GET` | `/v1/protocol/reserve-health` | `reserveHealth()` view: backing, supply, headroom — for dashboard |
-| `GET` | `/v1/requests` | Activity feed; `pocket_claims` lists the wallet's non-zero Stellar Pocket claims (#1789, see "Stellar Pocket indexing") |
+| `GET` | `/v1/requests` | Activity feed; `wire_ins` / `wire_outs` list the wallet's Stellar minter wires (#1314 / #1790, see [minter-cash-book.md](../product-specs/minter-cash-book.md)); `pocket_claims` lists the wallet's non-zero Stellar Pocket claims (#1789, see "Stellar Pocket indexing") |
 | `GET` | `/v1/pnl` | Staking PnL; `pocket_recovered` adds the wallet's Pocket claims to the realised totals (#1789) |
 
 ### 3B. Trustee-Facing (consumed by Trustee tooling)

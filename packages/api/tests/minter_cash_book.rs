@@ -1,6 +1,6 @@
 // spec: docs/product-specs/minter-cash-book.md#behavior
 use pipeline_api::minter_cash_book::{
-    build_ramps, build_wire_ins, build_wire_outs, fold_cash, to_base6_string,
+    build_lp_wire_ins, build_ramps, build_wire_ins, build_wire_outs, fold_cash, to_base6_string,
     wire_out_escrow_steps, RampStatus, WireInStatus, WireOutStatus,
 };
 use serde_json::{json, Value};
@@ -501,4 +501,61 @@ fn a_malformed_post_checkpoint_amount_is_incomplete() {
 fn raw_seven_dp_amounts_render_as_floored_six_dp_dollars() {
     assert_eq!(to_base6_string(12_345_678), "1.234567");
     assert_eq!(to_base6_string(0), "0.000000");
+}
+
+const OTHER: &str = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
+
+fn assigned(id: Value, receiver: &str, block: i64) -> MinterEventRow {
+    ev(
+        "WireInAssigned",
+        block,
+        0,
+        json!({"id": id, "receiver": receiver}),
+    )
+}
+
+#[test]
+fn lp_wire_ins_keep_a_direct_wire_to_the_wallet() {
+    let list = build_lp_wire_ins(&[wire_in(1, LP, 10, 2)], MINTER, LP);
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].status, WireInStatus::Direct);
+}
+
+#[test]
+fn lp_wire_ins_keep_an_escrowed_wire_assigned_to_the_wallet_for_both_id_forms() {
+    for id in [json!(1), json!("1")] {
+        let rows = vec![wire_in(1, MINTER, 10, 2), assigned(id, LP, 3)];
+        let list = build_lp_wire_ins(&rows, MINTER, LP);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].status, WireInStatus::Assigned);
+        assert_eq!(list[0].assigned_at, Some(1_790_000_003));
+    }
+}
+
+#[test]
+fn lp_wire_ins_drop_unassigned_returned_and_foreign_wires() {
+    let cases: Vec<Vec<MinterEventRow>> = vec![
+        vec![wire_in(1, MINTER, 10, 2)],
+        vec![
+            wire_in(1, MINTER, 10, 2),
+            ev(
+                "WireInReturned",
+                3,
+                0,
+                json!({"id": "1", "amount": "10", "ref_hash": "aa"}),
+            ),
+        ],
+        vec![wire_in(1, OTHER, 10, 2)],
+        vec![wire_in(1, MINTER, 10, 2), assigned(json!(1), OTHER, 3)],
+        vec![assigned(json!(9), LP, 3)],
+    ];
+    for rows in cases {
+        assert!(build_lp_wire_ins(&rows, MINTER, LP).is_empty(), "{rows:?}");
+    }
+}
+
+#[test]
+fn lp_wire_ins_never_leak_escrow_for_the_minter_wallet() {
+    let rows = vec![wire_in(1, MINTER, 10, 2)];
+    assert!(build_lp_wire_ins(&rows, MINTER, MINTER).is_empty());
 }

@@ -190,6 +190,18 @@ pub fn build_wire_ins(rows: &[MinterEventRow], minter: &str) -> Vec<CashBookWire
     out
 }
 
+pub fn build_lp_wire_ins(
+    rows: &[MinterEventRow],
+    minter: &str,
+    wallet: &str,
+) -> Vec<CashBookWireIn> {
+    build_wire_ins(rows, minter)
+        .into_iter()
+        .filter(|w| matches!(w.status, WireInStatus::Direct | WireInStatus::Assigned))
+        .filter(|w| w.receiver == wallet)
+        .collect()
+}
+
 pub fn build_wire_outs(rows: &[MinterEventRow]) -> Vec<CashBookWireOut> {
     let mut out: Vec<CashBookWireOut> = Vec::new();
     let mut index: HashMap<i64, usize> = HashMap::new();
