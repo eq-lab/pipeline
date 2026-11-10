@@ -17,12 +17,17 @@ import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
 import { findLoanEntry } from "@/lib/loanRoute";
+import { useCashReporterAccess } from "@/api/useCashReporterAccess";
 import {
   chainAmountDecimals,
   stellarOnlyActionReason,
 } from "@/lib/targetChains";
 import { formatFullUsd, formatUsdInputValue } from "@/utils/formatUsd";
-import { formatEpochDate } from "@/utils/formatDate";
+import {
+  dateInputToValueDate,
+  formatEpochDate,
+  todayDateInput,
+} from "@/utils/formatDate";
 import {
   SAC_DECIMALS,
   economicsUsdDecimal,
@@ -35,14 +40,7 @@ import type { UserFacingError } from "@/utils/userError";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
-/** Today, `YYYY-MM-DD` — the "Date received" input's default value. */
-export function todayDateInput(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-export function dateInputToValueDate(dateInput: string): number {
-  return Date.parse(`${dateInput}T00:00:00Z`) / 1000;
-}
+export { todayDateInput, dateInputToValueDate };
 
 /**
  * Parses the "Offtaker payment received" USD text input into a positive
@@ -210,6 +208,7 @@ export interface RecordRepaymentView {
    */
   recordPaymentInput: RepaymentInput | null;
   onChainBlockedReason: string | null;
+  roleBlockedReason: string | null;
   /**
    * `true` when the financials' `offtaker_outstanding` is `0` — the offtaker
    * owes nothing, so there is nothing left to record (#1090). The page renders
@@ -290,6 +289,13 @@ export function useRecordRepayment(
   const onChainBlockedReason = entry
     ? stellarOnlyActionReason(entry.chain_id)
     : null;
+
+  const roleAccess = useCashReporterAccess(
+    "repay",
+    entry != null && onChainBlockedReason === null,
+  );
+  const roleBlockedReason =
+    entry != null && onChainBlockedReason === null ? roleAccess.reason : null;
 
   const state: RecordRepaymentView["state"] = loanBook.isLoading
     ? "loading"
@@ -457,10 +463,13 @@ export function useRecordRepayment(
     },
     summaryText,
     recordPaymentInput:
-      onChainBlockedReason === null && amountSettled
+      onChainBlockedReason === null &&
+      roleBlockedReason === null &&
+      amountSettled
         ? recordPaymentInput
         : null,
     onChainBlockedReason,
+    roleBlockedReason,
     offtakerFullyPaid,
     seniorStillOutstanding:
       offtakerFullyPaid &&

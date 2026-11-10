@@ -85,6 +85,15 @@ vi.mock("@/api/useCloseLoan", () => ({
   useCloseLoan: () => mockCloseLoan,
 }));
 
+const { mockRole } = vi.hoisted(() => ({
+  mockRole: { reason: null as string | null },
+}));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: (_fn: string, enabled: boolean) => ({
+    reason: enabled ? mockRole.reason : null,
+  }),
+}));
+
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
@@ -263,6 +272,7 @@ beforeEach(() => {
   mockCloseLoan.isPending = false;
   mockCloseLoan.error = null;
   mockCloseLoan.stage = null;
+  mockRole.reason = null;
 });
 
 describe("Record Repayment route — ready state", () => {
@@ -464,6 +474,24 @@ describe("Record Repayment route — ready state", () => {
         oet_alloc: "75000000000",
       },
     });
+  });
+
+  it("disables the submit and shows the Cash reporter reason for a wallet without the role", async () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    mockWaterfall(WATERFALL_TERMINAL);
+    renderRoute();
+    expect(
+      screen.getByTestId("record-repayment-role-blocked"),
+    ).toHaveTextContent("Only the Cash reporter can book repayments.");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(screen.getByTestId("record-repayment-submit")).toBeDisabled();
+  });
+
+  it("keeps Close-loan enabled when the checklist passes for a wallet without the role", () => {
+    mockRole.reason = "Only the Cash reporter can book repayments.";
+    readyWith({ senior: "0", offtaker: "0.000000" });
+    renderRoute();
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
   });
 
   it("keeps submit disabled through the prefill debounce window, then records the prefilled amount (#1622)", async () => {

@@ -110,7 +110,7 @@ Matches the `loans.index.tsx` precedent (raw Figma literals mapped to `--color-p
 
 **Sources:** `packages/trustee/src/routes/cash-management.tsx` (view — all three tabs +
 `SwapDialog` / `TbillsSwapDialog`), `routes/-cash-management.ts` (On/Off-ramp presenter),
-`routes/-cash-management-tbills.ts` (T-Bills swap presenter). Issue #943 (shell #943, extended
+`routes/-cash-management-tbills.ts` (T-Bills swap presenter), `routes/-cash-management-income.ts` (Bank income, #1762). Issue #943 (shell #943, extended
 #944), Figma node `4116-11802` for styling. Source of truth:
 `docs/product-specs/trustee-dashboard.md` (§Type 1 flow 2, §Type 4) + the working doc "Cash
 management.md" — on mismatch the doc wins, Figma is styling only. (No Refunds tab — the working
@@ -156,6 +156,16 @@ server-side, #931/#944). Buying/selling USYC is a Capital-Wallet MPC action (3-o
 8) with no backend assembly/quote path yet (follow-up filed with #944) — submit is disabled, "You
 receive" is a disabled twin of the amount input that stays empty (no USYC price/NAV served), and
 the fee shows `—`.
+
+### Bank income tab (#1762)
+
+`routes/-cash-management-income.ts` (`useBankIncome`), `routes/-BankIncomeDialog.tsx`, `api/useRecordIncome.ts`. The tab shows the session chain chip (`useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`), "Bank interest booked by the Cash reporter is minted into the vault." and a **Book income** button. On an EVM session the button is disabled with "Booking bank income on {chain} is not available in the Trustee app yet." (TD-152).
+
+- Dialog fields: Amount (USD, at most 2 decimals), Value date (`type="date"`, default and max today UTC, sent as UTC-midnight Unix seconds), Bank reference.
+- Validation copy, in order: "Enter an amount greater than 0 with at most 2 decimal places.", "Enter the bank's reference for this income.", "Enter the value date.", "The value date cannot be in the future."
+- Submit reasons, in order: wallet not connected "Connect your trustee wallet to book bank income.", minter not configured, then the Cash reporter reason for `record_income`.
+- `ref_hash = sha256(reference.trim())` (same as the wire `reference_hash`). `ref_hash_seen` is read first; a seen hash fails with "This bank reference is already booked on-chain. Each bank record's reference can be used once." and no signature request. Other failures go through `toUserError` with details.
+- Success closes the dialog and shows "Booked {amount} income, value date {date}. Transaction {hash}. It appears in the Audit Log once indexed." with a link to `/audit-log`. `["capital-allocation"]` and `["audit-log"]` are invalidated now and after 5 s and 15 s. No client-side "booked" flag is kept; the served `CashRecorded` is the record.
 
 ## Cash Management — Withdrawal Queue
 
@@ -718,9 +728,20 @@ Record Coupon and Record Repayment sign the Minter's `repay`, not the executor's
 - `ref_hash` is `sha256("pipeline:repay:{registryId}:{loanId}:{next_repayment_id}")` as lowercase hex; `next_repayment_id` is read from `LoanRegistry.mutable_loan_data(loan_id)` just before the transaction is built. There is no input field for it. A second submit for the same slot fails at simulation (`RefHashSeen`).
 - The hook is gated on `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID` (the executor id is no longer used for this action) and keeps the "not configured for this environment" copy.
 - The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the capital wallet). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
-- The trustee wallet must hold `CASH_REPORTER`; without it simulation fails (`#4`) and the page shows the on-chain verification error with "View details" and no signature request. A loan not yet disbursed on chain fails with registry `#3` (TD-157).
+- The trustee wallet must hold `CASH_REPORTER` with delay 0. The page reads `can_call` first (#1762, [Cash reporter bookings](#cash-reporter-bookings)) and disables the submit with the role reason, so a Trustee-only wallet never reaches simulation or a signature request. A loan not yet disbursed on chain fails with registry `#3` (TD-157).
 - Error copy stays the generic `toUserError` mapping; Minter and registry codes collide (a nested registry `#1` surfaces as `Error(Contract, #1)`), so no code-specific copy is added.
 - EVM loans stay gated by `stellarOnlyActionReason` (TD-152); the EVM arm is `PipelineMinter.repay`.
+
+### Cash reporter bookings
+
+Spec: [cash-reporter-bookings.md](../product-specs/cash-reporter-bookings.md) (#1762). The minter's `record_wire_in`, `repay` and `record_income` are Cash reporter functions, separate from the Trustee role.
+
+- `useCashReporterAccess(fn, enabled)` reads `AccessManager.can_call(wallet, minter, fn)` (`ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `ENV.STELLAR_YIELD_MINTER_ID`), key `["cash-reporter-access", wallet, fn]`, `staleTime` 30 s, no retry. `enabled` is false on EVM sessions, so no read runs there. It returns `reason` from `cashReporterReason` (`lib/cashReporter.ts`); `null` only when `immediate` is true.
+- Reasons: pending "Checking this wallet's Cash reporter role…"; read error "Could not verify this wallet's Cash reporter role." (details stay in the console); `immediate: false` with `delay > 0` "This wallet holds the Cash reporter role with a {h} h delay; the minter accepts only immediate calls."; otherwise the per-function copy: `record_wire_in` "Only the Cash reporter can book incoming wires.", `repay` "Only the Cash reporter can book repayments.", `record_income` "Only the Cash reporter can book bank income."
+- Mint PLUSD: the role reason sits after the wallet and minter-configured reasons and before the receiver reasons. The capital-wallet fallback receiver is unchanged.
+- Record Coupon / Record Repayment: `roleBlockedReason` is rendered as `record-coupon-role-blocked` / `record-repayment-role-blocked` beside the on-chain reason, and `recordPaymentInput` is `null` while it is set. An EVM loan shows only the Stellar-only reason (no read). Close-loan (Trustee role) is not gated by it.
+- Bank income: see [Bank income tab](#bank-income-tab-1762).
+- Two-signer (2-of-2) Cash reporter signing is deferred to a follow-up issue; on both testnets the role is held by single accounts.
 
 ### Scale handling (both flows; verified against `-useLoanDetail.ts` / `useLoanWaterfall.ts`)
 
@@ -1226,8 +1247,8 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   raises the deposits poll to 5 s; it is never persisted and never substitutes for the served
   flag. Each id's window is anchored to its own mint time (the set stores a deadline per id), so
   a later mint never restarts an earlier id's window, and unmounting clears every armed window. Disabled reasons, rendered as the button's `title` and an `aria-describedby` hint, in
-  order: EVM session (#1826), wallet not connected, minter id unset, no receiver resolvable, already minted,
-  waiting for the indexer, another mint in flight.
+  order: EVM session (#1826), wallet not connected, minter id unset, Cash reporter role (#1762: checking, could not verify, delay, "Only the Cash reporter can book incoming wires."), no receiver resolvable, already minted,
+  waiting for the indexer, another mint in flight. Before the signature request `useRecordWireIn` reads the minter's `ref_hash_seen` and, when true, throws `RefHashSeen…` so the copy below shows without a wallet prompt.
 - **Errors** — surfaced through `toUserError` in an `InlineError` inside the mint confirm dialog (a mint can only start there) with the raw contract text in
   the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has
   already been minted on-chain. Refresh the list." A PLUSD `Error(Contract, #13)` trap reads

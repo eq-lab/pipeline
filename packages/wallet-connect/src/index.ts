@@ -190,6 +190,11 @@ export {
   scheduleReverseRepay,
   executeReverseRepay,
   readReverseRepaySchedule,
+  recordIncome,
+  buildRecordIncomeEnvelope,
+  encodeRecordIncomeArgs,
+  readRefHashSeen,
+  bankReferenceRefHash,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -207,6 +212,12 @@ export type {
   ReadReverseRepayScheduleParams,
   MinterRepayment,
   ReadMinterRepaymentParams,
+  RecordIncomeArgs,
+  RecordIncomeParams,
+  RecordIncomeResult,
+  RecordIncomeStage,
+  BuildRecordIncomeEnvelopeParams,
+  ReadRefHashSeenParams,
 } from "./stellar/contracts/minter";
 
 export {

@@ -560,6 +560,15 @@ function RecordRepayment() {
                 />
               </div>
             )}
+            {view.roleBlockedReason && (
+              <p
+                data-testid="record-repayment-role-blocked"
+                className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+                style={{ color: INK_MUTED }}
+              >
+                {view.roleBlockedReason}
+              </p>
+            )}
             {view.onChainBlockedReason && (
               <p
                 data-testid="record-repayment-onchain-blocked"
