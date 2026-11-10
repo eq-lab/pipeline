@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-182.**
+**Next free number: TD-183.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2400,3 +2400,11 @@ line, whichever section it lands in.
 - **Gap:** The dialog shows a Capital Wallet MPC 3-of-5 co-sign flow, but `trustee-dashboard.md` flow note C now says a top-up is a custody-to-custody transfer under the custody signing policy, which the console does not co-sign.
 - **Impact:** The Trustee sees a co-sign shell for an action the console does not perform.
 - **Suggested fix:** Retire the dialog and its "Top up" button in a follow-up frontend issue.
+
+### TD-182: LP settlement bank account: plaintext at rest, no change history, no read audit, no post-`Passed` change path
+
+- **Date:** 2026-11-10
+- **Location:** `lps.settlement_bank_account` (`packages/shared/migrations/20261110000002_lps_settlement_bank_account.sql`), `packages/api/src/routes/lps.rs`, `packages/api/src/routes/cash_book.rs` — Issue #1812.
+- **Gap:** The account number and IBAN are stored as plaintext JSONB, like `legal_name` and `contact_email`. Changes are not recorded, and Trustee reads of the full account (`GET /v1/lps/{id}`, `GET /v1/cash-book`) are not logged. The account freezes with the KYB record, so once KYB is `Passed` nothing in the API can change it, and LPs that passed before this feature have none. Both gaps are closed by ops SQL.
+- **Impact:** A database or backup leak exposes every LP's bank account. A change to the account, or a Trustee read of it, leaves no record. A `Passed` LP that wants a different or a first account needs an ops request.
+- **Suggested fix:** Encrypt the account number and IBAN at the application level, add an append-only `lp_settlement_bank_account_history` and a Trustee read log, and add a trustee-only write (or a `Passed` to `ChangesRequested` transition) for changes after `Passed`.

@@ -8,13 +8,15 @@ use chrono::Utc;
 
 use pipeline_api::config::KybLimits;
 use pipeline_api::routes::lps::{
-    check_document_cap, decide_upsert, decision_recipient, kyb_decision_email, pass_blockers,
-    profile_is_unchanged, rejected_documents, resolve_document_review, resolve_kyb_decision,
-    submit_blockers, upload_status, validate_profile, DocumentReviewDecision,
-    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpsDoc, StoredProfile,
-    UpsertLpRequest, UpsertOutcome, ValidatedProfile, MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN,
+    bank_account_views, check_document_cap, decide_upsert, decision_recipient, kyb_decision_email,
+    pass_blockers, profile_is_unchanged, rejected_documents, resolve_document_review,
+    resolve_kyb_decision, submit_blockers, upload_status, validate_profile, DocumentReviewDecision,
+    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpAudience, LpsDoc,
+    SettlementBankAccountDetails, SettlementBankAccountSummary, StoredProfile, UpsertLpRequest,
+    UpsertOutcome, ValidatedProfile, MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN,
     MAX_DECISION_REASON_LEN, MAX_LEGAL_NAME_LEN,
 };
+use shared::bank_account::{SettlementBankAccount, SettlementBankAccountInput};
 use shared::email::{
     render_kyb_changes_requested_email, render_kyb_failed_email, render_kyb_passed_email,
 };
@@ -77,6 +79,7 @@ fn form(legal_name: &str, country: Option<&str>, contact_email: &str) -> UpsertL
         country: country.map(str::to_owned),
         contact_email: contact_email.to_owned(),
         notify_on_review: None,
+        settlement_bank_account: None,
     }
 }
 
@@ -117,6 +120,7 @@ fn stored_profile<'a>(
         legal_name,
         country,
         contact_email,
+        bank_account: None,
     }
 }
 
@@ -1032,4 +1036,190 @@ fn lp_summary_does_not_carry_pending_bank_deposits() {
     let doc = openapi_json();
     let props = &doc["components"]["schemas"]["LpSummary"]["properties"];
     assert!(props.get("pending_bank_deposits").is_none());
+}
+
+// ── Settlement bank account ──────────────────────────────────────────────────
+
+fn bank_input() -> SettlementBankAccountInput {
+    SettlementBankAccountInput {
+        account_holder_name: Some("Acme Trading Ltd".to_owned()),
+        bank_name: Some("Example Bank".to_owned()),
+        bank_address: None,
+        account_number: None,
+        iban: Some("GB82 WEST 1234 5698 7654 32".to_owned()),
+        swift_bic_code: Some("WESTGB2L".to_owned()),
+        routing_number: None,
+    }
+}
+
+fn form_with_account(account: Option<SettlementBankAccountInput>) -> UpsertLpRequest {
+    UpsertLpRequest {
+        settlement_bank_account: account,
+        ..form("Acme", Some("NL"), "ops@acme.example")
+    }
+}
+
+fn stored_account() -> SettlementBankAccount {
+    shared::bank_account::normalize(&bank_input()).unwrap()
+}
+
+fn stored_with(account: Option<&SettlementBankAccount>) -> StoredProfile<'_> {
+    StoredProfile {
+        bank_account: account,
+        ..stored_profile("Acme", Some("NL"), "ops@acme.example")
+    }
+}
+
+#[test]
+fn a_profile_without_an_account_validates_to_none() {
+    let f = form_with_account(None);
+    assert!(validate_profile(&f).unwrap().bank_account.is_none());
+}
+
+#[test]
+fn a_profile_with_an_account_is_normalized() {
+    let f = form_with_account(Some(bank_input()));
+    let a = validate_profile(&f).unwrap().bank_account.unwrap();
+    assert_eq!(a.iban.as_deref(), Some("GB82WEST12345698765432"));
+}
+
+#[test]
+fn an_invalid_iban_is_a_400_naming_the_field_not_the_value() {
+    let mut bad = bank_input();
+    bad.iban = Some("GB82WEST12345698765433".to_owned());
+    let f = form_with_account(Some(bad));
+    let Err(pipeline_api::error::ApiError::BadRequest(msg)) = validate_profile(&f) else {
+        panic!("expected a 400");
+    };
+    assert!(msg.contains("settlement_bank_account.iban"), "{msg}");
+    assert!(!msg.contains("98765433"), "{msg}");
+}
+
+#[test]
+fn unknown_account_fields_are_rejected_on_the_request() {
+    let r: Result<UpsertLpRequest, _> = serde_json::from_value(serde_json::json!({
+        "legal_name": "A", "contact_email": "a@b.c",
+        "settlement_bank_account": {"bank_name": "B", "extra": 1}
+    }));
+    assert!(r.is_err());
+}
+
+#[test]
+fn a_null_account_on_the_request_means_unchanged() {
+    let r: UpsertLpRequest = serde_json::from_value(serde_json::json!({
+        "legal_name": "A", "contact_email": "a@b.c", "settlement_bank_account": null
+    }))
+    .unwrap();
+    assert!(r.settlement_bank_account.is_none());
+}
+
+#[test]
+fn frozen_with_no_account_submitted_and_same_profile_is_preference_only() {
+    let a = stored_account();
+    let f = form_with_account(None);
+    assert_eq!(
+        decide_upsert(Some(stored_with(Some(&a))), false, &submitted(&f)),
+        UpsertOutcome::PreferenceOnly
+    );
+}
+
+#[test]
+fn frozen_with_an_identical_account_is_preference_only() {
+    let a = stored_account();
+    let f = form_with_account(Some(bank_input()));
+    assert_eq!(
+        decide_upsert(Some(stored_with(Some(&a))), false, &submitted(&f)),
+        UpsertOutcome::PreferenceOnly
+    );
+}
+
+#[test]
+fn frozen_with_a_different_account_is_refused() {
+    let a = stored_account();
+    let mut other = bank_input();
+    other.bank_name = Some("Other Bank".to_owned());
+    let f = form_with_account(Some(other));
+    assert_eq!(
+        decide_upsert(Some(stored_with(Some(&a))), false, &submitted(&f)),
+        UpsertOutcome::Refuse
+    );
+}
+
+#[test]
+fn frozen_with_no_stored_account_and_a_submitted_one_is_refused() {
+    let f = form_with_account(Some(bank_input()));
+    assert_eq!(
+        decide_upsert(Some(stored_with(None)), false, &submitted(&f)),
+        UpsertOutcome::Refuse
+    );
+}
+
+#[test]
+fn a_writable_lp_accepts_any_account() {
+    let a = stored_account();
+    let mut other = bank_input();
+    other.bank_name = Some("Other Bank".to_owned());
+    let f = form_with_account(Some(other));
+    assert_eq!(
+        decide_upsert(Some(stored_with(Some(&a))), true, &submitted(&f)),
+        UpsertOutcome::Write
+    );
+}
+
+#[test]
+fn the_owner_sees_the_summary_and_no_details() {
+    let a = stored_account();
+    let (summary, details) = bank_account_views(Some(&a), LpAudience::Owner);
+    let summary: SettlementBankAccountSummary = summary.unwrap();
+    assert_eq!(summary.account_last4.as_deref(), Some("5432"));
+    assert!(details.is_none());
+}
+
+#[test]
+fn the_trustee_sees_the_summary_and_the_details() {
+    let a = stored_account();
+    let (summary, details) = bank_account_views(Some(&a), LpAudience::Trustee);
+    assert!(summary.is_some());
+    let details: SettlementBankAccountDetails = details.unwrap();
+    assert_eq!(details.iban.as_deref(), Some("GB82WEST12345698765432"));
+}
+
+#[test]
+fn no_account_gives_no_views() {
+    for audience in [LpAudience::Owner, LpAudience::Trustee] {
+        let (s, d) = bank_account_views(None, audience);
+        assert!(s.is_none() && d.is_none());
+    }
+}
+
+#[test]
+fn an_owner_view_serializes_without_the_details_key() {
+    let a = stored_account();
+    let (summary, details) = bank_account_views(Some(&a), LpAudience::Owner);
+    let v = serde_json::json!({
+        "settlement_bank_account": summary,
+        "settlement_bank_account_details": details,
+    });
+    assert_eq!(v["settlement_bank_account"]["bank_name"], "Example Bank");
+    assert!(v["settlement_bank_account"].get("iban").is_none());
+    assert!(v["settlement_bank_account_details"].is_null());
+}
+
+#[test]
+fn the_openapi_document_describes_the_account_fields() {
+    let doc = openapi_json();
+    let schemas = &doc["components"]["schemas"];
+    let resp = &schemas["LpResponse"]["properties"];
+    assert!(resp.get("settlement_bank_account").is_some());
+    assert!(resp.get("settlement_bank_account_details").is_some());
+    let required = schemas["LpResponse"]["required"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(!required
+        .iter()
+        .any(|f| f == "settlement_bank_account_details"));
+    assert!(schemas["UpsertLpRequest"]["properties"]
+        .get("settlement_bank_account")
+        .is_some());
 }

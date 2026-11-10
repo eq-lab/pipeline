@@ -8,7 +8,7 @@ use shared::chains::ChainKind;
 use shared::lp_repo::{
     KybStatus, LpRow, CONSUME_LINK_CHALLENGE_SQL, FIND_LINK_CHALLENGE_SQL,
     ISSUE_OR_REUSE_LINK_CHALLENGE_SQL, LINK_EVM_ADDRESS_SQL, LINK_STELLAR_ADDRESS_SQL,
-    LIST_SETTLEMENT_ADDRESS_HISTORY_SQL, STELLAR_ADDRESS_HOLDERS_SQL,
+    LIST_SETTLEMENT_ADDRESS_HISTORY_SQL, STELLAR_ADDRESS_HOLDERS_SQL, UPSERT_LP_BY_OWNER_SQL,
 };
 use uuid::Uuid;
 
@@ -202,6 +202,7 @@ fn lp(stellar: Option<&str>, evm: Option<&str>) -> LpRow {
         owner_address: None,
         created_at: Utc::now(),
         updated_at: Utc::now(),
+        settlement_bank_account: None,
     }
 }
 
@@ -234,4 +235,28 @@ fn stellar_address_holders_sql_attributes_by_the_link_active_at_the_request_time
     ] {
         assert!(sql.contains(needle), "missing `{needle}` in {sql}");
     }
+}
+
+#[test]
+fn the_holder_query_selects_the_settlement_bank_account() {
+    assert!(STELLAR_ADDRESS_HOLDERS_SQL.contains("l.settlement_bank_account"));
+}
+
+#[test]
+fn the_upsert_leaves_an_absent_account_unchanged() {
+    let sql = flat(UPSERT_LP_BY_OWNER_SQL);
+    assert!(
+        sql.contains("settlement_bank_account = COALESCE($9::jsonb, lps.settlement_bank_account)")
+    );
+    assert!(
+        sql.contains("VALUES ($1, $2, $3, $4, $5, $6, COALESCE($8::boolean, false), $9::jsonb)")
+    );
+}
+
+#[test]
+fn the_upsert_freeze_compares_the_account_in_sql() {
+    let sql = flat(UPSERT_LP_BY_OWNER_SQL);
+    assert!(sql.contains(
+        "AND ($9::jsonb IS NULL OR lps.settlement_bank_account IS NOT DISTINCT FROM $9::jsonb)"
+    ));
 }

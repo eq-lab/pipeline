@@ -66,6 +66,8 @@ The deployed `requestWithdrawal` / `claimWithdrawal` surface, events and voucher
 
 On Stellar, an LP's wire-outs (`WireOutRequested` / `WireOutSettled` / `WireOutCancelled`) are listed under an optional `wire_outs` key of `GET /v1/requests`, present only when an in-scope chain has a minter address; see [minter-cash-book.md](./minter-cash-book.md).
 
+The destination of a bank wire-out is the LP's settlement bank account ([kyb-lp-verification.md](./kyb-lp-verification.md#settlement-bank-account)). The Trustee reads it from the cash-book row (`bank_account`) or the LP detail (`settlement_bank_account_details`). The LP reads only the masked `settlement_bank_account` on `GET /v1/lps/me`. The public `GET /v1/requests` never carries bank data.
+
 ---
 
 ## Data Model
