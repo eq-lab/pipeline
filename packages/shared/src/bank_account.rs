@@ -33,7 +33,9 @@ impl fmt::Debug for SettlementBankAccount {
 #[derive(Clone, Default, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SettlementBankAccountInput {
+    #[schema(required = true)]
     pub account_holder_name: Option<String>,
+    #[schema(required = true)]
     pub bank_name: Option<String>,
     pub bank_address: Option<String>,
     pub account_number: Option<String>,
@@ -131,8 +133,14 @@ fn normalize_account_number(raw: &str) -> Result<String, BankAccountError> {
     Ok(s)
 }
 
+fn strip_separators(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect()
+}
+
 fn normalize_bic(raw: &str) -> Result<String, BankAccountError> {
-    let s = raw.to_uppercase();
+    let s = strip_separators(raw).to_uppercase();
     let b = s.as_bytes();
     let ok = (b.len() == 8 || b.len() == 11)
         && b[..6].iter().all(u8::is_ascii_uppercase)
@@ -146,8 +154,13 @@ fn normalize_bic(raw: &str) -> Result<String, BankAccountError> {
 }
 
 fn normalize_routing(raw: &str) -> Result<String, BankAccountError> {
+    let raw = strip_separators(raw);
     let digits: Vec<u32> = raw.chars().filter_map(|c| c.to_digit(10)).collect();
     if raw.chars().count() != 9 || digits.len() != 9 {
+        return Err(err("routing_number", "is not a valid routing number"));
+    }
+    let prefix = digits[0] * 10 + digits[1];
+    if !matches!(prefix, 1..=12 | 21..=32 | 61..=72 | 80) {
         return Err(err("routing_number", "is not a valid routing number"));
     }
     let sum = 3 * (digits[0] + digits[3] + digits[6])
@@ -156,7 +169,7 @@ fn normalize_routing(raw: &str) -> Result<String, BankAccountError> {
     if !sum.is_multiple_of(10) {
         return Err(err("routing_number", "is not a valid routing number"));
     }
-    Ok(raw.to_owned())
+    Ok(raw)
 }
 
 pub fn normalize(

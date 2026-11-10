@@ -8,6 +8,7 @@
 -- Rollback:
 -- ALTER TABLE lps DROP CONSTRAINT lps_settlement_bank_account_shape_ck;
 -- ALTER TABLE lps DROP COLUMN settlement_bank_account;
+-- DELETE FROM _sqlx_migrations WHERE version = 20261110000002;
 
 ALTER TABLE lps ADD COLUMN settlement_bank_account JSONB;
 
@@ -21,5 +22,6 @@ ALTER TABLE lps ADD CONSTRAINT lps_settlement_bank_account_shape_ck CHECK (
         AND COALESCE(jsonb_typeof(settlement_bank_account->'iban'), 'missing') IN ('string', 'null')
         AND COALESCE(jsonb_typeof(settlement_bank_account->'swift_bic_code'), 'missing') IN ('string', 'null')
         AND COALESCE(jsonb_typeof(settlement_bank_account->'routing_number'), 'missing') IN ('string', 'null')
+        AND settlement_bank_account - ARRAY['account_holder_name','bank_name','bank_address','account_number','iban','swift_bic_code','routing_number'] = '{}'::jsonb
     )
 );

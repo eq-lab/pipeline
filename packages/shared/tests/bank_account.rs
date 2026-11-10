@@ -96,6 +96,31 @@ fn the_aba_routing_number_is_checksummed() {
 }
 
 #[test]
+fn the_aba_routing_number_needs_a_valid_prefix() {
+    let mut i = input();
+    i.swift_bic_code = None;
+    for (rn, ok) in [
+        ("000000000", false),
+        ("133000003", false),
+        ("990000000", false),
+        ("021000021", true),
+    ] {
+        i.routing_number = Some(rn.to_owned());
+        assert_eq!(normalize(&i).is_ok(), ok, "{rn}");
+    }
+}
+
+#[test]
+fn the_bic_and_routing_number_drop_spaces_and_dashes() {
+    let mut i = input();
+    i.swift_bic_code = Some(" west gb2l-xxx ".to_owned());
+    i.routing_number = Some("021 000-021".to_owned());
+    let a = normalize(&i).unwrap();
+    assert_eq!(a.swift_bic_code.as_deref(), Some("WESTGB2LXXX"));
+    assert_eq!(a.routing_number.as_deref(), Some("021000021"));
+}
+
+#[test]
 fn an_identifier_and_a_routing_route_are_each_required() {
     let mut i = input();
     i.account_number = None;

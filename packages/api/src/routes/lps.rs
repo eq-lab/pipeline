@@ -174,10 +174,15 @@ pub struct SettlementBankAccountSummary {
 pub struct SettlementBankAccountDetails {
     pub account_holder_name: String,
     pub bank_name: String,
+    #[schema(required = true, nullable)]
     pub bank_address: Option<String>,
+    #[schema(required = true, nullable)]
     pub account_number: Option<String>,
+    #[schema(required = true, nullable)]
     pub iban: Option<String>,
+    #[schema(required = true, nullable)]
     pub swift_bic_code: Option<String>,
+    #[schema(required = true, nullable)]
     pub routing_number: Option<String>,
 }
 

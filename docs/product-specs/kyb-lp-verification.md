@@ -124,8 +124,8 @@ An LP that wants a USD wire-out names the bank account the Trustee should pay. I
 | `bank_address` | optional, at most 280 characters |
 | `account_number` | optional; spaces and `-` removed, uppercased, 1 to 34 letters or digits |
 | `iban` | optional; spaces removed, uppercased, ISO 13616 shape and mod-97 check |
-| `swift_bic_code` | optional; uppercased, 8 or 11 characters in BIC form |
-| `routing_number` | optional; exactly 9 digits and the ABA checksum |
+| `swift_bic_code` | optional; spaces and `-` removed, uppercased, 8 or 11 characters in BIC form |
+| `routing_number` | optional; spaces and `-` removed, exactly 9 digits, an ABA prefix (first two digits 01-12, 21-32, 61-72 or 80, which rejects `000000000`) and the ABA checksum |
 
 At least one of `account_number` / `iban` and at least one of `swift_bic_code` / `routing_number` is required. Every field is trimmed, and a blank optional field is stored as `null`. Unknown fields are rejected. There is no intermediary bank, beneficiary address or non-USD currency.
 

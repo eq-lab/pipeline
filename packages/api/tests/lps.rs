@@ -11,9 +11,9 @@ use pipeline_api::routes::lps::{
     bank_account_views, check_document_cap, decide_upsert, decision_recipient, kyb_decision_email,
     pass_blockers, profile_is_unchanged, rejected_documents, resolve_document_review,
     resolve_kyb_decision, submit_blockers, upload_status, validate_profile, DocumentReviewDecision,
-    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpAudience, LpsDoc,
-    SettlementBankAccountDetails, SettlementBankAccountSummary, StoredProfile, UpsertLpRequest,
-    UpsertOutcome, ValidatedProfile, MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN,
+    DocumentReviewRequest, FileResult, KybDecision, KybDecisionRequest, LpAudience, LpResponse,
+    LpsDoc, SettlementBankAccountDetails, SettlementBankAccountSummary, StoredProfile,
+    UpsertLpRequest, UpsertOutcome, ValidatedProfile, MAX_CONTACT_EMAIL_LEN, MAX_COUNTRY_LEN,
     MAX_DECISION_REASON_LEN, MAX_LEGAL_NAME_LEN,
 };
 use shared::bank_account::{SettlementBankAccount, SettlementBankAccountInput};
@@ -1192,17 +1192,53 @@ fn no_account_gives_no_views() {
     }
 }
 
-#[test]
-fn an_owner_view_serializes_without_the_details_key() {
+fn lp_response(audience: LpAudience) -> LpResponse {
     let a = stored_account();
-    let (summary, details) = bank_account_views(Some(&a), LpAudience::Owner);
-    let v = serde_json::json!({
-        "settlement_bank_account": summary,
-        "settlement_bank_account_details": details,
-    });
+    let (settlement_bank_account, settlement_bank_account_details) =
+        bank_account_views(Some(&a), audience);
+    LpResponse {
+        id: 1,
+        legal_name: "Acme".to_owned(),
+        country: Some("GB".to_owned()),
+        contact_email: "ops@example.com".to_owned(),
+        stellar_address: None,
+        address_linked_at: None,
+        stellar_signer_address: None,
+        evm_address: None,
+        evm_signer_address: None,
+        evm_address_linked_at: None,
+        kyb_status: "not_started".to_owned(),
+        writable: true,
+        notify_on_review: false,
+        kyb_submitted_at: None,
+        kyb_decided_at: None,
+        kyb_decision_reason: None,
+        owner_account_id: uuid::Uuid::nil(),
+        owner_chain_id: None,
+        owner_address: None,
+        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        documents: vec![],
+        pending_bank_deposits: None,
+        settlement_bank_account,
+        settlement_bank_account_details,
+    }
+}
+
+#[test]
+fn an_owner_response_serializes_without_the_details_key() {
+    let v = serde_json::to_value(lp_response(LpAudience::Owner)).unwrap();
     assert_eq!(v["settlement_bank_account"]["bank_name"], "Example Bank");
     assert!(v["settlement_bank_account"].get("iban").is_none());
-    assert!(v["settlement_bank_account_details"].is_null());
+    assert!(v.get("settlement_bank_account_details").is_none());
+}
+
+#[test]
+fn a_trustee_response_serializes_the_details_key() {
+    let v = serde_json::to_value(lp_response(LpAudience::Trustee)).unwrap();
+    assert_eq!(
+        v["settlement_bank_account_details"]["iban"],
+        "GB82WEST12345698765432"
+    );
 }
 
 #[test]
@@ -1219,6 +1255,26 @@ fn the_openapi_document_describes_the_account_fields() {
     assert!(!required
         .iter()
         .any(|f| f == "settlement_bank_account_details"));
+    let input_required = schemas["SettlementBankAccountInput"]["required"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for f in ["account_holder_name", "bank_name"] {
+        assert!(input_required.iter().any(|r| r == f), "{f}");
+    }
+    let details_required = schemas["SettlementBankAccountDetails"]["required"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for f in [
+        "bank_address",
+        "account_number",
+        "iban",
+        "swift_bic_code",
+        "routing_number",
+    ] {
+        assert!(details_required.iter().any(|r| r == f), "{f}");
+    }
     assert!(schemas["UpsertLpRequest"]["properties"]
         .get("settlement_bank_account")
         .is_some());
