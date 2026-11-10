@@ -26,7 +26,7 @@ use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
 use crate::auth::{AuthClaims, SecurityAddon};
 use crate::config::ConfiguredChain;
-use crate::error::{is_unique_violation, ApiError};
+use crate::error::{is_foreign_key_violation, is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
 use crate::routes::common::{require_trustee, RequiredChain};
 use crate::routes::lps::my_lp;
@@ -44,7 +44,8 @@ pub struct RecordBankDepositRequest {
     /// identifies the wire, and what `ref_hash` is taken over. Stored trimmed.
     pub payment_reference: String,
     /// The issued `PL-XXXX-XXXX-XXXX` reference the LP quoted. Optional; omit it
-    /// to attribute the wire by hand. Case, hyphens and whitespace are ignored.
+    /// to attribute the wire by hand; a blank value counts as omitted. Case, hyphens and
+    /// whitespace are ignored.
     #[serde(default)]
     pub payment_details: Option<String>,
     /// When the wire actually landed, ISO-8601 with an offset (e.g.
@@ -229,7 +230,7 @@ async fn list_bank_deposits(
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No LP with this id"),
         (status = 409, description = "This `payment_reference` is already recorded"),
-        (status = 422, description = "`payment_details` was never issued or was issued to another LP, or `payment_reference` is itself an issued reference"),
+        (status = 422, description = "`payment_details` was never issued or was issued to another LP, `payment_reference` is itself an issued reference, or the deposit references a row that no longer exists"),
     ),
     security(("bearer_auth" = [])),
     tag = "LpBankDeposits"
@@ -259,16 +260,7 @@ async fn record_bank_deposit(
         matched.as_ref().map(|row| row.id),
     )
     .await
-    .map_err(|e| {
-        if is_unique_violation(&e) {
-            ApiError::Conflict(format!(
-                "a deposit with payment reference `{}` is already recorded",
-                values.payment_reference
-            ))
-        } else {
-            ApiError::from(e)
-        }
-    })?;
+    .map_err(|e| deposit_insert_error(e, &values.payment_reference))?;
 
     LpLedgerRepo::insert_deposit(
         &mut tx,
@@ -286,6 +278,20 @@ async fn record_bank_deposit(
         StatusCode::CREATED,
         Json(BankDepositResponse::from(deposit)),
     ))
+}
+
+pub fn deposit_insert_error(e: sqlx::Error, payment_reference: &str) -> ApiError {
+    if is_unique_violation(&e) {
+        ApiError::Conflict(format!(
+            "a deposit with payment reference `{payment_reference}` is already recorded"
+        ))
+    } else if is_foreign_key_violation(&e) {
+        ApiError::UnprocessableEntity(
+            "the LP or the issued payment reference this deposit links to no longer exists; reload and retry".to_owned(),
+        )
+    } else {
+        ApiError::from(e)
+    }
 }
 
 #[utoipa::path(
@@ -379,6 +385,7 @@ pub fn validate_record_bank_deposit(
     let payment_details = req
         .payment_details
         .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
         .map(|raw| canonical_payment_details(raw).map_err(|e| format!("`payment_details` {e}")))
         .transpose()?;
 
@@ -467,7 +474,7 @@ pub fn canonical_payment_details(raw: &str) -> Result<String, String> {
     }
     let squeezed: String = raw
         .trim()
-        .to_uppercase()
+        .to_ascii_uppercase()
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '-')
         .collect();

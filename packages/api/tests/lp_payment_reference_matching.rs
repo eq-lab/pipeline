@@ -120,6 +120,10 @@ fn malformed_references_are_refused() {
         "PL-7K3M-Q9TX-H2C!",
         "PL-7K3M-Q9TX-H2C_",
         "PL-7K3M-Q9TX-H2Cé",
+        "PL-7K3M-Q9TX-H2Cı",
+        "PL-7K3M-Q9TX-H2Cſ",
+        "PL-7K3M-Q9TX-H2Cß",
+        "ſ-7K3M-Q9TX-H2CD",
         too_long.as_str(),
     ] {
         assert!(canonical_payment_details(raw).is_err(), "{raw:?}");

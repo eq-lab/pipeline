@@ -4,9 +4,10 @@ use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 
 use pipeline_api::config::KybLimits;
+use pipeline_api::error::ApiError;
 use pipeline_api::routes::lp_bank_deposits::{
-    router, validate_record_bank_deposit, BankDepositResponse, LpBankDepositsDoc,
-    RecordBankDepositRequest,
+    deposit_insert_error, router, validate_record_bank_deposit, BankDepositResponse,
+    LpBankDepositsDoc, RecordBankDepositRequest,
 };
 use shared::lp_bank_deposit_repo::LpBankDepositRow;
 
@@ -442,4 +443,82 @@ fn the_deposit_routes_merge_under_v1_beside_the_lp_routes() {
         .nest("/v1", pipeline_api::routes::lps::router(limits))
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .nest("/v1", router());
+}
+
+#[test]
+fn blank_payment_details_counts_as_omitted() {
+    for blank in ["", "   ", "\t\n"] {
+        let request = RecordBankDepositRequest {
+            payment_details: Some(blank.to_owned()),
+            ..valid_request()
+        };
+        let values = validate_record_bank_deposit(&request).expect("blank is absent");
+        assert_eq!(values.payment_details, None, "{blank:?}");
+    }
+}
+
+#[test]
+fn malformed_non_blank_payment_details_is_still_rejected() {
+    let request = RecordBankDepositRequest {
+        payment_details: Some("nope".to_owned()),
+        ..valid_request()
+    };
+    let error = validate_record_bank_deposit(&request).expect_err("should not validate");
+    assert!(error.contains("payment_details"), "got {error}");
+}
+
+// ── deposit_insert_error ─────────────────────────────────────────────────────
+
+#[derive(Debug)]
+struct FakeDbError(&'static str);
+
+impl std::fmt::Display for FakeDbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "fake db error {}", self.0)
+    }
+}
+
+impl std::error::Error for FakeDbError {}
+
+impl sqlx::error::DatabaseError for FakeDbError {
+    fn message(&self) -> &'static str {
+        "fake"
+    }
+    fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+        Some(std::borrow::Cow::Borrowed(self.0))
+    }
+    fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+    fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+    fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+        self
+    }
+    fn kind(&self) -> sqlx::error::ErrorKind {
+        sqlx::error::ErrorKind::Other
+    }
+}
+
+fn db_error(code: &'static str) -> sqlx::Error {
+    sqlx::Error::Database(Box::new(FakeDbError(code)))
+}
+
+#[test]
+fn a_unique_violation_maps_to_409() {
+    let got = deposit_insert_error(db_error("23505"), "WIRE-REF-1");
+    assert!(matches!(got, ApiError::Conflict(m) if m.contains("WIRE-REF-1")));
+}
+
+#[test]
+fn a_foreign_key_violation_maps_to_422() {
+    let got = deposit_insert_error(db_error("23503"), "WIRE-REF-1");
+    assert!(matches!(got, ApiError::UnprocessableEntity(_)));
+}
+
+#[test]
+fn any_other_database_error_stays_internal() {
+    let got = deposit_insert_error(db_error("40001"), "WIRE-REF-1");
+    assert!(matches!(got, ApiError::Internal(_)));
 }

@@ -9,6 +9,7 @@
 --   ALTER TABLE lp_bank_deposits DROP CONSTRAINT lp_bank_deposits_requested_bank_details_fk,
 --       DROP COLUMN requested_bank_details_id;
 --   ALTER TABLE lp_requested_bank_details DROP CONSTRAINT lp_requested_bank_details_id_lp_id_key;
+--   DELETE FROM _sqlx_migrations WHERE version = 20261111000001;
 
 ALTER TABLE lp_requested_bank_details
     ADD CONSTRAINT lp_requested_bank_details_id_lp_id_key UNIQUE (id, lp_id);

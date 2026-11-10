@@ -48,3 +48,8 @@ fn there_is_no_backfill() {
 fn a_rollback_block_is_present() {
     assert!(SQL.contains("-- Rollback:"));
 }
+
+#[test]
+fn the_rollback_clears_the_migration_record() {
+    assert!(SQL.contains("--   DELETE FROM _sqlx_migrations WHERE version = 20261111000001;"));
+}

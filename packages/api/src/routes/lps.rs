@@ -446,7 +446,8 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct LpsQuery {
     /// Wire matching: return only the LP the issued `PL-…` reference belongs to
-    /// (`lps: []` when it was never issued). Case, hyphens and whitespace are ignored.
+    /// (`lps: []` when it was never issued). Case, hyphens and whitespace are ignored; a blank
+    /// value is treated as absent and returns every LP.
     pub payment_details: Option<String>,
 }
 
@@ -455,7 +456,7 @@ pub struct LpsQuery {
     path = "/v1/lps",
     params(LpsQuery),
     responses(
-        (status = 200, description = "All registered LPs, newest first; with `payment_details`, only the LP that reference was issued to", body = LpsResponse),
+        (status = 200, description = "All registered LPs, newest first; with a non-blank `payment_details`, only the LP that reference was issued to", body = LpsResponse),
         (status = 400, description = "Malformed `payment_details`"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
@@ -469,7 +470,11 @@ async fn list_lps(
     Query(query): Query<LpsQuery>,
 ) -> Result<Json<LpsResponse>, ApiError> {
     require_trustee(&claims)?;
-    let lps = match query.payment_details.as_deref() {
+    let lps = match query
+        .payment_details
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+    {
         None => state.lp_repo.list().await?,
         Some(raw) => {
             match lp_id_for_payment_details(&state.lp_requested_bank_details_repo, raw).await? {
