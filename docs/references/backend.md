@@ -730,7 +730,7 @@ shares for this wire*, not merely that PLUSD exists: an escrowed wire stays
 deposit row at all are counted and logged at `info` alongside the two match
 counts — a wire minted outside this flow, or against a reference we never
 recorded. Escrowed wires are **not** in that figure: they do have a deposit row,
-so nothing currently reports a wire stuck awaiting assignment (TD-118). The LP pending bank deposits read (#1285) also consumes `is_minted` (the Trustee `GET /v1/lps/{id}/bank-deposits` and the Trustee UI already read it); see [deposits.md](../product-specs/deposits.md#lp-pending-bank-deposits).
+so nothing currently reports a wire stuck awaiting assignment (TD-118). The LP pending bank deposits read (#1285) also consumes `is_minted` (the Trustee `GET /v1/lps/{id}/bank-deposits` and the Trustee UI already read it); see [deposits.md](../product-specs/deposits.md#lp-pending-bank-deposits). A deposit may also carry a matched issued payment reference (`matched_reference`, #1839); the matching phase is unchanged and keys on `ref_hash` only.
 
 The phase has no configuration of its own: it runs when the indexer's
 `CHAIN_<id>_STELLAR_INDEXER_MINTER_ADDRESS` is set, and shares that id. Deliberately so

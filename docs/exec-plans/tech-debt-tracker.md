@@ -1257,6 +1257,7 @@ line, whichever section it lands in.
   nullable `lp_id` on `lp_bank_deposits`), with a `GET` for the queue and a `POST .../match` that moves a
   row into `lp_bank_deposits` and appends the paired `lp_ledger` row — reusing
   `LpBankDepositRepo::insert` + `LpLedgerRepo::insert_deposit`'s shared-transaction shape.
+- **Update (#1839):** an unattributable wire now goes to on-chain escrow (#1763), and `GET /v1/lps?payment_details=` plus the optional `payment_details` on the record route cover attributable ones.
 
 ### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart [RESOLVED 2026-10-19 / #1579]
 
@@ -2260,6 +2261,7 @@ line, whichever section it lands in.
 - **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
 - **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
 - **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+- **Update (#1839):** the deposit now serves `matched_reference` (`chain_id`, `receiver_address`); the console default and receiver display are still open.
 
 ### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
 
