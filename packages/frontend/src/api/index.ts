@@ -46,7 +46,8 @@ export type {
   PaymentDetailsRequest,
   UsePaymentDetailsResult,
 } from "./usePaymentDetails";
-export { useRequests, useInvalidateRequests } from "./useRequests";
+export { useRequests } from "./useRequests";
+export { useActionConfirmedRefresh } from "./activityRefresh";
 export type {
   RequestItem,
   RequestType,

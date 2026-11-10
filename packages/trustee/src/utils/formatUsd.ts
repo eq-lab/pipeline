@@ -87,3 +87,9 @@ export function formatUsdDecimal(amount: string): string {
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `$${grouped}.${fraction.padEnd(2, "0").slice(0, 2)}`;
 }
+
+export function formatUsdExact(amount: string): string {
+  const [whole = "0", fraction] = amount.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fraction === undefined ? `$${grouped}` : `$${grouped}.${fraction}`;
+}

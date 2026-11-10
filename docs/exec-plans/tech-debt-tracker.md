@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-171.**
+**Next free number: TD-183.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -437,15 +437,14 @@ line, whichever section it lands in.
 - **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
 - **Gap:** The Figma design (node `4116:8855`) shows count badges on Origination (1), Loans
   (4), and Cash Management (3) — presumably counts of pending/actionable items per section.
-  There is no backend endpoint serving these counts today, so per the project rule [no
-  frontend-computed metrics] issue #786 omits the numbers entirely rather than deriving them
-  client-side. The badge slot (`NavBadge`) is built and renders nothing when
+  The backend source now exists (`GET /v1/attention-counts`, #1864); the frontend wiring is #1350.
+  Until then issue #786 omits the numbers entirely rather than deriving them client-side. The badge slot (`NavBadge`) is built and renders nothing when
   `TrusteeNavItem.badgeCount` is `undefined`, ready to light up once a real count exists.
 - **Impact:** The sidebar under-represents the Figma mock (no badges) until a backend source
   lands; no functional impact, just a deferred visual/product feature.
-- **Suggested fix:** When a backend endpoint for per-section pending-item counts exists,
-  populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS` entries (likely via a query hook
-  passed into `TrusteeSidebar`/`NavItem`, not a hardcoded value).
+- **Suggested fix:** In #1350, populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS`
+  entries from `GET /v1/attention-counts` (via a query hook passed into
+  `TrusteeSidebar`/`NavItem`, not a hardcoded value).
 
 ### TD-37: Trustee sidebar has no mobile/responsive behavior
 
@@ -570,7 +569,9 @@ line, whichever section it lands in.
   `packages/frontend/src/components/dashboard/originationRow.ts` (`mapSubmissionToRow`, issue
   #814), and the `formatFullUsd` (in `packages/frontend/src/utils/formatCompactUsd.ts`) /
   `formatMaturityDate` / `formatSubmittedDate` (`packages/frontend/src/utils/formatDate.ts`)
-  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`.
+  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`;
+  further pair (issue #1667): `packages/frontend/src/api/useChainServed.ts` ↔
+  `packages/trustee/src/api/useChains.ts` (`ChainItem` / `ChainsResponse` types and the `["chains"]` query).
 - **Gap:** The Trustee Origination page and the LP Protocol Dashboard's In-Origination tab (#814)
   both read `GET /v1/loan-book/submissions` and now render the **same eight-column field set**
   (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), but the two apps
@@ -688,6 +689,7 @@ line, whichever section it lands in.
   event, closing the reload gap without any frontend change. Consider the same shared
   `loan_data`-parsing package suggested by TD-42's fix, extended to also host the ScVal-encoding
   transform matrix, if a third on-chain consumer ever needs it.
+- **2026-11-06 (#1792):** the API now serves contract-ready `draw_loan` args (`SubmissionView.draw_loan`), so the wallet-connect transform can shrink to ScVal encoding in the frontend follow-up #1805. The hand-mirrored `SubmitLoanRequest` copies remain.
 
 ### TD-44: Stellar vault `assets`/`shares` (`StakingDeposit`/`StakingWithdrawal`) have no read-time USDC normalization yet
 
@@ -1255,6 +1257,7 @@ line, whichever section it lands in.
   nullable `lp_id` on `lp_bank_deposits`), with a `GET` for the queue and a `POST .../match` that moves a
   row into `lp_bank_deposits` and appends the paired `lp_ledger` row — reusing
   `LpBankDepositRepo::insert` + `LpLedgerRepo::insert_deposit`'s shared-transaction shape.
+- **Update (#1839):** an unattributable wire now goes to on-chain escrow (#1763), and `GET /v1/lps?payment_details=` plus the optional `payment_details` on the record route cover attributable ones.
 
 ### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart [RESOLVED 2026-10-19 / #1579]
 
@@ -1653,6 +1656,7 @@ line, whichever section it lands in.
   on-chain outcomes do not fit one flag. A nullable `minted_at` plus a `returned_at`, or a status
   column, both work; the choice belongs with whatever first needs to display it.
 - **Update (#1480):** `WireInReturned` is now indexed; the remaining gap is only the deposit's terminal state in `lp_bank_deposits` / the matching phase.
+- **Update (#1285):** the LP pending-deposit read excludes returned wires at read time. A deposit the Trustee returned off-chain without ever minting still reads as pending; a Trustee "mark returned" write is the follow-up.
 
 ---
 
@@ -1695,6 +1699,7 @@ line, whichever section it lands in.
   `WireIn` row for this chain and contract — reported beside the other three, and worth a `warn`
   once it has been non-zero for longer than an operator would take to act. Pairs naturally with
   TD-116, which wants the same row to distinguish `Returned`.
+- **Update 2026-11-09 (#1763):** the Trustee console now lists escrowed wires (Cash Management → Escrowed wires); the worker-side count and warn are still open.
 
 ---
 
@@ -2153,9 +2158,10 @@ line, whichever section it lands in.
 
 - **Date:** 2026-10-16
 - **Location:** `packages/trustee/src/routes/-useLoanDetail.ts` (`onChainBlockedReason`), `packages/trustee/src/routes/loans.$id.tsx` (`ON_CHAIN_ACTIONS`), `packages/trustee/src/routes/-record-coupon.ts`, `packages/trustee/src/routes/-record-repayment.ts`, `packages/trustee/src/api/useRollover.ts`, `useUpdateLifecycle.ts`, `useRecordPayment.ts`, `useCloseLoan.ts`
-- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) and the Risk Council pages (read-only) are unaffected.
+- **Gap:** The Trustee loan book now lists loans from every configured chain (#1537), but the trustee-wallet writes (`rollover`, `updateMutable`, `record_payment`, `close_loan`) only know the Stellar executor path — the same gap as TD-151 for `draw_loan`. #1537 therefore disables Roll over / Update lifecycle / Record coupon / Close loan for a loan whose `chain_id` is not the Stellar chain, with an explanatory line, and the Record Coupon / Record Repayment pages refuse to submit. Disbursement complete (DB-only) is unaffected. The Risk Council pages (#1761) carry the same gate: every action card is disabled with `stellarOnlyActionReason`, the chain-state card shows `—`, and the hub shows only the reason for a non-Stellar session.
 - **Impact:** An EVM loan can be viewed and its off-ramp marked complete, but its lifecycle cannot be managed from the Trustee app until EVM write paths exist.
 - **Suggested fix:** EVM arms of the four write hooks selected by the loan's `chain_id`, signed by the `@pipeline/wallet-connect` EVM wallet; drop the gate (and TD-151's) once they land. The EVM record arm is `PipelineMinter.repay(loanId, repaymentData, valueDate, refHash, saleId)` (`MINT_CALLER_ROLE`), not `LoanRegistry.recordPayment`, which only the Minter can call (#1712).
+- **Cash reporter bookings (#1762):** the EVM arms of `record_wire_in` (Mint PLUSD) and `record_income` (Bank income) are also unbuilt: there is no EVM minter write client and no EVM AccessManager `can_call` read, so those actions stay disabled on an EVM session with the existing reasons.
 - **Repayment recovery (#1711):** the EVM arm of the recovery flow is `MinterUpgradeable.reverseRepay(loanId, repaymentId, refHash)` (`MINTER_OPS_ROLE`, possibly delayed through the EVM AccessManager) followed by `repay`. Pure calldata encoders exist (`packages/wallet-connect/src/evm/contracts/minter.ts`, round-trip tested); signing is blocked on #1573, and whether a delayed `MINTER_OPS_ROLE` needs `AccessManager.schedule` is a deployment fact for the follow-up.
 
 ### TD-153: Cash Management's custody balance and ramp hooks are hardcoded to Stellar instead of following the signed-in chain [RESOLVED 2026-10-27 / #1669]
@@ -2184,13 +2190,14 @@ line, whichever section it lands in.
 - **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
 - **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.
 
-### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session
+### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session [RESOLVED 2026-11-09 / #1765]
 
 - **Date:** 2026-10-27
 - **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar SAC `getSacBalance` only), `packages/trustee/src/routes/-cash-management.ts` (`usdcBalanceValue` gated to the Stellar session) — found while fixing #1669.
 - **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
 - **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
 - **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.
+- **Resolution:** Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more.
 
 ### TD-157: Trustee has no on-chain `Minter.disburse`, so trustee-drawn Stellar loans stay `Approved` and `repay` reverts `WrongCurrentStatus`
 
@@ -2208,14 +2215,13 @@ line, whichever section it lands in.
 - **Impact:** A falsy throw from the router blanks the page until a refresh; in the LP app nothing reports it.
 - **Suggested fix:** Still worthwhile, but no longer tied to auth navigation (the trustee no longer navigates on auth changes; #1749). Bump the three packages in both apps, rerun both builds and test suites, then re-evaluate whether the trustee app boundary and `defaultErrorComponent` are still needed.
 
-### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay`
+### TD-159: The Trustee app cannot cancel a scheduled `reverse_repay` or Risk Council operation
 
 - **Date:** 2026-10-28
-- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
-- **Gap:** The repayment recovery dialog (#1711) schedules and executes the reversal through `AM.schedule` / `AM.execute` but has no `AM.cancel`. Cancelling is admin or guardian only for other callers.
-- **Impact:** A wrongly scheduled reversal can only be left to expire (7 days after its ready time) or cancelled outside the app.
+- **Location:** `packages/trustee/src/api/useRepaymentRecovery.ts`, `packages/trustee/src/api/useRiskCouncil.ts`, `packages/wallet-connect/src/stellar/contracts/accessManager.ts`
+- **Gap:** The repayment recovery dialog (#1711) and the Risk Council pages (#1761: `amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, `cure`, and `set_default` while it is delayed) schedule and execute through `AM.schedule` / `AM.execute` but have no `AM.cancel`. Cancelling is the scheduler, the Guardian or the Admin only.
+- **Impact:** A wrongly scheduled reversal or Risk Council operation can only be left to expire (7 days after its ready time) or cancelled outside the app.
 - **Suggested fix:** Add a `cancel` mode to the AccessManager relay and a "Cancel scheduled reversal" action gated on the wallet's guardian or admin role, while the delayed path is still in use (it disappears once #1756 makes `reverse_repay` immediate).
-
 ### TD-160: EVM vouchers carry no deadline, so the 24-hour voucher validity is unenforced on EVM
 
 - **Date:** 2026-10-29
@@ -2255,6 +2261,7 @@ line, whichever section it lands in.
 - **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
 - **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
 - **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+- **Update (#1839):** the deposit now serves `matched_reference` (`chain_id`, `receiver_address`); the console default and receiver display are still open.
 
 ### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
 
@@ -2293,9 +2300,9 @@ line, whichever section it lands in.
 
 - **Date:** 2026-11-05
 - **Location:** `GET /v1/cash-book`, `shared::chains::validate_chain_kind_keys`
-- **Gap:** The cash book, the LP `wire_outs` list and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
+- **Gap:** The cash book, the LP `wire_ins` / `wire_outs` lists and the Capital Allocation switch exist only for the Stellar minter. EVM chains have no minter address key on the API and always use the Trustee-entered sources.
 - **Impact:** EVM `in_transit` and `trust_account` keep depending on manual Trustee records.
-- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope.
+- **Suggested fix:** Fold the EVM minter's events the same way, behind an EVM API key, once the EVM minter is in scope. The EVM `wire_out_escrow` term of `GET /v1/positions/history` (#1313) is served only when `CHAIN_<id>_EVM_API_PLUSD_ADDRESS` is set (#1865), with the minter inferred from the wallet's latest `WireOutRequested` row; a minter redeploy hides earlier minters' requests until an EVM API minter key exists.
 
 ### TD-170: Pocket `complete` is not verified against the key having stayed configured
 
@@ -2304,3 +2311,102 @@ line, whichever section it lands in.
 - **Gap:** Any indexed `PocketOpened` makes the fold `complete = true` with no check that later pocket events were all indexed. If `CHAIN_<id>_STELLAR_INDEXER_POCKET_ADDRESS` was unset for a period after the open, events in that gap are missing and the fold is silently short.
 - **Impact:** The loan-book `pocket` totals can differ from `pocket(loan_id)` while reporting `complete: true`.
 - **Suggested fix:** Compare the fold with a fresh `pocket(loan_id)` simulate in the seed loop and re-seed on mismatch, or store the cursor ledger at which the key was set. Documented in `docs/references/backend.md#stellar-pocket-indexing`. Number picked after main's TD-166 and past the #1790 / #1791 branches' TD-165..169; renumber at merge if it collides. Found while working on #1789.
+
+### TD-171: SecurityRegistry valuation and snapshots are current-state reads; pre-key history is view-seeded
+
+- **Date:** 2026-11-06
+- **Location:** `packages/worker/src/indexer/stellar/security_registry_sync.rs`, `shared::security_registry`
+- **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
+- **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history. The API's computed staleness flags (`GET /v1/loan-book/{loan_id}/security`, #1780) use the API clock, not the ledger timestamp, so they can flip a few seconds apart from the contract's.
+- **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
+
+### TD-172: `useDepositFlow` known-id 5 s poll overlaps the activity-expectation store
+
+- **Date:** 2026-11-05
+- **Location:** `packages/frontend/src/wallet/useDepositFlow.ts`, `packages/frontend/src/api/activityRefresh.ts`
+- **Gap:** `useDepositFlow` polls `/v1/requests` every 5 s while a known request id is unlisted, and the activity-expectation store (#1810) now polls every 3 s for the same condition. `useRequests` takes the shorter of the two.
+- **Impact:** Two mechanisms drive one query. The known-id poll also covers reload recovery, which is why #1810 left it in place.
+- **Suggested fix:** Register an expectation from the in-flight record on reload and drop the known-id interval.
+
+### TD-173: Per-loan `contract_logs` reads written as `params->>'x' = …` cannot use the GIN index
+
+- **Date:** 2026-11-06
+- **Location:** `packages/shared/src/security_registry_repo.rs` (`LOAN_LOG_WATERMARKS_SQL`, `LIST_SALE_REPAYMENTS_SQL`), and the older per-loan reads in `contract_logs_repo.rs`
+- **Gap:** `contract_logs.params` has a GIN index, `idx_contract_logs_params` (`20260521000001_contract_logs_jsonb.sql`), but it only serves containment (`params @> jsonb_build_object(…)`). Filters and joins written as `params->>'loan_id' = …` (for example the correlated `v.params->>'loan_id' = r.params->>'loan_id'` in `LIST_SALE_REPAYMENTS_SQL`) cannot use it and scan the scoped contract(s).
+- **Impact:** public `GET /v1/loan-book/{loan_id}/security` (polled by #1856–#1859 via `refresh_pending`) and other per-loan reads grow with each contract's log count where they are not written with `@>`.
+- **Suggested fix:** rewrite those predicates with `@>` (`LOAN_LOG_WATERMARKS_SQL` already does), and only add an expression index if a correlated join still cannot use the GIN index; measure on pipeline-test first.
+- **Also:** the share-price reads in `position_repo.rs` (incl. #1313's closing-price query) filter `LOWER(vault_address) = …`, which keeps `idx_share_prices_latest` from serving the vault column; same cleanup.
+
+### TD-174: Attention counts are recomputed per request over full minter and transfer history
+
+- **Date:** 2026-11-09
+- **Location:** `packages/api/src/routes/attention_counts.rs`, `ContractLogsRepo::list_minter_events`, `ContractLogsRepo::list_asset_transfers`, `LpBankDepositRepo::count_pending`
+- **Gap:** `GET /v1/attention-counts` re-reads each in-scope chain's whole minter cash-book event history and `AssetTransfer` list, plus an `lp_bank_deposits` / `contract_logs` anti-join, on every call. Nothing is materialised or cached. The pending bank deposit count is also chain-agnostic because `lp_bank_deposits` has no `chain_id` (TD-117).
+- **Impact:** The Trustee sidebar polls this on every page (#1350), so the cost grows with history and with open Trustee sessions.
+- **Suggested fix:** Materialise the counts (or the folded minter and ramp state) in the indexer or relayer tick, or add a short server-side cache; add `chain_id` to `lp_bank_deposits` and serve the deposit count per chain.
+
+### TD-175: Stellar PLUSD history predates indexing; `plusd_balance` off on 99000001/99000002
+
+- **Date:** 2026-11-09
+- **Location:** `packages/worker/src/indexer/stellar/plusd_parsers.rs`, `packages/api/src/routes/pnl.rs` (`plusd_series`), `CHAIN_<id>_STELLAR_API_PLUSD_ADDRESS`
+- **Gap:** The Stellar PLUSD SACs (testnet `CDGHLVGY…`, mainnet `CD5CFMJ4…`, deployment #37) predate the `…_STELLAR_INDEXER_PLUSD_ADDRESS` key and Soroban RPC retention (about 7 days). A fold over indexed rows alone starts from a zero balance that is not the wallet's real one, so the API key stays unset on both chains and `GET /v1/positions/history` serves no `plusd_balance` there. The EVM arm is unaffected once the cursor is rewound to the PLUSD deploy block.
+- **Impact:** Stellar LPs' Total Balance excludes PLUSD held in the wallet (it still includes sPLUSD and wire-out escrow); the card cannot show the PLUSD part on Stellar.
+- **Resolved by #1878:** `plusd_balance_seeds` plus a supervised seed and drift-check loop (`stellar/plusd_seed.rs`); the API folds from the wallet's latest seed, back-computed to the coverage bound (the chain's earliest `PlusdTransfer`), and omits the term for an unseeded wallet. Classic-payment check (manual step 3 of `docs/user-stories/epic-1247/1878-plusd-balance-seed.md`): NOT RUN by the coder (needs a signed classic payment on testnet); until it is run, the drift check is the only guard for classic PLUSD payments after the seed (one read per holder every 6 h) and the pre-seed back-compute cannot see a classic payment between the coverage bound and the seed, see TD-176.
+- **Original suggested fix:** #1878 — a one-off per-holder starting balance: Soroban `simulateTransaction` of the SAC `balance(holder)` (the `pocket_seeds` pattern, `simulate_view` plus a supervised loop), stored in `plusd_balance_seeds (chain_id, token_address, holder, as_of_ledger, balance, created_at)` for the chain's whitelisted LP wallets; at read time the balance is the seed plus the deltas with `block_number > as_of_ledger`, so the fold takes the seed as one leading step. Decide the buckets before the seed, the SAC `balance` result for a missing trustline, and candidate refresh for newly whitelisted wallets.
+- **Also:** Classic PLUSD payments (CAP-67) reach `getEvents` only when the RPC emits unified classic events (protocol 23+). The testnet RPC reports protocol 30, but the coder did not confirm that a classic payment between two G-accounts produces a `PlusdTransfer` row (it needs a signed classic payment, which was not sent). Confirm it with the Stellar manual step in `docs/user-stories/epic-1247/1865-plusd-balance.md` before relying on the term for a wallet that moved PLUSD classically.
+
+### TD-176: PLUSD balance seed trusts indexed rows between the coverage bound and the seed
+
+- **Date:** 2026-11-10
+- **Location:** `packages/shared/src/plusd_seed.rs` (`seeded_plusd`), `packages/worker/src/indexer/stellar/plusd_seed.rs`
+- **Gap:** The drift check verifies a holder only after its seed. The pre-seed back-compute (`seed − Σ deltas`) assumes every PLUSD movement between the coverage bound and the seed was indexed. If classic PLUSD payments do not reach `getEvents` (unconfirmed, see TD-175 "Also"), a classic payment in that window silently shifts every back-computed value before it unless a value goes negative. After the seed, the same payments are caught by the drift check (one read per seeded holder every 6 h, 10 per minute) and re-anchored.
+- **Impact:** A wrong early part of a Stellar LP's PLUSD history for a wallet that moved PLUSD with classic payments before its seed.
+- **Suggested fix:** Run the classic-payment check (manual step 3 of the #1878 user stories). If classic events are visible, close this item. If not, drop the back-compute for chains where it is proven wrong (treat every seed as NoCoverage) or verify the first seed against a Horizon payment history.
+
+### TD-177: Risk Council hub cannot list operations scheduled elsewhere
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/-risk-council-hub.ts`, `packages/trustee/src/api/useRiskCouncil.ts` (`useRiskCouncilHubLookups`)
+- **Gap:** Nothing indexes the AccessManager's `OperationScheduled`, `OperationCanceled` or `OperationExecuted` events. Operations with arguments (`amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`) scheduled by another session or browser cannot be listed; only `set_default` / `cure` (arguments are just the loan id) and operations this console scheduled in this session are shown. `hash_operation` also covers the caller, so a Trustee-only wallet never sees the Risk Council's operations.
+- **Impact:** The "Scheduled operations" table is incomplete after a reload, and a cancelled or executed operation cannot be told apart from an expired one.
+- **Suggested fix:** Backend: a worker parser for the three AccessManager events and a `/v1/risk-council/operations` route, then replace the page-local store and the per-loan lookups with it.
+
+### TD-178: Escrow bindings carry local copies of the ref-hash helpers
+
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireInEscrow.ts` (`readWireInRefHashSeen`, `wireInReturnRefHash`) — Issue #1763.
+- **Gap:** #1874 (#1762) adds `readRefHashSeen` / `bankReferenceRefHash` to `minter.ts` and #1873 (#1761) moves `sha256Hex` into `stellar/contracts/hash.ts`. Neither was on `main` when #1763 was built, so the escrow bindings hold their own `ref_hash_seen` read and sha256-of-trimmed-reference helper.
+- **Impact:** Two copies of the same on-chain read and hash rule can drift.
+- **Suggested fix:** After #1873 and #1874 merge, drop the local helpers and import `readRefHashSeen` / `bankReferenceRefHash` from `@pipeline/wallet-connect`.
+
+### TD-179: Wire-out bindings duplicate the epic's reader and the date and ref-hash helpers
+
+- **Date:** 2026-11-09
+- **Location:** `packages/wallet-connect/src/stellar/contracts/wireOutSettlement.ts` (`readWireOutRecord`), `packages/trustee/src/lib/wireOut.ts` (`valueDateSeconds`, `todayUtcDateInput`), `packages/trustee/src/routes/-wire-outs.ts` (`wireInReturnRefHash` / `readWireInRefHashSeen` for the bank reference), `packages/trustee/src/routes/-conversions.ts` (the same ref-hash helpers, plus `lib/wireOut.ts`'s date helpers) — Issues #1764, #1765.
+- **Gap:** `epic/1795-lp-ui` adds `readMinterWireOut` / `MinterWireOut` to `stellar/contracts/minter.ts` (no `ref_hash`). #1761 and #1762 add `dateInputToUnixUtc` / `dateInputToValueDate`, and #1762 adds `bankReferenceRefHash` / `readRefHashSeen`. None was on this branch, so #1764 holds its own wire-out reader and UTC date helpers and reuses #1763's wire-in-named ref-hash helpers for a wire-out reference.
+- **Impact:** Several copies of the same on-chain read, date conversion and sha256 rule can drift.
+- **Suggested fix:** After #1761, #1762, #1763 and the epic land, add one `minterRefs.ts` (ref-hash read and hash) and one date helper, merge the two wire-out readers, and drop the wire-in names.
+
+### TD-180: The Cash Management pool summary reads `pool_state()` on-chain because `GET /v1/cash-book` does not serve `total_assets`
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/-conversions.ts` (`summary`), `packages/trustee/src/api/useConversions.ts` (`useMinterPoolState`), `packages/api/src/routes/cash_book.rs` (`CashBookSummary`) — Issue #1765.
+- **Gap:** `summary` serves `bank_cash` and `in_flight` but not `total_assets` or the snapshot's `read_failed`. So the three summary figures come from one on-chain `pool_state()` read of the app's minter instead of the API.
+- **Impact:** The summary needs an RPC read and the app's minter, and it cannot show a figure for a chain the app has no minter for.
+- **Suggested fix:** Serve `total_assets` and `read_failed` from the cash book, then switch the summary to the served values and drop `readMinterPoolState`.
+
+### TD-181: The Withdrawal Queue tab still renders the #945 "Top up" MPC co-sign shell
+
+- **Date:** 2026-11-09
+- **Location:** `packages/trustee/src/routes/cash-management.tsx` (`WithdrawalTopUpDialog`) — found while fixing #1765.
+- **Gap:** The dialog shows a Capital Wallet MPC 3-of-5 co-sign flow, but `trustee-dashboard.md` flow note C now says a top-up is a custody-to-custody transfer under the custody signing policy, which the console does not co-sign.
+- **Impact:** The Trustee sees a co-sign shell for an action the console does not perform.
+- **Suggested fix:** Retire the dialog and its "Top up" button in a follow-up frontend issue.
+
+### TD-182: LP settlement bank account: plaintext at rest, no change history, no read audit, no post-`Passed` change path
+
+- **Date:** 2026-11-10
+- **Location:** `lps.settlement_bank_account` (`packages/shared/migrations/20261110000002_lps_settlement_bank_account.sql`), `packages/api/src/routes/lps.rs`, `packages/api/src/routes/cash_book.rs` — Issue #1812.
+- **Gap:** The account number and IBAN are stored as plaintext JSONB, like `legal_name` and `contact_email`. Changes are not recorded, and Trustee reads of the full account (`GET /v1/lps/{id}`, `GET /v1/cash-book`) are not logged. The account freezes with the KYB record, so once KYB is `Passed` nothing in the API can change it, and LPs that passed before this feature have none. Both gaps are closed by ops SQL.
+- **Impact:** A database or backup leak exposes every LP's bank account. A change to the account, or a Trustee read of it, leaves no record. A `Passed` LP that wants a different or a first account needs an ops request.
+- **Suggested fix:** Encrypt the account number and IBAN at the application level, add an append-only `lp_settlement_bank_account_history` and a Trustee read log, and add a trustee-only write (or a `Passed` to `ChangesRequested` transition) for changes after `Passed`.

@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use serde_json::Value;
 use shared::chains::{normalize_usdc_amount, ChainKind};
 use shared::contract_logs_repo::MinterEventRow;
@@ -190,6 +190,18 @@ pub fn build_wire_ins(rows: &[MinterEventRow], minter: &str) -> Vec<CashBookWire
     out
 }
 
+pub fn build_lp_wire_ins(
+    rows: &[MinterEventRow],
+    minter: &str,
+    wallet: &str,
+) -> Vec<CashBookWireIn> {
+    build_wire_ins(rows, minter)
+        .into_iter()
+        .filter(|w| matches!(w.status, WireInStatus::Direct | WireInStatus::Assigned))
+        .filter(|w| w.receiver == wallet)
+        .collect()
+}
+
 pub fn build_wire_outs(rows: &[MinterEventRow]) -> Vec<CashBookWireOut> {
     let mut out: Vec<CashBookWireOut> = Vec::new();
     let mut index: HashMap<i64, usize> = HashMap::new();
@@ -236,6 +248,44 @@ pub fn build_wire_outs(rows: &[MinterEventRow]) -> Vec<CashBookWireOut> {
     }
     out.sort_by_key(|w| std::cmp::Reverse(w.id));
     out
+}
+
+fn escrow_steps_with(
+    wire_outs: &[CashBookWireOut],
+    units_of: impl Fn(i128) -> Option<i128>,
+) -> Vec<(i64, i128)> {
+    let mut steps = Vec::with_capacity(wire_outs.len() * 2);
+    let mut dropped = 0usize;
+    for w in wire_outs {
+        let units = (w.amount > 0).then(|| units_of(w.amount)).flatten();
+        let Some(units) = units else {
+            dropped += 1;
+            continue;
+        };
+        steps.push((w.requested_at, units));
+        if let Some(closed_at) = w.settled_at.or(w.cancelled_at) {
+            match units.checked_neg() {
+                Some(neg) => steps.push((closed_at, neg)),
+                None => dropped += 1,
+            }
+        }
+    }
+    if dropped > 0 {
+        tracing::warn!(dropped, "ignored wire-outs with a non-positive amount");
+    }
+    steps.sort_by_key(|&(at, delta)| (at, delta < 0));
+    steps
+}
+
+pub fn wire_out_escrow_steps(wire_outs: &[CashBookWireOut], kind: ChainKind) -> Vec<(i64, i128)> {
+    escrow_steps_with(wire_outs, |amount| match kind {
+        ChainKind::Stellar => normalized_base6(amount).to_i128(),
+        ChainKind::Evm => Some(amount),
+    })
+}
+
+pub fn wire_out_raw_steps(wire_outs: &[CashBookWireOut]) -> Vec<(i64, i128)> {
+    escrow_steps_with(wire_outs, Some)
 }
 
 pub fn build_ramps(rows: &[MinterEventRow]) -> Vec<CashBookRamp> {

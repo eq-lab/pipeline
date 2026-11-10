@@ -18,32 +18,56 @@ vi.mock("@/components/CapitalAllocationCard", () => ({
 }));
 vi.mock("@/api/useRampEvents", () => ({ useRampEvents: vi.fn() }));
 vi.mock("@/api/useReviewRampEvent", () => ({ useReviewRampEvent: vi.fn() }));
-vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
-vi.mock("@/api/useUsdcCustodyBalance", () => ({
-  useUsdcCustodyBalance: vi.fn(),
-}));
-// The T-Bills tab's useTbillsSwap wires the capital-allocation tbills bucket.
-vi.mock("@/api/useCapitalAllocation", () => ({
-  useCapitalAllocation: vi.fn(),
-}));
 // The Withdrawal Queue tab's useWithdrawalQueueView reads the queue endpoint.
 vi.mock("@/api/useWithdrawalQueue", () => ({ useWithdrawalQueue: vi.fn() }));
+vi.mock("./-EscrowedWiresSection", () => ({
+  EscrowedWiresSection: () => <div data-testid="escrow-section-stub" />,
+}));
+vi.mock("./-WireOutsSection", () => ({
+  WireOutsSection: () => <div data-testid="wireouts-section-stub" />,
+}));
+vi.mock("./-ConversionsSection", () => ({
+  ConversionsSection: () => <div data-testid="conversions-section-stub" />,
+}));
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+      <a href={to}>{children}</a>
+    ),
+  };
+});
+vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
+vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+vi.mock("@/api/useRecordIncome", () => ({ useRecordIncome: vi.fn() }));
+vi.mock("@/api/useCashReporterAccess", () => ({
+  useCashReporterAccess: vi.fn(),
+}));
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  return { ENV: { ...actual.ENV, STELLAR_YIELD_MINTER_ID: "CMINTER" } };
+});
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
-import { useRampAddresses } from "@/api/useRampAddresses";
-import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
-import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
+import { useSessionState } from "@/auth/sessionStore";
+import { useStellarWallet } from "@pipeline/wallet-connect";
+import { useRecordIncome } from "@/api/useRecordIncome";
+import { useCashReporterAccess } from "@/api/useCashReporterAccess";
 import { Route } from "./cash-management";
 
 const mockUseRampEvents = vi.mocked(useRampEvents);
 const mockUseReviewRampEvent = vi.mocked(useReviewRampEvent);
-const mockUseRampAddresses = vi.mocked(useRampAddresses);
-const mockUseUsdcCustodyBalance = vi.mocked(useUsdcCustodyBalance);
-const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
 const mockUseWithdrawalQueue = vi.mocked(useWithdrawalQueue);
 const mockReview = vi.fn();
+const mockSession = vi.mocked(useSessionState);
+const mockWallet = vi.mocked(useStellarWallet);
+const mockUseRecordIncome = vi.mocked(useRecordIncome);
+const mockUseRole = vi.mocked(useCashReporterAccess);
+const incomeAsync = vi.fn();
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -88,6 +112,18 @@ function reviewHook(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function incomeHook(overrides: Record<string, unknown> = {}) {
+  mockUseRecordIncome.mockReturnValue({
+    mutateAsync: incomeAsync,
+    reset: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    error: null,
+    stage: null,
+    ...overrides,
+  } as unknown as ReturnType<typeof useRecordIncome>);
+}
+
 function readyEvents(data: RampEventsResponse = EVENTS) {
   mockUseRampEvents.mockReturnValue({
     chainId: 99_000_001,
@@ -101,40 +137,25 @@ function readyEvents(data: RampEventsResponse = EVENTS) {
 beforeEach(() => {
   mockUseRampEvents.mockReset();
   mockUseReviewRampEvent.mockReset();
-  mockUseRampAddresses.mockReset();
-  mockUseUsdcCustodyBalance.mockReset();
-  mockUseCapitalAllocation.mockReset();
   mockReview.mockReset();
   mockUseReviewRampEvent.mockReturnValue(reviewHook());
-  mockUseRampAddresses.mockReturnValue({
-    data: { ramp_addresses: ["GRAMP1234567890WXYZ"] },
-    isLoading: false,
-    error: null,
-    refetch: () => {},
-  });
-  // USDC balance real; tbills bucket null (hardcoded None server-side, #931).
-  mockUseUsdcCustodyBalance.mockReturnValue({
-    data: "8400000.0000000",
-    isLoading: false,
-    error: null,
-  });
-  mockUseCapitalAllocation.mockReturnValue({
+  mockSession.mockReturnValue({
+    status: "authenticated",
+    address: "GTRUSTEE",
     chainId: 99_000_001,
-    data: {
-      total: null,
-      buckets: {
-        capital_wallet: null,
-        in_transit: null,
-        withdrawal_queue: null,
-        trust_account: null,
-        deployed: null,
-        tbills: null,
-      },
-    },
-    isLoading: false,
-    error: null,
-    refetch: () => {},
+    error: undefined,
   });
+  mockWallet.mockReturnValue({
+    address: "GTRUSTEE",
+    isConnected: true,
+    signTransaction: vi.fn(),
+  } as unknown as ReturnType<typeof useStellarWallet>);
+  incomeAsync.mockReset();
+  incomeAsync.mockResolvedValue({ hash: "income-tx-hash" });
+  incomeHook();
+  mockUseRole.mockReturnValue({
+    reason: null,
+  } as unknown as ReturnType<typeof useCashReporterAccess>);
   mockUseWithdrawalQueue.mockReset();
   mockUseWithdrawalQueue.mockReturnValue({
     chainId: 99_000_001,
@@ -156,17 +177,29 @@ beforeEach(() => {
 describe("Cash Management route — shell", () => {
   beforeEach(() => readyEvents());
 
-  it("renders the title, the three tabs, and the shared Capital Allocation slot", () => {
+  it("renders the title, the four tabs, and the shared Capital Allocation slot", () => {
     renderRoute();
     expect(
       screen.getByRole("heading", { name: "Cash Management" }),
     ).toBeInTheDocument();
     const tabs = screen.getByTestId("cash-management-tabs");
-    for (const key of ["onofframp", "tbills", "withdrawals"]) {
+    for (const key of [
+      "onofframp",
+      "income",
+      "withdrawals",
+      "escrow",
+      "wireouts",
+    ]) {
       expect(
         within(tabs).getByTestId(`cash-management-tab-${key}`),
       ).toBeInTheDocument();
     }
+    expect(
+      screen.queryByTestId("cash-management-tab-tbills"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-swap-open"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("capital-allocation-stub")).toBeInTheDocument();
   });
 
@@ -177,6 +210,42 @@ describe("Cash Management route — shell", () => {
     expect(
       screen.getByTestId("cash-management-withdrawals"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-onofframp"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — Escrowed wires tab (#1763)", () => {
+  beforeEach(() => readyEvents());
+
+  it("renders the tab and switches to the section", () => {
+    renderRoute();
+    const tab = screen.getByTestId("cash-management-tab-escrow");
+    expect(tab).toHaveTextContent("Escrowed wires");
+    expect(screen.queryByTestId("escrow-section-stub")).not.toBeInTheDocument();
+    fireEvent.click(tab);
+    expect(screen.getByTestId("escrow-section-stub")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-onofframp"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-tab-onofframp"));
+    expect(screen.getByTestId("cash-management-onofframp")).toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — Bank wire-outs tab (#1764)", () => {
+  beforeEach(() => readyEvents());
+
+  it("renders the fifth tab and switches to the section", () => {
+    renderRoute();
+    const tab = screen.getByTestId("cash-management-tab-wireouts");
+    expect(tab).toHaveTextContent("Bank wire-outs");
+    expect(
+      screen.queryByTestId("wireouts-section-stub"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(tab);
+    expect(screen.getByTestId("wireouts-section-stub")).toBeInTheDocument();
     expect(
       screen.queryByTestId("cash-management-onofframp"),
     ).not.toBeInTheDocument();
@@ -269,132 +338,16 @@ describe("Cash Management route — Withdrawal Queue tab (#945)", () => {
   });
 });
 
-describe("Cash Management route — T-Bills swap dialog (#944)", () => {
-  beforeEach(() => readyEvents());
-
-  function openTbills() {
-    renderRoute();
-    fireEvent.click(screen.getByTestId("cash-management-tab-tbills"));
-    // The form opens from the "New swap" button (modal) — not inline.
-    expect(
-      screen.queryByTestId("cash-management-tbills"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("cash-management-tbills-open"));
-  }
-
-  it("opens a modal from New swap: Buy spends real USDC, submit disabled, receive twin empty + fee —", () => {
-    openTbills();
-    const panel = screen.getByTestId("cash-management-tbills");
-    expect(panel).toHaveAttribute("role", "dialog");
-    // Buy is the default mode → spends USDC (the real Capital-Wallet balance).
-    expect(panel).toHaveTextContent("Balance: 8,400,000 USDC");
-    expect(screen.getByTestId("cash-management-tbills-submit")).toBeDisabled();
-    // No USYC price served → the "You receive" twin input is disabled + empty
-    // (never fabricated); the fee stays "—".
-    const receive = screen.getByTestId("cash-management-tbills-receive");
-    expect(receive).toBeDisabled();
-    expect(receive).toHaveValue("");
-    expect(panel).toHaveTextContent("Fee");
-  });
-
-  it("Sell side shows the T-Bills (USYC) value as — while buckets.tbills is null, and Max is disabled", () => {
-    openTbills();
-    fireEvent.click(screen.getByTestId("cash-management-tbills-mode-sell"));
-    const panel = screen.getByTestId("cash-management-tbills");
-    expect(panel).toHaveTextContent("Balance: — USYC");
-    // No sell balance → Max cannot fill anything.
-    expect(screen.getByTestId("cash-management-tbills-max")).toBeDisabled();
-    expect(
-      screen.getByTestId("cash-management-tbills-submit"),
-    ).toHaveTextContent("Sell USYC");
-  });
-
-  it("Max fills the amount from the USDC balance on the Buy side", () => {
-    openTbills();
-    fireEvent.click(screen.getByTestId("cash-management-tbills-max"));
-    expect(screen.getByTestId("cash-management-tbills-amount")).toHaveValue(
-      8400000,
-    );
-  });
-
-  it("closes the dialog via the × button", () => {
-    openTbills();
-    fireEvent.click(screen.getByTestId("cash-management-tbills-close"));
-    expect(
-      screen.queryByTestId("cash-management-tbills"),
-    ).not.toBeInTheDocument();
-  });
-});
-
-describe("Cash Management route — swap dialog", () => {
-  beforeEach(() => readyEvents());
-
-  function openSwap() {
-    renderRoute();
-    // The form is not inline — it opens from the "New swap" button.
-    expect(
-      screen.queryByTestId("cash-management-swap"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("cash-management-swap-open"));
-  }
-
-  it("is closed by default and opens a modal swap form from the New-swap button", () => {
-    renderRoute();
-    expect(
-      screen.queryByTestId("cash-management-swap"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("cash-management-swap-open"));
-    expect(screen.getByTestId("cash-management-swap")).toHaveAttribute(
-      "role",
-      "dialog",
-    );
-  });
-
-  it("renders the balance, ramp destination, a disabled submit, and the fee as —", () => {
-    openSwap();
-    const swap = screen.getByTestId("cash-management-swap");
-    expect(swap).toHaveTextContent("Balance: 8,400,000 USDC");
-    expect(swap).toHaveTextContent("GRAM…WXYZ");
-    expect(screen.getByTestId("cash-management-swap-submit")).toBeDisabled();
-    // Fee has no quote endpoint — never fabricated.
-    expect(swap).toHaveTextContent("Fee");
-    expect(swap).toHaveTextContent("—");
-  });
-
-  it("Max fills the amount and the 1:1 receive field mirrors it (disabled)", () => {
-    openSwap();
-    fireEvent.click(screen.getByTestId("cash-management-swap-max"));
-    expect(screen.getByTestId("cash-management-swap-amount")).toHaveValue(
-      8400000,
-    );
-    // "You receive" is a disabled twin of the amount input — 1:1, so equal.
-    const receive = screen.getByTestId("cash-management-swap-receive");
-    expect(receive).toBeDisabled();
-    expect(receive).toHaveValue("8400000");
-  });
-
-  it("toggling to On-ramp hides the ramp destination row", () => {
-    openSwap();
-    expect(screen.getByTestId("cash-management-swap")).toHaveTextContent(
-      "To (ramp)",
-    );
-    fireEvent.click(screen.getByTestId("cash-management-swap-mode-on"));
-    expect(screen.getByTestId("cash-management-swap")).not.toHaveTextContent(
-      "To (ramp)",
-    );
-  });
-
-  it("closes the dialog via the × button", () => {
-    openSwap();
-    fireEvent.click(screen.getByTestId("cash-management-swap-close"));
-    expect(
-      screen.queryByTestId("cash-management-swap"),
-    ).not.toBeInTheDocument();
-  });
-});
-
 describe("Cash Management route — On/Off-ramp review queue", () => {
   beforeEach(() => readyEvents());
+
+  it("renders the conversions section above the unchanged review queue", () => {
+    renderRoute();
+    expect(screen.getByTestId("conversions-section-stub")).toBeInTheDocument();
+    expect(screen.getByTestId("cash-management-onofframp")).toHaveTextContent(
+      "Ramp-event review",
+    );
+  });
 
   it("splits events into inbound (on-ramp) and outbound (off-ramp) with formatted USD amounts", () => {
     renderRoute();
@@ -476,7 +429,7 @@ describe("Cash Management route — states", () => {
       "Hoodi",
     );
     expect(
-      screen.getByText(/Hoodi ramp — the network you signed in with/),
+      screen.getByText(/Hoodi — the network you signed in with/),
     ).toBeInTheDocument();
   });
 
@@ -510,5 +463,134 @@ describe("Cash Management route — states", () => {
     expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
+  });
+});
+
+describe("Cash Management route — Bank income tab", () => {
+  beforeEach(() => readyEvents());
+
+  async function openDialog() {
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("cash-management-tab-income"));
+    await user.click(screen.getByTestId("cash-management-income-open"));
+    return user;
+  }
+
+  async function fill(
+    user: ReturnType<typeof userEvent.setup>,
+    { amount = "1250.50", reference = "BANK-REF-1" } = {},
+  ) {
+    if (amount) {
+      await user.type(
+        screen.getByTestId("cash-management-income-amount"),
+        amount,
+      );
+    }
+    if (reference) {
+      await user.type(
+        screen.getByTestId("cash-management-income-reference"),
+        reference,
+      );
+    }
+  }
+
+  it("renders the chain chip and an enabled Book income button", async () => {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-income"));
+    expect(
+      screen.getByTestId("cash-management-income-chain"),
+    ).toHaveTextContent("Stellar");
+    expect(screen.getByTestId("cash-management-income-open")).toBeEnabled();
+  });
+
+  it("disables Book income with the EVM reason on an EVM session", () => {
+    mockSession.mockReturnValue({
+      status: "authenticated",
+      address: "0xabc",
+      chainId: 560048,
+      error: undefined,
+    });
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-income"));
+    expect(screen.getByTestId("cash-management-income-open")).toBeDisabled();
+    expect(
+      screen.getByTestId("cash-management-income-open-reason"),
+    ).toHaveTextContent(
+      "Booking bank income on Hoodi is not available in the Trustee app yet.",
+    );
+    expect(mockUseRole).toHaveBeenCalledWith("record_income", false);
+  });
+
+  it("shows the validation messages and refuses a future value date", async () => {
+    renderRoute();
+    const user = await openDialog();
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(
+      screen.getByTestId("cash-management-income-validation"),
+    ).toHaveTextContent(
+      "Enter an amount greater than 0 with at most 2 decimal places.",
+    );
+
+    await fill(user, { reference: "" });
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(
+      screen.getByTestId("cash-management-income-validation"),
+    ).toHaveTextContent("Enter the bank's reference for this income.");
+
+    await fill(user, { amount: "", reference: "BANK-REF-1" });
+    fireEvent.change(screen.getByTestId("cash-management-income-date"), {
+      target: { value: "2999-01-01" },
+    });
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(
+      screen.getByTestId("cash-management-income-validation"),
+    ).toHaveTextContent("The value date cannot be in the future.");
+    expect(incomeAsync).not.toHaveBeenCalled();
+  });
+
+  it("disables submit with the role reason for a wallet without the role", async () => {
+    mockUseRole.mockReturnValue({
+      reason: "Only the Cash reporter can book bank income.",
+    } as unknown as ReturnType<typeof useCashReporterAccess>);
+    renderRoute();
+    await openDialog();
+    expect(
+      screen.getByTestId("cash-management-income-blocked"),
+    ).toHaveTextContent("Only the Cash reporter can book bank income.");
+    expect(screen.getByTestId("cash-management-income-submit")).toBeDisabled();
+  });
+
+  it("shows the reference copy when the reference is already booked", async () => {
+    incomeHook({
+      error: new Error(
+        "RefHashSeen: this bank reference's ref_hash is already consumed",
+      ),
+    });
+    renderRoute();
+    await openDialog();
+    expect(
+      screen.getByTestId("cash-management-income-error"),
+    ).toHaveTextContent("This bank reference is already booked on-chain.");
+  });
+
+  it("books the income, closes the dialog and shows the hash with an Audit Log link", async () => {
+    renderRoute();
+    const user = await openDialog();
+    await fill(user);
+    await user.click(screen.getByTestId("cash-management-income-submit"));
+    expect(incomeAsync).toHaveBeenCalledWith({
+      amount: "1250.50",
+      valueDate: expect.any(Number),
+      reference: "BANK-REF-1",
+    });
+    const success = await screen.findByTestId("cash-management-income-success");
+    expect(success).toHaveTextContent("Booked $1,250.50 income");
+    expect(success).toHaveTextContent("income-tx-hash");
+    expect(
+      within(success).getByRole("link", { name: "Audit Log" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("cash-management-income-dialog"),
+    ).not.toBeInTheDocument();
   });
 });

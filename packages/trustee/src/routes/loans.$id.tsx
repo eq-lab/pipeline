@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
 import { percentToBps } from "@/utils/rateUnits";
+import { dateInputToUnixUtc } from "@/utils/formatDate";
 import {
   useUpdateLifecycle,
   type LocationInput,
@@ -843,10 +844,8 @@ function RolloverDialog({
 
   const bps = percentToBps(ratePercent);
   const rateInvalid = ratePercent.trim() !== "" && bps === null;
-  const maturityUnix = maturity
-    ? Math.floor(new Date(`${maturity}T00:00:00Z`).getTime() / 1000)
-    : NaN;
-  const valid = bps !== null && Number.isFinite(maturityUnix);
+  const maturityUnix = dateInputToUnixUtc(maturity);
+  const valid = bps !== null && maturityUnix !== null;
 
   const fieldClass =
     "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
@@ -966,7 +965,11 @@ function RolloverDialog({
           <button
             type="button"
             data-testid="rollover-submit"
-            onClick={() => bps !== null && onConfirm(bps, maturityUnix)}
+            onClick={() =>
+              bps !== null &&
+              maturityUnix !== null &&
+              onConfirm(bps, maturityUnix)
+            }
             disabled={!valid || pending}
             className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: BRAND }}

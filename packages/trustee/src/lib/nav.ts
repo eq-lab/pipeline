@@ -58,7 +58,7 @@ export const TRUSTEE_NAV_ITEMS: readonly TrusteeNavItem[] = [
     navLabel: "Risk Council",
     heading: "Risk Council",
     description:
-      "RISK_COUNCIL proposals and timelock tracker (Type 3). See docs/product-specs/trustee-dashboard.md, 'Type 3 — RISK_COUNCIL proposals'. Content lands in a later sub-issue of epic #775.",
+      "Risk Council actions through the access manager: declare default, amend, write down, close, cure.",
   },
   {
     path: "/audit-log",

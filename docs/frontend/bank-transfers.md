@@ -1,7 +1,7 @@
 # Bank transfers (LP wire transfers)
 
 The LP side of wire transfers for epic #1247 (V1.0, issue #1283). Trustee-side recording is epic
-#1269 / #1276; the LP-visible trust-account balance and Withdraw flow is #1285. A new area doc
+#1269 / #1276; the LP-visible pending bank deposit is `pending_bank_deposits` on `GET /v1/lps/me` (#1285, wired by #1820) and the Withdraw flow is #1757. A new area doc
 rather than a section in `auth-components.md` (scope: authentication modals) or
 `dashboard-components.md` (already 1580+ lines) — this feature spans a modal and a card and keeps
 growing through #1282, #1285, and #1276, the same reasoning `account-page.md` records for its own
@@ -21,8 +21,8 @@ from #1422 (unverified state), `"verifying"` from #1423 (KYB-pending state), `"u
 `onAddFunds` opens `FundingDetailsModal`, which fetches the served bank details and a fresh payment
 reference (#1817). The variant for a given account state is decided by `deriveHomeState` in
 `packages/frontend/src/components/homeState.ts`, not in this file — see
-`docs/frontend/dashboard-components.md#home-route`. A real trust-account USD balance and the
-Withdraw flow behind its seam are #1285's; the `"funded"` variant is still not wired to any route.
+`docs/frontend/dashboard-components.md#home-route`. The pending bank deposit behind the `usdBalanceLabel` seam is
+`pending_bank_deposits` (#1285, wired by #1820) and the Withdraw flow behind its seam is #1757's; the `"funded"` variant is still not wired to any route.
 
 ## FundingDetailsModal
 
@@ -365,9 +365,9 @@ class of staleness `account-page.md` documents for its own frame.
 | `FundingDetailsModal.view` | `{ status: "loading" }`, every value `—` | wired by #1817 on `/` from `GET /v1/lps/me/payment-details?chain_id=<id>` (#1815, chain-aware since #1824); one call per modal open, see [FundingDetailsModal](#fundingdetailsmodal) |
 | `FundingDetailsModal.onOpenAccount` | no-op | #1817 (`/` closes the modal and navigates to `/account`) |
 | `AddUsdCard.variant` | required, no default | #1282's state machine |
-| `AddUsdCard.usdBalanceLabel` | `—` | #1285 |
+| `AddUsdCard.usdBalanceLabel` | `—` | #1820 (reads `pending_bank_deposits` on `GET /v1/lps/me`, #1285) |
 | `AddUsdCard.onAddFunds` | no-op | #1424 (wired on `/` for the `unlocked` variant — opens `FundingDetailsModal`, #1817) |
-| `AddUsdCard.onWithdraw` | no-op | #1285 |
+| `AddUsdCard.onWithdraw` | no-op | #1757 (wire-out) |
 | `AddUsdCard.onStartVerification` | no-op | #1422 (home state 2 — `openAccountSetup()`) |
 | `AddUsdCard.onViewStatus` | no-op | #1423 (home state 3 — `navigate({ to: "/account", search: { state: undefined } })`); reused as-is by #1426 (home state 6, `declined` variant) |
 
@@ -382,7 +382,7 @@ modal's content model becomes per-LP data (a fetch), not a static constant — a
 
 **Update (#1815, #1817).** The backend issues a reference on every request for the LP to quote and
 keeps every issued reference against the LP; the seventh `Payment reference` row shipped in #1817.
-Wire matching by issued reference is still a backend follow-up.
+Wire matching by issued reference shipped in the backend (#1839); see [deposits.md](../product-specs/deposits.md#wire-matching-by-payment-reference). The Trustee console part is a frontend follow-up.
 
 ## `/test?tab=auth` preview seam
 
@@ -401,9 +401,9 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | --- | --- |
 | Deciding which card variant renders for a given account state | epic #1419 (`deriveHomeState`) |
 | Mounting `AddUsdCard` into the home grid for state 5 | #1425 (shipped for state 6 by #1426) |
-| A real trust-account USD balance, and the Withdraw flow behind the seam | #1285 |
+| Wiring the pending bank deposit into the card; the Withdraw flow behind the seam | #1820; #1757 |
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
-| Network call, persistence, or auth on `AddUsdCard` | #1254 / #1265 / #1285 |
+| Network call, persistence, or auth on `AddUsdCard` | #1254 / #1265 / #1820 |
 | Linking a settlement address (challenge, sign, verify) | #1825 |
 | Filling `system_configuration.system_bank_details` | ops, before release (`deposits.md`) |
 

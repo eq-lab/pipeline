@@ -26,6 +26,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#509 Mobile home StartHereCard (connected): missing '$X USDC' sub-line](https://github.com/eq-lab/pipeline/issues/509)                                          | [509-starthere-usdc-subline.md](./epic-463/509-starthere-usdc-subline.md)                                 | Initial                         |
 | [#684 [FE] [Stellar] Home page shows "Connect wallet" when only a Stellar wallet is connected](https://github.com/eq-lab/pipeline/issues/684)                    | [684-home-stellar-connection-gate.md](./epic-463/684-home-stellar-connection-gate.md)                     | Initial                         |
 | [#688 [FE] [Stellar] Home page Total Balance & Stake-CTA read EVM tokens only (follow-up to #684)](https://github.com/eq-lab/pipeline/issues/688)                | [688-home-stellar-balances.md](./epic-463/688-home-stellar-balances.md)                                   | Initial                         |
+| [#1809 LP home: Stake card opens the connect/sign-in flow for an already-connected wallet, then jumps to /stake](https://github.com/eq-lab/pipeline/issues/1809) | [1809-stake-card-reconnect-race.md](./epic-463/1809-stake-card-reconnect-race.md) | Initial |
 
 ---
 
@@ -40,6 +41,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#644 Activity page + home: chain-aware empty state (Stellar/EVM gating)](https://github.com/eq-lab/pipeline/issues/644)                                   | [644-activity-active-chain-gating.md](./epic-522/644-activity-active-chain-gating.md)     | Initial |
 | [#674 [FE] [Stellar] Activity amounts formatted with wrong decimals (EVM 6/18 hardcoded; Stellar SAC is 7)](https://github.com/eq-lab/pipeline/issues/674) | [674-stellar-activity-decimals.md](./epic-522/674-stellar-activity-decimals.md)           | Initial |
 | [#676 Deposit activity row labels received amount as PLUSD](https://github.com/eq-lab/pipeline/issues/676)                                                 | [676-deposit-activity-plusd-label.md](./epic-522/676-deposit-activity-plusd-label.md)     | Initial |
+| [#1810 LP: activity is stale after a confirmed action](https://github.com/eq-lab/pipeline/issues/1810) | [1810-activity-refresh-after-confirmed-action.md](./epic-522/1810-activity-refresh-after-confirmed-action.md) | Initial |
 
 ---
 
@@ -165,6 +167,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#874 Trustee loan detail: wire summary tiles to real data, audit remaining mocks](https://github.com/eq-lab/pipeline/issues/874) | [874-loan-detail-summary-tiles.md](./epic-775/874-loan-detail-summary-tiles.md) | Initial |
 | [#892 Trustee: normalize submission statuses in Origination](https://github.com/eq-lab/pipeline/issues/892) | [892-origination-submission-status-normalization.md](./epic-775/892-origination-submission-status-normalization.md) | Initial |
 | [#896 Trustee: show pointer cursor for active buttons](https://github.com/eq-lab/pipeline/issues/896) | [896-trustee-active-button-cursors.md](./epic-775/896-trustee-active-button-cursors.md) | Initial |
+| [#1864 Backend: per-section pending counts for the Trustee sidebar badges](https://github.com/eq-lab/pipeline/issues/1864) | [1864-trustee-attention-counts.md](./epic-775/1864-trustee-attention-counts.md) | Initial |
 
 ---
 
@@ -196,10 +199,16 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1572 Account setup modal: uncertain upload never discards the wrong staged file](https://github.com/eq-lab/pipeline/issues/1572) | [1572-company-docs-reconcile.md](./epic-1247/1572-company-docs-reconcile.md) | Initial |
 | [#1346 Auth modals: validation reveals on blur only (BUG-20)](https://github.com/eq-lab/pipeline/issues/1346) | [1346-auth-blur-validation.md](./epic-1247/1346-auth-blur-validation.md) | Initial |
 | [#1373 LP Account page: load and edit profile and documents from LP API](https://github.com/eq-lab/pipeline/issues/1373) | [1373-account-page-lp-api.md](./epic-1247/1373-account-page-lp-api.md) | Initial |
+| [#1313 Backend: composite Total-Balance series for the LP home graph](https://github.com/eq-lab/pipeline/issues/1313) | [1313-composite-total-balance.md](./epic-1247/1313-composite-total-balance.md) | Initial |
+| [#1865 Backend: index PLUSD token movements and serve the LP's PLUSD balance history](https://github.com/eq-lab/pipeline/issues/1865) | [1865-plusd-balance.md](./epic-1247/1865-plusd-balance.md) | Amends #1313 |
+| [#1314 Backend: LP wire-ins on the activity feed](https://github.com/eq-lab/pipeline/issues/1314) | [1314-lp-wire-ins-activity.md](./epic-1247/1314-lp-wire-ins-activity.md) | Initial |
+| [#1839 Backend: match incoming wires to the LP by the issued payment reference](https://github.com/eq-lab/pipeline/issues/1839) | [1839-match-wires-by-payment-reference.md](./epic-1247/1839-match-wires-by-payment-reference.md) | Initial |
+| [#1878 Backend: seed per-holder PLUSD balances (Stellar SAC) so plusd_balance can be enabled on testnet / mainnet](https://github.com/eq-lab/pipeline/issues/1878) | [1878-plusd-balance-seed.md](./epic-1247/1878-plusd-balance-seed.md) | Amends #1865 |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
 | [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
 | [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Initial |
+| [#1285 Backend: serve the LP's pending bank deposits on GET /v1/lps/me](https://github.com/eq-lab/pipeline/issues/1285) | [1285-lp-pending-bank-deposits.md](./epic-1247/1285-lp-pending-bank-deposits.md) | Initial |
 | [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
 | [#1813 LP: connecting a wallet links it to the LP record](https://github.com/eq-lab/pipeline/issues/1813) | [1813-link-wallet-address.md](./epic-1247/1813-link-wallet-address.md) | Superseded by #1825 (auto-link removed; linking is signed and user-initiated) |
@@ -351,6 +360,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1773 Trustee: reversal effects name the capital wallet, not the treasury](https://github.com/eq-lab/pipeline/issues/1773) | [1773-capital-wallet-fee-shares-label.md](./epic-1521/1773-capital-wallet-fee-shares-label.md) | Initial |
 | [#1731 Trustee (staging): white screen after wallet sign-in and after logout](https://github.com/eq-lab/pipeline/issues/1731) | [1731-trustee-auth-transition-white-screen.md](./epic-1521/1731-trustee-auth-transition-white-screen.md) | Initial |
 | [#1749 Trustee: remove the /sign-in URL layer](https://github.com/eq-lab/pipeline/issues/1749) | [1749-remove-sign-in-url-layer.md](./epic-1521/1749-remove-sign-in-url-layer.md) | Initial |
+| [#1667 Trustee: hide target-chain options the API does not serve](https://github.com/eq-lab/pipeline/issues/1667) | [1667-trustee-served-chains.md](./epic-1521/1667-trustee-served-chains.md) | Initial |
 
 ---
 
@@ -359,6 +369,12 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1760 LP: fetch a fresh voucher once the served deadline has passed](https://github.com/eq-lab/pipeline/issues/1760) | [1760-fresh-voucher-after-deadline.md](./epic-1795/1760-fresh-voucher-after-deadline.md) | Initial |
+| [#1761 Trustee: Risk Council pages on the AccessManager model](https://github.com/eq-lab/pipeline/issues/1761) | [1761-risk-council-access-manager.md](./epic-1795/1761-risk-council-access-manager.md) | Initial |
+| [#1762 Trustee: Cash reporter gating and bank income booking](https://github.com/eq-lab/pipeline/issues/1762) | [1762-cash-reporter-bookings.md](./epic-1795/1762-cash-reporter-bookings.md) | Initial |
+| [#1763 Trustee: escrowed incoming wires — list, assign to lender or return](https://github.com/eq-lab/pipeline/issues/1763) | [1763-trustee-escrowed-wires.md](./epic-1795/1763-trustee-escrowed-wires.md) | Initial |
+| [#1764 Trustee: settle or cancel lender bank withdrawals with a pending wire-outs list](https://github.com/eq-lab/pipeline/issues/1764) | [1764-trustee-wire-outs.md](./epic-1795/1764-trustee-wire-outs.md) | Initial |
+| [#1765 Trustee: book USDC/USD conversions and bank charges on-chain](https://github.com/eq-lab/pipeline/issues/1765) | [1765-trustee-conversions-bank-charges.md](./epic-1795/1765-trustee-conversions-bank-charges.md) | Initial |
+| [#1812 Backend: LP settlement bank account for bank wire-outs](https://github.com/eq-lab/pipeline/issues/1812) | [1812-lp-settlement-bank-account.md](./epic-1795/1812-lp-settlement-bank-account.md) | Initial |
 
 ---
 
@@ -372,3 +388,15 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1793 Delete the Stellar yield-mint relayer (Phase 4); rename yield_minter_id to minter_id](https://github.com/eq-lab/pipeline/issues/1793) | [1793-delete-stellar-yield-mint.md](./epic-1776/1793-delete-stellar-yield-mint.md) | Initial |
 | [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
 | [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |
+| [#1792 Loan submission: data_room_id → borrower_ref and the HEAD draw_loan inputs](https://github.com/eq-lab/pipeline/issues/1792) | [1792-draw-loan-data-room-id.md](./epic-1776/1792-draw-loan-data-room-id.md) | Initial |
+
+---
+
+## Epic #1775 — Stellar SecurityRegistry
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1779 Stellar SecurityRegistry indexer: events, record enrichment, projection tables](https://github.com/eq-lab/pipeline/issues/1779) | [1779-stellar-security-registry-indexer.md](./epic-1775/1779-stellar-security-registry-indexer.md) | Initial |
+| [#1780 API: loan security state — terms, collateral value, debt, LTV, margin call, records](https://github.com/eq-lab/pipeline/issues/1780) | [1780-loan-security-state-api.md](./epic-1775/1780-loan-security-state-api.md) | Initial |
+| [#1781 Audit log: SecurityRegistry events, legacy CollateralRegistry rows as history](https://github.com/eq-lab/pipeline/issues/1781) | [1781-security-registry-audit-log.md](./epic-1775/1781-security-registry-audit-log.md) | Initial |
+| [#1783 Manual marks: suggested per-unit price and mark-due flags for the Trustee's revalue](https://github.com/eq-lab/pipeline/issues/1783) | [1783-manual-marks-suggested-price.md](./epic-1775/1783-manual-marks-suggested-price.md) | Initial |

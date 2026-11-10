@@ -33,12 +33,12 @@ is organised by type.
 | Type | Mechanism | Who else signs | Timelock | UX affordance |
 |---|---|---|---|---|
 | 1. Direct Trustee-key write | The Trustee sends the transaction himself | Nobody | None | One click to send, after the dashboard shows the transaction in readable form |
-| 2. Capital Wallet MPC co-signature | The Trustee is one of 3-of-5 cosigners on the custodian MPC | Team and counterparties, to reach 3-of-5 | Per custodian policy | Build the request, the Trustee co-signs in the MPC, the dashboard tracks who has signed |
-| 3. RISK_COUNCIL proposal | The Trustee drafts a proposal for the 3-of-5 RISK_COUNCIL Safe | 3-of-5 Risk Council, GUARDIAN-cancelable | 24h | Draft the proposal and track the 24h timer. The Trustee cannot execute it |
+| 2. Cash-book booking | The Trustee role books a bank or custody movement on the minter through the AccessManager | Nobody; custody accounts sign their own USDC moves | None (immediate) | Fill the form; one signature books it |
+| 3. Risk Council action | A Risk Council wallet calls the access manager | Nobody (the Risk Council is one multisig account) | None for default and repayment reversal; 24 h for the rest, Guardian/Admin-cancelable | Execute, or schedule then execute; the Trustee role cannot |
 | 4. Decision monitoring | No transaction | n/a | n/a | Display, alerting, and a retrigger control where a downstream service acts |
 
-No dashboard action moves USDC from the Capital Wallet on the Trustee's signature alone.
-Every cash movement is Type 2.
+No dashboard action moves USDC from a custody account.
+The console books movements; it never co-signs them.
 
 ---
 
@@ -82,48 +82,49 @@ The approval screen resolves the descriptive material behind `metadataURI` so th
 reviews borrower hash, commodity, corridor, governing law, and attached documents alongside
 the on-chain economics. The three mint invariants are evaluated client-side and the result
 shown before the broadcast control is enabled. Approval broadcasts `mintLoan` from the
-Trustee key. The resulting disbursement is a separate Type 2 action the Trustee co-signs
-next.
+Trustee key. The resulting disbursement is a separate Type 2 booking
+next (`disburse`, TD-157).
 
 **Implementation status (#821, #829, #831, #892):** a version ships at `/origination/$id` (reached from the "Review" control on the Origination table #813 and the Overview Needs Attention section #818), rendering the submission's Loan Terms + Deal Details from `GET /v1/loan-book/submissions` plus an Origination decision status chip; Deal Details also renders Protection (`loan_data.protection`, `—` when absent) and a Location row (`loan_data.initial_location`, #1014) after Governing law, rendered `{location_type} — {location_identifier}` (e.g. "Warehouse — SGS bonded stockpile, Callao, Peru"; a missing half renders alone, both missing renders `—`); no collateral valuation is shown pre-mint (no on-chain `loan_id` to value against yet). The backend may return merged loan lifecycle statuses for approved submissions; Origination surfaces normalize any status other than `InReview`, `Approved`, or `Rejected` to `Approved`, because the resulting loan lifecycle belongs on Loans surfaces. Approve is now **chain-first**: it invokes `execute(target, "draw_loan", args, caller)` on the executor/access-control contract, **signed by the connected Trustee wallet** (`caller` == the trustee address, satisfying the contract's `require_auth` with one signature) — the backend is not the trustee and holds no minting key. A pre-submit `simulateTransaction` is the "verify the loan" step; only once the mint confirms does the app call the existing DB-only `POST /v1/loan-book/submissions/{id}/review {decision:"Approved"}`. A wallet rejection or any on-chain failure makes **no** review call — the submission stays `InReview`, retryable, with a mapped inline error (no signature is requested if the simulate step fails). Reject is unchanged: a reason dialog (min 5 chars trimmed) and `{decision:"Rejected",reason}`, a pure DB status flip. The Approved banner reads "Approved & minted · `<date>`". The Origination table lists **all** submissions (#1056, reversing the #1044 in-flight filter): `Approved` rows (including backend merged/lifecycle statuses, which normalize to `Approved` per #892) render with the green "Approved · `<date>`" chip alongside `InReview`, `ChangesRequested`, and `Rejected` — the approval history stays visible on the origination surface, while the resulting loan also lives on the Loans surfaces. **Known limitation:** a mint that succeeds but whose review call then fails leaves the loan minted on-chain while the submission stays `InReview` in the DB — reconciliation from the indexed `loan_drawn` event is a tracked backend follow-up, not yet built. "Request changes" is wired (#1017, backend #949): it opens a reason dialog (multi-line textarea, min 5 chars trimmed) and posts `{decision:"ChangesRequested",reason}` to the same review endpoint — a pure DB status flip, no mint, no wallet signature. `ChangesRequested` is non-final: the submission stays open (the originator can amend and resubmit; the backend also allows the trustee to review it again, though the UI currently renders that state banner-only per #950), and the footer flips to the Changes-requested banner on success. The Overview's **Needs Attention** (Origination group) lists `ChangesRequested` submissions alongside `InReview` (#1046, reversing the original #950-era exclusion): the row title reads "`<originator> — <commodity>: changes requested`" and its "Review" link opens the same `/origination/$id` detail (reason banner); `Rejected` stays out of Needs Attention — it is a terminal decision record with nothing left to act on. The section's data fetch is a single `GET /v1/loan-book/submissions` (no `chain_id` — every target chain since #1536; no `status` filter) filtered client-side to normalized `InReview`/`ChangesRequested` (the endpoint's `status` filter accepts one value per request). Since #1536 the Trustee submission form selects the target chain (`?chain_id=`), the Origination table and detail show it, and Approve is disabled for a non-Stellar target because the trustee-wallet draw runs on Stellar only.
 
 ---
 
-## Type 2 — Capital Wallet MPC co-signature
+## Type 2 — Cash-book bookings
 
-The Trustee is one of five cosigners on the Capital Wallet (3-of-5, Team and Trustee
-mandatory). The dashboard assembles each request and tracks signature collection. The
-movement settles only when the MPC policy is met. The dashboard never holds the Trustee's
-MPC key.
+The Trustee role books each movement on the minter through `AccessManager.execute`, with
+immediate execution only and a single-use `ref_hash` per booking. The console signs one
+transaction and never holds a custody key. Detail in
+[trustee-flows.md](../frontend/trustee-flows.md#cash-management--conversions-and-bank-charges).
 
 | # | Flow | Trigger | Data presented | Trustee input | Effect |
 |---|---|---|---|---|---|
-| 7 | Loan disbursement | `LoanMinted` from Flow 1, Relayer prepares the disbursement | Loan economics, the senior principal to disburse, destination, current Capital Wallet USDC, the resulting backing-invariant projection | Review and co-sign in the MPC | USDC leaves the Capital Wallet to the borrower leg. Moves the loan to deployed |
-| 8 | T-Bill allocation swap | USDC/USYC ratio drifts off the target band, or a manual override is needed outside the band rules | Capital Wallet USDC and USYC, ratio versus target band (lower, target, upper), the forward strip (queued withdrawals, approved-not-disbursed loans, expected repayments in window), recent swaps | Choose swap direction and size, or accept the band-keeping suggestion, then co-sign | USDC converts to or from USYC inside the Capital Wallet. Manual overrides require Trustee plus Team co-signature regardless of amount and bypass the band limits |
-| 9 | Withdrawal Queue Wallet top-up | Queue depth approaches available USDC in the Withdrawal Queue Wallet | Queue depth, current Withdrawal Queue Wallet USDC, coverage ratio, oldest pending request age | Choose top-up amount, then co-sign | Capital Wallet to Withdrawal Queue Wallet transfer. Keeps user-pulled claims covered. The queue contract settles claims itself via pre-approved allowance |
+| 7 | Loan disbursement booking | `LoanMinted` from Flow 1, Relayer prepares the disbursement | Loan economics and the senior principal to disburse | `disburse(loan_id, amount, value_date, ref_hash)`, not yet in the console (TD-157) | Takes `bank_cash` and moves the loan to deployed |
+| 8 | USDC to USD conversion | USDC moves between custody and the bank | Pool summary and the conversions list | `open_ramp` / `close_ramp` | Cash in transit until closed; the shortfall is booked as an expense |
+| 9 | Bank charge | The bank charges a fee | Pool summary and the bank reference | `record_expense` | Out of `bank_cash`, burned from the vault |
 
-### Flow note C — T-Bill band-keeping
+### Flow note C — Withdrawal Queue top-up
 
-The dashboard presents the band decision, it does not automate the swap. The forward strip
-is the decision input: queued withdrawals and approved-not-disbursed loans are near-term
-USDC demand, expected repayments in the window are near-term USDC supply. The Trustee sizes
-the swap against the strip and the target band, then co-signs. The USDC/USYC ratio is
-managed by the custodian MPC policy engine and the Trustee, never by the Relayer.
+A top-up is a custody-to-custody transfer under the custody signing policy. It has no
+cash-book entry and is not a console action. The Withdrawal Queue Wallet keeps user-pulled
+claims covered, and the queue contract settles claims itself via pre-approved allowance.
+The Trustee only watches queue depth and coverage, and a shortfall is
+raised with the custodian.
 
 ---
 
-## Type 3 — RISK_COUNCIL proposals
+## Type 3 — Risk Council actions
 
-Default management. From the loan card, **Escalate to council** opens a **Proposal builder** (a
-form for the proposal's name + text), then a 24h timer, then display in the Risk Council section
-— see [Trustee Risk & Watchlist](./trustee-risk-watchlist.md). The 3-of-5 RISK_COUNCIL Safe
-executes it (a flow below) under the 24h timelock, GUARDIAN-cancelable; Trustee cannot execute.
+Default management. A Risk Council wallet calls the access manager: one `execute` when the call is
+immediate, otherwise `schedule`, wait, `execute`. See [Risk Committee](../user-docs/governance/risk-committee.md)
+and [Default management](../user-docs/risks/default-management.md). The Trustee cannot call these;
+the console shows the evidence and the Risk Council's action pages ([Risk & Watchlist](./trustee-risk-watchlist.md),
+[flows](../frontend/trustee-flows.md#risk-council-actions)).
 
-| # | Flow | Trigger | Data presented | Proposal composed | Guardrail |
+| # | Flow | Trigger | Data presented | Call | Guardrail |
 |---|---|---|---|---|---|
-| 10 | Escalate to Default | A Watchlist loan deteriorates past recovery on the performing path | The loan's full ledger and epoch history, CCR trend, the at-risk impact on portfolio aggregates | `setDefault(loanId)` into the RISK_COUNCIL Safe | Blocks all loan-tied mints once executed. GUARDIAN-cancelable during the 24h window |
-| 11 | Off-cycle re-term | A default re-term or penalty rate is needed outside the post-maturity rollover fast-path | Current epoch schedule, proposed new rate and maturity, the ceiling delta the new epoch implies | `amendEconomics(loanId, newRateBps, newMaturityDate)` | Appends an epoch from now, mints nothing. Distinct from Trustee `rollover`, which is post-maturity and instant |
-| 12 | Write-down close | A loan closes with a loss | Final ledger, realised loss, the closure reason | `closeLoan(loanId, Default \| OtherWriteDown)` | Benign closures (ScheduledMaturity, EarlyRepayment) are Flow 5 and must not be routed here |
+| 10 | Escalate to Default | A Watchlist loan deteriorates past recovery on the performing path | The loan's ledger, CCR trend, at-risk impact on portfolio aggregates, on-chain status | `set_default(loan_id)`, immediate | Blocks all loan-tied mints once executed; opens the pocket on the first default |
+| 11 | Off-cycle re-term | A default re-term or penalty rate is needed outside the post-maturity rollover fast-path | Current rate, maturity, accrued interest, interest adjustment from chain | `amend_economics(loan_id, new_rate, new_maturity)`, `adjust_interest(loan_id, delta, reason_hash)`, 24 h | Distinct from Trustee `rollover`, which is post-maturity and instant |
+| 12 | Default resolution | A defaulted loan is written down, closed or cured | Chain state: outstanding principal, written down, pocket, closure reason | `write_down(loan_id, amount)`, then `close_defaulted(loan_id, Default \| OtherWriteDown)` once outstanding is zero; `cure(loan_id)`; 24 h | Benign closures are Flow 5 and must not be routed here |
 
 ---
 
@@ -173,27 +174,26 @@ already minted), and days left to maturity.
 | Payments due | Loans whose payment is due or overdue and not yet recorded, used to prompt the Trustee | Flow 2 |
 | Mint queue | Per loan: how much is still waiting to be minted to the vault and treasury, how long it has waited, whether the custodian has signed, and the Relayer's last attempt | Flow 13 |
 | Retry a mint | Asks the Relayer to try a stuck mint again, and reports where it got to | Flow 13 |
-| Build a co-signed request | Takes a disbursement, swap, or top-up request, builds the MPC payload, and tracks how many of the 3-of-5 have signed | Flows 7, 8, 9 |
-| Build a Risk Council proposal | Takes a `setDefault`, `amendEconomics`, or write-down close proposal, sends it to the Safe, and reports the Safe reference and where the 24h timer stands | Flows 10, 11, 12 |
-| Reserves | The backing check and how far off it is, the USYC price and band, and the cash forecast | Surface 14, Flow 8 |
-| Withdrawal queue | How big the queue is, how much USDC the Withdrawal Queue Wallet holds, the coverage ratio, and the oldest waiting request | Flow 9 |
+| Cash-book bookings | none: the console signs `AccessManager.execute`; lists from `GET /v1/cash-book` | Flows 7, 8, 9 |
+| Risk Council action pages | Reads the loan's on-chain state and the wallet's `can_call`; offers `execute`, or `schedule` then `execute`, to a Risk Council wallet only | Flows 10, 11, 12 |
+| Reserves | The backing check and how far off it is, and the cash forecast | Surface 14 |
+| Withdrawal queue | How big the queue is, how much USDC the Withdrawal Queue Wallet holds, the coverage ratio, and the oldest waiting request | Flow note C |
 | Audit log | The running list of everything the Trustee has done | Surface 17 |
+| Sidebar attention counts (`GET /v1/attention-counts`) | One pending count per sidebar badge (Origination, Loans, Cash Management), with a per-chain breakdown. See [trustee-attention-counts.md](./trustee-attention-counts.md) | Sidebar badges |
 
 The Type 1 actions are sent straight from the Trustee key. For `mintLoan`, `updateMutable`,
-`rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the
-transaction, shows it in readable form for review, and sends it once confirmed. These do not
+`rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the transaction, shows it in readable form for review, and sends it once confirmed. These do not
 go through the Relayer.
 
 ---
 
 ## Security considerations
 
-- No dashboard action moves USDC from the Capital Wallet on the Trustee's signature alone.
-  Every cash movement is Type 2 MPC co-signature.
+- No dashboard action moves USDC from a custody account. Bookings change only the on-chain
+  cash book, each with a single-use `ref_hash`.
 - A compromised Trustee key is bounded. It can record payments, roll over, and update
   lifecycle. Recording a payment goes through `Minter.repay` and mints its yield, bounded by
   the Minter's per-transaction and window limits and a single-use `ref_hash` (see
   [loan-repay-minter.md](./loan-repay-minter.md)); the YieldMinter attestation narrative here is legacy.
-- Default, off-cycle re-term, and write-down close are removed from the Trustee key. They
-  are RISK_COUNCIL proposals under a 24h timelock, GUARDIAN-cancelable. The dashboard must
-  not offer a Trustee-key path to any of them.
+- Default, off-cycle re-term, write-down, defaulted close and cure are not Trustee-key actions; they belong to
+  the Risk Council through the access manager. The dashboard must not offer a Trustee-key path to any.

@@ -77,7 +77,7 @@ function Home() {
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
-  const { isAnyConnected } = useWalletPresence();
+  const { isAnyConnected, isConnectionPending } = useWalletPresence();
   const { served: chainServed, chainName } = useChainServed();
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
@@ -156,6 +156,7 @@ function Home() {
     kybStatus,
     plusdIsZero,
     splusdIsZero,
+    walletPending: isConnectionPending,
   });
 
   const plusdFormattedActive: string | undefined = isStellar
@@ -208,26 +209,31 @@ function Home() {
 
   const sellDisabled = !isConnected || plusdIsZero;
 
+  const canProceed = isConnected || isConnectionPending;
+
+  const goDeposit = () =>
+    navigate({ to: "/deposit", search: { direction: "deposit" } });
+  const goStake = () => navigate({ to: "/stake", search: { tab: "stake" } });
   const onBuy = () => {
-    if (!isConnected) {
+    if (!canProceed) {
       openConnectModal();
       return;
     }
-    navigate({ to: "/deposit", search: { direction: "deposit" } });
+    goDeposit();
   };
   const onSell = () => {
-    if (!isConnected) {
+    if (!canProceed) {
       openConnectModal();
       return;
     }
     navigate({ to: "/deposit", search: { direction: "withdraw" } });
   };
   const onStake = () => {
-    if (!isConnected) {
+    if (!canProceed) {
       openConnectModal();
       return;
     }
-    navigate({ to: "/stake", search: { tab: "stake" } });
+    goStake();
   };
   const onUnstake = () =>
     navigate({ to: "/stake", search: { tab: "unstake" } });
@@ -402,10 +408,10 @@ function Home() {
                   balancesNodeId="6701:98347"
                   balances={
                     <CompactBalances
-                      onBuy={onSignUp}
-                      onSell={onSignUp}
+                      onBuy={goDeposit}
+                      onSell={onSell}
                       sellDisabled
-                      onStake={onSignUp}
+                      onStake={goStake}
                       onUnstake={onSignUp}
                     />
                   }

@@ -6,8 +6,8 @@ use shared::contract_logs_repo::DealRegistrationRow;
 
 use crate::indexer::stellar::loan_registry_parsers::{extract_u32, get_map_entry};
 use crate::indexer::stellar::parsers::{
-    extract_address, extract_address_from_map, extract_i128, extract_i128_from_map,
-    sc_address_to_strkey, synthesise_log_index, StellarLog,
+    decode_sac_movement, extract_address_from_map, extract_i128_from_map, sc_address_to_strkey,
+    synthesise_log_index, StellarLog,
 };
 use crate::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::ScVal;
@@ -204,31 +204,8 @@ pub fn parse_cargo_synced(raw: &RawEvent) -> Option<StellarLog> {
     ))
 }
 
-fn last_address_topic(raw: &RawEvent) -> Option<String> {
-    raw.topics_base64
-        .iter()
-        .skip(1)
-        .rev()
-        .find_map(|t| extract_address(t))
-}
-
 pub fn parse_deal_token_movement(raw: &RawEvent, token: &DealTokenRef) -> Option<StellarLog> {
-    let (from, to) = match raw.event_name.as_str() {
-        "mint" => (None, Some(last_address_topic(raw)?)),
-        "clawback" | "burn" => (Some(last_address_topic(raw)?), None),
-        "transfer" => {
-            if raw.topics_base64.len() < 3 {
-                return None;
-            }
-            (
-                Some(extract_address(&raw.topics_base64[1])?),
-                Some(extract_address(&raw.topics_base64[2])?),
-            )
-        }
-        _ => return None,
-    };
-    let amount = extract_i128(&raw.value_base64)
-        .or_else(|| extract_i128_from_map(&raw.value_base64, "amount"))?;
+    let (_, from, to, amount) = decode_sac_movement(raw)?;
     Some(base_log(
         raw,
         "DealTokenTransfer",

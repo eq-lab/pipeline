@@ -33,6 +33,8 @@ use shared::collateral_valuation::asset_for_metal;
 use shared::collateral_valuation_repo::{AssetProvider, CollateralValuationRepo};
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::price_provider::{is_market_provider, price_provider_for};
+use shared::security_marks::{mark_pairs, CommodityMap};
+use shared::security_registry_repo::SecurityRegistryRepo;
 
 pub use config::{AssetPriceCollectorSettings, PriceInterval};
 
@@ -134,6 +136,7 @@ pub async fn run_asset_price_collector_job(
     settings: AssetPriceCollectorSettings,
     anchors_repo: Arc<CollateralValuationRepo>,
     price_repo: Arc<LoanAssetPriceRepo>,
+    security_repo: Arc<SecurityRegistryRepo>,
 ) -> anyhow::Result<()> {
     tracing::info!(
         interval = ?settings.interval,
@@ -142,7 +145,15 @@ pub async fn run_asset_price_collector_job(
     );
 
     loop {
-        if let Err(e) = cycle(&settings, &anchors_repo, &price_repo, Utc::now()).await {
+        let cycled = cycle(
+            &settings,
+            &anchors_repo,
+            &price_repo,
+            &security_repo,
+            Utc::now(),
+        )
+        .await;
+        if let Err(e) = cycled {
             tracing::error!(error = ?e, "asset price collector cycle error");
         }
         tokio::time::sleep(CYCLE_DELAY).await;
@@ -153,31 +164,84 @@ pub async fn run_asset_price_collector_job(
 
 /// One collection pass over all distinct assets. `now` is injected so the timing is
 /// deterministic in tests and consistent across all assets in a single pass.
-async fn cycle(
-    settings: &AssetPriceCollectorSettings,
-    anchors_repo: &CollateralValuationRepo,
-    price_repo: &LoanAssetPriceRepo,
-    now: DateTime<Utc>,
-) -> anyhow::Result<()> {
-    // The query returns the distinct set of anchor (headline-asset, provider) pairs; each
-    // is collected independently against its own `(asset, provider)` series.
-    let mut pairs = anchors_repo.distinct_asset_providers().await?;
-
-    // A concentrate prices each payable metal by that metal's own asset (silver→XAG), not
-    // just the anchor's headline asset — so every payable metal's asset needs its own price
-    // series. Resolve each `(metal, provider)` to `(asset, provider)` and union it in.
-    for (metal, provider) in anchors_repo.concentrate_metal_providers().await? {
-        let Some(asset) = asset_for_metal(&metal) else {
-            continue; // unknown metal → not priceable; nothing to collect
-        };
+pub fn collection_pairs(
+    anchor_pairs: Vec<AssetProvider>,
+    concentrate_metals: &[(String, String)],
+    map: &CommodityMap,
+    sr_commodities: &[String],
+    sr_offtake_metals: &[(String, String)],
+) -> Vec<AssetProvider> {
+    let mut pairs = anchor_pairs;
+    let mut push = |asset: &str, provider: &str| {
         let pair = AssetProvider {
             asset: asset.to_owned(),
-            price_provider: provider,
+            price_provider: provider.to_owned(),
         };
         if !pairs.contains(&pair) {
             pairs.push(pair);
         }
+    };
+    for (metal, provider) in concentrate_metals {
+        if let Some(asset) = asset_for_metal(metal) {
+            push(asset, provider);
+        }
     }
+    let items = sr_commodities.iter().filter_map(|commodity| {
+        let mapping = map.get(commodity)?;
+        let metals = sr_offtake_metals
+            .iter()
+            .filter(|(c, _)| c == commodity)
+            .map(|(_, metal)| metal.as_str())
+            .collect();
+        Some((mapping, metals))
+    });
+    for (asset, provider) in mark_pairs(items) {
+        push(&asset, &provider);
+    }
+    pairs
+}
+
+async fn security_registry_inputs(
+    settings: &AssetPriceCollectorSettings,
+    repo: &SecurityRegistryRepo,
+) -> (Vec<String>, Vec<(String, String)>) {
+    if settings.security_marks.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let commodities = repo
+        .list_open_goods_commodities()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = ?e, "security registry commodity read failed; skipped");
+            Vec::new()
+        });
+    let metals = repo
+        .list_open_goods_offtake_metals()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = ?e, "security registry offtake metal read failed; skipped");
+            Vec::new()
+        });
+    (commodities, metals)
+}
+
+async fn cycle(
+    settings: &AssetPriceCollectorSettings,
+    anchors_repo: &CollateralValuationRepo,
+    price_repo: &LoanAssetPriceRepo,
+    security_repo: &SecurityRegistryRepo,
+    now: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    let anchor_pairs = anchors_repo.distinct_asset_providers().await?;
+    let concentrate_metals = anchors_repo.concentrate_metal_providers().await?;
+    let (sr_commodities, sr_metals) = security_registry_inputs(settings, security_repo).await;
+    let pairs = collection_pairs(
+        anchor_pairs,
+        &concentrate_metals,
+        &settings.security_marks,
+        &sr_commodities,
+        &sr_metals,
+    );
 
     for pair in &pairs {
         let (asset, provider_key) = (&pair.asset, &pair.price_provider);
@@ -270,8 +334,14 @@ pub fn non_market_providers_in_use(providers: &[String], allow_non_market: bool)
 pub async fn assert_live_loans_use_market_providers(
     repo: &CollateralValuationRepo,
     allow_non_market: bool,
+    extra_providers: &[String],
 ) -> anyhow::Result<()> {
-    let providers = repo.distinct_providers_for_drawn_loans().await?;
+    let mut providers = repo.distinct_providers_for_drawn_loans().await?;
+    for p in extra_providers {
+        if !providers.contains(p) {
+            providers.push(p.clone());
+        }
+    }
     let offending = non_market_providers_in_use(&providers, allow_non_market);
     if !offending.is_empty() {
         return Err(anyhow::anyhow!(

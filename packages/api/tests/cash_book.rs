@@ -60,6 +60,9 @@ fn make_test_state() -> AppState {
         capital_allocation_from_minter: std::collections::HashSet::new(),
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
+        security_registry_addresses: HashMap::new(),
+        plusd_addresses: HashMap::new(),
+        security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
@@ -197,6 +200,7 @@ fn the_response_carries_dollar_strings_iso_timestamps_and_resolved_lps() {
         requested_at: 1_790_000_000,
         lp_id: 7,
         legal_name: "Acme Ltd".to_owned(),
+        settlement_bank_account: None,
     }];
     let resp = respond(&rows, &holders, 500);
     let v = serde_json::to_value(&resp).unwrap();
@@ -281,6 +285,7 @@ fn a_holder_resolved_for_another_request_time_is_not_attributed() {
         requested_at: 1,
         lp_id: 7,
         legal_name: "Old Holder".to_owned(),
+        settlement_bank_account: None,
     }];
     let v = serde_json::to_value(respond(&rows, &holders, 0)).unwrap();
     assert!(v["wire_outs"][0].get("lp_id").is_none());
@@ -333,4 +338,98 @@ fn a_trustee_is_checked_for_chain_then_minter() {
     let (chain, minter) =
         authorize(&trustee, &uri("?chain_id=99000001"), &chains, &configured).unwrap();
     assert_eq!((chain, minter), (STELLAR, MINTER));
+}
+
+// ── Settlement bank account on wire-out rows ─────────────────────────────────
+
+fn account() -> shared::bank_account::SettlementBankAccount {
+    shared::bank_account::SettlementBankAccount {
+        account_holder_name: "Acme Ltd".to_owned(),
+        bank_name: "Example Bank".to_owned(),
+        bank_address: None,
+        account_number: Some("12345678".to_owned()),
+        iban: Some("GB82WEST12345698765432".to_owned()),
+        swift_bic_code: Some("WESTGB2L".to_owned()),
+        routing_number: None,
+    }
+}
+
+fn holder_with(
+    account: Option<shared::bank_account::SettlementBankAccount>,
+) -> StellarAddressHolder {
+    StellarAddressHolder {
+        address: LP.to_owned(),
+        requested_at: 1_790_000_000,
+        lp_id: 7,
+        legal_name: "Acme Ltd".to_owned(),
+        settlement_bank_account: account.map(sqlx::types::Json),
+    }
+}
+
+fn wire_out_rows(extra: Vec<MinterEventRow>) -> Vec<MinterEventRow> {
+    let mut rows = vec![row(
+        "WireOutRequested",
+        3,
+        json!({"id": "1", "lp": LP, "amount": "10"}),
+    )];
+    rows.extend(extra);
+    rows
+}
+
+#[test]
+fn a_pending_wire_out_carries_the_full_bank_account() {
+    let v = serde_json::to_value(respond(
+        &wire_out_rows(vec![]),
+        &[holder_with(Some(account()))],
+        0,
+    ))
+    .unwrap();
+    let bank = &v["wire_outs"][0]["bank_account"];
+    assert_eq!(bank["account_holder_name"], "Acme Ltd");
+    assert_eq!(bank["bank_name"], "Example Bank");
+    assert_eq!(bank["bank_address"], serde_json::Value::Null);
+    assert_eq!(bank["account_number"], "12345678");
+    assert_eq!(bank["iban"], "GB82WEST12345698765432");
+    assert_eq!(bank["swift_bic_code"], "WESTGB2L");
+    assert_eq!(bank["routing_number"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_settled_wire_out_omits_the_bank_account() {
+    let rows = wire_out_rows(vec![row(
+        "WireOutSettled",
+        4,
+        json!({"id": "1", "amount": "10", "value_date": "1790000100", "ref_hash": "ab"}),
+    )]);
+    let v = serde_json::to_value(respond(&rows, &[holder_with(Some(account()))], 0)).unwrap();
+    assert_eq!(v["wire_outs"][0]["status"], "Settled");
+    assert!(v["wire_outs"][0].get("bank_account").is_none());
+}
+
+#[test]
+fn a_cancelled_wire_out_omits_the_bank_account() {
+    let rows = wire_out_rows(vec![row("WireOutCancelled", 4, json!({"id": "1"}))]);
+    let v = serde_json::to_value(respond(&rows, &[holder_with(Some(account()))], 0)).unwrap();
+    assert_eq!(v["wire_outs"][0]["status"], "Cancelled");
+    assert!(v["wire_outs"][0].get("bank_account").is_none());
+}
+
+#[test]
+fn an_unresolved_wire_out_omits_the_bank_account() {
+    let v = serde_json::to_value(respond(&wire_out_rows(vec![]), &[], 0)).unwrap();
+    assert!(v["wire_outs"][0].get("bank_account").is_none());
+}
+
+#[test]
+fn a_holder_without_an_account_omits_the_bank_account() {
+    let v = serde_json::to_value(respond(&wire_out_rows(vec![]), &[holder_with(None)], 0)).unwrap();
+    assert!(v["wire_outs"][0].get("bank_account").is_none());
+}
+
+#[test]
+fn the_cash_book_schema_documents_bank_account() {
+    let doc = openapi_json();
+    let props = &doc["components"]["schemas"]["CashBookWireOutItem"]["properties"];
+    assert!(props.get("bank_account").is_some());
+    assert!(doc["components"]["schemas"]["SettlementBankAccountDetails"].is_object());
 }

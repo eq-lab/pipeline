@@ -35,6 +35,7 @@
  *  23. Clicking swap navigates to the opposite direction.
  *  24. Clicking swap clears the amount input.
  */
+import { useAccount } from "wagmi";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -261,7 +262,7 @@ const mockChainServed = vi.hoisted(() =>
   })),
 );
 
-const mockInvalidateRequests = vi.hoisted(() => vi.fn());
+const mockConfirmAction = vi.hoisted(() => vi.fn());
 
 vi.mock("@/wallet/stellar/useStellarDepositManagerMinDeposit", () => ({
   useStellarDepositManagerMinDeposit: () => ({
@@ -279,7 +280,7 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  useInvalidateRequests: () => mockInvalidateRequests,
+  useActionConfirmedRefresh: () => mockConfirmAction,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useDepositVoucher: (_requestId: string | undefined) => ({
     data: mockVoucherData,
@@ -3672,5 +3673,34 @@ describe("Deposit page — chips stay within the balance (#1628)", () => {
     await user.click(screen.getByRole("button", { name: "Max" }));
     expect((input as HTMLInputElement).value).toBe("1234.567891");
     expect(screen.queryByText("Insufficient balance")).toBeNull();
+  });
+});
+
+describe("pending wallet reconnect (#1809)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    seedBaseMocks({ connected: false });
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      status: "reconnecting",
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  it("renders no connect-wallet banner while the reconnect is pending", async () => {
+    renderDeposit();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(
+      screen.queryByTestId("connect-wallet-banner"),
+    ).not.toBeInTheDocument();
   });
 });

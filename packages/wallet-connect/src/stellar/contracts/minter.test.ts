@@ -17,6 +17,11 @@ import {
   scheduleReverseRepay,
   executeReverseRepay,
   readReverseRepaySchedule,
+  encodeRecordIncomeArgs,
+  buildRecordIncomeEnvelope,
+  recordIncome,
+  readRefHashSeen,
+  bankReferenceRefHash,
   type RecordWireInStage,
   type RepayStage,
 } from "./minter";
@@ -849,5 +854,172 @@ describe("readReverseRepaySchedule", () => {
       t: "symbol",
       v: "reverse_repay",
     });
+  });
+});
+
+// ── record_income ──────────────────────────────────────────────────────────────
+
+const INCOME_ARGS = {
+  caller: CALLER,
+  amount: "1250.50",
+  valueDate: 1_750_000_000,
+  refHash: REF_HASH,
+};
+
+describe("encodeRecordIncomeArgs", () => {
+  it("returns caller, i128 amount, u64 value date and bytes32 hash", () => {
+    const args = encodeRecordIncomeArgs(INCOME_ARGS) as unknown as {
+      t: string;
+      v: unknown;
+    }[];
+    expect(args).toHaveLength(4);
+    expect(args[0]).toEqual({ t: "address", v: CALLER });
+    expect(args[1]).toEqual({ t: "i128", v: 12505000000n });
+    expect(args[2]).toEqual({ t: "u64", v: 1_750_000_000n });
+    expect(args[3]!.t).toBe("bytes");
+  });
+
+  it("rejects a zero or negative amount, a bad value date and the zero hash", () => {
+    expect(() =>
+      encodeRecordIncomeArgs({ ...INCOME_ARGS, amount: "0" }),
+    ).toThrow(/greater than zero/);
+    expect(() =>
+      encodeRecordIncomeArgs({ ...INCOME_ARGS, amount: "-5" }),
+    ).toThrow(/invalid USD amount/);
+    expect(() =>
+      encodeRecordIncomeArgs({ ...INCOME_ARGS, valueDate: 0 }),
+    ).toThrow(/valueDate must be a positive/);
+    expect(() =>
+      encodeRecordIncomeArgs({ ...INCOME_ARGS, refHash: "0".repeat(64) }),
+    ).toThrow(/zero hash/);
+  });
+});
+
+describe("buildRecordIncomeEnvelope", () => {
+  const base = {
+    ...INCOME_ARGS,
+    minterId: MINTER_ID,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("invokes record_income directly on the minter with the caller as source", async () => {
+    await expect(buildRecordIncomeEnvelope(base)).resolves.toBe(
+      "assembled-xdr",
+    );
+    expect(mockContractCtor).toHaveBeenCalledWith(MINTER_ID);
+    const [method, ...callArgs] = mockContractCall.mock.calls[0]!;
+    expect(method).toBe("record_income");
+    expect(callArgs).toHaveLength(4);
+    expect(mockGetAccount).toHaveBeenCalledWith(CALLER);
+  });
+
+  it("propagates a simulation error with its text", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({
+      error: "HostError: Error(Contract, #28)",
+    });
+    await expect(buildRecordIncomeEnvelope(base)).rejects.toThrow(
+      "recordIncome simulation error: HostError: Error(Contract, #28)",
+    );
+  });
+
+  it("guards empty minter and caller before any RPC call", async () => {
+    await expect(
+      buildRecordIncomeEnvelope({ ...base, minterId: "" }),
+    ).rejects.toThrow(/minterId must not be empty/);
+    await expect(
+      buildRecordIncomeEnvelope({ ...base, caller: "" }),
+    ).rejects.toThrow(/caller must not be empty/);
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordIncome", () => {
+  function params(overrides: Record<string, unknown> = {}) {
+    return {
+      ...INCOME_ARGS,
+      minterId: MINTER_ID,
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "signed" }),
+      ...overrides,
+    };
+  }
+
+  it("runs build, sign, submit, poll and reports the stages in order", async () => {
+    const stages: RecordWireInStage[] = [];
+    const result = await recordIncome(
+      params({ onStageChange: (s: RecordWireInStage) => stages.push(s) }),
+    );
+    expect(stages).toEqual(["awaiting-signature", "submitting", "confirming"]);
+    expect(result).toEqual({ hash: "tx-hash" });
+  });
+
+  it("never requests a signature when the simulation fails", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "boom" });
+    const signTransaction = vi.fn();
+    await expect(recordIncome(params({ signTransaction }))).rejects.toThrow(
+      /simulation error/,
+    );
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws when sendTransaction reports ERROR", async () => {
+    mockSendTransaction.mockResolvedValue({ status: "ERROR", hash: "bad" });
+    await expect(recordIncome(params())).rejects.toThrow(
+      /sendTransaction failed/,
+    );
+  });
+
+  it("throws when the poll ends in a non-SUCCESS status", async () => {
+    mockPollTransaction.mockResolvedValue({ status: "FAILED" });
+    await expect(recordIncome(params())).rejects.toThrow(
+      /failed with status FAILED/,
+    );
+  });
+});
+
+describe("readRefHashSeen", () => {
+  const params = {
+    minterId: MINTER_ID,
+    refHash: REF_HASH,
+    rpcUrl: RPC_URL,
+    networkPassphrase: PASSPHRASE,
+  };
+
+  it("maps a true and a false retval", async () => {
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: true } },
+    });
+    await expect(readRefHashSeen(params)).resolves.toBe(true);
+    expect(mockContractCall.mock.calls[0]![0]).toBe("ref_hash_seen");
+    mockSimulateTransaction.mockResolvedValue({
+      result: { retval: { __native: false } },
+    });
+    await expect(readRefHashSeen(params)).resolves.toBe(false);
+  });
+
+  it("guards an empty minter id", async () => {
+    await expect(readRefHashSeen({ ...params, minterId: "" })).rejects.toThrow(
+      /minterId must not be empty/,
+    );
+  });
+});
+
+describe("bankReferenceRefHash", () => {
+  it("is the sha256 of the trimmed reference, pinned to a known vector", async () => {
+    const hash = await bankReferenceRefHash("  ABC-123 ");
+    expect(hash).toBe(
+      "4d156d7bc9c38c000aa1e5b06e46e1f40cafe651f3cabfae9bad48803baf17bf",
+    );
+    expect(hash).toBe(createHash("sha256").update("ABC-123").digest("hex"));
+  });
+
+  it("throws on an empty trimmed reference", async () => {
+    await expect(bankReferenceRefHash("   ")).rejects.toThrow(
+      /must not be empty/,
+    );
   });
 });

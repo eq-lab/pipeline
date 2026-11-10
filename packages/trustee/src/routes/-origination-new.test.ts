@@ -39,10 +39,11 @@ const EXAMPLE_JSON = JSON.stringify({
 });
 
 function completeValues(): Record<string, string> {
-  const parsed = parseSubmissionJson(EXAMPLE_JSON);
+  const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
   if (!parsed.ok) throw new Error("example must parse");
   return {
     ...emptyFormValues(),
+    target_chain_id: "99000001",
     ...parsed.values,
     "collateral_valuation.valuation_mode": "MetalConcentrate",
     "collateral_valuation.asset": "XAU",
@@ -55,9 +56,11 @@ function completeValues(): Record<string, string> {
   };
 }
 
+const OFFERED = [99_000_001, 560048];
+
 describe("parseSubmissionJson", () => {
   it("autofills every field present and lists exactly the missing required paths (issue example)", () => {
-    const parsed = parseSubmissionJson(EXAMPLE_JSON);
+    const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
 
     expect(parsed.values["to"]).toBe(
@@ -85,7 +88,7 @@ describe("parseSubmissionJson", () => {
   });
 
   it("imports documents rows and drops malformed entries", () => {
-    const parsed = parseSubmissionJson(EXAMPLE_JSON);
+    const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
     expect(parsed.documents).toEqual([
       { name: "Agreement", uri: "https://example.com/ipfs/QmPm7z" },
@@ -96,13 +99,14 @@ describe("parseSubmissionJson", () => {
       JSON.stringify({
         documents: [{ name: "ok", uri: "u" }, { name: 3 }, "x"],
       }),
+      OFFERED,
     );
     if (!withBadDoc.ok) throw new Error(withBadDoc.error);
     expect(withBadDoc.documents).toEqual([{ name: "ok", uri: "u" }]);
   });
 
   it("does not list optional fields (protection / secondary_metadata_uri) as missing", () => {
-    const parsed = parseSubmissionJson("{}");
+    const parsed = parseSubmissionJson("{}", OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
     expect(parsed.missingFields).not.toContain("protection");
     expect(parsed.missingFields).not.toContain("secondary_metadata_uri");
@@ -111,7 +115,7 @@ describe("parseSubmissionJson", () => {
   });
 
   it("rejects malformed JSON with a parse error", () => {
-    const parsed = parseSubmissionJson("{ nope");
+    const parsed = parseSubmissionJson("{ nope", OFFERED);
     expect(parsed).toEqual({
       ok: false,
       error: "Not valid JSON — nothing was imported.",
@@ -120,7 +124,7 @@ describe("parseSubmissionJson", () => {
 
   it("rejects a non-object root (arrays, strings) — single object only", () => {
     for (const text of ["[]", '"str"', "42", "null"]) {
-      const parsed = parseSubmissionJson(text);
+      const parsed = parseSubmissionJson(text, OFFERED);
       expect(parsed.ok).toBe(false);
     }
   });
@@ -191,12 +195,25 @@ describe("buildSubmitLoanInput", () => {
 });
 
 describe("target chain (#1536)", () => {
-  it("defaults the selector to the Stellar chain and sends it as chainId, not in the body", () => {
-    expect(emptyFormValues().target_chain_id).toBe("99000001");
-    const built = buildSubmitLoanInput(completeValues(), []);
+  it("starts with no chosen chain, and sends the chosen one as chainId, not in the body", () => {
+    expect(emptyFormValues().target_chain_id).toBe("");
+    const built = buildSubmitLoanInput(
+      { ...completeValues(), target_chain_id: "99000001" },
+      [],
+    );
     if (!built.ok) throw new Error(JSON.stringify(built.fieldErrors));
     expect(built.chainId).toBe(99_000_001);
     expect("target_chain_id" in built.input).toBe(false);
+  });
+
+  it("rejects an empty target chain as Required.", () => {
+    const built = buildSubmitLoanInput(
+      { ...completeValues(), target_chain_id: "" },
+      [],
+    );
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.fieldErrors.target_chain_id).toBe("Required.");
   });
 
   it("uses the selected EVM chain id", () => {
@@ -208,9 +225,20 @@ describe("target chain (#1536)", () => {
     expect(built.chainId).toBe(560048);
   });
 
-  it("JSON import: a configured target_chain_id sets the selector, anything else leaves it alone, and it is never 'missing'", () => {
+  it("JSON import: a target_chain_id that is not offered is ignored", () => {
+    const parsed = parseSubmissionJson(
+      JSON.stringify({ ...JSON.parse(EXAMPLE_JSON), target_chain_id: 560048 }),
+      [99_000_001],
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect("target_chain_id" in parsed.values).toBe(false);
+    expect(parsed.missingFields).not.toContain("target_chain_id");
+  });
+
+  it("JSON import: an offered target_chain_id sets the selector, anything else leaves it alone, and it is never 'missing'", () => {
     const withEvm = parseSubmissionJson(
       JSON.stringify({ ...JSON.parse(EXAMPLE_JSON), target_chain_id: 560048 }),
+      OFFERED,
     );
     if (!withEvm.ok) throw new Error(withEvm.error);
     expect(withEvm.values.target_chain_id).toBe("560048");
@@ -218,11 +246,12 @@ describe("target chain (#1536)", () => {
 
     const unknown = parseSubmissionJson(
       JSON.stringify({ ...JSON.parse(EXAMPLE_JSON), target_chain_id: 5 }),
+      OFFERED,
     );
     if (!unknown.ok) throw new Error(unknown.error);
     expect("target_chain_id" in unknown.values).toBe(false);
 
-    const absent = parseSubmissionJson(EXAMPLE_JSON);
+    const absent = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!absent.ok) throw new Error(absent.error);
     expect("target_chain_id" in absent.values).toBe(false);
     expect(absent.missingFields).not.toContain("target_chain_id");

@@ -1,4 +1,4 @@
-// spec: Issue #1413, epic #1269; docs/product-specs/deposits.md#lp-funding-details (Issue #1815)
+// spec: docs/product-specs/deposits.md#wire-matching-by-payment-reference
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -19,12 +19,14 @@ use shared::chains::ChainKind;
 use shared::lp_bank_deposit_repo::{LpBankDepositRepo, LpBankDepositRow};
 use shared::lp_ledger_repo::LpLedgerRepo;
 use shared::lp_repo::KybStatus;
-use shared::lp_requested_bank_details_repo::{InsertOutcome, PaymentDetailsStore};
+use shared::lp_requested_bank_details_repo::{
+    InsertOutcome, IssuedReferenceLookup, IssuedReferenceRow, PaymentDetailsStore,
+};
 use shared::system_configuration_repo::{BankDetailsSource, SystemBankDetails};
 
 use crate::auth::{AuthClaims, SecurityAddon};
 use crate::config::ConfiguredChain;
-use crate::error::{is_unique_violation, ApiError};
+use crate::error::{is_foreign_key_violation, is_unique_violation, ApiError};
 use crate::formatting::iso_utc;
 use crate::routes::common::{require_trustee, RequiredChain};
 use crate::routes::lps::my_lp;
@@ -37,13 +39,29 @@ pub struct RecordBankDepositRequest {
     /// Plain dollar decimal string, > 0, at most 2 decimal places (e.g.
     /// `"50000.00"`) — matches `lp_bank_deposits.amount`'s `NUMERIC(20,2)`.
     pub amount: String,
-    /// The bank's reference for this wire. Required, and unique across every
-    /// deposit — it is what identifies the wire, and what `ref_hash` is taken
-    /// over. Stored trimmed.
+    /// The bank's own reference for this one wire, not the issued `PL-…`
+    /// reference. Required, and unique across every deposit — it is what
+    /// identifies the wire, and what `ref_hash` is taken over. Stored trimmed.
     pub payment_reference: String,
+    /// The issued `PL-XXXX-XXXX-XXXX` reference the LP quoted. Optional; omit it
+    /// to attribute the wire by hand; a blank value counts as omitted. Case, hyphens and
+    /// whitespace are ignored.
+    #[serde(default)]
+    pub payment_details: Option<String>,
     /// When the wire actually landed, ISO-8601 with an offset (e.g.
     /// `"2026-10-05T15:41:00Z"`). Stored, and reported back, as UTC.
     pub occurred_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MatchedReference {
+    pub payment_details: String,
+    /// `null` for a reference issued before the chain was recorded.
+    pub chain_id: Option<i64>,
+    /// `null` for a reference issued before the receiver was recorded.
+    pub receiver_address: Option<String>,
+    /// ISO-8601 UTC — when the reference was issued to the LP.
+    pub issued_at: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -65,10 +83,26 @@ pub struct BankDepositResponse {
     pub recorded_by: String,
     /// ISO-8601 UTC — when the row was written (`now()` at insert).
     pub created_at: String,
+    /// The issued reference this wire was matched to; `null` when the Trustee
+    /// attributed the wire by hand.
+    pub matched_reference: Option<MatchedReference>,
 }
 
 impl From<LpBankDepositRow> for BankDepositResponse {
     fn from(row: LpBankDepositRow) -> Self {
+        let matched_reference = match (
+            row.requested_bank_details_id,
+            row.matched_payment_details,
+            row.matched_issued_at,
+        ) {
+            (Some(_), Some(payment_details), Some(issued_at)) => Some(MatchedReference {
+                payment_details,
+                chain_id: row.matched_chain_id,
+                receiver_address: row.matched_receiver_address,
+                issued_at: iso_utc(&issued_at),
+            }),
+            _ => None,
+        };
         Self {
             id: row.id,
             lp_id: row.lp_id,
@@ -79,6 +113,7 @@ impl From<LpBankDepositRow> for BankDepositResponse {
             is_minted: row.is_minted,
             recorded_by: row.recorded_by,
             created_at: iso_utc(&row.created_at),
+            matched_reference,
         }
     }
 }
@@ -128,6 +163,7 @@ impl PaymentDetailsResponse {
     components(schemas(
         RecordBankDepositRequest,
         BankDepositResponse,
+        MatchedReference,
         BankDepositsResponse,
         PaymentDetailsResponse
     )),
@@ -194,6 +230,7 @@ async fn list_bank_deposits(
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No LP with this id"),
         (status = 409, description = "This `payment_reference` is already recorded"),
+        (status = 422, description = "`payment_details` was never issued or was issued to another LP, `payment_reference` is itself an issued reference, or the deposit references a row that no longer exists"),
     ),
     security(("bearer_auth" = [])),
     tag = "LpBankDeposits"
@@ -207,6 +244,8 @@ async fn record_bank_deposit(
     require_trustee(&claims)?;
     let values = validate_record_bank_deposit(&payload).map_err(ApiError::BadRequest)?;
     known_lp(&state, id).await?;
+    let matched =
+        resolve_payment_details(&state.lp_requested_bank_details_repo, id, &values).await?;
 
     let mut tx = state.pool.begin().await?;
 
@@ -218,18 +257,10 @@ async fn record_bank_deposit(
         &values.ref_hash,
         values.occurred_at,
         &claims.sub,
+        matched.as_ref().map(|row| row.id),
     )
     .await
-    .map_err(|e| {
-        if is_unique_violation(&e) {
-            ApiError::Conflict(format!(
-                "a deposit with payment reference `{}` is already recorded",
-                values.payment_reference
-            ))
-        } else {
-            ApiError::from(e)
-        }
-    })?;
+    .map_err(|e| deposit_insert_error(e, &values.payment_reference))?;
 
     LpLedgerRepo::insert_deposit(
         &mut tx,
@@ -247,6 +278,20 @@ async fn record_bank_deposit(
         StatusCode::CREATED,
         Json(BankDepositResponse::from(deposit)),
     ))
+}
+
+pub fn deposit_insert_error(e: sqlx::Error, payment_reference: &str) -> ApiError {
+    if is_unique_violation(&e) {
+        ApiError::Conflict(format!(
+            "a deposit with payment reference `{payment_reference}` is already recorded"
+        ))
+    } else if is_foreign_key_violation(&e) {
+        ApiError::UnprocessableEntity(
+            "the LP or the issued payment reference this deposit links to no longer exists; reload and retry".to_owned(),
+        )
+    } else {
+        ApiError::from(e)
+    }
 }
 
 #[utoipa::path(
@@ -303,6 +348,7 @@ async fn known_lp(state: &AppState, id: i64) -> Result<(), ApiError> {
 pub struct RecordBankDepositValues {
     pub amount: BigDecimal,
     pub payment_reference: String,
+    pub payment_details: Option<String>,
     pub ref_hash: [u8; 32],
     pub occurred_at: DateTime<Utc>,
 }
@@ -336,12 +382,20 @@ pub fn validate_record_bank_deposit(
         return Err("`payment_reference` must not be blank".to_owned());
     }
 
+    let payment_details = req
+        .payment_details
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+        .map(|raw| canonical_payment_details(raw).map_err(|e| format!("`payment_details` {e}")))
+        .transpose()?;
+
     let occurred_at = parse_iso8601("occurred_at", &req.occurred_at)?;
 
     Ok(RecordBankDepositValues {
         amount,
         ref_hash: reference_hash(payment_reference),
         payment_reference: payment_reference.to_owned(),
+        payment_details,
         occurred_at,
     })
 }
@@ -404,6 +458,97 @@ pub fn payment_details_from(random: u64) -> String {
         .collect();
     let groups: Vec<String> = symbols.chunks(4).map(|g| g.iter().collect()).collect();
     format!("{PAYMENT_DETAILS_PREFIX}-{}", groups.join("-"))
+}
+
+const MAX_RAW_PAYMENT_DETAILS_CHARS: usize = 140;
+
+pub fn canonical_payment_details(raw: &str) -> Result<String, String> {
+    let malformed = || {
+        format!(
+            "is not a payment reference: expected `{PAYMENT_DETAILS_PREFIX}-XXXX-XXXX-XXXX` (got `{}`)",
+            raw.chars().take(40).collect::<String>()
+        )
+    };
+    if raw.chars().count() > MAX_RAW_PAYMENT_DETAILS_CHARS {
+        return Err(malformed());
+    }
+    let squeezed: String = raw
+        .trim()
+        .to_ascii_uppercase()
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
+    let symbols = squeezed
+        .strip_prefix(PAYMENT_DETAILS_PREFIX)
+        .ok_or_else(malformed)?;
+    if symbols.chars().count() != 12 {
+        return Err(malformed());
+    }
+    let mut decoded = String::with_capacity(12);
+    for c in symbols.chars() {
+        let c = match c {
+            'O' => '0',
+            'I' | 'L' => '1',
+            other => other,
+        };
+        if !c.is_ascii() || !CROCKFORD.contains(&(c as u8)) {
+            return Err(malformed());
+        }
+        decoded.push(c);
+    }
+    let groups: Vec<&str> = (0..3).map(|i| &decoded[i * 4..i * 4 + 4]).collect();
+    Ok(format!("{PAYMENT_DETAILS_PREFIX}-{}", groups.join("-")))
+}
+
+fn unprocessable(msg: String) -> ApiError {
+    ApiError::UnprocessableEntity(msg)
+}
+
+pub async fn resolve_payment_details<L: IssuedReferenceLookup + ?Sized>(
+    lookup: &L,
+    lp_id: i64,
+    values: &RecordBankDepositValues,
+) -> Result<Option<IssuedReferenceRow>, ApiError> {
+    let matched = match &values.payment_details {
+        None => None,
+        Some(canonical) => {
+            let row = lookup
+                .find_by_payment_details(canonical)
+                .await?
+                .ok_or_else(|| {
+                    unprocessable(format!(
+                        "payment reference `{canonical}` was never issued to any LP; record the wire without it to attribute it by hand, or book it to escrow"
+                    ))
+                })?;
+            if row.lp_id != lp_id {
+                return Err(unprocessable(format!(
+                    "payment reference `{canonical}` was issued to LP {}, not LP {lp_id}",
+                    row.lp_id
+                )));
+            }
+            Some(row)
+        }
+    };
+    if let Ok(canonical) = canonical_payment_details(&values.payment_reference) {
+        if lookup.find_by_payment_details(&canonical).await?.is_some() {
+            return Err(unprocessable(format!(
+                "`payment_reference` is an issued LP payment reference (`{canonical}`); enter the bank's own reference for this wire and pass the issued one as `payment_details`"
+            )));
+        }
+    }
+    Ok(matched)
+}
+
+pub async fn lp_id_for_payment_details<L: IssuedReferenceLookup + ?Sized>(
+    lookup: &L,
+    raw: &str,
+) -> Result<Option<i64>, ApiError> {
+    let canonical = canonical_payment_details(raw)
+        .map_err(|e| ApiError::BadRequest(format!("`payment_details` {e}")))?;
+    Ok(lookup
+        .find_by_payment_details(&canonical)
+        .await?
+        .map(|row| row.lp_id))
 }
 
 fn new_payment_details() -> String {

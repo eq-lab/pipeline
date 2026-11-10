@@ -54,7 +54,7 @@ interface ILoanRegistry {
     // rate, off-cycle maturity). Appends an epoch from now. Emits EconomicsAmended.
     function amendEconomics(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate) external;
 
-    // RISK_COUNCIL, 24h timelock. May fire before or after maturity. Blocks loan-tied mints.
+    // RISK_COUNCIL, immediate per the user docs. May fire before or after maturity. Blocks loan-tied mints.
     function setDefault(uint256 loanId) external;
 
     // TRUSTEE (no timelock) for {ScheduledMaturity, EarlyRepayment};
@@ -179,9 +179,7 @@ resized. See [smart-contracts-operations.md](./smart-contracts-operations.md).
   on LoanRegistry and cannot mint, update, roll over, or close a loan NFT. Payments are
   recorded only through `Minter.repay`. The Trustee broadcasts `mintLoan()` only after reviewing and approving the
   Originator's EIP-712 signed request. The mint is never automatic.
-- The `RISK_COUNCIL` role is a 3-of-5 multisig under a 24h AccessManager timelock. No
-  single party can transition a loan to Default, amend economics outside the rollover
-  fast-path, or force-close with a write-down reason.
+- Stellar Risk Council functions, all `RISK_COUNCIL` through the AccessManager: `set_default(loan_id: u32)`, `cure(loan_id)`, `amend_economics(loan_id, new_rate: u32 /* bps×100 */, new_maturity_timestamp: u64)`, `adjust_interest(loan_id, delta: i128, reason_hash: BytesN<32>)`, `write_down(loan_id, amount: u128)`, `close_defaulted(loan_id, reason: ClosureReason)`; default and reversal immediate per the user docs, the rest 24 h (#1756 for the current deployment). No single party can transition a loan to Default, amend economics outside the rollover fast-path, or force-close with a write-down reason.
 - Genesis economics in `ImmutableLoanData` are written once and never rewritten. Re-terms
   append an `EconomicsEpoch`, preserving the original terms on-chain for audit. The full
   rate and maturity history is reconstructable from `getEpochs` and the

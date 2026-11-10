@@ -141,10 +141,10 @@ Always `false` on EVM.
   `requestId` (and `queued` for withdrawals) from the mined receipt's `DepositRequested` /
   `WithdrawalRequested` event, keeping only logs emitted by the configured contract for the
   connected wallet.
-- **Request list refresh (#1658).** Each request mutation's `isSuccess` rising edge (EVM and
-  Stellar, deposit and withdraw) invalidates every `["requests"]` query through
-  `useInvalidateRequests`. While a known request id (mutation result or in-flight record) is not
-  yet listed by `/v1/requests`, the list polls every 5 s instead of 60 s.
+- **Request list refresh (#1658, #1810).** Every confirmed write refreshes the served activity
+  through one callback. See [Activity refresh after a confirmed action](#activity-refresh-after-a-confirmed-action).
+  While a known request id (mutation result or in-flight record) is not yet listed by
+  `/v1/requests`, `/deposit` also polls every 5 s instead of 60 s.
 - **EVM in-flight record (reload guard, #1658).** After the receipt is decoded, the amount, tx hash
   and request id are persisted under `pipeline.evm.<deposit|withdraw>.inflight.<chainId>.<address>`
   (a recovery record, never a stand-in for API data). Until `/v1/requests` lists that id, the flow
@@ -185,6 +185,51 @@ recovered in-flight requests whose ref is empty. After a **flow-terminal** succe
 stake/unstake step 2, deposit/withdraw **claim** — the route navigates home (`/`); intermediate
 steps (approve, trustline, request) never navigate. `ToastProvider` mounts above the router, so
 the success toast survives the route change.
+
+### Activity refresh after a confirmed action
+
+Added by #1810. The indexer lags the chain, so the refetch that runs right after a write often
+still returns the old list, and a toast "View" action leaves `/deposit` (whose 5 s poll stops on
+unmount) for `/transactions` or Home. One hook, `useActionConfirmedRefresh()`
+(`packages/frontend/src/api/activityRefresh.ts`), is the only confirmation point.
+
+**Which writes.** `useDepositFlow` and `useStakeFlow` call it on the `isSuccess` rising edge (a
+`prev` flag, so a mutation that stays successful never re-registers) of: request deposit, request
+withdrawal, claim deposit, claim withdrawal, stake and unstake, on EVM and Stellar. A claim passes
+the request id captured in a ref when `step3.onAction` sent it, because the claim mutation result
+carries no id.
+
+**Activity expectation.** Each call registers one entry in a module-level store, scoped to the
+active wallet and chain id (resolved from the active view exactly as `useRequests` does) with a
+deadline of 60 s. It is only a stop condition checked against the served list. No row is ever
+synthesised or shown optimistically.
+
+| Write | Shape | Met when the served list has |
+|-------|-------|------------------------------|
+| Request deposit / withdrawal | `{ type, requestId }` | a row of that `type` and `request_id`, any status |
+| Claim | `{ type, requestId, status: "Completed" }` | that row with status `Completed` |
+| Stake / unstake, or a Stellar request whose result has no `requestId` | `{ type, baselineCount }` | more rows of that `type` than `baselineCount`, read from the cached `["requests", …]` data at registration time; with no cache, any row of that `type` |
+
+`/v1/requests` returns the wallet's full list (no pagination), which keeps the count match valid.
+If pagination is added, the count match must change. Wallets are compared case-insensitively and
+ids as strings.
+
+**Polling.** `useRequests` subscribes to the store. While any open expectation for its own wallet
+and chain id is unmet and unexpired, its `refetchInterval` is `3 s`, or the caller's interval if
+that is shorter. Otherwise it is the caller's interval or off. This holds for every consumer
+(`/transactions`, `RecentActivityCard`, `/deposit`), so the polling follows the user across the
+navigation. It stops when: (a) the served list meets the expectation, (b) 60 s have passed (about
+20 extra requests per action at most), (c) the consumer unmounts, or (d) the wallet or chain
+differs from the expectation's. After that the existing refetch on mount and on focus applies.
+
+**Invalidations.** On registration: `["requests"]`, `["pnl"]`, `["positionsHistory"]`, the
+Stellar balance reads `["stellarSacToken"]`, `["stellarUsdcBalance"]`,
+`["stellarStakedPlusdBalance"]`, and wagmi `readContract` queries whose `functionName` is
+`balanceOf`. When an expectation is met, `["pnl"]` and `["positionsHistory"]` are invalidated once
+more because the same indexer pass feeds them.
+
+The toasts and the `navigate("/")` calls are unchanged. The `/deposit` known-id 5 s poll stays
+(TD-172 tracks folding it into expectations).
 
 ### Step error state
 
@@ -240,6 +285,9 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
   Stellar (`SAC_DECIMALS`). The "1 PLUSD" / "1 sPLUSD" rate inputs are `parseUnits("1", <input
   token decimals>)`. Exchange-rate rows are truncated (not rounded) to 4 dp. (#1627 — the former
   hard-coded 18 showed every EVM preview as 0.00.)
+- **Confirmed writes refresh the served activity (#1810).** `useStakeFlow` calls
+  `useActionConfirmedRefresh` on each stake/unstake `isSuccess` edge, see
+  [Activity refresh after a confirmed action](#activity-refresh-after-a-confirmed-action).
 - **`stellarUsdcToken` is mounted but unused** in the stake flow — called only to satisfy the Rules
   of Hooks (`void stellarUsdcToken`).
 
@@ -269,7 +317,7 @@ Issue #1512 (epic #1494), LP app only — `@pipeline/wallet-connect` (Trustee ap
 
 - **One wallet at a time.** While an EVM or Stellar wallet is connected, no connect entry point for
   the other chain is offered: every connect CTA keys on the active `kind`'s wallet, and
-  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`. Nothing is
+  `ConnectModalProvider.open()` is a no-op while `useWalletPresence().isAnyConnected`; a call made while `isConnectionPending` waits for the state to settle and opens only if nothing connected (#1809). Nothing is
   auto-disconnected on connect; the LP disconnects, then connects again (the connect modal keeps its
   Ethereum / Stellar tabs for that choice).
 - **`kind` is derived**, never stored: see [`hooks.md`](./hooks.md) (`useWalletView`). The

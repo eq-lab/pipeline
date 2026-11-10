@@ -23,7 +23,7 @@ use crate::indexer::loan_metadata::{
     BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, MutableDataResolver,
     MutableLoanDataView, RepaymentDataView,
 };
-use crate::indexer::stellar::rpc::StellarRpc;
+use crate::indexer::stellar::rpc::{SimulateResponse, StellarRpc};
 use crate::stellar::scval::i128_from_parts;
 use crate::stellar::tx::{build_invoke_envelope, envelope_to_base64};
 
@@ -77,12 +77,12 @@ impl StellarLoanRegistryReader {
     }
 }
 
-pub(crate) async fn simulate_view(
+pub(crate) async fn simulate_call(
     rpc: &StellarRpc,
     contract_id: &str,
     fn_name: &str,
     args: Vec<ScVal>,
-) -> Result<(ScVal, u64)> {
+) -> Result<SimulateResponse> {
     let contract = ContractStrkey::from_string(contract_id)
         .with_context(|| format!("StellarLoanRegistryReader: invalid contract id {contract_id}"))?;
 
@@ -91,8 +91,10 @@ pub(crate) async fn simulate_view(
         build_invoke_envelope(&dummy_source, 0, 0, &contract, fn_name, args, vec![], None);
     let envelope_b64 = envelope_to_base64(&envelope)?;
 
-    let sim = rpc.simulate_transaction(&envelope_b64).await?;
+    rpc.simulate_transaction(&envelope_b64).await
+}
 
+pub(crate) fn simulate_value(sim: &SimulateResponse, fn_name: &str) -> Result<ScVal> {
     if let Some(err) = &sim.error {
         anyhow::bail!("simulateTransaction({fn_name}) error: {err}");
     }
@@ -105,8 +107,18 @@ pub(crate) async fn simulate_view(
     let xdr_bytes = STANDARD
         .decode(first.return_value_xdr_base64.as_bytes())
         .context("decode return_value_xdr_base64")?;
-    let value = ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none())
-        .context("decode ScVal from return value XDR")?;
+    ScVal::from_xdr(xdr_bytes.as_slice(), Limits::none())
+        .context("decode ScVal from return value XDR")
+}
+
+pub(crate) async fn simulate_view(
+    rpc: &StellarRpc,
+    contract_id: &str,
+    fn_name: &str,
+    args: Vec<ScVal>,
+) -> Result<(ScVal, u64)> {
+    let sim = simulate_call(rpc, contract_id, fn_name, args).await?;
+    let value = simulate_value(&sim, fn_name)?;
     Ok((value, sim.latest_ledger))
 }
 
@@ -321,7 +333,7 @@ where
     }
 }
 
-fn map_entry<'a>(map: &'a ScMapSlice, key: &str) -> Option<&'a ScVal> {
+pub(crate) fn map_entry<'a>(map: &'a ScMapSlice, key: &str) -> Option<&'a ScVal> {
     map.0.iter().find_map(|e| {
         if let ScVal::Symbol(sym) = &e.key {
             if sym.0.to_utf8_string_lossy() == key {
@@ -332,7 +344,7 @@ fn map_entry<'a>(map: &'a ScMapSlice, key: &str) -> Option<&'a ScVal> {
     })
 }
 
-fn map_u128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u128> {
+pub(crate) fn map_u128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u128> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::U128(parts) => Ok(u128_from_hi_lo(parts.hi, parts.lo)),
@@ -340,7 +352,7 @@ fn map_u128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u128> {
     }
 }
 
-fn map_u64(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u64> {
+pub(crate) fn map_u64(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u64> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::U64(v) => Ok(*v),
@@ -356,7 +368,7 @@ pub(crate) fn map_u32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<u32> {
     }
 }
 
-fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
+pub(crate) fn map_bool(map: &ScMapSlice, key: &str, ctx: &str) -> Result<bool> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::Bool(v) => Ok(*v),
@@ -372,7 +384,7 @@ pub(crate) fn map_i128(map: &ScMapSlice, key: &str, ctx: &str) -> Result<i128> {
     }
 }
 
-fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
+pub(crate) fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::Bytes(bytes) if bytes.0.len() == 32 => {
@@ -384,7 +396,7 @@ fn map_bytes32(map: &ScMapSlice, key: &str, ctx: &str) -> Result<[u8; 32]> {
     }
 }
 
-fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
+pub(crate) fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::String(s) => Ok(s.to_utf8_string_lossy()),
@@ -393,7 +405,7 @@ fn map_string(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
 }
 
 /// Read a `#[contracttype]` unit-enum field encoded as `ScVal::Vec([Symbol("Variant")])`.
-fn map_enum_variant(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
+pub(crate) fn map_enum_variant(map: &ScMapSlice, key: &str, ctx: &str) -> Result<String> {
     let entry = map_entry(map, key).ok_or_else(|| anyhow::anyhow!("{ctx}.{key}: field missing"))?;
     match entry {
         ScVal::Vec(Some(vec_inner)) if vec_inner.0.len() == 1 => {

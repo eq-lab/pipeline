@@ -472,6 +472,8 @@ Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?no
 
 Right-column card on the home dashboard. Renders in two states:
 
+Rows refresh after a confirmed action through the same expectation poll (#1810), see [`wallet-flows.md`](./wallet-flows.md#activity-refresh-after-a-confirmed-action).
+
 - **Connected + data** (Figma frame `1497:95119`): shows the top 3 most recent requests as
   `ActivityRow` entries (identical visuals to `/transactions`) followed by a right-aligned "View
   All" button (node `1497:95216`) that navigates to `/transactions`. The button renders ~48px tall,
@@ -1642,7 +1644,7 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
    | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
    | Portfolio       | col 1–4, row 1                       | `ConnectWalletPromoCard variant="get-started"` (Figma node `6701:98331`) — "Get Started" / "Sign Up".                |
    | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard`, unchanged (empty placeholder — no session means no activity).                                  |
-   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — both CTAs open the auth flow, Sell forced disabled. |
+   | Balances        | col 1–2, row 2                       | `StartHereCard layout="compact"` + `StakeCard layout="compact"` stacked (Figma node `6701:98347`, 313×344 = two 164px cards + 16px gap) — Buy and Stake navigate to `/deposit` and `/stake?tab=stake` like every other state (#1809), Sell forced disabled; sign-up stays on the promo card only. |
    | AddUsdCard      | col 3–4, row 2                       | `AddUsdCard variant="locked"` (`flex-1` → 246px) + `EarnedCard layout="compact"` (82px) stacked (Figma node `6701:98377`) — Add Funds stays disabled. |
    | QnaSection      | col 1–7, row 3                       | Unchanged.                                                                                                            |
 
@@ -1759,9 +1761,13 @@ byte-identical for all seven states (grid `outerHTML` diffed before/after), and 
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
 
-**Disconnected CTA rule (#1152, #1151):** with no wallet connected, Buy and the Stake circle open
-the shared connect modal (`useConnectModal().open()`) instead of navigating (supersedes the
-#408-era "Stake navigates when disconnected" behavior); Sell is disabled (`sellDisabled`,
+**Disconnected CTA rule (#1152, #1151, #1809):** once the wallet layer has settled with no wallet
+connected, Buy and the Stake circle open the shared connect modal (`useConnectModal().open()`)
+instead of navigating (supersedes the #408-era "Stake navigates when disconnected" behavior); while
+`useWalletPresence().isConnectionPending` they treat the reconnecting wallet as connected and
+navigate immediately. In the zero state (no session, no wallet) Buy and Stake navigate to
+`/deposit` and `/stake?tab=stake`; the connect row on those pages renders nothing while pending.
+Sell is disabled (`sellDisabled`,
 32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
 (deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
@@ -1783,7 +1789,7 @@ state is layout-stable: hero 274px (col 1–4, row 1), Balances 164 + 164px, thi
 Recent activity and the FAQ strip render normally (neither depends on the LP read); no CTA renders
 during the window; the Balances wrapper carries no `data-node-id`. No Figma loading frame exists —
 the skeleton is derived from the cards' own heights. The mobile stack is unaffected (it never reads
-`homeState`), and `lpRead === "error"` still falls back to `"legacy"`.
+`homeState`), and `lpRead === "error"` still falls back to `"legacy"`. It also covers a pending wallet reconnect (`walletPending`, #1809).
 
 **Chain-served gate (#1605).** When `useChainServed().served === false` (the active EVM chain is not
 served by the API), the route keeps `WelcomeHeader` and replaces both the mobile stack and the
@@ -1793,11 +1799,11 @@ desktop dashboard card with `ChainNotServedNotice` — no home state is derived 
 `packages/frontend/src/components/homeState.ts` exports
 `HomeState = "zero" | "wallet-only" | "loading" | "unverified" | "kyb-pending" | "plusd-held" | "passed-empty" | "passed-staked" | "kyb-problem" | "legacy"`,
 `LpReadState = "unknown" | "absent" | "loaded" | "error"`, and
-`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero? })`.
+`deriveHomeState({ hasSession, isConnected, lpRead?, kybStatus?, plusdIsZero?, splusdIsZero?, walletPending? })`.
 Both balance inputs default to `false` so an unpassed input can never promote a caller into
 `"kyb-pending"` / `"plusd-held"` / `"wallet-only"`. The precedence rule (not re-derived here — see
 `docs/product-specs/home-screen-states.md` for the authoritative seven-state table and its
-precedence clause) is evaluated in order: when `hasSession` is `false`, `"wallet-only"` if
+precedence clause) is evaluated in order: `"loading"` first when `walletPending` (a wallet reconnect is in flight, #1809); else when `hasSession` is `false`, `"wallet-only"` if
 `isConnected && plusdIsZero && splusdIsZero`, else `"zero"` (this is the one short-circuit #1460
 changed — every sessionless caller still resolves to exactly one of these two, and can never reach
 the KYB branches below); else `"loading"` when `lpRead === "unknown"` — the `GET /v1/lps/me` read
@@ -1961,6 +1967,8 @@ Activity page wired to `GET /v1/requests`.
 - Disconnected empty state additionally renders a primary-dark "Connect Wallet" button (16 px below the caption) that opens the shared connect modal (#1184); connected-but-empty keeps the caption-only state.
 - Mobile (< 768px, Figma node `1993-9958`): illustration (240×240) and caption are top-anchored just below the tab bar with natural spacing; no tall centering wrapper.
 - Desktop (≥ 768px, Figma node `1497-94912`): illustration is vertically centred inside a `min-h-[400px]` wrapper. The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`) to gate the desktop centering treatment without affecting mobile.
+
+**Refresh after a confirmed action (#1810):** rows refresh through the expectation poll of `useRequests`, so a new Buy / Sell / Stake row (or a claimed Deposit flipping to Completed) appears without a reload. See [`wallet-flows.md`](./wallet-flows.md#activity-refresh-after-a-confirmed-action).
 
 **Active-chain gating** (issue #644): connection is keyed off the active chain's wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the `useRequests` hook. With Stellar active, `isStellarConnected` drives the empty-state gate; with EVM active, `isEvmConnected` does. The feed itself is chain-scoped too (#1567): `useRequests` sends `chain_id` for the active view and keys its query on it, so the rows are the active chain's requests only (see `src/api/README.md#userequests`). **Chain-served gate (#1605):** on an unserved EVM chain the page renders `ChainNotServedNotice` instead of the header, tabs and feed.
 

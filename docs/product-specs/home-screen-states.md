@@ -46,7 +46,7 @@ wallet — EVM or Stellar, #1512) — the same input states 3/4/6 use — and th
 chart are all read from that chain. The balance inputs' conservative
 `false` defaults mean an unresolved or omitted balance keeps a sessionless visitor in state 1, not
 state 7. A connected wallet with a non-zero balance and no session is still undesigned and keeps
-falling through to state 1 until a frame exists.
+falling through to state 1 until a frame exists. In state 1 the Stake card navigates to `/stake?tab=stake` and Buy to `/deposit` (both pages show their `Connect your wallet first` row), Sell stays disabled, and sign-up stays on the Get Started promo only (#1809); while the wallet layer is still restoring a connection (`useWalletPresence().isConnectionPending`) `deriveHomeState` returns `"loading"` ahead of every branch, so a reconnecting wallet never renders state 1, state 2 or legacy (#1809).
 
 States 2–6 all presuppose an auth session — their KYB status comes from `GET /v1/lps/me`, which
 needs one.
@@ -92,7 +92,7 @@ non-zero, any PLUSD; its designed frame is state 5 (`6701:97136`, #1425, blocked
 interim compact grid (connected hero, compact Buy/Sell in balance mode when PLUSD is held, compact
 Stake, `unlocked` + Earnings) — the staked-value line and `Unstake` stay on `/stake` (TD-161).
 Compositions: [`dashboard-components.md#home-route`](../frontend/dashboard-components.md#home-route).
-"Bank transfer unlocked" is the `Passed` rendering, not a served flag on `GET /v1/lps/me`.
+"Bank transfer unlocked" is the `Passed` rendering, not a served flag on `GET /v1/lps/me`. `GET /v1/lps/me` does serve `pending_bank_deposits` (#1285); which card uses it is #1820's to specify.
 
 **State 6 (KYB problem)** requires only an auth session, `lpRead === "loaded"`, and
 `kyb_status` in (`"ChangesRequested"`, `"Failed"`) — **no wallet-connection condition and no

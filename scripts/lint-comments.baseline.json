@@ -67,10 +67,6 @@
     "header": 11,
     "nodeIds": 0
   },
-  "packages/frontend/src/api/useRequests.ts": {
-    "header": 24,
-    "nodeIds": 0
-  },
   "packages/frontend/src/api/useStats.test.tsx": {
     "header": 9,
     "nodeIds": 0
@@ -345,14 +341,6 @@
   },
   "packages/frontend/src/wallet/ConnectModalContext.ts": {
     "header": 21,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/ConnectModalProvider.test.tsx": {
-    "header": 11,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/wallet/ConnectModalProvider.tsx": {
-    "header": 23,
     "nodeIds": 0
   },
   "packages/frontend/src/wallet/WalletGateContext.ts": {
@@ -711,10 +699,6 @@
     "header": 10,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-cash-management-tbills.test.ts": {
-    "header": 6,
-    "nodeIds": 0
-  },
   "packages/trustee/src/routes/-cash-management-withdrawals.test.ts": {
     "header": 5,
     "nodeIds": 0
@@ -769,34 +753,6 @@
   },
   "packages/trustee/src/routes/-record-repayment.test.ts": {
     "header": 8,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council-escalate-page.test.tsx": {
-    "header": 20,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/routes/-risk-council-escalate.test.ts": {
-    "header": 12,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council-reterm-page.test.tsx": {
-    "header": 11,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/routes/-risk-council-reterm.test.ts": {
-    "header": 5,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council-writedown-page.test.tsx": {
-    "header": 11,
-    "nodeIds": 1
-  },
-  "packages/trustee/src/routes/-risk-council-writedown.test.ts": {
-    "header": 4,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-risk-council.index.test.tsx": {
-    "header": 5,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-useLoanDetail.test.ts": {

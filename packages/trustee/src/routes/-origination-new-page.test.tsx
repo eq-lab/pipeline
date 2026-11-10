@@ -42,7 +42,18 @@ vi.mock("@/api/useSubmitLoan", async () => {
   return { ...actual, useSubmitLoan: () => mockSubmit };
 });
 
+vi.mock("@/api/useChains", () => ({ useServedTargetChains: vi.fn() }));
+import { useServedTargetChains } from "@/api/useChains";
 import { Route } from "./origination.new";
+
+const mockServed = vi.mocked(useServedTargetChains);
+const STELLAR = { id: 99_000_001, label: "Stellar" };
+const HOODI = { id: 560048, label: "Hoodi" };
+const BOTH = {
+  options: [STELLAR, HOODI],
+  defaultChainId: 99_000_001,
+  isLoading: false,
+};
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -104,6 +115,7 @@ function fillMissingBlocks() {
 }
 
 beforeEach(() => {
+  mockServed.mockReturnValue(BOTH);
   mockNavigate.mockReset();
   mockSubmit.mutateAsync = vi.fn<(input: unknown) => Promise<{ id: number }>>(
     () => Promise.resolve({ id: 42 }),
@@ -353,5 +365,66 @@ describe("Submit a loan page — target chain (#1536)", () => {
     await vi.waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({ to: "/origination" }),
     );
+  });
+});
+
+describe("Submit a loan page — served target chains (#1667)", () => {
+  const select = () =>
+    screen.getByTestId(
+      "submit-loan-field-target_chain_id",
+    ) as HTMLSelectElement;
+
+  it("disables the selector with no options while the served list loads", () => {
+    mockServed.mockReturnValue({
+      options: [],
+      defaultChainId: null,
+      isLoading: true,
+    });
+    renderRoute();
+    expect(select()).toBeDisabled();
+    expect(select().options).toHaveLength(0);
+  });
+
+  it("offers only served chains", () => {
+    mockServed.mockReturnValue({
+      options: [STELLAR],
+      defaultChainId: 99_000_001,
+      isLoading: false,
+    });
+    renderRoute();
+    expect(select()).toBeEnabled();
+    expect(Array.from(select().options).map((o) => o.textContent)).toEqual([
+      "Stellar",
+    ]);
+  });
+
+  it("preselects the served default and submits it as chainId", () => {
+    mockServed.mockReturnValue({ ...BOTH, defaultChainId: 560048 });
+    renderRoute();
+    expect(select().value).toBe("560048");
+    importJson(EXAMPLE_JSON);
+    fillMissingBlocks();
+    fireEvent.click(screen.getByTestId("submit-loan-submit"));
+    const variables = vi.mocked(mockSubmit.mutateAsync).mock.calls[0]![0] as {
+      chainId: number;
+    };
+    expect(variables.chainId).toBe(560048);
+  });
+
+  it("an empty intersection leaves a disabled empty selector and submit reports Required.", () => {
+    mockServed.mockReturnValue({
+      options: [],
+      defaultChainId: null,
+      isLoading: false,
+    });
+    renderRoute();
+    expect(select()).toBeDisabled();
+    importJson(EXAMPLE_JSON);
+    fillMissingBlocks();
+    fireEvent.click(screen.getByTestId("submit-loan-submit"));
+    expect(
+      screen.getByTestId("submit-loan-field-error-target_chain_id"),
+    ).toHaveTextContent("Required.");
+    expect(mockSubmit.mutateAsync).not.toHaveBeenCalled();
   });
 });

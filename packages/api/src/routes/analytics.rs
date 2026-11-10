@@ -11,7 +11,9 @@ use utoipa::{OpenApi, ToSchema};
 
 use crate::config::ConfiguredChain;
 use crate::formatting::iso_utc_from_unix;
-use crate::minter_cash_book::{build_wire_outs, to_base6_string, WireOutStatus};
+use crate::minter_cash_book::{
+    build_lp_wire_ins, build_wire_outs, to_base6_string, CashBookWireIn, WireOutStatus,
+};
 use crate::routes::common::{ChainScope, LenientChainFilter};
 use crate::routes::loan_book::loan_key;
 use crate::AppState;
@@ -31,6 +33,7 @@ pub fn router() -> Router<Arc<AppState>> {
         RequestsResponse,
         RequestItem,
         LpWireOutItem,
+        LpWireInItem,
         PocketClaimItem
     )),
     tags(
@@ -85,6 +88,21 @@ pub struct RequestsResponse {
     pub pocket_claims: Vec<PocketClaimItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wire_outs: Option<Vec<LpWireOutItem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire_ins: Option<Vec<LpWireInItem>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LpWireInItem {
+    pub chain_id: i64,
+    pub id: i64,
+    pub status: String,
+    pub amount: String,
+    pub value_date: String,
+    pub ref_hash: String,
+    pub recorded_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assigned_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -120,13 +138,71 @@ pub fn minter_chains_in_scope<S: std::hash::BuildHasher>(
         .collect()
 }
 
-pub fn degrade_wire_outs(
-    result: anyhow::Result<Option<Vec<LpWireOutItem>>>,
-) -> Option<Vec<LpWireOutItem>> {
+pub fn degrade_minter_list<T>(
+    what: &str,
+    result: anyhow::Result<Option<Vec<T>>>,
+) -> Option<Vec<T>> {
     result.unwrap_or_else(|e| {
-        tracing::warn!(error = %e, "failed to fetch wire-outs; omitting them");
+        tracing::warn!(error = %e, list = what, "failed to fetch a minter list; omitting it");
         None
     })
+}
+
+pub fn lp_wire_in_items(per_chain: Vec<(i64, Vec<CashBookWireIn>)>) -> Vec<LpWireInItem> {
+    let mut items: Vec<(i64, LpWireInItem)> = per_chain
+        .into_iter()
+        .flat_map(|(chain_id, wires)| {
+            wires.into_iter().map(move |w| {
+                let sort_at = w.assigned_at.unwrap_or(w.recorded_at);
+                (
+                    sort_at,
+                    LpWireInItem {
+                        chain_id,
+                        id: w.id,
+                        status: w.status.as_str().to_owned(),
+                        amount: to_base6_string(w.amount),
+                        value_date: iso_utc_from_unix(w.value_date),
+                        ref_hash: w.ref_hash,
+                        recorded_at: iso_utc_from_unix(w.recorded_at),
+                        assigned_at: w.assigned_at.map(iso_utc_from_unix),
+                    },
+                )
+            })
+        })
+        .collect();
+    items.sort_by(|(ta, a), (tb, b)| {
+        tb.cmp(ta)
+            .then_with(|| a.chain_id.cmp(&b.chain_id))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    items.into_iter().map(|(_, i)| i).collect()
+}
+
+async fn lp_wire_ins(
+    state: &AppState,
+    scope: ChainScope,
+    wallet_strkey: &str,
+    pending_only: bool,
+) -> anyhow::Result<Option<Vec<LpWireInItem>>> {
+    let minters = minter_chains_in_scope(scope, &state.chains, &state.minter_addresses);
+    if minters.is_empty() {
+        return Ok(None);
+    }
+    if pending_only {
+        return Ok(Some(Vec::new()));
+    }
+    let mut per_chain = Vec::new();
+    for (chain_id, minter) in minters {
+        if wallet_strkey == minter {
+            continue;
+        }
+        let rows = state
+            .contract_logs_repo
+            .list_lp_wire_in_events(chain_id, &minter, wallet_strkey)
+            .await?;
+        per_chain.push((chain_id, build_lp_wire_ins(&rows, &minter, wallet_strkey)));
+    }
+    Ok(Some(lp_wire_in_items(per_chain)))
 }
 
 async fn lp_wire_outs(
@@ -143,7 +219,7 @@ async fn lp_wire_outs(
     for (chain_id, minter) in minters {
         let rows = state
             .contract_logs_repo
-            .list_lp_wire_out_events(chain_id, &minter, wallet)
+            .list_lp_wire_out_events(chain_id, &minter, &wallet.to_uppercase())
             .await?;
         for w in build_wire_outs(&rows) {
             if pending_only && w.status != WireOutStatus::Pending {
@@ -255,6 +331,7 @@ async fn get_requests(
             return Json(RequestsResponse {
                 requests: Vec::new(),
                 wire_outs: None,
+                wire_ins: None,
                 pocket_claims: Vec::new(),
             })
             .into_response();
@@ -272,11 +349,13 @@ async fn get_requests(
         |kind: ChainKind| kyt_gate_for_kind(kind, state.crystal_enabled, state.elliptic_enabled);
 
     let claims_wanted = includes_pocket_claims(query.status.as_deref());
-    let (requests, wire_outs, claims) = tokio::join!(
+    let wire_in_wallet = wallet.to_uppercase();
+    let (requests, wire_outs, wire_ins, claims) = tokio::join!(
         state
             .kyc_repo
             .get_all_requests(&wallet, pending_only, chain_kind, kyt_gate, chain_id),
         lp_wire_outs(&state, scope, &wallet, pending_only),
+        lp_wire_ins(&state, scope, &wire_in_wallet, pending_only),
         async {
             if claims_wanted {
                 pocket_claims(&state, scope, query.wallet.trim()).await
@@ -285,7 +364,8 @@ async fn get_requests(
             }
         },
     );
-    let wire_outs = degrade_wire_outs(wire_outs);
+    let wire_outs = degrade_minter_list("wire-outs", wire_outs);
+    let wire_ins = degrade_minter_list("wire-ins", wire_ins);
 
     match requests {
         Ok(events) => {
@@ -309,6 +389,7 @@ async fn get_requests(
                     requests: items,
                     pocket_claims,
                     wire_outs,
+                    wire_ins,
                 })
                 .into_response(),
                 Err(e) => {

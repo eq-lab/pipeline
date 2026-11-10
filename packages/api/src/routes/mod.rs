@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod attention_counts;
 pub mod audit_log;
 pub mod auth;
 pub mod capital_allocation;
@@ -13,6 +14,7 @@ pub mod financial_position;
 pub mod kyc;
 pub mod loan_book;
 pub mod loan_financials;
+pub mod loan_security;
 pub mod loan_transfers;
 pub mod lp_bank_deposits;
 pub mod lp_ledger;

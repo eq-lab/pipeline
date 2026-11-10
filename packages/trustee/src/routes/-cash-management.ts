@@ -4,7 +4,7 @@
  * `.tsx` is JSX/styling only; this hook owns the fetch + value→display
  * mapping.
  *
- * spec: docs/frontend/trustee-flows.md#cash-management--onoff-ramp--t-bills
+ * spec: docs/frontend/trustee-flows.md#cash-management--onoff-ramp
  * (On/Off-ramp tab, data-sourcing).
  */
 import { useRampEvents, type RampEvent } from "@/api/useRampEvents";
@@ -12,9 +12,6 @@ import {
   useReviewRampEvent,
   type ReviewRampEventInput,
 } from "@/api/useReviewRampEvent";
-import { useRampAddresses } from "@/api/useRampAddresses";
-import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
-import { ENV } from "@/lib/env";
 import { targetChainLabel } from "@/lib/targetChains";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
@@ -82,14 +79,6 @@ export interface CashManagementView {
   reviewPendingId: number | null;
   reviewErrorMessage: string | null;
   reviewErrorDetails: string | null;
-
-  // ── Swap-form data (UI shell — #943 chose B; execution/quote have no backend) ──
-  /** Capital Wallet on-chain USDC balance (`useUsdcCustodyBalance`); `null` when unavailable. */
-  usdcBalanceValue: number | null;
-  /** The same balance formatted, or `"—"`. */
-  usdcBalanceDisplay: string;
-  /** The off-ramp destination — first configured ramp address, truncated; `"—"` when none. */
-  rampAddressDisplay: string;
 }
 
 // ── Mapping ──────────────────────────────────────────────────────────────────
@@ -109,19 +98,9 @@ function mapEvent(event: RampEvent, nowSec: number): RampEventRow {
 export function useCashManagement(): CashManagementView {
   const rampEvents = useRampEvents();
   const review = useReviewRampEvent();
-  const balance = useUsdcCustodyBalance();
-  const addresses = useRampAddresses();
 
   const nowSec = Math.floor(Date.now() / 1000);
   const events = rampEvents.data?.events ?? [];
-
-  const balanceNum =
-    rampEvents.chainId === ENV.STELLAR_CHAIN_ID && balance.data != null
-      ? Number(balance.data)
-      : null;
-  const usdcBalanceValue =
-    balanceNum != null && Number.isFinite(balanceNum) ? balanceNum : null;
-  const rampAddress = addresses.data?.ramp_addresses[0];
 
   const state: CashManagementView["state"] = rampEvents.isLoading
     ? "loading"
@@ -155,8 +134,5 @@ export function useCashManagement(): CashManagementView {
     reviewPendingId: review.pendingId,
     reviewErrorMessage: reviewError?.message ?? null,
     reviewErrorDetails: reviewError?.details ?? null,
-    usdcBalanceValue,
-    usdcBalanceDisplay: formatUsdcAmount(usdcBalanceValue),
-    rampAddressDisplay: truncateStrkey(rampAddress),
   };
 }

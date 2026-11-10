@@ -13,7 +13,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useRequests, useInvalidateRequests } from "./useRequests";
+import { useRequests } from "./useRequests";
+import {
+  ACTIVITY_POLL_CAP_MS,
+  addExpectation,
+  resetExpectationsForTests,
+} from "./activityRefresh";
 import type { RequestsResponse } from "./useRequests";
 import { installSameTabMockBridge } from "@/wallet/evm/mock";
 
@@ -528,44 +533,144 @@ describe("useRequests — function refetchInterval (#1658)", () => {
   });
 });
 
-describe("useInvalidateRequests (#1658)", () => {
-  it("invalidates every requests query and leaves others alone", async () => {
-    const queryClient = new QueryClient();
-    queryClient.setQueryData(["requests", "evm", "0xa", 560048, 0], FIXTURE);
-    queryClient.setQueryData(
-      ["requests", "stellar", "G", 99000001, 0],
-      FIXTURE,
+describe("useRequests — expectation polling (#1810)", () => {
+  const NEW_ROW = {
+    type: "Withdraw" as const,
+    chain_id: 560048,
+    amount: "5",
+    request_id: "99",
+    status: "PendingVerification" as const,
+    created_at: "2026-05-16T12:00:00Z",
+  };
+  const LISTED: RequestsResponse = { requests: [...FIXTURE.requests, NEW_ROW] };
+  let body: RequestsResponse;
+  let queryClient: QueryClient;
+
+  function wrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    queryClient.setQueryData(["pnl", "0xa"], { ok: true });
-    function wrapper({ children }: { children: React.ReactNode }) {
-      return (
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      );
-    }
+  }
 
-    const { result, rerender } = renderHook(() => useInvalidateRequests(), {
-      wrapper,
+  function expectWithdraw99(over: { wallet?: string; chainId?: number } = {}) {
+    addExpectation({
+      wallet: over.wallet ?? WALLET_ADDRESS,
+      chainId: over.chainId ?? 560048,
+      type: "Withdraw",
+      requestId: "99",
+      deadline: Date.now() + ACTIVITY_POLL_CAP_MS,
     });
-    const first = result.current;
-    rerender();
-    expect(result.current).toBe(first);
+  }
 
-    act(() => {
-      result.current();
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
     });
+  }
 
-    expect(
-      queryClient.getQueryState(["requests", "evm", "0xa", 560048, 0])
-        ?.isInvalidated,
-    ).toBe(true);
-    expect(
-      queryClient.getQueryState(["requests", "stellar", "G", 99000001, 0])
-        ?.isInvalidated,
-    ).toBe(true);
-    expect(queryClient.getQueryState(["pnl", "0xa"])?.isInvalidated).toBe(
-      false,
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    resetExpectationsForTests();
+    fetchSpy.mockReset();
+    body = FIXTURE;
+    fetchSpy.mockImplementation(
+      async () => new Response(JSON.stringify(body), { status: 200 }),
     );
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.clear();
+    resetExpectationsForTests();
+  });
+
+  it("refetches every 3 s while the id is unlisted and stops once it is served", async () => {
+    expectWithdraw99();
+    renderHook(() => useRequests(), { wrapper });
+    await advance(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await advance(3_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    await advance(3_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    body = LISTED;
+    await advance(3_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    await advance(30_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops polling after the cap when the id never appears", async () => {
+    expectWithdraw99();
+    renderHook(() => useRequests(), { wrapper });
+    await advance(ACTIVITY_POLL_CAP_MS + 3_000);
+    const calls = fetchSpy.mock.calls.length;
+    expect(calls).toBeGreaterThan(5);
+    expect(calls).toBeLessThanOrEqual(22);
+    await advance(60_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(calls);
+  });
+
+  it("does not poll for an expectation of another wallet or chain", async () => {
+    expectWithdraw99({ wallet: "0x9999999999999999999999999999999999999999" });
+    expectWithdraw99({ chainId: 1 });
+    renderHook(() => useRequests(), { wrapper });
+    await advance(20_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches the wallet case-insensitively", async () => {
+    expectWithdraw99({ wallet: WALLET_ADDRESS.toUpperCase() });
+    renderHook(() => useRequests(), { wrapper });
+    await advance(6_000);
+    expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("shortens a 60 s caller interval to 3 s while open and restores it after", async () => {
+    expectWithdraw99();
+    renderHook(() => useRequests({ refetchInterval: 60_000 }), { wrapper });
+    await advance(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await advance(3_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    body = LISTED;
+    await advance(3_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    await advance(30_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    await advance(30_000);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it("still passes the latest data to a function caller interval", async () => {
+    expectWithdraw99();
+    const interval = vi.fn((): number | false => 60_000);
+    renderHook(() => useRequests({ refetchInterval: interval }), { wrapper });
+    await advance(3_000);
+    expect(interval).toHaveBeenCalledWith(FIXTURE);
+  });
+
+  it("invalidates pnl and positionsHistory when an expectation is met", async () => {
+    queryClient.setQueryData(["pnl", "x"], { ok: true });
+    queryClient.setQueryData(["positionsHistory", "x"], { ok: true });
+    queryClient.setQueryData(["other"], { ok: true });
+    expectWithdraw99();
+    renderHook(() => useRequests(), { wrapper });
+    await advance(3_000);
+    expect(queryClient.getQueryState(["pnl", "x"])?.isInvalidated).toBe(false);
+    body = LISTED;
+    await advance(3_000);
+    await vi.waitFor(() =>
+      expect(queryClient.getQueryState(["pnl", "x"])?.isInvalidated).toBe(true),
+    );
+    expect(
+      queryClient.getQueryState(["positionsHistory", "x"])?.isInvalidated,
+    ).toBe(true);
+    expect(queryClient.getQueryState(["other"])?.isInvalidated).toBe(false);
   });
 });

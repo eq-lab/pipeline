@@ -132,6 +132,7 @@ fn lp(status: &str, stellar: Option<&str>, evm: Option<&str>) -> LpRow {
         owner_address: None,
         created_at: t(0),
         updated_at: t(0),
+        settlement_bank_account: None,
     }
 }
 
@@ -1121,6 +1122,9 @@ fn test_state() -> AppState {
         capital_allocation_from_minter: std::collections::HashSet::new(),
         withdrawal_queue_addresses: HashMap::new(),
         pocket_addresses: HashMap::new(),
+        security_registry_addresses: HashMap::new(),
+        plusd_addresses: HashMap::new(),
+        security_marks: shared::security_marks::MarkSettings::default(),
         crystal_enabled: false,
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),

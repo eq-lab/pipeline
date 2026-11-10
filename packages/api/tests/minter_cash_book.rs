@@ -1,7 +1,7 @@
 // spec: docs/product-specs/minter-cash-book.md#behavior
 use pipeline_api::minter_cash_book::{
-    build_ramps, build_wire_ins, build_wire_outs, fold_cash, to_base6_string, RampStatus,
-    WireInStatus, WireOutStatus,
+    build_lp_wire_ins, build_ramps, build_wire_ins, build_wire_outs, fold_cash, to_base6_string,
+    wire_out_escrow_steps, RampStatus, WireInStatus, WireOutStatus,
 };
 use serde_json::{json, Value};
 use shared::contract_logs_repo::MinterEventRow;
@@ -184,6 +184,94 @@ fn wire_out_goes_pending_then_settled_or_cancelled() {
 fn a_wire_out_follow_up_whose_request_is_missing_is_not_listed() {
     let rows = vec![ev("WireOutCancelled", 5, 0, json!({"id": "9"}))];
     assert!(build_wire_outs(&rows).is_empty());
+}
+
+fn wire_out_settled(id: i64, amount: i128, block: i64) -> MinterEventRow {
+    ev(
+        "WireOutSettled",
+        block,
+        0,
+        json!({"id": id.to_string(), "amount": amount.to_string(), "value_date": "1789000001", "ref_hash": REF}),
+    )
+}
+
+fn escrow_of(rows: &[MinterEventRow]) -> Vec<(i64, i128)> {
+    wire_out_escrow_steps(&build_wire_outs(rows), shared::chains::ChainKind::Stellar)
+}
+
+#[test]
+fn escrow_steps_add_then_remove_a_settled_wire_out() {
+    let steps = escrow_of(&[wire_out_requested(1, 100, 2), wire_out_settled(1, 100, 4)]);
+    assert_eq!(steps, [(1_790_000_002, 10), (1_790_000_004, -10)]);
+}
+
+#[test]
+fn escrow_steps_add_then_remove_a_cancelled_wire_out() {
+    let steps = escrow_of(&[
+        wire_out_requested(1, 100, 2),
+        ev("WireOutCancelled", 5, 0, json!({"id": "1"})),
+    ]);
+    assert_eq!(steps, [(1_790_000_002, 10), (1_790_000_005, -10)]);
+}
+
+#[test]
+fn escrow_steps_keep_a_pending_wire_out_open() {
+    assert_eq!(
+        escrow_of(&[wire_out_requested(1, 100, 2)]),
+        [(1_790_000_002, 10)]
+    );
+}
+
+#[test]
+fn escrow_steps_of_overlapping_wire_outs_are_ordered_by_time() {
+    let steps = escrow_of(&[
+        wire_out_requested(1, 100, 2),
+        wire_out_requested(2, 50, 3),
+        wire_out_settled(1, 100, 6),
+        ev("WireOutCancelled", 4, 0, json!({"id": "2"})),
+    ]);
+    assert_eq!(
+        steps,
+        [
+            (1_790_000_002, 10),
+            (1_790_000_003, 5),
+            (1_790_000_004, -5),
+            (1_790_000_006, -10),
+        ]
+    );
+}
+
+#[test]
+fn escrow_steps_put_a_request_before_a_same_second_close() {
+    let mut settled = wire_out_settled(1, 100, 2);
+    settled.block_timestamp = 1_790_000_002;
+    let steps = escrow_of(&[wire_out_requested(1, 100, 2), settled]);
+    assert_eq!(steps, [(1_790_000_002, 10), (1_790_000_002, -10)]);
+}
+
+#[test]
+fn escrow_steps_drop_zero_negative_and_minimum_amounts() {
+    let mut rows = vec![
+        wire_out_requested(1, 0, 2),
+        wire_out_requested(2, -100, 2),
+        wire_out_requested(3, i128::MIN, 2),
+        wire_out_requested(4, 100, 2),
+    ];
+    rows.push(wire_out_settled(3, 1, 4));
+    assert_eq!(escrow_of(&rows), [(1_790_000_002, 10)]);
+}
+
+#[test]
+fn escrow_steps_use_the_units_of_the_requests_endpoint() {
+    for raw in [100_i128, 12_345_678, 19, 9_999_999] {
+        let steps = escrow_of(&[wire_out_requested(1, raw, 2)]);
+        let shown = to_base6_string(raw);
+        let units = steps[0].1;
+        assert_eq!(
+            format!("{}.{:06}", units / 1_000_000, units % 1_000_000),
+            shown
+        );
+    }
 }
 
 // ── Ramps ─────────────────────────────────────────────────────────────────────
@@ -413,4 +501,61 @@ fn a_malformed_post_checkpoint_amount_is_incomplete() {
 fn raw_seven_dp_amounts_render_as_floored_six_dp_dollars() {
     assert_eq!(to_base6_string(12_345_678), "1.234567");
     assert_eq!(to_base6_string(0), "0.000000");
+}
+
+const OTHER: &str = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
+
+fn assigned(id: &Value, receiver: &str, block: i64) -> MinterEventRow {
+    ev(
+        "WireInAssigned",
+        block,
+        0,
+        json!({"id": id, "receiver": receiver}),
+    )
+}
+
+#[test]
+fn lp_wire_ins_keep_a_direct_wire_to_the_wallet() {
+    let list = build_lp_wire_ins(&[wire_in(1, LP, 10, 2)], MINTER, LP);
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].status, WireInStatus::Direct);
+}
+
+#[test]
+fn lp_wire_ins_keep_an_escrowed_wire_assigned_to_the_wallet_for_both_id_forms() {
+    for id in [json!(1), json!("1")] {
+        let rows = vec![wire_in(1, MINTER, 10, 2), assigned(&id, LP, 3)];
+        let list = build_lp_wire_ins(&rows, MINTER, LP);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].status, WireInStatus::Assigned);
+        assert_eq!(list[0].assigned_at, Some(1_790_000_003));
+    }
+}
+
+#[test]
+fn lp_wire_ins_drop_unassigned_returned_and_foreign_wires() {
+    let cases: Vec<Vec<MinterEventRow>> = vec![
+        vec![wire_in(1, MINTER, 10, 2)],
+        vec![
+            wire_in(1, MINTER, 10, 2),
+            ev(
+                "WireInReturned",
+                3,
+                0,
+                json!({"id": "1", "amount": "10", "ref_hash": "aa"}),
+            ),
+        ],
+        vec![wire_in(1, OTHER, 10, 2)],
+        vec![wire_in(1, MINTER, 10, 2), assigned(&json!(1), OTHER, 3)],
+        vec![assigned(&json!(9), LP, 3)],
+    ];
+    for rows in cases {
+        assert!(build_lp_wire_ins(&rows, MINTER, LP).is_empty(), "{rows:?}");
+    }
+}
+
+#[test]
+fn lp_wire_ins_never_leak_escrow_for_the_minter_wallet() {
+    let rows = vec![wire_in(1, MINTER, 10, 2)];
+    assert!(build_lp_wire_ins(&rows, MINTER, MINTER).is_empty());
 }

@@ -1,7 +1,30 @@
 // spec: docs/product-specs/deposits.md#lp-funding-details
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct IssuedReferenceRow {
+    pub id: i64,
+    pub lp_id: i64,
+    pub payment_details: String,
+    pub chain_id: Option<i64>,
+    pub receiver_address: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+pub const FIND_BY_PAYMENT_DETAILS_SQL: &str =
+    "SELECT id, lp_id, payment_details, chain_id, receiver_address, created_at \
+     FROM lp_requested_bank_details WHERE payment_details = $1";
+
+#[async_trait]
+pub trait IssuedReferenceLookup: Send + Sync {
+    async fn find_by_payment_details(
+        &self,
+        canonical: &str,
+    ) -> Result<Option<IssuedReferenceRow>, sqlx::Error>;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -59,5 +82,18 @@ impl PaymentDetailsStore for LpRequestedBankDetailsRepo {
             }
             Err(e) => Err(e),
         }
+    }
+}
+
+#[async_trait]
+impl IssuedReferenceLookup for LpRequestedBankDetailsRepo {
+    async fn find_by_payment_details(
+        &self,
+        canonical: &str,
+    ) -> Result<Option<IssuedReferenceRow>, sqlx::Error> {
+        sqlx::query_as::<_, IssuedReferenceRow>(FIND_BY_PAYMENT_DETAILS_SQL)
+            .bind(canonical)
+            .fetch_optional(&self.pool)
+            .await
     }
 }

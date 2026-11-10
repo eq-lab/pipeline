@@ -31,6 +31,7 @@
  *  15. Disconnected wallet → banner shown; step buttons absent on both tabs.
  *  16. Zero balance → action buttons disabled; no low-balance banner rendered.
  */
+import { useAccount } from "wagmi";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -135,6 +136,10 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       isLoading: false,
       error: null,
     })),
+    useQueryClient: () => ({
+      invalidateQueries: vi.fn(),
+      getQueriesData: vi.fn(() => []),
+    }),
   };
 });
 
@@ -1266,5 +1271,33 @@ describe("Stake page — chips stay within the balance (#1628)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Insufficient balance",
     );
+  });
+});
+
+describe("pending wallet reconnect (#1809)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    seedBaseMocks({ connected: false });
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      status: "reconnecting",
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(useAccount).mockReturnValue({
+      address: undefined,
+      isConnected: false,
+    } as unknown as ReturnType<typeof useAccount>);
+  });
+
+  it("renders no connect-wallet banner while the reconnect is pending", async () => {
+    renderStake();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(
+      screen.queryByTestId("connect-wallet-banner"),
+    ).not.toBeInTheDocument();
   });
 });

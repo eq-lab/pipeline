@@ -48,3 +48,34 @@ export function chainAmountDecimals(
 ): number {
   return isStellarTarget(chainId) ? SAC_DECIMALS : EVM_USDC_DECIMALS;
 }
+
+export interface ServedTargetChains {
+  options: ReadonlyArray<TargetChainOption>;
+  defaultChainId: number | null;
+  isLoading: boolean;
+}
+
+export function servedTargetChains(
+  status: "pending" | "error" | "success",
+  data:
+    | { chains: { chain_id: number }[]; default_chain_id: number }
+    | undefined,
+): ServedTargetChains {
+  if (status === "error") {
+    return {
+      options: TARGET_CHAINS,
+      defaultChainId: DEFAULT_TARGET_CHAIN_ID,
+      isLoading: false,
+    };
+  }
+  if (status === "pending" || data === undefined) {
+    return { options: [], defaultChainId: null, isLoading: true };
+  }
+  const options = TARGET_CHAINS.filter((chain) =>
+    data.chains.some((served) => served.chain_id === chain.id),
+  );
+  const defaultChainId = options.some((o) => o.id === data.default_chain_id)
+    ? data.default_chain_id
+    : (options[0]?.id ?? null);
+  return { options, defaultChainId, isLoading: false };
+}

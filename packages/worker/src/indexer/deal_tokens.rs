@@ -47,6 +47,7 @@ pub fn reject_core_collision(
 pub struct DealTokenRegistry {
     factory: Address,
     tokens: RwLock<HashMap<Address, DealTokenInfo>>,
+    excluded: Option<Address>,
 }
 
 impl DealTokenRegistry {
@@ -54,7 +55,13 @@ impl DealTokenRegistry {
         Self {
             factory,
             tokens: RwLock::new(HashMap::new()),
+            excluded: None,
         }
+    }
+
+    pub fn excluding(mut self, excluded: Option<Address>) -> Self {
+        self.excluded = excluded;
+        self
     }
 
     pub fn factory(&self) -> Address {
@@ -84,6 +91,14 @@ impl DealTokenRegistry {
         let mut tokens = self.tokens.write().expect("deal token registry lock");
         let mut added = Vec::new();
         for (addr, kind) in pairs {
+            if self.excluded == Some(addr) {
+                tracing::warn!(
+                    loan_id,
+                    token = %addr,
+                    "ignoring a deal token that is the indexed PLUSD address"
+                );
+                continue;
+            }
             if let std::collections::hash_map::Entry::Vacant(slot) = tokens.entry(addr) {
                 slot.insert(DealTokenInfo {
                     loan_id: loan_id.to_owned(),

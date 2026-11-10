@@ -5,6 +5,7 @@
 
 pub mod account_repo;
 pub mod auth_user_repo;
+pub mod bank_account;
 pub mod bitgo;
 pub mod book_weighting;
 pub mod chains;
@@ -42,10 +43,16 @@ pub mod migrations;
 pub mod minted_yield;
 pub mod object_store;
 pub mod otp_repo;
+pub mod plusd_seed;
+pub mod plusd_seed_repo;
 pub mod pocket;
 pub mod pocket_repo;
 pub mod position_repo;
 pub mod price_provider;
+pub mod security_marks;
+pub mod security_registry;
+pub mod security_registry_repo;
+pub mod security_state;
 pub mod signature;
 pub mod stellar_voucher;
 pub mod submitted_loan_repo;

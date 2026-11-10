@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  dateInputToUnixUtc,
   formatIsoDateTimeUtc,
   nowUtcDateTimeInput,
   utcDateTimeInputToIso,
@@ -129,5 +130,17 @@ describe("UTC datetime-local helpers", () => {
     );
     expect(utcDateTimeInputToIso("")).toBeNull();
     expect(utcDateTimeInputToIso("2026-13-40T99:99")).toBeNull();
+  });
+});
+
+describe("dateInputToUnixUtc", () => {
+  it("converts a date input to UTC midnight seconds", () => {
+    expect(dateInputToUnixUtc("2026-12-15")).toBe(1_797_292_800);
+  });
+
+  it("returns null for empty or malformed values", () => {
+    expect(dateInputToUnixUtc("")).toBeNull();
+    expect(dateInputToUnixUtc("15/12/2026")).toBeNull();
+    expect(dateInputToUnixUtc("2026-13-45")).toBeNull();
   });
 });

@@ -23,11 +23,13 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 |------|--------|-------------|
 | [lp-onboarding.md](./lp-onboarding.md) | LP Onboarding & Compliance | KYT screening, three whitelist enrolment paths, freshness window, manual review |
 | [kyb-lp-verification.md](./kyb-lp-verification.md) | LP Onboarding & Compliance | KYB entity registration, document review lifecycle, notifications, settlement address |
-| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed; LP funding details (`GET /v1/lps/me/payment-details`) |
+| [deposits.md](./deposits.md) | Deposits & PLUSD Minting | EVM `requestDeposit` / `claimDeposit` (voucher-gated, deployed `hoodi-v5`), Stellar mint leg; designed Intake Wallet ticket model marked not deployed; LP funding details (`GET /v1/lps/me/payment-details`); LP pending bank deposits (`pending_bank_deposits` on `GET /v1/lps/me`) |
 | [evm-requests-queue.md](./evm-requests-queue.md) | Deposits & PLUSD Minting | Deployed EVM VerifiedRequestsQueue: DepositManager, WithdrawalQueue, `VerifiedRequests` EIP-712 voucher, rate limiter, voucher API |
 | [staking.md](./staking.md) | Staking (sPLUSD) | ERC-4626 vault, stake/unstake, open access model |
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [loans-data.md](./loans-data.md) | Loan Management | API contract, data model, events, security considerations |
+| [loan-security-state.md](./loan-security-state.md) | Loan Management | `GET /v1/loan-book/{loan_id}/security`: Stellar SecurityRegistry terms, valuation, margin call, records, inspections and repayments from the indexed projection, plus suggested marks and mark-due flags |
+| [cash-reporter-bookings.md](./cash-reporter-bookings.md) | Loan Management | Cash reporter role gating (`can_call`), `record_income` bank-income booking, `ref_hash_seen` pre-check, testnet verification |
 | [loan-repay-minter.md](./loan-repay-minter.md) | Loan Management | How the Trustee records a repayment: `Minter.repay` signature, roles, `ref_hash`, mint budget, side effects, testnet verification |
 | [loan-repayment-recovery.md](./loan-repayment-recovery.md) | Loan Management | Recovery procedure for a mis-split coupon: Minter reverse then corrected repay, roles, effects, limits |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
@@ -48,6 +50,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [operations-console.md](./operations-console.md) | Operations Console | Overview, shared operator authentication and account lifecycle |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
 | [trustee-dashboard.md](./trustee-dashboard.md) | Operations Console | Trustee dashboard technical-assignment spec: business flows by signing rail, data layer, API contracts |
+| [trustee-attention-counts.md](./trustee-attention-counts.md) | Operations Console | Trustee sidebar badge counts: `GET /v1/attention-counts`, per-badge definitions, per-chain and combined scope |
 | [trustee-risk-watchlist.md](./trustee-risk-watchlist.md) | Operations Console | Trustee risk/watchlist behavior: CCR color bands, manual Watchlist, Past Due lock + confirm, return to Performing, escalation proposal builder |
 | [collateral-valuation.md](./collateral-valuation.md) | Collateral Valuation | Price sources and feed budget, standard-goods and NSR concentrate valuation modes, off-chain valuation record, CCR derivation |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
@@ -56,6 +59,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [dashboards-balance-sheet-sources.md](./dashboards-balance-sheet-sources.md) | Dashboards | Protocol Dashboard Panel A on-chain sources: Stellar and EVM PLUSD supply / USDC custody reads |
 | [dashboards-yield-history.md](./dashboards-yield-history.md) | Dashboards | Protocol Dashboard Panel D: yield history, T-bill accrual, exchange rate, trailing yield |
 | [minter-cash-book.md](./minter-cash-book.md) | Dashboards | Stellar minter cash book folded from indexed events: `GET /v1/cash-book`, LP wire-outs on `/v1/requests`, the Capital Allocation switch |
+| [lp-total-balance.md](./lp-total-balance.md) | Dashboards | LP Total Balance series on `GET /v1/positions/history`: sPLUSD value, Stellar wire-out escrow, total |
 | [home-screen-states.md](./home-screen-states.md) | Dashboards | LP home route (`/`) state table and precedence rule (epic #1419) |
 | [audit-logging.md](./audit-logging.md) | Audit Logging | Append-only log, third-party sink, compliance traceability |
 | [api-authorization.md](./api-authorization.md) | API Authorization | Signature-based login (EVM EIP-191 + Stellar SEP-0053), single-use nonce, ES256 JWT, allow-list & roles |

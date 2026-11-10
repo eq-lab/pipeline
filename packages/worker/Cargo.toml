@@ -28,3 +28,7 @@ base64             = "0.22"
 sha2               = "0.10"
 hex                = "0.4"
 shared             = { path = "../shared" }
+futures            = "0.3"
+
+[dev-dependencies]
+tokio              = { workspace = true, features = ["test-util"] }
