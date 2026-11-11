@@ -95,6 +95,21 @@ vi.mock("./-useOriginationReview", () => ({
   useOriginationReview: () => mockUseOriginationReview(),
 }));
 
+vi.mock("./-RegisterDebtTokenAction", () => ({
+  RegisterDebtTokenAction: (props: {
+    chainId: number;
+    loanId: number | null;
+    variant: string;
+  }) => (
+    <div
+      data-testid="register-debt-token-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+      data-variant={props.variant}
+    />
+  ),
+}));
+
 import { Route } from "./origination.$id";
 import { useOriginationDetail } from "./-origination-detail";
 
@@ -439,6 +454,26 @@ describe("Origination details route", () => {
       const link = screen.getByTestId("origination-detail-view-loan-link");
       expect(link).toHaveTextContent("View loan #4488");
       expect(link).toHaveAttribute("href", "/loans/4488");
+    });
+
+    it("Approved: hosts the Register debt token action only when the drawn loan id is known (#1766)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      const { unmount } = renderRoute();
+      expect(
+        screen.queryByTestId("register-debt-token-stub"),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      mockReview({ mintedLoanId: 4488 });
+      renderRoute();
+      const stub = screen.getByTestId("register-debt-token-stub");
+      expect(stub).toHaveAttribute("data-loan", "4488");
+      expect(stub).toHaveAttribute("data-variant", "inline");
     });
 
     it("Rejected: renders the red 'Rejected · <date> — <reason>' banner; NO action buttons", () => {

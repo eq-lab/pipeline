@@ -306,6 +306,17 @@ export type {
 } from "./stellar/contracts/accessManager";
 
 export {
+  readDeal,
+  registerDeal,
+  registerDealArgs,
+} from "./stellar/contracts/dealTokenFactory";
+export type {
+  DealRead,
+  ReadDealParams,
+  RegisterDealParams,
+} from "./stellar/contracts/dealTokenFactory";
+
+export {
   encodeRiskCouncilArgs,
   relayRiskCouncil,
   readRiskCouncilSchedule,

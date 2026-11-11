@@ -373,6 +373,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1763 Trustee: escrowed incoming wires — list, assign to lender or return](https://github.com/eq-lab/pipeline/issues/1763) | [1763-trustee-escrowed-wires.md](./epic-1795/1763-trustee-escrowed-wires.md) | Initial |
 | [#1764 Trustee: settle or cancel lender bank withdrawals with a pending wire-outs list](https://github.com/eq-lab/pipeline/issues/1764) | [1764-trustee-wire-outs.md](./epic-1795/1764-trustee-wire-outs.md) | Initial |
 | [#1765 Trustee: book USDC/USD conversions and bank charges on-chain](https://github.com/eq-lab/pipeline/issues/1765) | [1765-trustee-conversions-bank-charges.md](./epic-1795/1765-trustee-conversions-bank-charges.md) | Initial |
+| [#1766 Trustee: register the per-loan debt token (DealTokenFactory.register_deal) after loan creation](https://github.com/eq-lab/pipeline/issues/1766) | [1766-register-debt-token.md](./epic-1795/1766-register-debt-token.md) | Initial |
 | [#1812 Backend: LP settlement bank account for bank wire-outs](https://github.com/eq-lab/pipeline/issues/1812) | [1812-lp-settlement-bank-account.md](./epic-1795/1812-lp-settlement-bank-account.md) | Initial |
 
 ---

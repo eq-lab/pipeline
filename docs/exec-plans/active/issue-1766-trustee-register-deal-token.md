@@ -41,19 +41,19 @@ _None_ — resolved 2026-11-11: ship Stellar-only, EVM arm split out to #1892 (b
 
 ## Implementation Steps
 
-1. **Env**: add `STELLAR_DEAL_TOKEN_FACTORY_ID: readString("VITE_STELLAR_DEAL_TOKEN_FACTORY_ID", "")` to `packages/trustee/src/lib/env.ts`, and add it to the trustee `.env.example` and runtime-env lists (wherever `VITE_STELLAR_YIELD_MINTER_ID` is declared, with grep). An empty value means unconfigured: the row shows "—" and the action shows "Debt token registration isn't configured for this environment."
-2. **Contract client**: add `packages/wallet-connect/src/stellar/contracts/dealTokenFactory.ts` (with a one-line `// spec:` header):
+1. [x] **Env**: add `STELLAR_DEAL_TOKEN_FACTORY_ID: readString("VITE_STELLAR_DEAL_TOKEN_FACTORY_ID", "")` to `packages/trustee/src/lib/env.ts`, and add it to the trustee `.env.example` and runtime-env lists (wherever `VITE_STELLAR_YIELD_MINTER_ID` is declared, with grep). An empty value means unconfigured: the row shows "—" and the action shows "Debt token registration isn't configured for this environment."
+2. [x] **Contract client**: add `packages/wallet-connect/src/stellar/contracts/dealTokenFactory.ts` (with a one-line `// spec:` header):
    - `readDeal({ factoryId, loanId, rpcUrl, networkPassphrase }): Promise<{ debt: string } | null>` uses `simulateRead(factoryId, "deal", [nativeToScVal(loanId, { type: "u32" })])`. It returns `null` only on `Error(Contract, #4)` and throws otherwise. It validates that `loanId` is an integer in the u32 range and that `debt` is a `C…` string.
    - `registerDeal(params: Omit<RelayParams, "target" | "fn" | "args"> & { factoryId; loanId })` calls `relay({ ..., target: factoryId, fn: "register_deal", args: [u32] })`.
    - Export both from `packages/wallet-connect/src/index.ts`.
-3. **Hooks** in `packages/trustee/src/api/useDealToken.ts`:
+3. [x] **Hooks** in `packages/trustee/src/api/useDealToken.ts`:
    - `useDeal(chainId, loanId)` is a React Query `["deal-token", chainId, loanId]` query, enabled only for the Stellar chain, a configured factory id and a non-null loan id.
    - `useRegisterDealAccess(enabled)` follows `useCashReporterAccess`: `readCanCall` plus `readOperationSchedule` when the role has a delay.
    - `useRegisterDeal()` is a mutation calling `registerDeal` with `useStellarWallet`, tracks the stage, and invalidates `["deal-token", …]` on success.
-4. **Lib** `packages/trustee/src/lib/dealToken.ts`: holds `REGISTER_DEAL_ERROR_COPY` (keyed by the confirmed contract codes, parsed with `amErrorCode`), `registerDealReason(...)` (not configured, wallet not connected, not Stellar, `no-role` copy, read error), and the button label via `stageLabel`.
-5. **Loan detail**: in `packages/trustee/src/routes/-useLoanDetail.ts`, pass the `useDeal` result into `buildRegistryState`. Append `{ label: "Debt token", value: deal?.debt ?? "—", tag: "chain" }`. Do not truncate unless the card already truncates addresses. Expose `debtToken: { registered: boolean | null; ... }` in `UseLoanDetailResult`. In `loans.$id.tsx`, add a "Register debt token" control in the Registry card footer, or with the other on-chain actions to match the existing layout. It renders only when `registered === false`, with the role line from `riskCouncilRoleLine`-style copy, the stage label, and an `ErrorState` with the mapped copy.
-6. **Origination after mint**: in `origination.$id.tsx`, `ApprovedBanner` renders the same control (a shared component, for example `packages/trustee/src/routes/-RegisterDebtTokenAction.tsx`) when `loanId != null`, the chain is Stellar, and `useDeal` reports `registered === false`. After success it shows the `debt` address verbatim.
-7. Keep the code comment-minimal: one `// spec:` header per new file, no JSDoc.
+4. [x] **Lib** `packages/trustee/src/lib/dealToken.ts`: holds `REGISTER_DEAL_ERROR_COPY` (keyed by the confirmed contract codes, parsed with `amErrorCode`), `registerDealReason(...)` (not configured, wallet not connected, not Stellar, `no-role` copy, read error), and the button label via `stageLabel`.
+5. [x] **Loan detail**: in `packages/trustee/src/routes/-useLoanDetail.ts`, pass the `useDeal` result into `buildRegistryState`. Append `{ label: "Debt token", value: deal?.debt ?? "—", tag: "chain" }`. Do not truncate unless the card already truncates addresses. Expose `debtToken: { registered: boolean | null; ... }` in `UseLoanDetailResult`. In `loans.$id.tsx`, add a "Register debt token" control in the Registry card footer, or with the other on-chain actions to match the existing layout. It renders only when `registered === false`, with the role line from `riskCouncilRoleLine`-style copy, the stage label, and an `ErrorState` with the mapped copy.
+6. [x] **Origination after mint**: in `origination.$id.tsx`, `ApprovedBanner` renders the same control (a shared component, for example `packages/trustee/src/routes/-RegisterDebtTokenAction.tsx`) when `loanId != null`, the chain is Stellar, and `useDeal` reports `registered === false`. After success it shows the `debt` address verbatim.
+7. [x] Keep the code comment-minimal: one `// spec:` header per new file, no JSDoc.
 
 ## Test Strategy
 
