@@ -213,24 +213,6 @@ function encodeEconomicsMap(economics: DrawLoanEconomics): xdr.ScVal {
   ]);
 }
 
-/**
- * Encodes the `location` positional arg (`draw_loan` arg index 4). Map keys
- * sorted lexicographically per `scMap`. `location_type` is encoded as the
- * contract's unit-variant enum shape (`{vec:[{symbol:<type>}]}`), NOT a
- * plain string.
- */
-function encodeLocationMap(location: LocationInput): xdr.ScVal {
-  return scMap([
-    ["location_identifier", xdr.ScVal.scvString(location.location_identifier)],
-    [
-      "location_type",
-      xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(location.location_type)]),
-    ],
-    ["tracking_url", xdr.ScVal.scvString(location.tracking_url)],
-    ["updated_at", u64(location.updated_at)],
-  ]);
-}
-
 export function encodeDrawLoanArgs(args: DrawLoanArgs): xdr.ScVal[] {
   if (
     typeof args?.metadata_uri !== "string" ||
