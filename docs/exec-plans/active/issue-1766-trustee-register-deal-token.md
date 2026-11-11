@@ -37,9 +37,7 @@ Verified on testnet on 2026-11-10 by simulating against the deployed factory `CA
 
 ## Open Questions
 
-- EVM: does `PipelineDealTokenFactory` register automatically on `drawLoan`, or does the trustee need to call `registerDeal`? This plan assumes the step is Stellar-only for now and blocks it on EVM loans. That is the issue's own open point, which needs the contracts owner.
-- What are the contract error codes from `register_deal` for "already registered" and "unknown loan"? The deployed spec has no error enum. The coder reads them from `contracts/deal-token-factory/src/lib.rs` in the contracts repo. If they cannot be confirmed, only the generic relay error copy ships.
-- On the loan detail page, should the action show for every role-holding trustee on every non-registered Stellar loan, or only for open (non-closed) loans? This plan assumes any non-registered Stellar loan, as the issue says.
+_None_ — resolved 2026-11-11: ship Stellar-only, EVM arm split out to #1892 (blocked); error codes read from the contracts repo (generic relay copy if unconfirmed); the action is offered on every unregistered Stellar loan.
 
 ## Implementation Steps
 
