@@ -4,9 +4,12 @@ use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 
 use pipeline_api::config::KybLimits;
+use pipeline_api::error::ApiError;
 use pipeline_api::routes::lp_bank_deposits::{
-    router, validate_record_bank_deposit, LpBankDepositsDoc, RecordBankDepositRequest,
+    deposit_insert_error, router, validate_record_bank_deposit, BankDepositResponse,
+    LpBankDepositsDoc, RecordBankDepositRequest,
 };
+use shared::lp_bank_deposit_repo::LpBankDepositRow;
 
 const LANDED: &str = "2026-10-05T15:41:00Z";
 const LANDED_IN_MOSCOW: &str = "2026-10-05T18:41:00+03:00";
@@ -15,6 +18,7 @@ fn valid_request() -> RecordBankDepositRequest {
     RecordBankDepositRequest {
         amount: "50000.00".to_owned(),
         payment_reference: "WIRE-REF-1".to_owned(),
+        payment_details: None,
         occurred_at: LANDED.to_owned(),
     }
 }
@@ -202,6 +206,122 @@ fn a_timestamp_that_is_not_iso8601_is_rejected() {
     }
 }
 
+// ── payment_details ──────────────────────────────────────────────────────────
+
+#[test]
+fn payment_details_absent_or_null_is_hand_attribution() {
+    let absent = validate_record_bank_deposit(&valid_request()).expect("should validate");
+    assert_eq!(absent.payment_details, None);
+
+    let body = serde_json::json!({
+        "amount": "1.00", "payment_reference": "R", "occurred_at": LANDED, "payment_details": null
+    });
+    let parsed: RecordBankDepositRequest = serde_json::from_value(body).expect("a request");
+    assert_eq!(parsed.payment_details, None);
+
+    let omitted =
+        serde_json::json!({"amount": "1.00", "payment_reference": "R", "occurred_at": LANDED});
+    let parsed: RecordBankDepositRequest = serde_json::from_value(omitted).expect("a request");
+    assert_eq!(parsed.payment_details, None);
+}
+
+#[test]
+fn payment_details_is_canonicalised_in_the_values() {
+    let request = RecordBankDepositRequest {
+        payment_details: Some(" pl 7k3m-q9tx h2cd ".to_owned()),
+        ..valid_request()
+    };
+    let values = validate_record_bank_deposit(&request).expect("should validate");
+    assert_eq!(values.payment_details.as_deref(), Some("PL-7K3M-Q9TX-H2CD"));
+}
+
+#[test]
+fn malformed_payment_details_is_a_400_message() {
+    let request = RecordBankDepositRequest {
+        payment_details: Some("not-a-reference".to_owned()),
+        ..valid_request()
+    };
+    let error = validate_record_bank_deposit(&request).expect_err("should not validate");
+    assert!(error.contains("payment_details"), "got {error}");
+}
+
+fn row(link: bool, chain_id: Option<i64>, receiver: Option<&str>) -> LpBankDepositRow {
+    let at = DateTime::parse_from_rfc3339("2026-11-09T10:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    LpBankDepositRow {
+        id: 1,
+        lp_id: 7,
+        amount: "1.00".parse().unwrap(),
+        payment_reference: "R".to_owned(),
+        ref_hash: vec![0; 32],
+        occurred_at: at,
+        is_minted: false,
+        recorded_by: "t".to_owned(),
+        created_at: at,
+        requested_bank_details_id: link.then_some(5),
+        matched_payment_details: link.then(|| "PL-7K3M-Q9TX-H2CD".to_owned()),
+        matched_chain_id: chain_id,
+        matched_receiver_address: receiver.map(str::to_owned),
+        matched_issued_at: link.then_some(at),
+    }
+}
+
+#[test]
+fn an_unlinked_row_serves_a_null_matched_reference() {
+    let json = serde_json::to_value(BankDepositResponse::from(row(false, None, None))).unwrap();
+    assert!(json["matched_reference"].is_null(), "got {json}");
+}
+
+#[test]
+fn a_linked_row_serves_the_four_keys() {
+    let json = serde_json::to_value(BankDepositResponse::from(row(
+        true,
+        Some(99_000_001),
+        Some("GABC"),
+    )))
+    .unwrap();
+    let m = &json["matched_reference"];
+    assert_eq!(m["payment_details"], "PL-7K3M-Q9TX-H2CD");
+    assert_eq!(m["chain_id"], 99_000_001);
+    assert_eq!(m["receiver_address"], "GABC");
+    assert_eq!(m["issued_at"], "2026-11-09T10:00:00Z");
+}
+
+#[test]
+fn a_legacy_linked_row_serves_null_chain_and_receiver() {
+    let json = serde_json::to_value(BankDepositResponse::from(row(true, None, None))).unwrap();
+    let m = &json["matched_reference"];
+    assert!(
+        m["chain_id"].is_null() && m["receiver_address"].is_null(),
+        "got {m}"
+    );
+    assert_eq!(m["payment_details"], "PL-7K3M-Q9TX-H2CD");
+}
+
+#[test]
+fn openapi_documents_the_matching_surface() {
+    let doc = openapi_json();
+    let request = &doc["components"]["schemas"]["RecordBankDepositRequest"];
+    assert!(request["properties"].get("payment_details").is_some());
+    assert!(!request["required"].to_string().contains("payment_details"));
+    let response = &doc["components"]["schemas"]["BankDepositResponse"]["properties"];
+    assert!(response.get("matched_reference").is_some());
+    assert!(doc["components"]["schemas"]
+        .get("MatchedReference")
+        .is_some());
+
+    let lps =
+        serde_json::to_value(<pipeline_api::routes::lps::LpsDoc as utoipa::OpenApi>::openapi())
+            .unwrap();
+    let get = &lps["paths"]["/v1/lps"]["get"];
+    assert!(
+        get["parameters"].to_string().contains("payment_details"),
+        "got {get}"
+    );
+    assert!(get["responses"].get("400").is_some());
+}
+
 // ── OpenAPI document ─────────────────────────────────────────────────────────
 
 fn openapi_json() -> serde_json::Value {
@@ -278,7 +398,7 @@ fn the_deposit_body_is_json_and_carries_no_lp_id() {
 fn recording_a_deposit_answers_created_and_documents_its_refusals() {
     let doc = openapi_json();
     let responses = &doc["paths"][PATH]["post"]["responses"];
-    for status in ["201", "400", "401", "403", "404", "409"] {
+    for status in ["201", "400", "401", "403", "404", "409", "422"] {
         assert!(
             responses.get(status).is_some(),
             "POST must document {status}, got {responses}"
@@ -323,4 +443,82 @@ fn the_deposit_routes_merge_under_v1_beside_the_lp_routes() {
         .nest("/v1", pipeline_api::routes::lps::router(limits))
         .nest("/v1", pipeline_api::routes::lp_ledger::router())
         .nest("/v1", router());
+}
+
+#[test]
+fn blank_payment_details_counts_as_omitted() {
+    for blank in ["", "   ", "\t\n"] {
+        let request = RecordBankDepositRequest {
+            payment_details: Some(blank.to_owned()),
+            ..valid_request()
+        };
+        let values = validate_record_bank_deposit(&request).expect("blank is absent");
+        assert_eq!(values.payment_details, None, "{blank:?}");
+    }
+}
+
+#[test]
+fn malformed_non_blank_payment_details_is_still_rejected() {
+    let request = RecordBankDepositRequest {
+        payment_details: Some("nope".to_owned()),
+        ..valid_request()
+    };
+    let error = validate_record_bank_deposit(&request).expect_err("should not validate");
+    assert!(error.contains("payment_details"), "got {error}");
+}
+
+// ── deposit_insert_error ─────────────────────────────────────────────────────
+
+#[derive(Debug)]
+struct FakeDbError(&'static str);
+
+impl std::fmt::Display for FakeDbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "fake db error {}", self.0)
+    }
+}
+
+impl std::error::Error for FakeDbError {}
+
+impl sqlx::error::DatabaseError for FakeDbError {
+    fn message(&self) -> &'static str {
+        "fake"
+    }
+    fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+        Some(std::borrow::Cow::Borrowed(self.0))
+    }
+    fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+    fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+    fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+        self
+    }
+    fn kind(&self) -> sqlx::error::ErrorKind {
+        sqlx::error::ErrorKind::Other
+    }
+}
+
+fn db_error(code: &'static str) -> sqlx::Error {
+    sqlx::Error::Database(Box::new(FakeDbError(code)))
+}
+
+#[test]
+fn a_unique_violation_maps_to_409() {
+    let got = deposit_insert_error(db_error("23505"), "WIRE-REF-1");
+    assert!(matches!(got, ApiError::Conflict(m) if m.contains("WIRE-REF-1")));
+}
+
+#[test]
+fn a_foreign_key_violation_maps_to_422() {
+    let got = deposit_insert_error(db_error("23503"), "WIRE-REF-1");
+    assert!(matches!(got, ApiError::UnprocessableEntity(_)));
+}
+
+#[test]
+fn any_other_database_error_stays_internal() {
+    let got = deposit_insert_error(db_error("40001"), "WIRE-REF-1");
+    assert!(matches!(got, ApiError::Internal(_)));
 }

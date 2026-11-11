@@ -68,13 +68,13 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 use uuid::Uuid;
 
 use shared::bank_account::{
@@ -93,6 +93,7 @@ use crate::config::KybLimits;
 use crate::error::ApiError;
 use crate::formatting::{iso_utc, pending_bank_deposits_field};
 use crate::routes::common::require_trustee;
+use crate::routes::lp_bank_deposits::lp_id_for_payment_details;
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -536,11 +537,21 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
 
 // ── Handlers: trustee ────────────────────────────────────────────────────────
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct LpsQuery {
+    /// Wire matching: return only the LP the issued `PL-…` reference belongs to
+    /// (`lps: []` when it was never issued). Case, hyphens and whitespace are ignored; a blank
+    /// value is treated as absent and returns every LP.
+    pub payment_details: Option<String>,
+}
+
 #[utoipa::path(
     get,
     path = "/v1/lps",
+    params(LpsQuery),
     responses(
-        (status = 200, description = "All registered LPs, newest first", body = LpsResponse),
+        (status = 200, description = "All registered LPs, newest first; with a non-blank `payment_details`, only the LP that reference was issued to", body = LpsResponse),
+        (status = 400, description = "Malformed `payment_details`"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
     ),
@@ -550,9 +561,22 @@ pub fn router(limits: KybLimits) -> Router<Arc<AppState>> {
 async fn list_lps(
     AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
+    Query(query): Query<LpsQuery>,
 ) -> Result<Json<LpsResponse>, ApiError> {
     require_trustee(&claims)?;
-    let lps = state.lp_repo.list().await?;
+    let lps = match query
+        .payment_details
+        .as_deref()
+        .filter(|raw| !raw.trim().is_empty())
+    {
+        None => state.lp_repo.list().await?,
+        Some(raw) => {
+            match lp_id_for_payment_details(&state.lp_requested_bank_details_repo, raw).await? {
+                None => Vec::new(),
+                Some(lp_id) => state.lp_repo.find(lp_id).await?.into_iter().collect(),
+            }
+        }
+    };
     Ok(Json(LpsResponse {
         lps: lps.into_iter().map(LpSummary::from).collect(),
     }))

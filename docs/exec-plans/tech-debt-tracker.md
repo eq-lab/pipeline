@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-183.**
+**Next free number: TD-184.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -659,6 +659,11 @@ line, whichever section it lands in.
   sub-line, and wire a submission-review route (separate Type-1 sub-issue of epic #775) to make
   the trustee's Review button live.
 
+  **Addendum (issue #1805):** the API's `draw_loan` block (`DrawLoanArgs` / `DrawLoanEconomics`,
+  `loan_book.rs`) is now hand-mirrored in three places: the API Rust types, the trustee
+  `useLoanSubmissions.ts` (nullable fields) and the wallet-connect `DrawLoanArgs` (non-null
+  variant, validated at encode time).
+
 ### TD-43: `draw_loan` mint↔review reconciliation has no backend fallback; `SubmitLoanRequest` gains a third hand-mirrored copy
 
 - **Date:** 2026-07-10
@@ -1257,6 +1262,7 @@ line, whichever section it lands in.
   nullable `lp_id` on `lp_bank_deposits`), with a `GET` for the queue and a `POST .../match` that moves a
   row into `lp_bank_deposits` and appends the paired `lp_ledger` row — reusing
   `LpBankDepositRepo::insert` + `LpLedgerRepo::insert_deposit`'s shared-transaction shape.
+- **Update (#1839):** an unattributable wire now goes to on-chain escrow (#1763), and `GET /v1/lps?payment_details=` plus the optional `payment_details` on the record route cover attributable ones.
 
 ### TD-101: Create-account password policy is derived from Figma copy only, no backend counterpart [RESOLVED 2026-10-19 / #1579]
 
@@ -2260,6 +2266,7 @@ line, whichever section it lands in.
 - **Gap:** A bank deposit is not linked to the `lp_requested_bank_details` row (`chain_id`, `receiver_address`) its wire was paid against, and no Trustee endpoint serves that table. The Trustee therefore mints on its signed-in chain (#1826) and cannot show the receiver the LP was given.
 - **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
 - **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
+- **Update (#1839):** the deposit now serves `matched_reference` (`chain_id`, `receiver_address`); the console default and receiver display are still open.
 
 ### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
 
@@ -2408,3 +2415,10 @@ line, whichever section it lands in.
 - **Gap:** The account number and IBAN are stored as plaintext JSONB, like `legal_name` and `contact_email`. Changes are not recorded, and Trustee reads of the full account (`GET /v1/lps/{id}`, `GET /v1/cash-book`) are not logged. The account freezes with the KYB record, so once KYB is `Passed` nothing in the API can change it, and LPs that passed before this feature have none. Both gaps are closed by ops SQL.
 - **Impact:** A database or backup leak exposes every LP's bank account. A change to the account, or a Trustee read of it, leaves no record. A `Passed` LP that wants a different or a first account needs an ops request.
 - **Suggested fix:** Encrypt the account number and IBAN at the application level, add an append-only `lp_settlement_bank_account_history` and a Trustee read log, and add a trustee-only write (or a `Passed` to `ChangesRequested` transition) for changes after `Passed`.
+
+### TD-183: Update lifecycle reads `mutable_loan_data` on-chain for the current `metadata_uri`
+- **Date:** 2026-11-11
+- **Location:** `packages/trustee/src/api/useUpdateLifecycle.ts` (`useLoanMutableState`), `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts` (`readLoanChainState`), `packages/api/src/routes/loan_book.rs:396` — Issue #1893.
+- **Gap:** `GET /v1/loan-book` does not serve the loan's current `metadata_uri` (only the submission's `draw_loan` URI, which `update_mutable` can replace) and serves `onchain_status` from the indexer, which can lag.
+- **Impact:** The Update lifecycle dialog needs an RPC read of `mutable_loan_data` on every open, and the page holds two status sources that can briefly differ.
+- **Suggested fix:** Serve `metadata_uri` on `LoanBookEntry`, then drop the read.

@@ -35,9 +35,13 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 const mockUseLoanDetail = vi.fn<() => UseLoanDetailResult>();
-vi.mock("./-useLoanDetail", () => ({
-  useLoanDetail: () => mockUseLoanDetail(),
-}));
+vi.mock("./-useLoanDetail", async () => {
+  const actual =
+    await vi.importActual<typeof import("./-useLoanDetail")>(
+      "./-useLoanDetail",
+    );
+  return { ...actual, useLoanDetail: () => mockUseLoanDetail() };
+});
 
 // The page calls `useCompleteDisbursement` (a mutation) unconditionally; mock it
 // so the render tests need no QueryClientProvider. Mutable fields are set per test.
@@ -82,8 +86,16 @@ const { mockUpdateLifecycle } = vi.hoisted(() => ({
     stage: null,
   },
 }));
+const { mockMutableState } = vi.hoisted(() => ({
+  mockMutableState: {
+    data: undefined as { status: string; metadataUri: string } | undefined,
+    isLoading: false,
+    error: null as Error | null,
+  },
+}));
 vi.mock("@/api/useUpdateLifecycle", () => ({
   useUpdateLifecycle: () => mockUpdateLifecycle,
+  useLoanMutableState: () => mockMutableState,
 }));
 
 const { mockRecoveryCard } = vi.hoisted(() => ({
@@ -141,7 +153,6 @@ function makeResult(
     errorMessage: null,
     errorDetails: null,
     variant: "performing",
-    lifecycleStatus: "Performing",
     ccrTrend: null,
     rollover: null,
     maturityDate: "30 Jun 2026",
@@ -237,6 +248,9 @@ function makeResult(
 }
 
 beforeEach(() => {
+  mockMutableState.data = { status: "Performing", metadataUri: "ipfs://cur" };
+  mockMutableState.isLoading = false;
+  mockMutableState.error = null;
   mockUseLoanDetail.mockReset();
   mockUseLoanDetail.mockReturnValue(makeResult());
   mockComplete.mutate = vi.fn();
@@ -856,16 +870,33 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
   });
 });
 
+function openUpdateDialog() {
+  mockUseLoanDetail.mockReturnValue(makeResult());
+  renderRoute();
+  fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+}
+
+function statusOptions() {
+  return within(screen.getByTestId("update-lifecycle-status"))
+    .queryAllByRole("option")
+    .map((o) => (o as HTMLOptionElement).value);
+}
+
 describe("Loan detail route — Update lifecycle (#872)", () => {
-  it("opens the update-lifecycle modal from the Update lifecycle action", () => {
-    mockUseLoanDetail.mockReturnValue(makeResult());
-    renderRoute();
-    expect(
-      screen.queryByTestId("update-lifecycle-dialog"),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+  it("opens the modal with no CCR or location inputs and the on-chain values prefilled", () => {
+    openUpdateDialog();
     expect(screen.getByTestId("update-lifecycle-dialog")).toBeInTheDocument();
-    // Submit is disabled until CCR + location are entered.
+    for (const id of ["ccr", "location", "location-type", "tracking"]) {
+      expect(
+        screen.queryByTestId(`update-lifecycle-${id}`),
+      ).not.toBeInTheDocument();
+    }
+    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
+      "Performing",
+    );
+    expect(screen.getByTestId("update-lifecycle-metadata")).toHaveValue(
+      "ipfs://cur",
+    );
     expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
   });
 
@@ -886,113 +917,88 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
     );
   });
 
-  it("submits update_mutable with status + CCR% + location + metadataURI", () => {
-    mockUseLoanDetail.mockReturnValue(makeResult());
-    renderRoute();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+  it("moves Performing to WatchList and keeps the stored metadata URI", () => {
+    openUpdateDialog();
     fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
       target: { value: "WatchList" },
     });
-    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
-      target: { value: "135" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location-type"), {
-      target: { value: "Vessel" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "MV Andes · IMO 9741205" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-tracking"), {
-      target: { value: "https://track.example/9741205" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
-      target: { value: "ipfs://assay" },
-    });
     fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
-    // Location is submitted as the on-chain `LocationUpdate` struct (not a bare
-    // string — a string traps the contract; issue #872).
     expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       status: "WatchList",
-      ccrPercent: 135,
-      location: {
-        location_type: "Vessel",
-        location_identifier: "MV Andes · IMO 9741205",
-        tracking_url: "https://track.example/9741205",
-        updated_at: expect.any(Number),
-      },
-      metadataUri: "ipfs://assay",
+      metadataUri: "ipfs://cur",
     });
   });
 
-  it.each([
-    ["matured", "Matured"],
-    ["disbursing", "Disbursing"],
-  ] as const)(
-    "preselects WatchList on a %s loan that is WatchList on chain (#1621)",
-    (variant, chip) => {
-      mockUseLoanDetail.mockReturnValue(
-        makeResult({
-          variant,
-          lifecycleStatus: "WatchList",
-          hero: { ...makeResult().hero, status: { label: chip, band: "info" } },
-        }),
-      );
-      renderRoute();
-      fireEvent.click(
-        screen.getByTestId("loan-detail-action-Update lifecycle"),
-      );
-      expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
-        "WatchList",
-      );
-    },
-  );
-
-  it("submits WatchList when only CCR and location are filled on a Matured WatchList loan (#1621)", () => {
-    mockUseLoanDetail.mockReturnValue(
-      makeResult({
-        variant: "matured",
-        lifecycleStatus: "WatchList",
-        hero: {
-          ...makeResult().hero,
-          status: { label: "Matured", band: "attention" },
-        },
-      }),
+  it("offers Performing and WatchList on a WatchList loan, preselecting WatchList", () => {
+    mockMutableState.data = { status: "WatchList", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual(["Performing", "WatchList"]);
+    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue(
+      "WatchList",
     );
-    renderRoute();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
-    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
-      target: { value: "125" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "MV Andes" },
+  });
+
+  it("offers only Approved on an Approved loan and sends a metadata-only update", () => {
+    mockMutableState.data = { status: "Approved", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual(["Approved"]);
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
+      target: { value: "ipfs://new" },
     });
     fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
-    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "WatchList" }),
-    );
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      status: "Approved",
+      metadataUri: "ipfs://new",
+    });
   });
 
-  it("preselects nothing and blocks Confirm until a status is chosen when the on-chain status is unknown (#1621)", () => {
-    mockUseLoanDetail.mockReturnValue(makeResult({ lifecycleStatus: null }));
-    renderRoute();
-    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
-    expect(screen.getByTestId("update-lifecycle-status")).toHaveValue("");
-    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
-      target: { value: "125" },
-    });
-    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "MV Andes" },
-    });
+  it("offers only Default on a Default loan", () => {
+    mockMutableState.data = { status: "Default", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual(["Default"]);
+  });
+
+  it("shows the reason and blocks submit on a Closed loan", () => {
+    mockMutableState.data = { status: "Closed", metadataUri: "ipfs://cur" };
+    openUpdateDialog();
+    expect(statusOptions()).toEqual([""]);
+    expect(screen.getByTestId("update-lifecycle-no-targets")).toHaveTextContent(
+      "This loan's on-chain status does not allow a lifecycle update.",
+    );
     expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("blocks submit when a non-empty stored URI is cleared", () => {
+    openUpdateDialog();
     fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
-      target: { value: "Performing" },
+      target: { value: "WatchList" },
     });
     expect(screen.getByTestId("update-lifecycle-submit")).toBeEnabled();
-    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
-    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "Performing" }),
-    );
+    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
+      target: { value: "" },
+    });
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("blocks submit while the on-chain read is loading", () => {
+    mockMutableState.data = undefined;
+    mockMutableState.isLoading = true;
+    openUpdateDialog();
+    expect(screen.getByTestId("update-lifecycle-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("shows the read error and blocks submit when the on-chain read fails", () => {
+    mockMutableState.data = undefined;
+    mockMutableState.error = new Error("rpc down");
+    openUpdateDialog();
+    expect(
+      screen.getByTestId("update-lifecycle-read-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
   });
 });
 

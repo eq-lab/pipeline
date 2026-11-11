@@ -142,6 +142,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     requestChangesOpen: false,
     mintedLoanId: null,
     approveBlockedReason: null,
+    approveReviewOnlyNotice: null,
     ...overrides,
   });
 }
@@ -178,7 +179,9 @@ const READY_RESULT: OriginationDetailResult = {
     corridor: "Peru → China",
     governingLaw: "England & Wales",
     protection: "LC at sight",
-    location: "Warehouse — SGS bonded stockpile, Callao, Peru",
+    borrowerRef: "ab12cd…ab12",
+    borrowerRefFull:
+      "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
   statusKind: "in-review",
@@ -186,12 +189,12 @@ const READY_RESULT: OriginationDetailResult = {
   reviewedDate: "2 Jan",
   rejectionReason: "—",
   transactionPreview: {
-    keyword: "LoanRegistry.mintLoan",
+    keyword: "LoanRegistry.draw_loan",
     rows: [
       { label: "originator", value: "Auric Andes S.A.C." },
       { label: "economics", value: "{ facility $3,500,000 }" },
       { label: "metadataURI", value: "ipfs://auric-assay-offtake-hash" },
-      { label: "initialLocation", value: "MV Example" },
+      { label: "borrowerRef", value: "ab12cd…ab12" },
     ],
   },
 };
@@ -265,10 +268,12 @@ describe("Origination details route", () => {
     expect(dealDetails.textContent).toContain("England & Wales");
     expect(dealDetails.textContent).toContain("Protection");
     expect(dealDetails.textContent).toContain("LC at sight");
-    expect(dealDetails.textContent).toContain("Location");
-    // #1014: the location TYPE leads the value under the fixed "Location" label.
-    expect(dealDetails.textContent).toContain(
-      "Warehouse — SGS bonded stockpile, Callao, Peru",
+    expect(dealDetails.textContent).toContain("Borrower ref");
+    expect(dealDetails.textContent).toContain("ab12cd…ab12");
+    expect(dealDetails.textContent).not.toContain("Location");
+    expect(screen.getByText("ab12cd…ab12")).toHaveAttribute(
+      "title",
+      READY_RESULT.dealDetails.borrowerRefFull,
     );
     expect(dealDetails.textContent).toContain("Offtake agreement.pdf");
     // #1014: the two new rows sit directly after Governing law.
@@ -276,7 +281,7 @@ describe("Origination details route", () => {
       dealDetails.textContent!.indexOf("Protection"),
     );
     expect(dealDetails.textContent!.indexOf("Protection")).toBeLessThan(
-      dealDetails.textContent!.indexOf("Location"),
+      dealDetails.textContent!.indexOf("Borrower ref"),
     );
   });
 
@@ -454,6 +459,20 @@ describe("Origination details route", () => {
       const link = screen.getByTestId("origination-detail-view-loan-link");
       expect(link).toHaveTextContent("View loan #4488");
       expect(link).toHaveAttribute("href", "/loans/4488");
+    });
+
+    it("Approved: the 'View loan' link renders for loan id 0 (#1896)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      mockReview({ mintedLoanId: 0 });
+      renderRoute();
+      const link = screen.getByTestId("origination-detail-view-loan-link");
+      expect(link).toHaveTextContent("View loan #0");
+      expect(link).toHaveAttribute("href", "/loans/0");
     });
 
     it("Approved: hosts the Register debt token action only when the drawn loan id is known (#1766)", () => {
@@ -784,7 +803,7 @@ describe("Origination details route", () => {
       const preview = screen.getByTestId("approve-mint-preview");
       expect(preview).toHaveTextContent("Auric Andes S.A.C.");
       expect(preview).toHaveTextContent("ipfs://auric-assay-offtake-hash");
-      expect(preview).toHaveTextContent("MV Example");
+      expect(preview).toHaveTextContent("ab12cd…ab12");
     });
 
     it("Cancel in the approve dialog calls review.cancelApprove()", () => {
@@ -874,5 +893,31 @@ describe("Origination detail — Approve gate for non-Stellar targets (#1536)", 
     expect(
       screen.getByTestId("origination-detail-request-changes"),
     ).not.toBeDisabled();
+  });
+});
+
+describe("Origination detail — Approve gate for missing draw inputs (#1805)", () => {
+  it("missing data_room_id: Approve disabled with the data-room reason, Borrower ref shows the missing copy", () => {
+    mockDetail({
+      ...READY_RESULT,
+      dealDetails: {
+        ...READY_RESULT.dealDetails,
+        borrowerRef: "Data room ID missing",
+        borrowerRefFull: null,
+      },
+    });
+    mockReview({
+      approveBlockedReason:
+        "Data room ID missing — this submission can't be drawn on-chain. Request changes so it is resubmitted with a data room ID, or reject it.",
+    });
+    renderRoute();
+
+    expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
+    expect(
+      screen.getByTestId("origination-detail-approve-blocked"),
+    ).toHaveTextContent("Data room ID missing");
+    expect(
+      screen.getByTestId("origination-detail-deal-details"),
+    ).toHaveTextContent("Data room ID missing");
   });
 });

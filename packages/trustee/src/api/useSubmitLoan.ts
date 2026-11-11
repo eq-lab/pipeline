@@ -5,6 +5,7 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import type { ServedDrawLoanArgs } from "./useLoanSubmissions";
 
 export interface EconomicsInput {
   original_facility_size: string;
@@ -14,13 +15,6 @@ export interface EconomicsInput {
   senior_interest_rate_bps: number;
   origination_date: number;
   original_maturity_date: number;
-}
-
-export interface LocationInput {
-  location_type: string;
-  location_identifier: string;
-  tracking_url: string;
-  updated_at: number;
 }
 
 export interface CollateralValuationInput {
@@ -43,8 +37,8 @@ export interface LoanDocumentInput {
 }
 
 export interface SubmitLoanInput {
-  to: string;
   metadata_uri: string;
+  data_room_id: string;
   originator: string;
   borrower_id: string;
   commodity: string;
@@ -54,14 +48,13 @@ export interface SubmitLoanInput {
   secondary_metadata_uri?: string;
   documents: LoanDocumentInput[];
   economics: EconomicsInput;
-  initial_ccr: number;
-  initial_location: LocationInput;
   collateral_valuation: CollateralValuationInput;
   fee_schedule: FeeScheduleInput;
 }
 
 export interface SubmitLoanResponse {
   id: number;
+  draw_loan?: ServedDrawLoanArgs | null;
 }
 
 export interface SubmitLoanVariables {

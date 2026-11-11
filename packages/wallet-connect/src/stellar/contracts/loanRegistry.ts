@@ -1,69 +1,4 @@
-/**
- * Soroban client for the trustee's `draw_loan` on-chain mint (issue #831).
- *
- * On Approve, the trustee wallet — NOT a backend relayer key — signs and
- * submits `execute(target, "draw_loan", args, caller)` on the executor /
- * access-control contract, registering the approved loan on-chain. Reached
- * via an executor/proxy pattern (not `draw_loan` directly):
- *
- *   executor.execute(target: Address, function: Symbol, args: Vec<Val>, caller: Address)
- *
- * where `target` is the loan-registry contract, `function` is the symbol
- * `"draw_loan"`, `args` are the five positional `draw_loan` arguments encoded
- * below, and `caller` is the connected trustee address (== the transaction's
- * source account, so a single source-account signature satisfies the
- * contract's `caller.require_auth()` — confirmed, issue #831 Open Question
- * 1 — no separate Soroban auth entry to assemble).
- *
- * Lives in `@pipeline/wallet-connect` (not the trustee app) per the #831
- * planner's architecture decision: the trustee app's ESLint config forbids
- * importing `@stellar/stellar-sdk` anywhere (TD-33/#791, no `src/wallet/**`
- * carve-out). This package already bundles the SDK and is the sanctioned
- * on-chain home; `drawLoan` is exposed as a **plain async function**
- * (mirroring `../sacBalance.ts`'s `getSacBalance`) — NOT a hook, since
- * `@tanstack/react-query` is forbidden outside `src/evm/**` in this package's
- * own ESLint config. The trustee wraps it in a thin `useMutation` hook
- * (`packages/trustee/src/api/useDrawLoan.ts`) that injects
- * `useStellarWallet().signTransaction`.
- *
- * ## Encoding (issue #831 Open Question 3, resolved against the contract)
- *
- * `loan_data` (the API's `SubmitLoanRequest`) → `draw_loan`'s 5 positional
- * args:
- *   [0] `address`  `to`
- *   [1] `string`   `metadata_uri`
- *   [2] `map`      economics (see `encodeEconomicsMap`)
- *   [3] `u32`      `initial_ccr` (already 1e6-scaled — pass through)
- *   [4] `map`      location (see `encodeLocationMap`)
- *
- * Economics map (Soroban requires map keys in sorted order — see `scMap`):
- *   - `original_facility_size` / `original_senior_tranche` /
- *     `original_equity_tranche` / `original_offtaker_price`: human-unit USDC
- *     decimal strings (e.g. `"1200000.000000"` = $1,200,000), converted to the
- *     contract's 7-decimal base units exactly — `12_000_000_000_000` — by
- *     `parseUsdcToU128`; a string with more fractional digits than the scale
- *     holds is rejected, never truncated (#1620, supersedes the #912 reading).
- *   - `senior_interest_rate_bps` (bps) → contract `senior_interest_rate`
- *     `u32` = `bps × 100` (1000 bps → `100000`).
- *   - `origination_date`, `original_maturity_date`: `u64` pass-through (Unix
- *     seconds).
- *
- * Location map:
- *   - `location_type` (`Vessel | Warehouse | TankFarm | Other`) → the
- *     contract's unit-variant enum, encoded as `{vec:[{symbol:<type>}]}`.
- *   - `location_identifier`, `tracking_url`: `string` pass-through.
- *   - `updated_at`: `u64` pass-through (Unix seconds).
- *
- * `simulateTransaction` (inside `buildDrawLoanEnvelope`) IS the "verify the
- * loan" step referenced in the issue — a bad encoding surfaces as a decode
- * error there, before any wallet signature is requested.
- *
- * Testnet contract ids (per #831): executor
- * `CAGCWDZYWDN6USS3YY7BA2FGRCLOPGHBTSPJ6VRSPAJSMGFPONFIAREF`, loan registry
- * `CDYKALTKVDLXALYAYIOTAWGTI3U7XZAUUXSYYM6QFXMCVTKV7PLD5UFH`. Injected by the
- * caller (trustee `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID` /
- * `ENV.STELLAR_LOAN_REGISTRY_ID`) — not hardcoded here.
- */
+// spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831
 import {
   Contract,
   TransactionBuilder,
@@ -77,27 +12,22 @@ import {
 } from "@stellar/stellar-sdk";
 import { simulateRead } from "./simulateRead";
 
-// ── Types (self-contained port of the API's SubmitLoanRequest — see
-//    `packages/trustee/src/api/useLoanSubmissions.ts` /
-//    `packages/api/src/routes/loan_book.rs`. Duplicated deliberately: this
-//    package must not import from either app. See TD-42.) ──────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-/** Mirrors the contract's `ImmutableLoanData` / the API's `EconomicsInput`. */
-export interface EconomicsInput {
-  /** Total facility size — exact contract base-unit (7-decimal) string. */
+export interface DrawLoanEconomics {
+  borrower_ref: string;
   original_facility_size: string;
-  /** Senior tranche — exact contract base-unit (7-decimal) string. */
   original_senior_tranche: string;
-  /** Equity tranche — exact contract base-unit (7-decimal) string. */
   original_equity_tranche: string;
-  /** Offtaker price — exact contract base-unit (7-decimal) string. */
   original_offtaker_price: string;
-  /** Senior interest rate in basis points. */
-  senior_interest_rate_bps: number;
-  /** Origination timestamp (Unix seconds). */
+  senior_interest_rate: number;
   origination_date: number;
-  /** Original maturity timestamp (Unix seconds). */
   original_maturity_date: number;
+}
+
+export interface DrawLoanArgs {
+  metadata_uri: string;
+  economics: DrawLoanEconomics;
 }
 
 /** Mirrors the contract's `LocationUpdate` / the API's `LocationInput`. */
@@ -110,17 +40,6 @@ export interface LocationInput {
   updated_at: number;
 }
 
-/** The subset of the API's `SubmitLoanRequest` that `draw_loan` consumes. */
-export interface SubmitLoanRequest {
-  /** Address the soulbound loan token is minted to. */
-  to: string;
-  metadata_uri: string;
-  economics: EconomicsInput;
-  /** Initial collateral-coverage ratio (1e6-scaled; `>= 1_000_000`). */
-  initial_ccr: number;
-  initial_location: LocationInput;
-}
-
 /** Progress stages surfaced during `drawLoan` for Approve-button UX (issue #831 Open Question 5). */
 export type DrawLoanStage = "awaiting-signature" | "submitting" | "confirming";
 
@@ -131,7 +50,7 @@ export interface DrawLoanParams {
   targetId: string;
   /** Connected trustee wallet address — both `caller` and the tx source account. */
   caller: string;
-  loanData: SubmitLoanRequest;
+  args: DrawLoanArgs;
   /** Soroban RPC URL. */
   rpcUrl: string;
   networkPassphrase: string;
@@ -183,95 +102,127 @@ function u64(value: number | bigint): xdr.ScVal {
   return nativeToScVal(BigInt(value), { type: "u64" });
 }
 
-export const STELLAR_USDC_DECIMALS = 7;
+const U128_MAX = 2n ** 128n - 1n;
+const U32_MAX = 4_294_967_295;
 
-/**
- * Parses a human-unit USDC decimal string (e.g. `"1200000.000000"`) to the
- * exact on-chain `u128` base-unit value at `decimals` (7 on Stellar SAC):
- * `"1200000.000000"` → `12_000_000_000_000n`, `"100.5"` → `1_005_000_000n`.
- *
- * @throws if the string is not a well-formed non-negative decimal, or carries
- *   more fractional digits than `decimals` can represent (never truncated).
- */
-export function parseUsdcToU128(
-  decimalStr: string,
-  decimals: number = STELLAR_USDC_DECIMALS,
-): bigint {
-  const match = /^(\d+)(?:\.(\d*))?$/.exec(decimalStr.trim());
-  if (!match) {
-    throw new Error(`parseUsdcToU128: invalid decimal string "${decimalStr}"`);
-  }
-  const [, intPart = "0", fracPart = ""] = match;
-  if (fracPart.length > decimals && /[1-9]/.test(fracPart.slice(decimals))) {
-    throw new Error(
-      `parseUsdcToU128: "${decimalStr}" has more than ${decimals} fractional digits`,
-    );
-  }
-  const frac = fracPart.slice(0, decimals).padEnd(decimals, "0");
-  return BigInt(intPart) * 10n ** BigInt(decimals) + BigInt(frac);
+function invalidInput(field: string, hint = ""): Error {
+  return new Error(`drawLoan: invalid draw_loan input ${field}${hint}`);
 }
 
-/**
- * Encodes the `economics` positional arg (`draw_loan` arg index 2). Map keys
- * sorted lexicographically per `scMap`.
- */
-function encodeEconomicsMap(economics: EconomicsInput): xdr.ScVal {
+function hexToBytes32(hex: unknown): Uint8Array {
+  if (typeof hex !== "string" || !/^[0-9a-fA-F]{64}$/.test(hex)) {
+    throw invalidInput(
+      "economics.borrower_ref",
+      " (expected 32 bytes as 64 hex characters)",
+    );
+  }
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function parseAmount(value: unknown, field: string): bigint {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw invalidInput(
+      `economics.${field}`,
+      " (expected a base-unit integer string)",
+    );
+  }
+  const n = BigInt(value);
+  if (n > U128_MAX) {
+    throw invalidInput(`economics.${field}`, " (exceeds u128)");
+  }
+  return n;
+}
+
+function parseDate(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw invalidInput(`economics.${field}`, " (expected unix seconds)");
+  }
+  return value;
+}
+
+function parseRate(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > U32_MAX
+  ) {
+    throw invalidInput("economics.senior_interest_rate", " (expected a u32)");
+  }
+  return value;
+}
+
+function encodeEconomicsMap(economics: DrawLoanEconomics): xdr.ScVal {
+  if (!economics || typeof economics !== "object") {
+    throw invalidInput("economics");
+  }
+  const borrowerRef = hexToBytes32(economics.borrower_ref);
   return scMap([
+    ["borrower_ref", nativeToScVal(borrowerRef, { type: "bytes" })],
     [
       "original_equity_tranche",
-      u128(parseUsdcToU128(economics.original_equity_tranche)),
+      u128(
+        parseAmount(
+          economics.original_equity_tranche,
+          "original_equity_tranche",
+        ),
+      ),
     ],
     [
       "original_facility_size",
-      u128(parseUsdcToU128(economics.original_facility_size)),
+      u128(
+        parseAmount(economics.original_facility_size, "original_facility_size"),
+      ),
     ],
-    ["original_maturity_date", u64(economics.original_maturity_date)],
+    [
+      "original_maturity_date",
+      u64(
+        parseDate(economics.original_maturity_date, "original_maturity_date"),
+      ),
+    ],
     [
       "original_offtaker_price",
-      u128(parseUsdcToU128(economics.original_offtaker_price)),
+      u128(
+        parseAmount(
+          economics.original_offtaker_price,
+          "original_offtaker_price",
+        ),
+      ),
     ],
     [
       "original_senior_tranche",
-      u128(parseUsdcToU128(economics.original_senior_tranche)),
+      u128(
+        parseAmount(
+          economics.original_senior_tranche,
+          "original_senior_tranche",
+        ),
+      ),
     ],
-    ["origination_date", u64(economics.origination_date)],
+    [
+      "origination_date",
+      u64(parseDate(economics.origination_date, "origination_date")),
+    ],
     [
       "senior_interest_rate",
-      xdr.ScVal.scvU32(economics.senior_interest_rate_bps * 100),
+      xdr.ScVal.scvU32(parseRate(economics.senior_interest_rate)),
     ],
   ]);
 }
 
-/**
- * Encodes the `location` positional arg (`draw_loan` arg index 4). Map keys
- * sorted lexicographically per `scMap`. `location_type` is encoded as the
- * contract's unit-variant enum shape (`{vec:[{symbol:<type>}]}`), NOT a
- * plain string.
- */
-function encodeLocationMap(location: LocationInput): xdr.ScVal {
-  return scMap([
-    ["location_identifier", xdr.ScVal.scvString(location.location_identifier)],
-    [
-      "location_type",
-      xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(location.location_type)]),
-    ],
-    ["tracking_url", xdr.ScVal.scvString(location.tracking_url)],
-    ["updated_at", u64(location.updated_at)],
-  ]);
-}
-
-/**
- * Pure function — encodes `loan_data` into `draw_loan`'s 5 positional
- * `xdr.ScVal`s (see the module doc's Encoding section). Exported for direct
- * unit testing of the transform matrix.
- */
-export function encodeDrawLoanArgs(loanData: SubmitLoanRequest): xdr.ScVal[] {
+export function encodeDrawLoanArgs(args: DrawLoanArgs): xdr.ScVal[] {
+  if (
+    typeof args?.metadata_uri !== "string" ||
+    args.metadata_uri.trim() === ""
+  ) {
+    throw invalidInput("metadata_uri");
+  }
   return [
-    new Address(loanData.to).toScVal(),
-    xdr.ScVal.scvString(loanData.metadata_uri),
-    encodeEconomicsMap(loanData.economics),
-    xdr.ScVal.scvU32(loanData.initial_ccr),
-    encodeLocationMap(loanData.initial_location),
+    xdr.ScVal.scvString(args.metadata_uri),
+    encodeEconomicsMap(args.economics),
   ];
 }
 
@@ -281,7 +232,7 @@ export interface BuildDrawLoanEnvelopeParams {
   executorId: string;
   targetId: string;
   caller: string;
-  loanData: SubmitLoanRequest;
+  args: DrawLoanArgs;
   rpcUrl: string;
   networkPassphrase: string;
 }
@@ -300,7 +251,7 @@ export async function buildDrawLoanEnvelope({
   executorId,
   targetId,
   caller,
-  loanData,
+  args,
   rpcUrl,
   networkPassphrase,
 }: BuildDrawLoanEnvelopeParams): Promise<string> {
@@ -314,6 +265,8 @@ export async function buildDrawLoanEnvelope({
     throw new Error("buildDrawLoanEnvelope: caller must not be empty");
   }
 
+  const encodedArgs = encodeDrawLoanArgs(args);
+
   const contract = new Contract(executorId);
   const server = new SorobanRpc.Server(rpcUrl, {
     allowHttp: rpcUrl.startsWith("http://"),
@@ -325,7 +278,7 @@ export async function buildDrawLoanEnvelope({
     "execute",
     new Address(targetId).toScVal(),
     xdr.ScVal.scvSymbol("draw_loan"),
-    xdr.ScVal.scvVec(encodeDrawLoanArgs(loanData)),
+    xdr.ScVal.scvVec(encodedArgs),
     new Address(caller).toScVal(),
   );
 
@@ -347,10 +300,6 @@ export async function buildDrawLoanEnvelope({
   return assembled.toXDR();
 }
 
-/**
- * Coerces a `scValToNative` result (bigint | number | anything) to a positive
- * integer loan id, or `null` when it isn't one.
- */
 function toLoanId(native: unknown): number | null {
   const n =
     typeof native === "bigint"
@@ -358,7 +307,7 @@ function toLoanId(native: unknown): number | null {
       : typeof native === "number"
         ? native
         : NaN;
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffffff ? n : null;
 }
 
 /**
@@ -419,7 +368,7 @@ export async function drawLoan({
   executorId,
   targetId,
   caller,
-  loanData,
+  args,
   rpcUrl,
   networkPassphrase,
   signTransaction,
@@ -431,7 +380,7 @@ export async function drawLoan({
     executorId,
     targetId,
     caller,
-    loanData,
+    args,
     rpcUrl,
     networkPassphrase,
   });
@@ -674,31 +623,6 @@ export async function rollover({
 
 // ── Update lifecycle (issue #872) ─────────────────────────────────────────────
 
-/**
- * Soroban client for the trustee's `update_mutable` on-chain call (issue #872) —
- * `LoanRegistry.updateMutable`, through the same executor proxy as `draw_loan`:
- *
- *   executor.execute(target, function: Symbol("update_mutable"), args, caller)
- *
- * Non-economic fields only, no NAV impact. On success the contract emits some of
- * `status_updated { new_status: LoanStatus }`, `ccr_updated { new_ccr: u32 }`,
- * `location_updated { new_location: String }` (the fields that changed).
- *
- * ⚠️ The method name + positional arg order (`loan_id`, `status`, `ccr`,
- * `location`, `metadata_uri`) are inferred from the event/state shape and MUST be
- * confirmed on testnet — see #870's rollover trap for why. The verifying
- * `simulateTransaction` fails loudly on a wrong encoding before any signature.
- *
- * Encodings (verified from the indexer/reader):
- *   - `status` — a `LoanStatus` unit-variant enum: `ScVal::Vec([Symbol(variant)])`
- *     (same as `draw_loan`'s `location_type`). On-chain variants: `Performing`,
- *     `WatchList`, `Default`, `Closed`.
- *   - `ccr` — `ONE = 1_000_000` fixed-point (100% = 1_000_000), i.e. percent ×
- *     10_000 (135% → 1_350_000); the indexer reads it back with `/100` → bps.
- *   - `location` — a plain `String` (the event's `new_location` is a String, not
- *     a map — matches the single Location field in the S10 form).
- *   - `metadataUri` — `String`; pass "" when blank.
- */
 export type UpdateMutableStage = DrawLoanStage;
 
 export interface UpdateMutableParams {
@@ -706,13 +630,7 @@ export interface UpdateMutableParams {
   targetId: string;
   caller: string;
   loanId: number;
-  /** On-chain `LoanStatus` variant: `Performing` | `WatchList` | `Default` | `Closed`. */
   status: string;
-  /** New CCR as a percent (e.g. `135` for 135%); scaled to `ONE = 1e6` on encode. */
-  ccrPercent: number;
-  /** New collateral location — the `LocationUpdate` struct (not a bare string). */
-  location: LocationInput;
-  /** Optional metadata URI (assay / offtake hash); pass "" when blank. */
   metadataUri: string;
   rpcUrl: string;
   networkPassphrase: string;
@@ -727,35 +645,15 @@ export interface UpdateMutableResult {
   hash: string;
 }
 
-/**
- * Encodes `update_mutable`'s positional args, per the actual contract signature
- * (confirmed against the deployed Rust source):
- *
- *   update_mutable(e, loan_id: u32, metadata_uri: String, status: LoanStatus,
- *                  new_ccr: u32 [ONE=1e6], new_location: LocationUpdate)
- *
- * `e: &Env` is implicit (not a wire arg), so the 5 encoded positional args are
- * `[loan_id, metadata_uri, status, new_ccr, new_location]` — note `metadata_uri`
- * is SECOND, not last. Exported for unit testing.
- *
- * `new_location` is the same `LocationUpdate` map as `draw_loan`'s
- * `initial_location` — NOT a bare string. A wrong arg ORDER or a mistyped arg
- * makes the contract's guest-side `TryFromVal` panic (`UnreachableCodeReached`);
- * that trap is what an out-of-order encoding produced here.
- */
 export function encodeUpdateMutableArgs(
   loanId: number,
   status: string,
-  ccrPercent: number,
-  location: LocationInput,
   metadataUri: string,
 ): xdr.ScVal[] {
   return [
     xdr.ScVal.scvU32(loanId),
-    xdr.ScVal.scvString(metadataUri),
     xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(status)]),
-    xdr.ScVal.scvU32(Math.round(ccrPercent * 10_000)),
-    encodeLocationMap(location),
+    xdr.ScVal.scvString(metadataUri),
   ];
 }
 
@@ -765,26 +663,17 @@ export interface BuildUpdateMutableEnvelopeParams {
   caller: string;
   loanId: number;
   status: string;
-  ccrPercent: number;
-  location: LocationInput;
   metadataUri: string;
   rpcUrl: string;
   networkPassphrase: string;
 }
 
-/**
- * Builds, simulates, and assembles the `execute(target, "update_mutable", args,
- * caller)` transaction — unsigned XDR ready for `signTransaction`. Mirrors
- * `buildRolloverEnvelope`.
- */
 export async function buildUpdateMutableEnvelope({
   executorId,
   targetId,
   caller,
   loanId,
   status,
-  ccrPercent,
-  location,
   metadataUri,
   rpcUrl,
   networkPassphrase,
@@ -810,15 +699,7 @@ export async function buildUpdateMutableEnvelope({
     "execute",
     new Address(targetId).toScVal(),
     xdr.ScVal.scvSymbol("update_mutable"),
-    xdr.ScVal.scvVec(
-      encodeUpdateMutableArgs(
-        loanId,
-        status,
-        ccrPercent,
-        location,
-        metadataUri,
-      ),
-    ),
+    xdr.ScVal.scvVec(encodeUpdateMutableArgs(loanId, status, metadataUri)),
     new Address(caller).toScVal(),
   );
 
@@ -840,19 +721,12 @@ export async function buildUpdateMutableEnvelope({
   return assembled.toXDR();
 }
 
-/**
- * Signs and submits the trustee-wallet-signed `update_mutable` end-to-end: build
- * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
- * a terminal status. Mirrors `rollover`.
- */
 export async function updateMutable({
   executorId,
   targetId,
   caller,
   loanId,
   status,
-  ccrPercent,
-  location,
   metadataUri,
   rpcUrl,
   networkPassphrase,
@@ -867,8 +741,6 @@ export async function updateMutable({
     caller,
     loanId,
     status,
-    ccrPercent,
-    location,
     metadataUri,
     rpcUrl,
     networkPassphrase,

@@ -90,19 +90,17 @@ export type { GetSacBalanceParams } from "./stellar/sacBalance";
  * `drawLoan` (issue #831) — trustee-wallet-signed on-chain `draw_loan` mint,
  * reached through the executor/access-control contract's `execute`. Also a
  * plain async function (not a hook), same reasoning as `getSacBalance`.
- * `encodeDrawLoanArgs` and `parseUsdcToU128` are exported for direct
- * unit testing of the ScVal transform matrix.
+ * `encodeDrawLoanArgs` is exported for direct unit testing of the ScVal
+ * transform matrix.
  */
 export {
   drawLoan,
   buildDrawLoanEnvelope,
   encodeDrawLoanArgs,
-  parseUsdcToU128,
-  STELLAR_USDC_DECIMALS,
 } from "./stellar/contracts/loanRegistry";
 export type {
-  SubmitLoanRequest,
-  EconomicsInput,
+  DrawLoanArgs,
+  DrawLoanEconomics,
   LocationInput,
   DrawLoanParams,
   DrawLoanResult,

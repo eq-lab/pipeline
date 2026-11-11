@@ -5,8 +5,8 @@ import { useRollover } from "@/api/useRollover";
 import { percentToBps } from "@/utils/rateUnits";
 import { dateInputToUnixUtc } from "@/utils/formatDate";
 import {
+  useLoanMutableState,
   useUpdateLifecycle,
-  type LocationInput,
 } from "@/api/useUpdateLifecycle";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { DetailHero } from "@/components/detail/DetailHero";
@@ -25,6 +25,7 @@ import {
   chipStyle,
 } from "@/components/detail/detailTokens";
 import {
+  allowedLifecycleTargets,
   useLoanDetail,
   type HeroView,
   type LabelValueRow,
@@ -34,7 +35,6 @@ import {
   type CcrTrend,
   type DocumentDisplay,
 } from "./-useLoanDetail";
-import type { LifecycleStatus } from "./-useLoanDetail";
 import {
   type RolloverCard as RolloverCardData,
   type SummaryTile,
@@ -983,11 +983,18 @@ function RolloverDialog({
   );
 }
 
+const LIFECYCLE_LABELS: Record<string, string> = {
+  Performing: "Active",
+  WatchList: "Watchlist",
+};
+
 // spec: docs/frontend/trustee-flows.md#wired-actions.
 function UpdateLifecycleDialog({
   open,
   loanName,
-  currentStatus,
+  chainState,
+  chainLoading,
+  chainError,
   onClose,
   onConfirm,
   pending,
@@ -995,34 +1002,23 @@ function UpdateLifecycleDialog({
 }: {
   open: boolean;
   loanName: string;
-  currentStatus: LifecycleStatus | null;
+  chainState: { status: string; metadataUri: string } | undefined;
+  chainLoading: boolean;
+  chainError: Error | null;
   onClose: () => void;
-  onConfirm: (input: {
-    status: string;
-    ccrPercent: number;
-    location: LocationInput;
-    metadataUri: string;
-  }) => void;
+  onConfirm: (input: { status: string; metadataUri: string }) => void;
   pending: boolean;
   error: DialogError | null;
 }) {
-  const [status, setStatus] = useState<string>(currentStatus ?? "");
-  const [ccr, setCcr] = useState("");
-  const [locationType, setLocationType] = useState("Vessel");
-  const [locationId, setLocationId] = useState("");
-  const [trackingUrl, setTrackingUrl] = useState("");
+  const [status, setStatus] = useState("");
   const [metadataUri, setMetadataUri] = useState("");
 
   useEffect(() => {
     if (open) {
-      setStatus(currentStatus ?? "");
-      setCcr("");
-      setLocationType("Vessel");
-      setLocationId("");
-      setTrackingUrl("");
-      setMetadataUri("");
+      setStatus(chainState?.status ?? "");
+      setMetadataUri(chainState?.metadataUri ?? "");
     }
-  }, [open, currentStatus]);
+  }, [open, chainState]);
 
   useEffect(() => {
     if (!open) return;
@@ -1035,12 +1031,14 @@ function UpdateLifecycleDialog({
 
   if (!open) return null;
 
-  const ccrPercent = Number.parseFloat(ccr);
+  const targets = chainState ? allowedLifecycleTargets(chainState.status) : [];
   const valid =
-    status !== "" &&
-    Number.isFinite(ccrPercent) &&
-    ccrPercent > 0 &&
-    locationId.trim().length > 0;
+    !chainLoading &&
+    !chainError &&
+    !!chainState &&
+    targets.includes(status) &&
+    !(metadataUri.trim() === "" && chainState.metadataUri.trim() !== "") &&
+    (status !== chainState.status || metadataUri !== chainState.metadataUri);
 
   const fieldClass =
     "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
@@ -1069,100 +1067,68 @@ function UpdateLifecycleDialog({
         </h2>
         <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
           LoanRegistry.updateMutable · your key · non-economic fields only · no
-          NAV impact. CCR is written only at 130 / 120 / 110% threshold
-          crossings, with its timestamp.
+          NAV impact.
         </p>
 
+        {chainLoading && (
+          <p
+            data-testid="update-lifecycle-loading"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]"
+          >
+            Reading the loan's on-chain state…
+          </p>
+        )}
+        {chainError && (
+          <div data-testid="update-lifecycle-read-error">
+            <InlineError
+              message={
+                toUserError(
+                  chainError,
+                  "Could not read the loan's on-chain state.",
+                ).message
+              }
+              className="block text-[13px]"
+            />
+          </div>
+        )}
+        {chainState && targets.length === 0 && (
+          <p
+            data-testid="update-lifecycle-no-targets"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]"
+          >
+            This loan's on-chain status does not allow a lifecycle update.
+          </p>
+        )}
+
         <label className="flex flex-col gap-[6px] pt-[4px]">
-          <span className={labelClass}>
-            Status (Default and Closed route elsewhere)
-          </span>
+          <span className={labelClass}>Status</span>
           <select
             data-testid="update-lifecycle-status"
             value={status}
-            disabled={pending}
+            disabled={pending || targets.length === 0}
             onChange={(e) => setStatus(e.target.value)}
             className={fieldClass}
           >
-            {status === "" && (
-              <option value="" disabled>
-                Select status
+            {targets.length === 0 && <option value="">—</option>}
+            {targets.map((t) => (
+              <option key={t} value={t}>
+                {LIFECYCLE_LABELS[t] ?? t}
               </option>
-            )}
-            <option value="Performing">Active</option>
-            <option value="WatchList">Watchlist</option>
+            ))}
           </select>
         </label>
 
-        <div className="flex flex-wrap gap-[16px]">
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>CCR %</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              data-testid="update-lifecycle-ccr"
-              value={ccr}
-              disabled={pending}
-              onChange={(e) => setCcr(e.target.value)}
-              placeholder="e.g. 135"
-              className={fieldClass}
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Location type</span>
-            <select
-              data-testid="update-lifecycle-location-type"
-              value={locationType}
-              disabled={pending}
-              onChange={(e) => setLocationType(e.target.value)}
-              className={fieldClass}
-            >
-              <option value="Vessel">Vessel</option>
-              <option value="Warehouse">Warehouse</option>
-              <option value="TankFarm">Tank farm</option>
-              <option value="Other">Other</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="flex flex-wrap gap-[16px]">
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Location identifier</span>
-            <input
-              type="text"
-              data-testid="update-lifecycle-location"
-              value={locationId}
-              disabled={pending}
-              onChange={(e) => setLocationId(e.target.value)}
-              placeholder="e.g. MV Andes · IMO 9741205"
-              className={fieldClass}
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Tracking URL (optional)</span>
-            <input
-              type="text"
-              data-testid="update-lifecycle-tracking"
-              value={trackingUrl}
-              disabled={pending}
-              onChange={(e) => setTrackingUrl(e.target.value)}
-              placeholder="https://…"
-              className={fieldClass}
-            />
-          </label>
-        </div>
-
         <label className="flex flex-col gap-[6px]">
           <span className={labelClass}>
-            Append metadataURI (assay / offtake hash)
+            Metadata URI (replaces the stored value)
           </span>
           <input
             type="text"
             data-testid="update-lifecycle-metadata"
             value={metadataUri}
-            disabled={pending}
+            disabled={pending || targets.length === 0}
             onChange={(e) => setMetadataUri(e.target.value)}
-            placeholder="ipfs://… (optional)"
+            placeholder="ipfs://…"
             className={fieldClass}
           />
         </label>
@@ -1190,19 +1156,7 @@ function UpdateLifecycleDialog({
           <button
             type="button"
             data-testid="update-lifecycle-submit"
-            onClick={() =>
-              onConfirm({
-                status,
-                ccrPercent,
-                location: {
-                  location_type: locationType,
-                  location_identifier: locationId.trim(),
-                  tracking_url: trackingUrl.trim(),
-                  updated_at: Math.floor(Date.now() / 1000),
-                },
-                metadataUri: metadataUri.trim(),
-              })
-            }
+            onClick={() => onConfirm({ status, metadataUri })}
             disabled={!valid || pending}
             className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: BRAND }}
@@ -1301,6 +1255,7 @@ function LoanDetail() {
   const [rolloverOpen, setRolloverOpen] = useState(false);
   const updateLifecycle = useUpdateLifecycle();
   const [updateOpen, setUpdateOpen] = useState(false);
+  const mutableState = useLoanMutableState(chain, Number(id), updateOpen);
   const recoveryCard = useRecoveryCard(chain, id);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
 
@@ -1531,7 +1486,9 @@ function LoanDetail() {
       <UpdateLifecycleDialog
         open={updateOpen}
         loanName={detail.hero.title}
-        currentStatus={detail.lifecycleStatus}
+        chainState={mutableState.data}
+        chainLoading={mutableState.isLoading}
+        chainError={mutableState.error}
         pending={updateLifecycle.isPending}
         error={
           updateLifecycle.error

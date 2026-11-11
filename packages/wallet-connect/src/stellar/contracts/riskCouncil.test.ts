@@ -196,6 +196,7 @@ describe("chain reads", () => {
       interest_adjustment: -7n,
       written_down: 3n,
       carved_out: false,
+      metadata_uri: " ipfs://cur ",
     });
     expect(await readLoanChainState({ ...base, loanId: 1 })).toEqual({
       status: "Default",
@@ -205,6 +206,7 @@ describe("chain reads", () => {
       interestAdjustment: "-7",
       writtenDown: "3",
       carvedOut: false,
+      metadataUri: " ipfs://cur ",
     });
     expect(mockSimulateRead.mock.calls[0]![1]).toBe("mutable_loan_data");
   });

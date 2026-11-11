@@ -31,7 +31,7 @@ import {
   ccrSeriesFrom,
   selectOtherActions,
   statusToChip,
-  lifecycleStatusOf,
+  allowedLifecycleTargets,
 } from "./-useLoanDetail";
 import {
   CLOSED_OTHER_ACTIONS,
@@ -878,48 +878,16 @@ describe("ccrSeriesFrom", () => {
   });
 });
 
-describe("lifecycleStatusOf (#1621)", () => {
+describe("allowedLifecycleTargets", () => {
   it.each([
-    ["Performing", "Performing", "Performing"],
-    ["Performing", "WatchList", "WatchList"],
-    ["Past Due", "WatchList", "WatchList"],
-    ["Disbursing", "WatchList", "WatchList"],
-    ["Matured", "WatchList", "WatchList"],
-    ["Past Due", "Performing", "Performing"],
-    ["Disbursing", "Performing", "Performing"],
-    ["Default", "Default", null],
-    ["Closed", "Closed", null],
-    ["Disbursing", "Approved", null],
-    ["Performing", "Unknown", null],
-  ])(
-    "served status %s + onchain_status %s -> %s",
-    (status, onchainStatus, expected) => {
-      expect(
-        lifecycleStatusOf(makeEntry({ status, onchain_status: onchainStatus })),
-      ).toBe(expected);
-    },
-  );
-
-  it("ignores watchlist_entered_at", () => {
-    expect(
-      lifecycleStatusOf(
-        makeEntry({
-          status: "Past Due",
-          onchain_status: "Performing",
-          watchlist_entered_at: 1_781_222_400,
-        }),
-      ),
-    ).toBe("Performing");
-  });
-
-  it("is null for a missing field or entry", () => {
-    expect(
-      lifecycleStatusOf({
-        ...makeEntry(),
-        onchain_status: undefined,
-      } as unknown as LoanBookEntry),
-    ).toBeNull();
-    expect(lifecycleStatusOf(undefined)).toBeNull();
-    expect(lifecycleStatusOf(null)).toBeNull();
+    ["Performing", ["Performing", "WatchList"]],
+    ["WatchList", ["Performing", "WatchList"]],
+    ["Approved", ["Approved"]],
+    ["Default", ["Default"]],
+    ["Closed", []],
+    ["Unknown", []],
+    ["", []],
+  ])("on-chain %s -> %j", (current, expected) => {
+    expect(allowedLifecycleTargets(current)).toEqual(expected);
   });
 });

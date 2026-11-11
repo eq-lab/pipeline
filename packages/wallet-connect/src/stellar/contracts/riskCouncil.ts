@@ -209,6 +209,7 @@ export interface LoanChainState {
   interestAdjustment: string;
   writtenDown: string;
   carvedOut: boolean;
+  metadataUri: string;
 }
 
 export async function readLoanChainState({
@@ -233,5 +234,6 @@ export async function readLoanChainState({
     interestAdjustment: rawField(data, "interest_adjustment", who),
     writtenDown: rawField(data, "written_down", who),
     carvedOut: data?.carved_out === true,
+    metadataUri: String(data?.metadata_uri ?? ""),
   };
 }

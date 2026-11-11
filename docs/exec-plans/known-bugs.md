@@ -86,6 +86,32 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Resolved
 
+### BUG-36: `-useRiskCouncil.test.tsx` — "relays schedule and execute with the right params" is timing-flaky [FIXED 2026-11-11 / #1888]
+- **Tracked:** #1888, seen on PR #1883 (CI run 42809806303).
+- **Date:** 2026-11-11
+- **Location:** `packages/trustee/src/api/-useRiskCouncil.test.tsx`, test "useRiskCouncilRelay > relays schedule and execute with the right params" (the final `result.current.hash` assertion).
+- **Symptom:** `expected null to be 'H'`.
+- **Root cause:** `useRiskCouncilRelay` returns `hash: mutation.data?.hash ?? null`. `@tanstack/query-core` delivers the mutation result to React through `notifyManager`, whose default scheduler is a real `setTimeout(cb, 0)`. `mutateAsync` can resolve before that timeout fires, and React's async `act` flushes with `setImmediate`, whose order against `setTimeout(0)` is not deterministic in Node, so the synchronous read can happen before the success render.
+- **Impact:** Spurious red CI.
+- **Workaround:** Re-run the job.
+- **Resolved:** 2026-11-11 by #1888 — the assertion now uses `waitFor`. The 5 s / 15 s delayed invalidations scheduled in `onSuccess` by the Trustee mutation hooks (`useRiskCouncilRelay`, `useReverseRepay`, `useRecordPayment`, `useRecordIncome`) run on fake `setTimeout` in the success-path hook tests and are cleared in `afterEach`, so they no longer leak past their test (hygiene, not the cause of the flake). Hooks unchanged.
+
+### BUG-34: `encodeUpdateMutableArgs` sends 5 args to a 3-arg `update_mutable`, and the contract overwrites `metadata_uri` [FIXED 2026-11-11 / #1893]
+- **Date:** 2026-11-11
+- **Location:** `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (`encodeUpdateMutableArgs`), `packages/trustee/src/api/useUpdateLifecycle.ts` and the Update-lifecycle dialog on `/loans/$id`. Found while planning #1805; follow-up #1893.
+- **Symptom:** The console sends `update_mutable(loan_id, metadata_uri, status, new_ccr, new_location)`; the deployed contract is `update_mutable(loan_id: u32, status: LoanStatus, metadata_uri: String)` (`pipeline-stellar-contracts` `contracts/loan-registry/src/lib.rs`), so the call fails with an argument-count / decode error.
+- **Root cause:** The encoder predates the contract's 3-arg signature. The contract also overwrites `metadata_uri`, so the dialog's "blank sends an empty string" behavior would wipe it, and it only allows `Performing` and `WatchList` toggles or a same-status metadata update on `Approved` / `Default`.
+- **Workaround:** None. Not fixed in #1805; tracked by #1893 (drops the CCR and location inputs from the dialog and prefills or requires `metadata_uri`).
+- **Resolved:** 2026-11-11 by #1893 (PR #1894) — `update_mutable` sends the 3-arg layout; the dialog drops the CCR and location inputs.
+
+### BUG-35: `toLoanId` drops loan id 0, but the registry's ids start at 0 [FIXED 2026-11-11 / #1896]
+- **Date:** 2026-11-11
+- **Location:** `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (`toLoanId`). Found while planning #1805.
+- **Symptom:** On a fresh registry the first drawn loan has id 0, `extractDrawnLoanId` returns `null`, and the Approve flow shows no "View loan" deep link. The mint itself is unaffected.
+- **Root cause:** `toLoanId` requires `n > 0`, but `next_loan_id` starts at 0 (`storage.rs`).
+- **Workaround:** Open the loan from `/loans`.
+- **Resolved:** 2026-11-11 by #1896 — `toLoanId` and `toWireId` accept any u32 including 0; tests cover id 0.
+
 ### BUG-29: The Stellar yield-mint relayer phase signs `mint_yield` against a Minter that has no such function
 - **Date:** 2026-10-27
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (lines ~110-160), `yield_mint_outbox_repo.rs` (~150-180). Found while planning #1712.

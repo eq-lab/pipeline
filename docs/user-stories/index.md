@@ -202,6 +202,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1313 Backend: composite Total-Balance series for the LP home graph](https://github.com/eq-lab/pipeline/issues/1313) | [1313-composite-total-balance.md](./epic-1247/1313-composite-total-balance.md) | Initial |
 | [#1865 Backend: index PLUSD token movements and serve the LP's PLUSD balance history](https://github.com/eq-lab/pipeline/issues/1865) | [1865-plusd-balance.md](./epic-1247/1865-plusd-balance.md) | Amends #1313 |
 | [#1314 Backend: LP wire-ins on the activity feed](https://github.com/eq-lab/pipeline/issues/1314) | [1314-lp-wire-ins-activity.md](./epic-1247/1314-lp-wire-ins-activity.md) | Initial |
+| [#1839 Backend: match incoming wires to the LP by the issued payment reference](https://github.com/eq-lab/pipeline/issues/1839) | [1839-match-wires-by-payment-reference.md](./epic-1247/1839-match-wires-by-payment-reference.md) | Initial |
 | [#1878 Backend: seed per-holder PLUSD balances (Stellar SAC) so plusd_balance can be enabled on testnet / mainnet](https://github.com/eq-lab/pipeline/issues/1878) | [1878-plusd-balance-seed.md](./epic-1247/1878-plusd-balance-seed.md) | Amends #1865 |
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
@@ -375,6 +376,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1765 Trustee: book USDC/USD conversions and bank charges on-chain](https://github.com/eq-lab/pipeline/issues/1765) | [1765-trustee-conversions-bank-charges.md](./epic-1795/1765-trustee-conversions-bank-charges.md) | Initial |
 | [#1766 Trustee: register the per-loan debt token (DealTokenFactory.register_deal) after loan creation](https://github.com/eq-lab/pipeline/issues/1766) | [1766-register-debt-token.md](./epic-1795/1766-register-debt-token.md) | Initial |
 | [#1812 Backend: LP settlement bank account for bank wire-outs](https://github.com/eq-lab/pipeline/issues/1812) | [1812-lp-settlement-bank-account.md](./epic-1795/1812-lp-settlement-bank-account.md) | Initial |
+| [#1888 Trustee: flaky test useRiskCouncilRelay > relays schedule and execute](https://github.com/eq-lab/pipeline/issues/1888) | [1888-flaky-risk-council-relay-test.md](./epic-1795/1888-flaky-risk-council-relay-test.md) | Initial |
 
 ---
 
@@ -389,6 +391,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1794 Stellar contract ids and signer roles synced with deployments #36 / #37](https://github.com/eq-lab/pipeline/issues/1794) | [1794-stellar-contract-ids-sync.md](./epic-1776/1794-stellar-contract-ids-sync.md) | Initial |
 | [#1790 Minter cash book read model: wire-ins, wire-outs, ramps, bank_cash and in_flight from indexed events](https://github.com/eq-lab/pipeline/issues/1790) | [1790-minter-cash-book.md](./epic-1776/1790-minter-cash-book.md) | Initial |
 | [#1792 Loan submission: data_room_id → borrower_ref and the HEAD draw_loan inputs](https://github.com/eq-lab/pipeline/issues/1792) | [1792-draw-loan-data-room-id.md](./epic-1776/1792-draw-loan-data-room-id.md) | Initial |
+| [#1805 Trustee + wallet-connect: data_room_id field and the 2-arg draw_loan (borrower_ref)](https://github.com/eq-lab/pipeline/issues/1805) | [1805-trustee-draw-loan-borrower-ref.md](./epic-1776/1805-trustee-draw-loan-borrower-ref.md) | Initial |
+| [#1893 Trustee: update_mutable sends the 3-arg layout, Update lifecycle works on Stellar](https://github.com/eq-lab/pipeline/issues/1893) | [1893-update-mutable-three-args.md](./epic-1776/1893-update-mutable-three-args.md) | Initial |
+| [#1896 Trustee: Approve shows no 'View loan' link for loan id 0 (toLoanId drops 0)](https://github.com/eq-lab/pipeline/issues/1896) | [1896-loan-id-zero.md](./epic-1776/1896-loan-id-zero.md) | Initial |
 
 ---
 

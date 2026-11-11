@@ -18,15 +18,13 @@ interface ILoanRegistry {
         string calldata initialLocation
     ) external returns (uint256 loanId);
 
-    // TRUSTEE, no timelock. Non-economic fields only. status in {Performing, Watchlist}
-    // (Default/Closed via setDefault/closeLoan). `Matured` not settable — display-only, #955.
+    // TRUSTEE, no timelock. Non-economic fields only. Performing <-> WatchList; same-status
+    // metadata-only on Approved/Default; Closed reverts. metadata_uri is replaced on every call.
     function updateMutable(
         uint256 loanId,
         LoanStatus status,
-        uint256 newCCR,
-        LocationUpdate calldata newLocation,
         string calldata metadataURI
-    ) external;
+    ) external; // Stellar: update_mutable(loan_id: u32, status: LoanStatus, metadata_uri: String)
 
     // Callable only by the Minter (Stellar `minter.require_auth()`, EVM `PIPELINE_MINTER_ROLE`);
     // reached through `Minter.repay`, see [loan-repay-minter.md](./loan-repay-minter.md). No direct trustee call.
