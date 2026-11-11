@@ -84,8 +84,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
   vi.useRealTimers();
 });
+
+function fakeRelayTimers() {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout"],
+    shouldAdvanceTime: true,
+  });
+}
 
 describe("useRiskCouncilAccess", () => {
   it("reads can_call only when the wallet can execute at once", async () => {
@@ -182,6 +190,7 @@ describe("useRiskCouncilLoanState", () => {
 
 describe("useRiskCouncilRelay", () => {
   it("relays schedule and execute with the right params", async () => {
+    fakeRelayTimers();
     const { result } = renderHook(() => useRiskCouncilRelay(), {
       wrapper: makeWrapper(),
     });
@@ -203,7 +212,7 @@ describe("useRiskCouncilRelay", () => {
         }),
       );
     }
-    expect(result.current.hash).toBe("H");
+    await waitFor(() => expect(result.current.hash).toBe("H"));
   });
 
   it("invalidates the listed keys now, at 5 s and at 15 s", async () => {
@@ -239,6 +248,7 @@ describe("useRiskCouncilRelay", () => {
   });
 
   it("records a schedule into the store and marks an execute", async () => {
+    fakeRelayTimers();
     const wrapper = makeWrapper();
     const relay = renderHook(() => useRiskCouncilRelay(), { wrapper });
     const ops = renderHook(() => useScheduledOps(STELLAR));
@@ -302,6 +312,7 @@ describe("useRiskCouncilRelay", () => {
   });
 
   it("exposes the stage reported by the relay", async () => {
+    fakeRelayTimers();
     mocks.relayRiskCouncil.mockImplementation(
       async ({ onStageChange }: { onStageChange: (s: string) => void }) => {
         onStageChange("confirming");

@@ -64,12 +64,21 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
 
+function fakeRelayTimers() {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout"],
+    shouldAdvanceTime: true,
+  });
+}
+
 describe("useRecordPayment invalidation", () => {
   it("invalidates loan-book, financials and waterfall immediately on success", async () => {
+    fakeRelayTimers();
     repayMock.mockResolvedValue({ hash: "abc" });
     const { result } = renderHook(() => useRecordPayment(), {
       wrapper: makeWrapper(),
@@ -126,6 +135,7 @@ describe("useRecordPayment invalidation", () => {
 
 describe("useRecordPayment repay call", () => {
   it("signs Minter.repay with the derived ref hash, value date and sale id 0", async () => {
+    fakeRelayTimers();
     repayMock.mockResolvedValue({ hash: "abc", repaymentId: 3 });
     const { result } = renderHook(() => useRecordPayment(), {
       wrapper: makeWrapper(),
