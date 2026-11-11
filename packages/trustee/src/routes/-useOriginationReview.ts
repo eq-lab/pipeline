@@ -17,6 +17,7 @@ import { useReviewSubmission } from "@/api/useReviewSubmission";
 import { useDrawLoan, type DrawLoanStage } from "@/api/useDrawLoan";
 import { isStellarTarget, targetChainLabel } from "@/lib/targetChains";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import { drawLoanBlockedReason, readyDrawLoanArgs } from "@/lib/drawLoanArgs";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 
 export interface UseOriginationReviewResult {
@@ -108,6 +109,14 @@ function mapMintError(error: Error): UserFacingError {
       isSpecific: true,
     };
   }
+  if (/invalid draw_loan input/i.test(details)) {
+    return {
+      message:
+        "This submission's on-chain inputs are incomplete. No signature was requested.",
+      details,
+      isSpecific: true,
+    };
+  }
   if (/not configured/i.test(details)) {
     return {
       message: "On-chain minting isn't configured for this environment.",
@@ -156,12 +165,13 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   // never triggers a second network fetch.
   const { data: submissions } = useLoanSubmissions();
   const submission = submissions?.find((s) => s.id === submissionId);
-  const approveBlockedReason =
-    submission && !isStellarTarget(submission.target_chain_id)
+  const approveBlockedReason = !submission
+    ? null
+    : !isStellarTarget(submission.target_chain_id)
       ? `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(
           submission.target_chain_id,
         )} from the Trustee app is not supported yet. Reject or request changes instead.`
-      : null;
+      : drawLoanBlockedReason(submission.draw_loan);
 
   // Fires the review call and, on success, closes the approve dialog (issue
   // #838) — the footer then flips to the Approved banner via the existing
@@ -185,10 +195,11 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
       return;
     }
 
-    const loanData = submission.loan_data;
+    const args = readyDrawLoanArgs(submission.draw_loan);
+    if (!args) return;
     void (async () => {
       try {
-        await drawLoanMutation.mutateAsync({ loanData });
+        await drawLoanMutation.mutateAsync({ args });
       } catch {
         // Mint failed / wallet rejected — stay InReview, no review call.
         return;

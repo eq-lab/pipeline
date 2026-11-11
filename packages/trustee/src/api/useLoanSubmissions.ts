@@ -12,20 +12,19 @@ import { apiFetch } from "./client";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /**
- * Loan economics fixed at origination (mirrors the contract's
- * `ImmutableLoanData`). The four monetary fields are decimal strings at the
- * on-chain 7-decimal base-unit scale (NOT human units — see the module doc's
- * Data-layer note, issue #912). `senior_interest_rate_bps` is basis points;
+ * Loan economics fixed at origination. The four monetary fields are decimal strings at the
+ * human-unit decimal scale (#1620; the served `draw_loan` block carries the
+ * base units). `senior_interest_rate_bps` is basis points;
  * the two date fields are Unix seconds.
  */
 export interface EconomicsInput {
-  /** Total facility size — 7-decimal base-unit string. Equals senior + equity. */
+  /** Total facility size — human-unit decimal string. Equals senior + equity. */
   original_facility_size: string;
-  /** Senior tranche — 7-decimal base-unit string. */
+  /** Senior tranche — human-unit decimal string. */
   original_senior_tranche: string;
-  /** Equity tranche — 7-decimal base-unit string. */
+  /** Equity tranche — human-unit decimal string. */
   original_equity_tranche: string;
-  /** Offtaker price — 7-decimal base-unit string. */
+  /** Offtaker price — human-unit decimal string. */
   original_offtaker_price: string;
   /** Senior interest rate in basis points. */
   senior_interest_rate_bps: number;
@@ -35,14 +34,21 @@ export interface EconomicsInput {
   original_maturity_date: number;
 }
 
-/** Initial collateral location (mirrors the contract's `LocationUpdate`). */
-export interface LocationInput {
-  /** One of `Vessel`, `Warehouse`, `TankFarm`, `Other`. */
-  location_type: string;
-  location_identifier: string;
-  tracking_url: string;
-  /** Report timestamp (Unix seconds). */
-  updated_at: number;
+export interface DrawLoanEconomics {
+  borrower_ref: string | null;
+  original_facility_size: string | null;
+  original_senior_tranche: string | null;
+  original_equity_tranche: string | null;
+  original_offtaker_price: string | null;
+  senior_interest_rate: number | null;
+  origination_date: number | null;
+  original_maturity_date: number | null;
+}
+
+export interface DrawLoanArgs {
+  metadata_uri: string | null;
+  economics: DrawLoanEconomics;
+  missing_inputs: string[];
 }
 
 /**
@@ -50,18 +56,14 @@ export interface LocationInput {
  * `draw_loan`, persisted verbatim for trustee review (`SubmitLoanRequest`).
  */
 export interface SubmitLoanRequest {
-  /** Address the soulbound loan token is minted to. */
-  to: string;
   metadata_uri: string;
+  data_room_id?: string;
   originator: string;
   borrower_id: string;
   commodity: string;
   corridor: string;
   governing_law: string;
   economics: EconomicsInput;
-  /** Initial collateral-coverage ratio (1e6-scaled; `>= 1_000_000`). */
-  initial_ccr: number;
-  initial_location: LocationInput;
   /** Trade-finance protection instrument (e.g. `"LC at sight"`). */
   protection?: string;
   /** Optional secondary URI inside the metadata document. */
@@ -136,6 +138,7 @@ export interface SubmissionView {
    * it is declared as `SubmitLoanRequest` here (matching the LP convention).
    */
   loan_data: SubmitLoanRequest;
+  draw_loan?: DrawLoanArgs | null;
 }
 
 /** Return value of `useLoanSubmissions`. */

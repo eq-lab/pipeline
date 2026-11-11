@@ -35,7 +35,7 @@ const PREVIEW: TransactionPreviewDisplay = {
         "{ facility $3,500,000 · senior $2,800,000 · equity $700,000 · offtaker $3,750,000 · 14.0% · 10 Jul 2026 → 15 Dec 2026 }",
     },
     { label: "metadataURI", value: "ipfs://auric-assay-offtake-hash" },
-    { label: "initialLocation", value: "MV Example" },
+    { label: "borrowerRef", value: "ab12cd…ab12" },
   ],
 };
 
@@ -84,7 +84,7 @@ describe("ApproveMintDialog", () => {
     expect(preview).toHaveTextContent("LoanRegistry.mintLoan");
     expect(preview).toHaveTextContent("Auric Andes S.A.C.");
     expect(preview).toHaveTextContent("ipfs://auric-assay-offtake-hash");
-    expect(preview).toHaveTextContent("MV Example");
+    expect(preview).toHaveTextContent("ab12cd…ab12");
   });
 
   it("renders an accessible role/aria-modal/aria-labelledby", () => {

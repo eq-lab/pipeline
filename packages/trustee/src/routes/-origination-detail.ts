@@ -17,6 +17,7 @@
  * (transaction preview).
  */
 import { useMemo } from "react";
+import { borrowerRefFull, formatBorrowerRef } from "@/lib/drawLoanArgs";
 import {
   normalizeOriginationSubmissionStatus,
   useLoanSubmissions,
@@ -65,18 +66,6 @@ function formatCorridor(value: unknown): string {
   return safeString(value).replace(/\s*-\s*/g, " → ");
 }
 
-// spec: docs/frontend/trustee-flows.md#origination-detail-originationid-issue-821 (Location row).
-function formatLocation(value: unknown): string {
-  const location =
-    typeof value === "object" && value !== null
-      ? (value as Record<string, unknown>)
-      : {};
-  const parts = [location.location_type, location.location_identifier].filter(
-    (part): part is string => typeof part === "string" && part.length > 0,
-  );
-  return parts.length > 0 ? parts.join(" — ") : "—";
-}
-
 // Human-unit USDC as served (#1620). spec:
 // docs/frontend/trustee-flows.md#data-layer-useloansubmissions.
 function formatEconomicsUsd(value: unknown): string {
@@ -121,8 +110,8 @@ export interface DealDetailsDisplay {
   corridor: string;
   governingLaw: string;
   protection: string;
-  /** `"{location_type} — {location_identifier}"` (`—` when both absent). */
-  location: string;
+  borrowerRef: string;
+  borrowerRefFull: string | null;
   documents: DocumentDisplay[];
 }
 
@@ -177,7 +166,7 @@ const EMPTY_TRANSACTION_PREVIEW: TransactionPreviewDisplay = {
     { label: "originator", value: "—" },
     { label: "economics", value: "—" },
     { label: "metadataURI", value: "—" },
-    { label: "initialLocation", value: "—" },
+    { label: "borrowerRef", value: "—" },
   ],
 };
 
@@ -233,7 +222,8 @@ function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
     corridor: formatCorridor(loanData.corridor),
     governingLaw: safeString(loanData.governing_law),
     protection: safeString(loanData.protection),
-    location: formatLocation(loanData.initial_location),
+    borrowerRef: formatBorrowerRef(submission.draw_loan),
+    borrowerRefFull: borrowerRefFull(submission.draw_loan),
     documents: Array.isArray(submission.documents)
       ? submission.documents.map((doc) => ({
           name: safeString(doc?.name),
@@ -285,10 +275,7 @@ function mapTransactionPreview(
       { label: "originator", value: safeString(loanData.originator) },
       { label: "economics", value: formatEconomicsSummary(loanData) },
       { label: "metadataURI", value: safeString(loanData.metadata_uri) },
-      {
-        label: "initialLocation",
-        value: safeString(loanData.initial_location?.location_identifier),
-      },
+      { label: "borrowerRef", value: formatBorrowerRef(submission.draw_loan) },
     ],
   };
 }
@@ -358,7 +345,8 @@ export function useOriginationDetail(
           corridor: "—",
           governingLaw: "—",
           protection: "—",
-          location: "—",
+          borrowerRef: "—",
+          borrowerRefFull: null,
           documents: [],
         },
         statusKind: "unknown",

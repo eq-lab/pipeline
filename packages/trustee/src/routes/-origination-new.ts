@@ -41,11 +41,6 @@ export const FORM_SECTIONS: SectionDef[] = [
         required: true,
         options: [],
       },
-      {
-        path: "to",
-        label: "Mint to (address on the target chain)",
-        required: true,
-      },
       { path: "metadata_uri", label: "Metadata URI", required: true },
       {
         path: "secondary_metadata_uri",
@@ -54,6 +49,7 @@ export const FORM_SECTIONS: SectionDef[] = [
       },
       { path: "originator", label: "Originator", required: true },
       { path: "borrower_id", label: "Borrower", required: true },
+      { path: "data_room_id", label: "Data room ID", required: true },
       { path: "commodity", label: "Commodity", required: true },
       { path: "corridor", label: "Corridor", required: true },
       { path: "governing_law", label: "Governing law", required: true },
@@ -108,39 +104,6 @@ export const FORM_SECTIONS: SectionDef[] = [
       {
         path: "economics.original_maturity_date",
         label: "Maturity date (unix seconds)",
-        required: true,
-        numeric: true,
-      },
-    ],
-  },
-  {
-    title: "Collateral",
-    fields: [
-      {
-        path: "initial_ccr",
-        label: "Initial CCR (1e6-scaled, min 1000000)",
-        required: true,
-        numeric: true,
-      },
-      {
-        path: "initial_location.location_type",
-        label: "Location type (Vessel / Warehouse / TankFarm / Other)",
-        required: true,
-      },
-      {
-        path: "initial_location.location_identifier",
-        label: "Location identifier",
-        required: true,
-        placeholder: "IMO 9834521",
-      },
-      {
-        path: "initial_location.tracking_url",
-        label: "Tracking URL",
-        required: true,
-      },
-      {
-        path: "initial_location.updated_at",
-        label: "Location updated at (unix seconds)",
         required: true,
         numeric: true,
       },
@@ -326,8 +289,8 @@ export function buildSubmitLoanInput(
     ok: true,
     chainId: Number.parseInt(get(TARGET_CHAIN_FIELD), 10),
     input: {
-      to: get("to"),
       metadata_uri: get("metadata_uri"),
+      data_room_id: get("data_room_id"),
       originator: get("originator"),
       borrower_id: get("borrower_id"),
       commodity: get("commodity"),
@@ -347,13 +310,6 @@ export function buildSubmitLoanInput(
         senior_interest_rate_bps: num("economics.senior_interest_rate_bps"),
         origination_date: num("economics.origination_date"),
         original_maturity_date: num("economics.original_maturity_date"),
-      },
-      initial_ccr: num("initial_ccr"),
-      initial_location: {
-        location_type: get("initial_location.location_type"),
-        location_identifier: get("initial_location.location_identifier"),
-        tracking_url: get("initial_location.tracking_url"),
-        updated_at: num("initial_location.updated_at"),
       },
       collateral_valuation: {
         valuation_mode: get("collateral_valuation.valuation_mode"),

@@ -93,7 +93,6 @@ vi.mock("@/api/useLoanSubmissions", () => ({
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
 const LOAN_DATA = {
-  to: "GHOLDER00000000000000000000000000000000000000000000000000",
   metadata_uri: "ipfs://loan-metadata",
   originator: "Auric Andes S.A.C.",
   borrower_id: "borrower-1",
@@ -109,14 +108,39 @@ const LOAN_DATA = {
     origination_date: 1_750_000_000,
     original_maturity_date: 1_780_000_000,
   },
-  initial_ccr: 1_500_000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO-1234567",
-    tracking_url: "https://track.example/1234567",
-    updated_at: 1_750_000_100,
-  },
 } as SubmissionView["loan_data"];
+
+const BORROWER_REF =
+  "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
+
+const DRAW_LOAN: NonNullable<SubmissionView["draw_loan"]> = {
+  metadata_uri: "ipfs://loan-metadata",
+  economics: {
+    borrower_ref: BORROWER_REF,
+    original_facility_size: "12000000000000",
+    original_senior_tranche: "10000000000000",
+    original_equity_tranche: "2000000000000",
+    original_offtaker_price: "12500000000000",
+    senior_interest_rate: 100000,
+    origination_date: 1_750_000_000,
+    original_maturity_date: 1_780_000_000,
+  },
+  missing_inputs: [],
+};
+
+const READY_ARGS = {
+  metadata_uri: DRAW_LOAN.metadata_uri,
+  economics: {
+    borrower_ref: BORROWER_REF,
+    original_facility_size: "12000000000000",
+    original_senior_tranche: "10000000000000",
+    original_equity_tranche: "2000000000000",
+    original_offtaker_price: "12500000000000",
+    senior_interest_rate: 100000,
+    origination_date: 1_750_000_000,
+    original_maturity_date: 1_780_000_000,
+  },
+};
 
 function makeSubmission(
   overrides: Partial<SubmissionView> = {},
@@ -130,6 +154,7 @@ function makeSubmission(
     updated_at: "2026-01-02T00:00:00Z",
     documents: [],
     loan_data: LOAN_DATA,
+    draw_loan: DRAW_LOAN,
     ...overrides,
   };
 }
@@ -171,7 +196,7 @@ describe("useOriginationReview", () => {
     });
 
     expect(callOrder).toEqual(["drawLoan", "review"]);
-    expect(mockMutateAsync).toHaveBeenCalledWith({ loanData: LOAN_DATA });
+    expect(mockMutateAsync).toHaveBeenCalledWith({ args: READY_ARGS });
     expect(mockMutate).toHaveBeenCalledWith(
       { id: 7, decision: "Approved" },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
@@ -308,6 +333,22 @@ describe("useOriginationReview", () => {
     expect(result.current.errorDetails).toBe(
       "drawLoan simulation error: bad encoding",
     );
+  });
+
+  it("maps an invalid draw_loan input failure to the incomplete-inputs copy", () => {
+    mockDrawLoanState = {
+      isPending: false,
+      isSuccess: false,
+      error: new Error(
+        "drawLoan: invalid draw_loan input economics.borrower_ref",
+      ),
+      stage: null,
+    };
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.errorMessage).toBe(
+      "This submission's on-chain inputs are incomplete. No signature was requested.",
+    );
+    expect(result.current.errorDetails).toContain("invalid draw_loan input");
   });
 
   it("maps a wallet-rejection mint failure to 'Signature cancelled'", () => {
@@ -608,7 +649,7 @@ describe("useOriginationReview", () => {
         await Promise.resolve();
         await Promise.resolve();
       });
-      expect(mockMutateAsync).toHaveBeenCalledWith({ loanData: LOAN_DATA });
+      expect(mockMutateAsync).toHaveBeenCalledWith({ args: READY_ARGS });
       expect(mockMutate).toHaveBeenCalledWith(
         { id: 7, decision: "Approved" },
         expect.objectContaining({ onSuccess: expect.any(Function) }),
@@ -666,5 +707,96 @@ describe("useOriginationReview — target chain gate (#1536)", () => {
     expect(result.current.approveOpen).toBe(false);
     expect(mockMutateAsync).not.toHaveBeenCalled();
     expect(mockMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("useOriginationReview — draw inputs gate (#1805)", () => {
+  async function attempt(result: {
+    current: ReturnType<typeof useOriginationReview>;
+  }) {
+    await act(async () => {
+      result.current.openApprove();
+      result.current.approve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.approveOpen).toBe(false);
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).not.toHaveBeenCalled();
+  }
+
+  it("missing data_room_id: data-room copy, approve()/openApprove() no-op", async () => {
+    mockSubmissions = [
+      makeSubmission({
+        draw_loan: {
+          ...DRAW_LOAN,
+          economics: { ...DRAW_LOAN.economics, borrower_ref: null },
+          missing_inputs: ["data_room_id"],
+        },
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain(
+      "Data room ID missing",
+    );
+    await attempt(result);
+  });
+
+  it("other missing inputs: lists them", async () => {
+    mockSubmissions = [
+      makeSubmission({
+        draw_loan: {
+          ...DRAW_LOAN,
+          economics: { ...DRAW_LOAN.economics, original_facility_size: null },
+          missing_inputs: ["economics.original_facility_size"],
+        },
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain(
+      "On-chain draw inputs missing: economics.original_facility_size",
+    );
+    await attempt(result);
+  });
+
+  it("draw_loan null and absent: unavailable copy", async () => {
+    for (const draw_loan of [null, undefined]) {
+      mockSubmissions = [makeSubmission({ draw_loan })];
+      const { result } = renderHook(() => useOriginationReview("7"));
+      expect(result.current.approveBlockedReason).toContain(
+        "On-chain draw inputs are not available",
+      );
+      await attempt(result);
+    }
+  });
+
+  it("an EVM target keeps the Stellar-only reason ahead of the draw gate", () => {
+    mockSubmissions = [
+      makeSubmission({ target_chain_id: 560048, draw_loan: null }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toContain("Stellar only");
+  });
+
+  it("a legacy loan_data with to / initial_* plus a full draw_loan approves from draw_loan only", async () => {
+    mockMutateAsync.mockResolvedValue({ hash: "tx-hash" });
+    mockSubmissions = [
+      makeSubmission({
+        loan_data: {
+          ...LOAN_DATA,
+          to: "GLEGACY",
+          initial_ccr: 1_500_000,
+          initial_location: { location_type: "Vessel" },
+        } as unknown as SubmissionView["loan_data"],
+      }),
+    ];
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    await act(async () => {
+      result.current.approve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockMutateAsync).toHaveBeenCalledWith({ args: READY_ARGS });
   });
 });

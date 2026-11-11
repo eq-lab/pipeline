@@ -54,6 +54,9 @@ import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
+const BORROWER_REF =
+  "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
+
 const FULL_SUBMISSION: SubmissionView = {
   id: 7,
   status: "InReview",
@@ -63,7 +66,6 @@ const FULL_SUBMISSION: SubmissionView = {
   updated_at: "2026-06-18T10:00:00Z",
   documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   loan_data: {
-    to: "G...",
     metadata_uri: "ipfs://...",
     originator: "Auric Andes S.A.C.", // human name — the heading/Deal-Details source
     borrower_id: "borrower-1",
@@ -82,14 +84,21 @@ const FULL_SUBMISSION: SubmissionView = {
       origination_date: 1_783_929_600,
       original_maturity_date: 1_765_756_800,
     },
-    initial_ccr: 1_500_000,
-    initial_location: {
-      location_type: "Vessel",
-      location_identifier: "MV Example",
-      tracking_url: "https://example.com",
-      updated_at: 1_750_000_000,
-    },
     protection: "LC at sight",
+  },
+  draw_loan: {
+    metadata_uri: "ipfs://...",
+    economics: {
+      borrower_ref: BORROWER_REF,
+      original_facility_size: "10000000000",
+      original_senior_tranche: "8000000000",
+      original_equity_tranche: "2000000000",
+      original_offtaker_price: "15500000000",
+      senior_interest_rate: 140000,
+      origination_date: 1_783_929_600,
+      original_maturity_date: 1_765_756_800,
+    },
+    missing_inputs: [],
   },
 };
 
@@ -137,7 +146,9 @@ describe("useOriginationDetail — ready state with router-state submission", ()
     expect(result.current.dealDetails.corridor).toBe("PE → CN");
     expect(result.current.dealDetails.governingLaw).toBe("England & Wales");
     expect(result.current.dealDetails.protection).toBe("LC at sight");
-    expect(result.current.dealDetails.location).toBe("Vessel — MV Example");
+    expect(result.current.dealDetails.borrowerRef).toBe("ab12cd…ab12");
+    expect(result.current.dealDetails.borrowerRefFull).toBe(BORROWER_REF);
+    expect(result.current.dealDetails).not.toHaveProperty("location");
     expect(result.current.dealDetails.documents).toEqual([
       { name: "Offtake agreement.pdf", uri: "ipfs://doc1" },
     ]);
@@ -332,41 +343,63 @@ describe("useOriginationDetail — defensive reads", () => {
     expect(result.current.loanTerms.maturityDate).toBe("—");
   });
 
-  it("renders '—' for a missing protection and a malformed initial_location (#1014)", () => {
+  it("renders '—' for a missing protection", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
-      loan_data: {
-        ...FULL_SUBMISSION.loan_data,
-        protection: undefined,
-        // @ts-expect-error — intentionally malformed for the defensive-read test
-        initial_location: undefined,
-      },
+      loan_data: { ...FULL_SUBMISSION.loan_data, protection: undefined },
     };
     mockSubmissions([submission]);
 
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     expect(result.current.dealDetails.protection).toBe("—");
-    expect(result.current.dealDetails.location).toBe("—");
   });
 
-  it("renders a lone location half alone — no dash fabricated (#1014)", () => {
-    const submission: SubmissionView = {
+  it("maps Borrower ref for the missing, null and absent draw_loan states", () => {
+    const missing: SubmissionView = {
+      ...FULL_SUBMISSION,
+      draw_loan: {
+        metadata_uri: "ipfs://...",
+        economics: {
+          ...FULL_SUBMISSION.draw_loan!.economics,
+          borrower_ref: null,
+        },
+        missing_inputs: ["data_room_id"],
+      },
+    };
+    mockSubmissions([missing]);
+    const a = renderHook(() => useOriginationDetail("7", missing));
+    expect(a.result.current.dealDetails.borrowerRef).toBe(
+      "Data room ID missing",
+    );
+    expect(a.result.current.dealDetails.borrowerRefFull).toBeNull();
+
+    for (const draw_loan of [null, undefined]) {
+      const sub: SubmissionView = { ...FULL_SUBMISSION, draw_loan };
+      mockSubmissions([sub]);
+      const b = renderHook(() => useOriginationDetail("7", sub));
+      expect(b.result.current.dealDetails.borrowerRef).toBe("—");
+      expect(b.result.current.dealDetails.borrowerRefFull).toBeNull();
+    }
+  });
+
+  it("maps a legacy loan_data with to / initial_* keys, and one without, without throwing", () => {
+    const legacy = {
       ...FULL_SUBMISSION,
       loan_data: {
         ...FULL_SUBMISSION.loan_data,
-        initial_location: {
-          ...FULL_SUBMISSION.loan_data.initial_location,
-          location_type: "",
-          location_identifier: "SGS bonded stockpile, Callao, Peru",
-        },
+        to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
+        initial_ccr: 1_500_000,
+        initial_location: { location_type: "Vessel", location_identifier: "X" },
       },
-    };
-    mockSubmissions([submission]);
-
-    const { result } = renderHook(() => useOriginationDetail("7", submission));
-    expect(result.current.dealDetails.location).toBe(
-      "SGS bonded stockpile, Callao, Peru",
-    );
+    } as SubmissionView;
+    for (const submission of [legacy, FULL_SUBMISSION]) {
+      mockSubmissions([submission]);
+      const { result } = renderHook(() =>
+        useOriginationDetail("7", submission),
+      );
+      expect(result.current.state).toBe("ready");
+      expect(result.current.dealDetails.originator).toBe("Auric Andes S.A.C.");
+    }
   });
 
   it("renders an empty documents state gracefully when documents is []", () => {
@@ -461,8 +494,14 @@ describe("useOriginationDetail — transactionPreview", () => {
     expect(rows.find((r) => r.label === "metadataURI")?.value).toBe(
       "ipfs://...",
     );
-    expect(rows.find((r) => r.label === "initialLocation")?.value).toBe(
-      "MV Example",
+    expect(rows.map((r) => r.label)).toEqual([
+      "originator",
+      "economics",
+      "metadataURI",
+      "borrowerRef",
+    ]);
+    expect(rows.find((r) => r.label === "borrowerRef")?.value).toBe(
+      "ab12cd…ab12",
     );
   });
 
@@ -474,30 +513,17 @@ describe("useOriginationDetail — transactionPreview", () => {
         metadata_uri: "",
         // @ts-expect-error — intentionally malformed for the defensive-read test
         economics: undefined,
-        // @ts-expect-error — intentionally malformed for the defensive-read test
-        initial_location: undefined,
       },
+      draw_loan: null,
     };
     mockSubmissions([submission]);
 
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     const rows = result.current.transactionPreview.rows;
     expect(rows.find((r) => r.label === "metadataURI")?.value).toBe("—");
-    expect(rows.find((r) => r.label === "initialLocation")?.value).toBe("—");
+    expect(rows.find((r) => r.label === "borrowerRef")?.value).toBe("—");
     const economics = rows.find((r) => r.label === "economics")?.value;
     expect(economics).toContain("—");
-  });
-
-  it("initialLocation is location_identifier ALONE (no country suffix)", () => {
-    mockSubmissions([FULL_SUBMISSION]);
-    const { result } = renderHook(() =>
-      useOriginationDetail("7", FULL_SUBMISSION),
-    );
-    const location = result.current.transactionPreview.rows.find(
-      (r) => r.label === "initialLocation",
-    )?.value;
-    expect(location).toBe("MV Example");
-    expect(location).not.toContain(",");
   });
 
   it("gives a safe empty-dash transactionPreview in the not-found state", async () => {

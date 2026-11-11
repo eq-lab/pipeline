@@ -50,8 +50,8 @@ export function parsePositiveUsdInput(input: string): number | null {
  * monetary fields (`original_facility_size` / `original_senior_tranche` /
  * `original_equity_tranche` / `original_offtaker_price`) for the formatters.
  * These are human-unit USDC decimal strings (e.g. `"1200000.000000"` =
- * $1,200,000) — #1620 supersedes the #912 base-unit reading; the draw path
- * (`parseUsdcToU128`) scales them to the chain's base units. Returns the
+ * $1,200,000) — #1620 supersedes the #912 base-unit reading; the API serves
+ * the on-chain base units in `draw_loan`. Returns the
  * trimmed string, or `null` for anything not a well-formed non-negative
  * decimal string.
  */

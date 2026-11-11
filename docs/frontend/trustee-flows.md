@@ -1596,12 +1596,21 @@ $1,200,000; at most 6 fractional digits, which both chains represent exactly) �
 the #912 "base-unit" reading that had the trustee form, the API doc and the draw path disagree and
 sent $1.2M on-chain as $0.12. Display consumers pass them through `economicsUsdDecimal`
 (`@/utils/stellarSacUnits`: validates a non-negative decimal, no scaling) before `formatFullUsd`/
-`formatCompactUsd`. The `draw_loan` on-chain write converts them to the target chain's base units
-exactly (`@pipeline/wallet-connect` `parseUsdcToU128`, ×10^7 on Stellar via `BigInt`; a string
-with more fractional digits than the scale holds throws, never truncates). Rows submitted under
-the old reading render 10^7× too large and must be re-entered. Every nested field access must be
-defensive — missing/malformed values
+`formatCompactUsd`. Rows submitted under the old reading render 10^7× too large and must be
+re-entered. Every nested field access must be defensive — missing/malformed values
 render `—`, never fabricated.
+
+**`draw_loan` block (#1805).** The on-chain write does not read `loan_data`. Each `SubmissionView`
+carries `draw_loan` (`DrawLoanArgs | null`, optional on stale router-state copies), the API's
+contract-ready Stellar `draw_loan(metadata_uri, economics)` arguments (`loan_book.rs`
+`draw_loan_args`): `metadata_uri`, the 8 `ImmutableLoanData` fields (`borrower_ref` = sha256 of the
+trimmed `data_room_id` as 64 lowercase hex, the four amounts as 7-decimal base-unit `u128`
+strings, `senior_interest_rate` as bps × 100 `u32`, two unix-second `u64` dates) and
+`missing_inputs`. Each field is `null` when its input is absent or not representable. The block is
+`null` once the loan is drawn, on `Rejected`, for an EVM target and for an unconfigured target
+chain. The browser neither scales nor hashes: `@pipeline/wallet-connect` encodes the served values
+verbatim (see "Chain-first Approve ordering"). The block shape is hand-mirrored in three places
+(API Rust, `useLoanSubmissions.ts`, wallet-connect `DrawLoanArgs`; TD-42).
 
 **Status normalization (#892/#949/#950):** `normalizeOriginationSubmissionStatus` maps the
 backend's merged submission/loan-lifecycle status into the Origination UI vocabulary. Once a
@@ -1698,15 +1707,13 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   select and submit fails client-side with "Required." on `target_chain_id`. The value is **not**
   part of the body: the builder returns `{ chainId, input }` and `useSubmitLoan` posts to
   `POST /v1/loan-book/loan?chain_id=<id>` (`SubmitLoanVariables`). An id the API does not serve is
-  a `400`, now reachable only on the fallback path, rendered inline via the #1602 copy. The `to`
-  label reads "Mint to (address on the target chain)" — no client-side address-format check (the
-  split below).
+  a `400`, now reachable only on the fallback path, rendered inline via the #1602 copy.
 - **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
-  Loan & metadata (`target_chain_id`, `to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
-  `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
+  Loan & metadata (`target_chain_id`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
+  `borrower_id`, `data_room_id` ("Data room ID", required, trimmed — #1805; the API hashes it into the
+  on-chain `borrower_ref`), `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
   (four human-unit USDC amount strings with at most 6 decimals, validated by `USDC_AMOUNT_PATTERN`
-  and labelled "USDC, up to 6 decimals" — #1620; rate bps + two unix-second dates), Collateral (`initial_ccr`
-  + `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
+  and labelled "USDC, up to 6 decimals" — #1620; rate bps + two unix-second dates), Collateral valuation (`collateral_valuation.*`), Fee schedule
   (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
 - **Unique-URI banner:** a standing attention banner states that `metadata_uri` must be unique
   per submission; the API's duplicate rejection additionally surfaces inline on submit.
@@ -1717,7 +1724,8 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   "missing" warning) — and the document rows are replaced (cleared when the payload has none).
   **Required paths absent from the JSON are listed in a warning banner** while the rest
   autofills (the #1100 example payload warns exactly the `collateral_valuation.*` +
-  `fee_schedule.*` paths). A `target_chain_id` in the JSON sets the selector when it is one of
+  `fee_schedule.*` paths; an old payload without `data_room_id` also lists it, and legacy `to` /
+  `initial_*` keys are ignored). A `target_chain_id` in the JSON sets the selector when it is one of
   the offered (served) ids; otherwise the selector keeps its current value and is never listed as
   missing (#1536). Malformed JSON or a non-object root keeps the dialog open with an
   inline parse error and touches nothing — a single JSON object is required (resolved open
@@ -1725,7 +1733,7 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
 - **Validation split:** client-side checks are shape-only — required fields non-empty, numeric
   fields whole non-negative numbers, document rows complete. Amount strings are sent
   **verbatim** (×1e6 convention, [[frontend-display-backend-values-verbatim]]). Backend
-  invariants (facility = senior + equity, `initial_ccr >= 1_000_000`, date ordering,
+  invariants (facility = senior + equity, date ordering,
   `metadata_uri` uniqueness) are NOT duplicated — the API's rejection renders via
   `InlineError` with the raw response behind View details.
 - **Submit:** `useSubmitLoan` POSTs with the session bearer (attached by `apiFetch`, #791) and
@@ -1751,9 +1759,11 @@ on-chain pre-mint, so there is no `loan_id` to call `GET /v1/loan-book/{loan_id}
   `senior_interest_rate_bps` + " p.a." suffix (Figma "14.0% p.a.").
 - Corridor → `loan_data.corridor`, arrow-formatted (same regex as the table). Governing law →
   `loan_data.governing_law`. Protection → `loan_data.protection` (optional — `—` when absent).
-- Location → `loan_data.initial_location` (#1014), rendered `{location_type} — {location_
-  identifier}` (e.g. "Warehouse — SGS bonded stockpile, Callao, Peru"); a half missing on the wire
-  renders alone, both missing renders `—`.
+- Borrower ref → `draw_loan.economics.borrower_ref` (#1805, replaces the #1014 Location row),
+  shortened 6…4 (`ab12cd…9f0e`) with the full hex in a `title` tooltip; "Data room ID missing"
+  when the served block lists `data_room_id` in `missing_inputs`; `—` for an absent block. The raw
+  `data_room_id` has no row of its own. The legacy `to` / `initial_ccr` / `initial_location` keys of
+  old submissions are never read.
 - Documents → the top-level `submission.documents` (**not** `loan_data.documents` — the backend
   already lifts it); `[]` renders a graceful empty state.
 - Status chip → normalized status ("Awaiting your review" for `InReview`; `Approved`/`Rejected`
@@ -1814,14 +1824,13 @@ shape, `ValuationDisplay`/`ValuationInputRow`/`WaterfallRow`, `mapValuation`, `m
 
 ### Approve & mint confirmation dialog (#838, Figma node `4116:13943`)
 
-`transactionPreview` formats the same `loan_data` payload already passed to `useDrawLoan` as the
+`transactionPreview` formats the submission (and its served `draw_loan`) as the
 dark code block shown inside the confirmation dialog. Fields are read defensively exactly like the
 rest of the page (never fabricate; `—` on anything missing/malformed). The four green
 mint-invariant checklist rows the Figma frame also shows are deliberately omitted — no backing
 data (consistent with #821's omission of the "mint invariants pass"/"signature verified" banners).
-The `initialLocation` line is `initial_location.location_identifier` **alone** — `loan_data`
-carries no country field, so the Figma's "· PE" suffix is not reproducible and is dropped rather
-than fabricated.
+The last line is `borrowerRef` (#1805, replaces `initialLocation`): the shortened
+`draw_loan.economics.borrower_ref`, "Data room ID missing" or `—`.
 
 Before #838, clicking Approve fired the mint→review orchestration immediately. The dialog
 introduces a pre-mint confirmation gate: Approve now **opens** the dialog; the orchestration only
@@ -1840,7 +1849,8 @@ Approve runs the trustee-wallet-signed on-chain `draw_loan` mint (`useDrawLoan`,
 `@pipeline/wallet-connect`) **before** the DB review call (`useReviewSubmission`, `POST
 .../review {decision:"Approved"}`):
 
-1. `useDrawLoan().mutateAsync({ loanData })` — build → simulate (the "verify the loan" step) →
+1. `useDrawLoan().mutateAsync({ args })`, with `args` built from the live `submission.draw_loan`
+   (#1805) — build → simulate (the "verify the loan" step) →
    wallet signature → submit → poll to a terminal status.
 2. Only once that resolves does `useReviewSubmission` fire.
 
@@ -1859,6 +1869,34 @@ above the footer buttons (`origination-detail-approve-blocked`); Approve is disa
 against an EVM-targeted submission. Reject and Request changes are unaffected. A missing
 `target_chain_id` is treated as Stellar (the pre-#1529 default). The Deal Details card shows the
 target as its first row ("Target chain"). An EVM draw from the Trustee app is TD-151.
+
+**Draw-inputs gate (#1805).** Approve needs a complete served `draw_loan` block
+(`lib/drawLoanArgs.ts`: `readyDrawLoanArgs` is non-null only when the block is present,
+`missing_inputs` is empty and every field is non-null). For a Stellar target, `approveBlockedReason`
+(checked after the target-chain gate) is `drawLoanBlockedReason(submission.draw_loan)`: a missing
+or `null` block reads "On-chain draw inputs are not available for this submission. Reject or
+request changes instead."; `data_room_id` in `missing_inputs` reads "Data room ID missing — this
+submission can't be drawn on-chain. Request changes so it is resubmitted with a data room ID, or
+reject it."; any other missing input lists the names. Approve is then disabled and
+`openApprove()` / `approve()` are no-ops. A submission with a stale router-state copy that lacks
+`draw_loan` is treated like `null`; the live list copy drives Approve.
+
+**Encoding (`@pipeline/wallet-connect` `encodeDrawLoanArgs`).** The deployed registry is
+`draw_loan(metadata_uri: String, economics: ImmutableLoanData) -> u32`, reached through
+`executor.execute(target, "draw_loan", args, caller)` with `caller` = the connected trustee
+address = the transaction source, so one source-account signature satisfies `caller.require_auth()`.
+The args are exactly `[string metadata_uri, map economics]`; the economics map has the 8 keys
+sorted (`borrower_ref`, `original_equity_tranche`, `original_facility_size`,
+`original_maturity_date`, `original_offtaker_price`, `original_senior_tranche`, `origination_date`,
+`senior_interest_rate`) as symbols: `borrower_ref` as 32 bytes decoded from the 64 hex characters,
+the four amounts as `u128` from `BigInt(string)` (never `Number`), the rate as `u32` and the dates
+as `u64`, all taken verbatim from the served block. Input is validated strictly and throws
+`drawLoan: invalid draw_loan input <field>` **before any RPC call** (`mapMintError` maps it to "This
+submission's on-chain inputs are incomplete. No signature was requested."). The contract's own
+invariants (tranches, maturity, offtaker price) are not duplicated client-side: they surface
+through the simulation ("Could not verify the loan on-chain"). Injected ids
+(`STELLAR_LOAN_REGISTRY_EXECUTOR_ID` / `STELLAR_LOAN_REGISTRY_ID`) come from the caller, never
+hardcoded.
 
 **Idempotency guard — re-click after a mint-succeeded/review-failed retry:** `useDrawLoan`'s
 underlying mutation retains its `isSuccess`/`data` state for as long as the review hook instance
