@@ -446,6 +446,20 @@ describe("Origination details route", () => {
       expect(link).toHaveAttribute("href", "/loans/4488");
     });
 
+    it("Approved: the 'View loan' link renders for loan id 0 (#1896)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      mockReview({ mintedLoanId: 0 });
+      renderRoute();
+      const link = screen.getByTestId("origination-detail-view-loan-link");
+      expect(link).toHaveTextContent("View loan #0");
+      expect(link).toHaveAttribute("href", "/loans/0");
+    });
+
     it("Rejected: renders the red 'Rejected · <date> — <reason>' banner; NO action buttons", () => {
       mockDetail({
         ...READY_RESULT,

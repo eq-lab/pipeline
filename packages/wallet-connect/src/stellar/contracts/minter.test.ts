@@ -346,6 +346,18 @@ describe("recordWireIn", () => {
     });
   });
 
+  it("accepts wire id 0 from the return value (#1896)", async () => {
+    mockPollTransaction.mockResolvedValue({
+      status: "SUCCESS",
+      returnValue: { __native: 0n },
+    });
+
+    await expect(recordWireIn(params())).resolves.toEqual({
+      hash: "tx-hash",
+      wireId: 0,
+    });
+  });
+
   it("falls back to the wire_in event topic for the wire id", async () => {
     mockPollTransaction.mockResolvedValue({
       status: "SUCCESS",

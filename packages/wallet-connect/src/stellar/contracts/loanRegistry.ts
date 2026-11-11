@@ -300,10 +300,6 @@ export async function buildDrawLoanEnvelope({
   return assembled.toXDR();
 }
 
-/**
- * Coerces a `scValToNative` result (bigint | number | anything) to a positive
- * integer loan id, or `null` when it isn't one.
- */
 function toLoanId(native: unknown): number | null {
   const n =
     typeof native === "bigint"
@@ -311,7 +307,7 @@ function toLoanId(native: unknown): number | null {
       : typeof native === "number"
         ? native
         : NaN;
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffffff ? n : null;
 }
 
 /**
