@@ -99,7 +99,15 @@ function StatusPill({ status }: { status: StatusChip }) {
   );
 }
 
-function TermRow({ label, value }: { label: string; value: string }) {
+function TermRow({
+  label,
+  value,
+  title,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+}) {
   return (
     <div
       className="flex items-baseline justify-between gap-[16px] py-[12px]"
@@ -108,7 +116,10 @@ function TermRow({ label, value }: { label: string; value: string }) {
       <span className="font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[rgba(56,55,53,0.6)]">
         {label}
       </span>
-      <span className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]">
+      <span
+        title={title}
+        className="text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]"
+      >
         {value}
       </span>
     </div>
@@ -161,7 +172,11 @@ function DealDetailsCard({
         <TermRow label="Corridor" value={dealDetails.corridor} />
         <TermRow label="Governing law" value={dealDetails.governingLaw} />
         <TermRow label="Protection" value={dealDetails.protection} />
-        <TermRow label="Location" value={dealDetails.location} />
+        <TermRow
+          label="Borrower ref"
+          value={dealDetails.borrowerRef}
+          title={dealDetails.borrowerRefFull ?? undefined}
+        />
       </div>
       <div
         data-testid="origination-detail-documents"
@@ -541,6 +556,8 @@ function OriginationDetail() {
         mintingLabel={review.mintingLabel}
         errorMessage={review.approveOpen ? review.errorMessage : null}
         errorDetails={review.approveOpen ? review.errorDetails : null}
+        blockedReason={review.approveBlockedReason}
+        notice={review.approveReviewOnlyNotice}
         preview={detail.transactionPreview}
       />
 

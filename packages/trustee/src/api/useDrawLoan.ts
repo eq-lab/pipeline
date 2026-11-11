@@ -16,7 +16,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   drawLoan,
   useStellarWallet,
-  type SubmitLoanRequest,
+  type DrawLoanArgs,
   type DrawLoanStage,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
@@ -24,7 +24,7 @@ import { ENV } from "@/lib/env";
 export type { DrawLoanStage };
 
 export interface UseDrawLoanInput {
-  loanData: SubmitLoanRequest;
+  args: DrawLoanArgs;
 }
 
 export interface DrawLoanOutcome {
@@ -60,7 +60,7 @@ export function useDrawLoan(): UseDrawLoanResult {
   const [stage, setStage] = useState<DrawLoanStage | null>(null);
 
   const mutation = useMutation<DrawLoanOutcome, Error, UseDrawLoanInput>({
-    mutationFn: async ({ loanData }) => {
+    mutationFn: async ({ args }) => {
       setStage(null);
 
       if (
@@ -79,7 +79,7 @@ export function useDrawLoan(): UseDrawLoanResult {
         executorId: ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         targetId: ENV.STELLAR_LOAN_REGISTRY_ID,
         caller: address,
-        loanData,
+        args,
         rpcUrl: ENV.STELLAR_RPC_URL,
         networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
         signTransaction,

@@ -17,11 +17,16 @@
  * (transaction preview).
  */
 import { useMemo } from "react";
+import { borrowerRefFull, formatBorrowerRef } from "@/lib/drawLoanArgs";
 import {
   normalizeOriginationSubmissionStatus,
   useLoanSubmissions,
 } from "@/api/useLoanSubmissions";
-import type { SubmissionView } from "@/api/useLoanSubmissions";
+import type {
+  ServedDrawLoanArgs,
+  SubmissionView,
+} from "@/api/useLoanSubmissions";
+import { truncateAddress } from "@/lib/truncateAddress";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsUsdDecimal } from "@/utils/stellarSacUnits";
@@ -63,18 +68,6 @@ function safeNumber(value: unknown): number | undefined {
 /** Renders the corridor hyphen as the Figma arrow glyph ("PE-CN" → "PE → CN"). */
 function formatCorridor(value: unknown): string {
   return safeString(value).replace(/\s*-\s*/g, " → ");
-}
-
-// spec: docs/frontend/trustee-flows.md#origination-detail-originationid-issue-821 (Location row).
-function formatLocation(value: unknown): string {
-  const location =
-    typeof value === "object" && value !== null
-      ? (value as Record<string, unknown>)
-      : {};
-  const parts = [location.location_type, location.location_identifier].filter(
-    (part): part is string => typeof part === "string" && part.length > 0,
-  );
-  return parts.length > 0 ? parts.join(" — ") : "—";
 }
 
 // Human-unit USDC as served (#1620). spec:
@@ -121,8 +114,8 @@ export interface DealDetailsDisplay {
   corridor: string;
   governingLaw: string;
   protection: string;
-  /** `"{location_type} — {location_identifier}"` (`—` when both absent). */
-  location: string;
+  borrowerRef: string;
+  borrowerRefFull: string | null;
   documents: DocumentDisplay[];
 }
 
@@ -137,7 +130,7 @@ export interface TransactionPreviewRow {
 /**
  * View-model for the Approve & mint dialog's transaction-preview code block
  * (issue #838, Figma `4116:13943`). `keyword` is the static
- * `"LoanRegistry.mintLoan"` call name; `rows` are rendered as
+ * `"LoanRegistry.draw_loan"` call name; `rows` are rendered as
  * `  <label>: <value>,` lines (the `.tsx` adds the structural indent/comma/
  * closing paren — see `-ApproveMintDialog.tsx`).
  */
@@ -172,12 +165,11 @@ export interface OriginationDetailResult {
 }
 
 const EMPTY_TRANSACTION_PREVIEW: TransactionPreviewDisplay = {
-  keyword: "LoanRegistry.mintLoan",
+  keyword: "LoanRegistry.draw_loan",
   rows: [
-    { label: "originator", value: "—" },
+    { label: "metadata_uri", value: "—" },
+    { label: "borrower_ref", value: "—" },
     { label: "economics", value: "—" },
-    { label: "metadataURI", value: "—" },
-    { label: "initialLocation", value: "—" },
   ],
 };
 
@@ -233,7 +225,8 @@ function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
     corridor: formatCorridor(loanData.corridor),
     governingLaw: safeString(loanData.governing_law),
     protection: safeString(loanData.protection),
-    location: formatLocation(loanData.initial_location),
+    borrowerRef: formatBorrowerRef(submission.draw_loan, loanData.data_room_id),
+    borrowerRefFull: borrowerRefFull(submission.draw_loan),
     documents: Array.isArray(submission.documents)
       ? submission.documents.map((doc) => ({
           name: safeString(doc?.name),
@@ -251,44 +244,29 @@ function mapHeading(submission: SubmissionView): string {
 
 // ── Transaction preview (issue #838) ─────────────────────────────────────────
 
-// e.g. "{ facility $3,500,000 · senior $2,800,000 · ... }" — a passthrough
-// re-composition (not a derived/computed metric); missing fields fall back
-// to "—" in-line rather than dropping the whole row.
-function formatEconomicsSummary(
-  loanData: Partial<SubmissionView["loan_data"]>,
+function formatDrawEconomics(
+  served: ServedDrawLoanArgs | null | undefined,
 ): string {
-  const economics: Partial<SubmissionView["loan_data"]["economics"]> =
-    loanData.economics ?? {};
-
-  const facility = formatEconomicsUsd(economics.original_facility_size);
-  const senior = formatEconomicsUsd(economics.original_senior_tranche);
-  const equity = formatEconomicsUsd(economics.original_equity_tranche);
-  const offtaker = formatEconomicsUsd(economics.original_offtaker_price);
-  const rate = formatBpsRate(safeNumber(economics.senior_interest_rate_bps));
-  const start = formatMaturityDate(safeNumber(economics.origination_date));
-  const maturity = formatMaturityDate(
-    safeNumber(economics.original_maturity_date),
-  );
-
-  return `{ facility ${facility} · senior ${senior} · equity ${equity} · offtaker ${offtaker} · ${rate} · ${start} → ${maturity} }`;
+  const e = served?.economics;
+  const base = (value: string | null | undefined) =>
+    value == null || value === "" ? "—" : value;
+  const date = (value: number | null | undefined) =>
+    formatMaturityDate(safeNumber(value));
+  return `{ facility ${base(e?.original_facility_size)} · senior ${base(e?.original_senior_tranche)} · equity ${base(e?.original_equity_tranche)} · offtaker ${base(e?.original_offtaker_price)} · rate ${e?.senior_interest_rate ?? "—"} · ${date(e?.origination_date)} → ${date(e?.original_maturity_date)} }`;
 }
 
 function mapTransactionPreview(
   submission: SubmissionView,
 ): TransactionPreviewDisplay {
-  const loanData: Partial<SubmissionView["loan_data"]> =
-    submission.loan_data ?? {};
+  const served = submission.draw_loan;
+  const ref = borrowerRefFull(served);
 
   return {
-    keyword: "LoanRegistry.mintLoan",
+    keyword: "LoanRegistry.draw_loan",
     rows: [
-      { label: "originator", value: safeString(loanData.originator) },
-      { label: "economics", value: formatEconomicsSummary(loanData) },
-      { label: "metadataURI", value: safeString(loanData.metadata_uri) },
-      {
-        label: "initialLocation",
-        value: safeString(loanData.initial_location?.location_identifier),
-      },
+      { label: "metadata_uri", value: safeString(served?.metadata_uri) },
+      { label: "borrower_ref", value: ref ? truncateAddress(ref) : "—" },
+      { label: "economics", value: formatDrawEconomics(served) },
     ],
   };
 }
@@ -358,7 +336,8 @@ export function useOriginationDetail(
           corridor: "—",
           governingLaw: "—",
           protection: "—",
-          location: "—",
+          borrowerRef: "—",
+          borrowerRefFull: null,
           documents: [],
         },
         statusKind: "unknown",

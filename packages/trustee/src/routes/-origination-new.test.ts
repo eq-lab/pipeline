@@ -7,8 +7,8 @@ import {
 } from "./-origination-new";
 
 const EXAMPLE_JSON = JSON.stringify({
-  to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
   metadata_uri: "https://example.com/ipfs/QmeaPY",
+  data_room_id: "DR-0001",
   originator: "Alan Walkovitz",
   borrower_id: "Open Mineral",
   commodity: "Jet fuel JET A-1",
@@ -28,13 +28,6 @@ const EXAMPLE_JSON = JSON.stringify({
     senior_interest_rate_bps: 1000,
     origination_date: 1781806657,
     original_maturity_date: 1881806657,
-  },
-  initial_ccr: 1500000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO 9834521",
-    tracking_url: "https://track.example.com/IMO9834521",
-    updated_at: 1781806657,
   },
 });
 
@@ -63,17 +56,11 @@ describe("parseSubmissionJson", () => {
     const parsed = parseSubmissionJson(EXAMPLE_JSON, OFFERED);
     if (!parsed.ok) throw new Error(parsed.error);
 
-    expect(parsed.values["to"]).toBe(
-      "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
-    );
+    expect(parsed.values["data_room_id"]).toBe("DR-0001");
     expect(parsed.values["economics.original_facility_size"]).toBe(
       "1200000.000000",
     );
     expect(parsed.values["economics.senior_interest_rate_bps"]).toBe("1000");
-    expect(parsed.values["initial_ccr"]).toBe("1500000");
-    expect(parsed.values["initial_location.location_identifier"]).toBe(
-      "IMO 9834521",
-    );
 
     expect(parsed.missingFields).toEqual([
       "collateral_valuation.valuation_mode",
@@ -85,6 +72,27 @@ describe("parseSubmissionJson", () => {
       "fee_schedule.perf_fee_rate_bps",
       "fee_schedule.oet_alloc_rate_bps",
     ]);
+  });
+
+  it("imports a legacy payload: ignores to / initial_* and lists data_room_id as missing", () => {
+    const legacy = JSON.parse(EXAMPLE_JSON);
+    delete legacy.data_room_id;
+    const parsed = parseSubmissionJson(
+      JSON.stringify({
+        ...legacy,
+        to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
+        initial_ccr: 1500000,
+        initial_location: { location_type: "Vessel" },
+      }),
+      OFFERED,
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.values["metadata_uri"]).toBe(
+      "https://example.com/ipfs/QmeaPY",
+    );
+    expect("to" in parsed.values).toBe(false);
+    expect("initial_ccr" in parsed.values).toBe(false);
+    expect(parsed.missingFields).toContain("data_room_id");
   });
 
   it("imports documents rows and drops malformed entries", () => {
@@ -110,7 +118,7 @@ describe("parseSubmissionJson", () => {
     if (!parsed.ok) throw new Error(parsed.error);
     expect(parsed.missingFields).not.toContain("protection");
     expect(parsed.missingFields).not.toContain("secondary_metadata_uri");
-    expect(parsed.missingFields).toContain("to");
+    expect(parsed.missingFields).toContain("data_room_id");
     expect(parsed.missingFields).toContain("metadata_uri");
   });
 
@@ -140,7 +148,10 @@ describe("buildSubmitLoanInput", () => {
     expect(built.input.economics.original_facility_size).toBe("1200000.000000");
     expect(built.input.economics.senior_interest_rate_bps).toBe(1000);
     expect(built.input.economics.origination_date).toBe(1781806657);
-    expect(built.input.initial_ccr).toBe(1500000);
+    expect(built.input.data_room_id).toBe("DR-0001");
+    expect("to" in built.input).toBe(false);
+    expect("initial_ccr" in built.input).toBe(false);
+    expect("initial_location" in built.input).toBe(false);
     expect(built.input.fee_schedule).toEqual({
       mgmt_fee_rate_bps: 100,
       perf_fee_rate_bps: 2000,
@@ -170,16 +181,25 @@ describe("buildSubmitLoanInput", () => {
   it("flags empty required fields and non-numeric numeric fields, never building a payload", () => {
     const values = {
       ...completeValues(),
-      to: "",
+      data_room_id: "   ",
       "economics.senior_interest_rate_bps": "10.5",
     };
     const built = buildSubmitLoanInput(values, []);
     expect(built.ok).toBe(false);
     if (built.ok) return;
-    expect(built.fieldErrors["to"]).toBe("Required.");
+    expect(built.fieldErrors["data_room_id"]).toBe("Required.");
     expect(built.fieldErrors["economics.senior_interest_rate_bps"]).toBe(
       "Must be a whole non-negative number.",
     );
+  });
+
+  it("trims data_room_id in the built input", () => {
+    const built = buildSubmitLoanInput(
+      { ...completeValues(), data_room_id: "  DR-0002  " },
+      [],
+    );
+    if (!built.ok) throw new Error(JSON.stringify(built.fieldErrors));
+    expect(built.input.data_room_id).toBe("DR-0002");
   });
 
   it("flags document rows with a missing name or URI", () => {

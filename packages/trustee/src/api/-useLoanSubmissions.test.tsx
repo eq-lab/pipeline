@@ -55,7 +55,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
     updated_at: "2026-06-18T10:00:00Z",
     documents: [],
     loan_data: {
-      to: "G...",
       metadata_uri: "ipfs://...",
       originator: "Auric Andes",
       borrower_id: "borrower-1",
@@ -70,13 +69,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
         senior_interest_rate_bps: 1400,
         origination_date: 1750000000,
         original_maturity_date: 1797292800,
-      },
-      initial_ccr: 1_500_000,
-      initial_location: {
-        location_type: "Vessel",
-        location_identifier: "MV Example",
-        tracking_url: "https://example.com",
-        updated_at: 1750000000,
       },
     },
   },

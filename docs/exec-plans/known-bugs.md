@@ -17,6 +17,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-34: `encodeUpdateMutableArgs` sends 5 args to a 3-arg `update_mutable`, and the contract overwrites `metadata_uri`
+- **Date:** 2026-11-11
+- **Location:** `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (`encodeUpdateMutableArgs`), `packages/trustee/src/api/useUpdateLifecycle.ts` and the Update-lifecycle dialog on `/loans/$id`. Found while planning #1805; follow-up #1893.
+- **Symptom:** The console sends `update_mutable(loan_id, metadata_uri, status, new_ccr, new_location)`; the deployed contract is `update_mutable(loan_id: u32, status: LoanStatus, metadata_uri: String)` (`pipeline-stellar-contracts` `contracts/loan-registry/src/lib.rs`), so the call fails with an argument-count / decode error.
+- **Root cause:** The encoder predates the contract's 3-arg signature. The contract also overwrites `metadata_uri`, so the dialog's "blank sends an empty string" behavior would wipe it, and it only allows `Performing` and `WatchList` toggles or a same-status metadata update on `Approved` / `Default`.
+- **Workaround:** None. Not fixed in #1805; tracked by #1893 (drops the CCR and location inputs from the dialog and prefills or requires `metadata_uri`).
+
+### BUG-35: `toLoanId` drops loan id 0, but the registry's ids start at 0
+- **Date:** 2026-11-11
+- **Location:** `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (`toLoanId`). Found while planning #1805.
+- **Symptom:** On a fresh registry the first drawn loan has id 0, `extractDrawnLoanId` returns `null`, and the Approve flow shows no "View loan" deep link. The mint itself is unaffected.
+- **Root cause:** `toLoanId` requires `n > 0`, but `next_loan_id` starts at 0 (`storage.rs`).
+- **Workaround:** Open the loan from `/loans`.
+
 ### BUG-32: Assay and offtake validation accepts unbounded decimal exponents, which the valuation math then expands
 - **Date:** 2026-11-09
 - **Location:** `packages/api/src/routes/collateral_valuation.rs` (`parse_dec`, `validate_assay`, `validate_offtake`) and `packages/shared/src/collateral_valuation/mod.rs` (`dec`, `compute_collateral`). Found while planning #1783.

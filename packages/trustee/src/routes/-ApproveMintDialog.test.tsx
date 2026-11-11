@@ -26,7 +26,7 @@ import { ApproveMintDialog } from "./-ApproveMintDialog";
 import type { TransactionPreviewDisplay } from "./-origination-detail";
 
 const PREVIEW: TransactionPreviewDisplay = {
-  keyword: "LoanRegistry.mintLoan",
+  keyword: "LoanRegistry.draw_loan",
   rows: [
     { label: "originator", value: "Auric Andes S.A.C." },
     {
@@ -35,7 +35,7 @@ const PREVIEW: TransactionPreviewDisplay = {
         "{ facility $3,500,000 · senior $2,800,000 · equity $700,000 · offtaker $3,750,000 · 14.0% · 10 Jul 2026 → 15 Dec 2026 }",
     },
     { label: "metadataURI", value: "ipfs://auric-assay-offtake-hash" },
-    { label: "initialLocation", value: "MV Example" },
+    { label: "borrowerRef", value: "ab12cd…ab12" },
   ],
 };
 
@@ -47,6 +47,8 @@ function renderDialog(overrides?: {
   mintingLabel?: string | null;
   errorMessage?: string | null;
   errorDetails?: string | null;
+  blockedReason?: string | null;
+  notice?: string | null;
   preview?: TransactionPreviewDisplay;
 }) {
   const onCancel = overrides?.onCancel ?? vi.fn();
@@ -60,6 +62,8 @@ function renderDialog(overrides?: {
       mintingLabel={overrides?.mintingLabel ?? null}
       errorMessage={overrides?.errorMessage ?? null}
       errorDetails={overrides?.errorDetails ?? null}
+      blockedReason={overrides?.blockedReason ?? null}
+      notice={overrides?.notice ?? null}
       preview={overrides?.preview ?? PREVIEW}
     />,
   );
@@ -81,10 +85,36 @@ describe("ApproveMintDialog", () => {
       screen.getByText("Transaction preview — sent from your Trustee key."),
     ).toBeInTheDocument();
     const preview = screen.getByTestId("approve-mint-preview");
-    expect(preview).toHaveTextContent("LoanRegistry.mintLoan");
+    expect(preview).toHaveTextContent("LoanRegistry.draw_loan");
     expect(preview).toHaveTextContent("Auric Andes S.A.C.");
     expect(preview).toHaveTextContent("ipfs://auric-assay-offtake-hash");
-    expect(preview).toHaveTextContent("MV Example");
+    expect(preview).toHaveTextContent("ab12cd…ab12");
+  });
+
+  it("shows the blocked reason and disables Confirm when the gate closed while open", () => {
+    const { onConfirm } = renderDialog({
+      blockedReason: "On-chain draw inputs are not available.",
+    });
+    expect(screen.getByTestId("approve-mint-blocked")).toHaveTextContent(
+      "On-chain draw inputs are not available.",
+    );
+    const confirm = screen.getByTestId("approve-mint-confirm");
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("shows the review-only notice and keeps Confirm enabled", () => {
+    renderDialog({
+      notice: "Already on-chain — confirm to record the review.",
+    });
+    expect(screen.getByTestId("approve-mint-notice")).toHaveTextContent(
+      "Already on-chain",
+    );
+    expect(screen.getByTestId("approve-mint-confirm")).toBeEnabled();
+    expect(screen.getByTestId("approve-mint-confirm")).toHaveTextContent(
+      "Record approval",
+    );
   });
 
   it("renders an accessible role/aria-modal/aria-labelledby", () => {

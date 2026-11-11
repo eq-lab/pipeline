@@ -1,29 +1,9 @@
-/**
- * Unit tests for the `draw_loan` on-chain mint client (issue #831).
- *
- * `@stellar/stellar-sdk` is fully mocked (no real network access) with
- * lightweight tagged-object stand-ins for each `xdr.ScVal` constructor
- * (`{ t: <kind>, v: <value> }`), so encoding assertions can do plain deep
- * equality on the exact shape/scale/order produced — mirroring the mocking
- * style of `sacBalance.test.ts` / `depositManager.test.ts`.
- *
- * Scenarios:
- *   1. `parseUsdcToU128` — the API's economics decimal string → the
- *      exact u128 base-unit value (human USDC × 10^7, #1620), including the
- *      invalid-input guard.
- *   2. `encodeDrawLoanArgs` — the 5 positional args, each field's ScVal kind
- *      and scale, and both maps' sorted key order.
- *   3. `drawLoan` — happy path (build → sign → send → poll, stage
- *      callbacks fire in order); no signature requested on a simulation
- *      error; `sendTransaction` `ERROR`; poll non-`SUCCESS`; empty id guards
- *      fire before any RPC call.
- */
+// spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   drawLoan,
   buildDrawLoanEnvelope,
   encodeDrawLoanArgs,
-  parseUsdcToU128,
   encodeRolloverArgs,
   buildRolloverEnvelope,
   encodeUpdateMutableArgs,
@@ -34,7 +14,7 @@ import {
   readIsRepaymentReversed,
   encodeCloseLoanArgs,
   buildCloseLoanEnvelope,
-  type SubmitLoanRequest,
+  type DrawLoanArgs,
   type RepaymentInput,
 } from "./loanRegistry";
 
@@ -167,26 +147,42 @@ const CALLER = "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU";
 const RPC_URL = "https://soroban-testnet.stellar.org";
 const PASSPHRASE = "Test SDF Network ; September 2015";
 
-const LOAN_DATA: SubmitLoanRequest = {
-  to: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+const BORROWER_REF =
+  "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
+
+const DRAW_LOAN_ARGS: DrawLoanArgs = {
   metadata_uri: "ipfs://loan-metadata",
   economics: {
-    original_facility_size: "1200000.000000",
-    original_senior_tranche: "1000000.000000",
-    original_equity_tranche: "200000.000000",
-    original_offtaker_price: "1250000.000000",
-    senior_interest_rate_bps: 1000,
+    borrower_ref: BORROWER_REF,
+    original_facility_size: "12000000000000",
+    original_senior_tranche: "10000000000000",
+    original_equity_tranche: "2000000000000",
+    original_offtaker_price: "12500000000000",
+    senior_interest_rate: 100000,
     origination_date: 1_750_000_000,
     original_maturity_date: 1_780_000_000,
   },
-  initial_ccr: 1_500_000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO-1234567",
-    tracking_url: "https://track.example/1234567",
-    updated_at: 1_750_000_100,
-  },
 };
+
+function withEconomics(
+  overrides: Record<string, unknown>,
+  base: DrawLoanArgs = DRAW_LOAN_ARGS,
+): DrawLoanArgs {
+  return {
+    ...base,
+    economics: { ...base.economics, ...overrides },
+  } as DrawLoanArgs;
+}
+
+type MapEntries = Array<{ key: { v: string }; val: { t: string; v: unknown } }>;
+
+function economicsOf(args: DrawLoanArgs) {
+  const map = encodeDrawLoanArgs(args)[1] as unknown as { v: MapEntries };
+  return Object.fromEntries(map.v.map((e) => [e.key.v, e.val])) as Record<
+    keyof DrawLoanArgs["economics"],
+    MapEntries[number]["val"]
+  >;
+}
 
 function makeSimResult() {
   return { result: { retval: "retval" } };
@@ -201,59 +197,22 @@ beforeEach(() => {
   mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
 });
 
-// ── parseUsdcToU128 ──────────────────────────────────────────────────
-
-describe("parseUsdcToU128", () => {
-  it("scales a human-unit USDC string to 7-decimal base units exactly (#1620)", () => {
-    expect(parseUsdcToU128("1200000.000000")).toBe(12_000_000_000_000n);
-    expect(parseUsdcToU128("800")).toBe(8_000_000_000n);
-    expect(parseUsdcToU128("100.5")).toBe(1_005_000_000n);
-    expect(parseUsdcToU128("0.0000001")).toBe(1n);
-  });
-
-  it("honours an explicit decimals argument (6 on EVM USDC)", () => {
-    expect(parseUsdcToU128("1200000.000000", 6)).toBe(1_200_000_000_000n);
-    expect(parseUsdcToU128("0.000001", 6)).toBe(1n);
-  });
-
-  it("rejects more fractional digits than the scale holds instead of truncating", () => {
-    expect(() => parseUsdcToU128("0.12345678")).toThrow(/fractional digits/);
-    expect(() => parseUsdcToU128("1.0000001", 6)).toThrow(/fractional digits/);
-  });
-
-  it("tolerates trailing zeros beyond the scale", () => {
-    expect(parseUsdcToU128("1.00000000")).toBe(10_000_000n);
-  });
-
-  it("rejects a malformed string", () => {
-    expect(() => parseUsdcToU128("abc")).toThrow(/invalid decimal string/);
-    expect(() => parseUsdcToU128("-1")).toThrow(/invalid decimal string/);
-    expect(() => parseUsdcToU128("")).toThrow(/invalid decimal string/);
-  });
-});
-
-// ── encodeDrawLoanArgs ─────────────────────────────────────────────────────────
+// ── encodeDrawLoanArgs ──────────────────────────────────────────────
 
 describe("encodeDrawLoanArgs", () => {
-  it("encodes the 5 positional args with the correct ScVal kinds", () => {
-    const args = encodeDrawLoanArgs(LOAN_DATA);
-
-    expect(args).toHaveLength(5);
-    expect(args[0]).toEqual({ t: "address", v: LOAN_DATA.to });
-    expect(args[1]).toEqual({ t: "string", v: LOAN_DATA.metadata_uri });
-    expect(args[2]).toMatchObject({ t: "map" });
-    expect(args[3]).toEqual({ t: "u32", v: LOAN_DATA.initial_ccr });
-    expect(args[4]).toMatchObject({ t: "map" });
+  it("encodes exactly 2 args: metadata_uri string and the economics map", () => {
+    const args = encodeDrawLoanArgs(DRAW_LOAN_ARGS);
+    expect(args).toHaveLength(2);
+    expect(args[0]).toEqual({ t: "string", v: "ipfs://loan-metadata" });
+    expect(args[1]).toMatchObject({ t: "map" });
   });
 
-  it("encodes the economics map with keys in sorted order", () => {
-    const [, , economicsMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      { v: Array<{ key: { v: string }; val: unknown }> },
-    ];
-    const keys = economicsMap.v.map((entry) => entry.key.v);
-    expect(keys).toEqual([
+  it("emits the 8 ImmutableLoanData keys sorted, borrower_ref first", () => {
+    const map = encodeDrawLoanArgs(DRAW_LOAN_ARGS)[1] as unknown as {
+      v: MapEntries;
+    };
+    expect(map.v.map((e) => e.key.v)).toEqual([
+      "borrower_ref",
       "original_equity_tranche",
       "original_facility_size",
       "original_maturity_date",
@@ -264,127 +223,106 @@ describe("encodeDrawLoanArgs", () => {
     ]);
   });
 
-  it("sends the four USDC amounts to the contract EXACTLY as provided (no re-scaling)", () => {
-    const [, , economicsMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      {
-        v: Array<{ key: { v: string }; val: { t: string; v: bigint } }>;
-      },
-    ];
-    const byKey = Object.fromEntries(
-      economicsMap.v.map((e) => [e.key.v, e.val]),
+  it("encodes borrower_ref as 32 bytes that round-trip to the served hex", () => {
+    const ref = economicsOf(DRAW_LOAN_ARGS).borrower_ref;
+    expect(ref.t).toBe("bytes");
+    const bytes = ref.v as Uint8Array;
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes).toHaveLength(32);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+      "",
     );
-    expect(byKey.original_facility_size).toEqual({
+    expect(hex).toBe(BORROWER_REF);
+  });
+
+  it("accepts an uppercase-hex borrower_ref", () => {
+    const args = withEconomics({ borrower_ref: BORROWER_REF.toUpperCase() });
+    const bytes = economicsOf(args).borrower_ref.v as Uint8Array;
+    expect(bytes[0]).toBe(0xab);
+  });
+
+  it("passes the four amounts through as u128 with no re-scaling", () => {
+    const e = economicsOf(DRAW_LOAN_ARGS);
+    expect(e.original_facility_size).toEqual({
       t: "u128",
       v: 12_000_000_000_000n,
     });
-    expect(byKey.original_senior_tranche).toEqual({
+    expect(e.original_senior_tranche).toEqual({
       t: "u128",
       v: 10_000_000_000_000n,
     });
-    expect(byKey.original_equity_tranche).toEqual({
+    expect(e.original_equity_tranche).toEqual({
       t: "u128",
       v: 2_000_000_000_000n,
     });
-    expect(byKey.original_offtaker_price).toEqual({
+    expect(e.original_offtaker_price).toEqual({
       t: "u128",
       v: 12_500_000_000_000n,
     });
   });
 
-  it("scales senior_interest_rate_bps x100 into a u32", () => {
-    const [, , economicsMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      { v: Array<{ key: { v: string }; val: { t: string; v: number } }> },
-    ];
-    const byKey = Object.fromEntries(
-      economicsMap.v.map((e) => [e.key.v, e.val]),
-    );
-    expect(byKey.senior_interest_rate).toEqual({ t: "u32", v: 100_000 });
+  it("keeps an amount above 2^53 exact", () => {
+    const big = "90071992547409930001";
+    const e = economicsOf(withEconomics({ original_facility_size: big }));
+    expect(e.original_facility_size).toEqual({ t: "u128", v: BigInt(big) });
+  });
+
+  it("accepts an amount at exactly u128::MAX", () => {
+    const max = (2n ** 128n - 1n).toString();
+    const e = economicsOf(withEconomics({ original_offtaker_price: max }));
+    expect(e.original_offtaker_price.v).toBe(2n ** 128n - 1n);
+  });
+
+  it("passes the rate through as u32 without multiplying", () => {
+    expect(economicsOf(DRAW_LOAN_ARGS).senior_interest_rate).toEqual({
+      t: "u32",
+      v: 100000,
+    });
   });
 
   it("passes dates through as u64", () => {
-    const [, , economicsMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      { v: Array<{ key: { v: string }; val: { t: string; v: bigint } }> },
-    ];
-    const byKey = Object.fromEntries(
-      economicsMap.v.map((e) => [e.key.v, e.val]),
-    );
-    expect(byKey.origination_date).toEqual({
-      t: "u64",
-      v: BigInt(LOAN_DATA.economics.origination_date),
-    });
-    expect(byKey.original_maturity_date).toEqual({
-      t: "u64",
-      v: BigInt(LOAN_DATA.economics.original_maturity_date),
-    });
+    const e = economicsOf(DRAW_LOAN_ARGS);
+    expect(e.origination_date).toEqual({ t: "u64", v: 1_750_000_000n });
+    expect(e.original_maturity_date).toEqual({ t: "u64", v: 1_780_000_000n });
   });
 
-  it("encodes the location map with keys in sorted order", () => {
-    const [, , , , locationMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      unknown,
-      unknown,
-      { v: Array<{ key: { v: string }; val: unknown }> },
+  describe("rejects bad input before encoding", () => {
+    const bad: Array<[string, DrawLoanArgs]> = [
+      ["borrower_ref empty", withEconomics({ borrower_ref: "" })],
+      ["borrower_ref missing", withEconomics({ borrower_ref: undefined })],
+      [
+        "borrower_ref short",
+        withEconomics({ borrower_ref: BORROWER_REF.slice(0, 62) }),
+      ],
+      [
+        "borrower_ref 0x prefix",
+        withEconomics({ borrower_ref: `0x${BORROWER_REF}` }),
+      ],
+      [
+        "borrower_ref non-hex",
+        withEconomics({ borrower_ref: `zz${BORROWER_REF.slice(2)}` }),
+      ],
+      [
+        "amount fractional",
+        withEconomics({ original_facility_size: "1200000.5" }),
+      ],
+      ["amount negative", withEconomics({ original_senior_tranche: "-5" })],
+      [
+        "amount above u128::MAX",
+        withEconomics({ original_equity_tranche: (2n ** 128n).toString() }),
+      ],
+      ["amount a number", withEconomics({ original_offtaker_price: 5 })],
+      [
+        "rate above u32::MAX",
+        withEconomics({ senior_interest_rate: 4_294_967_296 }),
+      ],
+      ["rate non-integer", withEconomics({ senior_interest_rate: 10.5 })],
+      ["date negative", withEconomics({ origination_date: -1 })],
+      ["date non-integer", withEconomics({ original_maturity_date: 1.5 })],
+      ["metadata_uri empty", { ...DRAW_LOAN_ARGS, metadata_uri: "  " }],
     ];
-    const keys = locationMap.v.map((entry) => entry.key.v);
-    expect(keys).toEqual([
-      "location_identifier",
-      "location_type",
-      "tracking_url",
-      "updated_at",
-    ]);
-  });
-
-  it("encodes location_type as a unit-variant enum ({vec:[{symbol}]})", () => {
-    const [, , , , locationMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      unknown,
-      unknown,
-      { v: Array<{ key: { v: string }; val: { t: string; v: unknown[] } }> },
-    ];
-    const byKey = Object.fromEntries(
-      locationMap.v.map((e) => [e.key.v, e.val]),
-    );
-    expect(byKey.location_type).toEqual({
-      t: "vec",
-      v: [{ t: "symbol", v: "Vessel" }],
-    });
-  });
-
-  it("passes location_identifier, tracking_url as strings and updated_at as u64", () => {
-    const [, , , , locationMap] = encodeDrawLoanArgs(LOAN_DATA) as [
-      unknown,
-      unknown,
-      unknown,
-      unknown,
-      {
-        v: Array<{
-          key: { v: string };
-          val: { t: string; v: string | bigint };
-        }>;
-      },
-    ];
-    const byKey = Object.fromEntries(
-      locationMap.v.map((e) => [e.key.v, e.val]),
-    );
-    expect(byKey.location_identifier).toEqual({
-      t: "string",
-      v: "IMO-1234567",
-    });
-    expect(byKey.tracking_url).toEqual({
-      t: "string",
-      v: "https://track.example/1234567",
-    });
-    expect(byKey.updated_at).toEqual({
-      t: "u64",
-      v: BigInt(LOAN_DATA.initial_location.updated_at),
+    it.each(bad)("%s", (_name, args) => {
+      expect(() => encodeDrawLoanArgs(args)).toThrow(/invalid draw_loan input/);
     });
   });
 });
@@ -397,7 +335,7 @@ describe("buildDrawLoanEnvelope", () => {
       executorId: EXECUTOR_ID,
       targetId: TARGET_ID,
       caller: CALLER,
-      loanData: LOAN_DATA,
+      args: DRAW_LOAN_ARGS,
       rpcUrl: RPC_URL,
       networkPassphrase: PASSPHRASE,
       ...overrides,
@@ -431,6 +369,16 @@ describe("buildDrawLoanEnvelope", () => {
     expect(mockAssembleTransaction).not.toHaveBeenCalled();
   });
 
+  it("throws on an invalid borrower_ref without any RPC call", async () => {
+    await expect(
+      buildDrawLoanEnvelope(
+        args({ args: withEconomics({ borrower_ref: "abc" }) }),
+      ),
+    ).rejects.toThrow(/invalid draw_loan input economics.borrower_ref/);
+    expect(mockGetAccount).not.toHaveBeenCalled();
+    expect(mockSimulateTransaction).not.toHaveBeenCalled();
+  });
+
   it("throws for an empty executorId without calling the RPC", async () => {
     await expect(
       buildDrawLoanEnvelope(args({ executorId: "" })),
@@ -461,7 +409,7 @@ describe("drawLoan", () => {
       executorId: EXECUTOR_ID,
       targetId: TARGET_ID,
       caller: CALLER,
-      loanData: LOAN_DATA,
+      args: DRAW_LOAN_ARGS,
       rpcUrl: RPC_URL,
       networkPassphrase: PASSPHRASE,
       signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: "signed-xdr" }),
