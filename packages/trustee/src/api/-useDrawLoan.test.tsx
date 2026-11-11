@@ -18,7 +18,7 @@ import React from "react";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useDrawLoan } from "./useDrawLoan";
-import type { SubmitLoanRequest } from "@pipeline/wallet-connect";
+import type { DrawLoanArgs } from "@pipeline/wallet-connect";
 
 // ── Mock @pipeline/wallet-connect ─────────────────────────────────────────────
 
@@ -68,26 +68,20 @@ function makeWrapper() {
   return wrapper;
 }
 
-const LOAN_DATA = {
-  to: "GHOLDER00000000000000000000000000000000000000000000000000",
+const DRAW_ARGS: DrawLoanArgs = {
   metadata_uri: "ipfs://loan-metadata",
   economics: {
-    original_facility_size: "1200000.000000",
-    original_senior_tranche: "1000000.000000",
-    original_equity_tranche: "200000.000000",
-    original_offtaker_price: "1250000.000000",
-    senior_interest_rate_bps: 1000,
+    borrower_ref:
+      "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
+    original_facility_size: "12000000000000",
+    original_senior_tranche: "10000000000000",
+    original_equity_tranche: "2000000000000",
+    original_offtaker_price: "12500000000000",
+    senior_interest_rate: 100000,
     origination_date: 1_750_000_000,
     original_maturity_date: 1_780_000_000,
   },
-  initial_ccr: 1_500_000,
-  initial_location: {
-    location_type: "Vessel",
-    location_identifier: "IMO-1234567",
-    tracking_url: "https://track.example/1234567",
-    updated_at: 1_750_000_100,
-  },
-} as unknown as SubmitLoanRequest;
+};
 
 beforeEach(() => {
   envMock = { ...ENV_CONFIGURED };
@@ -111,7 +105,7 @@ describe("useDrawLoan", () => {
     });
 
     await expect(
-      act(() => result.current.mutateAsync({ loanData: LOAN_DATA })),
+      act(() => result.current.mutateAsync({ args: DRAW_ARGS })),
     ).rejects.toThrow("not configured");
     expect(drawLoanMock).not.toHaveBeenCalled();
   });
@@ -123,7 +117,7 @@ describe("useDrawLoan", () => {
     });
 
     await expect(
-      act(() => result.current.mutateAsync({ loanData: LOAN_DATA })),
+      act(() => result.current.mutateAsync({ args: DRAW_ARGS })),
     ).rejects.toThrow("not configured");
     expect(drawLoanMock).not.toHaveBeenCalled();
   });
@@ -139,7 +133,7 @@ describe("useDrawLoan", () => {
     });
 
     await expect(
-      act(() => result.current.mutateAsync({ loanData: LOAN_DATA })),
+      act(() => result.current.mutateAsync({ args: DRAW_ARGS })),
     ).rejects.toThrow("not connected");
     expect(drawLoanMock).not.toHaveBeenCalled();
   });
@@ -152,7 +146,7 @@ describe("useDrawLoan", () => {
 
     let resolved: { hash: string } | undefined;
     await act(async () => {
-      resolved = await result.current.mutateAsync({ loanData: LOAN_DATA });
+      resolved = await result.current.mutateAsync({ args: DRAW_ARGS });
     });
 
     expect(resolved).toEqual({ hash: "tx-hash" });
@@ -161,7 +155,7 @@ describe("useDrawLoan", () => {
         executorId: ENV_CONFIGURED.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
         targetId: ENV_CONFIGURED.STELLAR_LOAN_REGISTRY_ID,
         caller: stellarWalletState.address,
-        loanData: LOAN_DATA,
+        args: DRAW_ARGS,
         rpcUrl: ENV_CONFIGURED.STELLAR_RPC_URL,
         networkPassphrase: ENV_CONFIGURED.STELLAR_NETWORK_PASSPHRASE,
         signTransaction: signTransactionMock,
@@ -184,7 +178,7 @@ describe("useDrawLoan", () => {
     });
 
     await act(async () => {
-      await result.current.mutateAsync({ loanData: LOAN_DATA });
+      await result.current.mutateAsync({ args: DRAW_ARGS });
     });
 
     expect(result.current.stage).toBe("confirming");
@@ -197,7 +191,7 @@ describe("useDrawLoan", () => {
     });
 
     await expect(
-      act(() => result.current.mutateAsync({ loanData: LOAN_DATA })),
+      act(() => result.current.mutateAsync({ args: DRAW_ARGS })),
     ).rejects.toThrow("Signature cancelled");
 
     await waitFor(() => {

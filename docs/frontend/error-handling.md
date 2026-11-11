@@ -286,6 +286,7 @@ only the raw interpolation moved out of the rendered sentence and into `details`
 | review default | `` `Something went wrong: ${raw}` `` | `"Something went wrong. Please try again."` + `details` |
 | mint simulation | `` `Could not verify the loan on-chain (${raw}). No signature was requested — safe to retry.` `` | same sentence minus the parenthetical; `raw` → `details` |
 | mint reject/cancel | `"Signature cancelled. Click Approve again to retry."` | unchanged + `details` |
+| mint invalid draw_loan input (#1805) | new | `"This submission's on-chain inputs are incomplete. No signature was requested."` + `details` (thrown by `encodeDrawLoanArgs` before any RPC call) |
 | mint not-configured | `"On-chain minting isn't configured for this environment."` | unchanged + `details` |
 | mint not-connected | `"Connect your trustee wallet to approve on-chain."` | unchanged + `details` |
 | mint default | `` `The on-chain transaction failed (${raw}). Please try again.` `` | same sentence minus the parenthetical; `raw` → `details` |

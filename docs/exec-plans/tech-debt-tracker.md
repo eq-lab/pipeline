@@ -659,6 +659,11 @@ line, whichever section it lands in.
   sub-line, and wire a submission-review route (separate Type-1 sub-issue of epic #775) to make
   the trustee's Review button live.
 
+  **Addendum (issue #1805):** the API's `draw_loan` block (`DrawLoanArgs` / `DrawLoanEconomics`,
+  `loan_book.rs`) is now hand-mirrored in three places: the API Rust types, the trustee
+  `useLoanSubmissions.ts` (nullable fields) and the wallet-connect `DrawLoanArgs` (non-null
+  variant, validated at encode time).
+
 ### TD-43: `draw_loan` mint↔review reconciliation has no backend fallback; `SubmitLoanRequest` gains a third hand-mirrored copy
 
 - **Date:** 2026-07-10
