@@ -213,24 +213,6 @@ function encodeEconomicsMap(economics: DrawLoanEconomics): xdr.ScVal {
   ]);
 }
 
-/**
- * Encodes the `location` positional arg (`draw_loan` arg index 4). Map keys
- * sorted lexicographically per `scMap`. `location_type` is encoded as the
- * contract's unit-variant enum shape (`{vec:[{symbol:<type>}]}`), NOT a
- * plain string.
- */
-function encodeLocationMap(location: LocationInput): xdr.ScVal {
-  return scMap([
-    ["location_identifier", xdr.ScVal.scvString(location.location_identifier)],
-    [
-      "location_type",
-      xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(location.location_type)]),
-    ],
-    ["tracking_url", xdr.ScVal.scvString(location.tracking_url)],
-    ["updated_at", u64(location.updated_at)],
-  ]);
-}
-
 export function encodeDrawLoanArgs(args: DrawLoanArgs): xdr.ScVal[] {
   if (
     typeof args?.metadata_uri !== "string" ||
@@ -645,31 +627,6 @@ export async function rollover({
 
 // ── Update lifecycle (issue #872) ─────────────────────────────────────────────
 
-/**
- * Soroban client for the trustee's `update_mutable` on-chain call (issue #872) —
- * `LoanRegistry.updateMutable`, through the same executor proxy as `draw_loan`:
- *
- *   executor.execute(target, function: Symbol("update_mutable"), args, caller)
- *
- * Non-economic fields only, no NAV impact. On success the contract emits some of
- * `status_updated { new_status: LoanStatus }`, `ccr_updated { new_ccr: u32 }`,
- * `location_updated { new_location: String }` (the fields that changed).
- *
- * ⚠️ The method name + positional arg order (`loan_id`, `status`, `ccr`,
- * `location`, `metadata_uri`) are inferred from the event/state shape and MUST be
- * confirmed on testnet — see #870's rollover trap for why. The verifying
- * `simulateTransaction` fails loudly on a wrong encoding before any signature.
- *
- * Encodings (verified from the indexer/reader):
- *   - `status` — a `LoanStatus` unit-variant enum: `ScVal::Vec([Symbol(variant)])`
- *     (same as `draw_loan`'s `location_type`). On-chain variants: `Performing`,
- *     `WatchList`, `Default`, `Closed`.
- *   - `ccr` — `ONE = 1_000_000` fixed-point (100% = 1_000_000), i.e. percent ×
- *     10_000 (135% → 1_350_000); the indexer reads it back with `/100` → bps.
- *   - `location` — a plain `String` (the event's `new_location` is a String, not
- *     a map — matches the single Location field in the S10 form).
- *   - `metadataUri` — `String`; pass "" when blank.
- */
 export type UpdateMutableStage = DrawLoanStage;
 
 export interface UpdateMutableParams {
@@ -677,13 +634,7 @@ export interface UpdateMutableParams {
   targetId: string;
   caller: string;
   loanId: number;
-  /** On-chain `LoanStatus` variant: `Performing` | `WatchList` | `Default` | `Closed`. */
   status: string;
-  /** New CCR as a percent (e.g. `135` for 135%); scaled to `ONE = 1e6` on encode. */
-  ccrPercent: number;
-  /** New collateral location — the `LocationUpdate` struct (not a bare string). */
-  location: LocationInput;
-  /** Optional metadata URI (assay / offtake hash); pass "" when blank. */
   metadataUri: string;
   rpcUrl: string;
   networkPassphrase: string;
@@ -698,35 +649,15 @@ export interface UpdateMutableResult {
   hash: string;
 }
 
-/**
- * Encodes `update_mutable`'s positional args, per the actual contract signature
- * (confirmed against the deployed Rust source):
- *
- *   update_mutable(e, loan_id: u32, metadata_uri: String, status: LoanStatus,
- *                  new_ccr: u32 [ONE=1e6], new_location: LocationUpdate)
- *
- * `e: &Env` is implicit (not a wire arg), so the 5 encoded positional args are
- * `[loan_id, metadata_uri, status, new_ccr, new_location]` — note `metadata_uri`
- * is SECOND, not last. Exported for unit testing.
- *
- * `new_location` is the same `LocationUpdate` map as `draw_loan`'s
- * `initial_location` — NOT a bare string. A wrong arg ORDER or a mistyped arg
- * makes the contract's guest-side `TryFromVal` panic (`UnreachableCodeReached`);
- * that trap is what an out-of-order encoding produced here.
- */
 export function encodeUpdateMutableArgs(
   loanId: number,
   status: string,
-  ccrPercent: number,
-  location: LocationInput,
   metadataUri: string,
 ): xdr.ScVal[] {
   return [
     xdr.ScVal.scvU32(loanId),
-    xdr.ScVal.scvString(metadataUri),
     xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(status)]),
-    xdr.ScVal.scvU32(Math.round(ccrPercent * 10_000)),
-    encodeLocationMap(location),
+    xdr.ScVal.scvString(metadataUri),
   ];
 }
 
@@ -736,26 +667,17 @@ export interface BuildUpdateMutableEnvelopeParams {
   caller: string;
   loanId: number;
   status: string;
-  ccrPercent: number;
-  location: LocationInput;
   metadataUri: string;
   rpcUrl: string;
   networkPassphrase: string;
 }
 
-/**
- * Builds, simulates, and assembles the `execute(target, "update_mutable", args,
- * caller)` transaction — unsigned XDR ready for `signTransaction`. Mirrors
- * `buildRolloverEnvelope`.
- */
 export async function buildUpdateMutableEnvelope({
   executorId,
   targetId,
   caller,
   loanId,
   status,
-  ccrPercent,
-  location,
   metadataUri,
   rpcUrl,
   networkPassphrase,
@@ -781,15 +703,7 @@ export async function buildUpdateMutableEnvelope({
     "execute",
     new Address(targetId).toScVal(),
     xdr.ScVal.scvSymbol("update_mutable"),
-    xdr.ScVal.scvVec(
-      encodeUpdateMutableArgs(
-        loanId,
-        status,
-        ccrPercent,
-        location,
-        metadataUri,
-      ),
-    ),
+    xdr.ScVal.scvVec(encodeUpdateMutableArgs(loanId, status, metadataUri)),
     new Address(caller).toScVal(),
   );
 
@@ -811,19 +725,12 @@ export async function buildUpdateMutableEnvelope({
   return assembled.toXDR();
 }
 
-/**
- * Signs and submits the trustee-wallet-signed `update_mutable` end-to-end: build
- * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
- * a terminal status. Mirrors `rollover`.
- */
 export async function updateMutable({
   executorId,
   targetId,
   caller,
   loanId,
   status,
-  ccrPercent,
-  location,
   metadataUri,
   rpcUrl,
   networkPassphrase,
@@ -838,8 +745,6 @@ export async function updateMutable({
     caller,
     loanId,
     status,
-    ccrPercent,
-    location,
     metadataUri,
     rpcUrl,
     networkPassphrase,

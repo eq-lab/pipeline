@@ -122,9 +122,9 @@ The following fields are updated during the loan's life by the `TRUSTEE` (Truste
 | `Any → Closed` (scheduled / early repayment) | `TRUSTEE` | Trustee-key transaction, no timelock |
 | `Any → Closed` (default / write-down) | `RISK_COUNCIL` | 3-of-5 multisig, 24h timelock |
 
-`updateMutable()` accepts only `{Performing, Watchlist, Matured}` for `status`. It reverts
-on `Default` (callers must use `setDefault()`) and on `Closed` (callers must use
-`closeLoan()`).
+`update_mutable()` toggles `status` between `{Performing, WatchList}`; on `Approved` / `Default` it
+is metadata-only (same status). It reverts on `Closed` and on any other transition
+(`setDefault()` / `closeLoan()` own those).
 
 Loan-tied PLUSD minting is permitted only while the loan is `Performing` or `Watchlist`.
 `Matured`, `Default`, and `Closed` refuse mints. The normal final-coupon mint happens while

@@ -96,6 +96,7 @@ export function loanState(
       interestAdjustment: overrides.interestAdjustment ?? "0",
       writtenDown: overrides.writtenDown ?? "0",
       carvedOut: overrides.carvedOut ?? false,
+      metadataUri: "ipfs://cur",
     },
     money: {
       accruedInterest: overrides.accruedInterest ?? "5000000",

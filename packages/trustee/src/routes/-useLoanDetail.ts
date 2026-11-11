@@ -154,14 +154,13 @@ export type LoanDetailVariant =
   | "disbursing"
   | "matured";
 
-export type LifecycleStatus = "Performing" | "WatchList";
-
 // spec: docs/frontend/trustee-flows.md#wired-actions.
-export function lifecycleStatusOf(
-  entry: LoanBookEntry | undefined | null,
-): LifecycleStatus | null {
-  const raw = entry?.onchain_status;
-  return raw === "Performing" || raw === "WatchList" ? raw : null;
+export function allowedLifecycleTargets(current: string): string[] {
+  if (current === "Performing" || current === "WatchList") {
+    return ["Performing", "WatchList"];
+  }
+  if (current === "Approved" || current === "Default") return [current];
+  return [];
 }
 
 export interface UseLoanDetailResult {
@@ -172,7 +171,6 @@ export interface UseLoanDetailResult {
   /** Status-selected layout — the view branches on this before rendering. */
   variant: LoanDetailVariant;
   hero: HeroView;
-  lifecycleStatus: LifecycleStatus | null;
   /** Lifecycle stepper — rendered only by the `performing`/`disbursing` layout (none on Watchlist/Matured). */
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
@@ -775,7 +773,6 @@ export function useLoanDetail(
     errorDetails: loanBookError?.details ?? null,
     variant,
     hero: buildHero(loanId, entry),
-    lifecycleStatus: lifecycleStatusOf(entry),
     lifecycle: buildLifecycle(entry?.status),
     tiles,
     registry: buildRegistryState(financials, entry?.protection ?? null),
