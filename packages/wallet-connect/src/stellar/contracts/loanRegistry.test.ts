@@ -446,6 +446,24 @@ describe("drawLoan", () => {
     expect(result).toEqual({ hash: "tx-hash", loanId: 42 });
   });
 
+  it.each([
+    [0n, 0],
+    [-1n, null],
+    [2n ** 32n, null],
+  ])(
+    "loan id %s from the return value -> %s (#1896)",
+    async (raw, expected) => {
+      mockPollTransaction.mockResolvedValue({
+        status: "SUCCESS",
+        returnValue: { __native: raw },
+      });
+
+      const result = await drawLoan(baseParams());
+
+      expect(result).toEqual({ hash: "tx-hash", loanId: expected });
+    },
+  );
+
   it("fires stage callbacks in order: awaiting-signature -> submitting -> confirming", async () => {
     const stages: string[] = [];
     await drawLoan(

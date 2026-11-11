@@ -162,18 +162,14 @@ export async function buildRecordWireInEnvelope({
   return assembled.toXDR();
 }
 
-function toId(native: unknown, min: number): number | null {
+function toId(native: unknown): number | null {
   const n =
     typeof native === "bigint"
       ? Number(native)
       : typeof native === "number"
         ? native
         : NaN;
-  return Number.isInteger(n) && n >= min ? n : null;
-}
-
-function toWireId(native: unknown): number | null {
-  return toId(native, 1);
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffffff ? n : null;
 }
 
 function wireIdFromReturnValue(
@@ -181,7 +177,7 @@ function wireIdFromReturnValue(
 ): number | null {
   if (!finalResult.returnValue) return null;
   try {
-    return toWireId(scValToNative(finalResult.returnValue));
+    return toId(scValToNative(finalResult.returnValue));
   } catch {
     return null;
   }
@@ -198,7 +194,7 @@ function wireIdFromEvents(
       const idTopic = topics[1];
       if (!nameTopic || !idTopic) continue;
       if (scValToNative(nameTopic) === "wire_in") {
-        const id = toWireId(scValToNative(idTopic));
+        const id = toId(scValToNative(idTopic));
         if (id != null) return id;
       }
     }
@@ -381,7 +377,7 @@ function repaymentIdFromReturnValue(
 ): number | null {
   if (!finalResult.returnValue) return null;
   try {
-    return toId(scValToNative(finalResult.returnValue), 0);
+    return toId(scValToNative(finalResult.returnValue));
   } catch {
     return null;
   }
@@ -397,7 +393,7 @@ function repaymentIdFromEvents(
       const nameTopic = v0.topics()[0];
       if (!nameTopic || scValToNative(nameTopic) !== "cash_repaid") continue;
       const data = scValToNative(v0.data()) as { repayment_id?: unknown };
-      const id = toId(data?.repayment_id, 0);
+      const id = toId(data?.repayment_id);
       if (id != null) return id;
     }
   } catch {
