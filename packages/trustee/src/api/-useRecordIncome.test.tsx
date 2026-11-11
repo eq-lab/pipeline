@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#cash-reporter-bookings
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -61,6 +61,18 @@ beforeEach(() => {
   };
 });
 
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
+
+function fakeRelayTimers() {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout"],
+    shouldAdvanceTime: true,
+  });
+}
+
 describe("useRecordIncome", () => {
   it("short-circuits when the minter id is unset", async () => {
     envMock = { ...ENV_CONFIGURED, STELLAR_YIELD_MINTER_ID: "" };
@@ -106,6 +118,7 @@ describe("useRecordIncome", () => {
   });
 
   it("passes amount, value date and hash through and invalidates the caches", async () => {
+    fakeRelayTimers();
     recordIncomeMock.mockResolvedValue({ hash: "tx-hash" });
     const { result } = renderHook(() => useRecordIncome(), { wrapper });
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");

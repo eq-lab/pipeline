@@ -89,11 +89,20 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
   vi.useRealTimers();
 });
 
+function fakeRelayTimers() {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout"],
+    shouldAdvanceTime: true,
+  });
+}
+
 describe("useReverseRepay mutations", () => {
   it("passes the derived refHash to schedule and to execute", async () => {
+    fakeRelayTimers();
     const schedule = renderHook(() => useScheduleReverseRepay(), {
       wrapper: makeWrapper(),
     });
@@ -177,6 +186,7 @@ describe("useReverseRepay mutations", () => {
   });
 
   it("exposes the stage reported by the relay", async () => {
+    fakeRelayTimers();
     mocks.executeReverseRepay.mockImplementation(
       async ({ onStageChange }: { onStageChange: (s: string) => void }) => {
         onStageChange("confirming");
