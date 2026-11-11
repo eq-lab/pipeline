@@ -374,11 +374,32 @@ describe("useOriginationDetail — defensive reads", () => {
     expect(a.result.current.dealDetails.borrowerRefFull).toBeNull();
 
     for (const draw_loan of [null, undefined]) {
-      const sub: SubmissionView = { ...FULL_SUBMISSION, draw_loan };
+      const sub: SubmissionView = {
+        ...FULL_SUBMISSION,
+        loan_data: { ...FULL_SUBMISSION.loan_data, data_room_id: undefined },
+        draw_loan,
+      };
       mockSubmissions([sub]);
       const b = renderHook(() => useOriginationDetail("7", sub));
       expect(b.result.current.dealDetails.borrowerRef).toBe("—");
       expect(b.result.current.dealDetails.borrowerRefFull).toBeNull();
+    }
+  });
+
+  it("falls back to the data room id when draw_loan is null (drawn / Rejected)", () => {
+    for (const status of ["Approved", "Rejected"]) {
+      const sub: SubmissionView = {
+        ...FULL_SUBMISSION,
+        status,
+        loan_data: { ...FULL_SUBMISSION.loan_data, data_room_id: "room-42" },
+        draw_loan: null,
+      };
+      mockSubmissions([sub]);
+      const r = renderHook(() => useOriginationDetail("7", sub));
+      expect(r.result.current.dealDetails.borrowerRef).toBe(
+        "Data room ID room-42",
+      );
+      expect(r.result.current.dealDetails.borrowerRefFull).toBeNull();
     }
   });
 
@@ -472,58 +493,45 @@ describe("useOriginationDetail — defensive reads", () => {
 // ── Transaction preview (issue #838) ─────────────────────────────────────────
 
 describe("useOriginationDetail — transactionPreview", () => {
-  it("formats all rows from a full loan_data payload", () => {
+  it("shows the served draw_loan values actually signed, in base units", () => {
     mockSubmissions([FULL_SUBMISSION]);
     const { result } = renderHook(() =>
       useOriginationDetail("7", FULL_SUBMISSION),
     );
 
     expect(result.current.transactionPreview.keyword).toBe(
-      "LoanRegistry.mintLoan",
+      "LoanRegistry.draw_loan",
     );
     const rows = result.current.transactionPreview.rows;
-    expect(rows.find((r) => r.label === "originator")?.value).toBe(
-      "Auric Andes S.A.C.",
-    );
-    const economics = rows.find((r) => r.label === "economics")?.value;
-    expect(economics).toContain("$1,000");
-    expect(economics).toContain("$800");
-    expect(economics).toContain("$200");
-    expect(economics).toContain("$1,550");
-    expect(economics).toContain("14.0%");
-    expect(rows.find((r) => r.label === "metadataURI")?.value).toBe(
+    expect(rows.map((r) => r.label)).toEqual([
+      "metadata_uri",
+      "borrower_ref",
+      "economics",
+    ]);
+    expect(rows.find((r) => r.label === "metadata_uri")?.value).toBe(
       "ipfs://...",
     );
-    expect(rows.map((r) => r.label)).toEqual([
-      "originator",
-      "economics",
-      "metadataURI",
-      "borrowerRef",
-    ]);
-    expect(rows.find((r) => r.label === "borrowerRef")?.value).toBe(
+    expect(rows.find((r) => r.label === "borrower_ref")?.value).toBe(
       "ab12cd…ab12",
     );
+    const economics = rows.find((r) => r.label === "economics")?.value;
+    expect(economics).toContain("facility 10000000000");
+    expect(economics).toContain("senior 8000000000");
+    expect(economics).toContain("equity 2000000000");
+    expect(economics).toContain("offtaker 15500000000");
+    expect(economics).toContain("rate 140000");
+    expect(economics).not.toContain("$");
   });
 
-  it("renders '—' for missing/malformed loan_data fields, never throws", () => {
-    const submission: SubmissionView = {
-      ...FULL_SUBMISSION,
-      loan_data: {
-        ...FULL_SUBMISSION.loan_data,
-        metadata_uri: "",
-        // @ts-expect-error — intentionally malformed for the defensive-read test
-        economics: undefined,
-      },
-      draw_loan: null,
-    };
+  it("renders '—' for every row when draw_loan is null, never throws", () => {
+    const submission: SubmissionView = { ...FULL_SUBMISSION, draw_loan: null };
     mockSubmissions([submission]);
 
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     const rows = result.current.transactionPreview.rows;
-    expect(rows.find((r) => r.label === "metadataURI")?.value).toBe("—");
-    expect(rows.find((r) => r.label === "borrowerRef")?.value).toBe("—");
-    const economics = rows.find((r) => r.label === "economics")?.value;
-    expect(economics).toContain("—");
+    expect(rows.find((r) => r.label === "metadata_uri")?.value).toBe("—");
+    expect(rows.find((r) => r.label === "borrower_ref")?.value).toBe("—");
+    expect(rows.find((r) => r.label === "economics")?.value).toContain("—");
   });
 
   it("gives a safe empty-dash transactionPreview in the not-found state", async () => {

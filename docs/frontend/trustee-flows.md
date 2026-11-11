@@ -1759,10 +1759,11 @@ on-chain pre-mint, so there is no `loan_id` to call `GET /v1/loan-book/{loan_id}
   `senior_interest_rate_bps` + " p.a." suffix (Figma "14.0% p.a.").
 - Corridor → `loan_data.corridor`, arrow-formatted (same regex as the table). Governing law →
   `loan_data.governing_law`. Protection → `loan_data.protection` (optional — `—` when absent).
-- Borrower ref → `draw_loan.economics.borrower_ref` (#1805, replaces the #1014 Location row),
+- Borrower ref → `draw_loan.economics.borrower_ref` (#1805, replaces the #1014 Location row; falls back to `Data room ID <loan_data.data_room_id>` once the served `draw_loan` is null, e.g. drawn or Rejected submissions),
   shortened 6…4 (`ab12cd…9f0e`) with the full hex in a `title` tooltip; "Data room ID missing"
-  when the served block lists `data_room_id` in `missing_inputs`; `—` for an absent block. The raw
-  `data_room_id` has no row of its own. The legacy `to` / `initial_ccr` / `initial_location` keys of
+  when the served block lists `data_room_id` in `missing_inputs`. When `draw_loan` is null (drawn or
+  Rejected submissions) the row shows `Data room ID <loan_data.data_room_id>`; `—` when neither
+  exists. The legacy `to` / `initial_ccr` / `initial_location` keys of
   old submissions are never read.
 - Documents → the top-level `submission.documents` (**not** `loan_data.documents` — the backend
   already lifts it); `[]` renders a graceful empty state.
@@ -1824,13 +1825,13 @@ shape, `ValuationDisplay`/`ValuationInputRow`/`WaterfallRow`, `mapValuation`, `m
 
 ### Approve & mint confirmation dialog (#838, Figma node `4116:13943`)
 
-`transactionPreview` formats the submission (and its served `draw_loan`) as the
-dark code block shown inside the confirmation dialog. Fields are read defensively exactly like the
-rest of the page (never fabricate; `—` on anything missing/malformed). The four green
-mint-invariant checklist rows the Figma frame also shows are deliberately omitted — no backing
-data (consistent with #821's omission of the "mint invariants pass"/"signature verified" banners).
-The last line is `borrowerRef` (#1805, replaces `initialLocation`): the shortened
-`draw_loan.economics.borrower_ref`, "Data room ID missing" or `—`.
+`transactionPreview` formats the served `draw_loan` block — the values actually signed — as the
+dark code block shown inside the confirmation dialog, under `LoanRegistry.draw_loan(`: `metadata_uri`,
+the shortened `borrower_ref`, and an `economics` summary in base units as served (amounts, raw
+`senior_interest_rate`, formatted dates). Fields are read defensively (never fabricate; `—` when
+`draw_loan` is null or a field is missing). The four green mint-invariant checklist rows the Figma
+frame also shows are deliberately omitted — no backing data (consistent with #821's omission of the
+"mint invariants pass"/"signature verified" banners).
 
 Before #838, clicking Approve fired the mint→review orchestration immediately. The dialog
 introduces a pre-mint confirmation gate: Approve now **opens** the dialog; the orchestration only
@@ -1870,15 +1871,24 @@ against an EVM-targeted submission. Reject and Request changes are unaffected. A
 `target_chain_id` is treated as Stellar (the pre-#1529 default). The Deal Details card shows the
 target as its first row ("Target chain"). An EVM draw from the Trustee app is TD-151.
 
-**Draw-inputs gate (#1805).** Approve needs a complete served `draw_loan` block
+#### Draw-inputs gate (#1805)
+
+Approve needs a complete served `draw_loan` block
 (`lib/drawLoanArgs.ts`: `readyDrawLoanArgs` is non-null only when the block is present,
-`missing_inputs` is empty and every field is non-null). For a Stellar target, `approveBlockedReason`
+`missing_inputs` is empty and every field is non-null and well-formed: 64-hex `borrower_ref`, digit-only amounts within `u128`,
+`u32` rate, non-negative integer dates, non-blank `metadata_uri` — the same formats
+`encodeDrawLoanArgs` enforces). For a Stellar target, `approveBlockedReason`
 (checked after the target-chain gate) is `drawLoanBlockedReason(submission.draw_loan)`: a missing
 or `null` block reads "On-chain draw inputs are not available for this submission. Reject or
 request changes instead."; `data_room_id` in `missing_inputs` reads "Data room ID missing — this
 submission can't be drawn on-chain. Request changes so it is resubmitted with a data room ID, or
 reject it."; any other missing input lists the names. Approve is then disabled and
-`openApprove()` / `approve()` are no-ops. A submission with a stale router-state copy that lacks
+`openApprove()` / `approve()` are no-ops; if the gate closes while the dialog is open, the dialog
+shows the reason and disables Confirm. The gate does not apply to review-only retries: when the
+mint already succeeded this session, or the submission is still `InReview` with a `loan_id` (drawn,
+review POST failed, so the API nulled `draw_loan`), Approve is enabled with no blocked reason, the
+dialog notes "Already on-chain — confirm to record the review.", and Confirm only POSTs the
+`Approved` review — no draw. A submission with a stale router-state copy that lacks
 `draw_loan` is treated like `null`; the live list copy drives Approve.
 
 **Encoding (`@pipeline/wallet-connect` `encodeDrawLoanArgs`).** The deployed registry is

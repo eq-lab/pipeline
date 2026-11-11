@@ -33,6 +33,12 @@ export interface UseOriginationReviewResult {
    * runs on Stellar only), or `null` when it can proceed.
    */
   approveBlockedReason: string | null;
+  /**
+   * Set when the loan is already on-chain (drawn this session, or the served
+   * submission is still InReview with a `loan_id`): Confirm only records the
+   * review, no draw.
+   */
+  approveReviewOnlyNotice: string | null;
   /** Opens the approve & mint confirmation dialog (issue #838). */
   openApprove: () => void;
   /** Closes the approve & mint dialog without minting. */
@@ -165,13 +171,22 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   // never triggers a second network fetch.
   const { data: submissions } = useLoanSubmissions();
   const submission = submissions?.find((s) => s.id === submissionId);
-  const approveBlockedReason = !submission
-    ? null
-    : !isStellarTarget(submission.target_chain_id)
-      ? `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(
-          submission.target_chain_id,
-        )} from the Trustee app is not supported yet. Reject or request changes instead.`
-      : drawLoanBlockedReason(submission.draw_loan);
+  const alreadyDrawn =
+    !!submission &&
+    submission.status === "InReview" &&
+    submission.loan_id != null;
+  const reviewOnly = drawLoanMutation.isSuccess || alreadyDrawn;
+  const approveReviewOnlyNotice = reviewOnly
+    ? "Already on-chain — confirm to record the review."
+    : null;
+  const approveBlockedReason =
+    !submission || reviewOnly
+      ? null
+      : !isStellarTarget(submission.target_chain_id)
+        ? `Approve & draw runs on Stellar only — drawing on ${targetChainLabel(
+            submission.target_chain_id,
+          )} from the Trustee app is not supported yet. Reject or request changes instead.`
+        : drawLoanBlockedReason(submission.draw_loan);
 
   // Fires the review call and, on success, closes the approve dialog (issue
   // #838) — the footer then flips to the Approved banner via the existing
@@ -184,16 +199,17 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   }
 
   function approve() {
-    if (!submission || approveBlockedReason) return;
+    if (!submission) return;
     // No-double-mint guard: an already-Approved submission needs no further
     // on-chain action.
     if (submission.status === "Approved") return;
 
     // Idempotency guard — spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831.
-    if (drawLoanMutation.isSuccess) {
+    if (reviewOnly) {
       fireApprovalReview();
       return;
     }
+    if (approveBlockedReason) return;
 
     const args = readyDrawLoanArgs(submission.draw_loan);
     if (!args) return;
@@ -271,7 +287,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
       ? drawLoanMutation.isSuccess
         ? {
             message:
-              "The loan minted on-chain successfully, but marking it Approved failed. This is a known limitation — contact support rather than retrying (Approve would attempt another on-chain mint).",
+              "The loan was drawn on-chain, but marking it Approved failed. Click Approve again — it only records the review and does not draw the loan again.",
             details: reviewMutation.error.message || "unknown error",
             isSpecific: true,
           }
@@ -287,6 +303,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   return {
     approve,
     approveBlockedReason,
+    approveReviewOnlyNotice,
     openApprove,
     cancelApprove,
     openReject,

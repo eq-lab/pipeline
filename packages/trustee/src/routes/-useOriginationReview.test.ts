@@ -252,6 +252,56 @@ describe("useOriginationReview", () => {
     );
   });
 
+  it("retry after mint success still sends the review once draw_loan is nulled by the refetch", () => {
+    mockDrawLoanState = {
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      stage: null,
+    };
+    mockReviewState = { isPending: false, error: new Error("boom") };
+    mockSubmissions = [makeSubmission({ draw_loan: null, loan_id: "9" })];
+
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).toHaveBeenCalledWith(
+      { id: 7, decision: "Approved" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("an InReview submission with loan_id set is review-only: no draw, no blocked reason", () => {
+    mockSubmissions = [makeSubmission({ draw_loan: null, loan_id: "9" })];
+
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toBeNull();
+    expect(result.current.approveReviewOnlyNotice).toMatch(/Already on-chain/);
+    act(() => result.current.openApprove());
+    expect(result.current.approveOpen).toBe(true);
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).toHaveBeenCalledWith(
+      { id: 7, decision: "Approved" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("approve() is a no-op while the gate is closed (draw_loan null, no loan_id), and the reason stays exposed", () => {
+    mockSubmissions = [makeSubmission({ draw_loan: null })];
+
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.approveBlockedReason).toMatch(/not available/);
+    expect(result.current.approveReviewOnlyNotice).toBeNull();
+    act(() => result.current.approve());
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
   it("does nothing when the submission is not found", async () => {
     mockSubmissions = [];
 
@@ -405,7 +455,7 @@ describe("useOriginationReview", () => {
     );
   });
 
-  it("maps the mint-succeeded-but-review-failed known limitation distinctly, raw text only in errorDetails", () => {
+  it("maps the mint-succeeded-but-review-failed case distinctly, raw text only in errorDetails", () => {
     mockDrawLoanState = {
       isPending: false,
       isSuccess: true,
@@ -414,8 +464,8 @@ describe("useOriginationReview", () => {
     };
     mockReviewState = { isPending: false, error: new Error("boom") };
     const { result } = renderHook(() => useOriginationReview("7"));
-    expect(result.current.errorMessage).toMatch(/minted on-chain successfully/);
-    expect(result.current.errorMessage).toMatch(/known limitation/);
+    expect(result.current.errorMessage).toMatch(/drawn on-chain/);
+    expect(result.current.errorMessage).toMatch(/does not draw the loan again/);
     expect(result.current.errorMessage).not.toMatch(/boom/);
     expect(result.current.errorDetails).toBe("boom");
   });

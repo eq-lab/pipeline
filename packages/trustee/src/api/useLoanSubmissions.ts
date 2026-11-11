@@ -4,7 +4,7 @@
  * Origination page.
  *
  * spec: docs/frontend/trustee-flows.md#data-layer-useloansubmissions
- * (conventions, base-unit scaling, TD-42 duplication).
+ * (conventions, TD-42 duplication).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -45,7 +45,7 @@ export interface DrawLoanEconomics {
   original_maturity_date: number | null;
 }
 
-export interface DrawLoanArgs {
+export interface ServedDrawLoanArgs {
   metadata_uri: string | null;
   economics: DrawLoanEconomics;
   missing_inputs: string[];
@@ -138,7 +138,7 @@ export interface SubmissionView {
    * it is declared as `SubmitLoanRequest` here (matching the LP convention).
    */
   loan_data: SubmitLoanRequest;
-  draw_loan?: DrawLoanArgs | null;
+  draw_loan?: ServedDrawLoanArgs | null;
 }
 
 /** Return value of `useLoanSubmissions`. */

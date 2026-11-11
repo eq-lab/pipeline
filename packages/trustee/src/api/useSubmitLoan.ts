@@ -5,7 +5,7 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import type { DrawLoanArgs } from "./useLoanSubmissions";
+import type { ServedDrawLoanArgs } from "./useLoanSubmissions";
 
 export interface EconomicsInput {
   original_facility_size: string;
@@ -54,7 +54,7 @@ export interface SubmitLoanInput {
 
 export interface SubmitLoanResponse {
   id: number;
-  draw_loan?: DrawLoanArgs | null;
+  draw_loan?: ServedDrawLoanArgs | null;
 }
 
 export interface SubmitLoanVariables {

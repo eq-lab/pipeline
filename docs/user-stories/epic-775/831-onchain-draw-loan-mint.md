@@ -87,9 +87,9 @@ A wallet rejection or any on-chain failure (simulate/send/poll) makes **no** rev
 
 **Expected outcomes:**
 
-- Step 2: an inline error renders distinctly from a mint failure — to the effect of "The loan minted on-chain successfully, but marking it Approved failed (...). This is a known limitation — contact support rather than retrying (Approve would attempt another on-chain mint)." The submission stays `InReview`.
+- Step 2: an inline error renders distinctly from a mint failure — to the effect of "The loan was drawn on-chain, but marking it Approved failed. Click Approve again — it only records the review and does not draw the loan again." The submission stays `InReview`.
 - Step 3: re-clicking Approve does **not** prompt the wallet again and does **not** submit a second on-chain transaction — it goes straight to retrying the review call. On success, the green "Approved & minted" banner renders.
-- **Accepted residual (not a defect):** if the page is hard-reloaded between the mint succeeding and the review call failing, this in-session guard is lost — a subsequent Approve would attempt another on-chain mint. There is no backend reconciliation to close this gap yet.
+- After a hard reload the in-session guard is gone, but once the indexer links the drawn loan (`loan_id` set while the submission is still `InReview`) Approve is review-only as well (#1805): it shows "Already on-chain — confirm to record the review." and never draws again. Only in the few seconds before the indexer links the loan could a reload still offer a second draw.
 
 ---
 

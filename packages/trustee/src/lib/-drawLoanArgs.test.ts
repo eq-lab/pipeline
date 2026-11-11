@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { DrawLoanArgs } from "@/api/useLoanSubmissions";
+import type { ServedDrawLoanArgs } from "@/api/useLoanSubmissions";
 import {
   borrowerRefFull,
   drawLoanBlockedReason,
@@ -9,7 +9,7 @@ import {
 
 const REF = "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
 
-const FULL: DrawLoanArgs = {
+const FULL: ServedDrawLoanArgs = {
   metadata_uri: "ipfs://x",
   economics: {
     borrower_ref: REF,
@@ -24,7 +24,7 @@ const FULL: DrawLoanArgs = {
   missing_inputs: [],
 };
 
-const MISSING_DATA_ROOM: DrawLoanArgs = {
+const MISSING_DATA_ROOM: ServedDrawLoanArgs = {
   ...FULL,
   economics: { ...FULL.economics, borrower_ref: null },
   missing_inputs: ["data_room_id"],
@@ -62,6 +62,43 @@ describe("readyDrawLoanArgs", () => {
   });
 });
 
+describe("readyDrawLoanArgs formats", () => {
+  const withEcon = (patch: Partial<ServedDrawLoanArgs["economics"]>) => ({
+    ...FULL,
+    economics: { ...FULL.economics, ...patch },
+  });
+
+  it("rejects a malformed borrower_ref, non-digit or oversized amounts, and bad rate/dates", () => {
+    expect(readyDrawLoanArgs(withEcon({ borrower_ref: "nothex" }))).toBeNull();
+    expect(
+      readyDrawLoanArgs(withEcon({ original_facility_size: "1000.50" })),
+    ).toBeNull();
+    expect(
+      readyDrawLoanArgs(withEcon({ original_senior_tranche: "-5" })),
+    ).toBeNull();
+    expect(
+      readyDrawLoanArgs(withEcon({ original_equity_tranche: "1e6" })),
+    ).toBeNull();
+    expect(
+      readyDrawLoanArgs(withEcon({ original_offtaker_price: "9".repeat(40) })),
+    ).toBeNull();
+    expect(
+      readyDrawLoanArgs(withEcon({ senior_interest_rate: 1.5 })),
+    ).toBeNull();
+    expect(
+      readyDrawLoanArgs(withEcon({ senior_interest_rate: 2 ** 32 })),
+    ).toBeNull();
+    expect(readyDrawLoanArgs(withEcon({ origination_date: -1 }))).toBeNull();
+    expect(readyDrawLoanArgs({ ...FULL, metadata_uri: "  " })).toBeNull();
+  });
+
+  it("makes drawLoanBlockedReason non-null for a malformed block", () => {
+    expect(
+      drawLoanBlockedReason(withEcon({ borrower_ref: "nothex" })),
+    ).toContain("not available");
+  });
+});
+
 describe("drawLoanBlockedReason", () => {
   it("covers the unavailable, data-room and other-missing copies", () => {
     expect(drawLoanBlockedReason(null)).toContain("not available");
@@ -91,6 +128,15 @@ describe("formatBorrowerRef / borrowerRefFull", () => {
   it("shows the data-room-missing copy", () => {
     expect(formatBorrowerRef(MISSING_DATA_ROOM)).toBe("Data room ID missing");
     expect(borrowerRefFull(MISSING_DATA_ROOM)).toBeNull();
+  });
+
+  it("falls back to the data room id, then a dash", () => {
+    expect(formatBorrowerRef(null, " room-1 ")).toBe("Data room ID room-1");
+    expect(formatBorrowerRef(MISSING_DATA_ROOM, "room-1")).toBe(
+      "Data room ID room-1",
+    );
+    expect(formatBorrowerRef(null, "")).toBe("—");
+    expect(formatBorrowerRef(null, 5)).toBe("—");
   });
 
   it("falls back to a dash for an absent block or a malformed ref", () => {

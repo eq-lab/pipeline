@@ -556,6 +556,8 @@ function OriginationDetail() {
         mintingLabel={review.mintingLabel}
         errorMessage={review.approveOpen ? review.errorMessage : null}
         errorDetails={review.approveOpen ? review.errorDetails : null}
+        blockedReason={review.approveBlockedReason}
+        notice={review.approveReviewOnlyNotice}
         preview={detail.transactionPreview}
       />
 

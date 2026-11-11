@@ -127,6 +127,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     requestChangesOpen: false,
     mintedLoanId: null,
     approveBlockedReason: null,
+    approveReviewOnlyNotice: null,
     ...overrides,
   });
 }
@@ -173,7 +174,7 @@ const READY_RESULT: OriginationDetailResult = {
   reviewedDate: "2 Jan",
   rejectionReason: "—",
   transactionPreview: {
-    keyword: "LoanRegistry.mintLoan",
+    keyword: "LoanRegistry.draw_loan",
     rows: [
       { label: "originator", value: "Auric Andes S.A.C." },
       { label: "economics", value: "{ facility $3,500,000 }" },

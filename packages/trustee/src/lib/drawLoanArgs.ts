@@ -1,30 +1,29 @@
 // spec: docs/frontend/trustee-flows.md#draw-inputs-gate-1805
-import type { DrawLoanArgs } from "@/api/useLoanSubmissions";
+import type { DrawLoanArgs } from "@pipeline/wallet-connect";
+import type { ServedDrawLoanArgs } from "@/api/useLoanSubmissions";
 import { truncateAddress } from "@/lib/truncateAddress";
 
-export interface ReadyDrawLoanArgs {
-  metadata_uri: string;
-  economics: {
-    borrower_ref: string;
-    original_facility_size: string;
-    original_senior_tranche: string;
-    original_equity_tranche: string;
-    original_offtaker_price: string;
-    senior_interest_rate: number;
-    origination_date: number;
-    original_maturity_date: number;
-  };
+const BORROWER_REF_HEX = /^[0-9a-fA-F]{64}$/;
+const AMOUNT_DIGITS = /^[0-9]+$/;
+const U128_MAX = (1n << 128n) - 1n;
+const U32_MAX = 4_294_967_295;
+
+function isAmount(value: string): boolean {
+  return AMOUNT_DIGITS.test(value) && BigInt(value) <= U128_MAX;
 }
 
-const BORROWER_REF_HEX = /^[0-9a-fA-F]{64}$/;
+function isDate(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
 
 export function readyDrawLoanArgs(
-  served: DrawLoanArgs | null | undefined,
-): ReadyDrawLoanArgs | null {
+  served: ServedDrawLoanArgs | null | undefined,
+): DrawLoanArgs | null {
   if (!served || served.missing_inputs.length > 0) return null;
   const { metadata_uri: uri, economics: e } = served;
   if (
     uri == null ||
+    uri.trim() === "" ||
     e.borrower_ref == null ||
     e.original_facility_size == null ||
     e.original_senior_tranche == null ||
@@ -33,6 +32,20 @@ export function readyDrawLoanArgs(
     e.senior_interest_rate == null ||
     e.origination_date == null ||
     e.original_maturity_date == null
+  ) {
+    return null;
+  }
+  if (
+    !BORROWER_REF_HEX.test(e.borrower_ref) ||
+    !isAmount(e.original_facility_size) ||
+    !isAmount(e.original_senior_tranche) ||
+    !isAmount(e.original_equity_tranche) ||
+    !isAmount(e.original_offtaker_price) ||
+    !Number.isInteger(e.senior_interest_rate) ||
+    e.senior_interest_rate < 0 ||
+    e.senior_interest_rate > U32_MAX ||
+    !isDate(e.origination_date) ||
+    !isDate(e.original_maturity_date)
   ) {
     return null;
   }
@@ -52,7 +65,7 @@ export function readyDrawLoanArgs(
 }
 
 export function drawLoanBlockedReason(
-  served: DrawLoanArgs | null | undefined,
+  served: ServedDrawLoanArgs | null | undefined,
 ): string | null {
   if (!served) {
     return "On-chain draw inputs are not available for this submission. Reject or request changes instead.";
@@ -69,17 +82,21 @@ export function drawLoanBlockedReason(
 }
 
 export function borrowerRefFull(
-  served: DrawLoanArgs | null | undefined,
+  served: ServedDrawLoanArgs | null | undefined,
 ): string | null {
   const ref = served?.economics.borrower_ref;
   return ref && BORROWER_REF_HEX.test(ref) ? ref : null;
 }
 
 export function formatBorrowerRef(
-  served: DrawLoanArgs | null | undefined,
+  served: ServedDrawLoanArgs | null | undefined,
+  dataRoomId?: unknown,
 ): string {
   const full = borrowerRefFull(served);
   if (full) return truncateAddress(full);
+  if (typeof dataRoomId === "string" && dataRoomId.trim() !== "") {
+    return `Data room ID ${dataRoomId.trim()}`;
+  }
   if (served?.missing_inputs.includes("data_room_id")) {
     return "Data room ID missing";
   }
