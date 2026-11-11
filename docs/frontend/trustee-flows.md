@@ -875,16 +875,26 @@ own border/title).
   on-chain `LoanRegistry.rollover` via `useRollover` (bps; the Stellar encoder scales ×100). The
   mint-ceiling delta is **not** previewed with a figure — the real ceiling change is computed
   on-chain at rollover, avoiding a fabricated transaction-effect number.
-- **Update lifecycle** (S10, Figma node `4116:14087`, #872) — collects the non-economic mutable
-  fields (status, CCR %, location, optional metadata URI), then submits the on-chain
-  `LoanRegistry.updateMutable` via `useUpdateLifecycle`. Default/Closed are not offered (they route
-  to the Risk Council / close flows); Past Due/Matured are derived, not settable here.
-  **Status default (#1621)** — the selector defaults to the loan's raw on-chain status, read from
-  `onchain_status` on the loan-book entry (`lifecycleStatusOf` in `-useLoanDetail.ts`), never from
-  the display chip: `Disbursing` / `Past Due` mask a WatchList loan. `Performing` and `WatchList`
-  preselect themselves; any other value (`Approved`, `Default`, `Closed`) or a missing field
-  preselects nothing ("Select status") and keeps **Confirm update** disabled until the trustee
-  picks a status, so a silent default is never written on-chain.
+- **Update lifecycle** (S10, Figma node `4116:14087`, #872, #1893) — collects the target status and
+  the metadata URI only, then submits the on-chain `LoanRegistry.update_mutable(loan_id: u32,
+  status: LoanStatus, metadata_uri: String)` through the executor via `useUpdateLifecycle`. There is
+  no CCR or location argument on-chain, so the dialog has no such inputs.
+  **Source of truth (#1893, TD-183)** — status and metadata URI come from one on-chain
+  `mutable_loan_data` read (`useLoanMutableState` → `readLoanChainState`), not from the loan-book
+  entry: `GET /v1/loan-book` serves neither the current `metadata_uri` (it serves the submission's
+  `draw_loan` URI, which a later `update_mutable` replaces) nor a status free of indexer lag. The
+  dialog shows a loading line while the read is pending and the mapped read error if it fails;
+  **Update loan** stays disabled in both cases.
+  **Status options** follow the contract rule (`allowedLifecycleTargets` in `-useLoanDetail.ts`):
+  `Performing` / `WatchList` offer both (labels Active / Watchlist); `Approved` and `Default` offer
+  only themselves (metadata-only, any other status reverts `WrongCurrentStatus`); `Closed` or an
+  unknown status offers none and shows "This loan's on-chain status does not allow a lifecycle
+  update." (`AlreadyClosed`). The selector preselects the on-chain status.
+  **Metadata URI** — the field is prefilled with the stored value and is sent exactly as shown
+  (verbatim, no trimming); the contract replaces the stored URI on every call, it never appends. A
+  blank field is blocked while the stored URI is non-blank, so the URI is never wiped by default.
+  **Update loan** is also disabled when nothing changed (same status and same URI), which avoids a
+  no-op transaction. Only `StatusUpdated` is emitted, and only on a status change.
 - **Past-Due attention notice** (#940) — a past-maturity loan renders under the Matured variant;
   its derived `Past Due` status is an attention signal, not a lock — per the backend, it exists
   "to draw the Trustee's attention that they either need to record the payment or escalate to

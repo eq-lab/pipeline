@@ -1,35 +1,52 @@
-/**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s
- * `updateMutable`: the trustee-wallet-signed on-chain
- * `LoanRegistry.updateMutable`, run through the executor `execute` proxy
- * (same pattern as `useRollover`). Non-economic fields only (status / CCR /
- * location / metadata URI), no NAV impact.
- *
- * spec: docs/frontend/trustee-flows.md#wired-actions (Update lifecycle).
- */
+// spec: docs/frontend/trustee-flows.md#wired-actions
 import { useState, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  readLoanChainState,
   updateMutable,
   useStellarWallet,
   type UpdateMutableStage,
-  type LocationInput,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
+import { stellarOnlyActionReason } from "@/lib/targetChains";
 
-export type { UpdateMutableStage, LocationInput };
+export type { UpdateMutableStage };
 
 export interface UseUpdateLifecycleInput {
-  /** On-chain loan id (u32). */
   loanId: number;
-  /** On-chain `LoanStatus` variant: `Performing` | `WatchList`. */
   status: string;
-  /** New CCR as a percent (e.g. `135`); scaled to `ONE = 1e6` in the binding. */
-  ccrPercent: number;
-  /** New collateral location — the `LocationUpdate` struct the contract expects. */
-  location: LocationInput;
-  /** Optional metadata URI (assay / offtake hash); pass "" when blank. */
   metadataUri: string;
+}
+
+export interface LoanMutableState {
+  status: string;
+  metadataUri: string;
+}
+
+export function useLoanMutableState(
+  chainId: number | null | undefined,
+  loanId: number | null,
+  enabled: boolean,
+) {
+  return useQuery<LoanMutableState, Error>({
+    queryKey: ["loan-mutable", chainId, loanId],
+    enabled:
+      enabled &&
+      stellarOnlyActionReason(chainId) === null &&
+      Number.isInteger(loanId) &&
+      !!ENV.STELLAR_LOAN_REGISTRY_ID,
+    staleTime: 0,
+    retry: false,
+    queryFn: async () => {
+      const state = await readLoanChainState({
+        registryId: ENV.STELLAR_LOAN_REGISTRY_ID,
+        loanId: loanId as number,
+        rpcUrl: ENV.STELLAR_RPC_URL,
+        networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
+      });
+      return { status: state.status, metadataUri: state.metadataUri };
+    },
+  });
 }
 
 export interface UseUpdateLifecycleResult {
@@ -52,13 +69,7 @@ export function useUpdateLifecycle(): UseUpdateLifecycleResult {
     Error,
     UseUpdateLifecycleInput
   >({
-    mutationFn: async ({
-      loanId,
-      status,
-      ccrPercent,
-      location,
-      metadataUri,
-    }) => {
+    mutationFn: async ({ loanId, status, metadataUri }) => {
       setStage(null);
 
       if (
@@ -79,8 +90,6 @@ export function useUpdateLifecycle(): UseUpdateLifecycleResult {
         caller: address,
         loanId,
         status,
-        ccrPercent,
-        location,
         metadataUri,
         rpcUrl: ENV.STELLAR_RPC_URL,
         networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
@@ -92,6 +101,8 @@ export function useUpdateLifecycle(): UseUpdateLifecycleResult {
       void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
       void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
       void queryClient.invalidateQueries({ queryKey: ["loan-valuation"] });
+      void queryClient.invalidateQueries({ queryKey: ["loan-mutable"] });
+      void queryClient.invalidateQueries({ queryKey: ["risk-council-loan"] });
     },
   });
 

@@ -606,51 +606,18 @@ describe("buildRolloverEnvelope", () => {
 
 // ── encodeUpdateMutableArgs (issue #872) ────────────────────────────────────────
 
-const LOCATION_INPUT = {
-  location_type: "Vessel",
-  location_identifier: "IMO-9741205",
-  tracking_url: "https://track.example/9741205",
-  updated_at: 1_784_000_000,
-};
-
 describe("encodeUpdateMutableArgs", () => {
-  it("encodes the contract's arg ORDER: (loan_id:u32, metadata:String, status:enum, ccr:u32 [ONE=1e6], location:LocationUpdate map)", () => {
-    const args = encodeUpdateMutableArgs(
-      4488,
-      "WatchList",
-      135,
-      LOCATION_INPUT,
-      "ipfs://assay",
-    );
-    expect(args).toHaveLength(5);
+  it("encodes (loan_id:u32, status:enum, metadata_uri:String) and nothing else", () => {
+    const args = encodeUpdateMutableArgs(4488, "WatchList", "ipfs://assay");
+    expect(args).toHaveLength(3);
     expect(args[0]).toEqual({ t: "u32", v: 4488 });
-    // metadata_uri is SECOND, not last (deployed signature). Sending it last put
-    // the status enum in the String slot → guest-side TryFromVal panic (#872).
-    expect(args[1]).toEqual({ t: "string", v: "ipfs://assay" });
-    // Status is a unit-variant enum: vec([symbol]).
-    expect(args[2]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
-    // 135% → ONE=1e6 scale (percent × 10000).
-    expect(args[3]).toEqual({ t: "u32", v: 1_350_000 });
-    // Location is the same `LocationUpdate` map as draw_loan — NOT a bare string.
-    expect(args[4]).toMatchObject({ t: "map" });
-    const locationMap = args[4] as unknown as {
-      t: "map";
-      v: Array<{ key: { v: string }; val: { t: string; v: string | bigint } }>;
-    };
-    expect(locationMap.v.map((e) => e.key.v)).toEqual([
-      "location_identifier",
-      "location_type",
-      "tracking_url",
-      "updated_at",
-    ]);
-    const byKey = Object.fromEntries(
-      locationMap.v.map((e) => [e.key.v, e.val]),
-    );
-    expect(byKey.location_type).toEqual({
-      t: "vec",
-      v: [{ t: "symbol", v: "Vessel" }],
-    });
-    expect(byKey.updated_at).toEqual({ t: "u64", v: 1_784_000_000n });
+    expect(args[1]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
+    expect(args[2]).toEqual({ t: "string", v: "ipfs://assay" });
+  });
+
+  it("encodes an empty metadata URI as an empty string", () => {
+    const args = encodeUpdateMutableArgs(1, "Performing", "");
+    expect(args[2]).toEqual({ t: "string", v: "" });
   });
 });
 
@@ -662,9 +629,7 @@ describe("buildUpdateMutableEnvelope", () => {
       caller: CALLER,
       loanId: 4488,
       status: "Performing",
-      ccrPercent: 135,
-      location: LOCATION_INPUT,
-      metadataUri: "",
+      metadataUri: "ipfs://x",
       rpcUrl: RPC_URL,
       networkPassphrase: PASSPHRASE,
       ...overrides,
@@ -677,7 +642,14 @@ describe("buildUpdateMutableEnvelope", () => {
       "execute",
       { t: "address", v: TARGET_ID },
       { t: "symbol", v: "update_mutable" },
-      expect.objectContaining({ t: "vec" }),
+      {
+        t: "vec",
+        v: [
+          { t: "u32", v: 4488 },
+          { t: "vec", v: [{ t: "symbol", v: "Performing" }] },
+          { t: "string", v: "ipfs://x" },
+        ],
+      },
       { t: "address", v: CALLER },
     );
   });

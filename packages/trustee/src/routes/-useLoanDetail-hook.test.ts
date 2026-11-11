@@ -106,24 +106,3 @@ describe("useLoanDetail (#1537)", () => {
     expect(result.current.onChainBlockedReason).toBeNull();
   });
 });
-
-describe("useLoanDetail lifecycleStatus (#1621)", () => {
-  it("serves the on-chain status for a Past Due loan that is WatchList on chain", () => {
-    mockUseLoanBook.mockReturnValue({
-      ...IDLE,
-      data: {
-        summary: {} as never,
-        loans: [
-          entry({
-            loan_id: "7",
-            status: "Past Due",
-            onchain_status: "WatchList",
-          }),
-        ],
-      },
-    });
-    const { result } = renderHook(() => useLoanDetail(99_000_001, "7"));
-    expect(result.current.lifecycleStatus).toBe("WatchList");
-    expect(result.current.variant).toBe("matured");
-  });
-});

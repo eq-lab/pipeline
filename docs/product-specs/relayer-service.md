@@ -107,7 +107,7 @@ price source on a configurable cadence (working assumption: every 15 minutes dur
 It derives collateral value per the valuation modes in collateral-valuation.md (price times quantity
 for standard goods, Net Smelter Return for metal concentrate), computes
 CCR = collateral_value / outstanding_senior_principal in basis points, and on threshold crossings
-notifies recipients and asks the Trustee to call `update_mutable` to update `ccr` (Relayer has no
+notifies recipients and asks the Trustee to review the loan (move it to WatchList via `update_mutable`; the Relayer has no
 write role on LoanRegistry). See collateral-valuation.md for sources, budget ceiling, valuation
 modes, and the off-chain valuation record; see price-feed.md for thresholds and the on-chain CCR write.
 

@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-183.**
+**Next free number: TD-184.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2410,3 +2410,10 @@ line, whichever section it lands in.
 - **Gap:** The account number and IBAN are stored as plaintext JSONB, like `legal_name` and `contact_email`. Changes are not recorded, and Trustee reads of the full account (`GET /v1/lps/{id}`, `GET /v1/cash-book`) are not logged. The account freezes with the KYB record, so once KYB is `Passed` nothing in the API can change it, and LPs that passed before this feature have none. Both gaps are closed by ops SQL.
 - **Impact:** A database or backup leak exposes every LP's bank account. A change to the account, or a Trustee read of it, leaves no record. A `Passed` LP that wants a different or a first account needs an ops request.
 - **Suggested fix:** Encrypt the account number and IBAN at the application level, add an append-only `lp_settlement_bank_account_history` and a Trustee read log, and add a trustee-only write (or a `Passed` to `ChangesRequested` transition) for changes after `Passed`.
+
+### TD-183: Update lifecycle reads `mutable_loan_data` on-chain for the current `metadata_uri`
+- **Date:** 2026-11-11
+- **Location:** `packages/trustee/src/api/useUpdateLifecycle.ts` (`useLoanMutableState`), `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts` (`readLoanChainState`), `packages/api/src/routes/loan_book.rs:396` — Issue #1893.
+- **Gap:** `GET /v1/loan-book` does not serve the loan's current `metadata_uri` (only the submission's `draw_loan` URI, which `update_mutable` can replace) and serves `onchain_status` from the indexer, which can lag.
+- **Impact:** The Update lifecycle dialog needs an RPC read of `mutable_loan_data` on every open, and the page holds two status sources that can briefly differ.
+- **Suggested fix:** Serve `metadata_uri` on `LoanBookEntry`, then drop the read.

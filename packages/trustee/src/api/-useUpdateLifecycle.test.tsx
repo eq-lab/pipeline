@@ -5,11 +5,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useUpdateLifecycle } from "./useUpdateLifecycle";
+import { useLoanMutableState, useUpdateLifecycle } from "./useUpdateLifecycle";
 
 const updateMutableMock = vi.fn();
+const readLoanChainStateMock = vi.fn();
 const signTransactionMock = vi.fn();
 let stellarWalletState = {
   address: "GCALLER0000000000000000000000000000000000000000000000000",
@@ -19,6 +20,7 @@ let stellarWalletState = {
 
 vi.mock("@pipeline/wallet-connect", () => ({
   updateMutable: (...args: unknown[]) => updateMutableMock(...args),
+  readLoanChainState: (...args: unknown[]) => readLoanChainStateMock(...args),
   useStellarWallet: () => stellarWalletState,
 }));
 
@@ -32,6 +34,11 @@ const ENV_CONFIGURED = {
 };
 
 let envMock = { ...ENV_CONFIGURED };
+
+vi.mock("@/lib/targetChains", () => ({
+  stellarOnlyActionReason: (chainId: number | null | undefined) =>
+    chainId == null || chainId === 99_000_001 ? null : "Stellar only",
+}));
 
 vi.mock("@/lib/env", () => ({
   get ENV() {
@@ -51,19 +58,10 @@ function makeWrapper() {
   return wrapper;
 }
 
-const LOCATION = {
-  location_type: "Vessel",
-  location_identifier: "MV Andes · IMO 9741205",
-  tracking_url: "",
-  updated_at: 1_784_000_000,
-};
-
 const INPUT = {
   loanId: 4488,
   status: "WatchList",
-  ccrPercent: 135,
-  location: LOCATION,
-  metadataUri: "",
+  metadataUri: "ipfs://cur",
 };
 
 beforeEach(() => {
@@ -74,6 +72,7 @@ beforeEach(() => {
     signTransaction: signTransactionMock,
   };
   updateMutableMock.mockReset();
+  readLoanChainStateMock.mockReset();
 });
 
 afterEach(() => {
@@ -94,16 +93,17 @@ describe("useUpdateLifecycle", () => {
     });
 
     expect(hash).toBe("0xabc");
-    expect(updateMutableMock.mock.calls[0]?.[0]).toMatchObject({
+    const call = updateMutableMock.mock.calls[0]?.[0];
+    expect(call).toMatchObject({
       executorId: ENV_CONFIGURED.STELLAR_LOAN_REGISTRY_EXECUTOR_ID,
       targetId: ENV_CONFIGURED.STELLAR_LOAN_REGISTRY_ID,
       caller: stellarWalletState.address,
       loanId: 4488,
       status: "WatchList",
-      ccrPercent: 135,
-      location: LOCATION,
-      metadataUri: "",
+      metadataUri: "ipfs://cur",
     });
+    expect(call).not.toHaveProperty("ccrPercent");
+    expect(call).not.toHaveProperty("location");
   });
 
   it("rejects before calling updateMutable when the registry ids are unset", async () => {
@@ -134,5 +134,45 @@ describe("useUpdateLifecycle", () => {
       /wallet not connected/,
     );
     expect(updateMutableMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useLoanMutableState", () => {
+  it("maps readLoanChainState to { status, metadataUri } verbatim", async () => {
+    readLoanChainStateMock.mockResolvedValueOnce({
+      status: "Performing",
+      metadataUri: " ipfs://cur ",
+      currentRate: 1,
+    });
+    const { result } = renderHook(
+      () => useLoanMutableState(99_000_001, 4488, true),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual({
+      status: "Performing",
+      metadataUri: " ipfs://cur ",
+    });
+    expect(readLoanChainStateMock.mock.calls[0]?.[0]).toMatchObject({
+      registryId: ENV_CONFIGURED.STELLAR_LOAN_REGISTRY_ID,
+      loanId: 4488,
+    });
+  });
+
+  it("is disabled for a non-Stellar chain", () => {
+    const { result } = renderHook(() => useLoanMutableState(1, 4488, true), {
+      wrapper: makeWrapper(),
+    });
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(readLoanChainStateMock).not.toHaveBeenCalled();
+  });
+
+  it("is disabled when enabled is false", () => {
+    const { result } = renderHook(
+      () => useLoanMutableState(99_000_001, 4488, false),
+      { wrapper: makeWrapper() },
+    );
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(readLoanChainStateMock).not.toHaveBeenCalled();
   });
 });
