@@ -118,29 +118,22 @@ itself, independently of how the USDC-deposit path is gated.
 
 ## Open Questions
 
-1. **#1890 (unanswered).** If the answer is "Yes", the USDC-deposit branch of
-   `fetch_profiles_to_allow_stellar` (and vouchers) gains a KYB gate in #1890's own change; this
-   plan's linked-address branch is unaffected. If "No", nothing here changes. Confirm this issue
-   may ship before #1890 is decided.
-2. **Sumsub on the linked branch.** With `JOB_RELAYER_SUMSUB_ENABLED=true` (the default), should the
-   linked-address branch also require the wallet's Sumsub individual-KYC statuses? Plan default:
-   **no** — KYB `Passed` (Trustee-reviewed entity verification) replaces it; requiring Sumsub
-   would leave wire-only LPs blocked under the default config.
-3. **Unproven addresses.** Authorise linked addresses with `stellar_signer_address IS NULL`
-   (legacy, unproven)? Plan default: **yes**, consistent with payment details and Mint PLUSD
-   already using them. Alternative: require `stellar_signer_address IS NOT NULL`.
-4. **LP-side PLUSD trustline for `G…` wire-only lenders.** The relayer cannot create a trustline.
-   Proposal: a follow-up `frontend` issue under #1247 to add an "Enable PLUSD" step on the
-   bank-wire path (e.g. in or before `FundingDetailsModal`), plus interim user-doc wording in this
-   issue telling the LP to add PLUSD to their settlement wallet before the first wire. Confirm the
-   split, and the interim wording.
-5. **EVM parity.** EVM has the same gap (`MinterReceiverNotAllowed`). File a follow-up for the EVM
-   relayer to allow linked `evm_address` of `Passed` LPs, to land with #1501? Plan default: yes,
-   follow-up only.
+Resolved by the product owner on the Issue (2026-11-12):
+
+1. **#1890.** This issue ships before #1890 is decided. If #1890 answers "Yes", the USDC-deposit
+   branch gains its KYB gate in #1890's own change; the linked-address branch is unaffected.
+2. **Sumsub on the linked branch.** KYB `Passed` replaces the wallet Sumsub checks. Elliptic KYT
+   still applies when enabled.
+3. **Unproven addresses.** Linked addresses with `stellar_signer_address IS NULL` are authorised.
+4. **LP-side PLUSD trustline for `G…` wire-only lenders.** A separate frontend follow-up issue
+   under #1247 adds the "Enable PLUSD" step on the bank-wire path. This issue adds interim
+   user-doc wording only.
+5. **EVM parity.** The EVM gap (`MinterReceiverNotAllowed`) is a separate follow-up issue, landing
+   with #1501.
 
 ## Implementation Steps
 
-1. **Verify on testnet first (no signing needed, record the output in the PR).** Using the testnet
+1. [~] **Verify on testnet first (partial: `authorized()` of a funded G with no trustline returns `Error(Contract, #13)`, confirmed; the unauthorised-trustline and `record_wire_in` #15 simulations were not run, they need a testnet transaction) (no signing needed, record the output in the PR).** Using the testnet
    ids in `.env.example` (PLUSD SAC from `CHAIN_99000001_RELAYER_STELLAR_PLUSD_SAC_ID`), simulate
    `authorized(<fresh funded G… with no PLUSD trustline>)` and confirm `Error(Contract, #13)`;
    simulate it for a `G…` with an unauthorised PLUSD trustline and confirm `false`; if an LP fixture
@@ -148,7 +141,7 @@ itself, independently of how the USDC-deposit path is gated.
    simulate path works (e.g. `stellar contract invoke --send=no`, or a throwaway call through
    `StellarRpc::simulate_transaction`). If results differ from Finding 2, stop and report.
 
-2. **`packages/shared/src/kyc_repo.rs` — candidate SQL as a pure builder.**
+2. [x] **`packages/shared/src/kyc_repo.rs` — candidate SQL as a pure builder.**
    - Add `pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String`
      returning:
      ```sql
@@ -184,11 +177,11 @@ itself, independently of how the USDC-deposit path is gated.
    - Update the doc comment on `fetch_profiles_to_allow_stellar` (one short spec pointer only, per
      the comment rule).
 
-3. **`packages/worker/src/relayer/stellar/job.rs` — Phase 0b.** Right after Phase 0, call
+3. [x] **`packages/worker/src/relayer/stellar/job.rs` — Phase 0b.** Right after Phase 0, call
    `populate_profiles_from_linked_settlement_addresses_stellar(chain_id)` with the same
    info/error logging shape as Phase 0. Update the module header's phase list.
 
-4. **`packages/worker/src/relayer/stellar/whitelist.rs` — G/C addresses and trustline state.**
+4. [x] **`packages/worker/src/relayer/stellar/whitelist.rs` — G/C addresses and trustline state.**
    - Add a pure `pub fn holder_scval(strkey: &str) -> Option<ScVal>`: `G…` →
      `address_account(&Ed25519Pub)`, `C…` → `address_contract(&ContractStrkey)`, else `None`.
    - Change `is_already_authorized(&Ed25519Pub)` to `plusd_authorization(&ScVal) -> Result<PlusdAuth>`
@@ -206,7 +199,7 @@ itself, independently of how the USDC-deposit path is gated.
      with a counter of submits, breaking once `batch_size` submits were attempted.
    - Update the module and phase doc comments to the minimal spec-pointer form if touched.
 
-5. **`packages/trustee` — Mint PLUSD pre-flight (option 2).**
+5. [x] **`packages/trustee` — Mint PLUSD pre-flight (option 2).**
    - `packages/trustee/src/routes/-useLpBankDeposits.ts`: extend `MintConfirm` with
      `{ phase: "no-trustline" | "not-authorized"; receiver: WireInReceiver }`. In `openMint`, after
      resolving `next`, call `readPlusdAuthorization({ plusdId: await ensureMinterPlusdId(queryClient), address: next.receiver, rpcUrl, networkPassphrase })`
@@ -227,9 +220,9 @@ itself, independently of how the USDC-deposit path is gated.
    - No new spec-style comments (run `npx tsx scripts/lint-comments.ts`; shrink the baseline if a
      listed file is touched).
 
-6. **Docs** — update every file in Docs to Update, and add the two tech-debt entries.
+6. [x] **Docs** — update every file in Docs to Update, and add the two tech-debt entries.
 
-7. **Lint and test**: `cargo clippy --all -- -D warnings`, `cargo test -p shared -p pipeline-worker`,
+7. [x] **Lint and test**: `cargo clippy --all -- -D warnings`, `cargo test -p shared -p pipeline-worker`,
    `yarn workspace @pipeline/trustee test` and its typecheck, `npx tsx scripts/lint-docs.ts`,
    `npx tsx scripts/lint-comments.ts`.
 

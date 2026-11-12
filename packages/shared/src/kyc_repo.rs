@@ -284,6 +284,48 @@ pub struct KytTransferResult<'a> {
     pub screened_at: DateTime<Utc>,
 }
 
+pub const POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL: &str =
+    "INSERT INTO lp_profiles (chain_id, wallet_address)
+     SELECT $1, l.stellar_address FROM lps l
+     WHERE l.kyb_status = 'Passed' AND l.stellar_address IS NOT NULL
+     ON CONFLICT (chain_id, wallet_address) DO NOTHING";
+
+pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
+    let deposit_kyt = if elliptic_enabled {
+        " AND c.kyt_status = 1"
+    } else {
+        ""
+    };
+    let sumsub = if sumsub_enabled {
+        " AND p.sumsub_kyc_status = 2 AND p.sumsub_review_status = 2 AND p.sumsub_aml_status = 2"
+    } else {
+        ""
+    };
+    let profile_kyt = if elliptic_enabled {
+        " AND p.kyt_status = 1"
+    } else {
+        ""
+    };
+    format!(
+        "SELECT p.wallet_address FROM lp_profiles p
+         WHERE p.chain_id = $1
+           AND p.on_chain_allowed = FALSE{profile_kyt}
+           AND (
+             (EXISTS (
+                SELECT 1 FROM contract_logs c
+                WHERE c.chain_id = $1
+                  AND c.event_name = 'DepositRequested'
+                  AND c.params->>'user' = p.wallet_address{deposit_kyt}
+              ){sumsub})
+             OR EXISTS (
+                SELECT 1 FROM lps l
+                WHERE l.stellar_address = p.wallet_address
+                  AND l.kyb_status = 'Passed'
+             )
+           )"
+    )
+}
+
 impl KycRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -547,42 +589,13 @@ impl KycRepo {
         Ok(rows)
     }
 
-    /// Stellar variant of `fetch_profiles_to_allow` — case-sensitive match.
-    /// Requires KYT-clear (`kyt_status = 1`) when `elliptic_enabled` is true.
     pub async fn fetch_profiles_to_allow_stellar(
         &self,
         chain_id: i64,
         sumsub_enabled: bool,
         elliptic_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        // When Elliptic KYT is enabled, the deposit itself must have passed
-        // transaction screening (`c.kyt_status = 1`), mirroring the EVM/Crystal
-        // gate — otherwise an unscreened or screening-errored deposit could be
-        // whitelisted on the strength of the address screen alone.
-        let deposit_kyt = if elliptic_enabled {
-            " AND c.kyt_status = 1"
-        } else {
-            ""
-        };
-        let mut sql = format!(
-            "SELECT p.wallet_address FROM lp_profiles p
-             WHERE p.chain_id = $1
-               AND p.on_chain_allowed = FALSE
-               AND EXISTS (
-                   SELECT 1 FROM contract_logs c
-                   WHERE c.chain_id = $1
-                     AND c.event_name = 'DepositRequested'
-                     AND c.params->>'user' = p.wallet_address{deposit_kyt}
-               )"
-        );
-        if sumsub_enabled {
-            sql.push_str(
-                " AND p.sumsub_kyc_status = 2 AND p.sumsub_review_status = 2 AND p.sumsub_aml_status = 2",
-            );
-        }
-        if elliptic_enabled {
-            sql.push_str(" AND p.kyt_status = 1");
-        }
+        let sql = stellar_allow_candidates_sql(sumsub_enabled, elliptic_enabled);
         let rows = sqlx::query_as::<_, WhitelistCandidate>(&sql)
             .bind(chain_id)
             .fetch_all(&self.pool)
@@ -694,6 +707,17 @@ impl KycRepo {
         .bind(chain_id)
         .execute(&self.pool)
         .await?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn populate_profiles_from_linked_settlement_addresses_stellar(
+        &self,
+        chain_id: i64,
+    ) -> anyhow::Result<u64> {
+        let result = sqlx::query(POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL)
+            .bind(chain_id)
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected())
     }
 

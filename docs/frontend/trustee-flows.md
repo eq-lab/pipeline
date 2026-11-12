@@ -1529,6 +1529,17 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   that resolves after the dialog was closed is dropped. The dialog is locked while signing. The
   residual window is wallet signing and submission (seconds): nothing on-chain or server-side checks
   the receiver against the LP record.
+- **PLUSD authorisation pre-flight (#1889).** After resolving the receiver, the dialog reads
+  `PLUSD.authorized(receiver)` (the PLUSD id from the minter's `addresses_config()`, as the
+  escrowed-wire assign does) when it opens and again on confirm, before the transaction is built;
+  the capital-wallet fallback is checked too. `no-trustline` shows `lp-mint-no-trustline`
+  ("This receiver has no PLUSD trustline. The lender must add PLUSD to this wallet before it can
+  receive a mint.") and `not-authorized` shows `lp-mint-not-authorized` ("This receiver's PLUSD
+  trustline is not authorised yet. The relayer authorises a KYB-passed lender's linked address
+  automatically; try again in a few minutes."). Both leave confirm disabled and sign nothing;
+  capital-wallet receivers say "capital wallet" instead of "lender". A failed read shows "Could not
+  read this receiver's PLUSD authorisation. Try again." with Retry. A flip between open and confirm
+  shows the notice and does not mint.
 - **EVM sessions until #1501.** The receiver is resolved and shown in the scope line, but
   `Mint PLUSD` is disabled with "PLUSD minting on {chain} is not available in the Trustee app
   yet." as the first reason; `record_wire_in` is never called with an EVM receiver. #1501 replaces
@@ -1545,7 +1556,10 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has
   already been minted on-chain. Refresh the list." A PLUSD `Error(Contract, #13)` trap reads
   "The receiver has no authorized PLUSD trustline." — the receiver must be authorized by the
-  auth-required PLUSD issuer before any mint.
+  auth-required PLUSD issuer before any mint. A minter `Error(Contract, #15)`
+  (`ReceiverNotAuthorized`) reads "This receiver's PLUSD trustline is not authorised yet. The
+  relayer authorises a KYB-passed lender's linked address automatically; try again in a few
+  minutes."
 
 ### States & error copy
 

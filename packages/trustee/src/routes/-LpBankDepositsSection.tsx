@@ -16,6 +16,7 @@ import {
   useLpBankDepositsSection,
   mintStageLabel,
   noReceiverMessage,
+  plusdBlockMessage,
   type DepositRow,
   type LpBankDepositsSection as Section,
 } from "./-useLpBankDeposits";
@@ -429,6 +430,21 @@ function MintConfirmDialog({
         {confirm.phase === "no-receiver" && (
           <p role="alert" className={BODY_CLASS} style={{ color: INK_MUTED }}>
             {noReceiverMessage(section.kind)}
+          </p>
+        )}
+        {(confirm.phase === "no-trustline" ||
+          confirm.phase === "not-authorized") && (
+          <p
+            role="alert"
+            data-testid={
+              confirm.phase === "no-trustline"
+                ? "lp-mint-no-trustline"
+                : "lp-mint-not-authorized"
+            }
+            className={BODY_CLASS}
+            style={{ color: INK_MUTED }}
+          >
+            {plusdBlockMessage(confirm.phase, confirm.receiver.isCapitalWallet)}
           </p>
         )}
         {ready && (
