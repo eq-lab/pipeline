@@ -128,6 +128,16 @@ vi.mock("./-RegisterDebtTokenAction", () => ({
   ),
 }));
 
+vi.mock("./-DisburseAction", () => ({
+  DisburseAction: (props: { chainId: number; loanId: number | null }) => (
+    <div
+      data-testid="disburse-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+    />
+  ),
+}));
+
 import { Route } from "./loans.$id";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
@@ -1349,4 +1359,17 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
       screen.queryByTestId("loan-detail-current-stage"),
     ).not.toBeInTheDocument();
   });
+});
+
+describe("Loan detail route — Disburse (#1898)", () => {
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "hosts the card on the %s layout with the numeric loan id",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(makeResult({ variant }));
+      renderRoute();
+      const stub = screen.getByTestId("disburse-stub");
+      expect(stub).toHaveAttribute("data-loan", "4488");
+      expect(stub).toHaveAttribute("data-chain", "99000001");
+    },
+  );
 });

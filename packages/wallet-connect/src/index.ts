@@ -125,8 +125,11 @@ export {
   readNextRepaymentId,
   readRepaymentData,
   readIsRepaymentReversed,
+  readLoanDisbursementState,
+  readLoanOwner,
 } from "./stellar/contracts/loanRegistry";
 export type {
+  LoanDisbursementState,
   RepaymentInput,
   ReadNextRepaymentIdParams,
   ReadRepaymentParams,
@@ -193,6 +196,8 @@ export {
   encodeRecordIncomeArgs,
   readRefHashSeen,
   bankReferenceRefHash,
+  disburse,
+  encodeDisburseArgs,
 } from "./stellar/contracts/minter";
 export type {
   RecordWireInArgs,
@@ -216,6 +221,8 @@ export type {
   RecordIncomeStage,
   BuildRecordIncomeEnvelopeParams,
   ReadRefHashSeenParams,
+  DisburseArgs,
+  DisburseParams,
 } from "./stellar/contracts/minter";
 
 export {
@@ -305,12 +312,14 @@ export type {
 
 export {
   readDeal,
+  readDebtTrustline,
   registerDeal,
   registerDealArgs,
 } from "./stellar/contracts/dealTokenFactory";
 export type {
   DealRead,
   ReadDealParams,
+  ReadDebtTrustlineParams,
   RegisterDealParams,
 } from "./stellar/contracts/dealTokenFactory";
 

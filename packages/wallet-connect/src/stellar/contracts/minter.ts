@@ -627,6 +627,67 @@ export async function bankReferenceRefHash(reference: string): Promise<string> {
   return sha256Hex(trimmed);
 }
 
+// ── disburse ──────────────────────────────────────────────────────────────────
+
+export interface DisburseArgs {
+  loanId: number;
+  amountRaw: string;
+  valueDate: number;
+  refHash: string;
+}
+
+export function encodeDisburseArgs({
+  loanId,
+  amountRaw,
+  valueDate,
+  refHash,
+}: DisburseArgs): xdr.ScVal[] {
+  if (!Number.isInteger(loanId) || loanId < 0 || loanId > 0xffffffff) {
+    throw new Error(`encodeDisburseArgs: invalid loanId ${loanId}`);
+  }
+  if (!/^\d+$/.test(amountRaw) || BigInt(amountRaw) <= 0n) {
+    throw new Error(
+      `encodeDisburseArgs: amountRaw must be a positive integer string, got "${amountRaw}"`,
+    );
+  }
+  if (!Number.isInteger(valueDate) || valueDate <= 0) {
+    throw new Error(
+      `encodeDisburseArgs: valueDate must be a positive Unix-seconds integer, got ${valueDate}`,
+    );
+  }
+  if (refHash === ZERO_REF_HASH) {
+    throw new Error("encodeDisburseArgs: refHash must not be the zero hash");
+  }
+  return [
+    nativeToScVal(loanId, { type: "u32" }),
+    nativeToScVal(BigInt(amountRaw), { type: "i128" }),
+    nativeToScVal(BigInt(valueDate), { type: "u64" }),
+    hexToBytes32ScVal(refHash),
+  ];
+}
+
+export type DisburseParams = Omit<
+  RelayParams,
+  "mode" | "target" | "fn" | "args"
+> & { minterId: string } & DisburseArgs;
+
+export function disburse({
+  minterId,
+  loanId,
+  amountRaw,
+  valueDate,
+  refHash,
+  ...rest
+}: DisburseParams): Promise<RelayResult> {
+  return relay({
+    ...rest,
+    mode: "execute",
+    target: minterId,
+    fn: "disburse",
+    args: encodeDisburseArgs({ loanId, amountRaw, valueDate, refHash }),
+  });
+}
+
 // ── reverse_repay ─────────────────────────────────────────────────────────────
 
 export interface ReverseRepayArgs {

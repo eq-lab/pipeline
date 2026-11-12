@@ -46,6 +46,7 @@ import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import { RepaymentRecoveryDialog } from "./-RepaymentRecoveryDialog";
 import { RegisterDebtTokenAction } from "./-RegisterDebtTokenAction";
+import { DisburseAction } from "./-DisburseAction";
 import {
   useRecoveryCard,
   type RecoveryCardView,
@@ -1343,6 +1344,11 @@ function LoanDetail() {
             loanId={debtLoanId}
             variant="card"
           />
+          <DisburseAction
+            chainId={chain}
+            loanId={debtLoanId}
+            loanName={detail.hero.title}
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
@@ -1384,6 +1390,11 @@ function LoanDetail() {
             chainId={chain}
             loanId={debtLoanId}
             variant="card"
+          />
+          <DisburseAction
+            chainId={chain}
+            loanId={debtLoanId}
+            loanName={detail.hero.title}
           />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
@@ -1438,6 +1449,11 @@ function LoanDetail() {
             chainId={chain}
             loanId={debtLoanId}
             variant="card"
+          />
+          <DisburseAction
+            chainId={chain}
+            loanId={debtLoanId}
+            loanName={detail.hero.title}
           />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
