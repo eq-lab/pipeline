@@ -168,7 +168,7 @@ Other routes (stake, transactions, ops) currently use desktop-only layouts. Mobi
 
 - Protocol dashboard panels: poll API every 30 seconds
 - Bridge alerts: SSE (Server-Sent Events) or WebSocket push from API
-- Price feed / CCR: display as of last API poll; timestamp shown
+- Security LTV (Stellar): display as of the last API poll; `refresh_pending` shown
 - sPLUSD exchange rate: read directly from contract via ethers.js on page load
 
 ## Web3 integration

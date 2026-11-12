@@ -6,6 +6,8 @@ import { formatBpsRate } from "@/utils/formatUsd";
 import { percentToBps } from "@/utils/rateUnits";
 import { usdInputToSacBaseUnits } from "@/utils/stellarSacUnits";
 import type { RiskCouncilCall } from "@/api/useRiskCouncil";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
+import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
 import {
   amendEligibility,
@@ -20,11 +22,6 @@ import {
 
 export const AMEND_NO_ROLE =
   "Changing loan economics belongs to the Risk Council.";
-
-export function formatCcrPct(ccrBps: number | null | undefined): string {
-  if (ccrBps == null || !Number.isFinite(ccrBps)) return "—";
-  return `${Math.round(ccrBps / 100)}%`;
-}
 
 export function parseSignedUsdDelta(input: string): string | null {
   const trimmed = input.trim();
@@ -59,7 +56,7 @@ export interface RetermCurrentTerms {
   loan: string;
   coupon: string;
   maturity: string;
-  ccr: string;
+  ltv: string | null;
   accruedInterest: string;
   interestAdjustment: string;
 }
@@ -118,6 +115,7 @@ export function useRiskCouncilReterm(
   loanIdParam: string,
 ): RiskCouncilRetermView {
   const base = useRiskCouncilLoanBase(chainId, loanIdParam);
+  const security = useLoanSecurity(chainId, loanIdParam);
   const [ratePercent, setRatePercent] = useState("");
   const [maturityDate, setMaturityDate] = useState("");
   const [deltaUsd, setDeltaUsd] = useState("");
@@ -167,7 +165,7 @@ export function useRiskCouncilReterm(
       loan: formatLoanLabel(entry?.originator, entry?.commodity),
       coupon: chain == null ? "—" : formatBpsRate(chain.currentRate / 100),
       maturity: chain == null ? "—" : formatMaturityDate(chain.currentMaturity),
-      ccr: formatCcrPct(entry?.ccr_bps ?? null),
+      ltv: ltvRowText(buildSecurityCard(security), security.data),
       accruedInterest:
         money == null ? "—" : formatChainAmount(money.accruedInterest, chainId),
       interestAdjustment:

@@ -90,6 +90,7 @@ describe("useRecordPayment invalidation", () => {
     expect(keys(spy)).toEqual([
       "loan-book",
       "loan-financials",
+      "loan-security",
       "loan-waterfall",
     ]);
   });
@@ -108,12 +109,20 @@ describe("useRecordPayment invalidation", () => {
     act(() => {
       vi.advanceTimersByTime(5_000);
     });
-    expect(keys(spy)).toEqual(["loan-book", "loan-financials"]);
+    expect(keys(spy)).toEqual([
+      "loan-book",
+      "loan-financials",
+      "loan-security",
+    ]);
     spy.mockClear();
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
-    expect(keys(spy)).toEqual(["loan-book", "loan-financials"]);
+    expect(keys(spy)).toEqual([
+      "loan-book",
+      "loan-financials",
+      "loan-security",
+    ]);
   });
 
   it("invalidates nothing on failure", async () => {

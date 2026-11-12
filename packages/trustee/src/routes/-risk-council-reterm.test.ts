@@ -4,7 +4,6 @@ import { formatBpsRate } from "@/utils/formatUsd";
 import {
   buildAdjustCall,
   buildAmendCall,
-  formatCcrPct,
   parseSignedUsdDelta,
 } from "./-risk-council-reterm";
 import { formatLoanLabel } from "./-risk-council-shared";
@@ -18,14 +17,6 @@ describe("formatLoanLabel", () => {
     );
     expect(formatLoanLabel(null, "Coffee")).toBe("— — Coffee");
     expect(formatLoanLabel("Delta", undefined)).toBe("Delta — —");
-  });
-});
-
-describe("formatCcrPct", () => {
-  it("formats whole percent and dashes missing values", () => {
-    expect(formatCcrPct(11_400)).toBe("114%");
-    expect(formatCcrPct(null)).toBe("—");
-    expect(formatCcrPct(NaN)).toBe("—");
   });
 });
 

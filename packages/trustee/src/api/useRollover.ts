@@ -2,7 +2,7 @@
  * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `rollover`:
  * the trustee-wallet-signed on-chain `LoanRegistry.rollover`, run through
  * the executor `execute` proxy (same pattern as `useDrawLoan`). On success
- * invalidates the loan-book/financials/valuation queries so the loan detail
+ * invalidates the loan-book/financials/security queries so the loan detail
  * + list refetch and the status flips Matured → Performing.
  *
  * spec: docs/frontend/trustee-flows.md#wired-actions (Roll over).
@@ -75,7 +75,7 @@ export function useRollover(): UseRolloverResult {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
       void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
-      void queryClient.invalidateQueries({ queryKey: ["loan-valuation"] });
+      void queryClient.invalidateQueries({ queryKey: ["loan-security"] });
     },
   });
 

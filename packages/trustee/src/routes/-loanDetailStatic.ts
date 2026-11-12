@@ -2,8 +2,7 @@
  * Static UI configuration for the Trustee loan-detail page.
  *
  * These constants are product copy and route/action availability rules. Values
- * that describe a particular loan (amounts, rates, dates, status, collateral,
- * CCR history) are built from API responses in `-useLoanDetail.ts`.
+ * that describe a particular loan (amounts, rates, dates, status, security) are built from API responses in `-useLoanDetail.ts`.
  */
 
 export type TileTone = "muted" | "positive" | "attention" | "negative";
@@ -68,7 +67,7 @@ export const WATCHLIST_CURRENT_STAGE: CurrentStage = {
   title: "Current stage — escalation decision pending",
   tag: "Risk Council · 24h timelock",
   tagTone: "risk",
-  body: "CCR has crossed the maintenance threshold. If the loan is past recovery on the active path, draft a setDefault proposal.",
+  body: "A margin call is open or the LTV is above the margin-call ratio. If the loan is past recovery on the active path, escalate it to the Risk Council.",
   actionLabel: "Open escalation →",
 };
 

@@ -1,34 +1,18 @@
-/**
- * Tests for the Loan-detail presenter (`-useLoanDetail.ts`, issues #845 / #847).
- *
- * All pure — no DOM, no query layer. Covers the status→band mapping, the hero
- * built from the loan-book row (with the loan-id-only degradation when no row is
- * found), and the Price & collateral view-model built from the valuation
- * response — including the never-fabricate `—` fallbacks and the real
- * `missing_inputs` "Awaiting:" note.
- */
+// spec: docs/frontend/trustee-flows.md#loan-detail
 import { describe, it, expect } from "vitest";
 import type { LoanBookEntry } from "@/api/useLoanBook";
-import type {
-  LoanValuationResponse,
-  UseLoanValuationResult,
-} from "@/api/useLoanValuation";
 import type {
   LoanFinancialsResponse,
   UseLoanFinancialsResult,
 } from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
 import {
-  buildCcrTrend,
   buildDocuments,
   buildFinancials,
   buildHero,
   buildLifecycle,
-  buildPriceCollateral,
-  buildPriceCollateralState,
   buildRegistryState,
   buildSummaryTiles,
-  ccrSeriesFrom,
   selectOtherActions,
   statusToChip,
   allowedLifecycleTargets,
@@ -40,7 +24,6 @@ import {
   PERFORMING_OTHER_ACTIONS,
   WATCHLIST_OTHER_ACTIONS,
 } from "./-loanDetailStatic";
-import type { UseLoanCcrHistoryResult } from "@/api/useLoanCcrHistory";
 
 function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
   return {
@@ -55,11 +38,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     maturity: 1_782_777_600, // 2026-06-30
     next_payment_timestamp: 1_782_777_600,
     days_overdue: null,
-    spot_price: "10450",
-    spot_change_7d: "-0.012",
-    collateral: null,
-    ltv: null,
-    ccr_bps: null,
     duration_days: 180,
     rate: "0.130000",
     protection: null,
@@ -70,44 +48,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     disbursed: true,
     days_on_watchlist: null,
     watchlist_entered_at: null,
-    ...overrides,
-  };
-}
-
-function makeValuation(
-  overrides: Partial<LoanValuationResponse> = {},
-): LoanValuationResponse {
-  return {
-    chain_id: 99_000_001,
-    loan_id: "4488",
-    commodity: "Lithium Carbonate",
-    valuation_mode: "MetalConcentrate",
-    inputs: {
-      haircut_pct: "0.10",
-      reference_price_asset: "Li2CO3",
-      price_provider: "coingecko",
-      reference_price: "10450",
-      quantity_dmt: "620",
-      moisture_pct: null,
-      metals: [],
-      penalties: [],
-      treatment_charge_per_dmt: null,
-      realisation_costs: null,
-      quotational_period: null,
-      pricing_reference: null,
-      incoterm: null,
-      assay_status: null,
-      assay_certificate_uri: null,
-    },
-    waterfall: null,
-    collateral_value: "5831100.00",
-    ccr: {
-      collateral_value: "5831100.00",
-      outstanding_senior_principal: "4950000.00",
-      ccr_bps: 11_780,
-      ccr_pct: "117.80",
-    },
-    missing_inputs: [],
     ...overrides,
   };
 }
@@ -403,112 +343,6 @@ describe("buildLifecycle", () => {
 
 // ── buildPriceCollateral ──────────────────────────────────────────────────────
 
-describe("buildPriceCollateral", () => {
-  it("maps a complete valuation to the five display rows", () => {
-    const pc = buildPriceCollateral(makeValuation(), "-0.012");
-    expect(pc.state).toBe("ready");
-    expect(pc.providerNote).toBe("via coingecko");
-    expect(pc.spot).toEqual({
-      main: "$10,450",
-      change: "−1.2% 7d",
-      changeNegative: true,
-    });
-    expect(pc.rows).toEqual([
-      { label: "Quantity", value: "620 dmt" },
-      { label: "Collateral value (after 10% haircut)", value: "$5,831,100" },
-      { label: "Senior outstanding", value: "$4,950,000" },
-      { label: "CCR", value: "117.80%" },
-    ]);
-    expect(pc.missingNote).toBeNull();
-  });
-
-  it("drops the change span when no 7-day change is served", () => {
-    const pc = buildPriceCollateral(makeValuation(), null);
-    expect(pc.spot).toEqual({
-      main: "$10,450",
-      change: null,
-      changeNegative: false,
-    });
-  });
-
-  it("renders — for absent inputs and an 'Awaiting:' note from missing_inputs", () => {
-    const pc = buildPriceCollateral(
-      makeValuation({
-        inputs: {
-          ...makeValuation().inputs,
-          reference_price: null,
-          quantity_dmt: null,
-        },
-        collateral_value: null,
-        ccr: null,
-        missing_inputs: ["reference_price", "quantity"],
-      }),
-      null,
-    );
-    expect(pc.spot.main).toBe("—");
-    expect(pc.rows).toEqual([
-      { label: "Quantity", value: "—" },
-      { label: "Collateral value (after 10% haircut)", value: "—" },
-      { label: "Senior outstanding", value: "—" },
-      { label: "CCR", value: "—" },
-    ]);
-    expect(pc.missingNote).toBe("Awaiting: reference_price, quantity");
-  });
-});
-
-// ── buildPriceCollateralState (query states) ──────────────────────────────────
-
-function makeQueryResult(
-  overrides: Partial<UseLoanValuationResult> = {},
-): UseLoanValuationResult {
-  return {
-    data: undefined,
-    isLoading: false,
-    error: null,
-    refetch: () => {},
-    ...overrides,
-  };
-}
-
-describe("buildPriceCollateralState", () => {
-  it("maps a loading query to the loading state", () => {
-    expect(
-      buildPriceCollateralState(makeQueryResult({ isLoading: true }), null)
-        .state,
-    ).toBe("loading");
-  });
-
-  it("maps a 404 to the neutral 'empty' state (no valuation anchor)", () => {
-    const pc = buildPriceCollateralState(
-      makeQueryResult({ error: new ApiError("not found", 404) }),
-      null,
-    );
-    expect(pc.state).toBe("empty");
-    expect(pc.missingNote).toBe("No valuation on record for this loan.");
-  });
-
-  it("maps a non-404 error to the error state, friendly message, raw text only in errorDetails (#1037)", () => {
-    const pc = buildPriceCollateralState(
-      makeQueryResult({ error: new ApiError("boom", 500) }),
-      null,
-    );
-    expect(pc.state).toBe("error");
-    expect(pc.errorMessage).toBe(
-      "The service is temporarily unavailable. Please try again.",
-    );
-    expect(pc.errorDetails).toBe("boom");
-  });
-
-  it("maps loaded data to the ready view-model", () => {
-    const pc = buildPriceCollateralState(
-      makeQueryResult({ data: makeValuation() }),
-      "-0.012",
-    );
-    expect(pc.state).toBe("ready");
-    expect(pc.spot.main).toBe("$10,450");
-  });
-});
-
 // ── buildFinancials / buildRegistryState (issue #852) ─────────────────────────
 
 function makeFinancials(
@@ -796,85 +630,6 @@ describe("buildRegistryState Debt token row (#1766)", () => {
 
   it("adds no row when no deal read is wired", () => {
     expect(row(null)).toBeUndefined();
-  });
-});
-
-// ── buildCcrTrend (issue #879) ────────────────────────────────────────────────
-
-describe("buildCcrTrend", () => {
-  function history(
-    points: Array<{ timestamp: string; ccr_bps: number }>,
-  ): UseLoanCcrHistoryResult {
-    return {
-      data:
-        points.length > 0
-          ? {
-              loan_id: "5",
-              chain_id: 1,
-              from: "2026-05-01T00:00:00Z",
-              to: "2026-06-01T00:00:00Z",
-              step_seconds: 86_400,
-              points,
-            }
-          : undefined,
-      isLoading: false,
-      error: null,
-    };
-  }
-
-  it("maps ccr_bps → percent points, derives start/current labels + protocol thresholds", () => {
-    const trend = buildCcrTrend(
-      history([
-        { timestamp: "2026-05-01T00:00:00Z", ccr_bps: 14_600 },
-        { timestamp: "2026-05-15T00:00:00Z", ccr_bps: 12_100 },
-        { timestamp: "2026-06-01T00:00:00Z", ccr_bps: 11_400 },
-      ]),
-    );
-    expect(trend).not.toBeNull();
-    expect(trend!.points).toEqual([146, 121, 114]);
-    expect(trend!.startLabel).toBe("146% · 1 May 2026");
-    expect(trend!.currentLabel).toBe("114%");
-    expect(trend!.thresholds).toEqual([
-      { pct: 120, label: "120%" },
-      { pct: 110, label: "110%" },
-    ]);
-  });
-
-  it("returns null for an empty series (never priced / empty window)", () => {
-    expect(buildCcrTrend(history([]))).toBeNull();
-  });
-});
-
-describe("ccrSeriesFrom", () => {
-  const DAY = 86_400;
-  const T0 = 1_760_000_000;
-
-  it("returns null for a missing entry", () => {
-    expect(ccrSeriesFrom(undefined)).toBeNull();
-  });
-
-  it("returns the origination for a non-rolled loan", () => {
-    expect(
-      ccrSeriesFrom({ maturity: T0 + 180 * DAY, duration_days: 180 }),
-    ).toBe(T0);
-  });
-
-  it("starts a rolled-over loan at origination, not at the original-term end", () => {
-    const from = ccrSeriesFrom({
-      maturity: T0 + 180 * DAY,
-      duration_days: 180,
-    });
-    expect(from).toBe(T0);
-    expect(from).not.toBe(T0 + 90 * DAY);
-  });
-
-  it("starts within one day after a sub-day origination, never before it", () => {
-    const origination = Date.UTC(2026, 0, 1, 14) / 1000;
-    const maturity = Date.UTC(2026, 6, 1) / 1000;
-    const durationDays = Math.floor((maturity - origination) / DAY);
-    const from = ccrSeriesFrom({ maturity, duration_days: durationDays })!;
-    expect(from).toBeGreaterThanOrEqual(origination);
-    expect(from - origination).toBeLessThan(DAY);
   });
 });
 

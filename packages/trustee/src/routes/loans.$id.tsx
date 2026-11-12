@@ -28,11 +28,8 @@ import {
   allowedLifecycleTargets,
   useLoanDetail,
   type HeroView,
-  type LabelValueRow,
   type LifecycleStep,
-  type PriceCollateralView,
   type RegistryView,
-  type CcrTrend,
   type DocumentDisplay,
 } from "./-useLoanDetail";
 import {
@@ -40,7 +37,7 @@ import {
   type SummaryTile,
   type TileTone,
 } from "./-loanDetailStatic";
-import { CcrTrendChart } from "./-CcrTrendChart";
+import type { SecurityCardView } from "./-loanSecurity";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
@@ -263,30 +260,27 @@ function SummaryTiles({ tiles }: { tiles: SummaryTile[] }) {
   );
 }
 
-// ── Price & collateral (live) ─────────────────────────────────────────────────
+// ── Security (live) ───────────────────────────────────────────────────────────
 
-function PriceCollateralCard({ pc }: { pc: PriceCollateralView }) {
+const LTV_TONE_COLOR = {
+  negative: NEGATIVE_RED,
+  attention: ATTENTION_AMBER,
+  neutral: INK,
+} as const;
+
+function SecurityCard({ card }: { card: SecurityCardView }) {
+  if (card.state === "hidden") return null;
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[8px] p-[26px]`}
       style={cardStyle()}
-      data-testid="loan-detail-price-collateral"
+      data-testid="loan-detail-security"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
-        <CardTitle>Price &amp; collateral</CardTitle>
-        {pc.providerNote && (
-          <span
-            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
-            style={{ color: INK_MUTED }}
-          >
-            {pc.providerNote}
-          </span>
-        )}
-      </div>
+      <CardTitle>Security</CardTitle>
 
-      {pc.state === "loading" ? (
+      {card.state === "loading" ? (
         <div
-          data-testid="loan-detail-price-collateral-loading"
+          data-testid="loan-detail-security-loading"
           className="flex flex-col gap-[10px] pt-[6px]"
           aria-busy="true"
         >
@@ -297,60 +291,70 @@ function PriceCollateralCard({ pc }: { pc: PriceCollateralView }) {
             />
           ))}
         </div>
-      ) : pc.state === "error" ? (
-        <div
-          data-testid="loan-detail-price-collateral-error"
-          className="pt-[6px]"
-        >
+      ) : card.state === "error" ? (
+        <div data-testid="loan-detail-security-error" className="pt-[6px]">
           <InlineError
-            message={pc.errorMessage ?? "Failed to load the valuation."}
-            details={pc.errorDetails ?? undefined}
+            message={card.errorMessage ?? "Failed to load the loan security."}
+            details={card.errorDetails ?? undefined}
             className="block text-[14px]"
           />
         </div>
-      ) : pc.state === "empty" ? (
+      ) : card.state === "no-terms" ? (
         <p
-          data-testid="loan-detail-price-collateral-empty"
+          data-testid="loan-detail-security-no-terms"
           className="pt-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
           style={{ color: INK_MUTED }}
         >
-          {pc.missingNote ?? "No valuation on record for this loan."}
+          {card.notes[0]}
         </p>
       ) : (
         <>
           <div>
-            <KeyValueRow label="Spot">
-              <span style={{ color: INK }}>{pc.spot.main}</span>
-              {pc.spot.change && (
-                <>
-                  <span style={{ color: INK }}> · </span>
-                  <span
-                    style={{
-                      color: pc.spot.changeNegative ? NEGATIVE_RED : INK,
-                    }}
-                  >
-                    {pc.spot.change}
-                  </span>
-                </>
+            <KeyValueRow label="LTV">
+              <span
+                data-testid="loan-detail-security-ltv"
+                data-tone={card.ltvTone}
+                style={{ color: LTV_TONE_COLOR[card.ltvTone] }}
+              >
+                {card.ltv}
+              </span>
+              {card.priceStale && (
+                <span
+                  data-testid="loan-detail-security-price-stale"
+                  className="ml-[10px] rounded-[4px] border border-solid px-[8px] py-[2px] text-[12px]"
+                  style={chipStyle("attention")}
+                >
+                  Price stale
+                </span>
               )}
             </KeyValueRow>
-            {pc.rows.map((row: LabelValueRow, i: number) => (
+            {card.rows.map((row, i) => (
               <KeyValueRow
                 key={row.label}
                 label={row.label}
-                isLast={i === pc.rows.length - 1}
+                isLast={i === card.rows.length - 1}
               >
                 {row.value}
               </KeyValueRow>
             ))}
           </div>
-          {pc.missingNote && (
+          {card.notes.map((note) => (
             <p
-              data-testid="loan-detail-price-collateral-missing"
+              key={note}
+              data-testid="loan-detail-security-note"
               className="pt-[10px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
               style={{ color: INK_MUTED }}
             >
-              {pc.missingNote}
+              {note}
+            </p>
+          ))}
+          {card.refreshPending && (
+            <p
+              data-testid="loan-detail-security-refresh"
+              className="pt-[10px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+              style={{ color: INK_MUTED }}
+            >
+              Updating from chain…
             </p>
           )}
         </>
@@ -1170,22 +1174,6 @@ function UpdateLifecycleDialog({
   );
 }
 
-// ── CCR trend (Watchlist variant) ────────────────────────────────────────────
-
-// spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
-function CcrTrendCard({ trend }: { trend: CcrTrend }) {
-  return (
-    <div
-      className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
-      style={cardStyle()}
-      data-testid="loan-detail-ccr-trend"
-    >
-      <CardTitle>CCR trend</CardTitle>
-      <CcrTrendChart trend={trend} />
-    </div>
-  );
-}
-
 // spec: docs/frontend/trustee-flows.md#wired-actions.
 function PastDueNotice({
   onRecord,
@@ -1326,15 +1314,12 @@ function LoanDetail() {
           ))}
         </div>
       ) : detail.variant === "watchlist" ? (
-        // Watchlist layout (#859): no lifecycle stepper, no Registry card — a
-        // CCR-trend chart sits beside Price & collateral, and the current-stage
-        // card is escalation-focused.
+        // Watchlist layout (#859): no lifecycle stepper, no Registry card.
         <>
           <Hero hero={detail.hero} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <PriceCollateralCard pc={detail.priceCollateral} />
-            {detail.ccrTrend && <CcrTrendCard trend={detail.ccrTrend} />}
+            <SecurityCard card={detail.security} />
           </div>
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
@@ -1362,7 +1347,7 @@ function LoanDetail() {
         </>
       ) : detail.variant === "matured" ? (
         // Matured layout (#866): no stepper, no Registry — a rollover card sits
-        // beside Price & collateral (rollover is the matured-only fast-path).
+        // beside Security (rollover is the matured-only fast-path).
         // The past-maturity/Past-Due state is an attention prompt (#940): record
         // the payment, or escalate to default.
         <>
@@ -1373,7 +1358,7 @@ function LoanDetail() {
           />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <PriceCollateralCard pc={detail.priceCollateral} />
+            <SecurityCard card={detail.security} />
             {detail.rollover && (
               <MaturedRolloverCard
                 rollover={detail.rollover}
@@ -1433,7 +1418,7 @@ function LoanDetail() {
           <Lifecycle steps={detail.lifecycle} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <PriceCollateralCard pc={detail.priceCollateral} />
+            <SecurityCard card={detail.security} />
             <RegistryCard registry={detail.registry} />
           </div>
           {detail.variant === "disbursing" && (

@@ -583,20 +583,12 @@
     "header": 9,
     "nodeIds": 0
   },
-  "packages/trustee/src/api/-useLoanCcrHistory.test.tsx": {
-    "header": 6,
-    "nodeIds": 0
-  },
   "packages/trustee/src/api/-useLoanFinancials.test.tsx": {
-    "header": 9,
+    "header": 8,
     "nodeIds": 0
   },
   "packages/trustee/src/api/-useLoanSubmissions.test.tsx": {
     "header": 16,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/api/-useLoanValuation.test.tsx": {
-    "header": 9,
     "nodeIds": 0
   },
   "packages/trustee/src/api/-useReviewSubmission.test.tsx": {
@@ -613,10 +605,6 @@
   },
   "packages/trustee/src/api/client.ts": {
     "header": 23,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/api/useLoanCcrHistory.ts": {
-    "header": 10,
     "nodeIds": 0
   },
   "packages/trustee/src/api/useLoanWaterfall.ts": {
@@ -679,10 +667,6 @@
     "header": 21,
     "nodeIds": 1
   },
-  "packages/trustee/src/routes/-CcrTrendChart.tsx": {
-    "header": 0,
-    "nodeIds": 1
-  },
   "packages/trustee/src/routes/-RejectReasonDialog.test.tsx": {
     "header": 22,
     "nodeIds": 1
@@ -712,15 +696,7 @@
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-loanDetailStatic.ts": {
-    "header": 7,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-loans.$id.test.tsx": {
-    "header": 12,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-loans.index.test.tsx": {
-    "header": 11,
+    "header": 6,
     "nodeIds": 0
   },
   "packages/trustee/src/routes/-origination-detail-page.test.tsx": {
@@ -755,14 +731,6 @@
     "header": 8,
     "nodeIds": 0
   },
-  "packages/trustee/src/routes/-useLoanDetail.test.ts": {
-    "header": 9,
-    "nodeIds": 0
-  },
-  "packages/trustee/src/routes/-useLoansTable.test.ts": {
-    "header": 12,
-    "nodeIds": 0
-  },
   "packages/trustee/src/routes/-useOriginationReview.test.ts": {
     "header": 36,
     "nodeIds": 0
@@ -786,10 +754,6 @@
   "packages/trustee/src/routes/loans.$id_.record-repayment.tsx": {
     "header": 0,
     "nodeIds": 2
-  },
-  "packages/trustee/src/routes/loans.index.tsx": {
-    "header": 0,
-    "nodeIds": 1
   },
   "packages/trustee/src/routes/origination.index.tsx": {
     "header": 0,

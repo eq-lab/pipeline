@@ -2,7 +2,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CcrHistoryResponse } from "@/api/useLoanCcrHistory";
 import {
   DELAYED,
   IMMEDIATE,
@@ -15,6 +14,7 @@ import {
   loanEntry,
   loanState,
   relayResult,
+  securityResult,
 } from "./-riskCouncilFixtures";
 
 vi.mock("@tanstack/react-router", async () => {
@@ -50,7 +50,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
-vi.mock("@/api/useLoanCcrHistory", () => ({ useLoanCcrHistory: vi.fn() }));
+vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
 vi.mock("@/api/useRiskCouncil", () => ({
   useRiskCouncilAccess: vi.fn(),
   useRiskCouncilLoanState: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock("@/api/useRiskCouncil", () => ({
 }));
 
 import { useLoanBook } from "@/api/useLoanBook";
-import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
 import {
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
@@ -67,7 +67,7 @@ import {
 import { Route } from "./risk-council.escalate.$id";
 
 const mockLoanBook = vi.mocked(useLoanBook);
-const mockCcr = vi.mocked(useLoanCcrHistory);
+const mockSecurity = vi.mocked(useLoanSecurity);
 const mockAccess = vi.mocked(useRiskCouncilAccess);
 const mockLoanState = vi.mocked(useRiskCouncilLoanState);
 const mockRelay = vi.mocked(useRiskCouncilRelay);
@@ -83,18 +83,6 @@ function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
 }
-
-const CCR_HISTORY: CcrHistoryResponse = {
-  loan_id: "4471",
-  chain_id: STELLAR,
-  from: "2026-05-01T00:00:00Z",
-  to: "2026-06-20T00:00:00Z",
-  step_seconds: 86_400,
-  points: [
-    { timestamp: "2026-05-01T00:00:00Z", ccr_bps: 14_600 },
-    { timestamp: "2026-06-20T00:00:00Z", ccr_bps: 11_400 },
-  ],
-};
 
 let relay: ReturnType<typeof relayResult>;
 
@@ -116,7 +104,7 @@ function setup({
       loanEntry({ chain_id: entryChain, onchain_status: onchainStatus }),
     ]),
   );
-  mockCcr.mockReturnValue({ data: CCR_HISTORY, isLoading: false, error: null });
+  mockSecurity.mockReturnValue(securityResult());
   mockAccess.mockReturnValue(accessResult(access) as never);
   mockLoanState.mockReturnValue({
     data: state === null ? undefined : (state ?? loanState({ status })),
@@ -148,11 +136,19 @@ describe("Escalate to Default — evidence", () => {
       screen.getByTestId("risk-council-escalate-facility"),
     ).toHaveTextContent("$2,300,000 / $1,840,000");
     expect(
-      screen.getByTestId("risk-council-escalate-collateral"),
-    ).toHaveTextContent("Collateral (coffee −18% 7d)");
-    expect(screen.getByTestId("risk-council-escalate-ccr")).toHaveTextContent(
-      "114% — next alert at 110%",
-    );
+      screen.getByTestId("risk-council-escalate-security-value"),
+    ).toHaveTextContent("$2,106,000");
+    const ltv = screen.getByTestId("risk-council-escalate-ltv");
+    expect(ltv).toHaveTextContent("81.3% — margin call at 85%");
+    expect(ltv.querySelector("span:last-child")).toHaveStyle({
+      color: "#6e6400",
+    });
+    expect(
+      screen.getByTestId("risk-council-escalate-ratios"),
+    ).toHaveTextContent("80% / 85%");
+    expect(
+      screen.queryByTestId("risk-council-escalate-price-stale"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByTestId("risk-council-escalate-days-on-watchlist"),
     ).toHaveTextContent("12");
@@ -162,8 +158,43 @@ describe("Escalate to Default — evidence", () => {
     expect(
       screen.getByTestId("risk-council-escalate-at-risk"),
     ).toHaveTextContent("2.1% of deployed");
+    expect(screen.queryByText(/CCR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Collateral/)).not.toBeInTheDocument();
+  });
+
+  it("flags a stale price", () => {
+    mockSecurity.mockReturnValue(
+      securityResult({
+        data: {
+          terms: { advance_ratio_bps: 8000, margin_call_ratio_bps: 8500 },
+          valuation: {
+            value: "1",
+            debt: "1",
+            ltv_bps: 9000,
+            price_stale: true,
+          },
+        },
+      }),
+    );
+    renderRoute();
     expect(
-      screen.getByRole("img", { name: /CCR trend, currently 114%/ }),
+      screen.getByTestId("risk-council-escalate-price-stale"),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["EVM / not configured", { data: undefined, notConfigured: true }],
+    ["terms: null", { data: { terms: null } }],
+  ])("omits the security rows for %s", (_name, override) => {
+    mockSecurity.mockReturnValue(securityResult(override));
+    renderRoute();
+    for (const id of ["security-value", "ltv", "ratios", "price-stale"]) {
+      expect(
+        screen.queryByTestId(`risk-council-escalate-${id}`),
+      ).not.toBeInTheDocument();
+    }
+    expect(
+      screen.getByTestId("risk-council-escalate-days-on-watchlist"),
     ).toBeInTheDocument();
   });
 
