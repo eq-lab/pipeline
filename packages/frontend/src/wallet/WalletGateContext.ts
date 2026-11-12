@@ -25,7 +25,7 @@ export interface WalletGateContextValue {
    * clicks Continue. EVM passes `() => void open()` (AppKit); Stellar passes
    * `() => void runConnect()`.
    */
-  openGate: (onProceed: () => void) => void;
+  openGate: (onProceed: () => void, onDismiss?: () => void) => void;
 }
 
 export const WalletGateContext = createContext<WalletGateContextValue | null>(
@@ -35,7 +35,7 @@ export const WalletGateContext = createContext<WalletGateContextValue | null>(
 /** No-op fallback used when WalletGateContext is not available (e.g., in tests). */
 const NO_OP_GATE: WalletGateContextValue = {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  openGate: (_onProceed: () => void) => {},
+  openGate: (_onProceed: () => void, _onDismiss?: () => void) => {},
 };
 
 /**

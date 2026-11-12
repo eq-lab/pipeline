@@ -87,3 +87,7 @@ Run from `packages/frontend`: `npx vitest run src/auth/useSettlementAddressLink.
   `Failed`)". §Wallet card (AccountWalletCard): note the arm-then-connect behaviour.
 - New user-stories doc `docs/user-stories/epic-1247/1901-account-connect-then-link.md` covering connect-then-link,
   equal no-op, differing → Change confirmation, declined → Try again, Failed KYB, header connect never prompts.
+
+## Implementation status
+
+Done. Open Question resolved as Option B: the LP uses its own `packages/frontend/src/wallet/ConnectModalProvider` (not `@pipeline/wallet-connect`, which already had `onCancel`), so the `onCancel` signal was added there (and to the terms gate dismissal); `@pipeline/wallet-connect` is unchanged.

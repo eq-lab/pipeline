@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { AuthFlowContext } from "@/auth/AuthFlowContext";
+import type { AuthFlowContextValue } from "@/auth/AuthFlowContext";
 import { AccountWalletCard } from "./AccountWalletCard";
 
 const mockUseActiveWalletAccount = vi.fn();
@@ -136,6 +138,33 @@ describe("AccountWalletCard — disconnected", () => {
     expect(button).toBeInTheDocument();
     await userEvent.click(button);
     expect(mockConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("arms the connect-then-link intent before opening the connect modal", async () => {
+    const calls: string[] = [];
+    const onArmConnectLink = vi.fn(() => calls.push("arm"));
+    mockConnect.mockImplementation(() => calls.push("connect"));
+    mockUseActiveWalletAccount.mockReturnValue({
+      kind: "evm",
+      isConnected: false,
+      address: undefined,
+      truncatedAddress: undefined,
+      formattedBalance: undefined,
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+    });
+    const value = {
+      settlement: { onArmConnectLink },
+    } as unknown as AuthFlowContextValue;
+    render(
+      <AuthFlowContext.Provider value={value}>
+        <AccountWalletCard />
+      </AuthFlowContext.Provider>,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Connect Wallet" }),
+    );
+    expect(calls).toEqual(["arm", "connect"]);
   });
 
   it("renders no divider and no Disconnect row", () => {

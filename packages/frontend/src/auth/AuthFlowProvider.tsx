@@ -101,6 +101,7 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   const {
     state,
     connected,
+    armConnectLink,
     link,
     beginChange,
     cancelChange,
@@ -130,13 +131,22 @@ export function AuthFlowProvider({ children }: { children: React.ReactNode }) {
   const settlement = useMemo(
     () => ({
       rows,
+      onArmConnectLink: armConnectLink,
       onLink: link,
       onChange: beginChange,
       onCancel: cancelChange,
       onOther: beginOther,
       onLinkOther: linkOther,
     }),
-    [rows, link, beginChange, cancelChange, beginOther, linkOther],
+    [
+      rows,
+      armConnectLink,
+      link,
+      beginChange,
+      cancelChange,
+      beginOther,
+      linkOther,
+    ],
   );
 
   const contextValue = useMemo<AuthFlowContextValue>(

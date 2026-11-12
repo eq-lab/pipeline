@@ -66,7 +66,7 @@ const mockStellar = vi.hoisted(() => ({
   },
 }));
 vi.mock("@/wallet", () => ({
-  useConnectModal: () => ({ open: vi.fn() }),
+  useConnectModal: () => ({ open: vi.fn(), onCancel: () => () => {} }),
   useStellarWallet: () => ({ ...mockStellar.value, signMessage: mockSign }),
   useEvmWallet: () => ({
     address: undefined,

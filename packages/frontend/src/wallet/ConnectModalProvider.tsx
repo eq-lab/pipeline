@@ -21,6 +21,12 @@ export function ConnectModalProvider({
   const { openGate } = useWalletGate();
   const { isAnyConnected, isConnectionPending } = useWalletPresence();
   const requestedWhilePending = useRef(false);
+  const cancelListeners = useRef(new Set<() => void>());
+  const walletSelected = useRef(false);
+
+  const fireCancel = useCallback(() => {
+    cancelListeners.current.forEach((listener) => listener());
+  }, []);
 
   useEffect(() => {
     if (typeof requestIdleCallback === "function") {
@@ -37,9 +43,9 @@ export function ConnectModalProvider({
     if (readTermsAcknowledged()) {
       openModal();
     } else {
-      openGate(openModal);
+      openGate(openModal, fireCancel);
     }
-  }, [openGate, openModal]);
+  }, [openGate, openModal, fireCancel]);
 
   const open = useCallback(() => {
     if (isAnyConnected) return;
@@ -58,10 +64,34 @@ export function ConnectModalProvider({
 
   const close = useCallback(() => setIsOpen(false), []);
 
+  const handleDismiss = useCallback(() => {
+    setIsOpen(false);
+    if (walletSelected.current) {
+      walletSelected.current = false;
+      return;
+    }
+    fireCancel();
+  }, [fireCancel]);
+
+  const handleWalletSelect = useCallback(() => {
+    walletSelected.current = true;
+  }, []);
+
+  const onCancel = useCallback((listener: () => void) => {
+    cancelListeners.current.add(listener);
+    return () => {
+      cancelListeners.current.delete(listener);
+    };
+  }, []);
+
   return (
-    <ConnectModalContext.Provider value={{ open, close }}>
+    <ConnectModalContext.Provider value={{ open, close, onCancel }}>
       {children}
-      <ConnectWalletModal open={isOpen} onDismiss={close} />
+      <ConnectWalletModal
+        open={isOpen}
+        onDismiss={handleDismiss}
+        onWalletSelect={handleWalletSelect}
+      />
     </ConnectModalContext.Provider>
   );
 }
