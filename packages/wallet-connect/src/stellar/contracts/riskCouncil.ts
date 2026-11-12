@@ -9,6 +9,7 @@ import {
 } from "./accessManager";
 import { hexToBytes32ScVal } from "./minter";
 import { sha256Hex } from "./hash";
+import { enumTag } from "./enumTag";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
 export type RiskCouncilClosureReason = "Default" | "OtherWriteDown";
@@ -170,11 +171,6 @@ function rawField(
     throw new Error(`${who}: ${key} missing`);
   }
   return String(raw);
-}
-
-function enumTag(value: unknown): string {
-  if (Array.isArray(value)) return String(value[0] ?? "");
-  return String(value ?? "");
 }
 
 export async function readLoanMoney({

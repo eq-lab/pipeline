@@ -1,10 +1,11 @@
 // spec: docs/product-specs/loans-data.md#security-considerations
-import { nativeToScVal } from "@stellar/stellar-sdk";
+import { Address, nativeToScVal } from "@stellar/stellar-sdk";
 import { relay, type RelayParams, type RelayResult } from "./accessManager";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
 const REGISTER_DEAL_FN = "register_deal";
 const NOT_REGISTERED_CODE = /Error\(Contract,\s*#4\)/;
+const NO_TRUSTLINE_CODE = /Error\(Contract,\s*#13\)/;
 const CONTRACT_ADDRESS = /^C[A-Z2-7]{55}$/;
 const MAX_U32 = 0xffffffff;
 
@@ -73,4 +74,29 @@ export function registerDeal({
 export function registerDealArgs(loanId: number) {
   requireLoanId(loanId, "registerDealArgs");
   return [nativeToScVal(loanId, { type: "u32" })];
+}
+
+export interface ReadDebtTrustlineParams extends SimulateReadOptions {
+  debtId: string;
+  holder: string;
+}
+
+export async function readDebtTrustline({
+  debtId,
+  holder,
+  rpcUrl,
+  networkPassphrase,
+}: ReadDebtTrustlineParams): Promise<"present" | "missing"> {
+  if (!debtId) throw new Error("readDebtTrustline: debtId must not be empty");
+  try {
+    await simulateRead(debtId, "authorized", [new Address(holder).toScVal()], {
+      rpcUrl,
+      networkPassphrase,
+    });
+    return "present";
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    if (NO_TRUSTLINE_CODE.test(text)) return "missing";
+    throw error;
+  }
 }

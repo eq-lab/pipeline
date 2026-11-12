@@ -866,7 +866,8 @@ own border/title).
   Performing layout and only this "Next Step" card differs. The confirmation modal mirrors the
   shared dialog shell (`-RejectReasonDialog.tsx`): `role="dialog"`, `aria-modal`, Escape +
   backdrop-click cancel (never a stray confirm), navy confirm button; pending disables both
-  buttons and a failure (404 = loan not indexed) surfaces inline.
+  buttons and a failure (404 = loan not indexed) surfaces inline. It stays DB-only: the on-chain
+  booking is the separate Disbursement card ([Disburse](#disburse-1898)).
 - **Roll over** (Matured variant, S9, Figma node `4116:14050`, #870) — collects the new rate as a
   **percent p.a.** (text input, 0.01–100, at most 2 decimals since 1 bp = 0.01%; converted exactly
   to integer bps by `percentToBps` (`@/utils/rateUnits`) and echoed live as `= N bps`; anything
@@ -909,7 +910,8 @@ own border/title).
   no-op for them, and the Record Coupon / Record Repayment pages null their
   `recordPaymentInput` / `closureReason` and print the same line. Escalate to Risk Council
   (navigation to the Risk Council pages, which carry their own Stellar-only gate, TD-152) and
-  Disbursement complete (DB-only) stay available.
+  Disbursement complete (DB-only) stay available. The Disbursement card (#1898) shows the same
+  Stellar-only line for an EVM loan.
 
 ### Repayment recovery (#1711)
 
@@ -935,6 +937,27 @@ Procedure, roles and contract facts: [loan-repayment-recovery.md](../product-spe
 - **Config and roles:** `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` (the AccessManager), `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives the "not configured for this environment" copy. The Risk Council wallet must also be a trustee in the API's `auth_users`, or step 1 cannot run from the app (deployment fact).
 - **EVM:** gated by `stellarOnlyActionReason`. `@pipeline/wallet-connect` exports pure calldata encoders (`encodeEvmReverseRepayCalldata`, `encodeEvmRepayCalldata`); there is no EVM send path (TD-152, #1573).
 - Not in the app: cancelling a scheduled reversal (`AM.cancel`, TD-159).
+
+### Disburse (#1898)
+
+Resolves TD-157. Contract: Minter `disburse(loan_id: u32, amount: i128, value_date: u64, ref_hash: BytesN<32>)` is `#[only_owner]`, so it is reached through `AM.execute(minter, "disburse", args, caller)` by a `TRUSTEE` wallet (`relay`, `disburse` in `@pipeline/wallet-connect`). It books bank cash out, calls `registry.disburse` (the first call opens epoch 0 and moves `Approved` to `Performing`) and `factory.sync_debt`. No Figma: the card and dialog reuse the loan-detail card and the shared dialog shell.
+
+- **Card** (`loan-detail-disburse`, `-DisburseAction.tsx`, mounted after the Debt token card on every layout). Visible for a Stellar loan whose on-chain status is `Approved`, `Performing` or `WatchList`, that is not carved out, and where `disbursed < original_senior_tranche`; a fully disbursed loan shows nothing. Rows, verbatim from chain: Senior tranche, Disbursed on-chain, Booked bank cash (minter `pool_state().bank_cash`); "—" while loading or on error. Nothing is computed client-side, and no "remaining" figure is shown.
+- **Pre-flight order** (`disburseView`, `lib/disburse.ts`; the first failing check is the reason, `loan-detail-disburse-blocked`, and the button stays disabled):
+  1. Not a Stellar loan: the Stellar-only line.
+  2. A required id is unset (minter, executor, registry, factory): not configured.
+  3. Loan read (registry `mutable_loan_data` + `immutable_loan_data`) pending hides the card; an error gives "Could not read this loan on-chain."
+  4. `deal(loan_id)`: none gives "Register this loan's debt token first." ([Register debt token](#register-debt-token-1766)).
+  5. DEBT trustline of the loan NFT holder (`owner_of`, the capital wallet from `draw_loan`; SAC `authorized(holder)`): `Error(Contract, #13)` means missing, so the reason names the holder and says operations must add the DEBT trustline (`just new-deal <id>` in the contracts repo); `true` and `false` both count as present; any other failure is "Could not verify".
+  6. Minter `paused()`.
+  7. A connected wallet, then `can_call(caller, minter, "disburse")`: `immediate` is ready, `delay > 0` says the app does not schedule disbursements, otherwise "Only the Trustee role can disburse a loan."
+- **Dialog** (`disburse-dialog`): Amount (USD, up to 7 decimals), Value date (UTC, `type="date"`, defaults to today, not in the future) and Bank reference (trimmed, 1 to 140 characters), a read-only `ref_hash` line, and the same three read-only rows. The only client checks are plain comparisons: amount above 0 and not above the on-chain `bank_cash`. The tranche cap is the contract's (`#13`). Escape and backdrop cancel are ignored while pending.
+- **`ref_hash` and idempotency.** `ref_hash = sha256(reference.trim())` (`bankReferenceRefHash`), the convention shared with the other cash bookings (the minter's consumed set is shared). The zero hash is rejected by the encoder because the contract skips the replay check for it. Before any signature the mutation reads `ref_hash_seen` and refuses a consumed reference, then re-reads `paused()`; the confirm button is disabled while pending; a retry after an unknown outcome reuses the reference, so `#7` refuses a double booking.
+- **Errors** (`disburseErrorCopy`, local because Soroban codes collide across contracts): `1000` paused, `7` reused reference, `8` bank cash below the amount, `6` / `25` amount, `13` senior tranche exceeded (shown with the on-chain disbursed and tranche values verbatim; the trustline was already verified, so the SAC collision is not shown), `3` / `2` status, `21` carved out. `#4` is left generic (minter `Unauthorized` and factory `NotRegistered` collide).
+- **After success** the card shows the transaction hash and "The loan book updates once indexed" (the relay returns only the hash). `loan-disbursement`, `loan-mutable`, `loan-book`, `loan-financials`, `loan-valuation`, `loan-waterfall`, `cash-book`, the minter pool state, `deal-token`, `debt-trustline` and `audit-log` are invalidated immediately and again at 5 s and 15 s; `CashDisbursed` is already indexed into the cash book and audit log.
+- **Complete off-ramp is separate.** Disburse never calls `POST …/disbursement/complete`; the served display status stays `Disbursing` until that DB flag is flipped, while the card itself keys off the on-chain status.
+- **Testnet caveat.** Disburse succeeds only after ops deploys the DEBT SAC and adds the capital-wallet trustline (`just new-deal <id>`) and `register_deal` has run; until then the card shows the matching reason. The minter's booked bank cash must cover the amount.
+- **Config:** `VITE_STELLAR_YIELD_MINTER_ID`, `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_LOAN_REGISTRY_ID`, `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
 
 ### Figma → token / px mapping (`4116:10549`)
 
@@ -1020,7 +1043,7 @@ Record Coupon and Record Repayment sign the Minter's `repay`, not the executor's
 - `ref_hash` is `sha256("pipeline:repay:{registryId}:{loanId}:{next_repayment_id}")` as lowercase hex; `next_repayment_id` is read from `LoanRegistry.mutable_loan_data(loan_id)` just before the transaction is built. There is no input field for it. A second submit for the same slot fails at simulation (`RefHashSeen`).
 - The hook is gated on `VITE_STELLAR_YIELD_MINTER_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID` (the executor id is no longer used for this action) and keeps the "not configured for this environment" copy.
 - The signature also books Minter bank cash and mints PLUSD (interest to sPLUSD, fees staked for the capital wallet). The "Your key · no cash moves" chip and the "Record on the ledger" wording are unchanged: no USDC leaves the trustee wallet.
-- The trustee wallet must hold `CASH_REPORTER` with delay 0. The page reads `can_call` first (#1762, [Cash reporter bookings](#cash-reporter-bookings)) and disables the submit with the role reason, so a Trustee-only wallet never reaches simulation or a signature request. A loan not yet disbursed on chain fails with registry `#3` (TD-157).
+- The trustee wallet must hold `CASH_REPORTER` with delay 0. The page reads `can_call` first (#1762, [Cash reporter bookings](#cash-reporter-bookings)) and disables the submit with the role reason, so a Trustee-only wallet never reaches simulation or a signature request. A loan not yet disbursed on chain fails with registry `#3`; disburse it from the loan detail ([Disburse](#disburse-1898)).
 - Error copy stays the generic `toUserError` mapping; Minter and registry codes collide (a nested registry `#1` surfaces as `Error(Contract, #1)`), so no code-specific copy is added.
 - EVM loans stay gated by `stellarOnlyActionReason` (TD-152); the EVM arm is `PipelineMinter.repay`.
 

@@ -5,11 +5,13 @@ import {
   BASE_FEE,
   xdr,
   Address,
+  StrKey,
   nativeToScVal,
   scValToNative,
   rpc as SorobanRpc,
   type Transaction,
 } from "@stellar/stellar-sdk";
+import { enumTag } from "./enumTag";
 import { simulateRead } from "./simulateRead";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1073,4 +1075,70 @@ export async function closeLoan({
   }
 
   return { hash: sendResult.hash };
+}
+
+// ── disbursement reads ────────────────────────────────────────────────────────
+
+export interface LoanDisbursementState {
+  status: string;
+  carvedOut: boolean;
+  disbursed: string;
+  originalSeniorTranche: string;
+}
+
+export async function readLoanDisbursementState({
+  registryId,
+  loanId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadNextRepaymentIdParams): Promise<LoanDisbursementState> {
+  if (!registryId) {
+    throw new Error("readLoanDisbursementState: registryId must not be empty");
+  }
+  const arg = () => [nativeToScVal(loanId, { type: "u32" })];
+  const opts = { rpcUrl, networkPassphrase };
+  const [mutable, immutable] = (await Promise.all([
+    simulateRead(registryId, "mutable_loan_data", arg(), opts),
+    simulateRead(registryId, "immutable_loan_data", arg(), opts),
+  ])) as [
+    Record<string, unknown> | undefined,
+    Record<string, unknown> | undefined,
+  ];
+  const field = (data: Record<string, unknown> | undefined, key: string) => {
+    const raw = data?.[key];
+    if (raw === undefined || raw === null) {
+      throw new Error(`readLoanDisbursementState: ${key} missing`);
+    }
+    return raw;
+  };
+  return {
+    status: enumTag(field(mutable, "status")),
+    carvedOut: mutable?.carved_out === true,
+    disbursed: String(field(mutable, "disbursed")),
+    originalSeniorTranche: String(field(immutable, "original_senior_tranche")),
+  };
+}
+
+export async function readLoanOwner({
+  registryId,
+  loanId,
+  rpcUrl,
+  networkPassphrase,
+}: ReadNextRepaymentIdParams): Promise<string> {
+  if (!registryId) {
+    throw new Error("readLoanOwner: registryId must not be empty");
+  }
+  const owner = await simulateRead(
+    registryId,
+    "owner_of",
+    [nativeToScVal(loanId, { type: "u32" })],
+    { rpcUrl, networkPassphrase },
+  );
+  if (
+    typeof owner !== "string" ||
+    !(StrKey.isValidEd25519PublicKey(owner) || StrKey.isValidContract(owner))
+  ) {
+    throw new Error("readLoanOwner: owner is not a Stellar address");
+  }
+  return owner;
 }

@@ -2211,6 +2211,7 @@ line, whichever section it lands in.
 - **Gap:** `registry.disburse` moves a loan `Approved → Performing` and is reached only through `Minter.disburse` (`only_owner`, so through the AccessManager role `TRUSTEE`). The trustee app records "Disbursement complete" in the database only and never makes that call.
 - **Impact:** A loan drawn from the trustee app stays `Approved` on chain. `Minter.repay` (the Record Coupon / Record Repayment path since #1712) then reverts with registry `#3 WrongCurrentStatus` until someone disburses out of band. The testnet registry currently holds no loans, so the end-to-end path has not been simulated successfully.
 - **Suggested fix:** A wallet-connect `Minter.disburse` binding through the executor, signed by the trustee wallet, called from the "Disbursement complete" action with the usual simulate-then-sign ordering and an idempotency guard.
+- **Resolved:** #1898 (wallet-connect `disburse` binding, Trustee Disburse card on `/loans/$id`).
 
 ### TD-158: `@tanstack/react-router` 1.168.x lets a thrown `undefined` white-screen the app; upgrade to >= 1.170
 

@@ -89,13 +89,13 @@ Sub-issue of epic #1776. Resolves TD-157. Stellar only. Branch `feat/1898-truste
 
 ## Open Questions
 
-1. **Relationship to "Complete off-ramp" (`POST /v1/loan-book/{id}/disbursement/complete`).** The plan keeps the two actions side by side and independent: Disburse is on-chain, and Complete off-ramp stays the DB flag that clears the `Disbursing` display status. The alternative is to make Disburse also fire `POST …/disbursement/complete` after a confirmed first disbursement (or to replace the off-ramp card), so that one trustee action moves both the on-chain and the display status. Which is wanted? The default if unanswered is to keep them separate.
+1. **Relationship to "Complete off-ramp" (`POST /v1/loan-book/{id}/disbursement/complete`).** The plan keeps the two actions side by side and independent: Disburse is on-chain, and Complete off-ramp stays the DB flag that clears the `Disbursing` display status. The alternative is to make Disburse also fire `POST …/disbursement/complete` after a confirmed first disbursement (or to replace the off-ramp card), so that one trustee action moves both the on-chain and the display status. Which is wanted? Decided by the user on #1898: Option A, keep them separate.
 
 ## Implementation Steps
 
 ### wallet-connect (`packages/wallet-connect`)
 
-1. `src/stellar/contracts/minter.ts`: add a `// ── disburse ──` block next to `reverse_repay`:
+1. [x] `src/stellar/contracts/minter.ts`: add a `// ── disburse ──` block next to `reverse_repay`:
    - `export interface DisburseArgs { loanId: number; amountRaw: string; valueDate: number; refHash: string }`.
    - `export function encodeDisburseArgs(args): xdr.ScVal[]` → `[u32 loanId, i128 BigInt(amountRaw), u64 BigInt(valueDate), hexToBytes32ScVal(refHash)]`. It throws on:
      - a non-u32 `loanId`;
@@ -106,16 +106,16 @@ Sub-issue of epic #1776. Resolves TD-157. Stellar only. Branch `feat/1898-truste
      Error messages are prefixed `encodeDisburseArgs:`, as in `encodeSettleWireOutArgs`.
    - `export type DisburseParams = Omit<RelayParams, "mode" | "target" | "fn" | "args"> & { minterId: string } & DisburseArgs`.
    - `export function disburse(params): Promise<RelayResult>` → `relay({ ...rest, mode: "execute", target: minterId, fn: "disburse", args: encodeDisburseArgs(...) })`.
-2. `src/stellar/contracts/loanRegistry.ts`:
+2. [x] `src/stellar/contracts/loanRegistry.ts`:
    - `export interface LoanDisbursementState { status: string; carvedOut: boolean; disbursed: string; originalSeniorTranche: string }`.
    - `export async function readLoanDisbursementState({ registryId, loanId, rpcUrl, networkPassphrase })` simulates `mutable_loan_data(loan_id)` and `immutable_loan_data(loan_id)` in parallel through `simulateRead`. It returns the enum tag of `status` (reuse `enumTag` from `riskCouncil.ts`, exported or moved into a small shared helper), `carved_out === true`, and `String(disbursed)` / `String(original_senior_tranche)`. A missing field throws `readLoanDisbursementState: <field> missing`.
    - `export async function readLoanOwner({ registryId, loanId, ... }): Promise<string>` simulates `owner_of(loan_id)` and checks that the result is a G… or C… strkey.
-3. `src/stellar/contracts/dealTokenFactory.ts`: add `export async function readDebtTrustline({ debtId, holder, rpcUrl, networkPassphrase }): Promise<"present" | "missing">`. It calls `simulateRead(debtId, "authorized", [Address(holder)])`, maps any boolean to `"present"` and `Error(Contract, #13)` to `"missing"`, and rethrows anything else. This mirrors `readPlusdAuthorization`.
-4. `src/index.ts`: export `disburse`, `encodeDisburseArgs`, the `DisburseArgs` / `DisburseParams` types, `readLoanDisbursementState`, `LoanDisbursementState`, `readLoanOwner` and `readDebtTrustline`.
+3. [x] `src/stellar/contracts/dealTokenFactory.ts`: add `export async function readDebtTrustline({ debtId, holder, rpcUrl, networkPassphrase }): Promise<"present" | "missing">`. It calls `simulateRead(debtId, "authorized", [Address(holder)])`, maps any boolean to `"present"` and `Error(Contract, #13)` to `"missing"`, and rethrows anything else. This mirrors `readPlusdAuthorization`.
+4. [x] `src/index.ts`: export `disburse`, `encodeDisburseArgs`, the `DisburseArgs` / `DisburseParams` types, `readLoanDisbursementState`, `LoanDisbursementState`, `readLoanOwner` and `readDebtTrustline`.
 
 ### Trustee (`packages/trustee`)
 
-5. `src/api/useDisburse.ts` (new; header `// spec: docs/frontend/trustee-flows.md#disburse-1898`):
+5. [x] `src/api/useDisburse.ts` (new; header `// spec: docs/frontend/trustee-flows.md#disburse-1898`):
    - `disburseConfigured()` requires `ENV.STELLAR_YIELD_MINTER_ID`, `STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `STELLAR_LOAN_REGISTRY_ID` and `STELLAR_DEAL_TOKEN_FACTORY_ID`.
    - `useLoanDisbursementState(chainId, loanId)` uses key `["loan-disbursement", chainId, loanId]`. It is enabled only when `stellarOnlyActionReason(chainId) === null`, the app is configured and the loan id is valid. `staleTime` 15 s, `retry: false`.
    - `useDebtTrustline(chainId, loanId, debt)` uses key `["debt-trustline", chainId, loanId, debt]` and is enabled when `debt` is known. It runs `readLoanOwner`, then `readDebtTrustline`, and returns `{ holder, trustline }`.
@@ -129,7 +129,7 @@ Sub-issue of epic #1776. Resolves TD-157. Stellar only. Branch `feat/1898-truste
      5. calls `disburse({ accessManagerId, minterId, caller, loanId, amountRaw, valueDate, refHash, signTransaction, onStageChange, ...rpc() })`.
 
      On success it invalidates `loan-disbursement`, `loan-mutable`, `loan-book`, `loan-financials`, `loan-valuation`, `loan-waterfall`, `cash-book`, the `minterPoolStateKey(...)` key, `deal-token`, `debt-trustline` and `audit-log`. It invalidates them immediately and again at 5 s and 15 s (indexer lag, same as repayment recovery).
-6. `src/lib/disburse.ts` (new): pure logic and copy, so the presenter is testable without a DOM.
+6. [x] `src/lib/disburse.ts` (new): pure logic and copy, so the presenter is testable without a DOM.
    - Copy constants: `DISBURSE_NOT_CONFIGURED`, `DISBURSE_CONNECT_WALLET`, `DISBURSE_NO_ROLE` ("Only the Trustee role can disburse a loan."), `DEBT_NOT_REGISTERED` ("Register this loan's debt token first."), `DEBT_TRUSTLINE_MISSING(holder)`, `MINTER_PAUSED`, and `REUSED_DISBURSE_REFERENCE`, which reuses the wire-out wording "This bank reference is already recorded on-chain. …".
    - `disburseView(input)` returns `{ kind: "hidden" } | { kind: "blocked"; reason } | { kind: "ready" }`. Its precedence:
      1. Not Stellar → the stellar-only reason.
@@ -149,7 +149,7 @@ Sub-issue of epic #1776. Resolves TD-157. Stellar only. Branch `feat/1898-truste
      - a wallet rejection or a specific mapped error is passed through as is;
      - otherwise `parseSorobanContractErrorCode` maps: `1000`/`EnforcedPause` → paused; `7`/`RefHashSeen` → reused reference; `8` → bank cash; `6` / `25` → invalid amount; `13` → "This exceeds the loan's senior tranche ({disbursed} of {original} already disbursed)." with the values passed in verbatim; `3` / `2` → "This loan's on-chain status does not allow a disbursement."; `21` → carved out;
      - anything else → the generic "Could not disburse this loan. Please try again." with details.
-7. `src/routes/-DisburseAction.tsx` (new): a card plus a dialog, with the same visual system as `-RegisterDebtTokenAction.tsx` and `DisbursementConfirmDialog`: `CARD_CLASS`, `CardTitle`, `BRAND`, `INK_MUTED`, a `role="dialog"` / `aria-modal` shell, Escape and backdrop cancel (blocked while pending), and `InlineError`.
+7. [x] `src/routes/-DisburseAction.tsx` (new): a card plus a dialog, with the same visual system as `-RegisterDebtTokenAction.tsx` and `DisbursementConfirmDialog`: `CARD_CLASS`, `CardTitle`, `BRAND`, `INK_MUTED`, a `role="dialog"` / `aria-modal` shell, Escape and backdrop cancel (blocked while pending), and `InlineError`.
    - **Card** (`data-testid="loan-detail-disburse"`): title "Disbursement". The muted line depends on status:
      - Approved: "This loan is drawn but not disbursed on-chain. Book the wire to the borrower to move it to Performing."
      - Otherwise: "Book a further disbursement against this loan's senior tranche."
@@ -167,21 +167,21 @@ Sub-issue of epic #1776. Resolves TD-157. Stellar only. Branch `feat/1898-truste
      - on success, close the dialog and show the card notice.
 
      Props: `{ chainId, loanId: number | null, loanName }`.
-8. `src/routes/loans.$id.tsx`: import `DisburseAction` and render `<DisburseAction chainId={chain} loanId={debtLoanId} loanName={detail.hero.title} />` directly after each of the three `<RegisterDebtTokenAction … variant="card" />` mounts (watchlist, matured, performing/disbursing). Nothing else changes in this file.
-9. Run `npx vite build` only if a route file is added. None is planned (the component is a `-` file), so `routeTree.gen.ts` should not change.
+8. [x] `src/routes/loans.$id.tsx`: import `DisburseAction` and render `<DisburseAction chainId={chain} loanId={debtLoanId} loanName={detail.hero.title} />` directly after each of the three `<RegisterDebtTokenAction … variant="card" />` mounts (watchlist, matured, performing/disbursing). Nothing else changes in this file.
+9. [x] Run `npx vite build` only if a route file is added. None is planned (the component is a `-` file), so `routeTree.gen.ts` should not change.
 
 ### Docs
 
-10. `docs/frontend/trustee-flows.md`:
+10. [x] `docs/frontend/trustee-flows.md`:
     - Add `### Disburse (#1898)` under Loan detail, after `### Repayment recovery (#1711)`. It covers: the contract call and role, card visibility, the pre-flight order and copy, form rules, the `ref_hash` convention and idempotency, error mapping (including the `#4` / `#13` collision notes), the invalidations, and the testnet caveat (`just new-deal <id>`).
     - In `### Wired actions`, add one sentence to the Disbursement complete bullet: it remains DB-only, and the on-chain booking is Disburse. Also add Disburse to the Stellar-only gate bullet.
-11. `docs/product-specs/trustee-dashboard.md` (199/200 lines; edit in place, no new lines):
+11. [x] `docs/product-specs/trustee-dashboard.md` (199/200 lines; edit in place, no new lines):
     - Flow 7 row: replace "not yet in the console (TD-157)" with "Trustee loan detail → Disburse (#1898)".
     - Lines 85–86: replace "next (`disburse`, TD-157)." with "next (`disburse`, Trustee loan detail, #1898)."
-12. `docs/product-specs/loans-data.md` (194 lines): add one security bullet after the `reverse_repay` bullet: "Minter `disburse(loan_id: u32, amount: i128, value_date: u64, ref_hash: BytesN<32>)` (Stellar) is `#[only_owner]`, so it is reached through `AM.execute(minter, "disburse", args, caller)` by a `TRUSTEE` wallet; it takes `bank_cash`, calls `registry.disburse` (first call → Performing) and `factory.sync_debt`. UI: trustee-flows.md#disburse-1898."
-13. `docs/product-specs/loan-repay-minter.md`: change "(TD-157)" to "(Trustee loan detail → Disburse, #1898)".
-14. `docs/exec-plans/tech-debt-tracker.md` TD-157: add "- **Resolved:** #1898 (wallet-connect `disburse` binding, Trustee Disburse card on `/loans/$id`)."
-15. `docs/user-stories/epic-1776/1898-trustee-minter-disburse.md` (new) and its row in `docs/user-stories/index.md`. Stories:
+12. [x] `docs/product-specs/loans-data.md` (194 lines): add one security bullet after the `reverse_repay` bullet: "Minter `disburse(loan_id: u32, amount: i128, value_date: u64, ref_hash: BytesN<32>)` (Stellar) is `#[only_owner]`, so it is reached through `AM.execute(minter, "disburse", args, caller)` by a `TRUSTEE` wallet; it takes `bank_cash`, calls `registry.disburse` (first call → Performing) and `factory.sync_debt`. UI: trustee-flows.md#disburse-1898."
+13. [x] `docs/product-specs/loan-repay-minter.md`: change "(TD-157)" to "(Trustee loan detail → Disburse, #1898)".
+14. [x] `docs/exec-plans/tech-debt-tracker.md` TD-157: add "- **Resolved:** #1898 (wallet-connect `disburse` binding, Trustee Disburse card on `/loans/$id`)."
+15. [x] `docs/user-stories/epic-1776/1898-trustee-minter-disburse.md` (new) and its row in `docs/user-stories/index.md`. Stories:
     1. Approved loan with no deal → card blocked with "Register this loan's debt token first".
     2. Registered deal, no capital-wallet trustline → trustline reason.
     3. Non-Trustee wallet → no-role reason.
