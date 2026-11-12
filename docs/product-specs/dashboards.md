@@ -147,9 +147,11 @@ Reads loan identity and immutable parameters from the LoanRegistry on-chain. Rea
 **Per active loan**
 - From chain: `loanId`, originator, borrower (hashed), commodity, corridor, original facility size, original senior/equity tranche split.
 - From trustee feed: current outstanding principal, accrued interest, days remaining to maturity.
-- From chain (mutable): current status, `currentMaturityDate`, `ccrBps` with timestamp.
+- From chain (mutable): current status, `currentMaturityDate`, LTV from the SecurityRegistry (`ltv_bps`, Stellar only; `—` on EVM).
 - From chain (location): location type (Vessel / Warehouse / TankFarm / Other), location identifier, and — for vessels — a link to an external maritime tracking platform showing the vessel's current AIS position.
 - From trustee feed (off-chain, labelled): equity tranche commitment and source originator.
+
+The Active Loans table columns are Commodity, Principal, LTV, Duration, Rate, Protection; the portfolio collateral figures stay on the summary cards (#1907).
 
 **Per closed loan**
 - All fields above plus: actual maturity date, `closureReason`, realised senior coupon, realised originator residual, realised loss (if any).

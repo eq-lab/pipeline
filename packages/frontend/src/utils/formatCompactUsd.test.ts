@@ -1,16 +1,10 @@
-/**
- * Unit tests for compact USD and related loan-book formatters.
- *
- * Critical invariant: base-6 decimal strings are read as human units.
- * `"8000000.000000"` must produce `"$8.0M"`, NOT `"$0.0"` (raw sub-unit
- * treatment would have divided by 1e6 first, yielding `"$8.0"` — still wrong).
- */
+// spec: docs/frontend/utils.md
 import { describe, it, expect } from "vitest";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
   formatBpsRate,
-  formatLtv,
+  formatLtvBps,
   formatCoverage,
   formatDurationDays,
   formatEstimatedWaitDays,
@@ -20,8 +14,6 @@ import {
 // ── formatCompactUsd ─────────────────────────────────────────────────────────
 
 describe("formatCompactUsd", () => {
-  // Scale-bug guard: the primary test that human-unit strings are NOT divided
-  // by 1e6 again.
   it("reads base-6 decimal strings as already human-scaled millions", () => {
     expect(formatCompactUsd("8000000.000000")).toBe("$8.0M");
   });
@@ -48,7 +40,6 @@ describe("formatCompactUsd", () => {
   });
 
   it("preserves cents for sub-dollar values", () => {
-    // Bug guard: "0.900000" must NOT round to "$1".
     expect(formatCompactUsd("0.900000")).toBe("$0.90");
   });
 
@@ -106,34 +97,26 @@ describe("formatOneDecimalRate", () => {
   });
 });
 
-// ── formatLtv ────────────────────────────────────────────────────────────────
+// ── formatLtvBps ─────────────────────────────────────────────────────────────
 
-describe("formatLtv", () => {
-  it("rounds a 4-decimal fraction to an integer percentage", () => {
-    expect(formatLtv("0.8511")).toBe("85%");
+describe("formatLtvBps", () => {
+  it("rounds up to one decimal and trims a trailing .0", () => {
+    expect(formatLtvBps(8123)).toBe("81.3%");
+    expect(formatLtvBps(8000)).toBe("80%");
+    expect(formatLtvBps(8001)).toBe("80.1%");
+    expect(formatLtvBps(0)).toBe("0%");
+    expect(formatLtvBps(12500)).toBe("125%");
   });
 
-  it("handles 100%", () => {
-    expect(formatLtv("1.0000")).toBe("100%");
+  it("reads the sentinel as no security value", () => {
+    expect(formatLtvBps(4294967295)).toBe("No security value");
   });
 
-  it("rounds mid-values correctly", () => {
-    expect(formatLtv("0.8350")).toBe("84%");
-    expect(formatLtv("0.8351")).toBe("84%");
-    expect(formatLtv("0.8350")).toBe("84%");
-  });
-
-  it("formats a large LTV with a thousands separator", () => {
-    // "1333.3333" → Math.round(1333.3333 * 100) = 133333 → "133,333%"
-    expect(formatLtv("1333.3333")).toBe("133,333%");
-  });
-
-  it("returns em-dash for null", () => {
-    expect(formatLtv(null)).toBe("—");
-  });
-
-  it("returns em-dash for undefined", () => {
-    expect(formatLtv(undefined)).toBe("—");
+  it("returns em-dash for null, undefined, NaN and non-numbers", () => {
+    expect(formatLtvBps(null)).toBe("—");
+    expect(formatLtvBps(undefined)).toBe("—");
+    expect(formatLtvBps(NaN)).toBe("—");
+    expect(formatLtvBps("8123")).toBe("—");
   });
 });
 

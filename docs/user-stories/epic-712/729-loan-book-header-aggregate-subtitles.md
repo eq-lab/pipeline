@@ -15,7 +15,7 @@ Figma: [node 3283:14431](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pip
 
 **Steps:**
 
-1. Set mock data with `total_deployed` non-null and `total_collateral` null:
+1. Set mock data with `total_deployed` non-null:
    ```js
    localStorage.setItem(
      "pipeline.mock.api.GET./v1/loan-book",
@@ -33,8 +33,7 @@ Figma: [node 3283:14431](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pip
            borrower: "Open Mineral",
            commodity: "Copper Concentrate",
            principal: "8000000.000000",
-           collateral: null,
-           ltv: null,
+           ltv_bps: null,
            duration_days: 120,
            rate: "0.112000",
            protection: "LC at sight",
@@ -51,11 +50,13 @@ Figma: [node 3283:14431](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pip
 - The Principal column header reads `Principal · $31.6M` as a single caption-styled run.
 - The label and aggregate are separated by a middot (` · `).
 - The entire header text (label + aggregate) renders at 12px/16px caption size (`--text-pipeline-caption`) in ink-muted color — not 14px body-s.
-- The Collateral and LTV column headers show plain text only — no aggregate appended.
+- The LTV column header shows plain text only — no aggregate appended (no loan has a valid `ltv_bps`). There is no Collateral column (removed by #1907).
 
 ---
 
-## Story 2: Collateral column header shows aggregate when total_collateral is non-null
+## Story 2 (retired by #1907): Collateral column header shows aggregate when total_collateral is non-null
+
+> Retired: the Collateral column and its header aggregate were removed by #1907. Do not run this story.
 
 **Persona:** Any user viewing the Protocol Dashboard Loan Book table.
 
@@ -102,7 +103,9 @@ Figma: [node 3283:14431](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pip
 
 ---
 
-## Story 3: Collateral column header shows no aggregate when total_collateral is null
+## Story 3 (retired by #1907): Collateral column header shows no aggregate when total_collateral is null
+
+> Retired: the Collateral column and its header aggregate were removed by #1907. Do not run this story.
 
 **Persona:** Any user viewing the Protocol Dashboard Loan Book table (current production state while TODO #706 is not yet merged).
 

@@ -33,8 +33,7 @@ where the borrower field is a long Ethereum-style address (42-character hex stri
            borrower: "0xf37d5bE2BE001D7c6f0c11d7f975c6A7b23c7Ec1",
            commodity: "Copper Concentrate",
            principal: "8000000.000000",
-           collateral: null,
-           ltv: null,
+           ltv_bps: null,
            duration_days: 120,
            rate: "0.112000",
            protection: "LC at sight",
@@ -50,7 +49,7 @@ where the borrower field is a long Ethereum-style address (42-character hex stri
 **Expected outcome:**
 - The Duration, Rate, and Protection column headers are fully readable — they are not
   pushed off-screen or squashed together by the long borrower hash.
-- The Principal, Collateral, and LTV columns each occupy approximately 112px.
+- The Principal column occupies approximately 112px and the LTV column approximately 160px (#1907). There is no Collateral column.
 - The Duration and Rate columns each occupy approximately 96px.
 - The Protection column occupies approximately 128px.
 - The Borrower / Commodity column fills the remaining width (flexible).
@@ -76,7 +75,7 @@ the borrower + commodity is a short human-readable label.
 **Expected outcome:**
 - The Borrower / Commodity cell shows `"Open Mineral / Copper Concentrate"` (or similar
   combined form) without truncation.
-- All seven column headers (Borrower / Commodity, Principal, Collateral, LTV, Duration,
+- All six column headers (Commodity, Principal, LTV, Duration,
   Rate, Protection) are visible and correctly aligned.
 - Numeric column widths remain stable — the short label does not cause them to expand.
 
@@ -100,6 +99,6 @@ response (may include a long borrower hash).
 - The desktop table is hidden; the mobile stacked-card layout is shown.
 - Each loan card displays borrower/commodity as its primary label (full text, no truncation
   required in mobile — cards are full-width stacked layout, not a table).
-- The six field pairs (Principal, Collateral, LTV, Duration, Rate, Protection) appear in
+- The five field pairs (Principal, LTV, Duration, Rate, Protection) appear in
   a 2-column grid below the primary label.
 - No column-width or table-layout changes affect the mobile cards.

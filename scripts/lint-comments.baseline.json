@@ -47,18 +47,6 @@
     "header": 27,
     "nodeIds": 0
   },
-  "packages/frontend/src/api/useLoanBook.test.tsx": {
-    "header": 9,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/api/useLoanBook.ts": {
-    "header": 27,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/api/useLoanSubmissions.ts": {
-    "header": 35,
-    "nodeIds": 0
-  },
   "packages/frontend/src/api/usePnl.ts": {
     "header": 11,
     "nodeIds": 0
@@ -191,10 +179,6 @@
     "header": 0,
     "nodeIds": 2
   },
-  "packages/frontend/src/components/dashboard/DeploymentMonitorPanel.test.tsx": {
-    "header": 7,
-    "nodeIds": 0
-  },
   "packages/frontend/src/components/dashboard/OriginationTable.tsx": {
     "header": 0,
     "nodeIds": 1
@@ -207,20 +191,12 @@
     "header": 0,
     "nodeIds": 1
   },
-  "packages/frontend/src/components/dashboard/originationRow.test.ts": {
-    "header": 15,
-    "nodeIds": 0
-  },
   "packages/frontend/src/components/dashboard/originationRow.ts": {
     "header": 0,
     "nodeIds": 1
   },
   "packages/frontend/src/components/dashboard/useBalanceSheetPanel.test.tsx": {
     "header": 23,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.test.tsx": {
-    "header": 13,
     "nodeIds": 0
   },
   "packages/frontend/src/components/dashboard/useWithdrawalQueuePanel.test.tsx": {
@@ -267,10 +243,6 @@
     "header": 5,
     "nodeIds": 0
   },
-  "packages/frontend/src/routes/-dashboard.test.tsx": {
-    "header": 24,
-    "nodeIds": 8
-  },
   "packages/frontend/src/routes/-deposit.test.tsx": {
     "header": 37,
     "nodeIds": 0
@@ -294,14 +266,6 @@
   "packages/frontend/src/routes/test/-scenarios.test.ts": {
     "header": 10,
     "nodeIds": 0
-  },
-  "packages/frontend/src/utils/formatCompactUsd.test.ts": {
-    "header": 7,
-    "nodeIds": 0
-  },
-  "packages/frontend/src/utils/formatCompactUsd.ts": {
-    "header": 28,
-    "nodeIds": 1
   },
   "packages/frontend/src/utils/formatDate.test.ts": {
     "header": 4,

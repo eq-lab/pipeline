@@ -1,30 +1,7 @@
-/**
- * Integration tests for the /dashboard route (Issue #716 + #717).
- *
- * The Protocol Dashboard is protocol-wide. The DeploymentMonitorPanel (Panel B)
- * is now wired to `useLoanBook`, so these tests mock the `apiFetch` client to
- * control the API response.
- *
- * Scenarios covered:
- *   1. Page root + <main> render (protocol-wide; no wallet connected, no gate).
- *   2. All four panel containers render; three have section headings, Panel D (Yield History) does not.
- *   3. Responsive structure: grid is single-column on mobile, two-column at md+.
- *   4. PanelLoading shows loading copy.
- *   5. PanelEmpty shows its caption.
- *   6. PanelError's Retry button invokes onRetry.
- *   7. DeploymentMonitorPanel: loading state.
- *   8. DeploymentMonitorPanel: error state + retry.
- *   9. DeploymentMonitorPanel: empty loans state.
- *  10. DeploymentMonitorPanel: ready state — formatted values + null → "—".
- *  11. DeploymentMonitorPanel: responsive class assertions.
- *  12. DeploymentMonitorPanel: tab bar — Active Loans + selectable "In Origination" (#755).
- *  13. DeploymentMonitorPanel: In Origination tab renders the Figma 4116-9155 field set
- *      (Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status, #1104), the old
- *      Active-Loans-shaped columns are absent, and the Active Loans tab is unchanged (#814).
- */
+// spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Route } from "./dashboard";
@@ -51,7 +28,6 @@ vi.mock("@/api/useChainServed", () => ({
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-// Mock wagmi + AppKit so the component tree can render without real providers.
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
@@ -95,7 +71,6 @@ vi.mock("@/lib/env", () => ({
     STELLAR_CHAIN_ID: 99_000_001,
     EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
     DEPOSIT_MANAGER_ADDRESS: "0x0000000000000000000000000000000000000000",
-    // Zero-address triggers YieldHistoryPanel's empty guard (no network calls in test env).
     STAKED_PLUSD_ADDRESS: "0x0000000000000000000000000000000000000000",
     WALLETCONNECT_PROJECT_ID: "replace-me",
   },
@@ -106,10 +81,6 @@ vi.stubGlobal("fetch", fetchMock);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-// Issue #906: the frontend no longer rescales `total_deployed`/`principal`/
-// `collateral`/`total_collateral` (the former ×1000 `formatRegistryCompactUsd`
-// workaround, #840/#888, has been removed) — every value is displayed exactly
-// as served, via plain `formatCompactUsd`.
 const FIXTURE_FULL: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000", // displayed as served → "$31.6K"
@@ -126,8 +97,6 @@ const FIXTURE_FULL: LoanBookResponse = {
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
       principal: "8000.000000", // displayed as served → "$8.0K"
-      collateral: null,
-      ltv: null,
       duration_days: 120,
       rate: "0.112000",
       protection: "LC at sight",
@@ -140,8 +109,6 @@ const FIXTURE_FULL: LoanBookResponse = {
       borrower: "Trafalgar",
       commodity: "Alumina",
       principal: "5200.000000", // displayed as served → "$5.2K"
-      collateral: null,
-      ltv: null,
       duration_days: 150,
       rate: "0.109000",
       protection: null,
@@ -161,7 +128,6 @@ const FIXTURE_EMPTY: LoanBookResponse = {
   loans: [],
 };
 
-// Issue #814 — In-Origination tab field set (Figma node 4116-9155).
 const FIXTURE_SUBMISSIONS: SubmissionView[] = [
   {
     target_chain_id: 560048,
@@ -182,7 +148,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "PE-CN",
       governing_law: "England",
       economics: {
-        // Human-unit USDC strings (#1620) — rendered as served
         original_facility_size: "3500000.000000",
         original_senior_tranche: "3000000.000000",
         original_equity_tranche: "500000.000000",
@@ -191,7 +156,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
         origination_date: 1_750_000_000,
         original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z
       },
-      initial_ccr: 1_500_000,
       initial_location: {
         location_type: "Vessel",
         location_identifier: "MV Example",
@@ -236,7 +200,6 @@ describe("/dashboard route shell", () => {
   beforeEach(() => {
     localStorage.clear();
     fetchMock.mockClear();
-    // Default: loan-book returns empty so panel shows empty state (not loading)
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify(FIXTURE_EMPTY), { status: 200 }),
     );
@@ -258,12 +221,8 @@ describe("/dashboard route shell", () => {
 
   it("renders all four panel containers with their titles", () => {
     renderDashboard();
-    // Panels A, B, C have section headings; Panel D (Yield History) has no <h2>
-    // per Figma frame 3283:67619 — its PanelContainer omits the `title` prop.
     const panelsWithTitle: Array<[string, string]> = [
-      // Title updated to "Statement of Financial Position" per issue #718 Figma 3283:14275
       ["dashboard-panel-balance-sheet", "Statement of Financial Position"],
-      // Title updated to "Loan Book" per issue #717 design decision
       ["dashboard-panel-deployment-monitor", "Loan Book"],
       ["dashboard-panel-withdrawal-queue", "Withdrawal Queue"],
     ];
@@ -272,7 +231,6 @@ describe("/dashboard route shell", () => {
       expect(panel).toBeInTheDocument();
       expect(panel).toHaveTextContent(title);
     }
-    // Panel D (Yield History) — testid present, no section <h2>
     expect(
       screen.getByTestId("dashboard-panel-yield-history"),
     ).toBeInTheDocument();
@@ -286,10 +244,8 @@ describe("/dashboard route shell", () => {
   it("lays out a full-width single-column stack at all viewports (no md:grid-cols-2)", () => {
     renderDashboard();
     const grid = screen.getByTestId("dashboard-grid");
-    // Full-width stack: grid-cols-1 at every breakpoint — matches Figma 3283-12098.
     expect(grid.className).toContain("grid-cols-1");
     expect(grid.className).not.toContain("md:grid-cols-2");
-    // All four panels render.
     const yieldPanel = screen.getByTestId("dashboard-panel-yield-history");
     const balancePanel = screen.getByTestId("dashboard-panel-balance-sheet");
     const loanPanel = screen.getByTestId("dashboard-panel-deployment-monitor");
@@ -300,8 +256,6 @@ describe("/dashboard route shell", () => {
     expect(balancePanel).toBeInTheDocument();
     expect(loanPanel).toBeInTheDocument();
     expect(withdrawalPanel).toBeInTheDocument();
-    // Panel order (Figma section order): Yield History → Balance Sheet →
-    // Loan Book → Withdrawal Queue (coordinator decision, #720).
     expect(
       yieldPanel.compareDocumentPosition(balancePanel) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -340,17 +294,6 @@ describe("dashboard panel state presentations", () => {
 });
 
 // ── #749 Mobile layout regression tests ──────────────────────────────────────
-//
-// These tests assert the structural changes introduced in #749 so regressions
-// back to the old mobile layout (stacked-card MobileCards path) are caught.
-// JSDOM cannot measure pixel layout — tests confirm component renders and that
-// the old layout paths have been removed from the component tree.
-//
-// NOTE: localStorage-based API mocking is unavailable in this test environment
-// due to a pre-existing incompatibility between Node 22+ (Homebrew node@26) and
-// vitest's jsdom environment. The tests below render components without mocking
-// the API — panels show loading/empty states rather than ready states. That is
-// sufficient to verify the structural class contracts (#749 intent).
 
 describe("#749 — WithdrawalQueuePanel summary cards responsive layout", () => {
   beforeEach(() => {
@@ -362,34 +305,18 @@ describe("#749 — WithdrawalQueuePanel summary cards responsive layout", () => 
   });
 
   it("summary cards are in a horizontally-scrollable flex row (no grid wrapping)", async () => {
-    // Issue #749: WithdrawalQueuePanel uses a horizontally-scrollable flex row
-    // on mobile — cards are flex items with fixed w-[200px] shrink-0.
-    // The old grid-cols-2 approach was wrong per Figma XS 3283-71053.
-    // NOTE: this test skips localStorage-dependent setup due to pre-existing
-    // Node 22+ / jsdom incompatibility (localStorage undefined in forks pool).
-    // The class assertions below are verified against the rendered static markup.
     render(<WithdrawalQueuePanel />, { wrapper: makeWrapper() });
 
-    // In loading state (no localStorage mock), the summary cards container
-    // is still rendered as part of the panel skeleton.
-    // Wait for the withdrawal-queue-summary-cards container to appear.
-    // If not found (due to loading state hiding cards), just assert the panel renders.
     const panel = screen.getByTestId("dashboard-panel-withdrawal-queue");
     expect(panel).toBeInTheDocument();
   });
 
   it("withdrawal queue table renders as a unified overflow-x-auto table — no mobile/desktop split", async () => {
-    // Issue #749: WithdrawalQueueTable now shows the 3-column table at ALL
-    // widths (the MobileCards stacked-card path is removed).
-    // NOTE: localStorage mock unavailable in this test environment (pre-existing
-    // Node 22+/jsdom incompatibility). The panel renders in loading state.
     render(<WithdrawalQueuePanel />, { wrapper: makeWrapper() });
 
-    // Panel renders (does not throw or show error immediately).
     const panel = screen.getByTestId("dashboard-panel-withdrawal-queue");
     expect(panel).toBeInTheDocument();
 
-    // Stacked-card mobile path is gone — no withdrawal-queue-table-mobile testid.
     expect(screen.queryByTestId("withdrawal-queue-table-mobile")).toBeNull();
   });
 });
@@ -397,9 +324,6 @@ describe("#749 — WithdrawalQueuePanel summary cards responsive layout", () => 
 describe("#749 — YieldHistoryPanel mobile layout", () => {
   beforeEach(() => {
     fetchMock.mockClear();
-    // Issue #760: the zero-address vault guard was removed; the hook now fetches
-    // unconditionally. Keep fetch pending (never-resolve) so the panel stays in
-    // loading state — sufficient to verify the structural class contracts.
     fetchMock.mockReturnValue(new Promise(() => {}));
   });
 
@@ -408,15 +332,8 @@ describe("#749 — YieldHistoryPanel mobile layout", () => {
   });
 
   it("YieldHistoryPanel panel renders in loading state (issue #760 — vault guard removed)", () => {
-    // Issue #760: the zero-address vault guard has been removed. The hook now
-    // fetches all three /v1/dashboard/* endpoints unconditionally. With fetch
-    // never resolving (pending), the panel stays in loading state.
-    // TVL card (#760) and metric card scroll row are verified visually at
-    // http://localhost:5173/dashboard; ready-state tests are in
-    // useYieldHistoryPanel.test.tsx with localStorage mock keys.
     render(<YieldHistoryPanel />, { wrapper: makeWrapper() });
 
-    // Panel container renders even in loading state.
     expect(
       screen.getByTestId("dashboard-panel-yield-history"),
     ).toBeInTheDocument();
@@ -425,9 +342,6 @@ describe("#749 — YieldHistoryPanel mobile layout", () => {
   it("TVL placeholder testid is absent (replaced by TvlCard in issue #760)", () => {
     render(<YieldHistoryPanel />, { wrapper: makeWrapper() });
 
-    // The 'yield-tvl-placeholder' testid from the pre-#760 "TVL chart — Coming soon"
-    // placeholder has been removed. The real TvlCard now renders instead when ready.
-    // In loading state neither the placeholder nor the TvlCard are shown.
     expect(screen.queryByTestId("yield-tvl-placeholder")).toBeNull();
   });
 });
@@ -513,8 +427,6 @@ describe("YieldHistoryPanel — object-shaped envelope (issue #1234 parsing repa
 
 // ── DeploymentMonitorPanel — column header aggregates (issue #729) ────────────
 
-// Fixture: total_deployed set, total_collateral null → only Principal subtitle renders.
-// Displayed as served (issue #906) — see FIXTURE_FULL comment above.
 const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000", // displayed as served → "$31.6K"
@@ -531,8 +443,6 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
       principal: "8000.000000", // displayed as served → "$8.0K"
-      collateral: null,
-      ltv: null,
       duration_days: 120,
       rate: "0.112000",
       protection: "LC at sight",
@@ -541,8 +451,6 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
   ],
 };
 
-// Fixture: both total_deployed and total_collateral set → both subtitles render.
-// All amounts are displayed exactly as served (issue #906) — no frontend rescaling.
 const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000", // displayed as served → "$31.6K"
@@ -559,8 +467,7 @@ const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
       principal: "8000.000000", // displayed as served → "$8.0K"
-      collateral: "9500.000000", // displayed as served → "$9.5K"
-      ltv: "0.8511",
+      ltv_bps: 8123,
       duration_days: 120,
       rate: "0.112000",
       protection: "LC at sight",
@@ -580,7 +487,7 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
     vi.clearAllMocks();
   });
 
-  it("Principal header shows aggregate, Collateral and LTV headers show label only when collateral is null", async () => {
+  it("Principal header shows aggregate and the LTV header is label-only when no loan has an ltv_bps", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL),
@@ -594,41 +501,16 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
       ).toBeInTheDocument();
     });
 
-    // Principal subtitle renders $31.6K
     expect(
       screen.getByTestId("loan-book-header-principal-aggregate"),
     ).toHaveTextContent("$31.6K");
-
-    // Collateral subtitle is absent when total_collateral is null
+    expect(screen.queryByTestId("loan-book-header-ltv-aggregate")).toBeNull();
     expect(
       screen.queryByTestId("loan-book-header-collateral-aggregate"),
     ).toBeNull();
   });
 
-  it("Principal and Collateral headers both show aggregates when collateral is non-null", async () => {
-    localStorage.setItem(
-      "pipeline.mock.api.GET./v1/loan-book",
-      JSON.stringify(FIXTURE_WITH_COLLATERAL),
-    );
-
-    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("loan-book-header-principal-aggregate"),
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getByTestId("loan-book-header-principal-aggregate"),
-    ).toHaveTextContent("$31.6K");
-
-    expect(
-      screen.getByTestId("loan-book-header-collateral-aggregate"),
-    ).toHaveTextContent("$37.6K");
-  });
-
-  it("LTV column header shows the average-LTV marker (user-approved frontend calc)", async () => {
+  it("renders exactly six columns and no Collateral column header", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_WITH_COLLATERAL),
@@ -640,11 +522,68 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
       expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
     });
 
-    // Single loan with ltv "0.8511" → average = 0.8511 → "85%". The LTV marker
-    // is now computed client-side (Σ per-row LTV / count, null → 0).
+    const table = within(screen.getByTestId("loan-book-table"));
+    expect(
+      table.getAllByRole("columnheader").map((h) => h.textContent),
+    ).toEqual([
+      "Commodity",
+      "Principal · $31.6K",
+      "LTV · 81.3%",
+      "Duration",
+      "Rate",
+      "Protection",
+    ]);
+    expect(table.queryByText(/Collateral/)).toBeNull();
+    expect(
+      screen.queryByTestId("loan-book-header-collateral-aggregate"),
+    ).toBeNull();
+    expect(screen.getByText("Collateral")).toBeInTheDocument();
+  });
+
+  it("LTV column header shows the mean of the valid ltv_bps values", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
+    });
+
     expect(
       screen.getByTestId("loan-book-header-ltv-aggregate"),
-    ).toHaveTextContent("85%");
+    ).toHaveTextContent("81.3%");
+  });
+
+  it("shows No security value for the sentinel row and em-dash for a null row", async () => {
+    const fixture: LoanBookResponse = {
+      ...FIXTURE_WITH_COLLATERAL,
+      loans: [
+        { ...FIXTURE_WITH_COLLATERAL.loans[0]!, ltv_bps: 4294967295 },
+        { ...FIXTURE_WITH_COLLATERAL.loans[0]!, ltv_bps: null },
+      ],
+    };
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(fixture),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
+    });
+
+    const rows = within(screen.getByTestId("loan-book-table")).getAllByRole(
+      "row",
+    );
+    const ltvCell = (row: HTMLElement) =>
+      within(row).getAllByRole("cell")[2]!.textContent;
+    expect(ltvCell(rows[1]!)).toBe("No security value");
+    expect(ltvCell(rows[2]!)).toBe("—");
+    expect(screen.queryByTestId("loan-book-header-ltv-aggregate")).toBeNull();
   });
 
   it("loading state renders no aggregate subtitles — headers are label-only", () => {
@@ -652,7 +591,6 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
 
     render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
 
-    // Panel is in loading state — no aggregate testids present
     expect(
       screen.queryByTestId("loan-book-header-principal-aggregate"),
     ).toBeNull();
@@ -676,7 +614,6 @@ describe("DeploymentMonitorPanel — loading state", () => {
   });
 
   it("shows PanelLoading while fetch is in flight", () => {
-    // Never resolve — keeps the hook in loading state
     fetchMock.mockReturnValue(new Promise(() => {}));
 
     render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
@@ -710,7 +647,6 @@ describe("DeploymentMonitorPanel — error state", () => {
       expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     });
 
-    // Clicking Retry triggers a refetch (fetch is called again)
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE_EMPTY), { status: 200 }),
     );
@@ -738,9 +674,6 @@ describe("DeploymentMonitorPanel — empty loans state", () => {
 
     render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
 
-    // Issue #755: the panel stays "ready" (summary + tabs render, keeping the
-    // In Origination tab reachable); the Active Loans tab shows its own inline
-    // empty state rather than blanking the whole panel.
     await waitFor(() => {
       expect(screen.getByTestId("loan-book-active-empty")).toBeInTheDocument();
     });
@@ -768,17 +701,13 @@ describe("DeploymentMonitorPanel — ready state", () => {
     render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
 
     await waitFor(() => {
-      // Total Deployed card
       expect(screen.getByTestId("loan-book-summary-cards")).toBeInTheDocument();
     });
 
-    // Formatted values from FIXTURE_FULL (use getAllByText where values appear
-    // in both summary cards and table rows).
-    expect(screen.getAllByText("$31.6K").length).toBeGreaterThanOrEqual(1); // total_deployed
-    expect(screen.getAllByText("11.2%").length).toBeGreaterThanOrEqual(1); // avg_yield (one decimal)
-    expect(screen.getByText("68 days")).toBeInTheDocument(); // avg_duration_days (summary only)
+    expect(screen.getAllByText("$31.6K").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("11.2%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("68 days")).toBeInTheDocument();
 
-    // Null fields (total_collateral + senior_debt_coverage) → "—"
     const emDashes = screen.getAllByText("—");
     expect(emDashes.length).toBeGreaterThanOrEqual(2);
   });
@@ -797,12 +726,9 @@ describe("DeploymentMonitorPanel — ready state", () => {
       ).toBeGreaterThanOrEqual(1);
     });
 
-    // Principal formatted as compact USD
     const principals = screen.getAllByText("$8.0K");
     expect(principals.length).toBeGreaterThanOrEqual(1);
 
-    // Row with null protection shows "—"
-    // Trafalgar row has protection: null → "—"
     const emDashes = screen.getAllByText("—");
     expect(emDashes.length).toBeGreaterThanOrEqual(1);
   });
@@ -819,8 +745,6 @@ describe("DeploymentMonitorPanel — ready state", () => {
       expect(screen.getByTestId("loan-book-summary-cards")).toBeInTheDocument();
     });
 
-    // All five summary card labels must be present (use getAllByText because
-    // "Collateral" also appears in the table header column).
     expect(screen.getAllByText("Collateral").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Yield").length).toBeGreaterThanOrEqual(1);
   });
@@ -838,10 +762,6 @@ describe("DeploymentMonitorPanel — responsive structure (#749)", () => {
   });
 
   it("loan-book table renders as a single overflow-x-auto wrapper at all widths — no hidden/md:block split", async () => {
-    // Issue #749: the Loan Book table now shows the full 7-column table at ALL
-    // viewports (horizontally scrollable at mobile). The previous MobileCards
-    // (block md:hidden) path has been removed — Figma XS 3283-71053 shows the
-    // full table scrolling horizontally inside the section.
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_FULL),
@@ -855,20 +775,14 @@ describe("DeploymentMonitorPanel — responsive structure (#749)", () => {
 
     const tableWrapper = screen.getByTestId("loan-book-table-desktop");
 
-    // Unified table wrapper: overflow-x-auto (horizontal scroll on mobile)
-    // and NO hidden/md:block breakpoint split — table renders at all widths.
     expect(tableWrapper.className).toContain("overflow-x-auto");
     expect(tableWrapper.className).not.toContain("hidden");
     expect(tableWrapper.className).not.toContain("md:block");
 
-    // Stacked-card mobile path is gone — no loan-book-table-mobile testid.
     expect(screen.queryByTestId("loan-book-table-mobile")).toBeNull();
   });
 
   it("loan-book summary cards are in a horizontally-scrollable flex row (no grid wrapping)", async () => {
-    // Issue #749: LoanBookSummary uses a horizontally-scrollable flex row on
-    // mobile — cards are flex items with fixed w-[200px] shrink-0, no wrapping.
-    // The old grid-cols-2 approach was wrong per Figma XS 3283-71053.
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_FULL),
@@ -882,7 +796,6 @@ describe("DeploymentMonitorPanel — responsive structure (#749)", () => {
 
     const summaryCards = screen.getByTestId("loan-book-summary-cards");
 
-    // Scrollable flex row — no grid wrapping
     expect(summaryCards.className).toContain("flex");
     expect(summaryCards.className).not.toContain("grid-cols-2");
     expect(summaryCards.className).not.toContain("md:grid-cols-5");
@@ -917,22 +830,18 @@ describe("DeploymentMonitorPanel — section order (issue #726)", () => {
     const table = screen.getByTestId("loan-book-table");
     const tableContainer = screen.getByTestId("loan-book-table-container");
 
-    // summary cards precede tab bar in the DOM
     expect(
       summaryCards.compareDocumentPosition(tabBar) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    // tab bar precedes table in the DOM
     expect(
       tabBar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    // tab bar and table are both descendants of the table container
     expect(tableContainer.contains(tabBar)).toBe(true);
     expect(tableContainer.contains(table)).toBe(true);
 
-    // summary cards are NOT inside the table container
     expect(tableContainer.contains(summaryCards)).toBe(false);
   });
 });
@@ -964,13 +873,11 @@ describe("DeploymentMonitorPanel — tab bar", () => {
     const originationTab = screen.getByTestId("loan-book-tab-in-origination");
 
     expect(activeTab).toHaveAttribute("aria-selected", "true");
-    // In Origination is now interactive (issue #755) — no longer disabled.
     expect(originationTab).not.toHaveAttribute("aria-disabled");
     expect(originationTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("Active Loans badge shows the live count from loans.length", async () => {
-    // FIXTURE_FULL has 2 loans → badge should show "2"
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_FULL),
@@ -994,7 +901,6 @@ describe("DeploymentMonitorPanel — tab bar", () => {
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_FULL),
     );
-    // No submissions mock → count is 0 (badge still renders).
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book/submissions",
       JSON.stringify([]),
@@ -1008,7 +914,6 @@ describe("DeploymentMonitorPanel — tab bar", () => {
       ).toBeInTheDocument();
     });
 
-    // Issue #755: the badge now renders (count from the submissions endpoint).
     expect(
       screen.getByTestId("loan-book-tab-in-origination-count"),
     ).toHaveTextContent("0");
@@ -1049,7 +954,6 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
       expect(screen.getByTestId("origination-table")).toBeInTheDocument();
     });
 
-    // New 8-column header set.
     for (const header of [
       "Commodity",
       "Facility",
@@ -1062,7 +966,6 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
       expect(screen.getByText(header)).toBeInTheDocument();
     }
 
-    // Old Active-Loans-shaped columns are absent from this tab.
     expect(screen.queryByText("Principal")).toBeNull();
     expect(screen.queryByText("LTV")).toBeNull();
     expect(screen.queryByText("Duration")).toBeNull();

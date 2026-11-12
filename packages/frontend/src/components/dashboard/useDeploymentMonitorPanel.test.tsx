@@ -1,16 +1,4 @@
-/**
- * Tests for `src/components/dashboard/useDeploymentMonitorPanel.ts`.
- *
- * Covers:
- *   - Panel-level state machine (Active Loans query): loading / error / ready.
- *   - In Origination tab (issue #755): independent state machine, submission →
- *     row mapping, count badge, and the fact that a loading/empty submissions
- *     query does NOT force the panel out of "ready".
- *   - Tab selection state.
- *
- * Uses the `pipeline.mock.api.*` localStorage mock layer (same approach as
- * `useWithdrawalQueuePanel.test.tsx`).
- */
+// spec: docs/frontend/dashboard-components.md#usedeploymentmonitorpanel
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor, act } from "@testing-library/react";
@@ -67,10 +55,6 @@ vi.mock("@/lib/env", () => ({
 const LOAN_BOOK_KEY = "pipeline.mock.api.GET./v1/loan-book";
 const SUBMISSIONS_KEY = "pipeline.mock.api.GET./v1/loan-book/submissions";
 
-// Issue #906: the frontend no longer rescales `total_deployed`/`principal`/
-// `collateral`/`total_collateral` (the former ×1000 `formatRegistryCompactUsd`
-// workaround, #840/#888, has been removed) — every value is displayed exactly
-// as served, via plain `formatCompactUsd`.
 const FIXTURE_LOAN_BOOK: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000",
@@ -87,8 +71,7 @@ const FIXTURE_LOAN_BOOK: LoanBookResponse = {
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
       principal: "8000.000000",
-      collateral: null,
-      ltv: null,
+      ltv_bps: null,
       duration_days: 120,
       rate: "0.112000",
       protection: "LC at sight",
@@ -120,7 +103,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "West Africa → EU",
       governing_law: "English",
       economics: {
-        // Human-unit USDC strings (#1620) — rendered as served
         original_facility_size: "8000000.000000",
         original_senior_tranche: "6000000.000000",
         original_equity_tranche: "2000000.000000",
@@ -129,8 +111,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
         origination_date: ORIGINATION_DATE,
         original_maturity_date: MATURITY_120D,
       },
-      // 1e6 / 1_176_470 ≈ 0.8500 → 85%
-      initial_ccr: 1_176_470,
       initial_location: {
         location_type: "Warehouse",
         location_identifier: "W-1",
@@ -159,7 +139,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "DRC → CN",
       governing_law: "English",
       economics: {
-        // Human-unit USDC strings (#1620) — rendered as served
         original_facility_size: "4400000.000000",
         original_senior_tranche: "3400000.000000",
         original_equity_tranche: "1000000.000000",
@@ -168,7 +147,6 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
         origination_date: ORIGINATION_DATE,
         original_maturity_date: ORIGINATION_DATE + 60 * 86_400,
       },
-      initial_ccr: 2_000_000, // 1e6 / 2e6 = 0.5 → 50%
       initial_location: {
         location_type: "Vessel",
         location_identifier: "IMO-2",
@@ -252,34 +230,16 @@ describe("useDeploymentMonitorPanel — panel state", () => {
     expect(result.current.rows[0]!.principal).toBe("$8.0K");
   });
 
-  // Issue #906: collateral and principal are both displayed exactly as
-  // served — verify the row, the summary card, and the table header
-  // aggregate all render the plain-formatted value, with no rescaling.
-  it("displays collateral and principal as served, in the row, summary, and header aggregate (#906)", async () => {
-    const fixture: LoanBookResponse = {
+  it("keeps total_collateral on the summary card and drops per-loan collateral (#1907)", async () => {
+    const fixture = {
       summary: {
         total_deployed: "31600.000000",
         total_collateral: "41973.000000",
-        senior_debt_coverage: null,
+        senior_debt_coverage: "1.50",
         avg_yield: "0.112000",
         avg_duration_days: 68,
       },
-      loans: [
-        {
-          chain_id: 560048,
-          loan_id: "1",
-          originator: "Open Mineral",
-          borrower: "Open Mineral",
-          commodity: "Copper Concentrate",
-          principal: "8000.000000",
-          collateral: "20986.500000",
-          ltv: "0.5718",
-          duration_days: 120,
-          rate: "0.112000",
-          protection: "LC at sight",
-          status: "Performing",
-        },
-      ],
+      loans: [{ ...FIXTURE_LOAN_BOOK.loans[0]!, ltv_bps: 8000 }],
     };
     localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(fixture));
     localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
@@ -290,9 +250,13 @@ describe("useDeploymentMonitorPanel — panel state", () => {
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
-    expect(result.current.rows[0]!.collateral).toBe("$21.0K");
     expect(result.current.summary.totalCollateral).toBe("$42.0K");
-    expect(result.current.headerAggregates.collateral).toBe("$42.0K");
+    expect(result.current.summary.seniorDebtCoverage).toBe("1.5x");
+    expect(result.current.rows[0]).not.toHaveProperty("collateral");
+    expect(Object.keys(result.current.headerAggregates).sort()).toEqual([
+      "ltv",
+      "principal",
+    ]);
   });
 });
 
@@ -312,9 +276,9 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     expect(result.current.inOriginationCount).toBe(2);
     const row0 = result.current.originationRows[0]!;
     expect(row0.commodity).toBe("Alumina");
-    expect(row0.facility).toBe("$8.0M"); // compact, matching Active Loans (#841)
+    expect(row0.facility).toBe("$8.0M");
     expect(row0.corridor).toBe("West Africa → EU");
-    expect(row0.rate).toBe("11.2%"); // 1120 bps (backend-served)
+    expect(row0.rate).toBe("11.2%");
     expect(row0.maturity).toBe("13 Mar 2024");
     expect(row0.submitted).toBe("1 Jul");
     expect(row0.status).toBe("InReview");
@@ -332,9 +296,9 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
 
     const row1 = result.current.originationRows[1]!;
     expect(row1.commodity).toBe("Cobalt");
-    expect(row1.facility).toBe("$4.4M"); // compact, matching Active Loans (#841)
+    expect(row1.facility).toBe("$4.4M");
     expect(row1.corridor).toBe("DRC → CN");
-    expect(row1.rate).toBe("11.7%"); // 1170 bps
+    expect(row1.rate).toBe("11.7%");
     expect(row1.maturity).toBe("13 Jan 2024");
     expect(row1.submitted).toBe("2 Jul");
     expect(row1.status).toBe("ChangesRequested");
@@ -393,8 +357,6 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
   });
 
   it("stays ready even while the submissions query is still loading", async () => {
-    // loan-book resolves from the mock; submissions has no mock key → real
-    // fetch, which never resolves → origination stays loading.
     localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
     fetchMock.mockImplementation(() => new Promise(() => {}));
 
@@ -403,80 +365,123 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     });
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
-    // Panel is ready; origination tab independently reports loading.
     expect(result.current.originationState).toBe("loading");
   });
 });
 
-// ── LTV header aggregate ────────────────────────────────────────────────────
+// ── LTV from ltv_bps ────────────────────────────────────────────────────────
 
-describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
-  it("computes average LTV with null → 0 for a single loan with null ltv", async () => {
-    // FIXTURE_LOAN_BOOK has one loan with ltv: null → null → 0, avg = 0/1 = 0 → "0%"
-    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+function loanWith(ltvBps?: number | null) {
+  const loan: Record<string, unknown> = {
+    chain_id: 99_000_001,
+    loan_id: "1",
+    originator: "A",
+    borrower: "A",
+    commodity: "X",
+    principal: "8000.000000",
+    duration_days: 120,
+    rate: "0.112000",
+    protection: null,
+    status: "Performing",
+  };
+  if (ltvBps !== undefined) loan.ltv_bps = ltvBps;
+  return loan;
+}
 
-    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
-      wrapper: makeWrapper(),
-    });
+function bookWith(loans: unknown[]) {
+  return {
+    summary: {
+      total_deployed: "31600.000000",
+      total_collateral: null,
+      senior_debt_coverage: null,
+      avg_yield: "0.112000",
+      avg_duration_days: 68,
+    },
+    loans,
+  };
+}
 
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+async function renderWithBook(book: unknown) {
+  localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(book));
+  localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+  const hook = renderHook(() => useDeploymentMonitorPanel(), {
+    wrapper: makeWrapper(),
+  });
+  await waitFor(() => expect(hook.result.current.state).toBe("ready"));
+  return hook.result.current;
+}
 
-    // ltv: null → 0 contribution. avg = 0 / 1 = 0 → formatLtv("0") = "0%"
-    expect(result.current.headerAggregates.ltv).toBe("0%");
+describe("useDeploymentMonitorPanel — LTV from ltv_bps", () => {
+  it("Phase-2 Stellar shape: rows, null excluded from the mean, no collateral key", async () => {
+    const panel = await renderWithBook(
+      bookWith([loanWith(8000), loanWith(9000), loanWith(null)]),
+    );
+
+    expect(panel.rows.map((r) => r.ltv)).toEqual(["80%", "90%", "—"]);
+    expect(panel.headerAggregates.ltv).toBe("85%");
+    for (const row of panel.rows) expect(row).not.toHaveProperty("collateral");
   });
 
-  it("computes average LTV correctly for mixed null/valued ltv", async () => {
-    const fixture = {
-      summary: {
-        total_deployed: "31600.000000",
-        total_collateral: null,
-        senior_debt_coverage: null,
-        avg_yield: "0.112000",
-        avg_duration_days: 68,
-      },
-      loans: [
-        {
-          originator: "A",
-          borrower: "A",
-          commodity: "X",
-          principal: "8000.000000",
-          collateral: null,
-          ltv: "0.8000", // → 0.8
-          duration_days: 120,
-          rate: "0.112000",
-          protection: null,
-          status: "Performing",
-        },
-        {
-          originator: "B",
-          borrower: "B",
-          commodity: "Y",
-          principal: "4000.000000",
-          collateral: null,
-          ltv: null, // → 0
-          duration_days: 60,
-          rate: "0.110000",
-          protection: null,
-          status: "Performing",
-        },
-      ],
+  it("shows the sentinel as no security value and excludes it from the mean", async () => {
+    const panel = await renderWithBook(
+      bookWith([loanWith(8000), loanWith(4294967295)]),
+    );
+
+    expect(panel.rows.map((r) => r.ltv)).toEqual(["80%", "No security value"]);
+    expect(panel.headerAggregates.ltv).toBe("80%");
+  });
+
+  it("rounds the mean up", async () => {
+    const panel = await renderWithBook(
+      bookWith([loanWith(8001), loanWith(8002)]),
+    );
+
+    expect(panel.headerAggregates.ltv).toBe("80.1%");
+  });
+
+  it("counts a zero LTV in the mean", async () => {
+    const panel = await renderWithBook(bookWith([loanWith(0), loanWith(8000)]));
+
+    expect(panel.headerAggregates.ltv).toBe("40%");
+  });
+
+  it("Phase-2 EVM shape: every row is an em-dash and the aggregate is undefined", async () => {
+    const panel = await renderWithBook(
+      bookWith([loanWith(null), loanWith(null)]),
+    );
+
+    expect(panel.rows.map((r) => r.ltv)).toEqual(["—", "—"]);
+    expect(panel.headerAggregates.ltv).toBeUndefined();
+  });
+
+  it("today's shape: legacy keys are ignored in favour of ltv_bps", async () => {
+    const legacy = {
+      ...loanWith(8123),
+      collateral: "20986.500000",
+      ltv: "0.5718",
+      ccr_bps: 15000,
+      spot_price: "100.0",
+      spot_change_7d: "0.01",
     };
-    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(fixture));
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+    const book = bookWith([legacy]);
+    book.summary.total_collateral = "41973.000000" as unknown as null;
 
-    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
-      wrapper: makeWrapper(),
-    });
+    const panel = await renderWithBook(book);
 
-    await waitFor(() => expect(result.current.state).toBe("ready"));
-
-    // avg = (0.8 + 0) / 2 = 0.4 → formatLtv("0.4") = "40%"
-    expect(result.current.headerAggregates.ltv).toBe("40%");
+    expect(panel.rows[0]!.ltv).toBe("81.3%");
+    expect(panel.rows[0]).not.toHaveProperty("collateral");
+    expect(panel.summary.totalCollateral).toBe("$42.0K");
   });
 
-  it("leaves ltv aggregate undefined when there are no loans", async () => {
-    const emptyLoansFixture = {
+  it("pre-Phase-1 shape: no ltv_bps key renders em-dashes without throwing", async () => {
+    const panel = await renderWithBook(bookWith([loanWith(), loanWith()]));
+
+    expect(panel.rows.map((r) => r.ltv)).toEqual(["—", "—"]);
+    expect(panel.headerAggregates.ltv).toBeUndefined();
+  });
+
+  it("leaves the ltv aggregate undefined when there are no loans", async () => {
+    const panel = await renderWithBook({
       summary: {
         total_deployed: "0.000000",
         total_collateral: null,
@@ -485,17 +490,9 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
         avg_duration_days: null,
       },
       loans: [],
-    };
-    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(emptyLoansFixture));
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
-
-    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
-      wrapper: makeWrapper(),
     });
 
-    await waitFor(() => expect(result.current.state).toBe("ready"));
-
-    expect(result.current.headerAggregates.ltv).toBeUndefined();
+    expect(panel.headerAggregates.ltv).toBeUndefined();
   });
 });
 

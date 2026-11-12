@@ -20,10 +20,10 @@ Figma (mobile XS frame): [node 3283-71053](https://www.figma.com/design/A43rjYYj
 
 **Expected outcomes:**
 
-- The full 7-column table (Borrower/Commodity, Principal, Collateral, LTV, Duration, Rate, Protection) is visible.
+- The full 6-column table (Commodity, Principal, LTV, Duration, Rate, Protection) is visible.
 - The table scrolls horizontally inside the Loan Book section — the section itself does NOT scroll the page body horizontally.
 - No "stacked card" layout (label + value pairs per row) is shown.
-- The table header row is visible and shows all 7 column labels.
+- The table header row is visible and shows all 6 column labels.
 - Column header aggregates (e.g. "Principal · $31.6M") still render in the header row.
 
 ---
