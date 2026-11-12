@@ -497,6 +497,7 @@ export interface ConnectWalletModalProps {
   open: boolean;
   /** Called when the user dismisses (Escape / scrim / × button). */
   onDismiss: () => void;
+  onWalletSelect?: () => void;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -504,6 +505,7 @@ export interface ConnectWalletModalProps {
 export function ConnectWalletModal({
   open,
   onDismiss,
+  onWalletSelect,
 }: ConnectWalletModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "connect-wallet-modal-heading";
@@ -573,6 +575,7 @@ export function ConnectWalletModal({
       : walletEntries;
 
   function handleEvmWalletClick(entry: (typeof EVM_WALLETS)[number]) {
+    onWalletSelect?.();
     onDismiss();
     // Trust wallet → open website (no dedicated connector)
     if (entry.id === "trust") {
@@ -583,6 +586,7 @@ export function ConnectWalletModal({
   }
 
   function handleSorobanWalletClick(entry: (typeof SOROBAN_WALLETS)[number]) {
+    onWalletSelect?.();
     onDismiss();
     void connectSorobanWallet(entry.id, () => {
       window.open(entry.websiteUrl, "_blank", "noopener,noreferrer");

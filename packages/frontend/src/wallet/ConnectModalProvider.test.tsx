@@ -13,9 +13,11 @@ vi.mock("../components/ConnectWalletModal", () => ({
   ConnectWalletModal: ({
     open,
     onDismiss,
+    onWalletSelect,
   }: {
     open: boolean;
     onDismiss: () => void;
+    onWalletSelect?: () => void;
   }) =>
     open ? (
       <div
@@ -24,6 +26,14 @@ vi.mock("../components/ConnectWalletModal", () => ({
         data-testid="connect-wallet-modal"
       >
         <button onClick={onDismiss}>Close</button>
+        <button
+          onClick={() => {
+            onWalletSelect?.();
+            onDismiss();
+          }}
+        >
+          Pick Wallet
+        </button>
       </div>
     ) : null,
 }));
@@ -451,5 +461,62 @@ describe("ConnectModalProvider — pending reconnect (#1809)", () => {
     render(tree());
     await userEvent.click(screen.getByText("Open Modal"));
     expect(screen.getByTestId("connect-wallet-modal")).toBeInTheDocument();
+  });
+});
+
+describe("ConnectModalProvider — onCancel signal", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    presence.isAnyConnected = false;
+    presence.isConnectionPending = false;
+  });
+
+  function Probe({ onCancel }: { onCancel: () => void }) {
+    const modal = useConnectModal();
+    React.useEffect(() => modal.onCancel(onCancel), [modal, onCancel]);
+    return <button onClick={modal.open}>Open Modal</button>;
+  }
+
+  it("fires when the modal is dismissed without picking a wallet", async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    render(
+      <Providers>
+        <Probe onCancel={onCancel} />
+      </Providers>,
+    );
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+    await user.click(await screen.findByRole("button", { name: "Close" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire when a wallet row is picked", async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    render(
+      <Providers>
+        <Probe onCancel={onCancel} />
+      </Providers>,
+    );
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Pick Wallet" }),
+    );
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("fires when the terms gate is dismissed", async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    localStorage.clear();
+    render(
+      <Providers>
+        <Probe onCancel={onCancel} />
+      </Providers>,
+    );
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+    act(() => mockGateDismiss());
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

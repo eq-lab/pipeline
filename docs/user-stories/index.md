@@ -217,6 +217,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1825 LP: link the settlement address by signing a challenge (Stellar + EVM)](https://github.com/eq-lab/pipeline/issues/1825) | [1825-signed-settlement-link-ui.md](./epic-1247/1825-signed-settlement-link-ui.md) | Initial |
 | [#1849 LP: link a Stellar C… contract address or a separate signer as the settlement address](https://github.com/eq-lab/pipeline/issues/1849) | [1849-settlement-address-signer.md](./epic-1247/1849-settlement-address-signer.md) | Initial |
 | [#1848 LP app: one source of wallet precedence](https://github.com/eq-lab/pipeline/issues/1848) | [1848-wallet-precedence.md](./epic-1247/1848-wallet-precedence.md) | Initial |
+| [#1901 LP: Account wallet card — Connect Wallet continues into linking the wallet as the settlement address](https://github.com/eq-lab/pipeline/issues/1901) | [1901-account-connect-then-link.md](./epic-1247/1901-account-connect-then-link.md) | Initial |
 | [#1847 LP app: move wagmi useSignMessage out of the shared useEvmWallet into a dedicated useEvmSignMessage](https://github.com/eq-lab/pipeline/issues/1847) | [1847-evm-sign-message-hook.md](./epic-1247/1847-evm-sign-message-hook.md) | Initial |
 
 ---
