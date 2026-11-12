@@ -85,25 +85,15 @@ unconfigured system. `retry: false` means one `503` costs one request and mints 
 
 ## Open Questions
 
-1. **Real values (human-only, blocks the ops part, not the code PR).** What are the trust account's
-   `company_name`, `bank_name`, `bank_address`, `account_number`, `iban` and `swift_bic_code`? The
-   agent does not know them, must not invent them, and will not commit them anywhere. Who runs the
-   runbook on staging and on production?
-2. **Required-field rule.** Confirm the default: `company_name`, `bank_name` and `swift_bic_code`
-   required, at least one of `account_number` / `iban` required, `bank_address` optional. The
-   alternative is "all six required" (simplest, but it blocks an IBAN-less US account) or another
-   set the bank's wire instructions dictate.
-3. **DB access per environment.** Can the operator run `psql` against staging and production
-   Postgres (directly or through a bastion)? If not, the recommended mechanism does not work, and
-   the fallback is the env-var startup seed (rejected above). Please confirm before the runbook is
-   final.
-4. **Staging values.** Should staging carry the **real** production trust-account details (as the
-   issue's "Done when" says), or a separate test/sandbox account? Real details on staging let a
-   tester wire real funds through a non-production stack.
-5. **Status code.** Confirm `503` with a JSON `error` message for the unconfigured state (versus
-   keeping `200` and adding a `configured: false` flag, which the issue mentions as "flag"). The plan
-   recommends refusing: a flag still mints a useless reference and needs a frontend change, while
-   `503` needs none.
+All resolved by the latest Issue comment.
+
+1. **Real values.** Resolved: a human ops data step outside this PR. The real details and the staging
+   account are never put in the repo; placeholders only.
+2. **Required-field rule.** Resolved: confirmed as the default (`company_name`, `bank_name`,
+   `swift_bic_code` required, at least one of `account_number` / `iban`, `bank_address` optional).
+3. **DB access / mechanism.** Resolved: a documented SQL template run via `psql`; no env-var seed.
+4. **Staging values.** Resolved: the staging account is an ops data step outside this PR.
+5. **Status code.** Resolved: an unfilled record answers `503`; no payment reference is minted or stored.
 
 ## Implementation Steps
 

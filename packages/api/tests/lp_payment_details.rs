@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use axum::response::IntoResponse;
 use pipeline_api::config::ConfiguredChain;
 use pipeline_api::error::ApiError;
 use pipeline_api::routes::lp_bank_deposits::{
@@ -437,6 +438,87 @@ async fn a_misconfigured_system_creates_no_row() {
 }
 
 #[tokio::test]
+async fn an_unconfigured_record_is_503_and_issues_nothing() {
+    let bank = FakeBankDetails::new(BankMode::Present(empty_details()));
+    let store = FakeStore::default();
+    let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
+    let err = request_payment_details(
+        &bank,
+        &store,
+        1,
+        KybStatus::Passed,
+        STELLAR,
+        Some(ADDR),
+        || script.next(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ApiError::ServiceUnavailable(_)), "{err:?}");
+    assert!(store.rows().is_empty());
+    assert_eq!(script.calls, 0);
+    assert_eq!(bank.reads(), 1);
+}
+
+#[tokio::test]
+async fn a_record_missing_only_swift_is_503() {
+    let mut details = filled_details();
+    details.swift_bic_code = String::new();
+    let bank = FakeBankDetails::new(BankMode::Present(details));
+    let store = FakeStore::default();
+    let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
+    let err = request_payment_details(
+        &bank,
+        &store,
+        1,
+        KybStatus::Passed,
+        STELLAR,
+        Some(ADDR),
+        || script.next(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ApiError::ServiceUnavailable(_)), "{err:?}");
+    assert!(store.rows().is_empty());
+    assert_eq!(script.calls, 0);
+}
+
+#[tokio::test]
+async fn an_ineligible_caller_on_an_unconfigured_system_still_gets_409() {
+    let bank = FakeBankDetails::new(BankMode::Present(empty_details()));
+    let store = FakeStore::default();
+    let mut script = Scripted::new(&["PL-AAAA-AAAA-AAAA"]);
+    let err = request_payment_details(
+        &bank,
+        &store,
+        1,
+        KybStatus::UnderReview,
+        STELLAR,
+        Some(ADDR),
+        || script.next(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ApiError::Conflict(_)), "{err:?}");
+    assert_eq!(bank.reads(), 0);
+}
+
+#[tokio::test]
+async fn the_unconfigured_refusal_is_a_503_json_error() {
+    let resp = ApiError::ServiceUnavailable(
+        "funding details are not configured yet; no payment reference was issued, try again later"
+            .to_owned(),
+    )
+    .into_response();
+    assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(body["error"].as_str().unwrap().contains("not configured"));
+    assert!(body.get("payment_details").is_none());
+}
+
+#[tokio::test]
 async fn the_happy_path_serves_the_bank_fields_and_the_stored_reference() {
     let bank = FakeBankDetails::new(BankMode::Present(filled_details()));
     let store = FakeStore::default();
@@ -662,10 +744,10 @@ fn the_path_is_a_bodyless_get_with_a_required_chain_id_query() {
 }
 
 #[test]
-fn the_documented_responses_are_200_400_401_404_409() {
+fn the_documented_responses_are_200_400_401_404_409_500_503() {
     let doc = openapi_json();
     let responses = doc["paths"][PATH]["get"]["responses"].as_object().unwrap();
-    for status in ["200", "400", "401", "404", "409"] {
+    for status in ["200", "400", "401", "404", "409", "500", "503"] {
         assert!(responses.contains_key(status), "missing {status}");
     }
     assert!(!responses.contains_key("201"));

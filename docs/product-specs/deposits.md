@@ -81,14 +81,40 @@ Per-chain on-chain state lives in the contract (`requests[requestId]`, `nextRequ
 
 By user decision this is a `GET` with a side effect: every successful call issues and stores a new reference, and nothing is reused. The response carries `Cache-Control: no-store`, so no HTTP cache serves one LP's reference again. The client calls it exactly once each time it shows the funding details (one modal open), with automatic refetching and retries off (`staleTime: Infinity`, and `refetchOnWindowFocus`, `refetchOnMount` and `retry` all off), so the history holds only references that were actually shown. Client wiring is #1817.
 
-- **Bank details.** One system-wide record (`system_configuration`, type `system_bank_details`), seeded empty and set by hand in the DB. There is no write endpoint. The DB enforces that the record is an object with all six keys as strings. Values are served verbatim, and an empty field is served as `""`, which the client renders as `—`.
+- **Bank details.** One system-wide record (`system_configuration`, type `system_bank_details`), seeded empty and filled per environment by an operator with the [runbook below](#filling-the-bank-details). There is no write endpoint. The DB enforces that the record is an object with all six keys as strings. Values are served verbatim, and an optional empty field is served as `""`, which the client renders as `—`. The record is **configured** when `company_name`, `bank_name` and `swift_bic_code` are non-blank (after `trim()`) and at least one of `account_number` / `iban` is non-blank. `bank_address` is optional.
 - **Chain.** `chain_id` is required (`RequiredChain`): missing, malformed or not in `CHAINS` is `400`. The chain's kind picks the settlement address: Stellar uses `lps.stellar_address`, EVM uses `lps.evm_address`. The response echoes `chain_id` and that `receiver_address`.
-- **Access.** The LP needs a linked settlement address **of the requested chain's kind** (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address) **and** `kyb_status = Passed`. Otherwise the response is `409`, naming every unmet precondition and the kind, and no reference is issued. No LP for the caller (including a trustee token) is `404`. A missing or malformed bank-details record is `500`, and no reference is issued. The gate cannot stop being true between the check and the insert: `Passed` is terminal, and an address is replaced but never cleared. Because the address can change (#1831), the receiver is read once per request, and a relink racing the call can record the address that was current just before. This is accepted: the LP can relink right after the response with the same effect, `receiver_address` records what was shown and does not decide the mint (below), and only the LP itself can cause it.
+- **Access.** The LP needs a linked settlement address **of the requested chain's kind** (see [kyb-lp-verification.md](./kyb-lp-verification.md) § Settlement Address) **and** `kyb_status = Passed`. Otherwise the response is `409`, naming every unmet precondition and the kind, and no reference is issued. No LP for the caller (including a trustee token) is `404`. A missing or malformed bank-details record is `500`, and no reference is issued. A well-formed record with a blank required field is `503` with a JSON `error`: no reference is generated or stored, and the server logs the blank field names (never their values). The client shows its generic notice. The gate cannot stop being true between the check and the insert: `Passed` is terminal, and an address is replaced but never cleared. Because the address can change (#1831), the receiver is read once per request, and a relink racing the call can record the address that was current just before. This is accepted: the LP can relink right after the response with the same effect, `receiver_address` records what was shown and does not decide the mint (below), and only the LP itself can cause it.
 - **Receiver vs mint.** A reference's `receiver_address` records the address served with it. References issued before a relink keep theirs, and new references record the new address. Minting does not use it: a wire is minted to the LP's **current** settlement address of the deposit's chain kind, read at mint time. The Trustee app mints on its signed-in chain; the deposit carries no chain of its own, only the matched reference's (TD-164).
 - **Reference.** Every successful call inserts a row into `lp_requested_bank_details` (`lp_id`, `chain_id`, `receiver_address`, `payment_details`, `created_at`). Rows issued before #1824 have `chain_id NULL`, with `receiver_address` backfilled from `lps.stellar_address`; the migration cannot tell which configured chain is the Stellar one. Every new row must carry both, enforced by `NOT VALID` CHECK constraints that must never be validated. The full history is kept, earlier references stay valid and still belong to that LP, and `lp_id` is not unique. The format is `PL-XXXX-XXXX-XXXX`: a fixed `PL-` prefix and 12 symbols of the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no `I`, `L`, `O`, `U`), 60 bits from the OS CSPRNG, 17 characters. It is random, not derived from the LP id, so it reveals neither the LP nor how many references were requested. It fits the 18-character UK Faster Payments / BACS reference field and a single 35-character SWIFT field-70 line, and the charset is a subset of `[A-Z0-9-]`. It is unique across every reference ever issued (`UNIQUE` plus a `^[A-Z0-9-]{1,140}$` CHECK); on a collision the handler draws again, up to 3 attempts, then answers `500`.
 - **Wire matching.** An arriving wire is attributed by the issued reference; see [Wire Matching by Payment Reference](#wire-matching-by-payment-reference) (#1839). The issued reference is **not** the per-wire `payment_reference`.
-- **Deploy prerequisite.** The seeded `system_bank_details` row is all empty strings, and an eligible LP is still issued a reference against blank details. There is no deploy checklist or runbook in `docs/`, so this is recorded here: fill `system_configuration.system_bank_details` with the real trust-account details before #1817 (Funding details modal) ships.
 - **Known gap.** There is no rate limit or per-LP cap on how many references an eligible LP can request (TD-159).
+
+### Filling the bank details
+
+Run once per environment before LPs can fund, and again whenever the trust account changes. The API re-reads the row on every request, so no restart is needed. Real values never go into git (the repo is public); the template below holds placeholders only.
+
+```sql
+\set company_name '<COMPANY_NAME>'
+\set bank_name '<BANK_NAME>'
+\set bank_address '<BANK_ADDRESS>'
+\set account_number '<ACCOUNT_NUMBER>'
+\set iban '<IBAN>'
+\set swift_bic_code '<SWIFT_BIC_CODE>'
+BEGIN;
+UPDATE system_configuration
+   SET value = jsonb_build_object(
+         'company_name', :'company_name', 'bank_name', :'bank_name',
+         'bank_address', :'bank_address', 'account_number', :'account_number',
+         'iban', :'iban', 'swift_bic_code', :'swift_bic_code')
+ WHERE type = 'system_bank_details';
+SELECT value FROM system_configuration WHERE type = 'system_bank_details';
+COMMIT;
+```
+
+- `psql` does the quoting for `\set` variables, so a `'` in an address needs no escaping. Leave an optional field as `''`.
+- Expect `UPDATE 1`. On `UPDATE 0` the row was deleted: `INSERT INTO system_configuration (type, value)` with the same `jsonb_build_object(...)` value.
+- Verify as a Passed LP with a linked settlement address: `curl -i -H "Authorization: Bearer $TOKEN" "$API/v1/lps/me/payment-details?chain_id=$CHAIN_ID"` returns `200` with the filled fields. The call issues one reference.
+- The DB `CHECK` rejects a missing key or a non-string value. Until the required fields are filled the API answers `503` and issues nothing.
 
 ---
 

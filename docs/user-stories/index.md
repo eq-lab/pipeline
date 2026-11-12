@@ -185,7 +185,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1280 KYB: Forgot Password screen](https://github.com/eq-lab/pipeline/issues/1280) | [1280-kyb-forgot-password.md](./epic-1247/1280-kyb-forgot-password.md) | Amended by #1359 |
 | [#1281 KYB: create-account validation-error state](https://github.com/eq-lab/pipeline/issues/1281) | [1281-create-account-error.md](./epic-1247/1281-create-account-error.md) | Initial |
 | [#1284 LP: Account page — wallet, corporate email, KYB documents hub](https://github.com/eq-lab/pipeline/issues/1284) | [1284-lp-account-page.md](./epic-1247/1284-lp-account-page.md) | Initial |
-| [#1817 LP: Funding details modal — bank details and a fresh payment reference](https://github.com/eq-lab/pipeline/issues/1817) | [1817-funding-details-payment-reference.md](./epic-1247/1817-funding-details-payment-reference.md) | Amends #1283 |
+| [#1817 LP: Funding details modal — bank details and a fresh payment reference](https://github.com/eq-lab/pipeline/issues/1817) | [1817-funding-details-payment-reference.md](./epic-1247/1817-funding-details-payment-reference.md) | Amends #1283; amended by #1838 |
 | [#1283 LP: Add Funds wire-transfer modal + bank-transfer home states](https://github.com/eq-lab/pipeline/issues/1283) | [1283-lp-add-funds.md](./epic-1247/1283-lp-add-funds.md) | Initial |
 | [#1278 KYB: Company Docs step V1.0 redesign](https://github.com/eq-lab/pipeline/issues/1278) | [1278-kyb-company-docs-v1.md](./epic-1247/1278-kyb-company-docs-v1.md) | Initial |
 | [#1362 LP: header Sign in / Sign up entry + signed-in state](https://github.com/eq-lab/pipeline/issues/1362) | [1362-header-auth-entry.md](./epic-1247/1362-header-auth-entry.md) | Initial |
@@ -207,7 +207,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1361 KYB auth: surface Turnstile load failures and auto-resend errors](https://github.com/eq-lab/pipeline/issues/1361) | [1361-kyb-auth-captcha-errors.md](./epic-1247/1361-kyb-auth-captcha-errors.md) | Initial |
 | [#1442 OTP: a rejected code stays on screen and clears when you edit it](https://github.com/eq-lab/pipeline/issues/1442) | [1442-otp-error-edit.md](./epic-1247/1442-otp-error-edit.md) | Initial |
 | [#1473 Session expiry: sign the LP out when the token lapses](https://github.com/eq-lab/pipeline/issues/1473) | [1473-session-expiry.md](./epic-1247/1473-session-expiry.md) | Initial |
-| [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Initial |
+| [#1815 Backend: GET /v1/lps/me/payment-details](https://github.com/eq-lab/pipeline/issues/1815) | [1815-lp-payment-details.md](./epic-1247/1815-lp-payment-details.md) | Amended by #1838 |
 | [#1285 Backend: serve the LP's pending bank deposits on GET /v1/lps/me](https://github.com/eq-lab/pipeline/issues/1285) | [1285-lp-pending-bank-deposits.md](./epic-1247/1285-lp-pending-bank-deposits.md) | Initial |
 | [#1359 KYB: wire Forgot Password screen to backend reset](https://github.com/eq-lab/pipeline/issues/1359) | [1359-forgot-password-wiring.md](./epic-1247/1359-forgot-password-wiring.md) | Initial |
 | [#1553 Account: Log Out also disconnects the connected wallet](https://github.com/eq-lab/pipeline/issues/1553) | [1553-logout-disconnects-wallet.md](./epic-1247/1553-logout-disconnects-wallet.md) | Initial |
