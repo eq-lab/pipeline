@@ -1,4 +1,4 @@
-# User Stories: #1901 — Account wallet card: Connect Wallet continues into linking the settlement address
+# User Stories: #1901 — Account wallet card: Link Wallet continues into linking the settlement address
 
 Epic: [#1247 — KYB login flow](https://github.com/eq-lab/pipeline/issues/1247)
 Issue: [#1901](https://github.com/eq-lab/pipeline/issues/1901)
@@ -9,11 +9,11 @@ chain under test.
 
 ---
 
-## Story 1: Connect Wallet continues into the signed link
+## Story 1: Link Wallet continues into the signed link
 
 **Steps:**
 
-1. On the wallet card click **Connect Wallet**, pick a wallet, approve the connection.
+1. On the wallet card click **Link Wallet**, pick a wallet, approve the connection.
 2. Approve the signature request.
 
 **Expected outcomes:**
@@ -26,7 +26,7 @@ chain under test.
 
 ## Story 2: The served address equals the connected wallet
 
-**Steps:** With that wallet's address already linked and proven, click Connect Wallet and connect it.
+**Steps:** With that wallet's address already linked and proven, click Link Wallet and connect it.
 
 **Expected outcomes:** No signature prompt and no challenge request; the row shows the address as it was.
 
@@ -34,7 +34,7 @@ chain under test.
 
 ## Story 3: The served address differs
 
-**Steps:** With a different address linked, click Connect Wallet and connect another wallet.
+**Steps:** With a different address linked, click Link Wallet and connect another wallet.
 
 **Expected outcomes:**
 
@@ -45,7 +45,7 @@ chain under test.
 
 ## Story 4: Declined signature
 
-**Steps:** Click Connect Wallet, connect, reject the signature request.
+**Steps:** Click Link Wallet, connect, reject the signature request.
 
 **Expected outcomes:** The row shows the declined state with `Try again`; the wallet stays connected; `Try again` asks
 for a new signature request.
@@ -54,7 +54,7 @@ for a new signature request.
 
 ## Story 5: KYB Failed
 
-**Steps:** As an LP whose KYB is `Failed` (if the session is still allowed), click Connect Wallet and connect.
+**Steps:** As an LP whose KYB is `Failed` (if the session is still allowed), click Connect Wallet (the label stays Connect Wallet when KYB is `Failed`) and connect.
 
 **Expected outcomes:** No signature prompt and no link request.
 
@@ -64,7 +64,7 @@ for a new signature request.
 
 **Steps:**
 
-1. Click Connect Wallet, then close the modal with the x button or Escape.
+1. Click Link Wallet, then close the modal with the x button or Escape.
 2. Connect a wallet from the header Connect button.
 
 **Expected outcomes:** No signature prompt; the settlement row offers `Link wallet` as a click.

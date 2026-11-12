@@ -93,7 +93,12 @@ export function AccountWalletCard() {
   } = useActiveWalletAccount();
 
   const { copy } = useCopyToClipboard();
-  const settlement = useContext(AuthFlowContext)?.settlement;
+  const authFlow = useContext(AuthFlowContext);
+  const settlement = authFlow?.settlement;
+  const canLink =
+    !!authFlow &&
+    authFlow.lpRead !== "absent" &&
+    authFlow.kybStatus !== "Failed";
 
   function handleConnect() {
     settlement?.onArmConnectLink?.();
@@ -221,7 +226,7 @@ export function AccountWalletCard() {
             className="w-full"
             onClick={handleConnect}
           >
-            Connect Wallet
+            {canLink ? "Link Wallet" : "Connect Wallet"}
           </Button>
         </div>
       )}

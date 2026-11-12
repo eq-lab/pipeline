@@ -154,6 +154,7 @@ describe("AccountWalletCard — disconnected", () => {
       disconnect: mockDisconnect,
     });
     const value = {
+      lpRead: "loaded",
       settlement: { onArmConnectLink },
     } as unknown as AuthFlowContextValue;
     render(
@@ -161,11 +162,39 @@ describe("AccountWalletCard — disconnected", () => {
         <AccountWalletCard />
       </AuthFlowContext.Provider>,
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Connect Wallet" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Link Wallet" }));
     expect(calls).toEqual(["arm", "connect"]);
   });
+
+  it.each([
+    ["loaded", undefined, "Link Wallet"],
+    ["absent", undefined, "Connect Wallet"],
+    ["loaded", "Failed", "Connect Wallet"],
+  ])(
+    "labels the button for lpRead %s / kyb %s as %s",
+    (lpRead, kybStatus, name) => {
+      mockUseActiveWalletAccount.mockReturnValue({
+        kind: "evm",
+        isConnected: false,
+        address: undefined,
+        truncatedAddress: undefined,
+        formattedBalance: undefined,
+        connect: mockConnect,
+        disconnect: mockDisconnect,
+      });
+      const value = {
+        lpRead,
+        kybStatus,
+        settlement: { onArmConnectLink: vi.fn() },
+      } as unknown as AuthFlowContextValue;
+      render(
+        <AuthFlowContext.Provider value={value}>
+          <AccountWalletCard />
+        </AuthFlowContext.Provider>,
+      );
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    },
+  );
 
   it("renders no divider and no Disconnect row", () => {
     mockUseActiveWalletAccount.mockReturnValue({
