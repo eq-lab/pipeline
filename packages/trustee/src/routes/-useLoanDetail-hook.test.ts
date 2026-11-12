@@ -7,17 +7,20 @@ vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanValuation", () => ({ useLoanValuation: vi.fn() }));
 vi.mock("@/api/useLoanFinancials", () => ({ useLoanFinancials: vi.fn() }));
 vi.mock("@/api/useLoanCcrHistory", () => ({ useLoanCcrHistory: vi.fn() }));
+vi.mock("@/api/useDealToken", () => ({ useDeal: vi.fn() }));
 
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanValuation } from "@/api/useLoanValuation";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
+import { useDeal } from "@/api/useDealToken";
 import { useLoanDetail } from "./-useLoanDetail";
 
 const mockUseLoanBook = vi.mocked(useLoanBook);
 const mockUseLoanValuation = vi.mocked(useLoanValuation);
 const mockUseLoanFinancials = vi.mocked(useLoanFinancials);
 const mockUseLoanCcrHistory = vi.mocked(useLoanCcrHistory);
+const mockUseDeal = vi.mocked(useDeal);
 
 function entry(overrides: Partial<LoanBookEntry>): LoanBookEntry {
   return {
@@ -69,6 +72,11 @@ beforeEach(() => {
       ],
     },
   });
+  mockUseDeal.mockReturnValue({
+    data: undefined,
+    isPending: false,
+    isError: false,
+  } as never);
   mockUseLoanValuation.mockReturnValue(IDLE);
   mockUseLoanFinancials.mockReturnValue(IDLE);
   mockUseLoanCcrHistory.mockReturnValue({

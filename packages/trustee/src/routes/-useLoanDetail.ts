@@ -33,6 +33,8 @@ import { formatNearestPayment } from "./-useLoansTable";
 import { findLoanEntry } from "@/lib/loanRoute";
 import { stellarOnlyActionReason, targetChainLabel } from "@/lib/targetChains";
 import { toUserError } from "@/utils/userError";
+import { useDeal } from "@/api/useDealToken";
+import { debtTokenRegistered, type DealReadState } from "@/lib/dealToken";
 import {
   CLOSED_OTHER_ACTIONS,
   DISBURSING_OTHER_ACTIONS,
@@ -649,7 +651,18 @@ export function buildSummaryTiles(
 export function buildRegistryState(
   financials: UseLoanFinancialsResult,
   protection: string | null = null,
+  deal: DealReadState | null = null,
 ): RegistryView {
+  const debtRows: RegistryRow[] =
+    deal === null
+      ? []
+      : [
+          {
+            label: "Debt token",
+            value: debtTokenRegistered(deal).debt ?? "—",
+            tag: "chain",
+          },
+        ];
   if (financials.isLoading) {
     return {
       state: "loading",
@@ -686,10 +699,15 @@ export function buildRegistryState(
       state: "ready",
       errorMessage: null,
       errorDetails: null,
-      rows: buildFinancials(financials.data, protection),
+      rows: [...buildFinancials(financials.data, protection), ...debtRows],
     };
   }
-  return { state: "ready", errorMessage: null, errorDetails: null, rows: [] };
+  return {
+    state: "ready",
+    errorMessage: null,
+    errorDetails: null,
+    rows: debtRows,
+  };
 }
 
 export function ccrSeriesFrom(
@@ -730,6 +748,7 @@ export function useLoanDetail(
   const loanBook = useLoanBook();
   const valuation = useLoanValuation(chainId, loanId);
   const financials = useLoanFinancials(chainId, loanId);
+  const deal = useDeal(chainId, /^\d+$/.test(loanId) ? Number(loanId) : null);
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
 
@@ -775,7 +794,7 @@ export function useLoanDetail(
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),
     tiles,
-    registry: buildRegistryState(financials, entry?.protection ?? null),
+    registry: buildRegistryState(financials, entry?.protection ?? null, deal),
     currentStage,
     otherActions,
     priceCollateral,

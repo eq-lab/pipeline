@@ -113,6 +113,21 @@ vi.mock("./-RepaymentRecoveryDialog", () => ({
     open ? <div data-testid="recovery-dialog-stub" /> : null,
 }));
 
+vi.mock("./-RegisterDebtTokenAction", () => ({
+  RegisterDebtTokenAction: (props: {
+    chainId: number;
+    loanId: number | null;
+    variant: string;
+  }) => (
+    <div
+      data-testid="register-debt-token-stub"
+      data-chain={props.chainId}
+      data-loan={props.loanId ?? ""}
+      data-variant={props.variant}
+    />
+  ),
+}));
+
 import { Route } from "./loans.$id";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
@@ -455,6 +470,20 @@ describe("Loan detail route — Registry state & derived (live)", () => {
       "boom",
     );
   });
+});
+
+describe("Loan detail route — Register debt token (#1766)", () => {
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "hosts the action on the %s layout with the numeric loan id",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(makeResult({ variant }));
+      renderRoute();
+      const stub = screen.getByTestId("register-debt-token-stub");
+      expect(stub).toHaveAttribute("data-loan", "4488");
+      expect(stub).toHaveAttribute("data-chain", "99000001");
+      expect(stub).toHaveAttribute("data-variant", "card");
+    },
+  );
 });
 
 describe("Loan detail route — static action sections", () => {

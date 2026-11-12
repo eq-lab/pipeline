@@ -1935,6 +1935,17 @@ subsequent review call fails, the loan is minted on-chain while the DB submissio
 on-chain mint). Robust reconciliation (the worker already indexes `loan_drawn`) is deferred to a
 follow-up backend issue — see `docs/exec-plans/tech-debt-tracker.md`.
 
+### Register debt token (#1766)
+
+A drawn loan has no debt token until `DealTokenFactory.register_deal(loan_id: u32)` runs (Stellar only; the EVM `registerDeal` arm is #1892, so an EVM loan shows the Stellar-only reason and no button). It is a separate, explicit signature, never chained into Approve. `register_deal` is `#[only_owner]` with the AccessManager as owner, so it is reached through `AM.execute(factory, "register_deal", [loan_id], caller)` by a `TRUSTEE` wallet (`relay`, #1761); the factory id is `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
+
+- **Placement.** One shared control, `-RegisterDebtTokenAction.tsx`: a "Debt token" card on every loan-detail layout (performing, watchlist, matured), and an inline block under the "Approved & drawn" banner on the origination detail once the drawn loan id is known. Registered loans render nothing on the loan page; the origination block swaps in "Debt token registered · <address>".
+- **Source of truth.** Registered or not is decided by `deal(loan_id)` only (`readDeal`): `Error(Contract, #4)` means not registered, any other failure is a read error and renders no action and "—". `debt_address(loan_id)` is never used for this: it returns a deterministic address even for unregistered loans. `Deal` is `{ debt }` (a legacy `cargo` field is ignored); `loan_id` is u32.
+- **Debt token row.** "Registry state & derived" gains `Debt token`, tag `chain`, showing `Deal.debt` verbatim, or "—" when not registered or the read fails.
+- **Gating.** `can_call(caller, factory, "register_deal")` mapped by `accessAction`: immediate role signs `execute` in one step; a delayed role schedules, then executes after the ready time (the Risk Council flow, `riskCouncilRoleLine`); no role disables the button with "Only the Trustee role can register a loan's debt token." An unset factory id shows "Debt token registration isn't configured for this environment."
+- **Errors** (`lib/dealToken.ts`, codes from `DealTokenFactoryError`): `#2` loan id too large, `#3` already registered, `#5` the issuer has not made the factory the DEBT admin (`set_admin`); `#1` (registry `NonExistentLoanId`, propagated by the factory) reads as "The registry has no loan with this id." AccessManager codes win for schedule/execute (`#6`-`#9`). Factory codes are mapped in execute mode only; anything else gets the generic simulation copy with the raw text behind "View details".
+- **After success** the `deal-token`, `register-deal-access` and `audit-log` queries are invalidated (and again after 5 s); the worker already indexes `DealRegistered`.
+
 ### Review error copy
 
 `useReviewSubmission` contract source of truth: `packages/api/src/routes/loan_book.rs`,

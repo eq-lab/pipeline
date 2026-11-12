@@ -45,6 +45,7 @@ import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import { RepaymentRecoveryDialog } from "./-RepaymentRecoveryDialog";
+import { RegisterDebtTokenAction } from "./-RegisterDebtTokenAction";
 import {
   useRecoveryCard,
   type RecoveryCardView,
@@ -1247,6 +1248,7 @@ function LoanDetail() {
   const { chain } = Route.useSearch();
   const navigate = useNavigate();
   const detail = useLoanDetail(chain, id);
+  const debtLoanId = /^\d+$/.test(id) ? Number(id) : null;
   const completeDisbursement = useCompleteDisbursement();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rolloverMutation = useRollover();
@@ -1336,6 +1338,11 @@ function LoanDetail() {
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}
+          <RegisterDebtTokenAction
+            chainId={chain}
+            loanId={debtLoanId}
+            variant="card"
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
@@ -1373,6 +1380,11 @@ function LoanDetail() {
               />
             )}
           </div>
+          <RegisterDebtTokenAction
+            chainId={chain}
+            loanId={debtLoanId}
+            variant="card"
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
@@ -1422,6 +1434,11 @@ function LoanDetail() {
               }}
             />
           )}
+          <RegisterDebtTokenAction
+            chainId={chain}
+            loanId={debtLoanId}
+            variant="card"
+          />
           <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}

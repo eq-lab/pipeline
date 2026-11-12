@@ -6,6 +6,7 @@ import { RequestChangesDialog } from "./-RequestChangesDialog";
 import { ApproveMintDialog } from "./-ApproveMintDialog";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { InlineError } from "@pipeline/ui";
+import { RegisterDebtTokenAction } from "./-RegisterDebtTokenAction";
 
 /**
  * Origination details / review page — the destination opened by clicking a
@@ -308,28 +309,37 @@ function ApprovedBanner({
   chainId: number;
 }) {
   return (
-    <div
-      data-testid="origination-detail-approved-banner"
-      className="flex flex-wrap items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
-    >
-      <CheckIcon
-        width={15}
-        height={15}
-        className="text-[color:var(--color-pipeline-positive-primary)]"
-      />
-      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
-        Approved & drawn · {date}
-      </span>
+    <div className="flex flex-col gap-[12px]">
+      <div
+        data-testid="origination-detail-approved-banner"
+        className="flex flex-wrap items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
+      >
+        <CheckIcon
+          width={15}
+          height={15}
+          className="text-[color:var(--color-pipeline-positive-primary)]"
+        />
+        <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
+          Approved & drawn · {date}
+        </span>
+        {loanId != null && (
+          <Link
+            to="/loans/$id"
+            params={{ id: String(loanId) }}
+            search={{ chain: chainId }}
+            data-testid="origination-detail-view-loan-link"
+            className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)] underline"
+          >
+            View loan #{loanId} →
+          </Link>
+        )}
+      </div>
       {loanId != null && (
-        <Link
-          to="/loans/$id"
-          params={{ id: String(loanId) }}
-          search={{ chain: chainId }}
-          data-testid="origination-detail-view-loan-link"
-          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)] underline"
-        >
-          View loan #{loanId} →
-        </Link>
+        <RegisterDebtTokenAction
+          chainId={chainId}
+          loanId={loanId}
+          variant="inline"
+        />
       )}
     </div>
   );

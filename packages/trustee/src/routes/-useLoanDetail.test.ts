@@ -761,6 +761,44 @@ describe("buildRegistryState", () => {
   });
 });
 
+describe("buildRegistryState Debt token row (#1766)", () => {
+  const financials = () => makeFinancialsQuery({ data: makeFinancials() });
+  const DEBT = "CDEBT";
+  const row = (
+    deal: {
+      data: { debt: string } | null | undefined;
+      isPending: boolean;
+      isError: boolean;
+    } | null,
+  ) =>
+    buildRegistryState(financials(), null, deal).rows.find(
+      (r) => r.label === "Debt token",
+    );
+
+  it("shows the registered debt address verbatim with the chain tag", () => {
+    expect(
+      row({ data: { debt: DEBT }, isPending: false, isError: false }),
+    ).toEqual({
+      label: "Debt token",
+      value: DEBT,
+      tag: "chain",
+    });
+  });
+
+  it("shows — when not registered and on a read error", () => {
+    expect(row({ data: null, isPending: false, isError: false })?.value).toBe(
+      "—",
+    );
+    expect(
+      row({ data: undefined, isPending: false, isError: true })?.value,
+    ).toBe("—");
+  });
+
+  it("adds no row when no deal read is wired", () => {
+    expect(row(null)).toBeUndefined();
+  });
+});
+
 // ── buildCcrTrend (issue #879) ────────────────────────────────────────────────
 
 describe("buildCcrTrend", () => {
