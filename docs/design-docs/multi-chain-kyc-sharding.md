@@ -128,12 +128,14 @@ There is no operation struct or salt: an immediate caller executes directly. See
 
 ### Linked settlement addresses (Issue #1889)
 
-A wire-only lender never emits `DepositRequested`, so Phase 0 alone never creates its `lp_profiles` row and the address is never PLUSD-authorised; `record_wire_in` then traps. Phase 0b (`populate_profiles_from_linked_settlement_addresses_stellar`) seeds an `lp_profiles` row, on every Stellar relayer chain, for the `lps.stellar_address` of every LP with `kyb_status = 'Passed'` (legacy addresses with `stellar_signer_address IS NULL` included). The existing Elliptic address screen then screens the row like any other.
+A wire-only lender never emits `DepositRequested`, so Phase 0 alone never creates its `lp_profiles` row and the address is never PLUSD-authorised; `record_wire_in` then traps. Phase 0b (`populate_profiles_from_linked_settlement_addresses_stellar`) seeds an `lp_profiles` row, on every Stellar relayer chain, for the `lps.stellar_address` of every LP with `kyb_status = 'Passed'` whose `address_linked_at` is non-null, the same "linked" condition under which the Trustee mints to the address (legacy addresses with `stellar_signer_address IS NULL` included). The existing Elliptic address screen then screens the row like any other.
 
 The candidate rule (`stellar_allow_candidates_sql`) admits a profile through either branch:
 
 - **Deposit branch (unchanged).** The wallet has an indexed `DepositRequested`; with Sumsub enabled it also needs the three Sumsub statuses at 2, and with Elliptic enabled the deposit log needs `kyt_status = 1`.
-- **Linked branch.** The wallet is the `stellar_address` of a KYB `Passed` LP. KYB `Passed` replaces the wallet Sumsub checks, so Sumsub does not apply to this branch.
+- **Linked branch.** The wallet is the `stellar_address` of a KYB `Passed` LP with `address_linked_at` non-null (the Stellar link timestamp; the EVM link has its own `evm_address_linked_at`). KYB `Passed` replaces the wallet Sumsub checks (product decision 2026-11-12), so Sumsub does not apply to this branch.
+
+Because the API's Stellar voucher gate reads only `lp_profiles.on_chain_allowed`, a linked address authorised through this branch also passes the deposit and withdrawal voucher check without wallet Sumsub; see [lp-onboarding.md](../product-specs/lp-onboarding.md) and open decision [#1890](https://github.com/eq-lab/pipeline/issues/1890).
 
 When Elliptic is enabled, `p.kyt_status = 1` applies to both branches. The whitelister accepts `G…` accounts and `C…` contracts as holders (`holder_scval`); the SAC creates the balance entry for a `C…` on `set_authorized`. Whether Elliptic screens a contract address is unverified; if it errors the profile never reaches `kyt_status = 1`, so it is never authorised while Elliptic is on (fails closed).
 

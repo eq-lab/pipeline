@@ -50,11 +50,11 @@ Operator and Trustee stories on a Stellar chain. The candidate rule, the receive
 
 ## Story 4: An LP that is not KYB Passed is not authorised through its link
 
-**Pre-conditions:** An LP in `Pending`, `ChangesRequested` or `Refused` with a linked address and no deposit.
+**Pre-conditions:** An LP in `Pending`, `ChangesRequested` or `Refused` with a linked address and no deposit; or a KYB `Passed` LP whose `stellar_address` is set but `address_linked_at` is null.
 
 **Expected outcomes:**
 
-- No `lp_profiles` row is seeded and the address is not authorised.
+- No `lp_profiles` row is seeded and the address is not authorised. The linked route requires both KYB `Passed` and a non-null `address_linked_at`, the same condition the Trustee uses to mint to the address.
 
 ---
 
@@ -102,6 +102,6 @@ Operator and Trustee stories on a Stellar chain. The candidate rule, the receive
 
 ## Automated coverage
 
-- `packages/shared/tests/stellar_whitelist_candidates_sql.rs`: both candidate branches, KYT and Sumsub placement for all four toggle combinations, case-sensitive match, and the linked-address seeding SQL.
+- `packages/shared/tests/stellar_whitelist_candidates_sql.rs`: both candidate branches, the `address_linked_at IS NOT NULL` linked condition, KYT and Sumsub placement for all four toggle combinations, case-sensitive match, and the linked-address seeding SQL.
 - `packages/worker/tests/stellar_whitelist.rs`: `G…` and `C…` holder encoding, rejection of garbage and muxed strkeys, and the `authorized` simulate classification including the exact `#13` match.
 - `packages/trustee/src/routes/-LpBankDepositsSection.test.tsx`: the pre-flight on open and confirm, both notices, the capital-wallet wording, the failed read with Retry, a flip between open and confirm, and the `#15` copy.

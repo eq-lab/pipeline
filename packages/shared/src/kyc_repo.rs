@@ -288,6 +288,7 @@ pub const POPULATE_PROFILES_FROM_LINKED_STELLAR_SQL: &str =
     "INSERT INTO lp_profiles (chain_id, wallet_address)
      SELECT $1, l.stellar_address FROM lps l
      WHERE l.kyb_status = 'Passed' AND l.stellar_address IS NOT NULL
+       AND l.address_linked_at IS NOT NULL
      ON CONFLICT (chain_id, wallet_address) DO NOTHING";
 
 pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool) -> String {
@@ -321,6 +322,7 @@ pub fn stellar_allow_candidates_sql(sumsub_enabled: bool, elliptic_enabled: bool
                 SELECT 1 FROM lps l
                 WHERE l.stellar_address = p.wallet_address
                   AND l.kyb_status = 'Passed'
+                  AND l.address_linked_at IS NOT NULL
              )
            )"
     )

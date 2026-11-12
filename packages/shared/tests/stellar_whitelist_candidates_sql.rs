@@ -18,6 +18,7 @@ fn linked_branch_is_always_or_ed_with_the_deposit_branch() {
             "{sql}"
         );
         assert!(sql.contains("l.kyb_status = 'Passed'"), "{sql}");
+        assert!(sql.contains("l.address_linked_at IS NOT NULL"), "{sql}");
         assert!(sql.contains("c.event_name = 'DepositRequested'"), "{sql}");
         assert!(sql.contains("p.chain_id = $1"), "{sql}");
         assert!(sql.contains("p.on_chain_allowed = FALSE"), "{sql}");
@@ -68,6 +69,7 @@ fn populate_seeds_passed_lps_linked_address() {
         "SELECT $1, l.stellar_address FROM lps l",
         "l.kyb_status = 'Passed'",
         "l.stellar_address IS NOT NULL",
+        "l.address_linked_at IS NOT NULL",
         "ON CONFLICT (chain_id, wallet_address) DO NOTHING",
     ] {
         assert!(sql.contains(needle), "missing `{needle}` in: {sql}");

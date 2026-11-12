@@ -17,6 +17,8 @@ On Stellar there is no `DepositManager` queue: the PLUSD mint leg is a Trustee w
 3. The indexer records `DepositRequested`; the API runs KYT on the lender and serves the voucher (`GET /v1/deposits/{request_id}/voucher?wallet=&chain_id=`) once screening passes. Hard-fail and unscreened requests get no voucher and are dispositioned off-chain by the Trustee.
 4. The lender calls `claimDeposit`; the contract verifies the voucher and mints PLUSD to the caller. The frontend polls the voucher endpoint until it is ready.
 
+On Stellar the voucher endpoint's wallet check reads only `lp_profiles.on_chain_allowed` (`is_on_chain_allowed`), so a KYB `Passed` LP's linked settlement address authorised through the relayer's linked route also clears the Stellar deposit voucher check without wallet Sumsub, a consequence of #1889 (product decision 2026-11-12: KYB `Passed` replaces wallet Sumsub on the linked route). A real `DepositRequested` and, with Elliptic on, KYT are still required. Whether that stays is open decision [#1890](https://github.com/eq-lab/pipeline/issues/1890).
+
 ### Voucher validity
 
 The voucher the API serves for a request is valid for 24 hours. On Stellar the response carries the signed `deadline` (u64 unix seconds, string); on EVM the signature does not cover a deadline, so none is served today and the validity is not enforced (backend follow-up #1798).
