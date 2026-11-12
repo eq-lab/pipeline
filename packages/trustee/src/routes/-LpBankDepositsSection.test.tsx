@@ -19,7 +19,14 @@ vi.mock("@/api/useLpBankDeposits", () => ({
 vi.mock("@/api/useLp", () => ({ useLp: vi.fn(), fetchLp: vi.fn() }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
 vi.mock("@/api/useRecordWireIn", () => ({ useRecordWireIn: vi.fn() }));
-vi.mock("@pipeline/wallet-connect", () => ({ useStellarWallet: vi.fn() }));
+vi.mock("@pipeline/wallet-connect", () => ({
+  useStellarWallet: vi.fn(),
+  readPlusdAuthorization: vi.fn(),
+}));
+vi.mock("@/api/useEscrowedWires", () => ({
+  ensureMinterPlusdId: vi.fn(),
+}));
+vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({}) }));
 const roleMock = vi.hoisted(() => ({
   reason: null as string | null,
   calls: [] as { fn: string; enabled: boolean }[],
@@ -67,7 +74,11 @@ import {
 import { fetchLp, useLp } from "@/api/useLp";
 import { useSessionState } from "@/auth/sessionStore";
 import { useRecordWireIn } from "@/api/useRecordWireIn";
-import { useStellarWallet } from "@pipeline/wallet-connect";
+import {
+  readPlusdAuthorization,
+  useStellarWallet,
+} from "@pipeline/wallet-connect";
+import { ensureMinterPlusdId } from "@/api/useEscrowedWires";
 import { LpBankDepositsSection } from "./-LpBankDepositsSection";
 import { MINT_PENDING_WINDOW_MS } from "./-useLpBankDeposits";
 
@@ -79,6 +90,8 @@ const mockSession = vi.mocked(useSessionState);
 const lpRefetch = vi.fn();
 const mockMint = vi.mocked(useRecordWireIn);
 const mockWallet = vi.mocked(useStellarWallet);
+const mockAuth = vi.mocked(readPlusdAuthorization);
+const mockPlusdId = vi.mocked(ensureMinterPlusdId);
 const mutateAsync = vi.fn();
 const reset = vi.fn();
 const mintAsync = vi.fn();
@@ -200,6 +213,10 @@ beforeEach(() => {
   mockWallet.mockReset();
   mockFetchLp.mockReset();
   mockSession.mockReset();
+  mockAuth.mockReset();
+  mockAuth.mockResolvedValue("authorized");
+  mockPlusdId.mockReset();
+  mockPlusdId.mockResolvedValue("CPLUSD");
   roleMock.reason = null;
   roleMock.calls = [];
   lpRefetch.mockReset();
@@ -392,6 +409,104 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("lp-mint-confirm")).toBeNull(),
     );
+  });
+
+  it("reads the receiver's PLUSD authorisation on open and again on confirm", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockAuth.mock.calls[0]![0]).toMatchObject({
+      plusdId: "CPLUSD",
+      address: LP_WALLET,
+    });
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeEnabled();
+
+    await confirmMint();
+    expect(mockAuth).toHaveBeenCalledTimes(2);
+    expect(mintAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["no-trustline", "lp-mint-no-trustline", "has no PLUSD trustline"],
+    ["not-authorized", "lp-mint-not-authorized", "not authorised yet"],
+  ] as const)(
+    "blocks the mint on open when the receiver is %s",
+    async (phase, testId, text) => {
+      mockAuth.mockResolvedValue(phase);
+      list({ data: { deposits: [DEPOSIT] } });
+      renderSection();
+
+      const table = screen.getAllByRole("row")[1]!;
+      fireEvent.click(
+        within(table).getByRole("button", { name: "Mint PLUSD" }),
+      );
+
+      const notice = await screen.findByTestId(testId);
+      expect(notice).toHaveTextContent(text);
+      expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
+      expect(mintAsync).not.toHaveBeenCalled();
+    },
+  );
+
+  it("names the capital wallet when the fallback receiver has no trustline", async () => {
+    lp({ address_linked_at: null });
+    mockAuth.mockResolvedValue("no-trustline");
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const table = screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(table).getByRole("button", { name: "Mint PLUSD" }));
+
+    expect(await screen.findByTestId("lp-mint-no-trustline")).toHaveTextContent(
+      "capital wallet must add PLUSD",
+    );
+    expect(mockAuth.mock.calls[0]![0]).toMatchObject({
+      address: CAPITAL_WALLET,
+    });
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("offers Retry and never mints when the authorisation read fails", async () => {
+    mockAuth.mockRejectedValueOnce(new Error("rpc down"));
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    const table = screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(table).getByRole("button", { name: "Mint PLUSD" }));
+
+    const dialog = await screen.findByTestId("lp-mint-confirm");
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent(
+        "Could not read this receiver's PLUSD authorisation. Try again.",
+      ),
+    );
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("lp-mint-receiver")).toHaveTextContent(
+        LP_WALLET,
+      ),
+    );
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("blocks the mint when authorisation flips between open and confirm", async () => {
+    mockAuth
+      .mockResolvedValueOnce("authorized")
+      .mockResolvedValueOnce("not-authorized");
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+
+    await openMintDialog();
+    await confirmMint();
+
+    expect(mintAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lp-mint-not-authorized")).toBeInTheDocument();
+    expect(screen.getByTestId("lp-mint-confirm-submit")).toBeDisabled();
   });
 
   it("falls back to the capital wallet when no wallet is linked", async () => {
@@ -733,6 +848,26 @@ describe("LpBankDepositsSection — mint PLUSD", () => {
     fireEvent.click(screen.getByRole("button", { name: /details/i }));
     expect(screen.getAllByRole("dialog").at(-1)).toHaveTextContent(
       "Error(Contract, #13)",
+    );
+  });
+
+  it("maps the minter ReceiverNotAuthorized trap to its own message", async () => {
+    minter({
+      error: new Error(
+        "recordWireIn simulation error: HostError: Error(Contract, #15)",
+      ),
+    });
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    await openMintDialog();
+
+    const alert = screen.getAllByRole("alert").at(-1)!;
+    expect(alert).toHaveTextContent(
+      "This receiver's PLUSD trustline is not authorised yet.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /details/i }));
+    expect(screen.getAllByRole("dialog").at(-1)).toHaveTextContent(
+      "Error(Contract, #15)",
     );
   });
 

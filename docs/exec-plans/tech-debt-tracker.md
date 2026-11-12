@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-184.**
+**Next free number: TD-186.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2423,3 +2423,19 @@ line, whichever section it lands in.
 - **Gap:** `GET /v1/loan-book` does not serve the loan's current `metadata_uri` (only the submission's `draw_loan` URI, which `update_mutable` can replace) and serves `onchain_status` from the indexer, which can lag.
 - **Impact:** The Update lifecycle dialog needs an RPC read of `mutable_loan_data` on every open, and the page holds two status sources that can briefly differ.
 - **Suggested fix:** Serve `metadata_uri` on `LoanBookEntry`, then drop the read.
+
+### TD-184: Relinked or KYT-failed Stellar settlement addresses stay PLUSD-authorised on-chain
+
+- **Date:** 2026-11-12
+- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs`, `packages/shared/src/kyc_repo.rs` (`stellar_allow_candidates_sql`) — Issue #1889.
+- **Gap:** The relayer authorises the linked Stellar settlement address of every KYB `Passed` LP, but the Stellar disallow pass is DB-only. A relink (allowed any time, no Trustee approval; for a `C…` or a separate signer the signature does not prove control, TD-162) or a later KYT failure leaves the old address authorised on-chain.
+- **Impact:** Each relink can leave one more PLUSD-authorised address. With Elliptic off, nothing screens them beyond KYB `Passed`.
+- **Suggested fix:** Add an on-chain `set_authorized(addr, false)` path for relinked and KYT-failed addresses.
+
+### TD-185: EVM wire-in receivers have the same PLUSD access gap
+
+- **Date:** 2026-11-12
+- **Location:** `MinterUpgradeable._stakeFor` (`MinterReceiverNotAllowed`), `packages/worker/src/relayer/evm/` — Issue #1889.
+- **Gap:** An EVM wire-only lender's linked `evm_address` is never put on the whitelist, because the EVM relayer only allows depositors. The Stellar fix (Phase 0b) has no EVM counterpart.
+- **Impact:** EVM bank-wire mints to a never-depositing lender revert once EVM Mint PLUSD is wired in the Trustee app (#1501).
+- **Suggested fix:** A follow-up issue to allow the linked `evm_address` of KYB `Passed` LPs on the EVM relayer, landing with #1501.
