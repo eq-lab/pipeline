@@ -35,6 +35,7 @@ use shared::loan_status::LoanTimeline;
 use shared::pocket::{fold_pockets, PocketFold};
 use shared::pocket_repo::PocketRepo;
 use shared::price_provider::{is_known_provider, known_provider_keys};
+use shared::security_registry_repo::SecurityRegistryRepo;
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
 use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
@@ -45,6 +46,7 @@ use crate::routes::common::{
     RequiredChain,
 };
 use crate::routes::lp_bank_deposits::reference_hash;
+use crate::security_state::{loan_book_security_fields, LoanBookSecurityFields};
 use crate::AppState;
 
 /// Derived display status: the loan is drawn but its USDC off-ramp is not yet marked
@@ -284,6 +286,9 @@ pub struct LoanBookEntry {
     /// approximate date from the day count. Same nullability as `days_on_watchlist`.
     pub watchlist_entered_at: Option<i64>,
     pub pocket: Option<LoanPocket>,
+    pub ltv_bps: Option<u32>,
+    pub margin_call_open: Option<bool>,
+    pub price_stale: Option<bool>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1441,6 +1446,8 @@ pub async fn handle_loan_book(
     );
     let pockets = pockets_by_loan(state, chain_ids).await?;
     attach_pockets(&mut resp, &pockets);
+    let security = security_by_loan(state, chain_ids).await?;
+    attach_security(&mut resp, &security);
     Ok(resp)
 }
 
@@ -1467,6 +1474,41 @@ async fn pockets_by_loan(
         }
     }
     Ok(out)
+}
+
+async fn security_by_loan(
+    state: &AppState,
+    chain_ids: &[i64],
+) -> Result<HashMap<LoanRef, LoanBookSecurityFields>, ApiError> {
+    let repo = SecurityRegistryRepo::new(state.pool.clone());
+    let mut out = HashMap::new();
+    for &chain_id in chain_ids {
+        let Some(contract) = state.security_registry_addresses.get(&chain_id) else {
+            continue;
+        };
+        for row in repo.list_loan_book_security(chain_id, contract).await? {
+            out.insert(
+                (chain_id, row.loan_id.to_string()),
+                loan_book_security_fields(&row),
+            );
+        }
+    }
+    Ok(out)
+}
+
+pub fn attach_security<S: std::hash::BuildHasher>(
+    resp: &mut LoanBookResponse,
+    by_loan: &HashMap<LoanRef, LoanBookSecurityFields, S>,
+) {
+    for entry in &mut resp.loans {
+        let fields = by_loan
+            .get(&(entry.chain_id, entry.loan_id.clone()))
+            .copied()
+            .unwrap_or_default();
+        entry.ltv_bps = fields.ltv_bps;
+        entry.margin_call_open = fields.margin_call_open;
+        entry.price_stale = fields.price_stale;
+    }
 }
 
 pub fn loan_pocket(kind: ChainKind, fold: &PocketFold) -> LoanPocket {
@@ -1773,6 +1815,9 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         days_on_watchlist,
         watchlist_entered_at,
         pocket: None,
+        ltv_bps: None,
+        margin_call_open: None,
+        price_stale: None,
     };
 
     EntryComputation {

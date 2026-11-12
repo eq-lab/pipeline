@@ -399,6 +399,13 @@ pub const GET_VALUATION_SQL: &str = "SELECT loan_id, value, stale_value, flagged
      FROM security_loan_valuations
      WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3";
 
+pub const LIST_LOAN_BOOK_SECURITY_SQL: &str = "SELECT COALESCE(t.loan_id, v.loan_id) AS loan_id,
+            t.margin_call_at, v.ltv_bps, v.price_stale
+     FROM (SELECT loan_id, margin_call_at FROM security_terms
+           WHERE chain_id = $1 AND contract_address = $2) t
+     FULL OUTER JOIN (SELECT loan_id, ltv_bps, price_stale FROM security_loan_valuations
+           WHERE chain_id = $1 AND contract_address = $2) v ON v.loan_id = t.loan_id";
+
 pub const LOAN_LOG_WATERMARKS_SQL: &str = "SELECT
             COALESCE(MAX(id) FILTER (WHERE contract_address = $2), 0) AS sr_log_id,
             COALESCE(MAX(id), 0) AS valuation_log_id
@@ -529,6 +536,14 @@ struct ValuationWithFetchedAt {
     #[sqlx(flatten)]
     valuation: ValuationRow,
     fetched_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct LoanBookSecurityRow {
+    pub loan_id: i64,
+    pub margin_call_at: Option<BigDecimal>,
+    pub ltv_bps: Option<i64>,
+    pub price_stale: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -827,6 +842,18 @@ impl SecurityRegistryRepo {
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
+    }
+
+    pub async fn list_loan_book_security(
+        &self,
+        chain_id: i64,
+        contract: &str,
+    ) -> anyhow::Result<Vec<LoanBookSecurityRow>> {
+        Ok(sqlx::query_as(LIST_LOAN_BOOK_SECURITY_SQL)
+            .bind(chain_id)
+            .bind(contract)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     pub async fn list_open_margin_call_loans(

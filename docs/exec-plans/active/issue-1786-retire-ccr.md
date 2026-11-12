@@ -44,7 +44,7 @@ Out of scope: EVM SecurityRegistry indexing; table drops; frontend changes (#190
 
 - **Dependency order.** Phase 2 must not merge until all of these are merged **and deployed to pipeline-test**:
   - #1906 (the Trustee stops reading `/valuations`, `/ccr-history`, `ccr_bps`, `collateral`, `ltv`, `spot_price`, `spot_change_7d` and `initial_ccr`; it reads Phase 1's `ltv_bps`, `margin_call_open` and `price_stale`). #1906 in turn needs Phase 1 deployed first.
-  - **An LP frontend follow-up, not filed yet.** `packages/frontend` Deployment Monitor (`components/dashboard/useDeploymentMonitorPanel.ts:73-95,185-205`, `api/useLoanBook.ts`) reads `loans[].collateral` and `loans[].ltv`. It also reads `summary.total_collateral` and `summary.senior_debt_coverage`, which stay in this plan. `api/useLoanSubmissions.ts:89` types `initial_ccr`. The frontends have no runtime validation, so removing `ltv` and `collateral` silently renders "—" or `0` LTV aggregates. The manager must file this follow-up and link it on #1786 before Phase 2.
+  - **The LP frontend follow-up, filed as #1907.** `packages/frontend` Deployment Monitor (`components/dashboard/useDeploymentMonitorPanel.ts:73-95,185-205`, `api/useLoanBook.ts`) reads `loans[].collateral` and `loans[].ltv`. It also reads `summary.total_collateral` and `summary.senior_debt_coverage`, which stay in this plan. `api/useLoanSubmissions.ts:89` types `initial_ccr`. The frontends have no runtime validation, so removing `ltv` and `collateral` silently renders "—" or `0` LTV aggregates.
 - **Rollout safety.** Neither phase adds a migration, and neither adds or requires an env key. A rollback to the previous image works for both phases: Phase 1 reads only tables created by `20261106000001_security_registry.sql` (already merged). The worker is untouched in both phases, so the indexer's best-effort RPC rule is unaffected. EVM: Phase 1 leaves EVM rows unchanged apart from three new `null` keys (regression test). Phase 2 removes the CCR fields on EVM too, which the Issue explicitly accepts.
 - **Consistency with `/security`.** The list values are read from the same rows as `/security`, in one SQL statement (one snapshot). The list does not carry `refresh_pending`, so it can lag a SecurityRegistry write by one or two fold cycles, the same as `/security`'s `valuation`. If the projection's `loan_registry` differs from the configured one, the list still joins on `(chain_id, loan_id)`, as `/security` does.
 - **Phase 1 DB errors.** The security read uses `?` like `pockets_by_loan`. A database error is a `500` for the whole loan book, consistent with every other read in `handle_loan_book`.
@@ -61,14 +61,16 @@ Out of scope: EVM SecurityRegistry indexing; table drops; frontend changes (#190
 
 ## Open Questions
 
-1. **Spot pair removal.** Should Phase 2 also remove `spot_change_7d` together with `spot_price`? It is not CCR-derived, but it is the 7-day change of the same anchor price that `spot_price` serves, and it has no consumer after #1906 (agreed with the #1906 planner). The plan says yes; confirm.
-2. **LP follow-up and replacement.** File the LP frontend follow-up (`packages/frontend` Deployment Monitor: stop reading `loans[].collateral` / `ltv`; drop the `initial_ccr` type). Should the LP app show Phase 1's `ltv_bps` on Stellar rows, or drop the Collateral and LTV columns and the LTV header aggregate? The plan assumes the follow-up exists before Phase 2.
-3. **Summary aggregates.** Should Phase 2 keep `summary.total_collateral`, `senior_debt_coverage` (a book-level coverage ratio) and `at_risk_wl_and_default_pct` (NAV built from off-chain collateral)? They are outside the Issue's line references (`loan_book.rs:226-240`, the entry builder) and have live consumers: the LP Deployment Monitor, and the Trustee At-risk tile and escalate page. The plan keeps them; a later issue can retire them with their own frontend follow-ups.
-4. **Per-loan thresholds in the list.** Should Phase 1 also inline `advance_ratio_bps` and `margin_call_ratio_bps` (same null semantics), so the Trustee loans table can colour LTV against per-loan terms without one `/security` call per row (#1906 open question 2)? It is not planned unless #1906 asks. Adding it is two more columns in the same query.
+All answered in the latest Issue comment.
+
+1. [x] **Spot pair removal.** Resolved: `spot_change_7d` is removed in Phase 2 together with `spot_price`.
+2. [x] **LP follow-up and replacement.** Resolved: option (c), flat fields, confirmed. The LP frontend follow-up is filed as #1907 and is a prerequisite of Phase 2 together with #1906.
+3. [x] **Summary aggregates.** Resolved: `summary.total_collateral`, `senior_debt_coverage` and `at_risk_wl_and_default_pct` are kept.
+4. [x] **Per-loan thresholds in the list.** Resolved: no per-loan `advance_ratio_bps` or `margin_call_ratio_bps` in the list.
 
 ## Implementation Steps
 
-### Phase 1 — PR 1 (`chore/1786-retire-ccr`, expand only)
+### Phase 1 — PR 1 (`chore/1786-retire-ccr`, expand only) — done
 
 1. **Repo read** (`packages/shared/src/security_registry_repo.rs`):
    - Add `pub const LIST_LOAN_BOOK_SECURITY_SQL`, one statement over the two projection tables of one `(chain_id, contract_address)`:
@@ -95,33 +97,33 @@ Out of scope: EVM SecurityRegistry indexing; table drops; frontend changes (#190
    - `async fn security_by_loan(state, chain_ids) -> Result<HashMap<LoanRef, LoanBookSecurityFields>, ApiError>`: for each `chain_id` in scope that has `state.security_registry_addresses.get(&chain_id)`, call `SecurityRegistryRepo::new(state.pool.clone()).list_loan_book_security(chain_id, contract)`. Map each row to `((chain_id, loan_id.to_string()), loan_book_security_fields(&row))`; `loan_id.to_string()` matches `loan_key` for integer ids. Chains without the key are skipped. This is the same shape as `pockets_by_loan`.
    - `pub fn attach_security<S: BuildHasher>(resp: &mut LoanBookResponse, by_loan: &HashMap<LoanRef, LoanBookSecurityFields, S>)`: set the three fields from the map, or leave `None`.
    - In `handle_loan_book`, after `attach_pockets`, call `security_by_loan` then `attach_security`. `compute_loan_book` is not changed, so `dashboard.rs` and the 20 test call sites stay as they are.
-5. **OpenAPI.** No new schema (flat primitives); `LoanBookEntry` is already registered in `LoanBookDoc`. Check that the served `/api-docs/openapi.json` lists the three properties as nullable.
-6. **Docs (Phase 1):** see Docs to Update. Add the user-stories doc.
-7. Run `cargo clippy --all -- -D warnings` and `cargo test -p pipeline-api -p shared`, then `npx tsx scripts/lint-docs.ts`.
+5. [x] **OpenAPI.** No new schema (flat primitives); `LoanBookEntry` is already registered in `LoanBookDoc`. Check that the served `/api-docs/openapi.json` lists the three properties as nullable.
+6. [x] **Docs (Phase 1):** see Docs to Update. Add the user-stories doc.
+7. [x] Run `cargo clippy --all -- -D warnings` and `cargo test -p pipeline-api -p shared`, then `npx tsx scripts/lint-docs.ts`.
 
-### Phase 2 — PR 2 (new branch, e.g. `chore/1786-retire-ccr-contract`, after #1906 and the LP follow-up are deployed)
+### Phase 2 — PR 2 — pending (new branch, e.g. `chore/1786-retire-ccr-contract`, after #1906 and the LP follow-up are deployed)
 
-8. **`/ccr-history`:**
+8. [ ] **`/ccr-history`:**
    - Delete `packages/api/src/routes/ccr_history.rs` and `packages/api/tests/ccr_history.rs`.
    - Remove `pub mod ccr_history;` (`routes/mod.rs:7`) and the `CcrHistoryDoc` merge and router nest (`main.rs:222,252`).
    - In `shared::loan_asset_price_repo`, remove `price_at_or_before` and `prices_in_window` (now unused) and the CCR-history wording in their neighbours' docs.
-9. **`/valuations`** (`packages/api/src/routes/collateral_valuation.rs`):
+9. [ ] **`/valuations`** (`packages/api/src/routes/collateral_valuation.rs`):
    - Remove the GET route (`:288-291`) and `get_collateral_valuation`.
    - Remove the GET-only items: `loan_snapshot_senior_usd`, `outstanding_senior_usd`, the USDC-scale const if unused, `CollateralValuationResponse`, `CollateralValuationInputs`, `MetalInput`, `PenaltyInput`, `Waterfall`, `Ccr`, `usd`, `build_response`, `build_metals`, `build_penalties`, `pct_display`, `waterfall_dto`, and the imports they alone used (`ccr_bps`, `compute_collateral`, `ConcentrateValuation`, `to_pct`, `asset_for_metal` if unused, `loan_registry_address`).
    - Narrow `CollateralValuationDoc` to `paths(submit_assay, submit_offtake)` and their schemas.
    - Rewrite the module header to a 2–3-line spec pointer for the assay/offtake writes.
    - Keep `validate_assay`, `validate_offtake`, `parse_dec` and the POST handlers unchanged.
-10. **Loan book** (`routes/loan_book.rs`):
+10. [ ] **Loan book** (`routes/loan_book.rs`):
     - Remove `spot_price`, `spot_change_7d`, `collateral`, `ltv` and `ccr_bps` from `LoanBookEntry`, with their computation in `build_loan_entry`. Keep `collateral_raw`, which feeds `EntryComputation.collateral` for the kept summary aggregates.
     - Remove `LoanSpot`, `spot_by_loan` and the `spot_by_loan` parameter of `build_loan_entry` / `compute_loan_book`. Update `routes/dashboard.rs:67,543-552` and every test call site (`tests/loan_book.rs`, `loan_status_timeline.rs`, `pocket_loan_book.rs`, `book_rate_weighting.rs`).
     - Remove `shared::loan_asset_price_repo::prices_as_of` (its only caller was `spot_by_loan`).
     - Remove the `ccr_bps` import and the CCR comments. Rewrite the `compute_loan_book` doc so it names only the kept aggregates.
-11. **Submission:** remove `initial_ccr` from `SubmitLoanRequest` (`loan_book.rs:419-422`). Update the `SubmissionView.loan_data` doc line (`:651`) to say that legacy rows may still carry `initial_ccr`, and that it is accepted and dropped on input.
-12. **Shared CCR-only code** (`packages/shared/src/collateral_valuation/mod.rs`):
+11. [ ] **Submission:** remove `initial_ccr` from `SubmitLoanRequest` (`loan_book.rs:419-422`). Update the `SubmissionView.loan_data` doc line (`:651`) to say that legacy rows may still carry `initial_ccr`, and that it is accepted and dropped on input.
+12. [ ] **Shared CCR-only code** (`packages/shared/src/collateral_valuation/mod.rs`):
     - Remove `pub fn ccr_bps` and `ConcentrateValuation::ccr_bps`.
     - Reword the module doc and the `collateral_value` doc so they no longer mention CCR. Keep `compute_collateral`, `valuate`, `nsr_per_dmt`, `to_pct` and `asset_for_metal`.
     - Reword the CCR mentions in `collateral_valuation_repo.rs:16`, `submitted_loan_repo.rs:198`, `loan_asset_price_repo.rs` and `waterfall.rs:446`.
-13. Run the acceptance `rg` (Assumptions) and list the remaining hits in the PR body. Then run clippy and the tests.
+13. [ ] Run the acceptance `rg` (Assumptions) and list the remaining hits in the PR body. Then run clippy and the tests.
 
 ## Test Strategy
 
