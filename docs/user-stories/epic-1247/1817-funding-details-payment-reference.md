@@ -123,7 +123,7 @@ chain whose address is linked.
 
 ## Story 6: Any other failure shows a generic notice
 
-**Pre-conditions:** The API answers 400, 404, 500, or the network fails.
+**Pre-conditions:** The API answers 400, 404, 500, or the network fails. Also: the bank-details record is unfilled and the API answers `503` (#1838); the Network tab shows one `503` and no reference is minted.
 
 **Steps:**
 

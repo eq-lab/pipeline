@@ -14,7 +14,8 @@ Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer to
 
 **Persona:** LP whose KYB is `Passed` and who has a linked settlement address.
 
-**Pre-conditions:** `system_configuration` row `system_bank_details` filled in by hand. The LP's `GET /v1/lps/me` shows
+**Pre-conditions:** `system_configuration` row `system_bank_details` filled per the runbook in
+[deposits.md](../../product-specs/deposits.md) § Filling the bank details. The LP's `GET /v1/lps/me` shows
 `kyb_status: "Passed"` and a non-null `stellar_address`.
 
 **Steps:**
@@ -130,3 +131,41 @@ Replace `$API` and `$TOKEN` with the API base URL and the LP session's bearer to
 **Expected outcomes:**
 
 - Both statements fail on `system_configuration_bank_details_shape_ck`; the stored row is unchanged.
+
+---
+
+## Story 7: An unconfigured bank-details record is refused and issues nothing
+
+**Persona:** Eligible LP (Passed, linked address) calling before the operator has filled the record.
+
+**Pre-conditions:** The seeded all-empty row, or a row whose `swift_bic_code` is `""`.
+
+**Steps:**
+
+1. Count rows in `lp_requested_bank_details`, then call the endpoint as the eligible LP.
+2. Call it as an LP that is `UnderReview`.
+3. Fill the record (Story 8) and call again as the eligible LP.
+
+**Expected outcomes:**
+
+- Step 1 is `503` with a JSON `error` saying the funding details are not configured; no `payment_details` in the body,
+  and the row count is unchanged. The server log names the blank fields, not their values.
+- Step 2 is still `409` (the access gate runs first).
+- Step 3 is `200` with the filled fields.
+
+---
+
+## Story 8: An operator fills the record with the runbook
+
+**Persona:** Operator with `psql` access to the environment's database.
+
+**Steps:**
+
+1. Run the template from [deposits.md](../../product-specs/deposits.md) § Filling the bank details with the environment's
+   values.
+2. Call the endpoint as an eligible LP, without restarting the API.
+
+**Expected outcomes:**
+
+- The `UPDATE` reports `UPDATE 1` and the `SELECT` shows the new values.
+- The next call serves them (`200`); no restart is needed.

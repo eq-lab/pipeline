@@ -106,7 +106,7 @@ and the body-scroll lock.
   hidden second request would issue one the LP never sees. Re-opening is the only retry.
 - **States.** Loading: every value cell is `—`, the rows container is `aria-busy`, every row copy
   button disabled. Unavailable `409` (no linked settlement address of that chain kind, or KYB not
-  passed): notice with a `Go to Account` button. Any other failure: generic notice. Rows stay `—`
+  passed): notice with a `Go to Account` button. Any other failure, including a `503` (bank details not configured): generic notice. Rows stay `—`
   and every row copy button stays disabled; nothing crashes and no scratch value is ever shown.
 - **Mint lands as sPLUSD** (`docs/user-docs/lenders/deposit.md`), so the destination caption says
   sPLUSD.
@@ -405,7 +405,7 @@ seam](./auth-components.md#diagnostics-preview-seam).
 | Recording a received wire (trustee side) | #1413 (backend, shipped), #1272 (UI), epic #1269 |
 | Network call, persistence, or auth on `AddUsdCard` | #1254 / #1265 / #1820 |
 | Linking a settlement address (challenge, sign, verify) | #1825 |
-| Filling `system_configuration.system_bank_details` | ops, before release (`deposits.md`) |
+| Filling `system_configuration.system_bank_details` | ops, per environment (`deposits.md#filling-the-bank-details`) |
 
 ## Accessibility
 
