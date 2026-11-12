@@ -114,6 +114,18 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
 
 The inspection object carries every `security_inspections` column (region, site and certificate hashes, `certificate_no`, `entered_at`, `approved_at`, the three variances, `resolution_reason_hash`, `resolved_at`); the example shortens it. Records are ordered by `record_id`, open and closed; `open` is `status` not `Released` and not `Enforced`. `docs` are ordered by `position` and `inspections` by `inspection_id`; `flagged_by` is `null` when there is no flag. `is_lot_latest` is `inspection_id == lot.latest_inspection_id`. `repayments` is `[]` for a record with no sale, and joins on `sale_id`, so it is served for any status (an `Enforced` record is the usual one). Repayment rows are not pinned to one minter address, so repayments booked on an older minter still link.
 
+## Loan book fields
+
+`GET /v1/loan-book` (#1786) adds three flat, nullable keys to every `loans[]` entry. The keys are always present. They are read from the projection tables in one SQL statement per Stellar chain with an API SecurityRegistry key, with no RPC call and no migration. The Trustee loans table reads them instead of the off-chain `ccr_bps` (#1906).
+
+| Field | Type | Source | `null` when |
+|---|---|---|---|
+| `ltv_bps` | `u32` or `null` | `security_loan_valuations.ltv_bps`, same value as `/security` `valuation.ltv_bps`; `4294967295` (u32::MAX) passes through | no valuation snapshot yet |
+| `margin_call_open` | `bool` or `null` | `security_terms.margin_call_at != 0`, same rule as `/security` `margin_call.open` | no terms row, or `margin_call_at` cannot be decoded |
+| `price_stale` | `bool` or `null` | `security_loan_valuations.price_stale`, the contract flag, same as `/security` `valuation.price_stale` | no valuation snapshot yet |
+
+All three are `null` on EVM entries and on Stellar chains without `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`. The valuation fields do not depend on a terms row, and `margin_call_open` does not depend on a valuation, exactly as `/security` serves them. The values come from the same rows as `/security` but carry no `refresh_pending`, so they can lag a SecurityRegistry write by one or two fold cycles. A database error is a `500` for the whole loan book. The legacy off-chain `ltv` stays until the contract phase of #1786.
+
 ## Data Model
 
 No table or migration. The route also reads `loan_asset_prices`, `loan_assays` and `loan_offtake_terms` when `SECURITY_MARK_COMMODITIES` is set. The route reads the tables in [security-registry-events.md](../references/security-registry-events.md#projection-tables) and the minter `CashRepaid` / `CashRepaymentReversed` rows of `contract_logs`. Every read is scoped by `chain_id` and the configured `contract_address`, except the minter repayment join, which is scoped by chain, loan and sale id.

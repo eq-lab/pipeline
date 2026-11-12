@@ -16,7 +16,7 @@ use shared::security_registry::{
     is_goods, p_dec, p_i64, p_str, ConsentRow, CountedRecordView, DocRow, InspectionRow, LotRow,
     MarginCallEventRow, RecordRow, TermsRow, ValuationRow,
 };
-use shared::security_registry_repo::{LoanSecurityRows, SaleRepaymentRow};
+use shared::security_registry_repo::{LoanBookSecurityRow, LoanSecurityRows, SaleRepaymentRow};
 use shared::security_state::{
     agent_release, attestation_stale, counts_toward_value, cure_by, dec_to_i128, dec_to_u128,
     dec_to_u64, format_7dp, format_7dp_i128, inspection_stale, integer_string, is_open_status,
@@ -334,6 +334,25 @@ impl Unreadable {
 
 fn clamp_u32(v: i64) -> u32 {
     u32::try_from(v).unwrap_or(if v < 0 { 0 } else { u32::MAX })
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LoanBookSecurityFields {
+    pub ltv_bps: Option<u32>,
+    pub margin_call_open: Option<bool>,
+    pub price_stale: Option<bool>,
+}
+
+pub fn loan_book_security_fields(row: &LoanBookSecurityRow) -> LoanBookSecurityFields {
+    LoanBookSecurityFields {
+        ltv_bps: row.ltv_bps.map(clamp_u32),
+        margin_call_open: row
+            .margin_call_at
+            .as_ref()
+            .and_then(dec_to_u64)
+            .map(|m| m != 0),
+        price_stale: row.price_stale,
+    }
 }
 
 fn int_opt(d: Option<&BigDecimal>) -> Option<String> {
