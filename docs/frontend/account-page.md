@@ -225,11 +225,25 @@ the existing settlement row and the LP theme (user decision 2026-11-04).
 [`useEvmSignMessage`](../../packages/frontend/src/wallet/README.md#useevmsignmessage)), then
 `POST /v1/lps/me/link-address/verify { chain_id, address, signature }`, and adopts the returned LP. A signature prompt
 opens only from a click (`Link wallet`, `Try again`, `Confirm change`): no effect fetches a challenge or signs, so sign-in,
-page load, LP creation and connecting a wallet never prompt. Every `Try again` and every new `Link wallet` click starts
+page load, LP creation and connecting a wallet never prompt, with one exception (#1901): a connect started from the
+Account wallet card's **Link Wallet** (**Connect Wallet** when linking cannot happen) continues into the link (next paragraph). Every `Try again` and every new `Link wallet` click starts
 with a new challenge; the client never reuses a message. One flow runs at a time, and a response that arrives after the
 session token changed is dropped. The default connected-wallet path never sends `signer_address` (the backend defaults it to
 the address). The opt-in **Different address** path (below) sends it only when the typed address differs
 from the connected wallet (#1849, resolves TD-166).
+
+**Connect then link (#1901).** The wallet card's button (labelled `Link Wallet` while an LP session exists and KYB is not `Failed`, else `Connect Wallet`; a deliberate deviation from frame `6701:98104` by user decision 2026-11-12) calls `settlement.onArmConnectLink()` (the hook's
+`armConnectLink`) and then opens the shared connect modal. The hook keeps a one-shot intent (a ref holding the session
+token) that exists only when armed while no wallet is connected. When a wallet connects with the intent armed and the LP
+loaded, the intent is consumed and the hook continues exactly like the click path for that wallet's chain: `link` when no
+address is served for the chain (or the served one is unproven for this wallet), `beginChange` (the Change confirmation, no
+challenge yet) when the served address differs, nothing when equal and proven or when KYB is `Failed`. A declined
+signature, 409, 422 or error then behaves as for a click (`Try again`, `taken`, `proofFailed`, toast) with the wallet still
+connected. The intent is dropped when the connect modal (or the terms gate before it) is dismissed without picking a
+wallet (`useConnectModal().onCancel` of the LP `ConnectModalProvider`), on a session-token change, and once consumed. A
+wallet connected anywhere else (header, home cards, sign-in, auto-reconnect) never arms it and never prompts. Residual
+case: if the LP picks a wallet and then rejects the connection inside the wallet, the intent stays armed until the next
+connect or token change.
 
 **Connected wallet.** The EVM wallet if connected, else the Stellar wallet, else none, decided by
 `walletPrecedence` (the single owner, see [`wallet-flows.md`](./wallet-flows.md#single-connected-wallet));
@@ -404,7 +418,7 @@ connected, else the deployment default (`evm`) — so there is no `setKind` and 
 | Card state | Renders |
 |---|---|
 | Wallet connected (`6701:98142`) | the chain block (below), then the connected block: icon tile, `Wallet` row, `USDC balance` row, divider, `Disconnect` |
-| No wallet connected (`6701:98104`) | the full-width `Connect Wallet` CTA |
+| No wallet connected (`6701:98104`) | the full-width `Link Wallet` CTA (`Connect Wallet` when no LP session or KYB `Failed`) |
 
 **Chain block (`6701:98144`, #1512 follow-up).** The track area where the `Ethereum`/`Stellar`
 tabs used to sit is kept, with the same size and style as the former `SegmentedTabs variant="track"`
@@ -417,6 +431,8 @@ app's name). The Ethereum logo is the two-tone diamond; the Stellar logo is the 
 (circle with two diagonal bars, no wordmark) redrawn as `currentColor` paths so it takes the ink token.
 It renders only while a wallet is connected; the disconnected state is unchanged (no block). No
 `tablist` role.
+
+Link Wallet is arm-then-connect (see **Connect then link**, #1901); Disconnect and the connected frame are unchanged.
 
 The card keeps its outer classes and both state blocks unchanged (sizes, paddings, node ids). `AccountWalletCard.tsx` does
 **not** own a second wallet system: `packages/frontend/src/wallet/useActiveWalletAccount.ts` is the
@@ -453,7 +469,7 @@ The frame's `Ethereum`/`Stellar` tabs row (`6701:98144`) is built as the static 
 rows (`Wallet` +
 truncated address + copy button; `USDC balance` + `CoinIcon token="usdc" size="lg"` + formatted
 balance); disconnected shows a 72px `--color-pipeline-fill-muted` circle with a generic wallet
-glyph and a full-width 48px `Button variant="primary-dark"` labelled `Connect Wallet`. A missing
+glyph and a full-width 48px `Button variant="primary-dark"` labelled `Link Wallet` (`Connect Wallet` without an LP session or with KYB `Failed`; deviates from the frame by user decision 2026-11-12). A missing
 balance renders `—`, never a computed or placeholder number.
 
 **The wallet row's leading icon in the frame is a literal MetaMask fox logo** (`get_design_context`
@@ -589,7 +605,7 @@ home-route unobservability note in
 
 ## Verbatim copy
 
-Page chrome: `Account` · `Connect Wallet` · `Wallet` · `USDC balance` ·
+Page chrome: `Account` · `Link Wallet` (`Connect Wallet` when linking cannot happen) · `Wallet` · `USDC balance` ·
 `Disconnect` · `Corporate email` · `Email` · `Add email` · `Documents` · `Log Out`.
 
 Banners: `Verify your account` · `Verify your identity` (staged state only — a design-file
@@ -724,7 +740,7 @@ review the returned documents, and select any missing files again. Rejected rows
 then the visible upload controls accept the correction. Provided rows on writable LPs have a
 remove button; Verified and frozen rows do not.
 
-`AccountWalletCard`'s Connect Wallet / Disconnect and the route's Log Out remain wired to the
+`AccountWalletCard`'s Link Wallet / Disconnect and the route's Log Out remain wired to the
 shared wallet and auth flows. `AccountDocumentsCard.onUploadMissingDocument` exists only for the
 synthetic `missing` preview. Review submission changes KYB only through the backend endpoint; its
 server response determines the displayed status and freezes controls.
@@ -773,7 +789,7 @@ was deleted as part of that redesign.
 The verified-row trailing chevron is `aria-hidden` (decorative, not a button) — no document-detail
 frame exists anywhere in V1.0, so it has no destination (tech debt, designer ask). The upload
 row's file input is visually hidden (`sr-only`) but reachable via its trailing `Upload` button. The
-status banner uses `role="status"`. `Log Out` and `Connect Wallet` are real `<button>` elements,
+status banner uses `role="status"`. `Log Out` and `Link Wallet` are real `<button>` elements,
 focusable and clickable with no throw even with no handler wired (the inert-seam contract).
 
 `Disconnect` (`AccountWalletCard.tsx`) and `Add email` (`AccountEmailCard.tsx`, issue #1458) are

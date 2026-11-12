@@ -29,7 +29,11 @@ vi.mock("@/components/EmailAuthFlow", () => ({
 const mockOpenConnectModal = vi.fn();
 
 vi.mock("@/wallet", () => ({
-  useConnectModal: () => ({ open: mockOpenConnectModal, close: vi.fn() }),
+  useConnectModal: () => ({
+    open: mockOpenConnectModal,
+    close: vi.fn(),
+    onCancel: () => () => {},
+  }),
   useStellarWallet: () => ({ address: undefined, isConnected: false }),
   useEvmWallet: () => ({ address: undefined, isConnected: false }),
   useEvmSignMessage: () => ({ signMessage: vi.fn() }),

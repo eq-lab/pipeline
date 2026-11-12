@@ -4,6 +4,8 @@
 //! Stellar:
 //!   - Phase 0: populate `lp_profiles` from indexed `DepositRequested` events
 //!     (Stellar-aware variant — preserves Strkey case).
+//!   - Phase 0b: seed `lp_profiles` with the linked Stellar settlement address of
+//!     every KYB `Passed` LP.
 //!   - Phase 2: Elliptic KYT/AML screening (address + deposit-tx, chain-scoped).
 //!   - Phase 3: sync whitelist to on-chain `access_manager.set_authorized`.
 //!   - Phase 5: match indexed minter wire-ins to recorded bank deposits (#1416),
@@ -103,6 +105,23 @@ pub(crate) async fn run_stellar_relayer_inner(
             }
             Err(e) => {
                 tracing::error!(error = %e, "stellar phase 0: failed to populate profiles");
+            }
+            _ => {}
+        }
+
+        match kyc_repo
+            .populate_profiles_from_linked_settlement_addresses_stellar(chain_id)
+            .await
+        {
+            Ok(n) if n > 0 => {
+                tracing::info!(
+                    chain_id,
+                    count = n,
+                    "stellar: created new profiles from linked settlement addresses"
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "stellar phase 0b: failed to populate linked profiles");
             }
             _ => {}
         }

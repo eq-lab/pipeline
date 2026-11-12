@@ -41,7 +41,11 @@ vi.mock("@/wallet", async (importOriginal) => {
       isSettled: true,
       disconnectAll: vi.fn(),
     }),
-    useConnectModal: () => ({ open: vi.fn(), close: vi.fn() }),
+    useConnectModal: () => ({
+      open: vi.fn(),
+      close: vi.fn(),
+      onCancel: () => () => {},
+    }),
     useStellarWallet: () => ({ address: undefined, isConnected: false }),
     useEvmWallet: () => ({ address: undefined, isConnected: false }),
     useEvmSignMessage: () => ({ signMessage: vi.fn() }),

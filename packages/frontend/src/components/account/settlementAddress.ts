@@ -52,6 +52,7 @@ export interface SettlementRowView {
 
 export interface SettlementControls {
   rows: SettlementRowView[];
+  onArmConnectLink?(): void;
   onLink(kind: SettlementKind): void;
   onChange(kind: SettlementKind): void;
   onCancel(): void;

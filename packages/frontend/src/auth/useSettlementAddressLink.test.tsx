@@ -41,7 +41,15 @@ vi.mock("@/api", async () => {
     getMyLp: (...args: unknown[]) => mockGet(...args),
   };
 });
+const cancelListeners = vi.hoisted(() => new Set<() => void>());
+
 vi.mock("@/wallet", async () => ({
+  useConnectModal: () => ({
+    onCancel: (listener: () => void) => {
+      cancelListeners.add(listener);
+      return () => cancelListeners.delete(listener);
+    },
+  }),
   isStellarSettlementAddress: (
     await vi.importActual<
       typeof import("@/wallet/stellar/settlementAddressFormat")
@@ -139,6 +147,7 @@ beforeEach(() => {
   show.mockReset();
   connectStellar(undefined);
   connectEvm(undefined);
+  cancelListeners.clear();
 });
 
 const loaded = (overrides: Partial<LpResponse> = {}): Props => ({
@@ -706,5 +715,141 @@ describe("useSettlementAddressLink: use a different address", () => {
     expect(phaseOf(result)).toBe("editing");
     rerender({ ...loaded(), token: "t2" });
     await waitFor(() => expect(phaseOf(result)).toBe("idle"));
+  });
+});
+
+describe("useSettlementAddressLink — connect-then-link", () => {
+  it("links the wallet that connects after the intent is armed", async () => {
+    const { result, rerender, onLp } = setup(loaded());
+    act(() => result.current.armConnectLink());
+    connectStellar(A);
+    rerender(loaded());
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, A, null);
+    expect(mockVerify).toHaveBeenCalledOnce();
+  });
+
+  it("waits for the LP to load before linking", async () => {
+    const { result, rerender, onLp } = setup({
+      token: "t",
+      lp: null,
+      lpLoaded: false,
+    });
+    act(() => result.current.armConnectLink());
+    connectEvm(E1);
+    rerender({ token: "t", lp: null, lpLoaded: false });
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+    rerender(loaded());
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when the served address equals the wallet and is proven", async () => {
+    const { result, rerender } = setup(
+      loaded({ stellar_address: A, stellar_signer_address: A }),
+    );
+    act(() => result.current.armConnectLink());
+    connectStellar(A);
+    rerender(loaded({ stellar_address: A, stellar_signer_address: A }));
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+    expect(phaseOf(result)).toBe("idle");
+  });
+
+  it("opens the Change confirmation, with no challenge, when the served address differs", async () => {
+    const { result, rerender, onLp } = setup(loaded({ stellar_address: A }));
+    act(() => result.current.armConnectLink());
+    connectStellar(B);
+    rerender(loaded({ stellar_address: A }));
+    await act(async () => {});
+    expect(result.current.state).toEqual({
+      kind: "stellar",
+      phase: "confirming",
+      mode: "wallet",
+    });
+    expect(mockChallenge).not.toHaveBeenCalled();
+    act(() => result.current.link("stellar"));
+    await waitFor(() => expect(onLp).toHaveBeenCalledOnce());
+    expect(mockChallenge).toHaveBeenCalledWith(ENV.STELLAR_CHAIN_ID, B, null);
+  });
+
+  it("reports declined and keeps the wallet connected when the signature is rejected", async () => {
+    mockStellarSign.mockRejectedValueOnce(new Error("User declined"));
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.armConnectLink());
+    connectStellar(A);
+    rerender(loaded());
+    await waitFor(() => expect(phaseOf(result)).toBe("declined"));
+    expect(result.current.connected?.address).toBe(A);
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("does not prompt for a Failed KYB", async () => {
+    const { result, rerender } = setup(loaded({ kyb_status: "Failed" }));
+    act(() => result.current.armConnectLink());
+    connectStellar(A);
+    rerender(loaded({ kyb_status: "Failed" }));
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+    expect(phaseOf(result)).toBe("idle");
+  });
+
+  it("never prompts for a wallet connected without the intent", async () => {
+    const { rerender } = setup(loaded());
+    connectStellar(A);
+    rerender(loaded());
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+  });
+
+  it("drops the intent when the connect modal is cancelled", async () => {
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.armConnectLink());
+    act(() => cancelListeners.forEach((listener) => listener()));
+    connectStellar(A);
+    rerender(loaded());
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+  });
+
+  it("drops the intent when the session token changes before a wallet connects", async () => {
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.armConnectLink());
+    rerender({ ...loaded(), token: "t2" });
+    connectStellar(A);
+    rerender({ ...loaded(), token: "t2" });
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+  });
+
+  it("is one-shot: a reconnect after the intent was consumed does not prompt", async () => {
+    const served = { stellar_address: A, stellar_signer_address: A };
+    const { result, rerender } = setup(loaded());
+    act(() => result.current.armConnectLink());
+    connectStellar(A);
+    rerender(loaded());
+    await waitFor(() => expect(mockVerify).toHaveBeenCalledOnce());
+    await waitFor(() => expect(phaseOf(result)).toBe("idle"));
+    mockChallenge.mockClear();
+    connectStellar(undefined);
+    rerender(loaded(served));
+    connectStellar(B);
+    rerender(loaded(served));
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
+    expect(phaseOf(result)).toBe("idle");
+  });
+
+  it("does not arm while a wallet is already connected", async () => {
+    connectStellar(A);
+    const { result, rerender } = setup(loaded({ stellar_address: B }));
+    act(() => result.current.armConnectLink());
+    connectStellar(undefined);
+    rerender(loaded({ stellar_address: B }));
+    connectStellar(A);
+    rerender(loaded({ stellar_address: B }));
+    await act(async () => {});
+    expect(mockChallenge).not.toHaveBeenCalled();
   });
 });

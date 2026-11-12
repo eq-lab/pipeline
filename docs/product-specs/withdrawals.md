@@ -20,6 +20,8 @@ The lender calls `PLUSD.approve(WithdrawalQueue, amount)` then `requestWithdrawa
 
 The indexer records `WithdrawalRequested`; the API runs KYT and serves the voucher (`GET /v1/withdrawals/{request_id}/voucher?wallet=&chain_id=`). A hard-fail request gets no voucher and is dispositioned off-chain by the Trustee. The frontend polls until the voucher is ready.
 
+On Stellar the voucher endpoint's wallet check reads only `lp_profiles.on_chain_allowed` (`is_on_chain_allowed`), so a KYB `Passed` LP's linked settlement address authorised through the relayer's linked route also clears the Stellar withdrawal voucher check without wallet Sumsub, a consequence of #1889 (product decision 2026-11-12: KYB `Passed` replaces wallet Sumsub on the linked route). A real `WithdrawalRequested` and, with Elliptic on, KYT are still required. Whether that stays is open decision [#1890](https://github.com/eq-lab/pipeline/issues/1890).
+
 ### Step 4: claimWithdrawal
 
 The lender calls `claimWithdrawal`. It reverts `WithdrawalQueueTooEarly` until `queued[requestId] <= claimableAmount()`, that is until the asset holder's USDC balance (plus prior claims) covers every earlier request. The lender retries after the Trustee tops up the asset holder; funds are delayed, never lost.

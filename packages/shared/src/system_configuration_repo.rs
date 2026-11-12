@@ -28,6 +28,28 @@ pub struct SystemBankDetails {
     pub swift_bic_code: String,
 }
 
+impl SystemBankDetails {
+    pub fn missing_required_fields(&self) -> Vec<&'static str> {
+        let mut missing: Vec<&'static str> = [
+            ("company_name", &self.company_name),
+            ("bank_name", &self.bank_name),
+            ("swift_bic_code", &self.swift_bic_code),
+        ]
+        .into_iter()
+        .filter(|(_, v)| v.trim().is_empty())
+        .map(|(name, _)| name)
+        .collect();
+        if self.account_number.trim().is_empty() && self.iban.trim().is_empty() {
+            missing.push("account_number or iban");
+        }
+        missing
+    }
+
+    pub fn is_configured(&self) -> bool {
+        self.missing_required_fields().is_empty()
+    }
+}
+
 #[async_trait]
 pub trait BankDetailsSource: Send + Sync {
     async fn bank_details(&self) -> anyhow::Result<Option<SystemBankDetails>>;

@@ -22,7 +22,12 @@ import {
 } from "@/components/account/settlementAddress";
 import { ENV } from "@/lib/env";
 import { ToastContext } from "@/lib/toast/useToast";
-import { useEvmSignMessage, useEvmWallet, useStellarWallet } from "@/wallet";
+import {
+  useConnectModal,
+  useEvmSignMessage,
+  useEvmWallet,
+  useStellarWallet,
+} from "@/wallet";
 import { readSession } from "./session";
 
 interface Args {
@@ -35,6 +40,7 @@ interface Args {
 export interface SettlementAddressLink {
   state: SettlementLinkState;
   connected: ConnectedWallet | null;
+  armConnectLink(): void;
   link(kind: SettlementKind): void;
   beginChange(kind: SettlementKind): void;
   cancelChange(): void;
@@ -54,8 +60,10 @@ export function useSettlementAddressLink({
   const evm = useEvmWallet();
   const evmSigner = useEvmSignMessage();
   const toast = useContext(ToastContext);
+  const { onCancel: onConnectCancel } = useConnectModal();
   const [state, setState] = useState<SettlementLinkState>(IDLE);
   const inFlight = useRef(false);
+  const pendingConnect = useRef<string | null>(null);
   const connected = connectedWallet(evm, stellar);
   const snapshot = {
     token,
@@ -73,6 +81,19 @@ export function useSettlementAddressLink({
   useEffect(() => {
     if (!inFlight.current) setState(IDLE);
   }, [token, connected?.kind, connected?.address]);
+
+  const armConnectLink = useCallback(() => {
+    const { token: sessionToken, connected: wallet } = latest.current;
+    if (sessionToken && !wallet) pendingConnect.current = sessionToken;
+  }, []);
+
+  useEffect(
+    () =>
+      onConnectCancel(() => {
+        pendingConnect.current = null;
+      }),
+    [onConnectCancel],
+  );
 
   const beginChange = useCallback((kind: SettlementKind) => {
     const { lp: current, connected: wallet } = latest.current;
@@ -196,6 +217,19 @@ export function useSettlementAddressLink({
     [run],
   );
 
+  useEffect(() => {
+    if (pendingConnect.current === null) return;
+    if (pendingConnect.current !== token) {
+      pendingConnect.current = null;
+      return;
+    }
+    if (!connected || !lpLoaded || !lp) return;
+    pendingConnect.current = null;
+    const action = baseAction(lp, connected.kind, connected);
+    if (action === "link") link(connected.kind);
+    else if (action === "change") beginChange(connected.kind);
+  }, [token, lpLoaded, lp, connected, link, beginChange]);
+
   const beginOther = useCallback((kind: SettlementKind) => {
     const { lp: current, connected: wallet } = latest.current;
     if (inFlight.current || !otherAllowed(current, kind, wallet)) return;
@@ -228,6 +262,7 @@ export function useSettlementAddressLink({
   return {
     state,
     connected,
+    armConnectLink,
     link,
     beginChange,
     cancelChange,

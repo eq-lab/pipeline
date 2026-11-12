@@ -304,6 +304,8 @@ pub fn deposit_insert_error(e: sqlx::Error, payment_reference: &str) -> ApiError
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 404, description = "This account has not registered an LP yet"),
         (status = 409, description = "No linked settlement address of this chain's kind, or KYB status is not Passed"),
+        (status = 500, description = "The bank-details record is missing or malformed, or a unique reference could not be issued"),
+        (status = 503, description = "The bank-details record is not configured yet (a required field is blank); no reference is issued"),
     ),
     security(("bearer_auth" = [])),
     tag = "LpBankDeposits"
@@ -594,6 +596,14 @@ pub async fn request_payment_details(
         .bank_details()
         .await?
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("system_bank_details row is missing")))?;
+    let missing = details.missing_required_fields();
+    if !missing.is_empty() {
+        tracing::error!(missing = ?missing, "system_bank_details is not configured; no payment reference issued");
+        return Err(ApiError::ServiceUnavailable(
+            "funding details are not configured yet; no payment reference was issued, try again later"
+                .to_owned(),
+        ));
+    }
     let payment_details =
         issue_payment_details(store, lp_id, chain.chain_id, receiver_address, next).await?;
     Ok(PaymentDetailsResponse::new(

@@ -1,5 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#lp-bank-deposits
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useLpBankDeposits,
   useRecordBankDeposit,
@@ -19,7 +20,11 @@ import {
   toUserError,
   type UserFacingError,
 } from "@/utils/userError";
-import { useStellarWallet } from "@pipeline/wallet-connect";
+import { ensureMinterPlusdId } from "@/api/useEscrowedWires";
+import {
+  readPlusdAuthorization,
+  useStellarWallet,
+} from "@pipeline/wallet-connect";
 import {
   formatIsoDateTimeUtc,
   nowUtcDateTimeInput,
@@ -69,7 +74,30 @@ export function mintError(error: Error | null): UserFacingError | null {
       isSpecific: true,
     };
   }
+  if (parseSorobanContractErrorCode(mapped.details) === 15) {
+    return {
+      message: PLUSD_NOT_AUTHORIZED_COPY,
+      details: mapped.details,
+      isSpecific: true,
+    };
+  }
   return mapped;
+}
+
+export const PLUSD_NOT_AUTHORIZED_COPY =
+  "This receiver's PLUSD trustline is not authorised yet. The relayer authorises a KYB-passed lender's linked address automatically; try again in a few minutes.";
+
+export function plusdBlockMessage(
+  phase: "no-trustline" | "not-authorized",
+  isCapitalWallet: boolean,
+): string {
+  const holder = isCapitalWallet ? "capital wallet" : "lender";
+  if (phase === "no-trustline") {
+    return `This receiver has no PLUSD trustline. The ${holder} must add PLUSD to this wallet before it can receive a mint.`;
+  }
+  return isCapitalWallet
+    ? "The capital wallet's PLUSD trustline is not authorised yet. Authorise it before minting."
+    : PLUSD_NOT_AUTHORIZED_COPY;
 }
 
 export function mintStageLabel(stage: RecordWireInStage | null): string {
@@ -140,6 +168,11 @@ export type MintConfirm =
   | { row: DepositRow; phase: "no-receiver" }
   | {
       row: DepositRow;
+      phase: "no-trustline" | "not-authorized";
+      receiver: WireInReceiver;
+    }
+  | {
+      row: DepositRow;
       phase: "ready";
       receiver: WireInReceiver;
       previous: WireInReceiver | null;
@@ -195,6 +228,7 @@ export function useLpBankDepositsSection(lpId: number) {
   const mutation = useRecordBankDeposit();
   const wallet = useStellarWallet();
   const mint = useRecordWireIn();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
@@ -344,6 +378,23 @@ export function useLpBankDepositsSection(lpId: number) {
     };
   }
 
+  function authorizationFailure(error: unknown): UserFacingError {
+    return {
+      message: "Could not read this receiver's PLUSD authorisation. Try again.",
+      details: error instanceof Error ? error.message : String(error),
+      isSpecific: true,
+    };
+  }
+
+  async function readReceiverAuthorization(address: string) {
+    return readPlusdAuthorization({
+      plusdId: await ensureMinterPlusdId(queryClient),
+      address,
+      rpcUrl: ENV.STELLAR_RPC_URL,
+      networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
+    });
+  }
+
   async function openMint(row: DepositRow) {
     if (mintDisabledReason(row) !== null) return;
     mint.reset();
@@ -359,6 +410,24 @@ export function useLpBankDepositsSection(lpId: number) {
         return;
       }
       const changed = !sameReceiver(next, receiver);
+      let authorization;
+      try {
+        authorization = await readReceiverAuthorization(next.receiver);
+      } catch (error) {
+        if (token !== readToken.current) return;
+        setConfirm({
+          row,
+          phase: "read-error",
+          error: authorizationFailure(error),
+        });
+        return;
+      }
+      if (token !== readToken.current) return;
+      if (authorization !== "authorized") {
+        setConfirm({ row, phase: authorization, receiver: next });
+        if (changed) void lpQuery.refetch();
+        return;
+      }
       setConfirm({
         row,
         phase: "ready",
@@ -403,6 +472,23 @@ export function useLpBankDepositsSection(lpId: number) {
         });
         setAck(false);
         void lpQuery.refetch();
+        return;
+      }
+      let authorization;
+      try {
+        authorization = await readReceiverAuthorization(next.receiver);
+      } catch (error) {
+        if (token !== readToken.current) return;
+        setConfirm({
+          row,
+          phase: "read-error",
+          error: authorizationFailure(error),
+        });
+        return;
+      }
+      if (token !== readToken.current) return;
+      if (authorization !== "authorized") {
+        setConfirm({ row, phase: authorization, receiver: next });
         return;
       }
       try {
