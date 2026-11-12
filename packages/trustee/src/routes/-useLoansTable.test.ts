@@ -1,28 +1,13 @@
-/**
- * Tests for the Loans presenter logic (`-useLoansTable.ts`, issue #843,
- * corrected by #888, decimal-normalization removed by #906).
- *
- * All pure — no DOM, no query layer. Covers the CCR classification (served
- * `ccr_bps` used as-is, no ÷1000 correction — #888), the 120% pre-default
- * classification boundaries, the spot sub-line (real 7-day basis, no
- * fabricated `/t`), the row + summary mappings (all amounts
- * displayed exactly as served, `—` for every null), and the per-status
- * counts + active-tab client-side filter (Default/Closed empty per resolved
- * Open Question 2).
- */
+// spec: docs/frontend/trustee-flows.md#loan-book--tables
 import { describe, it, expect } from "vitest";
 import type { LoanBookEntry, LoanBookResponse } from "@/api/useLoanBook";
 import { formatMaturityDate } from "@/utils/formatDate";
 import {
   buildLoansView,
-  classifyCcr,
   formatNearestPayment,
-  formatSpot,
   mapEntryToRow,
+  mapLtvCell,
   mapSummary,
-  MAINTENANCE_MARGIN_BPS,
-  HEALTHY_MARGIN_BPS,
-  HARD_MARGIN_CALL_BPS,
   CONCENTRATION_LIMIT_PCT,
 } from "./-useLoansTable";
 
@@ -42,11 +27,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     maturity: 1_785_000_000,
     next_payment_timestamp: 1_785_000_000,
     days_overdue: null,
-    spot_price: "4500.00",
-    spot_change_7d: "-0.1800",
-    collateral: "2100.000000",
-    ltv: null,
-    ccr_bps: 11_400, // served as-is (#888) ⇒ 114%, no ÷1000 correction
     duration_days: 180,
     rate: "0.140000",
     protection: null,
@@ -60,42 +40,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     ...overrides,
   };
 }
-
-// ── classifyCcr (4-level 130/120/110 bands, spec §CCR color bands, #939) ───────
-
-describe("classifyCcr", () => {
-  it("uses the 130 / 120 / 110% thresholds in bps", () => {
-    expect(HEALTHY_MARGIN_BPS).toBe(13_000);
-    expect(MAINTENANCE_MARGIN_BPS).toBe(12_000);
-    expect(HARD_MARGIN_CALL_BPS).toBe(11_000);
-  });
-
-  it("≥130% → healthy (boundary inclusive)", () => {
-    expect(classifyCcr(13_000)).toBe("healthy");
-    expect(classifyCcr(20_987)).toBe("healthy");
-  });
-
-  it("120–130% → attention / yellow (120 inclusive, <130)", () => {
-    expect(classifyCcr(12_999)).toBe("attention");
-    expect(classifyCcr(12_000)).toBe("attention");
-  });
-
-  it("110–120% → margin-call / orange (110 inclusive, <120)", () => {
-    expect(classifyCcr(11_999)).toBe("margin-call");
-    expect(classifyCcr(11_000)).toBe("margin-call");
-  });
-
-  it("<110% → pre-default / red", () => {
-    expect(classifyCcr(10_999)).toBe("pre-default");
-    expect(classifyCcr(5_000)).toBe("pre-default");
-  });
-
-  it("null → null (no flag)", () => {
-    expect(classifyCcr(null)).toBeNull();
-  });
-});
-
-// ── formatNearestPayment (#941) ───────────────────────────────────────────────
 
 describe("formatNearestPayment", () => {
   it("shows the payment date when not overdue (days_overdue null)", () => {
@@ -137,38 +81,10 @@ describe("formatNearestPayment", () => {
 
 // ── formatSpot ────────────────────────────────────────────────────────────────
 
-describe("formatSpot", () => {
-  it("renders the REAL 7-day basis, no fabricated /t unit (Figma-adjacent)", () => {
-    expect(formatSpot("4500.00", "-0.1800")).toEqual({
-      text: "$4,500 · −18% 7d",
-      negative: true,
-    });
-  });
-
-  it("uses a + sign and negative=false for a positive change", () => {
-    expect(formatSpot("100.00", "0.0500")).toEqual({
-      text: "$100 · +5% 7d",
-      negative: false,
-    });
-  });
-
-  it("shows the price alone when the 7-day change is null", () => {
-    expect(formatSpot("6900.00", null)).toEqual({
-      text: "$6,900",
-      negative: false,
-    });
-  });
-
-  it("returns null when the asset is unpriced", () => {
-    expect(formatSpot(null, "-0.10")).toBeNull();
-    expect(formatSpot("not-a-number", null)).toBeNull();
-  });
-});
-
 // ── mapEntryToRow ─────────────────────────────────────────────────────────────
 
 describe("mapEntryToRow", () => {
-  it("displays senior AND collateral as served (issue #906), maps the served CCR as-is", () => {
+  it("maps the served amounts and identity, with no spot, collateral or CCR fields", () => {
     const row = mapEntryToRow(makeEntry());
     expect(row.key).toBe("99000001:4488");
     expect(row.loanId).toBe("4488");
@@ -176,52 +92,50 @@ describe("mapEntryToRow", () => {
     expect(row.chain).toBe("Stellar");
     expect(row.originator).toBe("Delta Commodities");
     expect(row.commodity).toBe("Coffee");
-    // senior_outstanding "1840.000000" ⇒ $1.84K, two-decimal compact, as served.
     expect(row.seniorOutstanding).toBe("$1.84K");
-    // collateral "2100.000000" ⇒ $2.10K, two-decimal compact, as served.
-    expect(row.collateral).toBe("$2.10K");
-    expect(row.spot).toEqual({ text: "$4,500 · −18% 7d", negative: true });
-    // next_payment_timestamp = maturity, not overdue ⇒ the payment date.
     expect(row.nearestPayment).toEqual({
       text: formatMaturityDate(1_785_000_000),
       overdue: false,
     });
     expect(row.stage).toBe("WatchList");
     expect(row.status).toBe("WatchList");
-    // ccr_bps 11_400 used as-is (no ÷1000) ⇒ 114% → margin-call band (110–120%, #939).
-    expect(row.ccr).toEqual({
-      percent: "114%",
-      band: "margin-call",
-    });
+    expect(row).not.toHaveProperty("spot");
+    expect(row).not.toHaveProperty("collateral");
+    expect(row).not.toHaveProperty("ccr");
+  });
+});
+
+describe("mapLtvCell", () => {
+  it("is blank for an EVM row even when the keys are present", () => {
+    expect(
+      mapLtvCell(
+        makeEntry({ chain_id: 560048, ltv_bps: 8000, margin_call_open: true }),
+      ),
+    ).toBeNull();
   });
 
-  it("renders — / null for every missing field, never fabricating", () => {
-    const row = mapEntryToRow(
-      makeEntry({
-        collateral: null,
-        spot_price: null,
-        spot_change_7d: null,
-        ccr_bps: null,
-      }),
-    );
-    expect(row.collateral).toBe("—");
-    expect(row.spot).toBeNull();
-    expect(row.ccr).toBeNull();
+  it("renders — for a Stellar row with absent or null keys", () => {
+    const expected = { text: "—", marginCallOpen: false, priceStale: false };
+    expect(mapLtvCell(makeEntry())).toEqual(expected);
+    expect(
+      mapLtvCell(
+        makeEntry({ ltv_bps: null, margin_call_open: null, price_stale: null }),
+      ),
+    ).toEqual(expected);
   });
 
-  it("matches issue #888's live payload for loan #1 (senior $1,000, collateral $2,098.65, CCR 209.87%), displayed as served (#906)", () => {
-    const row = mapEntryToRow(
-      makeEntry({
-        loan_id: "1",
-        principal: "1200.000000", // displayed as served (not rendered on this row, sanity only)
-        senior_outstanding: "1000.000000", // displayed as served ⇒ $1.00K
-        collateral: "2098.65", // displayed as served ⇒ $2.10K
-        ccr_bps: 20_987, // served as-is (not ÷1000) ⇒ 209.87%
-      }),
+  it("formats the served bps and carries the flags", () => {
+    expect(
+      mapLtvCell(
+        makeEntry({ ltv_bps: 8123, margin_call_open: true, price_stale: true }),
+      ),
+    ).toEqual({ text: "81.2%", marginCallOpen: true, priceStale: true });
+  });
+
+  it("passes the u32::MAX sentinel through as 'No security value'", () => {
+    expect(mapLtvCell(makeEntry({ ltv_bps: 4_294_967_295 }))?.text).toBe(
+      "No security value",
     );
-    expect(row.seniorOutstanding).toBe("$1.00K");
-    expect(row.collateral).toBe("$2.10K");
-    expect(row.ccr?.percent).toBe("210%"); // Math.round(20987 / 100)
   });
 });
 
@@ -344,5 +258,28 @@ describe("buildLoansView", () => {
     const { counts, rows } = buildLoansView(withDisbursing, "Active");
     expect(counts.Active).toBe(3); // 2 Performing + 1 Disbursing
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Delta"]);
+  });
+});
+
+describe("buildLoansView showLtvColumn", () => {
+  const view = (loans: LoanBookEntry[]) =>
+    buildLoansView({ summary: SUMMARY, loans }, "All").showLtvColumn;
+
+  it("is false when no row carries the keys (pre-backend) or all are null", () => {
+    expect(view([makeEntry()])).toBe(false);
+    expect(
+      view([
+        makeEntry({ ltv_bps: null, margin_call_open: null, price_stale: null }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("is true for a Stellar row with an LTV or an open margin call", () => {
+    expect(view([makeEntry({ ltv_bps: 7000 })])).toBe(true);
+    expect(view([makeEntry({ margin_call_open: true })])).toBe(true);
+  });
+
+  it("ignores EVM rows", () => {
+    expect(view([makeEntry({ chain_id: 560048, ltv_bps: 7000 })])).toBe(false);
   });
 });

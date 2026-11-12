@@ -3,7 +3,6 @@ import { useState } from "react";
 import {
   useLoansTable,
   LOAN_TABS,
-  type CcrBand,
   type LoanTab,
   type LoanTableRow,
   type LoansSummaryView,
@@ -26,28 +25,26 @@ import type { TargetChainOption } from "@/lib/targetChains";
 // ordering — same precedent as `origination.index.tsx`.
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
 
-// CCR band colors + At-risk/negative-spot red. spec:
-// trustee-flows.md#figma--token--px-mapping-loans-page-41169989.
+// spec: trustee-flows.md#figma--token--px-mapping-loans-page-41169989.
 const NEGATIVE_RED = "#b20000";
 const ATTENTION_AMBER = "#6e6400";
-const MARGIN_CALL_ORANGE = "#b35900";
-const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 
-// Flexible column tracks (Figma's relative proportions) + a fixed 34px
-// trailing chevron column — same approach as the Origination table.
 const GRID_TEMPLATE_COLUMNS =
-  "minmax(0,1.1fr) 90px minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,1fr) minmax(0,1.15fr) 34px";
+  "minmax(0,1.2fr) 90px minmax(0,1.7fr) minmax(0,1.2fr) minmax(0,1.1fr) minmax(0,1.3fr) 34px";
+
+const GRID_TEMPLATE_COLUMNS_WITH_LTV =
+  "minmax(0,1.1fr) 90px minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr) 34px";
 
 const COLUMN_HEADERS = [
   "Originator",
   "Chain",
-  "Commodity · spot",
+  "Commodity",
   "Senior outst.",
-  "Collateral",
-  "CCR",
   "Nearest payment",
   "Stage",
 ] as const;
+
+const LTV_COLUMN_INDEX = 4;
 
 const HEADER_CELL_CLASS =
   "flex flex-col items-start overflow-hidden px-[14px] pb-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)] whitespace-nowrap text-ellipsis";
@@ -63,22 +60,6 @@ const EMPTY_TAB_MESSAGE: Record<LoanTab, string> = {
   Default: "No defaulted loans.",
   Closed: "No closed loans.",
 };
-
-/** CCR band → text colour (healthy green token, attention/pre-default one-offs). */
-function ccrBandColor(band: CcrBand | null): string {
-  switch (band) {
-    case "healthy":
-      return POSITIVE_GREEN;
-    case "attention":
-      return ATTENTION_AMBER;
-    case "margin-call":
-      return MARGIN_CALL_ORANGE;
-    case "pre-default":
-      return NEGATIVE_RED;
-    default:
-      return "var(--color-pipeline-ink-muted)";
-  }
-}
 
 // ── Summary cards ─────────────────────────────────────────────────────────────
 
@@ -245,43 +226,39 @@ function CommodityCell({ row }: { row: LoanTableRow }) {
       >
         {row.commodity}
       </span>
-      {row.spot != null && (
-        <span
-          className="overflow-hidden text-[12.5px] leading-[17.5px] text-ellipsis"
-          style={{
-            color: row.spot.negative
-              ? NEGATIVE_RED
-              : "var(--color-pipeline-ink-muted)",
-          }}
-        >
-          {row.spot.text}
-        </span>
-      )}
     </div>
   );
 }
 
-function CcrCellView({ row }: { row: LoanTableRow }) {
-  if (row.ccr == null) {
-    return (
-      <div
-        role="cell"
-        className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] text-[color:var(--color-pipeline-ink-muted)]`}
-      >
-        —
-      </div>
-    );
+function LtvCellView({ row }: { row: LoanTableRow }) {
+  if (row.ltv == null) {
+    return <div role="cell" className={BODY_CELL_CLASS} />;
   }
+  const { text, marginCallOpen, priceStale } = row.ltv;
   return (
     <div role="cell" className={`${BODY_CELL_CLASS} gap-[2px]`}>
       <span
         className="text-[16.5px] leading-[23.1px] font-bold"
-        style={{ color: ccrBandColor(row.ccr.band) }}
-        data-testid="loans-ccr"
-        data-band={row.ccr.band ?? "none"}
+        style={{
+          color: marginCallOpen ? NEGATIVE_RED : "var(--color-pipeline-ink)",
+        }}
+        data-testid="loans-ltv"
+        data-margin-call={marginCallOpen}
+        data-price-stale={priceStale}
       >
-        {row.ccr.percent}
+        {text}
       </span>
+      {(marginCallOpen || priceStale) && (
+        <span className="text-[12.5px] leading-[17.5px]">
+          {marginCallOpen && (
+            <span style={{ color: NEGATIVE_RED }}>Margin call</span>
+          )}
+          {marginCallOpen && priceStale && " · "}
+          {priceStale && (
+            <span style={{ color: ATTENTION_AMBER }}>Price stale</span>
+          )}
+        </span>
+      )}
     </div>
   );
 }
@@ -289,10 +266,12 @@ function CcrCellView({ row }: { row: LoanTableRow }) {
 function LoanRow({
   row,
   isFirst,
+  showLtvColumn,
   onOpen,
 }: {
   row: LoanTableRow;
   isFirst: boolean;
+  showLtvColumn: boolean;
   onOpen: (row: LoanTableRow) => void;
 }) {
   return (
@@ -311,7 +290,9 @@ function LoanRow({
       }}
       className="grid cursor-pointer items-stretch"
       style={{
-        gridTemplateColumns: GRID_TEMPLATE_COLUMNS,
+        gridTemplateColumns: showLtvColumn
+          ? GRID_TEMPLATE_COLUMNS_WITH_LTV
+          : GRID_TEMPLATE_COLUMNS,
         // Separator BETWEEN rows only — the first row's top edge is the box border.
         borderTop: isFirst ? undefined : `1px solid ${LINE_COLOR}`,
       }}
@@ -339,14 +320,7 @@ function LoanRow({
       >
         {row.seniorOutstanding}
       </div>
-      <div
-        role="cell"
-        title={row.collateral}
-        className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] text-ellipsis text-[color:var(--color-pipeline-ink)]`}
-      >
-        {row.collateral}
-      </div>
-      <CcrCellView row={row} />
+      {showLtvColumn && <LtvCellView row={row} />}
       <div
         role="cell"
         data-testid="loans-nearest-payment"
@@ -383,12 +357,21 @@ function LoanRow({
 function LoansTable({
   activeTab,
   rows,
+  showLtvColumn,
   onOpenLoan,
 }: {
   activeTab: LoanTab;
   rows: LoanTableRow[];
+  showLtvColumn: boolean;
   onOpenLoan: (row: LoanTableRow) => void;
 }) {
+  const headers = showLtvColumn
+    ? [
+        ...COLUMN_HEADERS.slice(0, LTV_COLUMN_INDEX),
+        "LTV",
+        ...COLUMN_HEADERS.slice(LTV_COLUMN_INDEX),
+      ]
+    : COLUMN_HEADERS;
   return (
     <div
       className="w-full"
@@ -400,9 +383,13 @@ function LoansTable({
       <div
         role="row"
         className="grid items-start"
-        style={{ gridTemplateColumns: GRID_TEMPLATE_COLUMNS }}
+        style={{
+          gridTemplateColumns: showLtvColumn
+            ? GRID_TEMPLATE_COLUMNS_WITH_LTV
+            : GRID_TEMPLATE_COLUMNS,
+        }}
       >
-        {COLUMN_HEADERS.map((label) => (
+        {headers.map((label) => (
           <div key={label} role="columnheader" className={HEADER_CELL_CLASS}>
             {label}
           </div>
@@ -435,6 +422,7 @@ function LoansTable({
               key={row.key}
               row={row}
               isFirst={i === 0}
+              showLtvColumn={showLtvColumn}
               onOpen={onOpenLoan}
             />
           ))}
@@ -444,38 +432,17 @@ function LoansTable({
   );
 }
 
-/**
- * CCR-band footnote (Figma node `4116:10111`). Static explanatory text with the
- * spec's four coloured band spans (#939): ≥130% healthy · 120–130% watchlist ·
- * 110–120% margin call · <110% hard margin call.
- */
-function CcrFootnote() {
+function LtvFootnote() {
   return (
     <div
       className="pt-[18px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[color:var(--color-pipeline-ink-muted)]"
       data-testid="loans-footnote"
     >
       <p>
-        CCR = collateral value / outstanding senior, recomputed off-chain every
-        60 min.{" "}
-        <span className="font-semibold" style={{ color: POSITIVE_GREEN }}>
-          ≥130%
-        </span>{" "}
-        healthy ·{" "}
-        <span className="font-semibold" style={{ color: ATTENTION_AMBER }}>
-          120–130%
-        </span>{" "}
-        watchlist ·{" "}
-        <span className="font-semibold" style={{ color: MARGIN_CALL_ORANGE }}>
-          110–120%
-        </span>{" "}
-        margin call ·{" "}
-        <span className="font-semibold" style={{ color: NEGATIVE_RED }}>
-          &lt;110%
-        </span>{" "}
-        hard margin call.
+        LTV = amount owed (outstanding principal plus accrued interest) /
+        security value, from the Stellar security registry. A margin call opens
+        above the loan&apos;s margin-call ratio. Stellar loans only.
       </p>
-      <p>Written on-chain only at threshold crossings.</p>
     </div>
   );
 }
@@ -487,8 +454,15 @@ function LoansIndex() {
   const [chainFilter, setChainFilter] = useState<number | null>(null);
   const navigate = useNavigate();
   const targetChains = useServedTargetChains();
-  const { state, errorMessage, errorDetails, summary, counts, rows } =
-    useLoansTable(activeTab, chainFilter);
+  const {
+    state,
+    errorMessage,
+    errorDetails,
+    summary,
+    counts,
+    rows,
+    showLtvColumn,
+  } = useLoansTable(activeTab, chainFilter);
 
   const openLoan = (row: LoanTableRow) =>
     void navigate({
@@ -550,9 +524,10 @@ function LoansIndex() {
             <LoansTable
               activeTab={activeTab}
               rows={rows}
+              showLtvColumn={showLtvColumn}
               onOpenLoan={openLoan}
             />
-            <CcrFootnote />
+            {showLtvColumn && <LtvFootnote />}
           </div>
         </>
       )}

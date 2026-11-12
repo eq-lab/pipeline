@@ -1,19 +1,9 @@
-/**
- * Render tests for the Loan detail route (`loans.$id.tsx`, issues #845 / #847).
- * The view-model hook `useLoanDetail` is mocked so the component is exercised as
- * a pure render function (FRONTEND.md rule 2); the presenter's own logic is
- * covered by `-useLoanDetail.test.ts`. `Link` and `Route.useParams` are patched
- * (no real router tree), mirroring `-origination-detail-page.test.tsx`.
- *
- * Asserts the live hero (identity + band chip), the live Price & collateral card
- * (provider note, two-tone spot, rows, `missing_inputs` note, plus its own
- * loading / error states), the static action sections, the back link, and the
- * top-level loading / error states.
- */
+// spec: docs/frontend/trustee-flows.md#security-card
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
+import type { SecurityCardView } from "./-loanSecurity";
 import {
   CLOSED_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
@@ -155,6 +145,29 @@ function renderRoute() {
   return render(<Page />);
 }
 
+function securityView(
+  overrides: Partial<SecurityCardView> = {},
+): SecurityCardView {
+  return {
+    state: "ready",
+    errorMessage: null,
+    errorDetails: null,
+    ltv: "81.2%",
+    ltvTone: "attention",
+    rows: [
+      { label: "Advance ratio", value: "80%" },
+      { label: "Margin-call ratio", value: "85%" },
+      { label: "Security value", value: "$2,106,000" },
+      { label: "Amount owed", value: "$1,710,000" },
+      { label: "Margin call", value: "None" },
+    ],
+    priceStale: true,
+    refreshPending: false,
+    notes: [],
+    ...overrides,
+  };
+}
+
 function makeResult(
   overrides: Partial<UseLoanDetailResult> = {},
 ): UseLoanDetailResult {
@@ -163,7 +176,6 @@ function makeResult(
     errorMessage: null,
     errorDetails: null,
     variant: "performing",
-    ccrTrend: null,
     rollover: null,
     maturityDate: "30 Jun 2026",
     documents: [],
@@ -239,20 +251,7 @@ function makeResult(
     },
     currentStage: null,
     otherActions: PERFORMING_OTHER_ACTIONS,
-    priceCollateral: {
-      state: "ready",
-      errorMessage: null,
-      errorDetails: null,
-      providerNote: "via coingecko",
-      spot: { main: "$10,450", change: "−1.2% 7d", changeNegative: true },
-      rows: [
-        { label: "Quantity", value: "620 dmt" },
-        { label: "Collateral value (after 10% haircut)", value: "$5,831,100" },
-        { label: "Senior outstanding", value: "$4,950,000" },
-        { label: "CCR", value: "117.80%" },
-      ],
-      missingNote: null,
-    },
+    security: securityView(),
     ...overrides,
   };
 }
@@ -303,109 +302,113 @@ describe("Loan detail route — hero (live)", () => {
   });
 });
 
-describe("Loan detail route — Price & collateral (live)", () => {
-  it("renders the provider note, two-tone spot, and the four rows", () => {
+describe("Loan detail route — Security card", () => {
+  it("renders the LTV, ratios, margin-call state and the price-stale chip", () => {
     renderRoute();
-    const pc = screen.getByTestId("loan-detail-price-collateral");
-    expect(within(pc).getByText("via coingecko")).toBeInTheDocument();
-    expect(within(pc).getByText("$10,450")).toBeInTheDocument();
-    expect(within(pc).getByText("−1.2% 7d")).toBeInTheDocument();
-    expect(within(pc).getByText("620 dmt")).toBeInTheDocument();
+    const card = screen.getByTestId("loan-detail-security");
+    expect(within(card).getByText("Security")).toBeInTheDocument();
+    const ltv = within(card).getByTestId("loan-detail-security-ltv");
+    expect(ltv).toHaveTextContent("81.2%");
+    expect(ltv).toHaveStyle({ color: "#6e6400" });
+    expect(within(card).getByText("80%")).toBeInTheDocument();
+    expect(within(card).getByText("85%")).toBeInTheDocument();
+    expect(within(card).getByText("$2,106,000")).toBeInTheDocument();
+    expect(within(card).getByText("None")).toBeInTheDocument();
     expect(
-      within(pc).getByText("Collateral value (after 10% haircut)"),
-    ).toBeInTheDocument();
-    expect(within(pc).getByText("$5,831,100")).toBeInTheDocument();
-    expect(within(pc).getByText("117.80%")).toBeInTheDocument();
-  });
-
-  it("renders the missing-inputs note when the valuation is incomplete", () => {
-    mockUseLoanDetail.mockReturnValue(
-      makeResult({
-        priceCollateral: {
-          state: "ready",
-          errorMessage: null,
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
-          rows: [
-            { label: "Quantity", value: "—" },
-            { label: "Collateral value (after 10% haircut)", value: "—" },
-            { label: "Senior outstanding", value: "—" },
-            { label: "CCR", value: "—" },
-          ],
-          missingNote: "Awaiting: reference_price, quantity",
-        },
-      }),
-    );
-    renderRoute();
-    expect(
-      screen.getByTestId("loan-detail-price-collateral-missing"),
-    ).toHaveTextContent("Awaiting: reference_price, quantity");
-  });
-
-  it("renders the P&C loading skeleton while the valuation loads", () => {
-    mockUseLoanDetail.mockReturnValue(
-      makeResult({
-        priceCollateral: {
-          state: "loading",
-          errorMessage: null,
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
-          rows: [],
-          missingNote: null,
-        },
-      }),
-    );
-    renderRoute();
-    expect(
-      screen.getByTestId("loan-detail-price-collateral-loading"),
+      within(card).getByTestId("loan-detail-security-price-stale"),
     ).toBeInTheDocument();
   });
 
-  it("renders a neutral 'no valuation' note for a 404 (empty state)", () => {
+  it("paints the LTV red for a negative tone and omits the chip when fresh", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        priceCollateral: {
-          state: "empty",
-          errorMessage: null,
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
-          rows: [],
-          missingNote: "No valuation on record for this loan.",
-        },
+        security: securityView({ ltvTone: "negative", priceStale: false }),
       }),
     );
     renderRoute();
+    expect(screen.getByTestId("loan-detail-security-ltv")).toHaveStyle({
+      color: "#b20000",
+    });
     expect(
-      screen.getByTestId("loan-detail-price-collateral-empty"),
-    ).toHaveTextContent("No valuation on record for this loan.");
-    // Not a red error alert.
-    expect(
-      screen.queryByTestId("loan-detail-price-collateral-error"),
+      screen.queryByTestId("loan-detail-security-price-stale"),
     ).not.toBeInTheDocument();
   });
 
-  it("renders the P&C error message when the valuation fails", () => {
+  it("shows the refresh note while an on-chain refresh is pending", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ security: securityView({ refreshPending: true }) }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-refresh"),
+    ).toHaveTextContent("Updating from chain…");
+  });
+
+  it("renders the loading skeleton", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ security: securityView({ state: "loading", rows: [] }) }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-loading"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the no-terms note", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        priceCollateral: {
-          state: "error",
-          errorMessage: "boom",
-          errorDetails: null,
-          providerNote: "",
-          spot: { main: "—", change: null, changeNegative: false },
+        security: securityView({
+          state: "no-terms",
           rows: [],
-          missingNote: null,
-        },
+          notes: ["No security terms are set for this loan."],
+        }),
       }),
     );
     renderRoute();
     expect(
-      screen.getByTestId("loan-detail-price-collateral-error"),
-    ).toHaveTextContent("boom");
+      screen.getByTestId("loan-detail-security-no-terms"),
+    ).toHaveTextContent("No security terms are set for this loan.");
   });
+
+  it("shows an inline error without breaking the rest of the page", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        security: securityView({
+          state: "error",
+          errorMessage: "boom",
+          rows: [],
+        }),
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-security-error")).toHaveTextContent(
+      "boom",
+    );
+    expect(screen.getByTestId("loan-detail-registry")).toBeInTheDocument();
+    expect(screen.getByTestId("loan-detail-tiles")).toBeInTheDocument();
+  });
+
+  it.each(["performing", "watchlist", "matured"] as const)(
+    "renders no card and no placeholder row when hidden on the %s layout",
+    (variant) => {
+      mockUseLoanDetail.mockReturnValue(
+        makeResult({
+          variant,
+          security: securityView({ state: "hidden", rows: [] }),
+        }),
+      );
+      renderRoute();
+      expect(
+        screen.queryByTestId("loan-detail-security"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("loan-detail-price-collateral"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("loan-detail-ccr-trend"),
+      ).not.toBeInTheDocument();
+    },
+  );
 });
 
 describe("Loan detail route — Registry state & derived (live)", () => {
@@ -1315,25 +1318,16 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
         actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
         note: "",
       },
-      ccrTrend: {
-        points: [146, 132, 121, 114],
-        startLabel: "146% · 1 May 2026",
-        currentLabel: "114%",
-        thresholds: [
-          { pct: 120, label: "120%" },
-          { pct: 110, label: "110%" },
-        ],
-      },
     });
   }
 
-  it("renders the CCR-trend chart and the Days-on-watchlist tile", () => {
+  it("renders the Security card with no CCR trend, and the Days-on-watchlist tile", () => {
     mockUseLoanDetail.mockReturnValue(watchlistResult());
     renderRoute();
-    const chart = screen.getByTestId("loan-detail-ccr-trend");
-    expect(chart).toBeInTheDocument();
-    expect(within(chart).getByText("146% · 1 May 2026")).toBeInTheDocument();
-    expect(within(chart).getByText("114%")).toBeInTheDocument();
+    expect(screen.getByTestId("loan-detail-security")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-ccr-trend"),
+    ).not.toBeInTheDocument();
     expect(
       within(screen.getByTestId("loan-detail-tiles")).getByText(
         "Days on watchlist",

@@ -1,34 +1,20 @@
-/**
- * Query-wiring + value→display mapping for the Trustee Loans page.
- *
- * Per `docs/FRONTEND.md` Code structure rule 2, the `.tsx` route is JSX/styling
- * only; this hook owns the `useLoanBook` call, the summary-card view-model, the
- * per-loan row mapping, the CCR classification, and the client-side status
- * filter (mirrors `-useOriginationTable.ts`).
- *
- * spec: docs/frontend/trustee-flows.md#loan-book--tables (resolved Open
- * Questions, never-fabricate defaults, CCR classification & tab mapping).
- */
+// spec: docs/frontend/trustee-flows.md#loan-book--tables
 import { useLoanBook } from "@/api/useLoanBook";
 import type {
   LoanBookEntry,
   LoanBookResponse,
   LoanBookSummary,
 } from "@/api/useLoanBook";
-import { targetChainLabel } from "@/lib/targetChains";
+import { isStellarTarget, targetChainLabel } from "@/lib/targetChains";
 import { loanRowKey } from "@/lib/loanRoute";
 import { formatCompactUsd, formatCompactUsd2dp } from "@/utils/formatUsd";
 import { formatFractionPct } from "@/utils/formatFractionPct";
 import { formatMaturityDate } from "@/utils/formatDate";
 import { toUserError } from "@/utils/userError";
+import { formatLtvBps } from "./-loanSecurity";
 
 // ── Named constants ─────────────────────────────────────────────────────────
 
-// CCR band thresholds + concentration limit — frontend-owned policy constants.
-// spec: docs/frontend/trustee-flows.md#ccr-classification--tab-mapping.
-export const MAINTENANCE_MARGIN_BPS = 12_000;
-export const HEALTHY_MARGIN_BPS = 13_000;
-export const HARD_MARGIN_CALL_BPS = 11_000;
 export const CONCENTRATION_LIMIT_PCT = 10;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -44,7 +30,7 @@ export const LOAN_TABS: readonly LoanTab[] = [
   "Closed",
 ] as const;
 
-// Tab → served `status` literals. spec: trustee-flows.md#ccr-classification--tab-mapping.
+// Tab → served `status` literals. spec: trustee-flows.md#ltv-column--tab-mapping.
 const TAB_STATUSES: Record<Exclude<LoanTab, "All">, readonly string[]> = {
   Active: ["Performing", "Disbursing"],
   Watchlist: ["WatchList", "Past Due", "Matured"],
@@ -56,23 +42,10 @@ function tabMatches(tab: LoanTab, status: string): boolean {
   return tab === "All" || TAB_STATUSES[tab].includes(status);
 }
 
-/** CCR footnote band → determines the CCR cell colour. */
-export type CcrBand = "healthy" | "attention" | "margin-call" | "pre-default";
-
-/** The commodity + 7-day spot sub-line, pre-formatted for the view. */
-export interface SpotLine {
-  /** e.g. `"$4,500 · −18% 7d"`. */
+export interface LtvCell {
   text: string;
-  /** Trailing 7-day change is negative → the view paints the line red. */
-  negative: boolean;
-}
-
-/** The CCR cell view-model. */
-export interface CcrCell {
-  /** e.g. `"210%"` (whole percent, served `ccr_bps` as-is — #888). */
-  percent: string;
-  /** Colour band, or `null` when CCR is unavailable (renders neutral). */
-  band: CcrBand | null;
+  marginCallOpen: boolean;
+  priceStale: boolean;
 }
 
 /** One formatted, display-ready row of the active-loan table. */
@@ -84,14 +57,9 @@ export interface LoanTableRow {
   chain: string;
   originator: string;
   commodity: string;
-  /** Spot sub-line, or `null` when the asset is unpriced (no sub-line). */
-  spot: SpotLine | null;
   /** Outstanding senior, displayed as served, two-decimal compact (e.g. `$1.84M`). */
   seniorOutstanding: string;
-  /** Collateral, displayed as served (issue #906 — no frontend rescaling), two-decimal compact. `$2.10M` / `—`. */
-  collateral: string;
-  /** CCR cell, or `null` when `ccr_bps` is unavailable. */
-  ccr: CcrCell | null;
+  ltv: LtvCell | null;
   /** Nearest payment: the next payment's date, or "N days late" when overdue (#941). */
   nearestPayment: NearestPayment;
   /** Stage = the served status label (`Performing` displayed as `Active`, #1119). */
@@ -122,6 +90,7 @@ export interface UseLoansTableResult {
   counts: Record<LoanTab, number>;
   /** Rows for the active tab only (client-side status filter). */
   rows: LoanTableRow[];
+  showLtvColumn: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,16 +98,6 @@ export interface UseLoansTableResult {
 /** `"—"` for anything not a non-empty string — never fabricates a value. */
 function safeString(value: unknown): string {
   return typeof value === "string" && value.length > 0 ? value : "—";
-}
-
-// Classifies a served CCR (bps, used as-is) into the 4-level band.
-// spec: docs/frontend/trustee-flows.md#ccr-classification--tab-mapping.
-export function classifyCcr(servedBps: number | null): CcrBand | null {
-  if (servedBps == null || !Number.isFinite(servedBps)) return null;
-  if (servedBps >= HEALTHY_MARGIN_BPS) return "healthy";
-  if (servedBps >= MAINTENANCE_MARGIN_BPS) return "attention";
-  if (servedBps >= HARD_MARGIN_CALL_BPS) return "margin-call";
-  return "pre-default";
 }
 
 /** The **Nearest payment** cell — next payment date, or "N days late" when overdue. */
@@ -169,28 +128,13 @@ export function formatNearestPayment(
   return { text: formatMaturityDate(nextPaymentUnix), overdue: false };
 }
 
-// Formats the spot sub-line, e.g. "$4,500 · −18% 7d". spec:
-// trustee-flows.md#never-fabricate-defaults-exec-plan-risk-3.
-export function formatSpot(
-  spotPrice: string | null,
-  spotChange7d: string | null,
-): SpotLine | null {
-  if (spotPrice == null) return null;
-  const price = parseFloat(spotPrice);
-  if (!Number.isFinite(price)) return null;
-
-  const priceText = `$${new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(price)}`;
-
-  const change = spotChange7d == null ? NaN : parseFloat(spotChange7d);
-  if (!Number.isFinite(change)) {
-    return { text: priceText, negative: false };
-  }
-  const pct = Math.round(Math.abs(change) * 100);
-  // U+2212 MINUS SIGN / U+002B PLUS SIGN, matching the Figma glyphs.
-  const sign = change < 0 ? "−" : "+";
-  return { text: `${priceText} · ${sign}${pct}% 7d`, negative: change < 0 };
+export function mapLtvCell(entry: LoanBookEntry): LtvCell | null {
+  if (!isStellarTarget(entry.chain_id)) return null;
+  return {
+    text: formatLtvBps(entry.ltv_bps ?? null),
+    marginCallOpen: entry.margin_call_open === true,
+    priceStale: entry.price_stale === true,
+  };
 }
 
 /** Formats a whole-day tenor as `"148d"`; `null`/non-finite → `"—"`. */
@@ -203,15 +147,6 @@ function formatTenor(days: number | null): string {
 
 /** Maps one `LoanBookEntry` to a formatted table row. */
 export function mapEntryToRow(entry: LoanBookEntry): LoanTableRow {
-  const servedCcrBps = entry.ccr_bps;
-  const ccr: CcrCell | null =
-    servedCcrBps == null || !Number.isFinite(servedCcrBps)
-      ? null
-      : {
-          percent: `${Math.round(servedCcrBps / 100)}%`,
-          band: classifyCcr(servedCcrBps),
-        };
-
   return {
     key: loanRowKey(entry.chain_id, entry.loan_id),
     loanId: entry.loan_id,
@@ -219,11 +154,8 @@ export function mapEntryToRow(entry: LoanBookEntry): LoanTableRow {
     chain: targetChainLabel(entry.chain_id),
     originator: safeString(entry.originator),
     commodity: safeString(entry.commodity),
-    spot: formatSpot(entry.spot_price, entry.spot_change_7d),
-    // Two-decimal compact (e.g. $1.84M) to match the collateral column.
     seniorOutstanding: formatCompactUsd2dp(entry.senior_outstanding),
-    collateral: formatCompactUsd2dp(entry.collateral),
-    ccr,
+    ltv: mapLtvCell(entry),
     nearestPayment: formatNearestPayment(
       entry.next_payment_timestamp,
       entry.days_overdue,
@@ -275,11 +207,17 @@ export function buildLoansView(
   summary: LoansSummaryView;
   counts: Record<LoanTab, number>;
   rows: LoanTableRow[];
+  showLtvColumn: boolean;
 } {
   const allRows = data.loans.map((entry) => mapEntryToRow(entry));
   const counts = countByStatus(allRows);
   const rows = allRows.filter((r) => tabMatches(activeTab, r.status));
-  return { summary: mapSummary(data.summary), counts, rows };
+  const showLtvColumn = data.loans.some(
+    (e) =>
+      isStellarTarget(e.chain_id) &&
+      ((e.ltv_bps ?? null) !== null || e.margin_call_open === true),
+  );
+  return { summary: mapSummary(data.summary), counts, rows, showLtvColumn };
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -313,6 +251,7 @@ export function useLoansTable(
       summary: null,
       counts: EMPTY_COUNTS,
       rows: [],
+      showLtvColumn: false,
     };
   }
   if (error) {
@@ -324,6 +263,7 @@ export function useLoansTable(
       summary: null,
       counts: EMPTY_COUNTS,
       rows: [],
+      showLtvColumn: false,
     };
   }
   if (!data) {
@@ -334,10 +274,14 @@ export function useLoansTable(
       summary: null,
       counts: EMPTY_COUNTS,
       rows: [],
+      showLtvColumn: false,
     };
   }
 
-  const { summary, counts, rows } = buildLoansView(data, activeTab);
+  const { summary, counts, rows, showLtvColumn } = buildLoansView(
+    data,
+    activeTab,
+  );
   return {
     state: data.loans.length === 0 ? "empty" : "ready",
     errorMessage: null,
@@ -345,5 +289,6 @@ export function useLoansTable(
     summary,
     counts,
     rows,
+    showLtvColumn,
   };
 }

@@ -1,16 +1,16 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import type { TopConcentration } from "@/api/useLoanBook";
-import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
+import type { UseLoanSecurityResult } from "@/api/useLoanSecurity";
 import { formatFractionPct } from "@/utils/formatFractionPct";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { useLoanBook } from "@/api/useLoanBook";
-import { buildCcrTrend, ccrSeriesFrom, type CcrTrend } from "./-useLoanDetail";
 import {
-  classifyCcr,
-  type CcrBand,
-  MAINTENANCE_MARGIN_BPS,
-  HEALTHY_MARGIN_BPS,
-} from "./-useLoansTable";
+  buildSecurityCard,
+  formatLtvBps,
+  formatLtvLine,
+  type LtvTone,
+} from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
 import {
   chainStateRows,
@@ -21,10 +21,6 @@ import {
   type LabelValue,
   type PageState,
 } from "./-risk-council-shared";
-
-const MARGIN_CALL_PCT = 110;
-const MAINTENANCE_MARGIN_PCT = MAINTENANCE_MARGIN_BPS / 100;
-const HEALTHY_MARGIN_PCT = HEALTHY_MARGIN_BPS / 100;
 
 export const SET_DEFAULT_STATUSES: ReadonlySet<string> = new Set([
   "Performing",
@@ -37,48 +33,11 @@ export const DEFAULT_EFFECTS =
 export const DEFAULT_NO_ROLE =
   "Declaring a default belongs to the Risk Council.";
 
-export function nextCcrAlertPct(ccrBps: number | null): number | null {
-  if (ccrBps == null || !Number.isFinite(ccrBps)) return null;
-  const pct = ccrBps / 100;
-  if (pct > HEALTHY_MARGIN_PCT) return null;
-  if (pct > MAINTENANCE_MARGIN_PCT) return MAINTENANCE_MARGIN_PCT;
-  if (pct > MARGIN_CALL_PCT) return MARGIN_CALL_PCT;
-  return null;
-}
-
-export function formatCcrLine(ccrBps: number | null): string {
-  if (ccrBps == null || !Number.isFinite(ccrBps)) return "—";
-  const pct = Math.round(ccrBps / 100);
-  const alert = nextCcrAlertPct(ccrBps);
-  return alert != null ? `${pct}% — next alert at ${alert}%` : `${pct}%`;
-}
-
 export function formatFacilityLine(
   principal: string | null | undefined,
   seniorOutstanding: string | null | undefined,
 ): string {
   return `${formatFullUsd(principal)} / ${formatFullUsd(seniorOutstanding)}`;
-}
-
-function formatChangeFragment(
-  spotChange7d: string | null | undefined,
-): string | null {
-  if (spotChange7d == null) return null;
-  const change = parseFloat(spotChange7d);
-  if (!Number.isFinite(change)) return null;
-  const pct = Math.round(Math.abs(change) * 100);
-  const sign = change < 0 ? "−" : "+";
-  return `${sign}${pct}% 7d`;
-}
-
-export function buildCollateralLabel(
-  commodity: string,
-  spotChange7d: string | null | undefined,
-): string {
-  const change = formatChangeFragment(spotChange7d);
-  return change != null
-    ? `Collateral (${commodity.toLowerCase()} ${change})`
-    : "Collateral";
 }
 
 export function buildConcentration(
@@ -111,14 +70,43 @@ export function escalateEligibility(status: string | null): Eligibility {
   };
 }
 
+export interface LedgerSecurityView {
+  value: string;
+  ltvLine: string;
+  ltvTone: LtvTone;
+  ratios: string;
+  priceStale: boolean;
+}
+
 export interface LedgerView {
   facilityAndSeniorDeployed: string;
   principalRepaid: string;
-  collateralLabel: string;
-  collateralValue: string;
-  ccrLine: string;
-  ccrBand: CcrBand | null;
+  security: LedgerSecurityView | null;
   daysOnWatchlist: string;
+}
+
+export function buildLedgerSecurity(
+  result: UseLoanSecurityResult,
+): LedgerSecurityView | null {
+  const card = buildSecurityCard(result);
+  if (card.state === "hidden" || card.state === "no-terms") return null;
+  if (card.state !== "ready") {
+    return {
+      value: "—",
+      ltvLine: "—",
+      ltvTone: "neutral",
+      ratios: "—",
+      priceStale: false,
+    };
+  }
+  const terms = result.data?.terms;
+  return {
+    value: formatFullUsd(result.data?.valuation?.value),
+    ltvLine: formatLtvLine(result) ?? card.ltv,
+    ltvTone: card.ltvTone,
+    ratios: `${formatLtvBps(terms?.advance_ratio_bps)} / ${formatLtvBps(terms?.margin_call_ratio_bps)}`,
+    priceStale: card.priceStale,
+  };
 }
 
 export interface PortfolioImpactView {
@@ -135,7 +123,6 @@ export interface RiskCouncilEscalateView {
   originator: string;
   title: string;
   ledger: LedgerView;
-  ccrTrend: CcrTrend | null;
   portfolioImpact: PortfolioImpactView;
   chainState: LabelValue[];
   eligibility: Eligibility;
@@ -150,7 +137,7 @@ export function useRiskCouncilEscalate(
   const loanBook = useLoanBook();
   const base = useRiskCouncilLoanBase(chainId, loanId);
   const entry = base.entry;
-  const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrSeriesFrom(entry));
+  const security = useLoanSecurity(chainId, loanId);
 
   const eligibility = escalateEligibility(base.chainStatus);
   const action = useRiskCouncilActionView({
@@ -191,19 +178,12 @@ export function useRiskCouncilEscalate(
       ),
       principalRepaid:
         repaid == null ? "—" : formatChainAmount(repaid, chainId),
-      collateralLabel: buildCollateralLabel(
-        entry?.commodity ?? "—",
-        entry?.spot_change_7d,
-      ),
-      collateralValue: formatFullUsd(entry?.collateral),
-      ccrLine: formatCcrLine(entry?.ccr_bps ?? null),
-      ccrBand: classifyCcr(entry?.ccr_bps ?? null),
+      security: buildLedgerSecurity(security),
       daysOnWatchlist:
         entry?.days_on_watchlist == null
           ? "—"
           : String(entry.days_on_watchlist),
     },
-    ccrTrend: buildCcrTrend(ccrHistory),
     portfolioImpact: {
       atRiskCurrentPct: formatFractionPct(
         loanBook.data?.summary.at_risk_wl_and_default_pct,

@@ -1,10 +1,10 @@
 /**
  * Tests for `src/api/useCompleteDisbursement.ts` (issue #862). Mirrors the
- * `-useLoanValuation.test.tsx` fetch-mock + QueryClient setup, but for a
+ * `-useLoanFinancials.test.tsx` fetch-mock + QueryClient setup, but for a
  * mutation:
  *   - POSTs `/v1/loan-book/{loan_id}/disbursement/complete?chain_id=560048`.
  *   - Sends the bearer header (via apiFetch/sessionStore).
- *   - Resolves on a 200 empty body; invalidates the loan-book/financials/valuation
+ *   - Resolves on a 200 empty body; invalidates the loan-book/financials/security
  *     queries on success.
  *   - Surfaces the 404 (loan not indexed) as an error.
  */
@@ -75,7 +75,7 @@ describe("useCompleteDisbursement", () => {
     expect(headers.get("Authorization")).toBe("Bearer test-token");
   });
 
-  it("invalidates the loan-book / financials / valuation queries on success", async () => {
+  it("invalidates the loan-book / financials / security queries on success", async () => {
     fetchMock.mockResolvedValueOnce(new Response("", { status: 200 }));
     const client = makeClient();
     const spy = vi.spyOn(client, "invalidateQueries");
@@ -93,11 +93,7 @@ describe("useCompleteDisbursement", () => {
       (c) => (c[0] as { queryKey: string[] }).queryKey[0],
     );
     expect(keys).toEqual(
-      expect.arrayContaining([
-        "loan-book",
-        "loan-financials",
-        "loan-valuation",
-      ]),
+      expect.arrayContaining(["loan-book", "loan-financials", "loan-security"]),
     );
   });
 

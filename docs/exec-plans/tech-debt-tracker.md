@@ -612,18 +612,16 @@ line, whichever section it lands in.
   (`docs/exec-plans/completed/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
   detail.
 
-  **Addendum (issues #845 / #847, Trustee Loan detail page — a fifth hand-mirroring):** the Loan
-  detail page's Price & collateral section hand-mirrors the backend
-  `CollateralValuationResponse` DTO (`packages/api/src/routes/collateral_valuation.rs`) as
-  `packages/trustee/src/api/useLoanValuation.ts`'s self-contained
-  `LoanValuationResponse`/`ValuationInputs`/`Waterfall`/`ValuationCcr`/`MetalInput`/`PenaltyInput`
-  types — same epic-#775 app-separation constraint, no LP counterpart exists. **Scale note:** unlike
-  `/v1/loan-book`, this endpoint recomputes money in **plain USD** (not the base-6/registry scale),
-  so its amount fields are already correct — the #840 `scaleRegistryAmount` ×1000 workaround is
-  **NOT** applied here (a documented divergence from the loan-book hand-mirror above). Also on this
-  branch the loan-book `LoanBookEntry` hand-mirror gained the `loan_id`/`chain_id` fields (added
-  backend-side in "add loan and chain ids to loan-book endpoint"), used as the `/loans/$id` route
-  param + the valuation path segment — port them if the LP hook ever adopts them.
+  **Addendum (issues #845 / #847, replaced by #1906 — a fifth hand-mirroring):** the Loan detail
+  page's Security card hand-mirrors a subset of the backend `LoanSecurityResponse`
+  (`packages/api/src/security_state.rs`) as `packages/trustee/src/api/useLoanSecurity.ts`'s
+  self-contained `LoanSecurityResponse` (terms ratios, valuation value/debt/LTV/stale flag, margin
+  call, prices, `refresh_pending`; every field optional) — same epic-#775 app-separation
+  constraint, no LP counterpart. It replaced the earlier `useLoanValuation.ts` mirror of
+  `CollateralValuationResponse`, removed with the `/valuations` endpoint (backend #1786). The
+  loan-book `LoanBookEntry` hand-mirror also carries the `loan_id`/`chain_id` fields (used as the
+  `/loans/$id` route param and the `/security` path segment) and the additive `ltv_bps` /
+  `margin_call_open` / `price_stale` fields.
 
   **Addendum (issue #852, Trustee Loan detail — a sixth hand-mirroring):** the loan detail's
   "Registry state & derived" section hand-mirrors the backend `LoanFinancialsResponse` DTO

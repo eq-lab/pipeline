@@ -7,9 +7,6 @@ import {
   type PortfolioImpactView,
   type RiskCouncilEscalateView,
 } from "./-risk-council-escalate";
-import type { CcrBand } from "./-useLoansTable";
-import type { CcrTrend } from "./-useLoanDetail";
-import { CcrTrendChart } from "./-CcrTrendChart";
 import {
   ActionControls,
   BackLink,
@@ -23,25 +20,11 @@ import {
   Row,
 } from "./-RiskCouncilParts";
 
-const NEGATIVE_RED = "#b20000";
-const ATTENTION_AMBER = "#6e6400";
-const MARGIN_CALL_ORANGE = "#b35900";
-const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
-
-function ccrBandColor(band: CcrBand | null): string {
-  switch (band) {
-    case "healthy":
-      return POSITIVE_GREEN;
-    case "attention":
-      return ATTENTION_AMBER;
-    case "margin-call":
-      return MARGIN_CALL_ORANGE;
-    case "pre-default":
-      return NEGATIVE_RED;
-    default:
-      return INK;
-  }
-}
+const TONE_COLOR = {
+  negative: "#b20000",
+  attention: "#6e6400",
+  neutral: INK,
+} as const;
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -54,11 +37,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function LedgerCard({
   ledger,
   portfolioImpact,
-  ccrTrend,
 }: {
   ledger: LedgerView;
   portfolioImpact: PortfolioImpactView;
-  ccrTrend: CcrTrend | null;
 }) {
   return (
     <Card
@@ -76,17 +57,34 @@ function LedgerCard({
           value={ledger.principalRepaid}
           testId="risk-council-escalate-repaid"
         />
-        <Row
-          label={ledger.collateralLabel}
-          value={ledger.collateralValue}
-          testId="risk-council-escalate-collateral"
-        />
-        <Row
-          label="CCR"
-          value={ledger.ccrLine}
-          valueColor={ccrBandColor(ledger.ccrBand)}
-          testId="risk-council-escalate-ccr"
-        />
+        {ledger.security && (
+          <>
+            <Row
+              label="Security value"
+              value={ledger.security.value}
+              testId="risk-council-escalate-security-value"
+            />
+            <Row
+              label="LTV"
+              value={ledger.security.ltvLine}
+              valueColor={TONE_COLOR[ledger.security.ltvTone]}
+              testId="risk-council-escalate-ltv"
+            />
+            <Row
+              label="Advance / margin-call ratio"
+              value={ledger.security.ratios}
+              testId="risk-council-escalate-ratios"
+            />
+            {ledger.security.priceStale && (
+              <Row
+                label="Price stale"
+                value="Yes"
+                valueColor={TONE_COLOR.attention}
+                testId="risk-council-escalate-price-stale"
+              />
+            )}
+          </>
+        )}
         <Row
           label="Days on watchlist"
           value={ledger.daysOnWatchlist}
@@ -94,13 +92,6 @@ function LedgerCard({
           testId="risk-council-escalate-days-on-watchlist"
         />
       </div>
-
-      <SectionLabel>CCR trend — thresholds 130 / 120 / 110%</SectionLabel>
-      {ccrTrend && (
-        <div data-testid="risk-council-escalate-ccr-trend">
-          <CcrTrendChart trend={ccrTrend} />
-        </div>
-      )}
 
       <SectionLabel>Portfolio</SectionLabel>
       <Row
@@ -214,7 +205,6 @@ function RiskCouncilEscalate() {
           <LedgerCard
             ledger={view.ledger}
             portfolioImpact={view.portfolioImpact}
-            ccrTrend={view.ccrTrend}
           />
           <DeclareDefaultCard view={view} id={id} chain={chain} />
         </div>

@@ -515,14 +515,14 @@ alignment, not code). Unit tests cover the flows meanwhile.
 **Sources:** `packages/trustee/src/api/useLoanBook.ts` (data hook),
 `packages/trustee/src/routes/-useLoansTable.ts` (presenter),
 `packages/trustee/src/routes/loans.index.tsx` (view).
-**Consumer route:** `/loans`. Issue #843, Figma node `4116:9989`; CCR scale corrected by #888;
-amount scaling fixed by #906.
+**Consumer route:** `/loans`. Issue #843, Figma node `4116:9989`; amount scaling fixed by #906;
+CCR replaced by the Stellar security LTV in #1906.
 
 ### Architecture
 
 View/logic split per [`docs/FRONTEND.md` rule 2](../FRONTEND.md#code-structure-rules): the `.tsx`
 route is JSX/styling only; `useLoansTable` owns the `useLoanBook` call, the summary-card
-view-model, the per-row mapping, CCR classification, and the client-side status filter — mirrors
+view-model, the per-row mapping, the LTV cell, and the client-side status filter — mirrors
 `-useOriginationTable.ts`.
 
 - `useLoanBook(chainId?)` (`api/`) — React Query hook over `GET /v1/loan-book`, 30 s poll. No
@@ -547,27 +547,25 @@ view-model, the per-row mapping, CCR classification, and the client-side status 
 
 ### Data scale — registry-sourced amounts served as-is (#906)
 
-`deployed_senior`, `at_risk_wl_and_default_senior`, per-loan `senior_outstanding`/`principal`, and
-`collateral`/`total_collateral` are **registry-sourced** base-6 decimal strings, already in human
+`deployed_senior`, `at_risk_wl_and_default_senior` and per-loan `senior_outstanding`/`principal`
+are **registry-sourced** base-6 decimal strings, already in human
 units (e.g. `"1200000.000000"` = $1.2M). The former ×1000 workaround
 (`scaleRegistryAmount`/`formatRegistryCompactUsd`/`formatRegistryCompact2dpUsd`, issue #840) has
 been removed (#906) — render via plain `formatCompactUsd`/`formatCompactUsd2dp`.
 
-`ccr_bps` and `ltv` both divide two registry-sourced amounts at the same scale, so the ×1000
-cancels out of the ratio regardless — served **already correct**, never scale or divide them
-frontend-side. `at_risk_wl_and_default_pct` mixes a registry-scaled numerator with a
-correct-scale NAV denominator; rendered as served (no frontend correction is defined for it).
+`at_risk_wl_and_default_pct` mixes a registry-scaled numerator with a correct-scale NAV
+denominator; rendered as served (no frontend correction is defined for it).
 
 ### Resolved Open Questions (#843, corrected by #888)
 
-1. **CCR is used AS SERVED — no ÷1000 correction.** #843 originally assumed `collateral` was
+1. **Retired by #1906 — the Trustee no longer reads CCR.** (History: CCR was used AS SERVED, no ÷1000 correction.) #843 originally assumed `collateral` was
    price-feed correct-scale while `senior_outstanding` was registry-sourced (1000× too small,
    #840), which would make the served `ccr_bps` exactly 1000× too big. A live payload (#888)
    disproved that: `collateral` is **also** registry-sourced, on the same scale as
    `senior_outstanding` — so the ×1000 cancels out of the ratio and the served `ccr_bps` is
    already the true CCR. The former `correctCcrBps` ÷1000 helper (which silently rendered CCR
    1000× too small — e.g. 0.21% instead of the true 209.87%) has been removed. The 120%
-   maintenance-margin pre-default threshold applies directly to the served `ccr_bps`.
+   maintenance-margin pre-default threshold applied directly to the served `ccr_bps`.
 2. **Default & Closed tabs render per Figma.** `/v1/loan-book` serves closed loans in `loans[]`
    with status `Closed` (verified on staging, #1092 — the earlier "excluded backend-side" note is
    outdated for Closed; Default remains unverified), excluded only from the active-set
@@ -579,24 +577,29 @@ correct-scale NAV denominator; rendered as served (no frontend correction is def
 
 Figma details with no backend field are dropped, not invented:
 
-- Spot sub-line: the real 7-day change basis (`spot_change_7d`) only — no `/t` per-tonne unit, no
-  "30d" relabel. `formatSpot` renders `$4,500 · −18% 7d`.
 - Stage cell: the served `status` label only (`Performing` displays as **Active**, #1119) — no
   "· Risk Council" / "· feed stale" qualifier.
-- CCR cell: the served `ccr_bps` percentage alone. The staleness age sub-value was removed with
-  its backing field (#1441): `ccr_reported_at` left `LoanBookEntry` in #1432/#1439 because the
-  on-chain CCR moved to `CollateralRegistry`, which the indexer does not index — the age has no
-  served source to be repointed at.
+- LTV cell: the served `ltv_bps` only. A Stellar row with no snapshot, or a loan-book that does not
+  carry the key yet, shows `—`; an EVM row is blank (no `—`, no placeholder). Nothing is computed
+  from other columns.
 
 Every field is read defensively → `—`, never fabricated.
 
-### CCR classification & tab mapping
+### LTV column & tab mapping
 
-- **CCR bands** (4-level, trustee-risk-watchlist.md §CCR color bands, #939): `≥130%` healthy
-  (green) · `120–130%` attention (yellow) · `110–120%` margin-call (orange) · `<110%` pre-default
-  (red). Thresholds are frontend-owned policy constants (no backend flag — resolved decision #2 /
-  #931): `MAINTENANCE_MARGIN_BPS = 12_000` (120%), `HEALTHY_MARGIN_BPS = 13_000` (130%),
-  `HARD_MARGIN_CALL_BPS = 11_000` (110%). `null` CCR → `null` band (neutral render, no flag).
+- **LTV column** (#1906, replaces the CCR and Collateral columns and the Spot sub-line). Backend
+  #1786 phase 1 adds three flat fields to every `loans[]` entry, always present and `null` when not
+  served (EVM rows, Stellar chains without a SecurityRegistry, no snapshot yet): `ltv_bps`
+  (verbatim from the stored snapshot; `4294967295`, the `u32::MAX` sentinel, means debt with no
+  counted value and shows as "No security value"), `margin_call_open`
+  (`security_terms.margin_call_at != 0`) and `price_stale` (the contract's snapshot flag). The
+  frontend reads each with `?? null`, so it also works while the keys are absent (this issue
+  deploys before #1786). The column is **Stellar only** and **hidden** unless at least one
+  Stellar row has a non-null `ltv_bps` or `margin_call_open === true`; the footnote shows only with
+  the column. EVM rows are decided by `isStellarTarget(chain_id)`, never by key presence, and are
+  blank. The cell value is red when `margin_call_open`; the sub-line shows "Margin call" (red)
+  and/or "Price stale" (amber). There are no frontend bands or thresholds and no per-loan ratios in
+  the list — the loan-detail Security card shows the ratios from `/security`.
 - **Tab → status mapping:** an unfiltered **All** tab is first and the landing default (#1121) —
   it lists every loan in the book, and its count is the total row count. The backend serves
   `"WatchList"` (capital L); the tab reads
@@ -624,12 +627,10 @@ one-offs documented):
 - Summary card `bg-white`, `LINE_COLOR` border (`rgba(56,55,53,0.18)`), `rounded-[4px]
   px-[21px] py-[19px]`. Label `Inter 12.5px` ink-muted; value `Besley 26px` ink; sub `Inter
   12.5px` ink-muted, `pt-[6px]`.
-- CCR band colors: healthy → `--color-pipeline-positive-primary` (`#208000`, token);
-  attention/yellow → `ATTENTION_AMBER` `#6e6400` (one-off); margin-call/orange →
-  `MARGIN_CALL_ORANGE` `#b35900` (one-off — a hue the prior 3-band scheme lacked, between the
-  yellow and red); pre-default/red → `NEGATIVE_RED` `#b20000`, a documented one-off (**not**
-  `--color-pipeline-negative` `#c0392b`) that matches the Figma exactly, same precedent as the
-  Origination pills' alpha one-offs — also used for the At-risk headline value and negative spot.
+- Colours: `NEGATIVE_RED` `#b20000` is a documented one-off (**not** `--color-pipeline-negative`
+  `#c0392b`) that matches the Figma exactly, same precedent as the Origination pills' alpha
+  one-offs; used for the At-risk headline value, an overdue Nearest payment and an open margin call.
+  `ATTENTION_AMBER` `#6e6400` marks a stale price.
 - Tab-bar `bg rgba(191,189,187,0.12)`, `LINE_COLOR` border, `p-[4px] gap-[2px] rounded-[4px]`;
   buttons `px-[16px] py-[9px] gap-[8px]`; active `bg-white` + ink text, inactive ink-muted; count
   `14px` ink-muted.
@@ -637,26 +638,28 @@ one-offs documented):
   ink-muted, `pb-[12px] px-[14px]` (reuses the Origination `HEADER_CELL_CLASS` convention); the
   table draws borders **only** around the body box + inter-row separators (`LINE_COLOR`), no
   column dividers — the header row sits unbordered above the box (Origination precedent). Body
-  cells `Inter 16px` `#262524`; originator semibold; stage + chevron ink-muted; CCR `Bold 16.5px`;
-  spot/age subs `12–12.5px` ink-muted.
-- Senior outst. + Collateral render two-decimal compact (`formatCompactUsd2dp`). Senior outst. is
-  a deliberate deviation from the Figma (which shows full dollars `$1,840,000`) — the two amount
-  columns were unified to the same 2-dp compact style during live review.
-- Footnote (Figma node `4116:10111`) `Inter 13px` ink-muted, `leading-[18.2px]`, coloured band
-  spans for the 4-level scheme (#939).
+  cells `Inter 16px` `#262524`; originator semibold; stage + chevron ink-muted; LTV `Bold 16.5px`
+  with a `12.5px` flag sub-line.
+- Senior outst. renders two-decimal compact (`formatCompactUsd2dp`), a deliberate deviation from
+  the Figma (which shows full dollars `$1,840,000`). Columns: Originator, Chain, Commodity, Senior
+  outst., [LTV], Nearest payment, Stage; the grid uses two track templates (with and without LTV).
+- Footnote (`loans-footnote`) `Inter 13px` ink-muted, `leading-[18.2px]`, plain text, rendered only
+  with the LTV column: "LTV = amount owed (outstanding principal plus accrued interest) / security
+  value, from the Stellar security registry. A margin call opens above the loan's margin-call
+  ratio. Stellar loans only."
 
 ## Loan detail
 
 **Sources:** `packages/trustee/src/routes/-useLoanDetail.ts` (presenter),
 `packages/trustee/src/routes/loans.$id.tsx` (view), `routes/-loanDetailStatic.ts` (static action
-config), `routes/-CcrTrendChart.tsx` (shared chart),
+config), `routes/-loanSecurity.ts` (Security card presenter),
 `packages/trustee/src/components/detail/` (hero, chip, card, key/value row, tokens).
 **Consumer route:** `/loans/$id`. Issues #845/#847, Figma node `4116:10549`.
 
 Since #1453 the hero, status chip, card shell, card title and key/value row are **not** defined
 here — they live in [`components/detail/`](#shared-detail-primitives) and are shared with the LP
 counterparty detail page. `loans.$id.tsx` keeps only what is loan-specific (lifecycle stepper,
-summary tiles, price & collateral, registry, other-actions, dialogs).
+summary tiles, security, registry, other-actions, dialogs).
 
 ### Architecture
 
@@ -672,11 +675,12 @@ DOM (mirrors `-useLoansTable.ts`).
   else `DEFAULT_TARGET_CHAIN_ID` = Stellar, so pre-#1537 URLs still resolve); the same param is
   carried by every link into `/loans/$id`, `/loans/$id/record-coupon`,
   `/loans/$id/record-repayment` and `/risk-council/{escalate,reterm,writedown}/$id`, and every
-  per-loan hook (`useLoanValuation`, `useLoanFinancials`, `useLoanCcrHistory`, `useLoanWaterfall`,
+  per-loan hook (`useLoanSecurity`, `useLoanFinancials`, `useLoanWaterfall`,
   `useCompleteDisbursement`) takes it as its first argument and sends it as `chain_id`. The status
   bar carries no dates (maturity is a key number, not a status
   field — design assignment §S5); the chip maps the raw on-chain status via `statusToChip` (§3.2).
-- **Price & collateral** ← `GET /v1/loan-book/{loan_id}/valuations` (`useLoanValuation`).
+- **Security** ← `GET /v1/loan-book/{loan_id}/security?chain_id=` (`useLoanSecurity`, Stellar loans
+  only, #1906) — see [Security card](#security-card).
 - **Loan-lifecycle stepper** ← derived from the on-chain status (`buildLifecycle`); no longer a
   static fixture (design assignment §3.2).
 - **Registry state & derived** ← `GET /v1/loan-book/{loan_id}/financials` (`useLoanFinancials`,
@@ -690,17 +694,15 @@ DOM (mirrors `-useLoansTable.ts`).
 
 ### Never-fabricate ([[no-frontend-computed-metrics]])
 
-The valuation endpoint drives Price & Collateral directly; fields it does not serve are not
-carried over from the old fixture:
+The Security card shows only what `/security` serves, verbatim; the old Price & collateral fixture
+rows are gone:
 
-- the "feed 2h old · recalcs every 60 min" freshness note → replaced by the real `price_provider`
-  attribution (or dropped when absent);
-- the "Last on-chain write: CCR 135% · 12 May" footnote → dropped (no source);
-- absent inputs surface as `—` plus a real `missing_inputs` "Awaiting:" note.
-
-The one cross-source value is the spot 7-day change, taken from the loan-book row's served
-`spot_change_7d` (same underlying price series as the valuation's `reference_price`) — a served
-field, not a derived one.
+- no spot line, quantity or collateral value — the removed `/valuations` and `spot_change_7d`
+  have no replacement;
+- no CCR trend — no LTV time series is served, so none is drawn;
+- an absent value is `—`, never a computed one. The one comparison made in the frontend is the
+  loan's served LTV against that loan's own served terms (`advance_ratio_bps`,
+  `margin_call_ratio_bps`).
 
 ### Status chip mapping (design assignment §3.2)
 
@@ -756,26 +758,45 @@ label (`targetChainLabel(chain_id)`, #1537), the **maturity date** (both layouts
 late" / "payment due today" when overdue — dropped entirely when no next-payment timestamp is
 served. The Figma hero corridor (`Colombia → Italy`) has no backend source and is omitted.
 
-### Price & collateral card
+### Security card
 
-`useLoanValuation` — `GET /v1/loan-book/{loan_id}/valuations`, the loan's own `chain_id` (#1537), 30 s poll; a
-self-contained port of the backend DTO (`packages/api/src/routes/collateral_valuation.rs`) — a
-fifth TD-42 hand-mirroring pair. This endpoint recomputes collateral value and CCR in **plain
-USD**, so its money fields (`collateral_value`, `ccr.collateral_value`,
-`ccr.outstanding_senior_principal`) are correct-scale decimal strings — displayed as served, via
-plain `formatCompactUsd` (no rescaling, project-wide since #906). `inputs.haircut_pct` is a
-fraction in `[0,1]`; `ccr.ccr_pct` is a percent string (`"178.00"`). `PenaltyInput`'s
-`level_pct`/`threshold_pct`/`step_pct` are percent-normalised by the backend (#966) — always
-percent regardless of whether the tier was authored in percent or ppm (a `10` ppm tier echoes as
-`0.001`, not `10`) — not currently surfaced anywhere in the Console (#986: no penalty display, no
-offtake-authoring form yet); this documents the contract for when they are.
+`useLoanSecurity` — `GET /v1/loan-book/{loan_id}/security?chain_id=<id>` (spec
+[loan-security-state.md](../product-specs/loan-security-state.md)), 30 s poll, query key
+`["loan-security", chainId, loanId]`. It is enabled only for Stellar loans with a numeric loan id
+(`isStellarTarget(chainId)`); it hand-mirrors only the fields the Trustee uses, all optional
+(`LoanSecurityResponse` subset of `packages/api/src/security_state.rs`, TD-42). `LoanDetail`
+invalidation keys use `loan-security` (formerly `loan-valuation`).
 
-Its own load/error/ready/**empty** state, independent of the page-level `state`. A 404 from the
-valuations endpoint means the loan has no valuation anchor on record — rendered as a neutral
-`"empty"` note (`"No valuation on record for this loan."`), never a red error. Rows: Quantity,
-Collateral value (+ haircut clause when a haircut fraction is served), Senior outstanding, CCR —
-each independently `—` when its input is absent. The spot line pairs the valuation's
-`reference_price` with the loan-book row's `spot_change_7d`.
+Its own state, independent of the page-level `state` (`buildSecurityCard`, `routes/-loanSecurity.ts`):
+
+- **hidden** — an EVM loan, or any `404` (an unknown loan answers `200` with `terms: null`, so a
+  `404` means `security_registry_not_configured`). No card and no placeholder row.
+- **loading** — skeleton rows. **error** — any other failure: an inline error inside the card only
+  (friendly message, raw text behind "View details"); the rest of the page still renders.
+- **no-terms** — `terms: null`: the note "No security terms are set for this loan."
+- **ready** — rows: LTV (`valuation.ltv_bps`), Advance ratio, Margin-call ratio (from `terms`),
+  Security value (`valuation.value`), Amount owed (`valuation.debt`), Margin call. Notes: "No
+  valuation yet." when `valuation` is null (LTV, value and owed show `—`); a "Price stale" chip
+  when `valuation.price_stale` or `prices.price_stale` is true; "Updating from chain…" when
+  `refresh_pending` is true.
+
+Rules:
+
+- **Sentinel.** `ltv_bps === 4294967295` (`u32::MAX`, debt with no counted value) shows "No
+  security value", not a percentage. Percentages show one decimal with a trailing `.0` trimmed
+  (`8123` → `81.2%`, `8000` → `80%`).
+- **Tone** (LTV colour). Negative (red) when `margin_call.open === true` or
+  `margin_call.ltv_above_ratio_no_onchain_call === true`; attention (amber) when the LTV is above
+  that loan's own `advance_ratio_bps`; otherwise ink.
+- **Margin call row.** "Open since {date}" plus " · cure by {date}" and " (overdue)" when served;
+  "None" when closed; `—` when unknown.
+- **Defensive parsing.** Every read goes through optional chaining and a type check, so a partial
+  200 (`{}`, `terms: null`, `valuation: null`, `margin_call: null`) renders `—` rows and never
+  throws; the removed `/valuations` hook crashed the page on exactly such a response.
+- **Test ids.** `loan-detail-security`, `-loading`, `-error`, `-no-terms`, `-ltv`, `-price-stale`,
+  `-refresh`, `-note`.
+- **Extension point.** #1767 extends this card with the rest of the read-only security state
+  (records, inspections, cure period, marks, consents); this card is the summary it builds on.
 
 ### Registry state & derived (#852)
 
@@ -810,13 +831,15 @@ Three tiles, built entirely from served backend fields (no static fixture):
 
 The page branches on `detail.variant` (derived from the served display status):
 
-- **performing** — lifecycle stepper + Price & collateral + Registry state.
-- **watchlist** — no stepper; a CCR-trend chart beside Price & collateral, a "Days on watchlist"
-  tile, and an escalation current-stage card (Figma node `4116:10803`).
+- **performing** — lifecycle stepper + Security + Registry state (Security beside Registry; when
+  hidden, Registry fills the row).
+- **watchlist** — no stepper; the Security card (the row is omitted when hidden), a "Days on
+  watchlist" tile, and an escalation current-stage card (Figma node `4116:10803`). There is no CCR
+  trend.
 - **disbursing** — the performing layout, but the current-stage card is the wired
   disbursement-complete action (`POST …/disbursement/complete`, #862); the lifecycle shows the
   Disbursing node active.
-- **matured** — no stepper; a rollover card beside Price & collateral, the hero shows `<date> —
+- **matured** — no stepper; a rollover card beside Security, the hero shows `<date> —
   passed`, and Roll over is the matured-only fast-path (Figma node `4116:10969`, #866). The served
   `Past Due` status maps here.
 
@@ -827,10 +850,9 @@ are available." note — whenever the status chip is Closed, regardless of varia
 Closed loans stay served in `/v1/loan-book`'s `loans[]` (status `Closed`); they are excluded
 from the active-set aggregates, not from the row set.
 
-Shared live sections render in every variant: Hero + status chip (loan-book row), Price &
-collateral (`/valuations`), Registry (`/financials`, performing only), and Documents
-(loan-book row, #1040 — see [Documents](#documents)). Watchlist CCR trend and summary tiles are
-live; action labels and explanatory copy are static product configuration unless a branch opens
+Shared live sections render in every variant: Hero + status chip (loan-book row), Security
+(`/security`, Stellar only), Registry (`/financials`, performing only), and Documents
+(loan-book row, #1040 — see [Documents](#documents)). Summary tiles are live; action labels and explanatory copy are static product configuration unless a branch opens
 a wired flow.
 
 **Current-stage card is hidden for now (#938):** its real behavior is proposal-aware — a plain
@@ -839,24 +861,6 @@ warning + prompt to open an escalation — which needs a per-loan proposal-statu
 doesn't serve yet. The static `WATCHLIST_CURRENT_STAGE` mock is not rendered until that lands; the
 Performing "on-ramp in transit" card was removed entirely (#876). `currentStage` is `null` for
 every variant today.
-
-### CCR-trend chart (Watchlist variant, Figma node `4116:10868`)
-
-Built from the real `/ccr-history` series (#879) — replaces the fixed-geometry fixture (#859).
-`null` when the series has no points (never priced / empty window) so the card is simply omitted
-rather than drawing a fabricated line. The series spans the loan's origination
-through now, daily. Its `from` is `ccrSeriesFrom(entry)` (`-useLoanDetail.ts`, shared with the
-Escalate page): `maturity − duration_days · 86400`, where the served `duration_days` is the
-current, rollover-aware term `floor((current_maturity − origination) / 1 day)` (#1633; the
-`LoanBookEntry.duration_days` field is that current term, not the original one). The floor
-means the series can start up to one day after the origination instant, which is within one
-step of the daily `/ccr-history` grid; this is accepted, and a raw `origination_date` on the
-loan-book entry is not planned (#1626). Per-loan y-scale spans the series' CCR range
-widened to the protocol watchlist thresholds (spec §9.6) — 120% maintenance-margin and 110%
-margin-call dashed guide-lines (protocol-wide defaults; no endpoint serves per-loan overrides yet,
-#879). The card is extracted to `-CcrTrendChart.tsx` (#782) so the Risk Council "Escalate to
-Default" page can reuse the same chart embedded directly in its ledger card (without this card's
-own border/title).
 
 ### Wired actions
 
@@ -954,7 +958,7 @@ Resolves TD-157. Contract: Minter `disburse(loan_id: u32, amount: i128, value_da
 - **Dialog** (`disburse-dialog`): Amount (USD, up to 7 decimals), Value date (UTC, `type="date"`, defaults to today, not in the future) and Bank reference (trimmed, 1 to 140 characters), a read-only `ref_hash` line, and the same three read-only rows. The only client checks are plain comparisons: amount above 0 and not above the on-chain `bank_cash`. The tranche cap is the contract's (`#13`). Escape and backdrop cancel are ignored while pending.
 - **`ref_hash` and idempotency.** `ref_hash = sha256(reference.trim())` (`bankReferenceRefHash`), the convention shared with the other cash bookings (the minter's consumed set is shared). The zero hash is rejected by the encoder because the contract skips the replay check for it. Before any signature the mutation reads `ref_hash_seen` and refuses a consumed reference, then re-reads `paused()`; the confirm button is disabled while pending; a retry after an unknown outcome reuses the reference, so `#7` refuses a double booking.
 - **Errors** (`disburseErrorCopy`, local because Soroban codes collide across contracts): `1000` paused, `7` reused reference, `8` bank cash below the amount, `6` / `25` amount, `13` senior tranche exceeded (shown with the on-chain disbursed and tranche values verbatim; the trustline was already verified, so the SAC collision is not shown), `3` / `2` status, `21` carved out. `#4` is left generic (minter `Unauthorized` and factory `NotRegistered` collide).
-- **After success** the card shows the transaction hash and "The loan book updates once indexed" (the relay returns only the hash). `loan-disbursement`, `loan-mutable`, `loan-book`, `loan-financials`, `loan-valuation`, `loan-waterfall`, `cash-book`, the minter pool state, `deal-token`, `debt-trustline` and `audit-log` are invalidated immediately and again at 5 s and 15 s; `CashDisbursed` is already indexed into the cash book and audit log.
+- **After success** the card shows the transaction hash and "The loan book updates once indexed" (the relay returns only the hash). `loan-disbursement`, `loan-mutable`, `loan-book`, `loan-financials`, `loan-security`, `loan-waterfall`, `cash-book`, the minter pool state, `deal-token`, `debt-trustline` and `audit-log` are invalidated immediately and again at 5 s and 15 s; `CashDisbursed` is already indexed into the cash book and audit log.
 - **Complete off-ramp is separate.** Disburse never calls `POST …/disbursement/complete`; the served display status stays `Disbursing` until that DB flag is flipped, while the card itself keys off the on-chain status.
 - **Testnet caveat.** Disburse succeeds only after ops deploys the DEBT SAC and adds the capital-wallet trustline (`just new-deal <id>`) and `register_deal` has run; until then the card shows the matching reason. The minter's booked bank cash must cover the amount.
 - **Config:** `VITE_STELLAR_YIELD_MINTER_ID`, `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, `VITE_STELLAR_LOAN_REGISTRY_ID`, `VITE_STELLAR_DEAL_TOKEN_FACTORY_ID`.
@@ -2065,15 +2069,15 @@ The page-local store (`lib/riskCouncilOps.ts`, in memory, `useSyncExternalStore`
 
 Per-loan pages validate the `chain` search param (`parseLoanRouteSearch`) and reuse the shells, cards and tokens of #782 for styling. Each action card has: role line, button, stage text ("Waiting for wallet signature…", "Submitting on-chain…", "Confirming…"), inline error, and the submitted hash.
 
-- **Escalate to Default** (`/risk-council/escalate/$id`, flow 10). Left: the ledger card (facility / senior, Principal repaid from chain `loan_money.repaid`, collateral, CCR, days on watchlist, CCR trend, at-risk %, concentration; the CCR rows stay as they are, #1767). Right: "Declare default" with the effects text from default-management §"Declaration", then the chain-state rows (Status, Outstanding principal, Written down, Pocket opened). Enabled when chain status is `Performing` or `WatchList`; a `Default` loan shows "This loan is in Default." with a link to the resolution page; `Closed`/`Approved` show "Not available for a {status} loan." Buttons: "Declare default" / "Schedule default" / "Execute default"; the primary button opens a confirm dialog ("Declare default on Loan #{id}? The pocket opens on the first default.", `role="dialog"`, Escape and backdrop cancel). No-role copy: "Declaring a default belongs to the Risk Council."
-- **Amend economics** (`/risk-council/reterm/$id`, flow 11). Current terms from chain (coupon from `current_rate`, maturity, accrued interest, interest adjustment, signed) plus CCR from the loan book. Amend card: new rate % (live "= N bps" echo, same rules as the rollover dialog) and a date input (`dateInputToUnixUtc`, UTC midnight), buttons "Amend economics" / "Schedule amendment" / "Execute amendment". Adjust-interest card: signed USD delta (optional leading `-`) and reason, with the hash; buttons "Adjust interest" / "Schedule adjustment" / "Execute adjustment". Available for any chain status except `Closed` and `Approved`. No-role copy: "Changing loan economics belongs to the Risk Council."
+- **Escalate to Default** (`/risk-council/escalate/$id`, flow 10). Left: the ledger card (facility / senior, Principal repaid from chain `loan_money.repaid`, then on Stellar the security rows from `/security` — Security value, LTV line ("{ltv} — margin call open" / "above the {n}% margin-call ratio" / "margin call at {n}%", coloured by the Security card's tone rule), Advance / margin-call ratio and, only when true, Price stale — then days on watchlist, at-risk %, concentration). The security rows are omitted entirely (no "—" placeholder) for an EVM loan, a `404` or `terms: null`; while `/security` loads or fails they show `—`. There are no CCR or Collateral rows and no CCR trend (#1906). Right: "Declare default" with the effects text from default-management §"Declaration", then the chain-state rows (Status, Outstanding principal, Written down, Pocket opened). Enabled when chain status is `Performing` or `WatchList`; a `Default` loan shows "This loan is in Default." with a link to the resolution page; `Closed`/`Approved` show "Not available for a {status} loan." Buttons: "Declare default" / "Schedule default" / "Execute default"; the primary button opens a confirm dialog ("Declare default on Loan #{id}? The pocket opens on the first default.", `role="dialog"`, Escape and backdrop cancel). No-role copy: "Declaring a default belongs to the Risk Council."
+- **Amend economics** (`/risk-council/reterm/$id`, flow 11). Current terms from chain (coupon from `current_rate`, maturity, accrued interest, interest adjustment, signed) plus, on Stellar, an LTV row from `/security` (same line as Escalate; omitted when hidden, `404` or `terms: null`) instead of the former CCR from the loan book. Amend card: new rate % (live "= N bps" echo, same rules as the rollover dialog) and a date input (`dateInputToUnixUtc`, UTC midnight), buttons "Amend economics" / "Schedule amendment" / "Execute amendment". Adjust-interest card: signed USD delta (optional leading `-`) and reason, with the hash; buttons "Adjust interest" / "Schedule adjustment" / "Execute adjustment". Available for any chain status except `Closed` and `Approved`. No-role copy: "Changing loan economics belongs to the Risk Council."
 - **Default resolution** (`/risk-council/writedown/$id`, flow 12). Left: chain state (Status, Outstanding principal, Disbursed, Repaid, Written down, Pocket opened, Closure reason). Right, in order: **Write down** (USD amount, initial value from chain `outstanding` via `formatChainAmount`, editable, converted with `usdInputToSacBaseUnits`); **Close defaulted loan** (radio `Default` / `OtherWriteDown`, each with "Risk Council only · 24 hours" from the closure table); **Cure** (effects: "The loan returns to WatchList. The pocket stays open; later repayments still go to the pocket holders."). All three need chain status `Default`; otherwise the page shows "This loan is not in Default." with a link back to Escalate. No-role copy: "Writing down, closing a defaulted loan and curing belong to the Risk Council."
 - **Close-defaulted split.** Scheduling is not closing, so **Schedule close** is allowed whenever the status is `Default` and can run in parallel with the write-down delay. **Execute close** (immediate or scheduled) is enabled only when chain `loan_money.outstanding` is the string `"0"`; otherwise "Executable once the outstanding principal is zero." A close scheduled too early can expire (7 days after its ready time).
 - **Hub** (`/risk-council`, `-risk-council-hub.ts`). Chain: `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID` (chain-scope rule). It shows the docs sentence ("The Risk Council acts through the access manager. Declaring a default executes at once; every other Risk Council action waits 24 hours, and the Guardian or the Admin can cancel it during the wait."), a "Scheduled operations" table and a per-loan action index. Scheduled rows come from (a) the page-local store and (b) deterministic lookups per loan on the session's chain: `set_default` for `Performing`/`WatchList` loans, `cure` for `Default` loans (`useRiskCouncilHubLookups`, one query per call, `staleTime` 30 s, only `readyAt > 0` kept). Columns: loan, action, arguments (verbatim: rate bps / maturity date / USD amount / reason / signed delta), executable from, state, link. Empty state "No scheduled operations found."; footnote: "Lists operations scheduled from this console in this session, and declared defaults or cures pending for any loan. Other scheduled operations need an indexer and are not listed yet." A no-role wallet sees "Risk Council actions belong to the Risk Council. Pending operations are visible to the scheduling wallet only." and "—" in the table. Loan index: `Performing`/`WatchList` → Declare default, Amend economics; `Default` → Resolve default, Amend economics; `Closed` → none. Links carry `chain`.
 
 ### EVM
 
-Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence still renders, the chain-state card shows "—", and every action card is disabled and prints `stellarOnlyActionReason(chainId)` (TD-152). On the hub, when the session chain is not Stellar, only the header and the same reason line render. There are no EVM reads and no EVM encoders for these actions (#1573, #1574).
+Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence still renders, the chain-state card shows "—", and every action card is disabled and prints `stellarOnlyActionReason(chainId)` (TD-152). On the hub, when the session chain is not Stellar, only the header and the same reason line render. There are no EVM reads and no EVM encoders for these actions (#1573, #1574). The security LTV rows (Escalate) and the LTV row (Amend economics) are omitted for an EVM loan (#1906).
 
 ### Errors, config and roles
 

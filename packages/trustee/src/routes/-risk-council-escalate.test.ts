@@ -3,38 +3,13 @@ import { describe, it, expect } from "vitest";
 import type { TopConcentration } from "@/api/useLoanBook";
 import * as escalate from "./-risk-council-escalate";
 import {
-  buildCollateralLabel,
   buildConcentration,
+  buildLedgerSecurity,
   escalateEligibility,
-  formatCcrLine,
   formatFacilityLine,
-  nextCcrAlertPct,
 } from "./-risk-council-escalate";
 import { chainStateRows } from "./-risk-council-shared";
-import { loanState, STELLAR } from "./-riskCouncilFixtures";
-
-describe("nextCcrAlertPct", () => {
-  it("returns the next protocol threshold below the CCR", () => {
-    expect(nextCcrAlertPct(11_400)).toBe(110);
-    expect(nextCcrAlertPct(12_500)).toBe(120);
-    expect(nextCcrAlertPct(13_000)).toBe(120);
-  });
-
-  it("returns null above 130%, at or below 110% and for bad input", () => {
-    expect(nextCcrAlertPct(13_500)).toBeNull();
-    expect(nextCcrAlertPct(11_000)).toBeNull();
-    expect(nextCcrAlertPct(null)).toBeNull();
-    expect(nextCcrAlertPct(Number.NaN)).toBeNull();
-  });
-});
-
-describe("formatCcrLine", () => {
-  it("formats the alert clause only when a threshold remains", () => {
-    expect(formatCcrLine(11_400)).toBe("114% — next alert at 110%");
-    expect(formatCcrLine(10_500)).toBe("105%");
-    expect(formatCcrLine(null)).toBe("—");
-  });
-});
+import { loanState, securityResult, STELLAR } from "./-riskCouncilFixtures";
 
 describe("formatFacilityLine", () => {
   it("formats served amounts as full USD and dashes missing ones", () => {
@@ -45,15 +20,62 @@ describe("formatFacilityLine", () => {
   });
 });
 
-describe("buildCollateralLabel", () => {
-  it("uses the served 7-day basis and omits it when unserved", () => {
-    expect(buildCollateralLabel("Coffee", "-0.18")).toBe(
-      "Collateral (coffee −18% 7d)",
+describe("buildLedgerSecurity", () => {
+  it("builds the value, LTV line, ratios and tone from the served security", () => {
+    expect(buildLedgerSecurity(securityResult())).toEqual({
+      value: "$2,106,000",
+      ltvLine: "81.2% — margin call at 85%",
+      ltvTone: "attention",
+      ratios: "80% / 85%",
+      priceStale: false,
+    });
+  });
+
+  it("is null when not configured or when no terms are set", () => {
+    expect(
+      buildLedgerSecurity(
+        securityResult({ data: undefined, notConfigured: true }),
+      ),
+    ).toBeNull();
+    expect(
+      buildLedgerSecurity(securityResult({ data: { terms: null } })),
+    ).toBeNull();
+  });
+
+  it("shows dashes while loading or on error", () => {
+    const dashes = {
+      value: "—",
+      ltvLine: "—",
+      ltvTone: "neutral",
+      ratios: "—",
+      priceStale: false,
+    };
+    expect(
+      buildLedgerSecurity(securityResult({ data: undefined, isLoading: true })),
+    ).toEqual(dashes);
+    expect(
+      buildLedgerSecurity(
+        securityResult({ data: undefined, error: new Error("boom") }),
+      ),
+    ).toEqual(dashes);
+  });
+
+  it("does not throw on a partial 200 and flags a stale price", () => {
+    expect(() =>
+      buildLedgerSecurity(securityResult({ data: {} })),
+    ).not.toThrow();
+    const stale = buildLedgerSecurity(
+      securityResult({
+        data: {
+          terms: { advance_ratio_bps: 8000, margin_call_ratio_bps: 8500 },
+          prices: { price_stale: true },
+          margin_call: { open: true },
+        },
+      }),
     );
-    expect(buildCollateralLabel("Copper Concentrate", "0.05")).toBe(
-      "Collateral (copper concentrate +5% 7d)",
-    );
-    expect(buildCollateralLabel("Coffee", null)).toBe("Collateral");
+    expect(stale?.priceStale).toBe(true);
+    expect(stale?.ltvTone).toBe("negative");
+    expect(stale?.value).toBe("—");
   });
 });
 

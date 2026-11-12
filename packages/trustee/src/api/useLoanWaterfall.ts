@@ -5,7 +5,7 @@
  * (senior principal returned, net senior coupon → vault, and the mgmt / perf /
  * OET fees). Read-only preview; the on-chain write is `useRecordPayment`.
  *
- * Mirrors `useLoanFinancials` / `useLoanCcrHistory`: the loan's own `chain_id`
+ * Mirrors `useLoanFinancials`: the loan's own `chain_id`
  * (#1537), `apiFetch` REST call, hand-mirrored DTO (TD-42). `amount` and the
  * response fields are raw on-chain base-unit integer strings. Route presenters
  * convert operator-entered USD to raw units before calling this hook and divide

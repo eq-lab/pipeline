@@ -4,22 +4,20 @@ import { renderHook } from "@testing-library/react";
 import type { LoanBookEntry } from "@/api/useLoanBook";
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
-vi.mock("@/api/useLoanValuation", () => ({ useLoanValuation: vi.fn() }));
+vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
 vi.mock("@/api/useLoanFinancials", () => ({ useLoanFinancials: vi.fn() }));
-vi.mock("@/api/useLoanCcrHistory", () => ({ useLoanCcrHistory: vi.fn() }));
 vi.mock("@/api/useDealToken", () => ({ useDeal: vi.fn() }));
 
 import { useLoanBook } from "@/api/useLoanBook";
-import { useLoanValuation } from "@/api/useLoanValuation";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
-import { useLoanCcrHistory } from "@/api/useLoanCcrHistory";
 import { useDeal } from "@/api/useDealToken";
 import { useLoanDetail } from "./-useLoanDetail";
+import { securityResult } from "./-riskCouncilFixtures";
 
 const mockUseLoanBook = vi.mocked(useLoanBook);
-const mockUseLoanValuation = vi.mocked(useLoanValuation);
+const mockUseLoanSecurity = vi.mocked(useLoanSecurity);
 const mockUseLoanFinancials = vi.mocked(useLoanFinancials);
-const mockUseLoanCcrHistory = vi.mocked(useLoanCcrHistory);
 const mockUseDeal = vi.mocked(useDeal);
 
 function entry(overrides: Partial<LoanBookEntry>): LoanBookEntry {
@@ -35,11 +33,6 @@ function entry(overrides: Partial<LoanBookEntry>): LoanBookEntry {
     maturity: 1_782_777_600,
     next_payment_timestamp: 1_782_777_600,
     days_overdue: null,
-    spot_price: null,
-    spot_change_7d: null,
-    collateral: null,
-    ltv: null,
-    ccr_bps: null,
     duration_days: 180,
     rate: "0.13",
     protection: null,
@@ -77,25 +70,15 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   } as never);
-  mockUseLoanValuation.mockReturnValue(IDLE);
+  mockUseLoanSecurity.mockReturnValue(securityResult());
   mockUseLoanFinancials.mockReturnValue(IDLE);
-  mockUseLoanCcrHistory.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    error: null,
-  });
 });
 
 describe("useLoanDetail (#1537)", () => {
   it("passes the chain to every per-loan hook and matches the row on (chain_id, loan_id)", () => {
     const { result } = renderHook(() => useLoanDetail(560048, "4"));
-    expect(mockUseLoanValuation).toHaveBeenCalledWith(560048, "4");
+    expect(mockUseLoanSecurity).toHaveBeenCalledWith(560048, "4");
     expect(mockUseLoanFinancials).toHaveBeenCalledWith(560048, "4");
-    expect(mockUseLoanCcrHistory).toHaveBeenCalledWith(
-      560048,
-      "4",
-      expect.any(Number),
-    );
     expect(result.current.hero.title).toBe("Hoodi Co · Lithium");
   });
 
@@ -112,5 +95,17 @@ describe("useLoanDetail (#1537)", () => {
     const { result } = renderHook(() => useLoanDetail(99_000_001, "999"));
     expect(result.current.hero.title).toBe("Loan #999");
     expect(result.current.onChainBlockedReason).toBeNull();
+  });
+
+  it("builds the security card for a Stellar loan and hides it when not configured", () => {
+    const ready = renderHook(() => useLoanDetail(99_000_001, "4"));
+    expect(ready.result.current.security.state).toBe("ready");
+    expect(ready.result.current.security.ltv).toBe("81.2%");
+
+    mockUseLoanSecurity.mockReturnValue(
+      securityResult({ data: undefined, notConfigured: true }),
+    );
+    const evm = renderHook(() => useLoanDetail(560048, "4"));
+    expect(evm.result.current.security.state).toBe("hidden");
   });
 });

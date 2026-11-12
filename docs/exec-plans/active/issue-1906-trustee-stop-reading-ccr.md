@@ -44,15 +44,26 @@ Out of scope:
 
 ## Open Questions
 
-1. **Loans-table LTV column.** Recommended default: option (c). #1786's first phase adds `ltv_bps`, `margin_call_open` and `price_stale` inline to `GET /v1/loan-book` `loans[]`, always present and `null` when not served (shape in Assumptions, already agreed with the #1786 planner). The column is hidden until some row has a non-null `ltv_bps` or an open margin call. EVM rows are blank. The alternatives are (a) drop the column, or (b) one `/security` call per Stellar row. Please confirm (c).
-2. **Collateral column.** #1786 removes `collateral` (and `spot_price` / `spot_change_7d`). Default: drop the Collateral column and the Spot sub-line. Alternative: #1786 also inlines the security `valuation.value` as a new "Security value" column. Do you want that?
-3. **Acceptance grep vs legacy fixtures.** Default: keep the five legacy-tolerance and never-sends tests that contain the literal `initial_ccr` (they are the regression guard for "stop sending"), and record them as an accepted exception to the `rg -iw initial_ccr` check, next to `LoanCCRUpdated`. Or should the fixtures be rewritten without the literal key, losing the explicit guard?
+Resolved by the product owner (Issue comment, 2026-11-12):
+
+1. **Loans-table LTV column: option (c) confirmed.** Flat `ltv_bps` / `margin_call_open` / `price_stale` are inline in `GET /v1/loan-book` `loans[]` (#1786 phase 1), always present and `null` on EVM, unconfigured chains and no snapshot. The frontend also works when the keys are absent (pre-backend). Per-loan `advance_ratio_bps` / `margin_call_ratio_bps` are not added to the list.
+2. **Collateral column: dropped, no replacement** (no "Security value" column). `spot_change_7d` is removed backend-side in #1786 phase 2 together with `spot_price`.
+3. **`initial_ccr` legacy-fixture tests: kept** as an accepted exception to the `rg -iw initial_ccr` check, next to `LoanCCRUpdated`.
+
+Also from the same comment: the LP app will show `ltv_bps` (follow-up #1907, prerequisite of #1786 phase 2); the loan-book summary aggregates (`total_collateral`, `senior_debt_coverage`, `at_risk_wl_and_default_pct`) are kept for now, so the Trustee `LoanBookSummary` type and fixtures are unchanged. Order: #1786 phase 1, #1906, #1907, #1786 phase 2.
+
+Deviations during implementation:
+
+- `LTV_NO_VALUE_SENTINEL` lives in `routes/-loanSecurity.ts`, not `api/useLoanSecurity.ts`, so tests that mock the hook module keep the presenter working.
+- `formatLtvLine` takes the `UseLoanSecurityResult` (not the bare response) so it can reuse `buildSecurityCard`'s state.
+- `SecurityCardView` carries `refreshPending` separately from `notes`; `useLoanSecurity` sets `retry: false`.
+- `LabelValueRow` was removed; the card uses `SecurityRow` from `-loanSecurity.ts`.
 
 ## Implementation Steps
 
 Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own mapping. Comment rules: at most one 2–3-line spec-pointer header per touched file, and no other comments. Shrink `scripts/lint-comments.baseline.json` for every touched file, and delete the entries of deleted files.
 
-1. **Security data hook** — new `packages/trustee/src/api/useLoanSecurity.ts`:
+1. **Security data hook** (done) — new `packages/trustee/src/api/useLoanSecurity.ts`:
    - `useLoanSecurity(chainId: number, loanId: string)` → `{ data, isLoading, error, notConfigured, refetch }`.
    - It calls `apiFetch<LoanSecurityResponse>(`/v1/loan-book/${encodeURIComponent(loanId)}/security?chain_id=${chainId}`)`.
    - Query key `["loan-security", chainId, loanId]`. `refetchInterval: 30_000`.
@@ -67,7 +78,7 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
    - Add `LTV_NO_VALUE_SENTINEL = 4294967295`.
    - Header: `// spec: docs/frontend/trustee-flows.md#security-card` (new anchor, step 9).
 
-2. **Shared security presenter** — new `packages/trustee/src/routes/-loanSecurity.ts`, with pure functions only:
+2. **Shared security presenter** (done) — new `packages/trustee/src/routes/-loanSecurity.ts`, with pure functions only:
    - `formatLtvBps(bps: unknown): string`: non-finite or missing → `"—"`; the sentinel → `"No security value"`; else one decimal with a trailing `.0` trimmed (`8123` → `"81.2%"`, `8000` → `"80%"`). It is also used for the ratio values.
    - `ltvTone(sec): "negative" | "attention" | "neutral"`:
      - `negative` when `margin_call.open === true` or `margin_call.ltv_above_ratio_no_onchain_call === true`;
@@ -98,7 +109,7 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
      - otherwise `"{ltv}"`, plus `" — margin call open"` when open, `" — above the {mc} margin-call ratio"` when `ltv_above_ratio_no_onchain_call`, else `" — margin call at {mc}"` when `margin_call_ratio_bps` is served.
    - Header: `// spec: docs/frontend/trustee-flows.md#security-card`.
 
-3. **Loan detail presenter** — `packages/trustee/src/routes/-useLoanDetail.ts`:
+3. **Loan detail presenter** (done) — `packages/trustee/src/routes/-useLoanDetail.ts`:
    - Remove the `useLoanValuation` / `useLoanCcrHistory` imports and calls.
    - Remove `CcrThreshold`, `CcrTrend`, `CCR_TREND_THRESHOLDS`, `PriceCollateralView`, `SpotView`, `buildPriceCollateral`, `buildPriceCollateralState`, `placeholderPc`, `parseSpotChange`, `formatCcrPct`, `formatHaircutClause`, `formatQuantity`, `formatPrice` (only if it has no other user), `ccrSeriesFrom` and `buildCcrTrend`.
    - Add `const security = useLoanSecurity(chainId, loanId);` and `security: buildSecurityCard(security)` to `UseLoanDetailResult`.
@@ -107,7 +118,7 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
    - Drop the `LoanBookEntry` reads of `spot_change_7d`.
    - Trim the file header to a single spec pointer.
 
-4. **Loan detail view** — `packages/trustee/src/routes/loans.$id.tsx`:
+4. **Loan detail view** (done) — `packages/trustee/src/routes/loans.$id.tsx`:
    - Delete `PriceCollateralCard`, `CcrTrendCard` and the `CcrTrendChart` import.
    - Add `SecurityCard({ card }: { card: SecurityCardView })`. It renders nothing when `card.state === "hidden"`. It uses the same `CARD_CLASS` / `cardStyle()` / `CardTitle` ("Security") / `KeyValueRow` styling as the old card.
      - The LTV value is coloured by tone: `NEGATIVE_RED` / `ATTENTION_AMBER` / `INK`.
@@ -120,14 +131,14 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
      - matured: `SecurityCard` beside the rollover card.
    - Update the inline JSX comments that mention CCR or Price & collateral, or remove them (comment lint).
 
-5. **Delete the CCR modules**:
+5. **Delete the CCR modules** (done):
    - `packages/trustee/src/api/useLoanValuation.ts` and `-useLoanValuation.test.tsx`;
    - `packages/trustee/src/api/useLoanCcrHistory.ts` and `-useLoanCcrHistory.test.tsx`;
    - `packages/trustee/src/routes/-CcrTrendChart.tsx`.
    - Fix the stale header mention in `api/useLoanWaterfall.ts` ("Mirrors `useLoanFinancials` / `useLoanCcrHistory`" → `useLoanFinancials` only).
    - Replace the `"loan-valuation"` invalidation key with `"loan-security"` in `api/useCompleteDisbursement.ts`, `api/useRollover.ts` (and its header comment), `api/useUpdateLifecycle.ts` and `api/useDisburse.ts`.
 
-6. **Loan book type and loans table**:
+6. **Loan book type and loans table** (done):
    - `packages/trustee/src/api/useLoanBook.ts`:
      - Make `spot_price`, `spot_change_7d`, `collateral`, `ltv`, `ccr_bps`, `total_collateral` and `senior_debt_coverage` optional, or delete them where nothing reads them. Preferred: delete `ccr_bps`, `ltv`, `collateral`, `spot_price` and `spot_change_7d` from `LoanBookEntry`, and `total_collateral` / `senior_debt_coverage` from `LoanBookSummary`, because nothing will read them. Extra JSON keys are harmless.
      - Add `ltv_bps?: number | null`, `margin_call_open?: boolean | null` and `price_stale?: boolean | null`.
@@ -151,7 +162,7 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
      - Add `LtvFootnote` (test id `loans-footnote`), rendered only when `showLtvColumn`: "LTV = amount owed (outstanding principal plus accrued interest) / security value, from the Stellar security registry. A margin call opens above the loan's margin-call ratio. Stellar loans only."
      - Remove `ATTENTION_AMBER` / `MARGIN_CALL_ORANGE` / `POSITIVE_GREEN` if they become unused.
 
-7. **Risk Council Escalate**:
+7. **Risk Council Escalate** (done):
    - `packages/trustee/src/routes/-risk-council-escalate.ts`:
      - Delete `nextCcrAlertPct`, `formatCcrLine`, `formatChangeFragment`, `buildCollateralLabel`, `MARGIN_CALL_PCT` / `MAINTENANCE_MARGIN_PCT` / `HEALTHY_MARGIN_PCT`, the `useLoanCcrHistory` call and `ccrTrend`.
      - Add `const security = useLoanSecurity(chainId, loanId)`.
@@ -164,13 +175,13 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
      - When `ledger.security` is set, render the rows "Security value" (`risk-council-escalate-security-value`), "LTV" (`risk-council-escalate-ltv`, coloured by tone) and "Advance / margin-call ratio" (`risk-council-escalate-ratios`). Add "Price stale" (`risk-council-escalate-price-stale`) only when true.
      - Days on watchlist and the Portfolio section are unchanged.
 
-8. **Risk Council Amend economics**:
+8. **Risk Council Amend economics** (done):
    - `packages/trustee/src/routes/-risk-council-reterm.ts`:
      - Delete `formatCcrPct`.
      - Replace `ccr: string` in `RetermCurrentTerms` with `ltv: string | null`, from `formatLtvLine` on `useLoanSecurity(chainId, loanIdParam)` (`null` → row omitted).
    - `packages/trustee/src/routes/risk-council.reterm.$id.tsx`: replace `<Row label="CCR" …/>` with `{current.ltv != null && <Row label="LTV" value={current.ltv} testId="risk-council-reterm-ltv" />}`.
 
-9. **Static copy and fixtures**:
+9. **Static copy and fixtures** (done):
    - `packages/trustee/src/routes/-loanDetailStatic.ts`:
      - Header: drop "CCR history" from the list.
      - `WATCHLIST_CURRENT_STAGE.body` (not rendered, #938) → "A margin call is open or the LTV is above the margin-call ratio. If the loan is past recovery on the active path, escalate it to the Risk Council."
@@ -178,9 +189,9 @@ Follow `docs/FRONTEND.md` rule 2: `.tsx` files hold JSX only, and presenters own
      - Drop `spot_price`, `spot_change_7d`, `collateral`, `ltv` and `ccr_bps` from `loanEntry`, and `total_collateral` / `senior_debt_coverage` from `loanBook`.
      - Add a `securityResult(overrides)` helper returning a `UseLoanSecurityResult` (Stellar loan: terms 8000/8500, `ltv_bps` 8123, no margin call).
 
-10. **Origination (`initial_ccr`)**: no source change is expected. Verify that `rg -n initial_ccr packages/trustee/src --glob '!*.test.*'` returns nothing and that `api/useSubmitLoan.ts` / `api/useLoanSubmissions.ts` have no such field. Handle the legacy test fixtures per Open Question 3.
+10. **Origination (`initial_ccr`)** (done): no source change is expected. Verify that `rg -n initial_ccr packages/trustee/src --glob '!*.test.*'` returns nothing and that `api/useSubmitLoan.ts` / `api/useLoanSubmissions.ts` have no such field. Handle the legacy test fixtures per Open Question 3.
 
-11. **Lint and housekeeping**:
+11. **Lint and housekeeping** (done):
     - Run `npx tsx scripts/lint-comments.ts` and shrink the baseline entries of touched files. Delete the entries of `-CcrTrendChart.tsx`, `useLoanCcrHistory.ts`, `-useLoanCcrHistory.test.tsx` and `-useLoanValuation.test.tsx`.
     - Run `npx tsx scripts/lint-docs.ts`.
     - Run Trustee lint, typecheck and vitest (`yarn workspace @pipeline/trustee lint`, `… tsc --noEmit` or `build`, `… test`; use the package's scripts).

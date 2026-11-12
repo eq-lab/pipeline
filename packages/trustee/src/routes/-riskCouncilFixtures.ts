@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { vi } from "vitest";
 import type { LoanBookEntry, LoanBookResponse } from "@/api/useLoanBook";
+import type { UseLoanSecurityResult } from "@/api/useLoanSecurity";
 import type {
   RiskCouncilAccess,
   RiskCouncilLoanState,
@@ -25,11 +26,6 @@ export function loanEntry(
     maturity: 1_782_777_600,
     next_payment_timestamp: 1_782_777_600,
     days_overdue: null,
-    spot_price: "4500",
-    spot_change_7d: "-0.18",
-    collateral: "2106000.000000",
-    ltv: null,
-    ccr_bps: 11_400,
     duration_days: 88,
     rate: "0.130000",
     protection: null,
@@ -40,6 +36,28 @@ export function loanEntry(
     disbursed: true,
     days_on_watchlist: 12,
     watchlist_entered_at: null,
+    ...overrides,
+  };
+}
+
+export function securityResult(
+  overrides: Partial<UseLoanSecurityResult> = {},
+): UseLoanSecurityResult {
+  return {
+    data: {
+      terms: { advance_ratio_bps: 8000, margin_call_ratio_bps: 8500 },
+      valuation: {
+        value: "2106000.000000",
+        debt: "1710000.000000",
+        ltv_bps: 8123,
+        price_stale: false,
+      },
+      margin_call: { open: false },
+    },
+    isLoading: false,
+    error: null,
+    notConfigured: false,
+    refetch: () => {},
     ...overrides,
   };
 }

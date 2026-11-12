@@ -45,7 +45,7 @@ const INVALIDATED_KEYS = [
   "loan-mutable",
   "loan-book",
   "loan-financials",
-  "loan-valuation",
+  "loan-security",
   "loan-waterfall",
   "cash-book",
   "deal-token",

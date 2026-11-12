@@ -12,6 +12,7 @@ import {
   loanEntry,
   loanState,
   relayResult,
+  securityResult,
 } from "./-riskCouncilFixtures";
 
 vi.mock("@tanstack/react-router", async () => {
@@ -31,6 +32,7 @@ vi.mock("@pipeline/wallet-connect", () => ({
   riskCouncilReasonHash: vi.fn(async () => "cd".repeat(32)),
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
+vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
 vi.mock("@/api/useRiskCouncil", () => ({
   useRiskCouncilAccess: vi.fn(),
   useRiskCouncilLoanState: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("@/api/useRiskCouncil", () => ({
 }));
 
 import { useLoanBook } from "@/api/useLoanBook";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
 import {
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
@@ -46,6 +49,7 @@ import {
 import { Route } from "./risk-council.reterm.$id";
 
 const mockLoanBook = vi.mocked(useLoanBook);
+const mockSecurity = vi.mocked(useLoanSecurity);
 const mockAccess = vi.mocked(useRiskCouncilAccess);
 const mockLoanState = vi.mocked(useRiskCouncilLoanState);
 const mockRelay = vi.mocked(useRiskCouncilRelay);
@@ -68,6 +72,7 @@ function setup(
   status = "WatchList",
 ) {
   mockLoanBook.mockReturnValue(loanBookResult([loanEntry()]));
+  mockSecurity.mockReturnValue(securityResult());
   mockAccess.mockReturnValue(accessResult(access) as never);
   mockLoanState.mockReturnValue({
     data: loanState({ status, interestAdjustment: "-12000000" }),
@@ -108,6 +113,26 @@ describe("Amend economics — current terms", () => {
     expect(
       screen.getByTestId("risk-council-reterm-adjustment"),
     ).toHaveTextContent("-$1.20");
+  });
+
+  it("shows the LTV row from the security state and no CCR row", () => {
+    setup(DELAYED);
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
+      "81.2% — margin call at 85%",
+    );
+    expect(screen.queryByText("CCR")).not.toBeInTheDocument();
+  });
+
+  it("omits the LTV row when security is not configured", () => {
+    setup(DELAYED);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, notConfigured: true }),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId("risk-council-reterm-ltv"),
+    ).not.toBeInTheDocument();
   });
 
   it("has no Safe, proposal or timestamp artefacts", () => {

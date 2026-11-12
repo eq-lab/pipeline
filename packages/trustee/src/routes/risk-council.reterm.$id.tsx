@@ -41,7 +41,13 @@ function CurrentTermsCard({ current }: { current: RetermCurrentTerms }) {
           value={current.maturity}
           testId="risk-council-reterm-maturity"
         />
-        <Row label="CCR" value={current.ccr} />
+        {current.ltv != null && (
+          <Row
+            label="LTV"
+            value={current.ltv}
+            testId="risk-council-reterm-ltv"
+          />
+        )}
         <Row
           label="Accrued interest"
           value={current.accruedInterest}

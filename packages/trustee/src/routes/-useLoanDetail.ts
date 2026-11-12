@@ -1,20 +1,7 @@
-/**
- * View-model + data wiring for the Trustee Loan detail page. Per
- * `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is render-only;
- * this hook owns the live fetches, the value→display mapping, and the
- * composition of live data + static actions (mirrors `-useLoansTable.ts`).
- *
- * spec: docs/frontend/trustee-flows.md#loan-detail (data sources incl. the
- * #1040 Documents card, never-fabricate rules, status chip mapping,
- * lifecycle spine, variants).
- */
+// spec: docs/frontend/trustee-flows.md#loan-detail
 import { useLoanBook } from "@/api/useLoanBook";
 import type { LoanBookEntry } from "@/api/useLoanBook";
-import { useLoanValuation } from "@/api/useLoanValuation";
-import type {
-  LoanValuationResponse,
-  UseLoanValuationResult,
-} from "@/api/useLoanValuation";
+import { useLoanSecurity } from "@/api/useLoanSecurity";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type {
   Epoch,
@@ -23,11 +10,7 @@ import type {
 } from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
 import type { StatusBand } from "@/components/detail/detailTokens";
-import {
-  formatBpsRate,
-  formatFullUsd,
-  formatCompactUsd,
-} from "@/utils/formatUsd";
+import { formatBpsRate, formatCompactUsd } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import { formatNearestPayment } from "./-useLoansTable";
 import { findLoanEntry } from "@/lib/loanRoute";
@@ -47,36 +30,9 @@ import {
   type RolloverCard,
   type SummaryTile,
 } from "./-loanDetailStatic";
-import {
-  useLoanCcrHistory,
-  type UseLoanCcrHistoryResult,
-} from "@/api/useLoanCcrHistory";
+import { buildSecurityCard, type SecurityCardView } from "./-loanSecurity";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-/** A dashed CCR guide-line at a fixed percent (e.g. 120% maintenance margin). */
-export interface CcrThreshold {
-  pct: number;
-  label: string;
-}
-
-// CCR-trend chart view-model. spec: trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
-export interface CcrTrend {
-  /** CCR percentages, oldest → newest (e.g. `146` for 146%). */
-  points: number[];
-  /** Bottom-left caption — series start (`"146% · 1 May 2026"`). */
-  startLabel: string;
-  /** Latest CCR, bold near the end dot (`"114%"`). */
-  currentLabel: string;
-  /** Dashed guide-lines (protocol watchlist thresholds), high → low. */
-  thresholds: CcrThreshold[];
-}
-
-// Protocol-wide watchlist thresholds (spec §9.6) — no per-loan override endpoint yet (#879).
-const CCR_TREND_THRESHOLDS: CcrThreshold[] = [
-  { pct: 120, label: "120%" },
-  { pct: 110, label: "110%" },
-];
 
 export type { StatusBand };
 
@@ -88,41 +44,10 @@ export interface HeroView {
   meta: string;
 }
 
-/** A plain `label: value` row of the Price & collateral card. */
-export interface LabelValueRow {
-  label: string;
-  value: string;
-}
-
 /** One document row of the Documents card — name + the URI it opens. */
 export interface DocumentDisplay {
   name: string;
   uri: string;
-}
-
-/** The spot line (price + optional trailing-change), rendered two-tone. */
-export interface SpotView {
-  main: string;
-  /** e.g. `"−1.2% 7d"`; `null` when no 7-day change is served. */
-  change: string | null;
-  changeNegative: boolean;
-}
-
-/**
- * The Price & collateral card view-model (its own load/error/ready state).
- * `"empty"` is a 404 from the valuations endpoint — the loan has no valuation
- * anchor on record — rendered as a neutral note, not a red error.
- */
-export interface PriceCollateralView {
-  state: "loading" | "error" | "empty" | "ready";
-  errorMessage: string | null;
-  errorDetails: string | null;
-  /** Right-aligned attribution, e.g. `"via coingecko"`; `""` when unknown. */
-  providerNote: string;
-  spot: SpotView;
-  rows: LabelValueRow[];
-  /** Muted footnote naming absent inputs, or `null` when the valuation is complete. */
-  missingNote: string | null;
 }
 
 /** Source tag shown next to a registry row's label. */
@@ -180,9 +105,7 @@ export interface UseLoanDetailResult {
   /** Current-stage/escalation card — Watchlist only; `null` for every other variant (#876). */
   currentStage: CurrentStage | null;
   otherActions: OtherActions;
-  priceCollateral: PriceCollateralView;
-  /** CCR-trend chart (Watchlist only); `null` otherwise. */
-  ccrTrend: CcrTrend | null;
+  security: SecurityCardView;
   /** Rollover card (Matured only); `null` otherwise. */
   rollover: RolloverCard | null;
   /** Formatted maturity date (e.g. `"15 Jun 2026"`), for the Matured rollover-card title; `null` when absent. */
@@ -312,30 +235,6 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
   ];
 }
 
-/** `$X` for a plain USD price string; `—` for null/non-finite. */
-function formatPrice(price: string | null): string {
-  return formatFullUsd(price);
-}
-
-/** `"10%"` for a `[0,1]` fraction string; `""` when unparseable (so the haircut clause is dropped). */
-function formatHaircutClause(haircutFraction: string): string {
-  const num = parseFloat(haircutFraction);
-  if (!Number.isFinite(num)) return "";
-  return ` (after ${Math.round(num * 100)}% haircut)`;
-}
-
-/** `"620 dmt"` for a quantity string; `—` when absent. */
-function formatQuantity(quantityDmt: string | null): string {
-  if (quantityDmt == null || quantityDmt.length === 0) return "—";
-  return `${quantityDmt} dmt`;
-}
-
-/** `"178.00%"` for a CCR percent string; `—` when absent. */
-function formatCcrPct(ccrPct: string | null | undefined): string {
-  if (ccrPct == null || ccrPct.length === 0) return "—";
-  return `${ccrPct}%`;
-}
-
 // Builds the hero view-model. spec: docs/frontend/trustee-flows.md#hero.
 export function buildHero(
   loanId: string,
@@ -386,112 +285,6 @@ export function buildDocuments(
     name: doc.name ?? "",
     uri: doc.uri ?? "",
   }));
-}
-
-// spec: docs/frontend/trustee-flows.md#price--collateral-card.
-export function buildPriceCollateral(
-  valuation: LoanValuationResponse,
-  spotChange7d: string | null,
-): PriceCollateralView {
-  const { inputs, collateral_value, ccr, missing_inputs } = valuation;
-
-  const change = parseSpotChange(spotChange7d);
-  const spot: SpotView =
-    inputs.reference_price == null
-      ? { main: "—", change: null, changeNegative: false }
-      : {
-          main: formatPrice(inputs.reference_price),
-          change: change?.text ?? null,
-          changeNegative: change?.negative ?? false,
-        };
-
-  const rows: LabelValueRow[] = [
-    { label: "Quantity", value: formatQuantity(inputs.quantity_dmt) },
-    {
-      label: `Collateral value${formatHaircutClause(inputs.haircut_pct)}`,
-      value: formatFullUsd(collateral_value),
-    },
-    {
-      label: "Senior outstanding",
-      value: formatFullUsd(ccr?.outstanding_senior_principal ?? null),
-    },
-    { label: "CCR", value: formatCcrPct(ccr?.ccr_pct) },
-  ];
-
-  const provider = inputs.price_provider;
-  const providerNote =
-    provider != null && provider.length > 0 ? `via ${provider}` : "";
-
-  const missingNote =
-    missing_inputs.length > 0 ? `Awaiting: ${missing_inputs.join(", ")}` : null;
-
-  return {
-    state: "ready",
-    errorMessage: null,
-    errorDetails: null,
-    providerNote,
-    spot,
-    rows,
-    missingNote,
-  };
-}
-
-/** Formats a decimal-fraction 7-day change (`"-0.012"`) as `"−1.2% 7d"`; `null` when unavailable. */
-function parseSpotChange(
-  spotChange7d: string | null,
-): { text: string; negative: boolean } | null {
-  if (spotChange7d == null) return null;
-  const change = parseFloat(spotChange7d);
-  if (!Number.isFinite(change)) return null;
-  const pct = Math.round(Math.abs(change) * 100 * 10) / 10;
-  // U+2212 MINUS SIGN / U+002B PLUS SIGN, matching the Figma glyphs.
-  const sign = change < 0 ? "−" : "+";
-  return { text: `${sign}${pct}% 7d`, negative: change < 0 };
-}
-
-// A 404 → neutral "empty" note, not a red error. spec: trustee-flows.md#price--collateral-card.
-export function buildPriceCollateralState(
-  valuation: UseLoanValuationResult,
-  spotChange7d: string | null,
-): PriceCollateralView {
-  if (valuation.isLoading) return placeholderPc("loading");
-  if (valuation.error) {
-    if (valuation.error instanceof ApiError && valuation.error.status === 404) {
-      return placeholderPc("empty", {
-        missingNote: "No valuation on record for this loan.",
-      });
-    }
-    const mapped = toUserError(
-      valuation.error,
-      "Failed to load the valuation.",
-    );
-    return placeholderPc("error", {
-      errorMessage: mapped.message,
-      errorDetails: mapped.details,
-    });
-  }
-  if (valuation.data) return buildPriceCollateral(valuation.data, spotChange7d);
-  return placeholderPc("ready");
-}
-
-/** A P&C view carrying only a state + a neutral spot placeholder (no rows). */
-function placeholderPc(
-  state: PriceCollateralView["state"],
-  opts: {
-    errorMessage?: string | null;
-    errorDetails?: string | null;
-    missingNote?: string | null;
-  } = {},
-): PriceCollateralView {
-  return {
-    state,
-    errorMessage: opts.errorMessage ?? null,
-    errorDetails: opts.errorDetails ?? null,
-    providerNote: "",
-    spot: { main: "—", change: null, changeNegative: false },
-    rows: [],
-    missingNote: opts.missingNote ?? null,
-  };
 }
 
 // ── Registry state & derived (issue #852) ────────────────────────────────────
@@ -646,7 +439,7 @@ export function buildSummaryTiles(
   ];
 }
 
-// A 404 → neutral "empty" note, not a red error (mirrors P&C).
+// A 404 → neutral "empty" note, not a red error.
 // spec: docs/frontend/trustee-flows.md#registry-state--derived-852.
 export function buildRegistryState(
   financials: UseLoanFinancialsResult,
@@ -710,61 +503,26 @@ export function buildRegistryState(
   };
 }
 
-export function ccrSeriesFrom(
-  entry: Pick<LoanBookEntry, "maturity" | "duration_days"> | undefined,
-): number | null {
-  return entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
-}
-
-/**
- * spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
- */
-export function buildCcrTrend(
-  ccrHistory: UseLoanCcrHistoryResult,
-): CcrTrend | null {
-  const points = ccrHistory.data?.points ?? [];
-  if (points.length === 0) return null;
-
-  const first = points[0]!;
-  const last = points[points.length - 1]!;
-  const toPct = (bps: number) => Math.round(bps / 100);
-
-  return {
-    points: points.map((p) => p.ccr_bps / 100),
-    startLabel: `${toPct(first.ccr_bps)}% · ${formatEpochDate(first.timestamp)}`,
-    currentLabel: `${toPct(last.ccr_bps)}%`,
-    thresholds: CCR_TREND_THRESHOLDS,
-  };
-}
-
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-// Wires loan-book (hero source, top-level `state`) + valuation + financials
+// Wires loan-book (hero source, top-level `state`) + security + financials
 // (each with their own `state`) for `loanId`. spec: trustee-flows.md#loan-detail.
 export function useLoanDetail(
   chainId: number,
   loanId: string,
 ): UseLoanDetailResult {
   const loanBook = useLoanBook();
-  const valuation = useLoanValuation(chainId, loanId);
+  const security = useLoanSecurity(chainId, loanId);
   const financials = useLoanFinancials(chainId, loanId);
   const deal = useDeal(chainId, /^\d+$/.test(loanId) ? Number(loanId) : null);
 
   const entry = findLoanEntry(loanBook.data?.loans, chainId, loanId);
-
-  const ccrFrom = ccrSeriesFrom(entry);
-  const ccrHistory = useLoanCcrHistory(chainId, loanId, ccrFrom);
 
   const state: LoanDetailState = loanBook.isLoading
     ? "loading"
     : loanBook.error
       ? "error"
       : "ready";
-
-  const priceCollateral = buildPriceCollateralState(
-    valuation,
-    entry?.spot_change_7d ?? null,
-  );
 
   // spec: docs/frontend/trustee-flows.md#status-conditional-layout-859862866.
   const chipLabel = entry != null ? statusToChip(entry.status).label : null;
@@ -797,8 +555,7 @@ export function useLoanDetail(
     registry: buildRegistryState(financials, entry?.protection ?? null, deal),
     currentStage,
     otherActions,
-    priceCollateral,
-    ccrTrend: variant === "watchlist" ? buildCcrTrend(ccrHistory) : null,
+    security: buildSecurityCard(security),
     rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
     documents: buildDocuments(entry),
