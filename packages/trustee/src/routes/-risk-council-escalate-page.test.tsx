@@ -139,7 +139,7 @@ describe("Escalate to Default — evidence", () => {
       screen.getByTestId("risk-council-escalate-security-value"),
     ).toHaveTextContent("$2,106,000");
     const ltv = screen.getByTestId("risk-council-escalate-ltv");
-    expect(ltv).toHaveTextContent("81.2% — margin call at 85%");
+    expect(ltv).toHaveTextContent("81.3% — margin call at 85%");
     expect(ltv.querySelector("span:last-child")).toHaveStyle({
       color: "#6e6400",
     });

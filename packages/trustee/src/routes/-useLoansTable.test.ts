@@ -129,7 +129,7 @@ describe("mapLtvCell", () => {
       mapLtvCell(
         makeEntry({ ltv_bps: 8123, margin_call_open: true, price_stale: true }),
       ),
-    ).toEqual({ text: "81.2%", marginCallOpen: true, priceStale: true });
+    ).toEqual({ text: "81.3%", marginCallOpen: true, priceStale: true });
   });
 
   it("passes the u32::MAX sentinel through as 'No security value'", () => {

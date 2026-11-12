@@ -79,6 +79,7 @@ export function useRecordPayment(): UseRecordPaymentResult {
       const invalidate = () => {
         void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
         void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
+        void queryClient.invalidateQueries({ queryKey: ["loan-security"] });
       };
       invalidate();
       void queryClient.invalidateQueries({ queryKey: ["loan-waterfall"] });

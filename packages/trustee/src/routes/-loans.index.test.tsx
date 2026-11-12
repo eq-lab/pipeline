@@ -372,7 +372,7 @@ describe("Loans list route (ready)", () => {
     ).toContain("LTV");
     const rows = screen.getAllByTestId("loans-row");
     const first = within(rows[0]!);
-    expect(first.getByTestId("loans-ltv")).toHaveTextContent("81.2%");
+    expect(first.getByTestId("loans-ltv")).toHaveTextContent("81.3%");
     expect(first.getByTestId("loans-ltv")).toHaveStyle({ color: "#b20000" });
     expect(first.getByText("Margin call")).toBeInTheDocument();
     expect(first.getByText("Price stale")).toBeInTheDocument();

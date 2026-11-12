@@ -8,7 +8,7 @@ import { useLoanBook } from "@/api/useLoanBook";
 import {
   buildSecurityCard,
   formatLtvBps,
-  formatLtvLine,
+  ltvRowText,
   type LtvTone,
 } from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
@@ -91,18 +91,19 @@ export function buildLedgerSecurity(
   const card = buildSecurityCard(result);
   if (card.state === "hidden" || card.state === "no-terms") return null;
   if (card.state !== "ready") {
+    const text = ltvRowText(card, result.data) ?? "—";
     return {
-      value: "—",
-      ltvLine: "—",
+      value: text,
+      ltvLine: text,
       ltvTone: "neutral",
-      ratios: "—",
+      ratios: text,
       priceStale: false,
     };
   }
   const terms = result.data?.terms;
   return {
     value: formatFullUsd(result.data?.valuation?.value),
-    ltvLine: formatLtvLine(result) ?? card.ltv,
+    ltvLine: ltvRowText(card, result.data) ?? card.ltv,
     ltvTone: card.ltvTone,
     ratios: `${formatLtvBps(terms?.advance_ratio_bps)} / ${formatLtvBps(terms?.margin_call_ratio_bps)}`,
     priceStale: card.priceStale,

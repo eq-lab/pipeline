@@ -9,8 +9,10 @@ import { formatMaturityDate } from "@/utils/formatDate";
 import { toUserError } from "@/utils/userError";
 
 export const LTV_NO_VALUE_SENTINEL = 4_294_967_295;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+export const REFRESH_FAILED_NOTE =
+  "Couldn't refresh — showing the last loaded data.";
+export const LTV_LOADING_TEXT = "Loading…";
+export const LTV_ERROR_TEXT = "Couldn't load";
 
 export type LtvTone = "negative" | "attention" | "neutral";
 
@@ -31,12 +33,10 @@ export interface SecurityCardView {
   notes: string[];
 }
 
-// ── Formatters ────────────────────────────────────────────────────────────────
-
 export function formatLtvBps(bps: unknown): string {
   if (typeof bps !== "number" || !Number.isFinite(bps)) return "—";
   if (bps === LTV_NO_VALUE_SENTINEL) return "No security value";
-  const pct = (Math.round(bps) / 100).toFixed(1);
+  const pct = (Math.ceil(bps / 10) / 10).toFixed(1);
   return `${pct.endsWith(".0") ? pct.slice(0, -2) : pct}%`;
 }
 
@@ -64,8 +64,6 @@ export function formatMarginCall(
   if (mc?.open === false) return "None";
   return "—";
 }
-
-// ── Derivations ───────────────────────────────────────────────────────────────
 
 export function ltvTone(sec: LoanSecurityResponse | null | undefined): LtvTone {
   if (
@@ -114,7 +112,7 @@ export function buildSecurityCard(
 ): SecurityCardView {
   if (result.notConfigured) return emptyCard("hidden");
   if (result.isLoading) return emptyCard("loading");
-  if (result.error) {
+  if (result.error && result.data == null) {
     const mapped = toUserError(
       result.error,
       "Failed to load the loan security.",
@@ -135,6 +133,7 @@ export function buildSecurityCard(
 
   const notes: string[] = [];
   if (sec.valuation == null) notes.push("No valuation yet.");
+  if (result.error) notes.push(REFRESH_FAILED_NOTE);
 
   return {
     ...emptyCard("ready"),
@@ -162,18 +161,29 @@ export function buildSecurityCard(
   };
 }
 
-export function formatLtvLine(result: UseLoanSecurityResult): string | null {
-  const card = buildSecurityCard(result);
+export function formatLtvLine(
+  card: SecurityCardView,
+  sec: LoanSecurityResponse | null | undefined,
+): string | null {
   if (card.state !== "ready") return null;
-  const sec = result.data;
   const marginCallRatio = sec?.terms?.margin_call_ratio_bps;
   const mc = formatLtvBps(marginCallRatio);
-  if (sec?.margin_call?.open === true) return `${card.ltv} — margin call open`;
+  const ltv = isFiniteNumber(sec?.valuation?.ltv_bps)
+    ? card.ltv
+    : "No valuation yet";
+  if (sec?.margin_call?.open === true) return `${ltv} — margin call open`;
   if (sec?.margin_call?.ltv_above_ratio_no_onchain_call === true) {
-    return `${card.ltv} — above the ${mc} margin-call ratio`;
+    return `${ltv} — above the ${mc} margin-call ratio`;
   }
-  if (isFiniteNumber(marginCallRatio)) {
-    return `${card.ltv} — margin call at ${mc}`;
-  }
-  return card.ltv;
+  if (isFiniteNumber(marginCallRatio)) return `${ltv} — margin call at ${mc}`;
+  return ltv;
+}
+
+export function ltvRowText(
+  card: SecurityCardView,
+  sec: LoanSecurityResponse | null | undefined,
+): string | null {
+  if (card.state === "loading") return LTV_LOADING_TEXT;
+  if (card.state === "error") return LTV_ERROR_TEXT;
+  return formatLtvLine(card, sec);
 }

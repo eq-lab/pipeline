@@ -4,6 +4,8 @@ import { ApiError } from "@/api/client";
 import type { LoanSecurityResponse } from "@/api/useLoanSecurity";
 import {
   buildSecurityCard,
+  ltvRowText,
+  REFRESH_FAILED_NOTE,
   formatLtvBps,
   formatLtvLine,
   formatMarginCall,
@@ -17,7 +19,7 @@ const TERMS = { advance_ratio_bps: 8000, margin_call_ratio_bps: 8500 };
 
 describe("formatLtvBps", () => {
   it("formats one decimal and trims a trailing .0", () => {
-    expect(formatLtvBps(8123)).toBe("81.2%");
+    expect(formatLtvBps(8123)).toBe("81.3%");
     expect(formatLtvBps(8000)).toBe("80%");
   });
 
@@ -142,7 +144,7 @@ describe("buildSecurityCard", () => {
   it("builds the ready rows from a full snapshot", () => {
     const card = buildSecurityCard(securityResult());
     expect(card.state).toBe("ready");
-    expect(card.ltv).toBe("81.2%");
+    expect(card.ltv).toBe("81.3%");
     expect(card.ltvTone).toBe("attention");
     expect(card.rows).toEqual([
       { label: "Advance ratio", value: "80%" },
@@ -199,21 +201,25 @@ describe("buildSecurityCard", () => {
   });
 });
 
+function line(result: Parameters<typeof buildSecurityCard>[0]) {
+  return formatLtvLine(buildSecurityCard(result), result.data);
+}
+
 describe("formatLtvLine", () => {
   it("is null when not ready or without terms", () => {
     expect(
-      formatLtvLine(securityResult({ data: undefined, notConfigured: true })),
+      line(securityResult({ data: undefined, notConfigured: true })),
     ).toBeNull();
-    expect(formatLtvLine(securityResult({ data: { terms: null } }))).toBeNull();
+    expect(line(securityResult({ data: { terms: null } }))).toBeNull();
     expect(
-      formatLtvLine(securityResult({ data: undefined, isLoading: true })),
+      line(securityResult({ data: undefined, isLoading: true })),
     ).toBeNull();
   });
 
   it("appends the margin-call ratio, open call or above-ratio clause", () => {
-    expect(formatLtvLine(securityResult())).toBe("81.2% — margin call at 85%");
+    expect(line(securityResult())).toBe("81.3% — margin call at 85%");
     expect(
-      formatLtvLine(
+      line(
         securityResult({
           data: {
             terms: TERMS,
@@ -224,7 +230,7 @@ describe("formatLtvLine", () => {
       ),
     ).toBe("90% — margin call open");
     expect(
-      formatLtvLine(
+      line(
         securityResult({
           data: {
             terms: TERMS,
@@ -238,11 +244,55 @@ describe("formatLtvLine", () => {
 
   it("falls back to the bare LTV without a served margin-call ratio", () => {
     expect(
-      formatLtvLine(
+      line(
         securityResult({
           data: { terms: {}, valuation: { ltv_bps: 7000 } },
         }),
       ),
     ).toBe("70%");
+  });
+
+  it("does not print a bare dash when there is no valuation", () => {
+    expect(line(securityResult({ data: { terms: TERMS } }))).toBe(
+      "No valuation yet — margin call at 85%",
+    );
+  });
+});
+
+describe("ltvRowText", () => {
+  it("distinguishes loading and error from hidden", () => {
+    const text = (r: Parameters<typeof buildSecurityCard>[0]) =>
+      ltvRowText(buildSecurityCard(r), r.data);
+    expect(text(securityResult({ data: undefined, isLoading: true }))).toBe(
+      "Loading…",
+    );
+    expect(
+      text(securityResult({ data: undefined, error: new Error("boom") })),
+    ).toBe("Couldn't load");
+    expect(
+      text(securityResult({ data: undefined, notConfigured: true })),
+    ).toBeNull();
+  });
+});
+
+describe("rounding and refresh failure", () => {
+  it("rounds the LTV up so the percentage never contradicts the tone", () => {
+    expect(formatLtvBps(8001)).toBe("80.1%");
+    expect(formatLtvBps(8501)).toBe("85.1%");
+    expect(formatLtvBps(8000)).toBe("80%");
+  });
+
+  it("keeps the loaded card and adds a note when a refresh fails", () => {
+    const card = buildSecurityCard(securityResult({ error: new Error("502") }));
+    expect(card.state).toBe("ready");
+    expect(card.notes).toContain(REFRESH_FAILED_NOTE);
+  });
+
+  it("shows the error state only when there is no data", () => {
+    expect(
+      buildSecurityCard(
+        securityResult({ data: undefined, error: new Error("502") }),
+      ).state,
+    ).toBe("error");
   });
 });

@@ -234,6 +234,7 @@ describe("useRiskCouncilRelay", () => {
       "risk-council-hub",
       "loan-book",
       "loan-financials",
+      "loan-security",
       "audit-log",
     ];
     expect(keys(spy)).toEqual(expected);

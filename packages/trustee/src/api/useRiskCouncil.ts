@@ -157,6 +157,7 @@ function invalidateRiskCouncil(queryClient: QueryClient) {
     "risk-council-hub",
     "loan-book",
     "loan-financials",
+    "loan-security",
     "audit-log",
   ]) {
     void queryClient.invalidateQueries({ queryKey: [key] });

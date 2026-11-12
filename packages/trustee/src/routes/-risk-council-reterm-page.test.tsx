@@ -119,9 +119,31 @@ describe("Amend economics — current terms", () => {
     setup(DELAYED);
     renderRoute();
     expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
-      "81.2% — margin call at 85%",
+      "81.3% — margin call at 85%",
     );
     expect(screen.queryByText("CCR")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading marker while /security loads", () => {
+    setup(DELAYED);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, isLoading: true }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
+      "Loading…",
+    );
+  });
+
+  it("shows an error marker when /security fails", () => {
+    setup(DELAYED);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, error: new Error("boom") }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("risk-council-reterm-ltv")).toHaveTextContent(
+      "Couldn't load",
+    );
   });
 
   it("omits the LTV row when security is not configured", () => {

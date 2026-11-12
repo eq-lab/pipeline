@@ -1318,11 +1318,9 @@ function LoanDetail() {
         <>
           <Hero hero={detail.hero} />
           <SummaryTiles tiles={detail.tiles} />
-          {detail.security.state !== "hidden" && (
-            <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-              <SecurityCard card={detail.security} />
-            </div>
-          )}
+          <div className="flex w-full flex-col gap-[16px] lg:flex-row">
+            <SecurityCard card={detail.security} />
+          </div>
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}

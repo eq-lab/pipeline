@@ -24,7 +24,7 @@ describe("buildLedgerSecurity", () => {
   it("builds the value, LTV line, ratios and tone from the served security", () => {
     expect(buildLedgerSecurity(securityResult())).toEqual({
       value: "$2,106,000",
-      ltvLine: "81.2% — margin call at 85%",
+      ltvLine: "81.3% — margin call at 85%",
       ltvTone: "attention",
       ratios: "80% / 85%",
       priceStale: false,
@@ -42,22 +42,22 @@ describe("buildLedgerSecurity", () => {
     ).toBeNull();
   });
 
-  it("shows dashes while loading or on error", () => {
-    const dashes = {
-      value: "—",
-      ltvLine: "—",
+  it("shows a loading or error marker, not a bare dash", () => {
+    const marker = (text: string) => ({
+      value: text,
+      ltvLine: text,
       ltvTone: "neutral",
-      ratios: "—",
+      ratios: text,
       priceStale: false,
-    };
+    });
     expect(
       buildLedgerSecurity(securityResult({ data: undefined, isLoading: true })),
-    ).toEqual(dashes);
+    ).toEqual(marker("Loading…"));
     expect(
       buildLedgerSecurity(
         securityResult({ data: undefined, error: new Error("boom") }),
       ),
-    ).toEqual(dashes);
+    ).toEqual(marker("Couldn't load"));
   });
 
   it("does not throw on a partial 200 and flags a stale price", () => {

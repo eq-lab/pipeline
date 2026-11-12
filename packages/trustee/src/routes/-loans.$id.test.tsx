@@ -152,7 +152,7 @@ function securityView(
     state: "ready",
     errorMessage: null,
     errorDetails: null,
-    ltv: "81.2%",
+    ltv: "81.3%",
     ltvTone: "attention",
     rows: [
       { label: "Advance ratio", value: "80%" },
@@ -308,7 +308,7 @@ describe("Loan detail route — Security card", () => {
     const card = screen.getByTestId("loan-detail-security");
     expect(within(card).getByText("Security")).toBeInTheDocument();
     const ltv = within(card).getByTestId("loan-detail-security-ltv");
-    expect(ltv).toHaveTextContent("81.2%");
+    expect(ltv).toHaveTextContent("81.3%");
     expect(ltv).toHaveStyle({ color: "#6e6400" });
     expect(within(card).getByText("80%")).toBeInTheDocument();
     expect(within(card).getByText("85%")).toBeInTheDocument();

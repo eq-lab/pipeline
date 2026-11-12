@@ -100,7 +100,7 @@ describe("useLoanDetail (#1537)", () => {
   it("builds the security card for a Stellar loan and hides it when not configured", () => {
     const ready = renderHook(() => useLoanDetail(99_000_001, "4"));
     expect(ready.result.current.security.state).toBe("ready");
-    expect(ready.result.current.security.ltv).toBe("81.2%");
+    expect(ready.result.current.security.ltv).toBe("81.3%");
 
     mockUseLoanSecurity.mockReturnValue(
       securityResult({ data: undefined, notConfigured: true }),

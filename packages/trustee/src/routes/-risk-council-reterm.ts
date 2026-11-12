@@ -7,7 +7,7 @@ import { percentToBps } from "@/utils/rateUnits";
 import { usdInputToSacBaseUnits } from "@/utils/stellarSacUnits";
 import type { RiskCouncilCall } from "@/api/useRiskCouncil";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
-import { formatLtvLine } from "./-loanSecurity";
+import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
 import {
   amendEligibility,
@@ -165,7 +165,7 @@ export function useRiskCouncilReterm(
       loan: formatLoanLabel(entry?.originator, entry?.commodity),
       coupon: chain == null ? "—" : formatBpsRate(chain.currentRate / 100),
       maturity: chain == null ? "—" : formatMaturityDate(chain.currentMaturity),
-      ltv: formatLtvLine(security),
+      ltv: ltvRowText(buildSecurityCard(security), security.data),
       accruedInterest:
         money == null ? "—" : formatChainAmount(money.accruedInterest, chainId),
       interestAdjustment:

@@ -3,8 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./client";
 import { isStellarTarget } from "@/lib/targetChains";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export interface LoanSecurityTerms {
   advance_ratio_bps?: number;
   margin_call_ratio_bps?: number;
@@ -45,7 +43,13 @@ export interface UseLoanSecurityResult {
   refetch: () => void;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+export function isRegistryNotConfigured(error: Error | null): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    /security_registry_not_configured/.test(error.message)
+  );
+}
 
 export function useLoanSecurity(
   chainId: number,
@@ -59,12 +63,12 @@ export function useLoanSecurity(
         `/v1/loan-book/${encodeURIComponent(loanId)}/security?chain_id=${chainId}`,
       ),
     enabled,
-    refetchInterval: 30_000,
+    refetchInterval: (q) =>
+      isRegistryNotConfigured(q.state.error) ? false : 30_000,
     retry: false,
   });
 
-  const notConfigured =
-    !enabled || (query.error instanceof ApiError && query.error.status === 404);
+  const notConfigured = !enabled || isRegistryNotConfigured(query.error);
 
   return {
     data: enabled ? query.data : undefined,

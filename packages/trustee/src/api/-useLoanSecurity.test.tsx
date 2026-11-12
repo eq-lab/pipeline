@@ -92,9 +92,12 @@ describe("useLoanSecurity", () => {
     expect(result.current.notConfigured).toBe(true);
   });
 
-  it("maps a 404 to notConfigured", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+  it("maps a security_registry_not_configured 404 to notConfigured and stops polling", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: "security_registry_not_configured" }),
+        { status: 404 },
+      ),
     );
     const { result } = renderHook(() => useLoanSecurity(STELLAR, "7"), {
       wrapper: makeWrapper(),
@@ -102,6 +105,41 @@ describe("useLoanSecurity", () => {
     await waitFor(() => {
       expect(result.current.notConfigured).toBe(true);
     });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats any other 404 as an error, not notConfigured", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+    const { result } = renderHook(() => useLoanSecurity(STELLAR, "7"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+    expect(result.current.notConfigured).toBe(false);
+  });
+
+  it("keeps the loaded data when a refetch fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(FIXTURE), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "boom" }), { status: 502 }),
+      );
+    const { result } = renderHook(() => useLoanSecurity(STELLAR, "7"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE);
+    });
+    result.current.refetch();
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+    expect(result.current.data).toEqual(FIXTURE);
   });
 
   it("surfaces a 500 as an error, not as notConfigured", async () => {
