@@ -168,6 +168,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#892 Trustee: normalize submission statuses in Origination](https://github.com/eq-lab/pipeline/issues/892) | [892-origination-submission-status-normalization.md](./epic-775/892-origination-submission-status-normalization.md) | Initial |
 | [#896 Trustee: show pointer cursor for active buttons](https://github.com/eq-lab/pipeline/issues/896) | [896-trustee-active-button-cursors.md](./epic-775/896-trustee-active-button-cursors.md) | Initial |
 | [#1864 Backend: per-section pending counts for the Trustee sidebar badges](https://github.com/eq-lab/pipeline/issues/1864) | [1864-trustee-attention-counts.md](./epic-775/1864-trustee-attention-counts.md) | Initial |
+| [#1913 Trustee: Originator amends and resubmits a submission after Request changes](https://github.com/eq-lab/pipeline/issues/1913) | [1913-originator-amend-resubmit.md](./epic-775/1913-originator-amend-resubmit.md) | Initial |
 
 ---
 

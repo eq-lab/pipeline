@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { ApiError, ApiUnauthorizedError } from "@/api/client";
 import {
   isChainIdError,
+  mapResubmitError,
   mapWaterfallError,
   parseSorobanContractErrorCode,
   toError,
@@ -352,5 +353,63 @@ describe("mapWaterfallError — chain_id 400s fall through (#1602)", () => {
   it("still maps an ordinary 4xx to the amount copy", () => {
     const result = mapWaterfallError(new ApiError("not found", 404));
     expect(result?.message).toMatch(/amount is too high/);
+  });
+});
+
+describe("mapResubmitError (#1913)", () => {
+  it("returns null for no error", () => {
+    expect(mapResubmitError(null)).toBeNull();
+  });
+
+  it("renders the served 400 text verbatim", () => {
+    const mapped = mapResubmitError(
+      new ApiError("metadata_uri did not resolve", 400),
+    );
+    expect(mapped?.message).toBe("metadata_uri did not resolve");
+    expect(mapped?.details).toBe("metadata_uri did not resolve");
+  });
+
+  it("maps 403 and 404 to originator copy", () => {
+    expect(mapResubmitError(new ApiError("forbidden", 403))?.message).toBe(
+      "Only the originator can resubmit this loan.",
+    );
+    expect(mapResubmitError(new ApiError("not found", 404))?.message).toBe(
+      "Only the originator who submitted this loan can resubmit it.",
+    );
+  });
+
+  it("tells a metadata_uri collision from a wrong status on 409", () => {
+    const collision = mapResubmitError(
+      new ApiError(
+        "metadata_uri `ipfs://x` is already used by another undrawn submission",
+        409,
+      ),
+    );
+    expect(collision?.message).toBe(
+      "This metadata URI is already used by another open submission. Use a unique one.",
+    );
+    const status = mapResubmitError(
+      new ApiError(
+        "submission 7 is not in ChangesRequested (status: InReview)",
+        409,
+      ),
+    );
+    expect(status?.message).toBe(
+      "This submission is no longer awaiting changes. Refresh to see its latest status.",
+    );
+    expect(status?.details).toContain("submission 7");
+  });
+
+  it("falls back to the shared mapping for other failures", () => {
+    expect(mapResubmitError(new Error("boom"))?.message).toBe(
+      "Failed to resubmit the loan.",
+    );
+    expect(
+      mapResubmitError(new ApiUnauthorizedError("Unauthorized"))?.isSpecific,
+    ).toBe(true);
+    expect(mapResubmitError(new ApiError("down", 500))?.isSpecific).toBe(
+      toUserError(new ApiError("down", 500), "Failed to resubmit the loan.")
+        .isSpecific,
+    );
   });
 });

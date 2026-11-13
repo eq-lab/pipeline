@@ -27,6 +27,7 @@ import { Route as LoansIdRouteImport } from './routes/loans.$id'
 import { Route as RiskCouncilWritedownIdRouteImport } from './routes/risk-council.writedown.$id'
 import { Route as RiskCouncilRetermIdRouteImport } from './routes/risk-council.reterm.$id'
 import { Route as RiskCouncilEscalateIdRouteImport } from './routes/risk-council.escalate.$id'
+import { Route as OriginationIdEditRouteImport } from './routes/origination.$id_.edit'
 import { Route as LoansIdRecordRepaymentRouteImport } from './routes/loans.$id_.record-repayment'
 import { Route as LoansIdRecordCouponRouteImport } from './routes/loans.$id_.record-coupon'
 
@@ -120,6 +121,11 @@ const RiskCouncilEscalateIdRoute = RiskCouncilEscalateIdRouteImport.update({
   path: '/escalate/$id',
   getParentRoute: () => RiskCouncilRoute,
 } as any)
+const OriginationIdEditRoute = OriginationIdEditRouteImport.update({
+  id: '/$id_/edit',
+  path: '/$id/edit',
+  getParentRoute: () => OriginationRoute,
+} as any)
 const LoansIdRecordRepaymentRoute = LoansIdRecordRepaymentRouteImport.update({
   id: '/$id_/record-repayment',
   path: '/$id/record-repayment',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/risk-council/': typeof RiskCouncilIndexRoute
   '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
   '/loans/$id/record-repayment': typeof LoansIdRecordRepaymentRoute
+  '/origination/$id/edit': typeof OriginationIdEditRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
   '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
@@ -167,6 +174,7 @@ export interface FileRoutesByTo {
   '/risk-council': typeof RiskCouncilIndexRoute
   '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
   '/loans/$id/record-repayment': typeof LoansIdRecordRepaymentRoute
+  '/origination/$id/edit': typeof OriginationIdEditRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
   '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
@@ -190,6 +198,7 @@ export interface FileRoutesById {
   '/risk-council/': typeof RiskCouncilIndexRoute
   '/loans/$id_/record-coupon': typeof LoansIdRecordCouponRoute
   '/loans/$id_/record-repayment': typeof LoansIdRecordRepaymentRoute
+  '/origination/$id_/edit': typeof OriginationIdEditRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
   '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
@@ -214,6 +223,7 @@ export interface FileRouteTypes {
     | '/risk-council/'
     | '/loans/$id/record-coupon'
     | '/loans/$id/record-repayment'
+    | '/origination/$id/edit'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
     | '/risk-council/writedown/$id'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
     | '/risk-council'
     | '/loans/$id/record-coupon'
     | '/loans/$id/record-repayment'
+    | '/origination/$id/edit'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
     | '/risk-council/writedown/$id'
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '/risk-council/'
     | '/loans/$id_/record-coupon'
     | '/loans/$id_/record-repayment'
+    | '/origination/$id_/edit'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
     | '/risk-council/writedown/$id'
@@ -397,6 +409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RiskCouncilEscalateIdRouteImport
       parentRoute: typeof RiskCouncilRoute
     }
+    '/origination/$id_/edit': {
+      id: '/origination/$id_/edit'
+      path: '/$id/edit'
+      fullPath: '/origination/$id/edit'
+      preLoaderRoute: typeof OriginationIdEditRouteImport
+      parentRoute: typeof OriginationRoute
+    }
     '/loans/$id_/record-repayment': {
       id: '/loans/$id_/record-repayment'
       path: '/$id/record-repayment'
@@ -447,12 +466,14 @@ interface OriginationRouteChildren {
   OriginationIdRoute: typeof OriginationIdRoute
   OriginationNewRoute: typeof OriginationNewRoute
   OriginationIndexRoute: typeof OriginationIndexRoute
+  OriginationIdEditRoute: typeof OriginationIdEditRoute
 }
 
 const OriginationRouteChildren: OriginationRouteChildren = {
   OriginationIdRoute: OriginationIdRoute,
   OriginationNewRoute: OriginationNewRoute,
   OriginationIndexRoute: OriginationIndexRoute,
+  OriginationIdEditRoute: OriginationIdEditRoute,
 }
 
 const OriginationRouteWithChildren = OriginationRoute._addFileChildren(

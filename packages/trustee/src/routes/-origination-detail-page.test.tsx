@@ -519,7 +519,7 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner; NO action buttons (#950)", () => {
+    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner and the Make changes and resubmit link; NO review buttons (#950, #1913)", () => {
       mockDetail({
         ...READY_RESULT,
         statusChip: { kind: "changes-requested", label: "Changes requested" },
@@ -534,14 +534,35 @@ describe("Origination details route", () => {
       expect(banner).toHaveTextContent(
         "Changes requested · 6 May — Attach the amended offtake agreement",
       );
-      // Non-final, waiting on the originator → no trustee action buttons.
       expect(
         screen.queryByTestId("origination-detail-reject"),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("origination-detail-approve"),
       ).not.toBeInTheDocument();
+      const amend = screen.getByTestId("origination-detail-amend");
+      expect(amend).toHaveTextContent("Make changes and resubmit");
+      expect(amend).toHaveAttribute("href", "/origination/7/edit");
     });
+
+    it.each([
+      ["in-review", "Awaiting your review"],
+      ["approved", "Approved"],
+      ["rejected", "Rejected"],
+    ] as const)(
+      "%s: does not render the Make changes and resubmit link",
+      (kind, label) => {
+        mockDetail({
+          ...READY_RESULT,
+          statusChip: { kind, label },
+          statusKind: kind,
+        });
+        renderRoute();
+        expect(
+          screen.queryByTestId("origination-detail-amend"),
+        ).not.toBeInTheDocument();
+      },
+    );
 
     it("backend lifecycle status: renders the Approved banner, not action buttons (#892)", () => {
       mockDetail({

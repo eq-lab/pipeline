@@ -8,6 +8,7 @@ import type {
   SubmitLoanInput,
   SubmitLoanVariables,
 } from "@/api/useSubmitLoan";
+import type { SubmissionView } from "@/api/useLoanSubmissions";
 import type { ServedTargetChains } from "@/lib/targetChains";
 
 // ── Field model ───────────────────────────────────────────────────────────────
@@ -203,6 +204,13 @@ export function parseSubmissionJson(
   } catch {
     return { ok: false, error: "Not valid JSON — nothing was imported." };
   }
+  return parseSubmissionObject(root, targetChainIds);
+}
+
+export function parseSubmissionObject(
+  root: unknown,
+  targetChainIds: ReadonlyArray<number>,
+): ParsedSubmissionJson {
   if (typeof root !== "object" || root === null || Array.isArray(root)) {
     return {
       ok: false,
@@ -246,6 +254,39 @@ export function parseSubmissionJson(
   }
 
   return { ok: true, values, documents, missingFields };
+}
+
+export interface SubmissionPrefill {
+  values: Record<string, string>;
+  documents: LoanDocumentInput[];
+  missingFields: string[];
+}
+
+export function prefillFromSubmission(
+  submission: SubmissionView,
+): SubmissionPrefill {
+  const chainId = submission.target_chain_id;
+  const parsed = parseSubmissionObject(
+    submission.loan_data,
+    chainId == null ? [] : [chainId],
+  );
+  const chainValue = chainId == null ? "" : String(chainId);
+  if (!parsed.ok) {
+    return {
+      values: { ...emptyFormValues(), [TARGET_CHAIN_FIELD]: chainValue },
+      documents: [],
+      missingFields: ALL_FIELDS.filter((f) => f.required).map((f) => f.path),
+    };
+  }
+  return {
+    values: {
+      ...emptyFormValues(),
+      ...parsed.values,
+      [TARGET_CHAIN_FIELD]: chainValue,
+    },
+    documents: parsed.documents ?? [],
+    missingFields: parsed.missingFields,
+  };
 }
 
 // ── Form → request payload ────────────────────────────────────────────────────
@@ -345,10 +386,14 @@ export interface OriginationNewForm {
 
 export function useOriginationNewForm(
   targetChains: Pick<ServedTargetChains, "options" | "defaultChainId">,
+  initial?: { values: Record<string, string>; documents: LoanDocumentInput[] },
 ): OriginationNewForm {
-  const [storedValues, setValues] =
-    useState<Record<string, string>>(emptyFormValues);
-  const [documents, setDocuments] = useState<LoanDocumentInput[]>([]);
+  const [storedValues, setValues] = useState<Record<string, string>>(
+    () => initial?.values ?? emptyFormValues(),
+  );
+  const [documents, setDocuments] = useState<LoanDocumentInput[]>(
+    () => initial?.documents ?? [],
+  );
   const [importWarning, setImportWarning] = useState<string[] | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 

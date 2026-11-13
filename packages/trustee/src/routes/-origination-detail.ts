@@ -54,7 +54,7 @@ declare module "@tanstack/history" {
 // ── Helpers (mirrors -useOriginationTable.ts) ────────────────────────────────
 
 /** `"—"` for anything not a non-empty string — never fabricates a value. */
-function safeString(value: unknown): string {
+export function safeString(value: unknown): string {
   return typeof value === "string" && value.length > 0 ? value : "—";
 }
 
@@ -236,7 +236,7 @@ function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
   };
 }
 
-function mapHeading(submission: SubmissionView): string {
+export function mapHeading(submission: SubmissionView): string {
   const loanData: Partial<SubmissionView["loan_data"]> =
     submission.loan_data ?? {};
   return `${safeString(loanData.originator)} — ${safeString(loanData.commodity)}`;

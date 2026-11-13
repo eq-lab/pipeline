@@ -1678,6 +1678,8 @@ Figma node `4116:9155`), `routes/-origination-detail.ts` + `routes/origination.$
 `routes/-useOriginationReview.ts` + `api/useReviewSubmission.ts` (Approve/Reject/Request-changes
 orchestration), `routes/-ApproveMintDialog.tsx` / `-RejectReasonDialog.tsx` /
 `-RequestChangesDialog.tsx` / `-useRejectReasonDialog.ts` (confirmation dialogs).
+`api/useResubmitLoan.ts` + `routes/-origination-edit.ts` + `routes/origination.$id_.edit.tsx` +
+`routes/-SubmissionForm.tsx` (Amend and resubmit, #1913).
 
 ### Architecture
 
@@ -1803,6 +1805,7 @@ complete `SubmitLoanRequest` contract of `POST /v1/loan-book/loan` (mirrored fie
 `useSubmitLoan.ts`; the Rust source in `packages/api/src/routes/loan_book.rs` is authoritative).
 No Figma exists for this screen (product decision on #1100) — it reuses the Record
 Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
+The form body (fields, Documents rows, error block, submit button) lives in `routes/-SubmissionForm.tsx`, shared with the Amend and resubmit page. Each Documents row removes with an icon-only trash `IconButton` (aria-label "Remove document"); "Add document" carries a leading plus glyph.
 
 - **Target chain (#1536, #1667):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
   `FieldInput` renders a select instead of a text input when set). Its options are
@@ -1852,6 +1855,46 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   navigate — the error renders inline and the trustee stays on the page, with the form intact,
   to fix and resubmit. The route sits behind the app's auth gate like every other trustee
   route — no separate token input.
+
+### Amend and resubmit (`/origination/$id/edit`, #1913)
+
+An Originator whose submission is `ChangesRequested` amends it from the detail footer's "Make changes and
+resubmit" link. The route is `routes/origination.$id_.edit.tsx` (non-nested, like
+`loans.$id_.record-coupon.tsx`, because `origination.$id.tsx` renders no `<Outlet />`); no Figma
+exists, so it reuses the create form's layout and tokens through `routes/-SubmissionForm.tsx`.
+
+- **Endpoint:** `useResubmitLoan` POSTs `SubmitLoanRequest` to `/v1/loan-book/submissions/{id}/resubmit`
+  (bearer via `apiFetch`, no `chain_id` query). The backend replaces `loan_data`, sets the status
+  back to `InReview` and clears the reason; the target chain is fixed at creation.
+- **Target chain:** shown as a disabled select holding only the row's `target_chain_id`
+  (`targetChainLabel`) with the hint "Fixed at submission. To target another chain, submit a new
+  loan." Changing it would be a backend change.
+- **Submit button:** "Resubmit for review" is content-width (`compactSubmit`, `w-auto self-start`),
+  not full width like on `/origination/new`; height 48px, padding 28px, same colours.
+- **Prefill:** `prefillFromSubmission` reads the served `loan_data` through the same reader as Import
+  from JSON (`parseSubmissionObject`): numbers are stringified, strings kept as served (human-unit
+  USDC, no rescaling), `documents` rows carried over as editable Name / URI rows (nothing
+  re-uploaded). Legacy keys (`to`, `initial_ccr`, `initial_location`) are neither read nor resent.
+  Required paths absent from the served payload are listed in `origination-edit-prefill-warning`
+  and fail the "Required." check until filled. The form seeds once per mounted row, so the 30 s
+  list poll never resets edits.
+- **Banners:** `origination-edit-reason` ("Changes requested · `<reviewedDate>` — `<reason>`", the
+  detail footer's orange tokens) and `origination-edit-uri-banner` ("You can keep this
+  submission's `metadata_uri`. A new one must not be used by another open submission.").
+- **Errors** (`mapResubmitError`, raw text behind View details): `400` served text verbatim; `403`
+  "Only the originator can resubmit this loan."; `404` "Only the originator who submitted this loan
+  can resubmit it."; `409` matching `metadata_uri … already used` "This metadata URI is already used
+  by another open submission. Use a unique one."; other `409` "This submission is no longer awaiting
+  changes. Refresh to see its latest status."; anything else the shared fallback "Failed to resubmit
+  the loan." The action shows for every `ChangesRequested` row; the API decides who may use it.
+- **Success:** the hook's `onSuccess` returns the `["loan-submissions"]` invalidation, so
+  `mutateAsync` resolves after the refetch, then the page navigates to `/origination/$id`, which
+  renders the served `InReview` row. No status is written client-side. A rejection does not
+  navigate; the form stays intact.
+- **Not editable:** a row that is not `ChangesRequested` renders `origination-edit-not-editable`
+  ("This submission isn't awaiting changes.") with a link back to the detail; while a resubmit is
+  pending or succeeded the form stays mounted so the refetch does not flash that panel. Unknown ids
+  render `origination-edit-not-found`.
 
 ### Origination detail (`/origination/$id`, issue #821)
 
@@ -1914,7 +1957,8 @@ The always-shown action-buttons block is replaced by a footer that branches on s
   `SubmissionView`/`loan_data`.
 - **Rejected** → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
 - **ChangesRequested** → a sweet-orange banner: "Changes requested · `<reviewedDate>` —
-  `<reason>`" (#950). Non-final (waiting on the originator to resubmit) — no action buttons.
+  `<reason>`" (#950). Non-final (waiting on the originator to resubmit) — no review buttons; a
+  "Make changes and resubmit" link to `/origination/$id/edit` sits under the banner (#1913).
 - Backend merged/lifecycle statuses → the Approved banner (#892).
 
 `reviewedDate` is `formatSubmittedDate(submission.updated_at)` — **not** `formatMaturityDate`
