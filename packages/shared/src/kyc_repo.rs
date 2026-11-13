@@ -161,8 +161,9 @@ impl GroupedRequest {
         );
 
         let created_at = chrono::DateTime::from_timestamp(row.block_timestamp, 0)
-            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-            .unwrap_or_default();
+            .map_or_else(Default::default, |dt| {
+                dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+            });
 
         let stellar_withdraw =
             kind == Some(ChainKind::Stellar) && row.event_name == "WithdrawalRequested";
@@ -182,7 +183,7 @@ impl GroupedRequest {
             chain_id: row.chain_id,
             request_type: request_type.to_owned(),
             request_id: row.request_id.map(|r| r.to_string()),
-            amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
+            amount: row.amount.map_or_else(Default::default, |a| a.to_string()),
             assets: row.assets.map(|a| a.to_string()),
             shares: row.shares.map(|s| s.to_string()),
             status: status.to_owned(),

@@ -564,14 +564,13 @@ fn env_require(key: &str) -> Result<String> {
 /// validate only once asset-transfer tracking is fully configured (so a typo in a
 /// partial/disabled config doesn't crash startup).
 fn split_csv_raw(raw: Option<&str>) -> Vec<String> {
-    raw.map(|v| {
+    raw.map_or_else(Default::default, |v| {
         v.split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_owned)
             .collect()
     })
-    .unwrap_or_default()
 }
 
 pub fn env_bool(key: &str) -> bool {
