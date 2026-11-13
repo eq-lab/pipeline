@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button, IconButton, InlineError } from "@pipeline/ui";
 import { DocumentIcon } from "@/components/DocumentIcon";
 import { AddressChip } from "@/components/detail/AddressChip";
@@ -46,7 +46,14 @@ function orDash(value: string | null | undefined) {
   return value || "—";
 }
 
-function LpCounterpartyDetailContent({ id }: { id: string }) {
+function LpCounterpartyDetailContent({
+  id,
+  paymentDetails,
+}: {
+  id: string;
+  paymentDetails?: string;
+}) {
+  const navigate = useNavigate();
   const detail = useLpCounterpartyDetail(id);
   const { lp } = detail;
   const status = lp ? mapKybStatus(lp.kyb_status) : null;
@@ -360,7 +367,14 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
             )}
           </DetailCard>
 
-          <LpBankDepositsSection lpId={lp.id} legalName={lp.legal_name} />
+          <LpBankDepositsSection
+            lpId={lp.id}
+            legalName={lp.legal_name}
+            initialPaymentDetails={paymentDetails}
+            onPrefillConsumed={() =>
+              void navigate({ to: ".", search: {}, replace: true })
+            }
+          />
           {detail.action && (
             <LpReviewDialog
               action={detail.action}
@@ -383,9 +397,24 @@ function LpCounterpartyDetailContent({ id }: { id: string }) {
 
 function LpCounterpartyDetail() {
   const { id } = Route.useParams();
-  return <LpCounterpartyDetailContent key={id} id={id} />;
+  const { paymentDetails } = Route.useSearch();
+  return (
+    <LpCounterpartyDetailContent
+      key={id}
+      id={id}
+      paymentDetails={paymentDetails}
+    />
+  );
 }
 
 export const Route = createFileRoute("/lp-counterparties/$id")({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { paymentDetails?: string } => ({
+    paymentDetails:
+      typeof search.paymentDetails === "string" && search.paymentDetails.trim()
+        ? search.paymentDetails
+        : undefined,
+  }),
   component: LpCounterpartyDetail,
 });

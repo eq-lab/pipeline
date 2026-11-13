@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties.
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import { lpFetch } from "./useLp";
 
 export interface LpSummary {
   id: number;
@@ -44,4 +45,24 @@ export function useLps(): UseLpsResult {
     error: query.error,
     refetch: () => void query.refetch(),
   };
+}
+
+export function fetchLpsByPaymentDetails(
+  ref: string,
+  signal?: AbortSignal,
+): Promise<LpsResponse> {
+  const value = ref.trim();
+  if (!value) {
+    return Promise.reject(new Error("A payment reference is required."));
+  }
+  return lpFetch<LpsResponse>(
+    `/v1/lps?payment_details=${encodeURIComponent(value)}`,
+    { signal },
+  );
+}
+
+export function useFindLpByPaymentDetails() {
+  return useMutation<LpsResponse, Error, string>({
+    mutationFn: (ref) => fetchLpsByPaymentDetails(ref),
+  });
 }

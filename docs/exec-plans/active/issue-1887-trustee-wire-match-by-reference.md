@@ -135,7 +135,7 @@ has `payment_details`). No trustee token was at hand, so no data call was made.
    mint it." (safest: the LP was shown that chain's receiver; an EVM-quoted wire then waits for #1501).
    Alternative: allow it behind a warning + "Mint on {session chain} anyway" acknowledgement (same
    pattern as the #1826 receiver-changed ack), which lets the Trustee mint an EVM-quoted wire on Stellar
-   today. Which one?
+   today. Decided by the user on #1887: **Option A, block** (implemented).
 
 ## Implementation Steps
 

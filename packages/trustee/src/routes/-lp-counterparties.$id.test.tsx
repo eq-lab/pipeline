@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { LpDetail, LpDocument } from "@/api/useLp";
 
+const mockNavigate = vi.hoisted(() => vi.fn());
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
     "@tanstack/react-router",
   );
   return {
     ...actual,
+    useNavigate: () => mockNavigate,
     Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
       <a href={to}>{children}</a>
     ),
@@ -17,8 +19,20 @@ vi.mock("@tanstack/react-router", async () => {
 vi.mock("@/api/useLp", () => ({ useLp: vi.fn() }));
 vi.mock("@/api/useReviewLp", () => ({ useReviewLp: vi.fn() }));
 vi.mock("./-LpBankDepositsSection", () => ({
-  LpBankDepositsSection: ({ legalName }: { legalName: string }) => (
-    <div data-testid="lp-bank-deposits-stub">{legalName}</div>
+  LpBankDepositsSection: ({
+    legalName,
+    initialPaymentDetails,
+    onPrefillConsumed,
+  }: {
+    legalName: string;
+    initialPaymentDetails?: string;
+    onPrefillConsumed?: () => void;
+  }) => (
+    <div data-testid="lp-bank-deposits-stub">
+      {legalName}
+      <span data-testid="lp-prefill">{initialPaymentDetails ?? ""}</span>
+      <button onClick={onPrefillConsumed}>consume</button>
+    </div>
   ),
 }));
 
@@ -31,6 +45,11 @@ const mockUseReviewLp = vi.mocked(useReviewLp);
 const mutateAsync = vi.fn();
 const reset = vi.fn();
 const refetch = vi.fn();
+
+const routeSearch: { paymentDetails?: string } = {};
+(
+  Route as unknown as { useSearch: () => { paymentDetails?: string } }
+).useSearch = () => routeSearch;
 
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
   id: "7",
@@ -96,6 +115,8 @@ function renderRoute() {
 }
 
 beforeEach(() => {
+  delete routeSearch.paymentDetails;
+  mockNavigate.mockReset();
   mockUseLp.mockReset();
   mockUseReviewLp.mockReset();
   mutateAsync.mockReset();
@@ -655,5 +676,43 @@ describe("LP counterparty detail — non-ready states", () => {
     expect(screen.getByTestId("lp-detail-error")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalled();
+  });
+});
+
+describe("LP counterparty detail — payment reference prefill", () => {
+  it("passes ?paymentDetails to the deposits section and clears it when consumed", () => {
+    routeSearch.paymentDetails = "PL-7K3M-Q9TX-2ABC";
+    renderRoute();
+    expect(screen.getByTestId("lp-prefill")).toHaveTextContent(
+      "PL-7K3M-Q9TX-2ABC",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "consume" }));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: ".",
+      search: {},
+      replace: true,
+    });
+  });
+
+  it("passes nothing when the param is absent", () => {
+    renderRoute();
+    expect(screen.getByTestId("lp-prefill")).toHaveTextContent("");
+  });
+
+  it("drops blank and non-string values in validateSearch", () => {
+    const validate = (
+      Route.options as unknown as {
+        validateSearch: (s: Record<string, unknown>) => unknown;
+      }
+    ).validateSearch;
+    expect(validate({ paymentDetails: "  " })).toEqual({
+      paymentDetails: undefined,
+    });
+    expect(validate({ paymentDetails: 5 })).toEqual({
+      paymentDetails: undefined,
+    });
+    expect(validate({ paymentDetails: "PL-1" })).toEqual({
+      paymentDetails: "PL-1",
+    });
   });
 });

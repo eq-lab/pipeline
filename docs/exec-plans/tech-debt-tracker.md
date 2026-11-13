@@ -2266,6 +2266,7 @@ line, whichever section it lands in.
 - **Impact:** If the LP asked for payment details on one chain and the Trustee is signed in on another, the mint goes to the signed-in chain's receiver. The Trustee sees both of the LP's addresses and the active network on the card, which reduces but does not remove the risk.
 - **Suggested fix:** Serve the matched reference's `chain_id` and `receiver_address` on the deposit (with wire matching), then default the mint chain from it and show the recorded receiver next to the current one.
 - **Update (#1839):** the deposit now serves `matched_reference` (`chain_id`, `receiver_address`); the console default and receiver display are still open.
+- **Update (#1887):** matched deposits now drive the mint chain (a deposit matched to another chain blocks the mint) and show the receiver shown at issue; hand-attributed deposits still carry no chain, so this stays open.
 
 ### TD-165: `docs/generated/stellar-protocol-contracts.md` pins pre-#36 testnet ids and WASM interfaces
 

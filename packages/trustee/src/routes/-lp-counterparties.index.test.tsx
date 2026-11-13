@@ -12,6 +12,9 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 vi.mock("@/api/useLps", () => ({ useLps: vi.fn() }));
+vi.mock("./-PaymentReferenceLookup", () => ({
+  PaymentReferenceLookup: () => <div data-testid="lookup-stub" />,
+}));
 import { useLps } from "@/api/useLps";
 import { Route } from "./lp-counterparties.index";
 const mockUseLps = vi.mocked(useLps);
@@ -226,5 +229,31 @@ describe("LP Counterparties list route (error)", () => {
     expect(alert).not.toHaveTextContent(
       "You are not authorized to review submissions.",
     );
+  });
+});
+
+describe("LP Counterparties list route (lookup card)", () => {
+  it("renders the lookup above the list in loading, error and ready states", () => {
+    const states = [
+      { data: undefined, isLoading: true, error: null },
+      { data: undefined, isLoading: false, error: new Error("boom") },
+      { data: RESPONSE, isLoading: false, error: null },
+    ];
+    for (const state of states) {
+      mockUseLps.mockReturnValue({ ...state, refetch: () => {} });
+      const { container, unmount } = renderRoute();
+      const lookup = screen.getByTestId("lookup-stub");
+      const heading = screen.getByRole("heading", {
+        name: "LP Counterparties",
+      });
+      expect(
+        heading.compareDocumentPosition(lookup) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        container.querySelectorAll("[data-testid=lookup-stub]"),
+      ).toHaveLength(1);
+      unmount();
+    }
   });
 });

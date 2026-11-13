@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-37: `GET /v1/lps` OpenAPI documents `payment_details` as a required path parameter
+- **Date:** 2026-11-13
+- **Location:** `packages/api/src/routes/lps.rs` (`LpsQuery`). Found while planning #1887.
+- **Symptom:** `/api-docs/openapi.json` lists `payment_details` under `GET /v1/lps` as a required **path** parameter.
+- **Root cause:** `LpsQuery` lacks `#[into_params(parameter_in = Query)]`. The handler reads it correctly from the query string (`Query<LpsQuery>`), so the Trustee console is unaffected (its types are hand-mirrored, TD-42).
+- **Workaround:** None needed in the console. Fix in a backend issue; do not generate clients from the current spec for this endpoint.
+
 ### BUG-32: Assay and offtake validation accepts unbounded decimal exponents, which the valuation math then expands
 - **Date:** 2026-11-09
 - **Location:** `packages/api/src/routes/collateral_valuation.rs` (`parse_dec`, `validate_assay`, `validate_offtake`) and `packages/shared/src/collateral_valuation/mod.rs` (`dec`, `compute_collateral`). Found while planning #1783.

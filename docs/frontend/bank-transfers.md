@@ -382,7 +382,7 @@ modal's content model becomes per-LP data (a fetch), not a static constant — a
 
 **Update (#1815, #1817).** The backend issues a reference on every request for the LP to quote and
 keeps every issued reference against the LP; the seventh `Payment reference` row shipped in #1817.
-Wire matching by issued reference shipped in the backend (#1839); see [deposits.md](../product-specs/deposits.md#wire-matching-by-payment-reference). The Trustee console part is a frontend follow-up.
+Wire matching by issued reference shipped in the backend (#1839); see [deposits.md](../product-specs/deposits.md#wire-matching-by-payment-reference). The Trustee console lookup, chip and mint-chain rule shipped in #1887 (see [trustee-flows.md](./trustee-flows.md#match-an-incoming-wire-by-reference)).
 
 ## `/test?tab=auth` preview seam
 

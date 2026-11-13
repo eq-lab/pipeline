@@ -69,6 +69,10 @@ const mockUseRecordIncome = vi.mocked(useRecordIncome);
 const mockUseRole = vi.mocked(useCashReporterAccess);
 const incomeAsync = vi.fn();
 
+const routeSearch: { tab?: string } = {};
+(Route as unknown as { useSearch: () => { tab?: string } }).useSearch = () =>
+  routeSearch;
+
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
   return render(<Page />);
@@ -135,6 +139,7 @@ function readyEvents(data: RampEventsResponse = EVENTS) {
 }
 
 beforeEach(() => {
+  delete routeSearch.tab;
   mockUseRampEvents.mockReset();
   mockUseReviewRampEvent.mockReset();
   mockReview.mockReset();
@@ -592,5 +597,25 @@ describe("Cash Management route — Bank income tab", () => {
     expect(
       screen.queryByTestId("cash-management-income-dialog"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — tab deep link (#1887)", () => {
+  beforeEach(() => readyEvents());
+
+  it("opens the Escrowed wires tab for ?tab=escrow", () => {
+    routeSearch.tab = "escrow";
+    renderRoute();
+    expect(screen.getByTestId("escrow-section-stub")).toBeInTheDocument();
+  });
+
+  it("drops unknown tab values in validateSearch", () => {
+    const validate = (
+      Route.options as unknown as {
+        validateSearch: (s: Record<string, unknown>) => { tab?: string };
+      }
+    ).validateSearch;
+    expect(validate({ tab: "nope" })).toEqual({ tab: undefined });
+    expect(validate({ tab: "wireouts" })).toEqual({ tab: "wireouts" });
   });
 });

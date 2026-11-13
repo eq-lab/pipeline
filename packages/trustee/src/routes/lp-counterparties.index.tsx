@@ -12,6 +12,7 @@ import {
   NEGATIVE_RED,
   POSITIVE_GREEN,
 } from "@/components/detail/detailTokens";
+import { PaymentReferenceLookup } from "./-PaymentReferenceLookup";
 
 // spec: docs/frontend/trustee-flows.md#lp-counterparties.
 
@@ -202,6 +203,8 @@ function LpCounterpartiesIndex() {
       <h1 className="font-[family-name:var(--font-display)] text-[64px] leading-[64px] text-[rgba(56,55,53,0.3)]">
         LP Counterparties
       </h1>
+
+      <PaymentReferenceLookup />
 
       {state === "error" ? (
         <div
