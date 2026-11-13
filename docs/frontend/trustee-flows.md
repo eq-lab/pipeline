@@ -149,6 +149,10 @@ is not in the contract (#943) and is deliberately not fabricated.
 
 Retired by #1765: T-bills / USYC are not part of the documented pool (`capital-layer.md`).
 
+**Tab deep link (#1887).** The route accepts `?tab=onofframp|income|withdrawals|escrow|wireouts`
+(unknown values are dropped) and opens on that tab; switching tabs afterwards is local state. The
+LP-counterparties lookup links to `?tab=escrow`.
+
 ### Bank income tab (#1762)
 
 `routes/-cash-management-income.ts` (`useBankIncome`), `routes/-BankIncomeDialog.tsx`, `api/useRecordIncome.ts`. The tab shows the session chain chip (`useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`), "Bank interest booked by the Cash reporter is minted into the vault." and a **Book income** button. On an EVM session the button is disabled with "Booking bank income on {chain} is not available in the Trustee app yet." (TD-152).
@@ -1316,6 +1320,36 @@ Band → colour, matching the Loans/Loan-detail chip literals: neutral
 `var(--color-pipeline-positive-primary)`, negative `#b20000`, info
 `var(--color-pipeline-brand)`.
 
+### Match an incoming wire by reference
+
+**Sources:** `routes/-PaymentReferenceLookup.tsx` (card), `routes/-usePaymentReferenceLookup.ts`
+(presenter), `api/useLps.ts` (`fetchLpsByPaymentDetails`, `useFindLpByPaymentDetails`). Issue #1887;
+backend rule in [deposits.md](../product-specs/deposits.md#wire-matching-by-payment-reference). No
+Figma; built from the detail primitives.
+
+The list page has no client-side sort, pagination or table search. A **Match an incoming wire**
+card sits between the title and the table (rendered in the loading, error and ready states): one
+input, **LP payment reference** (placeholder `PL-XXXX-XXXX-XXXX`), and **Find LP**
+(`lp-lookup-submit`), disabled while the trimmed value is blank or a lookup is in flight. The value
+is never sent blank (the server lists every LP for a blank filter) and never canonicalised or
+format-checked here; the server ignores case, whitespace and hyphens. Submit calls
+`GET /v1/lps?payment_details=<trimmed, encoded>`:
+
+- One LP → navigate to `/lp-counterparties/{id}?paymentDetails=<trimmed>`. The detail route
+  validates the param (non-blank string, else dropped), opens the Record-deposit dialog once with
+  **LP payment reference** pre-filled, then clears the param with a `replace` navigation so refresh
+  or Back does not reopen it. More than one LP (contract says at most one) is shown as the generic
+  error and navigates nowhere.
+- `[]` → `lp-lookup-not-found`: "No LP was issued this reference. The Cash reporter books the wire
+  to escrow; assign it to its lender or return it from Escrowed wires." The last words link to
+  `/cash-management?tab=escrow`.
+- `400` → "This is not a valid LP payment reference." with the served text in details; `401` "Your
+  session expired. Sign in again."; `403` "Your trustee account is not authorized to look up LPs.";
+  anything else the generic connection copy.
+
+The #1763 escrow **assign** picker could reuse the lookup; that is a possible follow-up, not part of
+#1887.
+
 ### Never-fabricate notes
 
 - **Bank Info Available renders `—`, never `No`, until #1275.** No backend field exists yet for
@@ -1436,7 +1470,7 @@ look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDeposits
 
 | file | exports |
 |---|---|
-| `detailTokens.ts` | `StatusBand`; `LINE_COLOR`, `INK`, `INK_MUTED`, `BRAND`, `POSITIVE_GREEN`, `ATTENTION_AMBER`, `NEGATIVE_RED`; `CARD_CLASS`, `cardStyle()`, `chipStyle(band)`; `DETAIL_SECONDARY_BUTTON_CLASS`, `detailSecondaryButtonStyle()` |
+| `detailTokens.ts` | `StatusBand`; `LINE_COLOR`, `INK`, `INK_MUTED`, `BRAND`, `POSITIVE_GREEN`, `ATTENTION_AMBER`, `NEGATIVE_RED`; `CARD_CLASS`, `cardStyle()`, `chipStyle(band)`; `DETAIL_SECONDARY_BUTTON_CLASS`, `detailSecondaryButtonStyle()`; `DETAIL_INPUT_CLASS` (dialog text input, #1887) |
 | `StatusChip.tsx` | `StatusChip` — 4px radius, 1px border, 12px body, band-coloured, `data-band` for tests |
 | `DetailCard.tsx` | `DetailCard` (card shell; renders a named `<section>` when given `ariaLabel`/`ariaLabelledBy`, a bare `<div>` otherwise) and `CardTitle` (26px display `h2`, optional `id`) |
 | `KeyValueRow.tsx` | `KeyValueRow` — 15px muted label / 16px right-aligned value, `LINE_COLOR` divider unless `isLast` |
@@ -1491,7 +1525,7 @@ rules, amounts right-aligned `tabular-nums`, `overflow-x-auto` kept for narrow v
 untouched by that restyle. It renders at every KYB status — the endpoint does not gate on one.
 
 **Column plan (#1453 design feedback).** The auto-layout table came out lopsided — Received took
-whatever width it wanted and Amount was squeezed against Payment reference. The table is now
+whatever width it wanted and Amount was squeezed against the reference. The table is now
 `table-fixed` over a `<colgroup>` with a fixed share per column, so the five columns read evenly
 at the card width and keep those proportions as the card grows:
 
@@ -1499,7 +1533,7 @@ at the card width and keep those proportions as the card grows:
 |---|---|---|
 | Received | 22% | `occurred_at` via `formatIsoDateTimeUtc` → `5 Oct 2026, 15:41 UTC`, `whitespace-nowrap` |
 | Amount | 16% | right-aligned `tabular-nums`, `formatUsdDecimal` (exact, `$1,234,567.89`) |
-| Payment reference | 26% | `payment_reference`, `break-all`, `ref_hash` as its `title` |
+| Bank reference | 26% | `payment_reference`, `break-all`, `ref_hash` as its `title`; under it the attribution chip (#1887): `Matched by reference` (info, `lp-deposit-matched`) with `{payment_details} · issued {issued_at}` (`lp-deposit-matched-ref`) when `matched_reference` is served, else `Attributed by hand` (neutral, `lp-deposit-hand`) |
 | Recorded by | 18% | `recorded_by` as an [`AddressText`](#shared-detail-primitives) |
 | PLUSD | 18% | the status cell below |
 
@@ -1513,11 +1547,19 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
 - **List** — `GET`, 30 s poll, served order (newest first), no client sort. Columns per the plan
   above. Loading, empty ("No bank deposits recorded."), and error + Retry states.
 - **Record deposit** — dialog (shares `useLpReviewDialog`'s focus trap/Escape) with Amount (USD),
-  Payment reference, and Received at (UTC, `datetime-local` defaulting to now). Client checks
-  mirror the API: amount > 0 with ≤ 2 decimals (grouping commas stripped), nonblank reference
-  (sent trimmed), a valid non-future time sent as `…:00Z`. Validation shows on submit; the
-  dialog closes on `201` and keeps drafts on error. `409` reads "A deposit with this payment
-  reference is already recorded." Every settle invalidates the deposits query.
+  Bank reference (the bank's own reference, unique; relabelled from "Payment reference" by #1887),
+  optional **LP payment reference** (`payment_details`, #1887) and Received at (UTC,
+  `datetime-local` defaulting to now). Client checks mirror the API: amount > 0 with ≤ 2 decimals
+  (grouping commas stripped), nonblank bank reference (sent trimmed), a valid non-future time sent
+  as `…:00Z`. The LP payment reference is sent trimmed only when non-blank, never canonicalised or
+  format-checked. It can be pre-filled from the lookup's `?paymentDetails=` param (see
+  [Match an incoming wire by reference](#match-an-incoming-wire-by-reference)). Validation shows on
+  submit; the dialog closes on `201` and keeps drafts on error. `409` reads "A deposit with this
+  bank reference is already recorded." `422` shows the served `error` text verbatim; when the
+  request carried `payment_details`, a second line "Wires that cannot be matched to an LP are
+  booked to escrow by the Cash reporter." links to `/cash-management?tab=escrow`
+  (`lp-deposit-escrow-link`). `400` reads "Check the amount, references and date, then try again."
+  with the server text in details. Every settle invalidates the deposits query.
 - **PLUSD — one status column** (#1449, folded into a single column by #1453). The trailing
   **Action** column is gone: the PLUSD column now carries both the state and the control, because
   a two-column `Not minted` + button pair said the same thing twice. A row with `is_minted: true`
@@ -1538,10 +1580,20 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   served hash.
 - **Mint chain and scope line (#1826).** The card is a per-network surface: the mint chain is the
   session's signed-in chain, `useSessionState().chainId ?? ENV.STELLAR_CHAIN_ID`, mapped to a kind
-  by `chainKindOf`. A deposit row carries no chain (TD-164), so the Trustee picks the network by
-  signing in on it. A line under the title states the scope: `Mints on {chain} to <receiver chip>`,
+  by `chainKindOf`. A hand-attributed deposit carries no chain (TD-164), so the Trustee picks the
+  network by signing in on it. A line under the title states the scope: `Mints on {chain} to <receiver chip>`,
   plus `· capital wallet — this LP has no {Stellar|EVM} settlement address` for the fallback, or
   `Mints on {chain} — no receiver`.
+- **Matched reference and mint chain (#1887).** The mint chain stays the signed-in chain. For a
+  deposit whose `matched_reference.chain_id` is set: on the same chain the flow is unchanged and the
+  confirm dialog adds **LP payment reference** and **Shown to the LP** (`lp-mint-shown-receiver`:
+  chain label plus the full served `receiver_address`, `—` when null); when that address differs from
+  the receiver resolved now, a muted note (`lp-mint-shown-differs`) says the settlement address
+  changed since the reference was issued and PLUSD goes to the current address (no extra
+  acknowledgement; the #1826 changed-since-shown one is unchanged). On another chain `Mint PLUSD` is
+  **disabled** (decided on #1887, not a warning): "This wire was matched to a reference issued for
+  {chain}. Sign in on {chain} to mint it." A null `chain_id` (reference issued before #1824) or a
+  hand-attributed deposit behaves as before. The capital-wallet fallback receiver is unchanged.
 - **Receiver rule** — `wireInReceiver(lp, kind, {stellar, evm})`: for the session's kind, the LP's
   address of that kind (`stellar_address` / `evm_address`) when its `*_linked_at` is non-null,
   otherwise that chain's capital wallet (`VITE_STELLAR_CAPITAL_WALLET_ID` /
@@ -1552,7 +1604,7 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   trustline, so minting to it traps with PLUSD `Error(Contract, #13)`. The trustee's wallet is the
   signer and `caller`, never the receiver.
 - **Mint confirm dialog (#1826).** `Mint PLUSD` opens `lp-mint-confirm` (the Record-deposit dialog
-  shell) and re-reads `GET /v1/lps/{id}`. It shows Network, Amount, Payment reference and the
+  shell) and re-reads `GET /v1/lps/{id}`. It shows Network, Amount, Bank reference and the
   **full** receiver (`lp-mint-receiver`, never truncated), labelled "LP settlement address" or
   "Capital wallet". Confirm re-reads the LP again immediately before building the transaction and
   mints only to that read's receiver, and only if it equals the one shown. On any difference
@@ -1584,7 +1636,7 @@ column is `whitespace-nowrap`, so 9-digit amounts do not wrap at the 16% share.
   raises the deposits poll to 5 s; it is never persisted and never substitutes for the served
   flag. Each id's window is anchored to its own mint time (the set stores a deadline per id), so
   a later mint never restarts an earlier id's window, and unmounting clears every armed window. Disabled reasons, rendered as the button's `title` and an `aria-describedby` hint, in
-  order: EVM session (#1826), wallet not connected, minter id unset, Cash reporter role (#1762: checking, could not verify, delay, "Only the Cash reporter can book incoming wires."), no receiver resolvable, already minted,
+  order: EVM session (#1826), matched on another chain (#1887), wallet not connected, minter id unset, Cash reporter role (#1762: checking, could not verify, delay, "Only the Cash reporter can book incoming wires."), no receiver resolvable, already minted,
   waiting for the indexer, another mint in flight. Before the signature request `useRecordWireIn` reads the minter's `ref_hash_seen` and, when true, throws `RefHashSeen…` so the copy below shows without a wallet prompt.
 - **Errors** — surfaced through `toUserError` in an `InlineError` inside the mint confirm dialog (a mint can only start there) with the raw contract text in
   the details dialog. A `RefHashSeen` trap gets its own copy: "This deposit's reference has

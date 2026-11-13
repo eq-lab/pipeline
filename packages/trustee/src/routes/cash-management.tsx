@@ -576,7 +576,8 @@ function WithdrawalQueueSection({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function CashManagement() {
-  const [activeTab, setActiveTab] = useState<TabKey>("onofframp");
+  const search = Route.useSearch();
+  const [activeTab, setActiveTab] = useState<TabKey>(search.tab ?? "onofframp");
   const [withdrawalTopUpOpen, setWithdrawalTopUpOpen] = useState(false);
   const view = useCashManagement();
   const withdrawals = useWithdrawalQueueView();
@@ -833,5 +834,10 @@ function CashManagement() {
 }
 
 export const Route = createFileRoute("/cash-management")({
+  validateSearch: (search: Record<string, unknown>): { tab?: TabKey } => ({
+    tab: TABS.some((t) => t.key === search.tab)
+      ? (search.tab as TabKey)
+      : undefined,
+  }),
   component: CashManagement,
 });

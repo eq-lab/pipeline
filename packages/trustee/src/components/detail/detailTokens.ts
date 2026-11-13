@@ -64,3 +64,6 @@ export const DETAIL_SECONDARY_BUTTON_CLASS =
 export function detailSecondaryButtonStyle(): CSSProperties {
   return { borderColor: LINE_COLOR };
 }
+
+export const DETAIL_INPUT_CLASS =
+  "rounded-pipeline-card border-pipeline-line bg-pipeline-surface text-pipeline-ink focus:border-pipeline-brand w-full border p-3 focus:outline-none disabled:opacity-50";

@@ -16,6 +16,22 @@ vi.mock("@/api/useLpBankDeposits", () => ({
   useRecordBankDeposit: vi.fn(),
   LP_BANK_DEPOSITS_REFETCH_MS: 30_000,
 }));
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    to,
+    search,
+    children,
+    ...rest
+  }: {
+    to: string;
+    search?: Record<string, string>;
+    children: React.ReactNode;
+  }) => (
+    <a href={`${to}?${new URLSearchParams(search).toString()}`} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock("@/api/useLp", () => ({ useLp: vi.fn(), fetchLp: vi.fn() }));
 vi.mock("@/auth/sessionStore", () => ({ useSessionState: vi.fn() }));
 vi.mock("@/api/useRecordWireIn", () => ({ useRecordWireIn: vi.fn() }));
@@ -115,7 +131,19 @@ const DEPOSIT: LpBankDeposit = {
   is_minted: false,
   recorded_by: "GTRUSTEE",
   created_at: "2026-10-05T16:00:00Z",
+  matched_reference: null,
 };
+
+const MATCHED: LpBankDeposit["matched_reference"] = {
+  payment_details: "PL-7K3M-Q9TX-2ABC",
+  chain_id: 99_000_001,
+  receiver_address: "GSHOWN0000000000000000000000000000000000000000000000000",
+  issued_at: "2026-10-04T10:00:00Z",
+};
+
+function matchedDeposit(overrides: Partial<NonNullable<typeof MATCHED>> = {}) {
+  return { ...DEPOSIT, matched_reference: { ...MATCHED!, ...overrides } };
+}
 
 function list(state: {
   data?: { deposits: LpBankDeposit[] };
@@ -267,7 +295,7 @@ describe("LpBankDepositsSection — list", () => {
     expect(headers).toEqual([
       "Received",
       "Amount",
-      "Payment reference",
+      "Bank reference",
       "Recorded by",
       "PLUSD",
     ]);
@@ -322,7 +350,7 @@ describe("LpBankDepositsSection — record", () => {
     fireEvent.change(screen.getByLabelText("Amount (USD)"), {
       target: { value: "50,000.00" },
     });
-    fireEvent.change(screen.getByLabelText("Payment reference"), {
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
       target: { value: "  WIRE-REF-2 " },
     });
     fireEvent.change(screen.getByLabelText("Received at (UTC)"), {
@@ -345,12 +373,173 @@ describe("LpBankDepositsSection — record", () => {
     );
   });
 
+  it("sends the trimmed LP payment reference only when filled", async () => {
+    mutateAsync.mockResolvedValue(DEPOSIT);
+    const dialog = openDialog();
+    fireEvent.change(screen.getByLabelText("Amount (USD)"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
+      target: { value: "B-1" },
+    });
+    fireEvent.change(screen.getByLabelText(/^LP payment reference/), {
+      target: { value: "  pl-7k3m q9tx  " },
+    });
+    fireEvent.click(
+      dialog.querySelector('button[type="submit"]') as HTMLButtonElement,
+    );
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_details: "pl-7k3m q9tx" }),
+      ),
+    );
+  });
+
+  it("omits payment_details when the LP payment reference is blank", async () => {
+    mutateAsync.mockResolvedValue(DEPOSIT);
+    const dialog = openDialog();
+    fireEvent.change(screen.getByLabelText("Amount (USD)"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
+      target: { value: "B-1" },
+    });
+    fireEvent.click(
+      dialog.querySelector('button[type="submit"]') as HTMLButtonElement,
+    );
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(mutateAsync.mock.calls[0]![0].payment_details).toBeUndefined();
+  });
+
+  it("shows the served 422 text and the escrow link only when a reference was sent", async () => {
+    const served = "payment reference `PL-X` was never issued to any LP";
+    mutateAsync.mockRejectedValue(new ApiError(served, 422));
+    recorder(new ApiError(served, 422));
+    const view = openDialog();
+    expect(view).toHaveTextContent(served);
+    expect(screen.queryByTestId("lp-deposit-escrow-link")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Amount (USD)"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Bank reference/), {
+      target: { value: "B-1" },
+    });
+    fireEvent.change(screen.getByLabelText(/^LP payment reference/), {
+      target: { value: "PL-X" },
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.querySelector('button[type="submit"]') as HTMLButtonElement,
+      );
+    });
+    expect(screen.getByTestId("lp-deposit-escrow-link")).toHaveAttribute(
+      "href",
+      "/cash-management?tab=escrow",
+    );
+  });
+
+  it("opens pre-filled once from initialPaymentDetails and reports it consumed", () => {
+    list({ data: { deposits: [] } });
+    const consumed = vi.fn();
+    const { rerender } = render(
+      <LpBankDepositsSection
+        lpId={7}
+        legalName="Acme Ltd"
+        initialPaymentDetails="PL-AAAA"
+        onPrefillConsumed={consumed}
+      />,
+    );
+    expect(screen.getByLabelText(/^LP payment reference/)).toHaveValue(
+      "PL-AAAA",
+    );
+    expect(consumed).toHaveBeenCalledTimes(1);
+    rerender(
+      <LpBankDepositsSection
+        lpId={7}
+        legalName="Acme Ltd"
+        onPrefillConsumed={consumed}
+      />,
+    );
+    expect(consumed).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a duplicate-reference error and stays open", async () => {
     recorder(new ApiError("dup", 409));
     const dialog = openDialog();
     expect(dialog).toHaveTextContent(
-      "A deposit with this payment reference is already recorded.",
+      "A deposit with this bank reference is already recorded.",
     );
+  });
+});
+
+describe("LpBankDepositsSection — attribution", () => {
+  it("shows the matched chip with the canonical reference and issue time", () => {
+    list({ data: { deposits: [matchedDeposit()] } });
+    renderSection();
+    expect(screen.getByTestId("lp-deposit-matched")).toHaveTextContent(
+      "Matched by reference",
+    );
+    expect(screen.getByTestId("lp-deposit-matched-ref")).toHaveTextContent(
+      "PL-7K3M-Q9TX-2ABC · issued 4 Oct 2026, 10:00 UTC",
+    );
+    expect(screen.queryByTestId("lp-deposit-hand")).toBeNull();
+  });
+
+  it("shows Attributed by hand without a match", () => {
+    list({ data: { deposits: [DEPOSIT] } });
+    renderSection();
+    expect(screen.getByTestId("lp-deposit-hand")).toHaveTextContent(
+      "Attributed by hand",
+    );
+  });
+});
+
+describe("LpBankDepositsSection — matched mint", () => {
+  it("shows the reference and the receiver shown to the LP, no differs note when equal", async () => {
+    lp({ stellar_address: MATCHED!.receiver_address });
+    list({ data: { deposits: [matchedDeposit()] } });
+    renderSection();
+    await openMintDialog();
+    const dialog = screen.getByTestId("lp-mint-confirm");
+    expect(dialog).toHaveTextContent("LP payment reference");
+    expect(dialog).toHaveTextContent("PL-7K3M-Q9TX-2ABC");
+    expect(screen.getByTestId("lp-mint-shown-receiver")).toHaveTextContent(
+      `Stellar · ${MATCHED!.receiver_address}`,
+    );
+    expect(screen.queryByTestId("lp-mint-shown-differs")).toBeNull();
+  });
+
+  it("notes when the current receiver differs from the shown one and mints to the current one", async () => {
+    mintAsync.mockResolvedValueOnce({ hash: "tx", wireId: 1 });
+    list({ data: { deposits: [matchedDeposit()] } });
+    renderSection();
+    await openMintDialog();
+    expect(screen.getByTestId("lp-mint-shown-differs")).toHaveTextContent(
+      "PLUSD goes to the current address.",
+    );
+    await confirmMint();
+    expect(mintAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ receiver: LP_WALLET }),
+    );
+  });
+
+  it("blocks the mint when the reference was issued for another chain", () => {
+    list({ data: { deposits: [matchedDeposit({ chain_id: 560048 })] } });
+    renderSection();
+    const button = screen.getByRole("button", { name: "Mint PLUSD" });
+    expect(button).toBeDisabled();
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent(
+      "This wire was matched to a reference issued for Hoodi. Sign in on Hoodi to mint it.",
+    );
+    fireEvent.click(button);
+    expect(mockFetchLp).not.toHaveBeenCalled();
+    expect(mintAsync).not.toHaveBeenCalled();
+  });
+
+  it("behaves as before when the matched reference has no chain", async () => {
+    list({ data: { deposits: [matchedDeposit({ chain_id: null })] } });
+    renderSection();
+    expect(screen.getByRole("button", { name: "Mint PLUSD" })).toBeEnabled();
   });
 });
 

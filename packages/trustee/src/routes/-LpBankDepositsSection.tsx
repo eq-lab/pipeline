@@ -1,4 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#lp-bank-deposits
+import { Link } from "@tanstack/react-router";
 import { Button, InlineError } from "@pipeline/ui";
 import { AddressChip } from "@/components/detail/AddressChip";
 import { AddressText } from "@/components/detail/AddressText";
@@ -6,6 +7,7 @@ import { CardTitle, DetailCard } from "@/components/detail/DetailCard";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
 import { StatusChip } from "@/components/detail/StatusChip";
 import {
+  DETAIL_INPUT_CLASS,
   DETAIL_SECONDARY_BUTTON_CLASS,
   INK_MUTED,
   LINE_COLOR,
@@ -20,9 +22,6 @@ import {
   type DepositRow,
   type LpBankDepositsSection as Section,
 } from "./-useLpBankDeposits";
-
-const inputClass =
-  "rounded-pipeline-card border-pipeline-line bg-pipeline-surface text-pipeline-ink focus:border-pipeline-brand w-full border p-3 focus:outline-none disabled:opacity-50";
 
 const BODY_CLASS =
   "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
@@ -41,14 +40,25 @@ const MINT_BUTTON_CLASS =
 const BODY_CELL_CLASS =
   "py-[12px] pr-[16px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]";
 
+const ESCROW_LINK_CLASS =
+  "text-[color:var(--color-pipeline-brand)] underline underline-offset-2";
+
 export function LpBankDepositsSection({
   lpId,
   legalName,
+  initialPaymentDetails,
+  onPrefillConsumed,
 }: {
   lpId: number;
   legalName: string;
+  initialPaymentDetails?: string;
+  onPrefillConsumed?: () => void;
 }) {
-  const section = useLpBankDepositsSection(lpId);
+  const section = useLpBankDepositsSection(
+    lpId,
+    initialPaymentDetails,
+    onPrefillConsumed,
+  );
   return (
     <DetailCard
       className="gap-[16px] p-[26px]"
@@ -59,7 +69,7 @@ export function LpBankDepositsSection({
         <Button
           variant="primary-blue"
           size="m"
-          onClick={section.openDialog}
+          onClick={() => section.openDialog()}
           disabled={section.busy}
         >
           Record deposit
@@ -106,7 +116,7 @@ export function LpBankDepositsSection({
               <tr>
                 <th className={HEAD_CELL_CLASS}>Received</th>
                 <th className={`${HEAD_CELL_CLASS} text-right`}>Amount</th>
-                <th className={HEAD_CELL_CLASS}>Payment reference</th>
+                <th className={HEAD_CELL_CLASS}>Bank reference</th>
                 <th className={HEAD_CELL_CLASS}>Recorded by</th>
                 <th className={`${HEAD_CELL_CLASS} pr-0`}>PLUSD</th>
               </tr>
@@ -134,6 +144,7 @@ export function LpBankDepositsSection({
                     title={row.refHash}
                   >
                     {row.reference}
+                    <AttributionCell row={row} />
                   </td>
                   <td className={BODY_CELL_CLASS}>
                     {row.recordedBy ? (
@@ -158,6 +169,36 @@ export function LpBankDepositsSection({
         <MintConfirmDialog section={section} legalName={legalName} />
       )}
     </DetailCard>
+  );
+}
+
+function AttributionCell({ row }: { row: DepositRow }) {
+  if (!row.matched) {
+    return (
+      <div className="mt-[4px]">
+        <StatusChip
+          band="neutral"
+          label="Attributed by hand"
+          testId="lp-deposit-hand"
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="mt-[4px] flex flex-col items-start gap-[4px]">
+      <StatusChip
+        band="info"
+        label="Matched by reference"
+        testId="lp-deposit-matched"
+      />
+      <span
+        data-testid="lp-deposit-matched-ref"
+        className={HINT_CLASS}
+        style={{ color: INK_MUTED }}
+      >
+        {row.matched.paymentDetails} · issued {row.matched.issuedAt}
+      </span>
+    </div>
   );
 }
 
@@ -276,8 +317,9 @@ function RecordBankDepositDialog({
           id="lp-deposit-description"
           className="text-pipeline-ink-muted text-sm"
         >
-          Record a wire received from this LP. The payment reference must be
-          unique — it identifies the wire when PLUSD is minted.
+          Record a wire received from this LP. The bank reference must be unique
+          — it identifies the wire when PLUSD is minted. Add the LP payment
+          reference the LP quoted to match the wire by reference.
         </p>
         <label
           className="flex flex-col gap-2 text-sm"
@@ -292,22 +334,45 @@ function RecordBankDepositDialog({
             value={section.amount}
             onChange={(event) => section.setAmount(event.target.value)}
             disabled={section.busy}
-            className={inputClass}
+            className={DETAIL_INPUT_CLASS}
           />
         </label>
         <label
           className="flex flex-col gap-2 text-sm"
           htmlFor="lp-deposit-reference"
         >
-          Payment reference
+          Bank reference
           <input
             id="lp-deposit-reference"
             autoComplete="off"
             value={section.reference}
             onChange={(event) => section.setReference(event.target.value)}
             disabled={section.busy}
-            className={inputClass}
+            className={DETAIL_INPUT_CLASS}
           />
+          <span className={HINT_CLASS} style={{ color: INK_MUTED }}>
+            The bank&apos;s own reference for this wire (statement line, MT103
+            field 20 or UETR). Must be unique.
+          </span>
+        </label>
+        <label
+          className="flex flex-col gap-2 text-sm"
+          htmlFor="lp-deposit-payment-details"
+        >
+          LP payment reference
+          <input
+            id="lp-deposit-payment-details"
+            autoComplete="off"
+            placeholder="PL-XXXX-XXXX-XXXX"
+            value={section.paymentDetails}
+            onChange={(event) => section.setPaymentDetails(event.target.value)}
+            disabled={section.busy}
+            className={DETAIL_INPUT_CLASS}
+          />
+          <span className={HINT_CLASS} style={{ color: INK_MUTED }}>
+            The PL-XXXX-XXXX-XXXX reference the LP quoted. Leave blank to
+            attribute the wire by hand.
+          </span>
         </label>
         <label
           className="flex flex-col gap-2 text-sm"
@@ -320,7 +385,7 @@ function RecordBankDepositDialog({
             value={section.occurredAt}
             onChange={(event) => section.setOccurredAt(event.target.value)}
             disabled={section.busy}
-            className={inputClass}
+            className={DETAIL_INPUT_CLASS}
           />
         </label>
         {section.validationError && (
@@ -333,6 +398,20 @@ function RecordBankDepositDialog({
             message={section.mutationError.message}
             details={section.mutationError.details}
           />
+        )}
+        {section.mutationEscrowHint && (
+          <p className="text-pipeline-ink-muted text-sm">
+            Wires that cannot be matched to an LP are booked to escrow by the
+            Cash reporter.{" "}
+            <Link
+              to="/cash-management"
+              search={{ tab: "escrow" }}
+              data-testid="lp-deposit-escrow-link"
+              className={ESCROW_LINK_CLASS}
+            >
+              Escrowed wires
+            </Link>
+          </p>
         )}
         <div className="flex flex-wrap justify-end gap-3">
           <Button
@@ -451,9 +530,27 @@ function MintConfirmDialog({
           <div className="flex flex-col">
             <KeyValueRow label="Network">{section.chainLabel}</KeyValueRow>
             <KeyValueRow label="Amount">{ready.row.amount}</KeyValueRow>
-            <KeyValueRow label="Payment reference">
+            <KeyValueRow label="Bank reference">
               <span className="break-all">{ready.row.reference}</span>
             </KeyValueRow>
+            {ready.row.matched && (
+              <>
+                <KeyValueRow label="LP payment reference">
+                  <span className="break-all">
+                    {ready.row.matched.paymentDetails}
+                  </span>
+                </KeyValueRow>
+                <KeyValueRow label="Shown to the LP">
+                  <span
+                    data-testid="lp-mint-shown-receiver"
+                    className="font-mono text-[13px] leading-[18px] break-all"
+                  >
+                    {ready.row.matched.chainLabel} ·{" "}
+                    {ready.row.matched.receiverAddress ?? "—"}
+                  </span>
+                </KeyValueRow>
+              </>
+            )}
             <KeyValueRow label="Receiver" isLast>
               <span
                 data-testid="lp-mint-receiver"
@@ -472,6 +569,17 @@ function MintConfirmDialog({
             </KeyValueRow>
           </div>
         )}
+        {ready?.row.matched?.receiverAddress &&
+          ready.row.matched.receiverAddress !== ready.receiver.receiver && (
+            <p
+              data-testid="lp-mint-shown-differs"
+              className={HINT_CLASS}
+              style={{ color: INK_MUTED }}
+            >
+              The LP&apos;s settlement address changed since this reference was
+              issued. PLUSD goes to the current address.
+            </p>
+          )}
         {ready?.changed && (
           <div
             role="alert"

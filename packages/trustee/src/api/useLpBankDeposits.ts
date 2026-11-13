@@ -3,6 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "./client";
 import { lpFetch } from "./useLp";
 
+export interface MatchedReference {
+  payment_details: string;
+  chain_id: number | null;
+  receiver_address: string | null;
+  issued_at: string;
+}
+
 /** Hand-mirror of `packages/api/src/routes/lp_bank_deposits.rs` (TD-42). */
 export interface LpBankDeposit {
   id: number;
@@ -17,6 +24,7 @@ export interface LpBankDeposit {
   is_minted: boolean;
   recorded_by: string;
   created_at: string;
+  matched_reference: MatchedReference | null;
 }
 
 export interface LpBankDepositsResponse {
@@ -27,6 +35,7 @@ export interface RecordBankDepositInput {
   lpId: number;
   amount: string;
   payment_reference: string;
+  payment_details?: string;
   occurred_at: string;
 }
 

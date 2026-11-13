@@ -45,11 +45,13 @@ export function depositError(error: Error | null) {
         ? "Your trustee account is not authorized to record bank deposits."
         : status === 404
           ? "This LP was not found. Refresh the account details."
-          : status === 409
-            ? "A deposit with this payment reference is already recorded."
-            : status === 400
-              ? "Check the amount, payment reference, and date, then try again."
-              : "Could not complete the request. Check your connection and try again.";
+          : status === 422
+            ? error.message
+            : status === 409
+              ? "A deposit with this bank reference is already recorded."
+              : status === 400
+                ? "Check the amount, references and date, then try again."
+                : "Could not complete the request. Check your connection and try again.";
   return { message, details: error.message };
 }
 
@@ -183,6 +185,14 @@ export function noReceiverMessage(kind: SettlementChainKind): string {
   return `This LP has no linked ${kind === "stellar" ? "Stellar" : "EVM"} wallet and no capital wallet is configured.`;
 }
 
+export interface MatchedRow {
+  paymentDetails: string;
+  issuedAt: string;
+  chainId: number | null;
+  chainLabel: string;
+  receiverAddress: string | null;
+}
+
 export interface DepositRow {
   id: number;
   occurredAt: string;
@@ -194,6 +204,17 @@ export interface DepositRow {
   isMinted: boolean;
   isPending: boolean;
   recordedBy: string;
+  matched: MatchedRow | null;
+}
+
+export function matchedChainReason(
+  row: DepositRow,
+  sessionChainId: number,
+): string | null {
+  const matchedChain = row.matched?.chainId;
+  if (matchedChain == null || matchedChain === sessionChainId) return null;
+  const label = row.matched!.chainLabel;
+  return `This wire was matched to a reference issued for ${label}. Sign in on ${label} to mint it.`;
 }
 
 export function mapDepositToRow(
@@ -211,10 +232,23 @@ export function mapDepositToRow(
     isMinted: deposit.is_minted,
     isPending: !deposit.is_minted && isPending,
     recordedBy: deposit.recorded_by,
+    matched: deposit.matched_reference
+      ? {
+          paymentDetails: deposit.matched_reference.payment_details,
+          issuedAt: formatIsoDateTimeUtc(deposit.matched_reference.issued_at),
+          chainId: deposit.matched_reference.chain_id,
+          chainLabel: targetChainLabel(deposit.matched_reference.chain_id),
+          receiverAddress: deposit.matched_reference.receiver_address,
+        }
+      : null,
   };
 }
 
-export function useLpBankDepositsSection(lpId: number) {
+export function useLpBankDepositsSection(
+  lpId: number,
+  initialPaymentDetails?: string,
+  onPrefillConsumed?: () => void,
+) {
   const [pendingDeadlines, setPendingDeadlines] = useState<
     ReadonlyMap<number, number>
   >(() => new Map<number, number>());
@@ -229,9 +263,16 @@ export function useLpBankDepositsSection(lpId: number) {
   const wallet = useStellarWallet();
   const mint = useRecordWireIn();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const initialRef = useRef(
+    initialPaymentDetails?.trim() ? initialPaymentDetails : undefined,
+  );
+  const [open, setOpen] = useState(initialRef.current !== undefined);
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
+  const [paymentDetails, setPaymentDetails] = useState(
+    initialRef.current ?? "",
+  );
+  const [sentPaymentDetails, setSentPaymentDetails] = useState(false);
   const [occurredAt, setOccurredAt] = useState(nowUtcDateTimeInput);
   const [touched, setTouched] = useState(false);
   const [mintingDepositId, setMintingDepositId] = useState<number | null>(null);
@@ -295,6 +336,8 @@ export function useLpBankDepositsSection(lpId: number) {
       if (kind === "evm") {
         return `PLUSD minting on ${chainLabel} is not available in the Trustee app yet.`;
       }
+      const matchedReason = matchedChainReason(row, chainId);
+      if (matchedReason !== null) return matchedReason;
       if (!wallet.isConnected || !wallet.address) {
         return "Connect your trustee wallet to mint PLUSD.";
       }
@@ -316,6 +359,7 @@ export function useLpBankDepositsSection(lpId: number) {
     },
     [
       kind,
+      chainId,
       chainLabel,
       wallet.isConnected,
       wallet.address,
@@ -330,22 +374,29 @@ export function useLpBankDepositsSection(lpId: number) {
   const validationError = !normalizedAmount
     ? "Enter an amount greater than 0 with at most 2 decimal places."
     : !reference.trim()
-      ? "Enter the bank's payment reference."
+      ? "Enter the bank's reference for this wire."
       : !occurredIso
         ? "Enter when the wire was received."
         : Date.parse(occurredIso) > Date.now()
           ? "The receipt time cannot be in the future."
           : null;
 
-  function openDialog() {
+  function openDialog(prefill?: string) {
     if (submitting.current) return;
     mutation.reset();
     setAmount("");
     setReference("");
+    setPaymentDetails(prefill ?? "");
+    setSentPaymentDetails(false);
     setOccurredAt(nowUtcDateTimeInput());
     setTouched(false);
     setOpen(true);
   }
+  const prefillConsumed = useRef(onPrefillConsumed);
+  useEffect(() => {
+    if (initialRef.current !== undefined) prefillConsumed.current?.();
+  }, []);
+
   function close() {
     if (submitting.current) return;
     setOpen(false);
@@ -355,11 +406,14 @@ export function useLpBankDepositsSection(lpId: number) {
     setTouched(true);
     if (validationError || submitting.current) return;
     submitting.current = true;
+    const details = paymentDetails.trim();
+    setSentPaymentDetails(details !== "");
     try {
       await mutation.mutateAsync({
         lpId,
         amount: normalizedAmount!,
         payment_reference: reference.trim(),
+        payment_details: details || undefined,
         occurred_at: occurredIso!,
       });
       setOpen(false);
@@ -545,11 +599,17 @@ export function useLpBankDepositsSection(lpId: number) {
     setAmount,
     reference,
     setReference,
+    paymentDetails,
+    setPaymentDetails,
     occurredAt,
     setOccurredAt,
     validationError: touched ? validationError : null,
     busy: mutation.isPending,
     mutationError: depositError(mutation.error),
+    mutationEscrowHint:
+      mutation.error instanceof ApiError &&
+      mutation.error.status === 422 &&
+      sentPaymentDetails,
     chainLabel,
     kind,
     receiver,

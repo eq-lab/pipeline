@@ -175,6 +175,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 | Issue | Doc | Status |
 | --- | --- | --- |
+| [#1887 Trustee: match incoming wires to the LP by the issued payment reference](https://github.com/eq-lab/pipeline/issues/1887) | [1887-trustee-wire-match-by-reference.md](./epic-1247/1887-trustee-wire-match-by-reference.md) | Initial |
 | [#1889 Stellar: a wire-only lender's settlement address is never PLUSD-authorised, so record_wire_in traps](https://github.com/eq-lab/pipeline/issues/1889) | [1889-wire-only-lp-plusd-authorization.md](./epic-1247/1889-wire-only-lp-plusd-authorization.md) | Initial |
 | [#1248 KYB: Sign-in modal (email + password)](https://github.com/eq-lab/pipeline/issues/1248) | [1248-kyb-signin-modal.md](./epic-1247/1248-kyb-signin-modal.md) | Amended by #1265 |
 | [#1249 KYB: Create-account modal](https://github.com/eq-lab/pipeline/issues/1249) | [1249-kyb-create-account.md](./epic-1247/1249-kyb-create-account.md) | Amended by #1281, #1265 |
