@@ -6,7 +6,7 @@ import {
   type OriginationNewForm,
 } from "./-origination-new";
 import type { UserFacingError } from "@/utils/userError";
-import { InlineError } from "@pipeline/ui";
+import { IconButton, InlineError } from "@pipeline/ui";
 
 export const LINE_COLOR = "rgba(56,55,53,0.18)";
 const INK_MUTED = "rgba(56,55,53,0.6)";
@@ -104,6 +104,7 @@ export function SubmissionForm({
   submitLabel,
   pendingLabel,
   onSubmit,
+  compactSubmit = false,
 }: {
   form: OriginationNewForm;
   targetChainDisabled: boolean;
@@ -113,6 +114,7 @@ export function SubmissionForm({
   submitLabel: string;
   pendingLabel: string;
   onSubmit: () => void;
+  compactSubmit?: boolean;
 }) {
   return (
     <div className="flex w-full flex-col gap-[26px] rounded-[4px] bg-[color:var(--color-pipeline-surface)] p-[32px]">
@@ -206,14 +208,27 @@ export function SubmissionForm({
                   className={FIELD_INPUT_CLASS}
                 />
               </label>
-              <button
-                type="button"
+              <IconButton
                 data-testid={`submit-loan-document-remove-${i}`}
+                label="Remove document"
+                showTooltip={false}
                 onClick={() => form.removeDocument(i)}
-                className={`${SECONDARY_BUTTON_CLASS} self-center`}
-              >
-                Remove
-              </button>
+                className="self-center"
+                icon={
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="size-6"
+                    aria-hidden="true"
+                  >
+                    <path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                }
+              />
             </div>
             {form.fieldErrors[`documents.${i}`] && (
               <p
@@ -229,8 +244,20 @@ export function SubmissionForm({
           type="button"
           data-testid="submit-loan-document-add"
           onClick={form.addDocument}
-          className={`${SECONDARY_BUTTON_CLASS} self-start`}
+          className={`${SECONDARY_BUTTON_CLASS} inline-flex items-center gap-[8px] self-start`}
         >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-[16px]"
+            aria-hidden="true"
+          >
+            <path d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
           Add document
         </button>
       </section>
@@ -261,7 +288,7 @@ export function SubmissionForm({
           data-testid="submit-loan-submit"
           disabled={isPending}
           onClick={onSubmit}
-          className="flex h-[48px] w-full items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className={`flex h-[48px] ${compactSubmit ? "w-auto self-start" : "w-full"} items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50`}
           style={{ backgroundColor: BRAND }}
         >
           {isPending ? pendingLabel : submitLabel}

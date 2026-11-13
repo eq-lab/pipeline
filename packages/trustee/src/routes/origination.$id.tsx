@@ -430,7 +430,7 @@ function DetailFooter({
           data-testid="origination-detail-amend"
           className="flex h-[40px] items-center rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white no-underline"
         >
-          Amend and resubmit
+          Make changes and resubmit
         </Link>
       </div>
     );

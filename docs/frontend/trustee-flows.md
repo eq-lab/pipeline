@@ -1753,7 +1753,7 @@ complete `SubmitLoanRequest` contract of `POST /v1/loan-book/loan` (mirrored fie
 `useSubmitLoan.ts`; the Rust source in `packages/api/src/routes/loan_book.rs` is authoritative).
 No Figma exists for this screen (product decision on #1100) — it reuses the Record
 Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
-The form body (fields, Documents rows, error block, submit button) lives in `routes/-SubmissionForm.tsx`, shared with the Amend and resubmit page.
+The form body (fields, Documents rows, error block, submit button) lives in `routes/-SubmissionForm.tsx`, shared with the Amend and resubmit page. Each Documents row removes with an icon-only trash `IconButton` (aria-label "Remove document"); "Add document" carries a leading plus glyph.
 
 - **Target chain (#1536, #1667):** the first field of Loan & metadata is a `<select>` (`FieldDef.options`;
   `FieldInput` renders a select instead of a text input when set). Its options are
@@ -1806,7 +1806,7 @@ The form body (fields, Documents rows, error block, submit button) lives in `rou
 
 ### Amend and resubmit (`/origination/$id/edit`, #1913)
 
-An Originator whose submission is `ChangesRequested` amends it from the detail footer's "Amend and
+An Originator whose submission is `ChangesRequested` amends it from the detail footer's "Make changes and
 resubmit" link. The route is `routes/origination.$id_.edit.tsx` (non-nested, like
 `loans.$id_.record-coupon.tsx`, because `origination.$id.tsx` renders no `<Outlet />`); no Figma
 exists, so it reuses the create form's layout and tokens through `routes/-SubmissionForm.tsx`.
@@ -1817,6 +1817,8 @@ exists, so it reuses the create form's layout and tokens through `routes/-Submis
 - **Target chain:** shown as a disabled select holding only the row's `target_chain_id`
   (`targetChainLabel`) with the hint "Fixed at submission. To target another chain, submit a new
   loan." Changing it would be a backend change.
+- **Submit button:** "Resubmit for review" is content-width (`compactSubmit`, `w-auto self-start`),
+  not full width like on `/origination/new`; height 48px, padding 28px, same colours.
 - **Prefill:** `prefillFromSubmission` reads the served `loan_data` through the same reader as Import
   from JSON (`parseSubmissionObject`): numbers are stringified, strings kept as served (human-unit
   USDC, no rescaling), `documents` rows carried over as editable Name / URI rows (nothing
@@ -1903,8 +1905,8 @@ The always-shown action-buttons block is replaced by a footer that branches on s
   `SubmissionView`/`loan_data`.
 - **Rejected** → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
 - **ChangesRequested** → a sweet-orange banner: "Changes requested · `<reviewedDate>` —
-  `<reason>`" (#950). Non-final (waiting on the originator to resubmit) — no review buttons; an
-  "Amend and resubmit" link to `/origination/$id/edit` sits under the banner (#1913).
+  `<reason>`" (#950). Non-final (waiting on the originator to resubmit) — no review buttons; a
+  "Make changes and resubmit" link to `/origination/$id/edit` sits under the banner (#1913).
 - Backend merged/lifecycle statuses → the Approved banner (#892).
 
 `reviewedDate` is `formatSubmittedDate(submission.updated_at)` — **not** `formatMaturityDate`

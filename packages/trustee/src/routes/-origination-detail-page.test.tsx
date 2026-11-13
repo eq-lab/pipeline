@@ -519,7 +519,7 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner and the Amend and resubmit link; NO review buttons (#950, #1913)", () => {
+    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner and the Make changes and resubmit link; NO review buttons (#950, #1913)", () => {
       mockDetail({
         ...READY_RESULT,
         statusChip: { kind: "changes-requested", label: "Changes requested" },
@@ -541,7 +541,7 @@ describe("Origination details route", () => {
         screen.queryByTestId("origination-detail-approve"),
       ).not.toBeInTheDocument();
       const amend = screen.getByTestId("origination-detail-amend");
-      expect(amend).toHaveTextContent("Amend and resubmit");
+      expect(amend).toHaveTextContent("Make changes and resubmit");
       expect(amend).toHaveAttribute("href", "/origination/7/edit");
     });
 
@@ -550,7 +550,7 @@ describe("Origination details route", () => {
       ["approved", "Approved"],
       ["rejected", "Rejected"],
     ] as const)(
-      "%s: does not render the Amend and resubmit link",
+      "%s: does not render the Make changes and resubmit link",
       (kind, label) => {
         mockDetail({
           ...READY_RESULT,

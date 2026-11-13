@@ -168,6 +168,13 @@ describe("origination.$id_.edit (#1913)", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders a content-width submit button", () => {
+    renderRoute();
+    const button = screen.getByTestId("submit-loan-submit");
+    expect(button).not.toHaveClass("w-full");
+    expect(button).toHaveClass("w-auto");
+  });
+
   it("shows the trustee reason and the metadata URI banner", () => {
     renderRoute();
     expect(screen.getByTestId("origination-edit-reason")).toHaveTextContent(

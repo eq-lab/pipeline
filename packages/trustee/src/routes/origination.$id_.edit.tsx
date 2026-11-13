@@ -88,6 +88,7 @@ function ResubmitForm({
         submitLabel="Resubmit for review"
         pendingLabel="Resubmitting…"
         onSubmit={resubmit.onSubmit}
+        compactSubmit
       />
     </main>
   );

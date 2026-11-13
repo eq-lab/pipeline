@@ -6,13 +6,13 @@ As an Originator whose submission the Trustee sent back with "Request changes", 
 
 ## Test cases
 
-### The detail page offers Amend and resubmit for a Changes-requested submission
+### The detail page offers Make changes and resubmit for a Changes-requested submission
 
 1. Open `/origination/<submission id>` for a submission whose status is `ChangesRequested`.
 2. Confirm the orange "Changes requested · <date> — <reason>" banner is shown.
-3. Confirm an "Amend and resubmit" button sits under the banner and no Approve / Reject / Request changes buttons are shown.
-4. Open a detail page for an `InReview`, `Approved` or `Rejected` submission and confirm there is no "Amend and resubmit" button.
-5. Click "Amend and resubmit" and confirm the URL is `/origination/<submission id>/edit`.
+3. Confirm a "Make changes and resubmit" button sits under the banner and no Approve / Reject / Request changes buttons are shown.
+4. Open a detail page for an `InReview`, `Approved` or `Rejected` submission and confirm there is no "Make changes and resubmit" button.
+5. Click "Make changes and resubmit" and confirm the URL is `/origination/<submission id>/edit`.
 
 ### The edit form is prefilled and the target chain is fixed
 
