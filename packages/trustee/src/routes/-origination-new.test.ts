@@ -1,9 +1,13 @@
 /** Tests for -origination-new.ts pure transforms (#1100). */
 import { describe, it, expect } from "vitest";
+import { renderHook } from "@testing-library/react";
+import type { SubmissionView } from "@/api/useLoanSubmissions";
 import {
   buildSubmitLoanInput,
   emptyFormValues,
   parseSubmissionJson,
+  prefillFromSubmission,
+  useOriginationNewForm,
 } from "./-origination-new";
 
 const EXAMPLE_JSON = JSON.stringify({
@@ -312,5 +316,133 @@ describe("USDC amount fields (#1620)", () => {
           /at most 6 decimals/,
         );
     }
+  });
+});
+
+const FULL_LOAN_DATA = {
+  metadata_uri: "ipfs://meta",
+  secondary_metadata_uri: "ipfs://meta2",
+  data_room_id: "DR-9",
+  originator: "Alan",
+  borrower_id: "Open Mineral",
+  commodity: "Copper",
+  corridor: "PE-CN",
+  governing_law: "English law",
+  protection: "LC",
+  to: "legacy-address",
+  initial_ccr: 12,
+  initial_location: "somewhere",
+  documents: [
+    { name: "Agreement", uri: "https://example.com/a" },
+    { name: "License", uri: "https://example.com/b" },
+  ],
+  economics: {
+    original_facility_size: "1200000.5",
+    original_senior_tranche: "1000000",
+    original_equity_tranche: "200000.5",
+    original_offtaker_price: "1250000",
+    senior_interest_rate_bps: 1000,
+    origination_date: 1781806657,
+    original_maturity_date: 1881806657,
+  },
+  collateral_valuation: {
+    valuation_mode: "StandardGoods",
+    asset: "XAU",
+    price_provider: "coingecko",
+    haircut_pct: "0.15",
+    quantity_dmt: "620",
+  },
+  fee_schedule: {
+    mgmt_fee_rate_bps: 100,
+    perf_fee_rate_bps: 2000,
+    oet_alloc_rate_bps: 50,
+  },
+};
+
+function submission(
+  loanData: unknown,
+  chainId: number | undefined = 99000001,
+): SubmissionView {
+  return {
+    id: 7,
+    status: "ChangesRequested",
+    reason: "Fix it",
+    originator: "GABC",
+    target_chain_id: chainId,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z",
+    documents: [],
+    loan_data: loanData as SubmissionView["loan_data"],
+  };
+}
+
+describe("prefillFromSubmission (#1913)", () => {
+  it("fills every field verbatim from the served loan_data", () => {
+    const prefill = prefillFromSubmission(submission(FULL_LOAN_DATA));
+    expect(prefill.missingFields).toEqual([]);
+    expect(prefill.values["economics.original_facility_size"]).toBe(
+      "1200000.5",
+    );
+    expect(prefill.values["economics.senior_interest_rate_bps"]).toBe("1000");
+    expect(prefill.values["collateral_valuation.haircut_pct"]).toBe("0.15");
+    expect(prefill.values["fee_schedule.perf_fee_rate_bps"]).toBe("2000");
+    expect(prefill.values.target_chain_id).toBe("99000001");
+    expect(prefill.documents).toEqual(FULL_LOAN_DATA.documents);
+  });
+
+  it("round-trips into the same request body without legacy keys", () => {
+    const prefill = prefillFromSubmission(submission(FULL_LOAN_DATA));
+    const built = buildSubmitLoanInput(prefill.values, prefill.documents);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.input).not.toHaveProperty("to");
+    expect(built.input).not.toHaveProperty("initial_ccr");
+    expect(built.input).not.toHaveProperty("initial_location");
+    expect(built.input.economics.original_facility_size).toBe("1200000.5");
+    expect(built.input.documents).toEqual(FULL_LOAN_DATA.documents);
+  });
+
+  it("lists required paths missing from a legacy payload", () => {
+    const legacy: Record<string, unknown> = { ...FULL_LOAN_DATA };
+    delete legacy.data_room_id;
+    delete legacy.collateral_valuation;
+    delete legacy.fee_schedule;
+    const prefill = prefillFromSubmission(submission(legacy));
+    expect(prefill.missingFields).toContain("data_room_id");
+    expect(prefill.missingFields).toContain("collateral_valuation.asset");
+    expect(prefill.missingFields).toContain("fee_schedule.mgmt_fee_rate_bps");
+    expect(prefill.missingFields).not.toContain("metadata_uri");
+  });
+
+  it("handles a non-object loan_data", () => {
+    const prefill = prefillFromSubmission(submission(null));
+    expect(prefill.documents).toEqual([]);
+    expect(prefill.missingFields).toContain("metadata_uri");
+    expect(prefill.values.target_chain_id).toBe("99000001");
+  });
+});
+
+describe("useOriginationNewForm initial seed (#1913)", () => {
+  const chains = {
+    options: [{ id: 99000001, label: "Stellar" }],
+    defaultChainId: 99000001,
+  };
+
+  it("seeds values and documents from initial", () => {
+    const prefill = prefillFromSubmission(submission(FULL_LOAN_DATA));
+    const { result } = renderHook(() =>
+      useOriginationNewForm(chains, {
+        values: prefill.values,
+        documents: prefill.documents,
+      }),
+    );
+    expect(result.current.values.metadata_uri).toBe("ipfs://meta");
+    expect(result.current.documents).toHaveLength(2);
+  });
+
+  it("starts empty without initial", () => {
+    const { result } = renderHook(() => useOriginationNewForm(chains));
+    expect(result.current.values.metadata_uri).toBe("");
+    expect(result.current.documents).toEqual([]);
   });
 });

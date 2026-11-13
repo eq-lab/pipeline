@@ -380,6 +380,7 @@ function ChangesRequestedBanner({
 }
 
 function DetailFooter({
+  submissionId,
   statusKind,
   reviewedDate,
   rejectionReason,
@@ -393,6 +394,7 @@ function DetailFooter({
   errorMessage,
   errorDetails,
 }: {
+  submissionId: string;
   statusKind: StatusChip["kind"];
   reviewedDate: string;
   rejectionReason: string;
@@ -419,9 +421,18 @@ function DetailFooter({
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
   }
   if (statusKind === "changes-requested") {
-    // Non-final: waiting on the originator to resubmit, so no action buttons (#950).
     return (
-      <ChangesRequestedBanner date={reviewedDate} reason={rejectionReason} />
+      <div className="flex flex-col items-start gap-[20px]">
+        <ChangesRequestedBanner date={reviewedDate} reason={rejectionReason} />
+        <Link
+          to="/origination/$id/edit"
+          params={{ id: submissionId }}
+          data-testid="origination-detail-amend"
+          className="flex h-[40px] items-center rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white no-underline"
+        >
+          Amend and resubmit
+        </Link>
+      </div>
     );
   }
   // Only InReview falls back to the (now wired) action buttons. Backend
@@ -533,6 +544,7 @@ function OriginationDetail() {
         </div>
 
         <DetailFooter
+          submissionId={id}
           statusKind={detail.statusKind}
           reviewedDate={detail.reviewedDate}
           rejectionReason={detail.rejectionReason}
