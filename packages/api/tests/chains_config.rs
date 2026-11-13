@@ -19,7 +19,9 @@ const STELLAR_ACCOUNT: &str = "GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCA
 const STELLAR_SECRET: &str = "SAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC5MY";
 
 fn error_message(result: anyhow::Result<ChainsConfig>) -> String {
-    result.err().map(|e| format!("{e:#}")).unwrap_or_default()
+    result
+        .err()
+        .map_or_else(Default::default, |e| format!("{e:#}"))
 }
 
 fn with_env<F: FnOnce()>(set: &[(&str, &str)], clear: &[&str], f: F) {
@@ -52,7 +54,9 @@ fn default_chain_not_in_chains_is_error() {
     with_env(&[("CHAINS", "1"), ("DEFAULT_CHAIN_ID", "2")], &[], || {
         let result = ChainsConfig::from_env();
         assert!(result.is_err());
-        let msg = result.err().map(|e| e.to_string()).unwrap_or_default();
+        let msg = result
+            .err()
+            .map_or_else(Default::default, |e| e.to_string());
         assert!(
             msg.contains("not a member") || msg.contains("DEFAULT_CHAIN_ID"),
             "unexpected error message: {msg}"
@@ -76,7 +80,9 @@ fn chain_with_signer_key_but_no_dm_address_is_error() {
         || {
             let result = ChainsConfig::from_env();
             assert!(result.is_err());
-            let msg = result.err().map(|e| e.to_string()).unwrap_or_default();
+            let msg = result
+                .err()
+                .map_or_else(Default::default, |e| e.to_string());
             assert!(
                 msg.contains("CHAIN_42_DM_ADDRESS"),
                 "unexpected error message: {msg}"
@@ -339,8 +345,7 @@ fn duplicate_chain_ids_are_error() {
     with_env(&[("CHAINS", "1,1"), ("DEFAULT_CHAIN_ID", "1")], &[], || {
         let msg = ChainsConfig::from_env()
             .err()
-            .map(|e| e.to_string())
-            .unwrap_or_default();
+            .map_or_else(Default::default, |e| e.to_string());
         assert!(msg.contains("duplicate"), "unexpected error message: {msg}");
     });
 }

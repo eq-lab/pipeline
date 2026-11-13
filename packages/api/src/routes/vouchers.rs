@@ -308,13 +308,11 @@ async fn deposit_voucher_evm(
     let amount_str = req
         .amount
         .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
+        .map_or_else(Default::default, std::string::ToString::to_string);
     let rid_str = req
         .request_id
         .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
+        .map_or_else(Default::default, std::string::ToString::to_string);
 
     let Ok(rid) = rid_str.parse::<U256>() else {
         return internal_error_response("invalid request_id format");
@@ -409,13 +407,11 @@ async fn withdrawal_voucher_evm(
     let amount_str = req
         .amount
         .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
+        .map_or_else(Default::default, std::string::ToString::to_string);
     let rid_str = req
         .request_id
         .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
+        .map_or_else(Default::default, std::string::ToString::to_string);
 
     let Ok(rid) = rid_str.parse::<U256>() else {
         return internal_error_response("invalid request_id format");
@@ -626,13 +622,11 @@ fn sign_and_respond_stellar(
     let amount_str = req
         .amount
         .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
+        .map_or_else(Default::default, std::string::ToString::to_string);
     let rid_str = req
         .request_id
         .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
+        .map_or_else(Default::default, std::string::ToString::to_string);
 
     // Parse request_id as u128 (Soroban u128).
     let rid: u128 = match rid_str.parse() {

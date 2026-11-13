@@ -245,27 +245,25 @@ impl StellarRpc {
         let results: Vec<SimulateResult> = resp
             .get("results")
             .and_then(Value::as_array)
-            .map(|arr| {
+            .map_or_else(Default::default, |arr| {
                 arr.iter()
                     .filter_map(|r| {
                         let xdr = r.get("xdr").and_then(Value::as_str).map(str::to_owned)?;
                         let auth: Vec<String> = r
                             .get("auth")
                             .and_then(Value::as_array)
-                            .map(|a| {
+                            .map_or_else(Default::default, |a| {
                                 a.iter()
                                     .filter_map(|v| v.as_str().map(str::to_owned))
                                     .collect()
-                            })
-                            .unwrap_or_default();
+                            });
                         Some(SimulateResult {
                             return_value_xdr_base64: xdr,
                             auth_xdr_base64: auth,
                         })
                     })
                     .collect()
-            })
-            .unwrap_or_default();
+            });
 
         Ok(SimulateResponse {
             latest_ledger,
@@ -301,12 +299,11 @@ impl StellarRpc {
         let diagnostic_events_xdr: Vec<String> = resp
             .get("diagnosticEventsXdr")
             .and_then(Value::as_array)
-            .map(|a| {
+            .map_or_else(Default::default, |a| {
                 a.iter()
                     .filter_map(|v| v.as_str().map(str::to_owned))
                     .collect()
-            })
-            .unwrap_or_default();
+            });
 
         Ok(SendResponse {
             status,

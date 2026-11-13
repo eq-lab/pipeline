@@ -145,8 +145,7 @@ fn invalid_addresses_are_rejected_with_their_key() {
         with_tracking_env(&set, || {
             let err = IndexerJobSettings::from_chain_env(CHAIN_ID)
                 .err()
-                .map(|e| e.to_string())
-                .unwrap_or_default();
+                .map_or_else(Default::default, |e| e.to_string());
             assert!(err.contains(&tracking_key(bad_key)), "{bad_key}: {err}");
         });
     }

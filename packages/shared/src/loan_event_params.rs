@@ -10,13 +10,12 @@ pub fn build_loan_event_params(
 ) -> serde_json::Value {
     let event_fields: serde_json::Map<String, serde_json::Value> = parser_params
         .as_object()
-        .map(|m| {
+        .map_or_else(Default::default, |m| {
             m.iter()
                 .filter(|(k, _)| k.as_str() != "loan_id")
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     serde_json::json!({
         "loan_id": loan_id.to_string(),

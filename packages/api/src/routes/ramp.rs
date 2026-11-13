@@ -146,8 +146,7 @@ async fn get_ramp_addresses(
     let mut ramp_addresses: Vec<String> = state
         .transfer_addresses
         .get(&chain.chain_id)
-        .map(|sets| sets.ramp.iter().cloned().collect())
-        .unwrap_or_default();
+        .map_or_else(Default::default, |sets| sets.ramp.iter().cloned().collect());
     ramp_addresses.sort();
     Json(RampAddressesResponse { ramp_addresses })
 }
