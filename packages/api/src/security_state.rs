@@ -985,12 +985,11 @@ fn margin_call_dto(
 
 fn inspectors_of(v: Option<&Value>) -> Vec<String> {
     v.and_then(Value::as_array)
-        .map(|a| {
+        .map_or_else(Default::default, |a| {
             a.iter()
                 .filter_map(|s| s.as_str().map(str::to_owned))
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 pub fn build_security_response(
