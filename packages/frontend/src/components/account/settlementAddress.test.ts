@@ -68,6 +68,7 @@ function lp(overrides: Partial<LpResponse> = {}): LpResponse {
     kyb_status: "NotStarted",
     writable: true,
     notify_on_review: false,
+    settlement_bank_account: null,
     owner_account_id: "acc",
     owner_chain_id: null,
     owner_address: null,

@@ -380,6 +380,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1765 Trustee: book USDC/USD conversions and bank charges on-chain](https://github.com/eq-lab/pipeline/issues/1765) | [1765-trustee-conversions-bank-charges.md](./epic-1795/1765-trustee-conversions-bank-charges.md) | Initial |
 | [#1766 Trustee: register the per-loan debt token (DealTokenFactory.register_deal) after loan creation](https://github.com/eq-lab/pipeline/issues/1766) | [1766-register-debt-token.md](./epic-1795/1766-register-debt-token.md) | Initial |
 | [#1812 Backend: LP settlement bank account for bank wire-outs](https://github.com/eq-lab/pipeline/issues/1812) | [1812-lp-settlement-bank-account.md](./epic-1795/1812-lp-settlement-bank-account.md) | Initial |
+| [#1885 LP: settlement bank account — capture in KYB / Account and masked view](https://github.com/eq-lab/pipeline/issues/1885) | [1885-lp-settlement-bank-account-ui.md](./epic-1795/1885-lp-settlement-bank-account-ui.md) | Initial |
 | [#1888 Trustee: flaky test useRiskCouncilRelay > relays schedule and execute](https://github.com/eq-lab/pipeline/issues/1888) | [1888-flaky-risk-council-relay-test.md](./epic-1795/1888-flaky-risk-council-relay-test.md) | Initial |
 
 ---
