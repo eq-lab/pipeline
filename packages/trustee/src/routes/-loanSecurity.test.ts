@@ -139,6 +139,7 @@ describe("buildSecurityCard", () => {
     expect(card.state).toBe("no-terms");
     expect(card.notes).toEqual(["No security terms are set for this loan."]);
     expect(card.rows).toEqual([]);
+    expect(card.actionLabel).toBe("Set security terms");
   });
 
   it("builds the ready rows from a full snapshot", () => {
@@ -156,6 +157,7 @@ describe("buildSecurityCard", () => {
     expect(card.priceStale).toBe(false);
     expect(card.refreshPending).toBe(false);
     expect(card.notes).toEqual([]);
+    expect(card.actionLabel).toBe("Security actions");
   });
 
   it("dashes the value rows and notes 'No valuation yet.' when valuation is null", () => {

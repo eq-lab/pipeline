@@ -139,6 +139,11 @@ export const ENV = Object.freeze({
     "",
   ),
 
+  STELLAR_SECURITY_REGISTRY_ID: readString(
+    "VITE_STELLAR_SECURITY_REGISTRY_ID",
+    "",
+  ),
+
   STELLAR_YIELD_MINTER_ID: readString("VITE_STELLAR_YIELD_MINTER_ID", ""),
 
   STELLAR_DEAL_TOKEN_FACTORY_ID: readString(

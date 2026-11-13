@@ -1,11 +1,11 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoanBook, type LoanBookEntry } from "@/api/useLoanBook";
 import {
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
-  type RiskCouncilCall,
+  type CouncilCall,
   type RiskCouncilLoanState,
 } from "@/api/useRiskCouncil";
 import {
@@ -14,11 +14,12 @@ import {
   NO_LONGER_SCHEDULED,
   riskCouncilErrorCopy,
   riskCouncilRoleLine,
+  securityRegistryErrorCopy,
   stageLabel,
   type AccessAction,
 } from "@/lib/accessManagerAction";
 import { findLoanEntry } from "@/lib/loanRoute";
-import { useScheduledOp } from "@/lib/riskCouncilOps";
+import { councilTarget, useScheduledOp } from "@/lib/riskCouncilOps";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { formatChainAmount } from "./-repayment-recovery";
@@ -190,14 +191,16 @@ export function useRiskCouncilActionView({
   labels,
   enabled,
   executeGate,
+  loanId,
 }: {
   chainId: number;
-  call: RiskCouncilCall | null;
-  fn: RiskCouncilCall["fn"];
+  call: CouncilCall | null;
+  fn: CouncilCall["fn"];
   noRoleCopy: string;
   labels: ActionLabels;
   enabled: boolean;
   executeGate?: string | null;
+  loanId?: number;
 }): ActionView {
   const blockedReason = stellarOnlyActionReason(chainId);
   const access = useRiskCouncilAccess(chainId, call, fn);
@@ -238,7 +241,9 @@ export function useRiskCouncilActionView({
   const accessError = access.error
     ? toUserError(access.error, "Failed to read this wallet's permissions.")
     : null;
-  const relayError = relay.error ? mapRelayError(lastMode, relay.error) : null;
+  const relayError = relay.error
+    ? mapRelayError(lastMode, relay.error, fn)
+    : null;
 
   const noLonger =
     op != null &&
@@ -269,7 +274,7 @@ export function useRiskCouncilActionView({
     run: () => {
       if (mode === null || call === null) return;
       setLastMode(mode);
-      relay.mutateAsync({ mode, call, chainId }).catch(() => {});
+      relay.mutateAsync({ mode, call, chainId, loanId }).catch(() => {});
     },
   };
 }
@@ -277,8 +282,34 @@ export function useRiskCouncilActionView({
 function mapRelayError(
   mode: "schedule" | "execute",
   error: Error,
+  fn: CouncilCall["fn"],
 ): UserFacingError {
   const mapped = toUserError(error, "The Risk Council action failed.");
-  const copy = riskCouncilErrorCopy(mode, mapped.details);
+  const copy =
+    riskCouncilErrorCopy(mode, mapped.details) ??
+    (councilTarget(fn) === "security_registry"
+      ? securityRegistryErrorCopy(mapped.details)
+      : null);
   return copy ? { ...mapped, message: copy, isSpecific: true } : mapped;
+}
+
+export function useTextHash(
+  text: string,
+  hash: (text: string) => Promise<string>,
+): string | null {
+  const [hashed, setHashed] = useState<{ text: string; hash: string } | null>(
+    null,
+  );
+  const trimmed = text.trim();
+  useEffect(() => {
+    if (trimmed === "") return;
+    let cancelled = false;
+    void hash(trimmed).then((value) => {
+      if (!cancelled) setHashed({ text: trimmed, hash: value });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmed, hash]);
+  return hashed != null && hashed.text === trimmed ? hashed.hash : null;
 }

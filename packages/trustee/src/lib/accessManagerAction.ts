@@ -52,6 +52,18 @@ export const RISK_COUNCIL_AM_ERROR_COPY: Record<string, string> = {
   "schedule:9": "This operation is already scheduled.",
 };
 
+export const SECURITY_REGISTRY_ERROR_COPY: Record<string, string> = {
+  "12": "The record's current status does not allow this. It may already be released or enforced.",
+  "14": "This loan has no security terms yet. Set them first.",
+  "15": "The margin call ratio must be at least the advance ratio.",
+  "32": "This record has no flag to resolve.",
+};
+
+export function securityRegistryErrorCopy(details: string): string | null {
+  const code = amErrorCode(details);
+  return code == null ? null : (SECURITY_REGISTRY_ERROR_COPY[code] ?? null);
+}
+
 export function riskCouncilErrorCopy(
   mode: "schedule" | "execute",
   details: string,

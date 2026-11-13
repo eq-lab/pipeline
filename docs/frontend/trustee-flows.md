@@ -2130,7 +2130,7 @@ latter was redundant with the confirmation dialog's copy.
 
 ## Risk Council actions
 
-**Sources:** user docs [risk-committee](../user-docs/governance/risk-committee.md), [multisig-roles](../user-docs/governance/multisig-roles.md), [fiduciary-trustee](../user-docs/governance/fiduciary-trustee.md) §"Independence", [protocol-layer](../user-docs/how-it-works/protocol-layer.md) §"Roles", [default-management](../user-docs/risks/default-management.md) (closure table, §"Declaration", §"Write-down", §"Cure"), [emergency-response](../user-docs/security/emergency-response.md). Code: `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts`; trustee `api/useRiskCouncil.ts`, `lib/accessManagerAction.ts`, `lib/riskCouncilOps.ts`, `routes/-risk-council-shared.ts` (presenter base and action view), `routes/-RiskCouncilParts.tsx`, then per page `-risk-council-{escalate,reterm,writedown,hub}.ts` with `risk-council.{escalate,reterm,writedown}.$id.tsx` and `risk-council.index.tsx`. Issues #782 (shells), #1761 (AccessManager model, epic #1795). Product spec: [trustee-dashboard.md](../product-specs/trustee-dashboard.md) §"Type 3"; escalation context: [trustee-risk-watchlist.md](../product-specs/trustee-risk-watchlist.md). User stories: [1761](../user-stories/epic-1795/1761-risk-council-access-manager.md).
+**Sources:** user docs [risk-committee](../user-docs/governance/risk-committee.md), [multisig-roles](../user-docs/governance/multisig-roles.md), [fiduciary-trustee](../user-docs/governance/fiduciary-trustee.md) §"Independence", [protocol-layer](../user-docs/how-it-works/protocol-layer.md) §"Roles", [default-management](../user-docs/risks/default-management.md) (closure table, §"Declaration", §"Write-down", §"Cure"), [emergency-response](../user-docs/security/emergency-response.md). Code: `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts`; trustee `api/useRiskCouncil.ts`, `lib/accessManagerAction.ts`, `lib/riskCouncilOps.ts`, `routes/-risk-council-shared.ts` (presenter base and action view), `routes/-RiskCouncilParts.tsx`, then per page `-risk-council-{escalate,reterm,writedown,hub}.ts` with `risk-council.{escalate,reterm,writedown}.$id.tsx` and `risk-council.index.tsx`. Issues #782 (shells), #1761 (AccessManager model, epic #1795). Product spec: [trustee-dashboard.md](../product-specs/trustee-dashboard.md) §"Type 3"; escalation context: [trustee-risk-watchlist.md](../product-specs/trustee-risk-watchlist.md). User stories: [1761](../user-stories/epic-1795/1761-risk-council-access-manager.md). SecurityRegistry functions: [Risk Council security actions](#risk-council-security-actions).
 
 ### Model
 
@@ -2160,7 +2160,7 @@ The rate scale is pinned by the encoder test: `rateBps 1450` encodes `u32(145000
 - `execute-scheduled`: "Scheduled. Executable from {UTC}." from the on-chain ready time, then `AM.execute`.
 - `no-role` (`immediate: false, delay: 0`, for example Trustee-only): the page renders read-only with the per-action copy, the button is disabled, chip "Risk Council only".
 
-Chain state is read through `useRiskCouncilLoanState` (`["risk-council-loan", chainId, loanId]`, `staleTime` 15 s) and shown raw through `formatChainAmount`; nothing is computed client-side. Mutations invalidate `risk-council-access`, `risk-council-loan`, `risk-council-hub`, `loan-book`, `loan-financials` and `audit-log` immediately and again at 5 s and 15 s.
+Chain state is read through `useRiskCouncilLoanState` (`["risk-council-loan", chainId, loanId]`, `staleTime` 15 s) and shown raw through `formatChainAmount`; nothing is computed client-side. Mutations invalidate `risk-council-access`, `risk-council-loan`, `risk-council-hub`, `risk-council-inspectors`, `loan-book`, `loan-financials`, `loan-security` and `audit-log` immediately and again at 5 s and 15 s.
 
 ### Finding a schedule after a reload
 
@@ -2188,6 +2188,55 @@ Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence st
 - Config: `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives "On-chain Risk Council actions are not configured for this environment." The Risk Council wallet must also be a trustee in the API's `auth_users`, or the pages cannot be opened (deployment fact). Until #1756 lands the whole role is delayed on the current deployment, so `set_default` takes the scheduled path there.
 - Contract preconditions are not readable from this repo; the UI gates follow the docs (one constant per function) and the contract stays the authority. Simulation errors surface through `toUserError` and the AM copy.
 - Not in the app: cancelling a scheduled operation (`AM.cancel`, TD-159), and listing operations scheduled elsewhere (TD-177).
+
+## Risk Council security actions
+
+**Sources:** contract `pipeline-stellar-contracts@e9881ac`, `contracts/security-registry/src/lib.rs` (`set_terms` 594, `resolve_flag` 518, `release_with_consent` 505, `set_inspectors` 555, `inspectors` 720), `types.rs` (`Terms`, `FlagOutcome`), `error.rs`. Code: `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts` and `scval.ts`; trustee `api/useRiskCouncil.ts` (`CouncilCall`, `useSecurityInspectors`), `lib/riskCouncilOps.ts` (`councilTarget`), `lib/accessManagerAction.ts` (`SECURITY_REGISTRY_ERROR_COPY`), `utils/securityTermsUnits.ts`, `routes/-risk-council-security.ts` with `risk-council.security.$id.tsx`, `routes/-risk-council-inspectors.ts` with `risk-council.inspectors.tsx`. Issue #1858 (epic #1795). Served state: [loan-security-state.md](../product-specs/loan-security-state.md). User stories: [1858](../user-stories/epic-1795/1858-risk-council-security-actions.md).
+
+The same model as [Risk Council actions](#risk-council-actions): `can_call` then one `execute`, or `schedule`, wait, `execute`. The AccessManager is the same contract (`ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`); the target is the SecurityRegistry (`ENV.STELLAR_SECURITY_REGISTRY_ID`, stored as `collateral_registry` in `addresses.json`). All four functions are `#[only_owner]` and `#[when_not_paused]`; the AM maps them to `RISK_COUNCIL`. The hooks take a `CouncilCall` (`RiskCouncilCall | SecurityRegistryCall`); `councilTarget(call)` picks the target from the function name (the names are disjoint) and the query keys include it.
+
+| Page | Function | Arguments |
+|---|---|---|
+| Security | `set_terms` | `loan_id: u32`, `terms: Terms` |
+| Security | `resolve_flag` | `record_id: u32`, `outcome: FlagOutcome`, `reason_hash: BytesN<32>` |
+| Security | `release_with_consent` | `record_id: u32`, `consent_hash: BytesN<32>` |
+| Inspector panel | `set_inspectors` | `inspectors: Vec<Address>` |
+
+### Encoding
+
+- `Terms` is a `#[contracttype]` struct, so an `scvMap` with `Symbol` keys sorted lexicographically (`scMap` in `scval.ts`, shared with the loan registry encoder). All 12 fields are sent: `advance_ratio_bps`, `margin_call_ratio_bps`, `default_rate`, `tolerance_bps`, `grade_tolerance_bps` are `u32`; `cure_period`, `price_stale_after`, `grace_period`, `attestation_interval`, `inspection_interval` and `margin_call_at` are `u64`; `payment_term` is `Lc | Dp | Da | OpenAccount`. `margin_call_at` is always `u64(0)`: the contract ignores it and keeps its own. A wrong key or type fails only at simulation, so the encoder test pins the exact map.
+- `PaymentTerm` and `FlagOutcome` are unit variants: `scvVec([scvSymbol(name)])`, as `ClosureReason`.
+- Hashes are `BytesN<32>` from `/^[0-9a-f]{64}$/`. Both are `sha256(utf8(text.trim()))` of a text field (`securityReasonHash`); there is no paste-a-hash input.
+- `inspectors` is `scvVec` of `Address.toScVal()`: each a valid `G…` or `C…` Strkey, no duplicates. An empty list is valid on-chain and the UI warns. The order is part of the op hash.
+- `margin_call_ratio_bps >= advance_ratio_bps` is checked before encoding (the contract returns `InvalidRatio #15`).
+
+The AM op id is `hash_operation(caller, target, fn, args)`, so after a reload the schedule is found by re-entering identical form values. For `set_terms` all 12 fields must reproduce exactly; prefilling from served terms helps only for unchanged values. The hub cannot find these operations unless this console scheduled them in this session (TD-177).
+
+### Security page (`/risk-council/security/$id`)
+
+Validates `chain` with `parseLoanRouteSearch`. Built on `useRiskCouncilLoanBase` and `useLoanSecurity`; nothing is computed client-side.
+
+- **Current security terms.** The served terms verbatim (ratios as %, durations as d/h/s, payment term, default rate as %), the LTV line, a paused notice when `paused === true` ("The SecurityRegistry is paused. Executing is blocked until it resumes." — execute is disabled, schedule stays possible) and a refresh note while `refresh_pending`. With `terms: null`: "No security terms are set for this loan."
+- **Set terms.** 10 numeric inputs and a payment-term select, prefilled from served terms when present. Units: ratios and tolerances in % (at most 2 decimals, to bps, at most 1000%), `default_rate` in % (at most 4 decimals, times 10 000, the loan registry scale `ONE = 1e6`), `cure_period`, `grace_period`, `attestation_interval`, `inspection_interval` in days and `price_stale_after` in hours (decimals allowed when the result is whole seconds). Each field echoes its raw contract value live ("= 7000 bps", "= 20000 (1e6 scale)", "= 604800 s"). A served duration that is not exactly representable in the unit is left empty. Buttons "Set terms" / "Schedule terms" / "Execute terms". No-role copy: "Setting security terms belongs to the Risk Council."
+- **Flagged records.** One row per served record with `flagged_by != null`: protection, lot, commodity, and the flagging inspection (latest inspection with `flagged` and no resolution: kind, inspector, quantity, grade, the three variances in bps, verbatim). Outcome radio with the contract's effect text (Accepted: "The variance is explained: the flagging inspection's quantity and grade become the record's reference. Clears the flag."; TopUpRequired: "Opens a margin call if LTV is above the advance ratio. Clears the flag."; Escalated: "Suspected fraud or missing goods. The flag stays."), a reason text with its sha256, buttons "Resolve flag" / "Schedule resolution" / "Execute resolution". Empty: "No flagged records." No-role copy: "Settling an inspection flag belongs to the Risk Council."
+- **Release with consent.** A select among served records with `open === true`, a "Consent reference" text with its sha256, buttons "Release with consent" / "Schedule release" / "Execute release". The primary button opens a confirm dialog ("Release record #{id}? This burns the record NFT and cannot be undone.", `role="dialog"`, Escape and backdrop cancel). Empty: "No open records." No-role copy: "Releasing a record with the lenders' consent belongs to the Risk Council."
+- `resolve_flag` and `release_with_consent` are keyed by `record_id`; the loan is carried as context (`ScheduledOp.loanId`) for the hub label, not derived from the args.
+- The loan detail Security card links here ("Security actions", or "Set security terms" when `terms: null`) on Stellar loans.
+
+### Inspector panel (`/risk-council/inspectors`)
+
+Chain is the session chain. The current list is read on chain with `simulateRead` of the SecurityRegistry `inspectors()` view (`useSecurityInspectors`, key `["risk-council-inspectors", chainId]`, `staleTime` 15 s); this is contract configuration, not a computed metric (TD-186). The page shows the current panel, an add field (Strkey validation, duplicates refused), remove/keep per current entry, the resulting full list, a warning when it is empty, "No changes to the current panel." when it equals the current one, and the note "Applies to inspections entered from now on." Buttons "Set inspectors" / "Schedule inspector panel" / "Execute inspector panel". No-role copy: "Setting the inspector panel belongs to the Risk Council."
+
+### Hub additions
+
+`ACTION_LABELS` and routes cover the four functions ("Set security terms", "Resolve flag", "Release with consent", "Set inspector panel"). Arguments: "advance {a}% · margin call {m}%", "{outcome} · record #{id}", "record #{id} · consent hash {10 hex}…", "{n} inspector(s)". A record-keyed row takes its loan label from `ScheduledOp.loanId`; the panel row reads "All loans". The loan index adds a "Security" link for every loan that is not `Closed`, and the header links to "Inspector panel". These rows come only from the page-local store, so the footnote adds that security terms, flag resolutions, consent releases and the inspector panel appear only when scheduled from this console in this session.
+
+### Errors, config
+
+- `SECURITY_REGISTRY_ERROR_COPY`, applied only when the target is the SecurityRegistry (Soroban codes collide across contracts): `#12` the record's status does not allow this, `#14` no security terms yet, `#15` margin call ratio below advance ratio, `#32` no flag to resolve. Everything else goes through `toUserError`. Served state lags the chain by up to a fold (30 s, `refresh_pending`), so a gate from served state can be stale at execute time and the contract stays the authority.
+- Config: `VITE_STELLAR_SECURITY_REGISTRY_ID` (trustee `env.ts`, `docker/trustee/entrypoint.sh`, `.env.example`) plus the existing AM id. A missing one gives "On-chain SecurityRegistry actions are not configured for this environment." The argocd value lives in the separate `argocd` repo (`argocd/pipeline/test.yaml`, then `prod.yaml` once deployed).
+- Delay: 24 h on test and prod; until #1756 the whole role may be delayed, so all four take the schedule path there. A scheduled operation expires 7 days after its ready time.
+- EVM: read-only with `stellarOnlyActionReason`, as the other Risk Council pages.
 
 ## Overview page
 

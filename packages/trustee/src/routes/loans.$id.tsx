@@ -268,7 +268,15 @@ const LTV_TONE_COLOR = {
   neutral: INK,
 } as const;
 
-function SecurityCard({ card }: { card: SecurityCardView }) {
+function SecurityCard({
+  card,
+  loanId,
+  chain,
+}: {
+  card: SecurityCardView;
+  loanId: string;
+  chain: number;
+}) {
   if (card.state === "hidden") return null;
   return (
     <div
@@ -358,6 +366,17 @@ function SecurityCard({ card }: { card: SecurityCardView }) {
             </p>
           )}
         </>
+      )}
+      {card.actionLabel && (
+        <Link
+          to="/risk-council/security/$id"
+          params={{ id: loanId }}
+          search={{ chain }}
+          data-testid="loan-detail-security-actions"
+          className="self-start pt-[10px] font-[family-name:var(--font-body)] text-[14px] text-[#000080] underline"
+        >
+          {card.actionLabel}
+        </Link>
       )}
     </div>
   );
@@ -1319,7 +1338,7 @@ function LoanDetail() {
           <Hero hero={detail.hero} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <SecurityCard card={detail.security} />
+            <SecurityCard card={detail.security} loanId={id} chain={chain} />
           </div>
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
@@ -1358,7 +1377,7 @@ function LoanDetail() {
           />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <SecurityCard card={detail.security} />
+            <SecurityCard card={detail.security} loanId={id} chain={chain} />
             {detail.rollover && (
               <MaturedRolloverCard
                 rollover={detail.rollover}
@@ -1418,7 +1437,7 @@ function LoanDetail() {
           <Lifecycle steps={detail.lifecycle} />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
-            <SecurityCard card={detail.security} />
+            <SecurityCard card={detail.security} loanId={id} chain={chain} />
             <RegistryCard registry={detail.registry} />
           </div>
           {detail.variant === "disbursing" && (

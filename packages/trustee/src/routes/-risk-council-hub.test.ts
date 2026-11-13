@@ -1,6 +1,11 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { describe, it, expect } from "vitest";
-import { formatCallArgs, loanLinks } from "./-risk-council-hub";
+import {
+  callLoanId,
+  formatCallArgs,
+  HUB_FOOTNOTE,
+  loanLinks,
+} from "./-risk-council-hub";
 import { STELLAR } from "./-riskCouncilFixtures";
 
 const HASH = "ab".repeat(32);
@@ -52,6 +57,7 @@ describe("loanLinks", () => {
       expect(loanLinks(status)).toEqual([
         { label: "Declare default", route: "escalate" },
         { label: "Amend economics", route: "reterm" },
+        { label: "Security", route: "security" },
       ]);
     }
   });
@@ -60,11 +66,80 @@ describe("loanLinks", () => {
     expect(loanLinks("Default")).toEqual([
       { label: "Resolve default", route: "writedown" },
       { label: "Amend economics", route: "reterm" },
+      { label: "Security", route: "security" },
     ]);
   });
 
-  it("offers nothing for Closed or other statuses", () => {
+  it("offers only Security for other open statuses and nothing for Closed", () => {
     expect(loanLinks("Closed")).toEqual([]);
-    expect(loanLinks("Approved")).toEqual([]);
+    expect(loanLinks("Approved")).toEqual([
+      { label: "Security", route: "security" },
+    ]);
+  });
+});
+
+describe("security calls", () => {
+  const terms = {
+    advanceRatioBps: 7000,
+    marginCallRatioBps: 8250,
+    curePeriod: "604800",
+    priceStaleAfter: "86400",
+    paymentTerm: "Da",
+    gracePeriod: "0",
+    defaultRate: 20000,
+    attestationInterval: "0",
+    inspectionInterval: "0",
+    toleranceBps: 50,
+    gradeToleranceBps: 25,
+  } as const;
+
+  it("prints terms, flag resolution, release and inspector arguments", () => {
+    expect(formatCallArgs({ fn: "set_terms", loanId: 1, terms }, STELLAR)).toBe(
+      "advance 70% · margin call 82.5%",
+    );
+    expect(
+      formatCallArgs(
+        {
+          fn: "resolve_flag",
+          recordId: 12,
+          outcome: "TopUpRequired",
+          reasonHash: HASH,
+        },
+        STELLAR,
+      ),
+    ).toBe("TopUpRequired · record #12");
+    expect(
+      formatCallArgs(
+        { fn: "release_with_consent", recordId: 3, consentHash: HASH },
+        STELLAR,
+      ),
+    ).toBe("record #3 · consent hash ababababab…");
+    expect(
+      formatCallArgs({ fn: "set_inspectors", inspectors: ["GA"] }, STELLAR),
+    ).toBe("1 inspector");
+    expect(
+      formatCallArgs(
+        { fn: "set_inspectors", inspectors: ["GA", "GB", "GC"] },
+        STELLAR,
+      ),
+    ).toBe("3 inspectors");
+  });
+
+  it("takes the loan of a record-keyed call from the page-local context", () => {
+    const release = {
+      fn: "release_with_consent",
+      recordId: 3,
+      consentHash: HASH,
+    } as const;
+    expect(callLoanId(release, { loanId: 9 })).toBe(9);
+    expect(callLoanId(release, undefined)).toBeNull();
+    expect(callLoanId({ fn: "cure", loanId: 2 }, undefined)).toBe(2);
+    expect(callLoanId({ fn: "set_terms", loanId: 5, terms }, undefined)).toBe(
+      5,
+    );
+  });
+
+  it("mentions the security operations in the footnote", () => {
+    expect(HUB_FOOTNOTE).toMatch(/Security terms, flag resolutions/);
   });
 });

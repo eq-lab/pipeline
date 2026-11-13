@@ -20,11 +20,13 @@ import { Route as RiskCouncilIndexRouteImport } from './routes/risk-council.inde
 import { Route as OriginationIndexRouteImport } from './routes/origination.index'
 import { Route as LpCounterpartiesIndexRouteImport } from './routes/lp-counterparties.index'
 import { Route as LoansIndexRouteImport } from './routes/loans.index'
+import { Route as RiskCouncilInspectorsRouteImport } from './routes/risk-council.inspectors'
 import { Route as OriginationNewRouteImport } from './routes/origination.new'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
 import { Route as LpCounterpartiesIdRouteImport } from './routes/lp-counterparties.$id'
 import { Route as LoansIdRouteImport } from './routes/loans.$id'
 import { Route as RiskCouncilWritedownIdRouteImport } from './routes/risk-council.writedown.$id'
+import { Route as RiskCouncilSecurityIdRouteImport } from './routes/risk-council.security.$id'
 import { Route as RiskCouncilRetermIdRouteImport } from './routes/risk-council.reterm.$id'
 import { Route as RiskCouncilEscalateIdRouteImport } from './routes/risk-council.escalate.$id'
 import { Route as OriginationIdEditRouteImport } from './routes/origination.$id_.edit'
@@ -86,6 +88,11 @@ const LoansIndexRoute = LoansIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LoansRoute,
 } as any)
+const RiskCouncilInspectorsRoute = RiskCouncilInspectorsRouteImport.update({
+  id: '/inspectors',
+  path: '/inspectors',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
 const OriginationNewRoute = OriginationNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -109,6 +116,11 @@ const LoansIdRoute = LoansIdRouteImport.update({
 const RiskCouncilWritedownIdRoute = RiskCouncilWritedownIdRouteImport.update({
   id: '/writedown/$id',
   path: '/writedown/$id',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
+const RiskCouncilSecurityIdRoute = RiskCouncilSecurityIdRouteImport.update({
+  id: '/security/$id',
+  path: '/security/$id',
   getParentRoute: () => RiskCouncilRoute,
 } as any)
 const RiskCouncilRetermIdRoute = RiskCouncilRetermIdRouteImport.update({
@@ -149,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/new': typeof OriginationNewRoute
+  '/risk-council/inspectors': typeof RiskCouncilInspectorsRoute
   '/loans/': typeof LoansIndexRoute
   '/lp-counterparties/': typeof LpCounterpartiesIndexRoute
   '/origination/': typeof OriginationIndexRoute
@@ -158,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/origination/$id/edit': typeof OriginationIdEditRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/security/$id': typeof RiskCouncilSecurityIdRoute
   '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRoutesByTo {
@@ -168,6 +182,7 @@ export interface FileRoutesByTo {
   '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/new': typeof OriginationNewRoute
+  '/risk-council/inspectors': typeof RiskCouncilInspectorsRoute
   '/loans': typeof LoansIndexRoute
   '/lp-counterparties': typeof LpCounterpartiesIndexRoute
   '/origination': typeof OriginationIndexRoute
@@ -177,6 +192,7 @@ export interface FileRoutesByTo {
   '/origination/$id/edit': typeof OriginationIdEditRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/security/$id': typeof RiskCouncilSecurityIdRoute
   '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRoutesById {
@@ -192,6 +208,7 @@ export interface FileRoutesById {
   '/lp-counterparties/$id': typeof LpCounterpartiesIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/new': typeof OriginationNewRoute
+  '/risk-council/inspectors': typeof RiskCouncilInspectorsRoute
   '/loans/': typeof LoansIndexRoute
   '/lp-counterparties/': typeof LpCounterpartiesIndexRoute
   '/origination/': typeof OriginationIndexRoute
@@ -201,6 +218,7 @@ export interface FileRoutesById {
   '/origination/$id_/edit': typeof OriginationIdEditRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/security/$id': typeof RiskCouncilSecurityIdRoute
   '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRouteTypes {
@@ -217,6 +235,7 @@ export interface FileRouteTypes {
     | '/lp-counterparties/$id'
     | '/origination/$id'
     | '/origination/new'
+    | '/risk-council/inspectors'
     | '/loans/'
     | '/lp-counterparties/'
     | '/origination/'
@@ -226,6 +245,7 @@ export interface FileRouteTypes {
     | '/origination/$id/edit'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
+    | '/risk-council/security/$id'
     | '/risk-council/writedown/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -236,6 +256,7 @@ export interface FileRouteTypes {
     | '/lp-counterparties/$id'
     | '/origination/$id'
     | '/origination/new'
+    | '/risk-council/inspectors'
     | '/loans'
     | '/lp-counterparties'
     | '/origination'
@@ -245,6 +266,7 @@ export interface FileRouteTypes {
     | '/origination/$id/edit'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
+    | '/risk-council/security/$id'
     | '/risk-council/writedown/$id'
   id:
     | '__root__'
@@ -259,6 +281,7 @@ export interface FileRouteTypes {
     | '/lp-counterparties/$id'
     | '/origination/$id'
     | '/origination/new'
+    | '/risk-council/inspectors'
     | '/loans/'
     | '/lp-counterparties/'
     | '/origination/'
@@ -268,6 +291,7 @@ export interface FileRouteTypes {
     | '/origination/$id_/edit'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
+    | '/risk-council/security/$id'
     | '/risk-council/writedown/$id'
   fileRoutesById: FileRoutesById
 }
@@ -360,6 +384,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoansIndexRouteImport
       parentRoute: typeof LoansRoute
     }
+    '/risk-council/inspectors': {
+      id: '/risk-council/inspectors'
+      path: '/inspectors'
+      fullPath: '/risk-council/inspectors'
+      preLoaderRoute: typeof RiskCouncilInspectorsRouteImport
+      parentRoute: typeof RiskCouncilRoute
+    }
     '/origination/new': {
       id: '/origination/new'
       path: '/new'
@@ -393,6 +424,13 @@ declare module '@tanstack/react-router' {
       path: '/writedown/$id'
       fullPath: '/risk-council/writedown/$id'
       preLoaderRoute: typeof RiskCouncilWritedownIdRouteImport
+      parentRoute: typeof RiskCouncilRoute
+    }
+    '/risk-council/security/$id': {
+      id: '/risk-council/security/$id'
+      path: '/security/$id'
+      fullPath: '/risk-council/security/$id'
+      preLoaderRoute: typeof RiskCouncilSecurityIdRouteImport
       parentRoute: typeof RiskCouncilRoute
     }
     '/risk-council/reterm/$id': {
@@ -481,16 +519,20 @@ const OriginationRouteWithChildren = OriginationRoute._addFileChildren(
 )
 
 interface RiskCouncilRouteChildren {
+  RiskCouncilInspectorsRoute: typeof RiskCouncilInspectorsRoute
   RiskCouncilIndexRoute: typeof RiskCouncilIndexRoute
   RiskCouncilEscalateIdRoute: typeof RiskCouncilEscalateIdRoute
   RiskCouncilRetermIdRoute: typeof RiskCouncilRetermIdRoute
+  RiskCouncilSecurityIdRoute: typeof RiskCouncilSecurityIdRoute
   RiskCouncilWritedownIdRoute: typeof RiskCouncilWritedownIdRoute
 }
 
 const RiskCouncilRouteChildren: RiskCouncilRouteChildren = {
+  RiskCouncilInspectorsRoute: RiskCouncilInspectorsRoute,
   RiskCouncilIndexRoute: RiskCouncilIndexRoute,
   RiskCouncilEscalateIdRoute: RiskCouncilEscalateIdRoute,
   RiskCouncilRetermIdRoute: RiskCouncilRetermIdRoute,
+  RiskCouncilSecurityIdRoute: RiskCouncilSecurityIdRoute,
   RiskCouncilWritedownIdRoute: RiskCouncilWritedownIdRoute,
 }
 

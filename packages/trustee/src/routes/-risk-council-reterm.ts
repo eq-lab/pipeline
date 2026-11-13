@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { riskCouncilReasonHash } from "@pipeline/wallet-connect";
 import { dateInputToUnixUtc, formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
@@ -16,6 +16,7 @@ import {
   notAvailableNote,
   useRiskCouncilActionView,
   useRiskCouncilLoanBase,
+  useTextHash,
   type ActionView,
   type PageState,
 } from "./-risk-council-shared";
@@ -93,21 +94,7 @@ export interface RiskCouncilRetermView {
 }
 
 function useReasonHash(reason: string): string | null {
-  const [hashed, setHashed] = useState<{ reason: string; hash: string } | null>(
-    null,
-  );
-  const trimmed = reason.trim();
-  useEffect(() => {
-    if (trimmed === "") return;
-    let cancelled = false;
-    void riskCouncilReasonHash(trimmed).then((hash) => {
-      if (!cancelled) setHashed({ reason: trimmed, hash });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [trimmed]);
-  return hashed != null && hashed.reason === trimmed ? hashed.hash : null;
+  return useTextHash(reason, riskCouncilReasonHash);
 }
 
 export function useRiskCouncilReterm(
