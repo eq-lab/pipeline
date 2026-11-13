@@ -28,6 +28,12 @@ describe("inspector list editing", () => {
     expect(applyInspectorEdits([], new Set(), [])).toEqual([]);
   });
 
+  it("does not duplicate an added address that is now on the current panel", () => {
+    expect(
+      applyInspectorEdits(["GAAA", "GDDD"], new Set(), ["GDDD", "GEEE"]),
+    ).toEqual(["GAAA", "GDDD", "GEEE"]);
+  });
+
   it("validates a draft against the Strkey rule and the existing list", () => {
     expect(validateInspectorDraft("", ["GAAA"])).toBeNull();
     expect(validateInspectorDraft("nope", ["GAAA"])).toBe(INVALID_ADDRESS);

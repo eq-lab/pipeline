@@ -192,6 +192,7 @@ export function useRiskCouncilActionView({
   enabled,
   executeGate,
   loanId,
+  onExecuted,
 }: {
   chainId: number;
   call: CouncilCall | null;
@@ -201,6 +202,7 @@ export function useRiskCouncilActionView({
   enabled: boolean;
   executeGate?: string | null;
   loanId?: number;
+  onExecuted?: () => void;
 }): ActionView {
   const blockedReason = stellarOnlyActionReason(chainId);
   const access = useRiskCouncilAccess(chainId, call, fn);
@@ -274,7 +276,12 @@ export function useRiskCouncilActionView({
     run: () => {
       if (mode === null || call === null) return;
       setLastMode(mode);
-      relay.mutateAsync({ mode, call, chainId, loanId }).catch(() => {});
+      relay
+        .mutateAsync({ mode, call, chainId, loanId })
+        .then(() => {
+          if (mode === "execute") onExecuted?.();
+        })
+        .catch(() => {});
     },
   };
 }

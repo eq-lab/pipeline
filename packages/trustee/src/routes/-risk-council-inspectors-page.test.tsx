@@ -1,6 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   DELAYED,
   IMMEDIATE,
@@ -139,6 +139,35 @@ describe("Inspector panel page", () => {
         call: { fn: "set_inspectors", inspectors: [] },
       }),
     );
+  });
+
+  it("clears the edits after an executed change so the refetched panel does not duplicate", async () => {
+    setup(IMMEDIATE);
+    const { rerender } = renderRoute();
+    fireEvent.change(screen.getByTestId("risk-council-inspectors-draft"), {
+      target: { value: "GCCCC" },
+    });
+    fireEvent.click(screen.getByTestId("risk-council-inspectors-add"));
+    fireEvent.click(screen.getByTestId("risk-council-inspectors-button"));
+    await waitFor(() => expect(relay.mutateAsync).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("risk-council-inspectors-no-changes"),
+      ).toBeInTheDocument(),
+    );
+    mockInspectors.mockReturnValue({
+      data: ["GAAAA", "GBBBB", "GCCCC"],
+      isLoading: false,
+      error: null,
+    } as never);
+    const Page = Route.options.component as React.ComponentType;
+    rerender(<Page />);
+    expect(screen.getAllByTestId("risk-council-inspectors-row")).toHaveLength(
+      3,
+    );
+    expect(
+      screen.getByTestId("risk-council-inspectors-no-changes"),
+    ).toBeInTheDocument();
   });
 
   it("stays disabled until the panel has loaded", () => {

@@ -4,6 +4,7 @@ import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
 } from "@pipeline/wallet-connect";
+import { InlineError } from "@pipeline/ui";
 import { parseLoanRouteSearch } from "@/lib/loanRoute";
 import {
   NO_FLAGGED_RECORDS,
@@ -274,6 +275,7 @@ function ReleaseCard({ form }: { form: ReleaseFormView }) {
               className={FIELD_CLASS}
               style={{ borderColor: LINE_COLOR }}
             >
+              <option value="">Select a record…</option>
               {form.options.map((option) => (
                 <option key={option.recordId} value={option.recordId}>
                   {option.label}
@@ -339,14 +341,26 @@ function RiskCouncilSecurity() {
             </Chip>
           </div>
         )}
-        <div className="flex w-full flex-col gap-[20px] pt-[16px] lg:flex-row lg:items-start">
-          <CurrentTermsCard view={view} />
-          <div className="flex w-full flex-1 flex-col gap-[20px]">
-            <SetTermsCard form={view.setTerms} />
-            <FlaggedCard view={view} />
-            <ReleaseCard form={view.release} />
+        {view.securityError ? (
+          <div
+            data-testid="risk-council-security-load-error"
+            className="mt-[16px] w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
+          >
+            <InlineError
+              message={view.securityError.message}
+              details={view.securityError.details ?? undefined}
+            />
           </div>
-        </div>
+        ) : (
+          <div className="flex w-full flex-col gap-[20px] pt-[16px] lg:flex-row lg:items-start">
+            <CurrentTermsCard view={view} />
+            <div className="flex w-full flex-1 flex-col gap-[20px]">
+              <SetTermsCard form={view.setTerms} />
+              <FlaggedCard view={view} />
+              <ReleaseCard form={view.release} />
+            </div>
+          </div>
+        )}
       </main>
     </PageGate>
   );

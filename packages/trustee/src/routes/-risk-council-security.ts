@@ -26,6 +26,7 @@ import {
   SECONDS_PER_HOUR,
   secondsToUnitText,
 } from "@/utils/securityTermsUnits";
+import { toUserError, type UserFacingError } from "@/utils/userError";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import {
   formatLoanLabel,
@@ -374,10 +375,12 @@ function variance(bps: number | null | undefined): string {
 export function flaggingInspection(
   record: LoanSecurityRecord,
 ): LoanSecurityInspection | null {
-  const flagged = (record.inspections ?? []).filter(
-    (i) => i.flagged === true && i.resolution == null,
+  if (record.flagged_by == null) return null;
+  return (
+    (record.inspections ?? []).find(
+      (i) => i.inspection_id === record.flagged_by,
+    ) ?? null
   );
-  return flagged.length === 0 ? null : flagged[flagged.length - 1]!;
 }
 
 function recordNumber(recordId: string): number | null {
@@ -483,6 +486,7 @@ export interface RiskCouncilSecurityView {
   pausedNote: string | null;
   refreshNote: string | null;
   securityLoading: boolean;
+  securityError: UserFacingError | null;
   flagged: FlaggedRecordRow[];
   setTerms: SetTermsFormView;
   release: ReleaseFormView;
@@ -523,9 +527,7 @@ export function useRiskCouncilSecurity(
 
   const options = openRecordOptions(served?.records);
   const [picked, setPicked] = useState("");
-  const selected = options.some((o) => o.recordId === picked)
-    ? picked
-    : (options[0]?.recordId ?? "");
+  const selected = options.some((o) => o.recordId === picked) ? picked : "";
   const [consent, setConsent] = useState("");
   const consentHash = useTextHash(consent, securityReasonHash);
   const releaseCall = buildReleaseCall(selected, consentHash);
@@ -542,6 +544,10 @@ export function useRiskCouncilSecurity(
     enabled: selected !== "",
     executeGate,
     loanId: base.loanId ?? undefined,
+    onExecuted: () => {
+      setPicked("");
+      setConsent("");
+    },
   });
 
   const echoes = Object.fromEntries(
@@ -561,6 +567,10 @@ export function useRiskCouncilSecurity(
     pausedNote: executeGate,
     refreshNote: served?.refresh_pending === true ? REFRESH_PENDING_NOTE : null,
     securityLoading: security.isLoading,
+    securityError:
+      security.error && security.data == null
+        ? toUserError(security.error, "Failed to load the loan security.")
+        : null,
     flagged: flaggedRows(served?.records),
     setTerms: {
       values,

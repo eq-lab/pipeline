@@ -107,7 +107,7 @@ const RECORDS = [
     commodity: "Coffee",
     status: "Active",
     open: true,
-    flagged_by: "GINSPECTOR",
+    flagged_by: "8",
     inspections: [
       {
         inspection_id: "8",
@@ -171,6 +171,23 @@ describe("Security page — current terms", () => {
     expect(
       screen.getByTestId("risk-council-security-refresh"),
     ).toBeInTheDocument();
+  });
+
+  it("shows an error state, not a blank Set terms form, when /security fails", () => {
+    setup(DELAYED, undefined);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, error: new Error("boom") }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("risk-council-security-load-error"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("risk-council-security-no-terms"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("risk-council-security-set-terms"),
+    ).not.toBeInTheDocument();
   });
 
   it("blocks executing and says why while the registry is paused", () => {
@@ -378,7 +395,7 @@ describe("Security page — release with consent", () => {
     setup(DELAYED);
     renderRoute();
     const select = screen.getByTestId("risk-council-security-release-record");
-    expect(within(select).getAllByRole("option")).toHaveLength(2);
+    expect(within(select).getAllByRole("option")).toHaveLength(3);
     fireEvent.change(select, { target: { value: "2" } });
     await fillConsent();
     const button = screen.getByTestId("risk-council-security-release-button");
@@ -397,9 +414,60 @@ describe("Security page — release with consent", () => {
     });
   });
 
+  it("starts with no record selected and keeps the button disabled until one is picked", async () => {
+    setup(IMMEDIATE);
+    renderRoute();
+    const select = screen.getByTestId("risk-council-security-release-record");
+    expect(select).toHaveValue("");
+    await fillConsent();
+    const button = screen.getByTestId("risk-council-security-release-button");
+    expect(button).toBeDisabled();
+    fireEvent.change(select, { target: { value: "1" } });
+    expect(button).toBeEnabled();
+  });
+
+  it("clears the record and consent after an executed release", async () => {
+    setup(IMMEDIATE);
+    renderRoute();
+    const select = screen.getByTestId("risk-council-security-release-record");
+    fireEvent.change(select, { target: { value: "1" } });
+    await fillConsent();
+    fireEvent.click(screen.getByTestId("risk-council-security-release-button"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByTestId(/confirm$/));
+    await waitFor(() => expect(select).toHaveValue(""));
+    expect(
+      screen.getByTestId("risk-council-security-release-consent"),
+    ).toHaveValue("");
+    expect(
+      screen.getByTestId("risk-council-security-release-hash"),
+    ).toHaveValue("");
+    expect(
+      screen.getByTestId("risk-council-security-release-button"),
+    ).toBeDisabled();
+  });
+
+  it("keeps the record and consent after a scheduled release", async () => {
+    setup(DELAYED);
+    renderRoute();
+    const select = screen.getByTestId("risk-council-security-release-record");
+    fireEvent.change(select, { target: { value: "1" } });
+    await fillConsent();
+    fireEvent.click(screen.getByTestId("risk-council-security-release-button"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByTestId(/confirm$/));
+    await waitFor(() => expect(relay.mutateAsync).toHaveBeenCalled());
+    expect(select).toHaveValue("1");
+    expect(
+      screen.getByTestId("risk-council-security-release-consent"),
+    ).toHaveValue("Signed consent 2026-11-10");
+  });
+
   it("cancels with Escape or the backdrop without relaying", async () => {
     setup(DELAYED);
     renderRoute();
+    fireEvent.change(
+      screen.getByTestId("risk-council-security-release-record"),
+      { target: { value: "2" } },
+    );
     await fillConsent();
     fireEvent.click(screen.getByTestId("risk-council-security-release-button"));
     fireEvent.keyDown(window, { key: "Escape" });

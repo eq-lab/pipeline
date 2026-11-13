@@ -82,14 +82,14 @@ Trustee app (`packages/trustee`), pages `/risk-council/security/{id}?chain=<stel
 
 **Steps:**
 
-1. In "Release with consent" pick an open record, enter the consent reference (the sha256 hex of its trimmed text appears) and click "Schedule release".
+1. In "Release with consent" pick an open record (none is preselected), enter the consent reference (the sha256 hex of its trimmed text appears) and click "Schedule release".
 2. Read the confirm dialog, then confirm and approve. After the ready time click "Execute release" and confirm again.
 
 **Expected outcomes:**
 
 - Only records with `open` true are offered; with none the card reads "No open records."
 - The dialog reads "Release record #{id}? This burns the record NFT and cannot be undone." Escape or a click on the backdrop cancels with no prompt.
-- The transaction is `release_with_consent` with the record id and the hash. After the refetch the record is no longer open.
+- The transaction is `release_with_consent` with the record id and the hash. After the refetch the record is no longer open. After an executed release the record choice and consent text are cleared; the button stays disabled until a record is picked again.
 - A record that is already released or enforced fails with "The record's current status does not allow this. It may already be released or enforced."
 
 ---

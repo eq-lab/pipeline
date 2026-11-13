@@ -32,7 +32,7 @@ export function applyInspectorEdits(
   removed: ReadonlySet<string>,
   added: ReadonlyArray<string>,
 ): string[] {
-  return [...current.filter((a) => !removed.has(a)), ...added];
+  return [...new Set([...current.filter((a) => !removed.has(a)), ...added])];
 }
 
 export function validateInspectorDraft(
@@ -103,6 +103,11 @@ export function useRiskCouncilInspectors(): RiskCouncilInspectorsView {
       execute: "Execute inspector panel",
     },
     enabled: current !== undefined,
+    onExecuted: () => {
+      setRemoved(new Set());
+      setAdded([]);
+      setDraft("");
+    },
   });
 
   const rows: InspectorRow[] = [
@@ -110,7 +115,9 @@ export function useRiskCouncilInspectors(): RiskCouncilInspectorsView {
       address,
       status: removed.has(address) ? "removed" : "current",
     })),
-    ...added.map<InspectorRow>((address) => ({ address, status: "new" })),
+    ...added
+      .filter((address) => !(current ?? []).includes(address))
+      .map<InspectorRow>((address) => ({ address, status: "new" })),
   ];
 
   return {

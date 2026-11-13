@@ -182,7 +182,7 @@ const RECORDS = [
     commodity: "Coffee",
     status: "Active",
     open: true,
-    flagged_by: "GINSPECTOR",
+    flagged_by: "8",
     inspections: [
       { inspection_id: "7", flagged: false, kind: "StockCount" },
       {
@@ -223,6 +223,29 @@ describe("record lists", () => {
     expect(flag["Variance vs reference"]).toBe("-1000 bps");
     expect(flag["Variance vs previous"]).toBe("-400 bps");
     expect(flaggingInspection(RECORDS[1]!)?.inspection_id).toBe("8");
+  });
+
+  it("finds the flagging inspection by flagged_by even after an Escalated resolution", () => {
+    const record = {
+      record_id: "2",
+      flagged_by: "8",
+      inspections: [
+        { inspection_id: "7", flagged: false, kind: "StockCount" },
+        {
+          inspection_id: "8",
+          inspector: "GINSPECTOR",
+          kind: "StockCount",
+          quantity: "90.0000000",
+          flagged: true,
+          resolution: "Escalated",
+        },
+        { inspection_id: "9", flagged: false, kind: "QualityCheck" },
+      ],
+    };
+    expect(flaggingInspection(record)?.inspection_id).toBe("8");
+    const flag = flaggedRows([record])[0]!.flag;
+    expect(flag.find((r) => r.label === "Inspector")?.value).toBe("GINSPECTOR");
+    expect(flag.find((r) => r.label === "Quantity")?.value).toBe("90.0000000");
   });
 
   it("returns no flagged rows without records and dashes a missing inspection", () => {
