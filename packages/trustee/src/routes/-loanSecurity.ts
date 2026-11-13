@@ -13,6 +13,8 @@ export const REFRESH_FAILED_NOTE =
   "Couldn't refresh — showing the last loaded data.";
 export const LTV_LOADING_TEXT = "Loading…";
 export const LTV_ERROR_TEXT = "Couldn't load";
+export const SECURITY_ACTIONS_LINK_LABEL = "Security actions";
+export const SET_TERMS_LINK_LABEL = "Set security terms";
 
 export type LtvTone = "negative" | "attention" | "neutral";
 
@@ -31,6 +33,7 @@ export interface SecurityCardView {
   priceStale: boolean;
   refreshPending: boolean;
   notes: string[];
+  actionLabel: string | null;
 }
 
 export function formatLtvBps(bps: unknown): string {
@@ -104,6 +107,7 @@ function emptyCard(state: SecurityCardView["state"]): SecurityCardView {
     priceStale: false,
     refreshPending: false,
     notes: [],
+    actionLabel: null,
   };
 }
 
@@ -128,6 +132,7 @@ export function buildSecurityCard(
     return {
       ...emptyCard("no-terms"),
       notes: ["No security terms are set for this loan."],
+      actionLabel: SET_TERMS_LINK_LABEL,
     };
   }
 
@@ -158,6 +163,7 @@ export function buildSecurityCard(
     priceStale: priceStale(sec),
     refreshPending: sec.refresh_pending === true,
     notes,
+    actionLabel: SECURITY_ACTIONS_LINK_LABEL,
   };
 }
 

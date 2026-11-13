@@ -12,7 +12,10 @@ import {
   readLoanChainState,
   readLoanMoney,
   readRiskCouncilSchedule,
+  readSecurityInspectors,
+  readSecurityRegistrySchedule,
   relayRiskCouncil,
+  relaySecurityRegistry,
   useStellarWallet,
   type CanCall,
   type LoanChainState,
@@ -22,18 +25,28 @@ import {
   type RelayStage,
   type RiskCouncilCall,
   type RiskCouncilClosureReason,
+  type SecurityRegistryCall,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 import {
+  councilTarget,
   markExecuted,
   recordScheduledOp,
   riskCouncilCallKey,
+  type CouncilCall,
+  type CouncilTarget,
   type ScheduledOp,
 } from "@/lib/riskCouncilOps";
 import type { LoanBookEntry } from "./useLoanBook";
 
-export type { RelayStage, RiskCouncilCall, RiskCouncilClosureReason };
+export type {
+  CouncilCall,
+  RelayStage,
+  RiskCouncilCall,
+  RiskCouncilClosureReason,
+  SecurityRegistryCall,
+};
 
 export interface RiskCouncilAccess {
   canCall: CanCall;
@@ -42,8 +55,9 @@ export interface RiskCouncilAccess {
 
 export interface RiskCouncilRelayInput {
   mode: RelayMode;
-  call: RiskCouncilCall;
+  call: CouncilCall;
   chainId: number;
+  loanId?: number;
 }
 
 export interface RiskCouncilLoanState {
@@ -52,47 +66,79 @@ export interface RiskCouncilLoanState {
 }
 
 export interface HubLookup {
-  call: RiskCouncilCall;
+  call: CouncilCall;
   readyAt: number;
   pageLocal: ScheduledOp | undefined;
 }
 
 const NOT_CONFIGURED =
   "On-chain Risk Council actions are not configured for this environment.";
+export const SECURITY_NOT_CONFIGURED =
+  "On-chain SecurityRegistry actions are not configured for this environment.";
 
 const SET_DEFAULT_STATUSES: ReadonlySet<string> = new Set([
   "Performing",
   "WatchList",
 ]);
 
-function riskCouncilConfig() {
-  const accessManagerId = ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID;
-  const registryId = ENV.STELLAR_LOAN_REGISTRY_ID;
-  if (!accessManagerId || !registryId) return null;
+function chainConfig() {
   return {
-    accessManagerId,
-    registryId,
     rpcUrl: ENV.STELLAR_RPC_URL,
     networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
   };
 }
 
+function riskCouncilConfig(target: CouncilTarget = "loan_registry") {
+  const accessManagerId = ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID;
+  const registryId =
+    target === "security_registry"
+      ? ENV.STELLAR_SECURITY_REGISTRY_ID
+      : ENV.STELLAR_LOAN_REGISTRY_ID;
+  if (!accessManagerId || !registryId) return null;
+  return { accessManagerId, registryId, ...chainConfig() };
+}
+
+function notConfiguredFor(target: CouncilTarget): string {
+  return target === "security_registry"
+    ? SECURITY_NOT_CONFIGURED
+    : NOT_CONFIGURED;
+}
+
+function readScheduleFor(
+  call: CouncilCall,
+  params: {
+    accessManagerId: string;
+    registryId: string;
+    caller: string;
+    rpcUrl: string;
+    networkPassphrase: string;
+  },
+): Promise<OperationSchedule> {
+  return councilTarget(call) === "security_registry"
+    ? readSecurityRegistrySchedule({
+        call: call as SecurityRegistryCall,
+        ...params,
+      })
+    : readRiskCouncilSchedule({ call: call as RiskCouncilCall, ...params });
+}
+
 export function useRiskCouncilAccess(
   chainId: number | null | undefined,
-  call: RiskCouncilCall | null,
-  fn: RiskCouncilCall["fn"],
+  call: CouncilCall | null,
+  fn: CouncilCall["fn"],
 ) {
   const { address } = useStellarWallet();
   const callKey = call == null ? null : riskCouncilCallKey(call);
+  const target = councilTarget(fn);
 
   return useQuery<RiskCouncilAccess, Error>({
-    queryKey: ["risk-council-access", address, fn, callKey],
+    queryKey: ["risk-council-access", address, target, fn, callKey],
     enabled: stellarOnlyActionReason(chainId) === null && !!address,
     staleTime: 5_000,
     retry: false,
     queryFn: async () => {
-      const cfg = riskCouncilConfig();
-      if (!cfg) throw new Error(NOT_CONFIGURED);
+      const cfg = riskCouncilConfig(target);
+      if (!cfg) throw new Error(notConfiguredFor(target));
       if (!address) throw new Error("Stellar wallet not connected.");
       const base = {
         rpcUrl: cfg.rpcUrl,
@@ -107,8 +153,7 @@ export function useRiskCouncilAccess(
       });
       let schedule: OperationSchedule | null = null;
       if (!canCall.immediate && canCall.delay > 0 && call !== null) {
-        schedule = await readRiskCouncilSchedule({
-          call,
+        schedule = await readScheduleFor(call, {
           accessManagerId: cfg.accessManagerId,
           registryId: cfg.registryId,
           caller: address,
@@ -155,6 +200,7 @@ function invalidateRiskCouncil(queryClient: QueryClient) {
     "risk-council-access",
     "risk-council-loan",
     "risk-council-hub",
+    "risk-council-inspectors",
     "loan-book",
     "loan-financials",
     "loan-security",
@@ -174,14 +220,14 @@ export function useRiskCouncilRelay() {
       setStage(null);
       const blocked = stellarOnlyActionReason(chainId);
       if (blocked) throw new Error(blocked);
-      const cfg = riskCouncilConfig();
-      if (!cfg) throw new Error(NOT_CONFIGURED);
+      const target = councilTarget(call);
+      const cfg = riskCouncilConfig(target);
+      if (!cfg) throw new Error(notConfiguredFor(target));
       if (!isConnected || !address) {
         throw new Error("Stellar wallet not connected.");
       }
-      return relayRiskCouncil({
+      const params = {
         mode,
-        call,
         accessManagerId: cfg.accessManagerId,
         registryId: cfg.registryId,
         caller: address,
@@ -189,10 +235,16 @@ export function useRiskCouncilRelay() {
         networkPassphrase: cfg.networkPassphrase,
         signTransaction,
         onStageChange: setStage,
-      });
+      };
+      return target === "security_registry"
+        ? relaySecurityRegistry({
+            ...params,
+            call: call as SecurityRegistryCall,
+          })
+        : relayRiskCouncil({ ...params, call: call as RiskCouncilCall });
     },
-    onSuccess: (_data, { mode, call, chainId }) => {
-      if (mode === "schedule") recordScheduledOp({ chainId, call });
+    onSuccess: (_data, { mode, call, chainId, loanId }) => {
+      if (mode === "schedule") recordScheduledOp({ chainId, call, loanId });
       else markExecuted(chainId, call);
       invalidateRiskCouncil(queryClient);
       for (const delayMs of [5_000, 15_000]) {
@@ -220,10 +272,10 @@ export function useRiskCouncilRelay() {
 export function hubCallsFor(
   loans: ReadonlyArray<Pick<LoanBookEntry, "loan_id" | "onchain_status">>,
   pageLocal: ReadonlyArray<ScheduledOp>,
-): Array<{ call: RiskCouncilCall; pageLocal: ScheduledOp | undefined }> {
+): Array<{ call: CouncilCall; pageLocal: ScheduledOp | undefined }> {
   const byKey = new Map<
     string,
-    { call: RiskCouncilCall; pageLocal: ScheduledOp | undefined }
+    { call: CouncilCall; pageLocal: ScheduledOp | undefined }
   >();
   for (const loan of loans) {
     const loanId = Number(loan.loan_id);
@@ -266,11 +318,11 @@ export function useRiskCouncilHubLookups(
       staleTime: 30_000,
       retry: false,
       queryFn: async (): Promise<number> => {
-        const cfg = riskCouncilConfig();
-        if (!cfg) throw new Error(NOT_CONFIGURED);
+        const target = councilTarget(call);
+        const cfg = riskCouncilConfig(target);
+        if (!cfg) throw new Error(notConfiguredFor(target));
         if (!address) throw new Error("Stellar wallet not connected.");
-        const schedule = await readRiskCouncilSchedule({
-          call,
+        const schedule = await readScheduleFor(call, {
           accessManagerId: cfg.accessManagerId,
           registryId: cfg.registryId,
           caller: address,
@@ -292,5 +344,23 @@ export function useRiskCouncilHubLookups(
       ),
       isLoading: results.some((result) => result.isLoading),
     }),
+  });
+}
+
+export function useSecurityInspectors(chainId: number | null | undefined) {
+  return useQuery<string[], Error>({
+    queryKey: ["risk-council-inspectors", chainId],
+    enabled: stellarOnlyActionReason(chainId) === null,
+    staleTime: 15_000,
+    retry: false,
+    queryFn: async () => {
+      const cfg = riskCouncilConfig("security_registry");
+      if (!cfg) throw new Error(SECURITY_NOT_CONFIGURED);
+      return readSecurityInspectors({
+        registryId: cfg.registryId,
+        rpcUrl: cfg.rpcUrl,
+        networkPassphrase: cfg.networkPassphrase,
+      });
+    },
   });
 }

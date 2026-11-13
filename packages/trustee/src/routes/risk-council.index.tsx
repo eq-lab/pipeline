@@ -22,7 +22,8 @@ const ROUTE_PATHS = {
   escalate: "/risk-council/escalate/$id",
   reterm: "/risk-council/reterm/$id",
   writedown: "/risk-council/writedown/$id",
-} as const satisfies Record<HubRoute, string>;
+  security: "/risk-council/security/$id",
+} as const satisfies Record<Exclude<HubRoute, "inspectors">, string>;
 
 function ActionLink({
   route,
@@ -31,10 +32,17 @@ function ActionLink({
   children,
 }: {
   route: HubRoute;
-  loanId: string;
+  loanId: string | null;
   chain: number;
   children: React.ReactNode;
 }) {
+  if (route === "inspectors" || loanId === null) {
+    return (
+      <Link to="/risk-council/inspectors" className="text-[#000080] underline">
+        {children}
+      </Link>
+    );
+  }
   return (
     <Link
       to={ROUTE_PATHS[route]}
@@ -100,13 +108,15 @@ function ScheduledTable({
                 <td className={BODY_CELL_CLASS}>{row.executableFrom}</td>
                 <td className={BODY_CELL_CLASS}>{row.state}</td>
                 <td className={BODY_CELL_CLASS}>
-                  <ActionLink
-                    route={row.link.route}
-                    loanId={row.link.loanId}
-                    chain={chain}
-                  >
-                    Open
-                  </ActionLink>
+                  {row.link && (
+                    <ActionLink
+                      route={row.link.route}
+                      loanId={row.link.loanId}
+                      chain={chain}
+                    >
+                      Open
+                    </ActionLink>
+                  )}
                 </td>
               </tr>
             ))}
@@ -218,6 +228,13 @@ function RiskCouncilIndex() {
           {view.roleLine && (
             <Muted testId="risk-council-role">{view.roleLine}</Muted>
           )}
+          <Link
+            to="/risk-council/inspectors"
+            data-testid="risk-council-inspectors-link"
+            className="self-start text-[#000080] underline"
+          >
+            Inspector panel
+          </Link>
           <ScheduledTable
             rows={view.rows}
             noRole={view.noRole}

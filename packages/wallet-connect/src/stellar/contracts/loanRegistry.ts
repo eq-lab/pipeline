@@ -13,6 +13,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { enumTag } from "./enumTag";
 import { simulateRead } from "./simulateRead";
+import { scMap, u64, u128 } from "./scval";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,31 +79,6 @@ export interface DrawLoanResult {
 }
 
 // ── ScVal encoding helpers ────────────────────────────────────────────────────
-
-/**
- * Builds a Soroban `map` ScVal from `[symbolKey, ScVal]` entries, sorting by
- * key — Soroban requires map keys in sorted order; a contract call with an
- * unsorted map either fails to decode or silently reads the wrong field.
- * Keys are encoded as `Symbol`s (the shape Soroban struct fields use), NOT
- * `String`s.
- */
-function scMap(entries: Array<[string, xdr.ScVal]>): xdr.ScVal {
-  const sorted = [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return xdr.ScVal.scvMap(
-    sorted.map(
-      ([key, val]) =>
-        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(key), val }),
-    ),
-  );
-}
-
-function u128(value: bigint): xdr.ScVal {
-  return nativeToScVal(value, { type: "u128" });
-}
-
-function u64(value: number | bigint): xdr.ScVal {
-  return nativeToScVal(BigInt(value), { type: "u64" });
-}
 
 const U128_MAX = 2n ** 128n - 1n;
 const U32_MAX = 4_294_967_295;

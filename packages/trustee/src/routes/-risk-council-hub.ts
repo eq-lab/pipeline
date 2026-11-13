@@ -3,7 +3,7 @@ import { useLoanBook, type LoanBookEntry } from "@/api/useLoanBook";
 import {
   useRiskCouncilAccess,
   useRiskCouncilHubLookups,
-  type RiskCouncilCall,
+  type CouncilCall,
 } from "@/api/useRiskCouncil";
 import { useSessionState } from "@/auth/sessionStore";
 import {
@@ -27,11 +27,17 @@ export const HUB_INTRO =
   "The Risk Council acts through the access manager. Declaring a default executes at once; every other Risk Council action waits 24 hours, and the Guardian or the Admin can cancel it during the wait.";
 export const HUB_EMPTY = "No scheduled operations found.";
 export const HUB_FOOTNOTE =
-  "Lists operations scheduled from this console in this session, and declared defaults or cures pending for any loan. Other scheduled operations need an indexer and are not listed yet.";
+  "Lists operations scheduled from this console in this session, and declared defaults or cures pending for any loan. Security terms, flag resolutions, consent releases and the inspector panel appear only when scheduled from this console in this session. Other scheduled operations need an indexer and are not listed yet.";
+export const INSPECTORS_ROW_LABEL = "All loans";
 export const HUB_NO_ROLE =
   "Risk Council actions belong to the Risk Council. Pending operations are visible to the scheduling wallet only.";
 
-export type HubRoute = "escalate" | "reterm" | "writedown";
+export type HubRoute =
+  | "escalate"
+  | "reterm"
+  | "writedown"
+  | "security"
+  | "inspectors";
 
 export interface HubLink {
   label: string;
@@ -45,7 +51,7 @@ export interface ScheduledRow {
   args: string;
   executableFrom: string;
   state: string;
-  link: { route: HubRoute; loanId: string };
+  link: { route: HubRoute; loanId: string | null } | null;
 }
 
 export interface LoanIndexRow {
@@ -66,25 +72,33 @@ export interface RiskCouncilHubView {
   loading: boolean;
 }
 
-const ACTION_LABELS: Record<RiskCouncilCall["fn"], string> = {
+const ACTION_LABELS: Record<CouncilCall["fn"], string> = {
   set_default: "Declare default",
   cure: "Cure",
   amend_economics: "Amend economics",
   adjust_interest: "Adjust interest",
   write_down: "Write down",
   close_defaulted: "Close defaulted loan",
+  set_terms: "Set security terms",
+  resolve_flag: "Resolve flag",
+  release_with_consent: "Release with consent",
+  set_inspectors: "Set inspector panel",
 };
 
-const ACTION_ROUTES: Record<RiskCouncilCall["fn"], HubRoute> = {
+const ACTION_ROUTES: Record<CouncilCall["fn"], HubRoute> = {
   set_default: "escalate",
   cure: "writedown",
   amend_economics: "reterm",
   adjust_interest: "reterm",
   write_down: "writedown",
   close_defaulted: "writedown",
+  set_terms: "security",
+  resolve_flag: "security",
+  release_with_consent: "security",
+  set_inspectors: "inspectors",
 };
 
-export function formatCallArgs(call: RiskCouncilCall, chainId: number): string {
+export function formatCallArgs(call: CouncilCall, chainId: number): string {
   switch (call.fn) {
     case "amend_economics":
       return `${call.rateBps} bps · maturity ${formatMaturityDate(call.maturity)}`;
@@ -94,25 +108,50 @@ export function formatCallArgs(call: RiskCouncilCall, chainId: number): string {
       return formatChainAmount(call.amount, chainId);
     case "close_defaulted":
       return call.reason;
+    case "set_terms":
+      return `advance ${bpsToPercent(call.terms.advanceRatioBps)}% · margin call ${bpsToPercent(call.terms.marginCallRatioBps)}%`;
+    case "resolve_flag":
+      return `${call.outcome} · record #${call.recordId}`;
+    case "release_with_consent":
+      return `record #${call.recordId} · consent hash ${call.consentHash.slice(0, 10)}…`;
+    case "set_inspectors":
+      return `${call.inspectors.length} ${call.inspectors.length === 1 ? "inspector" : "inspectors"}`;
     default:
       return "—";
   }
 }
 
+const SECURITY_LINK: HubLink = { label: "Security", route: "security" };
+
 export function loanLinks(status: string): HubLink[] {
+  const security = status === "Closed" ? [] : [SECURITY_LINK];
   if (status === "Performing" || status === "WatchList") {
     return [
       { label: "Declare default", route: "escalate" },
       { label: "Amend economics", route: "reterm" },
+      ...security,
     ];
   }
   if (status === "Default") {
     return [
       { label: "Resolve default", route: "writedown" },
       { label: "Amend economics", route: "reterm" },
+      ...security,
     ];
   }
-  return [];
+  return security;
+}
+
+function bpsToPercent(bps: number): string {
+  return String(bps / 100);
+}
+
+export function callLoanId(
+  call: CouncilCall,
+  pageLocal: { loanId?: number } | undefined,
+): number | null {
+  if ("loanId" in call) return call.loanId;
+  return pageLocal?.loanId ?? null;
 }
 
 function loanLabelFor(
@@ -162,14 +201,26 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
     const { call, readyAt, pageLocal } = lookup;
     const pending = readyAt > 0;
     if (!pending && (pageLocal == null || pageLocal.executedHere)) continue;
+    const loanId = callLoanId(call, pageLocal);
     rows.push({
-      key: `${call.fn}:${call.loanId}:${JSON.stringify(call)}`,
-      loanLabel: loanLabelFor(loans, call.loanId),
+      key: `${call.fn}:${JSON.stringify(call)}`,
+      loanLabel:
+        call.fn === "set_inspectors"
+          ? INSPECTORS_ROW_LABEL
+          : loanId === null
+            ? "—"
+            : loanLabelFor(loans, loanId),
       action: ACTION_LABELS[call.fn],
       args: formatCallArgs(call, chainId),
       executableFrom: pending ? formatReadyAt(readyAt) : "—",
       state: pending ? "Scheduled" : NO_LONGER_SCHEDULED,
-      link: { route: ACTION_ROUTES[call.fn], loanId: String(call.loanId) },
+      link:
+        call.fn !== "set_inspectors" && loanId === null
+          ? null
+          : {
+              route: ACTION_ROUTES[call.fn],
+              loanId: loanId === null ? null : String(loanId),
+            },
     });
   }
 

@@ -6,6 +6,43 @@ import { isStellarTarget } from "@/lib/targetChains";
 export interface LoanSecurityTerms {
   advance_ratio_bps?: number;
   margin_call_ratio_bps?: number;
+  cure_period?: string;
+  price_stale_after?: string;
+  payment_term?: string;
+  grace_period?: string;
+  default_rate?: number;
+  attestation_interval?: string;
+  inspection_interval?: string;
+  tolerance_bps?: number;
+  grade_tolerance_bps?: number;
+}
+
+export interface LoanSecurityInspection {
+  inspection_id?: string;
+  inspector?: string;
+  kind?: string;
+  quantity?: string | null;
+  grade?: string | null;
+  variance_reference_bps?: number | null;
+  variance_previous_bps?: number | null;
+  variance_grade_bps?: number | null;
+  flagged?: boolean | null;
+  resolution?: string | null;
+}
+
+export interface LoanSecurityRecord {
+  record_id?: string;
+  lot_id?: string;
+  protection?: string;
+  commodity?: string | null;
+  unit?: string | null;
+  status?: string;
+  open?: boolean;
+  flagged_by?: string | null;
+  reference_quantity?: string | null;
+  release_reason_hash?: string | null;
+  released_by_consent?: boolean | null;
+  inspections?: LoanSecurityInspection[];
 }
 
 export interface LoanSecurityValuation {
@@ -29,6 +66,9 @@ export interface LoanSecurityPrices {
 
 export interface LoanSecurityResponse {
   refresh_pending?: boolean;
+  paused?: boolean;
+  inspectors?: string[];
+  records?: LoanSecurityRecord[];
   terms?: LoanSecurityTerms | null;
   valuation?: LoanSecurityValuation | null;
   margin_call?: LoanSecurityMarginCall | null;

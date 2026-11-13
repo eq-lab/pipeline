@@ -17,8 +17,18 @@ vi.mock("@tanstack/react-router", async () => {
   );
   return {
     ...actual,
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
+    Link: ({
+      children,
+      to,
+      "data-testid": testId,
+    }: {
+      children: React.ReactNode;
+      to: string;
+      "data-testid"?: string;
+    }) => (
+      <a href={to} data-testid={testId}>
+        {children}
+      </a>
     ),
     useNavigate: () => mockNavigate,
   };
@@ -164,6 +174,7 @@ function securityView(
     priceStale: true,
     refreshPending: false,
     notes: [],
+    actionLabel: "Security actions",
     ...overrides,
   };
 }
@@ -368,6 +379,47 @@ describe("Loan detail route — Security card", () => {
     expect(
       screen.getByTestId("loan-detail-security-no-terms"),
     ).toHaveTextContent("No security terms are set for this loan.");
+  });
+
+  it("links the ready card to the security actions page", () => {
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-actions"),
+    ).toHaveTextContent("Security actions");
+    expect(screen.getByTestId("loan-detail-security-actions")).toHaveAttribute(
+      "href",
+      "/risk-council/security/$id",
+    );
+  });
+
+  it("offers Set security terms in the no-terms state and no link on error", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        security: securityView({
+          state: "no-terms",
+          rows: [],
+          actionLabel: "Set security terms",
+        }),
+      }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-security-actions"),
+    ).toHaveTextContent("Set security terms");
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        security: securityView({
+          state: "error",
+          errorMessage: "boom",
+          rows: [],
+          actionLabel: null,
+        }),
+      }),
+    );
+    renderRoute();
+    expect(screen.getAllByTestId("loan-detail-security-actions")).toHaveLength(
+      1,
+    );
   });
 
   it("shows an inline error without breaking the rest of the page", () => {

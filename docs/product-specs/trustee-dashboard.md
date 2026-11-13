@@ -118,7 +118,7 @@ Default management. A Risk Council wallet calls the access manager: one `execute
 immediate, otherwise `schedule`, wait, `execute`. See [Risk Committee](../user-docs/governance/risk-committee.md)
 and [Default management](../user-docs/risks/default-management.md). The Trustee cannot call these;
 the console shows the evidence and the Risk Council's action pages ([Risk & Watchlist](./trustee-risk-watchlist.md),
-[flows](../frontend/trustee-flows.md#risk-council-actions)).
+[flows](../frontend/trustee-flows.md#risk-council-actions)). The same wallet also sets security terms, settles inspection flags, releases a record with the lenders' consent and sets the inspector panel through SecurityRegistry calls (#1858, [flows](../frontend/trustee-flows.md#risk-council-security-actions)).
 
 | # | Flow | Trigger | Data presented | Call | Guardrail |
 |---|---|---|---|---|---|

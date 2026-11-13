@@ -342,6 +342,26 @@ export type {
 } from "./stellar/contracts/riskCouncil";
 
 export {
+  encodeSecurityRegistryArgs,
+  relaySecurityRegistry,
+  readSecurityRegistrySchedule,
+  readSecurityInspectors,
+  securityReasonHash,
+  isInspectorAddress,
+  SECURITY_PAYMENT_TERMS,
+  FLAG_OUTCOMES,
+} from "./stellar/contracts/securityRegistry";
+export type {
+  SecurityPaymentTerm,
+  FlagOutcome,
+  SecurityTermsInput,
+  SecurityRegistryCall,
+  SecurityRegistryRelayParams,
+  ReadSecurityRegistryScheduleParams,
+  ReadSecurityInspectorsParams,
+} from "./stellar/contracts/securityRegistry";
+
+export {
   minterRecoveryAbi,
   encodeEvmReverseRepayCalldata,
   encodeEvmRepayCalldata,

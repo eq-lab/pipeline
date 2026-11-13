@@ -9,6 +9,7 @@ import {
   useRiskCouncilHubLookups,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
+  useSecurityInspectors,
 } from "./useRiskCouncil";
 import {
   _resetRiskCouncilOpsForTests,
@@ -18,6 +19,9 @@ import {
 
 const mocks = vi.hoisted(() => ({
   relayRiskCouncil: vi.fn(),
+  relaySecurityRegistry: vi.fn(),
+  readSecurityRegistrySchedule: vi.fn(),
+  readSecurityInspectors: vi.fn(),
   readCanCall: vi.fn(),
   readRiskCouncilSchedule: vi.fn(),
   readLoanChainState: vi.fn(),
@@ -28,6 +32,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@pipeline/wallet-connect", () => ({
   relayRiskCouncil: mocks.relayRiskCouncil,
+  relaySecurityRegistry: mocks.relaySecurityRegistry,
+  readSecurityRegistrySchedule: mocks.readSecurityRegistrySchedule,
+  readSecurityInspectors: mocks.readSecurityInspectors,
   readCanCall: mocks.readCanCall,
   readRiskCouncilSchedule: mocks.readRiskCouncilSchedule,
   readLoanChainState: mocks.readLoanChainState,
@@ -46,6 +53,7 @@ const envMock = vi.hoisted(() => ({
   STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
   STELLAR_LOAN_REGISTRY_ID: "CREGISTRY",
   STELLAR_LOAN_REGISTRY_EXECUTOR_ID: "CAM",
+  STELLAR_SECURITY_REGISTRY_ID: "CSECURITY",
 }));
 vi.mock("@/lib/env", () => ({ ENV: envMock }));
 
@@ -80,6 +88,8 @@ beforeEach(() => {
   mocks.relayRiskCouncil.mockResolvedValue({ hash: "H" });
   envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "CAM";
   envMock.STELLAR_LOAN_REGISTRY_ID = "CREGISTRY";
+  envMock.STELLAR_SECURITY_REGISTRY_ID = "CSECURITY";
+  mocks.relaySecurityRegistry.mockResolvedValue({ hash: "SH" });
   _resetRiskCouncilOpsForTests();
 });
 
@@ -169,6 +179,125 @@ describe("useRiskCouncilAccess", () => {
   });
 });
 
+const RELEASE = {
+  fn: "release_with_consent",
+  recordId: 3,
+  consentHash: "ab".repeat(32),
+} as const;
+
+describe("SecurityRegistry dispatch", () => {
+  it("reads can_call against the SecurityRegistry target", async () => {
+    mocks.readCanCall.mockResolvedValue({ immediate: false, delay: 86400 });
+    mocks.readSecurityRegistrySchedule.mockResolvedValue({
+      operationId: "x",
+      readyAt: 7,
+    });
+    const { result } = renderHook(
+      () => useRiskCouncilAccess(STELLAR, RELEASE, "release_with_consent"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(result.current.data?.schedule).not.toBeNull());
+    expect(mocks.readCanCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessManagerId: "CAM",
+        target: "CSECURITY",
+        fn: "release_with_consent",
+      }),
+    );
+    expect(mocks.readSecurityRegistrySchedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        call: RELEASE,
+        registryId: "CSECURITY",
+        accessManagerId: "CAM",
+      }),
+    );
+    expect(mocks.readRiskCouncilSchedule).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the SecurityRegistry not-configured error and leaves loan calls alone", async () => {
+    envMock.STELLAR_SECURITY_REGISTRY_ID = "";
+    const sec = renderHook(
+      () => useRiskCouncilAccess(STELLAR, RELEASE, "release_with_consent"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(sec.result.current.error).not.toBeNull());
+    expect(sec.result.current.error?.message).toMatch(
+      /SecurityRegistry actions are not configured/,
+    );
+    mocks.readCanCall.mockResolvedValue({ immediate: true, delay: 0 });
+    const loan = renderHook(
+      () => useRiskCouncilAccess(STELLAR, SET_DEFAULT, "set_default"),
+      { wrapper: makeWrapper() },
+    );
+    await waitFor(() => expect(loan.result.current.data).toBeDefined());
+  });
+
+  it("relays a security call through relaySecurityRegistry and keeps the loan context", async () => {
+    fakeRelayTimers();
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const ops = renderHook(() => useScheduledOps(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: RELEASE,
+        chainId: STELLAR,
+        loanId: 9,
+      });
+    });
+    expect(mocks.relaySecurityRegistry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "schedule",
+        call: RELEASE,
+        registryId: "CSECURITY",
+        accessManagerId: "CAM",
+        caller: "GRC",
+      }),
+    );
+    expect(mocks.relayRiskCouncil).not.toHaveBeenCalled();
+    expect(ops.result.current[0]!.loanId).toBe(9);
+  });
+
+  it("rejects a security relay when the SecurityRegistry id is empty", async () => {
+    envMock.STELLAR_SECURITY_REGISTRY_ID = "";
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(
+      relay.result.current.mutateAsync({
+        mode: "execute",
+        call: RELEASE,
+        chainId: STELLAR,
+      }),
+    ).rejects.toThrow(/SecurityRegistry actions are not configured/);
+    expect(mocks.relaySecurityRegistry).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSecurityInspectors", () => {
+  it("reads the current panel on chain", async () => {
+    mocks.readSecurityInspectors.mockResolvedValue(["GA", "GB"]);
+    const { result } = renderHook(() => useSecurityInspectors(STELLAR), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.data).toEqual(["GA", "GB"]));
+    expect(mocks.readSecurityInspectors).toHaveBeenCalledWith(
+      expect.objectContaining({ registryId: "CSECURITY" }),
+    );
+  });
+
+  it("errors when not configured and is disabled on EVM", async () => {
+    envMock.STELLAR_SECURITY_REGISTRY_ID = "";
+    const a = renderHook(() => useSecurityInspectors(STELLAR), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(a.result.current.error).not.toBeNull());
+    renderHook(() => useSecurityInspectors(EVM), { wrapper: makeWrapper() });
+    expect(mocks.readSecurityInspectors).not.toHaveBeenCalled();
+  });
+});
+
 describe("useRiskCouncilLoanState", () => {
   it("returns raw chain values and is Stellar only", async () => {
     mocks.readLoanChainState.mockResolvedValue({ status: "Default" });
@@ -232,6 +361,7 @@ describe("useRiskCouncilRelay", () => {
       "risk-council-access",
       "risk-council-loan",
       "risk-council-hub",
+      "risk-council-inspectors",
       "loan-book",
       "loan-financials",
       "loan-security",
@@ -353,12 +483,11 @@ describe("hub lookups", () => {
     });
     const ops = renderHook(() => useScheduledOps(STELLAR)).result.current;
     const calls = hubCallsFor(loans, ops);
-    expect(calls.map((c) => `${c.call.fn}:${c.call.loanId}`)).toEqual([
-      "set_default:1",
-      "set_default:2",
-      "cure:3",
-      "write_down:3",
-    ]);
+    expect(
+      calls.map(
+        (c) => `${c.call.fn}:${"loanId" in c.call ? c.call.loanId : "-"}`,
+      ),
+    ).toEqual(["set_default:1", "set_default:2", "cure:3", "write_down:3"]);
     expect(calls[0]!.pageLocal).toBeDefined();
     expect(calls[1]!.pageLocal).toBeUndefined();
   });

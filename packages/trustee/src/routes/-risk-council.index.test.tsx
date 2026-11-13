@@ -11,7 +11,7 @@ import {
   loanBookResult,
   loanEntry,
 } from "./-riskCouncilFixtures";
-import type { HubLookup } from "@/api/useRiskCouncil";
+import type { CouncilCall, HubLookup } from "@/api/useRiskCouncil";
 
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
@@ -200,5 +200,77 @@ describe("Risk Council hub", () => {
     ).toHaveAttribute("href", `/risk-council/writedown/2?chain=${STELLAR}`);
     expect(within(rows[2]!).queryAllByRole("link")).toHaveLength(0);
     expect(rows[2]).toHaveTextContent("—");
+    expect(
+      within(rows[0]!).getByRole("link", { name: "Security" }),
+    ).toHaveAttribute("href", `/risk-council/security/1?chain=${STELLAR}`);
+    expect(
+      within(rows[1]!).getByRole("link", { name: "Security" }),
+    ).toHaveAttribute("href", `/risk-council/security/2?chain=${STELLAR}`);
+  });
+
+  it("links to the inspector panel from the header", () => {
+    setup();
+    renderRoute();
+    expect(
+      screen.getByRole("link", { name: "Inspector panel" }),
+    ).toHaveAttribute(
+      "href",
+      expect.stringContaining("/risk-council/inspectors"),
+    );
+  });
+
+  it("lists security operations scheduled here with the loan from the call context", () => {
+    const release = {
+      fn: "release_with_consent",
+      recordId: 3,
+      consentHash: "ab".repeat(32),
+    } as const;
+    const inspectors: CouncilCall = {
+      fn: "set_inspectors",
+      inspectors: ["GA", "GB"],
+    };
+    setup({
+      lookups: [
+        {
+          call: release,
+          readyAt: READY_AT,
+          pageLocal: {
+            chainId: STELLAR,
+            call: release,
+            loanId: 1,
+            scheduledAt: 1,
+            executedHere: false,
+          },
+        },
+        {
+          call: inspectors,
+          readyAt: READY_AT,
+          pageLocal: {
+            chainId: STELLAR,
+            call: inspectors,
+            scheduledAt: 1,
+            executedHere: false,
+          },
+        },
+      ],
+    });
+    renderRoute();
+    const rows = screen.getAllByTestId("risk-council-scheduled-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Release with consent");
+    expect(rows[0]).toHaveTextContent("record #3 · consent hash ababababab…");
+    expect(rows[0]).toHaveTextContent("(#1)");
+    expect(
+      within(rows[0]!).getByRole("link", { name: "Open" }),
+    ).toHaveAttribute("href", `/risk-council/security/1?chain=${STELLAR}`);
+    expect(rows[1]).toHaveTextContent("Set inspector panel");
+    expect(rows[1]).toHaveTextContent("All loans");
+    expect(rows[1]).toHaveTextContent("2 inspectors");
+    expect(
+      within(rows[1]!).getByRole("link", { name: "Open" }),
+    ).toHaveAttribute(
+      "href",
+      expect.stringContaining("/risk-council/inspectors"),
+    );
   });
 });
