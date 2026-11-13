@@ -272,7 +272,9 @@ const { data, isLoading, error, refetch } = useLoanBook({ chainId });
 
 Always enabled — no wallet connection required. Polls every 30 s.
 
-All monetary string fields (`total_deployed`, `principal`, `collateral`) are **base-6 decimal strings already in human units** — do NOT pass them to `formatUsdc` or `parseUnits`. Use `formatCompactUsd` from `@/utils/formatCompactUsd` instead.
+All monetary string fields (`total_deployed`, `principal`, `total_collateral`) are **base-6 decimal strings already in human units** — do NOT pass them to `formatUsdc` or `parseUnits`. Use `formatCompactUsd` from `@/utils/formatCompactUsd` instead.
+
+`loans[].ltv_bps` is the SecurityRegistry LTV in bps (`null` on EVM / no snapshot; `4294967295` = no security value); display with `formatLtvBps`.
 
 ### `usePnl()`
 

@@ -1,18 +1,4 @@
-/**
- * Tests for `originationRow.ts` — the In-Origination table's extractor
- * (`mapSubmissionToRow`, issue #814), mirroring
- * `packages/trustee/src/routes/-useOriginationTable.test.ts`'s
- * `mapSubmissionToRow` coverage.
- *
- * Covers:
- *   - A full fixture submission maps to correctly formatted fields.
- *   - Missing/malformed `loan_data`/`economics` fields render "—" (never
- *     throw, never fabricate).
- *   - The valuation sub-line is not part of the row shape at all (resolved
- *     Open Question — omitted entirely, mirroring #813).
- *   - Status is the raw lifecycle string (no discriminated pill/action —
- *     resolved Open Question, LP dashboard keeps its simple status label).
- */
+// spec: docs/frontend/dashboard-components.md#usedeploymentmonitorpanel
 import { describe, it, expect } from "vitest";
 import { mapSubmissionToRow, targetChainLabel } from "./originationRow";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
@@ -36,8 +22,6 @@ const FULL_SUBMISSION: SubmissionView = {
     corridor: "PE-CN",
     governing_law: "England",
     economics: {
-      // Human-unit USDC strings (#1620) — rendered as served,
-      // so this facility value renders "$3.5M".
       original_facility_size: "3500000.000000",
       original_senior_tranche: "3000000.000000",
       original_equity_tranche: "500000.000000",
@@ -46,7 +30,6 @@ const FULL_SUBMISSION: SubmissionView = {
       origination_date: 1_750_000_000,
       original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z
     },
-    initial_ccr: 1_500_000,
     initial_location: {
       location_type: "Vessel",
       location_identifier: "MV Example",
@@ -60,7 +43,7 @@ describe("mapSubmissionToRow", () => {
   it("maps a full fixture submission to correctly formatted fields", () => {
     const row = mapSubmissionToRow(FULL_SUBMISSION);
     expect(row.commodity).toBe("Gold pyrite concentrate");
-    expect(row.facility).toBe("$3.5M"); // compact, matching Active Loans (#841)
+    expect(row.facility).toBe("$3.5M");
     expect(row.corridor).toBe("PE → CN");
     expect(row.rate).toBe("14.0%");
     expect(row.maturity).toBe("15 Dec 2026");
@@ -95,8 +78,7 @@ describe("mapSubmissionToRow", () => {
         ...FULL_SUBMISSION.loan_data,
         commodity: "",
         corridor: "",
-        // @ts-expect-error — intentionally malformed for the defensive-read test
-        economics: undefined,
+        economics: undefined as never,
       },
     };
     const row = mapSubmissionToRow(submission);
@@ -114,8 +96,7 @@ describe("mapSubmissionToRow", () => {
         ...FULL_SUBMISSION.loan_data,
         economics: {
           ...FULL_SUBMISSION.loan_data.economics,
-          // @ts-expect-error — intentionally malformed for the defensive-read test
-          senior_interest_rate_bps: "not-a-number",
+          senior_interest_rate_bps: "not-a-number" as never,
         },
       },
     };
@@ -126,8 +107,7 @@ describe("mapSubmissionToRow", () => {
   it("renders '—' for an entirely missing loan_data", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
-      // @ts-expect-error — intentionally malformed for the defensive-read test
-      loan_data: undefined,
+      loan_data: undefined as never,
     };
     const row = mapSubmissionToRow(submission);
     expect(row.commodity).toBe("—");

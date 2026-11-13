@@ -1,10 +1,4 @@
-/**
- * Component tests for `DeploymentMonitorPanel` (issue #755).
- *
- * The data/logic hook `useDeploymentMonitorPanel` is mocked so these tests
- * focus on the view: tab bar interactivity, count badges, and the
- * In-Origination `OriginationTable`'s field set (issue #814).
- */
+// spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { DeploymentMonitorPanel } from "./DeploymentMonitorPanel";
@@ -33,7 +27,6 @@ function baseState(
       {
         commodity: "Copper Concentrate",
         principal: "$8.0M",
-        collateral: "—",
         ltv: "—",
         duration: "120d",
         rate: "11.2%",
@@ -103,7 +96,6 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     hookState = baseState({ activeTab: "origination" });
     render(<DeploymentMonitorPanel />);
 
-    // Column set — Chain added by #1604 (the tab lists every target chain).
     for (const header of [
       "Commodity",
       "Chain",
@@ -124,7 +116,6 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     expect(within(table).getByText("West Africa → EU")).toBeTruthy();
     expect(within(table).getByText("15 Dec 2026")).toBeTruthy();
     expect(within(table).getByText("18 Jun")).toBeTruthy();
-    // Human-readable status label, not the backend literal (#1053).
     expect(within(table).getByText("In review")).toBeTruthy();
     expect(within(table).queryByText("InReview")).toBeNull();
   });
@@ -199,7 +190,7 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
   });
 
   it("does not render the origination Status column on the Active Loans tab", () => {
-    render(<DeploymentMonitorPanel />); // activeTab: "active"
+    render(<DeploymentMonitorPanel />);
     expect(screen.queryByTestId("origination-table")).toBeNull();
     expect(screen.queryByText("Status")).toBeNull();
   });

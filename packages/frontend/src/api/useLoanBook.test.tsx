@@ -1,12 +1,4 @@
-/**
- * Tests for `src/api/useLoanBook.ts`.
- *
- * Covers:
- *   - Mock-key path returns fixture data immediately without calling fetch.
- *   - With no mock key, the hook calls apiFetch with `/v1/loan-book`.
- *   - Error path: when fetch fails, `error` is populated.
- *   - Always enabled — the hook fires regardless of wallet connection.
- */
+// spec: docs/frontend/hooks.md
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -21,7 +13,6 @@ vi.mock("@/wallet", () => ({
   useEvmWallet: () => ({ address: undefined, isConnected: false }),
   useStellarWallet: () => ({ address: undefined, isConnected: false }),
   subscribeMock: () => () => {},
-  // readMock reads from localStorage (jsdom provides this in the test environment)
   readMock: (key: string, parse: (raw: string) => unknown) => {
     try {
       const raw = localStorage.getItem(key);
@@ -65,8 +56,7 @@ const FIXTURE_WITH_LOANS: LoanBookResponse = {
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
       principal: "8000000.000000",
-      collateral: null,
-      ltv: null,
+      ltv_bps: null,
       duration_days: 120,
       rate: "0.112000",
       protection: "LC at sight",

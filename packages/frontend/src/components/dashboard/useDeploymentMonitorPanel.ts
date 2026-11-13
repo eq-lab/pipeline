@@ -1,10 +1,4 @@
-/**
- * Co-located hook for `DeploymentMonitorPanel` (FRONTEND.md rule 2: view = JSX
- * only, logic lives in the hook).
- *
- * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
- * (tabs data sourcing, state machine, headerAggregates, LTV aggregate calc).
- */
+// spec: docs/frontend/dashboard-components.md#usedeploymentmonitorpanel
 import { useState } from "react";
 import {
   useLoanBook,
@@ -22,56 +16,37 @@ import { toUserError } from "@/utils/userError";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
-  formatLtv,
+  formatLtvBps,
+  LTV_NO_VALUE_SENTINEL,
   formatCoverage,
   formatDurationDays,
 } from "@/utils/formatCompactUsd";
 
 // ── Formatted output types ────────────────────────────────────────────────────
 
-/** Which Loan Book tab is currently selected. */
 export type LoanBookTab = "active" | "origination";
 
 export interface DeploymentMonitorPanelState {
   state: PanelState;
   summary: LoanBookSummaryProps;
   rows: LoanBookRow[];
-  /**
-   * Pre-formatted aggregate strings for the table column headers.
-   * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel (headerAggregates fields).
-   */
   headerAggregates: LoanBookHeaderAggregates;
-  /** Live count of active loans (loans.length when ready; 0 otherwise). */
   activeLoansCount: number;
   errorMessage: string | undefined;
   refetch: () => void;
 
   // ── In Origination tab (issue #755) ─────────────────────────────────────────
-  /** Currently selected tab. */
   activeTab: LoanBookTab;
-  /** Selects a tab. */
   setActiveTab: (tab: LoanBookTab) => void;
-  /**
-   * Formatted In Origination rows — only in-flight submissions (normalized
-   * `InReview` / `ChangesRequested` / `Rejected`, issue #1053), newest first.
-   * Approved and merged loan-lifecycle statuses are already loans and belong
-   * on the Active Loans tab.
-   */
   originationRows: OriginationTableRow[];
-  /** Live count of in-flight submissions (0 otherwise). */
   inOriginationCount: number;
-  /** Independent state for the In Origination tab body. */
   originationState: PanelState;
-  /** Error message for the submissions query, when `originationState === "error"`. */
   originationErrorMessage: string | undefined;
-  /** Refetch handler for the submissions query. */
   refetchOrigination: () => void;
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
-// total_deployed / total_collateral displayed as served by the backend (issue
-// #906 — no frontend rescaling). spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
 function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   return {
     totalDeployed: formatCompactUsd(summary.total_deployed),
@@ -82,12 +57,24 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   };
 }
 
+function averageLtvBps(loans: LoanBookEntry[]): number | null {
+  const valid = loans
+    .map((l) => l.ltv_bps ?? null)
+    .filter(
+      (v): v is number =>
+        typeof v === "number" &&
+        Number.isFinite(v) &&
+        v !== LTV_NO_VALUE_SENTINEL,
+    );
+  if (valid.length === 0) return null;
+  return Math.ceil(valid.reduce((a, b) => a + b, 0) / valid.length);
+}
+
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     commodity: entry.commodity,
     principal: formatCompactUsd(entry.principal),
-    collateral: formatCompactUsd(entry.collateral),
-    ltv: formatLtv(entry.ltv),
+    ltv: formatLtvBps(entry.ltv_bps ?? null),
     duration: formatDurationDays(entry.duration_days, "compact"),
     rate: formatOneDecimalRate(entry.rate),
     protection: entry.protection ?? "—",
@@ -104,16 +91,10 @@ const EMPTY_SUMMARY: LoanBookSummaryProps = {
   avgDuration: "—",
 };
 
-/** No aggregates while loading / error / empty — headers render label-only. */
 const EMPTY_HEADER_AGGREGATES: LoanBookHeaderAggregates = {};
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * Drives `DeploymentMonitorPanel`.
- *
- * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel (panel/tab state rules).
- */
 export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   const { chainId } = useDashboardChain();
   const { data, isLoading, error, refetch } = useLoanBook({
@@ -145,7 +126,6 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     originationRows,
     inOriginationCount,
     originationState,
-    // spec: docs/frontend/error-handling.md — mapped, never the raw message.
     originationErrorMessage: submissions.error
       ? toUserError(submissions.error).message
       : undefined,
@@ -173,7 +153,6 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
       headerAggregates: EMPTY_HEADER_AGGREGATES,
       rows: [],
       activeLoansCount: 0,
-      // spec: docs/frontend/error-handling.md — mapped, never the raw message.
       errorMessage: toUserError(error).message,
       refetch,
       ...originationCommon,
@@ -182,16 +161,8 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
 
   const loans = data?.loans ?? [];
 
-  // LTV aggregate calc — spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
-  let ltvAggregate: string | undefined;
-  if (loans.length > 0) {
-    const sum = loans.reduce((acc, loan) => {
-      const v = loan.ltv !== null ? parseFloat(loan.ltv) : 0;
-      return acc + (Number.isFinite(v) ? v : 0);
-    }, 0);
-    const avg = sum / loans.length;
-    ltvAggregate = formatLtv(String(avg));
-  }
+  const avg = averageLtvBps(loans);
+  const ltvAggregate = avg === null ? undefined : formatLtvBps(avg);
 
   return {
     state: "ready",
@@ -199,10 +170,6 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     headerAggregates: data
       ? {
           principal: formatCompactUsd(data.summary.total_deployed),
-          collateral:
-            data.summary.total_collateral == null
-              ? undefined
-              : formatCompactUsd(data.summary.total_collateral),
           ltv: ltvAggregate,
         }
       : EMPTY_HEADER_AGGREGATES,
