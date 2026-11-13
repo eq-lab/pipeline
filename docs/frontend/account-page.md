@@ -131,7 +131,7 @@ page shows the zero state. The forced session-end path (expiry, `401`, suspensio
 ## Page composition
 
 `AccountPage.tsx` (shell) → `AccountWalletCard.tsx`, `AccountEmailCard.tsx`,
-`AccountProfileCard.tsx` (Name, Country, then the [settlement address rows](#settlement-address)), `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
+`AccountProfileCard.tsx` (Name, Country, then the [settlement address rows](#settlement-address) and the [settlement bank account](#settlement-bank-account-1885)), `AccountDocumentsCard.tsx`, and a full-width `Log Out` button, in a `max-w-[480px]` centered
 column at `gap-8` (32px), below the fixed header. A 72×72 `--color-pipeline-fill-muted` circle with
 a user glyph sits above the centered Besley 28/36 `Account` heading.
 
@@ -405,6 +405,72 @@ endpoint); wallet-only visitors (no session, no LP); wallets without SEP-0053 (A
 connect modal and end on the `declined` caption. The staging dev mock wallets cannot sign (`signMessage` rejects);
 QA uses real Freighter and MetaMask wallets.
 
+## Settlement bank account (#1885)
+
+Capture and masked view of the LP's USD settlement bank account, on the Account profile card and on the
+"Finish account setup" modal ([CompanyDocsModal](./auth-components.md#companydocsmodal)). Behaviour sources, in
+precedence order: `docs/user-docs/lenders/onboarding.md` and `withdraw.md` (bank wire), then
+[kyb-lp-verification.md](../product-specs/kyb-lp-verification.md#settlement-bank-account), then the API
+(`UpsertProfile.settlement_bank_account`, the served `SettlementBankAccountSummary`, the 400
+`settlement_bank_account.{field}: {reason}`).
+
+**Design source.** No Figma frame exists for this block. Decision on #1885 (2026-11-13): it ships without frames, built
+from the shipped Account rows (`AccountListRow variant="plain"`), `TextField` with the unfocused `--color-pipeline-line`
+border, `Button size="compact"` and the "Different address" inline form of [Settlement address](#settlement-address).
+
+**Row.** `SettlementBankAccountSection` (shared by both surfaces), below the settlement address rows. Caption
+`Settlement bank account`; title is the served holder name, or `Not added`. A body-s line `{bank_name} · ending {last4}`
+follows (`{bank_name}` alone when `account_last4` is `null`); served strings are shown verbatim.
+
+| Condition | Caption | Button |
+| --- | --- | --- |
+| open record, no account | `Optional. Needed only to withdraw to a bank account by wire.` | `Add` |
+| open record, account stored | none | `Replace` |
+| `UnderReview` | `Locked while your account is under review.` | none |
+| `Passed`, no account | `To add a bank account, contact support.` | none |
+| `Passed`, account stored | `To change it, contact support.` | none |
+| `Failed` | none | none |
+
+"Open record" is the served `writable`. There is no Remove: the API cannot clear the account (`null` means unchanged).
+
+**Form.** Add / Replace opens an inline `<div>` (no nested form) with seven `TextField`s, always empty, in this order and
+with these labels: `Account holder name`, `Bank name`, `Bank address (optional)`, `IBAN`, `Account number`,
+`SWIFT/BIC code`, `Routing number (ABA)`. Helpers: `Enter an IBAN, an account number, or both.` after the account number
+and `Enter a SWIFT/BIC code, a routing number, or both.` after the routing number. A replace adds
+`Replacing {bank} · ending {last4}. Enter the full account again.` above the inputs, and the masked row stays visible.
+`Cancel` clears the draft and closes. The form has no save button of its own.
+
+**Save path.** On the Account page the draft is sent by **Save profile** (one `POST /v1/lps/me`); a non-blank open draft
+counts as unsaved, so it enables Save profile and blocks upload and Submit for review like a Name or Country draft. The
+key is added only for a non-blank draft: blank optionals are sent as `null`, blank holder or bank name as `""` (the
+server answers `is required`). Notify me and the LP-creating upsert before an upload never send the key. The browser does
+no IBAN, BIC or ABA validation.
+
+**Errors.** A 400 `settlement_bank_account.{field}: {reason}` shows on that field and no generic alert; the draft is
+kept and the message never contains the value. An unknown reason on a known field reads `{Label} {reason}`. A 409 clears
+the draft and refreshes, so a frozen record turns read-only.
+
+| Server reason (field) | Inline copy |
+| --- | --- |
+| `is required` (holder, bank) | `{Label} is required.` |
+| `is too long` (holder, bank) | `{Label} is too long (140 characters max).` |
+| `is too long` (address) | `Bank address is too long (280 characters max).` |
+| `is not a valid IBAN` | `Enter a valid IBAN.` |
+| `is not a valid account number` | `Enter a valid account number (letters and digits only).` |
+| `is not a valid SWIFT/BIC code` | `Enter a valid SWIFT/BIC code (8 or 11 characters).` |
+| `is not a valid routing number` | `Enter a valid 9-digit ABA routing number.` |
+| `or iban is required` (account number) | `Enter an IBAN or an account number.` |
+| `or routing_number is required` (SWIFT/BIC) | `Enter a SWIFT/BIC code or a routing number.` |
+
+`{Label}` drops ` (optional)` and ` (ABA)`. Editing `IBAN` clears an account-number "or" error, and editing the routing
+number clears a SWIFT/BIC "or" error.
+
+**PII.** The draft lives only in React state (no storage, URL or `console`), is cleared on a successful save, Cancel, 409,
+session-token change and LP identity change, and the inputs use `autoComplete="off"` and `spellCheck={false}`.
+
+**Out of scope.** The Bank tab wire-out gating (#1917, blocked on #1757), trustee surfaces, and the `/test` and `?state=`
+previews (the section is hidden when there is no LP).
+
 ## Wallet card
 
 **Single connected wallet (#1512).** The LP holds at most one wallet connection at a time, and the
@@ -612,6 +678,9 @@ Banners: `Verify your account` · `Verify your identity` (staged state only — 
 inconsistency, see below) · `Verifying account` (stand-in) · `Upload your company documents to
 unlock bank transfers.` · `{Document name}` + ` required` (two-span composite) · `Please upload
 the document.` · `Re-upload your document` · `Some information may be missing or incorrect`.
+
+Settlement bank account: `Settlement bank account` · `Not added` · `Add` · `Replace` · `Cancel` · the captions and field
+labels in [Settlement bank account](#settlement-bank-account-1885).
 
 Upload area: `Upload documents` · `pdf, jpg, png files up to 10MB` · `Upload` · `Save`.
 

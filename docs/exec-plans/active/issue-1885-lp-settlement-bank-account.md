@@ -2,6 +2,8 @@
 
 Source: https://github.com/eq-lab/pipeline/issues/1885
 
+**Status (2026-11-13): implemented. Open Question decided (a): built without Figma frames.**
+
 Frontend flow, sub-issue of epic #1795. Branch `feat/1885-lp-settlement-bank-account` (draft PR #1916), based on
 `main`. The backend half is merged (#1812, PR #1882; archived plan
 `docs/exec-plans/completed/issue-1812-lp-settlement-bank-account.md`). The backend user stories are in

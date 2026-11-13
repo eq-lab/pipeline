@@ -15,6 +15,8 @@ import { UploadedFileRow } from "@/components/UploadedFileRow";
 import { CountryField } from "@/components/account/CountryField";
 import { SettlementAddressRows } from "@/components/account/SettlementAddressRow";
 import type { SettlementControls } from "@/components/account/settlementAddress";
+import { SettlementBankAccountSection } from "@/components/account/SettlementBankAccountSection";
+import { useSettlementBankAccountDraft } from "@/components/account/useSettlementBankAccountDraft";
 import { AccountUploadRow } from "@/components/account/AccountUploadRow";
 import { AccountRequirementsList } from "@/components/account/AccountRequirementsList";
 import {
@@ -87,6 +89,8 @@ export function CompanyDocsModal({
     country: lp?.country ?? "",
   });
   const lpIdentity = useRef(lp?.id ?? null);
+  const bank = useSettlementBankAccountDraft();
+  const resetBank = bank.reset;
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const submitPending = useRef(false);
@@ -107,6 +111,7 @@ export function CompanyDocsModal({
     if (lp === undefined) return;
     setServerLp(lp);
     if ((lp?.id ?? null) !== lpIdentity.current) {
+      resetBank();
       setLegalName(lp?.legal_name ?? "");
       setCountry(lp?.country ?? "");
       setProfileBaseline({
@@ -115,7 +120,7 @@ export function CompanyDocsModal({
       });
     }
     lpIdentity.current = lp?.id ?? null;
-  }, [lp]);
+  }, [lp, resetBank]);
 
   const writable =
     preview || (!uncertainSubmission && (serverLp?.writable ?? true));
@@ -184,13 +189,15 @@ export function CompanyDocsModal({
     submitPending.current = true;
     try {
       let saved = serverLp;
-      if (!saved || profileChanged || files.length > 0) {
+      if (!saved || profileChanged || bank.dirty || files.length > 0) {
         saved = await upsertMyLp({
           legal_name: legalName.trim(),
           country: country.trim() || null,
           contact_email: email,
+          ...(bank.dirty ? { settlement_bank_account: bank.payload() } : {}),
         });
         if (readSession()?.token !== token) return;
+        bank.reset();
         setServerLp(saved);
         lpIdentity.current = saved.id;
         setProfileBaseline({
@@ -255,7 +262,12 @@ export function CompanyDocsModal({
           );
       }
     } catch (requestError) {
-      if (readSession()?.token === token) setError(errorMessage(requestError));
+      if (readSession()?.token === token) {
+        if (bank.applyError(requestError)) return;
+        if (requestError instanceof ApiError && requestError.status === 409)
+          bank.reset();
+        setError(errorMessage(requestError));
+      }
     } finally {
       if (readSession()?.token === token) {
         submitPending.current = false;
@@ -389,6 +401,16 @@ export function CompanyDocsModal({
           </div>
           {!preview && settlement && (
             <SettlementAddressRows settlement={settlement} />
+          )}
+          {!preview && (
+            <SettlementBankAccountSection
+              account={serverLp?.settlement_bank_account ?? null}
+              kybStatus={serverLp?.kyb_status}
+              writable={writable}
+              disabled={!writable || busy}
+              controls={bank}
+              testIdPrefix="company-docs"
+            />
           )}
         </div>
         <div

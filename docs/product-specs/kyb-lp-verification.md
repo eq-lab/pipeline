@@ -138,6 +138,8 @@ At least one of `account_number` / `iban` and at least one of `swift_bic_code` /
 - **Trustee cash book.** `GET /v1/cash-book` `wire_outs[]` rows with `status = "Pending"` and a resolved LP carry `bank_account` (full details of that LP's current account), see [minter-cash-book.md](./minter-cash-book.md#api-contract). Settled and cancelled rows and rows with no resolved LP never carry it, because the stored account is the LP's current one and not necessarily where an earlier wire went.
 - **Never public.** `GET /v1/requests` and `GET /v1/audit-log` carry no bank data.
 
+**LP app.** The KYB modal and the Account page profile card show the masked account and, while the record is open, an Add / Replace form that always starts empty. It is sent only on the save that carries it, and a 400 names the field inline. Frozen records show it read-only, with "contact support" once `Passed` (TD-182). Detail: [account-page.md](../frontend/account-page.md#settlement-bank-account-1885).
+
 **Change after `Passed`.** Nothing in the API changes the account once KYB is `Passed`, and LPs that passed before this feature have none. Ops sets or corrects it by SQL (TD-182). A trustee-only write may follow as a separate issue.
 
 ---

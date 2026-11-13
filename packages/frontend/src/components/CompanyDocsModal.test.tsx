@@ -318,6 +318,7 @@ function lp(
     kyb_status: "NotStarted",
     writable: true,
     notify_on_review: false,
+    settlement_bank_account: null,
     owner_account_id: "owner",
     owner_chain_id: null,
     owner_address: null,
@@ -949,5 +950,136 @@ describe("CompanyDocsModal — settlement rows", () => {
       screen.getByRole("button", { name: "Use a different address" }),
     );
     expect(settlement.onOther).toHaveBeenCalledWith("stellar");
+  });
+});
+
+describe("CompanyDocsModal — settlement bank account", () => {
+  beforeEach(() => {
+    saveSession({ token: "jwt", expires_in: 3600 });
+  });
+
+  function fillBank(values: Record<string, string>) {
+    fireEvent.click(screen.getByTestId("company-docs-settlement-bank-open"));
+    Object.entries(values).forEach(([name, value]) =>
+      fireEvent.change(screen.getByRole("textbox", { name }), {
+        target: { value },
+      }),
+    );
+  }
+
+  const bankValues = {
+    "Account holder name": "Holder",
+    "Bank name": "Bank",
+    IBAN: "GB82",
+  };
+  const bankPayload = {
+    account_holder_name: "Holder",
+    bank_name: "Bank",
+    bank_address: null,
+    account_number: null,
+    iban: "GB82",
+    swift_bic_code: null,
+    routing_number: null,
+  };
+
+  it("sends a draft in the upsert Submit already makes, then submits an eligible set", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce(existing);
+    renderModal({ lp: existing });
+    fillBank(bankValues);
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledOnce());
+    expect(mockUpsert).toHaveBeenCalledWith({
+      legal_name: "Existing Name",
+      country: "NL",
+      contact_email: "existing@example.com",
+      settlement_bank_account: bankPayload,
+    });
+    expect(
+      screen.queryByTestId("company-docs-settlement-bank-form"),
+    ).toBeNull();
+  });
+
+  it("puts the key in the creating upsert before the upload for a new LP", async () => {
+    const created = lp();
+    mockUpsert.mockResolvedValueOnce(created);
+    mockUpload.mockResolvedValueOnce({
+      lp: lp([makeDocument(2)]),
+      files: [{ filename: "doc.pdf", status: 201, id: 2, error: null }],
+    });
+    renderModal({ lp: null, sessionEmail: "new@example.com" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "New Co" },
+    });
+    fillBank(bankValues);
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(mockUpload).toHaveBeenCalledOnce());
+    expect(mockUpsert.mock.calls[0]![0].settlement_bank_account).toEqual(
+      bankPayload,
+    );
+    expect(mockUpsert.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockUpload.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("stops before the upload on a field 400 and keeps the staged file", async () => {
+    mockUpsert.mockRejectedValueOnce(
+      new ApiError(400, "settlement_bank_account.iban: is not a valid IBAN"),
+    );
+    renderModal({ lp: lp() });
+    fillBank(bankValues);
+    upload([makeFile("doc.pdf", "application/pdf")]);
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText("Enter a valid IBAN.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "IBAN" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.queryByText(/Check your profile/)).toBeNull();
+    expect(screen.getByText("doc.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "IBAN" })).toHaveValue("GB82");
+  });
+
+  it("omits the key when there is no draft", async () => {
+    const existing = lp([makeDocument(5)]);
+    mockUpsert.mockResolvedValueOnce({ ...existing, legal_name: "Changed" });
+    renderModal({ lp: existing });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Changed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalledOnce());
+    expect("settlement_bank_account" in mockUpsert.mock.calls[0]![0]).toBe(
+      false,
+    );
+  });
+
+  it("is read-only for a frozen LP", () => {
+    renderModal({
+      lp: lp([], {
+        kyb_status: "UnderReview",
+        writable: false,
+        settlement_bank_account: {
+          account_holder_name: "Holder",
+          bank_name: "Bank",
+          account_last4: "5432",
+        },
+      }),
+    });
+    expect(
+      screen.getByTestId("company-docs-settlement-bank-detail"),
+    ).toHaveTextContent("Bank · ending 5432");
+    expect(
+      screen.queryByTestId("company-docs-settlement-bank-open"),
+    ).toBeNull();
+  });
+
+  it("is hidden in the preview", () => {
+    renderModal();
+    expect(screen.queryByTestId("company-docs-settlement-bank-row")).toBeNull();
   });
 });

@@ -58,6 +58,7 @@ function lp(overrides: Partial<LpResponse> = {}): LpResponse {
     kyb_status: "NotStarted",
     writable: true,
     notify_on_review: false,
+    settlement_bank_account: null,
     owner_account_id: "account",
     owner_chain_id: null,
     owner_address: null,
@@ -478,5 +479,133 @@ describe("useAccountPage", () => {
     mockGet.mockClear();
     renderHook(() => useAccountPage(false));
     expect(mockGet).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAccountPage settlement bank account", () => {
+  async function loaded(overrides: Partial<LpResponse> = {}) {
+    signIn("session@example.com");
+    mockGet.mockResolvedValue(lp(overrides));
+    const hook = renderHook(() => useAccountPage());
+    await waitFor(() => expect(hook.result.current.readState).toBe("loaded"));
+    return hook;
+  }
+
+  const summary = {
+    account_holder_name: "Holder",
+    bank_name: "Bank",
+    account_last4: "5432",
+  };
+
+  it("sends the trimmed payload through Save profile, then resets the draft", async () => {
+    const { result } = await loaded();
+    mockUpsert.mockResolvedValueOnce(lp({ settlement_bank_account: summary }));
+    act(() => result.current.bank.openForm());
+    act(() => result.current.bank.setField("account_holder_name", " Holder "));
+    act(() => result.current.bank.setField("bank_name", "Bank"));
+    act(() => result.current.bank.setField("iban", "GB82"));
+    expect(result.current.canSaveProfile).toBe(true);
+    await act(async () => result.current.saveProfile());
+    expect(mockUpsert.mock.calls[0]![0].settlement_bank_account).toEqual({
+      account_holder_name: "Holder",
+      bank_name: "Bank",
+      bank_address: null,
+      account_number: null,
+      iban: "GB82",
+      swift_bic_code: null,
+      routing_number: null,
+    });
+    expect(result.current.bank.open).toBe(false);
+    expect(result.current.bank.dirty).toBe(false);
+    expect(result.current.bankAccount).toEqual(summary);
+  });
+
+  it("sends no key without a draft or with an open blank form", async () => {
+    const { result } = await loaded();
+    mockUpsert.mockResolvedValue(lp({ legal_name: "Renamed" }));
+    act(() => result.current.setLegalName("Renamed"));
+    act(() => result.current.bank.openForm());
+    await act(async () => result.current.saveProfile());
+    expect("settlement_bank_account" in mockUpsert.mock.calls[0]![0]).toBe(
+      false,
+    );
+  });
+
+  it("shows a field 400 inline, keeps the draft and raises no generic alert", async () => {
+    const { result } = await loaded();
+    mockUpsert.mockRejectedValueOnce(
+      new ApiError(400, "settlement_bank_account.iban: is not a valid IBAN"),
+    );
+    act(() => result.current.bank.openForm());
+    act(() => result.current.bank.setField("iban", "bad"));
+    await act(async () => result.current.saveProfile());
+    expect(result.current.bank.errors.iban).toBe("Enter a valid IBAN.");
+    expect(result.current.actionError).toBeUndefined();
+    expect(result.current.bank.draft.iban).toBe("bad");
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("clears the draft and refreshes on a 409", async () => {
+    const { result } = await loaded();
+    mockUpsert.mockRejectedValueOnce(new ApiError(409, "frozen"));
+    mockGet.mockResolvedValue(
+      lp({ writable: false, kyb_status: "UnderReview" }),
+    );
+    act(() => result.current.bank.openForm());
+    act(() => result.current.bank.setField("iban", "GB82"));
+    await act(async () => result.current.saveProfile());
+    expect(result.current.bank.dirty).toBe(false);
+    expect(result.current.bank.open).toBe(false);
+    await waitFor(() => expect(result.current.writable).toBe(false));
+  });
+
+  it("blocks upload and submit for review while the draft is dirty", async () => {
+    const { result } = await loaded({ documents: [doc(1)] });
+    act(() =>
+      result.current.documents.addFiles([
+        new File(["x"], "new.pdf", { type: "application/pdf" }),
+      ]),
+    );
+    expect(result.current.canUpload).toBe(true);
+    expect(result.current.canSaveProfile).toBe(false);
+    act(() => result.current.bank.openForm());
+    act(() => result.current.bank.setField("iban", "GB82"));
+    expect(result.current.canUpload).toBe(false);
+    expect(result.current.canSubmitForReview).toBe(false);
+    expect(result.current.canSaveProfile).toBe(true);
+  });
+
+  it("resets the draft when the session token changes", async () => {
+    const { result } = await loaded();
+    act(() => result.current.bank.openForm());
+    act(() => result.current.bank.setField("iban", "GB82"));
+    mockGet.mockResolvedValue(lp({ id: 2 }));
+    act(() =>
+      saveSession({ token: "other", expires_in: 3600, email: "s@example.com" }),
+    );
+    await waitFor(() => expect(result.current.bank.dirty).toBe(false));
+    expect(result.current.bank.open).toBe(false);
+  });
+
+  it("keeps the LP-creating upsert in saveDocuments free of the key", async () => {
+    signIn("session@example.com");
+    mockGet.mockRejectedValueOnce(new ApiError(404, "missing"));
+    mockUpsert.mockResolvedValueOnce(lp({ documents: [] }));
+    mockUpload.mockResolvedValue({
+      lp: lp({ documents: [doc(9)] }),
+      files: [{ filename: "company.pdf", status: 201, id: 9, error: null }],
+    });
+    const { result } = renderHook(() => useAccountPage());
+    await waitFor(() => expect(result.current.readState).toBe("absent"));
+    act(() => result.current.setLegalName("New Ltd"));
+    act(() =>
+      result.current.documents.addFiles([
+        new File(["x"], "company.pdf", { type: "application/pdf" }),
+      ]),
+    );
+    await act(async () => result.current.saveDocuments());
+    expect("settlement_bank_account" in mockUpsert.mock.calls[0]![0]).toBe(
+      false,
+    );
   });
 });
