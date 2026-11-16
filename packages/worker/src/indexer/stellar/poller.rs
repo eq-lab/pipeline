@@ -11,9 +11,9 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use shared::{
-    contract_logs_repo::ContractLogsRepo, db::EventRepo, log_mapper::LogMapper,
-    metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo, pocket_repo::PocketRepo,
-    security_registry_repo::SecurityRegistryRepo,
+    access_manager_repo::AccessManagerRepo, contract_logs_repo::ContractLogsRepo, db::EventRepo,
+    log_mapper::LogMapper, metadata_fetcher::MetadataFetcher, plusd_seed_repo::PlusdSeedRepo,
+    pocket_repo::PocketRepo, security_registry_repo::SecurityRegistryRepo,
 };
 
 use crate::indexer::config::StellarIndexerSettings;
@@ -25,6 +25,8 @@ use crate::indexer::{
         HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
     },
     stellar::{
+        access_manager_parsers::{dispatch_access_manager, TargetIds},
+        access_manager_sync::run_access_manager_sync_loop,
         collateral_registry_parsers::dispatch_collateral_registry,
         deal_token_factory_parsers::{route_deal_token_events, DealTokenSet},
         loan_registry_parsers::stellar_log_to_loan_event,
@@ -94,6 +96,7 @@ pub struct StellarEventPoller {
     deal_token_factory_id: Option<String>,
     pocket_id: Option<String>,
     security_registry_id: Option<String>,
+    access_manager_id: Option<String>,
     plusd_id: Option<String>,
     deal_tokens: std::sync::Mutex<DealTokenSet>,
     /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
@@ -121,6 +124,7 @@ impl StellarEventPoller {
         deal_token_factory_id: Option<String>,
         pocket_id: Option<String>,
         security_registry_id: Option<String>,
+        access_manager_id: Option<String>,
         plusd_id: Option<String>,
         deal_tokens: DealTokenSet,
         asset_id: Option<String>,
@@ -141,6 +145,7 @@ impl StellarEventPoller {
             deal_token_factory_id,
             pocket_id,
             security_registry_id,
+            access_manager_id,
             plusd_id,
             deal_tokens: std::sync::Mutex::new(deal_tokens),
             asset_id,
@@ -186,6 +191,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(plusd_id) = &self.plusd_id {
             contract_ids.push(plusd_id.clone());
         }
+        if let Some(am_id) = &self.access_manager_id {
+            contract_ids.push(am_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -198,6 +206,8 @@ impl ChainEventPoller for StellarEventPoller {
                 dispatch_collateral_registry(&raw)
             } else if self.security_registry_id.as_deref() == Some(raw.contract_id.as_str()) {
                 dispatch_security_registry(&raw)
+            } else if self.access_manager_id.as_deref() == Some(raw.contract_id.as_str()) {
+                dispatch_access_manager(&raw)
             } else if self.pocket_id.as_deref() == Some(raw.contract_id.as_str()) {
                 dispatch_pocket(&raw)
             } else if self.plusd_id.as_deref() == Some(raw.contract_id.as_str()) {
@@ -401,6 +411,14 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         );
     }
 
+    if let Some(am_id) = &settings.access_manager_id {
+        tracing::info!(
+            access_manager_id = %am_id,
+            chain_id,
+            "Stellar AccessManager indexer enabled"
+        );
+    }
+
     // Asset-transfer tracking (custody/ramp flows). `asset_id` is `Some` only when
     // fully configured (asset id + custody + ramp addresses); the union of both
     // address lists is the membership filter applied in `poll`.
@@ -497,6 +515,26 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         })
     });
 
+    let _access_manager_guard = settings.access_manager_id.as_ref().map(|am_id| {
+        let rpc = rpc.clone();
+        let pool = pool.clone();
+        let am_id = am_id.clone();
+        let ids = TargetIds {
+            loan_registry: settings.loan_registry_id.clone(),
+            minter: settings.minter_id.clone(),
+            security_registry: settings.security_registry_id.clone(),
+        };
+        spawn_supervised("access-manager-sync", chain_id, move || {
+            run_access_manager_sync_loop(
+                rpc.clone(),
+                AccessManagerRepo::new(pool.clone()),
+                chain_id,
+                am_id.clone(),
+                ids.clone(),
+            )
+        })
+    });
+
     let poller = StellarEventPoller::new(
         rpc,
         chain_id,
@@ -511,6 +549,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.deal_token_factory_id.clone(),
         settings.pocket_id.clone(),
         settings.security_registry_id.clone(),
+        settings.access_manager_id.clone(),
         settings.plusd_id.clone(),
         deal_tokens,
         settings.asset_id.clone(),

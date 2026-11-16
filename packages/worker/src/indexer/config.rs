@@ -44,6 +44,7 @@ pub struct StellarIndexerSettings {
     pub deal_token_factory_id: Option<String>,
     pub pocket_id: Option<String>,
     pub security_registry_id: Option<String>,
+    pub access_manager_id: Option<String>,
     pub plusd_id: Option<String>,
     /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked.
     /// `Some` enables asset-transfer polling outright — when `withdrawal_queue_wallet_id`
@@ -155,6 +156,18 @@ impl StellarIndexerSettings {
                 let validated = validate_contract_id(&security_key, raw)?;
                 stellar_strkey::Contract::from_string(&validated)
                     .map_err(|e| anyhow::anyhow!("{security_key} failed Strkey parse: {e}"))?;
+                Some(validated)
+            }
+            _ => None,
+        };
+
+        let access_manager_key = format!("{ip}ACCESS_MANAGER_ADDRESS");
+        let access_manager_id = match env::var(&access_manager_key) {
+            Ok(raw) if !raw.trim().is_empty() => {
+                let validated = validate_contract_id(&access_manager_key, raw)?;
+                stellar_strkey::Contract::from_string(&validated).map_err(|e| {
+                    anyhow::anyhow!("{access_manager_key} failed Strkey parse: {e}")
+                })?;
                 Some(validated)
             }
             _ => None,
@@ -287,6 +300,9 @@ impl StellarIndexerSettings {
         if let Some(id) = &security_registry_id {
             roles.push(("SECURITY_REGISTRY_ADDRESS", id));
         }
+        if let Some(id) = &access_manager_id {
+            roles.push(("ACCESS_MANAGER_ADDRESS", id));
+        }
         if let Some(id) = &plusd_id {
             roles.push(("PLUSD_ADDRESS", id));
         }
@@ -322,6 +338,7 @@ impl StellarIndexerSettings {
             deal_token_factory_id,
             pocket_id,
             security_registry_id,
+            access_manager_id,
             plusd_id,
             asset_id,
             custody_addresses,

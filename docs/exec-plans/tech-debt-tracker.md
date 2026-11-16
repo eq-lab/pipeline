@@ -13,7 +13,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** approach when we address it
 ```
 
-**Next free number: TD-187.**
+**Next free number: TD-188.**
 
 The whole file is one `TD-<N>` sequence: a new entry takes the next free number and bumps this
 line, whichever section it lands in.
@@ -2375,6 +2375,7 @@ line, whichever section it lands in.
 - **Gap:** Nothing indexes the AccessManager's `OperationScheduled`, `OperationCanceled` or `OperationExecuted` events. Operations with arguments (`amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, and the SecurityRegistry `set_terms`, `resolve_flag`, `release_with_consent`, `set_inspectors`) scheduled by another session or browser cannot be listed; only `set_default` / `cure` (arguments are just the loan id) and operations this console scheduled in this session are shown. `hash_operation` also covers the caller, so a Trustee-only wallet never sees the Risk Council's operations.
 - **Impact:** The "Scheduled operations" table is incomplete after a reload, and a cancelled or executed operation cannot be told apart from an expired one.
 - **Suggested fix:** Backend: a worker parser for the three AccessManager events and a `/v1/risk-council/operations` route, then replace the page-local store and the per-loan lookups with it.
+- **Status:** Indexer part done (#1921: `access_manager_operations`, see `docs/references/access-manager-events.md`). The API route (#1922) and the Trustee pages (#1923, #1924) remain.
 
 ### TD-178: Escrow bindings carry local copies of the ref-hash helpers
 
@@ -2446,3 +2447,11 @@ line, whichever section it lands in.
 - **Gap:** The backend serves `inspectors` only inside the per-loan `GET /v1/loan-book/{id}/security`, so `/risk-council/inspectors` (contract-wide, no loan) reads the `inspectors()` view with `simulateRead`. Decided with the user on #1858 over reading it from any loan's `/security` or adding an endpoint.
 - **Impact:** The panel list is read from the chain directly (not the projection), so it can differ from the `inspectors` a loan's `/security` serves for up to one fold (30 s). One extra RPC read per page load.
 - **Suggested fix:** If a contract-wide security-registry state endpoint is ever added, serve `inspectors` and `paused` from `security_registry_state` and drop the RPC read.
+
+### TD-187: AccessManager operations whose transaction left RPC retention lose their arguments or stay pending
+
+- **Date:** 2026-11-16
+- **Location:** `packages/worker/src/indexer/stellar/access_manager_sync.rs` (`resolve_schedule`, `resolve_execute`) — Issue #1921.
+- **Gap:** The sync loop recovers a scheduled call's arguments from `getTransaction`, which shares the RPC retention window (about 7 days). A raw row whose transaction left retention before the loop reached it (worker down for days, or a row stuck in retries) yields a schedule with `args = NULL`, or an execute that leaves its row `pending`.
+- **Impact:** A schedule without arguments cannot be executed from the console. A row whose execute was missed reads as `pending` until `expires_at`, then as expired.
+- **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state.
