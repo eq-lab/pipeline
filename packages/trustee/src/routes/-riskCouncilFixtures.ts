@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { vi } from "vitest";
 import type { LoanBookEntry, LoanBookResponse } from "@/api/useLoanBook";
+import type { PendingOperation } from "@/api/pendingOperations";
 import type { UseLoanSecurityResult } from "@/api/useLoanSecurity";
 import type {
   RiskCouncilAccess,
@@ -169,6 +170,54 @@ export function relayResult(
     hash: null,
     stage: null,
     reset: vi.fn(),
+    ...overrides,
+  };
+}
+
+export const SECURITY_REGISTRY = "CSECURITYREGISTRY1234567890";
+export const SCHEDULER = "GSCHEDULERADDRESS1234567890ABCD";
+export const OPERATION_ID = "ab".repeat(32);
+export const HASH_A = "cd".repeat(32);
+export const HASH_B = "ef".repeat(32);
+export const SECONDS_PER_WEEK = 604_800;
+
+export const SET_TERMS_ARGS = [
+  7,
+  {
+    advance_ratio_bps: 7000,
+    attestation_interval: "2592000",
+    cure_period: "604800",
+    default_rate: 20000,
+    grace_period: "259200",
+    grade_tolerance_bps: 25,
+    inspection_interval: "0",
+    margin_call_at: "0",
+    margin_call_ratio_bps: 8250,
+    payment_term: ["Lc"],
+    price_stale_after: "86400",
+    tolerance_bps: 50,
+  },
+];
+
+function isoAt(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toISOString();
+}
+
+export function pendingOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return {
+    operation_id: OPERATION_ID,
+    nonce: 1,
+    caller: SCHEDULER,
+    target: SECURITY_REGISTRY,
+    target_kind: "security_registry",
+    function: "set_terms",
+    args_xdr: "AAAAEAAAAAA=",
+    args: SET_TERMS_ARGS,
+    ready_at: isoAt(READY_AT),
+    expires_at: isoAt(READY_AT + SECONDS_PER_WEEK),
+    state: "ready",
     ...overrides,
   };
 }

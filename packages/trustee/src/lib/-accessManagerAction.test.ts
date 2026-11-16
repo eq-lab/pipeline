@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   accessAction,
   amErrorCode,
+  otherWalletCopy,
   riskCouncilErrorCopy,
   riskCouncilRoleLine,
   RISK_COUNCIL_AM_ERROR_COPY,
@@ -70,5 +71,17 @@ describe("AM error copy", () => {
       /already scheduled/,
     );
     expect(riskCouncilErrorCopy("execute", "Error(Contract, #99)")).toBeNull();
+  });
+
+  it("explains an already scheduled operation that may be outside the indexed window", () => {
+    expect(RISK_COUNCIL_AM_ERROR_COPY["schedule:9"]).toBe(
+      "This operation is already scheduled. It may have been scheduled outside the indexed window; the scheduling wallet can execute it once it is ready.",
+    );
+  });
+
+  it("names the scheduling wallet when another wallet tries to execute", () => {
+    expect(otherWalletCopy("GSCHEDULERADDRESS1234567890ABCD")).toBe(
+      "Only the scheduling wallet (GSCHED…ABCD) can execute this.",
+    );
   });
 });

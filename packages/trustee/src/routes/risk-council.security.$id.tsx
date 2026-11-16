@@ -15,6 +15,7 @@ import {
   RELEASE_WARNING,
   TERMS_FIELDS,
   useResolveFlagForm,
+  pendingConfirmText,
   useRiskCouncilSecurity,
   type FlaggedRecordRow,
   type ReleaseFormView,
@@ -33,6 +34,7 @@ import {
   MAIN_CLASS,
   Muted,
   PageGate,
+  PendingOperationsCard,
   Row,
 } from "./-RiskCouncilParts";
 
@@ -142,6 +144,11 @@ function SetTermsCard({ form }: { form: SetTermsFormView }) {
         >
           {form.ratioOrderError}
         </span>
+      )}
+      {form.pendingNotice && (
+        <Muted testId="risk-council-security-terms-pending-notice">
+          {form.pendingNotice}
+        </Muted>
       )}
       <ActionControls prefix="risk-council-security-terms" view={form.action} />
     </Card>
@@ -355,6 +362,14 @@ function RiskCouncilSecurity() {
           <div className="flex w-full flex-col gap-[20px] pt-[16px] lg:flex-row lg:items-start">
             <CurrentTermsCard view={view} />
             <div className="flex w-full flex-1 flex-col gap-[20px]">
+              <PendingOperationsCard
+                testId="risk-council-security-pending"
+                items={view.pending}
+                chainId={view.chainId}
+                executeGate={view.executeGate}
+                expectedTarget={view.expectedTarget}
+                confirmTextFor={pendingConfirmText}
+              />
               <SetTermsCard form={view.setTerms} />
               <FlaggedCard view={view} />
               <ReleaseCard form={view.release} />

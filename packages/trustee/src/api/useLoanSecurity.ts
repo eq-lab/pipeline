@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./client";
 import { isStellarTarget } from "@/lib/targetChains";
+import type { PendingOperation } from "./pendingOperations";
 
 export interface LoanSecurityTerms {
   advance_ratio_bps?: number;
@@ -73,6 +74,7 @@ export interface LoanSecurityResponse {
   valuation?: LoanSecurityValuation | null;
   margin_call?: LoanSecurityMarginCall | null;
   prices?: LoanSecurityPrices | null;
+  pending_operations?: PendingOperation[];
 }
 
 export interface UseLoanSecurityResult {

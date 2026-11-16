@@ -8,15 +8,24 @@ import {
   within,
 } from "@testing-library/react";
 import {
+  _resetRiskCouncilOpsForTests,
+  recordScheduledOp,
+} from "@/lib/riskCouncilOps";
+import {
   DELAYED,
+  HASH_A,
+  HASH_B,
   IMMEDIATE,
   NO_ROLE,
+  READY_AT,
   SCHEDULED,
+  SCHEDULER,
   STELLAR,
   accessResult,
   loanBookResult,
   loanEntry,
   loanState,
+  pendingOp,
   relayResult,
   securityResult,
 } from "./-riskCouncilFixtures";
@@ -33,8 +42,19 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
+const walletState = vi.hoisted(() => ({ address: null as string | null }));
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  const { SECURITY_REGISTRY } = await import("./-riskCouncilFixtures");
+  return {
+    ...actual,
+    ENV: { ...actual.ENV, STELLAR_SECURITY_REGISTRY_ID: SECURITY_REGISTRY },
+  };
+});
+
 const HASH = "cd".repeat(32);
 vi.mock("@pipeline/wallet-connect", () => ({
+  useStellarWallet: () => ({ address: walletState.address }),
   FLAG_OUTCOMES: ["Accepted", "TopUpRequired", "Escalated"],
   SECURITY_PAYMENT_TERMS: ["Lc", "Dp", "Da", "OpenAccount"],
   securityReasonHash: vi.fn(async () => "cd".repeat(32)),
@@ -42,15 +62,25 @@ vi.mock("@pipeline/wallet-connect", () => ({
 }));
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 vi.mock("@/api/useLoanSecurity", () => ({ useLoanSecurity: vi.fn() }));
-vi.mock("@/api/useRiskCouncil", () => ({
-  useRiskCouncilAccess: vi.fn(),
-  useRiskCouncilLoanState: vi.fn(),
-  useRiskCouncilRelay: vi.fn(),
-}));
+vi.mock("@/api/useRiskCouncil", async () => {
+  const actual = await vi.importActual<typeof import("@/api/useRiskCouncil")>(
+    "@/api/useRiskCouncil",
+  );
+  return {
+    NoLongerScheduledError: actual.NoLongerScheduledError,
+    PendingArgsMismatchError: actual.PendingArgsMismatchError,
+    useRiskCouncilAccess: vi.fn(),
+    useRiskCouncilLoanState: vi.fn(),
+    useRiskCouncilRelay: vi.fn(),
+    usePendingOperationExecute: vi.fn(),
+  };
+});
 
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import {
+  NoLongerScheduledError,
+  usePendingOperationExecute,
   useRiskCouncilAccess,
   useRiskCouncilLoanState,
   useRiskCouncilRelay,
@@ -62,6 +92,7 @@ const mockSecurity = vi.mocked(useLoanSecurity);
 const mockAccess = vi.mocked(useRiskCouncilAccess);
 const mockLoanState = vi.mocked(useRiskCouncilLoanState);
 const mockRelay = vi.mocked(useRiskCouncilRelay);
+const mockPendingExecute = vi.mocked(usePendingOperationExecute);
 
 let chain = STELLAR;
 (Route as unknown as { useParams: () => { id: string } }).useParams = () => ({
@@ -123,6 +154,18 @@ const RECORDS = [
 ];
 
 let relay: ReturnType<typeof relayResult>;
+let pendingExecute: ReturnType<typeof pendingExecuteResult>;
+
+function pendingExecuteResult(error: Error | null = null) {
+  return {
+    mutateAsync: vi.fn().mockResolvedValue({ hash: "EH" }),
+    isPending: false,
+    error,
+    hash: null,
+    stage: null,
+    reset: vi.fn(),
+  };
+}
 
 function setup(
   access: Parameters<typeof accessResult>[0],
@@ -140,12 +183,16 @@ function setup(
   mockAccess.mockReturnValue(accessResult(access) as never);
   mockLoanState.mockReturnValue({ data: loanState() } as never);
   mockRelay.mockReturnValue(relay as never);
+  mockPendingExecute.mockReturnValue(pendingExecute as never);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   chain = STELLAR;
   relay = relayResult();
+  pendingExecute = pendingExecuteResult();
+  walletState.address = SCHEDULER;
+  _resetRiskCouncilOpsForTests();
 });
 
 describe("Security page — current terms", () => {
@@ -559,5 +606,278 @@ describe("Security page — read-only states", () => {
     expect(
       screen.getByTestId("risk-council-security-flag-2-error"),
     ).toHaveTextContent("This record has no flag to resolve.");
+  });
+});
+
+const PENDING = "risk-council-security-pending";
+const ID_READY = "ab".repeat(32);
+const ID_WAITING = "bb".repeat(32);
+const ID_EXPIRED = "cc".repeat(32);
+const ID_RELEASE = "dd".repeat(32);
+
+function served(...ops: ReturnType<typeof pendingOp>[]) {
+  return {
+    terms: TERMS,
+    records: RECORDS,
+    paused: false,
+    pending_operations: ops,
+  };
+}
+
+const READY_SET_TERMS = pendingOp({ operation_id: ID_READY });
+const WAITING_RESOLVE = pendingOp({
+  operation_id: ID_WAITING,
+  function: "resolve_flag",
+  args: [2, ["Escalated"], HASH_A],
+  state: "waiting",
+  ready_at: new Date((READY_AT + 100) * 1000).toISOString(),
+});
+const EXPIRED_RELEASE = pendingOp({
+  operation_id: ID_EXPIRED,
+  function: "release_with_consent",
+  args: [1, HASH_B],
+  state: "expired",
+  ready_at: new Date((READY_AT + 200) * 1000).toISOString(),
+});
+const READY_RELEASE = pendingOp({
+  operation_id: ID_RELEASE,
+  function: "release_with_consent",
+  args: [1, HASH_B],
+  args_xdr: "RELEASEXDR",
+});
+
+describe("Security page — scheduled operations", () => {
+  it("renders the card above Set terms with one row per operation", () => {
+    setup(DELAYED, served(READY_SET_TERMS, WAITING_RESOLVE, EXPIRED_RELEASE));
+    renderRoute();
+    const card = screen.getByTestId(PENDING);
+    const setTerms = screen.getByTestId("risk-council-security-set-terms");
+    expect(card.compareDocumentPosition(setTerms)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(card).toHaveTextContent("Scheduled operations");
+    const rows = screen.getAllByTestId(`${PENDING}-row`);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent("Set terms");
+    expect(rows[0]).toHaveTextContent("Advance ratio70%");
+    expect(rows[0]).toHaveTextContent("Payment termLetter of credit (Lc)");
+    expect(rows[1]).toHaveTextContent("Resolve flag · record #2");
+    expect(rows[1]).toHaveTextContent("OutcomeEscalated");
+    expect(rows[1]).toHaveTextContent("Reason hashcdcdcdcdcd…");
+    expect(rows[2]).toHaveTextContent("Release with consent · record #1");
+    expect(rows[2]).toHaveTextContent("Consent hashefefefefef…");
+  });
+
+  it("shows who scheduled it and the state line of each row", () => {
+    setup(DELAYED, served(READY_SET_TERMS, WAITING_RESOLVE, EXPIRED_RELEASE));
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-caller`),
+    ).toHaveTextContent("GSCHED…ABCD · this wallet");
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-role`)).toHaveTextContent(
+      "Ready · expires 2027-01-22 08:00 UTC",
+    );
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-role`),
+    ).toHaveTextContent("Waiting · executable from 2027-01-15 08:01 UTC");
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_EXPIRED}-role`),
+    ).toHaveTextContent("Expired — schedule it again");
+  });
+
+  it("shows the empty copy with no rows or without the field", () => {
+    setup(DELAYED, served());
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-empty`)).toHaveTextContent(
+      "No scheduled operations found.",
+    );
+    setup(DELAYED, { terms: TERMS, records: RECORDS, paused: false });
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-empty`)).toHaveLength(2);
+  });
+
+  it("enables Execute only for the ready row of the connected wallet and sends the served args", () => {
+    setup(DELAYED, served(READY_SET_TERMS, WAITING_RESOLVE, EXPIRED_RELEASE));
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_WAITING}-button`),
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_EXPIRED}-button`),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_READY}-button`));
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith({
+      chainId: STELLAR,
+      operationId: ID_READY,
+      caller: READY_SET_TERMS.caller,
+      target: READY_SET_TERMS.target,
+      fn: "set_terms",
+      argsXdr: READY_SET_TERMS.args_xdr,
+    });
+  });
+
+  it("shows the other-wallet copy and disables Execute for another wallet", () => {
+    walletState.address = "GOTHERWALLETADDRESS1234567890XYZ";
+    setup(DELAYED, served(READY_SET_TERMS));
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-notice`),
+    ).toHaveTextContent(
+      "Only the scheduling wallet (GSCHED…ABCD) can execute this.",
+    );
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-caller`),
+    ).not.toHaveTextContent("this wallet");
+  });
+
+  it("blocks Execute while the registry is paused", () => {
+    setup(DELAYED, { ...served(READY_SET_TERMS), paused: true });
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-notice`),
+    ).toHaveTextContent("paused");
+  });
+
+  it("blocks a row that targets another SecurityRegistry", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_READY,
+          target: "COTHERTARGET1234567890XYZ",
+        }),
+      ),
+    );
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-notice`),
+    ).toHaveTextContent("targets another SecurityRegistry");
+  });
+
+  it("asks for confirmation before executing a release", () => {
+    setup(DELAYED, served(READY_RELEASE));
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_RELEASE}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog`),
+    ).toHaveTextContent("Release record #1?");
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog-confirm`),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fn: "release_with_consent",
+        argsXdr: "RELEASEXDR",
+      }),
+    );
+  });
+
+  it("shows the no-longer-scheduled line after a cancelled operation", () => {
+    pendingExecute = pendingExecuteResult(new NoLongerScheduledError());
+    setup(DELAYED, served(READY_SET_TERMS));
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_READY}-no-longer`),
+    ).toHaveTextContent("No longer scheduled");
+  });
+
+  it("falls back to the raw arguments when they do not decode", () => {
+    setup(
+      DELAYED,
+      served(pendingOp({ operation_id: ID_READY, args: [9, { weird: true }] })),
+    );
+    renderRoute();
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-args`)).toHaveTextContent(
+      'Arguments[9,{"weird":true}]',
+    );
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+  });
+
+  it("bridges an operation scheduled from this console until it is served", () => {
+    recordScheduledOp({
+      chainId: STELLAR,
+      loanId: 4471,
+      call: { fn: "release_with_consent", recordId: 1, consentHash: HASH_B },
+      operationId: ID_RELEASE,
+      readyAt: READY_AT,
+      caller: SCHEDULER,
+      target: READY_RELEASE.target,
+      argsXdr: "RELEASEXDR",
+    });
+    setup(DELAYED, served());
+    renderRoute();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-session`),
+    ).toHaveTextContent("Scheduled from this console.");
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+  });
+
+  it("drops the bridged row once the API serves the same operation", () => {
+    recordScheduledOp({
+      chainId: STELLAR,
+      loanId: 4471,
+      call: { fn: "release_with_consent", recordId: 1, consentHash: HASH_B },
+      operationId: ID_RELEASE,
+      readyAt: READY_AT,
+      caller: SCHEDULER,
+      target: READY_RELEASE.target,
+      argsXdr: "RELEASEXDR",
+    });
+    setup(DELAYED, served(READY_RELEASE));
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_RELEASE}-session`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the card when /security fails", () => {
+    setup(DELAYED, undefined);
+    mockSecurity.mockReturnValue(
+      securityResult({ data: undefined, error: new Error("boom") }),
+    );
+    renderRoute();
+    expect(screen.queryByTestId(PENDING)).not.toBeInTheDocument();
+  });
+});
+
+describe("Security page — scheduled terms notice", () => {
+  const NOTICE = "risk-council-security-terms-pending-notice";
+
+  it("warns while a set_terms operation waits or is ready", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    renderRoute();
+    expect(screen.getByTestId(NOTICE)).toHaveTextContent(
+      "A terms change is already scheduled",
+    );
+    expect(
+      screen.getByTestId("risk-council-security-terms-advanceRatio"),
+    ).toBeEnabled();
+    expect(
+      screen.getByTestId("risk-council-security-terms-button"),
+    ).toBeEnabled();
+  });
+
+  it("warns for a waiting set_terms too", () => {
+    setup(DELAYED, served({ ...READY_SET_TERMS, state: "waiting" }));
+    renderRoute();
+    expect(screen.getByTestId(NOTICE)).toBeInTheDocument();
+  });
+
+  it("stays quiet for an expired operation, other functions or none", () => {
+    setup(DELAYED, served({ ...READY_SET_TERMS, state: "expired" }));
+    renderRoute();
+    expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
+    setup(DELAYED, served(WAITING_RESOLVE));
+    renderRoute();
+    expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
+    setup(DELAYED, served());
+    renderRoute();
+    expect(screen.queryByTestId(NOTICE)).not.toBeInTheDocument();
   });
 });

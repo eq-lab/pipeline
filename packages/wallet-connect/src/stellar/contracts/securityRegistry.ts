@@ -9,6 +9,7 @@ import {
 } from "./accessManager";
 import { hexToBytes32ScVal } from "./minter";
 import { sha256Hex } from "./hash";
+import { operationArgsXdr } from "./scheduledOperation";
 import { scMap, u32, u64 } from "./scval";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
@@ -160,6 +161,10 @@ export function encodeSecurityRegistryArgs(
     default:
       throw new Error("encodeSecurityRegistryArgs: unknown function");
   }
+}
+
+export function securityRegistryArgsXdr(call: SecurityRegistryCall): string {
+  return operationArgsXdr(encodeSecurityRegistryArgs(call));
 }
 
 export interface SecurityRegistryRelayParams extends Omit<

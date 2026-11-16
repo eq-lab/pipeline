@@ -2204,7 +2204,7 @@ Chain state is read through `useRiskCouncilLoanState` (`["risk-council-loan", ch
 
 No `localStorage`. `set_default` and `cure` are looked up from `[loan_id]` alone on every page load and on the hub. The forms with arguments run the schedule read on the form's current valid arguments, so re-entering the same values shows "Scheduled. Executable from …". `adjust_interest` uses `reason_hash = sha256(utf8(reason.trim()))`, shown as hex under the field. Lookups use the connected wallet as `caller`: a Trustee-only wallet never sees the Risk Council's pending operations.
 
-The page-local store (`lib/riskCouncilOps.ts`, in memory, `useSyncExternalStore`) records operations this console scheduled in this browser session (`{ chainId, call, scheduledAt, executedHere }`). `get_schedule` reads `0` after execute, cancel and expiry, so the state cannot tell them apart. For a recorded operation that was not executed here and now reads `0` (at least 14 s after it was scheduled), the card shows "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session." The chain-state card beside it shows what happened.
+The page-local store (`lib/riskCouncilOps.ts`, in memory, `useSyncExternalStore`) records operations this console scheduled in this browser session (`{ chainId, call, scheduledAt, executedHere }`). For SecurityRegistry operations it also keeps `operationId`, `readyAt`, `caller`, `target` and `argsXdr` as a bridge until the indexer serves the operation ([Risk Council pending operations](#risk-council-pending-operations)). `get_schedule` reads `0` after execute, cancel and expiry, so the state cannot tell them apart. For a recorded operation that was not executed here and now reads `0` (at least 14 s after it was scheduled), the card shows "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session." The chain-state card beside it shows what happened.
 
 ### Pages
 
@@ -2222,14 +2222,14 @@ Read-only, not hidden. On a per-loan page for a non-Stellar loan the evidence st
 
 ### Errors, config and roles
 
-- Generic `toUserError` plus local AM copy (`RISK_COUNCIL_AM_ERROR_COPY`): `execute:6` nothing scheduled, `execute:7` not ready, `execute:8` expired ("Schedule it again"), `schedule:9` already scheduled. Local because Soroban codes collide across contracts.
+- Generic `toUserError` plus local AM copy (`RISK_COUNCIL_AM_ERROR_COPY`): `execute:6` nothing scheduled, `execute:7` not ready, `execute:8` expired ("Schedule it again"), `schedule:9` "This operation is already scheduled. It may have been scheduled outside the indexed window; the scheduling wallet can execute it once it is ready." Local because Soroban codes collide across contracts.
 - Config: `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID` and `VITE_STELLAR_LOAN_REGISTRY_ID`; a missing one gives "On-chain Risk Council actions are not configured for this environment." The Risk Council wallet must also be a trustee in the API's `auth_users`, or the pages cannot be opened (deployment fact). Until #1756 lands the whole role is delayed on the current deployment, so `set_default` takes the scheduled path there.
 - Contract preconditions are not readable from this repo; the UI gates follow the docs (one constant per function) and the contract stays the authority. Simulation errors surface through `toUserError` and the AM copy.
 - Not in the app: cancelling a scheduled operation (`AM.cancel`, TD-159), and listing operations scheduled elsewhere (TD-177).
 
 ## Risk Council security actions
 
-**Sources:** contract `pipeline-stellar-contracts@e9881ac`, `contracts/security-registry/src/lib.rs` (`set_terms` 594, `resolve_flag` 518, `release_with_consent` 505, `set_inspectors` 555, `inspectors` 720), `types.rs` (`Terms`, `FlagOutcome`), `error.rs`. Code: `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts` and `scval.ts`; trustee `api/useRiskCouncil.ts` (`CouncilCall`, `useSecurityInspectors`), `lib/riskCouncilOps.ts` (`councilTarget`), `lib/accessManagerAction.ts` (`SECURITY_REGISTRY_ERROR_COPY`), `utils/securityTermsUnits.ts`, `routes/-risk-council-security.ts` with `risk-council.security.$id.tsx`, `routes/-risk-council-inspectors.ts` with `risk-council.inspectors.tsx`. Issue #1858 (epic #1795). Served state: [loan-security-state.md](../product-specs/loan-security-state.md). User stories: [1858](../user-stories/epic-1795/1858-risk-council-security-actions.md).
+**Sources:** contract `pipeline-stellar-contracts@e9881ac`, `contracts/security-registry/src/lib.rs` (`set_terms` 594, `resolve_flag` 518, `release_with_consent` 505, `set_inspectors` 555, `inspectors` 720), `types.rs` (`Terms`, `FlagOutcome`), `error.rs`. Code: `packages/wallet-connect/src/stellar/contracts/securityRegistry.ts` and `scval.ts`; trustee `api/useRiskCouncil.ts` (`CouncilCall`, `useSecurityInspectors`), `lib/riskCouncilOps.ts` (`councilTarget`), `lib/accessManagerAction.ts` (`SECURITY_REGISTRY_ERROR_COPY`), `utils/securityTermsUnits.ts`, `routes/-risk-council-security.ts` with `risk-council.security.$id.tsx`, `routes/-risk-council-terms.ts` (`formatTermsRows`, `PAYMENT_TERM_LABELS`), `routes/-risk-council-inspectors.ts` with `risk-council.inspectors.tsx`. Issue #1858 (epic #1795); pending operations: #1923 (epic #1920). Served state: [loan-security-state.md](../product-specs/loan-security-state.md). User stories: [1858](../user-stories/epic-1795/1858-risk-council-security-actions.md).
 
 The same model as [Risk Council actions](#risk-council-actions): `can_call` then one `execute`, or `schedule`, wait, `execute`. The AccessManager is the same contract (`ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`); the target is the SecurityRegistry (`ENV.STELLAR_SECURITY_REGISTRY_ID`, stored as `collateral_registry` in `addresses.json`). All four functions are `#[only_owner]` and `#[when_not_paused]`; the AM maps them to `RISK_COUNCIL`. The hooks take a `CouncilCall` (`RiskCouncilCall | SecurityRegistryCall`); `councilTarget(call)` picks the target from the function name (the names are disjoint) and the query keys include it.
 
@@ -2248,12 +2248,13 @@ The same model as [Risk Council actions](#risk-council-actions): `can_call` then
 - `inspectors` is `scvVec` of `Address.toScVal()`: each a valid `G…` or `C…` Strkey, no duplicates. An empty list is valid on-chain and the UI warns. The order is part of the op hash.
 - `margin_call_ratio_bps >= advance_ratio_bps` is checked before encoding (the contract returns `InvalidRatio #15`).
 
-The AM op id is `hash_operation(caller, target, fn, args)`, so after a reload the schedule is found by re-entering identical form values. For `set_terms` all 12 fields must reproduce exactly; prefilling from served terms helps only for unchanged values. The hub cannot find these operations unless this console scheduled them in this session (TD-177).
+The AM op id is `hash_operation(caller, target, fn, args)`. After a reload the Security page lists the loan's pending operations from the API ([Risk Council pending operations](#risk-council-pending-operations)) and executes them with the scheduled arguments, so nothing is retyped. Re-entering identical form values still finds a schedule as a fallback; for `set_terms` all 12 fields must reproduce exactly, and prefilling from served terms helps only for unchanged values. The hub cannot find these operations unless this console scheduled them in this session (TD-177, #1924).
 
 ### Security page (`/risk-council/security/$id`)
 
 Validates `chain` with `parseLoanRouteSearch`. Built on `useRiskCouncilLoanBase` and `useLoanSecurity`; nothing is computed client-side.
 
+- **Scheduled operations.** The first card of the right column, above Set terms, lists the loan's pending SecurityRegistry operations; see [Risk Council pending operations](#risk-council-pending-operations). Set terms shows "A terms change is already scheduled — see above. Scheduling again creates a second operation with a new 24 h wait." while a `set_terms` row is `waiting` or `ready`; the form stays usable.
 - **Current security terms.** The served terms verbatim (ratios as %, durations as d/h/s, payment term, default rate as %), the LTV line, a paused notice when `paused === true` ("The SecurityRegistry is paused. Executing is blocked until it resumes." — execute is disabled, schedule stays possible) and a refresh note while `refresh_pending`. With `terms: null`: "No security terms are set for this loan." When `/security` fails with no data the page shows the error (friendly message with details) in place of the cards, never the empty-terms state or an enabled form.
 - **Set terms.** 10 numeric inputs and a payment-term select, prefilled from served terms when present. Units: ratios and tolerances in % (at most 2 decimals, to bps, at most 1000%), `default_rate` in % (at most 4 decimals, times 10 000, the loan registry scale `ONE = 1e6`), `cure_period`, `grace_period`, `attestation_interval`, `inspection_interval` in days and `price_stale_after` in hours (decimals allowed when the result is whole seconds). Each field echoes its raw contract value live ("= 7000 bps", "= 20000 (1e6 scale)", "= 604800 s"). A served duration that is not exactly representable in the unit is left empty. Buttons "Set terms" / "Schedule terms" / "Execute terms". No-role copy: "Setting security terms belongs to the Risk Council."
 - **Flagged records.** One row per served record with `flagged_by != null`: protection, lot, commodity, and the flagging inspection (the record's inspection whose `inspection_id` equals `flagged_by`, so it still shows after an `Escalated` resolution: kind, inspector, quantity, grade, the three variances in bps, verbatim). Outcome radio with the contract's effect text (Accepted: "The variance is explained: the flagging inspection's quantity and grade become the record's reference. Clears the flag."; TopUpRequired: "Opens a margin call if LTV is above the advance ratio. Clears the flag."; Escalated: "Suspected fraud or missing goods. The flag stays."), a reason text with its sha256, buttons "Resolve flag" / "Schedule resolution" / "Execute resolution". Empty: "No flagged records." No-role copy: "Settling an inspection flag belongs to the Risk Council."
@@ -2275,6 +2276,45 @@ Chain is the session chain. The current list is read on chain with `simulateRead
 - Config: `VITE_STELLAR_SECURITY_REGISTRY_ID` (trustee `env.ts`, `docker/trustee/entrypoint.sh`, `.env.example`) plus the existing AM id. A missing one gives "On-chain SecurityRegistry actions are not configured for this environment." The argocd value lives in the separate `argocd` repo (`argocd/pipeline/test.yaml`, then `prod.yaml` once deployed).
 - Delay: 24 h on test and prod; until #1756 the whole role may be delayed, so all four take the schedule path there. A scheduled operation expires 7 days after its ready time.
 - EVM: read-only with `stellarOnlyActionReason`, as the other Risk Council pages.
+
+## Risk Council pending operations
+
+**Sources:** [loan-security-state.md](../product-specs/loan-security-state.md#pending-operations) (`pending_operations`, #1922), [access-manager-events.md](../references/access-manager-events.md) (`args` display form). Code: `packages/wallet-connect/src/stellar/contracts/scheduledOperation.ts`; trustee `api/pendingOperations.ts`, `api/useRiskCouncil.ts` (`usePendingOperationExecute`), `lib/riskCouncilOps.ts`, `routes/-risk-council-pending.ts`, `PendingOperationsCard` in `routes/-RiskCouncilParts.tsx`. Issue #1923 (epic #1920). The hub and LoanRegistry pages follow in #1924. User stories: [1923](../user-stories/epic-1920/1923-rc-security-pending-ops.md).
+
+The Security page shows the loan's scheduled SecurityRegistry operations and lets the scheduling wallet execute one with the exact arguments that were scheduled. The list is `pending_operations` from `GET /v1/loan-book/{id}/security`, sorted by `ready_at`; expired rows are included. A deployment without the field (or without the AccessManager indexer key) renders the empty card.
+
+### Rows
+
+The card "Scheduled operations" always renders; with no rows it reads "No scheduled operations found." One bordered row per operation:
+
+- Label: "Set terms", "Resolve flag · record #N" or "Release with consent · record #N". Any other function shows its raw name.
+- Arguments in the form's units: ratios and tolerances in %, durations as d / h / s (`formatServedDuration`), default rate in %, payment term label, outcome, hashes as the first 10 hex characters and "…". Arguments are decoded from `args` (the display form) with a strict shape check (integer `u32`, decimal-string `u64`, 64-hex hashes, known variants, `margin_call_at = "0"`). A shape that does not decode shows the raw `args` JSON under "Arguments" and Execute stays allowed: the on-chain pre-check guarantees the executed bytes are the scheduled ones.
+- "Scheduled by": short address, plus "· this wallet" when it is the connected Stellar wallet.
+- State line: "Waiting · executable from {YYYY-MM-DD HH:MM UTC}", "Ready · expires {YYYY-MM-DD HH:MM UTC}" or "Expired — schedule it again". The state is the served one (API clock, refreshed by the 30 s `useLoanSecurity` poll), so the button can lag a `waiting` to `ready` flip by up to 30 s; the contract stays the authority (`execute:7` / `execute:8` copy).
+
+### Execute
+
+Enabled only when all hold: state `ready`, the connected wallet equals `caller`, the SecurityRegistry is not paused (`executeGate`), the chain is Stellar, `target` equals `ENV.STELLAR_SECURITY_REGISTRY_ID`, and no execute is in flight. Notices, first match wins: the Stellar-only reason, "Only the scheduling wallet ({short}) can execute this.", "This operation targets another SecurityRegistry ({short}) than this console is configured for.", the paused note (ready rows only). `release_with_consent` keeps the confirm dialog ("Release record #{id}? This burns the record NFT and cannot be undone.").
+
+The arguments are never rebuilt from the form. `usePendingOperationExecute` takes the served `args_xdr` (base64 of `ScVal::Vec(args)`), and `decodeOperationArgs` turns it into the vec elements. XDR is canonical, so `relay` wrapping them in `scvVec` reproduces the same bytes and the same operation id; a round-trip test over real SDK encodings pins it. Before the wallet signs, `readScheduledOperation` runs `hash_operation(caller, target, fn, args)` and `get_schedule`:
+
+- an id different from the row's `operation_id` aborts with "The served arguments do not match this operation on chain. Reload the page."
+- `readyAt = 0` aborts and shows "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session.", with nothing sent
+- otherwise `executeScheduledOperation` calls `AM.execute(target, function, args, caller)`
+
+The AccessManager id is `ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID`, as for every Risk Council action (the API does not serve it); a console and an indexer pointed at different AccessManagers fail the pre-check and never execute anything else. Success and failure copy reuse `RISK_COUNCIL_AM_ERROR_COPY` (`execute:6/7/8`) and `SECURITY_REGISTRY_ERROR_COPY`. Success invalidates `loan-security` and the other Risk Council keys now, at 5 s and at 15 s, like the schedule and execute relay.
+
+### Session bridge
+
+The page-local store bridges the indexer lag, deduplicated by `operation_id`:
+
+- After a successful `schedule`, the relay reads the schedule once and stores `operationId`, `readyAt`, `caller`, `target` and `argsXdr` on the `ScheduledOp`. A failing read stores the op without an id and it is not listed.
+- A stored op for this chain and loan whose id is not yet served is shown as a row (state derived locally from `readyAt`, expiry `readyAt + 604800`) with "Scheduled from this console. The list catches up within a minute." It disappears when the API serves the same id.
+- An operation executed here is hidden from both sources until the API drops it, and every stored op with that id is marked `executedHere`, so the Set terms form's "No longer scheduled" line does not fire.
+
+### Not covered
+
+Cancelling (TD-159), reconciling served rows with `get_schedule` (TD-187), the hub and LoanRegistry operations (#1924, also TD-177), `set_inspectors` (not loan-scoped).
 
 ## Overview page
 

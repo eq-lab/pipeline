@@ -6,8 +6,10 @@ import {
   councilTarget,
   type CouncilCall,
   markExecuted,
+  markOperationExecuted,
   recordScheduledOp,
   riskCouncilCallKey,
+  useExecutedOperationIds,
   useScheduledOp,
   useScheduledOps,
 } from "./riskCouncilOps";
@@ -126,5 +128,70 @@ describe("security calls", () => {
     const a: CouncilCall = { fn: "set_inspectors", inspectors: ["GA", "GB"] };
     const b: CouncilCall = { fn: "set_inspectors", inspectors: ["GB", "GA"] };
     expect(riskCouncilCallKey(a)).not.toBe(riskCouncilCallKey(b));
+  });
+});
+
+describe("operation bridge", () => {
+  it("keeps the chain fields on a recorded op", () => {
+    const { result } = renderHook(() => useScheduledOps(1));
+    act(() =>
+      recordScheduledOp({
+        chainId: 1,
+        call: A,
+        operationId: "op",
+        readyAt: 10,
+        caller: "G1",
+        target: "C1",
+        argsXdr: "AAAA",
+      }),
+    );
+    expect(result.current[0]).toMatchObject({
+      operationId: "op",
+      readyAt: 10,
+      caller: "G1",
+      target: "C1",
+      argsXdr: "AAAA",
+    });
+  });
+
+  it("omits the chain fields when they are not given", () => {
+    const { result } = renderHook(() => useScheduledOps(1));
+    act(() => recordScheduledOp({ chainId: 1, call: A }));
+    expect("operationId" in result.current[0]!).toBe(false);
+  });
+
+  it("flags matching ops and tracks executed ids per chain", () => {
+    const ops1 = renderHook(() => useScheduledOps(1));
+    const ids1 = renderHook(() => useExecutedOperationIds(1));
+    const ids2 = renderHook(() => useExecutedOperationIds(2));
+    act(() => {
+      recordScheduledOp({ chainId: 1, call: A, operationId: "op" });
+      recordScheduledOp({ chainId: 1, call: B, operationId: "other" });
+      markOperationExecuted(1, "op");
+    });
+    expect(ops1.result.current.map((op) => op.executedHere)).toEqual([
+      true,
+      false,
+    ]);
+    expect(Array.from(ids1.result.current)).toEqual(["op"]);
+    expect(ids2.result.current.size).toBe(0);
+  });
+
+  it("is idempotent and keeps a stable snapshot", () => {
+    const ids = renderHook(() => useExecutedOperationIds(1));
+    act(() => markOperationExecuted(1, "op"));
+    const first = ids.result.current;
+    act(() => markOperationExecuted(1, "op"));
+    expect(ids.result.current).toBe(first);
+    expect(first.size).toBe(1);
+  });
+
+  it("clears the executed ids on reset", () => {
+    const ids = renderHook(() => useExecutedOperationIds(1));
+    act(() => markOperationExecuted(1, "op"));
+    act(() => _resetRiskCouncilOpsForTests());
+    const fresh = renderHook(() => useExecutedOperationIds(1));
+    expect(fresh.result.current.size).toBe(0);
+    expect(ids.result.current.size).toBe(1);
   });
 });
