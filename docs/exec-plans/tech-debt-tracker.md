@@ -2368,14 +2368,14 @@ line, whichever section it lands in.
 - **Impact:** A wrong early part of a Stellar LP's PLUSD history for a wallet that moved PLUSD with classic payments before its seed.
 - **Suggested fix:** Run the classic-payment check (manual step 3 of the #1878 user stories). If classic events are visible, close this item. If not, drop the back-compute for chains where it is proven wrong (treat every seed as NoCoverage) or verify the first seed against a Horizon payment history.
 
-### TD-177: Risk Council hub cannot list operations scheduled elsewhere
+### TD-177: Risk Council hub cannot list operations scheduled elsewhere [RESOLVED 2026-11-16 / #1924]
 
 - **Date:** 2026-11-09
 - **Location:** `packages/trustee/src/routes/-risk-council-hub.ts`, `packages/trustee/src/api/useRiskCouncil.ts` (`useRiskCouncilHubLookups`)
 - **Gap:** Nothing indexes the AccessManager's `OperationScheduled`, `OperationCanceled` or `OperationExecuted` events. Operations with arguments (`amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, and the SecurityRegistry `set_terms`, `resolve_flag`, `release_with_consent`, `set_inspectors`) scheduled by another session or browser cannot be listed; only `set_default` / `cure` (arguments are just the loan id) and operations this console scheduled in this session are shown. `hash_operation` also covers the caller, so a Trustee-only wallet never sees the Risk Council's operations.
 - **Impact:** The "Scheduled operations" table is incomplete after a reload, and a cancelled or executed operation cannot be told apart from an expired one.
 - **Suggested fix:** Backend: a worker parser for the three AccessManager events and a `/v1/risk-council/operations` route, then replace the page-local store and the per-loan lookups with it.
-- **Status:** Indexer part done (#1921: `access_manager_operations`, see `docs/references/access-manager-events.md`). API part done (#1922: `pending_operations` on `GET /v1/loan-book` and `/security`). Security page done (#1923: pending operations card with Execute on `/risk-council/security/$id`). The hub and LoanRegistry / Minter pages (#1924) remain.
+- **Status:** Done: indexer #1921 (`access_manager_operations`, see `docs/references/access-manager-events.md`), API #1922 (`pending_operations` on `GET /v1/loan-book` and `/security`), Security page #1923, hub and LoanRegistry / Minter pages #1924 (pending operations from the API with Execute from any session; the page-local store is only a bridge until the indexer catches up).
 
 ### TD-178: Escrow bindings carry local copies of the ref-hash helpers
 

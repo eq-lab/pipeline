@@ -212,7 +212,7 @@ Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-p
     - `ActionLink` delegates to `PendingOwnerLink`, which uses `OWNER_ROUTE_PATHS`; the local `ROUTE_PATHS` is removed. The inspectors link stays as is.
     - The empty state shows whenever there are no rows.
 13. [x] **Lint and comments.** New code carries no comments beyond existing one-line `// spec:` headers. Run `npx tsx scripts/lint-comments.ts` and shrink the baseline for any touched file it lists.
-14. [x] **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`. TD-177 and `docs/user-stories/index.md` only after rebasing on `main` with #1928 and #1929 merged (still pending).
+14. [x] **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`. TD-177 and `docs/user-stories/index.md` updated after rebasing on `main` with #1928 and #1929 merged.
 15. [x] **Verify:**
     - `… workspace @pipeline/wallet-connect test`, `… workspace @pipeline/wallet-connect lint`;
     - `… workspace @pipeline/trustee test`, `… workspace @pipeline/trustee lint`, `… workspace @pipeline/trustee build`.
