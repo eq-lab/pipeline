@@ -9,6 +9,7 @@ External references and source documents for the Pipeline protocol.
 - [Bridge Backend Spec](./backend.md) — Bridge service scope, flows, data model, and API surface (v2.3)
 - [CollateralRegistry events in `contract_logs`](./collateral-registry-events.md) — cross-arm (Stellar and EVM) stored shape of the 11 collateral-registry events
 - [SecurityRegistry events and projection (Stellar)](./security-registry-events.md) — stored events, view snapshots, fold rule and projection tables of the Stellar SecurityRegistry indexer (#1779)
+- [AccessManager scheduled operations (Stellar)](./access-manager-events.md) — scheduled / canceled / executed events, argument recovery from the transaction, the `access_manager_operations` table and the sync loop of the Stellar AccessManager indexer (#1921)
 - [Mint Trust Model](./security.md) — Threat analysis, peer-protocol survey, and layered defence rationale for the PLUSD mint path (v2.3)
 
 ## Vendor Documentation

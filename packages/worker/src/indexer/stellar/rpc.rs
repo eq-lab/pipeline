@@ -316,24 +316,7 @@ impl StellarRpc {
     /// Poll a Stellar transaction by hash (`getTransaction` JSON-RPC method).
     pub async fn get_transaction(&self, hash: &str) -> Result<GetTransactionResponse> {
         let resp: Value = self.call("getTransaction", json!({ "hash": hash })).await?;
-        let status = resp
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("UNKNOWN")
-            .to_owned();
-        let return_value_xdr_base64 = resp
-            .get("returnValue")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let result_xdr_base64 = resp
-            .get("resultXdr")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        Ok(GetTransactionResponse {
-            status,
-            return_value_xdr_base64,
-            result_xdr_base64,
-        })
+        Ok(parse_get_transaction(&resp))
     }
 
     async fn call(&self, method: &str, params: Value) -> Result<Value> {
@@ -415,6 +398,25 @@ pub struct GetTransactionResponse {
     pub return_value_xdr_base64: Option<String>,
     /// Base64-encoded `TransactionResult` — useful diagnostic on `FAILED`.
     pub result_xdr_base64: Option<String>,
+    pub envelope_xdr_base64: Option<String>,
+    pub ledger: Option<u64>,
+    pub oldest_ledger: Option<u64>,
+}
+
+pub fn parse_get_transaction(result: &Value) -> GetTransactionResponse {
+    let text = |key: &str| result.get(key).and_then(Value::as_str).map(str::to_owned);
+    let number = |key: &str| {
+        let v = result.get(key)?;
+        v.as_u64().or_else(|| v.as_str()?.parse().ok())
+    };
+    GetTransactionResponse {
+        status: text("status").unwrap_or_else(|| "UNKNOWN".to_owned()),
+        return_value_xdr_base64: text("returnValue"),
+        result_xdr_base64: text("resultXdr"),
+        envelope_xdr_base64: text("envelopeXdr"),
+        ledger: number("ledger"),
+        oldest_ledger: number("oldestLedger"),
+    }
 }
 
 #[derive(Deserialize)]

@@ -3,6 +3,7 @@
 // about macro output we do not write. See TD-115.
 #![allow(clippy::double_must_use)]
 
+pub mod access_manager_repo;
 pub mod account_repo;
 pub mod auth_user_repo;
 pub mod bank_account;

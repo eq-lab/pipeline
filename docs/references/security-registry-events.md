@@ -52,7 +52,7 @@ The parser is table-driven (`security_registry_parsers.rs`): one spec per topic 
 
 ## Allow-listed topics
 
-`mint`, `burn` (the soulbound record NFT), `ownership_transfer`, `ownership_transfer_completed` and `ownership_renounced` are dropped silently: no `contract_logs` row, no projection, no holder column. The AccessManager is not indexed. Any other topic from the SecurityRegistry id logs a `warn` and is dropped. Only pause state is recorded, because every write is `when_not_paused`.
+`mint`, `burn` (the soulbound record NFT), `ownership_transfer`, `ownership_transfer_completed` and `ownership_renounced` are dropped silently: no `contract_logs` row, no projection, no holder column. The AccessManager's scheduled-operation events are indexed separately: see [access-manager-events.md](./access-manager-events.md). Any other topic from the SecurityRegistry id logs a `warn` and is dropped. Only pause state is recorded, because every write is `when_not_paused`.
 
 The legacy CollateralRegistry dispatcher warns once per process when it sees a topic that exists only on the SecurityRegistry (`record_registered`, `terms_set`, `inspection_recorded`, …); this means the id was configured under the legacy key by mistake. Its return values and stored rows are unchanged.
 
