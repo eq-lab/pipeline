@@ -19,6 +19,8 @@ The Trustee reads the loan's LTV, margin-call state and price staleness from the
 - **LTV above the loan's advance ratio** — attention (amber). A reason to place the loan on Watchlist and surface it in Needs Attention.
 - **Margin call open, or LTV above the loan's margin-call ratio with no on-chain call yet** — **red**. Margin call to the borrower, issued via the originator.
 - **Price stale** — a "Price stale" flag: the valuation price has expired and must be refreshed.
+- **Cure period** — the borrower has the loan's cure period to bring the LTV back to the advance ratio. The end of the cure period does not trigger default by itself: the Risk Council decides. The loan detail's Security records card lists the records and inspections behind the value ([Trustee flows](../frontend/trustee-flows.md#security-records-card)).
+- **Needs Attention** — a loan with an open margin call is listed in Needs Attention (Closed and Default loans excluded).
 - **No security value** — a debt with no counted value (the `u32::MAX` sentinel) shows "No security value", not a percentage.
 - **EVM loans** show no LTV, no margin-call state and no placeholder.
 
@@ -34,7 +36,7 @@ When a loan's maturity date passes, it shows as **Past Due**. This is a **derive
 Past Due is not Watchlist, and it is not Default — it points the Trustee to one of two existing actions:
 
 - **Record the payment** — if the money arrived and simply has not been recorded yet, go record the coupon / repayment. Recording is still allowed; the on-chain status is unchanged.
-- **Escalate to default** — if the money genuinely did not arrive, escalate the loan to Default via the Risk Council. This is the destructive, hard-to-reverse path, and it carries its own confirmation on the escalation flow.
+- **Escalate to Risk Council** — if the money genuinely did not arrive, escalate the loan to the Risk Council, which decides on Default. Default is never automatic. This is the destructive, hard-to-reverse path, and it carries its own confirmation on the escalation flow.
 
 The Trustee never flips a status to "lock" a Past Due loan; the response is always one of those two actions. The loan card surfaces both directly so the choice is obvious.
 

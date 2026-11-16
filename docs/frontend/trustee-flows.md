@@ -666,7 +666,8 @@ one-offs documented):
 
 **Sources:** `packages/trustee/src/routes/-useLoanDetail.ts` (presenter),
 `packages/trustee/src/routes/loans.$id.tsx` (view), `routes/-loanDetailStatic.ts` (static action
-config), `routes/-loanSecurity.ts` (Security card presenter),
+config), `routes/-loanSecurity.ts` (Security card presenter), `routes/-loanSecurityRecords.ts` +
+`routes/-SecurityRecordsCard.tsx` (Security records card presenter and view),
 `packages/trustee/src/components/detail/` (hero, chip, card, key/value row, tokens).
 **Consumer route:** `/loans/$id`. Issues #845/#847, Figma node `4116:10549`.
 
@@ -792,11 +793,21 @@ Its own state, independent of the page-level `state` (`buildSecurityCard`, `rout
   A failed background refresh never replaces loaded data: the card stays **ready** and adds the
   note "Couldn't refresh — showing the last loaded data."
 - **no-terms** — `terms: null`: the note "No security terms are set for this loan."
-- **ready** — rows: LTV (`valuation.ltv_bps`), Advance ratio, Margin-call ratio (from `terms`),
-  Security value (`valuation.value`), Amount owed (`valuation.debt`), Margin call. Notes: "No
-  valuation yet." when `valuation` is null (LTV, value and owed show `—`); a "Price stale" chip
-  when `valuation.price_stale` or `prices.price_stale` is true; "Updating from chain…" when
-  `refresh_pending` is true.
+- **ready** — rows: LTV (`valuation.ltv_bps`), Advance ratio, Margin-call ratio, Cure period
+  (`terms.cure_period`, "7 d" / "36 h" / `—`), Security value (`valuation.value`), Amount owed
+  (`valuation.debt`), Margin call. A "Price stale" chip when `valuation.price_stale` or
+  `prices.price_stale` is true; "Updating from chain…" when `refresh_pending` is true.
+  Notes, in this order, each only when the served flag is exactly `true`:
+  "No valuation yet." (`valuation` is null; LTV, value and owed show `—`);
+  `CURE_ENDED_NOTE` "The cure period has ended. Default is not automatic: the Risk Council decides
+  whether to declare it." (`margin_call.open` and `cure_overdue`);
+  `CURABLE_NOTE` "LTV is back at or below the advance ratio. The registry cures the margin call at
+  its next coverage check." (`margin_call.open` and `open_call_curable`);
+  `ABOVE_RATIO_NO_CALL_NOTE` "LTV is above the margin-call ratio. The registry has not opened a
+  margin call yet." (`ltv_above_ratio_no_onchain_call`);
+  `PRICE_STALE_NOTE` "A stale price does not open a margin call; it alerts the Risk Council."
+  (either price-stale flag); then "Couldn't refresh — showing the last loaded data." on a failed
+  refresh.
 
 Rules:
 
@@ -809,15 +820,57 @@ Rules:
 - **Tone** (LTV colour). Negative (red) when `margin_call.open === true` or
   `margin_call.ltv_above_ratio_no_onchain_call === true`; attention (amber) when the LTV is above
   that loan's own `advance_ratio_bps`; otherwise ink.
-- **Margin call row.** "Open since {date}" plus " · cure by {date}" and " (overdue)" when served;
-  "None" when closed; `—` when unknown.
+- **Margin call row.** "Open since {date}" plus " · cure by {date}" and " · cure period ended" when
+  `cure_overdue` is true; "None" when closed; `—` when unknown.
 - **Defensive parsing.** Every read goes through optional chaining and a type check, so a partial
   200 (`{}`, `terms: null`, `valuation: null`, `margin_call: null`) renders `—` rows and never
   throws; the removed `/valuations` hook crashed the page on exactly such a response.
 - **Test ids.** `loan-detail-security`, `-loading`, `-error`, `-no-terms`, `-ltv`, `-price-stale`,
   `-refresh`, `-note`.
-- **Extension point.** #1767 extends this card with the rest of the read-only security state
-  (records, inspections, cure period, marks, consents); this card is the summary it builds on.
+- **Records.** The per-record and per-inspection state is the separate
+  [Security records card](#security-records-card) (#1767).
+
+### Security records card
+
+`SecurityRecordsCard` (`routes/-SecurityRecordsCard.tsx`, markup only) renders
+`buildSecurityRecords` (`routes/-loanSecurityRecords.ts`, pure) from the same `useLoanSecurity`
+result as the summary card, full width below the Security / Registry row in every layout (#1767).
+No Figma frame exists: it is built from the loan-detail primitives (`CARD_CLASS`, `CardTitle`,
+`KeyValueRow`, `chipStyle`, `AddressText`) with the Loans table tokens.
+
+States: **hidden** whenever the summary card is not ready (EVM, registry not configured, loading,
+error, `terms: null`), with no placeholder; **empty** for `records: []` or a missing `records`
+("No security records are registered for this loan."); **ready** otherwise, records in served
+order (no client sort).
+
+Per record (`records[]`), everything verbatim from the served value:
+
+- Title "Record #{record_id} · {protection}", the `status`, and chips: "Flagged" (`flagged_by`
+  set or `valuation.flagged`), "Attestation stale", "Inspection stale", "Price stale"
+  (`mark_stale` or `valuation.stale`), each only on an exact `true`; "Not counted" on
+  `counts_toward_value === false`; "Closed" on `open === false`. `null` stale flags show no chip.
+- Rows: Commodity, Document quantity (`reference_quantity` + `unit`), Counted quantity
+  (`valuation.counted_quantity`), Value (`valuation.value`, `formatFullUsd`), Price ("{benchmark} ·
+  $x per {unit}" from `mark`), Price updated (`mark.at`), Attested (`attested_at`), and Attested by
+  (`attested_by`, `AddressText`). `valuation` is `null` for a record that does not count or has no
+  snapshot (quantity and value `—`); `mark` is `null` for non-goods records (price `—`).
+- **Inspections table** (`inspections[]`, served order; "No inspections." when empty): Inspection
+  (`#id`, "latest" when `is_lot_latest`), Kind, Inspected, Quantity (+ record unit), Grade,
+  Entered (address + date), Approved (address + date; "Awaiting approval" when `approved_by` is
+  null and `complete !== false`; `—` otherwise), the three variances in bps, a "Flagged" pill and
+  the resolution.
+
+Formatting is display-only: 7-decimal strings are grouped and trailing zeros trimmed by string
+math (`"1250.0000000"` → `1,250`), unix-second strings become dates, and nothing is rescaled or
+summed (record values can add up a few raw units above `valuation.value`). Every field is read
+with a type check, so a partial 200 renders `—` and never throws.
+
+Test ids: `loan-detail-security-records`, `-records-empty`, `loan-detail-security-record`
+(`data-record-id`), `-record-chip`, `loan-detail-security-inspection`.
+
+Not shown here: mark suggestions (`suggested_mark`, `mark_due`, #1783, feed the #1859 revalue
+flow), extension consents, record documents, repayments, agent release, margin-call events and
+pending operations. Writes stay on `/risk-council/security/$id`.
 
 ### Registry state & derived (#852)
 
@@ -854,6 +907,8 @@ The page branches on `detail.variant` (derived from the served display status):
 
 - **performing** — lifecycle stepper + Security + Registry state (Security beside Registry; when
   hidden, Registry fills the row).
+- **Security records card.** Below the Security row in every variant, full width; absent when
+  hidden (see [Security records card](#security-records-card)).
 - **watchlist** — no stepper; the Security card (the row is omitted when hidden), a "Days on
   watchlist" tile, and an escalation current-stage card (Figma node `4116:10803`). There is no CCR
   trend.
@@ -923,9 +978,10 @@ every variant today.
   no-op transaction. Only `StatusUpdated` is emitted, and only on a status change.
 - **Past-Due attention notice** (#940) — a past-maturity loan renders under the Matured variant;
   its derived `Past Due` status is an attention signal, not a lock — per the backend, it exists
-  "to draw the Trustee's attention that they either need to record the payment or escalate to
-  default." The banner surfaces both paths directly (Record payment / Escalate to default), wired
-  to the existing actions. Amber (attention) tokens — not red, which is reserved for Default.
+  "to draw the Trustee's attention that they either need to record the payment or escalate."
+  The banner body reads "Maturity has passed. If the payment arrived, record it. If it didn't,
+  escalate the loan to the Risk Council. Default is never automatic." and offers Record payment /
+  Escalate to Risk Council (#1767), wired to the existing actions. Amber (attention) tokens — not red, which is reserved for Default.
 - **Stellar-only gate (#1537, TD-152)** — Roll over, Update lifecycle, Record coupon and Close loan
   are trustee-wallet Stellar signatures (`LoanRegistry.*` via the executor, and `Minter.repay` for the two Record pages, via `@pipeline/wallet-connect`). For a
   loan whose `chain_id` is not `ENV.STELLAR_CHAIN_ID`, `useLoanDetail` returns
@@ -2416,7 +2472,10 @@ Two groups, both defensively read (`loan_data` is `serde_json::Value` on the wir
   originator-actionable (#949/#950); #1046 reversed that — an origination awaiting a resubmit
   stays visible on the Overview.
 - **Loans** — Watchlist + Matured loans from `useLoanBook` (#867): `WatchList`/`Watchlist` →
-  "Watchlist"; past-maturity (`Past Due`, legacy `Matured`) → "Matured". Links to `/loans/$id`
+  "Watchlist"; past-maturity (`Past Due`, legacy `Matured`) → "Matured". A loan with the served
+  `margin_call_open === true` is also listed (#1767): "Margin call open", or "{label} · margin call
+  open" when it is Watchlist / Matured; `Closed` and `Default` are skipped and a loan yields one
+  row, matching `GET /v1/attention-counts` `loans.margin_call_open`. Links to `/loans/$id`
   with `search: { chain: row.chainId }`; the subtitle ends with the chain label and the row key is
   `${chain_id}:${loan_id}` (#1537).
 

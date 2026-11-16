@@ -384,6 +384,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1886 Trustee: show the LP's settlement bank account on pending wire-outs and in LP detail / KYB review](https://github.com/eq-lab/pipeline/issues/1886) | [1886-trustee-settlement-bank-account.md](./epic-1795/1886-trustee-settlement-bank-account.md) | Initial |
 | [#1888 Trustee: flaky test useRiskCouncilRelay > relays schedule and execute](https://github.com/eq-lab/pipeline/issues/1888) | [1888-flaky-risk-council-relay-test.md](./epic-1795/1888-flaky-risk-council-relay-test.md) | Initial |
 | [#1858 Trustee: Risk Council security actions — set terms, resolve flag, release with consent, inspector panel (SecurityRegistry, scheduled 24 h)](https://github.com/eq-lab/pipeline/issues/1858) | [1858-risk-council-security-actions.md](./epic-1795/1858-risk-council-security-actions.md) | Initial |
+| [#1767 Trustee: loan detail security registry card — cure period, margin call, security records and inspections](https://github.com/eq-lab/pipeline/issues/1767) | [1767-trustee-security-registry-card.md](./epic-1795/1767-trustee-security-registry-card.md) | Initial |
 
 ---
 

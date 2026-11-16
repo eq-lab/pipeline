@@ -115,7 +115,7 @@ The relayer keeps one valuation record per active loan in its Postgres store, th
 
 Access to the record follows the same authority as the on-chain loan. The Team and Trustee enter and approve the human inputs (quantity, offtake terms, assay values) through the Operations Console. The relayer price-feed service writes the computed fields automatically. The commercial inputs are append-only and audit-logged, with no silent edit or hard delete, because document fraud is a primary loss driver in commodity finance. The exact record shape is defined in the relayer exec plan.
 
-The Stellar SecurityRegistry state of a loan (terms, LTV, coverage, records, inspections) is served by `GET /v1/loan-book/{loan_id}/security`, see [loan-security-state.md](./loan-security-state.md). This CCR flow is unchanged (#1786).
+The Trustee console shows the Stellar SecurityRegistry state on the loan detail (LTV = amount owed / security value, no haircut; terms, margin call, records and inspections; #1906, #1767), served by `GET /v1/loan-book/{loan_id}/security`, see [loan-security-state.md](./loan-security-state.md). It no longer shows this record's CCR or `haircut_pct`; retiring the CCR parts of this spec is #1786 Phase 2.
 
 ## How it feeds CCR
 

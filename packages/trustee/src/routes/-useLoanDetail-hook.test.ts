@@ -108,4 +108,23 @@ describe("useLoanDetail (#1537)", () => {
     const evm = renderHook(() => useLoanDetail(560048, "4"));
     expect(evm.result.current.security.state).toBe("hidden");
   });
+
+  it("builds the records view from the served records and hides it when not configured", () => {
+    mockUseLoanSecurity.mockReturnValue(
+      securityResult({
+        data: {
+          terms: { advance_ratio_bps: 8000 },
+          records: [{ record_id: "7" }],
+        },
+      }),
+    );
+    const ready = renderHook(() => useLoanDetail(99_000_001, "4"));
+    expect(ready.result.current.securityRecords.state).toBe("ready");
+
+    mockUseLoanSecurity.mockReturnValue(
+      securityResult({ data: undefined, notConfigured: true }),
+    );
+    const evm = renderHook(() => useLoanDetail(560048, "4"));
+    expect(evm.result.current.securityRecords.state).toBe("hidden");
+  });
 });
