@@ -175,7 +175,20 @@ export function relayResult(
   };
 }
 
+export function pendingExecuteResult(error: Error | null = null) {
+  return {
+    mutateAsync: vi.fn().mockResolvedValue({ hash: "EH" }),
+    isPending: false,
+    error,
+    hash: null,
+    stage: null,
+    reset: vi.fn(),
+  };
+}
+
 export const SECURITY_REGISTRY = "CSECURITYREGISTRY1234567890";
+export const LOAN_REGISTRY = "CLOANREGISTRY1234567890XYZ";
+export const MINTER = "CMINTER1234567890ABCDEFGH";
 export const SCHEDULER = "GSCHEDULERADDRESS1234567890ABCD";
 export const OPERATION_ID = "ab".repeat(32);
 export const HASH_A = "cd".repeat(32);
@@ -221,4 +234,50 @@ export function pendingOp(
     state: "ready",
     ...overrides,
   };
+}
+
+export const LOAN_REGISTRY_ARGS = {
+  set_default: [7],
+  cure: [7],
+  amend_economics: [7, 145_000, "1816128000"],
+  adjust_interest: [7, "-1000000", "ab".repeat(32)],
+  write_down: [7, "5000000"],
+  close_defaulted: [7, ["OtherWriteDown"]],
+} as const;
+
+export function loanRegistryOp(
+  fn: keyof typeof LOAN_REGISTRY_ARGS,
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: fnOperationId(fn),
+    target: LOAN_REGISTRY,
+    target_kind: "loan_registry",
+    function: fn,
+    args: LOAN_REGISTRY_ARGS[fn],
+    ...overrides,
+  });
+}
+
+export function minterOp(
+  overrides: Partial<PendingOperation> = {},
+): PendingOperation {
+  return pendingOp({
+    operation_id: fnOperationId("reverse_repay"),
+    target: MINTER,
+    target_kind: "minter",
+    function: "reverse_repay",
+    args: [7, 2, "cd".repeat(32)],
+    ...overrides,
+  });
+}
+
+const OPERATION_FNS = [
+  ...Object.keys(LOAN_REGISTRY_ARGS),
+  "reverse_repay",
+] as const;
+
+function fnOperationId(fn: string): string {
+  const index = OPERATION_FNS.indexOf(fn as (typeof OPERATION_FNS)[number]);
+  return (0x50 + index).toString(16).repeat(32);
 }

@@ -7,6 +7,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import type { PendingOperation } from "./pendingOperations";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,7 @@ export interface LoanBookEntry {
   days_on_watchlist: number | null;
   /** Unix timestamp of the WatchList transition used for `days_on_watchlist`. */
   watchlist_entered_at: number | null;
+  pending_operations?: PendingOperation[];
 }
 
 /** Shape of the `GET /v1/loan-book` response (post-#833/#834). */
@@ -175,6 +177,7 @@ export interface UseLoanBookResult {
   data: LoanBookResponse | undefined;
   isLoading: boolean;
   error: Error | null;
+  dataUpdatedAt?: number;
   refetch: () => void;
 }
 
@@ -204,6 +207,7 @@ export function useLoanBook(chainId?: number | null): UseLoanBookResult {
     data: query.data,
     isLoading: query.isLoading,
     error: query.error,
+    dataUpdatedAt: query.dataUpdatedAt,
     refetch: () => void query.refetch(),
   };
 }

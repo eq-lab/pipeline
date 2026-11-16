@@ -2,7 +2,6 @@
 import { useCallback, useState } from "react";
 import {
   useMutation,
-  useQueries,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -18,6 +17,7 @@ import {
   readSecurityRegistrySchedule,
   relayRiskCouncil,
   relaySecurityRegistry,
+  riskCouncilArgsXdr,
   securityRegistryArgsXdr,
   useStellarWallet,
   type CanCall,
@@ -41,9 +41,7 @@ import {
   riskCouncilCallKey,
   type CouncilCall,
   type CouncilTarget,
-  type ScheduledOp,
 } from "@/lib/riskCouncilOps";
-import type { LoanBookEntry } from "./useLoanBook";
 
 export type {
   CouncilCall,
@@ -119,21 +117,10 @@ export interface RiskCouncilLoanState {
   money: LoanMoney;
 }
 
-export interface HubLookup {
-  call: CouncilCall;
-  readyAt: number;
-  pageLocal: ScheduledOp | undefined;
-}
-
 const NOT_CONFIGURED =
   "On-chain Risk Council actions are not configured for this environment.";
 export const SECURITY_NOT_CONFIGURED =
   "On-chain SecurityRegistry actions are not configured for this environment.";
-
-const SET_DEFAULT_STATUSES: ReadonlySet<string> = new Set([
-  "Performing",
-  "WatchList",
-]);
 
 function chainConfig() {
   return {
@@ -249,19 +236,34 @@ export function useRiskCouncilLoanState(
   });
 }
 
-function invalidateRiskCouncil(queryClient: QueryClient) {
-  for (const key of [
-    "risk-council-access",
-    "risk-council-loan",
-    "risk-council-hub",
-    "risk-council-inspectors",
-    "loan-book",
-    "loan-financials",
-    "loan-security",
-    "audit-log",
-  ]) {
+const RISK_COUNCIL_KEYS = [
+  "risk-council-access",
+  "risk-council-loan",
+  "risk-council-inspectors",
+  "loan-book",
+  "loan-financials",
+  "loan-security",
+  "audit-log",
+];
+
+const MINTER_KEYS = [
+  "repayment-recovery",
+  "repayment-recovery-access",
+  "loan-waterfall",
+];
+
+function invalidateKeys(queryClient: QueryClient, keys: ReadonlyArray<string>) {
+  for (const key of keys) {
     void queryClient.invalidateQueries({ queryKey: [key] });
   }
+}
+
+function invalidateRiskCouncil(queryClient: QueryClient) {
+  invalidateKeys(queryClient, RISK_COUNCIL_KEYS);
+}
+
+function invalidatePendingExecute(queryClient: QueryClient) {
+  invalidateKeys(queryClient, [...RISK_COUNCIL_KEYS, ...MINTER_KEYS]);
 }
 
 export function useRiskCouncilRelay() {
@@ -321,7 +323,7 @@ export function useRiskCouncilRelay() {
         argsXdr:
           target === "security_registry"
             ? securityRegistryArgsXdr(call as SecurityRegistryCall)
-            : undefined,
+            : riskCouncilArgsXdr(call as RiskCouncilCall),
       };
     },
     onSuccess: (data, { mode, call, chainId, loanId }) => {
@@ -420,9 +422,9 @@ export function usePendingOperationExecute() {
     },
     onSuccess: ({ hash, readyAt }, { chainId, operationId }) => {
       markOperationExecuted(chainId, operationId, hash, readyAt);
-      invalidateRiskCouncil(queryClient);
+      invalidatePendingExecute(queryClient);
       for (const delayMs of [5_000, 15_000]) {
-        setTimeout(() => invalidateRiskCouncil(queryClient), delayMs);
+        setTimeout(() => invalidatePendingExecute(queryClient), delayMs);
       }
     },
   });
@@ -440,84 +442,6 @@ export function usePendingOperationExecute() {
     stage,
     reset,
   };
-}
-
-export function hubCallsFor(
-  loans: ReadonlyArray<Pick<LoanBookEntry, "loan_id" | "onchain_status">>,
-  pageLocal: ReadonlyArray<ScheduledOp>,
-): Array<{ call: CouncilCall; pageLocal: ScheduledOp | undefined }> {
-  const byKey = new Map<
-    string,
-    { call: CouncilCall; pageLocal: ScheduledOp | undefined }
-  >();
-  for (const loan of loans) {
-    const loanId = Number(loan.loan_id);
-    if (!Number.isInteger(loanId)) continue;
-    const fn = SET_DEFAULT_STATUSES.has(loan.onchain_status)
-      ? "set_default"
-      : loan.onchain_status === "Default"
-        ? "cure"
-        : null;
-    if (fn == null) continue;
-    const call: RiskCouncilCall = { fn, loanId };
-    byKey.set(riskCouncilCallKey(call), { call, pageLocal: undefined });
-  }
-  for (const op of pageLocal) {
-    byKey.set(riskCouncilCallKey(op.call), { call: op.call, pageLocal: op });
-  }
-  return Array.from(byKey.values());
-}
-
-export function useRiskCouncilHubLookups(
-  chainId: number | null | undefined,
-  loans: ReadonlyArray<Pick<LoanBookEntry, "loan_id" | "onchain_status">>,
-  pageLocal: ReadonlyArray<ScheduledOp>,
-  enabled: boolean,
-) {
-  const { address } = useStellarWallet();
-  const calls = hubCallsFor(loans, pageLocal);
-  const active =
-    enabled && !!address && stellarOnlyActionReason(chainId) === null;
-
-  return useQueries({
-    queries: calls.map(({ call }) => ({
-      queryKey: [
-        "risk-council-hub",
-        address,
-        chainId,
-        riskCouncilCallKey(call),
-      ],
-      enabled: active,
-      staleTime: 30_000,
-      retry: false,
-      queryFn: async (): Promise<number> => {
-        const target = councilTarget(call);
-        const cfg = riskCouncilConfig(target);
-        if (!cfg) throw new Error(notConfiguredFor(target));
-        if (!address) throw new Error("Stellar wallet not connected.");
-        const schedule = await readScheduleFor(call, {
-          accessManagerId: cfg.accessManagerId,
-          registryId: cfg.registryId,
-          caller: address,
-          rpcUrl: cfg.rpcUrl,
-          networkPassphrase: cfg.networkPassphrase,
-        });
-        return schedule.readyAt;
-      },
-    })),
-    combine: (results) => ({
-      lookups: results.map<HubLookup | null>((result, index) =>
-        result.data === undefined
-          ? null
-          : {
-              call: calls[index]!.call,
-              readyAt: result.data,
-              pageLocal: calls[index]!.pageLocal,
-            },
-      ),
-      isLoading: results.some((result) => result.isLoading),
-    }),
-  });
 }
 
 export function useSecurityInspectors(chainId: number | null | undefined) {

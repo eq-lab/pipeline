@@ -19,6 +19,7 @@ import {
   MAIN_CLASS,
   Muted,
   PageGate,
+  PendingOperationsCard,
   Row,
 } from "./-RiskCouncilParts";
 
@@ -191,6 +192,14 @@ function RiskCouncilReterm() {
         <div className="flex w-full flex-col gap-[20px] pt-[16px] lg:flex-row lg:items-start">
           <CurrentTermsCard current={view.current} />
           <div className="flex w-full flex-1 flex-col gap-[20px]">
+            <PendingOperationsCard
+              testId="risk-council-reterm-pending"
+              items={view.pending}
+              chainId={chain}
+              owner="reterm"
+              executeGate={view.pendingGate}
+              expectedTarget={view.expectedTarget}
+            />
             <AmendEconomicsCard form={view.amend} />
             <AdjustInterestCard form={view.adjust} />
           </div>

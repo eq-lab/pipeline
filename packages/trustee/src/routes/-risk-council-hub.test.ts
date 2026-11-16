@@ -1,9 +1,9 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { describe, it, expect } from "vitest";
 import {
-  callLoanId,
   formatCallArgs,
   HUB_FOOTNOTE,
+  HUB_NO_ROLE,
   loanLinks,
 } from "./-risk-council-hub";
 import { STELLAR } from "./-riskCouncilFixtures";
@@ -125,21 +125,20 @@ describe("security calls", () => {
     ).toBe("3 inspectors");
   });
 
-  it("takes the loan of a record-keyed call from the page-local context", () => {
-    const release = {
-      fn: "release_with_consent",
-      recordId: 3,
-      consentHash: HASH,
-    } as const;
-    expect(callLoanId(release, { loanId: 9 })).toBe(9);
-    expect(callLoanId(release, undefined)).toBeNull();
-    expect(callLoanId({ fn: "cure", loanId: 2 }, undefined)).toBe(2);
-    expect(callLoanId({ fn: "set_terms", loanId: 5, terms }, undefined)).toBe(
-      5,
-    );
+  it("prints the repayment number for a reverse_repay", () => {
+    expect(
+      formatCallArgs(
+        { fn: "reverse_repay", loanId: 1, repaymentId: 4, refHash: HASH },
+        STELLAR,
+      ),
+    ).toBe("repayment #4");
   });
 
-  it("mentions the security operations in the footnote", () => {
-    expect(HUB_FOOTNOTE).toMatch(/Security terms, flag resolutions/);
+  it("names the inspector panel in the footnote and drops the scheduler-only line", () => {
+    expect(HUB_FOOTNOTE).toMatch(/Inspector panel changes are not tied/);
+    expect(HUB_FOOTNOTE).toMatch(/open the Inspector panel/);
+    expect(HUB_NO_ROLE).toBe(
+      "Risk Council actions belong to the Risk Council.",
+    );
   });
 });

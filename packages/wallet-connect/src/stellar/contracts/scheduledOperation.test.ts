@@ -19,6 +19,11 @@ import {
   readScheduledOperation,
 } from "./scheduledOperation";
 import {
+  encodeRiskCouncilArgs,
+  riskCouncilArgsXdr,
+  type RiskCouncilCall,
+} from "./riskCouncil";
+import {
   encodeSecurityRegistryArgs,
   securityRegistryArgsXdr,
   type SecurityRegistryCall,
@@ -47,6 +52,15 @@ const CALLS: SecurityRegistryCall[] = [
   { fn: "release_with_consent", recordId: 3, consentHash: HASH },
 ];
 
+const RISK_COUNCIL_CALLS: RiskCouncilCall[] = [
+  { fn: "set_default", loanId: 3 },
+  { fn: "cure", loanId: 3 },
+  { fn: "amend_economics", loanId: 3, rateBps: 1450, maturity: 1_816_128_000 },
+  { fn: "adjust_interest", loanId: 3, delta: "-1000000", reasonHash: HASH },
+  { fn: "write_down", loanId: 3, amount: "5000000" },
+  { fn: "close_defaulted", loanId: 3, reason: "OtherWriteDown" },
+];
+
 const base = {
   accessManagerId: "CAM",
   caller: "GCALLER",
@@ -65,6 +79,13 @@ describe("operation args round trip", () => {
     const argsXdr = securityRegistryArgsXdr(call);
     const decoded = decodeOperationArgs(argsXdr);
     expect(decoded).toHaveLength(encodeSecurityRegistryArgs(call).length);
+    expect(operationArgsXdr(decoded)).toBe(argsXdr);
+  });
+
+  it.each(RISK_COUNCIL_CALLS)("is byte identical for $fn", (call) => {
+    const argsXdr = riskCouncilArgsXdr(call);
+    const decoded = decodeOperationArgs(argsXdr);
+    expect(decoded).toHaveLength(encodeRiskCouncilArgs(call).length);
     expect(operationArgsXdr(decoded)).toBe(argsXdr);
   });
 

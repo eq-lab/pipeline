@@ -9,6 +9,7 @@ import {
   roleLine,
   stageLabel,
 } from "./-repayment-recovery";
+import { PendingOperationsList } from "./-RiskCouncilParts";
 import { useRepaymentRecoveryDialog } from "./-useRepaymentRecoveryDialog";
 
 const REVERSE_LABEL = {
@@ -106,6 +107,17 @@ export function RepaymentRecoveryDialog({
           <p className={SECTION_TITLE} style={{ color: INK_MUTED }}>
             Step 1. Reverse the repayment
           </p>
+          <p className={SECTION_TITLE} style={{ color: INK_MUTED }}>
+            Scheduled operations
+          </p>
+          <PendingOperationsList
+            testId="repayment-recovery-pending"
+            items={view.pending}
+            chainId={chainId}
+            owner="recovery"
+            executeGate={null}
+            expectedTarget={view.pendingTarget}
+          />
           {view.candidates.length === 0 && !reversed && !view.loading && (
             <p className={BODY} style={{ color: INK_MUTED }}>
               No repayment to reverse on this loan.

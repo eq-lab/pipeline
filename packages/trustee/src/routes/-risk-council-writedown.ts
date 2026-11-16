@@ -4,8 +4,10 @@ import type {
   RiskCouncilCall,
   RiskCouncilClosureReason,
 } from "@/api/useRiskCouncil";
+import { ENV } from "@/lib/env";
 import { usdInputToSacBaseUnits } from "@/utils/stellarSacUnits";
 import { formatChainAmount } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
 import {
   chainStateRows,
   formatLoanLabel,
@@ -88,6 +90,9 @@ export interface RiskCouncilWritedownView {
   writeDown: WriteDownView;
   close: CloseView;
   cure: { effects: string; action: ActionView };
+  pending: PendingOpItem[];
+  expectedTarget: string;
+  pendingGateFor: (item: PendingOpItem) => string | null;
 }
 
 export function useRiskCouncilWritedown(
@@ -98,7 +103,13 @@ export function useRiskCouncilWritedown(
   const [amountEdit, setAmountEdit] = useState<string | null>(null);
   const [reason, setReason] = useState<RiskCouncilClosureReason>("Default");
 
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: base.loanId,
+    entry: base.entry,
+  });
   const inDefault = base.chainStatus === "Default";
+  const notInDefault = base.chainStatus != null && !inDefault;
   const outstanding = base.chainState?.money.outstanding;
   const amountInput = amountEdit ?? writeDownPrefill(outstanding, chainId);
 
@@ -154,7 +165,7 @@ export function useRiskCouncilWritedown(
       "pocket",
       "closure",
     ]),
-    notInDefault: base.chainStatus != null && !inDefault,
+    notInDefault,
     writeDown: {
       amountInput,
       setAmountInput: setAmountEdit,
@@ -162,5 +173,13 @@ export function useRiskCouncilWritedown(
     },
     close: { reason, setReason, action: close },
     cure: { effects: CURE_EFFECTS, action: cure },
+    pending,
+    expectedTarget: ENV.STELLAR_LOAN_REGISTRY_ID,
+    pendingGateFor: (item) =>
+      notInDefault
+        ? NOT_IN_DEFAULT
+        : item.fn === "close_defaulted" && outstanding != null
+          ? closeExecuteGate(outstanding)
+          : null,
   };
 }

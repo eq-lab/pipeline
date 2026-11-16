@@ -60,6 +60,14 @@ Out of scope: cancelling (TD-159), reconciling served rows with `get_schedule` (
    - Writedown: "This loan is not in Default."; `close_defaulted` also needs `outstanding === "0"` (`CLOSE_GATE`).
    - An unknown on-chain status (read pending or failed) does not block.
 
+## Implementation Notes
+
+- Target guard: `usePendingOperationExecute` keeps its `expectedTarget` input (passed by each surface); `expectedTargetFor` was not added.
+- Owned rows also require `target_kind` to match the owner's contract; other kinds render as link rows.
+- `useLoanPendingOps` (`-risk-council-pending.ts`) merges served, session and executed state and prunes executed ids on every per-loan surface; `useLoanBook` exposes `dataUpdatedAt` for it.
+- Writedown `close_defaulted` gate applies only when the on-chain outstanding is known.
+- Step 15 optional manual check not run.
+
 ## Open Questions
 
 _None_
@@ -68,7 +76,7 @@ _None_
 
 Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-pending-ops`; yarn is `PATH=/opt/homebrew/opt/node@22/bin:$PATH node .yarn/releases/yarn-4.13.0.cjs`.
 
-0. **Rebase onto the updated #1923 branch first.**
+0. [x] **Rebase onto the updated #1923 branch first.**
    - `git fetch origin`, then `git rebase origin/feat/1923-rc-security-pending-ops` (or the local `feat/1923-rc-security-pending-ops` if it is ahead). Re-read `docs/exec-plans/active/issue-1923-rc-security-pending-ops.md` and the changed files before coding.
    - The #1923 review fixes, and how this plan adapts to each:
      - **Release confirm keyed on `fn`.** Use the same mechanism for the escalate `set_default` confirm (Step 6).
@@ -82,18 +90,18 @@ Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-p
        - Page status gates (Decision 2) stay in the view, because they depend on page state.
    - If the rebase removes or renames a symbol this plan extends (`PendingOperationsCard`, `usePendingOperationView`, `expectedTarget`, `executeGate`, `fromServed`, `mergePendingOps`), extend the rebased equivalent.
 
-1. **wallet-connect: LoanRegistry args XDR**
+1. [x] **wallet-connect: LoanRegistry args XDR**
    - In `packages/wallet-connect/src/stellar/contracts/riskCouncil.ts`, add `riskCouncilArgsXdr(call: RiskCouncilCall): string` = `operationArgsXdr(encodeRiskCouncilArgs(call))` (import from `./scheduledOperation`).
    - Export it from `packages/wallet-connect/src/index.ts`. No change to the Minter binding.
-2. **API type**
+2. [x] **API type**
    - In `packages/trustee/src/api/useLoanBook.ts`, add `pending_operations?: PendingOperation[]` to `LoanBookEntry` (type import from `./pendingOperations`), with no new JSDoc.
    - Run `npx tsx scripts/lint-comments.ts`; if the file is reported, shrink `scripts/lint-comments.baseline.json` as required, never grow it.
-3. **Relay and execute hook** (`packages/trustee/src/api/useRiskCouncil.ts`):
+3. [x] **Relay and execute hook** (`packages/trustee/src/api/useRiskCouncil.ts`):
    - In `useRiskCouncilRelay`, set `argsXdr` for every call: `securityRegistryArgsXdr` for security targets, otherwise `riskCouncilArgsXdr(call as RiskCouncilCall)`.
    - In `usePendingOperationExecute`, `onSuccess` also invalidates `repayment-recovery`, `repayment-recovery-access` and `loan-waterfall` (now, at 5 s, at 15 s), so an executed `reverse_repay` refreshes the dialog. Add them to a local key list next to `invalidateRiskCouncil`; do not import from `useRepaymentRecovery.ts`.
    - Remove `"risk-council-hub"` from `invalidateRiskCouncil`.
    - Delete `hubCallsFor`, `useRiskCouncilHubLookups`, `HubLookup`, `SET_DEFAULT_STATUSES`, and the `useQueries` / `LoanBookEntry` imports if they become unused.
-4. **Pending model** (`packages/trustee/src/routes/-risk-council-pending.ts`):
+4. [x] **Pending model** (`packages/trustee/src/routes/-risk-council-pending.ts`):
    - Types:
      - `ReverseRepayCall = { fn: "reverse_repay"; loanId: number; repaymentId: number; refHash: string }`;
      - `PendingCall = CouncilCall | ReverseRepayCall`.
@@ -144,7 +152,7 @@ Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-p
      - `pendingOwner(fn): PendingOwner | null`.
      - `PENDING_OWNER_LINK_LABELS`: escalate "Open Escalate to Default"; reterm "Open Amend economics"; writedown "Open Default resolution"; security "Open Security"; recovery "Open loan · Repayment recovery".
    - `PENDING_STATE_LABELS = { waiting: "Waiting", ready: "Ready", expired: "Expired" }` for the hub.
-5. **Shared UI** (`packages/trustee/src/routes/-RiskCouncilParts.tsx`):
+5. [x] **Shared UI** (`packages/trustee/src/routes/-RiskCouncilParts.tsx`):
    - `OWNER_ROUTE_PATHS: Record<PendingOwner, string>`: escalate `/risk-council/escalate/$id`, reterm `/risk-council/reterm/$id`, writedown `/risk-council/writedown/$id`, security `/risk-council/security/$id`, recovery `/loans/$id`.
    - `PendingOwnerLink({ owner, loanId, chainId, testId, children })`: a TanStack `Link` to that path with `params={{ id }}` and `search={{ chain }}`. The hub's `ActionLink` reuses it, so the paths live in one place.
    - Split `PendingOperationsCard` into `PendingOperationsList({ testId, items, chainId, owner, executeGate, executeGateFor, expectedTarget, confirmTextFor })` and the card. The list renders rows, or `${testId}-empty` "No scheduled operations found."; the card wraps the list in `Card`.
@@ -153,7 +161,7 @@ Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-p
      - a `PendingOwnerLink` (`${prefix}-link`) with the owner's link label, to `item.loanId`;
      - no link when the owner is `null` or `item.loanId` is `null`.
    - `executeGateFor?: (item) => string | null` overrides `executeGate` per owned row.
-6. **Escalate** (`-risk-council-escalate.ts`, `risk-council.escalate.$id.tsx`):
+6. [x] **Escalate** (`-risk-council-escalate.ts`, `risk-council.escalate.$id.tsx`):
    - Build `pending` with `mergePendingOps({ served: base.entry?.pending_operations ?? [], session: useScheduledOps(chainId), executedIds, chainId, loanId: base.loanId, nowSec })`, with no function filter (all of the loan's operations).
    - Add `pending`, `expectedTarget: ENV.STELLAR_LOAN_REGISTRY_ID` and `pendingGate: string | null` to the view (Decision 2):
      - `eligibility.kind === "default"` → "This loan is in Default.";
@@ -161,28 +169,28 @@ Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-p
      - `eligible` or `unknown` → `null`.
    - Page: wrap the right side in `flex w-full flex-1 flex-col gap-[20px]`. Inside it, `PendingOperationsCard testId="risk-council-escalate-pending" owner="escalate"` comes first, then `DeclareDefaultCard`.
    - Move the confirm text into the presenter as `declareConfirmText(id)` ("Declare default on Loan #{id}? The pocket opens on the first default."). `DeclareDefaultCard` and the card's `confirmTextFor` both use it, so an owned `set_default` Execute also opens the confirm dialog.
-7. **Reterm** (`-risk-council-reterm.ts`, `risk-council.reterm.$id.tsx`):
+7. [x] **Reterm** (`-risk-council-reterm.ts`, `risk-council.reterm.$id.tsx`):
    - Same merge, all of the loan's operations.
    - `pendingGate = notAvailableNote(base.chainStatus)`.
    - `PendingOperationsCard testId="risk-council-reterm-pending" owner="reterm"` first in the right column, above Amend economics.
-8. **Writedown** (`-risk-council-writedown.ts`, `risk-council.writedown.$id.tsx`):
+8. [x] **Writedown** (`-risk-council-writedown.ts`, `risk-council.writedown.$id.tsx`):
    - Same merge, all of the loan's operations.
    - Add `pendingGateFor(item)`: `NOT_IN_DEFAULT` when `notInDefault`, else `closeExecuteGate(outstanding)` for `close_defaulted`, else `null`.
    - `PendingOperationsCard testId="risk-council-writedown-pending" owner="writedown" executeGateFor={view.pendingGateFor}` first in the right column.
-9. **Security page extension** (`-risk-council-security.ts`, `risk-council.security.$id.tsx`):
+9. [x] **Security page extension** (`-risk-council-security.ts`, `risk-council.security.$id.tsx`):
    - Cost: the presenter already has `base.entry` (loan book) and its `/security` rows; the change is one merge plus `owner="security"`.
    - `served` = the `/security` `pending_operations`, plus `base.entry?.pending_operations` rows whose `operation_id` is not already in it.
    - `PendingOperationsCard owner="security"`. Owned rows keep every #1923 behaviour: paused gate, confirm, Set terms notice, `target_kind` filter. LoanRegistry and Minter rows show links.
    - The Set terms notice still looks only at `set_terms` rows.
    - Fallback: if the rebased #1923 presenter makes this more than that merge, skip the step. In that case keep the security page SecurityRegistry-only, and say so in trustee-flows and in the PR description.
-10. **Repayment recovery dialog** (`-useRepaymentRecoveryDialog.ts`, `-RepaymentRecoveryDialog.tsx`):
+10. [x] **Repayment recovery dialog** (`-useRepaymentRecoveryDialog.ts`, `-RepaymentRecoveryDialog.tsx`):
    - In `useRepaymentRecoveryDialog`, read `useLoanBook()` and `findLoanEntry(…, chainId, loanId)`.
    - Build `pending = mergePendingOps({ served: entry?.pending_operations ?? [], session: useScheduledOps(chainId), executedIds, chainId, loanId: Number(loanId), nowSec })`, covering all of the loan's operations.
    - Expose `pending` and `pendingTarget: ENV.STELLAR_YIELD_MINTER_ID`.
    - Dialog step 1: before the radio list, a `SECTION_TITLE` "Scheduled operations" and `PendingOperationsList testId="repayment-recovery-pending" owner="recovery"`. It is always rendered (#1923 Decision 3).
    - Link rows navigate to the Risk Council page, which unmounts the dialog. No extra handling is needed.
    - No confirm text. `busy` also includes an in-flight pending execute only through the row's own disabled state; leave the dialog's Escape and backdrop rules unchanged.
-11. **Hub presenter** (`-risk-council-hub.ts`):
+11. [x] **Hub presenter** (`-risk-council-hub.ts`):
     - Inputs: `useLoanBook(chainId)`, `useScheduledOps(chainId)`, `useExecutedOperationIds(chainId)`, `useStellarWallet().address`.
     - Items: for each loan with an integer `loan_id`, `mergePendingOps({ …, loanId })`; then flatten and sort by `readyAt`, then `operationId`.
     - Rows:
@@ -198,14 +206,14 @@ Run commands from `/Users/aabliazimov/Documents/work/pipeline-feat-1924-rc-hub-p
       - `HUB_FOOTNOTE = "Inspector panel changes are not tied to a loan and are not listed here; open the Inspector panel to check one."`.
     - Remove `INSPECTORS_ROW_LABEL`, `callLoanId` and the `NO_LONGER_SCHEDULED` use.
     - `loading = loanBook.isLoading`.
-12. **Hub page** (`risk-council.index.tsx`):
+12. [x] **Hub page** (`risk-council.index.tsx`):
     - Headers: Loan, Action, Arguments, Scheduled by, Executable from, State.
     - Remove the `noRole` dashes row and the `noRole` prop of `ScheduledTable`.
     - `ActionLink` delegates to `PendingOwnerLink`, which uses `OWNER_ROUTE_PATHS`; the local `ROUTE_PATHS` is removed. The inspectors link stays as is.
     - The empty state shows whenever there are no rows.
-13. **Lint and comments.** New code carries no comments beyond existing one-line `// spec:` headers. Run `npx tsx scripts/lint-comments.ts` and shrink the baseline for any touched file it lists.
-14. **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`. TD-177 and `docs/user-stories/index.md` only after rebasing on `main` with #1928 and #1929 merged.
-15. **Verify:**
+13. [x] **Lint and comments.** New code carries no comments beyond existing one-line `// spec:` headers. Run `npx tsx scripts/lint-comments.ts` and shrink the baseline for any touched file it lists.
+14. [x] **Docs** (see Docs to Update), then `npx tsx scripts/lint-docs.ts`. TD-177 and `docs/user-stories/index.md` only after rebasing on `main` with #1928 and #1929 merged (still pending).
+15. [x] **Verify:**
     - `… workspace @pipeline/wallet-connect test`, `… workspace @pipeline/wallet-connect lint`;
     - `… workspace @pipeline/trustee test`, `… workspace @pipeline/trustee lint`, `… workspace @pipeline/trustee build`.
     - Optional manual check (not a gate): once #1928 is on stage with the AM indexer key, open `/risk-council?chain=99000001` and confirm the 2026-11-13 `set_terms` row is listed with "Scheduled by".

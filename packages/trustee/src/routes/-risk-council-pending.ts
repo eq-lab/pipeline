@@ -1,16 +1,21 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-pending-operations
+import { useEffect, useMemo } from "react";
 import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
   useStellarWallet,
   type FlagOutcome,
+  type RiskCouncilCall,
+  type RiskCouncilClosureReason,
   type SecurityPaymentTerm,
   type SecurityRegistryCall,
 } from "@pipeline/wallet-connect";
 import type {
   PendingOperation,
   PendingOperationState,
+  PendingTargetKind,
 } from "@/api/pendingOperations";
+import { useLoanBook, type LoanBookEntry } from "@/api/useLoanBook";
 import type { LoanSecurityTerms } from "@/api/useLoanSecurity";
 import {
   NoLongerScheduledError,
@@ -30,13 +35,23 @@ import {
 } from "@/lib/accessManagerAction";
 import {
   councilTarget,
+  pruneExecutedOperations,
+  useExecutedOperations,
+  useScheduledOps,
   type ExecutedOperation,
   type ScheduledOp,
 } from "@/lib/riskCouncilOps";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 import { truncateAddress } from "@/lib/truncateAddress";
+import { formatMaturityDate } from "@/utils/formatDate";
+import { formatBpsRate } from "@/utils/formatUsd";
 import { toUserError, type UserFacingError } from "@/utils/userError";
-import { type ActionView, type LabelValue } from "./-risk-council-shared";
+import { formatChainAmount, recoveryErrorCopy } from "./-repayment-recovery";
+import {
+  formatSignedChainAmount,
+  type ActionView,
+  type LabelValue,
+} from "./-risk-council-shared";
 import { formatTermsRows, PAYMENT_TERM_LABELS } from "./-risk-council-terms";
 
 export const PENDING_CARD_TITLE = "Scheduled operations";
@@ -51,13 +66,72 @@ export const PENDING_PAUSED =
 export const SET_TERMS_PENDING_NOTICE =
   "A terms change is already scheduled — see above. Scheduling again creates a second operation with a new 24 h wait.";
 
-export function pendingTargetMismatch(short: string): string {
-  return `This operation targets another SecurityRegistry (${short}) than this console is configured for.`;
+export const PENDING_CONTRACT_NAMES: Record<PendingTargetKind, string> = {
+  security_registry: "SecurityRegistry",
+  loan_registry: "LoanRegistry",
+  minter: "Minter",
+  other: "contract",
+};
+
+export const PENDING_STATE_LABELS: Record<PendingOperationState, string> = {
+  waiting: "Waiting",
+  ready: "Ready",
+  expired: "Expired",
+};
+
+export type PendingOwner =
+  | "escalate"
+  | "reterm"
+  | "writedown"
+  | "security"
+  | "recovery";
+
+const PENDING_OWNERS: Record<string, PendingOwner> = {
+  set_default: "escalate",
+  amend_economics: "reterm",
+  adjust_interest: "reterm",
+  write_down: "writedown",
+  close_defaulted: "writedown",
+  cure: "writedown",
+  set_terms: "security",
+  resolve_flag: "security",
+  release_with_consent: "security",
+  reverse_repay: "recovery",
+};
+
+export const PENDING_OWNER_KINDS: Record<PendingOwner, PendingTargetKind> = {
+  escalate: "loan_registry",
+  reterm: "loan_registry",
+  writedown: "loan_registry",
+  security: "security_registry",
+  recovery: "minter",
+};
+
+export const PENDING_OWNER_LINK_LABELS: Record<PendingOwner, string> = {
+  escalate: "Open Escalate to Default",
+  reterm: "Open Amend economics",
+  writedown: "Open Default resolution",
+  security: "Open Security",
+  recovery: "Open loan · Repayment recovery",
+};
+
+export function pendingOwner(fn: string): PendingOwner | null {
+  return Object.hasOwn(PENDING_OWNERS, fn) ? PENDING_OWNERS[fn]! : null;
+}
+
+export function pendingTargetMismatch(
+  short: string,
+  contract = PENDING_CONTRACT_NAMES.security_registry,
+): string {
+  return `This operation targets another ${contract} (${short}) than this console is configured for.`;
 }
 
 const EXPIRATION_SECONDS = 604_800;
 const U32_MAX = 4_294_967_295;
 const U64_DECIMAL = /^\d+$/;
+const SIGNED_DECIMAL = /^-?\d+$/;
+const MAX_RATE_BPS = 10_000;
+const RATE_SCALE = 100;
 const HEX32 = /^[0-9a-f]{64}$/;
 
 const TERMS_KEYS = [
@@ -75,6 +149,15 @@ const TERMS_KEYS = [
   "tolerance_bps",
 ] as const;
 
+export interface ReverseRepayCall {
+  fn: "reverse_repay";
+  loanId: number;
+  repaymentId: number;
+  refHash: string;
+}
+
+export type PendingCall = CouncilCall | ReverseRepayCall;
+
 export interface PendingOpItem {
   key: string;
   operationId: string;
@@ -85,7 +168,8 @@ export interface PendingOpItem {
   readyAt: number;
   expiresAt: number;
   state: PendingOperationState;
-  call: CouncilCall | null;
+  targetKind: PendingTargetKind;
+  call: PendingCall | null;
   rawArgs: unknown;
   source: "indexed" | "session";
   loanId: number | null;
@@ -211,12 +295,108 @@ export function decodeSecurityCall(
   }
 }
 
+export function decodeLoanRegistryCall(
+  fn: string,
+  args: unknown,
+): RiskCouncilCall | null {
+  if (!Array.isArray(args) || !isU32(args[0])) return null;
+  const loanId = args[0];
+  switch (fn) {
+    case "set_default":
+      return args.length === 1 ? { fn: "set_default", loanId } : null;
+    case "cure":
+      return args.length === 1 ? { fn: "cure", loanId } : null;
+    case "amend_economics": {
+      const rate = args[1];
+      const maturity = Number(args[2]);
+      if (
+        args.length !== 3 ||
+        !isU32(rate) ||
+        rate % RATE_SCALE !== 0 ||
+        rate / RATE_SCALE < 1 ||
+        rate / RATE_SCALE > MAX_RATE_BPS ||
+        !isU64(args[2]) ||
+        !Number.isSafeInteger(maturity) ||
+        maturity <= 0
+      ) {
+        return null;
+      }
+      return {
+        fn: "amend_economics",
+        loanId,
+        rateBps: rate / RATE_SCALE,
+        maturity,
+      };
+    }
+    case "adjust_interest": {
+      const delta = args[1];
+      return args.length === 3 &&
+        typeof delta === "string" &&
+        SIGNED_DECIMAL.test(delta) &&
+        isHash(args[2])
+        ? { fn: "adjust_interest", loanId, delta, reasonHash: args[2] }
+        : null;
+    }
+    case "write_down":
+      return args.length === 2 && isU64(args[1])
+        ? { fn: "write_down", loanId, amount: args[1] }
+        : null;
+    case "close_defaulted": {
+      const reason = variantOf<RiskCouncilClosureReason>(args[1], [
+        "Default",
+        "OtherWriteDown",
+      ]);
+      return args.length === 2 && reason !== null
+        ? { fn: "close_defaulted", loanId, reason }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+export function decodeReverseRepayCall(
+  fn: string,
+  args: unknown,
+): ReverseRepayCall | null {
+  if (fn !== "reverse_repay" || !Array.isArray(args)) return null;
+  return args.length === 3 &&
+    isU32(args[0]) &&
+    isU32(args[1]) &&
+    isHash(args[2])
+    ? {
+        fn: "reverse_repay",
+        loanId: args[0],
+        repaymentId: args[1],
+        refHash: args[2],
+      }
+    : null;
+}
+
+export function decodePendingCall(
+  fn: string,
+  args: unknown,
+): PendingCall | null {
+  return (
+    decodeSecurityCall(fn, args) ??
+    decodeLoanRegistryCall(fn, args) ??
+    decodeReverseRepayCall(fn, args)
+  );
+}
+
+function callLoanId(call: PendingCall | null): number | null {
+  return call !== null && "loanId" in call ? call.loanId : null;
+}
+
 function toUnix(iso: string): number {
   return Math.floor(Date.parse(iso) / 1000);
 }
 
-export function fromServed(op: PendingOperation): PendingOpItem {
-  const call = decodeSecurityCall(op.function, op.args);
+export function fromServed(
+  op: PendingOperation,
+  loanId?: number | null,
+): PendingOpItem {
+  const call = decodePendingCall(op.function, op.args);
   return {
     key: op.operation_id,
     operationId: op.operation_id,
@@ -227,10 +407,11 @@ export function fromServed(op: PendingOperation): PendingOpItem {
     readyAt: toUnix(op.ready_at),
     expiresAt: toUnix(op.expires_at),
     state: op.state,
+    targetKind: op.target_kind,
     call,
     rawArgs: op.args,
     source: "indexed",
-    loanId: call?.fn === "set_terms" ? call.loanId : null,
+    loanId: loanId ?? callLoanId(call),
     executed: null,
   };
 }
@@ -270,10 +451,11 @@ export function fromSession(
     readyAt,
     expiresAt,
     state: stateAt(readyAt, expiresAt, nowSec),
+    targetKind: councilTarget(op.call),
     call: op.call,
     rawArgs: null,
     source: "session",
-    loanId: op.loanId ?? null,
+    loanId: op.loanId ?? callLoanId(op.call),
     executed: null,
   };
 }
@@ -304,19 +486,22 @@ export function mergePendingOps({
   loanId: number | null;
   nowSec: number;
 }): PendingOpItem[] {
-  const securityServed = served.filter(
-    (op) => op.target_kind === "security_registry",
-  );
-  const servedIds = new Set(securityServed.map((op) => op.operation_id));
-  const indexed = securityServed.map(fromServed);
+  const seen = new Set<string>();
+  const unique = served.filter((op) => {
+    if (seen.has(op.operation_id)) return false;
+    seen.add(op.operation_id);
+    return true;
+  });
+  const indexed = unique.map((op) => fromServed(op, loanId));
   const local = session
-    .filter(
-      (op) => op.chainId === chainId && loanId !== null && op.loanId === loanId,
-    )
+    .filter((op) => op.chainId === chainId)
     .map((op) => fromSession(op, nowSec))
     .filter(
       (item): item is PendingOpItem =>
-        item !== null && !servedIds.has(item.operationId),
+        item !== null &&
+        loanId !== null &&
+        item.loanId === loanId &&
+        !seen.has(item.operationId),
     )
     .map((item) => withExecuted(item, executed))
     .filter((item) => item.executed !== null || !isExecutedHere(item, session));
@@ -327,6 +512,68 @@ export function mergePendingOps({
     (a, b) =>
       a.readyAt - b.readyAt || a.operationId.localeCompare(b.operationId),
   );
+}
+
+export function servedReadyAtById(
+  ops: ReadonlyArray<PendingOperation>,
+): ReadonlyMap<string, number> {
+  return new Map(ops.map((op) => [op.operation_id, toUnix(op.ready_at)]));
+}
+
+export function usePruneExecuted(
+  chainId: number,
+  ops: ReadonlyArray<PendingOperation>,
+  fetchedAt: number,
+): void {
+  useEffect(() => {
+    pruneExecutedOperations(chainId, servedReadyAtById(ops), fetchedAt);
+  }, [chainId, ops, fetchedAt]);
+}
+
+const NO_OPS: ReadonlyArray<PendingOperation> = [];
+
+export function useLoanPendingOps({
+  chainId,
+  loanId,
+  entry,
+  extraServed = NO_OPS,
+  extraFetchedAt,
+}: {
+  chainId: number;
+  loanId: number | null;
+  entry: LoanBookEntry | undefined;
+  extraServed?: ReadonlyArray<PendingOperation>;
+  extraFetchedAt?: number;
+}): PendingOpItem[] {
+  const loanBook = useLoanBook();
+  const session = useScheduledOps(chainId);
+  const executed = useExecutedOperations(chainId);
+  const loans = loanBook.data?.loans;
+  const chainOps = useMemo(
+    () => [
+      ...extraServed,
+      ...(loans ?? [])
+        .filter((loan) => loan.chain_id === chainId)
+        .flatMap((loan) => loan.pending_operations ?? []),
+    ],
+    [extraServed, loans, chainId],
+  );
+  const fetchTimes = [loanBook.dataUpdatedAt, extraFetchedAt].filter(
+    (time): time is number => time !== undefined,
+  );
+  usePruneExecuted(
+    chainId,
+    chainOps,
+    fetchTimes.length === 0 ? 0 : Math.min(...fetchTimes),
+  );
+  return mergePendingOps({
+    served: [...extraServed, ...(entry?.pending_operations ?? [])],
+    session,
+    executed,
+    chainId,
+    loanId,
+    nowSec: Date.now() / 1000,
+  });
 }
 
 function isExecutedHere(
@@ -344,10 +591,32 @@ export function recordNumberOf(item: PendingOpItem): number | null {
   return isU32(first) ? first : null;
 }
 
+export function repaymentNumberOf(item: PendingOpItem): number | null {
+  if (item.call?.fn === "reverse_repay") return item.call.repaymentId;
+  const second = Array.isArray(item.rawArgs) ? item.rawArgs[1] : null;
+  return isU32(second) ? second : null;
+}
+
 export function pendingActionLabel(item: PendingOpItem): string {
   const record = recordNumberOf(item);
   const suffix = record === null ? "" : ` · record #${record}`;
   switch (item.fn) {
+    case "set_default":
+      return "Declare default";
+    case "cure":
+      return "Cure";
+    case "amend_economics":
+      return "Amend economics";
+    case "adjust_interest":
+      return "Adjust interest";
+    case "write_down":
+      return "Write down";
+    case "close_defaulted":
+      return "Close defaulted loan";
+    case "reverse_repay": {
+      const repayment = repaymentNumberOf(item);
+      return `Reverse repayment${repayment === null ? "" : ` · repayment #${repayment}`}`;
+    }
     case "set_terms":
       return "Set terms";
     case "resolve_flag":
@@ -382,9 +651,47 @@ function termsForRows(
   };
 }
 
-export function pendingArgRows(item: PendingOpItem): LabelValue[] {
+const CLOSURE_LABELS: Record<RiskCouncilClosureReason, string> = {
+  Default: "Default",
+  OtherWriteDown: "Other write-down",
+};
+
+export function pendingArgRows(
+  item: PendingOpItem,
+  chainId: number,
+): LabelValue[] {
   const call = item.call;
   switch (call?.fn) {
+    case "set_default":
+    case "cure":
+      return [];
+    case "amend_economics":
+      return [
+        {
+          label: "New rate",
+          value: `${formatBpsRate(call.rateBps)} (${call.rateBps} bps)`,
+        },
+        { label: "New maturity", value: formatMaturityDate(call.maturity) },
+      ];
+    case "adjust_interest":
+      return [
+        {
+          label: "Delta",
+          value: formatSignedChainAmount(call.delta, chainId),
+        },
+        { label: "Reason hash", value: shortHash(call.reasonHash) },
+      ];
+    case "write_down":
+      return [
+        { label: "Amount", value: formatChainAmount(call.amount, chainId) },
+      ];
+    case "close_defaulted":
+      return [{ label: "Closure reason", value: CLOSURE_LABELS[call.reason] }];
+    case "reverse_repay":
+      return [
+        { label: "Repayment", value: `#${call.repaymentId}` },
+        { label: "Reference hash", value: shortHash(call.refHash) },
+      ];
     case "set_terms":
       return formatTermsRows(termsForRows(call)).map((row) =>
         row.label === "Payment term"
@@ -424,6 +731,26 @@ export function callerText(
     : short;
 }
 
+function executeErrorCopy(
+  kind: PendingTargetKind,
+  details: string,
+): string | null {
+  switch (kind) {
+    case "minter":
+      return (
+        recoveryErrorCopy("execute", details) ??
+        riskCouncilErrorCopy("execute", details)
+      );
+    case "security_registry":
+      return (
+        riskCouncilErrorCopy("execute", details) ??
+        securityRegistryErrorCopy(details)
+      );
+    default:
+      return riskCouncilErrorCopy("execute", details);
+  }
+}
+
 export function usePendingOperationView({
   chainId,
   item,
@@ -441,6 +768,7 @@ export function usePendingOperationView({
   const blocked = stellarOnlyActionReason(chainId);
   const isCaller = address != null && address === item.caller;
   const wrongTarget = item.target !== expectedTarget;
+  const contract = PENDING_CONTRACT_NAMES[item.targetKind];
   const isExecuted = item.executed !== null;
   const ready = item.state === "ready" && !isExecuted;
   const gate = ready ? executeGate : null;
@@ -450,7 +778,7 @@ export function usePendingOperationView({
     : (blocked ??
       (isCaller ? null : otherWalletCopy(item.caller)) ??
       (wrongTarget
-        ? pendingTargetMismatch(truncateAddress(item.target))
+        ? pendingTargetMismatch(truncateAddress(item.target), contract)
         : null) ??
       gate);
 
@@ -459,7 +787,7 @@ export function usePendingOperationView({
   if (error != null && !(error instanceof NoLongerScheduledError)) {
     if (error instanceof PendingTargetMismatchError) {
       userError = {
-        message: pendingTargetMismatch(truncateAddress(error.target)),
+        message: pendingTargetMismatch(truncateAddress(error.target), contract),
         details: error.message,
         isSpecific: true,
       };
@@ -477,11 +805,7 @@ export function usePendingOperationView({
       };
     } else {
       const mapped = toUserError(error, "The Risk Council action failed.");
-      const copy =
-        riskCouncilErrorCopy("execute", mapped.details) ??
-        (councilTarget(item.fn as CouncilCall["fn"]) === "security_registry"
-          ? securityRegistryErrorCopy(mapped.details)
-          : null);
+      const copy = executeErrorCopy(item.targetKind, mapped.details);
       userError = copy
         ? { ...mapped, message: copy, isSpecific: true }
         : mapped;
@@ -516,7 +840,8 @@ export function usePendingOperationView({
           caller: item.caller,
           target: item.target,
           expectedTarget,
-          paused: executeGate != null,
+          paused:
+            item.targetKind === "security_registry" && executeGate != null,
           fn: item.fn,
           argsXdr: item.argsXdr,
         })

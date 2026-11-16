@@ -9,6 +9,7 @@ import {
 } from "./accessManager";
 import { hexToBytes32ScVal } from "./minter";
 import { sha256Hex } from "./hash";
+import { operationArgsXdr } from "./scheduledOperation";
 import { enumTag } from "./enumTag";
 import { simulateRead, type SimulateReadOptions } from "./simulateRead";
 
@@ -95,6 +96,10 @@ export function encodeRiskCouncilArgs(call: RiskCouncilCall): xdr.ScVal[] {
     default:
       throw new Error("encodeRiskCouncilArgs: unknown function");
   }
+}
+
+export function riskCouncilArgsXdr(call: RiskCouncilCall): string {
+  return operationArgsXdr(encodeRiskCouncilArgs(call));
 }
 
 export interface RiskCouncilRelayParams extends Omit<

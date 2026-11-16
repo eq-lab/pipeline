@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { useState } from "react";
 import { riskCouncilReasonHash } from "@pipeline/wallet-connect";
+import { ENV } from "@/lib/env";
 import { dateInputToUnixUtc, formatMaturityDate } from "@/utils/formatDate";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { percentToBps } from "@/utils/rateUnits";
@@ -9,6 +10,7 @@ import type { RiskCouncilCall } from "@/api/useRiskCouncil";
 import { useLoanSecurity } from "@/api/useLoanSecurity";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import { formatChainAmount } from "./-repayment-recovery";
+import { useLoanPendingOps, type PendingOpItem } from "./-risk-council-pending";
 import {
   amendEligibility,
   formatLoanLabel,
@@ -91,6 +93,9 @@ export interface RiskCouncilRetermView {
   eligibilityNote: string | null;
   amend: AmendFormView;
   adjust: AdjustFormView;
+  pending: PendingOpItem[];
+  expectedTarget: string;
+  pendingGate: string | null;
 }
 
 function useReasonHash(reason: string): string | null {
@@ -139,6 +144,11 @@ export function useRiskCouncilReterm(
     enabled: eligible,
   });
 
+  const pending = useLoanPendingOps({
+    chainId,
+    loanId: base.loanId,
+    entry: base.entry,
+  });
   const entry = base.entry;
   const chain = base.chainState?.chain;
   const money = base.chainState?.money;
@@ -180,5 +190,8 @@ export function useRiskCouncilReterm(
       reasonHash,
       action: adjust,
     },
+    pending,
+    expectedTarget: ENV.STELLAR_LOAN_REGISTRY_ID,
+    pendingGate: notAvailableNote(base.chainStatus),
   };
 }
