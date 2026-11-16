@@ -2193,14 +2193,14 @@ line, whichever section it lands in.
 - **Impact:** None visible today; the user flagged it as a bottleneck to retire. The Trustee has the mirror-image gap (its target-chain selector can offer a chain the API does not serve, #1602).
 - **Resolution:** #1608 shipped `GET /v1/chains`; `useChainServed` now reads that list once (`queryKey: ["chains"]`) and the probe is gone.
 
-### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session [RESOLVED 2026-11-09 / #1765]
+### TD-156: Cash Management's EVM custody USDC balance read is missing, so the SwapDialog balance shows `—` on an EVM session [RESOLVED 2026-11-16 / #1765, #1684]
 
 - **Date:** 2026-10-27
 - **Location:** `packages/trustee/src/api/useUsdcCustodyBalance.ts` (Stellar SAC `getSacBalance` only), `packages/trustee/src/routes/-cash-management.ts` (`usdcBalanceValue` gated to the Stellar session) — found while fixing #1669.
 - **Gap:** There is no EVM read of the custody wallet's USDC balance. #1669 gates the SwapDialog balance to the Stellar session so an EVM session never shows another chain's number.
 - **Impact:** On an EVM session the SwapDialog "Balance" and Max chip show `—`.
 - **Suggested fix:** Add an EVM arm of `useUsdcCustodyBalance` (ERC-20 `balanceOf` on the EVM custody address via the shared viem client), selected by the session chain; drop the gate once it lands.
-- **Resolution:** Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more.
+- **Resolution:** Resolved by #1765: the SwapDialog is removed; no Cash Management view shows a custody balance any more. #1684 added the EVM arm (`getErc20Balance` + `VITE_EVM_USDC_ADDRESS` / `VITE_EVM_USDC_CUSTODY_ADDRESS`) and dropped the Capital Allocation card's Stellar-only gate.
 
 ### TD-157: Trustee has no on-chain `Minter.disburse`, so trustee-drawn Stellar loans stay `Approved` and `repay` reverts `WrongCurrentStatus`
 

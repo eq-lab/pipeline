@@ -36,4 +36,4 @@ requests on both chains; a trustee wallet allow-listed on both. No Figma for the
 **Expected outcomes:**
 
 - The request is `GET /v1/withdrawal-queue?chain_id=560048`; the chip reads "Hoodi"; the figures are Hoodi's only.
-- The On/Off-ramp tab follows the same chain (see #1669); the Capital-Wallet balance shows only on a Stellar session (EVM custody read: TD-156).
+- The On/Off-ramp tab follows the same chain (see #1669); the Capital-Wallet balance shows the session chain's custody USDC (#1684).

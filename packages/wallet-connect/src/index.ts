@@ -367,6 +367,8 @@ export {
   encodeEvmRepayCalldata,
 } from "./evm/contracts/minter";
 export type { EvmReverseRepayArgs, EvmRepayArgs } from "./evm/contracts/minter";
+export { getErc20Balance } from "./evm/erc20Balance";
+export type { GetErc20BalanceParams, Erc20Balance } from "./evm/erc20Balance";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";

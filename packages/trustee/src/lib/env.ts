@@ -154,6 +154,8 @@ export const ENV = Object.freeze({
   STELLAR_CAPITAL_WALLET_ID: readString("VITE_STELLAR_CAPITAL_WALLET_ID", ""),
 
   EVM_CAPITAL_WALLET_ADDRESS: readString("VITE_EVM_CAPITAL_WALLET_ADDRESS", ""),
+  EVM_USDC_ADDRESS: readString("VITE_EVM_USDC_ADDRESS", ""),
+  EVM_USDC_CUSTODY_ADDRESS: readString("VITE_EVM_USDC_CUSTODY_ADDRESS", ""),
 
   /**
    * Sibling-deployment URLs for the cross-deployment network switcher

@@ -23,6 +23,7 @@ import type { UseUsdcCustodyBalanceResult } from "@/api/useUsdcCustodyBalance";
 
 vi.mock("@pipeline/wallet-connect", () => ({
   getSacBalance: vi.fn(),
+  getErc20Balance: vi.fn(),
 }));
 
 function mockCapitalAllocation(overrides: Partial<UseCapitalAllocationResult>) {
@@ -47,10 +48,9 @@ function mockUsdcCustodyBalance(
     isLoading: false,
     error: null,
   };
-  vi.spyOn(usdcCustodyBalanceModule, "useUsdcCustodyBalance").mockReturnValue({
-    ...base,
-    ...overrides,
-  });
+  return vi
+    .spyOn(usdcCustodyBalanceModule, "useUsdcCustodyBalance")
+    .mockReturnValue({ ...base, ...overrides });
 }
 
 afterEach(() => {
@@ -638,21 +638,34 @@ describe("useCapitalAllocationCard — session chain scope (#1601)", () => {
       chainId: 99_000_001,
       data: { total: "96000000.000000", buckets },
     });
-    mockUsdcCustodyBalance({ data: "8400000.0000000" });
+    const spy = mockUsdcCustodyBalance({ data: "8400000.0000000" });
     const result = useCapitalAllocationCard();
     expect(result.chainLabel).toBe("Stellar");
     expect(result.legend[0]!.value).toBe("$8.4M");
     expect(result.totalDisplay).toBe("$104,400,000");
+    expect(spy).toHaveBeenCalledWith(99_000_001);
   });
 
-  it("does not fold the Stellar custody read into an EVM session's card", () => {
+  it("folds the EVM custody read into an EVM session's card", () => {
     mockCapitalAllocation({
       chainId: 560048,
       data: { total: "96000000.000000", buckets },
     });
-    mockUsdcCustodyBalance({ data: "8400000.0000000" });
+    const spy = mockUsdcCustodyBalance({ data: "10000.000000" });
     const result = useCapitalAllocationCard();
     expect(result.chainLabel).toBe("Hoodi");
+    expect(result.legend[0]!.value).toBe("$10K");
+    expect(result.totalDisplay).toBe("$96,010,000");
+    expect(spy).toHaveBeenCalledWith(560048);
+  });
+
+  it("shows the Capital Wallet as unknown and a backend-only total when the EVM read has no data", () => {
+    mockCapitalAllocation({
+      chainId: 560048,
+      data: { total: "96000000.000000", buckets },
+    });
+    mockUsdcCustodyBalance({ data: undefined });
+    const result = useCapitalAllocationCard();
     expect(result.legend[0]!.value).toBe("—");
     expect(result.totalDisplay).toBe("$96,000,000");
   });

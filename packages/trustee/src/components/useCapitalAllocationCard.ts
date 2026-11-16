@@ -12,7 +12,6 @@
  */
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useUsdcCustodyBalance } from "@/api/useUsdcCustodyBalance";
-import { ENV } from "@/lib/env";
 import { targetChainLabel } from "@/lib/targetChains";
 import { formatCompactUsd, formatFullUsd } from "@/utils/formatUsd";
 import { toUserError } from "@/utils/userError";
@@ -119,9 +118,8 @@ function computeBarFraction(
 
 export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
   const { chainId, data, isLoading, error } = useCapitalAllocation();
-  const custody = useUsdcCustodyBalance();
-  const onChainCapitalWallet =
-    chainId === ENV.STELLAR_CHAIN_ID ? custody.data : undefined;
+  const custody = useUsdcCustodyBalance(chainId);
+  const onChainCapitalWallet = custody.data;
 
   const effectiveCapitalWallet =
     data?.buckets.capital_wallet ?? onChainCapitalWallet;

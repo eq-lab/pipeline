@@ -250,10 +250,15 @@ it grows as Trustee flow sub-issues of epic #775 land.
 | `VITE_API_BASE_URL`              | `http://localhost:8080` |
 | `VITE_EVM_LOAN_REGISTRY_ADDRESS` | empty (unconfigured)    |
 | `VITE_EVM_MINTER_ADDRESS`        | empty (unconfigured)    |
+| `VITE_EVM_USDC_ADDRESS`          | empty (unconfigured)    |
+| `VITE_EVM_USDC_CUSTODY_ADDRESS`  | empty (unconfigured)    |
 
 The two EVM contract addresses must equal the backend's per-chain values:
 `CHAIN_<id>_EVM_API_LOAN_REGISTRY_ADDRESS` and `CHAIN_<id>_EVM_INDEXER_MINTER_ADDRESS`.
 Empty means unconfigured; EVM flows that need them short-circuit with a "not configured" error.
+
+`VITE_EVM_USDC_ADDRESS` is the USDC ERC-20 and `VITE_EVM_USDC_CUSTODY_ADDRESS` is the deposit custody account
+(`CHAIN_<id>_EVM_API_CUSTODY_ADDRESSES`). Empty means the Capital Wallet on-chain read shows `—` on an EVM session.
 
 ```bash
 docker run --rm -p 8082:80 \
