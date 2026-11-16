@@ -1,7 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-pending-operations
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import type { ScheduledOp } from "@/lib/riskCouncilOps";
+import type { ExecutedOperation, ScheduledOp } from "@/lib/riskCouncilOps";
 import {
   HASH_A,
   HASH_B,
@@ -36,6 +36,8 @@ vi.mock("@/api/useRiskCouncil", async () => {
 import {
   NoLongerScheduledError,
   PendingArgsMismatchError,
+  PendingTargetMismatchError,
+  RegistryPausedError,
 } from "@/api/useRiskCouncil";
 import {
   callerText,
@@ -307,14 +309,13 @@ describe("fromSession", () => {
     expect(at(READY_AT + SECONDS_PER_WEEK)).toBe("expired");
   });
 
-  it("requires every chain field and skips executed ops", () => {
+  it("requires every chain field", () => {
     expect(fromSession(sessionOp({ operationId: undefined }), 0)).toBeNull();
     expect(fromSession(sessionOp({ readyAt: 0 }), 0)).toBeNull();
     expect(fromSession(sessionOp({ readyAt: undefined }), 0)).toBeNull();
     expect(fromSession(sessionOp({ caller: undefined }), 0)).toBeNull();
     expect(fromSession(sessionOp({ target: undefined }), 0)).toBeNull();
     expect(fromSession(sessionOp({ argsXdr: undefined }), 0)).toBeNull();
-    expect(fromSession(sessionOp({ executedHere: true }), 0)).toBeNull();
   });
 
   it("builds an item from the stored call", () => {
@@ -329,10 +330,18 @@ describe("fromSession", () => {
   });
 });
 
+function executedMap(
+  entry: Partial<ExecutedOperation> & { operationId: string },
+): ReadonlyMap<string, ExecutedOperation> {
+  return new Map([
+    [entry.operationId, { hash: "EH", readyAt: null, executedAt: 0, ...entry }],
+  ]);
+}
+
 describe("mergePendingOps", () => {
   const base = {
     session: [] as ScheduledOp[],
-    executedIds: new Set<string>(),
+    executed: new Map<string, ExecutedOperation>(),
     chainId: STELLAR,
     loanId: 7,
     nowSec: READY_AT,
@@ -364,16 +373,83 @@ describe("mergePendingOps", () => {
     expect(items[0]!.source).toBe("indexed");
   });
 
-  it("hides executed ids from both sources", () => {
-    const sessionId = "11".repeat(32);
+  it("keeps executed rows visible with their hash while the API still serves them", () => {
     const keepId = "22".repeat(32);
     const items = mergePendingOps({
       ...base,
       served: [pendingOp(), pendingOp({ operation_id: keepId })],
-      session: [sessionOp({ operationId: sessionId })],
-      executedIds: new Set([OPERATION_ID, sessionId]),
+      executed: executedMap({ operationId: OPERATION_ID, readyAt: READY_AT }),
     });
-    expect(items.map((i) => i.operationId)).toEqual([keepId]);
+    expect(items.map((i) => [i.operationId, i.executed])).toEqual([
+      [keepId, null],
+      [OPERATION_ID, { hash: "EH" }],
+    ]);
+  });
+
+  it("marks an executed session row", () => {
+    const sessionId = "11".repeat(32);
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [sessionOp({ operationId: sessionId, executedHere: true })],
+      executed: executedMap({ operationId: sessionId, readyAt: READY_AT }),
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.executed).toEqual({ hash: "EH" });
+  });
+
+  it("drops an executed session row that has no executed record", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [sessionOp({ executedHere: true })],
+    });
+    expect(items).toEqual([]);
+  });
+
+  it("shows a re-scheduled operation with the same id but another ready time", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [
+        pendingOp({
+          ready_at: new Date((READY_AT + 500) * 1000).toISOString(),
+        }),
+      ],
+      executed: executedMap({ operationId: OPERATION_ID, readyAt: READY_AT }),
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]!.executed).toBeNull();
+  });
+
+  it("matches an executed record without a ready time by id alone", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [pendingOp()],
+      executed: executedMap({ operationId: OPERATION_ID, readyAt: null }),
+    });
+    expect(items[0]!.executed).toEqual({ hash: "EH" });
+  });
+
+  it("lists only SecurityRegistry operations", () => {
+    const loanId = "33".repeat(32);
+    const minterId = "44".repeat(32);
+    const items = mergePendingOps({
+      ...base,
+      served: [
+        pendingOp(),
+        pendingOp({
+          operation_id: loanId,
+          target_kind: "loan_registry",
+          function: "set_default",
+        }),
+        pendingOp({
+          operation_id: minterId,
+          target_kind: "minter",
+          function: "reverse_repay",
+        }),
+      ],
+    });
+    expect(items.map((i) => i.operationId)).toEqual([OPERATION_ID]);
   });
 
   it("ignores session rows of another chain or loan or without an id", () => {
@@ -515,9 +591,39 @@ describe("usePendingOperationView", () => {
       operationId: OPERATION_ID,
       caller: SCHEDULER,
       target: SECURITY_REGISTRY,
+      expectedTarget: SECURITY_REGISTRY,
+      paused: false,
       fn: "set_terms",
       argsXdr: "SERVEDXDR",
     });
+  });
+
+  it("passes the paused flag to the hook", () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ hash: "H" });
+    mocks.execute.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+      error: null,
+      hash: null,
+      stage: null,
+      reset: vi.fn(),
+    });
+    view({ executeGate: "paused" }).run();
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ paused: true }),
+    );
+  });
+
+  it("shows an executed row with its hash and a disabled button", () => {
+    const item = {
+      ...fromServed(pendingOp()),
+      executed: { hash: "EXECHASH" },
+    };
+    const v = view({ item });
+    expect(v.disabled).toBe(true);
+    expect(v.roleLine).toBe("Executed");
+    expect(v.hash).toBe("EXECHASH");
+    expect(v.notice).toBeNull();
   });
 
   function withError(error: Error) {
@@ -541,6 +647,15 @@ describe("usePendingOperationView", () => {
   it("maps an argument mismatch", () => {
     withError(new PendingArgsMismatchError());
     expect(view().error?.message).toMatch(/do not match this operation/);
+  });
+
+  it("maps the hook's target and paused guards", () => {
+    withError(new PendingTargetMismatchError("COTHERREGISTRY1234567890XYZ"));
+    expect(view().error?.message).toBe(
+      "This operation targets another SecurityRegistry (COTHER…0XYZ) than this console is configured for.",
+    );
+    withError(new RegistryPausedError());
+    expect(view().error?.message).toMatch(/paused/);
   });
 
   it("maps AccessManager and SecurityRegistry contract errors", () => {

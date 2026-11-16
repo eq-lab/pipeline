@@ -82,6 +82,7 @@ export interface UseLoanSecurityResult {
   isLoading: boolean;
   error: Error | null;
   notConfigured: boolean;
+  dataUpdatedAt: number;
   refetch: () => void;
 }
 
@@ -117,6 +118,7 @@ export function useLoanSecurity(
     isLoading: enabled && query.isLoading,
     error: enabled ? query.error : null,
     notConfigured,
+    dataUpdatedAt: enabled ? query.dataUpdatedAt : 0,
     refetch: () => void query.refetch(),
   };
 }

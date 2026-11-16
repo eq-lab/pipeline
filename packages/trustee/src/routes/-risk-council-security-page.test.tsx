@@ -1,6 +1,7 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -9,6 +10,7 @@ import {
 } from "@testing-library/react";
 import {
   _resetRiskCouncilOpsForTests,
+  markOperationExecuted,
   recordScheduledOp,
 } from "@/lib/riskCouncilOps";
 import {
@@ -69,6 +71,8 @@ vi.mock("@/api/useRiskCouncil", async () => {
   return {
     NoLongerScheduledError: actual.NoLongerScheduledError,
     PendingArgsMismatchError: actual.PendingArgsMismatchError,
+    PendingTargetMismatchError: actual.PendingTargetMismatchError,
+    RegistryPausedError: actual.RegistryPausedError,
     useRiskCouncilAccess: vi.fn(),
     useRiskCouncilLoanState: vi.fn(),
     useRiskCouncilRelay: vi.fn(),
@@ -712,6 +716,8 @@ describe("Security page — scheduled operations", () => {
       operationId: ID_READY,
       caller: READY_SET_TERMS.caller,
       target: READY_SET_TERMS.target,
+      expectedTarget: READY_SET_TERMS.target,
+      paused: false,
       fn: "set_terms",
       argsXdr: READY_SET_TERMS.args_xdr,
     });
@@ -775,6 +781,115 @@ describe("Security page — scheduled operations", () => {
         argsXdr: "RELEASEXDR",
       }),
     );
+  });
+
+  it("asks for confirmation for a release whose arguments do not decode", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_RELEASE,
+          function: "release_with_consent",
+          args: [1, "NOT-A-HASH"],
+        }),
+      ),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_RELEASE}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog`),
+    ).toHaveTextContent("Release record #1?");
+    fireEvent.click(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog-confirm`),
+    );
+    expect(pendingExecute.mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a generic confirmation when the release record number is unknown", () => {
+    setup(
+      DELAYED,
+      served(
+        pendingOp({
+          operation_id: ID_RELEASE,
+          function: "release_with_consent",
+          args: "garbage",
+        }),
+      ),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByTestId(`${PENDING}-${ID_RELEASE}-button`));
+    expect(pendingExecute.mutateAsync).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId(`${PENDING}-${ID_RELEASE}-confirm-dialog`),
+    ).toHaveTextContent("Release this record?");
+  });
+
+  it("lists only SecurityRegistry operations", () => {
+    setup(
+      DELAYED,
+      served(
+        READY_SET_TERMS,
+        pendingOp({
+          operation_id: ID_WAITING,
+          target_kind: "loan_registry",
+          function: "set_default",
+          args: [7],
+        }),
+      ),
+    );
+    renderRoute();
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_WAITING}-button`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps an executed row with its hash until the API stops serving it", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    const view = renderRoute();
+    act(() => markOperationExecuted(STELLAR, ID_READY, "EXECHASH", READY_AT));
+    expect(screen.getAllByTestId(`${PENDING}-row`)).toHaveLength(1);
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-role`)).toHaveTextContent(
+      "Executed",
+    );
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-hash`)).toHaveTextContent(
+      "EXECHASH",
+    );
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeDisabled();
+    const Page = Route.options.component as React.ComponentType;
+    mockSecurity.mockReturnValue(
+      securityResult({
+        data: served() as never,
+        dataUpdatedAt: Date.now() + 60_000,
+      }),
+    );
+    view.rerender(<Page />);
+    expect(screen.queryByTestId(`${PENDING}-row`)).not.toBeInTheDocument();
+    expect(screen.getByTestId(`${PENDING}-empty`)).toBeInTheDocument();
+  });
+
+  it("shows the same operation again once it is re-scheduled with a new ready time", () => {
+    setup(DELAYED, served(READY_SET_TERMS));
+    const view = renderRoute();
+    act(() => markOperationExecuted(STELLAR, ID_READY, "EXECHASH", READY_AT));
+    const Page = Route.options.component as React.ComponentType;
+    mockSecurity.mockReturnValue(
+      securityResult({
+        data: served(
+          pendingOp({
+            operation_id: ID_READY,
+            ready_at: new Date((READY_AT + 900) * 1000).toISOString(),
+          }),
+        ) as never,
+        dataUpdatedAt: Date.now() + 60_000,
+      }),
+    );
+    view.rerender(<Page />);
+    expect(screen.getByTestId(`${PENDING}-${ID_READY}-button`)).toBeEnabled();
+    expect(
+      screen.queryByTestId(`${PENDING}-${ID_READY}-hash`),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the no-longer-scheduled line after a cancelled operation", () => {

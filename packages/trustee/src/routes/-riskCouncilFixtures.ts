@@ -58,6 +58,7 @@ export function securityResult(
     isLoading: false,
     error: null,
     notConfigured: false,
+    dataUpdatedAt: 0,
     refetch: () => {},
     ...overrides,
   };

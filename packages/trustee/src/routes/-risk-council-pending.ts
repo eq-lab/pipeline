@@ -15,6 +15,8 @@ import type { LoanSecurityTerms } from "@/api/useLoanSecurity";
 import {
   NoLongerScheduledError,
   PendingArgsMismatchError,
+  PendingTargetMismatchError,
+  RegistryPausedError,
   usePendingOperationExecute,
   type CouncilCall,
 } from "@/api/useRiskCouncil";
@@ -26,7 +28,11 @@ import {
   securityRegistryErrorCopy,
   stageLabel,
 } from "@/lib/accessManagerAction";
-import { councilTarget, type ScheduledOp } from "@/lib/riskCouncilOps";
+import {
+  councilTarget,
+  type ExecutedOperation,
+  type ScheduledOp,
+} from "@/lib/riskCouncilOps";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 import { truncateAddress } from "@/lib/truncateAddress";
 import { toUserError, type UserFacingError } from "@/utils/userError";
@@ -39,6 +45,9 @@ export const PENDING_SESSION_NOTE =
   "Scheduled from this console. The list catches up within a minute.";
 export const PENDING_ARGS_MISMATCH =
   "The served arguments do not match this operation on chain. Reload the page.";
+export const PENDING_EXECUTED = "Executed";
+export const PENDING_PAUSED =
+  "The SecurityRegistry is paused. Executing is blocked until it resumes.";
 export const SET_TERMS_PENDING_NOTICE =
   "A terms change is already scheduled — see above. Scheduling again creates a second operation with a new 24 h wait.";
 
@@ -80,6 +89,7 @@ export interface PendingOpItem {
   rawArgs: unknown;
   source: "indexed" | "session";
   loanId: number | null;
+  executed: { hash: string } | null;
 }
 
 function isU32(value: unknown): value is number {
@@ -221,6 +231,7 @@ export function fromServed(op: PendingOperation): PendingOpItem {
     rawArgs: op.args,
     source: "indexed",
     loanId: call?.fn === "set_terms" ? call.loanId : null,
+    executed: null,
   };
 }
 
@@ -244,8 +255,7 @@ export function fromSession(
     readyAt <= 0 ||
     caller == null ||
     target == null ||
-    argsXdr == null ||
-    op.executedHere
+    argsXdr == null
   ) {
     return null;
   }
@@ -264,28 +274,41 @@ export function fromSession(
     rawArgs: null,
     source: "session",
     loanId: op.loanId ?? null,
+    executed: null,
   };
+}
+
+function withExecuted(
+  item: PendingOpItem,
+  executed: ReadonlyMap<string, ExecutedOperation>,
+): PendingOpItem {
+  const entry = executed.get(item.operationId);
+  return entry != null &&
+    (entry.readyAt === null || entry.readyAt === item.readyAt)
+    ? { ...item, executed: { hash: entry.hash } }
+    : item;
 }
 
 export function mergePendingOps({
   served,
   session,
-  executedIds,
+  executed,
   chainId,
   loanId,
   nowSec,
 }: {
   served: ReadonlyArray<PendingOperation>;
   session: ReadonlyArray<ScheduledOp>;
-  executedIds: ReadonlySet<string>;
+  executed: ReadonlyMap<string, ExecutedOperation>;
   chainId: number;
   loanId: number | null;
   nowSec: number;
 }): PendingOpItem[] {
-  const servedIds = new Set(served.map((op) => op.operation_id));
-  const indexed = served
-    .filter((op) => !executedIds.has(op.operation_id))
-    .map(fromServed);
+  const securityServed = served.filter(
+    (op) => op.target_kind === "security_registry",
+  );
+  const servedIds = new Set(securityServed.map((op) => op.operation_id));
+  const indexed = securityServed.map(fromServed);
   const local = session
     .filter(
       (op) => op.chainId === chainId && loanId !== null && op.loanId === loanId,
@@ -293,17 +316,29 @@ export function mergePendingOps({
     .map((op) => fromSession(op, nowSec))
     .filter(
       (item): item is PendingOpItem =>
-        item !== null &&
-        !servedIds.has(item.operationId) &&
-        !executedIds.has(item.operationId),
-    );
-  return [...indexed, ...local].sort(
+        item !== null && !servedIds.has(item.operationId),
+    )
+    .map((item) => withExecuted(item, executed))
+    .filter((item) => item.executed !== null || !isExecutedHere(item, session));
+  return [
+    ...indexed.map((item) => withExecuted(item, executed)),
+    ...local,
+  ].sort(
     (a, b) =>
       a.readyAt - b.readyAt || a.operationId.localeCompare(b.operationId),
   );
 }
 
-function recordNumberOf(item: PendingOpItem): number | null {
+function isExecutedHere(
+  item: PendingOpItem,
+  session: ReadonlyArray<ScheduledOp>,
+): boolean {
+  return session.some(
+    (op) => op.operationId === item.operationId && op.executedHere,
+  );
+}
+
+export function recordNumberOf(item: PendingOpItem): number | null {
   if (item.call != null && "recordId" in item.call) return item.call.recordId;
   const first = Array.isArray(item.rawArgs) ? item.rawArgs[0] : null;
   return isU32(first) ? first : null;
@@ -406,21 +441,35 @@ export function usePendingOperationView({
   const blocked = stellarOnlyActionReason(chainId);
   const isCaller = address != null && address === item.caller;
   const wrongTarget = item.target !== expectedTarget;
-  const ready = item.state === "ready";
+  const isExecuted = item.executed !== null;
+  const ready = item.state === "ready" && !isExecuted;
   const gate = ready ? executeGate : null;
 
-  const notice =
-    blocked ??
-    (isCaller ? null : otherWalletCopy(item.caller)) ??
-    (wrongTarget
-      ? pendingTargetMismatch(truncateAddress(item.target))
-      : null) ??
-    gate;
+  const notice = isExecuted
+    ? null
+    : (blocked ??
+      (isCaller ? null : otherWalletCopy(item.caller)) ??
+      (wrongTarget
+        ? pendingTargetMismatch(truncateAddress(item.target))
+        : null) ??
+      gate);
 
   const error = execute.error;
   let userError: UserFacingError | null = null;
   if (error != null && !(error instanceof NoLongerScheduledError)) {
-    if (error instanceof PendingArgsMismatchError) {
+    if (error instanceof PendingTargetMismatchError) {
+      userError = {
+        message: pendingTargetMismatch(truncateAddress(error.target)),
+        details: error.message,
+        isSpecific: true,
+      };
+    } else if (error instanceof RegistryPausedError) {
+      userError = {
+        message: PENDING_PAUSED,
+        details: error.message,
+        isSpecific: true,
+      };
+    } else if (error instanceof PendingArgsMismatchError) {
       userError = {
         message: PENDING_ARGS_MISMATCH,
         details: error.message,
@@ -441,9 +490,10 @@ export function usePendingOperationView({
 
   return {
     action: null,
-    roleLine: pendingStateText(item),
+    roleLine: isExecuted ? PENDING_EXECUTED : pendingStateText(item),
     buttonLabel: "Execute",
     disabled:
+      isExecuted ||
       blocked != null ||
       !ready ||
       !isCaller ||
@@ -454,7 +504,7 @@ export function usePendingOperationView({
     pending: execute.isPending,
     stageText: execute.isPending ? stageLabel(execute.stage, "Working…") : "",
     error: userError,
-    hash: execute.hash,
+    hash: execute.hash ?? item.executed?.hash ?? null,
     noLongerScheduled:
       error instanceof NoLongerScheduledError ? NO_LONGER_SCHEDULED : null,
     chip: null,
@@ -465,6 +515,8 @@ export function usePendingOperationView({
           operationId: item.operationId,
           caller: item.caller,
           target: item.target,
+          expectedTarget,
+          paused: executeGate != null,
           fn: item.fn,
           argsXdr: item.argsXdr,
         })

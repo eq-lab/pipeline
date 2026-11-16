@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
@@ -26,11 +26,17 @@ import {
   secondsToUnitText,
 } from "@/utils/securityTermsUnits";
 import { ENV } from "@/lib/env";
-import { useExecutedOperationIds, useScheduledOps } from "@/lib/riskCouncilOps";
+import {
+  pruneExecutedOperations,
+  useExecutedOperations,
+  useScheduledOps,
+} from "@/lib/riskCouncilOps";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
 import {
   mergePendingOps,
+  PENDING_PAUSED,
+  recordNumberOf,
   SET_TERMS_PENDING_NOTICE,
   type PendingOpItem,
 } from "./-risk-council-pending";
@@ -54,8 +60,7 @@ export const SECURITY_RELEASE_NO_ROLE =
 export const NO_SECURITY_TERMS = "No security terms are set for this loan.";
 export const NO_FLAGGED_RECORDS = "No flagged records.";
 export const NO_OPEN_RECORDS = "No open records.";
-export const SECURITY_PAUSED_NOTE =
-  "The SecurityRegistry is paused. Executing is blocked until it resumes.";
+export const SECURITY_PAUSED_NOTE = PENDING_PAUSED;
 export const REFRESH_PENDING_NOTE =
   "Served state is refreshing after a recent change. It can lag by up to a minute.";
 export const RELEASE_WARNING =
@@ -75,10 +80,15 @@ export function releaseConfirmText(recordId: string): string {
   return `Release record #${recordId}? This burns the record NFT and cannot be undone.`;
 }
 
+export const RELEASE_CONFIRM_GENERIC =
+  "Release this record? This burns the record NFT and cannot be undone.";
+
 export function pendingConfirmText(item: PendingOpItem): string | undefined {
-  return item.call?.fn === "release_with_consent"
-    ? releaseConfirmText(String(item.call.recordId))
-    : undefined;
+  if (item.fn !== "release_with_consent") return undefined;
+  const record = recordNumberOf(item);
+  return record === null
+    ? RELEASE_CONFIRM_GENERIC
+    : releaseConfirmText(String(record));
 }
 
 export type TermsFieldKey =
@@ -480,11 +490,25 @@ export function useRiskCouncilSecurity(
   const executeGate = served?.paused === true ? SECURITY_PAUSED_NOTE : null;
 
   const sessionOps = useScheduledOps(chainId);
-  const executedIds = useExecutedOperationIds(chainId);
+  const executed = useExecutedOperations(chainId);
+  const servedOps = served?.pending_operations;
+  const servedFetchedAt = security.dataUpdatedAt;
+  useEffect(() => {
+    pruneExecutedOperations(
+      chainId,
+      new Map(
+        (servedOps ?? []).map((op) => [
+          op.operation_id,
+          Math.floor(Date.parse(op.ready_at) / 1000),
+        ]),
+      ),
+      servedFetchedAt,
+    );
+  }, [chainId, servedOps, servedFetchedAt]);
   const pending = mergePendingOps({
-    served: served?.pending_operations ?? [],
+    served: servedOps ?? [],
     session: sessionOps,
-    executedIds,
+    executed,
     chainId,
     loanId: base.loanId,
     nowSec: Date.now() / 1000,
@@ -492,6 +516,7 @@ export function useRiskCouncilSecurity(
   const termsPending = pending.some(
     (item) =>
       item.fn === "set_terms" &&
+      item.executed === null &&
       (item.state === "waiting" || item.state === "ready"),
   );
 

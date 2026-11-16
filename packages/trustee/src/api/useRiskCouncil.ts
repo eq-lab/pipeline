@@ -79,11 +79,29 @@ export class NoLongerScheduledError extends Error {
   }
 }
 
+export class PendingTargetMismatchError extends Error {
+  readonly target: string;
+  constructor(target: string) {
+    super("The operation targets another registry than this console.");
+    this.name = "PendingTargetMismatchError";
+    this.target = target;
+  }
+}
+
+export class RegistryPausedError extends Error {
+  constructor() {
+    super("The registry is paused. Executing is blocked until it resumes.");
+    this.name = "RegistryPausedError";
+  }
+}
+
 export interface PendingOperationExecuteInput {
   chainId: number;
   operationId: string;
   caller: string;
   target: string;
+  expectedTarget: string;
+  paused: boolean;
   fn: string;
   argsXdr: string;
 }
@@ -318,7 +336,7 @@ export function useRiskCouncilRelay() {
           target: data.target,
           argsXdr: data.argsXdr,
         });
-      } else markExecuted(chainId, call);
+      } else markExecuted(chainId, call, data.hash);
       invalidateRiskCouncil(queryClient);
       for (const delayMs of [5_000, 15_000]) {
         setTimeout(() => invalidateRiskCouncil(queryClient), delayMs);
@@ -348,7 +366,7 @@ export function usePendingOperationExecute() {
   const queryClient = useQueryClient();
 
   const mutation = useMutation<
-    { hash: string },
+    { hash: string; readyAt: number },
     Error,
     PendingOperationExecuteInput
   >({
@@ -357,12 +375,18 @@ export function usePendingOperationExecute() {
       operationId,
       caller,
       target,
+      expectedTarget,
+      paused,
       fn,
       argsXdr,
     }) => {
       setStage(null);
       const blocked = stellarOnlyActionReason(chainId);
       if (blocked) throw new Error(blocked);
+      if (target !== expectedTarget) {
+        throw new PendingTargetMismatchError(target);
+      }
+      if (paused) throw new RegistryPausedError();
       const accessManagerId = ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID;
       if (!accessManagerId) throw new Error(NOT_CONFIGURED);
       if (!isConnected || !address) {
@@ -382,7 +406,7 @@ export function usePendingOperationExecute() {
         throw new PendingArgsMismatchError();
       }
       if (schedule.readyAt === 0) throw new NoLongerScheduledError();
-      return executeScheduledOperation({
+      const { hash } = await executeScheduledOperation({
         accessManagerId,
         caller,
         target,
@@ -392,9 +416,10 @@ export function usePendingOperationExecute() {
         signTransaction,
         onStageChange: setStage,
       });
+      return { hash, readyAt: schedule.readyAt };
     },
-    onSuccess: (_data, { chainId, operationId }) => {
-      markOperationExecuted(chainId, operationId);
+    onSuccess: ({ hash, readyAt }, { chainId, operationId }) => {
+      markOperationExecuted(chainId, operationId, hash, readyAt);
       invalidateRiskCouncil(queryClient);
       for (const delayMs of [5_000, 15_000]) {
         setTimeout(() => invalidateRiskCouncil(queryClient), delayMs);

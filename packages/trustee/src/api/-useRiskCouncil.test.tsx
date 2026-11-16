@@ -7,6 +7,8 @@ import {
   hubCallsFor,
   NoLongerScheduledError,
   PendingArgsMismatchError,
+  PendingTargetMismatchError,
+  RegistryPausedError,
   usePendingOperationExecute,
   useRiskCouncilAccess,
   useRiskCouncilHubLookups,
@@ -17,7 +19,7 @@ import {
 import {
   _resetRiskCouncilOpsForTests,
   recordScheduledOp,
-  useExecutedOperationIds,
+  useExecutedOperations,
   useScheduledOps,
 } from "@/lib/riskCouncilOps";
 
@@ -413,6 +415,34 @@ describe("useRiskCouncilRelay", () => {
     expect(ops.result.current[0]!.executedHere).toBe(true);
   });
 
+  it("marks the scheduled operation id executed when the form executes", async () => {
+    fakeRelayTimers();
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "OPX",
+      readyAt: 7,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.size).toBe(0);
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.get("OPX")).toMatchObject({ readyAt: 7 });
+  });
+
   it("rejects when not configured, not connected or on EVM", async () => {
     envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "";
     const a = renderHook(() => useRiskCouncilRelay(), {
@@ -622,6 +652,8 @@ describe("usePendingOperationExecute", () => {
     operationId: "OP1",
     caller: "GRC",
     target: "CSECURITY",
+    expectedTarget: "CSECURITY",
+    paused: false,
     fn: "set_terms",
     argsXdr: "AAAA",
   };
@@ -642,6 +674,30 @@ describe("usePendingOperationExecute", () => {
     await expect(result.current.mutateAsync(INPUT)).rejects.toThrow(
       /Only the scheduling wallet/,
     );
+    expect(mocks.readScheduledOperation).not.toHaveBeenCalled();
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("refuses a target other than the expected one before any RPC call", async () => {
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    const error = await result.current
+      .mutateAsync({ ...INPUT, expectedTarget: "COTHER" })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PendingTargetMismatchError);
+    expect((error as PendingTargetMismatchError).target).toBe("CSECURITY");
+    expect(mocks.readScheduledOperation).not.toHaveBeenCalled();
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("refuses while the registry is paused before any RPC call", async () => {
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(
+      result.current.mutateAsync({ ...INPUT, paused: true }),
+    ).rejects.toBeInstanceOf(RegistryPausedError);
     expect(mocks.readScheduledOperation).not.toHaveBeenCalled();
     expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
   });
@@ -705,7 +761,7 @@ describe("usePendingOperationExecute", () => {
     const { result } = renderHook(() => usePendingOperationExecute(), {
       wrapper: makeWrapper(),
     });
-    const executed = renderHook(() => useExecutedOperationIds(STELLAR));
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
     const spy = vi.spyOn(queryClient, "invalidateQueries");
     await act(async () => {
       await result.current.mutateAsync(INPUT);
@@ -729,7 +785,10 @@ describe("usePendingOperationExecute", () => {
         signTransaction: mocks.sign,
       }),
     );
-    expect(executed.result.current.has("OP1")).toBe(true);
+    expect(executed.result.current.get("OP1")).toMatchObject({
+      hash: "EH",
+      readyAt: 1_800_000_000,
+    });
     expect(keys(spy)).toContain("loan-security");
     await waitFor(() => expect(result.current.hash).toBe("EH"));
   });

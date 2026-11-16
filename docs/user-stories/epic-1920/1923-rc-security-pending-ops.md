@@ -37,7 +37,8 @@ Trustee app (`packages/trustee`), page `/risk-council/security/{id}?chain=<stell
 
 - The button is enabled only for this ready row. The wallet prompt appears after a short on-chain check; nothing was typed in the form.
 - The transaction is an AccessManager `execute` of `set_terms` with the scheduled arguments, and the loan's terms change on chain.
-- The row disappears (within a minute at most), the current terms card shows the new terms, and the Set terms notice goes away.
+- The row stays as "Executed" with "Submitted · <tx hash>" and a disabled button, and disappears once the API stops serving it (within a minute or two). The current terms card shows the new terms and the Set terms notice goes away.
+- Scheduling the same terms again later shows a normal waiting row, not an executed one.
 - The form's "No longer scheduled" line does not appear.
 
 ---
@@ -120,4 +121,6 @@ Trustee app (`packages/trustee`), page `/risk-council/security/{id}?chain=<stell
 - The first row reads "Resolve flag · record #N" with the Outcome and the Reason hash shortened to 10 hex characters and "…". The second reads "Release with consent · record #N" with the shortened Consent hash.
 - Clicking "Execute" on the release row opens "Release record #N? This burns the record NFT and cannot be undone." with Cancel and Execute; Escape and the backdrop cancel with nothing sent.
 - Executing a resolve-flag row has no confirmation dialog.
+- A release row whose arguments cannot be decoded (raw "Arguments" JSON) still asks for confirmation ("Release this record? ..." when the record number is unknown); nothing is sent before Confirm.
+- Operations on other contracts of the loan (for example a LoanRegistry `set_default`) are not listed on this page.
 - With no pending operation the card reads "No scheduled operations found."
