@@ -18,7 +18,7 @@ All checks use the real API on staging (Stellar testnet), no localStorage mocks.
 - `bank_cash` on the API minter `CD2LPGLX…` is 0, so a settle there fails with "The minter's bank cash is below this amount. Book the incoming wires first." until wire-ins are booked on that minter (`CAPL5WN3…` holds cash).
 - The app signs against `VITE_STELLAR_YIELD_MINTER_ID`. If the cash book reports a different minter, every action is disabled with "The app's minter differs from the server's cash-book minter." This is an environment alignment for ops, not a defect.
 - The staging API needs `CHAIN_<id>_STELLAR_API_MINTER_ADDRESS` set, otherwise the cash book answers `404 minter_not_configured` (an ops env change).
-- The lender's bank account is not served by the API yet (#1812), so the settle dialog shows "—" for it.
+- The lender's bank account is shown as served; see [1886-trustee-settlement-bank-account.md](./1886-trustee-settlement-bank-account.md).
 
 ---
 
@@ -73,7 +73,7 @@ All checks use the real API on staging (Stellar testnet), no localStorage mocks.
 
 **Then:**
 
-- The amount is pre-filled with the exact on-chain amount, and the Destination bank account row shows "—" with "The API does not serve the lender's bank account yet."
+- The amount is pre-filled with the exact on-chain amount, and the Destination bank account block shows what the API served (see the #1886 stories)
 - The dialog says "The minter settles only the full requested amount ({amount} PLUSD). If a different amount was wired, cancel this request instead."
 - Confirm stays disabled and no signature is requested
 
@@ -136,13 +136,6 @@ All checks use the real API on staging (Stellar testnet), no localStorage mocks.
 
 ---
 
-## Story 9 — The destination bank account shows "—"
+## Story 9 — The destination bank account
 
-**Given** the Settle dialog is open for any wire-out
-
-**When** the Trustee reads the summary
-
-**Then:**
-
-- "Destination bank account" shows "—" with "The API does not serve the lender's bank account yet."
-- The app never shows a guessed account
+Covered by [1886-trustee-settlement-bank-account.md](./1886-trustee-settlement-bank-account.md).

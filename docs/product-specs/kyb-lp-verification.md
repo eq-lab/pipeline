@@ -140,6 +140,8 @@ At least one of `account_number` / `iban` and at least one of `swift_bic_code` /
 
 **LP app.** The KYB modal and the Account page profile card show the masked account and, while the record is open, an Add / Replace form that always starts empty. It is sent only on the save that carries it, and a 400 names the field inline. Frozen records show it read-only, with "contact support" once `Passed` (TD-182). Detail: [account-page.md](../frontend/account-page.md#settlement-bank-account-1885).
 
+**Trustee console.** The full account shows on the LP detail card, in the LP-verdict review dialogs and on Pending wire-outs (row disclosure and settle dialog), with a "no bank account on file" warning when a resolved lender has none. Detail: [trustee-flows.md](../frontend/trustee-flows.md#settlement-bank-account).
+
 **Change after `Passed`.** Nothing in the API changes the account once KYB is `Passed`, and LPs that passed before this feature have none. Ops sets or corrects it by SQL (TD-182). A trustee-only write may follow as a separate issue.
 
 ---

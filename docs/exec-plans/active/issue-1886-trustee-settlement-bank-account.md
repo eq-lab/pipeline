@@ -167,7 +167,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Types.**
+1. [x] **Types.**
    - `packages/trustee/src/api/useLp.ts`: export the interfaces `SettlementBankAccountSummary` and
      `SettlementBankAccountDetails` (fields above). Add
      `settlement_bank_account: SettlementBankAccountSummary | null` and
@@ -175,7 +175,7 @@ _None_
    - `packages/trustee/src/api/useCashBook.ts`: add
      `bank_account?: SettlementBankAccountDetails | null` to `CashBookWireOut` (type import from
      `./useLp`).
-2. **Presenter** `packages/trustee/src/lib/settlementBankAccount.ts`. Header:
+2. [x] **Presenter** `packages/trustee/src/lib/settlementBankAccount.ts`. Header:
    `// spec: docs/frontend/trustee-flows.md#settlement-bank-account`. Exports:
    - `BANK_ACCOUNT_FIELDS` (the order above)
    - `BANK_ACCOUNT_LABELS`
@@ -185,9 +185,9 @@ _None_
    - `wireOutBankAccountState(wire: Pick<CashBookWireOut, "status" | "lp_id" | "bank_account">)`
 
    Use no formatting, no masking and no derivation.
-3. **Icon.** `packages/trustee/src/components/detail/DetailIcons.tsx`: add
+3. [x] **Icon.** `packages/trustee/src/components/detail/DetailIcons.tsx`: add
    `CopyIcon({ size = 16, ...rest })` in the same `GlyphProps` / stroked style as `CheckIcon`.
-4. **Primitive** `packages/trustee/src/components/detail/BankAccountRows.tsx`. Header:
+4. [x] **Primitive** `packages/trustee/src/components/detail/BankAccountRows.tsx`. Header:
    `// spec: docs/frontend/trustee-flows.md#shared-detail-primitives`.
    - Props: `{ details: SettlementBankAccountDetails; testIdPrefix: string }`.
    - Renders one `KeyValueRow` per `bankAccountRows` entry, with `isLast` on the last row.
@@ -197,13 +197,13 @@ _None_
      `hover:bg-[rgba(0,0,128,0.06)]`, like `DOWNLOAD_LINK_CLASS`) wrapping
      `<CopyIcon aria-hidden />`.
    - On click: `void copy(value).then(ok => ok && showToast(`${label} copied`))`.
-5. **Wire-outs hook** `packages/trustee/src/routes/-wire-outs.ts`.
+5. [x] **Wire-outs hook** `packages/trustee/src/routes/-wire-outs.ts`.
    - In the `rows` map, add `bankAccount: wire.bank_account ?? null` and
      `bankAccountState: wireOutBankAccountState(wire)` to `WireOutRow`.
    - Add `const [expandedBankIds, setExpandedBankIds] = useState<ReadonlySet<number>>(() => new Set())`
      and a `toggleBankAccount(id)` function.
    - Return `isBankAccountOpen: (id) => expandedBankIds.has(id)` and `toggleBankAccount`.
-6. **Wire-outs view** `packages/trustee/src/routes/-WireOutsSection.tsx`.
+6. [x] **Wire-outs view** `packages/trustee/src/routes/-WireOutsSection.tsx`.
    - Delete `NO_BANK_ACCOUNT_HINT` and the placeholder `KeyValueRow` in `SettleWireOutDialog`.
    - `WireOutTableRow` returns a fragment: the existing `<tr>` plus, when
      `row.bankAccountState === "served" && section.isBankAccountOpen(row.id)`, a
@@ -218,18 +218,18 @@ _None_
      `CardTitle`-free subheading "Destination bank account" (15px body, `INK_MUTED`) plus the three
      branches from Scope §3. The warning copy is a `const` in `lib/wireOut.ts`
      (`NO_BANK_ACCOUNT_COPY`, `UNRESOLVED_LENDER_BANK_COPY`).
-7. **LP detail** `packages/trustee/src/routes/lp-counterparties.$id.tsx`.
+7. [x] **LP detail** `packages/trustee/src/routes/lp-counterparties.$id.tsx`.
    - Insert `<DetailCard className="gap-[8px] p-[26px]" ariaLabel="Settlement bank account" testId="lp-bank-account">`
      with `<CardTitle>Settlement bank account</CardTitle>` and either `BankAccountRows`
      (`testIdPrefix="lp-bank-account"`) or the empty paragraph.
    - Pass `bankAccount={lp.settlement_bank_account_details ?? null}` to `LpReviewDialog`.
    - Check that `DetailCard` accepts `testId` (it does for `lp-detail-error`).
-8. **Review dialog** `packages/trustee/src/routes/-LpReviewDialog.tsx`.
+8. [x] **Review dialog** `packages/trustee/src/routes/-LpReviewDialog.tsx`.
    - Add the optional `bankAccount` prop.
    - When `action.documentId === undefined`, render a bordered block (`LINE_COLOR` top rule) after
      the description: the "Settlement bank account" label, then `BankAccountRows`
      (`testIdPrefix="lp-review-bank"`) plus, on `Passed`, the verification line; or the empty line.
-9. **Lint and build** (from the repo root, unless noted):
+9. [x] **Lint and build** (from the repo root, unless noted):
    - `cd packages/trustee && npx vitest run`
    - `yarn workspace @pipeline/trustee build` (no new route, so no routeTree regeneration)
    - `npx tsx scripts/lint-docs.ts`

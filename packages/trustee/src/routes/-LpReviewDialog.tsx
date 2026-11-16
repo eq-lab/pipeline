@@ -1,7 +1,11 @@
 // spec: docs/frontend/trustee-flows.md#lp-counterparties
 import { Button, InlineError } from "@pipeline/ui";
+import { BankAccountRows } from "@/components/detail/BankAccountRows";
+import type { SettlementBankAccountDetails } from "@/api/useLp";
 import {
   DETAIL_SECONDARY_BUTTON_CLASS,
+  INK_MUTED,
+  LINE_COLOR,
   detailSecondaryButtonStyle,
 } from "@/components/detail/detailTokens";
 import type { LpReviewAction } from "./-useLpCounterpartyDetail";
@@ -51,6 +55,7 @@ export interface LpReviewDialogProps {
   eligible: boolean;
   validationError: string | null;
   error: { message: string; details: string } | null;
+  bankAccount?: SettlementBankAccountDetails | null;
 }
 
 export function LpReviewDialog({
@@ -64,6 +69,7 @@ export function LpReviewDialog({
   eligible,
   validationError,
   error,
+  bankAccount,
 }: LpReviewDialogProps) {
   const dialogRef = useLpReviewDialog(onCancel, busy);
   return (
@@ -93,6 +99,42 @@ export function LpReviewDialog({
         >
           {copy[action.decision].description}
         </p>
+        {action.documentId === undefined && (
+          <div
+            data-testid="lp-review-bank"
+            className="flex flex-col gap-[4px] pt-[12px]"
+            style={{ borderTop: `1px solid ${LINE_COLOR}` }}
+          >
+            <span className="text-sm" style={{ color: INK_MUTED }}>
+              Settlement bank account
+            </span>
+            {bankAccount ? (
+              <>
+                <BankAccountRows
+                  details={bankAccount}
+                  testIdPrefix="lp-review-bank"
+                />
+                {action.decision === "Passed" && (
+                  <p
+                    data-testid="lp-review-bank-verifies"
+                    className="text-sm"
+                    style={{ color: INK_MUTED }}
+                  >
+                    Passing KYB also verifies this settlement bank account.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p
+                data-testid="lp-review-bank-empty"
+                className="text-sm"
+                style={{ color: INK_MUTED }}
+              >
+                No settlement bank account on file.
+              </p>
+            )}
+          </div>
+        )}
         {action.decision !== "Verified" && (
           <label
             className="flex flex-col gap-2 text-sm"

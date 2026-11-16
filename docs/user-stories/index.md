@@ -381,6 +381,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#1766 Trustee: register the per-loan debt token (DealTokenFactory.register_deal) after loan creation](https://github.com/eq-lab/pipeline/issues/1766) | [1766-register-debt-token.md](./epic-1795/1766-register-debt-token.md) | Initial |
 | [#1812 Backend: LP settlement bank account for bank wire-outs](https://github.com/eq-lab/pipeline/issues/1812) | [1812-lp-settlement-bank-account.md](./epic-1795/1812-lp-settlement-bank-account.md) | Initial |
 | [#1885 LP: settlement bank account — capture in KYB / Account and masked view](https://github.com/eq-lab/pipeline/issues/1885) | [1885-lp-settlement-bank-account-ui.md](./epic-1795/1885-lp-settlement-bank-account-ui.md) | Initial |
+| [#1886 Trustee: show the LP's settlement bank account on pending wire-outs and in LP detail / KYB review](https://github.com/eq-lab/pipeline/issues/1886) | [1886-trustee-settlement-bank-account.md](./epic-1795/1886-trustee-settlement-bank-account.md) | Initial |
 | [#1888 Trustee: flaky test useRiskCouncilRelay > relays schedule and execute](https://github.com/eq-lab/pipeline/issues/1888) | [1888-flaky-risk-council-relay-test.md](./epic-1795/1888-flaky-risk-council-relay-test.md) | Initial |
 | [#1858 Trustee: Risk Council security actions — set terms, resolve flag, release with consent, inspector panel (SecurityRegistry, scheduled 24 h)](https://github.com/eq-lab/pipeline/issues/1858) | [1858-risk-council-security-actions.md](./epic-1795/1858-risk-council-security-actions.md) | Initial |
 

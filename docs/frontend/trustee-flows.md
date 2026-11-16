@@ -333,12 +333,19 @@ session renders "Bank wire-outs on {chain} are not available in the Trustee app 
   rescaling). Only `Pending` rows are read on-chain: `readWireOutRecord` (`wire_out(id)`, key
   `["minter-wire-out", minterId, id]`, stale time 0). The cash book's `minter` must equal
   `ENV.STELLAR_YIELD_MINTER_ID`, otherwise every action is disabled.
+- `bank_account` is served on `Pending` rows that resolved to an LP with an account, and is shown as
+  served ([Settlement bank account](#settlement-bank-account), #1886). It is the LP's current account, so
+  Settled and Cancelled rows never show it.
 
 ### Table
 
 Columns: ID, Lender (name link plus address chip), Amount, Requested at, Status, On-chain, Actions.
 `Settled` rows add the served `settled_at`, `value_date` and `ref_hash` (first 8 / last 8, full value in
-`title`); `Cancelled` rows add `cancelled_at`. States: loading skeleton, `InlineError` (`404
+`title`); `Cancelled` rows add `cancelled_at`. On a `Pending` row with a served account the Lender cell adds
+a "Show bank account" / "Hide bank account" toggle (`wireout-row-{id}-bank-toggle`, collapsed by default)
+that expands a full-width sub-row (`wireout-row-{id}-bank`) with the account; a resolved lender without one
+gets the attention chip "No bank account on file" (`wireout-row-{id}-no-bank-account`). The row carries the
+account because the bank wire is sent before settling, when Settle is often disabled. States: loading skeleton, `InlineError` (`404
 minter_not_configured`, `403`, `401`, as Escrowed wires), empty "No bank wire-outs on {chain}."
 
 ### Row states and gating
@@ -353,8 +360,11 @@ via `useWireOutAccess`; a delayed grant gets a reason and no schedule path); on-
 
 ### Settle dialog
 
-Summary (wire-out id, lender, address, requested amount, requested at) and the row "Destination bank
-account" with "—" and the hint "The API does not serve the lender's bank account yet." (#1812). Inputs:
+Summary (wire-out id, lender, address, requested amount, requested at), then "Destination bank account":
+the served account (`wireout-settle-bank-*`); or "—" plus the attention warning "No bank account on file for
+this lender. Do not send a wire until one is added; cancel the request to return the PLUSD."
+(`wireout-settle-no-bank-account`); or, with no resolved lender, "—" plus "This wire-out is not linked to a
+lender, so no bank account is served." A missing account warns but never blocks Settle. Inputs:
 "Amount wired (PLUSD)" pre-filled with the exact on-chain 7-decimal amount, "Value date" (UTC, not in the
 future, defaults to today) and "Outgoing bank reference" (trimmed, 1 to 140 characters); the computed
 `ref_hash` shows read-only. The minter settles only the full requested amount, so an amount that differs
@@ -392,7 +402,7 @@ No wire-out exists on testnet (`wire_out(0..6)` answers `#10` on both minters): 
 exercised live only after a lender calls `request_wire_out` (LP UI #1757). `bank_cash` on the API minter
 `CD2LPGLX…` is 0, so settling there fails `#8` until wire-ins are booked. When the app's minter
 (`VITE_STELLAR_YIELD_MINTER_ID`) differs from the cash book's, every action is disabled (env alignment,
-not code). Unit tests cover the flows meanwhile.
+not code). Unit tests cover the flows meanwhile. The bank-account views follow the same rule (#1886).
 
 ## Cash Management — Conversions and bank charges
 
@@ -1392,6 +1402,14 @@ The page is assembled from the [shared detail primitives](#shared-detail-primiti
   never returned). The row is kept so the card states the shape of the review record, and follows
   the same never-fabricate rule as Bank Info Available on the list: the value is absent, so it
   prints `—` rather than a guess derived from the documents' `reviewed_by`.
+- **Settlement bank account** — a full-width `DetailCard` (`lp-bank-account`) between the profile / KYB
+  grid and the documents card, so the reviewer reads it beside the documents. With
+  `settlement_bank_account_details` it shows the account ([Settlement bank account](#settlement-bank-account));
+  without it, "No settlement bank account on file." (`lp-bank-account-empty`). The masked summary is not
+  rendered. The three LP-level verdict dialogs (Confirm KYB passed, Request changes, Reject account) repeat
+  the account in a bordered block (`lp-review-bank-*`) and, on Passed, add "Passing KYB also verifies this
+  settlement bank account."; with no account they read "No settlement bank account on file." and nothing is
+  blocked. Document Verify / Reject dialogs show no account.
 - **KYB documents** — `DetailCard` whose title row carries the account verdicts and the refresh
   control, left to right: **Reject account** (`BandButton`, negative), **Request changes**
   (attention), **Confirm KYB passed** (positive, rendered only when `canPass`), then the 40×40
@@ -1440,8 +1458,8 @@ route changes.
 Mutations invalidate the current LP detail and listing. Conflicts refresh both queries so
 stale review actions disappear. Pending, 404, permission, expired session, and network states
 have explicit feedback and retry; a session-expiry response clears the trustee session. The
-error branch renders inside a `DetailCard` with the Retry action. Bank Info remains unavailable;
-bank deposits are below.
+error branch renders inside a `DetailCard` with the Retry action. The list's Bank Info column stays `—`
+(not served on `GET /v1/lps`, #1275); bank deposits are below.
 
 ### Settlement addresses
 
@@ -1462,6 +1480,25 @@ relink at any time. `-settlementAddresses.ts` holds the pure presenters over the
   proves control of the signer only (TD-162), so the Trustee must see which case applies.
 - **History not shown.** `lp_settlement_address_history` has no Trustee read endpoint.
 
+### Settlement bank account
+
+Since #1886 the Trustee sees the LP's full account (`settlement_bank_account_details` on `GET /v1/lps/{id}`
+and `POST /v1/lps/{id}/kyb`, `bank_account` on Pending `wire_outs[]`). `lib/settlementBankAccount.ts` is the
+pure presenter and `BankAccountRows` the shared primitive for the LP detail card, the verdict dialogs, the
+wire-out row and the settle dialog.
+
+- **Rows, in order.** Account holder name, Bank name, Bank address, IBAN, Account number, SWIFT/BIC code,
+  Routing number (ABA), labelled as in the LP app's #1885 module. Values show as served, `—` when null; no
+  formatting, masking or derivation.
+- **Copy.** IBAN, account number, SWIFT/BIC and routing number have a 32px copy button
+  (`aria-label="Copy {label}"`). It writes the exact value and toasts "{label} copied"; a failed clipboard
+  toasts nothing.
+- **Privacy.** A value appears only as rendered text and in clipboard writes: never in a log, URL, `title`
+  or `data-*` attribute, or toast. The disclosure state is keyed by wire-out id. The app has no analytics.
+- **Wire-out states** (`wireOutBankAccountState`): `not-pending` (Settled or Cancelled), `unresolved` (no
+  `lp_id`), `served` (`bank_account` present), `missing` (resolved lender, no account).
+- **Out of scope.** No write path (changes after Passed are ops SQL, TD-182).
+
 ### Shared detail primitives
 
 `packages/trustee/src/components/detail/` is the single definition site for the trustee's detail-page
@@ -1478,7 +1515,8 @@ look. Consumed by `loans.$id.tsx`, `lp-counterparties.$id.tsx`, `-LpBankDeposits
 | `AddressChip.tsx` | `AddressChip` — click-to-reveal/copy chip for a `G…` / `C…` / `0x…` key (settlement addresses and signers, documents' reviewer); `shortAddress(value)`, `copyAddress(value)` |
 | `AddressText.tsx` | `AddressText` — copy-to-toast plain-text key for table cells (no border, no inline reveal) |
 | `BandButton.tsx` | `BandButton` (32px text button, optional leading `icon`) and `BandIconButton` (32×32 icon button), both painted with `chipStyle(band)` and carrying `data-band` for tests |
-| `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon` (inline 16px stroked glyphs) |
+| `DetailIcons.tsx` | `RefreshIcon`, `DownloadIcon` (path data from `packages/ui/src/assets/icons/arrow-clock.svg` / `arrow-down-circle.svg`, repainted `currentColor`), `CheckIcon`, `CrossIcon`, `CopyIcon` (inline 16px stroked glyphs) |
+| `BankAccountRows.tsx` | `BankAccountRows` — the seven settlement-bank-account `KeyValueRow`s with copy buttons ([Settlement bank account](#settlement-bank-account)); `details`, `testIdPrefix` |
 
 **`RefreshIcon` carries no clock hands (#1453).** `arrow-clock.svg` ships two paths — the circular
 arrow and a pair of clock hands inside it. Keeping both made the control read as *activity* or
