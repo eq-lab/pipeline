@@ -16,6 +16,22 @@ export interface LpDocument {
   download_url: string | null;
 }
 
+export interface SettlementBankAccountSummary {
+  account_holder_name: string;
+  bank_name: string;
+  account_last4: string | null;
+}
+
+export interface SettlementBankAccountInput {
+  account_holder_name: string;
+  bank_name: string;
+  bank_address: string | null;
+  account_number: string | null;
+  iban: string | null;
+  swift_bic_code: string | null;
+  routing_number: string | null;
+}
+
 export interface LpResponse {
   id: number;
   legal_name: string;
@@ -33,6 +49,7 @@ export interface LpResponse {
   kyb_decision_reason?: string | null;
   writable: boolean;
   notify_on_review: boolean;
+  settlement_bank_account: SettlementBankAccountSummary | null;
   owner_account_id: string;
   owner_chain_id: number | null;
   owner_address: string | null;
@@ -62,6 +79,7 @@ export function upsertMyLp(profile: {
   country: string | null;
   contact_email: string;
   notify_on_review?: boolean;
+  settlement_bank_account?: SettlementBankAccountInput;
 }): Promise<LpResponse> {
   return apiFetch<LpResponse>("/v1/lps/me", {
     method: "POST",

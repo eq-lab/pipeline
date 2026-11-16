@@ -3,6 +3,15 @@ import { Button, TextField } from "@pipeline/ui";
 import { CountryField } from "./CountryField";
 import { SettlementAddressRows } from "./SettlementAddressRow";
 import type { SettlementControls } from "./settlementAddress";
+import { SettlementBankAccountSection } from "./SettlementBankAccountSection";
+import type { SettlementBankAccountSummary } from "@/api";
+import type { SettlementBankAccountDraft } from "./useSettlementBankAccountDraft";
+
+export interface AccountProfileBank {
+  account: SettlementBankAccountSummary | null;
+  kybStatus: string | undefined;
+  controls: SettlementBankAccountDraft;
+}
 
 export interface AccountProfileCardProps {
   legalName: string;
@@ -16,6 +25,7 @@ export interface AccountProfileCardProps {
   disabled: boolean;
   busy: boolean;
   settlement?: SettlementControls;
+  bank?: AccountProfileBank;
 }
 
 export function AccountProfileCard({
@@ -30,6 +40,7 @@ export function AccountProfileCard({
   disabled,
   busy,
   settlement,
+  bank,
 }: AccountProfileCardProps) {
   return (
     <div className="flex w-full flex-col gap-5 rounded-[var(--radius-pipeline-card)] bg-[color:var(--color-pipeline-surface)] p-4">
@@ -56,6 +67,15 @@ export function AccountProfileCard({
         />
       </div>
       {settlement && <SettlementAddressRows settlement={settlement} />}
+      {bank && (
+        <SettlementBankAccountSection
+          account={bank.account}
+          kybStatus={bank.kybStatus}
+          writable={writable}
+          disabled={disabled}
+          controls={bank.controls}
+        />
+      )}
       {writable && (
         <Button
           variant="primary-dark"

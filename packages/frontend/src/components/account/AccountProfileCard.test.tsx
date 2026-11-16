@@ -10,7 +10,11 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CountriesWrapper, stubCountriesFetch } from "@/test-support/countries";
-import { AccountProfileCard } from "./AccountProfileCard";
+import {
+  AccountProfileCard,
+  type AccountProfileBank,
+} from "./AccountProfileCard";
+import { useSettlementBankAccountDraft } from "./useSettlementBankAccountDraft";
 import type { SettlementRowView } from "./settlementAddress";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -209,5 +213,69 @@ describe("AccountProfileCard settlement rows", () => {
     renderCard();
     await screen.findByRole("combobox", { name: "Country" });
     expect(screen.queryByTestId("settlement-address-row")).toBeNull();
+  });
+});
+
+describe("AccountProfileCard settlement bank account", () => {
+  function bank(
+    overrides: Partial<NonNullable<AccountProfileBank>> = {},
+  ): AccountProfileBank {
+    return {
+      account: null,
+      kybStatus: "NotStarted",
+      controls: {} as AccountProfileBank["controls"],
+      ...overrides,
+    };
+  }
+
+  function Wrapper({
+    writable,
+    kybStatus,
+  }: {
+    writable: boolean;
+    kybStatus: string;
+  }) {
+    const controls = useSettlementBankAccountDraft();
+    return (
+      <AccountProfileCard
+        legalName="Acme"
+        country="NL"
+        savedCountry="NL"
+        onLegalNameChange={vi.fn()}
+        onCountryChange={vi.fn()}
+        onSave={vi.fn()}
+        canSave
+        writable={writable}
+        disabled={!writable}
+        busy={false}
+        bank={bank({ kybStatus, controls })}
+      />
+    );
+  }
+
+  it("renders the section before Save profile", async () => {
+    stubCountriesFetch();
+    render(<Wrapper writable kybStatus="NotStarted" />, {
+      wrapper: CountriesWrapper,
+    });
+    const row = screen.getByTestId("settlement-bank-row");
+    const save = screen.getByRole("button", { name: "Save profile" });
+    expect(
+      row.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("is read-only when the LP is not writable", () => {
+    stubCountriesFetch();
+    render(<Wrapper writable={false} kybStatus="UnderReview" />, {
+      wrapper: CountriesWrapper,
+    });
+    expect(screen.getByTestId("settlement-bank-row")).toBeInTheDocument();
+    expect(screen.queryByTestId("settlement-bank-open")).toBeNull();
+  });
+
+  it("renders nothing without the bank prop", () => {
+    renderCard();
+    expect(screen.queryByTestId("settlement-bank-row")).toBeNull();
   });
 });

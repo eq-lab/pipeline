@@ -241,6 +241,15 @@ describe("Account-in-review Notify me", () => {
     ).toBeInTheDocument();
   });
 
+  it("omits the settlement bank account so it stays unchanged", async () => {
+    mockUpsert.mockResolvedValueOnce({ ...stored, notify_on_review: true });
+    fireEvent.click(await openReviewModal());
+    await screen.findByRole("button", { name: "We’ll notify you" });
+    expect("settlement_bank_account" in mockUpsert.mock.calls[0]![0]).toBe(
+      false,
+    );
+  });
+
   it("keeps Notify me and shows an error when the save fails", async () => {
     mockUpsert.mockRejectedValueOnce(new ApiError(409, "frozen"));
     fireEvent.click(await openReviewModal());

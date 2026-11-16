@@ -186,6 +186,15 @@ function AccountPageContent({
             }
             busy={account.busy}
             settlement={settlement}
+            bank={
+              account.readState === "loaded" || account.readState === "absent"
+                ? {
+                    account: account.bankAccount,
+                    kybStatus: account.lp?.kyb_status,
+                    controls: account.bank,
+                  }
+                : undefined
+            }
           />
         )}
 
@@ -233,12 +242,15 @@ function AccountPageContent({
             Check submission status
           </Button>
         )}
-        {ready && account?.profileChanged && account.lp?.writable && (
-          <p role="status">
-            Save your profile changes before uploading documents or submitting
-            for review.
-          </p>
-        )}
+        {ready &&
+          account &&
+          (account.profileChanged || account.bank.dirty) &&
+          account.lp?.writable && (
+            <p role="status">
+              Save your profile changes before uploading documents or submitting
+              for review.
+            </p>
+          )}
         {ready && (
           <div className="flex w-full flex-col items-start gap-3">
             <p

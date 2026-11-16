@@ -37,6 +37,8 @@ export {
 export type {
   LpResponse,
   LpDocument,
+  SettlementBankAccountInput,
+  SettlementBankAccountSummary,
   LinkChallenge,
   UploadDocumentsResponse,
   PaymentDetailsResponse,
