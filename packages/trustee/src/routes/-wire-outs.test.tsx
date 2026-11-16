@@ -167,6 +167,54 @@ describe("useWireOutsSection state", () => {
   });
 });
 
+describe("useWireOutsSection bank account", () => {
+  const ACCOUNT = {
+    account_holder_name: "Zeta Fund SA",
+    bank_name: "Example Bank AG",
+    bank_address: null,
+    iban: "CH9300762011623852957",
+    account_number: null,
+    swift_bic_code: null,
+    routing_number: null,
+  };
+
+  it("carries the served account and its state on each row", () => {
+    setChain("Pending");
+    mockCashBook.mockReturnValue({
+      data: {
+        ...BOOK,
+        wire_outs: [
+          { ...BOOK.wire_outs[0]!, lp_id: 3, bank_account: ACCOUNT },
+          { ...BOOK.wire_outs[0]!, id: 8, lp_id: 3 },
+          { ...BOOK.wire_outs[0]!, id: 9 },
+        ],
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCashBook>);
+    const { result } = renderHook(() => useWireOutsSection(), { wrapper });
+    expect(result.current.rows.map((r) => r.bankAccountState)).toEqual([
+      "served",
+      "missing",
+      "unresolved",
+    ]);
+    expect(result.current.rows[0]!.bankAccount).toEqual(ACCOUNT);
+    expect(result.current.rows[1]!.bankAccount).toBeNull();
+  });
+
+  it("toggles the disclosure by wire-out id", () => {
+    setChain("Pending");
+    const { result } = renderHook(() => useWireOutsSection(), { wrapper });
+    expect(result.current.isBankAccountOpen(7)).toBe(false);
+    act(() => result.current.toggleBankAccount(7));
+    expect(result.current.isBankAccountOpen(7)).toBe(true);
+    act(() => result.current.toggleBankAccount(7));
+    expect(result.current.isBankAccountOpen(7)).toBe(false);
+  });
+});
+
 describe("presenters", () => {
   it("formats the served amount with grouping and a PLUSD suffix", () => {
     expect(plusdAmount("1234567.123456")).toBe("1,234,567.123456 PLUSD");

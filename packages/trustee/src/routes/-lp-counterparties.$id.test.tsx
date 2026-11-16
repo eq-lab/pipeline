@@ -92,6 +92,7 @@ const LP: LpDetail = {
   owner_chain_id: null,
   owner_address: null,
   documents: [DOCUMENT],
+  settlement_bank_account: null,
 };
 
 function lp(overrides: Partial<LpDetail> = {}): LpDetail {
@@ -588,6 +589,111 @@ describe("LP counterparty detail — review actions on the title row", () => {
         name: "Verify certificate-of-incorporation.pdf",
       }),
     ).toBeDisabled();
+  });
+});
+
+const BANK = {
+  account_holder_name: "Acme Capital LP",
+  bank_name: "Example Bank AG",
+  bank_address: null,
+  iban: "CH9300762011623852957",
+  account_number: "0012345678",
+  swift_bic_code: "EXAMCHZZ",
+  routing_number: null,
+};
+const withBank = () =>
+  lp({
+    settlement_bank_account: {
+      account_holder_name: BANK.account_holder_name,
+      bank_name: BANK.bank_name,
+      account_last4: "5678",
+    },
+    settlement_bank_account_details: BANK,
+  });
+
+describe("LP counterparty detail — settlement bank account", () => {
+  it("renders the card with verbatim values, dashes and copy buttons", () => {
+    served(withBank());
+    renderRoute();
+    const card = screen.getByRole("region", {
+      name: "Settlement bank account",
+    });
+    expect(within(card).getByTestId("lp-bank-account-iban")).toHaveTextContent(
+      BANK.iban,
+    );
+    expect(
+      within(card).getByTestId("lp-bank-account-bank_address"),
+    ).toHaveTextContent("—");
+    expect(
+      within(card).getByTestId("lp-bank-account-iban-copy"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).queryByTestId("lp-bank-account-routing_number-copy"),
+    ).toBeNull();
+    expect(screen.queryByTestId("lp-bank-account-empty")).toBeNull();
+  });
+
+  it("shows the empty state when no account is on file", () => {
+    renderRoute();
+    expect(screen.getByTestId("lp-bank-account-empty")).toHaveTextContent(
+      "No settlement bank account on file.",
+    );
+  });
+
+  it("shows the account and the verification line in the Passed dialog", () => {
+    served(
+      lp({
+        ...withBank(),
+        documents: [{ ...DOCUMENT, status: "Verified" }],
+      }),
+    );
+    renderRoute();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm KYB passed" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByTestId("lp-review-bank-iban")).toHaveTextContent(
+      BANK.iban,
+    );
+    expect(
+      within(dialog).getByTestId("lp-review-bank-verifies"),
+    ).toHaveTextContent(
+      "Passing KYB also verifies this settlement bank account.",
+    );
+  });
+
+  it.each(["Request changes", "Reject account"])(
+    "shows the account without the verification line in the %s dialog",
+    (name) => {
+      served(withBank());
+      renderRoute();
+      fireEvent.click(screen.getByRole("button", { name }));
+      const dialog = screen.getByRole("dialog");
+      expect(
+        within(dialog).getByTestId("lp-review-bank-iban"),
+      ).toHaveTextContent(BANK.iban);
+      expect(
+        within(dialog).queryByTestId("lp-review-bank-verifies"),
+      ).toBeNull();
+    },
+  );
+
+  it("shows no bank block in a document dialog", () => {
+    served(withBank());
+    renderRoute();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Verify certificate-of-incorporation.pdf",
+      }),
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByTestId("lp-review-bank")).toBeNull();
+  });
+
+  it("shows the empty line in the dialog when there is no account", () => {
+    renderRoute();
+    fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    expect(
+      within(screen.getByRole("dialog")).getByTestId("lp-review-bank-empty"),
+    ).toHaveTextContent("No settlement bank account on file.");
   });
 });
 

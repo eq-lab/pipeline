@@ -16,6 +16,10 @@ export const NOT_PENDING_COPY =
   "This wire-out is no longer pending. Refresh the list.";
 export const LP_NOT_AUTHORIZED_COPY =
   "This lender's address is not authorised to hold PLUSD, so the PLUSD cannot be returned.";
+export const NO_BANK_ACCOUNT_COPY =
+  "No bank account on file for this lender. Do not send a wire until one is added; cancel the request to return the PLUSD.";
+export const UNRESOLVED_LENDER_BANK_COPY =
+  "This wire-out is not linked to a lender, so no bank account is served.";
 export const REUSED_BANK_REFERENCE_COPY =
   "This bank reference is already recorded on-chain. Use the outgoing wire's own reference.";
 

@@ -2,16 +2,24 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button, InlineError } from "@pipeline/ui";
+import { BankAccountRows } from "@/components/detail/BankAccountRows";
 import { AddressChip } from "@/components/detail/AddressChip";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
 import { StatusChip } from "@/components/detail/StatusChip";
 import {
+  ATTENTION_AMBER,
+  BRAND,
   DETAIL_SECONDARY_BUTTON_CLASS,
   INK_MUTED,
   LINE_COLOR,
   detailSecondaryButtonStyle,
 } from "@/components/detail/detailTokens";
-import { LP_NOT_AUTHORIZED_COPY, todayUtcDateInput } from "@/lib/wireOut";
+import {
+  LP_NOT_AUTHORIZED_COPY,
+  NO_BANK_ACCOUNT_COPY,
+  UNRESOLVED_LENDER_BANK_COPY,
+  todayUtcDateInput,
+} from "@/lib/wireOut";
 import { useLpReviewDialog } from "./-useLpReviewDialog";
 import { escrowStageLabel } from "./-escrowed-wires";
 import {
@@ -38,8 +46,6 @@ export const DIALOG_CLASS =
   "rounded-pipeline-card-sm bg-pipeline-surface flex max-h-[90vh] w-full max-w-[640px] flex-col gap-4 overflow-y-auto p-7 shadow-xl outline-none";
 export const INPUT_CLASS =
   "rounded-pipeline-card border-pipeline-line bg-pipeline-surface text-pipeline-ink focus:border-pipeline-brand w-full border p-3 focus:outline-none disabled:opacity-50";
-const NO_BANK_ACCOUNT_HINT =
-  "The API does not serve the lender's bank account yet.";
 
 export function shortHash(hash: string): string {
   return hash.length > 20 ? `${hash.slice(0, 8)}…${hash.slice(-8)}` : hash;
@@ -273,99 +279,179 @@ function WireOutTableRow({
     ? section.actionReason(row, "cancel_wire_out")
     : null;
   const reason = settleReason ?? cancelReason;
+  const bankOpen =
+    row.bankAccountState === "served" && section.isBankAccountOpen(row.id);
   return (
-    <tr
-      data-testid={`wireout-row-${row.id}`}
-      style={index === 0 ? undefined : { borderTop: `1px solid ${LINE_COLOR}` }}
-    >
-      <td className={`${BODY_CELL_CLASS} tabular-nums`}>#{row.id}</td>
-      <td className={BODY_CELL_CLASS}>
-        <div className="flex flex-col items-start gap-[4px]">
-          {row.lpId === null ? (
-            <span data-testid={`wireout-row-${row.id}-lender`}>
-              {row.lenderName}
-            </span>
-          ) : (
-            <Link
-              to="/lp-counterparties/$id"
-              params={{ id: String(row.lpId) }}
-              data-testid={`wireout-row-${row.id}-lender`}
-              className="underline"
-            >
-              {row.lenderName}
-            </Link>
-          )}
-          <AddressChip value={row.lp} testId={`wireout-row-${row.id}-lp`} />
-        </div>
-      </td>
-      <td
-        className={`${BODY_CELL_CLASS} text-right whitespace-nowrap tabular-nums`}
+    <>
+      <tr
+        data-testid={`wireout-row-${row.id}`}
+        style={
+          index === 0 ? undefined : { borderTop: `1px solid ${LINE_COLOR}` }
+        }
       >
-        {row.amount}
-      </td>
-      <td className={BODY_CELL_CLASS}>{row.requestedAt}</td>
-      <td className={BODY_CELL_CLASS}>
-        <div className="flex flex-col items-start gap-[6px]">
-          <StatusChip
-            band={statusBand(row.status)}
-            label={row.status}
-            testId={`wireout-row-${row.id}-status`}
-          />
-          <SettledDetail row={row} />
-        </div>
-      </td>
-      <td className={BODY_CELL_CLASS}>
-        {row.chainState === null ? (
-          <span style={{ color: INK_MUTED }}>{row.chainLabel}</span>
-        ) : (
-          <StatusChip
-            band={chainBand(row.chainState)}
-            label={row.chainLabel}
-            testId={`wireout-row-${row.id}-chain`}
-          />
-        )}
-      </td>
-      <td className={`${BODY_CELL_CLASS} pr-0`}>
-        {pending && (
-          <div className="flex flex-col items-start gap-[6px]">
-            <div className="flex flex-wrap gap-[8px]">
-              <Button
-                variant="primary-blue"
-                size="compact"
-                className={ACTION_BUTTON_CLASS}
-                data-testid={`wireout-row-${row.id}-settle`}
-                disabled={settleReason !== null}
-                title={settleReason ?? undefined}
-                onClick={() => section.openSettle(row)}
-              >
-                Settle
-              </Button>
-              <Button
-                variant="secondary"
-                size="compact"
-                className={`${ACTION_BUTTON_CLASS} ${DETAIL_SECONDARY_BUTTON_CLASS}`}
-                style={detailSecondaryButtonStyle()}
-                data-testid={`wireout-row-${row.id}-cancel`}
-                disabled={cancelReason !== null}
-                title={cancelReason ?? undefined}
-                onClick={() => void section.openCancel(row)}
-              >
-                Cancel
-              </Button>
-            </div>
-            {reason && (
-              <span
-                data-testid={`wireout-row-${row.id}-reason`}
-                className={HINT_CLASS}
-                style={{ color: INK_MUTED }}
-              >
-                {reason}
+        <td className={`${BODY_CELL_CLASS} tabular-nums`}>#{row.id}</td>
+        <td className={BODY_CELL_CLASS}>
+          <div className="flex flex-col items-start gap-[4px]">
+            {row.lpId === null ? (
+              <span data-testid={`wireout-row-${row.id}-lender`}>
+                {row.lenderName}
               </span>
+            ) : (
+              <Link
+                to="/lp-counterparties/$id"
+                params={{ id: String(row.lpId) }}
+                data-testid={`wireout-row-${row.id}-lender`}
+                className="underline"
+              >
+                {row.lenderName}
+              </Link>
+            )}
+            <AddressChip value={row.lp} testId={`wireout-row-${row.id}-lp`} />
+            {row.bankAccountState === "served" && (
+              <button
+                type="button"
+                data-testid={`wireout-row-${row.id}-bank-toggle`}
+                aria-expanded={bankOpen}
+                aria-controls={`wireout-row-${row.id}-bank`}
+                className={`${HINT_CLASS} underline`}
+                style={{ color: BRAND }}
+                onClick={() => section.toggleBankAccount(row.id)}
+              >
+                {bankOpen ? "Hide bank account" : "Show bank account"}
+              </button>
+            )}
+            {row.bankAccountState === "missing" && (
+              <StatusChip
+                band="attention"
+                label="No bank account on file"
+                testId={`wireout-row-${row.id}-no-bank-account`}
+              />
             )}
           </div>
-        )}
-      </td>
-    </tr>
+        </td>
+        <td
+          className={`${BODY_CELL_CLASS} text-right whitespace-nowrap tabular-nums`}
+        >
+          {row.amount}
+        </td>
+        <td className={BODY_CELL_CLASS}>{row.requestedAt}</td>
+        <td className={BODY_CELL_CLASS}>
+          <div className="flex flex-col items-start gap-[6px]">
+            <StatusChip
+              band={statusBand(row.status)}
+              label={row.status}
+              testId={`wireout-row-${row.id}-status`}
+            />
+            <SettledDetail row={row} />
+          </div>
+        </td>
+        <td className={BODY_CELL_CLASS}>
+          {row.chainState === null ? (
+            <span style={{ color: INK_MUTED }}>{row.chainLabel}</span>
+          ) : (
+            <StatusChip
+              band={chainBand(row.chainState)}
+              label={row.chainLabel}
+              testId={`wireout-row-${row.id}-chain`}
+            />
+          )}
+        </td>
+        <td className={`${BODY_CELL_CLASS} pr-0`}>
+          {pending && (
+            <div className="flex flex-col items-start gap-[6px]">
+              <div className="flex flex-wrap gap-[8px]">
+                <Button
+                  variant="primary-blue"
+                  size="compact"
+                  className={ACTION_BUTTON_CLASS}
+                  data-testid={`wireout-row-${row.id}-settle`}
+                  disabled={settleReason !== null}
+                  title={settleReason ?? undefined}
+                  onClick={() => section.openSettle(row)}
+                >
+                  Settle
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="compact"
+                  className={`${ACTION_BUTTON_CLASS} ${DETAIL_SECONDARY_BUTTON_CLASS}`}
+                  style={detailSecondaryButtonStyle()}
+                  data-testid={`wireout-row-${row.id}-cancel`}
+                  disabled={cancelReason !== null}
+                  title={cancelReason ?? undefined}
+                  onClick={() => void section.openCancel(row)}
+                >
+                  Cancel
+                </Button>
+              </div>
+              {reason && (
+                <span
+                  data-testid={`wireout-row-${row.id}-reason`}
+                  className={HINT_CLASS}
+                  style={{ color: INK_MUTED }}
+                >
+                  {reason}
+                </span>
+              )}
+            </div>
+          )}
+        </td>
+      </tr>
+      {bankOpen && row.bankAccount && (
+        <tr
+          data-testid={`wireout-row-${row.id}-bank`}
+          id={`wireout-row-${row.id}-bank`}
+        >
+          <td colSpan={7} className="pb-[12px]">
+            <div className="max-w-[640px]">
+              <BankAccountRows
+                details={row.bankAccount}
+                testIdPrefix={`wireout-row-${row.id}-bank`}
+              />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function SettleDestination({ row }: { row: WireOutRow }) {
+  return (
+    <div className="flex flex-col gap-[4px]">
+      <span className={BODY_CLASS} style={{ color: INK_MUTED }}>
+        Destination bank account
+      </span>
+      {row.bankAccountState === "served" && row.bankAccount ? (
+        <BankAccountRows
+          details={row.bankAccount}
+          testIdPrefix="wireout-settle-bank"
+        />
+      ) : (
+        <>
+          <span data-testid="wireout-settle-destination">—</span>
+          {row.bankAccountState === "missing" && (
+            <span
+              role="alert"
+              data-testid="wireout-settle-no-bank-account"
+              className={HINT_CLASS}
+              style={{ color: ATTENTION_AMBER }}
+            >
+              {NO_BANK_ACCOUNT_COPY}
+            </span>
+          )}
+          {row.bankAccountState === "unresolved" && (
+            <span
+              data-testid="wireout-settle-destination-hint"
+              className={HINT_CLASS}
+              style={{ color: INK_MUTED }}
+            >
+              {UNRESOLVED_LENDER_BANK_COPY}
+            </span>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -437,20 +523,8 @@ function SettleWireOutDialog({
           Send the bank wire first, then enter its reference; it can be used
           once.
         </p>
-        <WireOutSummary row={state.row} amount={state.row.amount}>
-          <KeyValueRow label="Destination bank account" isLast>
-            <span className="flex flex-col">
-              <span data-testid="wireout-settle-destination">—</span>
-              <span
-                data-testid="wireout-settle-destination-hint"
-                className={HINT_CLASS}
-                style={{ color: INK_MUTED }}
-              >
-                {NO_BANK_ACCOUNT_HINT}
-              </span>
-            </span>
-          </KeyValueRow>
-        </WireOutSummary>
+        <WireOutSummary row={state.row} amount={state.row.amount} />
+        <SettleDestination row={state.row} />
         <label className="flex flex-col gap-2 text-sm">
           Amount wired (PLUSD)
           <input

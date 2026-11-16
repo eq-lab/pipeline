@@ -23,6 +23,11 @@ import {
 import { ENV } from "@/lib/env";
 import { targetChainLabel } from "@/lib/targetChains";
 import { cashBookError } from "@/lib/wireEscrow";
+import type { SettlementBankAccountDetails } from "@/api/useLp";
+import {
+  wireOutBankAccountState,
+  type WireOutBankAccountState,
+} from "@/lib/settlementBankAccount";
 import {
   NOT_PENDING_COPY,
   REUSED_BANK_REFERENCE_COPY,
@@ -69,6 +74,8 @@ export interface WireOutRow {
   chainState: WireOutChainState | null;
   chainLabel: string;
   record: WireOutRecord | null;
+  bankAccount: SettlementBankAccountDetails | null;
+  bankAccountState: WireOutBankAccountState;
 }
 
 export interface SettleDialogState {
@@ -167,6 +174,9 @@ export function useWireOutsSection() {
   const [cancel, setCancel] = useState<CancelDialogState | null>(null);
   const [lastResult, setLastResult] = useState<WireOutResult | null>(null);
   const [expired, setExpired] = useState<ReadonlySet<number>>(() => new Set());
+  const [expandedBankIds, setExpandedBankIds] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
   const [pendingIds, setPendingIds] = useState<number[]>([]);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const token = useRef(0);
@@ -219,6 +229,8 @@ export function useWireOutsSection() {
           ? "—"
           : wireOutStateLabel(chainState, read?.data?.status),
       record: read?.data ?? null,
+      bankAccount: wire.bank_account ?? null,
+      bankAccountState: wireOutBankAccountState(wire),
     };
   });
 
@@ -283,6 +295,14 @@ export function useWireOutsSection() {
     }
     if (busy) return "Another action is in flight. Wait for it to finish.";
     return null;
+  }
+
+  function toggleBankAccount(id: number) {
+    setExpandedBankIds((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   }
 
   function closeSettle() {
@@ -535,6 +555,8 @@ export function useWireOutsSection() {
     refresh: () => void cashBook.refetch(),
     rows,
     actionReason,
+    isBankAccountOpen: (id: number) => expandedBankIds.has(id),
+    toggleBankAccount,
     minterMismatch,
     lastResult,
     dismissResult: () => setLastResult(null),

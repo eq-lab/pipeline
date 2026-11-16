@@ -107,6 +107,25 @@ const mockSeen = vi.mocked(readWireInRefHashSeen);
 const mockHash = vi.mocked(wireInReturnRefHash);
 const mockPlusdHook = vi.mocked(useMinterPlusdId);
 
+const BANK = {
+  account_holder_name: "Zeta Fund SA",
+  bank_name: "Example Bank AG",
+  bank_address: "1 Bahnhofstrasse, Zurich",
+  iban: "CH9300762011623852957",
+  account_number: "0012345678",
+  swift_bic_code: "EXAMCHZZ",
+  routing_number: null,
+};
+const BANK_FIELDS = [
+  "account_holder_name",
+  "bank_name",
+  "bank_address",
+  "iban",
+  "account_number",
+  "swift_bic_code",
+  "routing_number",
+];
+
 const settleAsync = vi.fn();
 const cancelAsync = vi.fn();
 const LP_ADDR = "GLPADDR000000000000000000000000000000000000000000000001";
@@ -425,17 +444,15 @@ function fillReference(value = "WIRE-OUT-9") {
 }
 
 describe("settle", () => {
-  it("shows the summary, the destination placeholder and the pre-filled amount", async () => {
+  it("shows the summary, the missing-account warning and the pre-filled amount", async () => {
     const dialog = await openSettle();
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(screen.getByTestId("wireout-settle-destination")).toHaveTextContent(
       "—",
     );
     expect(
-      screen.getByTestId("wireout-settle-destination-hint"),
-    ).toHaveTextContent(
-      "The API does not serve the lender's bank account yet.",
-    );
+      screen.getByTestId("wireout-settle-no-bank-account"),
+    ).toHaveTextContent("No bank account on file for this lender.");
     expect(screen.getByTestId("wireout-settle-amount")).toHaveValue(
       "1234567.1234567",
     );
@@ -735,5 +752,117 @@ describe("cancel", () => {
     await openCancel();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("wireout-cancel-dialog")).toBeNull();
+  });
+});
+
+function setPendingBook(over: Partial<CashBookWireOut>) {
+  setBook({ data: book([wireOut(over)]) });
+  setReads([{ data: chainRecord("Pending") }]);
+}
+
+describe("settlement bank account", () => {
+  it("toggles the bank account sub-row on a Pending row with an account", () => {
+    setPendingBook({ bank_account: BANK });
+    renderSection();
+    const toggle = screen.getByTestId("wireout-row-5-bank-toggle");
+    expect(toggle).toHaveTextContent("Show bank account");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("wireout-row-5-bank")).toBeNull();
+    expect(screen.queryByText(BANK.iban)).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveTextContent("Hide bank account");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const panel = screen.getByTestId("wireout-row-5-bank");
+    for (const field of BANK_FIELDS) {
+      expect(
+        within(panel).getByTestId(`wireout-row-5-bank-${field}`),
+      ).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("wireout-row-5-bank-iban")).toHaveTextContent(
+      BANK.iban,
+    );
+    expect(
+      screen.getByTestId("wireout-row-5-bank-routing_number"),
+    ).toHaveTextContent("—");
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("wireout-row-5-bank")).toBeNull();
+  });
+
+  it("warns on a resolved lender with no account and keeps Settle enabled", () => {
+    renderSection();
+    expect(
+      screen.getByTestId("wireout-row-5-no-bank-account"),
+    ).toHaveTextContent("No bank account on file");
+    expect(screen.queryByTestId("wireout-row-5-bank-toggle")).toBeNull();
+    expect(screen.getByTestId("wireout-row-5-settle")).toBeEnabled();
+  });
+
+  it("shows nothing extra on an unresolved Pending row and a hint in the dialog", async () => {
+    setPendingBook({ lp_id: undefined, lp_legal_name: undefined });
+    renderSection();
+    expect(screen.queryByTestId("wireout-row-5-no-bank-account")).toBeNull();
+    expect(screen.queryByTestId("wireout-row-5-bank-toggle")).toBeNull();
+    fireEvent.click(screen.getByTestId("wireout-row-5-settle"));
+    await screen.findByTestId("wireout-settle-dialog");
+    expect(screen.getByTestId("wireout-settle-destination")).toHaveTextContent(
+      "—",
+    );
+    expect(
+      screen.getByTestId("wireout-settle-destination-hint"),
+    ).toHaveTextContent("not linked to a lender");
+    expect(screen.queryByTestId("wireout-settle-no-bank-account")).toBeNull();
+  });
+
+  it("shows neither toggle nor chip on Settled and Cancelled rows", () => {
+    renderSection();
+    for (const id of [4, 3]) {
+      expect(screen.queryByTestId(`wireout-row-${id}-bank-toggle`)).toBeNull();
+      expect(
+        screen.queryByTestId(`wireout-row-${id}-no-bank-account`),
+      ).toBeNull();
+    }
+  });
+
+  it("renders the served account with copy buttons in the settle dialog", async () => {
+    setPendingBook({ bank_account: BANK });
+    renderSection();
+    fireEvent.click(screen.getByTestId("wireout-row-5-settle"));
+    await screen.findByTestId("wireout-settle-dialog");
+    for (const field of BANK_FIELDS) {
+      expect(
+        screen.getByTestId(`wireout-settle-bank-${field}`),
+      ).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("wireout-settle-bank-iban")).toHaveTextContent(
+      BANK.iban,
+    );
+    expect(screen.getByTestId("wireout-settle-bank-iban-copy")).toBeVisible();
+    expect(screen.queryByTestId("wireout-settle-no-bank-account")).toBeNull();
+  });
+
+  it("never logs a bank value across a render and a copy", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    });
+    const spies = (["log", "error", "warn"] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(() => {}),
+    );
+    setPendingBook({ bank_account: BANK });
+    renderSection();
+    fireEvent.click(screen.getByTestId("wireout-row-5-bank-toggle"));
+    fireEvent.click(screen.getByTestId("wireout-row-5-bank-iban-copy"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(BANK.iban));
+    const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls));
+    expect(logged).not.toContain(BANK.iban);
+    expect(logged).not.toContain(BANK.account_number);
+    spies.forEach((spy) => spy.mockRestore());
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
   });
 });
