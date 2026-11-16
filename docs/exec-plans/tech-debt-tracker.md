@@ -2375,7 +2375,7 @@ line, whichever section it lands in.
 - **Gap:** Nothing indexes the AccessManager's `OperationScheduled`, `OperationCanceled` or `OperationExecuted` events. Operations with arguments (`amend_economics`, `adjust_interest`, `write_down`, `close_defaulted`, and the SecurityRegistry `set_terms`, `resolve_flag`, `release_with_consent`, `set_inspectors`) scheduled by another session or browser cannot be listed; only `set_default` / `cure` (arguments are just the loan id) and operations this console scheduled in this session are shown. `hash_operation` also covers the caller, so a Trustee-only wallet never sees the Risk Council's operations.
 - **Impact:** The "Scheduled operations" table is incomplete after a reload, and a cancelled or executed operation cannot be told apart from an expired one.
 - **Suggested fix:** Backend: a worker parser for the three AccessManager events and a `/v1/risk-council/operations` route, then replace the page-local store and the per-loan lookups with it.
-- **Status:** Indexer part done (#1921: `access_manager_operations`, see `docs/references/access-manager-events.md`). The API route (#1922) and the Trustee pages (#1923, #1924) remain.
+- **Status:** Indexer part done (#1921: `access_manager_operations`, see `docs/references/access-manager-events.md`). API part done (#1922: `pending_operations` on `GET /v1/loan-book` and `/security`). The Trustee pages (#1923, #1924) remain.
 
 ### TD-178: Escrow bindings carry local copies of the ref-hash helpers
 

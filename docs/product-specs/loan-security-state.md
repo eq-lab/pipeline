@@ -86,6 +86,10 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
                  "cure_by": "...", "at": "...", "block_number": 1, "tx_hash": "..." }] },
   "prices": { "mark_age": "0", "price_stale": false, "mark_max_age": "86400", "mark_move_bps": 200, "marks_due": 0 },
   "extension_consents": [{ "position": 0, "consent_hash": "hex", "new_maturity": "...", "ledger": 1, "at": "..." }],
+  "pending_operations": [{ "operation_id": "hex64", "nonce": 1, "caller": "G...", "target": "C...",
+    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64",
+    "args": [7, 8000, "86400"], "ready_at": "2025-11-16T00:00:00Z", "expires_at": "2025-11-23T00:00:00Z",
+    "state": "waiting|ready|expired" }],
   "records": [{ "record_id": "1", "lot_id": "1", "protection": "WarehousePledge", "commodity": "...",
     "unit": "Mt", "reference_quantity": "...", "reference_grade": "...", "region": "...",
     "site_hash": "hex", "control_kind": "Agent", "control_reference": "...", "perfection": "...",
@@ -112,7 +116,7 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
       "value_date": "...", "ref_hash": "hex", "tx_hash": "...", "at": "...", "reversed_at": null }] }] }
 ```
 
-The inspection object carries every `security_inspections` column (region, site and certificate hashes, `certificate_no`, `entered_at`, `approved_at`, the three variances, `resolution_reason_hash`, `resolved_at`); the example shortens it. Records are ordered by `record_id`, open and closed; `open` is `status` not `Released` and not `Enforced`. `docs` are ordered by `position` and `inspections` by `inspection_id`; `flagged_by` is `null` when there is no flag. `is_lot_latest` is `inspection_id == lot.latest_inspection_id`. `repayments` is `[]` for a record with no sale, and joins on `sale_id`, so it is served for any status (an `Enforced` record is the usual one). Repayment rows are not pinned to one minter address, so repayments booked on an older minter still link.
+`pending_operations` is always an array, see [Pending operations](#pending-operations). The inspection object carries every `security_inspections` column (region, site and certificate hashes, `certificate_no`, `entered_at`, `approved_at`, the three variances, `resolution_reason_hash`, `resolved_at`); the example shortens it. Records are ordered by `record_id`, open and closed; `open` is `status` not `Released` and not `Enforced`. `docs` are ordered by `position` and `inspections` by `inspection_id`; `flagged_by` is `null` when there is no flag. `is_lot_latest` is `inspection_id == lot.latest_inspection_id`. `repayments` is `[]` for a record with no sale, and joins on `sale_id`, so it is served for any status (an `Enforced` record is the usual one). Repayment rows are not pinned to one minter address, so repayments booked on an older minter still link.
 
 ## Loan book fields
 
@@ -124,15 +128,48 @@ The inspection object carries every `security_inspections` column (region, site 
 | `margin_call_open` | `bool` or `null` | `security_terms.margin_call_at != 0`, same rule as `/security` `margin_call.open` | no terms row, or `margin_call_at` cannot be decoded |
 | `price_stale` | `bool` or `null` | `security_loan_valuations.price_stale`, the contract flag, same as `/security` `valuation.price_stale` | no valuation snapshot yet |
 
-All three are `null` on EVM entries and on Stellar chains without `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`. The valuation fields do not depend on a terms row, and `margin_call_open` does not depend on a valuation, exactly as `/security` serves them. The values come from the same rows as `/security` but carry no `refresh_pending`, so they can lag a SecurityRegistry write by one or two fold cycles. A database error is a `500` for the whole loan book. The legacy off-chain `ltv` stays until the contract phase of #1786.
+A fourth key, `pending_operations`, is always an array (never `null`): every loan-scoped AccessManager operation of the loan on the configured LoanRegistry, Minter (`reverse_repay`) and SecurityRegistry, see [Pending operations](#pending-operations).
+
+The three LTV keys are `null` on EVM entries and on Stellar chains without `CHAIN_<id>_STELLAR_API_SECURITY_REGISTRY_ADDRESS`. The valuation fields do not depend on a terms row, and `margin_call_open` does not depend on a valuation, exactly as `/security` serves them. The values come from the same rows as `/security` but carry no `refresh_pending`, so they can lag a SecurityRegistry write by one or two fold cycles. A database error is a `500` for the whole loan book. The legacy off-chain `ltv` stays until the contract phase of #1786.
+
+## Pending operations
+
+Operations the Risk Council scheduled on the Stellar AccessManager and that have not been executed or canceled (#1922, epic #1920), read from `access_manager_operations` ([access-manager-events.md](../references/access-manager-events.md#api-read)). They are served on `GET /v1/loan-book/{loan_id}/security` (SecurityRegistry operations of the loan: `set_terms`, `resolve_flag`, `release_with_consent`) and on every `loans[]` entry of `GET /v1/loan-book` (every loan-scoped operation of the loan on the configured LoanRegistry, Minter and SecurityRegistry).
+
+| Field | Type | Source |
+|---|---|---|
+| `operation_id` | string | 64 lowercase hex, as stored |
+| `nonce` | number | contract nonce (`u32`) |
+| `caller`, `target`, `function` | string | as stored |
+| `target_kind` | `loan_registry`, `minter`, `security_registry`, `other` | `target` compared with the chain's API LoanRegistry, Minter and SecurityRegistry addresses; `other` is reserved and not emitted here |
+| `args_xdr` | string | base64 of the arguments, verbatim |
+| `args` | JSON array | `args_json` verbatim, display only |
+| `ready_at`, `expires_at` | ISO-8601 UTC | `ready_at` and `ready_at + 604800` |
+| `state` | `waiting`, `ready`, `expired` | derived at the API clock `now`: `waiting` while `now < ready_at`, `expired` once `now >= expires_at`, else `ready` |
+
+**Encoding exception.** `ready_at` and `expires_at` are ISO strings, not the decimal strings used for the other times of this response.
+
+**Sort.** By `ready_at`, then `operation_id`, then `nonce`.
+
+**Selection.**
+
+- Only `pending` rows. Executed and canceled rows are never served. An expired schedule stays `pending` in the table and is served as `expired`, with no time window, until a later schedule of the same operation id supersedes it.
+- Only rows whose `target` is the chain's API LoanRegistry, Minter or SecurityRegistry address. A loan id of a retired contract never attaches to the same id on the current one.
+- The loan is the row's `loan_id`. For a `resolve_flag` or `release_with_consent` row projected before its record was known (`loan_id` `NULL`, `record_id` set), the read resolves the loan from `security_records`, the `SecurityRecordRegistered` rows of `contract_logs` and `security_view_snapshots`. Rows with no loan are not served.
+- Rows without `args_xdr` and `args_json` (transaction out of retention) are not served: they cannot be executed from the console.
+- A row is dropped when a later schedule (greater `(schedule_ledger, source_log_id)`) of the same contract and operation id exists, whatever its status. On chain a new schedule of an id is accepted only after the previous one stopped being live. The contract nonce restarts at 1 once the temporary entry lapses, so the rule does not compare nonces.
+
+**Empty array.** EVM chains, a chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. `other`, `set_inspectors` and any non-loan operation are out of scope.
+
+**Freshness.** Up to one `access-manager-sync` interval (15 s) after the indexer passes the ledger. A database error is a `500` for the whole response. Reconciliation against the contract's `get_schedule` is TD-187. A later schedule of the same arguments by the same caller after the contract's entry lapsed can be dropped by the indexer (BUG-38, #1927).
 
 ## Data Model
 
-No table or migration. The route also reads `loan_asset_prices`, `loan_assays` and `loan_offtake_terms` when `SECURITY_MARK_COMMODITIES` is set. The route reads the tables in [security-registry-events.md](../references/security-registry-events.md#projection-tables) and the minter `CashRepaid` / `CashRepaymentReversed` rows of `contract_logs`. Every read is scoped by `chain_id` and the configured `contract_address`, except the minter repayment join, which is scoped by chain, loan and sale id.
+No table or migration. The route also reads `access_manager_operations` for [Pending operations](#pending-operations) (and, for rows whose loan is unresolved, the record sources named there), and `loan_asset_prices`, `loan_assays` and `loan_offtake_terms` when `SECURITY_MARK_COMMODITIES` is set. The route reads the tables in [security-registry-events.md](../references/security-registry-events.md#projection-tables) and the minter `CashRepaid` / `CashRepaymentReversed` rows of `contract_logs`. Every read is scoped by `chain_id` and the configured `contract_address`, except the minter repayment join, which is scoped by chain, loan and sale id.
 
 ## Security
 
-Public and read-only. The response is on-chain data plus the off-chain prices and the net smelter return derived from offtake terms, which `GET /v1/loan-book/{id}/valuations` already exposes: no personal data, no RPC call, no write. Operator wallets (`entered_by`, `approved_by`, `attested_by`) are on-chain addresses and are not mapped to accounts. AccessManager roles (`can_call`) and the record NFT holder are not indexed and not served. `loan_id` is parsed as a `u32`, never as an arbitrary decimal, so a request cannot make the server expand a huge exponent.
+Public and read-only. The response is on-chain data plus the off-chain prices and the net smelter return derived from offtake terms, which `GET /v1/loan-book/{id}/valuations` already exposes: no personal data, no RPC call, no write. Operator wallets (`entered_by`, `approved_by`, `attested_by`) are on-chain addresses and are not mapped to accounts. Pending AccessManager operations are served: caller, target, function, arguments and ready time are already public in the schedule transaction and event on chain. AccessManager roles (`can_call`) and the record NFT holder are not indexed and not served. `loan_id` is parsed as a `u32`, never as an arbitrary decimal, so a request cannot make the server expand a huge exponent.
 
 Every stored string or `NUMERIC` that feeds the suggestion arithmetic is bounded first (`bounded_dec`, `bounded_dec_str`): strings at most 64 bytes, scale in [-40, 200], at most 400 digits and at most 60 integer digits; a negative scale from Postgres is rescaled to 0. A longer scale (the collector stores up to 100-digit prices) is truncated down to scale 18 before any arithmetic. Anything else gives `unreadable` and a warning. An unreadable price of a payable metal gives `unreadable`, never `no_price`.
 

@@ -25,6 +25,7 @@ use shared::security_state::{
 use utoipa::ToSchema;
 
 use crate::formatting::iso_utc;
+use crate::pending_operations::PendingOperation;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SecurityTermsDto {
@@ -284,6 +285,7 @@ pub struct LoanSecurityResponse {
     pub prices: Option<PricesDto>,
     pub extension_consents: Vec<ConsentDto>,
     pub records: Vec<SecurityRecordDto>,
+    pub pending_operations: Vec<PendingOperation>,
 }
 
 struct CountedEntry {
@@ -1105,5 +1107,6 @@ pub fn build_security_response(
         prices,
         extension_consents: rows.consents.iter().map(consent_dto).collect(),
         records,
+        pending_operations: Vec::new(),
     }
 }

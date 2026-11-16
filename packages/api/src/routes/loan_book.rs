@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
+use shared::access_manager_repo::AccessManagerRepo;
 use shared::book_weighting::{
     bps_to_fraction_string, current_rate_bps, current_tenor_days, weighted_mean,
 };
@@ -41,6 +42,9 @@ use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, Submitted
 use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
+use crate::pending_operations::{
+    group_by_loan, PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
+};
 use crate::routes::common::{
     chain_kind, loan_registry_address, trustee_indexed_loan_guard, ChainScope, LenientChainFilter,
     RequiredChain,
@@ -289,6 +293,7 @@ pub struct LoanBookEntry {
     pub ltv_bps: Option<u32>,
     pub margin_call_open: Option<bool>,
     pub price_stale: Option<bool>,
+    pub pending_operations: Vec<PendingOperation>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -730,6 +735,9 @@ pub struct ReviewRequest {
         TopConcentration,
         LoanBookEntry,
         LoanPocket,
+        PendingOperation,
+        PendingOperationState,
+        PendingTargetKind,
         LoanDocumentDto,
         SubmitLoanRequest,
         SubmitLoanResponse,
@@ -1448,6 +1456,8 @@ pub async fn handle_loan_book(
     attach_pockets(&mut resp, &pockets);
     let security = security_by_loan(state, chain_ids).await?;
     attach_security(&mut resp, &security);
+    let pending = pending_ops_by_loan(state, chain_ids, to).await?;
+    attach_pending_operations(&mut resp, &pending);
     Ok(resp)
 }
 
@@ -1494,6 +1504,52 @@ async fn security_by_loan(
         }
     }
     Ok(out)
+}
+
+async fn pending_ops_by_loan(
+    state: &AppState,
+    chain_ids: &[i64],
+    now: i64,
+) -> Result<HashMap<LoanRef, Vec<PendingOperation>>, ApiError> {
+    let repo = AccessManagerRepo::new(state.pool.clone());
+    let mut out = HashMap::new();
+    for &chain_id in chain_ids {
+        if chain_kind(state, chain_id) != Some(ChainKind::Stellar) {
+            continue;
+        }
+        let scope = TargetScope {
+            loan_registry: state
+                .loan_registry_addresses
+                .get(&chain_id)
+                .map(String::as_str),
+            minter: state.minter_addresses.get(&chain_id).map(String::as_str),
+            security_registry: state
+                .security_registry_addresses
+                .get(&chain_id)
+                .map(String::as_str),
+        };
+        let targets = scope.targets();
+        if targets.is_empty() {
+            continue;
+        }
+        let rows = repo
+            .list_pending_loan_ops(chain_id, &targets, scope.security_registry, None)
+            .await?;
+        out.extend(group_by_loan(chain_id, &rows, &scope, now));
+    }
+    Ok(out)
+}
+
+pub fn attach_pending_operations<S: std::hash::BuildHasher>(
+    resp: &mut LoanBookResponse,
+    by_loan: &HashMap<LoanRef, Vec<PendingOperation>, S>,
+) {
+    for entry in &mut resp.loans {
+        entry.pending_operations = by_loan
+            .get(&(entry.chain_id, entry.loan_id.clone()))
+            .cloned()
+            .unwrap_or_default();
+    }
 }
 
 pub fn attach_security<S: std::hash::BuildHasher>(
@@ -1818,6 +1874,7 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         ltv_bps: None,
         margin_call_open: None,
         price_stale: None,
+        pending_operations: Vec::new(),
     };
 
     EntryComputation {
