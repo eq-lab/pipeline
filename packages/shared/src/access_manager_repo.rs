@@ -119,6 +119,48 @@ pub const RECORD_LOAN_SQL: &str = "SELECT loan_id FROM security_records
        AND loan_id IS NOT NULL
      LIMIT 1";
 
+pub const LIST_PENDING_LOAN_OPS_SQL: &str = "SELECT r.loan_id, o.operation_id, o.nonce, o.caller,
+            o.target, o.function, o.args_xdr, o.args_json, o.ready_at, o.expires_at
+     FROM access_manager_operations o
+     CROSS JOIN LATERAL (
+         SELECT COALESCE(o.loan_id, (
+             SELECT l.loan_id FROM (
+                 SELECT loan_id FROM security_records
+                 WHERE chain_id = o.chain_id AND contract_address = $3
+                   AND record_id = o.record_id
+                 UNION ALL
+                 SELECT (params->>'loan_id')::bigint FROM contract_logs
+                 WHERE chain_id = o.chain_id
+                   AND contract_address = $3
+                   AND event_name = 'SecurityRecordRegistered'
+                   AND (params->>'record_id')::bigint = o.record_id
+                   AND params->>'loan_id' IS NOT NULL
+                 UNION ALL
+                 SELECT loan_id FROM security_view_snapshots
+                 WHERE chain_id = o.chain_id
+                   AND contract_address = $3
+                   AND kind = 'record'
+                   AND entity_id = o.record_id
+                   AND loan_id IS NOT NULL
+             ) l
+             WHERE o.loan_id IS NULL AND o.record_id IS NOT NULL AND o.target = $3
+             LIMIT 1)) AS loan_id
+     ) r
+     WHERE o.chain_id = $1
+       AND o.status = 'pending'
+       AND o.target = ANY($2)
+       AND o.args_xdr IS NOT NULL
+       AND o.args_json IS NOT NULL
+       AND r.loan_id IS NOT NULL
+       AND ($4::bigint IS NULL OR r.loan_id = $4)
+       AND NOT EXISTS (
+           SELECT 1 FROM access_manager_operations n
+           WHERE n.chain_id = o.chain_id
+             AND n.contract_address = o.contract_address
+             AND n.operation_id = o.operation_id
+             AND (n.schedule_ledger, n.source_log_id) > (o.schedule_ledger, o.source_log_id))
+     ORDER BY r.loan_id, o.ready_at, o.operation_id, o.nonce";
+
 pub const INSERT_SCHEDULED_SQL: &str = "INSERT INTO access_manager_operations
          (chain_id, contract_address, operation_id, nonce, caller, target, function,
           args_xdr, args_json, ready_at, expires_at, status, loan_id, record_id,
@@ -151,6 +193,20 @@ pub const ADVANCE_WATERMARK_SQL: &str = "INSERT INTO access_manager_sync_state
      ON CONFLICT (chain_id, contract_address) DO UPDATE
      SET last_log_id = GREATEST(access_manager_sync_state.last_log_id, EXCLUDED.last_log_id),
          updated_at = now()";
+
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+pub struct PendingOpRow {
+    pub loan_id: i64,
+    pub operation_id: String,
+    pub nonce: i64,
+    pub caller: String,
+    pub target: String,
+    pub function: String,
+    pub args_xdr: String,
+    pub args_json: Value,
+    pub ready_at: i64,
+    pub expires_at: i64,
+}
 
 type LogTuple = (i64, String, i64, String, i32, i64, Value);
 
@@ -237,6 +293,26 @@ impl AccessManagerRepo {
             .fetch_optional(&self.pool)
             .await?;
         Ok(row.map(|(loan,)| loan))
+    }
+
+    pub async fn list_pending_loan_ops(
+        &self,
+        chain_id: i64,
+        targets: &[String],
+        security_registry: Option<&str>,
+        loan_id: Option<i64>,
+    ) -> anyhow::Result<Vec<PendingOpRow>> {
+        if targets.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, PendingOpRow>(LIST_PENDING_LOAN_OPS_SQL)
+            .bind(chain_id)
+            .bind(targets)
+            .bind(security_registry)
+            .bind(loan_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows)
     }
 
     pub async fn apply(

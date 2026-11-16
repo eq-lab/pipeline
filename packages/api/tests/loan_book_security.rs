@@ -295,7 +295,7 @@ fn an_unattached_entry_serializes_the_keys_as_null() {
     let resp = book(&[make_loan(EVM, 1)]);
     let text = serde_json::to_string(&resp).unwrap();
     assert!(text.contains(
-        "\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null}"
+        "\"pocket\":null,\"ltv_bps\":null,\"margin_call_open\":null,\"price_stale\":null,\"pending_operations\":[]}"
     ));
 }
 

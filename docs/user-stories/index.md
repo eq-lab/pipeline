@@ -423,3 +423,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue | Doc | Status |
 | --- | --- | --- |
 | [#1921 Stellar AccessManager indexer: scheduled / canceled / executed operations with args from the transaction](https://github.com/eq-lab/pipeline/issues/1921) | [1921-access-manager-indexer.md](./epic-1920/1921-access-manager-indexer.md) | Initial |
+| [#1922 API: pending AccessManager operations inline in loan-book and loan security responses](https://github.com/eq-lab/pipeline/issues/1922) | [1922-pending-operations-api.md](./epic-1920/1922-pending-operations-api.md) | Initial |

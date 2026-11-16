@@ -15,6 +15,7 @@ pub mod minter_cash_book;
 pub mod otp;
 pub mod password;
 pub mod password_reset;
+pub mod pending_operations;
 pub mod routes;
 pub mod security_state;
 pub mod total_balance;

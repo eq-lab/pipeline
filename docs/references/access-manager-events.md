@@ -1,6 +1,6 @@
 # AccessManager scheduled operations (Stellar)
 
-Indexing of the Stellar AccessManager's scheduled-operation events (#1921, epic #1920). The worker stores `OperationScheduled`, `OperationCanceled` and `OperationExecuted` as raw `contract_logs` rows, then a separate task recovers each scheduled call's arguments from the transaction and projects the operation into `access_manager_operations`. The read API is #1922; the Trustee pages are #1923 and #1924. Role and target events are out of scope.
+Indexing of the Stellar AccessManager's scheduled-operation events (#1921, epic #1920). The worker stores `OperationScheduled`, `OperationCanceled` and `OperationExecuted` as raw `contract_logs` rows, then a separate task recovers each scheduled call's arguments from the transaction and projects the operation into `access_manager_operations`. The read API is described in [API read](#api-read); the Trustee pages are #1923 and #1924. Role and target events are out of scope.
 
 Contract source: `pipeline-stellar-contracts@e9881ac`, `contracts/access-manager/src/{lib.rs,event.rs,storage.rs}`. Contracts are frozen.
 
@@ -101,10 +101,20 @@ Rollout, per chain:
 
 Setting the key without a rewind indexes only from the current cursor.
 
+## API read
+
+`GET /v1/loan-book` and `GET /v1/loan-book/{loan_id}/security` serve `pending_operations` from this table (#1922); fields and states in [loan-security-state.md](../product-specs/loan-security-state.md#pending-operations). One statement per Stellar chain (one loan on `/security`):
+
+- `status = 'pending'` only, `target` equal to the API LoanRegistry, Minter or SecurityRegistry address, `args_xdr` and `args_json` set.
+- Loan is `COALESCE(loan_id, record lookup)`; the lookup (same three sources as [Loan id](#loan-id)) runs only for SecurityRegistry rows with `loan_id` `NULL` and `record_id` set. Rows still without a loan are not served.
+- A row is dropped when a later schedule of the same `(chain_id, contract_address, operation_id)` exists, compared by `(schedule_ledger, source_log_id)`, not by `nonce`: the contract nonce restarts at 1 after the temporary entry lapses.
+- `expired` is derived at read time (`now >= expires_at`); the table never closes an expired row.
+
 ## Known limitations
 
 - A raw row whose transaction left retention before the loop reached it yields a schedule with `args = NULL` (the operation cannot be executed from the console) or an execute that leaves its row `pending` until it reads as expired. Reconciliation against the contract's `get_schedule` / `get_nonce` is tech debt (TD-187).
 - A schedule made by a contract as a plain sub-call without an auth entry is not recoverable.
 - An `execute` of a delayed operation made by a contract as a plain sub-call without an auth entry yields no candidate; its row stays `pending` until it reads as expired (TD-187).
 - An immediate `execute` (caller delay 0) of the same arguments as a still-pending schedule marks that schedule `executed` although it is still live on chain (TD-187).
+- A schedule of the same operation id, arguments and caller made after the contract's temporary entry lapsed restarts the nonce at 1 and collides with the old row on the unique key; the indexer drops it (BUG-38, #1927).
 - Re-projection from watermark 0 loses arguments of schedules older than retention (see [Sync loop](#sync-loop)).

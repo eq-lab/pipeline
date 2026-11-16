@@ -8,12 +8,16 @@ use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use bigdecimal::BigDecimal;
+use shared::access_manager_repo::AccessManagerRepo;
 use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow};
 use shared::security_registry_repo::{LoanSecurityRows, SecurityRegistryRepo};
 use utoipa::OpenApi;
 
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
+use crate::pending_operations::{
+    pending_for_loan, PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
+};
 use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::security_state::{
     build_security_response, mark_price_pairs, needs_concentrate_inputs, ConsentDto, InspectionDto,
@@ -43,7 +47,10 @@ use crate::AppState;
         LotDto,
         RecordValuationDto,
         InspectionDto,
-        SaleRepaymentDto
+        SaleRepaymentDto,
+        PendingOperation,
+        PendingOperationState,
+        PendingTargetKind
     )),
     tags((
         name = "LoanBook",
@@ -83,7 +90,7 @@ pub fn parse_loan_id(raw: &str) -> Result<u32, ApiError> {
         RequiredChain
     ),
     responses(
-        (status = 200, description = "Terms, valuation, margin-call state, prices and every record of the loan, with a suggested mark per open goods record; an unknown loan id returns empty state (`terms: null`, `records: []`)", body = LoanSecurityResponse),
+        (status = 200, description = "Terms, valuation, margin-call state, prices and every record of the loan, with a suggested mark per open goods record, and the loan's pending SecurityRegistry operations scheduled on the AccessManager; an unknown loan id returns empty state (`terms: null`, `records: []`)", body = LoanSecurityResponse),
         (status = 400, description = "Missing, malformed, or unknown chain_id, or malformed loan_id"),
         (status = 404, description = "The chain has no SecurityRegistry configured (`security_registry_not_configured`)"),
         (status = 500, description = "Internal error"),
@@ -105,14 +112,28 @@ async fn get_loan_security(
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    Ok(Json(build_security_response(
+    let mut response = build_security_response(
         chain.chain_id,
         contract,
         &id.to_string(),
         &rows,
         now,
         &marks,
-    )))
+    );
+    let scope = TargetScope {
+        security_registry: Some(contract),
+        ..TargetScope::default()
+    };
+    let pending = AccessManagerRepo::new(state.pool.clone())
+        .list_pending_loan_ops(
+            chain.chain_id,
+            &scope.targets(),
+            Some(contract),
+            Some(i64::from(id)),
+        )
+        .await?;
+    response.pending_operations = pending_for_loan(&pending, &scope, now as i64);
+    Ok(Json(response))
 }
 
 async fn load_mark_inputs<'a>(
