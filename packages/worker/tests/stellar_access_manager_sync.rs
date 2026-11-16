@@ -140,7 +140,7 @@ async fn cancel_of_an_unknown_operation_is_a_noop_that_advances() {
 }
 
 #[tokio::test]
-async fn execute_touches_only_the_highest_nonce_pending_row() {
+async fn execute_touches_only_the_newest_schedule_of_the_id() {
     let store = MemStore::with_rows(vec![
         sched_row(1, "txA", 0),
         sched_row(2, "txA2", 1),
@@ -156,6 +156,142 @@ async fn execute_touches_only_the_highest_nonce_pending_row() {
     assert_eq!(ops[0].status, OpStatus::Pending);
     assert_eq!(ops[1].new.nonce, 1);
     assert_eq!(ops[1].status, OpStatus::Executed);
+}
+
+fn exec_row(id: i64, tx: &str) -> shared::access_manager_repo::AmLogRow {
+    executed_row(id, tx, LOAN_REGISTRY, "amend_economics")
+}
+
+fn tx_for(hashes: &[&str]) -> FakeTx {
+    let tx = FakeTx::default();
+    for h in hashes {
+        tx.set(h, Scripted::Found(amend_schedule_tx()));
+    }
+    tx
+}
+
+async fn run_fresh(store: &MemStore, tx: &FakeTx) {
+    run(store, tx, &mut KeyedBackoff::default(), Instant::now()).await;
+}
+
+#[tokio::test]
+async fn a_reschedule_after_the_nonce_reset_gets_its_own_row() {
+    let store = MemStore::with_rows(vec![
+        sched_row(1, "txS1", 1),
+        exec_row(2, "txE1"),
+        sched_row(3, "txS2", 1),
+    ]);
+    let tx = tx_for(&["txS1", "txS2"]);
+    tx.set("txE1", Scripted::Found(amend_execute_tx()));
+    run_fresh(&store, &tx).await;
+    let ops = store.ops();
+    assert_eq!(ops.len(), 2);
+    assert_eq!(ops[0].status, OpStatus::Executed);
+    assert_eq!(ops[0].closed_tx_hash.as_deref(), Some("txE1"));
+    assert_eq!(ops[1].status, OpStatus::Pending);
+    assert_eq!(ops[1].new.source_log_id, 3);
+}
+
+#[tokio::test]
+async fn cancel_after_a_reset_closes_only_the_newest_schedule() {
+    let store = MemStore::with_rows(vec![
+        sched_row(1, "txS1", 1),
+        canceled_row(2, "txC1", &amend_id(), 1),
+        sched_row(3, "txS2", 1),
+        canceled_row(4, "txC2", &amend_id(), 1),
+    ]);
+    run_fresh(&store, &tx_for(&["txS1", "txS2"])).await;
+    let ops = store.ops();
+    assert_eq!(ops.len(), 2);
+    assert_eq!(ops[0].status, OpStatus::Canceled);
+    assert_eq!(ops[0].closed_tx_hash.as_deref(), Some("txC1"));
+    assert_eq!(ops[1].status, OpStatus::Canceled);
+    assert_eq!(ops[1].closed_tx_hash.as_deref(), Some("txC2"));
+}
+
+#[tokio::test]
+async fn execute_after_a_reset_skips_a_stale_pending_row() {
+    let store = MemStore::with_rows(vec![
+        sched_row(1, "txS1", 3),
+        sched_row(2, "txS2", 1),
+        exec_row(3, "txE"),
+    ]);
+    let tx = tx_for(&["txS1", "txS2"]);
+    tx.set("txE", Scripted::Found(amend_execute_tx()));
+    run_fresh(&store, &tx).await;
+    let ops = store.ops();
+    assert_eq!(ops[0].status, OpStatus::Pending);
+    assert_eq!(ops[1].status, OpStatus::Executed);
+}
+
+#[tokio::test]
+async fn cancel_naming_another_nonce_than_the_newest_schedule_changes_nothing() {
+    let store = MemStore::with_rows(vec![
+        sched_row(1, "txS1", 2),
+        sched_row(2, "txS2", 1),
+        canceled_row(3, "txC", &amend_id(), 2),
+    ]);
+    run_fresh(&store, &tx_for(&["txS1", "txS2"])).await;
+    let ops = store.ops();
+    assert_eq!(ops[0].status, OpStatus::Pending);
+    assert_eq!(ops[1].status, OpStatus::Pending);
+    assert_eq!(store.watermark_now(), 3);
+}
+
+#[tokio::test]
+async fn replay_after_a_reset_never_closes_the_later_schedule() {
+    let closes = [exec_row(2, "txE1"), canceled_row(2, "txE1", &amend_id(), 1)];
+    for close in closes {
+        let store = MemStore::with_rows(vec![
+            sched_row(1, "txS1", 1),
+            close,
+            sched_row(3, "txS2", 1),
+        ]);
+        let tx = tx_for(&["txS1", "txS2"]);
+        tx.set("txE1", Scripted::Found(amend_execute_tx()));
+        run_fresh(&store, &tx).await;
+        let before = store.ops();
+        store.reset_watermark();
+        run_fresh(&store, &tx).await;
+        assert_eq!(store.ops(), before);
+        assert_eq!(store.ops().len(), 2);
+        assert_eq!(store.ops()[1].status, OpStatus::Pending);
+    }
+}
+
+#[tokio::test]
+async fn replay_of_a_close_never_falls_back_to_an_older_pending_row() {
+    let store = MemStore::with_rows(vec![
+        sched_row(1, "txS1", 1),
+        sched_row(2, "txS2", 1),
+        canceled_row(3, "txC2", &amend_id(), 1),
+    ]);
+    let tx = tx_for(&["txS1", "txS2"]);
+    run_fresh(&store, &tx).await;
+    store.reset_watermark();
+    run_fresh(&store, &tx).await;
+    let ops = store.ops();
+    assert_eq!(ops[0].status, OpStatus::Pending);
+    assert_eq!(ops[1].status, OpStatus::Canceled);
+}
+
+#[tokio::test]
+async fn newest_is_by_ledger_then_log_id() {
+    let mut low_id_high_ledger = sched_row(1, "txS1", 1);
+    low_id_high_ledger.block_number = 6_000_000;
+    let mut high_id_low_ledger = sched_row(2, "txS2", 2);
+    high_id_low_ledger.block_number = 5_900_000;
+    let store = MemStore::with_rows(vec![
+        low_id_high_ledger,
+        high_id_low_ledger,
+        exec_row(3, "txE"),
+    ]);
+    let tx = tx_for(&["txS1", "txS2"]);
+    tx.set("txE", Scripted::Found(amend_execute_tx()));
+    run_fresh(&store, &tx).await;
+    let ops = store.ops();
+    assert_eq!(ops[0].status, OpStatus::Executed);
+    assert_eq!(ops[1].status, OpStatus::Pending);
 }
 
 #[tokio::test]

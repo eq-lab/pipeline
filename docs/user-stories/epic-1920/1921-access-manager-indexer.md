@@ -55,7 +55,7 @@ Persona: operator (worker logs, env key, database). There is no UI or API in thi
 
 - Within about 15 s the row is `executed` (or `canceled`) with `closed_tx_hash` and `closed_ledger` set
 - Immediate executes by the relayer or the Trustee (no pending row for the same target, function and caller) produce no `getTransaction` call and change no row
-- Re-scheduling the same call after it was closed adds a second row with `nonce + 1`; the closed row is untouched
+- Re-scheduling the same call after it was closed adds a second row (`nonce + 1`, or `nonce = 1` again once the contract's entry lapsed about 8 days later); the closed row is untouched
 
 ---
 

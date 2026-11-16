@@ -394,6 +394,12 @@ impl MemStore {
     }
 }
 
+fn newest_before<'a>(ops: &'a mut [Op], operation_id: &str, log_id: i64) -> Option<&'a mut Op> {
+    ops.iter_mut()
+        .filter(|o| o.new.operation_id == operation_id && o.new.source_log_id < log_id)
+        .max_by_key(|o| (o.new.schedule_ledger, o.new.source_log_id))
+}
+
 #[async_trait]
 impl AmSyncStore for MemStore {
     async fn watermark(&self) -> Result<i64> {
@@ -430,10 +436,11 @@ impl AmSyncStore for MemStore {
         let mut affected = 0;
         match write {
             OpWrite::Schedule(new) => {
-                let exists = s
-                    .ops
-                    .iter()
-                    .any(|o| o.new.operation_id == new.operation_id && o.new.nonce == new.nonce);
+                let exists = s.ops.iter().any(|o| {
+                    o.new.operation_id == new.operation_id
+                        && o.new.nonce == new.nonce
+                        && o.new.schedule_ledger == new.schedule_ledger
+                });
                 if !exists {
                     s.ops.push(Op {
                         expires_at: new.expires_at(),
@@ -450,11 +457,8 @@ impl AmSyncStore for MemStore {
                 tx_hash,
                 ..
             } => {
-                for o in &mut s.ops {
-                    if o.new.operation_id == *operation_id
-                        && o.new.nonce == *nonce
-                        && o.status == OpStatus::Pending
-                    {
+                if let Some(o) = newest_before(&mut s.ops, operation_id, log_id) {
+                    if o.status == OpStatus::Pending && o.new.nonce == *nonce {
                         o.status = OpStatus::Canceled;
                         o.closed_tx_hash = Some(tx_hash.clone());
                         affected += 1;
@@ -463,15 +467,12 @@ impl AmSyncStore for MemStore {
             }
             OpWrite::Execute { ids, tx_hash, .. } => {
                 for id in ids {
-                    let best = s
-                        .ops
-                        .iter_mut()
-                        .filter(|o| o.new.operation_id == *id && o.status == OpStatus::Pending)
-                        .max_by_key(|o| o.new.nonce);
-                    if let Some(o) = best {
-                        o.status = OpStatus::Executed;
-                        o.closed_tx_hash = Some(tx_hash.clone());
-                        affected += 1;
+                    if let Some(o) = newest_before(&mut s.ops, id, log_id) {
+                        if o.status == OpStatus::Pending {
+                            o.status = OpStatus::Executed;
+                            o.closed_tx_hash = Some(tx_hash.clone());
+                            affected += 1;
+                        }
                     }
                 }
             }

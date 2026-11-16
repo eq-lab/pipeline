@@ -32,19 +32,19 @@ Consequences for the projection:
 
 ### In scope
 
-1. **New migration** that swaps the unique key for one that identifies a single schedule event:
+1. [x] **New migration** that swaps the unique key for one that identifies a single schedule event:
    `UNIQUE (chain_id, contract_address, operation_id, schedule_ledger, nonce)`, named
    `access_manager_operations_schedule_key`. The old auto-named constraint is dropped by a
    `pg_constraint` lookup. `schedule_ledger` comes before `nonce` so the index also serves the "newest
    schedule of this id" lookup below. The key is built only from chain data, so a replay of the same
    event (same ledger, same nonce) still conflicts and is skipped.
-2. **`INSERT_SCHEDULED_SQL`**: `ON CONFLICT (chain_id, contract_address, operation_id, schedule_ledger, nonce) DO NOTHING`.
-3. **`MARK_CANCELED_SQL` and `MARK_EXECUTED_SQL`**: a close updates **the newest schedule of the
+2. [x] **`INSERT_SCHEDULED_SQL`**: `ON CONFLICT (chain_id, contract_address, operation_id, schedule_ledger, nonce) DO NOTHING`.
+3. [x] **`MARK_CANCELED_SQL` and `MARK_EXECUTED_SQL`**: a close updates **the newest schedule of the
    `operation_id` logged before the closing event, and only if that row is `pending`** (and, for a
    cancel, only if its `nonce` equals the event's nonce). "Newest" is
    `ORDER BY schedule_ledger DESC, source_log_id DESC LIMIT 1`. "Logged before" is
    `source_log_id < <closing contract_logs.id>`. Neither statement orders by `nonce`.
-4. **Test fake** `MemStore` (`packages/worker/tests/stellar_access_manager_support/mod.rs`) mirrors the
+4. [x] **Test fake** `MemStore` (`packages/worker/tests/stellar_access_manager_support/mod.rs`) mirrors the
    new SQL exactly.
 5. Tests and docs, listed below. Move BUG-38 (added to `known-bugs.md` by #1928) to `## Resolved`,
    and delete the #1928 "Known limitations" line about it.
@@ -127,7 +127,7 @@ _None_
 
 ## Implementation Steps
 
-0. **Precondition.** `gh pr view 1928 --json state,mergedAt`. When `MERGED`:
+0. [x] **Precondition.** `gh pr view 1928 --json state,mergedAt`. When `MERGED`:
    `git -C /Users/aabliazimov/Documents/work/pipeline-fix-1927-am-nonce-reset fetch origin && git rebase origin/main`.
    Otherwise stop and wait for the merge (Decision 1).
 
@@ -179,9 +179,9 @@ _None_
 4. **`packages/worker/src/indexer/stellar/access_manager_sync.rs`**: no logic change expected. Re-read
    it after step 2 and confirm nothing there assumes "highest nonce" (no log text or comment does today).
 
-5. **Docs** (see Docs to Update), then move BUG-38 to `## Resolved` (Decision 2).
+5. [x] **Docs** (see Docs to Update), then move BUG-38 to `## Resolved` (Decision 2).
 
-6. **Lint and test**: `cargo clippy --all -- -D warnings`;
+6. [x] **Lint and test**: `cargo clippy --all -- -D warnings`;
    `cargo test -p shared --test migration_access_manager_schedule_key --test access_manager_projection_sql`;
    `cargo test -p pipeline-worker --test stellar_access_manager_sync`; then `/test-fast`; `npx tsx scripts/lint-docs.ts` for the doc edits.
 

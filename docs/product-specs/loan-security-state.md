@@ -161,7 +161,7 @@ Operations the Risk Council scheduled on the Stellar AccessManager and that have
 
 **Empty array.** EVM chains, a chain without the worker's AccessManager key (empty table), a loan with no pending operation, and chains or loans the API does not serve. If the API's Minter or SecurityRegistry key is unset, operations on that contract are not served. `other`, `set_inspectors` and any non-loan operation are out of scope.
 
-**Freshness.** Up to one `access-manager-sync` interval (15 s) after the indexer passes the ledger. A database error is a `500` for the whole response. Reconciliation against the contract's `get_schedule` is TD-187. A later schedule of the same arguments by the same caller after the contract's entry lapsed can be dropped by the indexer (BUG-38, #1927).
+**Freshness.** Up to one `access-manager-sync` interval (15 s) after the indexer passes the ledger. A database error is a `500` for the whole response. Reconciliation against the contract's `get_schedule` is TD-187.
 
 ## Data Model
 
