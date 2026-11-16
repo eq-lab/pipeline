@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#repayment-recovery-1711
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { InlineError } from "@pipeline/ui";
 import { KeyValueRow } from "@/components/detail/KeyValueRow";
 import { BRAND, INK_MUTED, LINE_COLOR } from "@/components/detail/detailTokens";
@@ -39,7 +39,18 @@ export function RepaymentRecoveryDialog({
   onClose: () => void;
 }) {
   const view = useRepaymentRecoveryDialog(chainId, loanId, onchainStatus, open);
-  const busy = view.reversePending || view.step2.pending;
+  const [busyRows, setBusyRows] = useState<ReadonlySet<string>>(new Set());
+  const rowBusy = busyRows.size > 0;
+  const busy = view.reversePending || view.step2.pending || rowBusy;
+  const onRowBusyChange = useCallback((key: string, isBusy: boolean) => {
+    setBusyRows((prev) => {
+      if (prev.has(key) === isBusy) return prev;
+      const next = new Set(prev);
+      if (isBusy) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -117,6 +128,8 @@ export function RepaymentRecoveryDialog({
             owner="recovery"
             executeGate={null}
             expectedTarget={view.pendingTarget}
+            locked={view.reversePending || view.step2.pending}
+            onBusyChange={onRowBusyChange}
           />
           {view.candidates.length === 0 && !reversed && !view.loading && (
             <p className={BODY} style={{ color: INK_MUTED }}>

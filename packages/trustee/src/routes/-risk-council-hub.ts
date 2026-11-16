@@ -10,22 +10,22 @@ import {
   riskCouncilRoleLine,
 } from "@/lib/accessManagerAction";
 import { ENV } from "@/lib/env";
-import { useExecutedOperations, useScheduledOps } from "@/lib/riskCouncilOps";
-import { stellarOnlyActionReason } from "@/lib/targetChains";
-import { formatMaturityDate } from "@/utils/formatDate";
-import { formatChainAmount } from "./-repayment-recovery";
 import {
-  formatLoanLabel,
-  formatSignedChainAmount,
-} from "./-risk-council-shared";
+  useExecutedOperations,
+  useScheduledOps,
+  useServedOperationIds,
+} from "@/lib/riskCouncilOps";
+import { stellarOnlyActionReason } from "@/lib/targetChains";
+import { formatLoanLabel } from "./-risk-council-shared";
 import { DEFAULT_NO_ROLE } from "./-risk-council-escalate";
 import {
   callerText,
   mergePendingOps,
+  pendingActionLabel,
+  pendingArgRows,
   pendingOwner,
   PENDING_STATE_LABELS,
   usePruneExecuted,
-  type PendingCall,
   type PendingOpItem,
   type PendingOwner,
 } from "./-risk-council-pending";
@@ -72,43 +72,14 @@ export interface RiskCouncilHubView {
   loading: boolean;
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  set_default: "Declare default",
-  cure: "Cure",
-  amend_economics: "Amend economics",
-  adjust_interest: "Adjust interest",
-  write_down: "Write down",
-  close_defaulted: "Close defaulted loan",
-  set_terms: "Set security terms",
-  resolve_flag: "Resolve flag",
-  release_with_consent: "Release with consent",
-  set_inspectors: "Set inspector panel",
-  reverse_repay: "Reverse repayment",
-};
-
-export function formatCallArgs(call: PendingCall, chainId: number): string {
-  switch (call.fn) {
-    case "reverse_repay":
-      return `repayment #${call.repaymentId}`;
-    case "amend_economics":
-      return `${call.rateBps} bps · maturity ${formatMaturityDate(call.maturity)}`;
-    case "adjust_interest":
-      return `${formatSignedChainAmount(call.delta, chainId)} · reason hash ${call.reasonHash.slice(0, 10)}…`;
-    case "write_down":
-      return formatChainAmount(call.amount, chainId);
-    case "close_defaulted":
-      return call.reason;
-    case "set_terms":
-      return `advance ${bpsToPercent(call.terms.advanceRatioBps)}% · margin call ${bpsToPercent(call.terms.marginCallRatioBps)}%`;
-    case "resolve_flag":
-      return `${call.outcome} · record #${call.recordId}`;
-    case "release_with_consent":
-      return `record #${call.recordId} · consent hash ${call.consentHash.slice(0, 10)}…`;
-    case "set_inspectors":
-      return `${call.inspectors.length} ${call.inspectors.length === 1 ? "inspector" : "inspectors"}`;
-    default:
-      return "—";
-  }
+export function formatPendingArgs(
+  item: PendingOpItem,
+  chainId: number,
+): string {
+  const rows = pendingArgRows(item, chainId);
+  return rows.length === 0
+    ? "—"
+    : rows.map((row) => `${row.label}: ${row.value}`).join(" · ");
 }
 
 const SECURITY_LINK: HubLink = { label: "Security", route: "security" };
@@ -130,10 +101,6 @@ export function loanLinks(status: string): HubLink[] {
     ];
   }
   return security;
-}
-
-function bpsToPercent(bps: number): string {
-  return String(bps / 100);
 }
 
 function loanLabelFor(
@@ -158,6 +125,7 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
   const access = useRiskCouncilAccess(chainId, null, "set_default");
   const sessionOps = useScheduledOps(chainId);
   const executed = useExecutedOperations(chainId);
+  const everServed = useServedOperationIds(chainId);
   const { address } = useStellarWallet();
 
   const servedOps = useMemo(
@@ -190,6 +158,7 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
             served: loan.pending_operations ?? [],
             session: sessionOps,
             executed,
+            everServed,
             chainId,
             loanId,
             nowSec,
@@ -207,10 +176,8 @@ export function useRiskCouncilHub(): RiskCouncilHubView {
     return {
       key: item.key,
       loanLabel: item.loanId === null ? "—" : loanLabelFor(loans, item.loanId),
-      action: ACTION_LABELS[item.fn] ?? item.fn,
-      args: item.call
-        ? formatCallArgs(item.call, chainId)
-        : JSON.stringify(item.rawArgs),
+      action: pendingActionLabel(item),
+      args: formatPendingArgs(item, chainId),
       scheduledBy: callerText(item, address),
       executableFrom: formatReadyAt(item.readyAt),
       state: PENDING_STATE_LABELS[item.state],

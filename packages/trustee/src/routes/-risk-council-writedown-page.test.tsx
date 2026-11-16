@@ -545,6 +545,16 @@ describe("Default resolution — scheduled operations", () => {
     expect(screen.queryByTestId(`${id(CLOSE)}-notice`)).toBeNull();
   });
 
+  it("does not block while the on-chain status and outstanding are unknown", () => {
+    setup({ pending: [WRITE_DOWN, CURE, CLOSE] });
+    mockLoanState.mockReturnValue({ data: undefined } as never);
+    renderRoute();
+    for (const op of [WRITE_DOWN, CURE, CLOSE]) {
+      expect(screen.getByTestId(`${id(op)}-button`)).toBeEnabled();
+      expect(screen.queryByTestId(`${id(op)}-notice`)).toBeNull();
+    }
+  });
+
   it("never executes a link row", () => {
     setup({ pending: [AMEND, SET_DEFAULT, SET_TERMS, REVERSE] });
     renderRoute();

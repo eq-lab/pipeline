@@ -553,8 +553,17 @@ describe("useRiskCouncilRelay schedule bridge", () => {
     expect(ops.result.current[0]!.operationId).toBeUndefined();
   });
 
-  it("does not read the schedule after an execute", async () => {
+  it("reads the schedule before an execute, never after it", async () => {
     fakeRelayTimers();
+    const order: string[] = [];
+    mocks.readSecurityRegistrySchedule.mockImplementation(async () => {
+      order.push("read");
+      return { operationId: "OPS", readyAt: 5 };
+    });
+    mocks.relaySecurityRegistry.mockImplementation(async () => {
+      order.push("relay");
+      return { hash: "SH" };
+    });
     const relay = renderHook(() => useRiskCouncilRelay(), {
       wrapper: makeWrapper(),
     });
@@ -565,7 +574,59 @@ describe("useRiskCouncilRelay schedule bridge", () => {
         chainId: STELLAR,
       });
     });
-    expect(mocks.readSecurityRegistrySchedule).not.toHaveBeenCalled();
+    expect(order).toEqual(["read", "relay"]);
+  });
+
+  it("marks an operation scheduled in another session executed by its id", async () => {
+    fakeRelayTimers();
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "OTHERSESSION",
+      readyAt: 9,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.get("OTHERSESSION")).toMatchObject({
+      hash: "H",
+      readyAt: 9,
+    });
+  });
+
+  it("marks nothing when the pre-read fails or the schedule is empty, and still executes", async () => {
+    fakeRelayTimers();
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    mocks.readRiskCouncilSchedule.mockRejectedValue(new Error("rpc"));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "ZERO",
+      readyAt: 0,
+    });
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(mocks.relayRiskCouncil).toHaveBeenCalledTimes(2);
+    expect(executed.result.current.size).toBe(0);
   });
 
   it("records the riskCouncilArgsXdr of an amend_economics schedule", async () => {

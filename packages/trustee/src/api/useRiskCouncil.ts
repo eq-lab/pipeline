@@ -292,6 +292,21 @@ export function useRiskCouncilRelay() {
         signTransaction,
         onStageChange: setStage,
       };
+      const scheduleParams = {
+        accessManagerId: cfg.accessManagerId,
+        registryId: cfg.registryId,
+        caller: address,
+        rpcUrl: cfg.rpcUrl,
+        networkPassphrase: cfg.networkPassphrase,
+      };
+      let executing: OperationSchedule | undefined;
+      if (mode === "execute") {
+        try {
+          executing = await readScheduleFor(call, scheduleParams);
+        } catch {
+          executing = undefined;
+        }
+      }
       const { hash } =
         target === "security_registry"
           ? await relaySecurityRegistry({
@@ -302,16 +317,10 @@ export function useRiskCouncilRelay() {
               ...params,
               call: call as RiskCouncilCall,
             });
-      if (mode !== "schedule") return { hash };
+      if (mode !== "schedule") return { hash, schedule: executing };
       let schedule: OperationSchedule | undefined;
       try {
-        schedule = await readScheduleFor(call, {
-          accessManagerId: cfg.accessManagerId,
-          registryId: cfg.registryId,
-          caller: address,
-          rpcUrl: cfg.rpcUrl,
-          networkPassphrase: cfg.networkPassphrase,
-        });
+        schedule = await readScheduleFor(call, scheduleParams);
       } catch {
         schedule = undefined;
       }
@@ -338,7 +347,17 @@ export function useRiskCouncilRelay() {
           target: data.target,
           argsXdr: data.argsXdr,
         });
-      } else markExecuted(chainId, call, data.hash);
+      } else {
+        markExecuted(chainId, call, data.hash);
+        if (data.schedule?.operationId && data.schedule.readyAt > 0) {
+          markOperationExecuted(
+            chainId,
+            data.schedule.operationId,
+            data.hash,
+            data.schedule.readyAt,
+          );
+        }
+      }
       invalidateRiskCouncil(queryClient);
       for (const delayMs of [5_000, 15_000]) {
         setTimeout(() => invalidateRiskCouncil(queryClient), delayMs);

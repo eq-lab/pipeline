@@ -586,6 +586,7 @@ describe("mergePendingOps", () => {
   const base = {
     session: [] as ScheduledOp[],
     executed: new Map<string, ExecutedOperation>(),
+    everServed: new Set<string>(),
     chainId: STELLAR,
     loanId: 7,
     nowSec: READY_AT,
@@ -604,6 +605,26 @@ describe("mergePendingOps", () => {
     });
     expect(items).toHaveLength(1);
     expect(items[0]!.source).toBe("session");
+  });
+
+  it("drops a session row whose id was served earlier and is no longer served", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [sessionOp()],
+      everServed: new Set(["11".repeat(32)]),
+    });
+    expect(items).toEqual([]);
+  });
+
+  it("keeps a session row whose id was never served", () => {
+    const items = mergePendingOps({
+      ...base,
+      served: [],
+      session: [sessionOp()],
+      everServed: new Set(["99".repeat(32)]),
+    });
+    expect(items).toHaveLength(1);
   });
 
   it("drops the session row once the API serves the same id", () => {

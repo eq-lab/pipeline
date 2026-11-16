@@ -36,8 +36,10 @@ import {
 import {
   councilTarget,
   pruneExecutedOperations,
+  recordServedOperations,
   useExecutedOperations,
   useScheduledOps,
+  useServedOperationIds,
   type ExecutedOperation,
   type ScheduledOp,
 } from "@/lib/riskCouncilOps";
@@ -475,6 +477,7 @@ export function mergePendingOps({
   served,
   session,
   executed,
+  everServed,
   chainId,
   loanId,
   nowSec,
@@ -482,6 +485,7 @@ export function mergePendingOps({
   served: ReadonlyArray<PendingOperation>;
   session: ReadonlyArray<ScheduledOp>;
   executed: ReadonlyMap<string, ExecutedOperation>;
+  everServed: ReadonlySet<string>;
   chainId: number;
   loanId: number | null;
   nowSec: number;
@@ -501,7 +505,8 @@ export function mergePendingOps({
         item !== null &&
         loanId !== null &&
         item.loanId === loanId &&
-        !seen.has(item.operationId),
+        !seen.has(item.operationId) &&
+        !everServed.has(item.operationId),
     )
     .map((item) => withExecuted(item, executed))
     .filter((item) => item.executed !== null || !isExecutedHere(item, session));
@@ -526,6 +531,10 @@ export function usePruneExecuted(
   fetchedAt: number,
 ): void {
   useEffect(() => {
+    recordServedOperations(
+      chainId,
+      ops.map((op) => op.operation_id),
+    );
     pruneExecutedOperations(chainId, servedReadyAtById(ops), fetchedAt);
   }, [chainId, ops, fetchedAt]);
 }
@@ -548,6 +557,7 @@ export function useLoanPendingOps({
   const loanBook = useLoanBook();
   const session = useScheduledOps(chainId);
   const executed = useExecutedOperations(chainId);
+  const everServed = useServedOperationIds(chainId);
   const loans = loanBook.data?.loans;
   const chainOps = useMemo(
     () => [
@@ -570,6 +580,7 @@ export function useLoanPendingOps({
     served: [...extraServed, ...(entry?.pending_operations ?? [])],
     session,
     executed,
+    everServed,
     chainId,
     loanId,
     nowSec: Date.now() / 1000,

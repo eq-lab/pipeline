@@ -207,7 +207,7 @@ describe("Risk Council hub", () => {
     expect(rows[1]).toHaveTextContent("Ready");
     expect(rows[2]).toHaveTextContent("Delta Commodities — Coffee (#1)");
     expect(rows[2]).toHaveTextContent("Amend economics");
-    expect(rows[2]).toHaveTextContent("1450 bps · maturity 21 Jul 2027");
+    expect(rows[2]).toHaveTextContent("New maturity: 21 Jul 2027");
     expect(rows[2]).toHaveTextContent("Waiting");
     expect(
       screen.queryByTestId("risk-council-scheduled-empty"),

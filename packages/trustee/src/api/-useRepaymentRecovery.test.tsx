@@ -2,6 +2,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import {
+  _resetRiskCouncilOpsForTests,
+  useExecutedOperations,
+} from "@/lib/riskCouncilOps";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   useExecuteReverseRepay,
@@ -75,6 +79,7 @@ function keys(spy: { mock: { calls: unknown[][] } }) {
 }
 
 beforeEach(() => {
+  _resetRiskCouncilOpsForTests();
   Object.values(mocks).forEach((m) => {
     if (typeof m === "function") (m as ReturnType<typeof vi.fn>).mockReset();
   });
@@ -135,6 +140,74 @@ describe("useReverseRepay mutations", () => {
       expect.objectContaining(expected),
     );
     expect(mocks.executeReverseRepay).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the schedule before executing and marks the operation executed", async () => {
+    fakeRelayTimers();
+    mocks.readReverseRepaySchedule.mockResolvedValue({
+      operationId: "OPR",
+      readyAt: 55,
+    });
+    const order: string[] = [];
+    mocks.readReverseRepaySchedule.mockImplementation(async () => {
+      order.push("read");
+      return { operationId: "OPR", readyAt: 55 };
+    });
+    mocks.executeReverseRepay.mockImplementation(async () => {
+      order.push("execute");
+      return { hash: "exec" };
+    });
+    const executed = renderHook(() => useExecutedOperations(99_000_001));
+    const execute = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: 99_000_001,
+      });
+    });
+    expect(order).toEqual(["read", "execute"]);
+    expect(executed.result.current.get("OPR")).toMatchObject({
+      hash: "exec",
+      readyAt: 55,
+    });
+  });
+
+  it("does not mark anything when the schedule is gone, unreadable or no chain id is given", async () => {
+    fakeRelayTimers();
+    const executed = renderHook(() => useExecutedOperations(99_000_001));
+    const execute = renderHook(() => useExecuteReverseRepay(), {
+      wrapper: makeWrapper(),
+    });
+    mocks.readReverseRepaySchedule.mockResolvedValue({
+      operationId: "OPR",
+      readyAt: 0,
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: 99_000_001,
+      });
+    });
+    mocks.readReverseRepaySchedule.mockRejectedValue(new Error("rpc"));
+    await act(async () => {
+      await execute.result.current.mutateAsync({
+        loanId: 7,
+        repaymentId: 1,
+        chainId: 99_000_001,
+      });
+    });
+    mocks.readReverseRepaySchedule.mockResolvedValue({
+      operationId: "OPR",
+      readyAt: 9,
+    });
+    await act(async () => {
+      await execute.result.current.mutateAsync({ loanId: 7, repaymentId: 1 });
+    });
+    expect(executed.result.current.size).toBe(0);
   });
 
   it("rejects before any RPC call when not configured or not connected", async () => {

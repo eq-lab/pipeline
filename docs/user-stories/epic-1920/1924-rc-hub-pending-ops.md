@@ -139,6 +139,7 @@ Trustee app (`packages/trustee`), Stellar wallet connected, session on the Stell
 
 - The row reads "Reverse repayment · repayment #N" with the repayment number, the reference hash shortened to 10 hex characters and "…", and "Scheduled by". Another wallet sees "Execute" disabled with "Only the scheduling wallet (<short address>) can execute this."
 - After the scheduler executes, the dialog shows "Repayment #N is reversed on-chain" and the step-1 button is gone; step 2 can proceed.
+- While a row Execute signs, Escape, the backdrop and Close do not close the dialog and "Execute reversal" is disabled; while "Execute reversal" signs, the row Execute is disabled. Executing with "Execute reversal" marks the matching row executed at once.
 - Operations of the same loan that belong to other pages (for example `amend_economics`) show a link to their page instead of Execute.
 - With no pending operation the block reads "No scheduled operations found."
 
@@ -157,6 +158,8 @@ Trustee app (`packages/trustee`), Stellar wallet connected, session on the Stell
 
 - Right after the schedule the row appears on both with "Scheduled from this console. The list catches up within a minute." on the page, and the same row in the hub table.
 - Once the indexer has the operation the note is gone, the row is listed once, and Execute works from any session.
+- If the Guardian cancels the operation (or it is executed elsewhere) after the API served it, the row disappears from both surfaces and does not come back as executable until a reload; it never reappears from the session note.
+- Executing the operation from the form's Execute button in a browser that did not schedule it hides the row and keeps the hub free of it at once.
 
 ---
 

@@ -519,6 +519,15 @@ describe("Amend economics — scheduled operations", () => {
     expect(screen.getByTestId(`${id(WRITE_DOWN)}-link`)).toBeInTheDocument();
   });
 
+  it("does not block while the on-chain status is unknown", () => {
+    setup(DELAYED, "WatchList", [AMEND, ADJUST]);
+    mockLoanState.mockReturnValue({ data: undefined } as never);
+    renderRoute();
+    expect(screen.getByTestId(`${id(AMEND)}-button`)).toBeEnabled();
+    expect(screen.getByTestId(`${id(ADJUST)}-button`)).toBeEnabled();
+    expect(screen.queryByTestId(`${id(AMEND)}-notice`)).toBeNull();
+  });
+
   it("never executes a link row", () => {
     setup(DELAYED, "WatchList", [WRITE_DOWN, SET_TERMS, REVERSE]);
     renderRoute();

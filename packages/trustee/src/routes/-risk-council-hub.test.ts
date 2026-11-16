@@ -1,53 +1,51 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import { describe, it, expect } from "vitest";
+import { fromServed } from "./-risk-council-pending";
 import {
-  formatCallArgs,
+  formatPendingArgs,
   HUB_FOOTNOTE,
   HUB_NO_ROLE,
   loanLinks,
 } from "./-risk-council-hub";
-import { STELLAR } from "./-riskCouncilFixtures";
+import { STELLAR, loanRegistryOp, minterOp } from "./-riskCouncilFixtures";
 
 const HASH = "ab".repeat(32);
 
-describe("formatCallArgs", () => {
-  it("prints the arguments verbatim per function", () => {
-    expect(formatCallArgs({ fn: "set_default", loanId: 1 }, STELLAR)).toBe("—");
-    expect(formatCallArgs({ fn: "cure", loanId: 1 }, STELLAR)).toBe("—");
+function item(fn: Parameters<typeof loanRegistryOp>[0], args: unknown[]) {
+  return fromServed(loanRegistryOp(fn, { args }));
+}
+
+describe("formatPendingArgs", () => {
+  it("prints the shared argument rows, a dash when there are none", () => {
+    expect(formatPendingArgs(item("set_default", [1]), STELLAR)).toBe("—");
+    expect(formatPendingArgs(item("cure", [1]), STELLAR)).toBe("—");
     expect(
-      formatCallArgs(
-        {
-          fn: "amend_economics",
-          loanId: 1,
-          rateBps: 1450,
-          maturity: 1_797_292_800,
-        },
+      formatPendingArgs(item("write_down", [1, "18400000000000"]), STELLAR),
+    ).toBe("Amount: $1,840,000.00");
+    expect(
+      formatPendingArgs(
+        item("close_defaulted", [1, ["OtherWriteDown"]]),
         STELLAR,
       ),
-    ).toBe("1450 bps · maturity 15 Dec 2026");
+    ).toBe("Closure reason: Other write-down");
     expect(
-      formatCallArgs(
-        {
-          fn: "adjust_interest",
-          loanId: 1,
-          delta: "-10005000000",
-          reasonHash: HASH,
-        },
+      formatPendingArgs(
+        item("adjust_interest", [1, "-10005000000", HASH]),
         STELLAR,
       ),
-    ).toBe("-$1,000.50 · reason hash ababababab…");
+    ).toBe("Delta: -$1,000.50 · Reason hash: ababababab…");
+  });
+
+  it("falls back to the raw JSON when the arguments do not decode", () => {
+    expect(formatPendingArgs(item("write_down", [1, 5]), STELLAR)).toBe(
+      "Arguments: [1,5]",
+    );
+  });
+
+  it("prints the repayment of a reverse_repay", () => {
     expect(
-      formatCallArgs(
-        { fn: "write_down", loanId: 1, amount: "18400000000000" },
-        STELLAR,
-      ),
-    ).toBe("$1,840,000.00");
-    expect(
-      formatCallArgs(
-        { fn: "close_defaulted", loanId: 1, reason: "OtherWriteDown" },
-        STELLAR,
-      ),
-    ).toBe("OtherWriteDown");
+      formatPendingArgs(fromServed(minterOp({ args: [1, 4, HASH] })), STELLAR),
+    ).toBe("Repayment: #4 · Reference hash: ababababab…");
   });
 });
 
@@ -78,62 +76,7 @@ describe("loanLinks", () => {
   });
 });
 
-describe("security calls", () => {
-  const terms = {
-    advanceRatioBps: 7000,
-    marginCallRatioBps: 8250,
-    curePeriod: "604800",
-    priceStaleAfter: "86400",
-    paymentTerm: "Da",
-    gracePeriod: "0",
-    defaultRate: 20000,
-    attestationInterval: "0",
-    inspectionInterval: "0",
-    toleranceBps: 50,
-    gradeToleranceBps: 25,
-  } as const;
-
-  it("prints terms, flag resolution, release and inspector arguments", () => {
-    expect(formatCallArgs({ fn: "set_terms", loanId: 1, terms }, STELLAR)).toBe(
-      "advance 70% · margin call 82.5%",
-    );
-    expect(
-      formatCallArgs(
-        {
-          fn: "resolve_flag",
-          recordId: 12,
-          outcome: "TopUpRequired",
-          reasonHash: HASH,
-        },
-        STELLAR,
-      ),
-    ).toBe("TopUpRequired · record #12");
-    expect(
-      formatCallArgs(
-        { fn: "release_with_consent", recordId: 3, consentHash: HASH },
-        STELLAR,
-      ),
-    ).toBe("record #3 · consent hash ababababab…");
-    expect(
-      formatCallArgs({ fn: "set_inspectors", inspectors: ["GA"] }, STELLAR),
-    ).toBe("1 inspector");
-    expect(
-      formatCallArgs(
-        { fn: "set_inspectors", inspectors: ["GA", "GB", "GC"] },
-        STELLAR,
-      ),
-    ).toBe("3 inspectors");
-  });
-
-  it("prints the repayment number for a reverse_repay", () => {
-    expect(
-      formatCallArgs(
-        { fn: "reverse_repay", loanId: 1, repaymentId: 4, refHash: HASH },
-        STELLAR,
-      ),
-    ).toBe("repayment #4");
-  });
-
+describe("hub copy", () => {
   it("names the inspector panel in the footnote and drops the scheduler-only line", () => {
     expect(HUB_FOOTNOTE).toMatch(/Inspector panel changes are not tied/);
     expect(HUB_FOOTNOTE).toMatch(/open the Inspector panel/);

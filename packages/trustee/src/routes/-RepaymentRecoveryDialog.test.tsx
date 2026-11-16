@@ -170,7 +170,7 @@ function setAccess(
   };
 }
 
-function renderDialog() {
+function renderDialog(onClose: () => void = vi.fn()) {
   return render(
     <RepaymentRecoveryDialog
       open
@@ -178,7 +178,7 @@ function renderDialog() {
       loanId="7"
       loanName="Helios Metals"
       onchainStatus="Performing"
-      onClose={vi.fn()}
+      onClose={onClose}
     />,
   );
 }
@@ -234,6 +234,7 @@ describe("RepaymentRecoveryDialog step 1", () => {
     expect(exec().mutateAsync).toHaveBeenCalledWith({
       loanId: 7,
       repaymentId: 1,
+      chainId: CHAIN,
     });
     expect(sched().mutateAsync).not.toHaveBeenCalled();
   });
@@ -264,6 +265,7 @@ describe("RepaymentRecoveryDialog step 1", () => {
     expect(sched().mutateAsync).toHaveBeenCalledWith({
       loanId: 7,
       repaymentId: 1,
+      chainId: CHAIN,
     });
     expect(exec().mutateAsync).not.toHaveBeenCalled();
     unmount();
@@ -282,6 +284,7 @@ describe("RepaymentRecoveryDialog step 1", () => {
     expect(exec().mutateAsync).toHaveBeenCalledWith({
       loanId: 7,
       repaymentId: 1,
+      chainId: CHAIN,
     });
   });
 
@@ -492,6 +495,37 @@ describe("RepaymentRecoveryDialog scheduled operations", () => {
       fn: "reverse_repay",
       argsXdr: "REVERSEXDR",
     });
+  });
+
+  it("treats an in-flight row execute as busy: Escape, backdrop, Close and Execute reversal are blocked", () => {
+    serve(REVERSE);
+    setAccess({ immediate: true, delay: 0 }, null);
+    (
+      state.pendingExecute as ReturnType<typeof pendingExecuteResult>
+    ).isPending = true;
+    const onClose = vi.fn();
+    renderDialog(onClose);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByTestId("repayment-recovery-backdrop"));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("repayment-recovery-close")).toBeDisabled();
+    expect(screen.getByTestId("repayment-recovery-reverse")).toBeDisabled();
+  });
+
+  it("closes with Escape when no execute is in flight", () => {
+    serve(REVERSE);
+    const onClose = vi.fn();
+    renderDialog(onClose);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the row Execute while the reversal is in flight", () => {
+    serve(REVERSE);
+    setAccess({ immediate: true, delay: 0 }, null);
+    exec().isPending = true;
+    renderDialog();
+    expect(screen.getByTestId(`${id(REVERSE)}-button`)).toBeDisabled();
   });
 
   it("disables Execute with the Minter copy when the row targets another Minter", () => {

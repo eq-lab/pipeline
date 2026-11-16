@@ -200,7 +200,11 @@ export function useRepaymentRecoveryDialog(
     reverse: () => {
       if (selectedId === null) return;
       void reverseMutation
-        .mutateAsync({ loanId: Number(loanId), repaymentId: selectedId })
+        .mutateAsync({
+          loanId: Number(loanId),
+          repaymentId: selectedId,
+          chainId,
+        })
         .catch(() => {});
     },
     step2: {

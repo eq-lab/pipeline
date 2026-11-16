@@ -427,6 +427,8 @@ function PendingExecuteControls({
   executeGate,
   expectedTarget,
   confirmText,
+  locked,
+  onBusyChange,
 }: {
   prefix: string;
   chainId: number;
@@ -434,6 +436,8 @@ function PendingExecuteControls({
   executeGate: string | null;
   expectedTarget: string;
   confirmText?: string;
+  locked?: boolean;
+  onBusyChange?: (key: string, busy: boolean) => void;
 }) {
   const view = usePendingOperationView({
     chainId,
@@ -441,8 +445,18 @@ function PendingExecuteControls({
     executeGate,
     expectedTarget,
   });
+  const { pending } = view;
+  useEffect(() => {
+    if (!onBusyChange) return;
+    onBusyChange(item.key, pending);
+    return () => onBusyChange(item.key, false);
+  }, [onBusyChange, item.key, pending]);
   return (
-    <ActionControls prefix={prefix} view={view} confirmText={confirmText} />
+    <ActionControls
+      prefix={prefix}
+      view={locked ? { ...view, disabled: true } : view}
+      confirmText={confirmText}
+    />
   );
 }
 
@@ -485,6 +499,8 @@ export function PendingOperationItem({
   executeGate,
   expectedTarget,
   confirmText,
+  locked,
+  onBusyChange,
 }: {
   prefix: string;
   rowTestId: string;
@@ -494,6 +510,8 @@ export function PendingOperationItem({
   executeGate: string | null;
   expectedTarget: string;
   confirmText?: string;
+  locked?: boolean;
+  onBusyChange?: (key: string, busy: boolean) => void;
 }) {
   const { address } = useStellarWallet();
   const rows = pendingArgRows(item, chainId);
@@ -531,6 +549,8 @@ export function PendingOperationItem({
           executeGate={executeGate}
           expectedTarget={expectedTarget}
           confirmText={confirmText}
+          locked={locked}
+          onBusyChange={onBusyChange}
         />
       ) : (
         <PendingOwnerLinkControls
@@ -552,6 +572,8 @@ export function PendingOperationsList({
   executeGateFor,
   expectedTarget,
   confirmTextFor,
+  locked,
+  onBusyChange,
 }: {
   testId: string;
   items: ReadonlyArray<PendingOpItem>;
@@ -561,6 +583,8 @@ export function PendingOperationsList({
   executeGateFor?: (item: PendingOpItem) => string | null;
   expectedTarget: string;
   confirmTextFor?: (item: PendingOpItem) => string | undefined;
+  locked?: boolean;
+  onBusyChange?: (key: string, busy: boolean) => void;
 }) {
   if (items.length === 0) {
     return <Muted testId={`${testId}-empty`}>{PENDING_EMPTY}</Muted>;
@@ -578,6 +602,8 @@ export function PendingOperationsList({
           executeGate={executeGateFor ? executeGateFor(item) : executeGate}
           expectedTarget={expectedTarget}
           confirmText={confirmTextFor?.(item)}
+          locked={locked}
+          onBusyChange={onBusyChange}
         />
       ))}
     </>
