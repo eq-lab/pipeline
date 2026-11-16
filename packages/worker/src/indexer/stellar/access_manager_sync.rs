@@ -69,8 +69,8 @@ pub fn classify_transaction(resp: &GetTransactionResponse, row_ledger: i64) -> R
             None => Err(anyhow!("getTransaction SUCCESS without envelopeXdr")),
         },
         "NOT_FOUND" => match resp.oldest_ledger {
-            Some(oldest) if row_ledger >= oldest as i64 => Ok(TxFetch::NotYet),
-            _ => Ok(TxFetch::BeyondRetention),
+            Some(oldest) if row_ledger < oldest as i64 => Ok(TxFetch::BeyondRetention),
+            _ => Ok(TxFetch::NotYet),
         },
         other => Err(anyhow!("getTransaction returned status {other}")),
     }
@@ -298,7 +298,12 @@ pub async fn sync_once(
         match resolve_row(&row, cfg, store, tx, &mut cache).await {
             Ok(write) => {
                 if let Err(e) = store.apply(row.id, &write).await {
-                    tracing::warn!(log_id = row.id, error = %e, "AccessManager projection write failed");
+                    backoff.record_failure(row.id, now);
+                    if backoff.first_warning(row.id) {
+                        tracing::warn!(log_id = row.id, error = %e, "AccessManager projection write failed; will retry");
+                    } else {
+                        tracing::debug!(log_id = row.id, error = %e, "AccessManager projection write failed; will retry");
+                    }
                     break;
                 }
                 backoff.clear(row.id);

@@ -103,14 +103,14 @@ pub const HAS_PENDING_CALL_SQL: &str = "SELECT EXISTS (
 
 pub const RECORD_LOAN_SQL: &str = "SELECT loan_id FROM security_records
      WHERE chain_id = $1 AND contract_address = $2 AND record_id = $3
-     UNION
+     UNION ALL
      SELECT (params->>'loan_id')::bigint FROM contract_logs
      WHERE chain_id = $1
        AND contract_address = $2
        AND event_name = 'SecurityRecordRegistered'
        AND (params->>'record_id')::bigint = $3
        AND params->>'loan_id' IS NOT NULL
-     UNION
+     UNION ALL
      SELECT loan_id FROM security_view_snapshots
      WHERE chain_id = $1
        AND contract_address = $2

@@ -420,6 +420,10 @@ fn xdr_fallback(v: &ScVal) -> Value {
     json!({ "xdr": v.to_xdr_base64(Limits::none()).unwrap_or_default() })
 }
 
+fn json_text(s: &[u8]) -> String {
+    String::from_utf8_lossy(s).replace('\0', "\u{FFFD}")
+}
+
 pub fn args_display_json(args: &ScVal) -> Value {
     match args {
         ScVal::U32(n) => json!(n),
@@ -437,8 +441,8 @@ pub fn args_display_json(args: &ScVal) -> Value {
         )),
         ScVal::Bool(b) => json!(b),
         ScVal::Void => Value::Null,
-        ScVal::Symbol(s) => json!(s.0.to_utf8_string_lossy()),
-        ScVal::String(s) => json!(s.0.to_utf8_string_lossy()),
+        ScVal::Symbol(s) => json!(json_text(s.0.as_slice())),
+        ScVal::String(s) => json!(json_text(s.0.as_slice())),
         ScVal::Bytes(b) => json!(hex::encode(b.0.as_slice())),
         ScVal::Address(a) => match sc_address_to_strkey(a) {
             Some(s) => json!(s),
@@ -462,7 +466,7 @@ fn map_display_json(entries: &[ScMapEntry]) -> Value {
         let mut obj = Map::new();
         for e in entries {
             if let ScVal::Symbol(k) = &e.key {
-                obj.insert(k.0.to_utf8_string_lossy(), args_display_json(&e.val));
+                obj.insert(json_text(k.0.as_slice()), args_display_json(&e.val));
             }
         }
         return Value::Object(obj);

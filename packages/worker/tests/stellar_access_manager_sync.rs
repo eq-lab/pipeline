@@ -315,15 +315,28 @@ async fn one_call_is_capped_at_rows_per_cycle() {
 }
 
 #[tokio::test]
-async fn failing_apply_stops_the_cycle_without_advancing() {
-    let store = MemStore::with_rows(vec![canceled_row(1, "txC", &amend_id(), 0)]);
+async fn failing_apply_backs_off_without_advancing_and_retries_later() {
+    let store = MemStore::with_rows(vec![
+        canceled_row(1, "txC", &amend_id(), 0),
+        canceled_row(2, "txC2", &amend_id(), 0),
+    ]);
     store.state.lock().unwrap().fail_apply = true;
     let tx = FakeTx::default();
-    assert_eq!(
-        run(&store, &tx, &mut KeyedBackoff::default(), Instant::now()).await,
-        0
-    );
+    let mut backoff = KeyedBackoff::default();
+    let now = Instant::now();
+
+    assert_eq!(run(&store, &tx, &mut backoff, now).await, 0);
     assert_eq!(store.watermark_now(), 0);
+    assert_eq!(backoff.failures(1), 1);
+
+    store.state.lock().unwrap().fail_apply = false;
+    assert_eq!(run(&store, &tx, &mut backoff, now).await, 0);
+    assert_eq!(store.watermark_now(), 0);
+
+    let later = now + Duration::from_secs(61);
+    assert_eq!(run(&store, &tx, &mut backoff, later).await, 2);
+    assert_eq!(store.watermark_now(), 2);
+    assert_eq!(backoff.failures(1), 0);
 }
 
 #[tokio::test]
@@ -366,8 +379,12 @@ fn transaction_classification() {
         TxFetch::BeyondRetention
     );
     assert_eq!(
+        classify_transaction(&resp("NOT_FOUND", Some(100), None), 100).unwrap(),
+        TxFetch::NotYet
+    );
+    assert_eq!(
         classify_transaction(&resp("NOT_FOUND", None, None), 99).unwrap(),
-        TxFetch::BeyondRetention
+        TxFetch::NotYet
     );
     assert!(classify_transaction(&resp("FAILED", None, None), 10).is_err());
 }

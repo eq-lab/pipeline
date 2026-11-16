@@ -143,8 +143,6 @@ pub fn executed_event(target: &str, function: &str, caller: &str) -> RawEvent {
     )
 }
 
-// ── Envelopes ────────────────────────────────────────────────────────────────
-
 pub fn invoke_args(contract: &str, function: &str, args: Vec<ScVal>) -> InvokeContractArgs {
     let name: StringM<32> = function.try_into().unwrap();
     InvokeContractArgs {
@@ -292,8 +290,6 @@ pub fn amend_args() -> ScVal {
     ])
 }
 
-// ── Rows ─────────────────────────────────────────────────────────────────────
-
 pub fn scheduled_row(
     id: i64,
     tx: &str,
@@ -355,8 +351,6 @@ pub fn config() -> AmSyncConfig {
         },
     }
 }
-
-// ── Fakes ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Op {

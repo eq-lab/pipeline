@@ -228,3 +228,19 @@ fn display_json_of_non_symbol_keyed_maps_is_an_entry_array() {
         json!([{ "key": 1, "value": false }])
     );
 }
+
+#[test]
+fn display_json_never_contains_nul() {
+    let string = ScVal::String(stellar_xdr::curr::ScString("a\0b".try_into().unwrap()));
+    let args = vec_val(vec![
+        string,
+        sym("c\0d"),
+        map_val(vec![("e\0f", ScVal::U32(1))]),
+    ]);
+    let rendered = args_display_json(&args);
+    assert_eq!(
+        rendered,
+        json!(["a\u{FFFD}b", "c\u{FFFD}d", { "e\u{FFFD}f": 1 }])
+    );
+    assert!(!rendered.to_string().contains("\\u0000"));
+}

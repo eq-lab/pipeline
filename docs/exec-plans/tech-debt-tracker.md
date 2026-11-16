@@ -2454,4 +2454,6 @@ line, whichever section it lands in.
 - **Location:** `packages/worker/src/indexer/stellar/access_manager_sync.rs` (`resolve_schedule`, `resolve_execute`) — Issue #1921.
 - **Gap:** The sync loop recovers a scheduled call's arguments from `getTransaction`, which shares the RPC retention window (about 7 days). A raw row whose transaction left retention before the loop reached it (worker down for days, or a row stuck in retries) yields a schedule with `args = NULL`, or an execute that leaves its row `pending`.
 - **Impact:** A schedule without arguments cannot be executed from the console. A row whose execute was missed reads as `pending` until `expires_at`, then as expired.
-- **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state.
+- **Known limitation (immediate execute):** If a caller's role delay drops to 0 and it executes the same arguments immediately, `resolve_execute` marks a still-live pending schedule `executed`; on chain it stays cancelable.
+- **Known limitation (sub-call execute):** An `AM.execute` of a delayed operation made by a contract as a sub-call without an auth entry yields no candidate, so the row stays `pending` until it reads as expired.
+- **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state. This also resolves both limitations above.

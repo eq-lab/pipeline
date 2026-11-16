@@ -59,9 +59,9 @@ The `access-manager-sync` task (interval constant 15 s, no env key) reads the Ac
 
 **Per-row transaction.** Each row is applied in its own database transaction that writes the projection change and advances `last_log_id` to that row's id. A crash between rows repeats nothing; a crash inside a row rolls both back. Writes are idempotent anyway (`ON CONFLICT DO NOTHING`; updates guarded by `status = 'pending'`).
 
-**Retries.** An RPC transport error, a 20 s timeout and `NOT_FOUND` within retention (the RPC node is not caught up) are retryable: the cycle stops at that row without advancing the watermark, and a per-row backoff (1 min doubling to 1 h) delays the retry. The first failure per row per process logs `warn`, later ones `debug`. Head-of-line blocking is intended: it preserves ordering and only delays the projection, never indexing. A row whose params do not parse, or whose transaction has no matching call, is never retried.
+**Retries.** An RPC transport error, a 20 s timeout `NOT_FOUND` within retention or without `oldestLedger` (the RPC node is not caught up), and a failed projection write are retryable: the cycle stops at that row without advancing the watermark, and a per-row backoff (1 min doubling to 1 h) delays the retry. The first failure per row per process logs `warn`, later ones `debug`. Head-of-line blocking is intended: it preserves ordering and only delays the projection, never indexing. A row whose params do not parse, or whose transaction has no matching call, is never retried.
 
-**Retention edge.** `NOT_FOUND` with the row's ledger below `oldestLedger` (or `oldestLedger` absent) means the transaction left RPC retention before the loop reached it. A schedule is stored with `args_xdr`, `args_json`, `loan_id` and `record_id` all `NULL` and a `warn`. An execute changes nothing, logs `warn`, and the row stays `pending` until it reads as expired. Both advance the watermark. A cancel never needs the transaction.
+**Retention edge.** `NOT_FOUND` with the row's ledger provably below `oldestLedger` means the transaction left RPC retention before the loop reached it. A `NOT_FOUND` without `oldestLedger` is treated as not yet available and retried. A schedule is stored with `args_xdr`, `args_json`, `loan_id` and `record_id` all `NULL` and a `warn`. An execute changes nothing, logs `warn`, and the row stays `pending` until it reads as expired. Both advance the watermark. A cancel never needs the transaction.
 
 **Re-projection.** Resetting the watermark to 0 replays every row. Rows that already exist are kept (`ON CONFLICT DO NOTHING`); schedules older than retention that were never projected come back with `args = NULL`.
 
@@ -105,4 +105,6 @@ Setting the key without a rewind indexes only from the current cursor.
 
 - A raw row whose transaction left retention before the loop reached it yields a schedule with `args = NULL` (the operation cannot be executed from the console) or an execute that leaves its row `pending` until it reads as expired. Reconciliation against the contract's `get_schedule` / `get_nonce` is tech debt (TD-187).
 - A schedule made by a contract as a plain sub-call without an auth entry is not recoverable.
+- An `execute` of a delayed operation made by a contract as a plain sub-call without an auth entry yields no candidate; its row stays `pending` until it reads as expired (TD-187).
+- An immediate `execute` (caller delay 0) of the same arguments as a still-pending schedule marks that schedule `executed` although it is still live on chain (TD-187).
 - Re-projection from watermark 0 loses arguments of schedules older than retention (see [Sync loop](#sync-loop)).
