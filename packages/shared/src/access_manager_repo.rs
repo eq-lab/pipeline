@@ -166,13 +166,18 @@ pub const INSERT_SCHEDULED_SQL: &str = "INSERT INTO access_manager_operations
           args_xdr, args_json, ready_at, expires_at, status, loan_id, record_id,
           schedule_tx_hash, schedule_ledger, scheduled_at, source_log_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12, $13, $14, $15, $16, $17)
-     ON CONFLICT (chain_id, contract_address, operation_id, nonce) DO NOTHING";
+     ON CONFLICT (chain_id, contract_address, operation_id, schedule_ledger, nonce) DO NOTHING";
 
 pub const MARK_CANCELED_SQL: &str = "UPDATE access_manager_operations
      SET status = 'canceled', closed_tx_hash = $5, closed_ledger = $6, updated_at = now()
-     WHERE chain_id = $1
-       AND contract_address = $2
-       AND operation_id = $3
+     WHERE id = (
+         SELECT id FROM access_manager_operations
+         WHERE chain_id = $1
+           AND contract_address = $2
+           AND operation_id = $3
+           AND source_log_id < $7
+         ORDER BY schedule_ledger DESC, source_log_id DESC
+         LIMIT 1)
        AND nonce = $4
        AND status = 'pending'";
 
@@ -183,9 +188,10 @@ pub const MARK_EXECUTED_SQL: &str = "UPDATE access_manager_operations
          WHERE chain_id = $1
            AND contract_address = $2
            AND operation_id = $3
-           AND status = 'pending'
-         ORDER BY nonce DESC
-         LIMIT 1)";
+           AND source_log_id < $6
+         ORDER BY schedule_ledger DESC, source_log_id DESC
+         LIMIT 1)
+       AND status = 'pending'";
 
 pub const ADVANCE_WATERMARK_SQL: &str = "INSERT INTO access_manager_sync_state
          (chain_id, contract_address, last_log_id)
@@ -357,6 +363,7 @@ impl AccessManagerRepo {
                 .bind(i64::from(*nonce))
                 .bind(tx_hash)
                 .bind(ledger)
+                .bind(log_id)
                 .execute(&mut *tx)
                 .await?
                 .rows_affected(),
@@ -373,6 +380,7 @@ impl AccessManagerRepo {
                         .bind(id)
                         .bind(tx_hash)
                         .bind(ledger)
+                        .bind(log_id)
                         .execute(&mut *tx)
                         .await?
                         .rows_affected();

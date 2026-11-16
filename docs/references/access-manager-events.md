@@ -28,12 +28,12 @@ Indexing is RPC-free for the AccessManager: `poll` decodes the event XDR only an
 
 ## Table
 
-Migration `20261116000001_access_manager_operations.sql` (additive). Key `UNIQUE (chain_id, contract_address, operation_id, nonce)`.
+Migrations `20261116000001_access_manager_operations.sql` (additive) and `20261117000001_access_manager_operations_schedule_key.sql`, which swaps the unique key for `UNIQUE (chain_id, contract_address, operation_id, schedule_ledger, nonce)` (`access_manager_operations_schedule_key`). One row per schedule event.
 
 | Column | Meaning |
 |---|---|
 | `operation_id` | `sha256(XDR(Operation { caller, target, function, args }))`, 64 lowercase hex, no `0x` |
-| `nonce` | the contract's per-id counter; a re-schedule after expiry, cancel or execute reuses the id with `nonce + 1` |
+| `nonce` | the contract's per-id counter; it increments on a re-schedule while the contract's temporary entry exists and restarts at 1 once it lapses (`schedule_ttl`: 7 d + 1 d after execute or cancel, about 1 d after expiry), so `(operation_id, nonce)` is not unique over time |
 | `caller`, `target`, `function` | from the event |
 | `args_xdr` | base64 XDR of `ScVal::Vec(args)`, the third argument of `schedule` exactly as invoked; `NULL` when not recoverable |
 | `args_json` | deterministic display form of the same value; `NULL` with `args_xdr` |
@@ -47,7 +47,7 @@ Migration `20261116000001_access_manager_operations.sql` (additive). Key `UNIQUE
 
 `expired` is never stored. A consumer derives it as `status = 'pending' AND now >= expires_at`.
 
-Status rules: a schedule inserts `pending` (`ON CONFLICT DO NOTHING`). A cancel marks the row with that `(operation_id, nonce)` `canceled` only while it is `pending`. An execute marks the `pending` row with the highest `nonce` of each matching id `executed`. Rows never leave a closed status.
+Status rules: a schedule inserts `pending` (`ON CONFLICT DO NOTHING`). A cancel or execute closes the newest row of its `operation_id` (by `(schedule_ledger, source_log_id)`) among the rows logged before the closing event, and only if that row is `pending` (a cancel also needs the event's `nonce`); never by `nonce`. Rows never leave a closed status.
 
 Never truncate `access_manager_operations` to rebuild it: schedules older than RPC retention cannot be recovered again (see [Known limitations](#known-limitations)).
 
@@ -57,7 +57,7 @@ The `access-manager-sync` task (interval constant 15 s, no env key) reads the Ac
 
 **Ordering.** Rows are processed strictly by id and the loop never skips a row. Within one `index_once` batch the mappers are inserted in event order inside one database transaction, and AccessManager rows of a chain are written only by that chain's `index_once`, which runs batches sequentially. A higher id is therefore never committed before a lower one for `(chain_id, contract_address)`, and an id watermark cannot skip an uncommitted row. A schedule is always projected before a cancel or execute of the same id, including when both are in the same batch or transaction.
 
-**Per-row transaction.** Each row is applied in its own database transaction that writes the projection change and advances `last_log_id` to that row's id. A crash between rows repeats nothing; a crash inside a row rolls both back. Writes are idempotent anyway (`ON CONFLICT DO NOTHING`; updates guarded by `status = 'pending'`).
+**Per-row transaction.** Each row is applied in its own database transaction that writes the projection change and advances `last_log_id` to that row's id. A crash between rows repeats nothing; a crash inside a row rolls both back. Writes are idempotent anyway (`ON CONFLICT DO NOTHING`; updates guarded by `status = 'pending'`). Closes only see schedules logged before the closing row, so a replay never closes a later schedule.
 
 **Retries.** An RPC transport error, a 20 s timeout `NOT_FOUND` within retention or without `oldestLedger` (the RPC node is not caught up), and a failed projection write are retryable: the cycle stops at that row without advancing the watermark, and a per-row backoff (1 min doubling to 1 h) delays the retry. The first failure per row per process logs `warn`, later ones `debug`. Head-of-line blocking is intended: it preserves ordering and only delays the projection, never indexing. A row whose params do not parse, or whose transaction has no matching call, is never retried.
 
@@ -71,7 +71,7 @@ The event carries neither `args` nor the transaction. The loop fetches `getTrans
 
 **Never guess.** Arguments are stored only when a candidate's recomputed hash equals the row's `operation_id`. The preimage is the `ScVal::Map` with `Symbol` keys in sorted order `args` (`Vec`), `caller` (`Address`), `function` (`Symbol`), `target` (`Address`), XDR-encoded and hashed with SHA-256, as `hash_operation` in `storage.rs` does. No candidate, a parse failure or a mismatch stores the row with `args = NULL` and a `warn`; the watermark advances. A contract wallet that calls `AccessManager.schedule` as a plain sub-call without an auth entry is not recoverable.
 
-**Execute matching.** The loop fetches the transaction for an executed row only when a pending row exists for the same `(target, function, caller)`. Candidates are `AccessManager.execute` calls with that triple; their recomputed ids mark the highest-nonce pending row of each id `executed`. No match means an immediate call (the large majority: relayer and Trustee calls, the Minter's sub-calls) or a schedule from before indexing: no change.
+**Execute matching.** The loop fetches the transaction for an executed row only when a pending row exists for the same `(target, function, caller)`. Candidates are `AccessManager.execute` calls with that triple; their recomputed ids close the newest row of each id, if it is `pending`, as `executed`. No match means an immediate call (the large majority: relayer and Trustee calls, the Minter's sub-calls) or a schedule from before indexing: no change.
 
 ## Loan id
 
@@ -116,5 +116,4 @@ Setting the key without a rewind indexes only from the current cursor.
 - A schedule made by a contract as a plain sub-call without an auth entry is not recoverable.
 - An `execute` of a delayed operation made by a contract as a plain sub-call without an auth entry yields no candidate; its row stays `pending` until it reads as expired (TD-187).
 - An immediate `execute` (caller delay 0) of the same arguments as a still-pending schedule marks that schedule `executed` although it is still live on chain (TD-187).
-- A schedule of the same operation id, arguments and caller made after the contract's temporary entry lapsed restarts the nonce at 1 and collides with the old row on the unique key; the indexer drops it (BUG-38, #1927).
 - Re-projection from watermark 0 loses arguments of schedules older than retention (see [Sync loop](#sync-loop)).

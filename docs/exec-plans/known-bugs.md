@@ -17,14 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-38: A re-schedule after the contract's schedule entry lapses is dropped by the indexer (nonce restarts at 1)
-- **Date:** 2026-11-16
-- **Tracked:** #1927 (epic #1920); #1927 removes this entry when fixed. Found while planning #1922.
-- **Location:** `packages/shared/src/access_manager_repo.rs` (`INSERT_SCHEDULED_SQL`) and the unique key `(chain_id, contract_address, operation_id, nonce)` of `access_manager_operations`.
-- **Symptom:** After a schedule is executed, canceled or expires, a later schedule of the same arguments by the same caller (typical for `set_default(loan)` and `cure(loan)`) can leave no row, or only the old executed, canceled or expired one, so the console shows nothing or a stale row.
-- **Root cause:** The contract nonce restarts at 1 once the temporary schedule entry's TTL lapses (`storage.rs:327`, `lib.rs:339`), so the new schedule has the same key as the old row and `ON CONFLICT DO NOTHING` drops it.
-- **Workaround:** None; the Risk Council can still execute by retyping the arguments, as before #1920.
-
 ### BUG-37: `GET /v1/lps` OpenAPI documents `payment_details` as a required path parameter
 - **Date:** 2026-11-13
 - **Location:** `packages/api/src/routes/lps.rs` (`LpsQuery`). Found while planning #1887.
@@ -100,6 +92,15 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ## Resolved
+
+### BUG-38: A re-schedule after the contract's schedule entry lapses is dropped by the indexer (nonce restarts at 1) [FIXED 2026-11-16 / #1927]
+- **Date:** 2026-11-16
+- **Tracked:** #1927 (epic #1920); Found while planning #1922.
+- **Location:** `packages/shared/src/access_manager_repo.rs` (`INSERT_SCHEDULED_SQL`) and the unique key `(chain_id, contract_address, operation_id, nonce)` of `access_manager_operations`.
+- **Symptom:** After a schedule is executed, canceled or expires, a later schedule of the same arguments by the same caller (typical for `set_default(loan)` and `cure(loan)`) can leave no row, or only the old executed, canceled or expired one, so the console shows nothing or a stale row.
+- **Root cause:** The contract nonce restarts at 1 once the temporary schedule entry's TTL lapses (`storage.rs:327`, `lib.rs:339`), so the new schedule has the same key as the old row and `ON CONFLICT DO NOTHING` drops it.
+- **Workaround:** None; the Risk Council can still execute by retyping the arguments, as before #1920.
+- **Resolved:** #1927 keys the table on `(chain_id, contract_address, operation_id, schedule_ledger, nonce)` and closes the newest schedule of the id logged before the closing event. Schedules dropped before the fix stay missing until the Risk Council schedules again.
 
 ### BUG-36: `-useRiskCouncil.test.tsx` — "relays schedule and execute with the right params" is timing-flaky [FIXED 2026-11-11 / #1888]
 - **Tracked:** #1888, seen on PR #1883 (CI run 42809806303).
