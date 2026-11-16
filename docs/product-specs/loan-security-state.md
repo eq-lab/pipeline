@@ -86,10 +86,6 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
                  "cure_by": "...", "at": "...", "block_number": 1, "tx_hash": "..." }] },
   "prices": { "mark_age": "0", "price_stale": false, "mark_max_age": "86400", "mark_move_bps": 200, "marks_due": 0 },
   "extension_consents": [{ "position": 0, "consent_hash": "hex", "new_maturity": "...", "ledger": 1, "at": "..." }],
-  "pending_operations": [{ "operation_id": "hex64", "nonce": 1, "caller": "G...", "target": "C...",
-    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64",
-    "args": [7, 8000, "86400"], "ready_at": "2025-11-16T00:00:00Z", "expires_at": "2025-11-23T00:00:00Z",
-    "state": "waiting|ready|expired" }],
   "records": [{ "record_id": "1", "lot_id": "1", "protection": "WarehousePledge", "commodity": "...",
     "unit": "Mt", "reference_quantity": "...", "reference_grade": "...", "region": "...",
     "site_hash": "hex", "control_kind": "Agent", "control_reference": "...", "perfection": "...",
@@ -113,7 +109,11 @@ Stored decimals are read with a bounded exponent: Postgres decoding returns roun
       "quantity": "...", "grade": "...", "entered_by": "G...", "approved_by": null, "flagged": null,
       "resolution": null, "is_lot_latest": false, "complete": true, "needs_view": false }],
     "repayments": [{ "repayment_id": "3", "cash": "...", "interest_minted": "...", "fee_shares": "...",
-      "value_date": "...", "ref_hash": "hex", "tx_hash": "...", "at": "...", "reversed_at": null }] }] }
+      "value_date": "...", "ref_hash": "hex", "tx_hash": "...", "at": "...", "reversed_at": null }] }],
+  "pending_operations": [{ "operation_id": "hex64", "nonce": 1, "caller": "G...", "target": "C...",
+    "target_kind": "security_registry", "function": "set_terms", "args_xdr": "base64",
+    "args": [7, 8000, "86400"], "ready_at": "2025-11-16T00:00:00Z", "expires_at": "2025-11-23T00:00:00Z",
+    "state": "waiting|ready|expired" }] }
 ```
 
 `pending_operations` is always an array, see [Pending operations](#pending-operations). The inspection object carries every `security_inspections` column (region, site and certificate hashes, `certificate_no`, `entered_at`, `approved_at`, the three variances, `resolution_reason_hash`, `resolved_at`); the example shortens it. Records are ordered by `record_id`, open and closed; `open` is `status` not `Released` and not `Enforced`. `docs` are ordered by `position` and `inspections` by `inspection_id`; `flagged_by` is `null` when there is no flag. `is_lot_latest` is `inspection_id == lot.latest_inspection_id`. `repayments` is `[]` for a record with no sale, and joins on `sale_id`, so it is served for any status (an `Enforced` record is the usual one). Repayment rows are not pinned to one minter address, so repayments booked on an older minter still link.

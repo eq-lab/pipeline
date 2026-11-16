@@ -1457,7 +1457,7 @@ pub async fn handle_loan_book(
     let security = security_by_loan(state, chain_ids).await?;
     attach_security(&mut resp, &security);
     let pending = pending_ops_by_loan(state, chain_ids, to).await?;
-    attach_pending_operations(&mut resp, &pending);
+    attach_pending_operations(&mut resp, pending);
     Ok(resp)
 }
 
@@ -1542,12 +1542,11 @@ async fn pending_ops_by_loan(
 
 pub fn attach_pending_operations<S: std::hash::BuildHasher>(
     resp: &mut LoanBookResponse,
-    by_loan: &HashMap<LoanRef, Vec<PendingOperation>, S>,
+    mut by_loan: HashMap<LoanRef, Vec<PendingOperation>, S>,
 ) {
     for entry in &mut resp.loans {
         entry.pending_operations = by_loan
-            .get(&(entry.chain_id, entry.loan_id.clone()))
-            .cloned()
+            .remove(&(entry.chain_id, entry.loan_id.clone()))
             .unwrap_or_default();
     }
 }

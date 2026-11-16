@@ -33,7 +33,7 @@ pub struct PendingOperation {
     pub target_kind: PendingTargetKind,
     pub function: String,
     pub args_xdr: String,
-    #[schema(value_type = Vec<Object>)]
+    #[schema(value_type = Vec<serde_json::Value>)]
     pub args: serde_json::Value,
     pub ready_at: String,
     pub expires_at: String,
@@ -105,9 +105,8 @@ pub fn group_by_loan(
     scope: &TargetScope<'_>,
     now: i64,
 ) -> HashMap<(i64, String), Vec<PendingOperation>> {
-    let sorted = sorted_rows(rows);
     let mut out: HashMap<(i64, String), Vec<PendingOperation>> = HashMap::new();
-    for row in sorted {
+    for row in rows {
         if let Some(op) = pending_operation(row, scope, now) {
             out.entry((chain_id, row.loan_id.to_string()))
                 .or_default()
@@ -117,22 +116,12 @@ pub fn group_by_loan(
     out
 }
 
-pub fn sorted_pending(
+pub fn pending_for_loan(
     rows: &[PendingOpRow],
     scope: &TargetScope<'_>,
     now: i64,
 ) -> Vec<PendingOperation> {
-    let sorted = sorted_rows(rows);
-    sorted
-        .into_iter()
+    rows.iter()
         .filter_map(|row| pending_operation(row, scope, now))
         .collect()
-}
-
-fn sorted_rows(rows: &[PendingOpRow]) -> Vec<&PendingOpRow> {
-    let mut sorted: Vec<&PendingOpRow> = rows.iter().collect();
-    sorted.sort_by(|a, b| {
-        (a.ready_at, &a.operation_id, a.nonce).cmp(&(b.ready_at, &b.operation_id, b.nonce))
-    });
-    sorted
 }

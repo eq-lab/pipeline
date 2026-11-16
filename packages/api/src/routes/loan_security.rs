@@ -16,7 +16,7 @@ use utoipa::OpenApi;
 use crate::config::ConfiguredChain;
 use crate::error::ApiError;
 use crate::pending_operations::{
-    sorted_pending, PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
+    pending_for_loan, PendingOperation, PendingOperationState, PendingTargetKind, TargetScope,
 };
 use crate::routes::common::{loan_registry_address, RequiredChain};
 use crate::security_state::{
@@ -132,7 +132,7 @@ async fn get_loan_security(
             Some(i64::from(id)),
         )
         .await?;
-    response.pending_operations = sorted_pending(&pending, &scope, now as i64);
+    response.pending_operations = pending_for_loan(&pending, &scope, now as i64);
     Ok(Json(response))
 }
 

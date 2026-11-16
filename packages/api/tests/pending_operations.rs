@@ -189,13 +189,13 @@ fn a_nonce_above_u32_is_dropped() {
 }
 
 #[test]
-fn grouping_keys_by_chain_and_loan_and_sorts_each_list() {
+fn grouping_keys_by_chain_and_loan_and_keeps_row_order() {
     let rows = vec![
-        op_row(7, "bb", 1, R + 100, SECURITY),
         op_row(0, "zz", 1, R, MINTER),
-        op_row(7, "aa", 2, R, SECURITY),
         op_row(7, "aa", 1, R, SECURITY),
+        op_row(7, "aa", 2, R, SECURITY),
         op_row(7, "00", 9, R + 100, SECURITY),
+        op_row(7, "bb", 1, R + 100, SECURITY),
     ];
     let grouped = group_by_loan(STELLAR, &rows, &scope(), R);
     assert_eq!(grouped.len(), 2);
@@ -260,7 +260,7 @@ fn attach_fills_only_the_matching_chain_and_loan() {
         &scope(),
         R,
     ));
-    attach_pending_operations(&mut resp, &by_loan);
+    attach_pending_operations(&mut resp, by_loan);
     let json = serde_json::to_value(&resp).unwrap();
 
     assert_eq!(
@@ -326,6 +326,12 @@ fn the_openapi_lists_a_required_array_and_both_enums() {
         let s = &doc["components"]["schemas"][schema];
         let prop = &s["properties"]["pending_operations"];
         assert_eq!(prop["type"], "array", "{schema}");
+        let args = &doc["components"]["schemas"]["PendingOperation"]["properties"]["args"];
+        assert_eq!(args["type"], "array", "{schema}");
+        assert!(
+            args["items"].get("type").is_none() && args["items"].get("$ref").is_none(),
+            "{args}"
+        );
         assert_eq!(
             prop["items"]["$ref"], "#/components/schemas/PendingOperation",
             "{schema}"
