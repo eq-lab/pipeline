@@ -1,5 +1,5 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-security-actions
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FLAG_OUTCOMES,
   SECURITY_PAYMENT_TERMS,
@@ -19,15 +19,28 @@ import {
   bpsToPercentText,
   defaultRateToPercentText,
   durationToSeconds,
-  formatServedDuration,
   percentToBpsStrict,
   percentToDefaultRate,
   SECONDS_PER_DAY,
   SECONDS_PER_HOUR,
   secondsToUnitText,
 } from "@/utils/securityTermsUnits";
+import { ENV } from "@/lib/env";
+import {
+  pruneExecutedOperations,
+  useExecutedOperations,
+  useScheduledOps,
+} from "@/lib/riskCouncilOps";
 import { toUserError, type UserFacingError } from "@/utils/userError";
 import { buildSecurityCard, ltvRowText } from "./-loanSecurity";
+import {
+  mergePendingOps,
+  PENDING_PAUSED,
+  recordNumberOf,
+  SET_TERMS_PENDING_NOTICE,
+  type PendingOpItem,
+} from "./-risk-council-pending";
+import { formatTermsRows, PAYMENT_TERM_LABELS } from "./-risk-council-terms";
 import {
   formatLoanLabel,
   useRiskCouncilActionView,
@@ -47,8 +60,7 @@ export const SECURITY_RELEASE_NO_ROLE =
 export const NO_SECURITY_TERMS = "No security terms are set for this loan.";
 export const NO_FLAGGED_RECORDS = "No flagged records.";
 export const NO_OPEN_RECORDS = "No open records.";
-export const SECURITY_PAUSED_NOTE =
-  "The SecurityRegistry is paused. Executing is blocked until it resumes.";
+export const SECURITY_PAUSED_NOTE = PENDING_PAUSED;
 export const REFRESH_PENDING_NOTE =
   "Served state is refreshing after a recent change. It can lag by up to a minute.";
 export const RELEASE_WARNING =
@@ -62,15 +74,21 @@ export const OUTCOME_EFFECTS: Record<FlagOutcome, string> = {
   Escalated: "Suspected fraud or missing goods. The flag stays.",
 };
 
-export const PAYMENT_TERM_LABELS: Record<SecurityPaymentTerm, string> = {
-  Lc: "Letter of credit (Lc)",
-  Dp: "Documents against payment (Dp)",
-  Da: "Documents against acceptance (Da)",
-  OpenAccount: "Open account",
-};
+export { formatTermsRows, PAYMENT_TERM_LABELS };
 
 export function releaseConfirmText(recordId: string): string {
   return `Release record #${recordId}? This burns the record NFT and cannot be undone.`;
+}
+
+export const RELEASE_CONFIRM_GENERIC =
+  "Release this record? This burns the record NFT and cannot be undone.";
+
+export function pendingConfirmText(item: PendingOpItem): string | undefined {
+  if (item.fn !== "release_with_consent") return undefined;
+  const record = recordNumberOf(item);
+  return record === null
+    ? RELEASE_CONFIRM_GENERIC
+    : releaseConfirmText(String(record));
 }
 
 export type TermsFieldKey =
@@ -314,42 +332,6 @@ export function termsFieldEcho(
   };
 }
 
-export function formatTermsRows(
-  terms: LoanSecurityTerms | null | undefined,
-): LabelValue[] {
-  if (terms == null) return [];
-  const bps = (value: number | undefined) =>
-    value == null ? "—" : `${bpsToPercentText(value)}%`;
-  return [
-    { label: "Advance ratio", value: bps(terms.advance_ratio_bps) },
-    { label: "Margin call ratio", value: bps(terms.margin_call_ratio_bps) },
-    { label: "Cure period", value: formatServedDuration(terms.cure_period) },
-    {
-      label: "Price stale after",
-      value: formatServedDuration(terms.price_stale_after),
-    },
-    { label: "Payment term", value: terms.payment_term ?? "—" },
-    { label: "Grace period", value: formatServedDuration(terms.grace_period) },
-    {
-      label: "Default rate",
-      value:
-        terms.default_rate == null
-          ? "—"
-          : `${defaultRateToPercentText(terms.default_rate)}%`,
-    },
-    {
-      label: "Attestation interval",
-      value: formatServedDuration(terms.attestation_interval),
-    },
-    {
-      label: "Inspection interval",
-      value: formatServedDuration(terms.inspection_interval),
-    },
-    { label: "Quantity tolerance", value: bps(terms.tolerance_bps) },
-    { label: "Grade tolerance", value: bps(terms.grade_tolerance_bps) },
-  ];
-}
-
 export interface FlaggedRecordRow {
   recordId: string;
   recordNumber: number | null;
@@ -459,6 +441,7 @@ export interface SetTermsFormView {
   setPaymentTerm: (value: SecurityPaymentTerm | "") => void;
   echoes: Record<TermsFieldKey, { echo: string | null; invalid: boolean }>;
   ratioOrderError: string | null;
+  pendingNotice: string | null;
   action: ActionView;
 }
 
@@ -488,6 +471,8 @@ export interface RiskCouncilSecurityView {
   securityLoading: boolean;
   securityError: UserFacingError | null;
   flagged: FlaggedRecordRow[];
+  pending: PendingOpItem[];
+  expectedTarget: string;
   setTerms: SetTermsFormView;
   release: ReleaseFormView;
   chainId: number;
@@ -503,6 +488,37 @@ export function useRiskCouncilSecurity(
   const security = useLoanSecurity(chainId, loanIdParam);
   const served = security.data;
   const executeGate = served?.paused === true ? SECURITY_PAUSED_NOTE : null;
+
+  const sessionOps = useScheduledOps(chainId);
+  const executed = useExecutedOperations(chainId);
+  const servedOps = served?.pending_operations;
+  const servedFetchedAt = security.dataUpdatedAt;
+  useEffect(() => {
+    pruneExecutedOperations(
+      chainId,
+      new Map(
+        (servedOps ?? []).map((op) => [
+          op.operation_id,
+          Math.floor(Date.parse(op.ready_at) / 1000),
+        ]),
+      ),
+      servedFetchedAt,
+    );
+  }, [chainId, servedOps, servedFetchedAt]);
+  const pending = mergePendingOps({
+    served: servedOps ?? [],
+    session: sessionOps,
+    executed,
+    chainId,
+    loanId: base.loanId,
+    nowSec: Date.now() / 1000,
+  });
+  const termsPending = pending.some(
+    (item) =>
+      item.fn === "set_terms" &&
+      item.executed === null &&
+      (item.state === "waiting" || item.state === "ready"),
+  );
 
   const [overrides, setOverrides] = useState<Partial<TermsFormValues>>({});
   const prefill = prefillTermsForm(served?.terms);
@@ -572,6 +588,8 @@ export function useRiskCouncilSecurity(
         ? toUserError(security.error, "Failed to load the loan security.")
         : null,
     flagged: flaggedRows(served?.records),
+    pending,
+    expectedTarget: ENV.STELLAR_SECURITY_REGISTRY_ID,
     setTerms: {
       values,
       setField: (key, value) =>
@@ -580,6 +598,7 @@ export function useRiskCouncilSecurity(
         setOverrides((prev) => ({ ...prev, paymentTerm: value })),
       echoes,
       ratioOrderError: ratioOrderInvalid(parsed) ? RATIO_ORDER_ERROR : null,
+      pendingNotice: termsPending ? SET_TERMS_PENDING_NOTICE : null,
       action: termsAction,
     },
     release: {

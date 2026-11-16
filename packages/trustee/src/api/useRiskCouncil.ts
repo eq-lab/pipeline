@@ -8,14 +8,17 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
+  executeScheduledOperation,
   readCanCall,
   readLoanChainState,
   readLoanMoney,
   readRiskCouncilSchedule,
   readSecurityInspectors,
+  readScheduledOperation,
   readSecurityRegistrySchedule,
   relayRiskCouncil,
   relaySecurityRegistry,
+  securityRegistryArgsXdr,
   useStellarWallet,
   type CanCall,
   type LoanChainState,
@@ -27,11 +30,13 @@ import {
   type RiskCouncilClosureReason,
   type SecurityRegistryCall,
 } from "@pipeline/wallet-connect";
+import { otherWalletCopy } from "@/lib/accessManagerAction";
 import { ENV } from "@/lib/env";
 import { stellarOnlyActionReason } from "@/lib/targetChains";
 import {
   councilTarget,
   markExecuted,
+  markOperationExecuted,
   recordScheduledOp,
   riskCouncilCallKey,
   type CouncilCall,
@@ -58,6 +63,55 @@ export interface RiskCouncilRelayInput {
   call: CouncilCall;
   chainId: number;
   loanId?: number;
+}
+
+export class PendingArgsMismatchError extends Error {
+  constructor() {
+    super("The served arguments do not match the scheduled operation.");
+    this.name = "PendingArgsMismatchError";
+  }
+}
+
+export class NoLongerScheduledError extends Error {
+  constructor() {
+    super("The operation is no longer scheduled.");
+    this.name = "NoLongerScheduledError";
+  }
+}
+
+export class PendingTargetMismatchError extends Error {
+  readonly target: string;
+  constructor(target: string) {
+    super("The operation targets another registry than this console.");
+    this.name = "PendingTargetMismatchError";
+    this.target = target;
+  }
+}
+
+export class RegistryPausedError extends Error {
+  constructor() {
+    super("The registry is paused. Executing is blocked until it resumes.");
+    this.name = "RegistryPausedError";
+  }
+}
+
+export interface PendingOperationExecuteInput {
+  chainId: number;
+  operationId: string;
+  caller: string;
+  target: string;
+  expectedTarget: string;
+  paused: boolean;
+  fn: string;
+  argsXdr: string;
+}
+
+interface RelayOutcome {
+  hash: string;
+  schedule?: OperationSchedule;
+  caller?: string;
+  target?: string;
+  argsXdr?: string;
 }
 
 export interface RiskCouncilLoanState {
@@ -215,7 +269,7 @@ export function useRiskCouncilRelay() {
   const [stage, setStage] = useState<RelayStage | null>(null);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation<{ hash: string }, Error, RiskCouncilRelayInput>({
+  const mutation = useMutation<RelayOutcome, Error, RiskCouncilRelayInput>({
     mutationFn: async ({ mode, call, chainId }) => {
       setStage(null);
       const blocked = stellarOnlyActionReason(chainId);
@@ -236,16 +290,53 @@ export function useRiskCouncilRelay() {
         signTransaction,
         onStageChange: setStage,
       };
-      return target === "security_registry"
-        ? relaySecurityRegistry({
-            ...params,
-            call: call as SecurityRegistryCall,
-          })
-        : relayRiskCouncil({ ...params, call: call as RiskCouncilCall });
+      const { hash } =
+        target === "security_registry"
+          ? await relaySecurityRegistry({
+              ...params,
+              call: call as SecurityRegistryCall,
+            })
+          : await relayRiskCouncil({
+              ...params,
+              call: call as RiskCouncilCall,
+            });
+      if (mode !== "schedule") return { hash };
+      let schedule: OperationSchedule | undefined;
+      try {
+        schedule = await readScheduleFor(call, {
+          accessManagerId: cfg.accessManagerId,
+          registryId: cfg.registryId,
+          caller: address,
+          rpcUrl: cfg.rpcUrl,
+          networkPassphrase: cfg.networkPassphrase,
+        });
+      } catch {
+        schedule = undefined;
+      }
+      return {
+        hash,
+        schedule,
+        caller: address,
+        target: cfg.registryId,
+        argsXdr:
+          target === "security_registry"
+            ? securityRegistryArgsXdr(call as SecurityRegistryCall)
+            : undefined,
+      };
     },
-    onSuccess: (_data, { mode, call, chainId, loanId }) => {
-      if (mode === "schedule") recordScheduledOp({ chainId, call, loanId });
-      else markExecuted(chainId, call);
+    onSuccess: (data, { mode, call, chainId, loanId }) => {
+      if (mode === "schedule") {
+        recordScheduledOp({
+          chainId,
+          call,
+          loanId,
+          operationId: data.schedule?.operationId,
+          readyAt: data.schedule?.readyAt,
+          caller: data.caller,
+          target: data.target,
+          argsXdr: data.argsXdr,
+        });
+      } else markExecuted(chainId, call, data.hash);
       invalidateRiskCouncil(queryClient);
       for (const delayMs of [5_000, 15_000]) {
         setTimeout(() => invalidateRiskCouncil(queryClient), delayMs);
@@ -262,6 +353,88 @@ export function useRiskCouncilRelay() {
     mutateAsync: mutation.mutateAsync,
     isPending: mutation.isPending,
     isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    hash: mutation.data?.hash ?? null,
+    stage,
+    reset,
+  };
+}
+
+export function usePendingOperationExecute() {
+  const { address, isConnected, signTransaction } = useStellarWallet();
+  const [stage, setStage] = useState<RelayStage | null>(null);
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation<
+    { hash: string; readyAt: number },
+    Error,
+    PendingOperationExecuteInput
+  >({
+    mutationFn: async ({
+      chainId,
+      operationId,
+      caller,
+      target,
+      expectedTarget,
+      paused,
+      fn,
+      argsXdr,
+    }) => {
+      setStage(null);
+      const blocked = stellarOnlyActionReason(chainId);
+      if (blocked) throw new Error(blocked);
+      if (target !== expectedTarget) {
+        throw new PendingTargetMismatchError(target);
+      }
+      if (paused) throw new RegistryPausedError();
+      const accessManagerId = ENV.STELLAR_LOAN_REGISTRY_EXECUTOR_ID;
+      if (!accessManagerId) throw new Error(NOT_CONFIGURED);
+      if (!isConnected || !address) {
+        throw new Error("Stellar wallet not connected.");
+      }
+      if (address !== caller) throw new Error(otherWalletCopy(caller));
+      const chain = chainConfig();
+      const schedule = await readScheduledOperation({
+        accessManagerId,
+        caller,
+        target,
+        fn,
+        argsXdr,
+        ...chain,
+      });
+      if (schedule.operationId !== operationId) {
+        throw new PendingArgsMismatchError();
+      }
+      if (schedule.readyAt === 0) throw new NoLongerScheduledError();
+      const { hash } = await executeScheduledOperation({
+        accessManagerId,
+        caller,
+        target,
+        fn,
+        argsXdr,
+        ...chain,
+        signTransaction,
+        onStageChange: setStage,
+      });
+      return { hash, readyAt: schedule.readyAt };
+    },
+    onSuccess: ({ hash, readyAt }, { chainId, operationId }) => {
+      markOperationExecuted(chainId, operationId, hash, readyAt);
+      invalidateRiskCouncil(queryClient);
+      for (const delayMs of [5_000, 15_000]) {
+        setTimeout(() => invalidateRiskCouncil(queryClient), delayMs);
+      }
+    },
+  });
+
+  const reset = useCallback(() => {
+    setStage(null);
+    mutation.reset();
+  }, [mutation]);
+
+  return {
+    mutateAsync: mutation.mutateAsync,
+    isPending: mutation.isPending,
     error: mutation.error,
     hash: mutation.data?.hash ?? null,
     stage,

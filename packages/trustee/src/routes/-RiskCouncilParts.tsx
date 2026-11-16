@@ -2,6 +2,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { InlineError } from "@pipeline/ui";
+import { useStellarWallet } from "@pipeline/wallet-connect";
+import {
+  callerText,
+  pendingActionLabel,
+  pendingArgRows,
+  PENDING_CARD_TITLE,
+  PENDING_EMPTY,
+  PENDING_SESSION_NOTE,
+  usePendingOperationView,
+  type PendingOpItem,
+} from "./-risk-council-pending";
 import type { ActionView, LabelValue, PageState } from "./-risk-council-shared";
 
 export const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -364,5 +375,95 @@ export function ActionControls({
         />
       )}
     </div>
+  );
+}
+
+export function PendingOperationItem({
+  prefix,
+  rowTestId,
+  chainId,
+  item,
+  executeGate,
+  expectedTarget,
+  confirmText,
+}: {
+  prefix: string;
+  rowTestId: string;
+  chainId: number;
+  item: PendingOpItem;
+  executeGate: string | null;
+  expectedTarget: string;
+  confirmText?: string;
+}) {
+  const { address } = useStellarWallet();
+  const view = usePendingOperationView({
+    chainId,
+    item,
+    executeGate,
+    expectedTarget,
+  });
+  const rows = pendingArgRows(item);
+  return (
+    <div
+      data-testid={rowTestId}
+      className="flex flex-col gap-[10px] rounded-[4px] p-[14px]"
+      style={{ border: `1px solid ${LINE_COLOR}` }}
+    >
+      <strong className="font-[family-name:var(--font-body)] text-[16px]">
+        {pendingActionLabel(item)}
+      </strong>
+      <div data-testid={`${prefix}-args`}>
+        {rows.map((row) => (
+          <Row key={row.label} label={row.label} value={row.value} />
+        ))}
+        <Row
+          label="Scheduled by"
+          value={callerText(item, address)}
+          testId={`${prefix}-caller`}
+          isLast
+        />
+      </div>
+      {item.source === "session" && (
+        <Muted testId={`${prefix}-session`}>{PENDING_SESSION_NOTE}</Muted>
+      )}
+      <ActionControls prefix={prefix} view={view} confirmText={confirmText} />
+    </div>
+  );
+}
+
+export function PendingOperationsCard({
+  testId,
+  items,
+  chainId,
+  executeGate,
+  expectedTarget,
+  confirmTextFor,
+}: {
+  testId: string;
+  items: ReadonlyArray<PendingOpItem>;
+  chainId: number;
+  executeGate: string | null;
+  expectedTarget: string;
+  confirmTextFor?: (item: PendingOpItem) => string | undefined;
+}) {
+  return (
+    <Card testId={testId} title={PENDING_CARD_TITLE}>
+      {items.length === 0 ? (
+        <Muted testId={`${testId}-empty`}>{PENDING_EMPTY}</Muted>
+      ) : (
+        items.map((item) => (
+          <PendingOperationItem
+            key={item.key}
+            prefix={`${testId}-${item.operationId}`}
+            rowTestId={`${testId}-row`}
+            chainId={chainId}
+            item={item}
+            executeGate={executeGate}
+            expectedTarget={expectedTarget}
+            confirmText={confirmTextFor?.(item)}
+          />
+        ))
+      )}
+    </Card>
   );
 }

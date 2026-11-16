@@ -34,9 +34,31 @@ export interface ScheduledOp {
   loanId?: number;
   scheduledAt: number;
   executedHere: boolean;
+  operationId?: string;
+  readyAt?: number;
+  caller?: string;
+  target?: string;
+  argsXdr?: string;
+}
+
+export interface ScheduledOpChain {
+  operationId?: string;
+  readyAt?: number;
+  caller?: string;
+  target?: string;
+  argsXdr?: string;
 }
 
 const ops = new Map<string, ScheduledOp>();
+export interface ExecutedOperation {
+  operationId: string;
+  hash: string;
+  readyAt: number | null;
+  executedAt: number;
+}
+
+const executed = new Map<string, ExecutedOperation>();
+let executedSnapshot: ReadonlyArray<[string, ExecutedOperation]> = [];
 const listeners = new Set<() => void>();
 let snapshot: ReadonlyArray<ScheduledOp> = [];
 
@@ -67,27 +89,110 @@ export function recordScheduledOp({
   chainId,
   call,
   loanId,
+  operationId,
+  readyAt,
+  caller,
+  target,
+  argsXdr,
 }: {
   chainId: number;
   call: CouncilCall;
   loanId?: number;
-}): void {
+} & ScheduledOpChain): void {
+  const chain: ScheduledOpChain = {
+    operationId,
+    readyAt,
+    caller,
+    target,
+    argsXdr,
+  };
   ops.set(opKey(chainId, call), {
     chainId,
     call,
     ...(loanId === undefined ? {} : { loanId }),
+    ...Object.fromEntries(
+      Object.entries(chain).filter(([, value]) => value !== undefined),
+    ),
     scheduledAt: Date.now(),
     executedHere: false,
   });
   commit();
 }
 
-export function markExecuted(chainId: number, call: CouncilCall): void {
+function recordExecuted(
+  chainId: number,
+  operationId: string,
+  hash: string,
+  readyAt: number | null,
+): void {
+  executed.set(`${chainId}:${operationId}`, {
+    operationId,
+    hash,
+    readyAt,
+    executedAt: Date.now(),
+  });
+  executedSnapshot = Array.from(executed.entries());
+}
+
+export function markOperationExecuted(
+  chainId: number,
+  operationId: string,
+  hash: string,
+  readyAt: number | null = null,
+): void {
+  let knownReadyAt = readyAt;
+  for (const [opId, op] of ops) {
+    if (op.chainId === chainId && op.operationId === operationId) {
+      knownReadyAt ??= op.readyAt ?? null;
+      ops.set(opId, { ...op, executedHere: true });
+    }
+  }
+  recordExecuted(chainId, operationId, hash, knownReadyAt);
+  commit();
+}
+
+export function markExecuted(
+  chainId: number,
+  call: CouncilCall,
+  hash?: string,
+): void {
   const key = opKey(chainId, call);
   const existing = ops.get(key);
   if (existing == null) return;
   ops.set(key, { ...existing, executedHere: true });
+  if (existing.operationId != null && hash !== undefined) {
+    recordExecuted(
+      chainId,
+      existing.operationId,
+      hash,
+      existing.readyAt ?? null,
+    );
+  }
   commit();
+}
+
+export function pruneExecutedOperations(
+  chainId: number,
+  servedReadyAtById: ReadonlyMap<string, number>,
+  servedFetchedAt: number,
+): void {
+  let changed = false;
+  for (const [key, entry] of executed) {
+    if (!key.startsWith(`${chainId}:`)) continue;
+    const servedReadyAt = servedReadyAtById.get(entry.operationId);
+    const stale =
+      servedFetchedAt > entry.executedAt &&
+      (servedReadyAt === undefined ||
+        (entry.readyAt !== null && servedReadyAt !== entry.readyAt));
+    if (stale) {
+      executed.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) {
+    executedSnapshot = Array.from(executed.entries());
+    commit();
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -101,6 +206,10 @@ function getSnapshot(): ReadonlyArray<ScheduledOp> {
   return snapshot;
 }
 
+function getExecutedSnapshot(): ReadonlyArray<[string, ExecutedOperation]> {
+  return executedSnapshot;
+}
+
 const chainSnapshots = new Map<
   number,
   { source: ReadonlyArray<ScheduledOp>; result: ScheduledOp[] }
@@ -112,6 +221,34 @@ export function useScheduledOps(chainId: number): ReadonlyArray<ScheduledOp> {
   if (cached != null && cached.source === all) return cached.result;
   const result = all.filter((op) => op.chainId === chainId);
   chainSnapshots.set(chainId, { source: all, result });
+  return result;
+}
+
+const executedChainSnapshots = new Map<
+  number,
+  {
+    source: ReadonlyArray<[string, ExecutedOperation]>;
+    result: ReadonlyMap<string, ExecutedOperation>;
+  }
+>();
+
+export function useExecutedOperations(
+  chainId: number,
+): ReadonlyMap<string, ExecutedOperation> {
+  const all = useSyncExternalStore(
+    subscribe,
+    getExecutedSnapshot,
+    getExecutedSnapshot,
+  );
+  const cached = executedChainSnapshots.get(chainId);
+  if (cached != null && cached.source === all) return cached.result;
+  const prefix = `${chainId}:`;
+  const result = new Map(
+    all
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([, entry]) => [entry.operationId, entry] as const),
+  );
+  executedChainSnapshots.set(chainId, { source: all, result });
   return result;
 }
 
@@ -129,4 +266,7 @@ export function _resetRiskCouncilOpsForTests(): void {
   ops.clear();
   chainSnapshots.clear();
   snapshot = [];
+  executed.clear();
+  executedChainSnapshots.clear();
+  executedSnapshot = [];
 }

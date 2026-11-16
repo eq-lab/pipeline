@@ -1,5 +1,6 @@
 // spec: docs/frontend/trustee-flows.md#risk-council-actions
 import type { CanCall, OperationSchedule } from "@pipeline/wallet-connect";
+import { truncateAddress } from "./truncateAddress";
 
 export type AccessAction =
   | "execute-now"
@@ -49,7 +50,8 @@ export const RISK_COUNCIL_AM_ERROR_COPY: Record<string, string> = {
   "execute:7":
     "This operation is not ready yet. Execute it once the ready time has passed.",
   "execute:8": "The scheduled operation expired. Schedule it again.",
-  "schedule:9": "This operation is already scheduled.",
+  "schedule:9":
+    "This operation is already scheduled. It may have been scheduled outside the indexed window; the scheduling wallet can execute it once it is ready.",
 };
 
 export const SECURITY_REGISTRY_ERROR_COPY: Record<string, string> = {
@@ -96,3 +98,7 @@ export function riskCouncilRoleLine(
 
 export const NO_LONGER_SCHEDULED =
   "No longer scheduled — cancelled by the Guardian or the Admin, or executed from another session.";
+
+export function otherWalletCopy(caller: string): string {
+  return `Only the scheduling wallet (${truncateAddress(caller)}) can execute this.`;
+}

@@ -342,7 +342,19 @@ export type {
 } from "./stellar/contracts/riskCouncil";
 
 export {
+  decodeOperationArgs,
+  operationArgsXdr,
+  readScheduledOperation,
+  executeScheduledOperation,
+} from "./stellar/contracts/scheduledOperation";
+export type {
+  ScheduledOperationParams,
+  ExecuteScheduledOperationParams,
+} from "./stellar/contracts/scheduledOperation";
+
+export {
   encodeSecurityRegistryArgs,
+  securityRegistryArgsXdr,
   relaySecurityRegistry,
   readSecurityRegistrySchedule,
   readSecurityInspectors,

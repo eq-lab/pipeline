@@ -5,6 +5,11 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   hubCallsFor,
+  NoLongerScheduledError,
+  PendingArgsMismatchError,
+  PendingTargetMismatchError,
+  RegistryPausedError,
+  usePendingOperationExecute,
   useRiskCouncilAccess,
   useRiskCouncilHubLookups,
   useRiskCouncilLoanState,
@@ -14,6 +19,7 @@ import {
 import {
   _resetRiskCouncilOpsForTests,
   recordScheduledOp,
+  useExecutedOperations,
   useScheduledOps,
 } from "@/lib/riskCouncilOps";
 
@@ -22,6 +28,9 @@ const mocks = vi.hoisted(() => ({
   relaySecurityRegistry: vi.fn(),
   readSecurityRegistrySchedule: vi.fn(),
   readSecurityInspectors: vi.fn(),
+  readScheduledOperation: vi.fn(),
+  executeScheduledOperation: vi.fn(),
+  securityRegistryArgsXdr: vi.fn(),
   readCanCall: vi.fn(),
   readRiskCouncilSchedule: vi.fn(),
   readLoanChainState: vi.fn(),
@@ -35,6 +44,9 @@ vi.mock("@pipeline/wallet-connect", () => ({
   relaySecurityRegistry: mocks.relaySecurityRegistry,
   readSecurityRegistrySchedule: mocks.readSecurityRegistrySchedule,
   readSecurityInspectors: mocks.readSecurityInspectors,
+  readScheduledOperation: mocks.readScheduledOperation,
+  executeScheduledOperation: mocks.executeScheduledOperation,
+  securityRegistryArgsXdr: mocks.securityRegistryArgsXdr,
   readCanCall: mocks.readCanCall,
   readRiskCouncilSchedule: mocks.readRiskCouncilSchedule,
   readLoanChainState: mocks.readLoanChainState,
@@ -90,6 +102,7 @@ beforeEach(() => {
   envMock.STELLAR_LOAN_REGISTRY_ID = "CREGISTRY";
   envMock.STELLAR_SECURITY_REGISTRY_ID = "CSECURITY";
   mocks.relaySecurityRegistry.mockResolvedValue({ hash: "SH" });
+  mocks.securityRegistryArgsXdr.mockReturnValue("ARGSXDR");
   _resetRiskCouncilOpsForTests();
 });
 
@@ -402,6 +415,34 @@ describe("useRiskCouncilRelay", () => {
     expect(ops.result.current[0]!.executedHere).toBe(true);
   });
 
+  it("marks the scheduled operation id executed when the form executes", async () => {
+    fakeRelayTimers();
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "OPX",
+      readyAt: 7,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.size).toBe(0);
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(executed.result.current.get("OPX")).toMatchObject({ readyAt: 7 });
+  });
+
   it("rejects when not configured, not connected or on EVM", async () => {
     envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "";
     const a = renderHook(() => useRiskCouncilRelay(), {
@@ -518,5 +559,255 @@ describe("hub lookups", () => {
       wrapper: makeWrapper(),
     });
     expect(mocks.readRiskCouncilSchedule).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRiskCouncilRelay schedule bridge", () => {
+  it("records the operation id and ready time from the follow-up read", async () => {
+    fakeRelayTimers();
+    mocks.readSecurityRegistrySchedule.mockResolvedValue({
+      operationId: "OP1",
+      readyAt: 1_800_000_000,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const ops = renderHook(() => useScheduledOps(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: RELEASE,
+        chainId: STELLAR,
+        loanId: 9,
+      });
+    });
+    expect(ops.result.current[0]).toMatchObject({
+      operationId: "OP1",
+      readyAt: 1_800_000_000,
+      caller: "GRC",
+      target: "CSECURITY",
+      argsXdr: "ARGSXDR",
+      loanId: 9,
+    });
+    await waitFor(() => expect(relay.result.current.hash).toBe("SH"));
+  });
+
+  it("still records the operation without an id when the follow-up read fails", async () => {
+    fakeRelayTimers();
+    mocks.readSecurityRegistrySchedule.mockRejectedValue(new Error("rpc down"));
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const ops = renderHook(() => useScheduledOps(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: RELEASE,
+        chainId: STELLAR,
+      });
+    });
+    expect(ops.result.current).toHaveLength(1);
+    expect(ops.result.current[0]!.operationId).toBeUndefined();
+  });
+
+  it("does not read the schedule after an execute", async () => {
+    fakeRelayTimers();
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "execute",
+        call: RELEASE,
+        chainId: STELLAR,
+      });
+    });
+    expect(mocks.readSecurityRegistrySchedule).not.toHaveBeenCalled();
+  });
+
+  it("leaves argsXdr empty for a LoanRegistry call", async () => {
+    fakeRelayTimers();
+    mocks.readRiskCouncilSchedule.mockResolvedValue({
+      operationId: "OP2",
+      readyAt: 5,
+    });
+    const relay = renderHook(() => useRiskCouncilRelay(), {
+      wrapper: makeWrapper(),
+    });
+    const ops = renderHook(() => useScheduledOps(STELLAR));
+    await act(async () => {
+      await relay.result.current.mutateAsync({
+        mode: "schedule",
+        call: SET_DEFAULT,
+        chainId: STELLAR,
+      });
+    });
+    expect(ops.result.current[0]!.argsXdr).toBeUndefined();
+  });
+});
+
+describe("usePendingOperationExecute", () => {
+  const INPUT = {
+    chainId: STELLAR,
+    operationId: "OP1",
+    caller: "GRC",
+    target: "CSECURITY",
+    expectedTarget: "CSECURITY",
+    paused: false,
+    fn: "set_terms",
+    argsXdr: "AAAA",
+  };
+
+  beforeEach(() => {
+    mocks.readScheduledOperation.mockResolvedValue({
+      operationId: "OP1",
+      readyAt: 1_800_000_000,
+    });
+    mocks.executeScheduledOperation.mockResolvedValue({ hash: "EH" });
+  });
+
+  it("rejects another wallet without touching the network", async () => {
+    mocks.wallet.address = "GOTHER";
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(result.current.mutateAsync(INPUT)).rejects.toThrow(
+      /Only the scheduling wallet/,
+    );
+    expect(mocks.readScheduledOperation).not.toHaveBeenCalled();
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("refuses a target other than the expected one before any RPC call", async () => {
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    const error = await result.current
+      .mutateAsync({ ...INPUT, expectedTarget: "COTHER" })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PendingTargetMismatchError);
+    expect((error as PendingTargetMismatchError).target).toBe("CSECURITY");
+    expect(mocks.readScheduledOperation).not.toHaveBeenCalled();
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("refuses while the registry is paused before any RPC call", async () => {
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(
+      result.current.mutateAsync({ ...INPUT, paused: true }),
+    ).rejects.toBeInstanceOf(RegistryPausedError);
+    expect(mocks.readScheduledOperation).not.toHaveBeenCalled();
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("rejects a disconnected wallet, a missing AccessManager id and an EVM chain", async () => {
+    mocks.wallet.isConnected = false;
+    const a = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(a.result.current.mutateAsync(INPUT)).rejects.toThrow(
+      /wallet not connected/,
+    );
+    mocks.wallet.isConnected = true;
+    envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "";
+    const b = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(b.result.current.mutateAsync(INPUT)).rejects.toThrow(
+      /not configured for this environment/,
+    );
+    envMock.STELLAR_LOAN_REGISTRY_EXECUTOR_ID = "CAM";
+    const c = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(
+      c.result.current.mutateAsync({ ...INPUT, chainId: EVM }),
+    ).rejects.toThrow();
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("aborts when the recomputed operation id differs", async () => {
+    mocks.readScheduledOperation.mockResolvedValue({
+      operationId: "OTHER",
+      readyAt: 1_800_000_000,
+    });
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(result.current.mutateAsync(INPUT)).rejects.toBeInstanceOf(
+      PendingArgsMismatchError,
+    );
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("aborts when the operation is no longer scheduled", async () => {
+    mocks.readScheduledOperation.mockResolvedValue({
+      operationId: "OP1",
+      readyAt: 0,
+    });
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    await expect(result.current.mutateAsync(INPUT)).rejects.toBeInstanceOf(
+      NoLongerScheduledError,
+    );
+    expect(mocks.executeScheduledOperation).not.toHaveBeenCalled();
+  });
+
+  it("executes with the scheduled arguments, marks the id and invalidates", async () => {
+    fakeRelayTimers();
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    const executed = renderHook(() => useExecutedOperations(STELLAR));
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    await act(async () => {
+      await result.current.mutateAsync(INPUT);
+    });
+    expect(mocks.readScheduledOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessManagerId: "CAM",
+        caller: "GRC",
+        target: "CSECURITY",
+        fn: "set_terms",
+        argsXdr: "AAAA",
+      }),
+    );
+    expect(mocks.executeScheduledOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessManagerId: "CAM",
+        caller: "GRC",
+        target: "CSECURITY",
+        fn: "set_terms",
+        argsXdr: "AAAA",
+        signTransaction: mocks.sign,
+      }),
+    );
+    expect(executed.result.current.get("OP1")).toMatchObject({
+      hash: "EH",
+      readyAt: 1_800_000_000,
+    });
+    expect(keys(spy)).toContain("loan-security");
+    await waitFor(() => expect(result.current.hash).toBe("EH"));
+  });
+
+  it("flags matching session operations as executed here", async () => {
+    fakeRelayTimers();
+    recordScheduledOp({
+      chainId: STELLAR,
+      call: RELEASE,
+      operationId: "OP1",
+      readyAt: 5,
+    });
+    const { result } = renderHook(() => usePendingOperationExecute(), {
+      wrapper: makeWrapper(),
+    });
+    const ops = renderHook(() => useScheduledOps(STELLAR));
+    await act(async () => {
+      await result.current.mutateAsync(INPUT);
+    });
+    expect(ops.result.current[0]!.executedHere).toBe(true);
   });
 });
