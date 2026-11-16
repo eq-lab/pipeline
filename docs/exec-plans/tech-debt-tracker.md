@@ -431,7 +431,7 @@ line, whichever section it lands in.
   deposit/withdraw/stake contract hooks, the terms-acknowledgement flag) in
   `packages/frontend/src/wallet`.
 
-### TD-36: Trustee sidebar nav badges have no backend count source
+### TD-36: Trustee sidebar nav badges have no backend count source [RESOLVED 2026-11-16 / #1350]
 
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
@@ -442,6 +442,7 @@ line, whichever section it lands in.
   `TrusteeNavItem.badgeCount` is `undefined`, ready to light up once a real count exists.
 - **Impact:** The sidebar under-represents the Figma mock (no badges) until a backend source
   lands; no functional impact, just a deferred visual/product feature.
+- **Resolved:** Badges are wired to `GET /v1/attention-counts` via `useNavBadgeCounts`.
 - **Suggested fix:** In #1350, populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS`
   entries from `GET /v1/attention-counts` (via a query hook passed into
   `TrusteeSidebar`/`NavItem`, not a hardcoded value).

@@ -29,7 +29,7 @@ Overview, LP Counterparties, Risk Council and Audit Log get no badge (none in Fi
 
 Rendering rules:
 
-- A served integer renders verbatim, including `0` (no hiding, no capping, no `99+`).
+- A served integer renders verbatim (no capping, no `99+`), except `0`, which hides the badge like an absent field (manager decision on #1350).
 - No badge while the request is loading, when it fails (any non-2xx, including 401/403/500),
   when the field is absent or not a number, or, for Cash Management, when the session has no
   `chainId` or `chains[]` has no entry for it. There is no fallback to `ENV.STELLAR_CHAIN_ID`:
@@ -54,9 +54,8 @@ Out of scope:
 - **Contract stability.** Types mirror `AttentionCountsResponse` in `attention_counts.rs` as
   merged. Only the three `count` fields and `chains[].chain_id` are read. The breakdown fields
   are typed (nullable where the DTO has `Option`) but not rendered.
-- **Zero renders as "0".** This follows the "served integer verbatim" directive and
-  [[no-frontend-computed-metrics]]. If the user later prefers hiding at zero, that is a
-  one-line change in `NavBadge`.
+- **Zero hides the badge.** The manager decided on #1350 that a served `0` is treated like an
+  absent field in `navBadgeCounts`. Positive integers render verbatim.
 - **Per-request backend cost.** Every Trustee page polls the route every 30 s. The #1864 plan
   accepted this (TD-174, recompute per request). Stopping the poll in background tabs is React
   Query's default (`refetchIntervalInBackground: false`), so no extra handling is needed.
@@ -76,6 +75,8 @@ Out of scope:
 _None_
 
 ## Implementation Steps
+
+Status: steps 1-5 completed; `-authTransitions.test.tsx` also mocks `useAttentionCounts` because it renders the real sidebar.
 
 1. **API hook: `packages/trustee/src/api/useAttentionCounts.ts`** (new). Header:
    `// spec: docs/product-specs/trustee-attention-counts.md#api-contract`. No other comments.
@@ -162,7 +163,7 @@ _None_
   - `chainId` is `undefined`, or matches no entry: no `/cash-management` key, while the other two
     are still present.
   - `data` is `undefined`: `{}`.
-  - A served `0` maps to `0`, not omitted.
+  - A served `0` hides the badge: the key is omitted.
   - A missing or non-number `count` (malformed fixture cast through `unknown`) omits that key.
   - For `useNavBadgeCounts`, mock `@/api/useAttentionCounts` and `@/auth/sessionStore` and check
     two things. It returns `{}` when the query has an error, even with stale `data`. It returns
@@ -171,8 +172,8 @@ _None_
   - Add `vi.mock("@/components/useNavBadgeCounts", ...)` with a hoisted, controllable return
     value. The default is `{}`.
   - Replace "does not render a badge for any nav item (no backend count source)" with:
-    - With `{ "/origination": 2, "/loans": 3, "/cash-management": 0 }`, each of those three nav
-      links contains a `trustee-nav-badge` with text `2` / `3` / `0`. Query within each link,
+    - With `{ "/origination": 2, "/loans": 3, "/cash-management": 5 }`, each of those three nav
+      links contains a `trustee-nav-badge` with text `2` / `3` / `5`. Query within each link,
       for example `within(screen.getByRole("link", { name: /Origination/ }))`.
     - Overview, LP Counterparties, Risk Council and Audit Log never contain a badge.
     - With `{}`, no `trustee-nav-badge` is in the document.
@@ -196,7 +197,7 @@ _None_
       - Origination and Loans read the combined `count` (all chains);
       - Cash Management reads the `chains[]` entry for `useSessionState().chainId`, with no
         Stellar fallback;
-    - a served integer renders verbatim, including `0`;
+    - a served positive integer renders verbatim and a served `0` hides the badge;
     - there is no badge while loading, on error (including a failed refetch with stale data),
       when a field is absent, or when the session chain has no entry;
     - the Overview, LP Counterparties, Risk Council and Audit Log items never have a badge.
@@ -218,7 +219,7 @@ _None_
      Loans match the combined counts and Cash Management matches the `99000001` entry.
   2. Signed in on Hoodi, Origination and Loans are unchanged and Cash Management matches the
      `560048` entry.
-  3. A zero count shows `0`.
+  3. A zero count shows no badge.
   4. When the request fails (for example, blocked in DevTools), no badges show and the nav still
      works.
   5. Badges refresh within about 30 s after an action changes a count, for example approving a

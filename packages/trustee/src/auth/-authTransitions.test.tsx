@@ -53,6 +53,10 @@ vi.mock("@/api/auth", () => ({
   postAuthVerify: vi.fn(),
 }));
 
+vi.mock("@/api/useAttentionCounts", () => ({
+  useAttentionCounts: () => ({ data: undefined, error: null }),
+}));
+
 vi.mock("@/lib/env", () => ({
   ENV: { EVM_CHAIN_ID: 560048, STELLAR_CHAIN_ID: 99000001 },
 }));
