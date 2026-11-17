@@ -117,6 +117,7 @@ fn function_selectors_equal_the_contract_signatures() {
         ("releaseWithConsent(uint256,bytes32)", "0x115f901f"),
         ("resolveFlag(uint256,uint8,bytes32)", "0xdf84b5b3"),
         ("setInspectors(address[])", "0xa84489a4"),
+        ("upgradeToAndCall(address,bytes)", "0x4f1ef286"),
         ("setTerms(uint256,(uint32,uint32,uint32,uint64,uint64,uint8,uint64,uint32,uint32,uint64,uint64,uint32,uint32,uint64,uint64))", "0x45f225f5"),
     ];
     for (signature, expected) in cases {
@@ -293,6 +294,21 @@ fn risk_council_functions_decode_to_name_and_args() {
     let d = decode_call(SECURITY, &release_with_consent_data(3), &t);
     assert_eq!(d.function, "releaseWithConsent");
     assert_eq!(d.args_json, Some(json!(["3", "01".repeat(32)])));
+}
+
+#[test]
+fn upgrade_to_and_call_decodes_on_every_target_without_a_loan() {
+    let t = targets();
+    let implementation = address!("0x00000000000000000000000000000000000000aa");
+    let data = upgrade_to_and_call_data(implementation, &[0xde, 0xad]);
+    for target in [LOAN_REGISTRY, MINTER, SECURITY, RECORD_NFT] {
+        let d = decode_call(target, &data, &t);
+        assert_eq!(d.function, "upgradeToAndCall");
+        assert_eq!(
+            d.args_json,
+            Some(json!([implementation.to_checksum(None), "dead"]))
+        );
+    }
 }
 
 #[test]

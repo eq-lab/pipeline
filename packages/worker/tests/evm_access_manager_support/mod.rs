@@ -35,6 +35,7 @@ sol! {
     }
 
     function setDefault(uint256 loanId);
+    function upgradeToAndCall(address newImplementation, bytes data);
     function cure(uint256 loanId);
     function amendEconomics(uint256 loanId, uint32 newRate, uint64 newMaturityTimestamp);
     function adjustInterest(uint256 loanId, int256 delta, bytes32 reasonHash);
@@ -174,6 +175,14 @@ pub fn op_id(caller: Address, target: Address, data: &[u8]) -> String {
 pub fn set_default_data(loan: u64) -> Vec<u8> {
     setDefaultCall {
         loanId: U256::from(loan),
+    }
+    .abi_encode()
+}
+
+pub fn upgrade_to_and_call_data(implementation: Address, init: &[u8]) -> Vec<u8> {
+    upgradeToAndCallCall {
+        newImplementation: implementation,
+        data: init.to_vec().into(),
     }
     .abi_encode()
 }

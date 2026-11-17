@@ -85,6 +85,16 @@ fn reverse_disburse_is_not_loan_scoped() {
 }
 
 #[test]
+fn upgrade_to_and_call_is_not_loan_scoped() {
+    for target in [LOAN_REGISTRY, MINTER, SECURITY, RECORD_NFT] {
+        assert_eq!(
+            loan_ref(target, "upgradeToAndCall", &args1(4), &targets()),
+            LoanRef::None
+        );
+    }
+}
+
+#[test]
 fn record_functions_resolve_records() {
     for f in ["resolveFlag", "releaseWithConsent"] {
         assert_eq!(

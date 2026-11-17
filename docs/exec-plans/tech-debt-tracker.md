@@ -2467,4 +2467,3 @@ line, whichever section it lands in.
 - **Gap:** The SecurityRegistry indexer now stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assume the Stellar 7 dp scale.
 - **Impact:** None until the API serves EVM security data. Then a mark suggestion or an amount formatted at 7 dp would be off by a factor of 10 on EVM.
 - **Suggested fix:** Hand-off to #1940 (the `/security` route and loan-book fields) and #1942 (Trustee): take the decimals from the chain kind instead of a constant. Documented in `docs/references/security-registry-events.md#known-limitations`.
-

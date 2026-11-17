@@ -226,6 +226,7 @@ sol! {
         function unpause() external;
         function unrecordPayment(uint256 loanId, uint256 repaymentId) external;
         function updateMutable(uint256 loanId, uint8 newStatus, string metadataURI) external;
+        function upgradeToAndCall(address newImplementation, bytes data) external;
         function writeDown(uint256 loanId, uint256 amount) external;
     }
 
@@ -259,6 +260,7 @@ sol! {
         function setTreasury(address newTreasury) external;
         function settleWireOut(uint256 id, uint256 amount, uint64 valueDate, bytes32 refHash) external;
         function unpause() external;
+        function upgradeToAndCall(address newImplementation, bytes data) external;
     }
 
     #[sol(abi)]
@@ -287,6 +289,7 @@ sol! {
         function setTerms(uint256 loanId, Terms newTerms) external;
         function startEnforcement(uint256 recordId) external;
         function unpause() external;
+        function upgradeToAndCall(address newImplementation, bytes data) external;
     }
 
     #[sol(abi)]
@@ -304,6 +307,7 @@ sol! {
         function setAuthority(address newAuthority) external;
         function setInspectors(address[] newInspectors) external;
         function setSecurityRegistry(address newSecurityRegistry) external;
+        function upgradeToAndCall(address newImplementation, bytes data) external;
     }
 }
 

@@ -168,7 +168,7 @@ The `EvmRowResolver` turns one raw row into one `OpWrite`; the shared loop appli
 - Equal: `calldata`, `function`, `args_json`, `loan_id` and `record_id` are filled.
 - Different: the row is stored with `calldata`, `args_json`, `loan_id` and `record_id` all `NULL` (`function` still comes from the selector) and a `warn`. This cannot happen on the stock contract.
 
-`function` is the contract's native Solidity name (camelCase), decoded from the selector with the ABI of the configured target (LoanRegistry, Minter, SecurityRegistry, RecordNft; every external non-view function except `initialize`, `upgradeToAndCall` and the ERC-721 transfers). An unknown selector, or a target that is not one of the four (the AccessManager itself, or an unconfigured SecurityRegistry), stores `function = 0x` + 8 lowercase hex, `args_json = NULL` and keeps `calldata`. A known selector whose arguments fail to decode keeps the name, stores `args_json = NULL` and logs `warn`.
+`function` is the contract's native Solidity name (camelCase), decoded from the selector with the ABI of the configured target (LoanRegistry, Minter, SecurityRegistry, RecordNft; every external non-view function except `initialize` and the ERC-721 transfers; `upgradeToAndCall(address,bytes)` is included on all four, where Stellar has `upgrade`, and is not loan-scoped). An unknown selector, or a target that is not one of the four (the AccessManager itself, or an unconfigured SecurityRegistry), stores `function = 0x` + 8 lowercase hex, `args_json = NULL` and keeps `calldata`. A known selector whose arguments fail to decode keeps the name, stores `args_json = NULL` and logs `warn`.
 
 `args_json` display form, a positional array: `uint8` to `uint32` and `int8` to `int32` (enums included) as numbers; wider integers as decimal strings; `bool`; `address` as EIP-55; `bytes` and `bytesN` as lowercase hex without `0x`; strings and arrays as such; tuples as objects keyed by the Solidity component names. `setTerms(7, terms)` reads `["7", {"advanceRatioBps": 7000, …, "defaultBreachAt": "0"}]`. NUL never appears.
 
@@ -188,15 +188,15 @@ Loan id `0` is valid. An id above `u32::MAX` gives no reference and a `warn`. Th
 
 ### EVM cursor and rollout
 
-`eth_getLogs` keeps full history, so there is no retention limit. The table can be rebuilt without loss: delete the chain's AccessManager rows from `access_manager_operations`, reset `access_manager_sync_state` for the AccessManager address, and the raw rows still hold the calldata. A rewind of the chain cursor can go back to the AccessManager deploy block.
+`eth_getLogs` keeps full history, so there is no retention limit. The projection runs in `contract_logs.id` order (shared with Stellar), and a close matches only a schedule with a lower id. The cursor rewind must therefore be done when the key is first enabled, to the AccessManager deploy block or earlier than the earliest relevant schedule. If the key is enabled without a rewind and a deeper rewind follows later, an `OperationExecuted` can be indexed before its `OperationScheduled`: the execute is a no-op and the schedule then stays `pending` until it expires. Resetting the watermark and rebuilding `access_manager_operations` replays the same id order and does not repair this; the AccessManager raw rows in `contract_logs` would have to be deleted and re-indexed.
 
 Rollout, per chain:
 
 1. Merge and wait for the worker image.
-2. Stop the worker, set `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS`, rewind `log_collector_state.last_indexed_block` to at or before the earliest still-pending schedule, start. Replays of other contracts dedupe on the `contract_logs` unique key. The sync loop starts at watermark 0 and catches up.
+2. Stop the worker, set `CHAIN_<id>_EVM_INDEXER_ACCESS_MANAGER_ADDRESS`, rewind `log_collector_state.last_indexed_block` in the same step, to the AccessManager deploy block or earlier than the earliest relevant schedule, start. Replays of other contracts dedupe on the `contract_logs` unique key. The sync loop starts at watermark 0 and catches up.
 3. Check: `contract_logs` has the AccessManager rows, `access_manager_sync_state.last_log_id` equals the highest AccessManager row id for the EIP-55 address, and each indexed schedule has a row with `calldata` set.
 
-Setting the key without a rewind indexes only from the current cursor. The API does not serve EVM rows until #1941: `LIST_PENDING_LOAN_OPS_SQL` requires `args_xdr IS NOT NULL`.
+Setting the key without a rewind indexes only from the current cursor, and a deeper rewind later is not safe (see above). The API does not serve EVM rows until #1941: `LIST_PENDING_LOAN_OPS_SQL` requires `args_xdr IS NOT NULL`.
 
 ### EVM known limitations
 
@@ -223,4 +223,4 @@ Setting the key without a rewind indexes only from the current cursor. The API d
 | 12 | Formats | Strkeys, tx hash 64 hex, `schedule_ledger` = ledger. | EIP-55, tx hash `0x…`, `schedule_ledger` = block number. | Per-chain `contract_logs` conventions. |
 | 13 | Allow-listed events | 8 snake_case topics. | 9 OpenZeppelin topic0 values. | Different event sets. |
 | 14 | Config validation | `StellarIndexerSettings::from_chain_env` distinct-role loop. | Parse in `IndexerJobSettings::from_chain_env`; clash check in `run_indexer_job`. | The EVM indexer checks optional-key clashes there. |
-| 15 | Retention and re-projection | RPC retention of about 7 days (TD-187). | None; the table can be rebuilt from the raw rows. | `eth_getLogs` keeps full history. |
+| 15 | Retention and re-projection | RPC retention of about 7 days (TD-187). | None; the rewind must be done when the key is first enabled (the projection runs in `contract_logs.id` order). | `eth_getLogs` keeps full history. |

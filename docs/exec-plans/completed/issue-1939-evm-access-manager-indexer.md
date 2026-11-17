@@ -265,7 +265,7 @@ loop, constants, backoff, supervision, close SQL, insert SQL, record lookup, `ex
 | 13 | Formats | Strkeys, tx hash 64 hex, `schedule_ledger` = ledger | EIP-55, tx hash `0x…` (the EVM `contract_logs` convention), `schedule_ledger` = block number | Per-chain `contract_logs` conventions. |
 | 14 | Allow-listed events | 8 snake_case topics | 9 OpenZeppelin topic0 values (`Role*`, `Target*`) | Different event sets. |
 | 15 | Config validation site | `StellarIndexerSettings::from_chain_env` distinct-role loop | Parse in `IndexerJobSettings::from_chain_env`, collision check in `run_indexer_job` (`reject_access_manager_collision`) | The EVM indexer checks optional-key collisions in `run_indexer_job` (PLUSD, asset, DTF, #1938). |
-| 16 | Retention and re-projection | RPC retention of about 7 days: never truncate the table, and a rewind is bounded by `oldestLedger` (TD-187). | No log retention. The table can be rebuilt without loss: delete the chain's AccessManager rows, reset the watermark, and the raw rows still hold the calldata. A rewind can go back to the AccessManager deploy block. | `eth_getLogs` keeps full history. |
+| 16 | Retention and re-projection | RPC retention of about 7 days: never truncate the table, and a rewind is bounded by `oldestLedger` (TD-187). | No log retention. The projection runs in `contract_logs.id` order, so the rewind (to the AccessManager deploy block or earlier than the earliest relevant schedule) must be done when the key is first enabled; a later deeper rewind or a rebuild can leave a schedule `pending` after its execute. | `eth_getLogs` keeps full history. |
 
 ## Assumptions and Risks
 
@@ -597,7 +597,7 @@ or `POSTGRES_URL`. The layout mirrors the Stellar suites one-to-one.
     - `### EVM args and operation id`: `calldata`, the keccak check and "never guess", decoding, `function`
       naming, and the `args_json` form.
     - `### EVM loan id`: the table and the record lookup.
-    - `### EVM cursor and rollout`: no retention, rewind to the AccessManager deploy block if needed, lossless
+    - `### EVM cursor and rollout`: no retention; the rewind must be done when the key is first enabled (a later deeper rewind or rebuild is not lossless)
       re-projection, and the check queries.
     - `### EVM known limitations`: the unused execute nonce, and AccessManager-self targets shown as selectors.
     - `### Differences from Stellar`: the table from this plan.
