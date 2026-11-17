@@ -96,14 +96,22 @@ const tcp = (port: number) =>
     const s = connect(port, "127.0.0.1", () => (s.end(), ok(true))).on("error", () => ok(false));
   });
 const http = async (url: string, init?: RequestInit) => (await fetch(url, init)).status < 500;
-const stellarHealthy = async () => {
+const stellarRpc = async <T>(method: string): Promise<T | undefined> => {
   const r = await fetch(`http://localhost:${PORTS.stellar}/rpc`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method }),
   });
-  return ((await r.json()) as { result?: { status?: string } }).result?.status === "healthy";
+  return ((await r.json()) as { result?: T }).result;
 };
+const stellarHealthy = async () => (await stellarRpc<{ status?: string }>("getHealth"))?.status === "healthy";
+
+/** The ledger the indexer starts from: the latest one before the deploy, so it sees every deploy and role-grant event. */
+export async function deployStartLedger(): Promise<number> {
+  const seq = (await stellarRpc<{ sequence?: number }>("getLatestLedger"))?.sequence;
+  if (!Number.isInteger(seq) || seq! < 1) throw new E2EError(`stellar getLatestLedger returned no ledger (${seq})`);
+  return seq!;
+}
 const alive = (pid: number) => async () => {
   await sleep(5000);
   process.kill(pid, 0);
@@ -305,8 +313,9 @@ export async function up(tag: string, reclaim: boolean) {
   for (const [svc, probe] of infra) await waitFor(svc, join(dir, "logs", `${svc}.log`), probe).catch((e) => (containerLog(svc), Promise.reject(e)));
   sh("docker", ["compose", "-f", COMPOSE, "exec", "-T", "minio", "sh", "-c", `mc alias set l http://localhost:9000 ${SPACES.key} ${SPACES.secret} && mc mb -p l/${SPACES.bucket}`], { env: composeEnv(tag) });
 
+  const startLedger = await deployStartLedger();
   const { addresses, accounts } = await deployContracts(tag, contracts);
-  const env = generateEnv({ ports: PORTS, addresses, accounts, jwt: jwtPair() });
+  const env = generateEnv({ ports: PORTS, addresses, accounts, jwt: jwtPair(), startLedger });
   assertGuarded(env);
   fs.writeFileSync(join(dir, "env.json"), JSON.stringify(env, null, 2), { mode: 0o600 });
   const vite = Object.entries(env).filter(([k]) => k.startsWith("VITE_"));

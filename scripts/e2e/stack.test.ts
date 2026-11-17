@@ -25,12 +25,14 @@ const addresses = Object.fromEntries(
   ["usdc", "plusd", "access_manager", "deposit_manager", "withdrawal_queue", "staked_pl_usd", "pocket", "loan_registry", "collateral_registry", "deal_token_factory", "minter"].map((k) => [k, C]),
 ) as unknown as Addresses;
 const G = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const generated = generateEnv({
+const envInput = {
   ports: PORTS,
   addresses,
   accounts: { issuer: G, verifierSecret: "SV", relayerSecret: "SR", depositCustodian: G, withdrawalCustodian: G, capitalWallet: G },
   jwt: { privatePem: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n", publicPem: "-----BEGIN PUBLIC KEY-----\ny\n-----END PUBLIC KEY-----\n" },
-});
+  startLedger: 1234,
+};
+const generated = generateEnv(envInput);
 const check = (overrides: Record<string, string>) => guard({ env: { ...generated, ...overrides }, generated, postgresPort: PORTS.postgres });
 const refuses = (overrides: Record<string, string>, pattern: RegExp) =>
   assert.ok(check(overrides).some((v) => pattern.test(v)), `expected ${pattern} in ${JSON.stringify(check(overrides))}`);
@@ -60,6 +62,14 @@ describe("guard", () => {
   });
 
   it("refuses a key not from the generated env", () => refuses({ EXTRA_SECRET: "x" }, /EXTRA_SECRET: not from this tag's generated env/));
+});
+
+describe("generated env", () => {
+  // getEvents refuses a startLedger below the RPC's oldest ledger, so a 0 cursor would stall the indexer for good.
+  it("starts the Stellar indexer at the deploy-time ledger and refuses ledger 0", () => {
+    assert.equal(generated.CHAIN_99000001_STELLAR_START_BLOCK, "1234");
+    assert.throws(() => generateEnv({ ...envInput, startLedger: 0 }), /startLedger must be a positive ledger/);
+  });
 });
 
 describe("guard hook", { timeout: TIMEOUT }, () => {

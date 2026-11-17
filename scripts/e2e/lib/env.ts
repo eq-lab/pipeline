@@ -35,9 +35,12 @@ export interface EnvInput {
   addresses: Addresses;
   accounts: Accounts;
   jwt: { privatePem: string; publicPem: string };
+  /** A ledger the local RPC still holds, taken before the deploy: getEvents refuses a startLedger below its oldest ledger, and 0 always is. */
+  startLedger: number;
 }
 
-export function generateEnv({ ports: p, addresses: a, accounts: k, jwt }: EnvInput): Record<string, string> {
+export function generateEnv({ ports: p, addresses: a, accounts: k, jwt, startLedger }: EnvInput): Record<string, string> {
+  if (!Number.isInteger(startLedger) || startLedger < 1) throw new Error(`startLedger must be a positive ledger, got ${startLedger}`);
   const rpc = `http://localhost:${p.stellar}/rpc`;
   const fakes = `http://localhost:${p.fakes}`;
   const db = `postgres://pipeline:pipeline@localhost:${p.postgres}/${E2E_DATABASE}`;
@@ -84,7 +87,7 @@ export function generateEnv({ ports: p, addresses: a, accounts: k, jwt }: EnvInp
     [`CHAIN_${ID}_TYPE`]: "stellar",
     [`${S}_RPC_URL`]: rpc,
     [`${S}_NETWORK_PASSPHRASE`]: STANDALONE_PASSPHRASE,
-    [`${S}_START_BLOCK`]: "0",
+    [`${S}_START_BLOCK`]: String(startLedger),
     [`${S}_INDEXER_DEPOSIT_MANAGER_ADDRESS`]: a.deposit_manager,
     [`${S}_INDEXER_WITHDRAWAL_QUEUE_ADDRESS`]: a.withdrawal_queue,
     [`${S}_INDEXER_WITHDRAWAL_QUEUE_WALLET_ADDRESS`]: k.withdrawalCustodian,
