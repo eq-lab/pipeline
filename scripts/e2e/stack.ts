@@ -124,28 +124,80 @@ export function contractsDir(ref = CONTRACTS_REF) {
   return join(e2eHome(), "contracts", `pipeline-stellar-contracts@${ref}`);
 }
 
+const LOCK_GRACE_MS = 60_000;
+
+/** True once the process holding a contracts-cache lock is gone (a killed build), so a waiter may break it. */
+export function lockHolderGone(lock: string): boolean {
+  let pid: number;
+  try {
+    pid = Number(fs.readFileSync(join(lock, "pid"), "utf8"));
+  } catch {
+    // No pid yet (the holder is between mkdir and writing it) or a lock from before pid files: judge by age.
+    try {
+      return Date.now() - fs.statSync(lock).mtimeMs > LOCK_GRACE_MS;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ESRCH";
+  }
+}
+
 export async function ensureContracts(ref = CONTRACTS_REF): Promise<string> {
   const dir = contractsDir(ref);
   const lock = `${dir}.lock`;
   fs.mkdirSync(join(e2eHome(), "contracts"), { recursive: true });
-  // shortcut: a lock left by a killed build is never broken automatically; remove <dir>.lock by hand.
+  let announced = false;
   while (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(lock);
-    } catch {
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      if (lockHolderGone(lock)) {
+        // Rename first: of several waiters only one moves the stale lock away.
+        const stale = `${lock}.stale-${process.pid}`;
+        try {
+          fs.renameSync(lock, stale);
+          fs.rmSync(stale, { recursive: true, force: true });
+          console.error(`broke the stale contracts lock ${lock} left by a killed build`);
+        } catch {
+          /* another waiter broke it first */
+        }
+        continue;
+      }
+      if (!announced) console.error(`waiting for ${lock}: another invocation is building ${ref}`);
+      announced = true;
       await sleep(2000);
       continue;
     }
     try {
+      fs.writeFileSync(join(lock, "pid"), String(process.pid));
       if (fs.existsSync(dir)) break;
       const tmp = fs.mkdtempSync(join(e2eHome(), "contracts", ".tmp-"));
       const log = join(e2eHome(), "contracts", `build-${ref}.log`);
       logged(log, "git", ["clone", "--quiet", CONTRACTS_REPO, tmp]);
       logged(log, "git", ["-C", tmp, "checkout", "--quiet", ref]);
       logged(log, "stellar", ["contract", "build"], { cwd: tmp });
-      fs.renameSync(tmp, dir);
+      try {
+        fs.renameSync(tmp, dir);
+      } catch (e) {
+        // A lock broken while its holder was still alive lets two builds race; the first rename wins.
+        if (!fs.existsSync(dir)) throw e;
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
     } finally {
-      fs.rmdirSync(lock);
+      const mine = (() => {
+        try {
+          return fs.readFileSync(join(lock, "pid"), "utf8") === String(process.pid);
+        } catch {
+          return false;
+        }
+      })();
+      if (mine) fs.rmSync(lock, { recursive: true, force: true });
     }
   }
   return dir;

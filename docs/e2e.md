@@ -33,7 +33,7 @@ scripts/e2e/down.sh --tag <tag>         # remove containers, volumes, processes 
 
 All state lives outside the repository under `$E2E_HOME` (default `~/.cache/pipeline-e2e`):
 
-- `contracts/pipeline-stellar-contracts@<ref>/`: the contracts cache, built in a temporary directory and renamed, under `<dir>.lock`.
+- `contracts/pipeline-stellar-contracts@<ref>/`: the contracts cache, built in a temporary directory and renamed, under `<dir>.lock` (which holds the builder's pid; a lock whose builder is gone, such as a killed run's, is broken by the next invocation).
 - `stacks/<tag>/`: `env.json` (the generated env), `.env.e2e-<app>` (the Vite variables), `pids/`, `logs/`, `stellar/` (the CLI config with the stack's keys), `contracts/` (the deployment and `addresses.json`) and `state.json`:
 
 ```json

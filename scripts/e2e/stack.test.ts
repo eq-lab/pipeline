@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -202,7 +202,7 @@ describe("down", { timeout: TIMEOUT }, () => {
 });
 
 describe("contracts cache", { timeout: TIMEOUT }, () => {
-  it("two concurrent invocations clone and build a ref once", async () => {
+  const fixture = () => {
     const root = mkdtempSync(join(home, "contracts-"));
     const repo = join(root, "repo");
     const git = (...args: string[]) =>
@@ -222,22 +222,58 @@ describe("contracts cache", { timeout: TIMEOUT }, () => {
     const e2eHome = join(root, "home");
     const env = { ...process.env, E2E_HOME: e2eHome, E2E_STELLAR_CONTRACTS_REPO: repo, PATH: `${bin}:${process.env.PATH}` };
     const one = () =>
-      new Promise<{ code: number | null; out: string }>((ok) => {
+      new Promise<{ code: number | null; out: string; err: string }>((ok) => {
         const c = spawn(process.execPath, [join(REPO, "node_modules/.bin/tsx"), script, ref], { env, stdio: ["ignore", "pipe", "pipe"] });
         let out = "";
+        let err = "";
         c.stdout.on("data", (d) => (out += d));
-        c.stderr.on("data", (d) => (out += d));
-        c.on("close", (code) => ok({ code, out }));
+        c.stderr.on("data", (d) => (err += d));
+        c.on("close", (code) => ok({ code, out, err }));
       });
-    const results = await Promise.all([one(), one()]);
     const dir = join(e2eHome, "contracts", `pipeline-stellar-contracts@${ref}`);
+    return { one, dir, counter, e2eHome };
+  };
+
+  it("two concurrent invocations clone and build a ref once", async () => {
+    const { one, dir, counter, e2eHome } = fixture();
+    const results = await Promise.all([one(), one()]);
     for (const r of results) {
-      assert.equal(r.code, 0, r.out);
+      assert.equal(r.code, 0, r.err);
       assert.equal(r.out.trim(), dir);
     }
     assert.equal(readFileSync(counter, "utf8").trim().split("\n").length, 1);
     assert.ok(existsSync(join(dir, "target")) && existsSync(join(dir, "deployments", "justfile")));
     assert.deepEqual(readdirSync(join(e2eHome, "contracts")).filter((f) => f.startsWith(".tmp-") || f.endsWith(".lock")), []);
+  });
+
+  it("breaks a lock left by a killed build (dead pid, or no pid and old) instead of waiting forever", async () => {
+    const dead = spawnSync(process.execPath, ["-e", "0"], { timeout: TIMEOUT }).pid;
+    for (const seed of ["dead-pid", "legacy"] as const) {
+      const { one, dir, counter } = fixture();
+      const lock = `${dir}.lock`;
+      mkdirSync(lock, { recursive: true });
+      if (seed === "dead-pid") writeFileSync(join(lock, "pid"), String(dead));
+      else utimesSync(lock, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000));
+      const r = await one();
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.trim(), dir);
+      assert.equal(readFileSync(counter, "utf8").trim().split("\n").length, 1);
+      assert.ok(!existsSync(lock), `${seed}: lock left behind`);
+    }
+  });
+
+  it("waits for a lock whose holder is alive", async () => {
+    const { one, dir } = fixture();
+    const lock = `${dir}.lock`;
+    mkdirSync(lock, { recursive: true });
+    writeFileSync(join(lock, "pid"), String(process.pid));
+    const pending = one();
+    await new Promise((r) => setTimeout(r, 3000));
+    assert.ok(!existsSync(dir), "built while another invocation held the lock");
+    rmSync(lock, { recursive: true, force: true });
+    const r = await pending;
+    assert.equal(r.code, 0, r.err);
+    assert.ok(existsSync(dir));
   });
 });
 
