@@ -4,18 +4,20 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { connect } from "node:net";
 import * as fs from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { generateEnv, PORTS, SPACES, type Accounts, type Addresses } from "./lib/env";
-import { guard, STANDALONE_PASSPHRASE } from "./lib/guard";
+import { toHex } from "viem";
+import { english, generateMnemonic, mnemonicToAccount } from "viem/accounts";
+import { EVM_CONTRACTS, generateEnv, PORTS, SPACES, type Accounts, type Addresses, type EvmDeployment } from "./lib/env";
+import { EVM_CHAIN_ID, guard, STANDALONE_PASSPHRASE } from "./lib/guard";
 import { e2eHome, errorMessage, readJson, stackDir } from "./lib/stack";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../..");
 const COMPOSE = join(HERE, "compose.yml");
-const CONTRACTS_REPO = process.env.E2E_STELLAR_CONTRACTS_REPO || "https://github.com/eq-lab/pipeline-stellar-contracts.git";
-const CONTRACTS_REF = process.env.E2E_STELLAR_CONTRACTS_REF || "7646cef";
 const LABEL = "pipeline-e2e.tag";
+export const CHAINS = ["stellar", "evm"] as const;
+export type Chain = (typeof CHAINS)[number];
 const HEALTH_TIMEOUT_MS = Number(process.env.E2E_HEALTH_TIMEOUT_MS || 180_000);
 
 export class E2EError extends Error {
@@ -96,15 +98,17 @@ const tcp = (port: number) =>
     const s = connect(port, "127.0.0.1", () => (s.end(), ok(true))).on("error", () => ok(false));
   });
 const http = async (url: string, init?: RequestInit) => (await fetch(url, init)).status < 500;
-const stellarRpc = async <T>(method: string): Promise<T | undefined> => {
-  const r = await fetch(`http://localhost:${PORTS.stellar}/rpc`, {
+const jsonRpc = async <T>(url: string, method: string, params?: unknown[]): Promise<T | undefined> => {
+  const r = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
   return ((await r.json()) as { result?: T }).result;
 };
+const stellarRpc = <T>(method: string) => jsonRpc<T>(`http://localhost:${PORTS.stellar}/rpc`, method);
 const stellarHealthy = async () => (await stellarRpc<{ status?: string }>("getHealth"))?.status === "healthy";
+const anvilHealthy = async () => Number(await jsonRpc<string>(`http://localhost:${PORTS.evm}`, "eth_chainId", [])) === Number(EVM_CHAIN_ID);
 
 /** The ledger the indexer starts from: the latest one before the deploy, so it sees every deploy and role-grant event. */
 export async function deployStartLedger(): Promise<number> {
@@ -118,18 +122,86 @@ const alive = (pid: number) => async () => {
   return true;
 };
 
-const composeEnv = (tag: string): NodeJS.ProcessEnv => ({
+const composeEnv = (tag: string, evmMnemonic = ""): NodeJS.ProcessEnv => ({
   ...process.env,
   E2E_TAG: tag,
   E2E_PORT_POSTGRES: String(PORTS.postgres),
   E2E_PORT_MINIO: String(PORTS.minio),
   E2E_PORT_STELLAR: String(PORTS.stellar),
+  E2E_PORT_EVM: String(PORTS.evm),
+  E2E_EVM_MNEMONIC: evmMnemonic,
   E2E_SPACES_KEY: SPACES.key,
   E2E_SPACES_SECRET: SPACES.secret,
 });
 
-export function contractsDir(ref = CONTRACTS_REF) {
-  return join(e2eHome(), "contracts", `pipeline-stellar-contracts@${ref}`);
+export interface ContractsSource {
+  name: string;
+  repo: string;
+  ref: string;
+  /** Builds the checked-out clone in place; runs once per ref, before the clone is renamed into the cache. */
+  build: (dir: string, log: string) => void;
+}
+
+export const STELLAR_CONTRACTS: ContractsSource = {
+  name: "pipeline-stellar-contracts",
+  repo: process.env.E2E_STELLAR_CONTRACTS_REPO || "https://github.com/eq-lab/pipeline-stellar-contracts.git",
+  ref: process.env.E2E_STELLAR_CONTRACTS_REF || "7646cef",
+  build: (dir, log) => logged(log, "stellar", ["contract", "build"], { cwd: dir }),
+};
+
+export const EVM_CONTRACTS_SOURCE: ContractsSource = {
+  name: "pipeline-contracts",
+  repo: process.env.E2E_CONTRACTS_REPO || "https://github.com/eq-lab/pipeline-contracts.git",
+  ref: process.env.E2E_CONTRACTS_REF || "3b74e98",
+  build: (dir, log) => {
+    logged(log, "git", ["-C", dir, "submodule", "update", "--init", "--recursive", "--quiet"]);
+    const file = join(dir, CHAIN_VALUES);
+    fs.writeFileSync(file, patchChainValues(fs.readFileSync(file, "utf8")));
+    logged(log, "forge", ["build"], { cwd: dir });
+  },
+};
+
+const CHAIN_VALUES = "script/base/ChainValues.sol";
+
+/** Holders of pipeline-contracts' anvil values, as indexes into the run's mnemonic accounts; USDC is the mock deployed first. */
+export const EVM_ROLES = {
+  AccessManagerOwner: 0,
+  DepositManagerAdmin: 0,
+  WithdrawalQueueAdmin: 0,
+  EmergencyRole: 0,
+  WhitelistManager: 0,
+  Treasury: 1,
+  Custodian: 2,
+  WithdrawalQueue__TokenHolderMCP: 2,
+  DepositManager__Verifier: 3,
+  WithdrawalQueue__Verifier: 3,
+  LoanRegistry__CapitalWallet: 4,
+  LoanRegistryManager: 5,
+  MintCaller: 6,
+  MinterOps: 7,
+  CollateralTrustee: 8,
+  CollateralValuer: 9,
+} as const;
+const EVM_ACCOUNTS = 10;
+
+/**
+ * shortcut: the pinned scripts hard-code anvil's default-mnemonic holders and mainnet USDC for chain 31337, so the
+ * cache build rewrites each to `vm.envAddress("E2E_EVM_<name>")`; drop this once pipeline-contracts reads them from the env.
+ */
+export function patchChainValues(source: string): string {
+  const found: string[] = [];
+  const out = source.replace(
+    /(values\[ANVIL_CHAIN_ID\]\["(\w+)"\] =\s*bytes32\(uint256\(uint160\()0x[0-9a-fA-F]{40}\)/g,
+    (_, head: string, name: string) => (found.push(name), `${head}Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D).envAddress("E2E_EVM_${name}"))`),
+  );
+  const expected = [...Object.keys(EVM_ROLES), "USDC"];
+  if ([...found].sort().join() !== [...expected].sort().join())
+    throw new E2EError(`${CHAIN_VALUES} has the anvil addresses [${found.join(", ")}]; the e2e patch expects [${expected.join(", ")}]`);
+  return out.replace(/^pragma solidity .*$/m, (line) => `${line}\n\nimport {Vm} from "forge-std/Vm.sol";`);
+}
+
+export function contractsDir(src: ContractsSource = STELLAR_CONTRACTS) {
+  return join(e2eHome(), "contracts", `${src.name}@${src.ref}`);
 }
 
 const LOCK_GRACE_MS = 60_000;
@@ -155,8 +227,9 @@ export function lockHolderGone(lock: string): boolean {
   }
 }
 
-export async function ensureContracts(ref = CONTRACTS_REF): Promise<string> {
-  const dir = contractsDir(ref);
+export async function ensureContracts(src: ContractsSource = STELLAR_CONTRACTS): Promise<string> {
+  const { ref } = src;
+  const dir = contractsDir(src);
   const lock = `${dir}.lock`;
   fs.mkdirSync(join(e2eHome(), "contracts"), { recursive: true });
   let announced = false;
@@ -187,9 +260,9 @@ export async function ensureContracts(ref = CONTRACTS_REF): Promise<string> {
       if (fs.existsSync(dir)) break;
       const tmp = fs.mkdtempSync(join(e2eHome(), "contracts", ".tmp-"));
       const log = join(e2eHome(), "contracts", `build-${ref}.log`);
-      logged(log, "git", ["clone", "--quiet", CONTRACTS_REPO, tmp]);
+      logged(log, "git", ["clone", "--quiet", src.repo, tmp]);
       logged(log, "git", ["-C", tmp, "checkout", "--quiet", ref]);
-      logged(log, "stellar", ["contract", "build"], { cwd: tmp });
+      src.build(tmp, log);
       try {
         fs.renameSync(tmp, dir);
       } catch (e) {
@@ -214,7 +287,48 @@ export async function ensureContracts(ref = CONTRACTS_REF): Promise<string> {
 export async function prepare() {
   fs.mkdirSync(e2eHome(), { recursive: true });
   logged(join(e2eHome(), "prepare.log"), "docker", ["compose", "-f", COMPOSE, "pull"], { env: composeEnv("prepare") });
-  console.log(`contracts: ${await ensureContracts()}`);
+  for (const src of [STELLAR_CONTRACTS, EVM_CONTRACTS_SOURCE]) console.log(`contracts: ${await ensureContracts(src)}`);
+}
+
+export function evmAccounts(mnemonic: string) {
+  return Array.from({ length: EVM_ACCOUNTS }, (_, i) => {
+    const account = mnemonicToAccount(mnemonic, { addressIndex: i });
+    return { address: account.address, key: toHex(account.getHdKey().privateKey!) };
+  });
+}
+
+/** Mock USDC, then pipeline-contracts' Deploy, RoleSetup and Configure, sent from anvil's unlocked accounts of this run's mnemonic. */
+async function deployEvmContracts(tag: string, contracts: string, mnemonic: string): Promise<EvmDeployment> {
+  const dir = stackDir(tag);
+  const log = join(dir, "logs", "evm-deploy.log");
+  const work = join(dir, "evm-contracts");
+  // A fresh copy per stack: the scripts write deployments/anvil-<tag>.json under the project root and skip what it lists.
+  for (const stale of [work, log]) fs.rmSync(stale, { recursive: true, force: true });
+  fs.cpSync(contracts, work, { recursive: true, filter: (f) => basename(f) !== ".git" });
+  const accounts = evmAccounts(mnemonic);
+  const env = cleanEnv(Object.fromEntries(Object.entries(EVM_ROLES).map(([name, i]) => [`E2E_EVM_${name}`, accounts[i].address])));
+  const rpc = ["--rpc-url", `http://localhost:${PORTS.evm}`, "--unlocked"];
+  const deployer = accounts[EVM_ROLES.AccessManagerOwner].address;
+  logged(log, "forge", ["create", "test/mocks/USDCMock.t.sol:USDCMock", ...rpc, "--from", deployer, "--broadcast"], { cwd: work, env });
+  const usdc = /Deployed to: (0x[0-9a-fA-F]{40})/.exec(fs.readFileSync(log, "utf8"))?.[1];
+  if (!usdc) throw new E2EError(`forge create printed no USDCMock address; see ${log}`);
+  env.E2E_EVM_USDC = usdc;
+  for (const script of ["Deploy", "RoleSetup", "Configure"])
+    logged(log, "forge", ["script", `script/${script}.s.sol`, "--sig", "run(string)", "e2e", ...rpc, "--sender", deployer, "--broadcast"], { cwd: work, env });
+  const deployed = readJson<Record<string, { proxy?: string; address?: string }>>(join(work, "deployments", "anvil-e2e.json")) ?? {};
+  const addresses = { USDC: usdc } as EvmDeployment["addresses"];
+  for (const key of EVM_CONTRACTS) {
+    const a = deployed[key]?.proxy ?? deployed[key]?.address;
+    if (!a) throw new E2EError(`deployments/anvil-e2e.json lists no ${key}; see ${log}`);
+    addresses[key] = a;
+  }
+  const at = (role: keyof typeof EVM_ROLES) => accounts[EVM_ROLES[role]];
+  const pricePollerStartBlock = Number(await jsonRpc<string>(`http://localhost:${PORTS.evm}`, "eth_blockNumber", []));
+  return {
+    addresses,
+    accounts: { relayerKey: at("WhitelistManager").key, verifierKey: at("DepositManager__Verifier").key, capitalWallet: at("LoanRegistry__CapitalWallet").address },
+    pricePollerStartBlock,
+  };
 }
 
 async function deployContracts(tag: string, contracts: string, startLedger: number): Promise<{ addresses: Addresses; accounts: Accounts }> {
@@ -307,34 +421,41 @@ export function viteArgs(tag: string, app: "frontend" | "trustee", port: number)
   return [join(REPO, "node_modules/.bin/vite"), "--config", join(HERE,"vite.e2e.config.mts"), "--port", String(port), "--strictPort", "--mode", `e2e-${app}`];
 }
 
-export async function up(tag: string, reclaim: boolean) {
+export async function up(tag: string, reclaim: boolean, chains: readonly Chain[] = CHAINS) {
   const t0 = Date.now();
   const dir = stackDir(tag);
+  const stellar = chains.includes("stellar");
+  const evm = chains.includes("evm");
   acquireStackLock(tag, reclaim);
   assertPortsFree();
-  const contracts = await ensureContracts();
+  const contracts = stellar ? await ensureContracts(STELLAR_CONTRACTS) : "";
+  const evmContracts = evm ? await ensureContracts(EVM_CONTRACTS_SOURCE) : "";
+  const mnemonic = evm ? generateMnemonic(english) : "";
   fs.mkdirSync(join(dir, "logs"), { recursive: true });
-  logged(join(dir, "logs", "compose.log"), "docker", ["compose", "-f", COMPOSE, "up", "-d"], { env: composeEnv(tag) });
+  const infra: [string, () => Promise<boolean>][] = [
+    ["postgres", () => tcp(PORTS.postgres)],
+    ["minio", () => http(`http://localhost:${PORTS.minio}/minio/health/live`)],
+  ];
+  if (stellar) infra.push(["stellar", stellarHealthy]);
+  if (evm) infra.push(["anvil", anvilHealthy]);
+  logged(join(dir, "logs", "compose.log"), "docker", ["compose", "-f", COMPOSE, "up", "-d", ...infra.map(([svc]) => svc)], { env: composeEnv(tag, mnemonic) });
   const containerLog = (svc: string) => {
     const log = join(dir, "logs", `${svc}.log`);
     spawnSync("sh", ["-c", `docker compose -f "${COMPOSE}" logs ${svc} > "${log}" 2>&1`], { env: composeEnv(tag) });
     return log;
   };
-  const infra: [string, () => Promise<boolean>][] = [
-    ["postgres", () => tcp(PORTS.postgres)],
-    ["minio", () => http(`http://localhost:${PORTS.minio}/minio/health/live`)],
-    ["stellar", stellarHealthy],
-  ];
   for (const [svc, probe] of infra) await waitFor(svc, join(dir, "logs", `${svc}.log`), probe).catch((e) => (containerLog(svc), Promise.reject(e)));
   sh("docker", ["compose", "-f", COMPOSE, "exec", "-T", "minio", "sh", "-c", `mc alias set l http://localhost:9000 ${SPACES.key} ${SPACES.secret} && mc mb -p l/${SPACES.bucket} && mc anonymous set download l/${SPACES.bucket}/ipfs`], { env: composeEnv(tag) });
 
-  const startLedger = await deployStartLedger();
-  const { addresses, accounts } = await deployContracts(tag, contracts, startLedger);
-  const env = generateEnv({ ports: PORTS, addresses, accounts, jwt: jwtPair(), startLedger });
+  const startLedger = stellar ? await deployStartLedger() : 0;
+  const stellarDeployment = stellar ? { ...(await deployContracts(tag, contracts, startLedger)), startLedger } : undefined;
+  const evmDeployment = evm ? await deployEvmContracts(tag, evmContracts, mnemonic) : undefined;
+  const env = generateEnv({ ports: PORTS, jwt: jwtPair(), stellar: stellarDeployment, evm: evmDeployment });
   assertGuarded(env);
   fs.writeFileSync(join(dir, "env.json"), JSON.stringify(env, null, 2), { mode: 0o600 });
   const vite = Object.entries(env).filter(([k]) => k.startsWith("VITE_"));
-  const envFiles = { frontend: [...vite, ["E2E_WALLET_SECRET", env.E2E_WALLET_SECRET]], trustee: vite };
+  const wallet = env.E2E_WALLET_SECRET ? [["E2E_WALLET_SECRET", env.E2E_WALLET_SECRET]] : [];
+  const envFiles = { frontend: [...vite, ...wallet], trustee: vite };
   for (const [app, vars] of Object.entries(envFiles)) fs.writeFileSync(join(dir, `.env.e2e-${app}`), vars.map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o600 });
   fs.mkdirSync(join(dir, "ipfs"), { recursive: true });
 
@@ -357,8 +478,8 @@ export async function up(tag: string, reclaim: boolean) {
   }
   const state = {
     tag,
-    chains: ["stellar"],
-    contracts: { stellar: CONTRACTS_REF },
+    chains,
+    contracts: { ...(stellar && { stellar: STELLAR_CONTRACTS.ref }), ...(evm && { evm: EVM_CONTRACTS_SOURCE.ref }) },
     durations: { up: Math.round((Date.now() - t0) / 1000) },
     startedAt: new Date(t0).toISOString(),
     ports: PORTS,
@@ -393,14 +514,16 @@ export function down(tag: string) {
 
 export function parseArgs(argv: string[]) {
   const [cmd, ...rest] = argv;
-  const flags = new Set(rest.filter((a) => a.startsWith("--") && a !== "--tag"));
-  const i = rest.indexOf("--tag");
-  const tag = i >= 0 ? rest[i + 1] : undefined;
+  const flags = new Set(rest.filter((a) => a.startsWith("--") && a !== "--tag" && a !== "--chains"));
+  const value = (flag: string) => (rest.includes(flag) ? rest[rest.indexOf(flag) + 1] : undefined);
+  const tag = value("--tag");
   const known = new Set(["--reclaim", "--prepare"]);
   for (const f of flags) if (!known.has(f)) throw new E2EError(`unknown flag ${f}`);
-  if (cmd !== "up" && cmd !== "down") throw new E2EError("usage: stack.ts up|down [--tag <tag>] [--reclaim] [--prepare]");
+  if (cmd !== "up" && cmd !== "down") throw new E2EError("usage: stack.ts up|down [--tag <tag>] [--chains stellar,evm] [--reclaim] [--prepare]");
   if (!flags.has("--prepare") && !tag) throw new E2EError("--tag <tag> is required");
-  return { cmd, tag, reclaim: flags.has("--reclaim"), prepare: flags.has("--prepare") };
+  const chains = rest.includes("--chains") ? (value("--chains") ?? "").split(",").map((c) => c.trim()) : [...CHAINS];
+  for (const c of chains) if (!(CHAINS as readonly string[]).includes(c)) throw new E2EError(`--chains takes ${CHAINS.join(",")}; got "${c}"`);
+  return { cmd, tag, reclaim: flags.has("--reclaim"), prepare: flags.has("--prepare"), chains: CHAINS.filter((c) => chains.includes(c)) };
 }
 
 async function main() {
@@ -409,7 +532,7 @@ async function main() {
   if (a.prepare) return prepare();
   if (a.cmd === "down") return down(a.tag!);
   try {
-    await up(a.tag!, a.reclaim);
+    await up(a.tag!, a.reclaim, a.chains);
   } catch (e) {
     if (e instanceof E2EError && /holds|is taken/.test(e.message)) throw e;
     console.error(`up failed; the partial stack is left for inspection — tear it down with: scripts/e2e/down.sh --tag ${a.tag}`);

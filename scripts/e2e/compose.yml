@@ -35,6 +35,14 @@ services:
     command: --local --enable-soroban-rpc
     ports: ["127.0.0.1:${E2E_PORT_STELLAR}:8000"]
 
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.9.0
+    labels: *tag
+    entrypoint: [anvil]
+    # --silent: the startup banner lists the private keys of the run's mnemonic, and logs/ are artifacts.
+    command: [--host, 0.0.0.0, --chain-id, "31337", --mnemonic, "${E2E_EVM_MNEMONIC:-}", --silent]
+    ports: ["127.0.0.1:${E2E_PORT_EVM}:8545"]
+
 volumes:
   postgres:
     labels: *tag
