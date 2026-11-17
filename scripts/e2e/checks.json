@@ -1,1 +1,4 @@
-{}
+{
+  "stellar.known-bugs.lps-openapi-query": { "issue": "pending", "finding": "BUG-37 (known-bugs.md): GET /v1/lps OpenAPI documents payment_details as a required path parameter" },
+  "stellar.known-bugs.assay-decimal-bound": { "issue": "pending", "finding": "BUG-32 (known-bugs.md): assay validation accepts unbounded decimal exponents" }
+}
