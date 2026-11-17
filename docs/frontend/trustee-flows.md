@@ -2645,10 +2645,18 @@ trace: `docs/exec-plans/completed/issue-786-trustee-app-shell.md` "Decisions" + 
   leave two same-specificity Tailwind classes fighting over `color` at once — fragile, not
   reliably "active wins". Instead the base className carries only layout (no color/background);
   active/inactive surface + text color are mutually exclusive, only one ever present.
-- **Count badge slot** renders nothing unless a backend-served count is supplied on the nav item
-  (`TrusteeNavItem.badgeCount`). The backend source is `GET /v1/attention-counts` (#1864,
-  [spec](../product-specs/trustee-attention-counts.md)); wiring it is #1350. Origination and Loans
-  read the combined sections; Cash Management reads the session chain's `chains[]` entry `count` (decision #786-2, [[no-frontend-computed-metrics]]).
+- **Count badge slot** is fed by `useNavBadgeCounts` (`components/useNavBadgeCounts.ts`, #1350),
+  which maps the response of `useAttentionCounts` (`api/useAttentionCounts.ts`): one
+  `GET /v1/attention-counts` with no `chain_id` ([spec](../product-specs/trustee-attention-counts.md)),
+  polled every 30 s, no retry on a 4xx. Origination and Loans read the combined `count` (all
+  chains); Cash Management reads the `count` of the `chains[]` entry for
+  `useSessionState().chainId`, with no Stellar fallback (decision #786-2,
+  [[no-frontend-computed-metrics]]). A served integer renders verbatim; a served `0` hides the
+  badge, like an absent field. There is no badge while loading, on error (including a failed
+  refetch with stale data), when a field is absent, or when the session chain has no entry.
+  Overview, LP Counterparties, Risk Council and Audit Log never have a badge.
+  On the active item (surface background) the badge switches to the brand token with on-dark
+  text so the count stays readable; inactive items keep the translucent badge.
 - **Account chip**, pinned to the bottom: avatar circle, truncated address, "Trustee · connected"
   subtitle, and a `⋯` affordance opening a small popover menu with "Sign out" (decision #786-4),
   wired to `useTrusteeSession().signOut`. Renders nothing when `address` is undefined (never the
@@ -2748,11 +2756,8 @@ table cell reflows the row.
 `TRUSTEE_NAV_ITEMS` defines the six nav sections per Figma node `4116:8855` ("Aside") and
 `docs/product-specs/trustee-dashboard.md` (spec #453): Overview, Origination, Loans, Cash
 Management, Risk Council, Audit Log. This replaced the #777 scaffold's `TRUSTEE_FLOW_TYPES`
-(Type-1..4 taxonomy) — the Figma nav is the real product navigation (#786). `badgeCount` is
-unpopulated until #1350: the backend source now exists (`GET /v1/attention-counts`), and per
-[[no-frontend-computed-metrics]] the badge slot renders only when a count is supplied
-(see [Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)); the remaining wiring is
-tracked in `docs/exec-plans/tech-debt-tracker.md`.
+(Type-1..4 taxonomy) — the Figma nav is the real product navigation (#786). Badge counts are runtime data supplied by `useNavBadgeCounts` (#1350, see
+[Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)), not a `TrusteeNavItem` field.
 
 ### Auth endpoint wrappers (`api/auth.ts`)
 

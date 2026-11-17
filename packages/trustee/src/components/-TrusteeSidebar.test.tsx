@@ -14,7 +14,13 @@
  * gate is the styled `NetworkSwitchDialog` (#1032 polish).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createRootRoute,
@@ -37,6 +43,14 @@ vi.mock("@/auth/TrusteeSessionProvider", () => ({
     ...mockSessionState,
     signOut: mockSignOut,
   }),
+}));
+
+const { mockBadgeCounts } = vi.hoisted(() => ({
+  mockBadgeCounts: { value: {} as Record<string, number> },
+}));
+
+vi.mock("@/components/useNavBadgeCounts", () => ({
+  useNavBadgeCounts: () => mockBadgeCounts.value,
 }));
 
 const { mockNetworkSwitcherState } = vi.hoisted(() => ({
@@ -104,6 +118,7 @@ function renderSidebar(initialPath = "/") {
 
 beforeEach(() => {
   mockSignOut.mockClear();
+  mockBadgeCounts.value = {};
   mockSessionState = {
     address: "0x4c7f000000000000000000000000000000002a1b",
   };
@@ -189,7 +204,51 @@ describe("TrusteeSidebar", () => {
     expect(link.querySelector("svg")).not.toBeNull();
   });
 
-  it("does not render a badge for any nav item (no backend count source)", async () => {
+  it("renders the served counts on Origination, Loans and Cash Management only", async () => {
+    mockBadgeCounts.value = {
+      "/origination": 2,
+      "/loans": 3,
+      "/cash-management": 5,
+    };
+    renderSidebar();
+    await screen.findByRole("img", { name: "Pipeline" });
+    const expected: Record<string, string> = {
+      Origination: "2",
+      Loans: "3",
+      "Cash Management": "5",
+    };
+    for (const item of TRUSTEE_NAV_ITEMS) {
+      const link = screen.getByRole("link", {
+        name: new RegExp(`^${item.navLabel}`),
+      });
+      const badge = within(link).queryByTestId("trustee-nav-badge");
+      const text = expected[item.navLabel];
+      if (text === undefined) expect(badge).not.toBeInTheDocument();
+      else expect(badge).toHaveTextContent(text);
+    }
+  });
+
+  it("gives the active item's badge the brand variant and leaves inactive badges alone", async () => {
+    mockBadgeCounts.value = { "/origination": 2, "/loans": 3 };
+    renderSidebar("/loans");
+    await screen.findByRole("img", { name: "Pipeline" });
+    const active = within(
+      screen.getByRole("link", { name: /^Loans/ }),
+    ).getByTestId("trustee-nav-badge");
+    const inactive = within(
+      screen.getByRole("link", { name: /^Origination/ }),
+    ).getByTestId("trustee-nav-badge");
+    expect(active).toHaveAttribute("data-active", "true");
+    expect(active.className).toContain(
+      "bg-[color:var(--color-pipeline-brand)]",
+    );
+    expect(inactive).not.toHaveAttribute("data-active");
+    expect(inactive.className).not.toContain(
+      "bg-[color:var(--color-pipeline-brand)]",
+    );
+  });
+
+  it("renders no badge when no counts are supplied", async () => {
     renderSidebar();
     await screen.findByRole("img", { name: "Pipeline" });
     expect(screen.queryByTestId("trustee-nav-badge")).not.toBeInTheDocument();

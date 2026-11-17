@@ -1,9 +1,4 @@
-/**
- * The six Trustee nav sections.
- *
- * spec: docs/frontend/trustee-flows.md#nav-sections-libnavts (Figma source,
- * #777→#786 taxonomy history, why `badgeCount` is unpopulated).
- */
+// spec: docs/frontend/trustee-flows.md#nav-sections-libnavts
 
 export interface TrusteeNavItem {
   /** TanStack Router path, e.g. "/origination". */
@@ -14,8 +9,6 @@ export interface TrusteeNavItem {
   heading: string;
   /** One-line placeholder description shown on the route body. */
   description: string;
-  /** Optional backend-served count for the nav badge; omitted = no badge. */
-  badgeCount?: number;
 }
 
 export const TRUSTEE_NAV_ITEMS: readonly TrusteeNavItem[] = [

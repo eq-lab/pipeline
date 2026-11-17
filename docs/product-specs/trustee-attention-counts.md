@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Trustee sidebar shows a count badge on Origination, Loans and Cash Management. `GET /v1/attention-counts` serves those counts, so the frontend does no counting (wiring is #1350, TD-36). The route is Trustee-only and reads data the backend already stores. It has no table, no migration and no RPC call. Counts are JSON integers; there are no amounts.
+The Trustee sidebar shows a count badge on Origination, Loans and Cash Management. `GET /v1/attention-counts` serves those counts, so the frontend does no counting (wired in #1350). The route is Trustee-only and reads data the backend already stores. It has no table, no migration and no RPC call. Counts are JSON integers; there are no amounts.
 
 ## Behavior
 
