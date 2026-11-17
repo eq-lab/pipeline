@@ -150,6 +150,7 @@ export async function ensureContracts(ref = CONTRACTS_REF): Promise<string> {
 }
 
 export async function prepare() {
+  fs.mkdirSync(e2eHome(), { recursive: true });
   logged(join(e2eHome(), "prepare.log"), "docker", ["compose", "-f", COMPOSE, "pull"], { env: composeEnv("prepare") });
   console.log(`contracts: ${await ensureContracts()}`);
 }

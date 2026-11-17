@@ -1,8 +1,8 @@
 // Unit tests of the local stack guard, hook, clean environment and stack lock; see docs/e2e.md "Local stack".
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,7 @@ import { route } from "./fakes";
 import { generateEnv, PORTS, type Addresses } from "./lib/env";
 import { guard } from "./lib/guard";
 import { stackDir } from "./lib/stack";
-import { acquireStackLock, startService, viteArgs } from "./stack";
+import { acquireStackLock, down, startService, viteArgs } from "./stack";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "../..");
@@ -62,7 +62,7 @@ describe("guard", () => {
   it("refuses a key not from the generated env", () => refuses({ EXTRA_SECRET: "x" }, /EXTRA_SECRET: not from this tag's generated env/));
 });
 
-describe("guard hook", () => {
+describe("guard hook", { timeout: TIMEOUT }, () => {
   const hook = (command: string) =>
     spawnSync(process.execPath, [join(REPO, "node_modules/.bin/tsx"), join(HERE, "guard-hook.ts")], {
       input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } }),
@@ -83,7 +83,7 @@ describe("guard hook", () => {
   });
 });
 
-describe("clean environment", () => {
+describe("clean environment", { timeout: TIMEOUT }, () => {
   const SENTINEL_URL = "https://poisoned.stage.eqlab.net";
   const SENTINEL_KEY = "POISONED-SUMSUB-KEY";
   const poison = `SUMSUB_BASE_URL=${SENTINEL_URL}\nSUMSUB_SECRET_KEY=${SENTINEL_KEY}\nVITE_API_BASE_URL=${SENTINEL_URL}\n`;
@@ -144,12 +144,95 @@ describe("clean environment", () => {
   });
 });
 
-describe("stack lock", () => {
+const gone = async (pid: number) => {
+  const deadline = Date.now() + TIMEOUT;
+  for (;;) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    if (Date.now() > deadline) throw new Error(`pid ${pid} is still alive`);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+};
+
+describe("stack lock", { timeout: TIMEOUT }, () => {
   it("refuses another tag, names it, and --reclaim takes over", () => {
     acquireStackLock("x", false);
     assert.throws(() => acquireStackLock("y", false), /stack "x" holds .*down\.sh --tag x/);
     acquireStackLock("y", true);
     assert.equal(readFileSync(join(process.env.E2E_HOME!, "stack.lock"), "utf8"), "y");
+  });
+
+  it("--reclaim kills the processes of the stack it tears down", async () => {
+    acquireStackLock("r1", true);
+    const svc = startService("r1", "sleeper", process.execPath, ["-e", "setInterval(() => {}, 1000)"], {});
+    acquireStackLock("r2", true);
+    await gone(svc.pid);
+    assert.ok(!existsSync(stackDir("r1")));
+    assert.equal(readFileSync(join(process.env.E2E_HOME!, "stack.lock"), "utf8"), "r2");
+  });
+});
+
+describe("down", { timeout: TIMEOUT }, () => {
+  it("kills the tag's processes, removes its state and lock, and is idempotent from another directory", async () => {
+    acquireStackLock("d", true);
+    const svc = startService("d", "sleeper", process.execPath, ["-e", "setInterval(() => {}, 1000)"], {});
+    process.kill(svc.pid, 0);
+    down("d");
+    await gone(svc.pid);
+    assert.ok(!existsSync(stackDir("d")));
+    assert.ok(!existsSync(join(process.env.E2E_HOME!, "stack.lock")));
+    const again = spawnSync(join(HERE, "down.sh"), ["--tag", "d"], { cwd: home, env: process.env, encoding: "utf8", timeout: TIMEOUT });
+    assert.equal(again.status, 0, again.stderr);
+  });
+
+  it("leaves the lock of another tag alone", () => {
+    acquireStackLock("keep", true);
+    down("other");
+    assert.equal(readFileSync(join(process.env.E2E_HOME!, "stack.lock"), "utf8"), "keep");
+    down("keep");
+  });
+});
+
+describe("contracts cache", { timeout: TIMEOUT }, () => {
+  it("two concurrent invocations clone and build a ref once", async () => {
+    const root = mkdtempSync(join(home, "contracts-"));
+    const repo = join(root, "repo");
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.email=e2e@localhost", "-c", "user.name=e2e", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: repo, encoding: "utf8" }).trim();
+    mkdirSync(join(repo, "deployments"), { recursive: true });
+    writeFileSync(join(repo, "deployments", "justfile"), "");
+    git("init", "--quiet");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "init");
+    const ref = git("rev-parse", "--short", "HEAD");
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    const counter = join(root, "builds");
+    writeFileSync(join(bin, "stellar"), `#!/bin/sh\necho "$*" >> "${counter}"\nsleep 1\nmkdir -p target\n`, { mode: 0o755 });
+    const script = join(root, "ensure.ts");
+    writeFileSync(script, `import { ensureContracts } from ${JSON.stringify(join(HERE, "stack.ts"))};\nensureContracts(process.argv[2]).then((d) => console.log(d));\n`);
+    const e2eHome = join(root, "home");
+    const env = { ...process.env, E2E_HOME: e2eHome, E2E_STELLAR_CONTRACTS_REPO: repo, PATH: `${bin}:${process.env.PATH}` };
+    const one = () =>
+      new Promise<{ code: number | null; out: string }>((ok) => {
+        const c = spawn(process.execPath, [join(REPO, "node_modules/.bin/tsx"), script, ref], { env, stdio: ["ignore", "pipe", "pipe"] });
+        let out = "";
+        c.stdout.on("data", (d) => (out += d));
+        c.stderr.on("data", (d) => (out += d));
+        c.on("close", (code) => ok({ code, out }));
+      });
+    const results = await Promise.all([one(), one()]);
+    const dir = join(e2eHome, "contracts", `pipeline-stellar-contracts@${ref}`);
+    for (const r of results) {
+      assert.equal(r.code, 0, r.out);
+      assert.equal(r.out.trim(), dir);
+    }
+    assert.equal(readFileSync(counter, "utf8").trim().split("\n").length, 1);
+    assert.ok(existsSync(join(dir, "target")) && existsSync(join(dir, "deployments", "justfile")));
+    assert.deepEqual(readdirSync(join(e2eHome, "contracts")).filter((f) => f.startsWith(".tmp-") || f.endsWith(".lock")), []);
   });
 });
 

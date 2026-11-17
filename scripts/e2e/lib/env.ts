@@ -2,7 +2,7 @@
 
 import { E2E_DATABASE, STANDALONE_PASSPHRASE, STELLAR_CHAIN_ID as ID } from "./guard";
 
-export const PORTS = { postgres: 54329, minio: 59000, stellar: 58000, fakes: 58090, api: 58080, lp: 55173, trustee: 55174 };
+export const PORTS = { postgres: 54329, minio: 59000, stellar: 58000, fakes: 58090, api: 58080, lp: 55173, trustee: 55174, evm: 58545 };
 export type Ports = typeof PORTS;
 
 export const SPACES = { key: "e2eminio", secret: "e2eminiosecret", bucket: "pipeline-e2e", region: "us-east-1" };
@@ -59,8 +59,9 @@ export function generateEnv({ ports: p, addresses: a, accounts: k, jwt }: EnvInp
     API_PORT: String(p.api),
     IPFS_GATEWAY_URL: `${fakes}/ipfs/`,
     JOB_INDEXER_IPFS_GATEWAY_URL: `${fakes}/ipfs/`,
-    JWT_ES256_PRIVATE_KEY_PEM: jwt.privatePem.trim().replace(/\n/g, "\\n"),
-    JWT_ES256_PUBLIC_KEY_PEM: jwt.publicPem.trim().replace(/\n/g, "\\n"),
+    // Real newlines: the env goes straight to the process, and JwtKeys::from_pem does not unescape "\n".
+    JWT_ES256_PRIVATE_KEY_PEM: jwt.privatePem.trim(),
+    JWT_ES256_PUBLIC_KEY_PEM: jwt.publicPem.trim(),
     EMAIL_DEV_LOG: "true",
     SENDGRID_BASE_URL: `${fakes}/sendgrid`,
     APP_BASE_URL: `http://localhost:${p.lp}`,
@@ -144,5 +145,7 @@ function viteEnv(p: Ports, a: Addresses, k: Accounts): Record<string, string> {
     VITE_STELLAR_DEAL_TOKEN_FACTORY_ID: a.deal_token_factory,
     VITE_STELLAR_CAPITAL_WALLET_ID: k.capitalWallet,
     VITE_WALLETCONNECT_PROJECT_ID: "e2e",
+    // No EVM chain yet: a dead local port, so the apps never fall back to the public Hoodi node.
+    VITE_EVM_RPC_URL: `http://localhost:${p.evm}`,
   };
 }
