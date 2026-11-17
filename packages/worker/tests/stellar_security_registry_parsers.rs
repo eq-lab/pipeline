@@ -11,7 +11,8 @@ use pipeline_worker::indexer::stellar::poller::is_loan_registry_event;
 use pipeline_worker::indexer::stellar::security_registry_parsers::*;
 use serde_json::json;
 use shared::security_registry::{
-    is_security_registry_event, SECURITY_CONTRACT_EVENT_NAMES, SECURITY_LOAN_EVENT_NAMES,
+    is_security_registry_event, SECURITY_CONTRACT_EVENT_NAMES, SECURITY_EVM_ONLY_EVENT_NAMES,
+    SECURITY_LOAN_EVENT_NAMES,
 };
 use stellar_security_support::*;
 use stellar_xdr::curr::ScVal;
@@ -464,6 +465,7 @@ fn topic_table_matches_the_shared_names() {
     for name in SECURITY_LOAN_EVENT_NAMES
         .iter()
         .chain(SECURITY_CONTRACT_EVENT_NAMES.iter())
+        .filter(|n| !SECURITY_EVM_ONLY_EVENT_NAMES.contains(n))
     {
         assert!(stored.contains(name), "{name}");
     }

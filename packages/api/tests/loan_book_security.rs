@@ -111,6 +111,9 @@ fn terms(margin_call_at: BigDecimal) -> TermsRow {
         margin_call_at,
         set_ledger: Some(123),
         complete: true,
+        default_ratio_bps: None,
+        originator_fee_rate: None,
+        default_breach_at: None,
     }
 }
 
@@ -133,6 +136,7 @@ fn valuation(ltv_bps: i64, price_stale: bool) -> ValuationRow {
         accrued_interest: dec(1_000_000_000),
         money_ledger: 501,
         source_log_id: 40,
+        default_breach_at: None,
     }
 }
 

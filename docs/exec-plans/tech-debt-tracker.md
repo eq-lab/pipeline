@@ -2322,8 +2322,8 @@ line, whichever section it lands in.
 ### TD-171: SecurityRegistry valuation and snapshots are current-state reads; pre-key history is view-seeded
 
 - **Date:** 2026-11-06
-- **Location:** `packages/worker/src/indexer/stellar/security_registry_sync.rs`, `shared::security_registry`
-- **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
+- **Location:** `packages/worker/src/indexer/security_registry_sync.rs` (shared by Stellar and EVM), `shared::security_registry`
+- **Gap:** `simulateTransaction` cannot be pinned to a ledger (TD-19), so `coverage_detail` and `loan_money` are two simulates that can differ by a ledger (a few seconds of interest), and record, inspection and loan snapshots are read at the latest ledger and reconciled with the events after it. On EVM (#1938) pinning is possible but the source deliberately reads at its head, as Stellar does, so the same two-read skew applies to `coverageDetail` and `loanMoney` there (each read is at its own head, a block or two apart). History from before the key was set is view-seeded: the margin-call history and the opening `cure_by`, doc provenance (`view`), consent maturities, past inspection flags and resolution history are lost for rows with `complete = false`.
 - **Impact:** `security_loan_valuations` can lag the contract by seconds and its `outstanding` and `debt` can disagree by one ledger of interest; seeded rows have partial history. The API's computed staleness flags (`GET /v1/loan-book/{loan_id}/security`, #1780) use the API clock, not the ledger timestamp, so they can flip a few seconds apart from the contract's.
 - **Suggested fix:** Pin reads to a ledger once the RPC supports it (TD-19), or read both views in one invocation. Documented in `docs/references/security-registry-events.md#known-limitations`. Found while working on #1779.
 
@@ -2459,3 +2459,11 @@ line, whichever section it lands in.
 - **Known limitation (immediate execute):** If a caller's role delay drops to 0 and it executes the same arguments immediately, `resolve_execute` marks a still-live pending schedule `executed`; on chain it stays cancelable.
 - **Known limitation (sub-call execute):** An `AM.execute` of a delayed operation made by a contract as a sub-call without an auth entry yields no candidate, so the row stays `pending` until it reads as expired.
 - **Suggested fix:** Reconcile pending rows against the contract's `get_schedule` / `get_nonce` views, and mark them executed or canceled from the on-chain state. This also resolves both limitations above.
+
+### TD-188: Mark suggestions and the API assume 7 dp; EVM marks are 6 dp
+
+- **Date:** 2026-11-17
+- **Location:** `packages/shared/src/security_marks.rs` and the API's `/security` response builder — Issue #1938.
+- **Gap:** The SecurityRegistry indexer now stores EVM rows (`security_records.mark_value_per_unit`, `security_loan_valuations` amounts) raw at 6 dp, with the USD par mark at `1000000`. `security_marks.rs` and the API's amount formatting assume the Stellar 7 dp scale.
+- **Impact:** None until the API serves EVM security data. Then a mark suggestion or an amount formatted at 7 dp would be off by a factor of 10 on EVM.
+- **Suggested fix:** Hand-off to #1940 (the `/security` route and loan-book fields) and #1942 (Trustee): take the decimals from the chain kind instead of a constant. Documented in `docs/references/security-registry-events.md#known-limitations`.

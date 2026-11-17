@@ -16,7 +16,7 @@ pub const LIST_LOAN_EVENTS_SQL: &str = "SELECT id, event_name, block_number, log
             block_timestamp, tx_hash, params
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($2)
        AND event_name = ANY($3)
        AND params->>'loan_id' = $4
      ORDER BY block_number, log_index";
@@ -25,13 +25,13 @@ pub const LIST_CONTRACT_EVENTS_SQL: &str = "SELECT id, event_name, block_number,
             block_timestamp, tx_hash, params
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($2)
        AND event_name = ANY($3)
      ORDER BY block_number, log_index";
 
 pub const MAX_LOG_ID_SQL: &str = "SELECT COALESCE(MAX(id), 0)
      FROM contract_logs
-     WHERE chain_id = $1 AND contract_address = $2";
+     WHERE chain_id = $1 AND contract_address = ANY($2)";
 
 pub const GET_PROJECTION_STATE_SQL: &str =
     "SELECT projection_version, projected_log_id, projected_snapshot_at
@@ -45,7 +45,7 @@ pub const MAX_SNAPSHOT_FETCHED_AT_SQL: &str = "SELECT MAX(fetched_at)
 pub const LIST_DIRTY_LOANS_SQL: &str = "SELECT (params->>'loan_id')::bigint AS loan_id
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($6)
        AND id > $3
        AND event_name = ANY($5)
        AND params->>'loan_id' IS NOT NULL
@@ -61,7 +61,7 @@ pub const LIST_DIRTY_LOANS_SQL: &str = "SELECT (params->>'loan_id')::bigint AS l
 pub const LIST_ALL_LOANS_SQL: &str = "SELECT (params->>'loan_id')::bigint AS loan_id
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($4)
        AND event_name = ANY($3)
        AND params->>'loan_id' IS NOT NULL
      UNION
@@ -107,14 +107,14 @@ pub const LIST_RECORD_EVENT_LEDGERS_SQL: &str = "SELECT rid,
          SELECT (params->>'record_id')::bigint AS rid, event_name, block_number
          FROM contract_logs
          WHERE chain_id = $1
-           AND contract_address = $2
+           AND contract_address = ANY($2)
            AND event_name = ANY($3)
            AND params->>'record_id' IS NOT NULL
          UNION ALL
          SELECT (params->>'to_record_id')::bigint, event_name, block_number
          FROM contract_logs
          WHERE chain_id = $1
-           AND contract_address = $2
+           AND contract_address = ANY($2)
            AND event_name = 'SecurityRecordHandedOver'
            AND params->>'to_record_id' IS NOT NULL
      ) t
@@ -125,7 +125,7 @@ pub const LIST_INSPECTION_IDS_SQL: &str =
     "SELECT DISTINCT (params->>'inspection_id')::bigint AS inspection_id
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($2)
        AND event_name = 'SecurityInspectionRecorded'
        AND params->>'inspection_id' IS NOT NULL
      ORDER BY inspection_id";
@@ -134,7 +134,7 @@ pub const LIST_KNOWN_LOANS_SQL: &str = "SELECT loan_id FROM (
          SELECT (params->>'loan_id')::bigint AS loan_id
          FROM contract_logs
          WHERE chain_id = $1
-           AND contract_address = $2
+           AND contract_address = ANY($5)
            AND event_name = ANY($4)
            AND params->>'loan_id' IS NOT NULL
          UNION
@@ -157,7 +157,7 @@ pub const LIST_LOANS_WITH_TERMS_EVENT_SQL: &str =
     "SELECT DISTINCT (params->>'loan_id')::bigint AS loan_id
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($2)
        AND event_name = 'SecurityTermsSet'
        AND params->>'loan_id' IS NOT NULL
      ORDER BY loan_id";
@@ -166,7 +166,7 @@ pub const LIST_RECORD_LOANS_SQL: &str = "SELECT (params->>'record_id')::bigint A
             (params->>'loan_id')::bigint AS loan_id
      FROM contract_logs
      WHERE chain_id = $1
-       AND contract_address = $2
+       AND contract_address = ANY($3)
        AND event_name = 'SecurityRecordRegistered'
        AND params->>'record_id' IS NOT NULL
        AND params->>'loan_id' IS NOT NULL
@@ -197,8 +197,10 @@ pub const INSERT_TERMS_SQL: &str = "INSERT INTO security_terms
          (chain_id, contract_address, loan_id, advance_ratio_bps, margin_call_ratio_bps,
           cure_period, price_stale_after, payment_term, grace_period, default_rate,
           attestation_interval, inspection_interval, tolerance_bps, grade_tolerance_bps,
-          margin_call_at, set_ledger, complete)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)";
+          margin_call_at, set_ledger, complete, default_ratio_bps, originator_fee_rate,
+          default_breach_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+             $19, $20)";
 
 pub const INSERT_RECORD_SQL: &str = "INSERT INTO security_records
          (chain_id, contract_address, record_id, loan_id, lot_id, protection, commodity, unit,
@@ -216,8 +218,8 @@ pub const INSERT_DOC_SQL: &str = "INSERT INTO security_record_docs
 
 pub const INSERT_MARGIN_EVENT_SQL: &str = "INSERT INTO security_margin_call_events
          (chain_id, contract_address, block_number, log_index, loan_id, kind, ltv_bps,
-          margin_call_ratio_bps, cure_by, block_timestamp, tx_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)";
+          margin_call_ratio_bps, cure_by, block_timestamp, tx_hash, default_ratio_bps)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)";
 
 pub const INSERT_INSPECTION_SQL: &str = "INSERT INTO security_inspections
          (chain_id, contract_address, inspection_id, loan_id, record_id, lot_id, inspector, kind,
@@ -284,9 +286,9 @@ pub const UPSERT_VALUATION_SQL: &str = "INSERT INTO security_loan_valuations
          (chain_id, contract_address, loan_id, value, stale_value, flagged_value, debt,
           coverage_bps, ltv_bps, margin_call_at, cure_by, price_stale, counted_records,
           detail_ledger, loan_registry, outstanding, accrued_interest, money_ledger,
-          source_log_id, fetched_at)
+          source_log_id, default_breach_at, fetched_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-             $19, now())
+             $19, $20, now())
      ON CONFLICT (chain_id, contract_address, loan_id) DO UPDATE
         SET value = EXCLUDED.value,
             stale_value = EXCLUDED.stale_value,
@@ -304,6 +306,7 @@ pub const UPSERT_VALUATION_SQL: &str = "INSERT INTO security_loan_valuations
             accrued_interest = EXCLUDED.accrued_interest,
             money_ledger = EXCLUDED.money_ledger,
             source_log_id = EXCLUDED.source_log_id,
+            default_breach_at = EXCLUDED.default_breach_at,
             fetched_at = now()";
 
 pub const LIST_OPEN_GOODS_COMMODITIES_SQL: &str = "SELECT DISTINCT commodity
@@ -333,7 +336,8 @@ pub const SECURITY_READ_TX_SQL: &str = "SET TRANSACTION ISOLATION LEVEL REPEATAB
 pub const GET_TERMS_SQL: &str = "SELECT loan_id, advance_ratio_bps, margin_call_ratio_bps,
             cure_period, price_stale_after, payment_term, grace_period, default_rate,
             attestation_interval, inspection_interval, tolerance_bps, grade_tolerance_bps,
-            margin_call_at, set_ledger, complete
+            margin_call_at, set_ledger, complete, default_ratio_bps, originator_fee_rate,
+            default_breach_at
      FROM security_terms
      WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3";
 
@@ -376,7 +380,7 @@ pub const LIST_LOTS_FOR_LOAN_SQL: &str = "SELECT lot_id, loan_id, latest_inspect
 
 pub const LIST_MARGIN_EVENTS_FOR_LOAN_SQL: &str = "SELECT block_number,
             log_index::bigint AS log_index, loan_id, kind, ltv_bps, margin_call_ratio_bps,
-            cure_by, block_timestamp, tx_hash
+            cure_by, block_timestamp, tx_hash, default_ratio_bps
      FROM security_margin_call_events
      WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3
      ORDER BY block_number, log_index";
@@ -395,7 +399,7 @@ pub const GET_REGISTRY_STATE_SQL: &str = "SELECT paused, inspectors, loan_regist
 pub const GET_VALUATION_SQL: &str = "SELECT loan_id, value, stale_value, flagged_value, debt,
             coverage_bps, ltv_bps, margin_call_at, cure_by, price_stale, counted_records,
             detail_ledger, loan_registry, outstanding, accrued_interest, money_ledger,
-            source_log_id, fetched_at
+            source_log_id, default_breach_at, fetched_at
      FROM security_loan_valuations
      WHERE chain_id = $1 AND contract_address = $2 AND loan_id = $3";
 
@@ -559,12 +563,12 @@ impl SecurityRegistryRepo {
     pub async fn list_loan_events(
         &self,
         chain_id: i64,
-        contract: &str,
+        log_contracts: &[String],
         loan_id: u32,
     ) -> anyhow::Result<Vec<SecurityEventRow>> {
         let rows: Vec<EventTuple> = sqlx::query_as(LIST_LOAN_EVENTS_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .bind(names(&crate::security_registry::SECURITY_LOAN_EVENT_NAMES))
             .bind(loan_id.to_string())
             .fetch_all(&self.pool)
@@ -575,11 +579,11 @@ impl SecurityRegistryRepo {
     pub async fn list_contract_events(
         &self,
         chain_id: i64,
-        contract: &str,
+        log_contracts: &[String],
     ) -> anyhow::Result<Vec<SecurityEventRow>> {
         let rows: Vec<EventTuple> = sqlx::query_as(LIST_CONTRACT_EVENTS_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .bind(names(
                 &crate::security_registry::SECURITY_CONTRACT_EVENT_NAMES,
             ))
@@ -588,10 +592,10 @@ impl SecurityRegistryRepo {
         Ok(rows.into_iter().map(event_row).collect())
     }
 
-    pub async fn max_log_id(&self, chain_id: i64, contract: &str) -> anyhow::Result<i64> {
+    pub async fn max_log_id(&self, chain_id: i64, log_contracts: &[String]) -> anyhow::Result<i64> {
         let (id,): (i64,) = sqlx::query_as(MAX_LOG_ID_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .fetch_one(&self.pool)
             .await?;
         Ok(id)
@@ -627,6 +631,7 @@ impl SecurityRegistryRepo {
         &self,
         chain_id: i64,
         contract: &str,
+        log_contracts: &[String],
         after_log_id: i64,
         snapshot_at: Option<DateTime<Utc>>,
     ) -> anyhow::Result<Vec<u32>> {
@@ -636,6 +641,7 @@ impl SecurityRegistryRepo {
             .bind(after_log_id)
             .bind(snapshot_at)
             .bind(names(&crate::security_registry::SECURITY_LOAN_EVENT_NAMES))
+            .bind(log_contracts)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
@@ -654,11 +660,17 @@ impl SecurityRegistryRepo {
             .await?)
     }
 
-    pub async fn list_all_loans(&self, chain_id: i64, contract: &str) -> anyhow::Result<Vec<u32>> {
+    pub async fn list_all_loans(
+        &self,
+        chain_id: i64,
+        contract: &str,
+        log_contracts: &[String],
+    ) -> anyhow::Result<Vec<u32>> {
         let rows: Vec<(i64,)> = sqlx::query_as(LIST_ALL_LOANS_SQL)
             .bind(chain_id)
             .bind(contract)
             .bind(names(&crate::security_registry::SECURITY_LOAN_EVENT_NAMES))
+            .bind(log_contracts)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
@@ -777,11 +789,11 @@ impl SecurityRegistryRepo {
     pub async fn list_record_event_ledgers(
         &self,
         chain_id: i64,
-        contract: &str,
+        log_contracts: &[String],
     ) -> anyhow::Result<Vec<RecordEventLedgers>> {
         let rows: Vec<(i64, Option<i64>, bool)> = sqlx::query_as(LIST_RECORD_EVENT_LEDGERS_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .bind(names(
                 &crate::security_registry::SECURITY_RECORD_EVENT_NAMES,
             ))
@@ -805,11 +817,11 @@ impl SecurityRegistryRepo {
     pub async fn list_inspection_ids(
         &self,
         chain_id: i64,
-        contract: &str,
+        log_contracts: &[String],
     ) -> anyhow::Result<Vec<u32>> {
         let rows: Vec<(i64,)> = sqlx::query_as(LIST_INSPECTION_IDS_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(i,)| to_u32(i)).collect())
@@ -819,6 +831,7 @@ impl SecurityRegistryRepo {
         &self,
         chain_id: i64,
         contract: &str,
+        log_contracts: &[String],
         loan_registry: Option<&str>,
     ) -> anyhow::Result<Vec<u32>> {
         let rows: Vec<(i64,)> = sqlx::query_as(LIST_KNOWN_LOANS_SQL)
@@ -826,6 +839,7 @@ impl SecurityRegistryRepo {
             .bind(contract)
             .bind(loan_registry)
             .bind(names(&crate::security_registry::SECURITY_LOAN_EVENT_NAMES))
+            .bind(log_contracts)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
@@ -834,11 +848,11 @@ impl SecurityRegistryRepo {
     pub async fn list_loans_with_terms_event(
         &self,
         chain_id: i64,
-        contract: &str,
+        log_contracts: &[String],
     ) -> anyhow::Result<Vec<u32>> {
         let rows: Vec<(i64,)> = sqlx::query_as(LIST_LOANS_WITH_TERMS_EVENT_SQL)
             .bind(chain_id)
-            .bind(contract)
+            .bind(log_contracts)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows.into_iter().filter_map(|(l,)| to_u32(l)).collect())
@@ -873,10 +887,12 @@ impl SecurityRegistryRepo {
         &self,
         chain_id: i64,
         contract: &str,
+        log_contracts: &[String],
     ) -> anyhow::Result<HashMap<u32, i64>> {
         let rows: Vec<(i64, i64)> = sqlx::query_as(LIST_RECORD_LOANS_SQL)
             .bind(chain_id)
             .bind(contract)
+            .bind(log_contracts)
             .fetch_all(&self.pool)
             .await?;
         Ok(rows
@@ -929,6 +945,9 @@ impl SecurityRegistryRepo {
                 .bind(&t.margin_call_at)
                 .bind(t.set_ledger)
                 .bind(t.complete)
+                .bind(t.default_ratio_bps)
+                .bind(t.originator_fee_rate)
+                .bind(&t.default_breach_at)
                 .execute(&mut *tx)
                 .await?;
         }
@@ -996,6 +1015,7 @@ impl SecurityRegistryRepo {
                 .bind(&m.cure_by)
                 .bind(m.block_timestamp)
                 .bind(&m.tx_hash)
+                .bind(m.default_ratio_bps)
                 .execute(&mut *tx)
                 .await?;
         }
@@ -1282,6 +1302,7 @@ impl SecurityRegistryRepo {
             .bind(&v.accrued_interest)
             .bind(v.money_ledger)
             .bind(v.source_log_id)
+            .bind(&v.default_breach_at)
             .execute(&self.pool)
             .await?;
         Ok(())
