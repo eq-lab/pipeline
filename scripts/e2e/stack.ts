@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { toHex } from "viem";
-import { english, generateMnemonic, mnemonicToAccount } from "viem/accounts";
+import { english, generateMnemonic, generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { EVM_CONTRACTS, generateEnv, PORTS, SPACES, type Accounts, type Addresses, type EvmDeployment } from "./lib/env";
 import { EVM_CHAIN_ID, guard, STANDALONE_PASSPHRASE } from "./lib/guard";
 import { e2eHome, errorMessage, readJson, stackDir } from "./lib/stack";
@@ -323,10 +323,16 @@ async function deployEvmContracts(tag: string, contracts: string, mnemonic: stri
     addresses[key] = a;
   }
   const at = (role: keyof typeof EVM_ROLES) => accounts[EVM_ROLES[role]];
+  // The LP app's e2e test wallet starts with 100 ETH and 1000 USDC.
+  const browserLpKey = generatePrivateKey();
+  const browserLp = privateKeyToAccount(browserLpKey).address;
+  const fund: [string, unknown[]][] = [["anvil_setBalance", [browserLp, toHex(10n ** 20n)]], ["anvil_dealERC20", [browserLp, usdc, toHex(1_000_000_000n)]]];
+  for (const [method, params] of fund)
+    if ((await jsonRpc(`http://localhost:${PORTS.evm}`, method, params)) === undefined) throw new E2EError(`${method} failed for the LP app's e2e test wallet`);
   const pricePollerStartBlock = Number(await jsonRpc<string>(`http://localhost:${PORTS.evm}`, "eth_blockNumber", []));
   return {
     addresses,
-    accounts: { relayerKey: at("WhitelistManager").key, verifierKey: at("DepositManager__Verifier").key, capitalWallet: at("LoanRegistry__CapitalWallet").address },
+    accounts: { relayerKey: at("WhitelistManager").key, verifierKey: at("DepositManager__Verifier").key, capitalWallet: at("LoanRegistry__CapitalWallet").address, browserLpKey },
     pricePollerStartBlock,
   };
 }
@@ -454,7 +460,7 @@ export async function up(tag: string, reclaim: boolean, chains: readonly Chain[]
   assertGuarded(env);
   fs.writeFileSync(join(dir, "env.json"), JSON.stringify(env, null, 2), { mode: 0o600 });
   const vite = Object.entries(env).filter(([k]) => k.startsWith("VITE_"));
-  const wallet = env.E2E_WALLET_SECRET ? [["E2E_WALLET_SECRET", env.E2E_WALLET_SECRET]] : [];
+  const wallet = Object.entries(env).filter(([k]) => k === "E2E_WALLET_SECRET" || k === "E2E_EVM_WALLET_KEY");
   const envFiles = { frontend: [...vite, ...wallet], trustee: vite };
   for (const [app, vars] of Object.entries(envFiles)) fs.writeFileSync(join(dir, `.env.e2e-${app}`), vars.map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o600 });
   fs.mkdirSync(join(dir, "ipfs"), { recursive: true });

@@ -41,6 +41,19 @@ Real Soroban transactions from the LP app at `http://localhost:55173`, signed by
 
 Report under "Seen in the browser" each step with ✅ or ❌, the figure pairs that differ, and screenshots of any ❌. A UI defect becomes a finding as in "New findings" below; never paste the secret, the passcode or the session token.
 
+## Browser pass: LP app on EVM
+
+The same walk on anvil (`31337`, `--chains evm` or both): real `approve` / `requestDeposit` / `claimDeposit` / stake / `requestWithdrawal` / `claimWithdrawal` transactions from the LP app, signed by the EVM [E2E test wallet](../../../packages/frontend/src/wallet/README.md#e2e-test-wallet) with the stack's fresh key (`E2E_EVM_WALLET_KEY`; 100 ETH and 1000 USDC; a different LP from the one `run.ts` creates). Desktop (1440×900), then 375 px. One pass per stack.
+
+1. **Session.** As in the Stellar pass. After the Stellar pass, sign up a fresh email, so the dashboard and activity show the EVM walk alone.
+2. **Connect.** Connect modal → EVM tab → **E2E test wallet** (first row) → accept the terms gate. The header shows the wallet's address: `cast wallet address "$(jq -r .E2E_EVM_WALLET_KEY "$E2E_HOME/stacks/<tag>/env.json")"` (never print the key). Link the address from the account page: the challenge is signed by `personal_sign`. A full page load (`browser_navigate`) drops the connection: navigate inside the app, or connect again.
+3. **Deposit** 100 USDC (`/deposit`: `approve`, then `requestDeposit`). Pass KYC as `passEvmKyc` in `scripts/e2e/lib/evm-world.ts` does: `sumsubGreen` for chain `31337` and the lower-cased address, then wait until `WhitelistRegistry.isAllowed(address)`. Claim the deposit.
+4. **Stake** part of the PLUSD (`/stake`), then **withdraw** (`/withdraw`): request, and claim once the queue allows it.
+5. **Activity and dashboard.** As in the Stellar pass, with `chain_id=31337` and chain amounts read from anvil (`cast call … --rpc-url http://localhost:58545`).
+6. **375 px.** As in the Stellar pass.
+
+Report as in the Stellar pass.
+
 ## Browser pass: Operations Console
 
 <!-- filled by a later child -->
