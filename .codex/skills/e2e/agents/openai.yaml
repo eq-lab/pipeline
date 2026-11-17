@@ -1,0 +1,4 @@
+interface:
+  display_name: "E2E Harness"
+  short_description: "Run the local end-to-end harness and report the result"
+  default_prompt: "Use $e2e to run the end-to-end harness on a local stack and report."
