@@ -16,14 +16,17 @@ services:
     volumes: [postgres:/var/lib/postgresql/data]
 
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # minio/minio is no longer pullable; the bitnami build runs as uid 1001, so data and mc's HOME live where it can write.
+    image: bitnamilegacy/minio:2025.4.22
     labels: *tag
-    command: server /data
+    entrypoint: [minio]
+    command: server /bitnami/minio/data
     environment:
       MINIO_ROOT_USER: ${E2E_SPACES_KEY}
       MINIO_ROOT_PASSWORD: ${E2E_SPACES_SECRET}
+      HOME: /tmp
     ports: ["127.0.0.1:${E2E_PORT_MINIO}:9000"]
-    volumes: [minio:/data]
+    volumes: [minio:/bitnami/minio/data]
 
   stellar:
     # shortcut: unpinned quickstart, so protocol upgrades arrive unannounced; pin a digest once a stack run is green.

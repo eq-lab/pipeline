@@ -217,7 +217,7 @@ export async function prepare() {
   console.log(`contracts: ${await ensureContracts()}`);
 }
 
-async function deployContracts(tag: string, contracts: string): Promise<{ addresses: Addresses; accounts: Accounts }> {
+async function deployContracts(tag: string, contracts: string, startLedger: number): Promise<{ addresses: Addresses; accounts: Accounts }> {
   const dir = stackDir(tag);
   const log = join(dir, "logs", "deploy.log");
   const env = { ...process.env, STELLAR_CONFIG_HOME: join(dir, "stellar"), NETWORK: "e2e", SKIP_BUILD: "1", STEP_DELAY: "0" };
@@ -226,9 +226,16 @@ async function deployContracts(tag: string, contracts: string): Promise<{ addres
   const names = ["deployer", "usdc-issuer", "verifier", "relayer", "trustee", "capital"] as const;
   const addr: Record<string, string> = {};
   for (const n of names) {
-    await waitFor(`friendbot (${n})`, log, async () => (logged(log, "stellar", ["keys", "generate", n, "--network", "e2e", "--fund", "--overwrite"], { env }), true));
-    addr[n] = stellar("keys", "address", n);
+    // `keys generate --fund` exits 0 when friendbot is not up yet, so the probe asks Horizon whether the account exists.
+    await waitFor(`friendbot (${n})`, log, async () => {
+      logged(log, "stellar", ["keys", "generate", n, "--network", "e2e", "--fund", "--overwrite"], { env });
+      addr[n] = stellar("keys", "address", n);
+      return (await fetch(`http://localhost:${PORTS.stellar}/accounts/${addr[n]}`)).ok;
+    });
   }
+  // The Minter refuses a custodian without USDC and PLUSD trustlines; one opened before deploy-all's init-asset (AUTH_REQUIRED) is authorized from the start.
+  for (const line of [`USDC:${addr["usdc-issuer"]}`, `PLUSD:${addr.deployer}`])
+    logged(log, "stellar", ["tx", "new", "change-trust", "--source-account", "capital", "--line", line, "--network", "e2e"], { env });
   const work = join(dir, "contracts");
   fs.mkdirSync(work, { recursive: true });
   fs.cpSync(join(contracts, "deployments"), join(work, "deployments"), { recursive: true });
@@ -245,7 +252,8 @@ async function deployContracts(tag: string, contracts: string): Promise<{ addres
     allowance_ttl: "518400",
     access_manager: { admin: addr.deployer },
     deposit_manager: { custodian: addr.deployer, verifier: addr.verifier, min_deposit: "10000000", tx_limit: "50000000000000", window_limit: "100000000000000", window: "86400", shift: "0" },
-    withdrawal_queue: { custodian: addr.deployer, verifier: addr.verifier, approve_amount: "100000000000000" },
+    // No approve_amount: deploy-all's approve-usdc passes --expiration_ledger, but the USDC SAC's approve takes live_until_ledger; the approval follows deploy-all.
+    withdrawal_queue: { custodian: addr.deployer, verifier: addr.verifier },
     staked_pl_usd: { name: "Staked Pipeline USD", symbol: "sPLUSD", decimals_offset: "0" },
     loan_registry: { name: "Pipeline Loan Registry", symbol: "PLLR", capital_wallet: addr.capital, max_fee_bps: "5000", max_residual: "1000000000" },
     deal_tokens: { debt_issuer: addr.trustee },
@@ -263,6 +271,8 @@ async function deployContracts(tag: string, contracts: string): Promise<{ addres
   fs.writeFileSync(join(net, "config.json"), JSON.stringify(config, null, 2));
   logged(log, "just", ["deploy-all"], { cwd: join(work, "deployments"), env });
   const addresses = readJson<Addresses>(join(net, "addresses.json"))!;
+  const expiration = startLedger + Number(config.allowance_ttl);
+  logged(log, "stellar", ["contract", "invoke", "--id", addresses.usdc, "--source-account", "deployer", "--network", "e2e", "--", "approve", "--from", addr.deployer, "--spender", addresses.withdrawal_queue, "--amount", "100000000000000", "--live_until_ledger", String(expiration)], { env });
   const secret = (n: string) => stellar("keys", "secret", n);
   const accounts: Accounts = {
     issuer: addr.deployer,
@@ -314,7 +324,7 @@ export async function up(tag: string, reclaim: boolean) {
   sh("docker", ["compose", "-f", COMPOSE, "exec", "-T", "minio", "sh", "-c", `mc alias set l http://localhost:9000 ${SPACES.key} ${SPACES.secret} && mc mb -p l/${SPACES.bucket}`], { env: composeEnv(tag) });
 
   const startLedger = await deployStartLedger();
-  const { addresses, accounts } = await deployContracts(tag, contracts);
+  const { addresses, accounts } = await deployContracts(tag, contracts, startLedger);
   const env = generateEnv({ ports: PORTS, addresses, accounts, jwt: jwtPair(), startLedger });
   assertGuarded(env);
   fs.writeFileSync(join(dir, "env.json"), JSON.stringify(env, null, 2), { mode: 0o600 });
